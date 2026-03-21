@@ -1,10 +1,48 @@
-import { Eye, Upload, ShieldCheck,  ShieldAlert, Clock } from "lucide-react";
+import {
+  Eye,
+  Upload,
+  ShieldCheck,
+  ShieldAlert,
+  Clock,
+} from "lucide-react";
+import { useState } from "react";
+import { motion } from "framer-motion";
+import BulkDocumentUploadModal from "../../modal/BulkDocumentUploadModal";
+
+/* ================= Animations ================= */
+const containerVariant = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: { staggerChildren: 0.08 },
+  },
+};
+
+const itemVariant = {
+  hidden: { opacity: 0, y: 15 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.35, ease: "easeOut" },
+  },
+};
+/* ============================================== */
 
 const DocumentPortal = () => {
+  const [openModal, setOpenModal] = useState(false);
+
   return (
-    <section className="space-y-6">
+    <motion.section
+      variants={containerVariant}
+      initial="hidden"
+      animate="visible"
+      className="space-y-4"
+    >
       {/* Header */}
-      <header className="flex items-center justify-between">
+      <motion.header
+        variants={itemVariant}
+        className="flex items-center justify-between"
+      >
         <div>
           <h1 className="text-2xl font-bold">Document Portal</h1>
           <p className="text-sm text-gray-500">
@@ -12,23 +50,31 @@ const DocumentPortal = () => {
           </p>
         </div>
 
-        <button className="bg-slate-900 text-white px-4 py-2 rounded-xl text-sm flex items-center gap-2">
+        <motion.button
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          onClick={() => setOpenModal(true)}
+          className="bg-slate-900 text-white px-4 py-2 rounded-xl text-sm flex items-center gap-2"
+        >
           <Upload size={16} />
           Bulk Upload
-        </button>
-      </header>
+        </motion.button>
+      </motion.header>
 
       {/* Table Card */}
-      <div className="bg-white shadow-sm rounded-xl p-6 space-y-4">
+      <motion.div
+        variants={itemVariant}
+        className="bg-white shadow-sm rounded-xl p-4 space-y-4"
+      >
         <div>
-          <h2 className="font-semibold text-lg">Traveler Documents</h2>
-          <p className="text-sm text-gray-500">
+          <h2 className="font-semibold text-md">Traveler Documents</h2>
+          <p className="text-xs text-gray-500">
             Passports and Visas for upcoming trips.
           </p>
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full text-xs">
             <thead className="text-gray-500 border-b-gray-200 border-b">
               <tr>
                 <th className="text-left py-3">Traveler Name</th>
@@ -39,10 +85,15 @@ const DocumentPortal = () => {
               </tr>
             </thead>
 
-            <tbody className="divide-y divide-gray-200">
+            <motion.tbody
+              variants={containerVariant}
+              initial="hidden"
+              animate="visible"
+              className="divide-y divide-gray-200"
+            >
               {/* Row 1 */}
-              <tr>
-                <td className="py-4 font-medium">Rahul Sharma</td>
+              <motion.tr variants={itemVariant}>
+                <td className="py-4 font-medium">Roy Admin</td>
                 <td className="py-4">
                   <span className="border border-gray-300 px-2 py-1 rounded-xl text-xs">
                     Q-1001
@@ -56,14 +107,18 @@ const DocumentPortal = () => {
                 </td>
                 <td className="py-4 text-gray-500">Pending</td>
                 <td className="py-4 text-right flex items-end justify-end">
-                  <button className="flex items-center gap-1 text-slate-800 text-sm">
+                  <motion.button
+                    whileHover={{ scale: 1.002 }}
+                    whileTap={{ scale: 0.98 }}
+                    className="flex items-center gap-1 text-slate-800 text-sm"
+                  >
                     <Eye size={16} /> View
-                  </button>
+                  </motion.button>
                 </td>
-              </tr>
+              </motion.tr>
 
               {/* Row 2 */}
-              <tr>
+              <motion.tr variants={itemVariant}>
                 <td className="py-4 font-medium">Anjali Sharma</td>
                 <td className="py-4">
                   <span className="border border-gray-300 px-2 py-1 rounded-xl text-xs">
@@ -78,14 +133,18 @@ const DocumentPortal = () => {
                 </td>
                 <td className="py-4 text-gray-500">Pending</td>
                 <td className="py-4 text-right flex items-end justify-end">
-                  <button className="flex items-center gap-1 text-slate-800 text-sm">
+                  <motion.button
+                    whileHover={{ scale: 1.002 }}
+                    whileTap={{ scale: 0.98 }}
+                    className="flex items-center gap-1 text-slate-800 text-sm"
+                  >
                     <Eye size={16} /> View
-                  </button>
+                  </motion.button>
                 </td>
-              </tr>
+              </motion.tr>
 
               {/* Row 3 */}
-              <tr>
+              <motion.tr variants={itemVariant}>
                 <td className="py-4 font-medium">John Doe</td>
                 <td className="py-4">
                   <span className="border border-gray-300 px-2 py-1 rounded-xl text-xs">
@@ -94,21 +153,25 @@ const DocumentPortal = () => {
                 </td>
                 <td className="py-4">
                   <span className="bg-red-100 text-red-700 px-3 py-1 rounded-full text-xs flex w-fit items-center gap-1">
-                     <ShieldAlert size={12} />
+                    <ShieldAlert size={12} />
                     Missing
                   </span>
                 </td>
                 <td className="py-4 text-gray-500">Not Started</td>
                 <td className="py-4 text-right flex items-end justify-end">
-                  <button className="border border-gray-300 px-3 py-1.5 rounded-xl text-xs flex items-center gap-1 cursor-pointer hover:bg-gray-100 ">
+                  <motion.button
+                    whileHover={{ scale: 1.002 }}
+                    whileTap={{ scale: 0.98 }}
+                    className="border border-gray-300 px-3 py-1.5 rounded-xl text-xs flex items-center gap-1 cursor-pointer hover:bg-gray-100"
+                  >
                     <Upload size={14} />
                     Upload
-                  </button>
+                  </motion.button>
                 </td>
-              </tr>
+              </motion.tr>
 
               {/* Row 4 */}
-              <tr>
+              <motion.tr variants={itemVariant}>
                 <td className="py-4 font-medium">Jane Doe</td>
                 <td className="py-4">
                   <span className="border border-gray-300 px-2 py-1 rounded-xl text-xs">
@@ -117,31 +180,43 @@ const DocumentPortal = () => {
                 </td>
                 <td className="py-4">
                   <span className="bg-yellow-100 text-yellow-700 px-3 py-1 rounded-full text-xs flex w-fit items-center gap-1">
-                       <Clock size={12} />
+                    <Clock size={12} />
                     Reviewing
                   </span>
                 </td>
                 <td className="py-4 text-gray-500">Not Started</td>
                 <td className="py-4 flex items-end justify-end text-right">
-                  <button className="flex items-center gap-1 text-slate-800 text-sm">
-                    <Eye size={16} /> View
-                  </button>
+                  <motion.button
+                    whileHover={{ scale: 1.002 }}
+                    whileTap={{ scale: 0.98 }}
+                    className="flex items-center gap-1 text-slate-800 text-sm"
+                  >
+                    <Eye size={15} /> View
+                  </motion.button>
                 </td>
-              </tr>
-            </tbody>
+              </motion.tr>
+            </motion.tbody>
           </table>
         </div>
-      </div>
+      </motion.div>
 
       {/* Security Note */}
-      <div className="flex items-start gap-3 bg-blue-50 border border-blue-200 rounded-xl p-3 text-sm text-blue-800">
+      <motion.div
+        variants={itemVariant}
+        className="flex items-start gap-3 bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-800"
+      >
         <ShieldCheck size={18} />
         <p>
           <strong>Security Note:</strong> All documents are encrypted at rest.
           Please ensure passports are scanned clearly in color (JPG/PDF format).
         </p>
-      </div>
-    </section>
+      </motion.div>
+
+      {/* MODAL */}
+      {openModal && (
+        <BulkDocumentUploadModal onClose={() => setOpenModal(false)} />
+      )}
+    </motion.section>
   );
 };
 

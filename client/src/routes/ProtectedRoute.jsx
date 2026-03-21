@@ -1,17 +1,13 @@
 import { Navigate, Outlet } from "react-router-dom";
 
 const ProtectedRoute = ({ allowedRoles }) => {
-  // real project me ye auth context / redux use
-  const user = {
-    isAuthenticated: true,
-    role: "agent", // admin | agent
-  };
+  const user = {isAuthenticated: true, role: ["agent", "admin", "operations", "dmc_partner"]};
 
   if (!user.isAuthenticated) {
     return <Navigate to="/login" replace />;
   }
 
-  if (!allowedRoles.includes(user.role)) {
+  if (!allowedRoles.some(role => user.role.includes(role))) {
     return <Navigate to="/unauthorized" replace />;
   }
 

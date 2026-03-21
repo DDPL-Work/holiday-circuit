@@ -1,26 +1,94 @@
 import { Search, Plus } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { motion } from "framer-motion";
+import { AnimatePresence } from "framer-motion";
 import CreateNewQueries from "../../modal/CreateNewQueries.Modal";
-import { queriesData } from "../../data/queriesDummyData.js";
 import QueryDetails from "./QueryDetails.jsx";
+import API from "../../utils/Api.js";
+
+/* ===== Page Animation (one time only) ===== */
+const containerVariant = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: { staggerChildren: 0.06 },
+  },
+};
+
+const itemVariant = {
+  hidden: { opacity: 0, y: 10 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.25, ease: "easeOut" },
+  },
+};
 
 const Queries = () => {
   const [openModal, setOpenModal] = useState(false);
   const [openQueryDetails, setOpenQueryDetails] = useState(false);
   const [selectedQuery, setSelectedQuery] = useState(null);
+  const [queries, setQueries] = useState([]);
+  const [searchTerm, setSearchTerm] = useState("");
 
-  // Query Details view
+  // ================= API =================
+
+useEffect(() => {
+  const fetchQueries = async () => {
+    try {
+      const res = await API.get("/agent/getAllQueries");
+      setQueries(res.data.queries);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  fetchQueries();
+}, []);
+
+  // ================= Helpers =================
+  const formatDates = (start, end) => {
+    const options = { day: "2-digit", month: "short" };
+    return `${new Date(start).toLocaleDateString("en-IN", options)} - 
+            ${new Date(end).toLocaleDateString("en-IN", options)}`;
+  };
+
+  const formatPax = (adults, children) =>
+    children > 0 ? `${adults} Adults, ${children} Kids` : `${adults} Adults`;
+
+  const filteredQueries = queries.filter((query) => {
+    const search = searchTerm.toLowerCase();
+    return (
+      query.queryId?.toLowerCase().includes(search) ||
+      query.destination?.toLowerCase().includes(search) ||
+      query.status?.toLowerCase().includes(search)
+    );
+  });
+
+  // ================= Details View =================
   if (openQueryDetails) {
-    return <QueryDetails onClose={() => setOpenQueryDetails(false)} query={selectedQuery}/>;
+    return (
+      <QueryDetails
+        onClose={() => setOpenQueryDetails(false)}
+        query={selectedQuery}
+      />
+    );
   }
 
-
   return (
-    <section className="space-y-6">
-      {!openModal && (
+    <motion.section
+      variants={containerVariant}
+      initial="hidden"
+      animate="visible"
+      className="space-y-5"
+    >
+     
         <>
           {/* Header */}
-          <header className="flex items-center justify-between">
+          <motion.header
+            variants={itemVariant}
+            className="flex items-center justify-between"
+          >
             <div>
               <h1 className="text-2xl font-bold">Queries</h1>
               <p className="text-sm text-gray-500">
@@ -28,28 +96,35 @@ const Queries = () => {
               </p>
             </div>
 
-            <button
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
               onClick={() => setOpenModal(true)}
-              className="flex items-center gap-2 bg-slate-900 text-white px-4 py-2 rounded-lg text-sm cursor-pointer"
+              className="flex items-center gap-2 bg-slate-900 text-white px-4 py-2 rounded-xl text-sm cursor-pointer"
             >
               <Plus size={16} />
               Create Query
-            </button>
-          </header>
+            </motion.button>
+          </motion.header>
 
           {/* Search */}
-          <div className="relative max-w-sm">
+          <motion.div variants={itemVariant} className="relative max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
             <input
               type="text"
               placeholder="Search queries..."
-              className="w-full pl-9 pr-4 py-2 border rounded-xl text-sm border-gray-300 focus:outline-none"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-9 pr-4 py-2 border rounded-2xl text-sm border-gray-300 focus:outline-none"
             />
-          </div>
+          </motion.div>
 
           {/* Table */}
-          <div className="bg-white shadow-sm rounded-xl overflow-hidden">
-            <table className="w-full text-sm">
+          <motion.div
+            variants={itemVariant}
+            className="bg-white shadow-sm rounded-xl overflow-hidden"
+          >
+            <table className="w-full text-xs">
               <thead className="bg-gray-50 text-gray-500 border-b-gray-200 border-b">
                 <tr>
                   <th className="text-left px-6 py-3">Query ID</th>
@@ -62,57 +137,86 @@ const Queries = () => {
                 </tr>
               </thead>
 
+              {/* IMPORTANT FIX: normal tbody */}
               <tbody className="divide-y divide-gray-200">
-                {/* Row 1 */}
-                {queriesData.map((query) => (
-                  <tr
-                    key={query.id}
-                    onClick={() => {
-                      setSelectedQuery(query);
+                {filteredQueries.map((query, index) => (
+                  <motion.tr
+                    key={query._id}
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{
+                      duration: 0.4,
+                      delay: index * 0.03,
+                      ease: "easeOut",
                     }}
+                    whileHover={{ backgroundColor: "#F9FAFB" }}
+                    className="cursor-pointer"
                   >
-                    <td className="px-6 py-4 font-medium">{query.id}</td>
+                    <td className="px-6 py-4 font-medium">
+                      {query.queryId}
+                    </td>
                     <td className="px-6 py-4">{query.destination}</td>
-                    <td className="px-6 py-4">{query.dates}</td>
-                    <td className="px-6 py-4">{query.travelers}</td>
-
                     <td className="px-6 py-4">
-                      {query.status === "Quote Sent" && (
-                        <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs">
-                          Quote Sent
+                      {formatDates(query.startDate, query.endDate)}
+                    </td>
+                    <td className="px-6 py-4">
+                      {formatPax(
+                        query.numberOfAdults,
+                        query.numberOfChildren
+                      )}
+                    </td>
+                    <td className="px-6 py-4">
+                      {query.agentStatus === "Quote Sent" && (
+                        <span className="bg-green-200 text-green-700 px-3 border py-1 rounded-full text-xs">
+                         {query.agentStatus?.replace("_", " ")}
                         </span>
                       )}
-                      {query.status === "Pending" && (
-                        <span className="bg-yellow-100 text-yellow-700 px-3 py-1 rounded-full text-xs">
-                          Pending
+                      {query.agentStatus === "Pending" && (
+                        <span className="bg-yellow-100  text-yellow-700 px-3 py-1 rounded-full text-xs">
+                       {query.agentStatus?.replace("_", " ")}
                         </span>
                       )}
-                      {query.status === "Revision Requested" && (
+                      {query.agentStatus === "Revision Requested" && (
                         <span className="bg-red-400 text-white px-3 py-1 rounded-full text-xs">
-                          Revision Requested
+                          {query.agentStatus?.replace("_", " ")}
+                        </span>
+                      )}
+                       {query.agentStatus === "In Progress" && (
+                        <span className="bg-sky-300 text-white px-3 py-1 rounded-full text-xs">
+                          {query.agentStatus?.replace("_", " ")}
                         </span>
                       )}
                     </td>
                     <td className="px-6 py-4 text-right font-medium">
-                      {query.price ? query.price : "-"}
+                      {query.customerBudget || "-"}
                     </td>
                     <td
-                      className=""
-                      onClick={() => setOpenQueryDetails(true)}
+                      className="px-6 py-4 text-right"
+                     onClick={(e) => {  e.stopPropagation(); setSelectedQuery(query); setOpenQueryDetails(true);}}
                     >
-                      <span className="text-sm text-blue-600 rounded-lg px-2 py-2  border-gray-300 hover:bg-gray-100 cursor-pointer">View</span>
+                      <span className="text-sm text-blue-600 px-2 py-2 rounded-lg hover:bg-gray-100">
+                        View
+                      </span>
                     </td>
-                  </tr>
+                  </motion.tr>
                 ))}
               </tbody>
             </table>
-          </div>
+          </motion.div>
         </>
-      )}
+     
 
-      {/* MODAL */}
-      {openModal && <CreateNewQueries onClose={() => setOpenModal(false)} />}
-    </section>
+<AnimatePresence>
+  {openModal && (
+    <CreateNewQueries
+      onClose={() => {
+        setOpenModal(false);
+        fetchQueries();
+      }}
+    />
+  )}
+</AnimatePresence>
+    </motion.section>
   );
 };
 
