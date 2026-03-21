@@ -4,12 +4,37 @@ import Transport from "../models/transferDmc.model.js"
 export const processTransportExcel = async (filePath) => {
 
  const workbook = XLSX.readFile(filePath)
-
  const sheet = workbook.Sheets[workbook.SheetNames[0]]
-
  const rows = XLSX.utils.sheet_to_json(sheet)
 
-const data = rows
+ // ✅ Usage Type Formatter
+ const formatUsageType = (value) => {
+  if (!value) return "point-to-point";
+
+  const v = value.toLowerCase();
+
+  if (v.includes("one")) return "point-to-point";
+  if (v.includes("round")) return "round-trip";
+  if (v.includes("full")) return "full-day";
+  if (v.includes("half")) return "half-day";
+
+  return "point-to-point";
+ };
+
+ // ✅ Capacity Logic (NEW ADD)
+ const getCapacity = (vehicle) => {
+  const v = vehicle?.toLowerCase();
+
+  if (v?.includes("sedan")) return { pax: 3, luggage: 2 };
+  if (v?.includes("4x4")) return { pax: 6, luggage: 4 };
+  if (v?.includes("suv")) return { pax: 6, luggage: 4 };
+  if (v?.includes("van")) return { pax: 10, luggage: 8 };
+  if (v?.includes("luxury")) return { pax: 3, luggage: 2 };
+
+  return { pax: 4, luggage: 2 }; // fallback
+ };
+
+ const data = rows
  .filter(row =>
   row["Service Name"] &&
   row["Country"] &&
@@ -17,23 +42,33 @@ const data = rows
   row["Valid From"] &&
   row["Valid To"]
  )
- .map(row => ({
+ .map(row => {
 
-  serviceName: row["Service Name"],
-  supplierName: row["Supplier Name"],
+  const capacity = getCapacity(row["Vehicle Type"]);
 
-  country: row["Country"],
-  city: row["City"],
+  return {
+    serviceName: row["Service Name"],
+    supplierName: row["Supplier Name"],
 
-  vehicleType: row["Vehicle Type"],
+    country: row["Country"],
+    city: row["City"],
 
-  price: Number(row["Price"]),
-  currency: row["Currency"],
+    vehicleType: row["Vehicle Type"],
 
-  validFrom: new Date(row["Valid From"]),
-  validTo: new Date(row["Valid To"])
+    // ✅ NEW ADD (IMPORTANT)
+    passengerCapacity: Number(row["Passenger Capacity"]) || capacity.pax,
+    luggageCapacity: Number(row["Luggage Capacity"]) || capacity.luggage,
 
- }))
+    usageType: formatUsageType(row["Usage Type"]),
+    description: row["Description"] || "",
+
+    price: Number(row["Price"]),
+    currency: row["Currency"],
+
+    validFrom: new Date(row["Valid From"]),
+    validTo: new Date(row["Valid To"])
+  }
+ })
 
  await Transport.insertMany(data)
 

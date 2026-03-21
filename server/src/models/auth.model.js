@@ -52,7 +52,7 @@ gstNumber: {
 
   role: {
     type: String,
-    enum: ["admin","agent","operations","dmc_partner"],
+    enum: ["admin","agent","operations","dmc_partner","finance_partner"],
     required: true
   },
 
@@ -77,14 +77,13 @@ gstNumber: {
 //======= THIS IS THE KEY PART =============
 
 agentSchema.pre("save", function (next) {
-  if (this.role !== "agent") {
+  if (!["agent", "dmc_partner", "finance_partner"].includes(this.role)) {
     this.companyName = undefined;
     this.gstNumber = undefined;
     this.phone = undefined;
     this.documents = undefined;
     this.status = undefined;
   }
- next();
 });
 
 

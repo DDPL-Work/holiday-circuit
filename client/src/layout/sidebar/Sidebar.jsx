@@ -63,6 +63,11 @@ const menuConfig = {
     {label: "Contracted Rates Dashboard",path: "/dmc/contractedRates",icon: Box,},
     {label: "Confirmation Number Entry",path: "/dmc/confirmation",icon: CircleCheckBig,},
   ],
+  finance_partner: [
+    {label: "DMC Dashboard", path: "/finance/dashboard", icon: LayoutGrid },
+    {label: "Payment Verification",path: "/finance/paymentVerification",icon: Box,},
+    {label: "Internal Invoice",path: "/finance/internalInvoice",icon: CircleCheckBig,},
+  ]
 };
 
 const Sidebar = ({ user }) => {

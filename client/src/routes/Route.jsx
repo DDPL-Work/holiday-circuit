@@ -91,4 +91,18 @@ export const appRouter = createBrowserRouter([
       },
     ],
   },
+   {
+    element:<ProtectedRoute allowedRoles={["finance_partner"]} />,
+    children: [
+      {
+        path: "/",
+        element: <Layout/>,
+        children: [
+          { path: "/finance/dashboard", element:<DmcDashboard/>},
+          { path: "/finance/paymentVerification", element:<ContractedRates/>},
+          { path: "/finance/internalInvoice", element:<FulfillmentConfirmation/>},
+        ],
+      },
+    ],
+  },
 ]);

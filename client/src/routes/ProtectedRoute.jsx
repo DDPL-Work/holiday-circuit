@@ -1,7 +1,7 @@
 import { Navigate, Outlet } from "react-router-dom";
 
 const ProtectedRoute = ({ allowedRoles }) => {
-  const user = {isAuthenticated: true, role: ["agent", "admin", "operations", "dmc_partner"]};
+  const user = {isAuthenticated: true, role: ["agent", "admin", "operations", "dmc_partner","finance_partner"]};
 
   if (!user.isAuthenticated) {
     return <Navigate to="/login" replace />;

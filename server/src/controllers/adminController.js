@@ -173,6 +173,54 @@ export const createDmcPartner = async (req, res, next) => {
   }
 };
 
+//================ Admin Create Finance Partner ==========================================
+
+export const createFinancePartner = async (req, res, next) => {
+  try {
+    const { name, email, password, companyName } = req.body;
+
+    // validation
+    if (!name || !email || !password || !companyName) {
+      return next(new ApiError(400, "All fields are required"));
+    }
+
+    // check existing user
+    const existingUser = await Auth.findOne({ email });
+
+    if (existingUser) {
+      return next(new ApiError(400, "User already exists"));
+    }
+
+    // hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // create finance partner
+    const financePartner = await Auth.create({
+      name,
+      email,
+      password: hashedPassword,
+      companyName,
+      role: "finance_partner",
+      isApproved: true
+    });
+
+    res.status(201).json({
+      success: true,
+      message: "Finance Partner created successfully",
+      partner: {
+        id: financePartner._id,
+        name: financePartner.name,
+        email: financePartner.email,
+        companyName: financePartner.companyName,
+        role: financePartner.role
+      }
+    });
+
+  } catch (error) {
+    next(error);
+  }
+};
+
 // =============================== Get All Users (System-wide) ===============================
 export const getAllUsers = async (req, res, next) => {
   try {

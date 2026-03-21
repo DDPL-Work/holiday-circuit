@@ -1,7 +1,11 @@
 import { Send } from "lucide-react";
 import React, { useEffect, useMemo, useState } from "react";
 import { FaWater } from "react-icons/fa";
-import { GiCityCar, GiModernCity, GiWaterPolo } from "react-icons/gi";
+import { GiCityCar, GiModernCity,} from "react-icons/gi";
+import { FaCarSide } from "react-icons/fa";
+import { MdOutlineTravelExplore } from "react-icons/md";
+import { BsPeople } from "react-icons/bs";
+import { HiOutlineBriefcase } from "react-icons/hi";
 import { LiaHotelSolid } from "react-icons/lia";
 import { RiDeleteBin6Line } from "react-icons/ri";
 import { useLocation } from "react-router-dom";
@@ -31,7 +35,7 @@ const QuotationBuilder = () => {
 
   const location = useLocation();
   const order = location.state;
-  console.log("ref", order);
+  // console.log("ref", order);
   const navigate = useNavigate();
 
   const [appliedTaxTotal, setAppliedTaxTotal] = useState(0);
@@ -118,7 +122,10 @@ const QuotationBuilder = () => {
     desc: s.description || "",
     city: s.city || "",
     country: s.country || "",
-
+  vehicleType: s.vehicleType || "",
+  usageType: s.usageType || "",
+  passengerCapacity: s.passengerCapacity || 0,
+  luggageCapacity: s.luggageCapacity || 0,
     rate: s.price || 0,
     currency: s.currency,
     nights: 1,
@@ -172,6 +179,7 @@ setServices(formatted);
 
   // base values
  
+
   const  servicesTotal = useMemo(() => {
   return services
     .filter((s) => s.checked === true)
@@ -194,6 +202,8 @@ setServices(formatted);
       return sum;
     }, 0);
 }, [services]);
+
+
   
   const baseRate = Number(order?.customerBudget || 0);
 
@@ -972,14 +982,49 @@ const total = (service.rate || 0) * qty;
     
     </div>
 
-    {/* SUBTITLE */}
+    {/*=================== SUBTITLE-DESCRIPTION ===================================== */}
     <p className="text-[9px] text-gray-300 mt-1 w-90 font-sans">
      {service.desc || "No details available"}
     </p>
 
-    {/* BASE RATE + CONTROLS */}
-    <div className="flex items-center gap-5 mt-1.5 flex-wrap  w-100 ">
+    {/*======================= TRANSPORT DETAILS (CLEAN TAG UI) =========================*/}
+{/* 🔥 TRANSPORT DETAILS (PREMIUM ICON TAGS) */}
+{service.type === "transfer" && (
+  <div className="flex flex-wrap gap-1.5 mt-1">
 
+    {service.vehicleType && (
+      <span className="flex items-center gap-1 text-[9px] bg-[#1f2937] text-gray-300 px-2 py-[2px] rounded-md">
+        <FaCarSide className="text-[10px] text-yellow-400" />
+        {service.vehicleType}
+      </span>
+    )}
+
+    {service.usageType && (
+      <span className="flex items-center gap-1 text-[9px] bg-[#1f2937] text-gray-300 px-2 py-[2px] rounded-md">
+        <MdOutlineTravelExplore className="text-[10px] text-blue-400" />
+        {service.usageType}
+      </span>
+    )}
+
+    {service.passengerCapacity > 0 && (
+      <span className="flex items-center gap-1 text-[9px] bg-[#1f2937] text-gray-300 px-2 py-[2px] rounded-md">
+        <BsPeople className="text-[10px] text-green-400" />
+        {service.passengerCapacity}
+      </span>
+    )}
+
+    {service.luggageCapacity > 0 && (
+      <span className="flex items-center gap-1 text-[9px] bg-[#1f2937] text-gray-300 px-2 py-[2px] rounded-md">
+        <HiOutlineBriefcase className="text-[10px] text-purple-400" />
+        {service.luggageCapacity}
+      </span>
+    )}
+
+  </div>
+)}
+
+    {/*========================= BASE RATE + CONTROLS ===================================*/}
+    <div className="flex items-center gap-4 mt-1.5 flex-wrap  w-102 ">
       {/* BASE RATE */}
       <div className="text-xs text-gray-400 px-2 py-1 rounded">
         Base Rate:{" "}
@@ -1010,18 +1055,21 @@ const total = (service.rate || 0) * qty;
       {/*====================== TRANSFER ============================================= */}
       {service.checked && (service.type === "transfer" || service.type === "car") && (
         <>
-       <div className="flex items-center gap-2  w-66">
+       <div className="flex items-center gap-2 w-80 border">
         <p className="text-xs">Service :</p>
           <select
             value={service.serviceType || "One Way"}
             onChange={(e) =>
               updateField(service.id, "serviceType", e.target.value)
             }
-            className="bg-black border border-gray-400 text-xs rounded-xl px-1.5 py-1 outline-none"
+            className="bg-black border border-gray-400 text-xs rounded-xl px-2 py-0.5 outline-none "
           >
-            <option>One Way</option>
-            <option>Two Way</option>
+            <option>Half Day</option>
+            <option>Round Trip</option>
             <option>Full Day</option>
+            <option>Round Trip</option>
+            <option>Point To Point</option>
+            <option>One Way</option>
           </select>
 
           <p className="text-xs">Days :</p>
@@ -1031,7 +1079,7 @@ const total = (service.rate || 0) * qty;
             onChange={(e) =>
               updateField(service.id, "days", Number(e.target.value))
             }
-            className="bg-black border border-gray-400 text-xs rounded-xl px-2 py-1 outline-none"
+            className="bg-black border border-gray-400 text-xs rounded-xl px-2 py-0.5 outline-none"
           >
             {[...Array(10)].map((_, i) => (
               <option key={i} value={i + 1}>{i + 1} Days</option>

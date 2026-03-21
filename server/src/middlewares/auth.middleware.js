@@ -4,7 +4,7 @@ import ApiError from "../utils/ApiError.js";
 const authMiddleware = (req, res, next) => {
 try {
        console.log("👉 HEADERS:", req.headers);
-const authHeader = req.headers.authorization;
+       const authHeader = req.headers.authorization;
     console.log("👉 AUTH HEADER:", authHeader)
 
 if (!authHeader || !authHeader.startsWith("Bearer ")) {

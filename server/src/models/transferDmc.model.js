@@ -39,6 +39,9 @@ const transferSchema = new mongoose.Schema(
     type: Number,
     default: 0
   },
+  description: {
+  type: String
+},
 
   price: {
     type: Number,
@@ -47,13 +50,13 @@ const transferSchema = new mongoose.Schema(
 
   currency: {
     type: String,
-    enum: ["USD","INR","AED","EUR"],
+    enum: ["USD","INR","AED","EUR","THB"],
     default: "USD"
   },
 
   usageType: {
     type: String,
-    enum: ["point-to-point","half-day","full-day"]
+    enum: ["point-to-point","half-day","full-day", "round-trip"]
   },
 
   validFrom: {

@@ -10,7 +10,7 @@ import { motion, AnimatePresence } from "framer-motion";
 const roles = [
   { label: "Operational Team", value: "operations" },
   { label: "DMC Partner", value: "dmc_partner" },
-  { label: "Finance Team", value: "finance" },
+  { label: "Finance Team", value: "finance_partner" },
   { label: "System Admin", value: "admin" },
 ];
 
@@ -76,6 +76,9 @@ export default function OpsTeamLoginModal({ open, onClose }) {
       else if (user.role === "dmc_partner") {
       toast.success("Welcome DMC Partner");
       navigate("/dmc/dashboard", { replace: true });
+    }else if(user.role ==="finance_partner"){
+        toast.success("Welcome FINANCE Partner");
+        navigate("/finance/dashboard", { replace: true });
     }
 
       onClose();

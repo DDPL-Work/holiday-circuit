@@ -579,15 +579,30 @@ export const getAllServices = async (req, res, next) => {
       currency: a.currency
     }));
 
-    // 🔹 FORMAT TRANSFERS
-    const transferData = transfers.map(t => ({
-      id: t._id,
-      type: "transfer",
-      title: t.serviceName,
-      subtitle: `${t.vehicleType} | ${t.usageType}`,
-      price: t.price,
-      currency: t.currency
-    }));
+
+      //======================== 🔹 FORMAT TRANSFERS =================================
+ const transferData = transfers.map(t => ({
+  id: t._id,
+  type: "transfer",
+  // 🔹 MAIN INFO
+  title: t.serviceName,
+  description: t.description,
+
+  // 🔹 LOCATION
+  city: t.city,
+  country: t.country,
+  // 🔹 VEHICLE INFO
+  vehicleType: t.vehicleType,
+  passengerCapacity: t.passengerCapacity,
+  luggageCapacity: t.luggageCapacity,
+  // 🔹 USAGE
+  usageType: t.usageType,
+  // 🔹 PRICE
+  price: t.price,
+  currency: t.currency,
+  // 🔹 UI HELPER
+  subtitle: `${t.vehicleType} | ${t.usageType}`
+}));
 
     // 🔹 FORMAT SIGHTSEEING
     const sightseeingData = sightseeing.map(s => ({
