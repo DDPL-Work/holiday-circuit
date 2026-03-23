@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   FileText, Clock, CheckCircle2, XCircle, DollarSign, 
   Search, ChevronDown, Eye, FileDown, Image as ImageIcon,
@@ -15,9 +15,10 @@ const statsData = [
 ];
 
 const paymentsData = [
-  { ref: "BK-2024-001", agent: "Travel Experts India", amount: "₹1,25,000", utr: "UTR123456789012", date: "18/3/2026", bank: "HDFC Bank", status: "Pending" },
-  { ref: "BK-2024-002", agent: "Wanderlust Tours", amount: "₹85,000", utr: "UTR987654321098", date: "17/2/2026", bank: "ICICI Bank", status: "Verified" },
-  { ref: "BK-2024-003", agent: "Global Adventures", amount: "₹2,00,000", utr: "UTR456789123456", date: "16/1/2026", bank: "State Bank of India", status: "Pending" },
+  // Dates updated to test the filters
+  { ref: "BK-2024-001", agent: "Travel Experts India", amount: "₹1,25,000", utr: "UTR123456789012", date: "21/3/2026", bank: "HDFC Bank", status: "Pending" },
+  { ref: "BK-2024-002", agent: "Wanderlust Tours", amount: "₹85,000", utr: "UTR987654321098", date: "17/3/2026", bank: "ICICI Bank", status: "Verified" },
+  { ref: "BK-2024-003", agent: "Global Adventures", amount: "₹2,00,000", utr: "UTR456789123456", date: "25/2/2026", bank: "State Bank of India", status: "Pending" },
   { ref: "BK-2024-004", agent: "Dream Destinations", amount: "₹65,000", utr: "UTR789123456789", date: "15/12/2025", bank: "Axis Bank", status: "Rejected" },
 ];
 
@@ -45,9 +46,19 @@ const StatusBadge = ({ status }) => {
   );
 };
 
+// --- HELPER FUNCTION: Parse "DD/MM/YYYY" to JS Date ---
+const parseDateString = (dateStr) => {
+  const [day, month, year] = dateStr.split('/');
+  return new Date(year, month - 1, day);
+};
+
 // --- MAIN COMPONENT ---
 const PaymentVerification = () => {
+  // 1. SETUP STATE FOR FILTERS
   const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState("All Status");
+  const [dateFilter, setDateFilter] = useState("All Time");
+
   const [view, setView] = useState("list"); // "list" | "detail"
   const [selectedPayment, setSelectedPayment] = useState(null);
 
@@ -61,10 +72,54 @@ const PaymentVerification = () => {
     setSelectedPayment(null);
   };
 
+  // 2. THE FILTERING LOGIC
+  const filteredPayments = useMemo(() => {
+    return paymentsData.filter((payment) => {
+      
+      // A. Search Text Check (Ref, Agent, or UTR)
+      const searchLower = searchTerm.toLowerCase();
+      const matchesSearch = 
+        payment.ref.toLowerCase().includes(searchLower) ||
+        payment.agent.toLowerCase().includes(searchLower) ||
+        payment.utr.toLowerCase().includes(searchLower);
+
+      // B. Status Dropdown Check
+      const matchesStatus = statusFilter === "All Status" || payment.status === statusFilter;
+
+      // C. Date Dropdown Check
+      let matchesDate = true;
+      if (dateFilter !== "All Time") {
+        const paymentDate = parseDateString(payment.date);
+        const today = new Date();
+        
+        // Reset times to midnight so we only compare the exact days
+        today.setHours(0, 0, 0, 0);
+        paymentDate.setHours(0, 0, 0, 0);
+
+        // Calculate how many days ago the payment was made
+        const diffTime = today - paymentDate;
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+        if (dateFilter === "Last 7 Days") {
+          matchesDate = diffDays >= 0 && diffDays <= 7;
+        } else if (dateFilter === "Last 30 Days") {
+          matchesDate = diffDays >= 0 && diffDays <= 30;
+        } else if (dateFilter === "This Month") {
+          matchesDate = 
+            paymentDate.getMonth() === today.getMonth() && 
+            paymentDate.getFullYear() === today.getFullYear();
+        }
+      }
+
+      // The payment MUST pass all three checks to be shown
+      return matchesSearch && matchesStatus && matchesDate;
+    });
+  }, [searchTerm, statusFilter, dateFilter]); // Only recalculate when these 3 things change
+
   return (
     <div className="flex flex-col gap-6 p-6 max-w-7xl mx-auto text-slate-800 pb-10">
       
-      {/* 1. HEADER SECTION (Always Visible) */}
+      {/* 1. HEADER SECTION */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Payment Verification</h1>
@@ -76,7 +131,7 @@ const PaymentVerification = () => {
         </button>
       </div>
 
-      {/* 2. STATS GRID (Always Visible) */}
+      {/* 2. STATS GRID */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         {statsData.map((stat, idx) => {
           const Icon = stat.icon;
@@ -96,10 +151,6 @@ const PaymentVerification = () => {
         })}
       </div>
 
-      {/* --------------------------------------------------- */}
-      {/* CONDITIONAL RENDERING: LIST VIEW VS DETAIL VIEW     */}
-      {/* --------------------------------------------------- */}
-
       {view === "list" ? (
         <>
           {/* 3. FILTER & SEARCH BAR */}
@@ -115,24 +166,37 @@ const PaymentVerification = () => {
               />
             </div>
             <div className="flex items-center gap-3">
+              
+              {/* STATUS DROPDOWN CONNECTED TO STATE */}
               <div className="relative">
-                <select className="appearance-none bg-white border border-gray-200 text-slate-700 py-2 pl-4 pr-10 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                  <option>All Status</option>
-                  <option>Pending</option>
-                  <option>Verified</option>
-                  <option>Rejected</option>
+                <select 
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  className="appearance-none bg-white border border-gray-200 text-slate-700 py-2 pl-4 pr-10 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                >
+                  <option value="All Status">All Status</option>
+                  <option value="Pending">Pending</option>
+                  <option value="Verified">Verified</option>
+                  <option value="Rejected">Rejected</option>
                 </select>
                 <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
               </div>
+              
+              {/* DATE DROPDOWN CONNECTED TO STATE */}
               <div className="relative">
-                <select className="appearance-none bg-white border border-gray-200 text-slate-700 py-2 pl-4 pr-10 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                  <option>Last 7 Days</option>
-                  <option>Last 30 Days</option>
-                  <option>Last 90 Days</option>
-                  <option>Custom Range</option>
+                <select 
+                  value={dateFilter}
+                  onChange={(e) => setDateFilter(e.target.value)}
+                  className="appearance-none bg-white border border-gray-200 text-slate-700 py-2 pl-4 pr-10 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                >
+                  <option value="All Time">All Time</option>
+                  <option value="Last 7 Days">Last 7 Days</option>
+                  <option value="Last 30 Days">Last 30 Days</option>
+                  <option value="This Month">This Month</option>
                 </select>
                 <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
               </div>
+
             </div>
           </div>
 
@@ -153,43 +217,53 @@ const PaymentVerification = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {paymentsData.map((payment, idx) => (
-                    <tr key={idx} className="hover:bg-slate-50 transition-colors">
-                      <td className="py-4 px-6 whitespace-nowrap">
-                        <div className="flex items-center gap-2">
-                          <FileText className="w-4 h-4 text-slate-400" />
-                          <span className="text-sm font-semibold text-slate-800">{payment.ref}</span>
-                        </div>
-                      </td>
-                      <td className="py-4 px-6 whitespace-nowrap text-sm text-slate-600">{payment.agent}</td>
-                      <td className="py-4 px-6 whitespace-nowrap text-sm font-bold text-slate-800">{payment.amount}</td>
-                      <td className="py-4 px-6 whitespace-nowrap">
-                        <span className="bg-slate-100 text-slate-500 px-2 py-1 rounded text-[10px] font-mono tracking-wide">
-                          {payment.utr}
-                        </span>
-                      </td>
-                      <td className="py-4 px-6 whitespace-nowrap">
-                        <div className="flex items-center gap-1.5 text-sm text-slate-600">
-                          <Clock className="w-3.5 h-3.5 text-slate-400" />
-                          {payment.date}
-                        </div>
-                      </td>
-                      <td className="py-4 px-6 whitespace-nowrap text-sm text-slate-600">{payment.bank}</td>
-                      <td className="py-4 px-6 whitespace-nowrap">
-                        <StatusBadge status={payment.status} />
-                      </td>
-                      <td className="py-4 px-6 whitespace-nowrap text-center">
-                        {/* TRIGGER TO SWITCH VIEW */}
-                        <button 
-                          onClick={() => handleReviewClick(payment)}
-                          className="inline-flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-white px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
-                        >
-                          <Eye className="w-3.5 h-3.5" />
-                          Review
-                        </button>
+                  
+                  {/* MAP OVER filteredPayments NOT paymentsData */}
+                  {filteredPayments.length > 0 ? (
+                    filteredPayments.map((payment, idx) => (
+                      <tr key={idx} className="hover:bg-slate-50 transition-colors">
+                        <td className="py-4 px-6 whitespace-nowrap">
+                          <div className="flex items-center gap-2">
+                            <FileText className="w-4 h-4 text-slate-400" />
+                            <span className="text-sm font-semibold text-slate-800">{payment.ref}</span>
+                          </div>
+                        </td>
+                        <td className="py-4 px-6 whitespace-nowrap text-sm text-slate-600">{payment.agent}</td>
+                        <td className="py-4 px-6 whitespace-nowrap text-sm font-bold text-slate-800">{payment.amount}</td>
+                        <td className="py-4 px-6 whitespace-nowrap">
+                          <span className="bg-slate-100 text-slate-500 px-2 py-1 rounded text-[10px] font-mono tracking-wide">
+                            {payment.utr}
+                          </span>
+                        </td>
+                        <td className="py-4 px-6 whitespace-nowrap">
+                          <div className="flex items-center gap-1.5 text-sm text-slate-600">
+                            <Clock className="w-3.5 h-3.5 text-slate-400" />
+                            {payment.date}
+                          </div>
+                        </td>
+                        <td className="py-4 px-6 whitespace-nowrap text-sm text-slate-600">{payment.bank}</td>
+                        <td className="py-4 px-6 whitespace-nowrap">
+                          <StatusBadge status={payment.status} />
+                        </td>
+                        <td className="py-4 px-6 whitespace-nowrap text-center">
+                          <button 
+                            onClick={() => handleReviewClick(payment)}
+                            className="inline-flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-white px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                            Review
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    /* SHOW THIS MESSAGE IF NO PAYMENTS MATCH THE FILTERS */
+                    <tr>
+                      <td colSpan="8" className="py-12 text-center text-slate-500">
+                        <p className="text-sm">No payment records match your current filters.</p>
                       </td>
                     </tr>
-                  ))}
+                  )}
                 </tbody>
               </table>
             </div>
@@ -200,7 +274,6 @@ const PaymentVerification = () => {
         /* DETAIL VIEW COMPONENT                               */
         /* --------------------------------------------------- */
         <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-6">
-          {/* Detail Header */}
           <div className="flex items-center justify-between mb-6 pb-6 border-b border-gray-100">
             <div>
               <h2 className="text-xl font-bold text-slate-900">Payment Verification Details</h2>
@@ -215,8 +288,6 @@ const PaymentVerification = () => {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            
-            {/* Left Column: Details & Actions */}
             <div className="flex flex-col">
               <div className="flex items-center gap-2 mb-4">
                 <FileText className="w-5 h-5 text-slate-600" />
@@ -261,7 +332,6 @@ const PaymentVerification = () => {
                 </div>
               </div>
 
-              {/* Action Buttons */}
               <div className="flex gap-4 mt-6">
                 <button className="flex-1 flex items-center justify-center gap-2 bg-green-500 hover:bg-green-600 text-white py-3 rounded-lg text-sm font-medium transition-colors">
                   <Check className="w-4 h-4" />
@@ -274,7 +344,6 @@ const PaymentVerification = () => {
               </div>
             </div>
 
-            {/* Right Column: Receipt Image */}
             <div className="flex flex-col">
               <div className="flex items-center gap-2 mb-4">
                 <ImageIcon className="w-5 h-5 text-slate-600" />
