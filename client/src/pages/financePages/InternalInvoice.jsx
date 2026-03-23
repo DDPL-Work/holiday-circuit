@@ -3,6 +3,7 @@ import {
   FileText, Search, ChevronDown, Eye, Cloud, CheckCircle, 
   FileDown, Download, Calendar 
 } from 'lucide-react';
+import InvoiceDocumentModal from '../../modal/InvoiceDocumentModal';
 
 // --- MOCK DATA ---
 const statsData = [
@@ -20,7 +21,6 @@ const invoicesData = [
   { id: "DMC-INV-2024-001", isDmc: true, ref: "BK-2024-003", party: "Bali Paradise DMC", utr: "UTR456789123456", bank: "State Bank of India", date: "20/3/2024", amount: "₹2,00,000", tax: "₹15,000", status: "Pending", method: null },
   { id: "INV-2024-004", isDmc: false, ref: "BK-2024-004", party: "Dream Destinations", utr: "UTR789123456789", bank: "Axis Bank", date: "26/3/2024", amount: "₹65,000", tax: "₹5,000", status: "Paid", method: "UPI" },
   { id: "INV-2024-005", isDmc: false, ref: "BK-2024-005", party: "Sky Travels", utr: "Pending", bank: "N/A", date: "15/3/2024", amount: "₹1,03,000", tax: "₹8,000", status: "Overdue", method: null },
-  { id: "INV-2024-005", isDmc: false, ref: "BK-2024-005", party: "Sky Travels", utr: "Pending", bank: "N/A", date: "15/3/2024", amount: "₹1,03,000", tax: "₹8,000", status: "Overdue", method: null }
 ];
 
 // --- HELPER COMPONENT: Status Badge ---
@@ -50,7 +50,7 @@ const InternalInvoices = () => {
   const closeModal = () => setSelectedInvoice(null);
 
   return (
-    <div className="h-full flex flex-col gap-4 max-w-[1600px] mx-auto text-slate-800 w-full overflow-hidden p-2 sm:p-4">
+    <div className="h-full flex flex-col gap-4 max-w-[1600px] mx-auto text-slate-800 w-full overflow-hidden p-6 sm:p-4">
       
       {/* 1. HEADER SECTION */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 shrink-0">
@@ -122,7 +122,7 @@ const InternalInvoices = () => {
           {/* Added table-fixed to force columns to fit within the 100% width */}
           <table className="w-full text-left border-collapse table-fixed">
             <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm">
-              <tr className="">
+              <tr className="border-b border-gray-200">
                 {/* Specific column widths defined to perfectly balance the data */}
                 <th className="w-[14%] py-3 px-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Invoice No.</th>
                 <th className="w-[11%] py-3 px-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Booking Ref</th>
@@ -222,7 +222,12 @@ const InternalInvoices = () => {
       </div>
 
       {/* 5. MODAL OVERLAY (Unchanged) */}
-     
+     {selectedInvoice && (
+        <InvoiceDocumentModal 
+          invoice={selectedInvoice} 
+          onClose={closeModal} 
+        />
+      )}
     </div>
   );
 };
