@@ -8,9 +8,9 @@ const Layout = () => {
       if (loading) return null;
 
   return (
-    <div className="flex-1 flex flex-col">
+    <div className="flex-1 h-screen flex flex-col">
        <Header />
-      <div className="flex h-128.5 overflow-hidden">
+      <div className="flex flex-1 overflow-hidden">
          {user && <Sidebar user={user} />}
           <main className="flex-1 overflow-y-auto bg-gray-50 p-1 custom-scroll">
           <Outlet />
