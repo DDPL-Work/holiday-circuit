@@ -17,6 +17,9 @@ import VoucherManagement from "../pages/opsPages/VoucherManagement";
 import DmcDashboard from "../pages/dmcPages/DmcDashboard"
 import ContractedRates from "../pages/dmcPages/ContractedRates";
 import FulfillmentConfirmation from "../pages/dmcPages/FulfillmentConfirmation";
+import FinanceDashboard from "../pages/financePages/FinanceDashboard";
+import PaymentVerification from "../pages/financePages/PaymentVerification";
+import InternalInvoice from "../pages/financePages/InternalInvoice";
 
 export const appRouter = createBrowserRouter([
   {
@@ -98,9 +101,9 @@ export const appRouter = createBrowserRouter([
         path: "/",
         element: <Layout/>,
         children: [
-          { path: "/finance/dashboard", element:<DmcDashboard/>},
-          { path: "/finance/paymentVerification", element:<ContractedRates/>},
-          { path: "/finance/internalInvoice", element:<FulfillmentConfirmation/>},
+          { path: "/finance/dashboard", element:<FinanceDashboard/>},
+          { path: "/finance/paymentVerification", element:<PaymentVerification/>},
+          { path: "/finance/internalInvoice", element:<InternalInvoice/>},
         ],
       },
     ],

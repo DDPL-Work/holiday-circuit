@@ -115,7 +115,7 @@ const Sidebar = ({ user }) => {
 
   return (
     <motion.aside
-      className="h-full bg-gray-900 flex flex-col justify-between border-t border-gray-800"
+      className="h-full bg-gray-900 flex flex-col justify-between  border-t border-gray-800"
       variants={sidebarVariants}
       animate={collapsed ? "collapsed" : "expanded"}
     >
@@ -135,7 +135,11 @@ const Sidebar = ({ user }) => {
 
       {/* MENU */}
       <motion.nav
+<<<<<<< HEAD
   className="p-3 space-y-1.5 mb-30"
+=======
+  className="p-4 flex-1 space-y-2 mb-45"
+>>>>>>> 02945470360c15fc6709a6f8dddab5df6f31154e
   variants={containerVariants}
   initial="hidden"
   animate={collapsed ? "hidden" : "visible"}
