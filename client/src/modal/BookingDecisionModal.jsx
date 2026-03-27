@@ -4,55 +4,55 @@ import { useState } from "react";
 import toast from "react-hot-toast";
 import { motion, AnimatePresence } from "framer-motion";
 
-export default function BookingDecisionModal({
-  isOpen,
-  onClose,
-  mode = "accept",
-  queryId,
-}) {
+export default function BookingDecisionModal({isOpen, onClose, mode = "accept", queryId, refresh}) {
   const [reason, setReason] = useState("");
+  const [loading, setLoading] = useState(false);
   const isAccept = mode === "accept";
 
-  // if (!isOpen) return null;
+ if (!isOpen) return null;
 
   // ================= Reject =================
 
   const handleRejectQuery = async () => {
+        if (loading) return;   // 👈 important
+        setLoading(true);
     try {
       if (!reason.trim()) {
         return toast.error("Please enter rejection reason");
       }
-
-      const res = await API.patch(`/ops/queries/${queryId}/reject-query`, {
-        reason,
-      });
-
-      if (res?.data?.success) {
-        toast.success("Query rejected");
-        onClose();
-        window.location.reload();
-      }
+      const res = await API.patch(`/ops/queries/reject/${queryId}`, { reason, });
+      console.log("REJECT RESPONSE:", res.data);
+     if (res?.data?.success) {
+     toast.success("Query rejected");
+     await refresh(); // ✅ FIX
+     onClose();
+}
     } catch (error) {
       toast.error(error?.response?.data?.message || "Something went wrong");
-    }
+    }finally {
+    setLoading(false); // ✅ MUST
+  }
   };
 
-  // ================= Accept =================
+  // ============================== Accept Query ========================
 
   const handleAcceptQuery = async () => {
+      if (loading) return;   
+     setLoading(true);
     try {
-      const res = await API.patch(`/ops/queries/${queryId}/accept`);
-
+      const res = await API.patch(`/ops/queries/accept/${queryId}`)
       if (res?.data?.success) {
         toast.success("Query accepted");
+        console.log("ACCEPT CLICKED");
+        await refresh();
         onClose();
-        window.location.reload();
       }
     } catch (error) {
       toast.error(error?.response?.data?.message || "Something went wrong");
-    }
+    }finally {
+    setLoading(false); 
+  }
   };
-
   return (
     <AnimatePresence>
       {isOpen && (

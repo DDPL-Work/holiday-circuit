@@ -1,11 +1,12 @@
 import { Send } from "lucide-react";
 import React, { useEffect, useMemo, useState } from "react";
-import { FaWater } from "react-icons/fa";
+import { FaStar, FaWater } from "react-icons/fa";
 import { GiCityCar, GiModernCity,} from "react-icons/gi";
 import { FaCarSide } from "react-icons/fa";
-import { MdOutlineTravelExplore } from "react-icons/md";
+import { MdKingBed, MdOutlineTravelExplore } from "react-icons/md";
 import { BsPeople } from "react-icons/bs";
 import { HiOutlineBriefcase } from "react-icons/hi";
+import { IoStarSharp } from "react-icons/io5";
 import { LiaHotelSolid } from "react-icons/lia";
 import { RiDeleteBin6Line } from "react-icons/ri";
 import { useLocation } from "react-router-dom";
@@ -35,7 +36,6 @@ const QuotationBuilder = () => {
 
   const location = useLocation();
   const order = location.state;
-  // console.log("ref", order);
   const navigate = useNavigate();
 
   const [appliedTaxTotal, setAppliedTaxTotal] = useState(0);
@@ -60,7 +60,8 @@ const QuotationBuilder = () => {
   const [draftGstChecked, setDraftGstChecked] = useState(false);
   const [draftTcsChecked, setDraftTcsChecked] = useState(false);
   const [draftTourismChecked, setDraftTourismChecked] = useState(false);
-
+  const [gstPercent, setGstPercent] = useState(5);
+  const [tcsPercent, setTcsPercent] = useState(0.1);
   const [draftGstAmount, setDraftGstAmount] = useState(0);
   const [draftTcsAmount, setDraftTcsAmount] = useState(0);
   const [draftTourismAmount, setDraftTourismAmount] = useState(0);
@@ -69,8 +70,9 @@ const QuotationBuilder = () => {
   const [marginType, setMarginType] = useState("percentage");
   const [fixedMargin, setFixedMargin] = useState(0);
   const [taxMode, setTaxMode] = useState("auto");
-
+  const [showSuccessPopup, setShowSuccessPopup] = useState(false);
   const [services, setServices] = useState([]);
+  const [selectedSendOption, setSelectedSendOption] = useState(null);
 
   const getServiceMeta = (type) => {
   switch (type) {
@@ -122,15 +124,28 @@ const QuotationBuilder = () => {
     desc: s.description || "",
     city: s.city || "",
     country: s.country || "",
-  vehicleType: s.vehicleType || "",
-  usageType: s.usageType || "",
-  passengerCapacity: s.passengerCapacity || 0,
-  luggageCapacity: s.luggageCapacity || 0,
+    vehicleType: s.vehicleType || "",
+    usageType: s.usageType || "",
+    passengerCapacity: s.passengerCapacity || 0,
+    luggageCapacity: s.luggageCapacity || 0,
     rate: s.price || 0,
+    // 🔥 ADD THIS
+    awebRate: s.awebRate || 0,
+    cwebRate: s.cwebRate || 0,
+    cwoebRate: s.cwoebRate || 0,
     currency: s.currency,
     nights: 1,
     days: 1,
     pax: 1,
+    // ================== ADD THIS ==================
+    roomCategory: s.roomCategory || "Double",
+    roomType:s.roomType,
+    hotelCategory:s.hotelCategory,
+    bedType: s.bedType || "King",
+    adults: 2,
+    children: 0,
+    infants: 0,
+    // ============================================
     checked: false,
     custom: false,
     icon: meta.icon,
@@ -185,8 +200,22 @@ setServices(formatted);
     .filter((s) => s.checked === true)
     .reduce((sum, s) => {
       if (s.type === "hotel") {
-        return sum + s.rate * s.nights;
-      }
+  let total = (s.rate || 0) * (s.nights || 1);
+
+  if (s.extraAdult) {
+    total += (s.awebRate || 0) * (s.nights || 1);
+  }
+
+  if (s.childWithBed) {
+    total += (s.cwebRate || 0) * (s.nights || 1);
+  }
+
+  if (s.childWithoutBed) {
+    total += (s.cwoebRate || 0) * (s.nights || 1);
+  }
+
+  return sum + total;
+}
       if (s.type === "transfer" || s.type === "car") {
         return sum + s.rate * s.days;
       }
@@ -239,9 +268,9 @@ setServices(formatted);
   // const tcsAmountFinal = tcsAmount;
   // const tourismAmountFinal = tourismAmount;
 
-  const draftGstAuto = draftGstChecked ? (baseRate * 5) / 100 : 0;
-  const draftTcsAuto = draftTcsChecked ? (baseRate * 0.1) / 100 : 0;
-  const draftTourismAuto = draftTourismChecked ? 500 : 0;
+ const draftGstAuto = draftGstChecked ? (baseRate * gstPercent) / 100 : 0;
+ const draftTcsAuto = draftTcsChecked ? (baseRate * tcsPercent) / 100 : 0;
+ const draftTourismAuto = draftTourismChecked ? 500 : 0;
 
   const draftGstFinal = draftGstChecked
     ? Number(draftGstAmount || draftGstAuto)
@@ -278,46 +307,143 @@ setServices(formatted);
 
   //=========================================== Api call ======================================
 
-  const sendQuotation = async () => {
-    if (!validTill) {
-      toast.error("Please select Valid Till date");
-      return;
-    }
-   if (!servicesTotal) {
-  toast.error("No services selected");
-  return;
-}
-    const loadingToast = toast.loading("Sending quotation...");
+ const sendQuotation = async (sendVia = []) => {
+  if (!validTill) {
+    toast.error("Please select Valid Till date");
+    return;
+  }
+  const selectedServices = services.filter(s => s.checked);
 
-    try {
-      const payload = {
-        queryId: order.queryId,
-        validTill,
-        baseAmount,
+  if (!selectedServices.length) {
+    toast.error("No services selected");
+    return;
+  }
 
-        opsPercent: marginType === "percentage" ? markup : 0,
-        opsAmount: opsMarkup,
+  const loadingToast = toast.loading("Sending quotation...");
 
-        serviceCharge,
-        handlingFee,
+  try {
 
-        gstPercent: draftGstChecked ? 5 : 0,
-        gstAmount: gstAmount || 0,
+    // 🔥 MAIN PAYLOAD
+    const payload = {
+      queryId: order.queryId,
+      validTill,
+      baseAmount: baseRate,
+      sendVia: sendVia,
+      services: selectedServices.map(s => ({
+      serviceId: s.id,
+      type: s.type,
+      title: s.title,
 
-        tcsPercent: draftTcsChecked ? 0.1 : 0,
-        tcsAmount: tcsAmount || 0,
+        city: s.city,
+        country: s.country,
+        description: s.desc,
 
-        tourismAmount: tourismAmount || 0,
-      };
-      const res = await API.post("/ops/quotations", payload);
-      toast.dismiss(loadingToast);
-      console.log("Quotation created", res.data);
-      toast.success("Quotation sent successfully");
-    } catch (error) {
-      console.error("Quotation error", error);
-      toast.error(error.response?.data?.message || "Failed to send quotation");
-    }
+        // HOTEL
+        nights: s.nights || 1,
+
+        // TRANSFER
+        vehicleType: s.vehicleType,
+        passengerCapacity: s.passengerCapacity,
+        luggageCapacity: s.luggageCapacity,
+        usageType: s.usageType,
+        days: s.days || 1,
+
+        // ACTIVITY / SIGHTSEEING
+        pax: s.pax || 1,
+
+        // PRICE
+        currency: s.currency,
+        price: s.rate,
+
+        total:
+        s.type === "hotel"
+    ? (() => {
+        let total = (s.rate || 0) * (s.nights || 1);
+
+        if (s.extraAdult) {
+          total += (s.awebRate || 0) * s.nights;
+        }
+        if (s.childWithBed) {
+          total += (s.cwebRate || 0) * s.nights;
+        }
+        if (s.childWithoutBed) {
+          total += (s.cwoebRate || 0) * s.nights;
+        }
+
+        return total;
+      })()
+            : s.type === "transfer"
+            ? s.rate * s.days
+            : s.type === "activity"
+            ? s.rate * s.pax
+            : s.type === "sightseeing"
+            ? s.rate * Math.max(s.pax || 1, s.days || 1)
+            : s.rate
+      })),
+
+      pricing: {
+        baseAmount: baseRate,
+        subTotal: servicesTotal,
+        totalAmount: totalAmount
+      },
+
+  opsPercent: marginType === "percentage" ? Number(markup || 0) : 0,
+  opsAmount: marginType === "fixed"
+    ? Number(fixedMargin || 0)
+    : Number(opsMarkup || 0),
+
+      // OPS + TAX
+   serviceCharge,
+  handlingFee,
+  tax: {
+    gstAmount: gstAmount || draftGstFinal,
+    gstPercent,
+    tcsAmount: tcsAmount || draftTcsFinal,
+    tcsPercent,
+    tourismAmount: tourismAmount || draftTourismFinal
+  }
   };
+
+    console.log("🔥 FINAL PAYLOAD:", payload);
+
+ // ✅ STEP 1: Create quotation
+    const res = await API.post("/ops/quotations", payload);
+    console.log("payload", res.data)
+
+// 🔥 STEP 2: UPDATE QUERY + CREATE LOG
+    await API.patch(`/ops/queries/send-quotation/${order._id}`);
+
+    toast.dismiss(loadingToast);
+    toast.success("Quotation sent successfully");
+    setShowSuccessPopup(true)
+
+  } catch (error) {
+    console.error(error);
+    toast.error("Failed to send quotation");
+  }
+};
+
+const handleFinalSend = () => {
+  if (!selectedSendOption) {
+    toast.error("Please select an option");
+    return;
+  }
+
+  const map = {
+    "Email": ["email"],
+    "WhatsApp": ["whatsapp"],
+    "Dashboard Notification": ["dashboard_notification"],
+    "PDF Download": ["pdf"],
+    "Copy Text": ["copy"]
+  };
+
+  sendQuotation(map[selectedSendOption]);
+
+  // optional UX
+  setShowSendOptions(false);
+  setSelectedSendOption(null);
+};
+  
 
   const getDuration = (start, end) => {
     if (!start || !end) return "";
@@ -588,12 +714,15 @@ setServices(formatted);
                 </span>
                 <span
                   className={`${
-                    appliedTaxTotal > 0 ? "text-green-400" : "text-red-400"
-                  }`}
-                >
+                  appliedTaxTotal > 0 ? "text-green-400" : "text-red-400"}`}>
                   ₹{appliedTaxTotal.toFixed(2)}
                 </span>
               </p>
+              <p className="flex justify-between">
+              <span className="text-[#90A1B9]">Services Total</span>
+              <span  className={`${
+                  appliedTaxTotal > 0 ? "text-sky-500" : "text-red-400"}`}>₹{servicesTotal.toFixed(2)}</span>
+             </p>
               <div className="flex justify-between text-lg font-bold mt-4  border-t border-t-yellow-400 ">
                 <span className="mt-1.5">Total Amount</span>
                 <span className="text-yellow-400 mt-1.5">
@@ -643,8 +772,9 @@ setServices(formatted);
     {["Dashboard Notification", "Email", "WhatsApp", "PDF Download", "Copy Text"].map((option, idx) => (
       <div
         key={idx}
-        onClick={() => alert(`${option} triggered!`)}
-        className="flex items-center gap-3 px-5 py-3 hover:bg-white/5 cursor-pointer border-b border-gray-700/60"
+      onClick={() => setSelectedSendOption(option)}
+        className={`flex items-center gap-3 px-5 py-3 cursor-pointer border-b
+  ${selectedSendOption === option ? "bg-yellow-400/20" : "hover:bg-white/5"}`}
       >
         <span className="text-lg">
           {option === "Email" ? "📧" :
@@ -661,9 +791,17 @@ setServices(formatted);
             {option === "Copy Text" ? "Plain text format" : ""}
             {option === "Dashboard Notification" ? "In-app alert to agent" : ""}
           </p>
+  
         </div>
       </div>
     ))}
+
+  <button
+  onClick={() => handleFinalSend()}
+  className="w-full bg-yellow-400 text-black py-2 font-semibold cursor-pointer"
+>
+  Send Now
+</button>
   </div>
 </div>
 
@@ -685,7 +823,7 @@ setServices(formatted);
 
     {showOpsPopup && (
           <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/80  animate-slideDown">
-            <div className="w-200 bg-linear-to-br mt-2  from-[#111] to-[#1c1c1c] border border-yellow-500/40 rounded-2xl shadow-2xl p-6">
+            <div className="w-230 bg-linear-to-br mt-2  from-[#111] to-[#1c1c1c] border border-yellow-500/40 rounded-2xl shadow-2xl p-6">
               {/* Header */}
               <div className="flex items-center justify-between mb-5">
                 <h2 className="text-yellow-400 font-semibold text-lg">
@@ -741,12 +879,12 @@ setServices(formatted);
                       type="date"
                       value={draftValidTill}
                       onChange={(e) => setDraftValidTill(e.target.value)}
-                      className="w-full mt-1 bg-black border border-gray-700 rounded-xl px-3 py-2 text-sm focus:border-yellow-400 outline-none"
+                      className="w-full mt-1 bg-gray-600 border border-gray-700 rounded-xl px-3 py-2 text-sm focus:border-yellow-400 outline-none"
                     />
                   </div>
                 </div>
 
-                {/*============================== TAXATION CHARGES ===============================================*/}
+                {/*============================== TAXATION CHARGES ===========================*/}
 
                 <div className="border border-gray-700 rounded-xl p-4">
                   <div className="flex justify-between items-center mb-3">
@@ -779,7 +917,15 @@ setServices(formatted);
                         />
                         GST (Goods & Services Tax)
                       </label>
-                      <span className="text-blue-400 text-sm">5%</span>
+                      <div className="flex items-center gap-2">
+  <input
+    type="number"
+    value={gstPercent}
+    onChange={(e) => setGstPercent(Number(e.target.value))}
+    className="w-16 bg-black border border-gray-600 rounded-xl px-2 py-1 text-xs outline-none"
+  />
+  <span className="text-blue-400 text-xs">%</span>
+</div>
                     </div>
                     {taxMode === "manual" && draftGstChecked && (
                       <input
@@ -795,7 +941,7 @@ setServices(formatted);
                   {/*============================== TCS Charges ====================================== */}
 
                   <div className="flex flex-col justify-between items-center mb-3 border border-gray-700 rounded-xl p-2">
-                    <div className="flex items-center gap-23">
+                    <div className="flex items-center gap-25">
                       <label className="flex items-center gap-2 text-xs">
                         <input
                           type="checkbox"
@@ -807,7 +953,15 @@ setServices(formatted);
                         />
                         TCS (Tax Collected at Source)
                       </label>
-                      <span className="text-blue-400 text-sm">0.1%</span>
+                     <div className="flex items-center gap-2">
+  <input
+    type="number"
+    value={tcsPercent}
+    onChange={(e) => setTcsPercent(Number(e.target.value))}
+    className="w-16 bg-black border border-gray-600 rounded-xl px-2 py-1 text-xs outline-none"
+  />
+  <span className="text-blue-400 text-xs">%</span>
+</div>
                     </div>
 
                     {taxMode === "manual" && draftTcsChecked && (
@@ -823,8 +977,8 @@ setServices(formatted);
 
                   {/*================================== Tourism Fees ============================================ */}
 
-                  <div className="flex flex-col justify-between items-center mb-3 border border-gray-700 rounded-xl p-2">
-                    <div className="flex items-center gap-25">
+                  <div className="flex flex-col justify-end items-center mb-3 border border-gray-700 rounded-xl p-2">
+                    <div className="flex items-center gap-41">
                       <label className="flex items-center gap-2 text-xs">
                         <input
                           type="checkbox"
@@ -899,6 +1053,70 @@ setServices(formatted);
             </div>
           </div>
         )}
+
+{/*======================== ✅ POPUP Success final Charges =============================================*/}
+   {showSuccessPopup && (
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
+
+    <div className="bg-[#111] border border-yellow-500/40 rounded-2xl p-6 w-100 text-center shadow-2xl animate-scaleIn">
+
+      {/* ICON */}
+      <div className="flex justify-center mb-4">
+        <div className="w-16 h-16 rounded-full bg-yellow-400 flex items-center justify-center text-black text-3xl">
+          ✓
+        </div>
+      </div>
+
+      {/* TITLE */}
+      <h2 className="text-xl font-semibold text-white mb-2">
+        Quotation Sent Successfully
+      </h2>
+
+      {/* SUBTEXT */}
+      <p className="text-gray-400 text-sm mb-4">
+        Your quotation has been delivered to the agent via selected channels.
+      </p>
+
+      {/* DETAILS */}
+      <div className="bg-[#1a1a1a] rounded-xl p-3 text-left text-xs mb-4">
+        <p className="flex justify-between">
+          <span className="text-gray-400">Agent</span>
+          <span className="text-white">{order?.agent?.companyName}</span>
+        </p>
+
+        <p className="flex justify-between mt-1">
+          <span className="text-gray-400">Total Amount</span>
+          <span className="text-yellow-400">₹{totalAmount.toFixed(2)}</span>
+        </p>
+
+        <p className="flex justify-between mt-1">
+          <span className="text-gray-400">Services</span>
+          <span className="text-white">{services.filter(s => s.checked).length}</span>
+        </p>
+      </div>
+
+      {/* BUTTONS */}
+      <div className="flex gap-3">
+        <button
+          onClick={() => setShowSuccessPopup(false)}
+          className="w-full bg-gray-800 text-white py-2 rounded-xl hover:bg-gray-700"
+        >
+          Close
+        </button>
+
+        <button
+          onClick={() => {
+            setShowSuccessPopup(false);
+            navigate("/ops/dashboard");
+          }}
+          className="w-full bg-yellow-400 text-black py-2 rounded-xl font-semibold hover:bg-yellow-500"
+        >
+          Go to Dashboard
+        </button>
+      </div>
+    </div>
+  </div>
+)}
         
       </div>
       <QuickAddServiceModal
@@ -912,273 +1130,364 @@ setServices(formatted);
 
 /*============================================ Select Contracted Rates =======================================*/
 
-const Service = ({ service, toggleService, updateField, deleteService, }) => {
- let qty = 1;
+const Service = ({ service, toggleService, updateField, deleteService }) => {
+  let total = 0;
 
-if (service.type === "hotel") {
-  qty = service.nights;
-} else if (service.type === "transfer" || service.type === "car") {
-  qty = service.days;
-} else if (service.type === "activity") {
-  qty = service.pax;
-} else if (service.type === "sightseeing") {
-  const pax = service.pax || 1;
-  const days = service.days || 1;
-  qty = Math.max(pax, days);
-}
-
-const total = (service.rate || 0) * qty;
-  // const formattedDesc = service.desc || "";
-  // .map((d) => d.trim())
-  // .join(" | ");
+  if (service.type === "hotel") {
+    const nights = service.nights || 1;
+    total = (service.rate || 0) * nights;
+    if (service.extraAdult) total += (service.awebRate || 0) * nights;
+    if (service.childWithBed) total += (service.cwebRate || 0) * nights;
+    if (service.childWithoutBed) total += (service.cwoebRate || 0) * nights;
+  } else if (service.type === "transfer" || service.type === "car") {
+    total = (service.rate || 0) * (service.days || 1);
+  } else if (service.type === "activity") {
+    total = (service.rate || 0) * (service.pax || 1);
+  } else if (service.type === "sightseeing") {
+    const pax = service.pax || 1;
+    const days = service.days || 1;
+    total = (service.rate || 0) * Math.max(pax, days);
+  }
 
   const currencySymbols = {
-  INR: "₹",
-  USD: "$",
-  EUR: "€",
-  GBP: "£",
-  AUD: "A$",
-  AED: "د.إ",
-  IDR: "Rp",
-  THB: "฿",
- 
-};
+    INR: "₹", USD: "$", EUR: "€", GBP: "£",
+    AUD: "A$", AED: "د.إ", IDR: "Rp", THB: "฿",
+  };
+
+  const sym = currencySymbols[service.currency] || service.currency;
+
+  const getHotelStars = (category) => {
+    if (!category) return 3;
+    const value = category.toString().toLowerCase().trim();
+    const match = value.match(/\d/);
+    if (match) return Number(match[0]);
+    if (value.includes("luxury") || value.includes("premium")) return 5;
+    if (value.includes("deluxe")) return 4;
+    if (value.includes("standard")) return 3;
+    if (value.includes("budget")) return 2;
+    return 3;
+  };
+
+  const formatUsage = (val) => {
+    if (!val) return "";
+    return val.replace("-", " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  };
+
+  const amenities = (service.desc || "")
+    .split(/,|\||\n/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  const selectCls =
+    "bg-[#0a0a0a] border border-[#2a2a2a] hover:border-yellow-600/50 text-white text-[11px] rounded-lg px-2.5 py-1 outline-none cursor-pointer transition-colors duration-150 focus:border-yellow-500";
+
+  const inputCls =
+    "bg-[#0a0a0a] border border-[#2a2a2a] hover:border-yellow-600/50 text-white text-[11px] rounded-lg px-2.5 py-1 w-16 outline-none transition-colors duration-150 focus:border-yellow-500";
+
+  const tagCls =
+    "flex items-center gap-1.5 text-[10px] bg-[#141414] border border-[#222] text-gray-400 px-2.5 py-1 rounded-lg";
+
   return (
     <div
-      className={`rounded-2xl p-3 mb-4 border transition-all duration-300 ease-in-out  ${
+      className={`rounded-2xl mb-3 border transition-all duration-200 relative overflow-hidden ${
         service.checked
-          ? "border-yellow-500 bg-[#1a1600]"
-          : "border-gray-700 bg-[#0e0e0e]"
+          ? "border-yellow-500/60 bg-[#0f0d00] shadow-[0_0_0_1px_rgba(234,179,8,0.08),inset_0_1px_0_rgba(234,179,8,0.06)]"
+          : "border-[#1f1f1f] bg-[#0b0b0b] hover:border-[#2a2a2a]"
       }`}
     >
-<div className="flex items-start gap-3 rounded-2xl ">
-  {/* LEFT ICON + CHECK */}
-  <input
-    type="checkbox"
-    checked={service.checked}
-    onChange={() => toggleService(service.id)}
-    className="accent-yellow-400 mt-1"
-  />
-
-  <div className={`text-xl ${service.color || "text-gray-400"}`}>
-    {service.icon || "icon....?"}
-  </div>
-
-  {/* MAIN CONTENT */}
-  <div className="flex-1">
-
-    {/* TITLE */}
-    <div className="flex items-center gap-6 w-59 ">
-      <div className="flex items-center gap-4 ">
-      <p className="font-semibold text-[13px] font-sans">{service.title}</p>
-      <p className="text-[10px] text-gray-400 mt-0.5 flex items-center gap-1">
-    <ImLocation2 className="text-green-300"/> {service.city}, {service.country}</p>
-</div>
-      {service.custom && (
-        <span className="bg-yellow-400 text-black text-xs px-2 py-0.5 rounded-xl">
-          Custom
-        </span>
-      )}
-    
-    </div>
-
-    {/*=================== SUBTITLE-DESCRIPTION ===================================== */}
-    <p className="text-[9px] text-gray-300 mt-1 w-90 font-sans">
-     {service.desc || "No details available"}
-    </p>
-
-    {/*======================= TRANSPORT DETAILS (CLEAN TAG UI) =========================*/}
-{/* 🔥 TRANSPORT DETAILS (PREMIUM ICON TAGS) */}
-{service.type === "transfer" && (
-  <div className="flex flex-wrap gap-1.5 mt-1">
-
-    {service.vehicleType && (
-      <span className="flex items-center gap-1 text-[9px] bg-[#1f2937] text-gray-300 px-2 py-[2px] rounded-md">
-        <FaCarSide className="text-[10px] text-yellow-400" />
-        {service.vehicleType}
-      </span>
-    )}
-
-    {service.usageType && (
-      <span className="flex items-center gap-1 text-[9px] bg-[#1f2937] text-gray-300 px-2 py-[2px] rounded-md">
-        <MdOutlineTravelExplore className="text-[10px] text-blue-400" />
-        {service.usageType}
-      </span>
-    )}
-
-    {service.passengerCapacity > 0 && (
-      <span className="flex items-center gap-1 text-[9px] bg-[#1f2937] text-gray-300 px-2 py-[2px] rounded-md">
-        <BsPeople className="text-[10px] text-green-400" />
-        {service.passengerCapacity}
-      </span>
-    )}
-
-    {service.luggageCapacity > 0 && (
-      <span className="flex items-center gap-1 text-[9px] bg-[#1f2937] text-gray-300 px-2 py-[2px] rounded-md">
-        <HiOutlineBriefcase className="text-[10px] text-purple-400" />
-        {service.luggageCapacity}
-      </span>
-    )}
-
-  </div>
-)}
-
-    {/*========================= BASE RATE + CONTROLS ===================================*/}
-    <div className="flex items-center gap-4 mt-1.5 flex-wrap  w-102 ">
-      {/* BASE RATE */}
-      <div className="text-xs text-gray-400 px-2 py-1 rounded">
-        Base Rate:{" "}
-        <span className="text-yellow-400 font-semibold">
-          {currencySymbols[service.currency] || service.currency}{" "}
-          {(service.rate || 0).toLocaleString("en-IN")}
-        </span>
-      </div>
-
-      {/*============================ HOTEL ==========================================*/}
-      {service.checked && service.type === "hotel" && (
-        <>
-          <span className="text-xs">Nights:</span>
-          <select
-            value={service.nights}
-            onChange={(e) =>
-              updateField(service.id, "nights", Number(e.target.value))
-            }
-            className="bg-black border border-gray-700 text-xs rounded-xl px-2 py-1"
-          >
-            {[...Array(10)].map((_, i) => (
-              <option key={i} value={i + 1}>{i + 1} Nights</option>
-            ))}
-          </select>
-        </>
+      {/* TOP ACCENT LINE */}
+      {service.checked && (
+        <div className="absolute top-0 left-0 right-0 h-[1.5px] bg-gradient-to-r from-transparent via-yellow-500/60 to-transparent" />
       )}
 
-      {/*====================== TRANSFER ============================================= */}
-      {service.checked && (service.type === "transfer" || service.type === "car") && (
-        <>
-       <div className="flex items-center gap-2 w-80 border">
-        <p className="text-xs">Service :</p>
-          <select
-            value={service.serviceType || "One Way"}
-            onChange={(e) =>
-              updateField(service.id, "serviceType", e.target.value)
-            }
-            className="bg-black border border-gray-400 text-xs rounded-xl px-2 py-0.5 outline-none "
-          >
-            <option>Half Day</option>
-            <option>Round Trip</option>
-            <option>Full Day</option>
-            <option>Round Trip</option>
-            <option>Point To Point</option>
-            <option>One Way</option>
-          </select>
+      <div className="flex items-stretch">
+        {/* MAIN CONTENT */}
+        <div className="flex-1 min-w-0 p-4">
 
-          <p className="text-xs">Days :</p>
+          {/* ── ROW 1: Checkbox + Icon + Title block ── */}
+          <div className="flex items-start gap-3">
+            {/* Checkbox */}
+            <input
+              type="checkbox"
+              checked={service.checked}
+              onChange={() => toggleService(service.id)}
+              className="accent-yellow-400 mt-[3px] w-3.5 h-3.5 flex-shrink-0 cursor-pointer"
+            />
 
-          <select
-            value={service.days}
-            onChange={(e) =>
-              updateField(service.id, "days", Number(e.target.value))
-            }
-            className="bg-black border border-gray-400 text-xs rounded-xl px-2 py-0.5 outline-none"
-          >
-            {[...Array(10)].map((_, i) => (
-              <option key={i} value={i + 1}>{i + 1} Days</option>
-            ))}
-          </select>
+            {/* Icon Badge */}
+            <div
+              className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 text-lg border ${
+                service.checked
+                  ? "bg-yellow-500/10 border-yellow-500/20"
+                  : "bg-[#161616] border-[#222]"
+              }`}
+            >
+              <span className={service.color || "text-gray-400"}>
+                {service.icon || "🏨"}
+              </span>
+            </div>
+
+            {/* Title + Meta */}
+            <div className="flex-1 min-w-0">
+              {/* Name + Custom badge */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <p className="font-semibold text-[13.5px] text-white tracking-tight leading-none">
+                  {service.title}
+                </p>
+                {service.custom && (
+                  <span className="bg-yellow-400 text-black text-[9px] font-bold px-2 py-0.5 rounded-full tracking-wide uppercase">
+                    Custom
+                  </span>
+                )}
+              </div>
+
+              {/* Location + Stars row */}
+              <div className="flex items-center gap-3 mt-1.5 flex-wrap">
+                <span className="flex items-center gap-1 text-[10px] text-gray-200">
+                  <ImLocation2 className="text-emerald-400 text-[10px]" />
+                  {service.city}, {service.country}
+                </span>
+                {service.hotelCategory && (
+                  <span className="flex items-center gap-1 text-[10px] text-gray-400">
+                    <span className="text-gray-200">Hotel:</span>
+                    <span className="flex items-center gap-0.5">
+                      {Array.from({ length: getHotelStars(service.hotelCategory) }).map((_, i) => (
+                        <IoStarSharp key={i} className="text-yellow-400 text-[9px]" />
+                      ))}
+                    </span>
+                  </span>
+                )}
+              </div>
+            </div>
           </div>
-        </>
 
-      )}
+          {/* ── ROW 2: Amenity pills ── */}
+          {amenities.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mt-3 pl-[52px]">
+              {amenities.map((item, i) => (
+                <span
+                  key={i}
+                  className="text-[9.5px] text-gray-300 bg-[#141414] border border-[#232323] px-2 py-0.5 rounded-md"
+                >
+                  {item}
+                </span>
+              ))}
+            </div>
+          )}
 
-    {/*========================================== Activity ============================================*/}
+          {/* ── TRANSPORT TAGS ── */}
+          {service.type === "transfer" && (
+            <div className="flex flex-wrap gap-1.5 mt-2.5 pl-[52px]">
+              {service.vehicleType && (
+                <span className={tagCls}>
+                  <FaCarSide className="text-yellow-400" />
+                  {service.vehicleType}
+                </span>
+              )}
+              {service.usageType && (
+                <span className={tagCls}>
+                  <MdOutlineTravelExplore className="text-blue-400" />
+                  {formatUsage(service.usageType)}
+                </span>
+              )}
+              {service.passengerCapacity > 0 && (
+                <span className={tagCls}>
+                  <BsPeople className="text-emerald-400" />
+                  {service.passengerCapacity} pax
+                </span>
+              )}
+              {service.luggageCapacity > 0 && (
+                <span className={tagCls}>
+                  <HiOutlineBriefcase className="text-purple-400" />
+                  {service.luggageCapacity} bags
+                </span>
+              )}
+            </div>
+          )}
 
-   {service.checked && service.type === "activity" && (
-    <>
-    <span className="text-xs">PAX :</span>
-    <input
-    type="number"
-    value={service.pax}
-    onChange={(e) =>
-      updateField(service.id, "pax", Number(e.target.value))
-    }
-    className="bg-black border border-gray-400 text-xs rounded-xl px-2 py-1 "/>
-  </>
-)}
+          {/* ── DIVIDER ── */}
+          <div className="h-px bg-[#1a1a1a] mt-3 ml-[52px]" />
 
+          {/* ── ROW 3: Base rate + controls ── */}
+          <div className="flex items-center gap-2.5 mt-2.5 pl-[52px] flex-wrap">
 
-{/* ===================== SIGHTSEEING ===================== */}
-{service.checked && service.type === "sightseeing" && (
-  <>
-    {/* Tour Type */}
-    {/* <div className="flex items-center gap-2">
-      <p className="text-xs">Tour :</p>
-      <select
-        value={service.tourType || "SIC"}
-        onChange={(e) =>
-          updateField(service.id, "tourType", e.target.value)
-        }
-        className="bg-black border border-gray-400 text-xs rounded-xl px-2 py-1 outline-none"
-      >
-        <option value="SIC">SIC</option>
-        <option value="Private">Private</option>
-      </select>
-    </div> */}
+            {/* Base Rate pill */}
+            <div className="flex items-center gap-1.5 bg-[#141414] border border-[#1e1e1e] rounded-lg px-3 py-1.5">
+              <span className="text-[10px] text-gray-200">Base Rate</span>
+              <span className="text-[11px] font-semibold text-yellow-400 tracking-tight">
+                {sym} {(service.rate || 0).toLocaleString("en-IN")}
+              </span>
+            </div>
 
-    {/* PAX */}
-    <div className="flex items-center gap-2">
-      <p className="text-xs">PAX :</p>
-      <input
-        type="number"
-        value={service.pax}
-        onChange={(e) =>
-          updateField(service.id, "pax", Number(e.target.value))
-        }
-        className="bg-black border border-gray-400 text-xs rounded-xl px-2 py-1 w-14 outline-none"
-      />
+            {/* HOTEL controls */}
+            {service.checked && service.type === "hotel" && (
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-[10px] text-gray-200">Nights</span>
+                <select
+                  value={service.nights}
+                  onChange={(e) => updateField(service.id, "nights", Number(e.target.value))}
+                  className={selectCls}
+                >
+                  {[...Array(10)].map((_, i) => (
+                    <option key={i} value={i + 1}>{i + 1} Night{i > 0 ? "s" : ""}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* TRANSFER controls */}
+            {service.checked && (service.type === "transfer" || service.type === "car") && (
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-[10px] text-gray-500">Service</span>
+                <select
+                  value={service.usageType || "point-to-point"}
+                  onChange={(e) => updateField(service.id, "usageType", e.target.value)}
+                  className={selectCls}
+                >
+                  <option value="point-to-point">One Way</option>
+                  <option value="round-trip">Two Way</option>
+                  <option value="full-day">Full Day</option>
+                  <option value="half-day">Half Day</option>
+                </select>
+                <span className="text-[10px] text-gray-500">Days</span>
+                <select
+                  value={service.days}
+                  onChange={(e) => updateField(service.id, "days", Number(e.target.value))}
+                  className={selectCls}
+                >
+                  {[...Array(10)].map((_, i) => (
+                    <option key={i} value={i + 1}>{i + 1} Day{i > 0 ? "s" : ""}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* ACTIVITY controls */}
+            {service.checked && service.type === "activity" && (
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-gray-500">PAX</span>
+                <input
+                  type="number"
+                  value={service.pax}
+                  onChange={(e) => updateField(service.id, "pax", Number(e.target.value))}
+                  className={inputCls}
+                />
+              </div>
+            )}
+
+            {/* SIGHTSEEING controls */}
+            {service.checked && service.type === "sightseeing" && (
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-[10px] text-gray-500">PAX</span>
+                <input
+                  type="number"
+                  value={service.pax}
+                  onChange={(e) => updateField(service.id, "pax", Number(e.target.value))}
+                  className={inputCls}
+                />
+                <span className="text-[10px] text-gray-500">Days</span>
+                <select
+                  value={service.days}
+                  onChange={(e) => updateField(service.id, "days", Number(e.target.value))}
+                  className={selectCls}
+                >
+                  {[...Array(10)].map((_, i) => (
+                    <option key={i} value={i + 1}>{i + 1} Day{i > 0 ? "s" : ""}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+
+          {/* ── ROW 4: Room type + Bed type tags (hotel only) ── */}
+          {service.checked && service.type === "hotel" && (service.roomType || service.bedType) && (
+            <div className="flex gap-2 flex-wrap mt-2.5 pl-[52px]">
+              {service.roomType && (
+                <span className={tagCls}>
+                  <LiaHotelSolid className="text-blue-400 text-sm" />
+                  <span className="text-gray-200">Room:</span>
+                  {service.roomType}
+                </span>
+              )}
+              {service.bedType && (
+                <span className={tagCls}>
+                  <MdKingBed className="text-yellow-400 text-sm" />
+                  <span className="text-gray-200">Bed:</span>
+                  {service.bedType}
+                </span>
+              )}
+            </div>
+          )}
+
+          {/* ── ROW 5: Extra PAX checkboxes (hotel only) ── */}
+          {service.checked && service.type === "hotel" && (
+            <div className="flex flex-wrap gap-2 mt-2.5 pl-[52px]">
+              {/* A.W.E.B */}
+              <label className="flex items-center gap-1.5 text-[10px] bg-[#141414] border border-[#222] hover:border-yellow-500/30 px-2.5 py-1.5 rounded-lg cursor-pointer transition-colors duration-150">
+                <input
+                  type="checkbox"
+                  checked={service.extraAdult || false}
+                  onChange={(e) => updateField(service.id, "extraAdult", e.target.checked)}
+                  className="accent-yellow-400 w-3 h-3"
+                />
+                <span className="text-gray-400">A.W.E.B</span>
+                <span className="text-yellow-400 font-medium">{sym} {service.awebRate}</span>
+              </label>
+
+              {/* C.W.E.B */}
+              <label className="flex items-center gap-1.5 text-[10px] bg-[#141414] border border-[#222] hover:border-emerald-500/30 px-2.5 py-1.5 rounded-lg cursor-pointer transition-colors duration-150">
+                <input
+                  type="checkbox"
+                  checked={service.childWithBed || false}
+                  onChange={(e) => updateField(service.id, "childWithBed", e.target.checked)}
+                  className="accent-yellow-400 w-3 h-3"
+                />
+                <span className="text-gray-400">C.W.E.B</span>
+                <span className="text-emerald-400 font-medium">{sym} {service.cwebRate}</span>
+              </label>
+
+              {/* C.Wo.E.B */}
+              <label className="flex items-center gap-1.5 text-[10px] bg-[#141414] border border-[#222] hover:border-blue-500/30 px-2.5 py-1.5 rounded-lg cursor-pointer transition-colors duration-150">
+                <input
+                  type="checkbox"
+                  checked={service.childWithoutBed || false}
+                  onChange={(e) => updateField(service.id, "childWithoutBed", e.target.checked)}
+                  className="accent-yellow-400 w-3 h-3"
+                />
+                <span className="text-gray-400">C.Wo.E.B</span>
+                <span className="text-blue-400 font-medium">{sym} {service.cwoebRate}</span>
+              </label>
+            </div>
+          )}
+        </div>
+
+        {/* ── RIGHT SIDE: Total + Delete ── */}
+        {service.checked && (
+          <div className="flex flex-col items-end justify-between px-4 py-4 border-l border-[#1a1a1a] min-w-[90px]">
+            <div className="text-right">
+              <p className="text-[9px] text-gray-300 uppercase tracking-widest mb-1">Total</p>
+              <p className="text-[15px] font-semibold text-white tracking-tight leading-none">
+                ₹{total.toLocaleString("en-IN")}
+              </p>
+            </div>
+            {service.custom && (
+              <button
+                onClick={() => deleteService(service.id)}
+                className="mt-3 p-1.5 rounded-lg text-gray-600 hover:text-red-400 hover:bg-red-400/10 transition-all duration-150"
+              >
+                <RiDeleteBin6Line className="text-[14px]" />
+              </button>
+            )}
+          </div>
+        )}
+      </div>
     </div>
-
-    {/* Days */}
-    <div className="flex items-center gap-2">
-      <p className="text-xs">Days :</p>
-      <select
-        value={service.days}
-        onChange={(e) =>
-          updateField(service.id, "days", Number(e.target.value))
-        }
-        className="bg-black border border-gray-400 text-xs rounded-xl px-2 py-1"
-      >
-        {[...Array(10)].map((_, i) => (
-          <option key={i} value={i + 1}>{i + 1} Days</option>
-        ))}
-      </select>
-    </div>
-  </>
-)}
-    </div>
-  </div>
-
-{/* RIGHT SIDE TOTAL (IMPORTANT 🔥) */}
-{service.checked && (
-  <div className="text-right min-w-15 flex flex-col items-center gap-6.5 justify-start">
-    <div>
-      <p className="text-xs text-gray-400">Total</p>
-      <p className="text-xs font-semibold text-white ">
-        ₹{total.toLocaleString("en-IN")}
-      </p>
-    </div>
-
-    {service.custom && (
-    <RiDeleteBin6Line
-    onClick={() => deleteService(service.id)}
-    className="text-red-400 cursor-pointer hover:text-red-600"
-    />
-  )}
-  </div>
-)}
-
-</div>
-</div>
   );
 };
+
+
+
+
+
 
 export default QuotationBuilder;

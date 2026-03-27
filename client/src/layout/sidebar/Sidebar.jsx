@@ -89,7 +89,7 @@ const Sidebar = ({ user }) => {
   // Framer Motion variants
   const sidebarVariants = {
     expanded: {
-      width: 250,
+      width: 236,
       transition: { type: "spring", stiffness: 200, damping: 23 },
     },
     collapsed: {
@@ -135,7 +135,7 @@ const Sidebar = ({ user }) => {
 
       {/* MENU */}
       <motion.nav
-  className="p-4 space-y-2 mb-45"
+  className="p-3 space-y-1.5 mb-30"
   variants={containerVariants}
   initial="hidden"
   animate={collapsed ? "hidden" : "visible"}

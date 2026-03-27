@@ -37,6 +37,11 @@ const hotelSchema = new mongoose.Schema(
     enum: ["3 Star", "4 Star", "5 Star", "Luxury"]
   },
 
+  bedType: {
+    type: String,
+    enum: ["King", "Queen", "Twin"]
+  },
+
   roomType: {
     type: String
   },
@@ -50,6 +55,19 @@ const hotelSchema = new mongoose.Schema(
     type: Number,
     required: true
   },
+
+  awebRate: {
+  type: Number,
+  required: true
+},
+cwebRate: {
+  type: Number,
+  required: true
+},
+cwoebRate: {
+  type: Number,
+  required: true
+},
 
    currency: {
     type: String,

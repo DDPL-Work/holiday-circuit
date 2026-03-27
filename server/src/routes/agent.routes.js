@@ -12,6 +12,7 @@ routers.get("/dashboard", getAgentDashboard);
 routers.post("/queries", isAuthenticated, createQuery);
 routers.get("/getAllQueries",isAuthenticated, getMyQueries);
 
+
 /* 🔹 QUOTATIONS */
 routers.get("/quotations/query/:queryId", isAuthenticated, getQuotationsByQuery);
 // routers.put("/quotations/:id/revision", requestQuotationRevision);

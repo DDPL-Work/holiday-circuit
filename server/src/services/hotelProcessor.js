@@ -3,7 +3,7 @@ import Hotel from "../models/hotelDmc.model.js"
 
 export const processHotelExcel = async (filePath) => {
 
- const workbook = XLSX.readFile(filePath)
+const workbook = XLSX.readFile(filePath)
 console.log("Sheets:", workbook.SheetNames)
 const sheet = workbook.Sheets[workbook.SheetNames[0]]
 console.log("Sheet content:", sheet)        
@@ -19,7 +19,6 @@ console.log("Rows:", rows)
     return newRow
   })
 
- 
   const getHotelCategory = (row) => {
   const val = row['Hotel Category']?.toLowerCase();
   console.log("ROW:", row['Hotel Category']);
@@ -54,9 +53,16 @@ console.log("Rows:", rows)
       country: row["Country"],
       city: row["City"],
       hotelCategory: getHotelCategory(row),
+
+      roomCategory: row["Room Category"] || "Double",
+      bedType: row["Bed Type"] || "King",
       roomType: row["Room Type"] || "",
       mealPlan: row["Meal Plan"] || "",
       price: Number(row["Price"]) || 0,
+       // 🔥 EXTRA PRICING
+     awebRate: Number(row["A.W.E.B Rate"]) || 0,
+     cwebRate: Number(row["C.W.E.B Rate"]) || 0,
+     cwoebRate: Number(row["C.Wo.E.B Rate"]) || 0,
       currency: row["Currency"] || "INR",
       description:row["Description"],
       validFrom: new Date(row["Valid From"]),

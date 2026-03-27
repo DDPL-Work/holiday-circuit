@@ -163,7 +163,7 @@ const ActiveBookings = () => {
       variants={containerVariant}
       initial="hidden"
       animate="visible"
-      className="space-y-5"
+      className="space-y-5 p-3"
     >
       {/* Header */}
       <motion.header

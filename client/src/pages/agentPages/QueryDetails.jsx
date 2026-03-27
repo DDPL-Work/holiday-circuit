@@ -96,12 +96,11 @@ const QueryDetails = ({ query, onClose }) => {
 };
 
   return (
-
     <motion.div
       variants={containerVariant}
       initial="hidden"
       animate="visible"
-      className=""
+      className="p-2"
     >
       {/* Header */}
       <motion.div
@@ -182,10 +181,7 @@ const QueryDetails = ({ query, onClose }) => {
                         Quotation Received
                       </h3>
                       <span className="text-blue-600 font-bold text-lg">
-                        ₹
-                        {quote.clientTotalAmount ??
-                          quote.pricing?.totalAmount ??
-                          0}
+                       ₹{(quote.clientTotalAmount ?? quote.pricing?.totalAmount ?? 0).toLocaleString("en-IN")}
                       </span>
                     </div>
                     <p className="text-xs text-gray-500 mb-4">
@@ -195,52 +191,187 @@ const QueryDetails = ({ query, onClose }) => {
                         : "-"}
                     </p>
 
-                    {/* Inclusions */}
-                    <div className="border border-[#BEDBFF] rounded-xl p-3 bg-white mb-4">
-                      <h4 className="font-medium mb-2">Inclusions</h4>
-                      <ul className="list-disc ml-5 text-xs text-gray-700 space-y-1">
-                        {quote.inclusions?.length > 0 ? (
-                          quote.inclusions.map((item, idx) => (
-                            <li key={idx}>{item}</li>
-                          ))
-                        ) : (
-                          <li>No inclusions provided</li>
-                        )}
-                      </ul>
+  {/* ==============================  Inclusions Card Section  ========================================*/}
+
+ <div className="border border-[#BEDBFF] rounded-xl p-3 bg-white mb-4">
+  <div className="flex items-center gap-2 mb-3">
+    <div className="w-7 h-7 rounded-lg bg-blue-50 flex items-center justify-center">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+      </svg>
+    </div>
+    <h4 className="font-semibold text-sm text-gray-900">Inclusions</h4>
+    {(quote.services?.length > 0 || quote.inclusions?.length > 0) && (
+      <span className="ml-auto bg-blue-50 text-blue-600 border border-blue-200 rounded-full px-2.5 py-0.5 text-[11px] font-semibold">
+        {quote.services?.length || quote.inclusions?.length} items
+      </span>
+    )}
+  </div>
+
+  <ul className="space-y-2">
+    {quote.inclusions?.length > 0 ? (
+      quote.inclusions.map((item, idx) => (
+        <li key={idx} className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs text-gray-700">
+          {item}
+        </li>
+      ))
+    ) : quote.services?.length > 0 ? (
+      quote.services.map((service, idx) => {
+        if (service.type === "hotel") {
+          const amenities = (service.description || "").split("|").map(s => s.trim()).filter(Boolean);
+          return (
+            <li key={idx} className="bg-gray-50 border border-gray-200 rounded-xl p-3" style={{ borderLeft: "3px solid #3b82f6" }}>
+              <div className="flex items-start justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>
+                    </svg>
+                  </div>
+                  <div>
+                    <div className="font-semibold text-xs text-gray-900">{service.title}</div>
+                    <div className="flex items-center gap-1 mt-0.5">
+                      <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
+                      </svg>
+                      <span className="text-[11px] text-gray-400">{service.city}, {service.country}</span>
                     </div>
-                  </>
+                  </div>
+                </div>
+                <div className="flex gap-1 flex-shrink-0">
+                  <span className="flex items-center gap-1 bg-blue-100 text-blue-700 rounded-md px-2 py-0.5 text-[11px] font-semibold">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M2 4v16"/><path d="M2 8h18a2 2 0 0 1 2 2v10"/><path d="M2 17h20"/><path d="M6 8v9"/>
+                    </svg>
+                    {service.nights}N
+                  </span>
+                  <span className="flex items-center gap-1 bg-purple-100 text-purple-700 rounded-md px-2 py-0.5 text-[11px] font-semibold">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/><path d="M3 9h6"/>
+                    </svg>
+                    {service.rooms}R
+                  </span>
+                </div>
+              </div>
+              {amenities.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {amenities.map((a, i) => (
+                    <span key={i} className="bg-white border border-gray-200 rounded px-2 py-0.5 text-[10px] text-gray-500">
+                      {a}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </li>
+          );
+        }
+
+        if (service.type === "transfer") {
+          const amenities = (service.description || "").split("|").map(s => s.trim()).filter(Boolean);
+          return (
+            <li key={idx} className="bg-gray-50 border border-gray-200 rounded-xl p-3" style={{ borderLeft: "3px solid #10b981" }}>
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-7 h-7 rounded-lg bg-green-100 flex items-center justify-center flex-shrink-0">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#15803d" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M5 17H3a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v9a2 2 0 0 1-2 2h-2"/><circle cx="7.5" cy="17.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/>
+                  </svg>
+                </div>
+                <div>
+                  <div className="font-semibold text-xs text-gray-900">{service.title}</div>
+                  <div className="flex items-center gap-1 mt-0.5">
+                    <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
+                    </svg>
+                    <span className="text-[11px] text-gray-400">{service.city}, {service.country}</span>
+                  </div>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-1 mb-2">
+                {service.vehicleType && (
+                  <span className="flex items-center gap-1 bg-green-100 text-green-800 rounded-md px-2 py-0.5 text-[11px] font-semibold">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="1" y="3" width="15" height="13" rx="2"/><path d="M16 8h4l3 3v5h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>
+                    </svg>
+                    {service.vehicleType}
+                  </span>
                 )}
+                {service.passengerCapacity > 0 && (
+                  <span className="flex items-center gap-1 bg-green-100 text-green-800 rounded-md px-2 py-0.5 text-[11px] font-semibold">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+                    </svg>
+                    {service.passengerCapacity} Pax
+                  </span>
+                )}
+                {service.luggageCapacity > 0 && (
+                  <span className="flex items-center gap-1 bg-green-100 text-green-800 rounded-md px-2 py-0.5 text-[11px] font-semibold">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="6" y="7" width="12" height="14" rx="2"/><path d="M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/>
+                    </svg>
+                    {service.luggageCapacity} Luggage
+                  </span>
+                )}
+                {service.usageType && (
+                  <span className="flex items-center gap-1 bg-green-100 text-green-800 rounded-md px-2 py-0.5 text-[11px] font-semibold">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="6" cy="19" r="3"/><path d="M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15"/><circle cx="18" cy="5" r="3"/>
+                    </svg>
+                    {service.usageType}
+                  </span>
+                )}
+              </div>
+              {amenities.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {amenities.map((a, i) => (
+                    <span key={i} className="bg-white border border-gray-200 rounded px-2 py-0.5 text-[10px] text-gray-500">
+                      {a}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </li>
+          );
+        }
+
+        return null;
+      })
+    ) : (
+      <li className="text-center py-4 text-xs text-gray-400">No inclusions provided</li>
+    )}
+  </ul>
+</div>
+ </>
+)}
 
                 <div className="flex flex-col items-center gap-3">
                   {/* STEP 1: ACCEPT */}
-                  {quote.agentStatus === "Quote Sent" && (
+                  {quote.status === "Quote Sent" && (
                     <div className="flex items-center justify-center gap-10 ">
                       <button
                         onClick={() => handleAcceptQuote(quote._id)}
-                        className="bg-green-600 text-white px-8 py-1 rounded-full cursor-pointer"
+                        className="bg-green-600 text-white  text-[10px] px-8 py-1 rounded-full cursor-pointer"
                       >
                         Accept Quote
                       </button>
-                      <button className="border border-[#BEDBFF] px-8 py-1 rounded-full cursor-pointer">
+                      <button className="border border-[#BEDBFF]  text-[10px] px-8 py-1 rounded-full cursor-pointer">
                         Request Revision
                       </button>
                     </div>
                   )}
-
-                  {quote.agentStatus === "Quote Accepted" && (
-                    <div className="flex items-center justify-center gap-10 ">
+                  {quote.status === "Quote Accepted" && (
+                    <div className="w-103 flex items-center justify-between gap-20 ">
                       <button
                         onClick={() => {
                           setActiveQuoteId(quote._id);
                           setIsMarkupModalOpen(true);
                         }}
-                        className="bg-blue-600 text-white px-8 py-1 rounded-full cursor-pointer"
+                        className="bg-blue-800 text-white text-[10px] px-8 py-2 rounded-full cursor-pointer"
                       >
                         Markup Agent
                       </button>
                       <button
                         onClick={() => handleSendToClient(quote._id)}
-                        className="bg-green-600 text-white px-8 py-1 rounded-full cursor-not-allowed"
+                        className="bg-green-800 text-white text-[10px] px-8 py-2 rounded-full cursor-not-allowed"
                       >
                         Send to Client
                       </button>
@@ -251,11 +382,11 @@ const QueryDetails = ({ query, onClose }) => {
 
                   {isMarkupModalOpen &&
                     activeQuoteId === quote._id &&
-                    quote.agentStatus === "Quote Accepted" && (
+                    quote.status === "Quote Accepted" && (
                       <motion.div
                         initial={{ opacity: 0, scale: 0.95 }}
                         animate={{ opacity: 1, scale: 1 }}
-                        className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+                        className="fixed inset-0 z-50 flex items-center justify-center bg-black/80"
                       >
                         <div className="bg-white w-full max-w-md rounded-2xl shadow-xl p-6 relative">
                           <div className="mb-4">
@@ -315,7 +446,7 @@ const QueryDetails = ({ query, onClose }) => {
                     )}
 
                   {/* STEP 3:-------------------------- SEND TO CLIENT------------------- */}
-                  {quote.agentStatus === "Markup Applied" && (
+                  {quote.status === "Markup Applied" && (
                     <div className="flex items-center justify-center gap-15 ">
                       <button className="bg-blue-600 text-white px-10 py-1.5 rounded-full cursor-not-allowed">
                         Markup Agent
@@ -332,7 +463,7 @@ const QueryDetails = ({ query, onClose }) => {
               </motion.div>
             ))}
 
-{/*============================================== PENDING UI ====================================================I */}
+{/*============================================== PENDING UI ===================================================I */}
           {query.agentStatus === "Pending" && (
             <motion.div
               variants={itemVariant}
@@ -433,6 +564,8 @@ const QueryDetails = ({ query, onClose }) => {
   )}
 </div>
 </motion.div>
+
+
 </div>
 
 {/*============================================ RIGHT ACTIVITY LOG ===================================*/}
@@ -440,48 +573,59 @@ const QueryDetails = ({ query, onClose }) => {
   variants={itemVariant}
   className="border border-gray-200 shadow-sm rounded-2xl p-5 h-fit"
 >
-  <h3 className="font-semibold mb-4">Activity Log</h3>
+  {/* Header */}
+  <div className="flex items-center gap-2 mb-5">
+    <div className="w-6 h-6 rounded-lg bg-gray-100 flex items-center justify-center">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+      </svg>
+    </div>
+    <h3 className="font-semibold text-sm text-gray-900">Activity Log</h3>
+    {query.activityLog?.length > 0 && (
+      <span className="ml-auto bg-gray-100 text-gray-500 text-[10px] font-semibold px-2 py-0.5 rounded-full">
+        {query.activityLog.length} events
+      </span>
+    )}
+  </div>
 
-  <div className="space-y-4 relative">
+  <div className="space-y-1 relative">
+    {query.activityLog?.slice().reverse().map((log, index) => (
+      <div key={index} className="flex gap-3 relative">
 
-    {query.activityLog
-      ?.slice()
-      .reverse()
-      .map((log, index) => (
+        {/* Vertical Line */}
+        {index !== query.activityLog.length - 1 && (
+          <span className="absolute left-[5px] top-4 w-0.5 h-full bg-gray-100 z-0" />
+        )}
 
-        <div key={index} className="flex gap-3 relative">
+        {/* Dot */}
+        <span
+          className={`w-3 h-3 rounded-full mt-1.5 z-10 flex-shrink-0 ring-2 ring-white ${
+            actionColors[log.action] || "bg-gray-300"
+          }`}
+        />
 
-          {/* Vertical Line */}
-          {index !== query.activityLog.length - 1 && (
-            <span className="absolute left-1 top-4 w-0.5 h-9.5 bg-gray-200"></span>
-          )}
-
-          {/* Dot */} 
-          <span
-            className={`w-2 h-2 rounded-full mt-2  z-10 ${
-              actionColors[log.action] || "bg-gray-300"
-            }`}
-          ></span>
-
-          {/* Content */}
-          <div>
-            <p className="text-xs font-medium">{log.action}</p>
-
-            <p className="text-xs text-gray-500">
-              {new Date(log.timestamp).toLocaleString("en-IN", {
-                dateStyle: "medium",
-                timeStyle: "short",
-              })}
-            </p>
-          </div>
-
+        {/* Content */}
+        <div className="pb-4 flex-1">
+          <p className="text-xs font-semibold text-gray-800 leading-tight">{log.action}</p>
+          <p className="text-[11px] text-gray-400 mt-0.5">
+            {new Date(log.timestamp).toLocaleString("en-IN", {
+              dateStyle: "medium",
+              timeStyle: "short",
+            })}
+          </p>
         </div>
-      ))}
+
+      </div>
+    ))}
   </div>
 </motion.div>
-      </div>
+</div>
     </motion.div>
   );
 };
 
 export default QueryDetails;
+
+
+
+

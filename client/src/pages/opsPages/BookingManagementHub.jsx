@@ -54,8 +54,8 @@ export default function BookingManagementHub() {
             date: `${formatDate(q.startDate)} – ${formatDate(q.endDate)}`,
             startDate: q.startDate,  
             pax: totalPax,
-            status: q.opsStatus || "New_Query",
-            _raw: q,
+          status:q.opsStatus === "Rejected"? "Pending_Accept": q.opsStatus || "New_Query",
+           _raw: q,
           };
         }),
       );
@@ -302,12 +302,8 @@ const filteredRows = rows.filter((row) => {
         </div>
       </motion.div>
 
-      {selectedBooking && (
-        <BookingDetailsModal
-          booking={selectedBooking}
-          onClose={() => setSelectedBooking(null)}
-        />
-      )}
+{selectedBooking && (<BookingDetailsModal booking={selectedBooking} refresh={fetchQueries} onClose={() => setSelectedBooking(null)}/>
+)}
     </>
   );
 }

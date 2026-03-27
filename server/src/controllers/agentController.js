@@ -123,11 +123,13 @@ export const getAgentDashboard = async (req, res) => {
 };
 
 
-
 /* ========================= CREATE TRAVEL QUERY ========================= */
 
 export const createQuery = async (req, res, next) => {
   try {
+
+    const createLog = (action, performedBy) => ({action, performedBy, timestamp: new Date()})
+    
     // ✅ Auth check
     if (!req.user || !req.user.id) {
       return next(new ApiError(401, "Unauthorized. Agent not found"));
@@ -170,10 +172,7 @@ export const createQuery = async (req, res, next) => {
     /* ================= OPS ROUND ROBIN ================= */
 
     //========================= 1️⃣ get all active ops users ================================
-    const opsUsers = await Auth.find({
-      role: "operations",
-      isApproved: true
-    }).sort({ createdAt: 1 });
+    const opsUsers = await Auth.find({ role: "operations", isApproved: true }).sort({ createdAt: 1 });
 
     if (!opsUsers.length) {
       return next(new ApiError(400, "No operations user available"));
@@ -196,8 +195,6 @@ export const createQuery = async (req, res, next) => {
     opsCounter.seq += 1;
     await opsCounter.save();
 
-
-
     /* ================= CREATE QUERY ================= */
 
     const query = await TravelQuery.create({
@@ -218,13 +215,9 @@ export const createQuery = async (req, res, next) => {
        agentStatus: "Pending",
        opsStatus: "New_Query",
 
-       // ✅ ACTIVITY LOG
-      activityLog: [
-    {
-      action: "Query Created",
-      performedBy: "Agent",
-      timestamp: new Date()
-    }
+  // ✅ ACTIVITY LOG
+    activityLog: [
+    createLog("Query Received", "System"),
   ]
     });
 
@@ -238,6 +231,7 @@ export const createQuery = async (req, res, next) => {
     next(error);
   }
 };
+
 
 /* ========================= VIEW OWN QUERIES ========================= */
 

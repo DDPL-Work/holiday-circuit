@@ -1,6 +1,6 @@
 import express from "express";
 import isAuthenticated from "../middlewares/auth.middleware.js";
-import {getAllQueries, updateQueryStatus, createQuotation, addQuotationItem, reviseQuotation, generateInvoice, rejectQueryByOps, acceptQueryByOps, getOrderAcceptanceQueries, searchServices } from "../controllers/opsController.js";
+import {getAllQueries, updateQueryStatus, createQuotation, addQuotationItem, reviseQuotation, generateInvoice, rejectQueryByOps, getOrderAcceptanceQueries, searchServices, startQuotation, sendQuotation, passToAdmin, acceptQueryByOps } from "../controllers/opsController.js";
 import { sendQuotationController } from "../controllers/quotationNotificationController.js";
 import { getAllServices } from "../controllers/dmcController.js";
 
@@ -10,9 +10,15 @@ const router = express.Router();
 /* 🔹 QUERIES */
 router.get("/queries", isAuthenticated, getAllQueries);
 router.put("/queries/:id/status",isAuthenticated, updateQueryStatus);
-router.patch("/queries/:id/reject-query", isAuthenticated, rejectQueryByOps);
-router.patch("/queries/:id/accept", isAuthenticated, acceptQueryByOps);
+// router.patch("/queries/:id/reject-query", isAuthenticated, rejectQueryByOps);
+// router.patch("/queries/:id/accept", isAuthenticated, acceptQueryByOps);
+
+router.patch("/queries/accept/:id", isAuthenticated, acceptQueryByOps);
+router.patch("/queries/reject/:id", isAuthenticated, rejectQueryByOps);
 router.get("/queries/order-acceptance",isAuthenticated, getOrderAcceptanceQueries);
+router.patch("/queries/start-quotation/:id", isAuthenticated, startQuotation);
+router.patch("/queries/send-quotation/:id", isAuthenticated, sendQuotation);
+router.patch("/queries/pass-admin/:id", isAuthenticated, passToAdmin);
 
 /* 🔹 QUOTATIONS */
 router.post("/quotations",isAuthenticated, createQuotation);

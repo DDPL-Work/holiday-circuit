@@ -46,7 +46,7 @@ const Finance = () => {
   ];
 
   return (
-    <motion.section className="space-y-3" variants={container} initial="hidden" animate="visible">
+    <motion.section className="space-y-3 p-3" variants={container} initial="hidden" animate="visible">
       {/* Header */}
       <motion.header variants={item} className="flex items-center justify-between">
         <div>

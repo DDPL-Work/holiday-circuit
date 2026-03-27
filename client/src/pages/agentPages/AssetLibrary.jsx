@@ -17,7 +17,7 @@ const item = {
 const AssetLibrary = () => {
   return (
     <motion.section
-      className="space-y-5"
+      className="space-y-5 p-3"
       variants={container}
       initial="hidden"
       animate="visible"

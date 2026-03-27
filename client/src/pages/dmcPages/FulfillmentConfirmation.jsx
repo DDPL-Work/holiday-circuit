@@ -1,20 +1,24 @@
-import {
-  FileText,
-  Upload,
-  Plus,
-  Calendar,
-  CheckCircle,
-  AlertCircle,
-  Phone,
-  Building2,
-  Trash2
-} from "lucide-react";
+import {FileText, Upload,Plus,Calendar,CheckCircle,AlertCircle,Phone,Building2,Trash2} from "lucide-react";
 import { useState } from "react";
 import InternalInvoice from "./InternalInvoice";
 import { RotatingLines } from "react-loader-spinner";
-export default function FulfillmentConfirmation() {
+import API from "../../utils/Api.js"
+export default function FulfillmentConfirmation () {
+
+   const [services, setServices] = useState([
+     {
+       type: "Hotel",
+       serviceName: "",
+       serviceDate: "", 
+       status: "Confirmed",
+       confirmationNumber: "",
+       voucherNumber: "",
+       emergency: ""
+     }
+   ]);
+
    const [activeTab, setActiveTab] = useState("confirmation");
-    const [files, setFiles] = useState({
+   const [files, setFiles] = useState({
     supplier: null,
     voucher: null,
     terms: null
@@ -26,28 +30,16 @@ export default function FulfillmentConfirmation() {
     terms: false
   });
 
-    const [services, setServices] = useState([
-     {
-       type: "Hotel",
-       serviceName: "",
-       date: "",
-       status: "Confirmed",
-       confirmationNumber: "",
-       voucher: "",
-       emergency: ""
-     }
-   ]);
-   
    const addService = () => {
      setServices([
        ...services,
        {
          type: "Hotel",
          serviceName: "",
-         date: "",
+         serviceDate: "",
          status: "Confirmed",
          confirmationNumber: "",
-         voucher: "",
+         voucherNumber: "",
          emergency: ""
        }
      ]);
@@ -59,17 +51,86 @@ export default function FulfillmentConfirmation() {
 };
 
 
-
   const handleFile = (type, file) => {
-
     setLoading(prev => ({ ...prev, [type]: true }));
-
     setTimeout(() => {
-      setFiles(prev => ({ ...prev, [type]: file.name }));
-      setLoading(prev => ({ ...prev, [type]: false }));
+    setFiles(prev => ({ ...prev, [type]: file }));
+    setLoading(prev => ({ ...prev, [type]: false }));
     }, 1500);
-
   };
+
+
+  const handleChange = (index, field, value) => {
+  const updated = [...services];
+  updated[index][field] = value;
+  setServices(updated);
+};
+
+const handleSubmit = async (finalStatus) => {
+  try {
+    // ✅ 1. Basic Validation
+    if (!files.supplier) {
+      return alert("Supplier Confirmation PDF is mandatory ❌");
+    }
+
+    for (let i = 0; i < services.length; i++) {
+      const s = services[i];
+
+      if (
+        !s.type ||
+        !s.serviceName ||
+        !s.serviceDate ||
+        !s.status ||
+        !s.confirmationNumber ||
+        !s.voucherNumber ||
+        !s.emergency
+      ) {
+        return alert(`Please fill all fields in Service ${i + 1} ❌`);
+      }
+    }
+
+    // ✅ 2. FormData
+    const formData = new FormData();
+    formData.append("queryId", "QRY-1020");
+    formData.append("services", JSON.stringify(services));
+    formData.append(
+      "emergencyContact",
+      JSON.stringify(services.map((s) => s.emergency))
+    );
+    formData.append("status", finalStatus);
+    // ✅ IMPORTANT: send actual FILE (not name)
+    formData.append("supplierConfirmation", files.supplier);
+    if (files.voucher)
+      formData.append("voucherReference", files.voucher);
+    if (files.terms)
+      formData.append("termsConditions", files.terms);
+    // ✅ 3. API call
+    const res = await API.post("/dmc/confirmation", formData, {
+      headers: {
+        "Content-Type": "multipart/form-data",
+      },
+    });
+    console.log("Confirmation:", res.data);
+    alert("Saved Successfully ✅");
+
+  } catch (err) {
+    console.error(err);
+    alert("Error ❌");
+  }
+};
+
+  const getStatusColor = (status) => {
+  switch (status) {
+    case "Confirmed":
+      return "bg-green-100 text-green-700 border-green-400";
+    case "Pending":
+      return "bg-yellow-100 text-yellow-700 border-yellow-400";
+    case "Waitlisted":
+      return "bg-red-100 text-red-700 border-red-400";
+    default:
+      return "bg-gray-100";
+  }
+};
    
   return (
     <>
@@ -121,7 +182,7 @@ export default function FulfillmentConfirmation() {
 > $ Internal Invoice</button>
 </div>
 
-{/*============================================== Active Tab ===================================================*/}
+{/*============================================== Active Tab ===========================================*/}
 
    {activeTab === "confirmation" && (
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm  transition-all duration-300 ease-in-out animate-fade">
@@ -146,7 +207,7 @@ export default function FulfillmentConfirmation() {
 
  {services.map((service, index) => (
 
-<div key={index} className="border border-gray-400 rounded-3xl p-5 flex flex-col mb-4 relative">
+<div key={index} className="border border-gray-300 rounded-3xl p-5 flex flex-col mb-4 relative">
               
   {services.length > 1 && (
     <button
@@ -157,21 +218,21 @@ export default function FulfillmentConfirmation() {
     </button>
   )}
             <div className="flex items-center gap-2 mb-4 text-sm font-medium">
-              <div className="bg-blue-100 p-2 rounded">
+              <div className="bg-blue-100 p-2 rounded-lg">
                 <Building2 size={14} />
               </div>
 
-              <span>Service 1</span>
+              <span>Service {index + 1}</span>
 
-              <span className="text-xs text-gray-500">HOTEL</span>
+              <span className="text-[10px] text-green-600 bg-[#DBFCE7] border border-green-400 px-4 rounded-2xl">{service.type.toUpperCase()}</span>
             </div>
 
             {/* Row 1 */}
-            <div className="grid grid-cols-4 gap-4 mb-4">
+            <div className="grid grid-cols-4 items-center gap-4 mb-4">
 
               <div>
                 <label className="text-xs text-gray-500">Type *</label>
-                <select className="w-full border border-gray-400  rounded-xl p-2 text-sm outline-none">
+                <select  value={service.type} onChange={(e) => handleChange(index, "type", e.target.value)} className="w-full border border-gray-300  rounded-2xl p-1.5 text-xs outline-none">
                   <option>Hotel</option>
                   <option>Flight</option>
                   <option>Transport</option>
@@ -181,7 +242,8 @@ export default function FulfillmentConfirmation() {
               <div>
                 <label className="text-xs text-gray-500">Service Name *</label>
                 <input
-                  className="w-full border border-gray-400  rounded-xl p-2 text-sm outline-none"
+                 value={service.serviceName} onChange={(e) => handleChange(index, "serviceName", e.target.value)}
+                  className="w-full border border-gray-300  rounded-2xl p-1.5 text-xs outline-none"
                   placeholder="e.g. Grand Hyatt Bali"
                 />
               </div>
@@ -189,22 +251,29 @@ export default function FulfillmentConfirmation() {
               <div>
                 <label className="text-xs text-gray-500">Service Date *</label>
 
-                <div className="flex items-center border border-gray-400  rounded-xl p-2">
+                <div className="flex items-center border border-gray-300  rounded-2xl p-1.5">
                   <input
-                    className="flex-1 outline-none text-sm"
+                   type="date"value={service.serviceDate} onChange={(e) => handleChange(index, "serviceDate", e.target.value)}
+                    className="flex-1 outline-none text-xs"
                     placeholder="dd-mm-yyyy"
                   />
-                  <Calendar size={16} className="text-gray-400" />
+                  
                 </div>
 
               </div>
 
               <div>
-                <label className="text-xs text-gray-500">Status *</label>
-                <select className="w-full border border-gray-400  rounded-xl p-2 outline-none text-sm bg-green-100">
-                  <option>Confirmed</option>
-                </select>
-              </div>
+  <label className="text-xs text-gray-500">Status *</label>
+
+  <select
+   value={service.status} onChange={(e) => handleChange(index, "status", e.target.value)}
+   className={`w-full border border-gray-300 rounded-2xl p-1.5 outline-none text-xs transition-all duration-200 ${getStatusColor(service.status)}`}
+    >
+    <option>Confirmed</option>
+    <option>Pending</option>
+    <option>Waitlisted</option>
+  </select>
+</div>
 
             </div>
 
@@ -217,8 +286,8 @@ export default function FulfillmentConfirmation() {
                   Confirmation Number <span className="text-red-500">*</span> 
                 </label>
 
-                <input
-                  className="w-full border border-gray-300 rounded-xl p-2 text-xs mt-1 "
+                <input value={service.confirmationNumber} onChange={(e) => handleChange(index, "confirmationNumber", e.target.value)}
+                  className="w-full border border-gray-300 rounded-2xl p-2 pl-3 text-xs mt-1 outline-none"
                   placeholder="e.g. HTL-ABC-12345"
                 />
               </div>
@@ -229,7 +298,8 @@ export default function FulfillmentConfirmation() {
                 </label>
 
                 <input
-                  className="w-full border border-gray-300 rounded-xl p-2 text-xs"
+                 value={service.voucher} onChange={(e) => handleChange(index, "voucherNumber", e.target.value)}
+                  className="w-full border border-gray-300 rounded-2xl p-2 pl-3 text-xs outline-none"
                   placeholder="e.g. VCH-2026-0234"
                 />
               </div>
@@ -249,6 +319,7 @@ export default function FulfillmentConfirmation() {
 
                 <textarea
                   rows="3"
+                  value={service.emergency} onChange={(e) => handleChange(index, "emergency", e.target.value)}
                   className="w-full border border-gray-300 rounded-xl p-2 text-xs mt-2 outline-none "
                   placeholder="Enter contact name, phone number, and alternate contact Example: John Doe - +62-812-3456-7890 (Primary) | +62-812-3456-7890 (Backup)"
                 />
@@ -293,7 +364,7 @@ export default function FulfillmentConfirmation() {
 
           {files.supplier && (
             <p className="text-xs text-green-600 mb-2">
-              {files.supplier}
+              {files.supplier.name}
             </p>
           )}
 
@@ -339,7 +410,7 @@ export default function FulfillmentConfirmation() {
 
           {files.voucher && (
             <p className="text-xs text-green-600 mb-2">
-              {files.voucher}
+              {files.voucher.name}
             </p>
           )}
 
@@ -385,7 +456,7 @@ export default function FulfillmentConfirmation() {
 
           {files.terms && (
             <p className="text-xs text-green-600 mb-2">
-              {files.terms}
+             {files.terms.name}
             </p>
           )}
 
@@ -395,7 +466,6 @@ export default function FulfillmentConfirmation() {
             id="termsUpload"
             onChange={(e) => handleFile("terms", e.target.files[0])}
           />
-
           <button
             onClick={() =>
               document.getElementById("termsUpload").click()
@@ -408,12 +478,10 @@ export default function FulfillmentConfirmation() {
 
       </div>
     </div>
-
-
  </div>
 
       {/* Footer */}
-        <div className="flex items-center justify-between gap-3 p-4 border-t">
+        <div className="flex items-center justify-between gap-3 p-4 border-t border-gray-300">
         
      {/* Bottom Note */}
         <p className="text-xs text-red-500 px-5 pb-3  mt-3"> 
@@ -421,11 +489,11 @@ export default function FulfillmentConfirmation() {
         </p>
 
         <div className="flex gap-4">
-          <button className="border border-gray-300 px-4 py-2 rounded-xl text-sm bg-white cursor-pointer">
+          <button onClick={() => handleSubmit("draft")} className="border border-gray-300 px-4 py-2 rounded-xl text-sm bg-white cursor-pointer">
             Save as Draft
           </button>
 
-          <button className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-xl text-sm cursor-pointer">
+          <button onClick={() => handleSubmit("submitted")} className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-xl text-sm cursor-pointer">
             <CheckCircle size={16} />
             Submit Confirmation
           </button>

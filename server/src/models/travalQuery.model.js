@@ -76,7 +76,7 @@ const travelQuerySchema = new mongoose.Schema(
 
   opsStatus: {
   type: String,
-  enum: ["New_Query", "Pending_Accept", "Revision_Query", "Booking_Accepted","Confirmed", "Vouchered"],
+  enum: ["New_Query", "Pending_Accept", "Revision_Query", "Rejected", "Booking_Accepted","Confirmed", "Vouchered"],
   default: "New_Query"
 },
 
@@ -90,11 +90,14 @@ rejectionNote: {
   type: String
 },
 
-  activityLog: [
+activityLog: [
   {
-    action: String,        // "Query Created", "Quote Sent", etc.
-    performedBy: String,   // "Agent", "Ops Team"
-    timestamp: Date
+    action: String,
+    performedBy: String,      // "Query Created", "Quote Sent", etc.
+    timestamp: {                   // "Agent", "Ops Team"
+      type: Date,
+      default: Date.now
+    }
   }
 ]
 

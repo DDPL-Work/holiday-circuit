@@ -36,7 +36,7 @@ const DocumentPortal = () => {
       variants={containerVariant}
       initial="hidden"
       animate="visible"
-      className="space-y-4"
+      className="space-y-4 p-3"
     >
       {/* Header */}
       <motion.header

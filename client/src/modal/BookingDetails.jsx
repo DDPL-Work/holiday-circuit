@@ -11,7 +11,7 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import BookingDecisionModal from "./BookingDecisionModal";
 
-export default function BookingDetailsModal({ booking, onClose }) {
+export default function BookingDetailsModal({refresh, booking, onClose }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [open, setOpen] = useState(true);
   const [mode, setMode] = useState("accept");
@@ -20,8 +20,8 @@ export default function BookingDetailsModal({ booking, onClose }) {
   setOpen(false);
 
   setTimeout(() => {
-    onClose(); // parent ko close signal
-  }, 200); // exit animation duration ke equal
+    onClose(); 
+  }, 200); 
 };
 
   const formatDate = (date) =>
@@ -205,10 +205,7 @@ export default function BookingDetailsModal({ booking, onClose }) {
                 </button>
 
                 <button
-                  onClick={() => {
-                    setMode("accept");
-                    setIsModalOpen(true);
-                  }}
+                  onClick={() => {setMode("accept"); setIsModalOpen(true);}}
                   className="px-3 py-1.5 rounded-xl flex items-center gap-1
                   bg-green-600 text-white text-sm hover:bg-green-700
                   transition hover:scale-[1.03] active:scale-[0.97] cursor-pointer"
@@ -221,12 +218,18 @@ export default function BookingDetailsModal({ booking, onClose }) {
           </motion.div>
 
           {/* ACCEPT / REJECT MODAL */}
-          <BookingDecisionModal
-            isOpen={isModalOpen}
-            mode={mode}
-            queryId={booking._id}
-            onClose={() => setIsModalOpen(false)}
-          />
+          <BookingDecisionModal 
+  isOpen={isModalOpen} 
+  mode={mode}    
+  refresh={async () => {
+    await refresh();   // parent refresh
+  }}  
+  queryId={booking._id}  
+  onClose={() => {
+    setIsModalOpen(false);
+    handleClose();
+  }}
+/>
         </>
       )}
     </AnimatePresence>

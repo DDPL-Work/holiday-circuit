@@ -3,6 +3,7 @@ import Activity from "../models/activityDmc.model.js";
 import Transfer from "../models/transferDmc.model.js";
 import Package from "../models/PackageDmc.model.js";
 import Sightseeing from "../models/sightseeingDmc.model.js"
+import Confirmation from "../models/dmcConfirmation.js"
 import Auth from "../models/auth.model.js";
 import UploadHistory from "../models/uploadHistory.model.js" 
 import path from "path"
@@ -566,7 +567,13 @@ export const getAllServices = async (req, res, next) => {
       country:h.country,
       city:h.city,
       price: h.price,
-      currency: h.currency
+      currency: h.currency,
+      hotelCategory:h.hotelCategory,
+      bedType:h.bedType,
+      roomType:h.roomType,
+      awebRate: h.awebRate || 0,
+      cwebRate: h.cwebRate || 0,
+      cwoebRate: h.cwoebRate || 0,
     }));
 
     // 🔹 FORMAT ACTIVITIES
@@ -633,5 +640,56 @@ export const getAllServices = async (req, res, next) => {
 
   } catch (error) {
     next(error);
+  }
+};
+
+
+
+// 
+export const createOrUpdateConfirmation = async (req, res) => {
+  try {
+    const { queryId, services, emergencyContact, status } = req.body;
+
+    let confirmation = await Confirmation.findOne({ queryId });
+
+    const documents = {
+      supplierConfirmation:
+        req.files?.supplierConfirmation?.[0]?.path,
+
+      voucherReference:
+        req.files?.voucherReference?.[0]?.path,
+
+      termsConditions:
+        req.files?.termsConditions?.[0]?.path,
+    };
+
+    if (confirmation) {
+      confirmation.services = services
+        ? JSON.parse(services)
+        : confirmation.services;
+
+      confirmation.emergencyContact = emergencyContact;
+
+      confirmation.documents = {
+        ...confirmation.documents,
+        ...documents,
+      };
+
+      confirmation.status = status;
+
+      await confirmation.save();
+    } else {
+      confirmation = await Confirmation.create({
+        queryId,
+        services: JSON.parse(services),
+        emergencyContact,
+        documents,
+        status,
+      });
+    }
+
+    res.json({ success: true, data: confirmation });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 };

@@ -42,7 +42,6 @@ useEffect(() => {
       console.error(err);
     }
   };
-
   fetchQueries();
 }, []);
 
@@ -80,7 +79,7 @@ useEffect(() => {
       variants={containerVariant}
       initial="hidden"
       animate="visible"
-      className="space-y-5"
+      className="space-y-5 p-3"
     >
      
         <>
@@ -100,7 +99,7 @@ useEffect(() => {
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               onClick={() => setOpenModal(true)}
-              className="flex items-center gap-2 bg-slate-900 text-white px-4 py-2 rounded-xl text-sm cursor-pointer"
+              className="flex items-center gap-2 bg-slate-900 text-white px-4 py-2 rounded-2xl text-sm cursor-pointer"
             >
               <Plus size={16} />
               Create Query
@@ -115,7 +114,7 @@ useEffect(() => {
               placeholder="Search queries..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 border rounded-2xl text-sm border-gray-300 focus:outline-none"
+              className="w-full pl-9 pr-4 py-1.5 border rounded-2xl text-sm border-gray-300 focus:outline-none"
             />
           </motion.div>
 
@@ -167,7 +166,7 @@ useEffect(() => {
                     </td>
                     <td className="px-6 py-4">
                       {query.agentStatus === "Quote Sent" && (
-                        <span className="bg-green-200 text-green-700 px-3 border py-1 rounded-full text-xs">
+                        <span className="bg-green-200 text-green-700 px-3  py-1 rounded-full text-xs">
                          {query.agentStatus?.replace("_", " ")}
                         </span>
                       )}
@@ -177,10 +176,10 @@ useEffect(() => {
                         </span>
                       )}
                       {query.agentStatus === "Revision Requested" && (
-                        <span className="bg-red-400 text-white px-3 py-1 rounded-full text-xs">
+                        <span className="bg-red-400 text-white px-3 py-1 rounded-full text-xs border">
                           {query.agentStatus?.replace("_", " ")}
                         </span>
-                      )}
+                      )}  
                        {query.agentStatus === "In Progress" && (
                         <span className="bg-sky-300 text-white px-3 py-1 rounded-full text-xs">
                           {query.agentStatus?.replace("_", " ")}
@@ -204,19 +203,14 @@ useEffect(() => {
             </table>
           </motion.div>
         </>
-     
-
+    
 <AnimatePresence>
-  {openModal && (
-    <CreateNewQueries
-      onClose={() => {
-        setOpenModal(false);
-        fetchQueries();
-      }}
-    />
+  {openModal && (<CreateNewQueries onClose={() => { setOpenModal(false); // fetchQueries();
+}}
+/>
   )}
 </AnimatePresence>
-    </motion.section>
+</motion.section>
   );
 };
 
