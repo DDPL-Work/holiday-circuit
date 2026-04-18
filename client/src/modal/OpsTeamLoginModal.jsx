@@ -11,6 +11,7 @@ import {
   Shield,
   Users,
   Briefcase,
+  Box,
 } from "lucide-react";
 import logo from "../assets/logo img.png";
 import { useDispatch, useSelector } from "react-redux";
@@ -22,6 +23,7 @@ import { motion, AnimatePresence } from "framer-motion";
 const roles = [
   { label: "Operation Team", value: "operations", Icon: Settings },
   { label: "Finance Team", value: "finance_partner", Icon: Wallet },
+  { label: "DMC Partner", value: "dmc_partner", Icon: Box },
   { label: "Super Admin", value: "admin", Icon: Shield },
   { label: "Operation Manager", value: "operation_manager", Icon: Users },
   { label: "Finance Manager", value: "finance_manager", Icon: Briefcase },
@@ -32,6 +34,7 @@ const allowedWorkspaceRoles = new Set(roles.map((role) => role.value));
 const roleRedirectMap = {
   operations: { message: "Welcome Ops team! Access granted", path: "/ops/dashboard" },
   finance_partner: { message: "Welcome Finance Partner", path: "/finance/dashboard" },
+  dmc_partner: { message: "Welcome DMC Partner", path: "/dmc/dashboard" },
   admin: { message: "Welcome Super Admin", path: "/admin/superAdminDashboard" },
   operation_manager: {
     message: "Welcome Operation Manager",
@@ -144,7 +147,7 @@ export default function OpsTeamLoginModal({ open, onClose }) {
 
     if (token && justLoggedIn && user) {
       if (!allowedWorkspaceRoles.has(user.role)) {
-        toast.error("Team Workspace is only for Operations, Finance, and Super Admin users.");
+        toast.error("Team Workspace is only for Operations, Finance, DMC, and Admin users.");
         dispatch(logout());
         dispatch(resetAuthState());
         return;
