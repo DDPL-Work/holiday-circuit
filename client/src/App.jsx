@@ -1,35 +1,52 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
+import AppRouter from "./routes";
+import { Toaster } from "react-hot-toast";
 
 function App() {
-  const [count, setCount] = useState(0)
-
   return (
     <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.jsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
+   <Toaster 
+        position="top-right"
+        reverseOrder={false}
+        gutter={12}
+        containerClassName="z-[999999]"
+        toastOptions={{
+        duration: 2000,
+
+          style: {
+            background: "#111827", // dark slate
+            color: "#fff",
+            padding: "9px 16px",
+            borderRadius: "12px",
+            fontSize: "14px",
+            boxShadow:
+              "0 10px 25px -5px rgba(0,0,0,0.25), 0 8px 10px -6px rgba(0,0,0,0.2)",
+          },
+
+          success: {
+            iconTheme: {
+              primary: "#22c55e", // green
+              secondary: "#fff",
+            },
+          },
+
+          error: {
+            iconTheme: {
+              primary: "#ef4444", // red
+              secondary: "#fff",
+            },
+          },
+
+          loading: {
+            iconTheme: {
+              primary: "#3b82f6", // blue
+              secondary: "#fff",
+            },
+          },
+        }}
+      />
+    <AppRouter />
     </>
-  )
+  );
 }
 
-export default App
+export default App;
