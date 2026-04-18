@@ -2,7 +2,7 @@ import bcrypt from "bcrypt";
 import Auth from "../models/auth.model.js";
 import ApiError from "../utils/ApiError.js";
 import Notification from "../models/notification.model.js";
-import TravelQuery from "../models/TravalQuery.model.js";
+import TravelQuery from "../models/TravelQuery.model.js";
 import { sendTeamMemberCredentialsMail } from "../services/sendEmail.js";
 
 const TERMINAL_OPS_STATUSES = new Set(["Rejected", "Vouchered"]);
