@@ -5,7 +5,7 @@ import logo from "../../assets/logo img.png";
 import { ArrowRight, Eye, EyeOff, Lock, Mail, User } from "lucide-react";
 import API from "../../utils/Api.js";
 import CompanyDetails from "./CompanyDetails.jsx";
-import KycVerification from "./KYCVerification.jsx";
+import KycVerification from "./KycVerification.jsx";
 import VerificationOnline from "./VerificationOnline.jsx";
 import toast from "react-hot-toast";
 
