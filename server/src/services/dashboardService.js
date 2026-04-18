@@ -1,5 +1,5 @@
 import Notification from "../models/notification.model.js";
-import TravelQuery from "../models/TravalQuery.model.js";
+import TravelQuery from "../models/TravelQuery.model.js";
 
 export const createDashboardNotification = async (queryId, quoteDetails) => {
   const query = await TravelQuery.findById(queryId);
