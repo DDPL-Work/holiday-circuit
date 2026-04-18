@@ -47,7 +47,7 @@ export const sendAgentApprovalMail = async (
   {
     name = "Partner",
     companyName = "your agency",
-    loginUrl = process.env.FRONTEND_LOGIN_URL || "http://localhost:5173/login",
+    loginUrl = process.env.FRONTEND_LOGIN_URL,
   } = {},
 ) => {
   await transporter.sendMail({
@@ -127,7 +127,7 @@ export const sendTeamMemberCredentialsMail = async (
     role = "Team Member",
     loginEmail = email,
     password = "",
-    loginUrl = process.env.FRONTEND_LOGIN_URL || "http://localhost:5173/login",
+    loginUrl = process.env.FRONTEND_LOGIN_URL,
   } = {},
 ) => {
   await transporter.sendMail({
