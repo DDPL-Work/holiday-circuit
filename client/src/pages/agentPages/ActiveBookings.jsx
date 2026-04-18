@@ -1,130 +1,10 @@
-// import { Search, Filter } from "lucide-react";
-// import { useState } from "react";
-// import ActiveBookingDetails from './ActiveBookingDetails.jsx'
-
-
-
-// const ActiveBookings = () => {
-//   const [openActiveBookingDetails, setActiveBookingDetails] = useState(false);
-//   const [selectedActiveBooking, setselectedActiveBooking] = useState(null);
-
-//  if (openActiveBookingDetails) {
-//     return <ActiveBookingDetails onClose={() =>setActiveBookingDetails(false)} query={selectedActiveBooking}/>;
-//   }
-
-
-//   return (
-//     <section className="space-y-5">
-//       {/* Header */}
-//       <header className="flex items-center justify-between">
-//         <div>
-//           <h1 className="text-2xl font-bold">Active Bookings</h1>
-//           <p className="text-sm text-gray-500">
-//             Manage your confirmed trips, payments, and traveler documents.
-//           </p>
-//         </div>
-
-//         <div className="flex items-center gap-3">
-//           <div className="relative">
-//             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-//             <input
-//               type="text"
-//               placeholder="Search bookings..."
-//               className="pl-9 pr-4 py-2 border rounded-xl text-xs border-gray-300  focus:outline-none"
-//             />
-//           </div>
-
-//           <button className="border rounded-xl p-2 border-gray-300 hover:bg-gray-100 ">
-//             <Filter size={16} />
-//           </button>
-//         </div>
-//       </header>
-
-//       {/* Table */}
-//       <div className="bg-white shadow-sm rounded-xl overflow-hidden">
-//         <table className="w-full text-xs">
-//           <thead className="bg-gray-50 text-gray-500 border-b-gray-200 border-b">
-//             <tr>
-//               <th className="text-left px-6 py-3">Booking ID</th>
-//               <th className="text-left px-6 py-3">Destination</th>
-//               <th className="text-left px-6 py-3">Travel Dates</th>
-//               <th className="text-left px-6 py-3">Pax</th>
-//               <th className="text-left px-6 py-3">Status</th>
-//               <th className="text-right px-6 py-3">Action</th>
-//             </tr>
-//           </thead>
-
-//           <tbody className="divide-y divide-gray-200">
-//             {/* Row 1 */}
-//             <tr>
-//               <td className="px-6 py-4 font-medium">BK-2026-001</td>
-//               <td className="px-6 py-4">Maldives Luxury Escape</td>
-//               <td className="px-6 py-4">12 Dec - 18 Dec 2026</td>
-//               <td className="px-6 py-4">2</td>
-//               <td className="px-6 py-4">
-//                 <span className="bg-yellow-100 text-yellow-700 px-3 py-1 rounded-full text-xs font-medium">
-//                   Awaiting Documents
-//                 </span>
-//               </td>
-//               <td className="px-6 py-4 text-right">
-//                 <button className="bg-slate-900 text-white px-4 py-1.5 rounded-lg text-xs">
-//                   Manage
-//                 </button>
-//               </td>
-//             </tr>
-
-//             {/* Row 2 */}
-//             <tr>
-//               <td className="px-6 py-4 font-medium">BK-2026-002</td>
-//               <td className="px-6 py-4">Dubai Family Fun</td>
-//               <td className="px-6 py-4">24 Jan - 29 Jan 2027</td>
-//               <td className="px-6 py-4">4</td>
-//               <td className="px-6 py-4">
-//                 <span className="bg-red-400 text-white px-3 py-1 rounded-full text-xs font-medium">
-//                   Payment Pending
-//                 </span>
-//               </td>
-//               <td className="px-6 py-4 text-right">
-//                 <button className="bg-slate-900 text-white px-4 py-1.5 rounded-lg text-xs">
-//                   Manage
-//                 </button>
-//               </td>
-//             </tr>
-
-//             {/* Row 3 */}
-//             <tr>
-//               <td className="px-6 py-4 font-medium">BK-2026-003</td>
-//               <td className="px-6 py-4">Swiss Alps Tour</td>
-//               <td className="px-6 py-4">10 Feb - 18 Feb 2027</td>
-//               <td className="px-6 py-4">2</td>
-//               <td className="px-6 py-4">
-//                 <span className="bg-green-100 text-green-600 px-3 py-1 rounded-full text-xs font-medium">
-//                   Confirmed
-//                 </span>
-//               </td>
-//               <td className="px-6 py-4 text-right">
-//                 <button className="bg-slate-900 text-white px-4 py-1.5 rounded-lg text-xs">
-//                   Manage
-//                 </button>
-//               </td>
-//             </tr>
-//           </tbody>
-//         </table>
-//       </div>
-//     </section>
-//   );
-// };
-
-// export default ActiveBookings;
-
-
-import { Search, Filter } from "lucide-react";
-import { useState } from "react";
+import { Search, Filter, FileText, AlertCircle } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
+import { useLocation, useNavigate } from "react-router-dom";
 import ActiveBookingDetails from "./ActiveBookingDetails.jsx";
-import { activeBookingsData } from "../../data/activeBookingsDummyData.js";
+import API from "../../utils/Api";
 
-/* ================= Animations ================= */
 const containerVariant = {
   hidden: { opacity: 0 },
   visible: {
@@ -141,134 +21,347 @@ const itemVariant = {
     transition: { duration: 0.3, ease: "easeOut" },
   },
 };
-/* ============================================== */
+
+const formatDateRange = (startDate, endDate) => {
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return "Dates pending";
+
+  const format = (value) =>
+    value.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+
+  return `${format(start)} - ${format(end)}`;
+};
+
+const getDisplayStatus = (query, invoice) => {
+  if (query?.opsStatus === "Vouchered") {
+    return { label: "Vouchered", className: "bg-indigo-100 text-indigo-700" };
+  }
+
+  const verificationStatus = invoice?.paymentVerification?.status || "Pending";
+  const submitted = Boolean(invoice?.paymentSubmission?.submittedAt);
+  const isPaymentVerified = verificationStatus === "Verified" || invoice?.paymentStatus === "Paid";
+  const isBookingConfirmed = invoice ? isPaymentVerified : query?.opsStatus === "Confirmed";
+
+  if (isBookingConfirmed) {
+    return { label: "Booking Confirmed", className: "bg-green-100 text-green-700" };
+  }
+
+  if (!invoice) {
+    return { label: "Invoice Pending", className: "bg-slate-100 text-slate-700" };
+  }
+
+  if (verificationStatus === "Rejected") {
+    return { label: "Payment Rejected", className: "bg-red-100 text-red-700" };
+  }
+
+  if (submitted) {
+    return { label: "Under Review", className: "bg-blue-100 text-blue-700" };
+  }
+
+  return { label: "Finance Pending", className: "bg-amber-100 text-amber-700" };
+};
+
+const mapBookingRecord = (record) => {
+  const query = {
+    _id: record?._id,
+    queryId: record?.queryId,
+    destination: record?.destination,
+    startDate: record?.startDate,
+    endDate: record?.endDate,
+    numberOfAdults: record?.numberOfAdults,
+    numberOfChildren: record?.numberOfChildren,
+    customerBudget: record?.customerBudget,
+    specialRequirements: record?.specialRequirements,
+    travelerDetails: record?.travelerDetails || [],
+    travelerDocumentVerification: record?.travelerDocumentVerification || { status: "Draft" },
+    travelerDocumentAuditTrail: record?.travelerDocumentAuditTrail || [],
+    opsStatus: record?.opsStatus,
+    agentStatus: record?.agentStatus,
+    activityLog: record?.activityLog || [],
+  };
+  const invoice = record?.invoice || null;
+  const quotation = record?.quotation || null;
+  const adultCount = Number(query?.numberOfAdults || 0);
+  const childCount = Number(query?.numberOfChildren || 0);
+  const totalTravelers = adultCount + childCount;
+  const totalAmount =
+    Number(invoice?.totalAmount || 0) ||
+    Number(quotation?.clientTotalAmount || 0) ||
+    Number(quotation?.pricingTotalAmount || 0) ||
+    Number(query?.customerBudget || 0);
+
+  return {
+    _id: query?._id,
+    invoiceId: invoice?._id || "",
+    invoiceNumber: invoice?.invoiceNumber || "Invoice Pending",
+    bookingReference: query?.queryId || invoice?.invoiceNumber || "Booking Pending",
+    destination: query?.destination || "Destination Pending",
+    dates: formatDateRange(query?.startDate, query?.endDate),
+    travelers: totalTravelers || "-",
+    travelerSummary: {
+      adults: adultCount,
+      children: childCount,
+    },
+    travelerDetails: record?.travelerDetails || [],
+    travelerDocumentVerification: record?.travelerDocumentVerification || { status: "Draft" },
+    travelerDocumentAuditTrail: record?.travelerDocumentAuditTrail || [],
+    query,
+    invoice,
+    quotation,
+    totalAmount,
+    currency: invoice?.currency || "INR",
+    lineItems: invoice?.lineItems || [],
+    pricingSnapshot: invoice?.pricingSnapshot || {},
+    tripSnapshot: invoice?.tripSnapshot || {},
+    templateVariant: invoice?.templateVariant || "grand-ledger",
+    paymentSubmission: invoice?.paymentSubmission || {},
+    paymentVerification: invoice?.paymentVerification || { status: "Pending" },
+    paymentAuditTrail: invoice?.paymentAuditTrail || [],
+    paymentStatus: invoice?.paymentStatus || "Pending",
+    remarks: invoice?.remarks || "",
+    displayStatus: getDisplayStatus(query, invoice),
+    assignedFinanceName: invoice?.paymentVerification?.assignedToName || "",
+    assignedFinanceEmail: invoice?.paymentVerification?.assignedToEmail || "",
+    reviewedByName: invoice?.paymentVerification?.reviewedByName || "",
+    invoiceReady: Boolean(invoice),
+  };
+};
 
 const ActiveBookings = () => {
-  const [openActiveBookingDetails, setOpenActiveBookingDetails] =
-    useState(false);
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [openActiveBookingDetails, setOpenActiveBookingDetails] = useState(false);
   const [selectedActiveBooking, setSelectedActiveBooking] = useState(null);
+  const [documentPortalContext, setDocumentPortalContext] = useState(null);
+  const [bookings, setBookings] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
+  const autoOpenedBookingRef = useRef("");
 
-  // Details view
-  if (openActiveBookingDetails) {
+  useEffect(() => {
+    const fetchBookings = async () => {
+      try {
+        setLoading(true);
+        setError("");
+        const { data } = await API.get("/agent/active-bookings");
+        setBookings((data || []).map(mapBookingRecord));
+      } catch (fetchError) {
+        console.error(fetchError);
+        setError(fetchError?.response?.data?.message || "Failed to load active bookings");
+        setBookings([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchBookings();
+  }, []);
+
+  useEffect(() => {
+    const requestedBookingId = location.state?.openBookingId;
+
+    if (!requestedBookingId || loading || !bookings.length) return;
+    if (autoOpenedBookingRef.current === requestedBookingId) return;
+
+    const matchedBooking = bookings.find((booking) => booking._id === requestedBookingId);
+    if (!matchedBooking) return;
+
+    autoOpenedBookingRef.current = requestedBookingId;
+    setSelectedActiveBooking(matchedBooking);
+    setDocumentPortalContext({
+      source: "document-portal",
+      issues: location.state?.documentIssues || [],
+      issueSummary: location.state?.issueSummary || "",
+      reviewStatus: location.state?.reviewStatus || "",
+    });
+    setOpenActiveBookingDetails(true);
+    navigate(location.pathname, { replace: true, state: null });
+  }, [bookings, loading, location.pathname, location.state, navigate]);
+
+  const filteredBookings = useMemo(() => {
+    const searchLower = searchTerm.toLowerCase();
+    return bookings.filter((booking) => {
+      return (
+        String(booking.bookingReference || "").toLowerCase().includes(searchLower) ||
+        String(booking.destination || "").toLowerCase().includes(searchLower) ||
+        String(booking.invoiceNumber || "").toLowerCase().includes(searchLower)
+      );
+    });
+  }, [bookings, searchTerm]);
+
+  const handleBookingUpdated = (payload) => {
+    if (!selectedActiveBooking) return;
+
+    const nextRecord = {
+      ...selectedActiveBooking.query,
+      _id: selectedActiveBooking._id,
+      invoice:
+        payload?.type === "payment"
+          ? payload.invoice
+          : selectedActiveBooking.query?.invoice || selectedActiveBooking.invoice,
+      quotation: selectedActiveBooking.quotation,
+      activityLog: payload?.query?.activityLog || selectedActiveBooking.query?.activityLog || [],
+      travelerDetails: payload?.query?.travelerDetails || selectedActiveBooking.travelerDetails || [],
+      travelerDocumentVerification:
+        payload?.query?.travelerDocumentVerification ||
+        selectedActiveBooking.travelerDocumentVerification ||
+        selectedActiveBooking.query?.travelerDocumentVerification ||
+        { status: "Draft" },
+      travelerDocumentAuditTrail:
+        payload?.query?.travelerDocumentAuditTrail ||
+        selectedActiveBooking.travelerDocumentAuditTrail ||
+        selectedActiveBooking.query?.travelerDocumentAuditTrail ||
+        [],
+    };
+    if (payload?.query) {
+      nextRecord.queryId = payload.query?.queryId || nextRecord.queryId;
+      nextRecord.destination = payload.query?.destination || nextRecord.destination;
+      nextRecord.startDate = payload.query?.startDate || nextRecord.startDate;
+      nextRecord.endDate = payload.query?.endDate || nextRecord.endDate;
+      nextRecord.numberOfAdults = payload.query?.numberOfAdults ?? nextRecord.numberOfAdults;
+      nextRecord.numberOfChildren = payload.query?.numberOfChildren ?? nextRecord.numberOfChildren;
+      nextRecord.customerBudget = payload.query?.customerBudget ?? nextRecord.customerBudget;
+      nextRecord.specialRequirements = payload.query?.specialRequirements || nextRecord.specialRequirements;
+      nextRecord.opsStatus = payload.query?.opsStatus || nextRecord.opsStatus;
+      nextRecord.agentStatus = payload.query?.agentStatus || nextRecord.agentStatus;
+    }
+    if (payload?.type !== "traveler-document" && payload?.invoice) {
+      nextRecord.invoice = payload.invoice;
+    }
+    const nextBooking = mapBookingRecord(nextRecord);
+    setBookings((prev) =>
+      prev.map((booking) => (booking._id === nextBooking._id ? nextBooking : booking)),
+    );
+    setSelectedActiveBooking(nextBooking);
+  };
+  if (openActiveBookingDetails && selectedActiveBooking) {
     return (
       <ActiveBookingDetails
-        onClose={() => setOpenActiveBookingDetails(false)}
+        onClose={() => {
+          setOpenActiveBookingDetails(false);
+          setDocumentPortalContext(null);
+        }}
         booking={selectedActiveBooking}
+        onBookingUpdated={handleBookingUpdated}
+        documentPortalContext={documentPortalContext}
       />
     );
   }
-
   return (
     <motion.section
       variants={containerVariant}
       initial="hidden"
       animate="visible"
-      className="space-y-5 p-3"
+      className="space-y-5 p-"
     >
-      {/* Header */}
-      <motion.header
-        variants={itemVariant}
-        className="flex items-center justify-between"
-      >
+      <motion.header variants={itemVariant} className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h1 className="text-2xl font-bold">Active Bookings</h1>
           <p className="text-sm text-gray-500">
-            Manage your confirmed trips, payments, and traveler documents.
+            Manage your invoices, payments, and traveler documents.
           </p>
         </div>
-
-        <div className="flex items-center gap-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <motion.div variants={itemVariant} className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
             <input
               type="text"
               placeholder="Search bookings..."
-              className="pl-9 pr-4 py-2 border rounded-xl text-xs border-gray-300 focus:outline-none"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full rounded-xl border border-gray-300 py-2 pl-9 pr-4 text-xs focus:outline-none sm:min-w-[240px]"
             />
           </motion.div>
-
           <motion.button
             variants={itemVariant}
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
-            className="border rounded-xl p-2 border-gray-300 hover:bg-gray-100"
+            className="rounded-xl border border-gray-300 p-2 hover:bg-gray-100"
           >
             <Filter size={16} />
           </motion.button>
         </div>
       </motion.header>
-
-      {/* Table */}
-      <motion.div
-        variants={itemVariant}
-        className="bg-white shadow-sm rounded-xl overflow-hidden"
-      >
-        <table className="w-full text-xs">
-          <thead className="bg-gray-50 text-gray-500 border-b border-b-gray-300">
+      {error && (
+        <motion.div
+          variants={itemVariant}
+          className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600"
+        >
+          <AlertCircle className="h-4 w-4" />
+          {error}
+        </motion.div>
+      )}
+      <motion.div variants={itemVariant} className="overflow-hidden rounded-xl bg-white shadow-sm">
+        <div className="overflow-x-auto">
+        <table className="min-w-[760px] w-full text-xs">
+          <thead className="border-b border-b-gray-300 bg-gray-50 text-gray-500">
             <tr>
-              <th className="text-left px-6 py-3">Booking ID</th>
-              <th className="text-left px-6 py-3">Destination</th>
-              <th className="text-left px-6 py-3">Travel Dates</th>
-              <th className="text-left px-6 py-3">Pax</th>
-              <th className="text-left px-6 py-3">Status</th>
-              <th className="text-right px-6 py-3">Action</th>
+              <th className="px-6 py-3 text-left">Booking ID</th>
+              <th className="px-6 py-3 text-left">Destination</th>
+              <th className="px-6 py-3 text-left">Travel Dates</th>
+              <th className="px-6 py-3 text-left">Pax</th>
+              <th className="px-6 py-3 text-left">Status</th>
+              <th className="px-6 py-3 text-right">Action</th>
             </tr>
           </thead>
-
-          <motion.tbody
-            variants={containerVariant}
-            initial="hidden"
-            animate="visible"
-            className="divide-y divide-gray-200"
-          >
-            {activeBookingsData.map((booking) => (
-              <motion.tr
-                key={booking.id}
-                variants={itemVariant}
-                whileHover={{ backgroundColor: "#F9FAFB" }}
-              >
-                <td className="px-6 py-4 font-medium">{booking.id}</td>
-                <td className="px-6 py-4">{booking.destination}</td>
-                <td className="px-6 py-4">{booking.dates}</td>
-                <td className="px-6 py-4">{booking.travelers}</td>
-
-                <td className="px-6 py-4">
-                  {booking.status === "Awaiting Documents" && (
-                    <span className="bg-yellow-100 text-yellow-700 px-3 py-1 rounded-full text-xs font-medium">
-                      Awaiting Documents
-                    </span>
-                  )}
-
-                  {booking.status === "Payment Pending" && (
-                    <span className="bg-red-400 text-white px-3 py-1 rounded-full text-xs font-medium">
-                      Payment Pending
-                    </span>
-                  )}
-
-                  {booking.status === "Confirmed" && (
-                    <span className="bg-green-100 text-green-600 px-3 py-1 rounded-full text-xs font-medium">
-                      Confirmed
-                    </span>
-                  )}
+          <tbody className="divide-y divide-gray-200">
+            {loading ? (
+              <tr>
+                <td colSpan="6" className="px-6 py-12 text-center text-sm text-gray-400">
+                  Loading active bookings...
                 </td>
-
-                <td className="px-6 py-4 text-right">
-                  <motion.button
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    onClick={() => {
-                      setSelectedActiveBooking(booking);
-                      setOpenActiveBookingDetails(true);
-                    }}
-                    className="bg-slate-900 text-white px-4 py-1.5 rounded-lg text-xs"
-                  >
-                    Manage
-                  </motion.button>
+              </tr>
+            ) : filteredBookings.length > 0 ? (
+              filteredBookings.map((booking) => (
+                <tr
+                  key={booking._id}
+                  className="transition-colors hover:bg-[#F9FAFB]"
+                >
+                  <td className="px-6 py-4 font-medium">
+                    <div className="flex items-center gap-2">
+                      <FileText className="h-4 w-4 text-slate-400" />
+                      <div>
+                        <p className="text-xs font-semibold text-slate-800">{booking.bookingReference}</p>
+                        <p className="text-[10px] text-slate-400">{booking.invoiceNumber}</p>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4">{booking.destination}</td>
+                  <td className="px-6 py-4">{booking.dates}</td>
+                  <td className="px-6 py-4">{booking.travelers}</td>
+                  <td className="px-6 py-4">
+                    <span className={`inline-flex w-[140px] items-center justify-center whitespace-nowrap rounded-full px-2.5 py-2 text-[11px] font-medium leading-none ${booking.displayStatus.className}`}>
+                      {booking.displayStatus.label}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 text-right">
+                    <motion.button
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                      onClick={() => {
+                        setDocumentPortalContext(null);
+                        setSelectedActiveBooking(booking);
+                        setOpenActiveBookingDetails(true);
+                      }}
+                      className="rounded-lg bg-slate-900 px-4 py-1.5 text-xs text-white"
+                    >
+                      Manage
+                    </motion.button>
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan="6" className="px-6 py-12 text-center text-sm text-gray-400">
+                  No active bookings found.
                 </td>
-              </motion.tr>
-            ))}
-          </motion.tbody>
+              </tr>
+            )}
+          </tbody>
         </table>
+        </div>
       </motion.div>
     </motion.section>
   );

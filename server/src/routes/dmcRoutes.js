@@ -1,6 +1,6 @@
 import express from "express";
 import isAuthenticated from "../middlewares/auth.middleware.js";
-import {createHotel,getHotels,getHotelById,updateHotel,deleteHotel, createActivity,getActivities,createTransfer ,getTransfers,createPackage,getPackages, createSightseeing, getSightseeing, deleteUpload, downloadUpload, createOrUpdateConfirmation, } from "../controllers/dmcController.js";
+import {createHotel,getHotels,getHotelById,updateHotel,deleteHotel, createActivity,getActivities,createTransfer ,getTransfers,createPackage,getPackages, createSightseeing, getSightseeing, deleteUpload, downloadUpload, createOrUpdateConfirmation, getConfirmedQueriesForDmc, submitInternalInvoice, } from "../controllers/dmcController.js";
 import { bulkUpload, getBulkUploadHistory } from "../controllers/bulkUploadController.js";
 import multer from "multer";
 
@@ -39,9 +39,11 @@ router.post("/bulk-upload", upload.single("file"), isAuthenticated, bulkUpload)
 router.get("/bulk-upload-history", isAuthenticated, getBulkUploadHistory);
 router.delete("/upload/:id",isAuthenticated, deleteUpload)
 router.get("/upload/download/:id",isAuthenticated, downloadUpload)
+router.get("/confirmation/queries", isAuthenticated, getConfirmedQueriesForDmc);
+router.post("/internal-invoice", isAuthenticated, submitInternalInvoice);
 
-router.post(
-  "/confirmation",isAuthenticated,
+
+router.post( "/confirmation",isAuthenticated,
   upload.fields([
     { name: "supplierConfirmation", maxCount: 1 },
     { name: "voucherReference", maxCount: 1 },

@@ -48,7 +48,7 @@ const hotelSchema = new mongoose.Schema(
 
   mealPlan: {
     type: String,
-    enum: ["EP", "CP", "MAP", "AP"]
+    enum: ["EP", "CP", "MAP", "AP", "AI"]
   },
 
   price: {
@@ -71,7 +71,7 @@ cwoebRate: {
 
    currency: {
     type: String,
-    enum: ["USD", "INR", "AED", "EUR", "IDR","THB"],
+    enum: ["USD", "INR", "AED", "EUR", "IDR", "THB", "SGD", "GBP", "MYR", "EGP"],
     default: "INR"
   },
 

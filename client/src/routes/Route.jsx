@@ -4,9 +4,9 @@ import Layout from "../layout/Layout";
 import AgentDashboard from "../pages/agentPages/AgentDashboard";
 import Queries from "../pages/agentPages/Queries";
 import Finance from "../pages/agentPages/Finance";
-import ActiveBookings from "../pages/agentPages/activeBookings";
-import DocumentPortal from "../pages/agentPages/documentPortal";
-import AssetLibrary from "../pages/agentPages/assetLibrary";
+import ActiveBookings from "../pages/agentPages/ActiveBookings";
+import DocumentPortal from "../pages/agentPages/DocumentPortal";
+import AssetLibrary from "../pages/agentPages/AssetLibrary";
 import Login from "../auth/login/Login";
 import Register from "../auth/register/Register";
 import OpsDashboardContent from "../pages/opsPages/OpsDashboardContent";
@@ -20,6 +20,16 @@ import FulfillmentConfirmation from "../pages/dmcPages/FulfillmentConfirmation";
 import FinanceDashboard from "../pages/financePages/FinanceDashboard";
 import PaymentVerification from "../pages/financePages/PaymentVerification";
 import InternalInvoice from "../pages/financePages/InternalInvoice";
+import AdvancedAnalytics from "../pages/financePages/AdvancedAnalytics";
+import Dashboard from "../pages/adminPages/Dashboard";
+import SuperAdminDashboard from "../pages/adminPages/SuperAdminDashboard";
+import FinanceManagerDashboard from "../pages/managerPages/financeManagerPages/FinanceManagerDashboard";
+import AllTeamQueries from "../pages/managerPages/opsManagerPages/AllTeamQueries";
+import OperationManagerDashboard from "../pages/managerPages/opsManagerPages/OperationManagerDashboard";
+import MyOperationTeam from "../pages/managerPages/opsManagerPages/MyOperationTeam";
+import AllTeamTransactions from "../pages/managerPages/financeManagerPages/AllTeamTransactions";
+import InternalDMCInvoices from "../pages/managerPages/financeManagerPages/InternalDMCInvoices";
+import MyFinanceTeam from "../pages/managerPages/financeManagerPages/MyFinanceTeam";
 
 export const appRouter = createBrowserRouter([
   {
@@ -56,15 +66,16 @@ export const appRouter = createBrowserRouter([
         path: "/",
         element: <Layout />,
         children: [
-          { path: "/admin/dashboard", //element: <AdminDashboard />,
-            },
+          { path: "/admin/dashboard", element: <Dashboard/>},
+          { path: "/admin/superAdminDashboard", element: <SuperAdminDashboard/>},
+          { path: "/admin/bookings-management", element:<BookingManagementHub/>},
           {},
         ],
       },
     ],
   },
   {
-    element: <ProtectedRoute allowedRoles={["operations"]} />,
+    element: <ProtectedRoute allowedRoles={["operations", "admin"]} />,
     children: [
       {
         path: "/",
@@ -81,7 +92,7 @@ export const appRouter = createBrowserRouter([
     ],
   }, 
   {
-    element:<ProtectedRoute allowedRoles={["dmc_partner"]} />,
+    element:<ProtectedRoute allowedRoles={["dmc_partner", "admin"]} />,
     children: [
       {
         path: "/",
@@ -95,15 +106,40 @@ export const appRouter = createBrowserRouter([
     ],
   },
    {
-    element:<ProtectedRoute allowedRoles={["finance_partner"]} />,
+    element:<ProtectedRoute allowedRoles={["finance_partner", "admin"]} />,
     children: [
-      {
-        path: "/",
+      { path: "/",
         element: <Layout/>,
         children: [
           { path: "/finance/dashboard", element:<FinanceDashboard/>},
+          { path: "/finance/advancedAnalytics", element:<AdvancedAnalytics/>},
           { path: "/finance/paymentVerification", element:<PaymentVerification/>},
           { path: "/finance/internalInvoice", element:<InternalInvoice/>},
+        ],
+      },
+    ],
+  },
+  {
+    element:<ProtectedRoute allowedRoles={["operation_manager"]} />,
+    children: [
+      { path: "/", element: <Layout/>,
+        children: [
+          { path: "/operationManager/operationManagerDashboard", element:<OperationManagerDashboard/>},
+          { path: "/operationManager/allTeamQueries", element:<AllTeamQueries/>},
+          { path: "/operationManager/myTeam", element:<MyOperationTeam/>},
+        ],
+      },
+    ],
+  },
+  {
+    element:<ProtectedRoute allowedRoles={["finance_manager"]} />,
+    children: [
+      { path: "/", element: <Layout/>,
+        children: [
+          { path: "/financeManager/financeManagerDashboard", element:<FinanceManagerDashboard/>},
+          { path: "/financeManager/allTeamTransaction", element:<AllTeamTransactions/>},
+          { path: "/financeManager/internalDmcInvoice", element:<InternalDMCInvoices/>},
+          { path: "/financeManager/myFinanceTeam", element:<MyFinanceTeam/>},
         ],
       },
     ],

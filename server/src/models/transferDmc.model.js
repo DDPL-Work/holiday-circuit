@@ -50,7 +50,7 @@ const transferSchema = new mongoose.Schema(
 
   currency: {
     type: String,
-    enum: ["USD","INR","AED","EUR","THB"],
+    enum: ["USD", "INR", "AED", "EUR", "THB", "GBP", "IDR", "SGD", "MYR", "EGP"],
     default: "USD"
   },
 

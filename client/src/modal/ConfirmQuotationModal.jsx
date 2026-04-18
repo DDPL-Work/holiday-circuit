@@ -7,6 +7,8 @@ export default function ConfirmQuotationModal({ order, onClose }) {
 
   const [open, setOpen] = useState(true);
   const navigate = useNavigate();
+  const isInvoiceRequestedStage = order?.opsStatus === "Invoice_Requested";
+  const isRevisionStage = order?.opsStatus === "Revision_Query";
 
   const handleClose = () => {
     setOpen(false);
@@ -75,11 +77,19 @@ export default function ConfirmQuotationModal({ order, onClose }) {
 
             <h2 className="text-xl font-semibold flex items-center gap-2 mb-1">
               <FileText size={18} className="text-[#00A63E]" />
-              Confirm & Create Quotation
+              {isInvoiceRequestedStage
+                ? "Open Builder For Finance Invoice"
+                : isRevisionStage
+                  ? "Open Builder For Revised Quotation"
+                  : "Confirm & Create Quotation"}
             </h2>
 
             <p className="text-[#717182] text-sm mb-5">
-              You will be redirected to the Quotation Builder to select rates and create a quote
+              {isInvoiceRequestedStage
+                ? "You will be redirected to the Quotation Builder to review the approved quotation and prepare the finance-side invoice."
+                : isRevisionStage
+                  ? "Agent has requested changes. Open the builder to prepare and send a revised quotation for the same query."
+                  : "You will be redirected to the Quotation Builder to select rates and create a quote"}
             </p>
 
             <motion.p
@@ -88,8 +98,12 @@ export default function ConfirmQuotationModal({ order, onClose }) {
               transition={{ delay: 0.15 }}
               className="text-[#016630] text-sm mb-4 border border-[#B9F8CF] bg-[#F0FDF4] rounded-xl p-4"
             >
-              <strong>{order?.queryId}</strong> will be moved to quotation stage.
-              You'll select contracted rates, add markup, and send the quote to the agent.
+              <strong>{order?.queryId}</strong>{" "}
+              {isInvoiceRequestedStage
+                ? "already has client approval. Open the builder to prepare the finance invoice record. Finance team will share the final invoice with the agent."
+                : isRevisionStage
+                  ? "is back for quotation revision. Update services/pricing and send the revised quote back to the agent."
+                  : "will be moved to quotation stage. You'll select contracted rates, add markup, and send the quote to the agent."}
             </motion.p>
 
             <div className="space-y-2 text-sm text-gray-700 mb-4">
@@ -123,7 +137,11 @@ export default function ConfirmQuotationModal({ order, onClose }) {
                 onClick={handleProceed}
                 className="px-3 py-2 bg-green-600 text-white rounded-xl hover:bg-green-700 cursor-pointer"
               >
-                Proceed to Quotation Builder
+                {isInvoiceRequestedStage
+                  ? "Open Quotation Builder"
+                  : isRevisionStage
+                    ? "Open Revised Builder"
+                    : "Proceed to Quotation Builder"}
               </motion.button>
 
             </div>

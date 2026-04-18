@@ -35,6 +35,24 @@ const quotationSchema = new mongoose.Schema(
         type: mongoose.Schema.Types.ObjectId
       },
 
+      supplierId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Auth"
+      },
+
+      supplierName: {
+        type: String
+      },
+
+      dmcId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Auth"
+      },
+
+      dmcName: {
+        type: String
+      },
+
       type: {
         type: String,
         enum: ["hotel", "transfer", "activity", "sightseeing"],
@@ -49,6 +67,7 @@ const quotationSchema = new mongoose.Schema(
 
       // 🔹 DESCRIPTION
       description: String,
+      serviceDate: Date,
 
       // ================= HOTEL =================
       adults: { type: Number, default: 0 },
@@ -84,7 +103,7 @@ const quotationSchema = new mongoose.Schema(
       // ================= 🔥 PRICING =================
       currency: {
         type: String,
-        enum: ["INR", "USD", "AED", "EUR", "THB"],
+        enum: ["INR", "USD", "AED", "EUR", "THB", "GBP", "IDR", "SGD", "MYR", "EGP", "AUD"],
         default: "INR"
       },
 
@@ -93,9 +112,24 @@ const quotationSchema = new mongoose.Schema(
         required: true   // 🔥 IMPORTANT
       },
 
+      exchangeRate: {
+        type: Number,
+        default: 1
+      },
+
+      priceInInr: {
+        type: Number,
+        default: 0
+      },
+
       total: {
         type: Number,
         required: true   // 🔥 IMPORTANT
+      },
+
+      totalInInr: {
+        type: Number,
+        default: 0
       }
     }
   ],
@@ -103,9 +137,49 @@ const quotationSchema = new mongoose.Schema(
   // ================= PRICING =================
   pricing: {
 
+    currency: {
+      type: String,
+      default: "INR"
+    },
+
+    quoteCategory: {
+      type: String,
+      enum: ["domestic", "international"],
+      default: "domestic"
+    },
+
     baseAmount: { type: Number, required: true },
 
     subTotal: { type: Number, default: 0 }, // 🔥 services total
+
+    packageTemplateAmount: { type: Number, default: 0 },
+
+    serviceCurrencyBreakdown: {
+      type: [
+        new mongoose.Schema(
+          {
+            currency: {
+              type: String,
+              default: "INR"
+            },
+            amount: {
+              type: Number,
+              default: 0
+            },
+            amountInInr: {
+              type: Number,
+              default: 0
+            },
+            exchangeRate: {
+              type: Number,
+              default: 1
+            }
+          },
+          { _id: false }
+        )
+      ],
+      default: []
+    },
 
     opsMarkup: {
       percent: { type: Number, default: 0 },
@@ -167,14 +241,11 @@ const quotationSchema = new mongoose.Schema(
 
   status: {
     type: String,
-    enum: [
-      "Quote Sent",
-      "Revision Requested",
-      "Pending",
-      "Quote Accepted",
+    enum: ["Quote Sent","Revision Requested","Revised","Pending","Quote Accepted",
       "Quote Finalized",
       "Markup Applied",
-      "Sent to Client"
+      "Sent to Client",
+      "Confirmed"
     ],
     default: "Pending"
   }

@@ -4,16 +4,210 @@ import {
   Clock,
   FileText,
   AlertCircle,
+  Bell,
+  X,
 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
+import API from "../../utils/Api";
+
+const notifConfig = {
+  success: { color: "text-green-600", bg: "bg-green-50", dot: "bg-green-500" },
+  info: { color: "text-blue-600", bg: "bg-blue-50", dot: "bg-blue-500" },
+  warning: { color: "text-amber-600", bg: "bg-amber-50", dot: "bg-amber-500" },
+};
+
+const getTimeAgo = (date) => {
+  const now = new Date();
+  const created = new Date(date);
+  const diffInMinutes = Math.floor((now - created) / 60000);
+
+  if (diffInMinutes < 1) return "Just now";
+  if (diffInMinutes < 60) return `${diffInMinutes} min ago`;
+  if (diffInMinutes < 1440) return `${Math.floor(diffInMinutes / 60)} hr ago`;
+  return `${Math.floor(diffInMinutes / 1440)} day ago`;
+};
+
+const NotificationPanel = ({
+  notifications,
+  loadingNotifications,
+  onDismiss,
+  onClose,
+  onClearAll,
+}) => (
+  <motion.div
+    initial={{ opacity: 0, y: -8, scale: 0.96 }}
+    animate={{ opacity: 1, y: 0, scale: 1 }}
+    exit={{ opacity: 0, y: -8, scale: 0.96 }}
+    transition={{ duration: 0.2, ease: "easeOut" }}
+    className="absolute right-0 top-12 z-50 w-80 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl"
+  >
+    <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
+      <div className="flex items-center gap-2">
+        <Bell className="h-4 w-4 text-gray-700" />
+        <span className="text-sm font-semibold text-gray-900">Notifications</span>
+        {notifications.length > 0 && (
+          <span className="rounded-full bg-blue-600 px-1.5 py-0.5 text-[10px] font-bold text-white">
+            {notifications.length}
+          </span>
+        )}
+      </div>
+      <button onClick={onClose} className="text-gray-400 transition-colors hover:text-gray-600">
+        <X className="h-4 w-4" />
+      </button>
+    </div>
+
+    <div className="max-h-96 overflow-y-auto divide-y divide-gray-50">
+      {loadingNotifications ? (
+        <div className="flex flex-col items-center justify-center py-10 text-gray-400">
+          <p className="text-xs">Loading notifications...</p>
+        </div>
+      ) : notifications.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-10 text-gray-400">
+          <Bell className="mb-2 h-8 w-8 opacity-30" />
+          <p className="text-xs">No notifications yet</p>
+        </div>
+      ) : (
+        notifications.map((notification) => {
+          const cfg = notifConfig[notification.type] || notifConfig.info;
+
+          return (
+            <div
+              key={notification._id}
+              className="group flex items-start gap-3 px-4 py-3 transition-colors hover:bg-gray-50"
+            >
+              <div className={`mt-1 h-1.5 w-1.5 flex-shrink-0 rounded-full ${cfg.dot}`} />
+              <div className={`flex-shrink-0 rounded-lg p-1.5 ${cfg.bg}`}>
+                <Bell className={`h-3.5 w-3.5 ${cfg.color}`} />
+              </div>
+
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-semibold text-gray-900">{notification.title}</p>
+                <p className="mt-0.5 text-[11px] leading-relaxed text-gray-500">
+                  {notification.message}
+                </p>
+                <p className="mt-1 text-[10px] text-gray-400">
+                  {getTimeAgo(notification.createdAt)}
+                </p>
+              </div>
+
+              <button
+                onClick={() => onDismiss(notification._id)}
+                className="mt-0.5 flex-shrink-0 text-gray-300 opacity-0 transition-opacity hover:text-gray-500 group-hover:opacity-100"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          );
+        })
+      )}
+    </div>
+
+    {notifications.length > 0 && (
+      <div className="border-t border-gray-100 px-4 py-2.5">
+        <button
+          onClick={onClearAll}
+          className="text-[11px] font-medium text-blue-600 transition-colors hover:text-blue-800"
+        >
+          Clear all
+        </button>
+      </div>
+    )}
+  </motion.div>
+);
 
 export default function DMCDashboard() {
+  const [notifications, setNotifications] = useState([]);
+  const [openNotifications, setOpenNotifications] = useState(false);
+  const [loadingNotifications, setLoadingNotifications] = useState(true);
+
+  const fetchNotifications = async () => {
+    try {
+      setLoadingNotifications(true);
+      const { data } = await API.get("/agent/notifications");
+      setNotifications(data?.notifications || []);
+    } catch (error) {
+      console.error("Failed to fetch DMC notifications", error);
+    } finally {
+      setLoadingNotifications(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchNotifications();
+  }, []);
+
+  const unreadCount = useMemo(() => {
+    const unread = notifications.filter((notification) => !notification.isRead).length;
+    return unread || notifications.length;
+  }, [notifications]);
+
+  const dismissNotification = async (id) => {
+    try {
+      await API.delete(`/agent/notifications/${id}`);
+      setNotifications((prev) => prev.filter((notification) => notification._id !== id));
+    } catch (error) {
+      console.error("Failed to delete DMC notification", error);
+    }
+  };
+
+  const clearAllNotifications = async () => {
+    try {
+      await Promise.all(
+        notifications.map((notification) =>
+          API.delete(`/agent/notifications/${notification._id}`),
+        ),
+      );
+      setNotifications([]);
+    } catch (error) {
+      console.error("Failed to clear DMC notifications", error);
+    }
+  };
+
+  const toggleNotifications = async () => {
+    const nextValue = !openNotifications;
+    setOpenNotifications(nextValue);
+
+    if (nextValue) {
+      await fetchNotifications();
+    }
+  };
+
   return (
     <div className="p-1.5 bg-gray-50 min-h-screen">
       {/* Header */}
 
-      <div className="mb-5">
-        <h1 className="text-xl font-semibold">Dmc Dashboard</h1>
-        <p className="text-sm text-gray-500">Monday, March 9, 2026</p>
+      <div className="mb-5 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-semibold">Dmc Dashboard</h1>
+          <p className="text-sm text-gray-500">Monday, March 9, 2026</p>
+        </div>
+
+        <div className="relative">
+          <button
+            onClick={toggleNotifications}
+            className="relative flex items-center justify-center rounded-full border border-gray-200 bg-white p-2.5 shadow-sm transition-colors hover:bg-gray-50"
+          >
+            <Bell className="h-4 w-4 text-gray-600" />
+            {unreadCount > 0 && (
+              <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white">
+                {unreadCount}
+              </span>
+            )}
+          </button>
+
+          <AnimatePresence>
+            {openNotifications && (
+              <NotificationPanel
+                notifications={notifications}
+                loadingNotifications={loadingNotifications}
+                onDismiss={dismissNotification}
+                onClose={() => setOpenNotifications(false)}
+                onClearAll={clearAllNotifications}
+              />
+            )}
+          </AnimatePresence>
+        </div>
       </div>
 
       {/*=================== Access Level Card ========================================== */}

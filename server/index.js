@@ -8,6 +8,7 @@ import adminRoutes from "./src/routes/admin.routes.js";
 import agentRoutes from "./src/routes/agent.routes.js"
 import opsRoutes from "./src/routes/ops.routes.js"
 import dmcRoutes from "./src/routes/dmcRoutes.js"
+import financeManagerRoutes from "./src/routes/financeManager.routes.js";
 
 
 env.config({ quiet: true });
@@ -30,6 +31,7 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/agent", agentRoutes);
 app.use("/api/ops", opsRoutes);
 app.use("/api/dmc", dmcRoutes);
+app.use("/api/finance-manager", financeManagerRoutes);
 
 
 // ====================== 404 HANDLER ======================

@@ -27,11 +27,19 @@ const authSlice = createSlice({
   },
 
  reducers: {
-  logout: (state) => {
+ logout: (state) => {
     state.user = null;
     state.token = null;
     state.justLoggedIn = false;
     sessionStorage.clear();
+  },
+
+  updateUserProfileLocal: (state, action) => {
+    state.user = {
+      ...(state.user || {}),
+      ...(action.payload || {}),
+    };
+    sessionStorage.setItem("user", JSON.stringify(state.user));
   },
 
   resetAuthState: (state) => {
@@ -67,6 +75,5 @@ const authSlice = createSlice({
   },
 });
 
-
-export const { logout, resetAuthState } = authSlice.actions;
+export const { logout, resetAuthState, updateUserProfileLocal } = authSlice.actions;
 export default authSlice.reducer;

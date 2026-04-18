@@ -14,7 +14,12 @@ return next(new ApiError(401, "Unauthorized: Token missing"));
 const token = authHeader.replace("Bearer", "").trim();
  console.log("👉 TOKEN:", token);
 const decoded = jwt.verify(token, process.env.JWT_SECRET);
-req.user = decoded
+const normalizedUserId = decoded?.id || decoded?._id;
+req.user = {
+...decoded,
+id: normalizedUserId,
+_id: normalizedUserId,
+}
 console.log("USER:", req.user);
 
 next();

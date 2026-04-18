@@ -14,6 +14,12 @@ const documentSchema = new mongoose.Schema({
 });
 
 const confirmationSchema = new mongoose.Schema({
+  dmcId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Auth",
+    required: true,
+    index: true,
+  },
   queryId: {
     type: String,
     required: true,
@@ -58,5 +64,7 @@ const confirmationSchema = new mongoose.Schema({
 { timestamps: true }
 
 );
+
+confirmationSchema.index({ dmcId: 1, queryId: 1 }, { unique: true });
 
 export default mongoose.model("Confirmation", confirmationSchema);

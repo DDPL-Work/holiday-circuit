@@ -27,19 +27,19 @@ export const bulkUpload = async (req, res) => {
     if ([".xlsx", ".xls", ".csv"].includes(ext)) {
       switch (category) {
         case "hotel":
-          records = await processHotelExcel(req.file.path)
+          records = await processHotelExcel(req.file.path, req.user.id)
           break
         case "transport":
-          records = await processTransportExcel(req.file.path)
+          records = await processTransportExcel(req.file.path, req.user.id)
           break
         case "activity":
-          records = await processActivityExcel(req.file.path)
+          records = await processActivityExcel(req.file.path, req.user.id)
           break
         case "package":
           records = await processPackageExcel(req.file.path)
           break
         case "sightseeing":
-          records = await processSightseeingExcel(req.file.path)
+          records = await processSightseeingExcel(req.file.path, req.user.id)
           break
         default:
           return res.status(400).json({ message: "Invalid category" })
@@ -73,7 +73,7 @@ export const bulkUpload = async (req, res) => {
       records: 0,
       status: "failed"
     })
-    res.status(500).json({ error: error.message })
+    res.status(500).json({ message: error.message, error: error.message })
   }
 }
 
@@ -83,7 +83,7 @@ export const getBulkUploadHistory = async (req, res) => {
     // Optional filter (category wise)
     const { category } = req.query;
     let filter = {};
-    if (req.user?.id) {
+    if (req.user?.id && req.user?.role !== "admin") {
       filter.uploadedAuth = req.user.id;
     }
     // 👉 category filter

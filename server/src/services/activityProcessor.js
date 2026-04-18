@@ -1,7 +1,7 @@
 import XLSX from "xlsx"
 import Activity from "../models/activityDmc.model.js"
 
-export const processActivityExcel = async (filePath) => {
+export const processActivityExcel = async (filePath, ownerId) => {
   const workbook = XLSX.readFile(filePath)
   const sheet = workbook.Sheets[workbook.SheetNames[0]]
   const rows = XLSX.utils.sheet_to_json(sheet)
@@ -10,6 +10,8 @@ export const processActivityExcel = async (filePath) => {
   .filter(row => Object.values(row).some(v => v !== undefined && v !== null && v !== ""))
   .map((row) => ({
     name: row["Service Name"] || row["Activity Name"],
+    supplier: ownerId,
+    supplierName: row["Supplier Name"] || "",
     country: row["Country"],
     validFrom: row["Valid From"] ? new Date(row["Valid From"]) : null,
     validTo: row["Valid To"] ? new Date(row["Valid To"]) : null,

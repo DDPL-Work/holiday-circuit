@@ -1,7 +1,8 @@
 import XLSX from "xlsx"
 import Transport from "../models/transferDmc.model.js"
 
-export const processTransportExcel = async (filePath) => {
+export const processTransportExcel = async (filePath, ownerId) => {
+ const allowedCurrencies = new Set(["USD", "INR", "AED", "EUR", "THB", "GBP", "IDR", "SGD", "MYR", "EGP"]);
 
  const workbook = XLSX.readFile(filePath)
  const sheet = workbook.Sheets[workbook.SheetNames[0]]
@@ -19,6 +20,12 @@ export const processTransportExcel = async (filePath) => {
   if (v.includes("half")) return "half-day";
 
   return "point-to-point";
+ };
+
+ const normalizeCurrency = (value) => {
+  const normalized = String(value || "").trim().toUpperCase();
+  if (!normalized) return "USD";
+  return allowedCurrencies.has(normalized) ? normalized : "USD";
  };
 
  // ✅ Capacity Logic (NEW ADD)
@@ -49,6 +56,7 @@ export const processTransportExcel = async (filePath) => {
   return {
     serviceName: row["Service Name"],
     supplierName: row["Supplier Name"],
+    supplier: ownerId,
 
     country: row["Country"],
     city: row["City"],
@@ -63,7 +71,7 @@ export const processTransportExcel = async (filePath) => {
     description: row["Description"] || "",
 
     price: Number(row["Price"]),
-    currency: row["Currency"],
+    currency: normalizeCurrency(row["Currency"]),
 
     validFrom: new Date(row["Valid From"]),
     validTo: new Date(row["Valid To"])

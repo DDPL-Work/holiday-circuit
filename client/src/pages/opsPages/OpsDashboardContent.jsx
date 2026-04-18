@@ -4,23 +4,161 @@ import {
   FileText,
   AlertCircle,
   Users,
-  ShieldCheck
+  ShieldCheck,
+  Bell,
+  X
 } from "lucide-react";
 
+import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
+import { useNavigate } from "react-router-dom";
+import API from "../../utils/Api.js";
 
 export default function OpsDashboardContent() {
+  const navigate = useNavigate();
+  const [notifications, setNotifications] = useState([]);
+  const [loadingNotifications, setLoadingNotifications] = useState(false);
+  const [openNotifications, setOpenNotifications] = useState(false);
+
+  const fetchNotifications = async () => {
+    try {
+      setLoadingNotifications(true);
+      const { data } = await API.get("/admin/notifications");
+      setNotifications(data?.notifications || []);
+    } catch (error) {
+      console.error("Failed to fetch ops notifications", error);
+    } finally {
+      setLoadingNotifications(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchNotifications();
+  }, []);
+
+  const unreadCount = useMemo(
+    () => notifications.filter((notification) => !notification.isRead).length,
+    [notifications],
+  );
+
+  const handleClearAll = async () => {
+    try {
+      await API.patch("/admin/notifications/read-all");
+      setNotifications([]);
+      setOpenNotifications(false);
+    } catch (error) {
+      console.error("Failed to clear ops notifications", error);
+    }
+  };
+
+  const handleDismiss = async (id) => {
+    try {
+      await API.delete(`/admin/notifications/${id}`);
+      setNotifications((prev) => prev.filter((notification) => notification._id !== id));
+    } catch (error) {
+      console.error("Failed to dismiss ops notification", error);
+    }
+  };
+
+  const handleOpenNotification = (notification) => {
+    setOpenNotifications(false);
+    navigate(notification?.link || "/ops/bookings-management", {
+      state: notification?.meta ? { notificationMeta: notification.meta } : undefined,
+    });
+  };
+
   return (
 
 <motion.div
 initial={{ opacity: 0 }}
 animate={{ opacity: 1 }}
 transition={{ duration: 0.5 }}
-className="p-2.5 bg-[#F5F7FB] min-h-[calc(100vh-64px)]"
+className="min-h-[calc(100vh-64px)] bg-[#F5F7FB]  sm:p-1"
 >
 
   <div className="mb-3">
-   <h1 className="font-bold"> OPS-DASHBOARD</h1>
+   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <h1 className="font-bold"> OPS-DASHBOARD</h1>
+
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => {
+          const nextState = !openNotifications;
+          setOpenNotifications(nextState);
+          if (!openNotifications) {
+            fetchNotifications();
+          }
+        }}
+        className="relative flex h-11 w-11 items-center justify-center rounded-2xl border border-gray-200 bg-white text-slate-700 shadow-sm transition hover:border-blue-200 hover:text-blue-600"
+      >
+        <Bell className="h-5 w-5" />
+        {notifications.length > 0 && (
+          <span className="absolute -right-1 -top-1 min-w-[1.25rem] rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+            {unreadCount || notifications.length}
+          </span>
+        )}
+      </button>
+
+      {openNotifications && (
+        <div className="absolute right-0 top-14 z-20 w-[min(92vw,24rem)] rounded-3xl border border-gray-200 bg-white p-4 shadow-2xl">
+          <div className="mb-3 flex items-center">
+            <div>
+              <p className="text-sm font-semibold text-gray-900">Ops Notifications</p>
+              <p className="text-xs text-gray-500">Client approvals and next invoice actions</p>
+            </div>
+            {notifications.length > 0 && (
+              <button
+                type="button"
+                onClick={handleClearAll}
+                className="ml-auto text-xs font-medium text-blue-600"
+              >
+                Clear all
+              </button>
+            )}
+          </div>
+
+          {loadingNotifications ? (
+            <div className="rounded-2xl bg-slate-50 px-4 py-6 text-center text-xs text-gray-500">
+              Loading notifications...
+            </div>
+          ) : notifications.length === 0 ? (
+            <div className="rounded-2xl bg-slate-50 px-4 py-6 text-center text-xs text-gray-500">
+              No ops notifications right now.
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {notifications.map((notification) => (
+                <button
+                  type="button"
+                  key={notification._id}
+                  onClick={() => handleOpenNotification(notification)}
+                  className="w-full rounded-2xl border border-gray-100 bg-slate-50 px-4 py-3 text-left transition hover:border-blue-200 hover:bg-blue-50"
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="mt-1 h-2.5 w-2.5 rounded-full bg-indigo-500" />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-semibold text-gray-900">{notification.title}</p>
+                      <p className="mt-1 text-xs leading-5 text-gray-600">{notification.message}</p>
+                    </div>
+                    <span
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        handleDismiss(notification._id);
+                      }}
+                      className="rounded-full p-1 text-gray-400 hover:bg-white hover:text-gray-700"
+                    >
+                      <X className="h-4 w-4" />
+                    </span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+   </div>
   </div> 
 
 {/* ACCESS LEVEL CARD */}
@@ -114,7 +252,7 @@ variants={{
     transition: { staggerChildren: 0.18 }
   }
 }}
-className="grid grid-cols-4 gap-3 mb-6 "
+className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4"
 >
 
 <StatCard
@@ -151,7 +289,7 @@ danger
 
 {/* BOTTOM SECTION */}
 
-<div className="grid grid-cols-3 gap-6">
+<div className="grid gap-6 xl:grid-cols-3">
   <RecentActivity />
   <TeamPerformance />
 </div>
@@ -249,7 +387,7 @@ time: "2 hrs ago",
 
 return (
 
-<div className="col-span-2 bg-white rounded-xl border border-gray-200 p-6 shadow-md">
+<div className="bg-white rounded-xl border border-gray-200 p-4 shadow-md sm:p-6 xl:col-span-2">
 
 <h3 className="font-bold text-[#0F172A] mb-4">
 Recent Activity

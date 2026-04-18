@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import image from "../../../src/assets/Image (Luxury Travel).svg";
 import logo from "../../assets/logo img.png";
-import { ArrowRight, Eye, EyeOff } from "lucide-react";
+import { ArrowRight, Eye, EyeOff, Lock, Mail, User } from "lucide-react";
 import API from "../../utils/Api.js";
 import CompanyDetails from "./CompanyDetails.jsx";
 import KYCVerification from "./KYCVerification.jsx";
@@ -129,7 +129,7 @@ export default function Register() {
                     <img
                       src={logo}
                       alt="Logo"
-                      className="w-25 h-25 object-contain absolute top-5 left-3 animate-softBounce"
+                      className="w-25 h-25 object-contain absolute top-5 left-3"
                     />
                   </div>
 
@@ -142,7 +142,7 @@ export default function Register() {
                     </p>
 
                     <form
-                      className="space-y-2 relative"
+                      className="space-y-4 relative"
                       onSubmit={(e) => {
                         e.preventDefault();
 
@@ -156,39 +156,46 @@ export default function Register() {
                         <label className="text-md font-semibold">
                           Full Name <span className="text-red-700">*</span>
                         </label>
-                        <input
-                          type="text"
-                          placeholder="John Doe"
-                          onChange={(e) =>
-                            setForm({ ...form, name: e.target.value })
-                          }
-                          className="w-full mt-1 px-4 py-2 border border-gray-300 rounded-2xl focus:outline-none "
-                        />
+                        <div className="relative mt-1">
+                          <User className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                          <input
+                            type="text"
+                            placeholder="John Doe"
+                            onChange={(e) =>
+                              setForm({ ...form, name: e.target.value })
+                            }
+                            className="w-full rounded-2xl border border-gray-300 py-2 pl-11 pr-4 focus:outline-none"
+                          />
+                        </div>
                       </div>
                       <div>
                         <label className="text-md font-semibold">
                           Email <span className="text-red-700">*</span>
                         </label>
-                        <input
-                          type="email"
-                          placeholder="client@agency.com"
-                          onChange={(e) =>
-                            setForm({ ...form, email: e.target.value })
-                          }
-                          className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-2xl focus:outline-none "
-                        />
+                        <div className="relative mt-1">
+                          <Mail className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                          <input
+                            type="email"
+                            placeholder="client@agency.com"
+                            onChange={(e) =>
+                              setForm({ ...form, email: e.target.value })
+                            }
+                            className="w-full rounded-2xl border border-gray-300 py-2 pl-11 pr-4 focus:outline-none"
+                          />
+                        </div>
                       </div>
                       <div className="relative">
                         <label className="text-md font-semibold">
                           Password <span className="text-red-700">*</span>
                         </label>
+                        <Lock className="pointer-events-none absolute left-4 top-[calc(50%+14px)] h-4 w-4 -translate-y-1/2 text-gray-400" />
                         <input
                           type={showPassword ? "text" : "password"}
                           placeholder="************"
                           onChange={(e) =>
                             setForm({ ...form, password: e.target.value })
                           }
-                          className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-2xl focus:outline-none  "
+                          className="w-full mt-1 rounded-2xl border border-gray-300 py-2 pl-11 pr-11 focus:outline-none"
                         />
                         <span
                           className="absolute top-9 right-5 cursor-pointer"

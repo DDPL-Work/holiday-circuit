@@ -93,7 +93,7 @@ const handleDownload = async (id, fileName) => {
 
   return (
 
-    <div className="p-4 bg-gray-50 min-h-screen">
+    <div className="p- bg-gray-50 min-h-screen">
 
       {/* HEADER */}
       {/* <div className="flex justify-between items-start mb-7">
@@ -113,7 +113,7 @@ const handleDownload = async (id, fileName) => {
       </div> */}
 
       {/* TITLE + BUTTONS */}
-      <div className="flex justify-between items-center mb-7 sticky top-0 bg-gray-50 z-20 p-4">
+      <div className="flex justify-between items-center mb-7 sticky top-0 bg-gray-50 z-20 p-">
   <div>
     <h2 className="text-lg font-bold text-gray-800">
       Contracted Rates & Inventory
