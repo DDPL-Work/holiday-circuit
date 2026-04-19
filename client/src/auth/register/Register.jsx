@@ -227,7 +227,6 @@ export default function Register() {
                 </div>
               </div>
 
-
               {/* ================= STEP 2 ================= */}
               <div className="w-1/4 shrink-0 flex justify-center px-2 sm:px-0">
                 <CompanyDetails
@@ -264,5 +263,3 @@ export default function Register() {
     </div>
   );
 }
-
-
