@@ -15,6 +15,7 @@ import {
   passToAdmin,
   rejectQueryByOps,
   reviewTravelerDocumentsByOps,
+  saveQuotationDraft,
   reviseQuotation,
   searchServices,
   sendQuotation,
@@ -46,6 +47,7 @@ router.patch("/queries/start-quotation/:id", isAuthenticated, startQuotation);
 router.patch("/queries/send-quotation/:id", isAuthenticated, sendQuotation);
 router.patch("/queries/pass-admin/:id", isAuthenticated, passToAdmin);
 router.get("/queries/:queryId/quotation-draft", isAuthenticated, getOrCreateQuotationDraft);
+router.put("/quotations/:quotationId/draft", isAuthenticated, saveQuotationDraft);
 router.post("/quotations/:quotationId/services", isAuthenticated, addQuotationService);
 router.delete("/quotations/:quotationId/services/:serviceId", isAuthenticated, deleteQuotationService);
 

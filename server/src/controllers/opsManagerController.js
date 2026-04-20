@@ -833,6 +833,41 @@ const buildQueryRows = (queries = []) =>
       agentStatus: query?.agentStatus || "",
       quotationStatus: query?.quotationStatus || "",
       createdAt: query?.createdAt || null,
+      builderState: {
+        _id: query?._id || null,
+        queryId: query?.queryId || "",
+        destination: query?.destination || "",
+        customerBudget: Number(query?.customerBudget || 0),
+        startDate: query?.startDate || null,
+        endDate: query?.endDate || null,
+        numberOfAdults: Number(query?.numberOfAdults || 0),
+        numberOfChildren: Number(query?.numberOfChildren || 0),
+        hotelCategory: query?.hotelCategory || "",
+        transportRequired: Boolean(query?.transportRequired),
+        sightseeingRequired: Boolean(query?.sightseeingRequired),
+        specialRequirements: query?.specialRequirements || "",
+        opsStatus: query?.opsStatus || "",
+        agentStatus: query?.agentStatus || "",
+        quotationStatus: query?.quotationStatus || "",
+        reassignmentHistory: Array.isArray(query?.reassignmentHistory) ? query.reassignmentHistory : [],
+        agent: query?.agent
+          ? {
+              _id: query.agent._id || null,
+              id: query.agent._id || null,
+              name: query.agent.name || "",
+              companyName: query.agent.companyName || "",
+              email: query.agent.email || "",
+            }
+          : null,
+        assignedTo: query?.assignedTo
+          ? {
+              _id: query.assignedTo._id || null,
+              id: query.assignedTo._id || null,
+              name: query.assignedTo.name || "",
+              email: query.assignedTo.email || "",
+            }
+          : null,
+      },
     };
   });
 
@@ -1150,7 +1185,7 @@ export const getOperationManagerQueries = async (req, res, next) => {
     const teamMembers = await getManagedTeamMembers(req);
     const teamIds = teamMembers.map((member) => member._id);
     const queries = await getManagedTeamQueries(teamIds, {
-      select: "queryId destination customerBudget createdAt startDate endDate quotationStatus agentStatus opsStatus activityLog assignedTo",
+      select: "queryId destination customerBudget createdAt startDate endDate quotationStatus agentStatus opsStatus activityLog assignedTo numberOfAdults numberOfChildren hotelCategory transportRequired sightseeingRequired specialRequirements reassignmentHistory agent",
       populate: [
         { path: "agent", select: "name companyName email" },
         { path: "assignedTo", select: "name email" },

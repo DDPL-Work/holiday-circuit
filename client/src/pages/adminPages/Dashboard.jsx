@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import { Activity, AlertCircle, BookOpen, Check, FileText, Loader2, ReceiptText, Send, UserRound, X } from "lucide-react";
 import API from "../../utils/Api";
@@ -180,6 +181,7 @@ function EmptyState({ message }) {
 }
 
 export default function Dashboard() {
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("Overview");
   const [visible, setVisible] = useState("Overview");
   const [animating, setAnimating] = useState(false);
@@ -231,6 +233,15 @@ export default function Dashboard() {
   const handleCloseReplyModal = () => {
     setSelectedEscalation(null);
     setReplyText("");
+  };
+
+  const openQuotationBuilder = (query) => {
+    if (!query?.builderState?._id) {
+      toast.error("Query details are incomplete for quotation editing.");
+      return;
+    }
+
+    navigate("/ops/quotation-builder", { state: query.builderState });
   };
 
   const handleSubmitReply = async () => {
@@ -445,6 +456,13 @@ export default function Dashboard() {
                           </div>
                           <div className="flex items-center gap-3">
                             <span className="whitespace-nowrap text-xs text-gray-400">{query.time}</span>
+                            <button
+                              onClick={() => openQuotationBuilder(query)}
+                              className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 transition hover:bg-blue-100"
+                            >
+                              <FileText size={12} />
+                              Open Builder
+                            </button>
                             {query.adminCoordinationStatus === "pending_admin_reply" ? (
                               <button
                                 onClick={() => handleOpenReplyModal(query)}

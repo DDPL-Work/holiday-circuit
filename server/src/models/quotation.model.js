@@ -68,6 +68,9 @@ const quotationSchema = new mongoose.Schema(
       // 🔹 DESCRIPTION
       description: String,
       serviceDate: Date,
+      roomCategory: String,
+      roomType: String,
+      hotelCategory: String,
 
       // ================= HOTEL =================
       adults: { type: Number, default: 0 },
@@ -118,6 +121,36 @@ const quotationSchema = new mongoose.Schema(
       },
 
       priceInInr: {
+        type: Number,
+        default: 0
+      },
+
+      extraAdult: {
+        type: Boolean,
+        default: false
+      },
+
+      childWithBed: {
+        type: Boolean,
+        default: false
+      },
+
+      childWithoutBed: {
+        type: Boolean,
+        default: false
+      },
+
+      awebRate: {
+        type: Number,
+        default: 0
+      },
+
+      cwebRate: {
+        type: Number,
+        default: 0
+      },
+
+      cwoebRate: {
         type: Number,
         default: 0
       },

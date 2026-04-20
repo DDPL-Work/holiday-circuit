@@ -921,6 +921,7 @@ export const getAdminDashboardData = async (req, res, next) => {
     const [queries, agents, managedUsers, vouchers, invoices, internalInvoices, confirmations] = await Promise.all([
       TravelQuery.find()
         .populate("agent", "name companyName email")
+        .populate("assignedTo", "name email")
         .sort({ updatedAt: -1, createdAt: -1 })
         .lean(),
       Auth.find({ role: "agent" }).select("name companyName").lean(),
@@ -1169,6 +1170,41 @@ export const getAdminDashboardData = async (req, res, next) => {
           opsEscalationBy: String(query.adminCoordination?.lastOpsMessageByName || "").trim(),
           opsEscalationAt: query.adminCoordination?.lastOpsMessageAt || null,
           opsStatusLabel: getOpsStageLabel(query.opsStatus),
+          builderState: {
+            _id: query?._id || null,
+            queryId: query?.queryId || "",
+            destination: query?.destination || "",
+            customerBudget: Number(query?.customerBudget || 0),
+            startDate: query?.startDate || null,
+            endDate: query?.endDate || null,
+            numberOfAdults: Number(query?.numberOfAdults || 0),
+            numberOfChildren: Number(query?.numberOfChildren || 0),
+            hotelCategory: query?.hotelCategory || "",
+            transportRequired: Boolean(query?.transportRequired),
+            sightseeingRequired: Boolean(query?.sightseeingRequired),
+            specialRequirements: query?.specialRequirements || "",
+            opsStatus: query?.opsStatus || "",
+            agentStatus: query?.agentStatus || "",
+            quotationStatus: query?.quotationStatus || "",
+            reassignmentHistory: Array.isArray(query?.reassignmentHistory) ? query.reassignmentHistory : [],
+            agent: query?.agent
+              ? {
+                  _id: query.agent._id || null,
+                  id: query.agent._id || null,
+                  name: query.agent.name || "",
+                  companyName: query.agent.companyName || "",
+                  email: query.agent.email || "",
+                }
+              : null,
+            assignedTo: query?.assignedTo
+              ? {
+                  _id: query.assignedTo._id || null,
+                  id: query.assignedTo._id || null,
+                  name: query.assignedTo.name || "",
+                  email: query.assignedTo.email || "",
+                }
+              : null,
+          },
         };
       });
 

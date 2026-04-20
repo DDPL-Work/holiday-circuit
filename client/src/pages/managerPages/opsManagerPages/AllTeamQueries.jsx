@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { useSelector } from "react-redux";
 import { motion, AnimatePresence } from "framer-motion";
+import { useNavigate } from "react-router-dom";
 import API from "../../../utils/Api";
 
 const statusStyles = {
@@ -262,6 +263,7 @@ function NoteModal({ query, onClose, onSaveNote }) {
 
 export default function AllTeamQueries() {
   const user = useSelector((state) => state.auth.user);
+  const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [selected, setSelected] = useState(null);
@@ -294,6 +296,15 @@ export default function AllTeamQueries() {
   useEffect(() => {
     loadQueries();
   }, []);
+
+  const openQuotationBuilder = (query) => {
+    if (!query?.builderState?._id) {
+      toast.error("Query details are incomplete for quotation editing");
+      return;
+    }
+
+    navigate("/ops/quotation-builder", { state: query.builderState });
+  };
 
   const handleSubmitReport = async () => {
     try {
@@ -532,6 +543,15 @@ export default function AllTeamQueries() {
                                 }`}
                                 onClick={(e) => e.stopPropagation()}
                               >
+                                <button
+                                  onClick={() => {
+                                    setMenuOpenId(null);
+                                    openQuotationBuilder(query);
+                                  }}
+                                  className="w-full text-left px-4 py-2 text-xs font-medium text-blue-700 hover:bg-blue-50 transition"
+                                >
+                                  Open Builder
+                                </button>
                                 <button
                                   onClick={() => { setMenuOpenId(null); setNoteOpen(query); }}
                                   className="w-full text-left px-4 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 transition"
