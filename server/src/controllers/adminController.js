@@ -1,6 +1,6 @@
 import Auth from "../models/auth.model.js";
 import ApiError from "../utils/ApiError.js";
-import TravelQuery from "../models/TravalQuery.model.js";
+import TravelQuery from "../models/TravelQuery.model.js";
 import RateContract from "../models/rateContract.model.js"
 import Invoice from "../models/invoice.model.js"
 import InternalInvoice from "../models/internalInvoice.model.js";

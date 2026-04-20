@@ -1,5 +1,5 @@
 import ApiError from "../utils/ApiError.js";
-import TravelQuery from "../models/TravalQuery.model.js";
+import TravelQuery from "../models/TravelQuery.model.js";
 import Quotation from "../models/quotation.model.js";
 import Invoice from "../models/invoice.model.js";
 import Counter from "../models/counter.model.js"

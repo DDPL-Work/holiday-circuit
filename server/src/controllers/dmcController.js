@@ -8,7 +8,7 @@ import InternalInvoice from "../models/internalInvoice.model.js";
 import Auth from "../models/auth.model.js";
 import Notification from "../models/notification.model.js";
 import UploadHistory from "../models/uploadHistory.model.js" 
-import TravelQuery from "../models/TravalQuery.model.js";
+import TravelQuery from "../models/TravelQuery.model.js";
 import Quotation from "../models/quotation.model.js";
 import ApiError from "../utils/ApiError.js";
 import mongoose from "mongoose";
