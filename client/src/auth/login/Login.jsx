@@ -357,7 +357,7 @@ const Login = () => {
                       className="h-25 w-25 object-contain select-none absolute top-5 left-0.5"
                     />
                   </motion.div>
-                  <h2 className="text-3xl font-bold text-gray-800">Welcome back, Agent</h2>
+                  <h2 className="text-3xl font-bold text-gray-800">Welcome back</h2>
                   <p className="mb-6 mt-2 text-gray-500">
                     Enter your agent credentials to access your dashboard
                   </p>

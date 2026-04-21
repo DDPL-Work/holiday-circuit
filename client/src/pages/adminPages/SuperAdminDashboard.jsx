@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useSelector } from "react-redux";
 import { AnimatePresence, motion } from "framer-motion";
 import toast from "react-hot-toast";
@@ -364,6 +364,7 @@ const CustomTooltipBlue = ({ active, payload, label }) => {
 };
 
 export default function SuperAdminDashboard() {
+  const navigate = useNavigate();
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
   const [agentApprovalRows, setAgentApprovalRows] = useState([]);
   const [agentApprovalSummary, setAgentApprovalSummary] = useState({ pending: 0, approved: 0, rejected: 0 });
@@ -640,6 +641,15 @@ export default function SuperAdminDashboard() {
   const closeEscalationDialog = () => {
     setSelectedEscalation(null);
     setEscalationReply("");
+  };
+
+  const openQuotationBuilder = (query) => {
+    if (!query?.builderState?._id) {
+      toast.error("Query details are incomplete for quotation editing.");
+      return;
+    }
+
+    navigate("/ops/quotation-builder", { state: query.builderState });
   };
 
   const handleSubmitEscalationReply = async () => {
@@ -1389,6 +1399,14 @@ export default function SuperAdminDashboard() {
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                       <span style={{ fontSize: 11, color: "#94a3b8" }}>{entry.time}</span>
+                      <button
+                        type="button"
+                        onClick={() => openQuotationBuilder(entry)}
+                        style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 12px", borderRadius: 8, border: "1px solid #bfdbfe", background: "#eff6ff", color: "#1d4ed8", fontSize: 12, fontWeight: 600, cursor: "pointer", transition: "0.2s" }}
+                      >
+                        <FileText size={12} />
+                        Open Builder
+                      </button>
                       <button
                         type="button"
                         onClick={() => { setSelectedEscalation(entry); setEscalationReply(""); }}

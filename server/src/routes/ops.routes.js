@@ -15,6 +15,7 @@ import {
   passToAdmin,
   rejectQueryByOps,
   reviewTravelerDocumentsByOps,
+  saveQuotationDraft,
   reviseQuotation,
   searchServices,
   sendQuotation,
@@ -25,6 +26,7 @@ import {
 import {
   createOperationTeamMember,
   getOperationManagerDashboard,
+  getOperationManagerQueryQuotations,
   getOperationManagerQueries,
   getOperationManagerReassignPreview,
   getOperationManagerReassignmentDetails,
@@ -46,6 +48,7 @@ router.patch("/queries/start-quotation/:id", isAuthenticated, startQuotation);
 router.patch("/queries/send-quotation/:id", isAuthenticated, sendQuotation);
 router.patch("/queries/pass-admin/:id", isAuthenticated, passToAdmin);
 router.get("/queries/:queryId/quotation-draft", isAuthenticated, getOrCreateQuotationDraft);
+router.put("/quotations/:quotationId/draft", isAuthenticated, saveQuotationDraft);
 router.post("/quotations/:quotationId/services", isAuthenticated, addQuotationService);
 router.delete("/quotations/:quotationId/services/:serviceId", isAuthenticated, deleteQuotationService);
 
@@ -63,6 +66,7 @@ router.patch("/vouchers/:id/send", isAuthenticated, sendVoucherToAgent);
 
 router.get("/manager/dashboard", isAuthenticated, getOperationManagerDashboard);
 router.get("/manager/queries", isAuthenticated, getOperationManagerQueries);
+router.get("/manager/queries/:queryId/quotations", isAuthenticated, getOperationManagerQueryQuotations);
 router.get("/manager/reassign-preview/:userId", isAuthenticated, getOperationManagerReassignPreview);
 router.get("/manager/reassignments/:userId", isAuthenticated, getOperationManagerReassignmentDetails);
 router.post("/manager/team", isAuthenticated, createOperationTeamMember);

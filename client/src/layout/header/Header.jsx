@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSelector } from "react-redux";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { Bell, CheckCircle2, AlertCircle, Info, Menu, X } from "lucide-react";
 import logo from "../../assets/logo img.png";
 import API from "../../utils/Api";
 
 const Header = ({ onMenuToggle }) => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useSelector((state) => state.auth);
+  const isQuotationBuilder = location.pathname === "/ops/quotation-builder";
   const canViewNotifications =
     user?.role === "admin" || user?.role === "operation_manager" || user?.role === "finance_manager";
 
@@ -183,11 +185,30 @@ const Header = ({ onMenuToggle }) => {
             </button>
 
             {openNotifications ? (
-              <div className="absolute right-0 top-12 z-50 w-[min(92vw,26rem)] overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
-                <div className="flex items-start gap-3 border-b border-slate-100 bg-gradient-to-br from-slate-50 via-white to-white px-4 py-3">
+              <div
+                className={`absolute right-0 top-12 z-50 w-[min(92vw,26rem)] overflow-hidden rounded-3xl border shadow-2xl ${
+                  isQuotationBuilder ? "" : "border-slate-200 bg-white"
+                }`}
+                style={isQuotationBuilder ? {
+                  background: "linear-gradient(135deg, rgba(15,23,42,0.72) 0%, rgba(30,41,59,0.58) 100%)",
+                  borderColor: "rgba(255,255,255,0.16)",
+                  backdropFilter: "blur(24px)",
+                  WebkitBackdropFilter: "blur(24px)",
+                  boxShadow: "0 24px 80px rgba(2,6,23,0.42), inset 0 1px 0 rgba(255,255,255,0.12)",
+                } : undefined}
+              >
+                <div
+                  className={`flex items-start gap-3 border-b px-4 py-3 ${
+                    isQuotationBuilder ? "" : "border-slate-100 bg-gradient-to-br from-slate-50 via-white to-white"
+                  }`}
+                  style={isQuotationBuilder ? {
+                    borderColor: "rgba(255,255,255,0.08)",
+                    background: "linear-gradient(180deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.03) 100%)",
+                  } : undefined}
+                >
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-semibold text-slate-900">Executive Alerts</p>
-                      <p className="mt-0.5 text-xs text-slate-500">
+                    <p className={`text-sm font-semibold ${isQuotationBuilder ? "text-white" : "text-slate-900"}`}>Executive Alerts</p>
+                      <p className={`mt-0.5 text-xs ${isQuotationBuilder ? "text-slate-300" : "text-slate-500"}`}>
                         {user?.role === "admin"
                           ? "Approvals and platform alerts for the admin desk"
                           : "Important updates for Ops and Finance managers"}
@@ -196,7 +217,15 @@ const Header = ({ onMenuToggle }) => {
                   <button
                     type="button"
                     onClick={() => setOpenNotifications(false)}
-                    className="flex h-9 w-9 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50"
+                    className={`flex h-9 w-9 items-center justify-center rounded-2xl border transition ${
+                      isQuotationBuilder
+                        ? "text-slate-200 hover:text-white"
+                        : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
+                    }`}
+                    style={isQuotationBuilder ? {
+                      borderColor: "rgba(255,255,255,0.14)",
+                      background: "rgba(255,255,255,0.05)",
+                    } : undefined}
                     aria-label="Close notifications"
                     title="Close"
                   >
@@ -205,13 +234,27 @@ const Header = ({ onMenuToggle }) => {
                 </div>
 
                 <div className="flex items-center gap-2 px-4 py-3">
-                  <div className="flex items-center gap-1 rounded-2xl bg-slate-100 p-1">
+                  <div
+                    className="flex items-center gap-1 rounded-2xl p-1"
+                    style={isQuotationBuilder ? { background: "rgba(255,255,255,0.08)" } : { background: "#f1f5f9" }}
+                  >
                     <button
                       type="button"
                       onClick={() => setFilterMode("all")}
                       className={`rounded-xl px-3 py-1 text-xs font-semibold transition ${
-                        filterMode === "all" ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900"
+                        filterMode === "all"
+                          ? isQuotationBuilder
+                            ? "text-white shadow-sm"
+                            : "bg-white text-slate-900 shadow-sm"
+                          : isQuotationBuilder
+                            ? "text-slate-300 hover:text-white"
+                            : "text-slate-600 hover:text-slate-900"
                       }`}
+                      style={
+                        filterMode === "all" && isQuotationBuilder
+                          ? { background: "rgba(255,255,255,0.14)" }
+                          : undefined
+                      }
                     >
                       All
                     </button>
@@ -220,9 +263,18 @@ const Header = ({ onMenuToggle }) => {
                       onClick={() => setFilterMode("important")}
                       className={`rounded-xl px-3 py-1 text-xs font-semibold transition ${
                         filterMode === "important"
-                          ? "bg-white text-slate-900 shadow-sm"
-                          : "text-slate-600 hover:text-slate-900"
+                          ? isQuotationBuilder
+                            ? "text-white shadow-sm"
+                            : "bg-white text-slate-900 shadow-sm"
+                          : isQuotationBuilder
+                            ? "text-slate-300 hover:text-white"
+                            : "text-slate-600 hover:text-slate-900"
                       }`}
+                      style={
+                        filterMode === "important" && isQuotationBuilder
+                          ? { background: "rgba(255,255,255,0.14)" }
+                          : undefined
+                      }
                       title="Only warning notifications"
                     >
                       Important{importantCount ? ` (${importantCount})` : ""}
@@ -233,7 +285,9 @@ const Header = ({ onMenuToggle }) => {
                     <button
                       type="button"
                       onClick={markAllRead}
-                      className="ml-auto text-xs font-semibold text-blue-600 hover:text-blue-700"
+                      className={`ml-auto text-xs font-semibold ${
+                        isQuotationBuilder ? "text-sky-300 hover:text-sky-200" : "text-blue-600 hover:text-blue-700"
+                      }`}
                     >
                       Mark all read
                     </button>
@@ -242,11 +296,21 @@ const Header = ({ onMenuToggle }) => {
 
                 <div className="max-h-[360px] overflow-y-auto p-4 pt-0 custom-scroll">
                   {loadingNotifications ? (
-                    <div className="rounded-2xl bg-slate-50 px-4 py-6 text-center text-xs text-slate-500">
+                    <div
+                      className={`rounded-2xl px-4 py-6 text-center text-xs ${
+                        isQuotationBuilder ? "text-slate-300" : "bg-slate-50 text-slate-500"
+                      }`}
+                      style={isQuotationBuilder ? { background: "rgba(255,255,255,0.06)" } : undefined}
+                    >
                       Loading notifications...
                     </div>
                   ) : visibleNotifications.length === 0 ? (
-                    <div className="rounded-2xl bg-slate-50 px-4 py-6 text-center text-xs text-slate-500">
+                    <div
+                      className={`rounded-2xl px-4 py-6 text-center text-xs ${
+                        isQuotationBuilder ? "text-slate-300" : "bg-slate-50 text-slate-500"
+                      }`}
+                      style={isQuotationBuilder ? { background: "rgba(255,255,255,0.06)" } : undefined}
+                    >
                       No notifications right now.
                     </div>
                   ) : (
@@ -263,22 +327,35 @@ const Header = ({ onMenuToggle }) => {
                             type="button"
                             key={notification._id}
                             onClick={() => openNotification(notification)}
-                            className={`w-full rounded-2xl border px-4 py-3 text-left transition hover:border-blue-200 hover:bg-blue-50 ${
-                              notification?.isRead ? "border-slate-100 bg-slate-50" : "border-blue-100 bg-white"
+                            className={`w-full rounded-2xl border px-4 py-3 text-left transition ${
+                              isQuotationBuilder ? "" : notification?.isRead ? "border-slate-100 bg-slate-50" : "border-blue-100 bg-white hover:border-blue-200 hover:bg-blue-50"
                             }`}
+                            style={isQuotationBuilder ? {
+                              borderColor: notification?.isRead
+                                ? "rgba(255,255,255,0.08)"
+                                : "rgba(125,211,252,0.3)",
+                              background: notification?.isRead
+                                ? "rgba(255,255,255,0.04)"
+                                : "rgba(255,255,255,0.1)",
+                            } : undefined}
                           >
                             <div className="flex items-start gap-3">
-                              <div className="mt-0.5 flex h-9 w-9 items-center justify-center rounded-2xl bg-white shadow-sm">
+                              <div
+                                className={`mt-0.5 flex h-9 w-9 items-center justify-center rounded-2xl shadow-sm ${
+                                  isQuotationBuilder ? "" : "bg-white"
+                                }`}
+                                style={isQuotationBuilder ? { background: "rgba(255,255,255,0.14)" } : undefined}
+                              >
                                 <Icon className={`h-4 w-4 ${iconClass}`} />
                               </div>
                               <div className="min-w-0 flex-1">
                                 <div className="flex items-start gap-2">
                                   <div className={`mt-1.5 h-2 w-2 rounded-full ${dot}`} />
                                   <div className="min-w-0 flex-1">
-                                    <p className="truncate text-xs font-semibold text-slate-900">
+                                    <p className={`truncate text-xs font-semibold ${isQuotationBuilder ? "text-white" : "text-slate-900"}`}>
                                       {notification?.title || "Notification"}
                                     </p>
-                                    <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-600">
+                                    <p className={`mt-1 line-clamp-2 text-xs leading-5 ${isQuotationBuilder ? "text-slate-300" : "text-slate-600"}`}>
                                       {notification?.message || ""}
                                     </p>
                                     {timeLabel ? (
@@ -292,7 +369,10 @@ const Header = ({ onMenuToggle }) => {
                                   event.stopPropagation();
                                   dismissNotification(notification._id);
                                 }}
-                                className="rounded-full p-1 text-slate-400 hover:bg-white hover:text-slate-700"
+                                className={`rounded-full p-1 text-slate-400 ${
+                                  isQuotationBuilder ? "hover:text-white" : "hover:bg-white hover:text-slate-700"
+                                }`}
+                                style={isQuotationBuilder ? { background: "rgba(255,255,255,0.04)" } : undefined}
                                 title="Dismiss"
                                 role="button"
                               >

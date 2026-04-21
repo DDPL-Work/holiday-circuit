@@ -265,7 +265,7 @@ export default function OpsTeamLoginModal({ open, onClose }) {
             animate="visible"
             exit="exit"
           >
-            {/* ✅ max-h-[90vh] + overflow-y-auto: modal kabhi screen se bada nahi hoga */}
+            {/* ✅ max-h-[90vh] + overflow-y-auto:*/}
             <motion.div
               variants={modalVariant}
               className="relative w-full max-w-md rounded-[25px] border border-white/70 bg-white p-5 shadow-[0_32px_90px_rgba(15,23,42,0.25)] sm:p-6 max-h-[90vh] overflow-y-auto"
@@ -277,7 +277,7 @@ export default function OpsTeamLoginModal({ open, onClose }) {
                 x
               </button>
 
-              {/* ✅ Logo size thodi kam, h-12 */}
+              {/* ✅ Logo size h-12 */}
               <div className="flex justify-center">
                 <img src={logo} alt="Holiday Circuit" className="h-12 " />
               </div>

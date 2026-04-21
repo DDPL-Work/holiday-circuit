@@ -107,7 +107,7 @@ export default function BookingManagementHub() {
     },
     Revision_Requested: {
       color: "bg-rose-100 text-rose-700",
-      label: "Revision Requested",
+      label: "Quotation Rejected",
       icon: <FileText className="h-3 w-3" />,
     },
     Booking_Accepted: {
@@ -117,7 +117,7 @@ export default function BookingManagementHub() {
     },
     Invoice_Requested: {
       color: "bg-indigo-100 text-indigo-700",
-      label: "Finance Pending",
+      label: "Amount Pending",
       icon: <FileText className="h-3 w-3" />,
     },
     Confirmed: {
@@ -183,9 +183,9 @@ export default function BookingManagementHub() {
             <option value="All">All Status</option>
             <option value="Received_Query">Received Query</option>
             <option value="Pending_Accept">Pending</option>
-            <option value="Revision_Requested">Revision Requested</option>
+            <option value="Revision_Requested">Quotation Rejected</option>
             <option value="Booking_Accepted">Booking Accepted</option>
-            <option value="Invoice_Requested">Finance Pending</option>
+            <option value="Invoice_Requested">Amount Pending</option>
             <option value="Confirmed">Confirmed</option>
             <option value="Vouchered">Vouchered</option>
           </select>
@@ -299,7 +299,7 @@ export default function BookingManagementHub() {
                         <td className="px-3 py-4 align-middle text-center text-gray-400">{row.pax}</td>
 
                         <td className="px-3 py-4 align-middle text-center">
-                          <span className={`inline-flex min-w-[112px] items-center justify-center gap-1 rounded-full px-2 py-1 text-xs ${status.color}`}>
+                          <span className={`inline-flex h-9 min-w-[156px] items-center justify-center gap-1.5 whitespace-nowrap rounded-full px-3 text-xs font-medium leading-none ${status.color}`}>
                             {status.icon}
                             {status.label}
                           </span>

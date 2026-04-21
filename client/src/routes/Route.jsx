@@ -75,7 +75,7 @@ export const appRouter = createBrowserRouter([
     ],
   },
   {
-    element: <ProtectedRoute allowedRoles={["operations", "admin"]} />,
+    element: <ProtectedRoute allowedRoles={["operations", "admin", "operation_manager"]} />,
     children: [
       {
         path: "/",
