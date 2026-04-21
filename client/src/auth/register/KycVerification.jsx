@@ -1,8 +1,9 @@
 import { Loader2, Upload } from "lucide-react";
 import { useState } from "react";
 import toast from "react-hot-toast";
+import RegisterStepper from "./RegisterStepper.jsx";
 
-export default function KycVerification({ form, setForm, next, back, submit }) {
+export default function KycVerification({ back, submit, isActive = false }) {
   const [gstCert, setGstCert] = useState(null);
   const [businessLicense, setBusinessLicense] = useState(null);
   const [uploading, setUploading] = useState({
@@ -21,10 +22,6 @@ export default function KycVerification({ form, setForm, next, back, submit }) {
     await new Promise((resolve) => setTimeout(resolve, 800));
 
     setter(file);
-    setForm({
-      ...form,
-      documents: [...(form.documents || []), file],
-    });
 
     setUploading((prev) => ({
       ...prev,
@@ -32,7 +29,7 @@ export default function KycVerification({ form, setForm, next, back, submit }) {
     }));
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (uploading.gstCert || uploading.businessLicense) {
       toast.error("Please wait for documents to finish uploading");
       return;
@@ -43,40 +40,28 @@ export default function KycVerification({ form, setForm, next, back, submit }) {
       return;
     }
 
-    toast.success("KYC documents uploaded successfully");
-    submit();
-    next();
+    const isRegistered = await submit([gstCert, businessLicense]);
+
+    if (isRegistered) {
+      toast.success("KYC documents uploaded successfully");
+    }
   };
 
   const uploadBox =
-    "rounded-xl p-6 text-center cursor-pointer hover:border-black transition";
+    "cursor-pointer rounded-xl p-6 text-center transition hover:border-black";
 
   return (
-    <div className="w-full flex items-center justify-center px-3">
-      <div className="w-full bg-white rounded-2xl p-6">
-        {/* Step Indicator */}
-        <div className="flex items-center mb-6">
-          <div className="w-8 h-8 rounded-full bg-green-500 flex items-center justify-center text-white text-sm font-semibold">
-            ✓
-          </div>
-
-          <div className="flex-1 h-1 bg-blue-900 mx-2 rounded" />
-
-          <div className="w-8 h-8 rounded-full bg-blue-900 flex items-center justify-center text-white text-sm font-semibold">
-            2
-          </div>
-        </div>
+    <div className="flex w-full items-center justify-center px-3">
+      <div className="w-full rounded-2xl bg-white p-6">
+        <RegisterStepper currentStep={3} isActive={isActive} />
 
         <h2 className="text-lg font-bold text-gray-800">KYC Verification</h2>
-        <p className="text-sm text-gray-500 mb-5">
+        <p className="mb-5 text-sm text-gray-500">
           Upload required documents to verify your business
         </p>
 
-        {/* GST Certificate */}
-        <p className="text-sm font-medium text-gray-700 mb-2">
-          GST Certificate
-        </p>
-        <div className="mb-3 border border-gray-300 rounded-2xl">
+        <p className="mb-2 text-sm font-medium text-gray-700">GST Certificate</p>
+        <div className="mb-3 rounded-2xl border border-gray-300">
           <label
             className={`${uploadBox} ${
               uploading.gstCert ? "pointer-events-none opacity-70" : ""
@@ -90,7 +75,7 @@ export default function KycVerification({ form, setForm, next, back, submit }) {
               }
             />
             {uploading.gstCert ? (
-              <Loader2 className="mx-auto mb-2 text-blue-900 animate-spin" size={18} />
+              <Loader2 className="mx-auto mb-2 animate-spin text-blue-900" size={18} />
             ) : (
               <Upload className="mx-auto mb-2 text-gray-400" size={18} />
             )}
@@ -98,20 +83,15 @@ export default function KycVerification({ form, setForm, next, back, submit }) {
               {uploading.gstCert
                 ? "Uploading GST certificate..."
                 : gstCert
-                ? gstCert.name
-                : "Drag & drop or click to upload"}
+                  ? gstCert.name
+                  : "Drag & drop or click to upload"}
             </p>
-            <p className="text-xs text-gray-400 mt-1">
-              PDF, JPG, PNG up to 10MB
-            </p>
+            <p className="mt-1 text-xs text-gray-400">PDF, JPG, PNG up to 10MB</p>
           </label>
         </div>
 
-        {/* Business License */}
-        <p className="text-sm font-medium text-gray-700 mb-2">
-          Business License
-        </p>
-        <div className="mb-3 border border-gray-300 rounded-2xl">
+        <p className="mb-2 text-sm font-medium text-gray-700">Business License</p>
+        <div className="mb-3 rounded-2xl border border-gray-300">
           <label
             className={`${uploadBox} ${
               uploading.businessLicense ? "pointer-events-none opacity-70" : ""
@@ -129,7 +109,7 @@ export default function KycVerification({ form, setForm, next, back, submit }) {
               }
             />
             {uploading.businessLicense ? (
-              <Loader2 className="mx-auto mb-2 text-blue-900 animate-spin" size={18} />
+              <Loader2 className="mx-auto mb-2 animate-spin text-blue-900" size={18} />
             ) : (
               <Upload className="mx-auto mb-2 text-gray-400" size={18} />
             )}
@@ -137,29 +117,27 @@ export default function KycVerification({ form, setForm, next, back, submit }) {
               {uploading.businessLicense
                 ? "Uploading business license..."
                 : businessLicense
-                ? businessLicense.name
-                : "Drag & drop or click to upload"}
+                  ? businessLicense.name
+                  : "Drag & drop or click to upload"}
             </p>
-            <p className="text-xs text-gray-400 mt-1">
-              PDF, JPG, PNG up to 10MB
-            </p>
+            <p className="mt-1 text-xs text-gray-400">PDF, JPG, PNG up to 10MB</p>
           </label>
         </div>
 
-        {/* Buttons */}
         <div className="flex items-center justify-between">
           <button
             type="button"
             onClick={back}
-            className="text-sm text-black hover:bg-gray-100 rounded-2xl px-2 py-1.5 cursor-pointer"
+            className="cursor-pointer rounded-2xl px-2 py-1.5 text-sm text-black hover:bg-gray-100"
           >
             ← Back
           </button>
 
           <button
+            type="button"
             onClick={handleSubmit}
             disabled={uploading.gstCert || uploading.businessLicense}
-            className="px-5 py-2 rounded-xl text-sm text-white transition cursor-pointer bg-black hover:bg-gray-900 disabled:cursor-not-allowed disabled:opacity-60"
+            className="cursor-pointer rounded-xl bg-black px-5 py-2 text-sm text-white transition hover:bg-gray-900 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {uploading.gstCert || uploading.businessLicense
               ? "Uploading..."

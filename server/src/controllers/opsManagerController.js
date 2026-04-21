@@ -3,6 +3,7 @@ import Auth from "../models/auth.model.js";
 import ApiError from "../utils/ApiError.js";
 import Notification from "../models/notification.model.js";
 import TravelQuery from "../models/TravelQuery.model.js";
+import Quotation from "../models/quotation.model.js";
 import { sendTeamMemberCredentialsMail } from "../services/sendEmail.js";
 
 const TERMINAL_OPS_STATUSES = new Set(["Rejected", "Vouchered"]);
@@ -34,6 +35,12 @@ const TEAM_DEFAULT_PERMISSIONS = ["View", "Edit", "Export", "Manage Booking"];
 const ensureOperationManagerAccess = (req) => {
   if (req.user?.role !== "operation_manager") {
     throw new ApiError(403, "Only operation managers can access this area");
+  }
+};
+
+const ensureQuotationTrackerAccess = (req) => {
+  if (!["operation_manager", "admin"].includes(req.user?.role)) {
+    throw new ApiError(403, "Only operation managers or admins can access this area");
   }
 };
 
@@ -871,6 +878,51 @@ const buildQueryRows = (queries = []) =>
     };
   });
 
+const buildQuotationHistoryRows = (quotations = [], options = {}) =>
+  quotations
+    .slice()
+    .sort(
+      (left, right) =>
+        new Date(left?.createdAt || 0).getTime() - new Date(right?.createdAt || 0).getTime(),
+    )
+    .map((quotation, index, list) => {
+      const opsAmount = Number(quotation?.pricing?.totalAmount || 0);
+      const clientAmount =
+        quotation?.clientTotalAmount === undefined || quotation?.clientTotalAmount === null
+          ? null
+          : Number(quotation.clientTotalAmount);
+      const markupAmount = Number(quotation?.agentMarkup?.markupAmount || 0);
+      const isLatest = index === list.length - 1;
+      const revisionRemark = String(quotation?.agentRevisionRemark || "").trim()
+        || (quotation?.status === "Revision Requested" && isLatest
+          ? String(options?.latestRevisionRemark || "").trim()
+          : "");
+
+      return {
+        id: String(quotation?._id || ""),
+        attemptNumber: index + 1,
+        isLatest,
+        quotationNumber: quotation?.quotationNumber || "",
+        status: quotation?.status || "Pending",
+        displayStatus: quotation?.status === "Revision Requested" ? "Rejected" : quotation?.status || "Pending",
+        quoteCategory: quotation?.pricing?.quoteCategory || "",
+        amount: formatCurrency(clientAmount ?? opsAmount),
+        amountValue: clientAmount ?? opsAmount,
+        opsAmount: formatCurrency(opsAmount),
+        clientAmount: clientAmount === null ? "" : formatCurrency(clientAmount),
+        hasMarkup: markupAmount > 0,
+        markupAmount: markupAmount > 0 ? formatCurrency(markupAmount) : "",
+        validTill: formatDateLabel(quotation?.validTill),
+        createdAt: quotation?.createdAt || null,
+        createdAtLabel: formatDateTimeLabel(quotation?.createdAt),
+        updatedAt: quotation?.updatedAt || null,
+        updatedAtLabel: formatDateTimeLabel(quotation?.updatedAt),
+        serviceCount: Array.isArray(quotation?.services) ? quotation.services.length : 0,
+        inclusionCount: Array.isArray(quotation?.inclusions) ? quotation.inclusions.length : 0,
+        agentRemark: revisionRemark,
+      };
+    });
+
 const buildReassignQueryRows = (queries = []) => {
   const categoryPriority = {
     new: 0,
@@ -1210,6 +1262,63 @@ export const getOperationManagerQueries = async (req, res, next) => {
           inProgressCount: rows.filter((item) => item.status === "In Progress").length,
           quotedCount: rows.filter((item) => item.status === "Quoted").length,
           overdueCount: rows.filter((item) => item.status === "Overdue").length,
+        },
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getOperationManagerQueryQuotations = async (req, res, next) => {
+  try {
+    ensureQuotationTrackerAccess(req);
+
+    const queryId = String(req.params?.queryId || "").trim();
+    if (!queryId) {
+      return next(new ApiError(400, "Query id is required"));
+    }
+
+    const query =
+      req.user?.role === "admin"
+        ? await TravelQuery.findById(queryId).select("_id queryId rejectionNote")
+        : await (async () => {
+            const teamMembers = await getManagedTeamMembers(req);
+            const teamIds = teamMembers.map((member) => member._id);
+
+            return TravelQuery.findOne({
+              _id: queryId,
+              assignedTo: { $in: teamIds },
+            }).select("_id queryId rejectionNote");
+          })();
+
+    if (!query) {
+      return next(
+        new ApiError(
+          404,
+          req.user?.role === "admin" ? "Query not found" : "Query not found in your team",
+        ),
+      );
+    }
+
+    const quotations = await Quotation.find({ queryId: query._id })
+      .select(
+        "quotationNumber status pricing.totalAmount pricing.quoteCategory clientTotalAmount validTill services inclusions agentMarkup agentRevisionRemark createdAt updatedAt",
+      )
+      .sort({ createdAt: 1 });
+
+    const rows = buildQuotationHistoryRows(quotations, {
+      latestRevisionRemark: query?.rejectionNote || "",
+    });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        queryId: query.queryId || "",
+        quotations: rows,
+        summary: {
+          totalQuotations: rows.length,
+          latestStatus: rows[rows.length - 1]?.status || "",
         },
       },
     });

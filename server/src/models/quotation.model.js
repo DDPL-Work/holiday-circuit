@@ -8,6 +8,11 @@ const quotationSchema = new mongoose.Schema(
     required: true
   },
 
+  sourceQuotationId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Quotation"
+  },
+
   quotationNumber: {
     type: String,
     unique: true,
@@ -265,6 +270,11 @@ const quotationSchema = new mongoose.Schema(
 
   clientTotalAmount: {
     type: Number
+  },
+
+  agentRevisionRemark: {
+    type: String,
+    default: ""
   },
 
   validTill: {

@@ -857,7 +857,15 @@ const QuotationBuilder = () => {
       try {
         if (!order?._id) return;
 
-        const { data } = await API.get(`/ops/queries/${order._id}/quotation-draft`);
+        const requestConfig = order?.editQuotationId
+          ? {
+              params: {
+                sourceQuotationId: order.editQuotationId,
+              },
+            }
+          : undefined;
+
+        const { data } = await API.get(`/ops/queries/${order._id}/quotation-draft`, requestConfig);
         const quotation = data?.quotation;
 
         if (!quotation) return;

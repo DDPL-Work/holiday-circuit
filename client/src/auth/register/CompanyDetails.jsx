@@ -1,6 +1,7 @@
 import toast from "react-hot-toast";
+import RegisterStepper from "./RegisterStepper.jsx";
 
-export default function CompanyDetails({ form, setForm, next }) {
+export default function CompanyDetails({ form, setForm, next, back, isActive = false }) {
   const gstPattern = /^\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
 
   const normalizePhone = (value) => {
@@ -49,18 +50,7 @@ export default function CompanyDetails({ form, setForm, next }) {
   return (
     <div className="w-full h-screen min-h-screen flex items-center justify-center px-4 ">
       <div className="w-full max-w-xl bg-white rounded-2xl p-8">
-        {/* Step Indicator */}
-        <div className="flex items-center justify-between mb-5">
-          <div className="flex items-center w-full">
-            <div className="w-8 h-8 flex items-center justify-center rounded-full bg-blue-900 text-white text-sm font-semibold">
-              1
-            </div>
-            <div className="flex-1 h-1 bg-gray-200 mx-2 rounded"></div>
-            <div className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-200 text-gray-600 text-sm font-semibold">
-              2
-            </div>
-          </div>
-        </div>
+        <RegisterStepper currentStep={2} isActive={isActive} />
 
         <h2 className="text-2xl font-semibold mb-1">Company Details</h2>
         <p className="text-gray-500 mb-6 text-sm">
@@ -124,10 +114,18 @@ export default function CompanyDetails({ form, setForm, next }) {
             />
           </div>
 
-          <div className="flex justify-end pt-4">
+          <div className="flex items-center justify-between pt-4">
+            <button
+              type="button"
+              onClick={back}
+              className="cursor-pointer rounded-2xl px-2 py-1.5 text-sm text-black hover:bg-gray-100"
+            >
+              ← Back
+            </button>
+
             <button
               type="submit"
-              className="bg-blue-900 text-white px-4 py-2 rounded-xl hover:bg-blue-800 transition cursor-pointer"
+              className="cursor-pointer rounded-xl bg-blue-900 px-4 py-2 text-white transition hover:bg-blue-800"
             >
               Continue
             </button>

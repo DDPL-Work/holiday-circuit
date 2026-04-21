@@ -1088,7 +1088,14 @@ export const createQuotation = async (req, res, next) => {
    let quotation = null;
 
 if (quotationId) {
-  quotation = await Quotation.findById(quotationId);
+  const requestedQuotation = await Quotation.findById(quotationId);
+  if (
+    requestedQuotation &&
+    String(requestedQuotation.queryId) === String(query._id) &&
+    requestedQuotation.status === "Pending"
+  ) {
+    quotation = requestedQuotation;
+  }
 }
 
 if (!quotation) {
@@ -2218,6 +2225,7 @@ export const sendVoucherToAgent = async (req, res, next) => {
 export const getOrCreateQuotationDraft = async (req, res, next) => {
   try {
     const query = await TravelQuery.findById(req.params.queryId).populate("agent");
+    const requestedSourceQuotationId = String(req.query?.sourceQuotationId || "").trim();
 
     if (!query) {
       return res.status(404).json({ success: false, message: "Query not found" });
@@ -2226,37 +2234,155 @@ export const getOrCreateQuotationDraft = async (req, res, next) => {
     if (!(await canManageAssignedQuery(req, query))) {
       return res.status(403).json({ success: false, message: "Not authorized" });
     }
-    let quotation = await Quotation.findOne({ queryId: query._id }).sort({ createdAt: -1 });
+    const latestQuotation = await Quotation.findOne({ queryId: query._id }).sort({ createdAt: -1 });
+    const sourceQuotation = requestedSourceQuotationId
+      ? await Quotation.findOne({ _id: requestedSourceQuotationId, queryId: query._id })
+      : latestQuotation;
+
+    const buildDraftPayload = (baseQuotation) => ({
+      validTill: baseQuotation?.validTill || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      pricing: baseQuotation?.pricing
+        ? {
+            currency: baseQuotation.pricing.currency || "INR",
+            quoteCategory: baseQuotation.pricing.quoteCategory || "domestic",
+            baseAmount: Number(baseQuotation.pricing.baseAmount || query.customerBudget || 0),
+            subTotal: Number(baseQuotation.pricing.subTotal || 0),
+            packageTemplateAmount: Number(baseQuotation.pricing.packageTemplateAmount || 0),
+            serviceCurrencyBreakdown: Array.isArray(baseQuotation.pricing.serviceCurrencyBreakdown)
+              ? baseQuotation.pricing.serviceCurrencyBreakdown.map((item) => ({
+                  currency: item.currency || "INR",
+                  amount: Number(item.amount || 0),
+                  amountInInr: Number(item.amountInInr || 0),
+                  exchangeRate: Number(item.exchangeRate || 1),
+                }))
+              : [],
+            opsMarkup: {
+              percent: Number(baseQuotation.pricing.opsMarkup?.percent || 0),
+              amount: Number(baseQuotation.pricing.opsMarkup?.amount || 0),
+            },
+            opsCharges: {
+              serviceCharge: Number(baseQuotation.pricing.opsCharges?.serviceCharge || 0),
+              handlingFee: Number(baseQuotation.pricing.opsCharges?.handlingFee || 0),
+            },
+            tax: {
+              gst: {
+                percent: Number(baseQuotation.pricing.tax?.gst?.percent || 0),
+                amount: Number(baseQuotation.pricing.tax?.gst?.amount || 0),
+              },
+              tcs: {
+                percent: Number(baseQuotation.pricing.tax?.tcs?.percent || 0),
+                amount: Number(baseQuotation.pricing.tax?.tcs?.amount || 0),
+              },
+              tourismFee: {
+                amount: Number(baseQuotation.pricing.tax?.tourismFee?.amount || 0),
+              },
+              totalTax: Number(baseQuotation.pricing.tax?.totalTax || 0),
+            },
+            totalAmount: Number(baseQuotation.pricing.totalAmount || 0),
+          }
+        : {
+            currency: "INR",
+            quoteCategory: "domestic",
+            baseAmount: Number(query.customerBudget || 0),
+            subTotal: 0,
+            packageTemplateAmount: 0,
+            serviceCurrencyBreakdown: [],
+            opsMarkup: { percent: 0, amount: 0 },
+            opsCharges: { serviceCharge: 0, handlingFee: 0 },
+            tax: {
+              gst: { percent: 0, amount: 0 },
+              tcs: { percent: 0, amount: 0 },
+              tourismFee: { amount: 0 },
+              totalTax: 0,
+            },
+            totalAmount: 0,
+          },
+      inclusions: Array.isArray(baseQuotation?.inclusions) ? baseQuotation.inclusions : [],
+      services: Array.isArray(baseQuotation?.services)
+        ? baseQuotation.services.map((service) => ({
+            serviceId: service.serviceId,
+            supplierId: service.supplierId,
+            supplierName: service.supplierName || "",
+            dmcId: service.dmcId,
+            dmcName: service.dmcName || "",
+            type: service.type,
+            title: service.title,
+            city: service.city || "",
+            country: service.country || "",
+            description: service.description || "",
+            serviceDate: service.serviceDate,
+            roomCategory: service.roomCategory || "",
+            roomType: service.roomType || "",
+            hotelCategory: service.hotelCategory || "",
+            adults: Number(service.adults || 0),
+            children: Number(service.children || 0),
+            infants: Number(service.infants || 0),
+            rooms: Number(service.rooms || 1),
+            bedType: service.bedType,
+            nights: Number(service.nights || 1),
+            vehicleType: service.vehicleType || "",
+            passengerCapacity: Number(service.passengerCapacity || 0),
+            luggageCapacity: Number(service.luggageCapacity || 0),
+            usageType: service.usageType || "point-to-point",
+            days: Number(service.days || 1),
+            pax: Number(service.pax || 1),
+            currency: service.currency || "INR",
+            price: Number(service.price || 0),
+            exchangeRate: Number(service.exchangeRate || 1),
+            priceInInr: Number(service.priceInInr || 0),
+            extraAdult: Boolean(service.extraAdult),
+            childWithBed: Boolean(service.childWithBed),
+            childWithoutBed: Boolean(service.childWithoutBed),
+            awebRate: Number(service.awebRate || 0),
+            cwebRate: Number(service.cwebRate || 0),
+            cwoebRate: Number(service.cwoebRate || 0),
+            total: Number(service.total || 0),
+            totalInInr: Number(service.totalInInr || 0),
+          }))
+        : [],
+      sourceQuotationId: baseQuotation?._id || undefined,
+      status: "Pending",
+    });
+
+    let quotation = await Quotation.findOne({
+      queryId: query._id,
+      status: "Pending",
+    }).sort({ createdAt: -1 });
+
+    if (quotation && requestedSourceQuotationId) {
+      const pendingSourceId = String(quotation.sourceQuotationId || "");
+      if (
+        sourceQuotation &&
+        pendingSourceId !== requestedSourceQuotationId
+      ) {
+        const draftPayload = buildDraftPayload(sourceQuotation);
+        quotation.validTill = draftPayload.validTill;
+        quotation.pricing = draftPayload.pricing;
+        quotation.inclusions = draftPayload.inclusions;
+        quotation.services = draftPayload.services;
+        quotation.sourceQuotationId = draftPayload.sourceQuotationId;
+        quotation.createdBy = req.user.id;
+        quotation.status = "Pending";
+        await quotation.save();
+      }
+    }
 
     if (!quotation) {
-     const quotationNumber = await generateUniqueQuotationNumber();
-     quotation = await Quotation.create({
-  quotationNumber,
-  queryId: query._id,
-  agent: query.agent?._id || query.agent,
-  createdBy: req.user.id,
-  validTill: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-  pricing: {
-    currency: "INR",
-    quoteCategory: "domestic",
-    baseAmount: Number(query.customerBudget || 0),
-    subTotal: 0,
-    packageTemplateAmount: 0,
-    serviceCurrencyBreakdown: [],
-    opsMarkup: { percent: 0, amount: 0 },
-    opsCharges: { serviceCharge: 0, handlingFee: 0 },
-    tax: {
-      gst: { percent: 0, amount: 0 },
-      tcs: { percent: 0, amount: 0 },
-      tourismFee: { amount: 0 },
-      totalTax: 0,
-    },
-    totalAmount: 0,
-  },
-  services: [],
-  status: "Pending",
-});
+      const quotationNumber = await generateUniqueQuotationNumber();
+      const draftPayload = buildDraftPayload(sourceQuotation);
 
+      quotation = await Quotation.create({
+        quotationNumber,
+        queryId: query._id,
+        agent: query.agent?._id || query.agent,
+        createdBy: req.user.id,
+        validTill: draftPayload.validTill,
+        pricing: draftPayload.pricing,
+        inclusions: draftPayload.inclusions,
+        services: draftPayload.services,
+        sourceQuotationId: draftPayload.sourceQuotationId,
+        status: draftPayload.status,
+      });
     }
 
     res.status(200).json({

@@ -2,6 +2,7 @@ import express from "express";
 import isAuthenticated from "../middlewares/auth.middleware.js";
 import { getPendingAgents, approveAgent, getAllUsers, createRateContract, deactivateRateContract, getSystemStats, getAllPayments, updateRateContract, createOperationsUser, createDmcPartner, createFinancePartner, getFinanceDashboard, getAdvancedAnalytics, getInternalInvoices, updateInternalInvoiceStatus, getPaymentVerifications, reviewPaymentVerification, getAdminDashboardData, getManagedUsers, createManagedUser, updateManagedUser, updateManagedUserStatus, deleteManagedUser, replyToOpsEscalation } from "../controllers/adminController.js";
 import { getMyNotifications, markAllNotificationsRead, deleteNotification } from "../controllers/agentController.js";
+import { getOperationManagerQueryQuotations } from "../controllers/opsManagerController.js";
 
 const routers = express.Router();
 
@@ -27,6 +28,7 @@ routers.put("/rate-contract/:id/deactivate", deactivateRateContract);
 
 routers.get("/stats", isAuthenticated , getSystemStats);
 routers.get("/dashboard", isAuthenticated, getAdminDashboardData);
+routers.get("/queries/:queryId/quotations", isAuthenticated, getOperationManagerQueryQuotations);
 routers.patch("/queries/:id/reply-to-ops", isAuthenticated, replyToOpsEscalation);
 routers.get("/payments", getAllPayments);
 routers.get("/payment-verifications", isAuthenticated, getPaymentVerifications);

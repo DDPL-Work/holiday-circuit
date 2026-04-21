@@ -1449,6 +1449,7 @@ export const requestQuotationRevision = async (req, res) => {
     }
 
     quotation.status = "Revision Requested";
+    quotation.agentRevisionRemark = String(reason || "").trim();
     await quotation.save();
 
     const query = await TravelQuery.findById(quotation.queryId);
@@ -1963,7 +1964,6 @@ export const deleteNotification = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
-
 
 
 

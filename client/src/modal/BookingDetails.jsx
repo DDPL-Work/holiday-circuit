@@ -262,7 +262,58 @@ export default function BookingDetailsModal({ refresh, booking, onClose }) {
     visible: { opacity: 1, y: 0 },
   };
 
-  const status = currentBooking?.opsStatus?.replace("_", " ") || "New Query";
+  const bookingHubStatusKey =
+    currentBooking?.agentStatus === "Revision Requested" || currentBooking?.opsStatus === "Revision_Query"
+      ? "Revision_Requested"
+      : currentBooking?.opsStatus === "Rejected"
+        ? "Pending_Accept"
+        : currentBooking?.opsStatus || "New_Query";
+
+  const bookingHubStatusConfig = {
+    New_Query: {
+      label: "New Query",
+      className: "border-purple-200 bg-purple-100 text-purple-600",
+      icon: Clock,
+    },
+    Received_Query: {
+      label: "Received Query",
+      className: "border-amber-200 bg-amber-100 text-amber-700",
+      icon: FileText,
+    },
+    Pending_Accept: {
+      label: "Pending Accept",
+      className: "border-orange-200 bg-orange-100 text-orange-600",
+      icon: Clock,
+    },
+    Revision_Requested: {
+      label: "Quotation Rejected",
+      className: "border-rose-200 bg-rose-100 text-rose-700",
+      icon: FileText,
+    },
+    Booking_Accepted: {
+      label: "Booking Accepted",
+      className: "border-blue-200 bg-blue-100 text-blue-600",
+      icon: CircleCheck,
+    },
+    Invoice_Requested: {
+      label: "Amount Pending",
+      className: "border-indigo-200 bg-indigo-100 text-indigo-700",
+      icon: FileText,
+    },
+    Confirmed: {
+      label: "Confirmed",
+      className: "border-cyan-200 bg-cyan-100 text-cyan-600",
+      icon: CircleCheck,
+    },
+    Vouchered: {
+      label: "Vouchered",
+      className: "border-green-200 bg-green-100 text-green-600",
+      icon: FileText,
+    },
+  };
+
+  const bookingHubStatus = bookingHubStatusConfig[bookingHubStatusKey] || bookingHubStatusConfig.New_Query;
+  const BookingHubStatusIcon = bookingHubStatus.icon;
 
   const handleAcceptClick = () => {
     if (!canAcceptBooking) {
@@ -392,9 +443,9 @@ export default function BookingDetailsModal({ refresh, booking, onClose }) {
               </motion.h2>
 
               <motion.div variants={item} className="mb-3 flex gap-2">
-                <span className="flex items-center gap-1 rounded-full border bg-purple-100 px-2 py-1.5 text-xs text-purple-600">
-                  <Clock className="mt-0.5 h-3 w-3" />
-                  {status}
+                <span className={`inline-flex h-9 min-w-[156px] items-center justify-center gap-1.5 whitespace-nowrap rounded-full border px-3 text-xs font-medium leading-none ${bookingHubStatus.className}`}>
+                  <BookingHubStatusIcon className="h-3 w-3" />
+                  {bookingHubStatus.label}
                 </span>
                 <p className="mt-1 text-xs text-[#62748E]">
                   Created : {formatDate(currentBooking.createdAt)}

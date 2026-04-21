@@ -26,6 +26,7 @@ import {
 import {
   createOperationTeamMember,
   getOperationManagerDashboard,
+  getOperationManagerQueryQuotations,
   getOperationManagerQueries,
   getOperationManagerReassignPreview,
   getOperationManagerReassignmentDetails,
@@ -65,6 +66,7 @@ router.patch("/vouchers/:id/send", isAuthenticated, sendVoucherToAgent);
 
 router.get("/manager/dashboard", isAuthenticated, getOperationManagerDashboard);
 router.get("/manager/queries", isAuthenticated, getOperationManagerQueries);
+router.get("/manager/queries/:queryId/quotations", isAuthenticated, getOperationManagerQueryQuotations);
 router.get("/manager/reassign-preview/:userId", isAuthenticated, getOperationManagerReassignPreview);
 router.get("/manager/reassignments/:userId", isAuthenticated, getOperationManagerReassignmentDetails);
 router.post("/manager/team", isAuthenticated, createOperationTeamMember);
