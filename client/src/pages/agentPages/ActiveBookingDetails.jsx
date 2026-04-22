@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
   ArrowLeft,
+  BadgePercent,
   Building2,
   CalendarDays,
   CheckCircle2,
@@ -17,6 +18,7 @@ import {
 } from "lucide-react";
 import { motion } from "framer-motion";
 import API from "../../utils/Api";
+import CouponBillingModal from "../../modal/CouponBillingModal";
 
 const bankOptions = ["HDFC Bank", "ICICI Bank", "State Bank of India", "Axis Bank", "Kotak Bank"];
 const docOptions = [
@@ -237,6 +239,7 @@ export default function ActiveBookingDetails({ onClose, booking, onBookingUpdate
   const [bankName, setBankName] = useState(isRejectedPayment ? "" : paymentSubmission?.bankName || "");
   const [utrNumber, setUtrNumber] = useState(isRejectedPayment ? "" : paymentSubmission?.utrNumber || "");
   const [quotationAmount, setQuotationAmount] = useState("");
+  const [couponModalOpen, setCouponModalOpen] = useState(false);
   const [paymentDate, setPaymentDate] = useState(isRejectedPayment ? "" : formatInputDate(paymentSubmission?.paymentDate));
   const [remarks, setRemarks] = useState(isRejectedPayment ? "" : booking?.remarks || "");
   const [receiptFile, setReceiptFile] = useState(null);
@@ -444,7 +447,17 @@ export default function ActiveBookingDetails({ onClose, booking, onBookingUpdate
                 </div>
 
                 <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
-                  <Label label="Quotation Amount" />
+                  <div className="mb-2 flex items-center justify-between gap-3 px-1">
+                    <span className="text-[13px] font-medium text-slate-700">Quotation Amount</span>
+                    <button
+                      type="button"
+                      onClick={() => setCouponModalOpen(true)}
+                      className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-violet-200 bg-violet-50 px-3 py-1.5 text-[11px] font-semibold text-violet-700 transition-all duration-200 hover:-translate-y-0.5 hover:border-violet-300 hover:bg-violet-100"
+                    >
+                      <BadgePercent className="h-3.5 w-3.5" />
+                      Apply Coupon
+                    </button>
+                  </div>
                   <div className="relative">
                     <CreditCard className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                     <input
@@ -700,6 +713,7 @@ export default function ActiveBookingDetails({ onClose, booking, onBookingUpdate
         </div>
         </div>
       </motion.section>
+      <CouponBillingModal open={couponModalOpen} onClose={() => setCouponModalOpen(false)} />
     </motion.div>
   );
 }

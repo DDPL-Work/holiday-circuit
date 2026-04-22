@@ -77,6 +77,8 @@ const Finance = () => {
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 8;
 
   useEffect(() => {
     const fetchFinanceOverview = async () => {
@@ -103,10 +105,18 @@ const Finance = () => {
     fetchFinanceOverview();
   }, []);
 
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [overview.transactions.length]);
+
   const statementFileName = useMemo(() => {
     const stamp = new Date().toISOString().slice(0, 10);
     return `agent-finance-statement-${stamp}.csv`;
   }, []);
+
+  const totalPages = Math.ceil(overview.transactions.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const paginatedTransactions = overview.transactions.slice(startIndex, startIndex + itemsPerPage);
 
   const handleDownloadStatement = () => {
     const csvContent = buildStatementCsv(overview.transactions, overview.currency);
@@ -122,7 +132,7 @@ const Finance = () => {
   };
 
   return (
-    <motion.section className="space-y-3 p-3" variants={container} initial="hidden" animate="visible">
+    <motion.section className="space-y-3 " variants={container} initial="hidden" animate="visible">
       <motion.header variants={item} className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Finance</h1>
@@ -136,7 +146,7 @@ const Finance = () => {
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             onClick={handleDownloadStatement}
-            className="border px-3 py-2 rounded-lg text-xs flex items-center gap-2"
+            className="border border-gray-400 px-3 py-2 rounded-lg text-xs flex items-center gap-2 cursor-pointer"
           >
             <Download size={16} />
             Statement
@@ -145,7 +155,7 @@ const Finance = () => {
           <motion.button
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
-            className="bg-slate-900 text-white px-3 py-2 rounded-lg text-xs"
+            className="bg-slate-900 text-white px-3 py-2 rounded-lg text-xs cursor-pointer"
           >
             + Add Funds
           </motion.button>
@@ -218,7 +228,7 @@ const Finance = () => {
                   </td>
                 </tr>
               ) : (
-                overview.transactions.map((txn) => (
+                paginatedTransactions.map((txn) => (
                   <tr key={`${txn.id}-${txn.description}`} className="transition-colors hover:bg-slate-50">
                     <td className="py-4 text-blue-600">{txn.id}</td>
                     <td className="py-4">{formatDate(txn.date)}</td>
@@ -237,6 +247,61 @@ const Finance = () => {
             </tbody>
           </table>
         </div>
+        {totalPages > 1 && (
+          <div className="mt-4 flex flex-col items-center justify-between gap-4 border-t border-gray-100 bg-gray-50/50 px-2 pt-4 sm:flex-row">
+            <span className="text-xs font-medium text-gray-500">
+              Showing {startIndex + 1} to {Math.min(startIndex + itemsPerPage, overview.transactions.length)} of {overview.transactions.length} entries
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+                disabled={currentPage === 1}
+                className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Previous
+              </button>
+              <div className="hidden items-center gap-1 sm:flex">
+                {Array.from({ length: totalPages }).map((_, index) => {
+                  if (
+                    totalPages > 5 &&
+                    index !== 0 &&
+                    index !== totalPages - 1 &&
+                    Math.abs(currentPage - 1 - index) > 1
+                  ) {
+                    if (index === 1 && currentPage > 3) {
+                      return <span key={index} className="px-1 text-gray-400">...</span>;
+                    }
+                    if (index === totalPages - 2 && currentPage < totalPages - 2) {
+                      return <span key={index} className="px-1 text-gray-400">...</span>;
+                    }
+                    return null;
+                  }
+
+                  return (
+                    <button
+                      key={index}
+                      onClick={() => setCurrentPage(index + 1)}
+                      className={`flex h-7 w-7 items-center justify-center rounded-lg text-xs font-medium transition-colors ${
+                        currentPage === index + 1
+                          ? "bg-slate-900 text-white"
+                          : "text-gray-500 hover:bg-gray-100 hover:text-gray-900"
+                      }`}
+                    >
+                      {index + 1}
+                    </button>
+                  );
+                })}
+              </div>
+              <button
+                onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
+                disabled={currentPage === totalPages}
+                className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
       </motion.div>
     </motion.section>
   );

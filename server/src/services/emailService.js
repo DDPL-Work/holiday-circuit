@@ -279,174 +279,415 @@ export const buildVoucherTemplate = (voucherDetails, branding = "with") => {
   `;
 };
 
+const normalizeInvoiceServiceType = (value = "") =>
+  String(value || "").trim().toLowerCase();
+
+const formatTripDurationLabel = (trip = {}) => {
+  const start = trip?.startDate ? new Date(trip.startDate) : null;
+  const end = trip?.endDate ? new Date(trip.endDate) : null;
+
+  if (!start || !end || Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return "-";
+  }
+
+  const totalDays = Math.max(1, Math.round((end.getTime() - start.getTime()) / 86400000) + 1);
+  const totalNights = Math.max(0, totalDays - 1);
+  return `${totalNights} Nights / ${totalDays} Days`;
+};
+
+const formatTravelerSummaryLabel = (trip = {}) => {
+  const adults = Number(trip?.numberOfAdults || 0);
+  const children = Number(trip?.numberOfChildren || 0);
+  const parts = [];
+
+  if (adults > 0) parts.push(`${adults} Adult${adults > 1 ? "s" : ""}`);
+  if (children > 0) parts.push(`${children} Child${children > 1 ? "ren" : ""}`);
+
+  return parts.join(", ") || "-";
+};
+
+const formatTravelerCompactLabel = (trip = {}) => {
+  const adults = Number(trip?.numberOfAdults || 0);
+  const children = Number(trip?.numberOfChildren || 0);
+  const parts = [];
+
+  if (adults > 0) parts.push(`${adults} Adult${adults > 1 ? "s" : ""}`);
+  if (children > 0) parts.push(`${children} Child${children > 1 ? "ren" : ""}`);
+
+  return parts.join(" + ") || "-";
+};
+
+const formatRangeLabel = (startDate, endDate) =>
+  `${formatDateLabel(startDate)} - ${formatDateLabel(endDate)}`;
+
+const inferMealPlan = (item = {}) => {
+  const notes = String(item?.notes || "").toLowerCase();
+  if (notes.includes("breakfast") || notes.includes("(cp)") || notes.includes(" cp")) return "Breakfast (CP)";
+  if (notes.includes("map")) return "Breakfast & Dinner (MAP)";
+  if (notes.includes("ap")) return "All Meals (AP)";
+  return "As per itinerary";
+};
+
+const inferRoomType = (item = {}, trip = {}) => {
+  const roomCount = Number(item?.rooms || 0);
+  const pax = Number(item?.pax || 0) || Number(trip?.numberOfAdults || 0) + Number(trip?.numberOfChildren || 0);
+  if (roomCount > 0 && pax > 0) {
+    return `${roomCount} Room${roomCount > 1 ? "s" : ""} - ${pax} Pax`;
+  }
+  if (roomCount > 0) return `${roomCount} Room${roomCount > 1 ? "s" : ""}`;
+  if (pax > 0) return `${pax} Pax`;
+  return "As per plan";
+};
+
+const buildInvoiceDayLabel = (dateValue, index) => {
+  const date = dateValue ? new Date(dateValue) : null;
+  if (!date || Number.isNaN(date.getTime())) {
+    return `Day ${index + 1}`;
+  }
+
+  const weekday = date.toLocaleDateString("en-GB", { weekday: "short" });
+  const day = date.toLocaleDateString("en-GB", { day: "2-digit" });
+  const month = date.toLocaleDateString("en-GB", { month: "short" });
+  return `Day ${index + 1} - ${weekday} ${day} ${month}`;
+};
+
 export const buildFinalInvoiceTemplate = (invoiceDetails = {}) => {
   const currency = invoiceDetails.currency || "INR";
-  const lineItemsHtml = (invoiceDetails.lineItems || [])
-    .map((item, index) => {
-      const quantityBits = [];
-
-      if (Number(item.nights || 0) > 0) quantityBits.push(`${item.nights} night${Number(item.nights) > 1 ? "s" : ""}`);
-      if (Number(item.days || 0) > 0) quantityBits.push(`${item.days} day${Number(item.days) > 1 ? "s" : ""}`);
-      if (Number(item.pax || 0) > 0) quantityBits.push(`${item.pax} pax`);
-      if (Number(item.rooms || 0) > 0) quantityBits.push(`${item.rooms} room${Number(item.rooms) > 1 ? "s" : ""}`);
-
-      const meta = [
-        item.serviceType ? item.serviceType.toUpperCase() : "",
-        item.location || "",
-        formatDateLabel(item.serviceDate),
-      ]
-        .filter((value) => value && value !== "-")
-        .join(" | ");
-
-      return `
-        <tr>
-          <td style="padding:16px 0;border-bottom:1px solid #ece8df;vertical-align:top;">
-            <div style="font-size:13px;color:#8a7d67;margin-bottom:6px;">${String(index + 1).padStart(2, "0")}</div>
-          </td>
-          <td style="padding:16px 14px 16px 0;border-bottom:1px solid #ece8df;vertical-align:top;">
-            <div style="font-size:14px;font-weight:700;color:#16213e;">${item.title || "-"}</div>
-            <div style="margin-top:5px;font-size:12px;color:#7c8698;line-height:1.6;">${meta || "-"}</div>
-            <div style="margin-top:6px;font-size:12px;color:#4b5563;line-height:1.6;">${quantityBits.join(" | ") || item.notes || "Configured service"}</div>
-          </td>
-          <td style="padding:16px 14px;border-bottom:1px solid #ece8df;vertical-align:top;text-align:right;font-size:13px;color:#334155;">
-            ${formatCurrency(item.unitPrice, item.currency || currency)}
-          </td>
-          <td style="padding:16px 0;border-bottom:1px solid #ece8df;vertical-align:top;text-align:right;font-size:13px;font-weight:700;color:#111827;">
-            ${formatCurrency(item.total, item.currency || currency)}
-          </td>
-        </tr>
-      `;
-    })
-    .join("");
-
-  const pricing = invoiceDetails.pricingSnapshot || {};
   const trip = invoiceDetails.tripSnapshot || {};
-  const travelerCount =
-    Number(trip.numberOfAdults || 0) + Number(trip.numberOfChildren || 0);
+  const pricing = invoiceDetails.pricingSnapshot || {};
+  const agentName = escapeHtml(invoiceDetails.agentName || "Guest");
+  const invoiceNumber = escapeHtml(invoiceDetails.invoiceNumber || "-");
+  const destination = escapeHtml(trip.destination || invoiceDetails.destination || "-");
+  const tripId = escapeHtml(trip.queryId || invoiceDetails.invoiceNumber || "-");
+  const invoiceDate = formatDateLabel(invoiceDetails.invoiceDate || new Date());
+  const travelerSummary = escapeHtml(formatTravelerSummaryLabel(trip));
+  const travelerCompact = escapeHtml(formatTravelerCompactLabel(trip));
+  const durationLabel = escapeHtml(formatTripDurationLabel(trip));
+  const travelDateRange = escapeHtml(formatRangeLabel(trip.startDate, trip.endDate));
+  const lineItems = Array.isArray(invoiceDetails.lineItems) ? invoiceDetails.lineItems : [];
+  const preparedByName = escapeHtml(invoiceDetails.sentByName || "Holiday Circuit");
+  const preparedByEmail = escapeHtml(process.env.EMAIL_USER || "ops@leelatravels.com");
+  const totalAmount = pricing.grandTotal || invoiceDetails.totalAmount || 0;
+  const opsMarkupAmount = Number(pricing.opsMarkupAmount || 0);
+  const serviceChargeAmount = Number(pricing.serviceCharge || 0);
+  const handlingFeeAmount = Number(pricing.handlingFee || 0);
+  const gstAmount = Number(pricing.gstAmount || 0);
+  const gstPercent = Number(pricing.gstPercent || 0);
+
+  const sectionHeading = (label, colspan = 1) => `
+    <tr>
+      <td colspan="${colspan}" style="background:#14213d;color:#ffffff;padding:8px 10px;border:1px solid #0f172a;font-size:11pt;font-weight:700;letter-spacing:0.02em;">
+        ${label}
+      </td>
+    </tr>
+  `;
+
+  const detailCell = (label, value, width = "25%") => `
+    <td style="border:1px solid #d1d5db;padding:10px 12px;vertical-align:top;width:${width};">
+      <p style="margin:0;font-size:8.5pt;font-weight:700;color:#6b7280;letter-spacing:0.04em;">${label}</p>
+      <p style="margin:6px 0 0;font-size:10.5pt;font-weight:700;color:#111827;">${value}</p>
+    </td>
+  `;
+
+  const buildListItems = (items = []) =>
+    items
+      .map(
+        (item) => `
+          <li style="margin:0 0 6px;">${item}</li>
+        `,
+      )
+      .join("");
+
+  const accommodationItems = lineItems.filter((item) => normalizeInvoiceServiceType(item?.serviceType) === "hotel");
+  const specialInclusionItems = lineItems.filter((item) => {
+    const type = normalizeInvoiceServiceType(item?.serviceType);
+    const title = String(item?.title || "").toLowerCase();
+    return title.includes("visa") || title.includes("insurance") || type.includes("visa") || type.includes("insurance");
+  });
+  const transportActivityItems = lineItems.filter((item) => {
+    const type = normalizeInvoiceServiceType(item?.serviceType);
+    const title = String(item?.title || "").toLowerCase();
+    if (title.includes("visa") || title.includes("insurance") || type.includes("visa") || type.includes("insurance")) return false;
+    return type !== "hotel";
+  });
+
+  const accommodationRows = accommodationItems.length
+    ? accommodationItems.map((item) => `
+        <tr>
+          <td style="border:1px solid #d1d5db;padding:9px 10px;vertical-align:top;font-size:10pt;">${escapeHtml(`${Number(item?.nights || 0) || "-"} Night${Number(item?.nights || 0) === 1 ? "" : "s"}`)}</td>
+          <td style="border:1px solid #d1d5db;padding:9px 10px;vertical-align:top;font-size:10pt;font-weight:700;">${escapeHtml(item?.location || "-")}</td>
+          <td style="border:1px solid #d1d5db;padding:9px 10px;vertical-align:top;font-size:10pt;"><strong>${escapeHtml(item?.title || "-")}</strong></td>
+          <td style="border:1px solid #d1d5db;padding:9px 10px;vertical-align:top;font-size:10pt;text-align:center;">${escapeHtml(inferMealPlan(item))}</td>
+          <td style="border:1px solid #d1d5db;padding:9px 10px;vertical-align:top;font-size:10pt;">${escapeHtml(inferRoomType(item, trip))}</td>
+        </tr>
+      `).join("")
+    : `
+      <tr>
+        <td colspan="5" style="border:1px solid #d1d5db;padding:10px;text-align:center;font-size:10pt;color:#6b7280;">Accommodation details will appear here.</td>
+      </tr>
+    `;
+
+  const transportRows = transportActivityItems.length
+    ? transportActivityItems.map((item, index) => `
+        <tr>
+          <td style="border:1px solid #d1d5db;padding:9px 10px;vertical-align:top;font-size:10pt;">${escapeHtml(buildInvoiceDayLabel(item?.serviceDate, index))}</td>
+          <td style="border:1px solid #d1d5db;padding:9px 10px;vertical-align:top;font-size:10pt;">${escapeHtml(item?.title || "-")}</td>
+          <td style="border:1px solid #d1d5db;padding:9px 10px;vertical-align:top;font-size:10pt;">${escapeHtml(item?.notes || item?.serviceType || "Included service")}</td>
+        </tr>
+      `).join("")
+    : `
+      <tr>
+        <td colspan="3" style="border:1px solid #d1d5db;padding:10px;text-align:center;font-size:10pt;color:#6b7280;">Transportation and activity details will appear here.</td>
+      </tr>
+    `;
+
+  const specialRows = specialInclusionItems.length
+    ? specialInclusionItems.map((item, index) => `
+        <tr>
+          <td style="border:1px solid #d1d5db;padding:9px 10px;vertical-align:top;font-size:10pt;">${escapeHtml(buildInvoiceDayLabel(item?.serviceDate, index))}</td>
+          <td style="border:1px solid #d1d5db;padding:9px 10px;vertical-align:top;font-size:10pt;"><strong>${escapeHtml(item?.title || "-")}</strong></td>
+        </tr>
+      `).join("")
+    : `
+      <tr>
+        <td style="border:1px solid #d1d5db;padding:9px 10px;vertical-align:top;font-size:10pt;">All Days</td>
+        <td style="border:1px solid #d1d5db;padding:9px 10px;vertical-align:top;font-size:10pt;"><strong>As per confirmed itinerary</strong></td>
+      </tr>
+    `;
+
+  const pricingRows = lineItems.length
+    ? lineItems.map((item) => `
+        <tr>
+          <td style="border:1px solid #d1d5db;padding:9px 10px;vertical-align:top;font-size:10pt;">${escapeHtml(item?.title || "-")}</td>
+          <td style="border:1px solid #d1d5db;padding:9px 10px;vertical-align:top;font-size:10pt;">${escapeHtml(formatCurrency(item?.unitPrice || 0, item?.currency || currency))}</td>
+          <td style="border:1px solid #d1d5db;padding:9px 10px;vertical-align:top;font-size:10pt;"><strong>${escapeHtml(formatCurrency(item?.total || 0, item?.currency || currency))}</strong></td>
+        </tr>
+      `).join("")
+    : `
+      <tr>
+        <td style="border:1px solid #d1d5db;padding:9px 10px;vertical-align:top;font-size:10pt;">Confirmed Booking Amount</td>
+        <td style="border:1px solid #d1d5db;padding:9px 10px;vertical-align:top;font-size:10pt;">-</td>
+        <td style="border:1px solid #d1d5db;padding:9px 10px;vertical-align:top;font-size:10pt;"><strong>${escapeHtml(formatCurrency(totalAmount, pricing.currency || currency))}</strong></td>
+      </tr>
+    `;
+
+  const chargeRows = `
+    <tr>
+      <td style="border:1px solid #d1d5db;padding:9px 10px;vertical-align:top;font-size:10pt;">Ops Markup</td>
+      <td style="border:1px solid #d1d5db;padding:9px 10px;vertical-align:top;font-size:10pt;">-</td>
+      <td style="border:1px solid #d1d5db;padding:9px 10px;vertical-align:top;font-size:10pt;"><strong>${escapeHtml(formatCurrency(opsMarkupAmount, pricing.currency || currency))}</strong></td>
+    </tr>
+    <tr>
+      <td style="border:1px solid #d1d5db;padding:9px 10px;vertical-align:top;font-size:10pt;">Service Charges</td>
+      <td style="border:1px solid #d1d5db;padding:9px 10px;vertical-align:top;font-size:10pt;">-</td>
+      <td style="border:1px solid #d1d5db;padding:9px 10px;vertical-align:top;font-size:10pt;"><strong>${escapeHtml(formatCurrency(serviceChargeAmount, pricing.currency || currency))}</strong></td>
+    </tr>
+    <tr>
+      <td style="border:1px solid #d1d5db;padding:9px 10px;vertical-align:top;font-size:10pt;">Handling Fees</td>
+      <td style="border:1px solid #d1d5db;padding:9px 10px;vertical-align:top;font-size:10pt;">-</td>
+      <td style="border:1px solid #d1d5db;padding:9px 10px;vertical-align:top;font-size:10pt;"><strong>${escapeHtml(formatCurrency(handlingFeeAmount, pricing.currency || currency))}</strong></td>
+    </tr>
+    <tr>
+      <td style="border:1px solid #d1d5db;padding:9px 10px;vertical-align:top;font-size:10pt;">GST${gstPercent ? ` (${escapeHtml(gstPercent)}%)` : ""}</td>
+      <td style="border:1px solid #d1d5db;padding:9px 10px;vertical-align:top;font-size:10pt;">-</td>
+      <td style="border:1px solid #d1d5db;padding:9px 10px;vertical-align:top;font-size:10pt;"><strong>${escapeHtml(formatCurrency(gstAmount, pricing.currency || currency))}</strong></td>
+    </tr>
+  `;
+
+  const finalTotal = escapeHtml(formatCurrency(totalAmount, pricing.currency || currency));
+  const inclusionsList = buildListItems([
+    "Stay as mentioned or similar category hotels.",
+    "Meals as mentioned in the itinerary.",
+    "Airport or point-to-point transfers as confirmed.",
+    "Sightseeing and entrance tickets as per confirmed services.",
+    "Applicable taxes calculated on the date of issue.",
+    "Visa and insurance only if specifically mentioned above.",
+  ]);
+  const exclusionsList = buildListItems([
+    "International or domestic airfare unless specified.",
+    "Early check-in, late check-out, and hotel deposits.",
+    "Personal expenses such as laundry, room service, and tips.",
+    "Any increase in tax, surcharge, or rate of exchange.",
+    "Travel insurance where not explicitly included.",
+    "Any service not listed in the invoice inclusions.",
+  ]);
+  const termsList = buildListItems([
+    "A non-refundable deposit is required to confirm the booking.",
+    "Full payment must be cleared before departure as per booking deadline.",
+    "Rates are subject to availability and ROE changes until complete payment.",
+    "Cancellation charges will apply as per airline, hotel, and supplier policies.",
+    "Standard check-in and check-out timings of hotels will apply.",
+    "Passport, visa, and travel documentation remain the traveler's responsibility.",
+    "Travel insurance is recommended for all travelers.",
+    "By confirming the booking, you accept the quoted inclusions and terms.",
+  ]);
 
   return `
-    <div style="background:#f5f1ea;padding:38px 16px;font-family:Arial,sans-serif;">
-      <div style="max-width:780px;margin:0 auto;background:#fffdf8;border:1px solid #e7dfd1;border-radius:24px;overflow:hidden;box-shadow:0 18px 50px rgba(15,23,42,0.12);">
-        <div style="background:linear-gradient(135deg,#102542 0%,#183b62 55%,#c38a2e 140%);padding:36px 34px 32px;">
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;">
-            <div>
-              <div style="display:inline-block;border:1px solid rgba(255,255,255,0.22);padding:6px 14px;border-radius:999px;color:#f8e6be;font-size:11px;letter-spacing:2px;text-transform:uppercase;">Final Invoice</div>
-              <h1 style="margin:16px 0 0;font-size:30px;color:#ffffff;letter-spacing:0.4px;">Holiday Circuit</h1>
-              <p style="margin:8px 0 0;font-size:13px;line-height:1.7;color:rgba(255,255,255,0.84);max-width:420px;">
-                A detailed booking invoice with service-wise pricing, taxes, operational charges, and final payable summary.
-              </p>
-            </div>
-            <div style="min-width:190px;border:1px solid rgba(255,255,255,0.16);border-radius:18px;background:rgba(255,255,255,0.08);padding:16px 18px;">
-              <p style="margin:0;font-size:11px;color:#d8e5f7;letter-spacing:1.6px;text-transform:uppercase;">Invoice Number</p>
-              <p style="margin:8px 0 0;font-size:20px;font-weight:700;color:#ffffff;">${invoiceDetails.invoiceNumber || "-"}</p>
-              <p style="margin:16px 0 0;font-size:11px;color:#d8e5f7;letter-spacing:1.6px;text-transform:uppercase;">Invoice Date</p>
-              <p style="margin:8px 0 0;font-size:14px;font-weight:600;color:#ffffff;">${formatDateLabel(invoiceDetails.invoiceDate || new Date())}</p>
-            </div>
-          </div>
-        </div>
+    <div style="box-sizing:border-box;font-family:Verdana,Arial,sans-serif;font-size:10pt;line-height:1.45;color:#111827;background:#ffffff;padding:14px;">
+      <table cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;margin-bottom:16px;">
+        <tbody>
+          <tr>
+            <td style="vertical-align:top;text-align:left;padding-right:18px;">
+              <p style="margin:0;font-size:22pt;font-weight:700;color:#111827;">HOLIDAY CIRCUIT</p>
+              <p style="margin:4px 0 0;font-size:10pt;color:#4b5563;"><em>Your Trusted Travel Partner</em></p>
+              <p style="margin:8px 0 0;font-size:9.5pt;color:#374151;">ops@leelatravels.com | +91 8851346665</p>
+              <p style="margin:4px 0 0;font-size:9.5pt;color:#374151;">2nd Floor, 632, Block B1, Janakpuri, New Delhi - 110058</p>
+            </td>
+            <td style="vertical-align:top;text-align:right;min-width:250px;">
+              <p style="margin:0;font-size:18pt;font-weight:700;color:#111827;letter-spacing:0.03em;">FINAL INVOICE</p>
+              <p style="margin:10px 0 0;font-size:10pt;color:#374151;"><strong>Trip ID:</strong> ${tripId}</p>
+              <p style="margin:4px 0 0;font-size:10pt;color:#374151;"><strong>Date:</strong> ${escapeHtml(invoiceDate)}</p>
+              <p style="margin:4px 0 0;font-size:10pt;color:#374151;"><strong>Invoice No:</strong> ${invoiceNumber}</p>
+            </td>
+          </tr>
+        </tbody>
+      </table>
 
-        <div style="padding:28px 34px 16px;">
-          <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;">
-            <div style="border:1px solid #ece8df;border-radius:18px;background:#ffffff;padding:16px 18px;">
-              <p style="margin:0;font-size:11px;color:#9a8d76;letter-spacing:1.4px;text-transform:uppercase;">Agent</p>
-              <p style="margin:8px 0 0;font-size:17px;font-weight:700;color:#16213e;">${invoiceDetails.agentName || "-"}</p>
-              <p style="margin:6px 0 0;font-size:12px;color:#6b7280;">${invoiceDetails.agentEmail || ""}</p>
-            </div>
-            <div style="border:1px solid #ece8df;border-radius:18px;background:#ffffff;padding:16px 18px;">
-              <p style="margin:0;font-size:11px;color:#9a8d76;letter-spacing:1.4px;text-transform:uppercase;">Trip Snapshot</p>
-              <p style="margin:8px 0 0;font-size:17px;font-weight:700;color:#16213e;">${trip.destination || "-"}</p>
-              <p style="margin:6px 0 0;font-size:12px;color:#6b7280;line-height:1.7;">
-                ${trip.queryId || "-"} | ${formatDateLabel(trip.startDate)} - ${formatDateLabel(trip.endDate)} | ${travelerCount || 0} traveler${travelerCount === 1 ? "" : "s"}
-              </p>
-            </div>
-          </div>
+      <p style="margin:0 0 6px;font-size:10pt;"><strong>Dear ${agentName},</strong></p>
+      <p style="margin:0 0 14px;font-size:10pt;line-height:1.6;">
+        Greetings from Holiday Circuit. Please find below the final travel invoice for your ${destination} booking, prepared in the same document style as the approved travel file.
+      </p>
 
-          <div style="margin-top:26px;border:1px solid #ece8df;border-radius:22px;background:#fff;padding:22px 24px;">
-            <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px;">
-              <div>
-                <p style="margin:0;font-size:11px;color:#9a8d76;letter-spacing:1.4px;text-transform:uppercase;">Service Breakdown</p>
-                <h2 style="margin:8px 0 0;font-size:20px;color:#111827;">Detailed Final Invoice</h2>
-              </div>
-              <div style="border-radius:999px;background:#f7f1e5;padding:8px 12px;font-size:11px;color:#946b21;font-weight:700;">
-                ${invoiceDetails.lineItems?.length || 0} line items
-              </div>
-            </div>
+      <table cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;margin-bottom:14px;">
+        <tbody>
+          ${sectionHeading("CLIENT DETAILS", 2)}
+          <tr>
+            <td style="border:1px solid #d1d5db;padding:12px;vertical-align:top;width:50%;">
+              <p style="margin:0;font-size:10pt;font-weight:700;color:#374151;">CLIENT</p>
+              <p style="margin:8px 0 0;font-size:10pt;"><strong>${agentName}</strong></p>
+              <p style="margin:4px 0 0;font-size:10pt;">${travelerSummary}</p>
+            </td>
+            <td style="border:1px solid #d1d5db;padding:12px;vertical-align:top;width:50%;">
+              <p style="margin:0;font-size:10pt;font-weight:700;color:#374151;">PREPARED BY</p>
+              <p style="margin:8px 0 0;font-size:10pt;"><strong>${preparedByName}</strong></p>
+              <p style="margin:4px 0 0;font-size:10pt;">${preparedByEmail}</p>
+            </td>
+          </tr>
+        </tbody>
+      </table>
 
-            <table style="width:100%;border-collapse:collapse;">
-              <thead>
-                <tr>
-                  <th style="padding:0 0 12px;text-align:left;font-size:11px;color:#9a8d76;letter-spacing:1.2px;text-transform:uppercase;">#</th>
-                  <th style="padding:0 14px 12px 0;text-align:left;font-size:11px;color:#9a8d76;letter-spacing:1.2px;text-transform:uppercase;">Service</th>
-                  <th style="padding:0 14px 12px;text-align:right;font-size:11px;color:#9a8d76;letter-spacing:1.2px;text-transform:uppercase;">Unit Rate</th>
-                  <th style="padding:0 0 12px;text-align:right;font-size:11px;color:#9a8d76;letter-spacing:1.2px;text-transform:uppercase;">Line Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${
-                  lineItemsHtml ||
-                  `<tr><td colspan="4" style="padding:18px 0;text-align:center;font-size:13px;color:#8b95a7;">No line items available.</td></tr>`
-                }
-              </tbody>
-            </table>
-          </div>
+      <table cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;margin-bottom:16px;">
+        <tbody>
+          ${sectionHeading("TRIP OVERVIEW", 4)}
+          <tr>
+            ${detailCell("DESTINATION", destination)}
+            ${detailCell("DURATION", durationLabel)}
+            ${detailCell("TRAVEL DATE", travelDateRange)}
+            ${detailCell("TRAVELERS", travelerCompact)}
+          </tr>
+        </tbody>
+      </table>
 
-          <div style="display:grid;grid-template-columns:1.15fr 0.85fr;gap:18px;margin-top:20px;padding-bottom:30px;">
-            <div style="border:1px solid #ece8df;border-radius:22px;background:#fff;padding:20px 22px;">
-              <p style="margin:0;font-size:11px;color:#9a8d76;letter-spacing:1.4px;text-transform:uppercase;">Commercial Notes</p>
-              <ul style="margin:14px 0 0;padding-left:18px;color:#475569;font-size:13px;line-height:1.8;">
-                <li>This is the final commercial invoice for the confirmed booking.</li>
-                <li>All applicable GST, TCS, and operational charges are included below.</li>
-                <li>Use the invoice number for payment reference and finance coordination.</li>
+      <table cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;margin-bottom:18px;">
+        <thead>
+          ${sectionHeading("ACCOMMODATION", 5)}
+          <tr style="background:#e8eef9;">
+            <th style="border:1px solid #d1d5db;padding:8px 10px;text-align:left;font-size:10pt;">NIGHTS</th>
+            <th style="border:1px solid #d1d5db;padding:8px 10px;text-align:left;font-size:10pt;">CITY</th>
+            <th style="border:1px solid #d1d5db;padding:8px 10px;text-align:left;font-size:10pt;">HOTEL</th>
+            <th style="border:1px solid #d1d5db;padding:8px 10px;text-align:center;font-size:10pt;">MEAL PLAN</th>
+            <th style="border:1px solid #d1d5db;padding:8px 10px;text-align:left;font-size:10pt;">ROOM TYPE</th>
+          </tr>
+        </thead>
+        <tbody>${accommodationRows}</tbody>
+      </table>
+
+      <table cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;margin-bottom:18px;">
+        <thead>
+          ${sectionHeading("TRANSPORTATION & ACTIVITIES", 3)}
+          <tr style="background:#e8eef9;">
+            <th style="border:1px solid #d1d5db;padding:8px 10px;text-align:left;font-size:10pt;">DAY</th>
+            <th style="border:1px solid #d1d5db;padding:8px 10px;text-align:left;font-size:10pt;">SERVICE</th>
+            <th style="border:1px solid #d1d5db;padding:8px 10px;text-align:left;font-size:10pt;">TYPE</th>
+          </tr>
+        </thead>
+        <tbody>${transportRows}</tbody>
+      </table>
+
+      <table cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;margin-bottom:18px;">
+        <thead>
+          ${sectionHeading("SPECIAL INCLUSIONS", 2)}
+          <tr style="background:#e8eef9;">
+            <th style="border:1px solid #d1d5db;padding:8px 10px;text-align:left;font-size:10pt;">DAY</th>
+            <th style="border:1px solid #d1d5db;padding:8px 10px;text-align:left;font-size:10pt;">SERVICE</th>
+          </tr>
+        </thead>
+        <tbody>${specialRows}</tbody>
+      </table>
+
+      <table cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;margin-bottom:8px;">
+        <thead>
+          ${sectionHeading("TOUR PRICING", 3)}
+          <tr style="background:#e8eef9;">
+            <th style="border:1px solid #d1d5db;padding:8px 10px;text-align:left;font-size:10pt;">PRICING BREAKDOWN</th>
+            <th style="border:1px solid #d1d5db;padding:8px 10px;text-align:left;font-size:10pt;">PER PERSON</th>
+            <th style="border:1px solid #d1d5db;padding:8px 10px;text-align:left;font-size:10pt;">AMOUNT</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${pricingRows}
+          ${chargeRows}
+          <tr>
+            <td style="border:1px solid #d1d5db;padding:9px 10px;font-size:10pt;"><strong>GRAND TOTAL${Number(pricing.tcsPercent || 0) ? ` (incl. TCS @ ${pricing.tcsPercent}%)` : ""}</strong></td>
+            <td style="border:1px solid #d1d5db;padding:9px 10px;font-size:10pt;"></td>
+            <td style="border:1px solid #d1d5db;padding:9px 10px;font-size:10pt;"><strong>${finalTotal}</strong></td>
+          </tr>
+        </tbody>
+      </table>
+      <p style="margin:0 0 18px;font-size:9pt;color:#4b5563;"><em>* Prices are calculated as per the current ROE. Any amendment or supplier revision may change the final billing.</em></p>
+
+      <table cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;margin-bottom:18px;">
+        <tbody>
+          ${sectionHeading("INCLUSIONS & EXCLUSIONS", 2)}
+          <tr>
+            <td style="border:1px solid #d1d5db;padding:12px;vertical-align:top;width:50%;">
+              <p style="margin:0 0 8px;font-size:10pt;font-weight:700;">INCLUSIONS</p>
+              <ul style="margin:0;padding-left:18px;line-height:1.55;">
+                ${inclusionsList}
               </ul>
-            </div>
+            </td>
+            <td style="border:1px solid #d1d5db;padding:12px;vertical-align:top;width:50%;">
+              <p style="margin:0 0 8px;font-size:10pt;font-weight:700;">EXCLUSIONS</p>
+              <ul style="margin:0;padding-left:18px;line-height:1.55;">
+                ${exclusionsList}
+              </ul>
+            </td>
+          </tr>
+        </tbody>
+      </table>
 
-            <div style="border:1px solid #e3d7be;border-radius:22px;background:linear-gradient(180deg,#fff9ee 0%,#fffdf8 100%);padding:20px 22px;">
-              <p style="margin:0 0 14px;font-size:11px;color:#9a8d76;letter-spacing:1.4px;text-transform:uppercase;">Amount Summary</p>
-              <div style="display:flex;justify-content:space-between;gap:12px;font-size:13px;color:#475569;padding:8px 0;">
-                <span>Base Amount</span>
-                <strong style="color:#16213e;">${formatCurrency(pricing.baseAmount, pricing.currency || currency)}</strong>
-              </div>
-              <div style="display:flex;justify-content:space-between;gap:12px;font-size:13px;color:#475569;padding:8px 0;">
-                <span>Services Total</span>
-                <strong style="color:#16213e;">${formatCurrency(pricing.servicesTotal, pricing.currency || currency)}</strong>
-              </div>
-              <div style="display:flex;justify-content:space-between;gap:12px;font-size:13px;color:#475569;padding:8px 0;">
-                <span>Package Template Add-on</span>
-                <strong style="color:#16213e;">${formatCurrency(pricing.packageTemplateAmount, pricing.currency || currency)}</strong>
-              </div>
-              <div style="display:flex;justify-content:space-between;gap:12px;font-size:13px;color:#475569;padding:8px 0;">
-                <span>Ops Markup</span>
-                <strong style="color:#16213e;">${formatCurrency(pricing.opsMarkupAmount, pricing.currency || currency)}</strong>
-              </div>
-              <div style="display:flex;justify-content:space-between;gap:12px;font-size:13px;color:#475569;padding:8px 0;">
-                <span>Service Charge</span>
-                <strong style="color:#16213e;">${formatCurrency(pricing.serviceCharge, pricing.currency || currency)}</strong>
-              </div>
-              <div style="display:flex;justify-content:space-between;gap:12px;font-size:13px;color:#475569;padding:8px 0;">
-                <span>Handling Fee</span>
-                <strong style="color:#16213e;">${formatCurrency(pricing.handlingFee, pricing.currency || currency)}</strong>
-              </div>
-              <div style="display:flex;justify-content:space-between;gap:12px;font-size:13px;color:#475569;padding:8px 0;">
-                <span>GST ${Number(pricing.gstPercent || 0) ? `(${pricing.gstPercent}%)` : ""}</span>
-                <strong style="color:#16213e;">${formatCurrency(pricing.gstAmount, pricing.currency || currency)}</strong>
-              </div>
-              <div style="display:flex;justify-content:space-between;gap:12px;font-size:13px;color:#475569;padding:8px 0;">
-                <span>TCS ${Number(pricing.tcsPercent || 0) ? `(${pricing.tcsPercent}%)` : ""}</span>
-                <strong style="color:#16213e;">${formatCurrency(pricing.tcsAmount, pricing.currency || currency)}</strong>
-              </div>
-              <div style="display:flex;justify-content:space-between;gap:12px;font-size:13px;color:#475569;padding:8px 0;">
-                <span>Tourism / Other Fees</span>
-                <strong style="color:#16213e;">${formatCurrency(pricing.tourismAmount, pricing.currency || currency)}</strong>
-              </div>
-              <div style="height:1px;background:#eadfcb;margin:10px 0;"></div>
-              <div style="display:flex;justify-content:space-between;gap:12px;font-size:17px;color:#111827;padding-top:4px;">
-                <span style="font-weight:700;">Grand Total</span>
-                <strong style="color:#9a6c12;">${formatCurrency(pricing.grandTotal || invoiceDetails.totalAmount, pricing.currency || currency)}</strong>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+      <table cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;margin-bottom:18px;">
+        <tbody>
+          ${sectionHeading("TERMS & CONDITIONS")}
+          <tr>
+            <td style="border:1px solid #d1d5db;padding:12px 14px;vertical-align:top;">
+              <ul style="margin:0;padding-left:18px;line-height:1.6;">
+                ${termsList}
+              </ul>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <table cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;margin-bottom:18px;">
+        <tbody>
+          ${sectionHeading("PAYMENT INFORMATION")}
+          <tr>
+            <td style="border:1px solid #d1d5db;padding:12px;vertical-align:top;">
+              <p style="margin:0 0 6px;font-size:10pt;font-weight:700;">Accepted Modes</p>
+              <p style="margin:0 0 10px;font-size:10pt;">UPI | Bank Transfer | Credit Card | Cash (Delhi only) | Cheque subject to clearance</p>
+              <p style="margin:0 0 6px;font-size:10pt;font-weight:700;">Billing Amount</p>
+              <p style="margin:0 0 10px;font-size:10pt;">${finalTotal}</p>
+              <p style="margin:0 0 6px;font-size:10pt;font-weight:700;">For Queries &amp; Bookings</p>
+              <p style="margin:0;font-size:10pt;">Holiday Circuit | 2nd Floor, 632 Block B1, Janakpuri, New Delhi - 110058</p>
+              <p style="margin:4px 0 0;font-size:10pt;">Email: ops@leelatravels.com | Phone: +91 8851346665, +91 9971706003</p>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p style="margin:0 0 8px;font-size:10pt;"><em>Thank you for choosing Holiday Circuit. We look forward to making your journey smooth and memorable.</em></p>
+      <p style="margin:0;font-size:10pt;">This invoice is system generated and shared by the finance team for the confirmed booking amount.</p>
     </div>
   `;
 };
@@ -562,14 +803,30 @@ export const sendEmailVoucher = async (email, voucherDetails, branding = "with")
 export const sendEmailFinalInvoice = async (email, invoiceDetails) => {
   const transporter = createTransporter();
   const html = buildFinalInvoiceTemplate(invoiceDetails);
+  const safeInvoiceNumber = String(invoiceDetails.invoiceNumber || "Final_Invoice")
+    .replace(/[^a-z0-9_-]+/gi, "_");
+  const attachmentHtml = `<!DOCTYPE html><html><head><meta charset="utf-8" /></head><body>${html}</body></html>`;
 
   const info = await transporter.sendMail({
     from: `"Holiday Circuit" <${process.env.EMAIL_USER}>`,
     to: email,
     subject: `Final Invoice - ${invoiceDetails.invoiceNumber || invoiceDetails.destination || "Holiday Circuit"}`,
     html,
+    attachments: [
+      {
+        filename: `Final_Invoice_${safeInvoiceNumber}.doc`,
+        content: attachmentHtml,
+        contentType: "application/msword",
+      },
+    ],
   });
 
   console.log("FINAL INVOICE EMAIL SENT:", info.response);
-  return { status: "sent", email };
+  return {
+    status: "sent",
+    email,
+    messageId: info.messageId,
+    accepted: info.accepted,
+    rejected: info.rejected,
+  };
 };

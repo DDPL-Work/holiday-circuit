@@ -901,8 +901,10 @@ export default function AllTeamTransactions() {
   const [feedback, setFeedback] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
+  const [currentPage, setCurrentPage] = useState(1);
   const [selectedTxn, setSelectedTxn] = useState(null);
   const [actionLoading, setActionLoading] = useState(false);
+  const itemsPerPage = 8;
 
   const loadTransactions = async ({ silent = false } = {}) => {
     try {
@@ -967,6 +969,14 @@ export default function AllTeamTransactions() {
       return matchesFilter && matchesSearch;
     });
   }, [data.payments, searchTerm, statusFilter]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, statusFilter, data.payments.length]);
+
+  const totalPages = Math.ceil(filteredTransactions.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const paginatedTransactions = filteredTransactions.slice(startIndex, startIndex + itemsPerPage);
 
   const refreshPayment = (updatedPayment) => {
     setData((prev) => ({
@@ -1134,8 +1144,8 @@ export default function AllTeamTransactions() {
               <tbody>
                 {loading ? (
                   <tr><td colSpan={8} className="px-4 py-10 text-center text-sm text-slate-400">Loading team transactions...</td></tr>
-                ) : filteredTransactions.length ? (
-                  filteredTransactions.map((txn) => {
+                ) : paginatedTransactions.length ? (
+                  paginatedTransactions.map((txn) => {
                     const workflowStatus = getWorkflowLabel(txn);
                     const rowTone = selectedTxn?.id === txn.id
                       ? "border-sky-200 bg-blue-50"
@@ -1167,6 +1177,61 @@ export default function AllTeamTransactions() {
             </table>
             </div>
           </div>
+          {!loading && totalPages > 1 && (
+            <div className="flex flex-col items-center justify-between gap-4 border-t border-gray-100 bg-gray-50/50 px-6 py-4 sm:flex-row">
+              <span className="text-xs font-medium text-gray-500">
+                Showing {startIndex + 1} to {Math.min(startIndex + itemsPerPage, filteredTransactions.length)} of {filteredTransactions.length} entries
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+                  disabled={currentPage === 1}
+                  className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Previous
+                </button>
+                <div className="hidden items-center gap-1 sm:flex">
+                  {Array.from({ length: totalPages }).map((_, index) => {
+                    if (
+                      totalPages > 5 &&
+                      index !== 0 &&
+                      index !== totalPages - 1 &&
+                      Math.abs(currentPage - 1 - index) > 1
+                    ) {
+                      if (index === 1 && currentPage > 3) {
+                        return <span key={index} className="px-1 text-gray-400">...</span>;
+                      }
+                      if (index === totalPages - 2 && currentPage < totalPages - 2) {
+                        return <span key={index} className="px-1 text-gray-400">...</span>;
+                      }
+                      return null;
+                    }
+
+                    return (
+                      <button
+                        key={index}
+                        onClick={() => setCurrentPage(index + 1)}
+                        className={`flex h-7 w-7 items-center justify-center rounded-lg text-xs font-medium transition-colors ${
+                          currentPage === index + 1
+                            ? "bg-slate-900 text-white"
+                            : "text-gray-500 hover:bg-gray-100 hover:text-gray-900"
+                        }`}
+                      >
+                        {index + 1}
+                      </button>
+                    );
+                  })}
+                </div>
+                <button
+                  onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
+                  disabled={currentPage === totalPages}
+                  className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

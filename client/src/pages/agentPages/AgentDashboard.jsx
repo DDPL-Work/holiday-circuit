@@ -1,8 +1,9 @@
-import { FileQuestionMark, CircleCheckBig, Wallet, ArrowUpRight, Bell, X, CheckCircle2, AlertCircle, Info, Clock } from "lucide-react";
+import { FileQuestionMark, CircleCheckBig, Wallet, ArrowUpRight, Bell, X, CheckCircle2, AlertCircle, Info, Clock, Gift } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import API from "../../utils/Api.js";
+import ExclusiveOfferModal from "../../modal/ExclusiveOfferModal.jsx";
 
 /* ===== Animations ===== */
 const containerVariant = {
@@ -154,6 +155,7 @@ const navigate = useNavigate();
 
 const [notifications, setNotifications] = useState([]);
 const [open, setOpen] = useState(false);
+const [offerOpen, setOfferOpen] = useState(false);
 const [loadingNotifications, setLoadingNotifications] = useState(false);
 
 
@@ -221,7 +223,19 @@ const handleOpenNotification = (notification) => {
         </div>
 
         {/*=================================== Notification Bell Icon =========================================*/}
-        <div className="relative">
+        <div className="relative flex items-center gap-2">
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            type="button"
+            aria-label="Offers"
+            title="Offers"
+            onClick={() => setOfferOpen(true)}
+            className="relative bg-white border border-gray-200 shadow-sm rounded-full p-2.5 flex items-center justify-center"
+          >
+            <Gift className="w-4 h-4 text-gray-600" />
+          </motion.button>
+
           <motion.button
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
@@ -339,6 +353,8 @@ const handleOpenNotification = (notification) => {
           </div>
         </motion.article>
       </motion.section>
+
+      <ExclusiveOfferModal open={offerOpen} onClose={() => setOfferOpen(false)} />
     </motion.section>
   );
 };

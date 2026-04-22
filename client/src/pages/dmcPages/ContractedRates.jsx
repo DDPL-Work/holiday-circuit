@@ -7,6 +7,8 @@ import API from "../../utils/Api.js"
 export default function ContractedRates() {
 const [showBulkUploadModal, setShowBulkUploadModal] = useState(false);
 const [uploads, setUploads] = useState([]);
+const [currentPage, setCurrentPage] = useState(1);
+const itemsPerPage = 8;
 
 
 
@@ -14,6 +16,10 @@ useEffect(() => {
  fetchUploads();
 
 }, []);
+
+useEffect(() => {
+ setCurrentPage(1);
+}, [uploads.length]);
 
 const fetchUploads = async () => {
  try {
@@ -90,30 +96,17 @@ const handleDownload = async (id, fileName) => {
   }
 };
 
+const totalPages = Math.ceil(uploads.length / itemsPerPage);
+const startIndex = (currentPage - 1) * itemsPerPage;
+const paginatedUploads = uploads.slice(startIndex, startIndex + itemsPerPage);
+
 
   return (
 
-    <div className="p- bg-gray-50 min-h-screen">
-
-      {/* HEADER */}
-      {/* <div className="flex justify-between items-start mb-7">
-        <div>
-          <h1 className="text-xl font-semibold text-gray-800">
-            Contracted Rates Dashboard
-          </h1>
-          <p className="text-sm text-gray-500">
-            Wednesday, March 11, 2026
-          </p>
-        </div>
-
-        <div className="text-right">
-          <p className="text-sm text-gray-500">Logged in as</p>
-          <p className="font-medium text-gray-800">DMC Partner</p>
-        </div>
-      </div> */}
-
+    <div className="min-h-screen bg-gray-50 px-5 py-2">
       {/* TITLE + BUTTONS */}
-      <div className="flex justify-between items-center mb-7 sticky top-0 bg-gray-50 z-20 p-">
+      <div className="sticky top-0 z-30 -mx-6 mb-7 border-b border-gray-200 bg-gray-50 px-6 py-4 shadow-sm rounded-xl">
+  <div className="flex items-center justify-between gap-4 ">
   <div>
     <h2 className="text-lg font-bold text-gray-800">
       Contracted Rates & Inventory
@@ -136,6 +129,7 @@ const handleDownload = async (id, fileName) => {
       <Upload size={16} />
       Bulk Upload
     </button>
+  </div>
   </div>
 </div>
 
@@ -187,7 +181,7 @@ const handleDownload = async (id, fileName) => {
 
 {/*===================================== RECENT UPLOADS SECTION START ======================================== */}
 
-<div className="bg-white rounded-xl p-1">
+<div className="bg-white rounded-xl p-">
 
   <h3 className="text-lg font-semibold mb-5 text-gray-800">
     Recent Uploads
@@ -212,10 +206,10 @@ const handleDownload = async (id, fileName) => {
 
       <tbody >
 
-        {uploads.map((item, index) => (
+        {paginatedUploads.map((item, index) => (
 
           <tr
-            key={index}
+            key={item._id || index}
             className="bg-white border-b border-gray-200 rounded-xl shadow-xs hover:bg-gray-100 transition "
           >
 
@@ -284,6 +278,62 @@ const handleDownload = async (id, fileName) => {
     </table>
 
   </div>
+
+  {totalPages > 1 && (
+    <div className="flex flex-col items-center justify-between gap-4 border-t border-gray-100 bg-gray-50/50 px-6 py-4 sm:flex-row">
+      <span className="text-xs font-medium text-gray-500">
+        Showing {startIndex + 1} to {Math.min(startIndex + itemsPerPage, uploads.length)} of {uploads.length} entries
+      </span>
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+          disabled={currentPage === 1}
+          className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          Previous
+        </button>
+        <div className="hidden items-center gap-1 sm:flex">
+          {Array.from({ length: totalPages }).map((_, index) => {
+            if (
+              totalPages > 5 &&
+              index !== 0 &&
+              index !== totalPages - 1 &&
+              Math.abs(currentPage - 1 - index) > 1
+            ) {
+              if (index === 1 && currentPage > 3) {
+                return <span key={index} className="px-1 text-gray-400">...</span>;
+              }
+              if (index === totalPages - 2 && currentPage < totalPages - 2) {
+                return <span key={index} className="px-1 text-gray-400">...</span>;
+              }
+              return null;
+            }
+
+            return (
+              <button
+                key={index}
+                onClick={() => setCurrentPage(index + 1)}
+                className={`flex h-7 w-7 items-center justify-center rounded-lg text-xs font-medium transition-colors ${
+                  currentPage === index + 1
+                    ? "bg-slate-900 text-white"
+                    : "text-gray-500 hover:bg-gray-100 hover:text-gray-900"
+                }`}
+              >
+                {index + 1}
+              </button>
+            );
+          })}
+        </div>
+        <button
+          onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
+          disabled={currentPage === totalPages}
+          className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          Next
+        </button>
+      </div>
+    </div>
+  )}
 
 </div>
 
