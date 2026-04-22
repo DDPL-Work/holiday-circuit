@@ -37,6 +37,11 @@ const hotelSchema = new mongoose.Schema(
     enum: ["3 Star", "4 Star", "5 Star", "Luxury"]
   },
 
+  roomCategory: {
+    type: String,
+    default: "Double"
+  },
+
   bedType: {
     type: String,
     enum: ["King", "Queen", "Twin"]

@@ -266,15 +266,15 @@ export default function BookingManagementHub() {
                           {row.id}
                         </td>
 
-                        <td className="px-3 py-4 align-middle">
-                          <div className="min-w-0 space-y-2 text-gray-600">
+                        <td className="px-3 py-4 align-middle ">
+                          <div className="min-w-0 space-y-2 text-gray-600 ">
                             <div className="flex items-center gap-2">
                               <User className="h-3 w-3 shrink-0 text-gray-400" />
                               <span className="truncate font-medium text-slate-700">{row.agent}</span>
                             </div>
                             {isReceivedQuery ? (
                               <div className="flex items-center">
-                                <span className="inline-flex max-w-full rounded-full bg-amber-50 px-2.5 py-1 text-[8px] font-semibold leading-4 text-amber-700">
+                                <span className="inline-flex max-w-full rounded-full bg-amber-50 px-2 py-1 text-[8px] font-semibold leading-4 text-amber-700">
                                   Received from {row.receivedFrom}
                                 </span>
                               </div>

@@ -57,6 +57,177 @@ const normalizeBedType = (value) => {
   return undefined;
 };
 
+const normalizeQuotationServiceType = (type) => {
+  const normalizedType = String(type || "").toLowerCase();
+
+  if (normalizedType === "car" || normalizedType === "transport") {
+    return "transfer";
+  }
+
+  return normalizedType || type;
+};
+
+const normalizeComparableText = (value = "") =>
+  String(value || "").trim().toLowerCase();
+
+const calculateHotelServiceTotal = (service = {}) => {
+  const nights = Math.max(Number(service?.nights || 0), 0);
+  const rooms = Math.max(Number(service?.rooms || 1), 1);
+  const perRoomNightRate =
+    Number(service?.price || 0) +
+    (service?.extraAdult ? Number(service?.awebRate || 0) : 0) +
+    (service?.childWithBed ? Number(service?.cwebRate || 0) : 0) +
+    (service?.childWithoutBed ? Number(service?.cwoebRate || 0) : 0);
+
+  return roundCurrencyAmount(perRoomNightRate * nights * rooms);
+};
+
+const calculateResolvedServiceTotal = (service = {}) => {
+  const normalizedType = normalizeQuotationServiceType(service?.type);
+  const basePrice = Number(service?.price || 0);
+
+  if (normalizedType === "hotel") {
+    return calculateHotelServiceTotal(service);
+  }
+
+  if (normalizedType === "transfer") {
+    return roundCurrencyAmount(basePrice * Number(service?.days || 1));
+  }
+
+  if (normalizedType === "activity") {
+    return roundCurrencyAmount(basePrice * Number(service?.pax || 1));
+  }
+
+  if (normalizedType === "sightseeing") {
+    return roundCurrencyAmount(
+      basePrice * Math.max(Number(service?.pax || 1), Number(service?.days || 1)),
+    );
+  }
+
+  return roundCurrencyAmount(Number(service?.total || basePrice || 0));
+};
+
+const scoreHotelVariantCandidate = (candidate = {}, service = {}) => {
+  let score = 0;
+
+  const desiredRoomCategory = normalizeComparableText(service?.roomCategory);
+  const desiredRoomType = normalizeComparableText(service?.roomType);
+  const desiredBedType = normalizeBedType(service?.bedType);
+  const candidateRoomCategory = normalizeComparableText(candidate?.roomCategory);
+  const candidateRoomType = normalizeComparableText(candidate?.roomType);
+  const candidateBedType = normalizeBedType(candidate?.bedType);
+  const serviceId = String(service?.serviceId || "").trim();
+
+  if (serviceId && String(candidate?._id || "") === serviceId) {
+    score += 5;
+  }
+
+  if (desiredRoomCategory && candidateRoomCategory === desiredRoomCategory) {
+    score += 120;
+  }
+
+  if (desiredRoomType && candidateRoomType === desiredRoomType) {
+    score += 120;
+  }
+
+  if (desiredBedType && candidateBedType === desiredBedType) {
+    score += 120;
+  }
+
+  return score;
+};
+
+const resolveDynamicHotelServicePricing = async (service = {}) => {
+  const normalizedType = normalizeQuotationServiceType(service?.type);
+
+  if (normalizedType !== "hotel") {
+    return {
+      ...service,
+      type: normalizedType,
+    };
+  }
+
+  const hotelName = String(service?.title || "").trim();
+  const city = String(service?.city || "").trim();
+  const country = String(service?.country || "").trim();
+  const supplierId = String(service?.supplierId || service?.dmcId || "").trim();
+  const serviceId = String(service?.serviceId || "").trim();
+
+  const query = {};
+
+  if (hotelName) {
+    query.hotelName = hotelName;
+  }
+
+  if (city) {
+    query.city = city;
+  }
+
+  if (country) {
+    query.country = country;
+  }
+
+  if (mongoose.Types.ObjectId.isValid(supplierId)) {
+    query.supplier = supplierId;
+  }
+
+  let hotelVariants = [];
+
+  if (Object.keys(query).length) {
+    hotelVariants = await Hotel.find(query).lean();
+  }
+
+  if (!hotelVariants.length && mongoose.Types.ObjectId.isValid(serviceId)) {
+    const fallbackHotel = await Hotel.findById(serviceId).lean();
+    if (fallbackHotel) {
+      hotelVariants = [fallbackHotel];
+    }
+  }
+
+  if (!hotelVariants.length) {
+    return {
+      ...service,
+      type: normalizedType,
+      bedType: normalizeBedType(service?.bedType),
+    };
+  }
+
+  const bestVariant =
+    hotelVariants
+      .map((candidate) => ({
+        candidate,
+        score: scoreHotelVariantCandidate(candidate, service),
+      }))
+      .sort((left, right) => right.score - left.score)[0]?.candidate || hotelVariants[0];
+
+  return {
+    ...service,
+    serviceId: bestVariant?._id?.toString?.() || service?.serviceId,
+    supplierId: service?.supplierId || bestVariant?.supplier,
+    supplierName: service?.supplierName || bestVariant?.supplierName || "",
+    dmcId: service?.dmcId || bestVariant?.supplier,
+    dmcName:
+      service?.dmcName ||
+      service?.supplierName ||
+      bestVariant?.supplierName ||
+      "",
+    type: normalizedType,
+    title: service?.title || bestVariant?.hotelName || "",
+    city: service?.city || bestVariant?.city || "",
+    country: service?.country || bestVariant?.country || "",
+    description: service?.description || bestVariant?.description || service?.desc || "",
+    roomCategory: bestVariant?.roomCategory || service?.roomCategory || "",
+    roomType: bestVariant?.roomType || service?.roomType || "",
+    hotelCategory: bestVariant?.hotelCategory || service?.hotelCategory || "",
+    bedType: normalizeBedType(bestVariant?.bedType) || normalizeBedType(service?.bedType),
+    currency: normalizeCurrencyCode(bestVariant?.currency || service?.currency || "INR"),
+    price: Number(bestVariant?.price ?? service?.price ?? 0),
+    awebRate: Number(bestVariant?.awebRate || 0),
+    cwebRate: Number(bestVariant?.cwebRate || 0),
+    cwoebRate: Number(bestVariant?.cwoebRate || 0),
+  };
+};
+
 
 const addLogIfNotExists = (query, action, performedBy) => {
   const exists = query.activityLog.some(
@@ -995,69 +1166,33 @@ export const createQuotation = async (req, res, next) => {
   return next(new ApiError(400, "No services selected"));
 }
 
-    const normalizeQuotationServiceType = (type) => {
-      const normalizedType = String(type || "").toLowerCase();
-      if (normalizedType === "car" || normalizedType === "transport") {
-        return "transfer";
-      }
-
-      return normalizedType || type;
-    };
-
-    const calculateResolvedServiceTotal = (service = {}) => {
-      const normalizedType = normalizeQuotationServiceType(service.type);
-      const basePrice = Number(service.price || 0);
-      const explicitTotal = Number(service.total || 0);
-
-      if (explicitTotal > 0) {
-        return explicitTotal;
-      }
-
-      if (normalizedType === "hotel") {
-        return basePrice * Number(service.nights || 0);
-      }
-
-      if (normalizedType === "transfer") {
-        return basePrice * Number(service.days || 1);
-      }
-
-      if (normalizedType === "activity") {
-        return basePrice * Number(service.pax || 1);
-      }
-
-      if (normalizedType === "sightseeing") {
-        return basePrice * Math.max(Number(service.pax || 1), Number(service.days || 1));
-      }
-
-      return Number(service.total || basePrice || 0);
-    };
-
     const quoteCategory =
       pricing?.quoteCategory === "international"
         ? "international"
         : "domestic";
 
-    const resolvedServices = services.map((service) => {
-      const total = roundCurrencyAmount(calculateResolvedServiceTotal(service));
-      const currency = normalizeCurrencyCode(service?.currency);
+    const resolvedServices = await Promise.all(services.map(async (service) => {
+      const hotelResolvedService = await resolveDynamicHotelServicePricing(service);
+      const total = roundCurrencyAmount(calculateResolvedServiceTotal(hotelResolvedService));
+      const currency = normalizeCurrencyCode(hotelResolvedService?.currency);
       const inrPricing = buildInrPricingForService({
-        ...service,
+        ...hotelResolvedService,
         currency,
         total,
       });
 
       return {
-        ...service,
+        ...hotelResolvedService,
         currency,
         type: normalizeQuotationServiceType(service.type),
-        dmcId: service.dmcId || service.supplierId || "",
-        dmcName: service.dmcName || "",
+        dmcId: hotelResolvedService.dmcId || hotelResolvedService.supplierId || "",
+        dmcName: hotelResolvedService.dmcName || "",
         total,
         exchangeRate: inrPricing.exchangeRate,
         priceInInr: inrPricing.priceInInr,
         totalInInr: inrPricing.totalInInr,
       };
-    });
+    }));
 
     const unmappedServices = resolvedServices.filter((service) => !service.dmcId);
     if (unmappedServices.length) {
@@ -2411,71 +2546,28 @@ export const saveQuotationDraft = async (req, res, next) => {
 
     const { quotation } = await getAuthorizedQueryForQuotation(quotationId, req);
 
-    const normalizeQuotationServiceType = (type) => {
-      const normalizedType = String(type || "").toLowerCase();
-      if (normalizedType === "car" || normalizedType === "transport") {
-        return "transfer";
-      }
-
-      return normalizedType || type;
-    };
-
-    const calculateResolvedServiceTotal = (service = {}) => {
-      const normalizedType = normalizeQuotationServiceType(service.type);
-      const basePrice = Number(service.price || 0);
-      const explicitTotal = Number(service.total || 0);
-
-      if (explicitTotal > 0) {
-        return explicitTotal;
-      }
-
-      if (normalizedType === "hotel") {
-        return roundCurrencyAmount(
-          basePrice * Number(service.nights || 0) +
-          (service.extraAdult ? Number(service.awebRate || 0) * Number(service.nights || 0) : 0) +
-          (service.childWithBed ? Number(service.cwebRate || 0) * Number(service.nights || 0) : 0) +
-          (service.childWithoutBed ? Number(service.cwoebRate || 0) * Number(service.nights || 0) : 0),
-        );
-      }
-
-      if (normalizedType === "transfer") {
-        return roundCurrencyAmount(basePrice * Number(service.days || 1));
-      }
-
-      if (normalizedType === "activity") {
-        return roundCurrencyAmount(basePrice * Number(service.pax || 1));
-      }
-
-      if (normalizedType === "sightseeing") {
-        return roundCurrencyAmount(
-          basePrice * Math.max(Number(service.pax || 1), Number(service.days || 1)),
-        );
-      }
-
-      return roundCurrencyAmount(Number(service.total || basePrice || 0));
-    };
-
-    const resolvedServices = services.map((service) => {
-      const total = roundCurrencyAmount(calculateResolvedServiceTotal(service));
-      const currency = normalizeCurrencyCode(service?.currency);
+    const resolvedServices = await Promise.all(services.map(async (service) => {
+      const hotelResolvedService = await resolveDynamicHotelServicePricing(service);
+      const total = roundCurrencyAmount(calculateResolvedServiceTotal(hotelResolvedService));
+      const currency = normalizeCurrencyCode(hotelResolvedService?.currency);
       const inrPricing = buildInrPricingForService({
-        ...service,
+        ...hotelResolvedService,
         currency,
         total,
       });
 
       return {
-        ...service,
+        ...hotelResolvedService,
         currency,
         type: normalizeQuotationServiceType(service.type),
-        dmcId: service.dmcId || service.supplierId || "",
-        dmcName: service.dmcName || "",
+        dmcId: hotelResolvedService.dmcId || hotelResolvedService.supplierId || "",
+        dmcName: hotelResolvedService.dmcName || "",
         total,
         exchangeRate: inrPricing.exchangeRate,
         priceInInr: inrPricing.priceInInr,
         totalInInr: inrPricing.totalInInr,
       };
-    });
+    }));
 
     const servicesTotal = resolvedServices.reduce((sum, service) => (
       sum + Number(service.totalInInr || 0)
@@ -2626,6 +2718,15 @@ export const addQuotationService = async (req, res, next) => {
       infants,
       rooms,
       bedType,
+      roomCategory,
+      roomType,
+      hotelCategory,
+      extraAdult,
+      childWithBed,
+      childWithoutBed,
+      awebRate,
+      cwebRate,
+      cwoebRate,
     } = req.body;
 
     if (!type || !title || !price) {
@@ -2635,18 +2736,25 @@ export const addQuotationService = async (req, res, next) => {
       });
     }
 
-    const normalizedType =
-      String(type || "").toLowerCase() === "car" ||
-      String(type || "").toLowerCase() === "transport"
-        ? "transfer"
-        : type;
+    const normalizedType = normalizeQuotationServiceType(type);
 
-    let total = Number(price || 0);
+    const normalizedService = {
+      type: normalizedType,
+      price: Number(price || 0),
+      nights: Number(nights || 1),
+      days: Number(days || 1),
+      pax: Number(pax || 1),
+      rooms: Number(rooms || 1),
+      extraAdult: Boolean(extraAdult),
+      childWithBed: Boolean(childWithBed),
+      childWithoutBed: Boolean(childWithoutBed),
+      awebRate: Number(awebRate || 0),
+      cwebRate: Number(cwebRate || 0),
+      cwoebRate: Number(cwoebRate || 0),
+      total: 0,
+    };
 
-    if (normalizedType === "hotel") total = Number(price || 0) * Number(nights || 1);
-    if (normalizedType === "transfer") total = Number(price || 0) * Number(days || 1);
-    if (normalizedType === "activity") total = Number(price || 0) * Number(pax || 1);
-    if (normalizedType === "sightseeing") total = Number(price || 0) * Math.max(Number(pax || 1), Number(days || 1));
+    const total = calculateResolvedServiceTotal(normalizedService);
 
     const resolvedCurrency = normalizeCurrencyCode(currency);
     const resolvedExchangeRate =
@@ -2679,6 +2787,9 @@ export const addQuotationService = async (req, res, next) => {
       supplierName: supplierName || "",
       dmcId: dmcId || undefined,
       dmcName: dmcName || "",
+      roomCategory: roomCategory || "",
+      roomType: roomType || "",
+      hotelCategory: hotelCategory || "",
       nights: Number(nights || 1),
       days: Number(days || 1),
       pax: Number(pax || 1),
@@ -2697,6 +2808,12 @@ export const addQuotationService = async (req, res, next) => {
       infants: Number(infants || 0),
       rooms: Number(rooms || 1),
       bedType: normalizeBedType(bedType),
+      extraAdult: Boolean(extraAdult),
+      childWithBed: Boolean(childWithBed),
+      childWithoutBed: Boolean(childWithoutBed),
+      awebRate: Number(awebRate || 0),
+      cwebRate: Number(cwebRate || 0),
+      cwoebRate: Number(cwoebRate || 0),
     });
 
     quotation.pricing.currency = "INR";

@@ -66,29 +66,24 @@ export default function OpsDashboardContent() {
       state: notification?.meta ? { notificationMeta: notification.meta } : undefined,
     });
   };
-
   return (
-
 <motion.div
 initial={{ opacity: 0 }}
 animate={{ opacity: 1 }}
 transition={{ duration: 0.5 }}
-className="min-h-[calc(100vh-64px)] bg-[#F5F7FB]  sm:p-1"
->
-
+className="min-h-[calc(100vh-64px)] bg-[#F5F7FB] sm:p-1">
   <div className="mb-3">
    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-    <h1 className="font-bold"> OPS-DASHBOARD</h1>
-
-    <div className="relative">
-      <button
+   <h1 className="font-bold">OPS-DASHBOARD</h1>
+   <div className="relative">
+   <button
         type="button"
         onClick={() => {
-          const nextState = !openNotifications;
-          setOpenNotifications(nextState);
-          if (!openNotifications) {
-            fetchNotifications();
-          }
+        const nextState = !openNotifications;
+        setOpenNotifications(nextState);
+        if (!openNotifications) {
+        fetchNotifications();
+        }
         }}
         className="relative flex h-11 w-11 items-center justify-center rounded-2xl border border-gray-200 bg-white text-slate-700 shadow-sm transition hover:border-blue-200 hover:text-blue-600"
       >
