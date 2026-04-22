@@ -629,21 +629,43 @@ export default function FulfillmentConfirmation() {
                 </p>
               </div>
               <button
-                type="button"
-                onClick={() => selectedQuery && setShowTravelerDocsModal(true)}
-                className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-left transition-all duration-200 hover:border-blue-300 hover:bg-blue-50/80 hover:shadow-sm cursor-pointer"
-              >
-                <div className="flex items-center gap-2 text-slate-500 text-xs uppercase tracking-wide">
-                  <Users size={14} />
-                  Pax
-                </div>
-                <p className="text-sm font-medium text-slate-800 mt-2">
-                  {selectedQuery?.passengers || 0} PAX
-                </p>
-                <p className="mt-1 text-[11px] text-blue-700/80">
-                  Open verified traveler documents
-                </p>
-              </button>
+  type="button"
+  onClick={() => selectedQuery && setShowTravelerDocsModal(true)}
+  className={`group relative rounded-2xl border px-4 py-3 text-left overflow-hidden transition-all duration-300 ${
+    selectedQuery
+      ? "border-blue-200 bg-gradient-to-br from-blue-50 via-white to-indigo-50 hover:border-blue-400 hover:shadow-[0_0_0_3px_rgba(99,102,241,0.12),0_8px_24px_rgba(99,102,241,0.14)] cursor-pointer"
+      : "border-slate-200 bg-slate-50 cursor-not-allowed opacity-60"
+  }`}
+>
+  {/* Animated shimmer on hover */}
+  {selectedQuery && (
+    <span className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/40 to-transparent transition-transform duration-700 group-hover:translate-x-full" />
+  )}
+ 
+  <div className="flex items-center justify-between">
+    <div className="flex items-center gap-2 text-slate-500 text-xs uppercase tracking-wide">
+      <Users size={14} className={selectedQuery ? "text-blue-500" : ""} />
+      Pax
+    </div>
+    {selectedQuery && (
+      <span className="flex items-center gap-1 rounded-full border border-blue-200 bg-blue-100 px-2 py-0.5 text-[10px] font-semibold text-blue-700 transition-all duration-200 group-hover:bg-blue-600 group-hover:text-white group-hover:border-blue-600">
+        <ExternalLink size={9} />
+        View Docs
+      </span>
+    )}
+  </div>
+ 
+  <p className="text-sm font-semibold text-slate-800 mt-2">
+    {selectedQuery?.passengers || 0} PAX
+  </p>
+ 
+  <div className="mt-2 flex items-center gap-1.5">
+    <span className={`h-1.5 w-1.5 rounded-full animate-pulse ${selectedQuery ? "bg-blue-500" : "bg-slate-300"}`} />
+    <p className="text-[9px] text-blue-600 font-medium group-hover:text-blue-800 transition-colors">
+      {selectedQuery ? "Click to open traveler documents" : "Select a query first"}
+    </p>
+  </div>
+</button>
               <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
                 <div className="flex items-center gap-2 text-slate-500 text-xs uppercase tracking-wide">
                   <CalendarDays size={14} />
@@ -1285,352 +1307,403 @@ export default function FulfillmentConfirmation() {
       </div>
 
       <AnimatePresence>
-        {showTravelerDocsModal && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 p-3 backdrop-blur-[6px] sm:p-4"
+       // ============================================================
+// PATCH 2 — Traveler Documents Modal (AnimatePresence ke andar)
+// ============================================================
+// Poora showTravelerDocsModal block replace karein:
+ 
+{showTravelerDocsModal && (
+  <motion.div
+    initial={{ opacity: 0 }}
+    animate={{ opacity: 1 }}
+    exit={{ opacity: 0 }}
+    className="fixed inset-0 z-50 flex items-end justify-center sm:items-center p-0 sm:p-4"
+    style={{
+      background: "rgba(10,14,30,0.60)",
+      backdropFilter: "blur(8px)",
+      WebkitBackdropFilter: "blur(8px)",
+    }}
+  >
+    <div className="absolute inset-0" onClick={() => setShowTravelerDocsModal(false)} />
+
+    <motion.div
+      initial={{ opacity: 0, y: 40, scale: 0.97 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: 24, scale: 0.975 }}
+      transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+      className="relative z-10 flex max-h-[96vh] w-full max-w-[1120px] flex-col overflow-hidden rounded-t-[28px] sm:rounded-[28px]"
+      style={{
+        background: "linear-gradient(145deg, #eef4ff 0%, #f5f8ff 30%, #edfcf4 65%, #f0f9ff 100%)",
+        border: "1px solid rgba(148,193,255,0.35)",
+        boxShadow: "0 32px 80px rgba(15,23,42,0.20), 0 0 0 1px rgba(255,255,255,0.7)",
+      }}
+    >
+      {/* Top navy accent bar */}
+      <div className="h-1 w-full flex-shrink-0"
+        style={{ background: "linear-gradient(90deg, #1e3a8a, #2563eb, #3b82f6, #0891b2)" }} />
+
+      {/* Header */}
+      <div className="relative flex items-start justify-between gap-4 px-6 py-5"
+        style={{
+          borderBottom: "1px solid rgba(148,193,255,0.25)",
+          background: "linear-gradient(135deg, rgba(219,234,254,0.55) 0%, rgba(255,255,255,0.60) 55%, rgba(209,250,229,0.35) 100%)",
+          backdropFilter: "blur(8px)",
+        }}>
+        <div className="flex items-center gap-4">
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl"
+            style={{
+              background: "linear-gradient(135deg, #1e3a8a, #2563eb)",
+              boxShadow: "0 4px 14px rgba(37,99,235,0.32)",
+            }}>
+            <Users size={20} className="text-white" />
+          </div>
+          <div>
+            <p className="text-[10px] uppercase tracking-[0.28em] font-bold"
+              style={{ color: "#2563eb" }}>
+              PAX Document Vault
+            </p>
+            <h3 className="text-xl font-bold leading-tight mt-0.5 text-slate-900">
+              Traveler Files
+            </h3>
+            <p className="text-xs mt-0.5 text-slate-400">
+              {selectedQuery?.queryId} · {selectedQuery?.destination}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.18em]"
+            style={{
+              background:
+                travelerDocumentVerification.status === "Verified" ? "rgba(220,252,231,0.85)" :
+                travelerDocumentVerification.status === "Pending"  ? "rgba(254,249,195,0.85)" :
+                travelerDocumentVerification.status === "Rejected" ? "rgba(254,226,226,0.85)" : "rgba(241,245,249,0.85)",
+              color:
+                travelerDocumentVerification.status === "Verified" ? "#15803d" :
+                travelerDocumentVerification.status === "Pending"  ? "#a16207" :
+                travelerDocumentVerification.status === "Rejected" ? "#b91c1c" : "#64748b",
+              border: `1px solid ${
+                travelerDocumentVerification.status === "Verified" ? "#bbf7d0" :
+                travelerDocumentVerification.status === "Pending"  ? "#fde047" :
+                travelerDocumentVerification.status === "Rejected" ? "#fecaca" : "#e2e8f0"
+              }`,
+              backdropFilter: "blur(6px)",
+            }}>
+            <span className={`h-1.5 w-1.5 rounded-full ${travelerDocumentVerification.status !== "Rejected" ? "animate-pulse" : ""}`}
+              style={{
+                background:
+                  travelerDocumentVerification.status === "Verified" ? "#16a34a" :
+                  travelerDocumentVerification.status === "Pending"  ? "#ca8a04" :
+                  travelerDocumentVerification.status === "Rejected" ? "#dc2626" : "#94a3b8",
+              }} />
+            {travelerDocumentVerification.status || "Draft"}
+          </span>
+
+          <button
+            onClick={() => setShowTravelerDocsModal(false)}
+            className="flex h-9 w-9 items-center justify-center rounded-full transition"
+            style={{
+              background: "rgba(255,255,255,0.65)",
+              border: "1px solid rgba(148,193,255,0.35)",
+              color: "#94a3b8",
+              backdropFilter: "blur(6px)",
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.background = "rgba(219,234,254,0.80)";
+              e.currentTarget.style.borderColor = "#bfdbfe";
+              e.currentTarget.style.color = "#2563eb";
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.background = "rgba(255,255,255,0.65)";
+              e.currentTarget.style.borderColor = "rgba(148,193,255,0.35)";
+              e.currentTarget.style.color = "#94a3b8";
+            }}
           >
-            <motion.div
-              initial={{ opacity: 0, y: 24, scale: 0.98 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 16, scale: 0.985 }}
-              transition={{ duration: 0.22, ease: "easeOut" }}
-              className="relative flex max-h-[calc(100vh-24px)] w-full max-w-[1180px] overflow-hidden rounded-[32px] border border-slate-200/80 bg-white shadow-[0_30px_90px_rgba(15,23,42,0.28)] sm:max-h-[calc(100vh-32px)]"
-            >
-              <div className="grid min-h-0 w-full lg:grid-cols-[340px_minmax(0,1fr)]">
-                <div className="custom-scroll relative min-h-0 overflow-y-auto bg-[radial-gradient(circle_at_top_left,_rgba(96,165,250,0.35),_transparent_34%),linear-gradient(160deg,#0f172a_0%,#111827_52%,#172554_100%)] px-5 py-5 pb-6 text-white">
-                  <div className="absolute inset-x-0 top-0 h-px bg-white/20" />
-                  <p className="text-[11px] uppercase tracking-[0.22em] text-blue-100/70">
-                    Traveler Vault
-                  </p>
-                  <h3 className="mt-2 text-2xl font-semibold leading-tight">
-                    PAX Documents Console
-                  </h3>
-                  <p className="mt-2 text-sm leading-6 text-slate-300">
-                    Review the current query's traveler files in one place. Once operations verification is complete, every approved document is ready to open or download for supplier coordination.
-                  </p>
+            <X size={16} />
+          </button>
+        </div>
+      </div>
 
-                  <div
-                    className={`mt-5 inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] ${
-                      travelerDocumentVerification.status === "Verified"
-                        ? "border-emerald-300/35 bg-emerald-400/15 text-emerald-100"
-                        : travelerDocumentVerification.status === "Pending"
-                        ? "border-amber-300/35 bg-amber-400/15 text-amber-100"
-                        : travelerDocumentVerification.status === "Rejected"
-                        ? "border-rose-300/35 bg-rose-400/15 text-rose-100"
-                        : "border-white/15 bg-white/10 text-slate-200"
-                    }`}
-                  >
-                    {travelerDocumentVerification.status || "Draft"}
-                  </div>
+      {/* Stats bar */}
+      <div className="grid grid-cols-3"
+        style={{
+          borderBottom: "1px solid rgba(148,193,255,0.22)",
+          background: "linear-gradient(90deg, rgba(219,234,254,0.40) 0%, rgba(240,249,255,0.30) 50%, rgba(209,250,229,0.30) 100%)",
+        }}>
+        {[
+          { label: "Travelers",      value: travelerProfiles.length,                              icon: <Users size={13} />,       color: "#2563eb", bg: "rgba(219,234,254,0.60)" },
+          { label: "Files Ready",    value: uploadedTravelerDocumentCount,                        icon: <Download size={13} />,    color: "#0891b2", bg: "rgba(207,250,254,0.60)" },
+          { label: "Supplier Ready", value: `${travelersReadyForSupplierHandoff}/${travelerProfiles.length}`, icon: <CheckCircle size={13} />, color: "#059669", bg: "rgba(209,250,229,0.60)" },
+        ].map((stat, i) => (
+          <div key={stat.label} className="flex items-center gap-3 px-5 py-3.5"
+            style={{ borderRight: i < 2 ? "1px solid rgba(148,193,255,0.22)" : "none" }}>
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg flex-shrink-0"
+              style={{ background: stat.bg, color: stat.color, border: `1px solid ${stat.color}22` }}>
+              {stat.icon}
+            </div>
+            <div>
+              <p className="text-[10px] uppercase tracking-[0.18em] text-slate-400 font-medium">{stat.label}</p>
+              <p className="text-lg font-bold leading-none mt-0.5 text-slate-900">{stat.value}</p>
+            </div>
+          </div>
+        ))}
+      </div>
 
-                  <div className="mt-6 space-y-3">
-                    <div className="rounded-2xl border border-white/10 bg-white/6 px-4 py-3">
-                      <p className="text-[10px] uppercase tracking-[0.18em] text-slate-400">
-                        Query Reference
-                      </p>
-                      <p className="mt-2 text-lg font-semibold text-white">
-                        {selectedQuery?.queryId || "-"}
-                      </p>
-                      <p className="mt-1 text-xs text-slate-300">
-                        {selectedQuery?.destination || "Destination not available"}
-                      </p>
-                    </div>
+      {/* Scrollable content */}
+      <div className="custom-scroll flex-1 overflow-y-auto px-6 py-5 space-y-4"
+        style={{ background: "linear-gradient(160deg, rgba(238,244,255,0.50) 0%, rgba(240,253,250,0.40) 50%, rgba(240,249,255,0.50) 100%)" }}>
 
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="rounded-2xl border border-white/10 bg-white/6 px-4 py-3">
-                        <p className="text-[10px] uppercase tracking-[0.18em] text-slate-400">
-                          Travelers
-                        </p>
-                        <p className="mt-2 text-xl font-semibold text-white">
-                          {travelerProfiles.length}
-                        </p>
-                      </div>
-                      <div className="rounded-2xl border border-white/10 bg-white/6 px-4 py-3">
-                        <p className="text-[10px] uppercase tracking-[0.18em] text-slate-400">
-                          Files Ready
-                        </p>
-                        <p className="mt-2 text-xl font-semibold text-white">
-                          {uploadedTravelerDocumentCount}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="rounded-2xl border border-cyan-300/20 bg-cyan-400/10 px-4 py-3">
-                      <p className="text-[10px] uppercase tracking-[0.18em] text-cyan-100/70">
-                        Supplier Handoff
-                      </p>
-                      <p className="mt-2 text-lg font-semibold text-white">
-                        {travelersReadyForSupplierHandoff} traveler{travelersReadyForSupplierHandoff === 1 ? "" : "s"} ready
-                      </p>
-                      <p className="mt-1 text-xs leading-5 text-cyan-50/80">
-                        Documents shown on the right can be opened for review or downloaded for onward sharing with suppliers.
-                      </p>
-                    </div>
-
-                    <div className="rounded-2xl border border-white/10 bg-white/6 px-4 py-3">
-                      <p className="text-[10px] uppercase tracking-[0.18em] text-slate-400">
-                        Ops Review
-                      </p>
-                      <p className="mt-2 text-sm font-semibold text-white">
-                        {travelerDocumentVerification.reviewedByName || "Awaiting operations review"}
-                      </p>
-                      <p className="mt-1 text-xs text-slate-300">
-                        Submitted: {formatDocumentDateTime(travelerDocumentVerification.submittedAt)}
-                      </p>
-                      <p className="mt-1 text-xs text-slate-300">
-                        Reviewed: {formatDocumentDateTime(travelerDocumentVerification.reviewedAt)}
-                      </p>
-                    </div>
-
-                    {travelerDocumentVerification.rejectionReason && (
-                      <div className="mb-4 rounded-2xl border border-rose-300/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-100">
-                        <p className="text-[10px] uppercase tracking-[0.18em] text-rose-200/80">
-                          Latest Ops Comment
-                        </p>
-                        <p className="mt-2 font-semibold">
-                          {travelerDocumentVerification.rejectionReason}
-                        </p>
-                        {travelerDocumentVerification.rejectionRemarks && (
-                          <p className="mt-1 text-xs leading-5 text-rose-100/85">
-                            {travelerDocumentVerification.rejectionRemarks}
-                          </p>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <div className="flex min-h-0 flex-col bg-[linear-gradient(180deg,#ffffff_0%,#f8fbff_40%,#f8fafc_100%)]">
-                  <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
-                    <div>
-                      <p className="text-[11px] uppercase tracking-[0.2em] text-slate-400">
-                        Verified Access Window
-                      </p>
-                      <h3 className="mt-1 text-xl font-semibold text-slate-900">
-                        Agent Traveler Documents
-                      </h3>
-                      <p className="mt-1 text-sm text-slate-500">
-                        Browse traveler files with names, status, upload time, and direct actions for review or supplier handoff.
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => setShowTravelerDocsModal(false)}
-                      className="rounded-full border border-slate-200 bg-white p-2 text-slate-500 transition hover:border-slate-300 hover:text-slate-700"
-                    >
-                      <X size={16} />
-                    </button>
-                  </div>
-
-                  <div className="custom-scroll flex-1 overflow-y-auto px-5 py-5">
-                    <div className="mb-5 grid gap-3 lg:grid-cols-3">
-                      <div className="rounded-3xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-                        <p className="text-[10px] uppercase tracking-[0.18em] text-slate-400">
-                          Verified Set
-                        </p>
-                        <p className="mt-2 text-2xl font-semibold text-slate-900">
-                          {uploadedTravelerDocumentCount}
-                        </p>
-                        <p className="mt-1 text-xs text-slate-500">
-                          Approved files currently visible in this workspace
-                        </p>
-                      </div>
-                      <div className="rounded-3xl border border-slate-200 bg-[linear-gradient(180deg,#ffffff_0%,#f6fbff_100%)] px-4 py-3 shadow-sm">
-                        <p className="text-[10px] uppercase tracking-[0.18em] text-slate-400">
-                          Review Status
-                        </p>
-                        <p className="mt-2 text-lg font-semibold text-slate-900">
-                          {travelerDocumentVerification.status || "Draft"}
-                        </p>
-                        <p className="mt-1 text-xs text-slate-500">
-                          Managed by {travelerDocumentVerification.reviewedByName || "Operations team"}
-                        </p>
-                      </div>
-                      <div className="rounded-3xl border border-slate-200 bg-[linear-gradient(180deg,#ffffff_0%,#f7fcf9_100%)] px-4 py-3 shadow-sm">
-                        <p className="text-[10px] uppercase tracking-[0.18em] text-slate-400">
-                          Supplier Ready
-                        </p>
-                        <p className="mt-2 text-lg font-semibold text-slate-900">
-                          {travelersReadyForSupplierHandoff}/{travelerProfiles.length}
-                        </p>
-                        <p className="mt-1 text-xs text-slate-500">
-                          Travelers with at least one downloadable document
-                        </p>
-                      </div>
-                    </div>
-
-                    {travelerDocumentVerification.status !== "Verified" ? (
-                      <div className="rounded-[28px] border border-dashed border-slate-300 bg-white px-6 py-10 text-center shadow-sm">
-                        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl bg-slate-100 text-slate-500">
-                          {travelerDocumentVerification.status === "Rejected" ? (
-                            <AlertCircle size={30} />
-                          ) : travelerDocumentVerification.status === "Pending" ? (
-                            <ShieldCheck size={30} />
-                          ) : (
-                            <Users size={30} />
-                          )}
-                        </div>
-                        <h4 className="mt-5 text-xl font-semibold text-slate-900">
-                          {travelerDocumentVerification.status === "Pending"
-                            ? "Operations verification in progress"
-                            : travelerDocumentVerification.status === "Rejected"
-                            ? "Documents returned to the agent"
-                            : "Traveler documents not unlocked yet"}
-                        </h4>
-                        <p className="mx-auto mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-                          {travelerDocumentVerification.status === "Pending"
-                            ? "The operations team is reviewing the uploaded traveler files. As soon as verification is completed, open and download actions will unlock in this modal."
-                            : travelerDocumentVerification.status === "Rejected"
-                            ? "Operations requested corrections on one or more documents. Once the agent resubmits the revised files and they are approved, the verified set will appear here."
-                            : "The agent has not completed the traveler document set yet, or operations review has not started for this query."}
-                        </p>
-
-                        {travelerDocumentVerification.issues?.length > 0 && (
-                          <div className="mx-auto mt-6 max-w-3xl rounded-3xl border border-amber-200 bg-amber-50 p-4 text-left">
-                            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-amber-700">
-                              Operations flagged items
-                            </p>
-                            <div className="mt-3 grid gap-2 md:grid-cols-2">
-                              {travelerDocumentVerification.issues.map((issue, index) => (
-                                <div
-                                  key={`${issue.travelerId || issue.travelerName}-${issue.documentKey}-${index}`}
-                                  className="rounded-2xl border border-amber-200 bg-white px-3 py-2 text-xs text-slate-700"
-                                >
-                                  <p className="font-semibold text-slate-900">
-                                    {issue.travelerName || "Traveler"}
-                                  </p>
-                                  <p className="mt-1 text-slate-500">
-                                    {issue.documentLabel || issue.documentKey || "Document issue"}
-                                  </p>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    ) : travelerProfiles.length > 0 ? (
-                      <div className="space-y-4">
-                        {travelerProfiles.map((traveler, index) => (
-                          <div
-                            key={traveler.id}
-                            className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_18px_45px_rgba(15,23,42,0.06)]"
-                          >
-                            <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 bg-[radial-gradient(circle_at_top_left,_rgba(59,130,246,0.10),_transparent_26%),linear-gradient(120deg,#eef6ff_0%,#ffffff_58%,#f7fbff_100%)] px-5 py-4">
-                              <div>
-                                <p className="text-[11px] uppercase tracking-[0.18em] text-blue-700/70">
-                                  Traveler {index + 1}
-                                </p>
-                                <h4 className="mt-1 text-lg font-semibold text-slate-900">
-                                  {traveler.fullName}
-                                </h4>
-                                <p className="mt-1 text-xs text-slate-500">
-                                  {traveler.travelerType}
-                                  {traveler.travelerType === "Child" && traveler.childAge
-                                    ? ` | ${traveler.childAge} yrs`
-                                    : ""}
-                                </p>
-                              </div>
-                              <div className="rounded-2xl border border-blue-100 bg-white px-3 py-2 text-right">
-                                <p className="text-[10px] uppercase tracking-[0.16em] text-slate-400">
-                                  Document Coverage
-                                </p>
-                                <p className="mt-1 text-sm font-semibold text-slate-900">
-                                  {traveler.uploadedCount}/{traveler.documentSlots.length} files
-                                </p>
-                              </div>
-                            </div>
-
-                            <div className="grid gap-3 p-5 md:grid-cols-2">
-                              {traveler.documentSlots.map((travelerDocument) => (
-                                <div
-                                  key={`${traveler.id}-${travelerDocument.key}`}
-                                  className={`rounded-[24px] border p-4 transition ${
-                                    travelerDocument.uploaded
-                                      ? "border-emerald-200 bg-[radial-gradient(circle_at_top_right,_rgba(16,185,129,0.08),_transparent_24%),linear-gradient(180deg,#ffffff_0%,#f4fbf7_100%)] shadow-[0_10px_30px_rgba(16,185,129,0.06)]"
-                                      : "border-slate-200 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)]"
-                                  }`}
-                                >
-                                  <div className="flex items-start justify-between gap-3">
-                                    <div>
-                                      <p className="text-[11px] uppercase tracking-[0.18em] text-slate-400">
-                                        {travelerDocument.label}
-                                      </p>
-                                      <p className="mt-2 text-sm font-semibold text-slate-900">
-                                        {travelerDocument.fileName || "File not uploaded"}
-                                      </p>
-                                    </div>
-                                    <span
-                                      className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${
-                                        travelerDocument.uploaded
-                                          ? "bg-emerald-100 text-emerald-700"
-                                          : "bg-slate-200 text-slate-500"
-                                      }`}
-                                    >
-                                      {travelerDocument.uploaded ? "Ready" : "Missing"}
-                                    </span>
-                                  </div>
-
-                                  <div className="mt-4 grid grid-cols-2 gap-2">
-                                    <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2">
-                                      <p className="text-[10px] uppercase tracking-[0.16em] text-slate-400">
-                                        Uploaded
-                                      </p>
-                                      <p className="mt-1 text-xs font-medium leading-5 text-slate-700">
-                                        {formatDocumentDateTime(travelerDocument.uploadedAt)}
-                                      </p>
-                                    </div>
-                                    <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2">
-                                      <p className="text-[10px] uppercase tracking-[0.16em] text-slate-400">
-                                        Size
-                                      </p>
-                                      <p className="mt-1 text-xs font-medium leading-5 text-slate-700">
-                                        {formatDocumentSize(travelerDocument.size)}
-                                      </p>
-                                    </div>
-                                  </div>
-
-                                  <div className="mt-4 flex flex-wrap gap-2">
-                                    <button
-                                      onClick={() => handleTravelerDocumentOpen(traveler, travelerDocument)}
-                                      disabled={!travelerDocument.uploaded}
-                                      className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 transition hover:border-blue-200 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-                                    >
-                                      <ExternalLink size={14} />
-                                      Open
-                                    </button>
-                                    <button
-                                      onClick={() => handleTravelerDocumentDownload(traveler, travelerDocument)}
-                                      disabled={
-                                        !travelerDocument.uploaded ||
-                                        downloadingDocumentId === `${traveler.id}-${travelerDocument.key}`
-                                      }
-                                      className="inline-flex items-center gap-2 rounded-2xl border border-slate-900 bg-slate-900 px-3 py-2 text-xs font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:border-slate-300 disabled:bg-slate-300"
-                                    >
-                                      <Download size={14} />
-                                      {downloadingDocumentId === `${traveler.id}-${travelerDocument.key}`
-                                        ? "Downloading..."
-                                        : "Download"}
-                                    </button>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="rounded-[28px] border border-dashed border-slate-300 bg-white px-6 py-10 text-center text-slate-500 shadow-sm">
-                        No traveler records are mapped to this query yet.
-                      </div>
-                    )}
-                  </div>
-                </div>
+        {travelerDocumentVerification.status !== "Verified" ? (
+          <div className="flex flex-col items-center justify-center py-14 text-center">
+            <div className="relative mx-auto mb-5 flex h-20 w-20 items-center justify-center rounded-3xl"
+              style={{
+                background: "rgba(255,255,255,0.70)",
+                border: "1px solid rgba(148,193,255,0.35)",
+                boxShadow: "0 4px 20px rgba(37,99,235,0.08)",
+                backdropFilter: "blur(6px)",
+              }}>
+              {travelerDocumentVerification.status === "Rejected" ? (
+                <AlertCircle size={32} className="text-red-400" />
+              ) : travelerDocumentVerification.status === "Pending" ? (
+                <ShieldCheck size={32} className="text-amber-400" />
+              ) : (
+                <Users size={32} className="text-slate-300" />
+              )}
+              <span className="absolute -right-1.5 -top-1.5 h-4 w-4 rounded-full border-2 border-white animate-pulse"
+                style={{ background: travelerDocumentVerification.status === "Rejected" ? "#f87171" : "#fbbf24" }} />
+            </div>
+            <h4 className="text-xl font-bold text-slate-900">
+              {travelerDocumentVerification.status === "Pending" ? "Verification in progress"
+                : travelerDocumentVerification.status === "Rejected" ? "Documents need correction"
+                : "Documents not unlocked yet"}
+            </h4>
+            <p className="mt-2 max-w-lg text-sm leading-6 text-slate-500">
+              {travelerDocumentVerification.status === "Pending"
+                ? "Operations team is reviewing the files. Download actions will unlock after approval."
+                : travelerDocumentVerification.status === "Rejected"
+                ? "Agent needs to resubmit corrected documents before they appear here."
+                : "The agent hasn't completed document upload yet."}
+            </p>
+            {travelerDocumentVerification.rejectionReason && (
+              <div className="mt-5 w-full max-w-lg rounded-2xl px-4 py-3 text-left text-sm"
+                style={{ background: "rgba(254,226,226,0.70)", border: "1px solid #fecaca", backdropFilter: "blur(6px)" }}>
+                <p className="text-[10px] uppercase tracking-[0.2em] font-bold mb-1.5 text-red-500">Ops Comment</p>
+                <p className="font-semibold text-red-700">{travelerDocumentVerification.rejectionReason}</p>
+                {travelerDocumentVerification.rejectionRemarks && (
+                  <p className="mt-1 text-xs text-red-400">{travelerDocumentVerification.rejectionRemarks}</p>
+                )}
               </div>
-            </motion.div>
-          </motion.div>
+            )}
+          </div>
+
+        ) : travelerProfiles.length > 0 ? (
+          travelerProfiles.map((traveler, index) => (
+            <div
+              key={traveler.id}
+              className="overflow-hidden rounded-[20px] transition-all"
+              style={{
+                background: "rgba(255,255,255,0.62)",
+                backdropFilter: "blur(12px)",
+                WebkitBackdropFilter: "blur(12px)",
+                border: "1px solid rgba(148,193,255,0.30)",
+                boxShadow: "0 2px 16px rgba(37,99,235,0.06)",
+              }}
+              onMouseEnter={e => {
+                e.currentTarget.style.borderColor = "rgba(99,155,255,0.50)";
+                e.currentTarget.style.boxShadow = "0 6px 24px rgba(37,99,235,0.11)";
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.borderColor = "rgba(148,193,255,0.30)";
+                e.currentTarget.style.boxShadow = "0 2px 16px rgba(37,99,235,0.06)";
+              }}
+            >
+              {/* Traveler header */}
+              <div className="flex items-center justify-between px-5 py-3.5"
+                style={{
+                  borderBottom: "1px solid rgba(148,193,255,0.20)",
+                  background: "linear-gradient(135deg, rgba(219,234,254,0.55) 0%, rgba(255,255,255,0.40) 100%)",
+                }}>
+                <div className="flex items-center gap-3">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl text-sm font-bold text-white"
+                    style={{
+                      background: "linear-gradient(135deg, #1e3a8a, #2563eb)",
+                      boxShadow: "0 2px 8px rgba(37,99,235,0.28)",
+                    }}>
+                    {index + 1}
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-slate-900">{traveler.fullName}</p>
+                    <p className="text-[11px] text-slate-400">
+                      {traveler.travelerType}
+                      {traveler.travelerType === "Child" && traveler.childAge ? ` · ${traveler.childAge} yrs` : ""}
+                    </p>
+                  </div>
+                </div>
+                <span className="rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider"
+                  style={{
+                    background: traveler.uploadedCount > 0 ? "rgba(220,252,231,0.85)" : "rgba(241,245,249,0.80)",
+                    color: traveler.uploadedCount > 0 ? "#15803d" : "#94a3b8",
+                    border: traveler.uploadedCount > 0 ? "1px solid #bbf7d0" : "1px solid #e2e8f0",
+                  }}>
+                  {traveler.uploadedCount}/{traveler.documentSlots.length} docs
+                </span>
+              </div>
+
+              {/* Document slots */}
+              <div className="grid gap-3 p-4 sm:grid-cols-2">
+                {traveler.documentSlots.map((travelerDocument) => (
+                  <div
+                    key={`${traveler.id}-${travelerDocument.key}`}
+                    className="rounded-2xl p-4 transition-all"
+                    style={{
+                      background: travelerDocument.uploaded
+                        ? "linear-gradient(135deg, rgba(220,252,231,0.55) 0%, rgba(240,253,250,0.50) 100%)"
+                        : "rgba(248,250,252,0.65)",
+                      border: travelerDocument.uploaded
+                        ? "1px solid rgba(134,239,172,0.50)"
+                        : "1px solid rgba(226,232,240,0.70)",
+                      backdropFilter: "blur(6px)",
+                    }}
+                  >
+                    <div className="flex items-start justify-between gap-2 mb-3">
+                      <div>
+                        <p className="text-[10px] uppercase tracking-[0.2em] font-bold text-slate-400">
+                          {travelerDocument.label}
+                        </p>
+                        <p className="mt-1 text-sm font-bold text-slate-900">
+                          {travelerDocument.fileName || "—"}
+                        </p>
+                      </div>
+                      <span className="flex-shrink-0 rounded-full px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-wider"
+                        style={{
+                          background: travelerDocument.uploaded ? "rgba(220,252,231,0.90)" : "rgba(241,245,249,0.80)",
+                          color: travelerDocument.uploaded ? "#15803d" : "#94a3b8",
+                          border: travelerDocument.uploaded ? "1px solid #bbf7d0" : "1px solid #e2e8f0",
+                        }}>
+                        {travelerDocument.uploaded ? "✓ Ready" : "Missing"}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 mb-3">
+                      {[
+                        { label: "Uploaded", value: formatDocumentDateTime(travelerDocument.uploadedAt) },
+                        { label: "Size",     value: formatDocumentSize(travelerDocument.size) },
+                      ].map(cell => (
+                        <div key={cell.label} className="rounded-xl px-3 py-2"
+                          style={{
+                            background: "rgba(255,255,255,0.70)",
+                            border: "1px solid rgba(148,193,255,0.22)",
+                            backdropFilter: "blur(4px)",
+                          }}>
+                          <p className="text-[9px] uppercase tracking-wider text-slate-400 font-medium">{cell.label}</p>
+                          <p className="mt-1 text-xs text-slate-600 leading-4">{cell.value}</p>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="flex gap-2">
+                      {/* Open */}
+                      <button
+                        onClick={() => handleTravelerDocumentOpen(traveler, travelerDocument)}
+                        disabled={!travelerDocument.uploaded}
+                        className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-semibold transition-all disabled:cursor-not-allowed disabled:opacity-40"
+                        style={{
+                          background: "rgba(255,255,255,0.70)",
+                          border: "1px solid rgba(148,193,255,0.30)",
+                          color: "#475569",
+                          backdropFilter: "blur(4px)",
+                        }}
+                        onMouseEnter={e => { if (travelerDocument.uploaded) {
+                          e.currentTarget.style.background = "rgba(219,234,254,0.80)";
+                          e.currentTarget.style.borderColor = "#93c5fd";
+                          e.currentTarget.style.color = "#1d4ed8";
+                        }}}
+                        onMouseLeave={e => {
+                          e.currentTarget.style.background = "rgba(255,255,255,0.70)";
+                          e.currentTarget.style.borderColor = "rgba(148,193,255,0.30)";
+                          e.currentTarget.style.color = "#475569";
+                        }}
+                      >
+                        <ExternalLink size={13} />
+                        Open
+                      </button>
+
+                      {/* Download */}
+                      <button
+                        onClick={() => handleTravelerDocumentDownload(traveler, travelerDocument)}
+                        disabled={!travelerDocument.uploaded || downloadingDocumentId === `${traveler.id}-${travelerDocument.key}`}
+                        className="flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-bold transition-all disabled:cursor-not-allowed disabled:opacity-40"
+                        style={{
+                          background: travelerDocument.uploaded
+                            ? "linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%)"
+                            : "rgba(241,245,249,0.70)",
+                          border: "1px solid transparent",
+                          color: travelerDocument.uploaded ? "#ffffff" : "#94a3b8",
+                          boxShadow: travelerDocument.uploaded ? "0 3px 12px rgba(37,99,235,0.30)" : "none",
+                        }}
+                        onMouseEnter={e => { if (travelerDocument.uploaded) {
+                          e.currentTarget.style.boxShadow = "0 5px 18px rgba(37,99,235,0.45)";
+                          e.currentTarget.style.background = "linear-gradient(135deg, #1d4ed8 0%, #3b82f6 100%)";
+                        }}}
+                        onMouseLeave={e => { if (travelerDocument.uploaded) {
+                          e.currentTarget.style.boxShadow = "0 3px 12px rgba(37,99,235,0.30)";
+                          e.currentTarget.style.background = "linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%)";
+                        }}}
+                      >
+                        <Download size={13} />
+                        {downloadingDocumentId === `${traveler.id}-${travelerDocument.key}` ? "Saving..." : "Download"}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))
+        ) : (
+          <div className="py-16 text-center text-slate-400 text-sm">
+            No traveler records mapped to this query.
+          </div>
         )}
+      </div>
+
+      {/* Footer */}
+      <div className="flex items-center justify-between px-6 py-4"
+        style={{
+          borderTop: "1px solid rgba(148,193,255,0.22)",
+          background: "linear-gradient(90deg, rgba(219,234,254,0.40) 0%, rgba(255,255,255,0.50) 50%, rgba(209,250,229,0.30) 100%)",
+          backdropFilter: "blur(8px)",
+        }}>
+        <p className="text-xs text-slate-400">
+          {travelerProfiles.length} traveler{travelerProfiles.length !== 1 ? "s" : ""} ·{" "}
+          {uploadedTravelerDocumentCount} file{uploadedTravelerDocumentCount !== 1 ? "s" : ""} verified
+        </p>
+        <button
+          onClick={() => setShowTravelerDocsModal(false)}
+          className="rounded-2xl px-5 py-2 text-sm font-semibold transition"
+          style={{
+            background: "rgba(255,255,255,0.70)",
+            border: "1px solid rgba(148,193,255,0.35)",
+            color: "#475569",
+            backdropFilter: "blur(6px)",
+          }}
+          onMouseEnter={e => {
+            e.currentTarget.style.background = "rgba(219,234,254,0.80)";
+            e.currentTarget.style.color = "#1d4ed8";
+            e.currentTarget.style.borderColor = "#93c5fd";
+          }}
+          onMouseLeave={e => {
+            e.currentTarget.style.background = "rgba(255,255,255,0.70)";
+            e.currentTarget.style.color = "#475569";
+            e.currentTarget.style.borderColor = "rgba(148,193,255,0.35)";
+          }}
+        >
+          Close
+        </button>
+      </div>
+    </motion.div>
+  </motion.div>
+)}
+ 
       </AnimatePresence>
 
       {successPopup.open && (

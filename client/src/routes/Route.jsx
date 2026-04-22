@@ -23,6 +23,7 @@ import InternalInvoice from "../pages/financePages/InternalInvoice";
 import AdvancedAnalytics from "../pages/financePages/AdvancedAnalytics";
 import Dashboard from "../pages/adminPages/Dashboard";
 import SuperAdminDashboard from "../pages/adminPages/SuperAdminDashboard";
+import Discount from "../pages/adminPages/Discount";
 import FinanceManagerDashboard from "../pages/managerPages/financeManagerPages/FinanceManagerDashboard";
 import AllTeamQueries from "../pages/managerPages/opsManagerPages/AllTeamQueries";
 import OperationManagerDashboard from "../pages/managerPages/opsManagerPages/OperationManagerDashboard";
@@ -68,6 +69,7 @@ export const appRouter = createBrowserRouter([
         children: [
           { path: "/admin/dashboard", element: <Dashboard/>},
           { path: "/admin/superAdminDashboard", element: <SuperAdminDashboard/>},
+          { path: "/admin/discount", element: <Discount/>},
           { path: "/admin/bookings-management", element:<BookingManagementHub/>},
           {},
         ],

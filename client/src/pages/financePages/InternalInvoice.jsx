@@ -100,9 +100,11 @@ const InternalInvoices = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("All Status");
   const [dateFilter, setDateFilter] = useState("All Time");
+  const [currentPage, setCurrentPage] = useState(1);
   const [selectedInvoice, setSelectedInvoice] = useState(null);
   const [invoiceData, setInvoiceData] = useState({ summary: {}, invoices: [] });
   const [loading, setLoading] = useState(true);
+  const itemsPerPage = 8;
 
   useEffect(() => {
     const fetchPageData = async () => {
@@ -271,6 +273,14 @@ const InternalInvoices = () => {
     });
   }, [dateFilter, invoicesData, searchTerm, statusFilter]);
 
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, statusFilter, dateFilter, invoicesData.length]);
+
+  const totalPages = Math.ceil(filteredInvoices.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const paginatedInvoices = filteredInvoices.slice(startIndex, startIndex + itemsPerPage);
+
   return (
     <div className="min-h-full flex flex-col gap-4 max-w-400 mx-auto text-slate-800 w-full overflow-x-hidden sm:p- ">
 
@@ -381,8 +391,8 @@ const InternalInvoices = () => {
                     Loading internal invoices...
                   </td>
                 </tr>
-              ) : filteredInvoices.length > 0 ? (
-                filteredInvoices.map((invoice, idx) => {
+              ) : paginatedInvoices.length > 0 ? (
+                paginatedInvoices.map((invoice, idx) => {
                   const rowCellClass = "border-y border-slate-200 bg-white px-3 py-2.5 align-top";
                   return (
                   <tr key={idx} className="transition-transform duration-150 hover:-translate-y-[1px]">
@@ -466,6 +476,61 @@ const InternalInvoices = () => {
           </div>
         </div>
       </div>
+      {totalPages > 1 && (
+        <div className="flex flex-col items-center justify-between gap-4 rounded-lg border border-gray-200 bg-white px-6 py-4 shadow-sm sm:flex-row">
+          <span className="text-xs font-medium text-gray-500">
+            Showing {startIndex + 1} to {Math.min(startIndex + itemsPerPage, filteredInvoices.length)} of {filteredInvoices.length} entries
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+              disabled={currentPage === 1}
+              className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Previous
+            </button>
+            <div className="hidden items-center gap-1 sm:flex">
+              {Array.from({ length: totalPages }).map((_, index) => {
+                if (
+                  totalPages > 5 &&
+                  index !== 0 &&
+                  index !== totalPages - 1 &&
+                  Math.abs(currentPage - 1 - index) > 1
+                ) {
+                  if (index === 1 && currentPage > 3) {
+                    return <span key={index} className="px-1 text-gray-400">...</span>;
+                  }
+                  if (index === totalPages - 2 && currentPage < totalPages - 2) {
+                    return <span key={index} className="px-1 text-gray-400">...</span>;
+                  }
+                  return null;
+                }
+
+                return (
+                  <button
+                    key={index}
+                    onClick={() => setCurrentPage(index + 1)}
+                    className={`flex h-7 w-7 items-center justify-center rounded-lg text-xs font-medium transition-colors ${
+                      currentPage === index + 1
+                        ? "bg-slate-900 text-white"
+                        : "text-gray-500 hover:bg-gray-100 hover:text-gray-900"
+                    }`}
+                  >
+                    {index + 1}
+                  </button>
+                );
+              })}
+            </div>
+            <button
+              onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
+              disabled={currentPage === totalPages}
+              className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
 
       {selectedInvoice && (
         <InvoiceDocumentModal

@@ -681,10 +681,12 @@ export default function InternalDMCInvoices() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [feedback, setFeedback] = useState(null);
+  const [currentPage, setCurrentPage] = useState(1);
   const [validateInvoice, setValidateInvoice] = useState(null);
   const [selectedInvoice, setSelectedInvoice] = useState(null);
   const [escalateInvoice, setEscalateInvoice] = useState(null);
   const [actionLoading, setActionLoading] = useState(false);
+  const itemsPerPage = 8;
 
   const loadInvoices = async () => {
     try {
@@ -748,6 +750,14 @@ export default function InternalDMCInvoices() {
       ),
     [displayInvoices],
   );
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [displayInvoices.length]);
+
+  const totalPages = Math.ceil(displayInvoices.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const paginatedInvoices = displayInvoices.slice(startIndex, startIndex + itemsPerPage);
 
   const updateInvoiceRow = (updatedInvoice) => {
     if (!updatedInvoice?.id) return;
@@ -962,8 +972,8 @@ export default function InternalDMCInvoices() {
                         <ContentLoader label="Loading internal DMC invoices..." />
                       </td>
                     </tr>
-                  ) : displayInvoices.length ? (
-                    displayInvoices.map((invoice) => (
+                  ) : paginatedInvoices.length ? (
+                    paginatedInvoices.map((invoice) => (
                       <tr key={invoice.id} className="border-b border-slate-200 last:border-b-0 hover:bg-slate-50/80">
                         <td className="whitespace-nowrap px-4 py-4 text-[13px] font-semibold text-slate-900">{invoice.invoiceNumber}</td>
                         <td className="whitespace-nowrap px-4 py-4 text-[14px] font-semibold text-slate-700">{invoice.dmcName}</td>
@@ -1021,6 +1031,61 @@ export default function InternalDMCInvoices() {
               </table>
             </div>
           </div>
+          {!loading && totalPages > 1 && (
+            <div className="flex flex-col items-center justify-between gap-4 border-t border-gray-100 bg-gray-50/50 px-6 py-4 sm:flex-row">
+              <span className="text-xs font-medium text-gray-500">
+                Showing {startIndex + 1} to {Math.min(startIndex + itemsPerPage, displayInvoices.length)} of {displayInvoices.length} entries
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+                  disabled={currentPage === 1}
+                  className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Previous
+                </button>
+                <div className="hidden items-center gap-1 sm:flex">
+                  {Array.from({ length: totalPages }).map((_, index) => {
+                    if (
+                      totalPages > 5 &&
+                      index !== 0 &&
+                      index !== totalPages - 1 &&
+                      Math.abs(currentPage - 1 - index) > 1
+                    ) {
+                      if (index === 1 && currentPage > 3) {
+                        return <span key={index} className="px-1 text-gray-400">...</span>;
+                      }
+                      if (index === totalPages - 2 && currentPage < totalPages - 2) {
+                        return <span key={index} className="px-1 text-gray-400">...</span>;
+                      }
+                      return null;
+                    }
+
+                    return (
+                      <button
+                        key={index}
+                        onClick={() => setCurrentPage(index + 1)}
+                        className={`flex h-7 w-7 items-center justify-center rounded-lg text-xs font-medium transition-colors ${
+                          currentPage === index + 1
+                            ? "bg-slate-900 text-white"
+                            : "text-gray-500 hover:bg-gray-100 hover:text-gray-900"
+                        }`}
+                      >
+                        {index + 1}
+                      </button>
+                    );
+                  })}
+                </div>
+                <button
+                  onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
+                  disabled={currentPage === totalPages}
+                  className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

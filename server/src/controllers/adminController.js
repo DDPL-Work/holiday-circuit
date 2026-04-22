@@ -9,6 +9,7 @@ import Quotation from "../models/quotation.model.js";
 import Voucher from "../models/voucher.model.js";
 import Confirmation from "../models/dmcConfirmation.js";
 import { sendAccountDeletionMail, sendAgentApprovalMail, sendAgentRejectionMail, sendTeamMemberCredentialsMail } from "../services/sendEmail.js";
+import { sendEmailFinalInvoice } from "../services/emailService.js";
 import {
   decorateFinanceAssignment,
   filterRowsByFinanceAccess,
@@ -1850,6 +1851,18 @@ const formatPaymentVerificationRow = (invoice) => {
     sentToManagerAt: formatDashboardDate(invoice.paymentVerification?.sentToManagerAt),
     sentToManagerAtValue: invoice.paymentVerification?.sentToManagerAt || null,
     canGenerateInvoice: verificationStatus === "Verified",
+    finalInvoiceStatus: invoice.finalInvoiceDispatch?.status || "Not Sent",
+    finalInvoiceSentAt: formatDashboardDate(invoice.finalInvoiceDispatch?.sentAt),
+    finalInvoiceSentAtValue: invoice.finalInvoiceDispatch?.sentAt || null,
+    finalInvoiceSentBy: invoice.finalInvoiceDispatch?.sentBy || null,
+    finalInvoiceSentByName: invoice.finalInvoiceDispatch?.sentByName || "",
+    finalInvoiceRecipientEmail:
+      invoice.finalInvoiceDispatch?.recipientEmail ||
+      invoice.agent?.email ||
+      "",
+    canSendFinalInvoice:
+      verificationStatus === "Verified" &&
+      Boolean(invoice.agent?.email),
     auditTrail: (invoice.paymentAuditTrail || []).map((entry) => ({
       action: entry.action,
       status: entry.status,
@@ -3236,6 +3249,102 @@ export const reviewPaymentVerification = async (req, res, next) => {
             : accessContext.scope === "manager"
             ? "Payment rejected and sent back by finance manager"
             : "Payment rejected successfully",
+      data: formatPaymentVerificationRow(invoice.toObject()),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const sendFinalInvoiceToAgent = async (req, res, next) => {
+  try {
+    const accessContext = await ensureFinanceApiAccess(req);
+    const { id } = req.params;
+
+    const invoice = await Invoice.findById(id)
+      .populate("query", "queryId destination startDate endDate numberOfAdults numberOfChildren")
+      .populate("agent", "name companyName email")
+      .populate("paymentVerification.assignedTo", "name companyName email")
+      .populate("paymentVerification.reviewedBy", "name companyName email");
+
+    if (!invoice) {
+      return next(new ApiError(404, "Invoice not found"));
+    }
+
+    ensureFinanceRecordAccess({
+      teamMembers: accessContext.teamMembers,
+      accessContext,
+      explicitAssigneeIds: [
+        invoice?.paymentVerification?.assignedTo,
+        invoice?.paymentVerification?.reviewedBy,
+      ],
+      fallbackSeed: invoice.invoiceNumber || normalizeEntityId(invoice._id),
+    });
+
+    const verificationStatus = getPaymentVerificationStatus(invoice);
+    if (verificationStatus !== "Verified" || invoice.paymentStatus !== "Paid") {
+      return next(new ApiError(400, "Final invoice can be sent only after payment is verified by finance"));
+    }
+
+    const agentEmail = String(invoice.agent?.email || "").trim();
+    if (!agentEmail) {
+      return next(new ApiError(400, "Agent email is missing for this invoice"));
+    }
+
+    const senderName = req.user?.name || req.user?.companyName || "Finance Team";
+    const sentAt = new Date();
+
+    await sendEmailFinalInvoice(agentEmail, {
+      invoiceNumber: invoice.invoiceNumber,
+      invoiceDate: invoice.createdAt || sentAt,
+      destination: invoice.query?.destination || invoice.tripSnapshot?.destination || "",
+      agentName: invoice.agent?.companyName || invoice.agent?.name || "Agent",
+      agentEmail,
+      currency: invoice.currency || invoice.pricingSnapshot?.currency || "INR",
+      totalAmount: invoice.totalAmount || invoice.pricingSnapshot?.grandTotal || 0,
+      lineItems: Array.isArray(invoice.lineItems) ? invoice.lineItems : [],
+      pricingSnapshot: invoice.pricingSnapshot || {},
+      tripSnapshot: {
+        queryId: invoice.query?.queryId || invoice.tripSnapshot?.queryId || "",
+        destination: invoice.query?.destination || invoice.tripSnapshot?.destination || "",
+        startDate: invoice.query?.startDate || invoice.tripSnapshot?.startDate || null,
+        endDate: invoice.query?.endDate || invoice.tripSnapshot?.endDate || null,
+        numberOfAdults:
+          Number(invoice.query?.numberOfAdults || invoice.tripSnapshot?.numberOfAdults || 0),
+        numberOfChildren:
+          Number(invoice.query?.numberOfChildren || invoice.tripSnapshot?.numberOfChildren || 0),
+      },
+    });
+
+    invoice.finalInvoiceDispatch = {
+      status: "Sent",
+      sentAt,
+      sentBy: req.user.id,
+      sentByName: senderName,
+      recipientEmail: agentEmail,
+      templateVariant: "finance-word-ledger",
+    };
+
+    await invoice.save();
+
+    await Notification.create({
+      user: invoice.agent?._id || invoice.agent,
+      type: "success",
+      title: "Final Invoice Sent",
+      message: `${invoice.invoiceNumber} final invoice has been shared by finance.`,
+      link: "/agent/bookings",
+      meta: {
+        invoiceId: invoice._id,
+        invoiceNumber: invoice.invoiceNumber,
+        queryId: invoice.query?.queryId || "",
+        sentBy: senderName,
+        sentAt,
+      },
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Final invoice sent to agent successfully",
       data: formatPaymentVerificationRow(invoice.toObject()),
     });
   } catch (error) {

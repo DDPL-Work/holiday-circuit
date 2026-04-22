@@ -1,6 +1,6 @@
 import express from "express";
 import isAuthenticated from "../middlewares/auth.middleware.js";
-import { getPendingAgents, approveAgent, getAllUsers, createRateContract, deactivateRateContract, getSystemStats, getAllPayments, updateRateContract, createOperationsUser, createDmcPartner, createFinancePartner, getFinanceDashboard, getAdvancedAnalytics, getInternalInvoices, updateInternalInvoiceStatus, getPaymentVerifications, reviewPaymentVerification, getAdminDashboardData, getManagedUsers, createManagedUser, updateManagedUser, updateManagedUserStatus, deleteManagedUser, replyToOpsEscalation } from "../controllers/adminController.js";
+import { getPendingAgents, approveAgent, getAllUsers, createRateContract, deactivateRateContract, getSystemStats, getAllPayments, updateRateContract, createOperationsUser, createDmcPartner, createFinancePartner, getFinanceDashboard, getAdvancedAnalytics, getInternalInvoices, updateInternalInvoiceStatus, getPaymentVerifications, reviewPaymentVerification, sendFinalInvoiceToAgent, getAdminDashboardData, getManagedUsers, createManagedUser, updateManagedUser, updateManagedUserStatus, deleteManagedUser, replyToOpsEscalation } from "../controllers/adminController.js";
 import { getMyNotifications, markAllNotificationsRead, deleteNotification } from "../controllers/agentController.js";
 import { getOperationManagerQueryQuotations } from "../controllers/opsManagerController.js";
 
@@ -33,6 +33,7 @@ routers.patch("/queries/:id/reply-to-ops", isAuthenticated, replyToOpsEscalation
 routers.get("/payments", getAllPayments);
 routers.get("/payment-verifications", isAuthenticated, getPaymentVerifications);
 routers.patch("/payment-verifications/:id/status", isAuthenticated, reviewPaymentVerification);
+routers.post("/payment-verifications/:id/send-final-invoice", isAuthenticated, sendFinalInvoiceToAgent);
 routers.get("/finance-dashboard", isAuthenticated, getFinanceDashboard);
 routers.get("/advanced-analytics", isAuthenticated, getAdvancedAnalytics);
 routers.get("/internal-invoices", isAuthenticated, getInternalInvoices);

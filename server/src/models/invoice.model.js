@@ -181,6 +181,39 @@ const paymentAuditEntrySchema = new mongoose.Schema(
   { _id: false },
 );
 
+const finalInvoiceDispatchSchema = new mongoose.Schema(
+  {
+    status: {
+      type: String,
+      enum: ["Not Sent", "Sent"],
+      default: "Not Sent",
+    },
+    sentAt: {
+      type: Date,
+    },
+    sentBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Auth",
+    },
+    sentByName: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    recipientEmail: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    templateVariant: {
+      type: String,
+      default: "finance-word-ledger",
+      trim: true,
+    },
+  },
+  { _id: false },
+);
+
 const invoiceLineItemSchema = new mongoose.Schema(
   {
     serviceType: {
@@ -440,6 +473,11 @@ const invoiceSchema = new mongoose.Schema(
   paymentAuditTrail: {
     type: [paymentAuditEntrySchema],
     default: [],
+  },
+
+  finalInvoiceDispatch: {
+    type: finalInvoiceDispatchSchema,
+    default: () => ({ status: "Not Sent" }),
   },
 
 },

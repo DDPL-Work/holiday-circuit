@@ -17,6 +17,7 @@ import {
   ShieldCheck,
   Calendar,
   Building2,
+  Send,
 } from "lucide-react";
 import API from "../../utils/Api";
 import { AnimatePresence, motion } from "framer-motion";
@@ -347,12 +348,15 @@ const PaymentVerification = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("All Status");
   const [dateFilter, setDateFilter] = useState("All Time");
+  const [currentPage, setCurrentPage] = useState(1);
   const [selectedPayment, setSelectedPayment] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [feedback, setFeedback] = useState(null);
   const [openRejectModal, setOpenRejectModal] = useState(false);
   const [submittingAction, setSubmittingAction] = useState(false);
+  const [sendingFinalInvoice, setSendingFinalInvoice] = useState(false);
+  const itemsPerPage = 8;
   const selectedWorkflowStatus = selectedPayment?.workflowStatus || selectedPayment?.status || "Pending";
   const isAwaitingManager = selectedWorkflowStatus === "Manager Review";
   const isFinalVerified = selectedWorkflowStatus === "Verified";
@@ -375,6 +379,9 @@ const PaymentVerification = () => {
     canCurrentUserReview &&
     selectedPaymentComparison.isMatched &&
     hasSelectedPaymentContext;
+  const canSendFinalInvoice =
+    isFinalVerified &&
+    Boolean(String(selectedPayment?.agentEmail || "").trim());
 
   useEffect(() => {
     const fetchPayments = async () => {
@@ -428,6 +435,14 @@ const PaymentVerification = () => {
       return matchesSearch && matchesStatus && matchesDate;
     });
   }, [dateFilter, paymentData.payments, searchTerm, statusFilter]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, statusFilter, dateFilter, paymentData.payments.length]);
+
+  const totalPages = Math.ceil(filteredPayments.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const paginatedPayments = filteredPayments.slice(startIndex, startIndex + itemsPerPage);
 
   const refreshPaymentRecord = (updatedPayment) => {
     setPaymentData((prev) => {
@@ -561,6 +576,41 @@ const PaymentVerification = () => {
     }
   };
 
+  const handleSendFinalInvoice = async () => {
+    if (!selectedPayment || sendingFinalInvoice) return;
+
+    if (!selectedPayment.agentEmail) {
+      setFeedback({
+        type: "warning",
+        title: "Agent Email Missing",
+        message: "This final invoice cannot be sent because the agent email is not available.",
+      });
+      return;
+    }
+
+    try {
+      setSendingFinalInvoice(true);
+      const { data } = await API.post(`/admin/payment-verifications/${selectedPayment.id}/send-final-invoice`);
+      refreshPaymentRecord(data?.data);
+      setFeedback({
+        type: "success",
+        title: "Final Invoice Sent",
+        message: data?.message || "Finance has shared the final invoice with the agent successfully.",
+      });
+    } catch (actionError) {
+      setFeedback({
+        type: "error",
+        title: "Send Failed",
+        message:
+          actionError?.response?.data?.message ||
+          actionError?.response?.data?.error ||
+          "Unable to send the final invoice right now.",
+      });
+    } finally {
+      setSendingFinalInvoice(false);
+    }
+  };
+
   return (
     <>
       <FeedbackToast feedback={feedback} onClose={() => setFeedback(null)} />
@@ -665,8 +715,8 @@ const PaymentVerification = () => {
                   <tbody className="divide-y divide-gray-100">
                     {loading ? (
                       <tr><td colSpan="9" className="py-12 text-center text-sm text-slate-400">Loading payment submissions...</td></tr>
-                    ) : filteredPayments.length > 0 ? (
-                      filteredPayments.map((payment) => (
+                    ) : paginatedPayments.length > 0 ? (
+                      paginatedPayments.map((payment) => (
                         <tr key={payment.id} className="transition-colors hover:bg-slate-50">
                           <td className="whitespace-nowrap px-6 py-4">
                             <div className="flex items-center gap-2">
@@ -708,6 +758,61 @@ const PaymentVerification = () => {
                 </table>
               </div>
             </div>
+            {totalPages > 1 && (
+              <div className="mt-3 flex flex-col items-center justify-between gap-4 rounded-xl border border-gray-200 bg-white px-6 py-4 shadow-sm sm:flex-row">
+                <span className="text-xs font-medium text-gray-500">
+                  Showing {startIndex + 1} to {Math.min(startIndex + itemsPerPage, filteredPayments.length)} of {filteredPayments.length} entries
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+                    disabled={currentPage === 1}
+                    className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Previous
+                  </button>
+                  <div className="hidden items-center gap-1 sm:flex">
+                    {Array.from({ length: totalPages }).map((_, index) => {
+                      if (
+                        totalPages > 5 &&
+                        index !== 0 &&
+                        index !== totalPages - 1 &&
+                        Math.abs(currentPage - 1 - index) > 1
+                      ) {
+                        if (index === 1 && currentPage > 3) {
+                          return <span key={index} className="px-1 text-gray-400">...</span>;
+                        }
+                        if (index === totalPages - 2 && currentPage < totalPages - 2) {
+                          return <span key={index} className="px-1 text-gray-400">...</span>;
+                        }
+                        return null;
+                      }
+
+                      return (
+                        <button
+                          key={index}
+                          onClick={() => setCurrentPage(index + 1)}
+                          className={`flex h-7 w-7 items-center justify-center rounded-lg text-xs font-medium transition-colors ${
+                            currentPage === index + 1
+                              ? "bg-slate-900 text-white"
+                              : "text-gray-500 hover:bg-gray-100 hover:text-gray-900"
+                          }`}
+                        >
+                          {index + 1}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <button
+                    onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
+                    disabled={currentPage === totalPages}
+                    className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
             </motion.div>
           ) : (
             <motion.div
@@ -907,6 +1012,43 @@ const PaymentVerification = () => {
                         <p className="mt-1 text-xs leading-5 text-emerald-700">This payment has been verified by finance. Downstream invoice workflow can continue.</p>
                       </div>
                     </div>
+                    <div className="mt-4 rounded-xl border border-emerald-200/80 bg-white/80 px-4 py-3">
+                      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                        <div>
+                          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-emerald-700">Final Invoice Dispatch</p>
+                          <p className="mt-1 text-sm font-semibold text-slate-900">
+                            {selectedPayment.finalInvoiceStatus === "Sent" ? "Final invoice already shared with the agent" : "Finance can now send the final invoice to the agent"}
+                          </p>
+                          <p className="mt-1 text-xs leading-5 text-slate-500">
+                            Recipient: {selectedPayment.finalInvoiceRecipientEmail || selectedPayment.agentEmail || "No email available"}
+                          </p>
+                          {selectedPayment.finalInvoiceSentAt ? (
+                            <p className="mt-1 text-xs leading-5 text-slate-500">
+                              Sent on {selectedPayment.finalInvoiceSentAt} by {selectedPayment.finalInvoiceSentByName || "Finance Team"}
+                            </p>
+                          ) : null}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleSendFinalInvoice}
+                          disabled={sendingFinalInvoice || !canSendFinalInvoice}
+                          className={`inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-medium text-white transition-colors ${
+                            sendingFinalInvoice || !canSendFinalInvoice
+                              ? "cursor-not-allowed bg-slate-300"
+                              : selectedPayment.finalInvoiceStatus === "Sent"
+                                ? "bg-blue-500 hover:bg-blue-600"
+                                : "bg-emerald-600 hover:bg-emerald-700"
+                          }`}
+                        >
+                          <Send className="h-4 w-4" />
+                          {sendingFinalInvoice
+                            ? "Sending..."
+                            : selectedPayment.finalInvoiceStatus === "Sent"
+                              ? "Resend Final Invoice"
+                              : "Send Final Invoice"}
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 ) : isFinalRejected ? (
                   <div className="mt-6 rounded-2xl border border-red-200 bg-red-50 px-4 py-3">
@@ -942,12 +1084,32 @@ const PaymentVerification = () => {
                     )}
 
                     <div className="flex gap-4">
-                      <button onClick={handleVerify} disabled={submittingAction || !canVerifySelectedPayment} className={`flex flex-1 items-center justify-center gap-2 rounded-2xl py-2.5 text-sm font-medium text-white transition-colors ${(submittingAction || !canVerifySelectedPayment) ? "cursor-not-allowed bg-green-300" : "bg-green-500 hover:bg-green-600"}`}>
-                        <Check className="h-4 w-4" />
+                      <button
+                        onClick={handleVerify}
+                        disabled={submittingAction || !canVerifySelectedPayment}
+                        className={`inline-flex flex-1 items-center justify-center gap-2 rounded-2xl py-2 text-[12px] font-medium text-white transition-colors ${
+                          (submittingAction || !canVerifySelectedPayment)
+                            ? "cursor-not-allowed bg-green-300"
+                            : "bg-green-500 hover:bg-green-600"
+                        }`}
+                      >
+                        <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white/15">
+                          <CheckCircle2 className="h-4.5 w-4.5 shrink-0 stroke-[2.4]" />
+                        </span>
                         {submittingAction ? "Saving..." : user?.role === "finance_partner" ? "Send Verify To Manager" : "Approve & Verify"}
                       </button>
-                      <button onClick={() => setOpenRejectModal(true)} disabled={submittingAction || !canCurrentUserReview} className={`flex flex-1 items-center justify-center gap-2 rounded-2xl py-2.5 text-sm font-medium text-white transition-colors ${(submittingAction || !canCurrentUserReview) ? "cursor-not-allowed bg-red-300" : "bg-red-500 hover:bg-red-600"}`}>
-                        <X className="h-4 w-4" />
+                      <button
+                        onClick={() => setOpenRejectModal(true)}
+                        disabled={submittingAction || !canCurrentUserReview}
+                        className={`inline-flex flex-1 items-center justify-center gap-2.5 rounded-2xl py-3 text-[12px] font-medium text-white transition-colors ${
+                          (submittingAction || !canCurrentUserReview)
+                            ? "cursor-not-allowed bg-red-300"
+                            : "bg-red-500 hover:bg-red-600"
+                        }`}
+                      >
+                        <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white/15">
+                          <AlertCircle className="h-4.5 w-4.5 shrink-0 stroke-[2.4]" />
+                        </span>
                         {user?.role === "finance_partner" ? "Send Reject To Manager" : "Reject / Dispute"}
                       </button>
                     </div>
