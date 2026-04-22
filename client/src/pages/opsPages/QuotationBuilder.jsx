@@ -165,6 +165,74 @@ const CONTRACTED_RATE_FILTER_OPTIONS = [
   { value: "sightseeing", label: "Sightseeing" },
 ];
 
+const HOTEL_ROOM_TYPE_OPTIONS = [
+  "Standard",
+  "Deluxe",
+  "Super Deluxe",
+  "Premium",
+  "Executive",
+  "Club",
+  "Suite",
+  "Family Room",
+  "Villa",
+  "Cottage",
+];
+
+const HOTEL_ROOM_CATEGORY_OPTIONS = [
+  "Single",
+  "Double",
+  "Twin",
+  "Triple",
+  "Quad",
+  "Family",
+  "Interconnecting",
+];
+
+const HOTEL_BED_TYPE_OPTIONS = [
+  { value: "king-bed", label: "King Bed" },
+  { value: "queen-bed", label: "Queen Bed" },
+  { value: "twin-beds", label: "Twin Beds" },
+  { value: "double-bed", label: "Double Bed" },
+  { value: "single-bed", label: "Single Bed" },
+  { value: "extra-bed-rollaway-bed", label: "Extra Bed / Rollaway Bed" },
+];
+
+const HOTEL_ROOM_TYPE_FIXED_PRICES = Object.freeze({
+  standard: 5000,
+  deluxe: 6000,
+  "super deluxe": 9000,
+  premium: 7000,
+  executive: 8000,
+  club: 8500,
+  suite: 12000,
+  "family room": 9500,
+  villa: 15000,
+  cottage: 7500,
+});
+
+const HOTEL_BED_TYPE_FIXED_PRICES = Object.freeze({
+  "king-bed": 7000,
+  "queen-bed": 6500,
+  "twin-beds": 6200,
+  "double-bed": 6000,
+  "single-bed": 4500,
+  "extra-bed-rollaway-bed": 3000,
+});
+
+const TRANSPORT_USAGE_OPTIONS = Object.freeze([
+  { value: "point-to-point", label: "One Way", price: 2500 },
+  { value: "round-trip", label: "Two Way", price: 4500 },
+  { value: "full-day", label: "Full Day", price: 7000 },
+  { value: "half-day", label: "Half Day", price: 4000 },
+]);
+
+const TRANSPORT_USAGE_FIXED_PRICES = Object.freeze(
+  TRANSPORT_USAGE_OPTIONS.reduce((accumulator, option) => {
+    accumulator[option.value] = option.price;
+    return accumulator;
+  }, {}),
+);
+
 const normalizeServiceFilterType = (type = "") => {
   const normalizedType = String(type || "").toLowerCase().trim();
   if (normalizedType === "car" || normalizedType === "transport") {
@@ -178,23 +246,366 @@ const normalizeBedTypeValue = (value = "") => {
   const normalizedValue = String(value || "").trim().toLowerCase();
 
   if (!normalizedValue) return "";
-  if (["single", "double", "twin", "triple"].includes(normalizedValue)) {
+  if (
+    [
+      "king-bed",
+      "queen-bed",
+      "twin-beds",
+      "double-bed",
+      "single-bed",
+      "extra-bed-rollaway-bed",
+    ].includes(normalizedValue)
+  ) {
     return normalizedValue;
   }
-  if (normalizedValue.includes("king") || normalizedValue.includes("queen")) {
-    return "double";
+  if (normalizedValue.includes("rollaway") || normalizedValue.includes("extra bed")) {
+    return "extra-bed-rollaway-bed";
+  }
+  if (normalizedValue.includes("king")) {
+    return "king-bed";
+  }
+  if (normalizedValue.includes("queen")) {
+    return "queen-bed";
   }
   if (normalizedValue.includes("twin")) {
-    return "twin";
+    return "twin-beds";
   }
-  if (normalizedValue.includes("triple")) {
-    return "triple";
+  if (normalizedValue.includes("double")) {
+    return "double-bed";
   }
   if (normalizedValue.includes("single")) {
-    return "single";
+    return "single-bed";
   }
 
   return "";
+};
+
+const getBedTypeOptionLabel = (value = "") =>
+  HOTEL_BED_TYPE_OPTIONS.find((option) => option.value === normalizeBedTypeValue(value))?.label ||
+  formatHotelOptionLabel(String(value || "").replace(/-/g, " "));
+
+const formatHotelOptionLabel = (value = "") =>
+  String(value || "")
+    .trim()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+
+const formatRoomOccupancyLabel = (value = "") => {
+  const normalizedValue = String(value || "").trim().toLowerCase();
+
+  if (normalizedValue === "single") return "Single (1 person)";
+  if (normalizedValue === "double") return "Double (2 persons)";
+  if (normalizedValue === "twin") return "Twin (2 persons)";
+  if (normalizedValue === "triple") return "Triple (3 persons)";
+  if (normalizedValue === "quad") return "Quad (4 persons)";
+  if (normalizedValue === "family") return "Family";
+  if (normalizedValue === "interconnecting") return "Interconnecting";
+
+  return formatHotelOptionLabel(value);
+};
+
+const buildHotelVariantGroupKey = (service = {}) =>
+  [
+    service.supplierId || service.dmcId || "",
+    service.title || "",
+    service.city || "",
+    service.country || "",
+  ]
+    .map((value) => normalizeComparisonTextValue(value))
+    .join("::");
+
+const getHotelVariantServices = (services = [], service = {}) =>
+  services.filter(
+    (candidate) =>
+      normalizeServiceFilterType(candidate.type) === "hotel" &&
+      buildHotelVariantGroupKey(candidate) === buildHotelVariantGroupKey(service),
+  );
+
+const buildSelectOptionsWithFallback = (values = [], fallbackValues = []) => {
+  const optionSet = new Set();
+
+  fallbackValues.forEach((value) => {
+    const normalizedValue = String(value || "").trim();
+    if (normalizedValue) {
+      optionSet.add(normalizedValue);
+    }
+  });
+
+  values.forEach((value) => {
+    const normalizedValue = String(value || "").trim();
+    if (normalizedValue) {
+      optionSet.add(normalizedValue);
+    }
+  });
+
+  return Array.from(optionSet);
+};
+
+const normalizeHotelOptionLookupKey = (value = "") =>
+  String(value || "").trim().toLowerCase();
+
+const normalizeTransportUsageValue = (value = "") => {
+  const normalizedValue = String(value || "").trim().toLowerCase();
+
+  if (!normalizedValue) return "";
+  if (TRANSPORT_USAGE_FIXED_PRICES[normalizedValue]) {
+    return normalizedValue;
+  }
+  if (normalizedValue.includes("round") || normalizedValue.includes("two way")) {
+    return "round-trip";
+  }
+  if (normalizedValue.includes("full")) {
+    return "full-day";
+  }
+  if (normalizedValue.includes("half")) {
+    return "half-day";
+  }
+  if (normalizedValue.includes("point") || normalizedValue.includes("one way")) {
+    return "point-to-point";
+  }
+
+  return normalizedValue;
+};
+
+const getFixedHotelRoomTypePrice = (roomType = "") =>
+  HOTEL_ROOM_TYPE_FIXED_PRICES[normalizeHotelOptionLookupKey(roomType)] || 0;
+
+const getFixedHotelBedTypePrice = (bedType = "") =>
+  HOTEL_BED_TYPE_FIXED_PRICES[normalizeHotelOptionLookupKey(bedType)] || 0;
+
+const getFixedTransportUsagePrice = (usageType = "") =>
+  TRANSPORT_USAGE_FIXED_PRICES[normalizeTransportUsageValue(usageType)] || 0;
+
+const getTransportUsageOptionDisplayPrice = (service = {}, usageType = "") => {
+  const normalizedUsageType = normalizeTransportUsageValue(usageType);
+  const baseline = service.editBaseline || buildServiceEditBaseline(service);
+  const baselineUsageType = normalizeTransportUsageValue(baseline.usageType);
+  const baselineRate = roundCurrencyAmount(baseline.rate ?? service.rate ?? 0);
+  const baselineFixedPrice = getFixedTransportUsagePrice(baselineUsageType);
+  const selectedFixedPrice = getFixedTransportUsagePrice(normalizedUsageType);
+
+  if (
+    normalizedUsageType &&
+    baselineUsageType &&
+    baselineRate > 0 &&
+    baselineFixedPrice > 0 &&
+    selectedFixedPrice > 0
+  ) {
+    return Math.max(
+      0,
+      roundCurrencyAmount(baselineRate + (selectedFixedPrice - baselineFixedPrice)),
+    );
+  }
+
+  return selectedFixedPrice;
+};
+
+const getFixedHotelOptionDelta = (baselineValue = "", selectedValue = "", getPrice = () => 0) => {
+  if (normalizeHotelOptionLookupKey(baselineValue) === normalizeHotelOptionLookupKey(selectedValue)) {
+    return 0;
+  }
+
+  const baselinePrice = getPrice(baselineValue);
+  const selectedPrice = getPrice(selectedValue);
+
+  if (!baselinePrice || !selectedPrice) {
+    return 0;
+  }
+
+  return selectedPrice - baselinePrice;
+};
+
+const applyFixedHotelOptionPricing = (service = {}, fallbackRate = 0, fallbackCurrency = "INR") => {
+  const baseline = service.editBaseline || buildServiceEditBaseline(service);
+  const baselineRate = Number(baseline.rate ?? fallbackRate ?? service.rate ?? 0);
+  const roomTypeDelta = getFixedHotelOptionDelta(
+    baseline.roomType,
+    service.roomType,
+    getFixedHotelRoomTypePrice,
+  );
+  const bedTypeDelta = getFixedHotelOptionDelta(
+    baseline.bedType,
+    service.bedType,
+    getFixedHotelBedTypePrice,
+  );
+  const adjustedRate = Math.max(0, roundCurrencyAmount(baselineRate + roomTypeDelta + bedTypeDelta));
+
+  return {
+    ...service,
+    rate: adjustedRate,
+    currency: normalizeCurrencyCode(fallbackCurrency || service.currency || "INR"),
+  };
+};
+
+const applyFixedTransportUsagePricing = (service = {}, fallbackRate = 0, fallbackCurrency = "INR") => {
+  const baseline = service.editBaseline || buildServiceEditBaseline(service);
+  const baselineRate = Number(baseline.rate ?? fallbackRate ?? service.rate ?? 0);
+  const usageDelta = getFixedHotelOptionDelta(
+    baseline.usageType,
+    service.usageType,
+    getFixedTransportUsagePrice,
+  );
+
+  return {
+    ...service,
+    usageType: normalizeTransportUsageValue(service.usageType),
+    rate: Math.max(0, roundCurrencyAmount(baselineRate + usageDelta)),
+    currency: normalizeCurrencyCode(fallbackCurrency || service.currency || "INR"),
+  };
+};
+
+const doesHotelVariantMatchField = (variant = {}, field = "", value = "") => {
+  if (!field) return false;
+
+  if (field === "bedType") {
+    return normalizeBedTypeValue(variant.bedType) === normalizeBedTypeValue(value);
+  }
+
+  return normalizeComparisonTextValue(variant[field]) === normalizeComparisonTextValue(value);
+};
+
+const getHotelVariantForOption = (hotelVariants = [], service = {}, field = "", value = "") => {
+  const exactMatches = hotelVariants.filter((variant) =>
+    doesHotelVariantMatchField(variant, field, value),
+  );
+
+  if (!exactMatches.length) {
+    return null;
+  }
+
+  const nextService = {
+    ...service,
+    [field]: field === "bedType" ? normalizeBedTypeValue(value) : value,
+  };
+
+  return (
+    exactMatches
+      .map((variant) => ({
+        variant,
+        score: scoreHotelVariantMatch(variant, nextService, field),
+      }))
+      .sort((left, right) => right.score - left.score)[0]?.variant || null
+  );
+};
+
+const getHotelVariantOptions = (services = [], service = {}) => {
+  const hotelVariants = getHotelVariantServices(services, service);
+  const roomCategories = buildSelectOptionsWithFallback(
+    [
+      ...hotelVariants.map((variant) => variant.roomCategory),
+      service.roomCategory,
+    ],
+    HOTEL_ROOM_CATEGORY_OPTIONS,
+  );
+  const roomTypes = buildSelectOptionsWithFallback(
+    [
+      ...hotelVariants.map((variant) => variant.roomType),
+      service.roomType,
+    ],
+    HOTEL_ROOM_TYPE_OPTIONS,
+  );
+  const roomTypeOptions = roomTypes.map((value) => {
+    const bestVariant = getHotelVariantForOption(hotelVariants, service, "roomType", value);
+    const fixedPrice = getFixedHotelRoomTypePrice(value);
+    const rate = fixedPrice || Number(bestVariant?.rate ?? bestVariant?.price ?? 0);
+    const currency = fixedPrice ? "INR" : normalizeCurrencyCode(bestVariant?.currency || service.currency || "INR");
+    const hasPrice = rate > 0;
+
+    return {
+      value,
+      label: hasPrice ? `${value} (${formatCurrencyValue(rate, currency)})` : value,
+    };
+  });
+  const bedTypes = Array.from(
+    new Set(
+      [
+        ...HOTEL_BED_TYPE_OPTIONS.map((option) => option.value),
+        ...hotelVariants.map((variant) => normalizeBedTypeValue(variant.bedType)),
+        normalizeBedTypeValue(service.bedType),
+      ].filter(Boolean),
+    ),
+  );
+
+  return {
+    roomCategories,
+    roomTypes: roomTypeOptions,
+    bedTypes: bedTypes.map((value) => ({
+      value,
+      label:
+        HOTEL_BED_TYPE_OPTIONS.find((option) => option.value === value)?.label ||
+        formatHotelOptionLabel(value),
+    })),
+  };
+};
+
+const scoreHotelVariantMatch = (variant = {}, nextService = {}, changedField = "") => {
+  let score = 0;
+
+  const roomCategory = normalizeComparisonTextValue(nextService.roomCategory);
+  const roomType = normalizeComparisonTextValue(nextService.roomType);
+  const bedType = normalizeBedTypeValue(nextService.bedType);
+  const variantRoomCategory = normalizeComparisonTextValue(variant.roomCategory);
+  const variantRoomType = normalizeComparisonTextValue(variant.roomType);
+  const variantBedType = normalizeBedTypeValue(variant.bedType);
+
+  if (roomCategory && variantRoomCategory === roomCategory) {
+    score += changedField === "roomCategory" ? 120 : 30;
+  }
+
+  if (roomType && variantRoomType === roomType) {
+    score += changedField === "roomType" ? 120 : 30;
+  }
+
+  if (bedType && variantBedType === bedType) {
+    score += changedField === "bedType" ? 120 : 30;
+  }
+
+  if (
+    String(variant.serviceId || variant.id || "").trim() ===
+    String(nextService.serviceId || nextService.id || "").trim()
+  ) {
+    score += 5;
+  }
+
+  return score;
+};
+
+const resolveHotelVariantSelection = (services = [], service = {}, changedField = "", value = "") => {
+  const nextService = {
+    ...service,
+    [changedField]: changedField === "bedType" ? normalizeBedTypeValue(value) : value,
+  };
+  const hotelVariants = getHotelVariantServices(services, service);
+
+  if (!hotelVariants.length) {
+    return applyFixedHotelOptionPricing(nextService, nextService.rate, nextService.currency);
+  }
+
+  const bestVariant = getHotelVariantForOption(
+    hotelVariants,
+    nextService,
+    changedField,
+    value,
+  );
+
+  if (!bestVariant) {
+    return applyFixedHotelOptionPricing(nextService, nextService.rate, nextService.currency);
+  }
+
+  return applyFixedHotelOptionPricing({
+    ...nextService,
+    serviceId: bestVariant.serviceId || bestVariant.id || nextService.serviceId,
+    supplierId: bestVariant.supplierId || nextService.supplierId,
+    supplierName: bestVariant.supplierName || nextService.supplierName,
+    dmcId: bestVariant.dmcId || nextService.dmcId,
+    dmcName: bestVariant.dmcName || nextService.dmcName,
+    roomCategory: bestVariant.roomCategory || nextService.roomCategory,
+    roomType: bestVariant.roomType || nextService.roomType,
+    hotelCategory: bestVariant.hotelCategory || nextService.hotelCategory,
+    bedType: normalizeBedTypeValue(bestVariant.bedType) || nextService.bedType,
+    awebRate: Number(bestVariant.awebRate || 0),
+    cwebRate: Number(bestVariant.cwebRate || 0),
+    cwoebRate: Number(bestVariant.cwoebRate || 0),
+  }, bestVariant.rate ?? bestVariant.price ?? nextService.rate ?? 0, bestVariant.currency || nextService.currency || "INR");
 };
 
 const getServiceSearchAliases = (type = "") => {
@@ -314,6 +725,7 @@ const calculateServiceOriginalTotal = (service = {}) => {
 
   if (normalizedType === "hotel") {
     const nights = Number(service?.nights || 0);
+    const rooms = Math.max(Number(service?.rooms || 1), 1);
     let total = Number(service?.rate || 0) * nights;
 
     if (service?.extraAdult) {
@@ -328,7 +740,7 @@ const calculateServiceOriginalTotal = (service = {}) => {
       total += Number(service?.cwoebRate || 0) * nights;
     }
 
-    return roundCurrencyAmount(total);
+    return roundCurrencyAmount(total * rooms);
   }
 
   if (normalizedType === "transfer" || normalizedType === "car") {
@@ -347,6 +759,192 @@ const calculateServiceOriginalTotal = (service = {}) => {
   }
 
   return roundCurrencyAmount(Number(service?.rate || 0));
+};
+
+const normalizeComparisonDateValue = (value) => {
+  if (!value) return "";
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return String(value || "").trim();
+  }
+
+  return parsed.toISOString().slice(0, 10);
+};
+
+const normalizeComparisonTextValue = (value = "") =>
+  String(value || "").trim().toLowerCase();
+
+const normalizeComparisonCountValue = (value, fallback = 0) => {
+  if (value === "" || value === null || value === undefined) {
+    return "";
+  }
+
+  return Number(value || fallback);
+};
+
+const buildServiceEditBaseline = (service = {}) => {
+  const normalizedType = normalizeServiceFilterType(service.type);
+  const normalizedRoomCategory =
+    normalizedType === "hotel" ? service.roomCategory || "Double" : service.roomCategory;
+  const normalizedBedType =
+    normalizedType === "hotel"
+      ? normalizeBedTypeValue(service.bedType) || "double-bed"
+      : normalizeBedTypeValue(service.bedType) || normalizeComparisonTextValue(service.bedType);
+
+  return ({
+    rate: roundCurrencyAmount(service.price ?? service.rate ?? 0),
+    serviceDate: normalizeComparisonDateValue(service.serviceDate),
+    nights: normalizeComparisonCountValue(service.nights),
+    days: Number(service.days || 1),
+    pax: Number(service.pax || 1),
+    rooms: Number(service.rooms || 1),
+    usageType: normalizeTransportUsageValue(service.usageType),
+    roomCategory: normalizeComparisonTextValue(normalizedRoomCategory),
+    roomType: normalizeComparisonTextValue(service.roomType),
+    bedType: normalizedBedType,
+    extraAdult: Boolean(service.extraAdult),
+    childWithBed: Boolean(service.childWithBed),
+    childWithoutBed: Boolean(service.childWithoutBed),
+    awebRate: roundCurrencyAmount(service.awebRate || 0),
+    cwebRate: roundCurrencyAmount(service.cwebRate || 0),
+    cwoebRate: roundCurrencyAmount(service.cwoebRate || 0),
+  });
+};
+
+const getSelectedServiceQuotationEdits = (service = {}) => {
+  const baseline = service.editBaseline || buildServiceEditBaseline(service);
+  const edits = [];
+  const serviceType = normalizeServiceFilterType(service.type);
+  const currencyCode = normalizeCurrencyCode(service.currency || "INR");
+
+  const pushEdit = (key, label, value, variant = "info") => {
+    edits.push({ key, label, value, variant });
+  };
+
+  if (roundCurrencyAmount(service.rate || 0) !== roundCurrencyAmount(baseline.rate || 0)) {
+    pushEdit("rate", "Rate", formatCurrencyValue(service.rate || 0, currencyCode), "warning");
+  }
+
+  if (normalizeComparisonDateValue(service.serviceDate) !== normalizeComparisonDateValue(baseline.serviceDate)) {
+    pushEdit("serviceDate", "Date", formatServiceDateLabel(service.serviceDate), "info");
+  }
+
+  if (serviceType === "hotel") {
+    if (normalizeComparisonCountValue(service.nights) !== normalizeComparisonCountValue(baseline.nights)) {
+      pushEdit(
+        "nights",
+        "Nights",
+        `${Number(service.nights || 0)} night${Number(service.nights || 0) === 1 ? "" : "s"}`,
+        "info",
+      );
+    }
+
+    if (Number(service.rooms || 1) !== Number(baseline.rooms || 1)) {
+      pushEdit(
+        "rooms",
+        "Rooms",
+        `${Number(service.rooms || 0)} room${Number(service.rooms || 0) === 1 ? "" : "s"}`,
+        "info",
+      );
+    }
+
+    if (normalizeComparisonTextValue(service.roomType) !== normalizeComparisonTextValue(baseline.roomType)) {
+      pushEdit("roomType", "Room", service.roomType || "Updated", "info");
+    }
+
+    if (normalizeComparisonTextValue(service.roomCategory) !== normalizeComparisonTextValue(baseline.roomCategory)) {
+      pushEdit("roomCategory", "Category", service.roomCategory || "Updated", "info");
+    }
+
+    if (normalizeComparisonTextValue(service.bedType) !== normalizeComparisonTextValue(baseline.bedType)) {
+      const bedLabel = getBedTypeOptionLabel(service.bedType) || "Updated";
+      pushEdit("bedType", "Bed", bedLabel, "info");
+    }
+  }
+
+  if (serviceType === "transfer") {
+    if (Number(service.days || 1) !== Number(baseline.days || 1)) {
+      pushEdit(
+        "days",
+        "Days",
+        `${Number(service.days || 0)} day${Number(service.days || 0) === 1 ? "" : "s"}`,
+        "info",
+      );
+    }
+
+    if (normalizeComparisonTextValue(service.usageType) !== normalizeComparisonTextValue(baseline.usageType)) {
+      pushEdit(
+        "usageType",
+        "Usage",
+        String(service.usageType || "")
+          .replace(/-/g, " ")
+          .replace(/\b\w/g, (char) => char.toUpperCase()) || "Updated",
+        "info",
+      );
+    }
+  }
+
+  if (serviceType === "activity" || serviceType === "sightseeing") {
+    if (Number(service.pax || 1) !== Number(baseline.pax || 1)) {
+      pushEdit("pax", "Pax", `${Number(service.pax || 0)} pax`, "info");
+    }
+  }
+
+  if (serviceType === "sightseeing" && Number(service.days || 1) !== Number(baseline.days || 1)) {
+    pushEdit(
+      "days",
+      "Days",
+      `${Number(service.days || 0)} day${Number(service.days || 0) === 1 ? "" : "s"}`,
+      "info",
+    );
+  }
+
+  [
+    {
+      key: "aweb",
+      enabled: Boolean(service.extraAdult),
+      baselineEnabled: Boolean(baseline.extraAdult),
+      rate: roundCurrencyAmount(service.awebRate || 0),
+      baselineRate: roundCurrencyAmount(baseline.awebRate || 0),
+      label: "A.W.E.B",
+    },
+    {
+      key: "cweb",
+      enabled: Boolean(service.childWithBed),
+      baselineEnabled: Boolean(baseline.childWithBed),
+      rate: roundCurrencyAmount(service.cwebRate || 0),
+      baselineRate: roundCurrencyAmount(baseline.cwebRate || 0),
+      label: "C.W.E.B",
+    },
+    {
+      key: "cwoeb",
+      enabled: Boolean(service.childWithoutBed),
+      baselineEnabled: Boolean(baseline.childWithoutBed),
+      rate: roundCurrencyAmount(service.cwoebRate || 0),
+      baselineRate: roundCurrencyAmount(baseline.cwoebRate || 0),
+      label: "C.Wo.E.B",
+    },
+  ].forEach((addon) => {
+    const enabledChanged = addon.enabled !== addon.baselineEnabled;
+    const rateChanged = addon.rate !== addon.baselineRate;
+
+    if (addon.enabled && (enabledChanged || rateChanged)) {
+      pushEdit(
+        addon.key,
+        addon.label,
+        `${formatCurrencyValue(addon.rate, currencyCode)}/night`,
+        "success",
+      );
+      return;
+    }
+
+    if (!addon.enabled && addon.baselineEnabled) {
+      pushEdit(addon.key, addon.label, "Removed", "danger");
+    }
+  });
+
+  return edits;
 };
 
 
@@ -1027,7 +1625,7 @@ const QuotationBuilder = () => {
       roomCategory: service.roomCategory || "Double",
       roomType: service.roomType || "",
       hotelCategory: service.hotelCategory || "",
-      bedType: normalizeBedTypeValue(service.bedType) || "double",
+      bedType: normalizeBedTypeValue(service.bedType) || "double-bed",
       adults: service.adults || 2,
       children: service.children || 0,
       infants: service.infants || 0,
@@ -1037,6 +1635,7 @@ const QuotationBuilder = () => {
       childWithoutBed: Boolean(service.childWithoutBed),
       checked: overrides.checked ?? true,
       custom: overrides.custom ?? !service.serviceId,
+      editBaseline: overrides.editBaseline || buildServiceEditBaseline(service),
       icon: meta.icon,
       color: meta.color,
     };
@@ -1073,6 +1672,7 @@ const QuotationBuilder = () => {
         ...mapDraftServiceToUi(draftService, {
           id: service.id,
           custom: false,
+          editBaseline: service.editBaseline || buildServiceEditBaseline(service),
         }),
       };
     });
@@ -1171,18 +1771,25 @@ const QuotationBuilder = () => {
             roomCategory: s.roomCategory || "Double",
             roomType: s.roomType,
             hotelCategory: s.hotelCategory,
-            bedType: normalizeBedTypeValue(s.bedType) || "double",
+            bedType: normalizeBedTypeValue(s.bedType) || "double-bed",
             adults: 2,
             children: 0,
             infants: 0,
             rooms: s.rooms || 1,
-            extraAdult: false,
-            childWithBed: false,
-            childWithoutBed: false,
-            // ============================================
-            checked: false,
-            custom: false,
-            icon: meta.icon,
+          extraAdult: false,
+          childWithBed: false,
+          childWithoutBed: false,
+          editBaseline: buildServiceEditBaseline({
+            ...s,
+            price: s.price || 0,
+            serviceDate: s.serviceDate || "",
+            days: 1,
+            pax: 1,
+          }),
+          // ============================================
+          checked: false,
+          custom: false,
+          icon: meta.icon,
             color: meta.color
           };
         });
@@ -1265,7 +1872,7 @@ const QuotationBuilder = () => {
         children: data.children || 0,
         infants: data.infants || 0,
         rooms: data.rooms || 1,
-        bedType: normalizeBedTypeValue(data.bedType) || "double",
+        bedType: normalizeBedTypeValue(data.bedType) || "double-bed",
       };
 
       const { data: response } = await API.post(`/ops/quotations/${quotationId}/services`, payload);
@@ -1303,7 +1910,7 @@ const QuotationBuilder = () => {
           children: s.children || 0,
           infants: s.infants || 0,
           rooms: s.rooms || 1,
-          bedType: normalizeBedTypeValue(s.bedType) || "double",
+          bedType: normalizeBedTypeValue(s.bedType) || "double-bed",
           roomCategory: s.roomCategory || "Double",
           roomType: s.roomType || "",
           hotelCategory: s.hotelCategory || "",
@@ -1313,6 +1920,7 @@ const QuotationBuilder = () => {
           awebRate: Number(s.awebRate || 0),
           cwebRate: Number(s.cwebRate || 0),
           cwoebRate: Number(s.cwoebRate || 0),
+          editBaseline: buildServiceEditBaseline(s),
           checked: true,
           custom: true,
           icon: meta.icon,
@@ -1934,6 +2542,28 @@ const QuotationBuilder = () => {
           return { ...service, serviceDate: value };
         }
 
+        if (service.type === "hotel" && field === "rooms") {
+          return {
+            ...service,
+            rooms: Math.max(1, Number(value || 1)),
+          };
+        }
+
+        if (
+          service.type === "hotel" &&
+          ["roomCategory", "roomType", "bedType"].includes(field)
+        ) {
+          return resolveHotelVariantSelection(prev, service, field, value);
+        }
+
+        if ((service.type === "transfer" || service.type === "car") && field === "usageType") {
+          return applyFixedTransportUsagePricing(
+            { ...service, usageType: normalizeTransportUsageValue(value) },
+            service.rate,
+            service.currency,
+          );
+        }
+
         if ((service.type === "transfer" || service.type === "car") && field === "days") {
           const availableTransportDays = getAvailableTransportDaysFromDate(
             service.serviceDate || formatDateInput(order?.startDate),
@@ -2029,7 +2659,7 @@ const QuotationBuilder = () => {
         className="-m-3 min-h-[calc(100vh-24px)] overflow-x-hidden bg-black p-3 text-white font-sans sm:-m-4 sm:min-h-[calc(100vh-32px)] sm:p-4 lg:-m-5 lg:min-h-[calc(100vh-40px)] lg:p-5"
       >
         {/* Header */}
-        <motion.div variants={sectionRevealVariants} className="flex justify-between items-center mb-4">
+        <motion.div variants={sectionRevealVariants} className="flex justify-between items-center mb-2.5">
           <button
             onClick={() => navigate(-1)}
             className="text-yellow-400 text-sm cursor-pointer"
@@ -2282,6 +2912,7 @@ const QuotationBuilder = () => {
                     isEditorFocused={focusedServiceCardId === service.id}
                     isEditMode={editingServiceCardId === service.id}
                     exchangeRates={exchangeRates}
+                    allServices={services}
                     toggleService={toggleService}
                     updateField={updateField}
                     deleteService={deleteService}
@@ -2387,112 +3018,266 @@ const QuotationBuilder = () => {
 
               {selectedServices.length > 0 ? (
                 <div className="dark-scrollbar mt-4 max-h-[320px] space-y-3 overflow-y-auto pr-1">
-                  {selectedServices.map((service) => (
-                    <div
-                      key={`selected-${service.id}`}
-                      className="rounded-[28px] border border-[#22314a] bg-[#050505] p-3.5"
-                    >
-                      <div className="rounded-[22px] border border-[#162233] bg-[#08111c] px-3 py-3">
-                        <div className="grid grid-cols-[40px,minmax(0,1fr),auto] gap-x-3 gap-y-2.5">
-                          <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center self-start rounded-full border border-[#27436d] bg-[#0b1627] shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
-                            {renderSelectedServiceSummaryIcon(service)}
-                          </div>
+                  {/*
+                 // ─────────────────────────────────────────────────────────────────────────────
+// DROP-IN REPLACEMENT for the selectedServices.map(...) block
+// inside the "Selected Services" right-panel card in QuotationBuilder.jsx
+//
+// Replace the existing:
+//   {selectedServices.map((service) => { ... })}
+// with this block.
+// ─────────────────────────────────────────────────────────────────────────────
 
-                          <div className="min-w-0">
-                            <p className="truncate pr-2 pt-0.5 text-[14px] font-semibold leading-tight text-white">
-                              {service.title}
-                            </p>
-                          </div>
+                  */}
+                  {selectedServices.map((service) => {
+  const serviceEdits = getSelectedServiceQuotationEdits(service);
 
-                          <div className="pt-0.5 text-right ">
-                            <p className="whitespace-nowrap text-[12px] font-semibold text-yellow-300">
-                              {formatCurrencyValue(service.originalTotal || 0, service.currency)}
-                            </p>
-                            {service.isForeignCurrency && (
-                              <p className="mt-1 text-[10px] text-sky-300">
-                                INR {formatAmountValue(service.totalInInr || 0)}
-                              </p>
-                            )}
-                          </div>
+  // ── Chip factory — every chip gets identical height + padding ──────────
+  const Chip = ({ icon, label, value, accent = "text-slate-300", iconColor = "text-slate-500" }) => (
+    <div className="inline-flex items-center gap-1.5 rounded-lg border border-[#212f45] bg-[#0a1018] px-2.5 py-[5px]">
+      {icon && (
+        <span className={`flex-shrink-0 ${iconColor}`} style={{ lineHeight: 0 }}>
+          {icon}
+        </span>
+      )}
+      {label && (
+        <span className="text-[10px] font-medium text-slate-500 flex-shrink-0">{label}:</span>
+      )}
+      <span className={`text-[10px] font-semibold leading-none truncate max-w-[120px] ${accent}`}>
+        {value}
+      </span>
+    </div>
+  );
 
-                          <div className="col-start-2 col-end-4 mt-0.5">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span className="flex items-center gap-1.5 rounded-[8px] bg-indigo-500/10 px-2.5 py-1 text-[10px] font-semibold text-indigo-200 border border-indigo-500/20 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
-                                {getServiceTypeLabel(service.type)}
-                              </span>
+  // ── service-type accent colour ─────────────────────────────────────────
+  const typeAccent =
+    service.type === "hotel"
+      ? { bg: "bg-indigo-500/10", border: "border-indigo-500/20", text: "text-indigo-200" }
+      : service.type === "activity"
+        ? { bg: "bg-emerald-500/10", border: "border-emerald-500/20", text: "text-emerald-200" }
+        : service.type === "transfer" || service.type === "car"
+          ? { bg: "bg-violet-500/10", border: "border-violet-500/20", text: "text-violet-200" }
+          : { bg: "bg-blue-500/10", border: "border-blue-500/20", text: "text-blue-200" };
 
-                              {(service.city || service.country) && (
-                                <div className="flex items-center gap-1.5 rounded-[8px] bg-[#111823] px-2.5 py-1 text-[10px] font-medium text-slate-300 border border-[#212f45]">
-                                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-slate-500"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
-                                  <span className="truncate max-w-[130px]">
-                                    {service.city}
-                                    {service.city && service.country ? ", " : ""}
-                                    {service.country}
-                                  </span>
-                                </div>
-                              )}
+  return (
+    <div
+      key={`selected-${service.id}`}
+      className="rounded-[24px] border border-[#22314a] bg-[#050505] p-3"
+    >
+      {/* ── inner glass card ── */}
+      <div className="rounded-[18px] border border-[#162233] bg-[#08111c] px-3 py-3">
 
-                              <div className="flex items-center gap-1.5 rounded-[8px] bg-[#111823] px-2.5 py-1 text-[10px] font-medium text-slate-300 border border-[#212f45]">
-                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-slate-500"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>
-                                <span>{formatServiceDateLabel(service.serviceDate)}</span>
-                              </div>
+        {/* ── Row 1: icon · title · price ── */}
+        <div className="flex items-start gap-2.5">
+          <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full border border-[#27436d] bg-[#0b1627]">
+            {renderSelectedServiceSummaryIcon(service)}
+          </div>
 
-                              {service.type === "hotel" && Number(service.nights || 0) > 0 && (
-                                <div className="flex items-center gap-1.5 rounded-[8px] bg-[#111823] px-2.5 py-1 text-[10px] font-medium text-slate-300 border border-[#212f45]">
-                                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-slate-500"><path d="M2 4v16"/><path d="M2 8h18a2 2 0 0 1 2 2v10"/><path d="M2 17h20"/><path d="M6 8v9"/></svg>
-                                  <span>{service.nights} nights</span>
-                                </div>
-                              )}
-                              {(service.type === "transfer" || service.type === "car") && Number(service.days || 0) > 0 && (
-                                <div className="flex items-center gap-1.5 rounded-[8px] bg-[#111823] px-2.5 py-1 text-[10px] font-medium text-slate-300 border border-[#212f45]">
-                                  <span>{service.days} day{Number(service.days || 0) > 1 ? "s" : ""}</span>
-                                </div>
-                              )}
-                              {service.type === "activity" && Number(service.pax || 0) > 0 && (
-                                <div className="flex items-center gap-1.5 rounded-[8px] bg-[#111823] px-2.5 py-1 text-[10px] font-medium text-slate-300 border border-[#212f45]">
-                                  <span>{service.pax} pax</span>
-                                </div>
-                              )}
-                              {service.type === "sightseeing" && (
-                                <>
-                                  {Number(service.pax || 0) > 0 && (
-                                    <div className="flex items-center gap-1.5 rounded-[8px] bg-[#111823] px-2.5 py-1 text-[10px] font-medium text-slate-300 border border-[#212f45]">
-                                      <span>{service.pax} pax</span>
-                                    </div>
-                                  )}
-                                  {Number(service.days || 0) > 0 && (
-                                    <div className="flex items-center gap-1.5 rounded-[8px] bg-[#111823] px-2.5 py-1 text-[10px] font-medium text-slate-300 border border-[#212f45]">
-                                      <span>{service.days} day{Number(service.days || 0) > 1 ? "s" : ""}</span>
-                                    </div>
-                                  )}
-                                </>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[13px] font-semibold leading-tight text-white">
+              {service.title}
+            </p>
+            {/* sub: city/country */}
+            {(service.city || service.country) && (
+              <p className="mt-0.5 text-[10px] text-slate-500 truncate">
+                {[service.city, service.country].filter(Boolean).join(", ")}
+              </p>
+            )}
+          </div>
 
-                      <div className="mt-3 flex items-center justify-between gap-3 px-.5">
-                        <p className="text-[11px] font-medium text-slate-200">Quick Actions</p> 
-                        <div className="flex items-center gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => handleSelectedServiceEditAction(service)}
-                            className="rounded-xl border border-sky-400/35 bg-sky-500/10 px-4 py-1.5 text-[11px] font-medium text-sky-200 transition hover:border-sky-300/50 hover:bg-sky-500/15 cursor-pointer"
-                          >
-                            {editingServiceCardId === service.id ? "Save" : "Edit"}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleSelectedServiceDelete(service)}
-                            className="rounded-xl border border-red-400/25 bg-red-500/10 px-4 py-1.5 text-[11px] font-medium text-red-200 transition hover:border-red-300/50 hover:bg-red-500/15 cursor-pointer"
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
+          <div className="flex-shrink-0 text-right pl-1">
+            <p className="text-[12px] font-semibold text-yellow-300 leading-tight whitespace-nowrap">
+              {formatCurrencyValue(service.originalTotal || 0, service.currency)}
+            </p>
+            {service.isForeignCurrency && (
+              <p className="mt-0.5 text-[10px] text-sky-300 whitespace-nowrap">
+                INR {formatAmountValue(service.totalInInr || 0)}
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* ── Row 2: chips strip ── */}
+        <div className="mt-2.5 flex flex-wrap gap-1.5">
+
+          {/* Type chip */}
+          <div className={`inline-flex items-center rounded-lg border px-2.5 py-[5px] ${typeAccent.bg} ${typeAccent.border}`}>
+            <span className={`text-[10px] font-semibold leading-none ${typeAccent.text}`}>
+              {getServiceTypeLabel(service.type)}
+            </span>
+          </div>
+
+          {/* Date chip */}
+          {service.serviceDate && (
+            <Chip
+              icon={
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+                </svg>
+              }
+              value={formatServiceDateLabel(service.serviceDate)}
+            />
+          )}
+
+          {/* Hotel: nights */}
+          {service.type === "hotel" && Number(service.nights || 0) > 0 && (
+            <Chip
+              icon={
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M2 4v16"/><path d="M2 8h18a2 2 0 0 1 2 2v10"/><path d="M2 17h20"/><path d="M6 8v9"/>
+                </svg>
+              }
+              value={`${service.nights} night${Number(service.nights) > 1 ? "s" : ""}`}
+              accent="text-sky-200"
+            />
+          )}
+
+          {/* Hotel: rooms */}
+          {service.type === "hotel" && Number(service.rooms || 0) > 0 && (
+            <Chip
+              icon={
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>
+                </svg>
+              }
+              value={`${service.rooms} room${Number(service.rooms) > 1 ? "s" : ""}`}
+            />
+          )}
+
+          {/* Hotel: bed type */}
+          {service.type === "hotel" && service.bedType && (
+            <Chip
+              icon={
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M2 9V4a1 1 0 0 1 1-1h18a1 1 0 0 1 1 1v5"/><path d="M2 20v-4a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v4"/><path d="M2 14h20"/><path d="M7 14v2"/><path d="M17 14v2"/>
+                </svg>
+              }
+              value={getBedTypeOptionLabel(service.bedType)}
+              accent="text-amber-200"
+              iconColor="text-amber-400"
+            />
+          )}
+
+          {/* Transfer: days */}
+          {(service.type === "transfer" || service.type === "car") && Number(service.days || 0) > 0 && (
+            <Chip
+              icon={
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+                </svg>
+              }
+              value={`${service.days} day${Number(service.days) > 1 ? "s" : ""}`}
+              accent="text-violet-200"
+              iconColor="text-violet-400"
+            />
+          )}
+
+          {/* Activity: pax */}
+          {service.type === "activity" && Number(service.pax || 0) > 0 && (
+            <Chip
+              icon={
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                </svg>
+              }
+              value={`${service.pax} pax`}
+              accent="text-emerald-200"
+              iconColor="text-emerald-400"
+            />
+          )}
+
+          {/* Sightseeing: pax + days */}
+          {service.type === "sightseeing" && (
+            <>
+              {Number(service.pax || 0) > 0 && (
+                <Chip
+                  icon={
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+                    </svg>
+                  }
+                  value={`${service.pax} pax`}
+                  accent="text-blue-200"
+                  iconColor="text-blue-400"
+                />
+              )}
+              {Number(service.days || 0) > 0 && (
+                <Chip
+                  icon={
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+                    </svg>
+                  }
+                  value={`${service.days} day${Number(service.days) > 1 ? "s" : ""}`}
+                  accent="text-blue-200"
+                  iconColor="text-blue-400"
+                />
+              )}
+            </>
+          )}
+        </div>
+
+        {/* ── Row 3: Quotation Edits ── */}
+        {serviceEdits.length > 0 && (
+          <div className="mt-3 rounded-[14px] border border-sky-500/20 bg-[#071420] px-3 py-2.5">
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <p className="text-[8px] font-semibold uppercase tracking-[0.18em] text-sky-200/80">
+                Quotation Edits
+              </p>
+              <span className="rounded-full border border-sky-400/25 bg-sky-500/10 px-2 py-0.5 text-[7px] font-semibold text-sky-200">
+                {serviceEdits.length} update{serviceEdits.length === 1 ? "" : "s"}
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {serviceEdits.map((edit) => {
+                const toneClasses =
+                  edit.variant === "success"
+                    ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-200"
+                    : edit.variant === "warning"
+                      ? "border-yellow-500/25 bg-yellow-500/10 text-yellow-100"
+                      : edit.variant === "danger"
+                        ? "border-red-500/25 bg-red-500/10 text-red-200"
+                        : "border-sky-500/20 bg-sky-500/10 text-sky-100";
+
+                return (
+                  <span
+                    key={`${service.id}-${edit.key}-${edit.label}`}
+                    className={`inline-flex items-center gap-1 rounded-[8px] border px-2.5 py-[5px] text-[10px] font-medium leading-none ${toneClasses}`}
+                  >
+                    <span className="font-semibold">{edit.label}</span>
+                    <span className="opacity-40">:</span>
+                    <span>{edit.value}</span>
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── Quick Actions ── */}
+      <div className="mt-2.5 flex items-center justify-between gap-3 px-0.5">
+        <p className="text-[10px] font-medium text-slate-400">Quick Actions</p>
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => handleSelectedServiceEditAction(service)}
+            className="rounded-xl border border-sky-400/35 bg-sky-500/10 px-3.5 py-1.5 text-[11px] font-medium text-sky-200 transition hover:border-sky-300/50 hover:bg-sky-500/15 cursor-pointer"
+          >
+            {editingServiceCardId === service.id ? "Save" : "Edit"}
+          </button>
+          <button
+            type="button"
+            onClick={() => handleSelectedServiceDelete(service)}
+            className="rounded-xl border border-red-400/25 bg-red-500/10 px-3.5 py-1.5 text-[11px] font-medium text-red-200 transition hover:border-red-300/50 hover:bg-red-500/15 cursor-pointer"
+          >
+            Delete
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+})}
                 </div>
               ) : (
                 <div className="mt-4 rounded-2xl border border-dashed border-[#28303d] bg-[#090909] px-4 py-6 text-center">
@@ -3182,6 +3967,7 @@ const Service = ({
   isEditorFocused = false,
   isEditMode = false,
   exchangeRates,
+  allServices,
   toggleService,
   updateField,
   deleteService,
@@ -3197,6 +3983,10 @@ const Service = ({
   const totalInInr = convertAmountToInr(total, currencyCode, exchangeRates);
   const baseRateInInr = convertAmountToInr(service.rate || 0, currencyCode, exchangeRates);
   const isForeignCurrency = currencyCode !== "INR";
+  const hotelVariantOptions = useMemo(
+    () => getHotelVariantOptions(allServices, service),
+    [allServices, service],
+  );
 
   const getHotelStars = (category) => {
     if (!category) return 3;
@@ -3226,9 +4016,6 @@ const Service = ({
 
   const inputCls =
     "bg-[#0a0a0a] border border-[#2a2a2a] hover:border-yellow-600/50 text-white text-[11px] rounded-lg px-2.5 py-1.5 w-20 outline-none transition-colors focus:border-yellow-500";
-
-  const priceInputCls =
-    "mt-2 w-full rounded-lg border border-[#343434] bg-[#111] px-3 py-2 text-[11px] text-white outline-none transition-colors focus:border-yellow-500";
 
   const dateCls =
     "w-full bg-[#111] border border-[#343434] hover:border-yellow-600/60 text-white text-[11px] rounded-lg px-3 py-2.5 pr-9 outline-none transition-colors focus:border-yellow-500 [color-scheme:dark] [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-0";
@@ -3472,18 +4259,6 @@ const Service = ({
                   </div>
                 </>
               )}
-              {isEditMode && (
-                <div className="mt-2">
-                  <label className="text-[9px] text-slate-500">Edit rate ({currencyCode})</label>
-                  <input
-                    type="number"
-                    min="0"
-                    value={service.rate || 0}
-                    onChange={(e) => updateField(service.id, "rate", Math.max(0, Number(e.target.value || 0)))}
-                    className={priceInputCls}
-                  />
-                </div>
-              )}
             </div>
 
             <div className="rounded-xl border border-[#1f1f1f] bg-[#101010] px-3 py-2.5">
@@ -3590,14 +4365,18 @@ const Service = ({
                 <div>
                   <p className="text-[9px] text-slate-500 mb-1">Usage</p>
                   <select
-                    value={service.usageType || "point-to-point"}
+                    value={normalizeTransportUsageValue(service.usageType) || "point-to-point"}
                     onChange={(e) => updateField(service.id, "usageType", e.target.value)}
                     className={selectCls}
                   >
-                    <option value="point-to-point">One Way</option>
-                    <option value="round-trip">Two Way</option>
-                    <option value="full-day">Full Day</option>
-                    <option value="half-day">Half Day</option>
+                    {TRANSPORT_USAGE_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {`${option.label} (${formatCurrencyValue(
+                          getTransportUsageOptionDisplayPrice(service, option.value),
+                          currencyCode,
+                        )})`}
+                      </option>
+                    ))}
                   </select>
                 </div>
                 <div>
@@ -3662,19 +4441,108 @@ const Service = ({
           )}
 
           {/* ── HOTEL: ROOM + BED INFO ── */}
-          {service.type === "hotel" && (service.roomType || service.bedType) && (
-            <div className="flex flex-wrap gap-2 pt-1">
-              {service.roomType && (
-                <span className="flex items-center gap-1.5 rounded-lg border border-[#232323] bg-[#141414] px-2.5 py-1 text-[10px] text-slate-300">
-                  <LiaHotelSolid className="text-blue-400" />
-                  <span className="text-slate-500">Room:</span> {service.roomType}
-                </span>
-              )}
-              {service.bedType && (
-                <span className="flex items-center gap-1.5 rounded-lg border border-[#232323] bg-[#141414] px-2.5 py-1 text-[10px] text-slate-300">
-                  <MdKingBed className="text-yellow-400" />
-                  <span className="text-slate-500">Bed:</span> {service.bedType}
-                </span>
+          {service.type === "hotel" && (
+            <div className="space-y-2.5 pt-1">
+              <div className="flex flex-wrap gap-2">
+                {service.roomType && (
+                  <span className="flex items-center gap-1.5 rounded-lg border border-[#232323] bg-[#141414] px-2.5 py-1 text-[10px] text-slate-300">
+                    <LiaHotelSolid className="text-sky-400" />
+                    <span className="text-slate-500">Category:</span> {service.roomType}
+                  </span>
+                )}
+                {Number(service.rooms || 0) > 0 && (
+                  <span className="flex items-center gap-1.5 rounded-lg border border-[#232323] bg-[#141414] px-2.5 py-1 text-[10px] text-slate-300">
+                    <BsPeople className="text-emerald-400" />
+                    <span className="text-slate-500">Rooms:</span> {service.rooms}
+                  </span>
+                )}
+                {service.roomCategory && (
+                  <span className="flex items-center gap-1.5 rounded-lg border border-[#232323] bg-[#141414] px-2.5 py-1 text-[10px] text-slate-300">
+                    <LiaHotelSolid className="text-blue-400" />
+                    <span className="text-slate-500">Room Type:</span> {formatRoomOccupancyLabel(service.roomCategory)}
+                  </span>
+                )}
+                {service.bedType && (
+                  <span className="flex items-center gap-1.5 rounded-lg border border-[#232323] bg-[#141414] px-2.5 py-1 text-[10px] text-slate-300">
+                    <MdKingBed className="text-yellow-400" />
+                    <span className="text-slate-500">Bed:</span> {getBedTypeOptionLabel(service.bedType)}
+                  </span>
+                )}
+              </div>
+
+              {isEditMode && (
+                <div className="grid grid-cols-1 gap-3 rounded-xl border border-[#1f1f1f] bg-[#101010] px-3 py-3 md:grid-cols-2">
+                  <div>
+                    <label className="mb-1 block text-[9px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                      Room Category
+                    </label>
+                    <select
+                      value={service.roomType || ""}
+                      onChange={(e) => updateField(service.id, "roomType", e.target.value)}
+                      className={`${selectCls} w-full`}
+                    >
+                      <option value="">Select room category</option>
+                      {hotelVariantOptions.roomTypes.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-[9px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                      Room Type (Occupancy)
+                    </label>
+                    <select
+                      value={service.roomCategory || ""}
+                      onChange={(e) => updateField(service.id, "roomCategory", e.target.value)}
+                      className={`${selectCls} w-full`}
+                    >
+                      <option value="">Select room type</option>
+                      {hotelVariantOptions.roomCategories.map((option) => (
+                        <option key={option} value={option}>
+                          {formatRoomOccupancyLabel(option)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-[9px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                      Rooms
+                    </label>
+                    <select
+                      value={Number(service.rooms || 1)}
+                      onChange={(e) => updateField(service.id, "rooms", Math.max(1, Number(e.target.value || 1)))}
+                      className={`${selectCls} w-full`}
+                    >
+                      {[...Array(8)].map((_, index) => (
+                        <option key={index + 1} value={index + 1}>
+                          {index + 1} Room{index === 0 ? "" : "s"}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-[9px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                      Bed Type
+                    </label>
+                    <select
+                      value={normalizeBedTypeValue(service.bedType) || ""}
+                      onChange={(e) => updateField(service.id, "bedType", e.target.value)}
+                      className={`${selectCls} w-full`}
+                    >
+                      <option value="">Select bed type</option>
+                      {hotelVariantOptions.bedTypes.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
               )}
             </div>
           )}
@@ -3696,11 +4564,8 @@ const Service = ({
                 currencyCode={currencyCode}
                 isForeignCurrency={isForeignCurrency}
                 exchangeRates={exchangeRates}
-                isEditMode={isEditMode}
-                onRateChange={(v) => updateField(service.id, "awebRate", v)}
                 accentClass="text-yellow-400"
                 borderHover="hover:border-yellow-500/30"
-                priceInputCls={priceInputCls}
               />
 
               {/* C.W.E.B */}
@@ -3713,11 +4578,8 @@ const Service = ({
                 currencyCode={currencyCode}
                 isForeignCurrency={isForeignCurrency}
                 exchangeRates={exchangeRates}
-                isEditMode={isEditMode}
-                onRateChange={(v) => updateField(service.id, "cwebRate", v)}
                 accentClass="text-emerald-400"
                 borderHover="hover:border-emerald-500/30"
-                priceInputCls={priceInputCls}
               />
 
               {/* C.Wo.E.B */}
@@ -3730,11 +4592,8 @@ const Service = ({
                 currencyCode={currencyCode}
                 isForeignCurrency={isForeignCurrency}
                 exchangeRates={exchangeRates}
-                isEditMode={isEditMode}
-                onRateChange={(v) => updateField(service.id, "cwoebRate", v)}
                 accentClass="text-blue-400"
                 borderHover="hover:border-blue-500/30"
-                priceInputCls={priceInputCls}
               />
             </div>
           )}
@@ -3756,11 +4615,8 @@ const AddonRow = ({
   currencyCode,
   isForeignCurrency,
   exchangeRates,
-  isEditMode,
-  onRateChange,
   accentClass,
   borderHover,
-  priceInputCls,
 }) => (
   <div className={`rounded-xl border border-[#222] bg-[#141414] px-3 py-2.5 transition-colors ${borderHover}`}>
     <label className="flex cursor-pointer items-center justify-between gap-3">
@@ -3787,19 +4643,6 @@ const AddonRow = ({
         )}
       </div>
     </label>
-    {isEditMode && (
-      <div className="mt-2.5 pl-6">
-        <label className="text-[9px] text-slate-500">Edit rate ({currencyCode})</label>
-        <input
-          type="number"
-          min="0"
-          step="0.01"
-          value={rate}
-          onChange={(e) => onRateChange(Math.max(0, Number(e.target.value || 0)))}
-          className={priceInputCls}
-        />
-      </div>
-    )}
   </div>
 );
 

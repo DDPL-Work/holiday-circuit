@@ -637,6 +637,7 @@ export const getAllServices = async (req, res, next) => {
       price: h.price,
       currency: h.currency,
       hotelCategory:h.hotelCategory,
+      roomCategory:h.roomCategory || "Double",
       bedType:h.bedType,
       roomType:h.roomType,
       awebRate: h.awebRate || 0,
