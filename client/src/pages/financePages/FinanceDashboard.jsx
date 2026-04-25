@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Shield,
   CheckCircle2,
@@ -7,12 +7,8 @@ import {
   Clock,
   Users,
   Calendar,
-  Bell,
   CheckCircle,
   AlertCircle,
-  X,
-  Info,
-  Clock3,
 } from "lucide-react";
 import API from "../../utils/Api";
 import { AnimatePresence, motion } from "framer-motion";
@@ -37,115 +33,6 @@ const formatCompactDate = (value) => {
 
   return `${parsed.getDate()}/${parsed.getMonth() + 1}/${parsed.getFullYear()}`;
 };
-
-const notifConfig = {
-  success: { icon: CheckCircle2, color: "text-green-600", bg: "bg-green-50", dot: "bg-green-500" },
-  info: { icon: Info, color: "text-blue-600", bg: "bg-blue-50", dot: "bg-blue-500" },
-  warning: { icon: AlertCircle, color: "text-yellow-600", bg: "bg-yellow-50", dot: "bg-yellow-500" },
-};
-
-const getTimeAgo = (date) => {
-  const now = new Date();
-  const created = new Date(date);
-  const diffInMinutes = Math.floor((now - created) / 60000);
-
-  if (diffInMinutes < 1) return "Just now";
-  if (diffInMinutes < 60) return `${diffInMinutes} min ago`;
-  if (diffInMinutes < 1440) return `${Math.floor(diffInMinutes / 60)} hr ago`;
-  return `${Math.floor(diffInMinutes / 1440)} day ago`;
-};
-
-const NotificationPanel = ({
-  notifications,
-  onDismiss,
-  onClose,
-  onClearAll,
-  loadingNotifications,
-}) => (
-  <motion.div
-    initial={{ opacity: 0, y: -8, scale: 0.96 }}
-    animate={{ opacity: 1, y: 0, scale: 1 }}
-    exit={{ opacity: 0, y: -8, scale: 0.96 }}
-    transition={{ duration: 0.2, ease: "easeOut" }}
-    className="absolute right-0 top-14 z-50 w-80 overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-2xl"
-  >
-    <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
-      <div className="flex items-center gap-2">
-        <Bell className="h-4 w-4 text-gray-700" />
-        <span className="text-sm font-semibold text-gray-900">Finance Notifications</span>
-        {notifications.length > 0 && (
-          <span className="rounded-full bg-blue-600 px-1.5 py-0.5 text-[10px] font-bold text-white">
-            {notifications.length}
-          </span>
-        )}
-      </div>
-      <button onClick={onClose} className="text-gray-400 transition-colors hover:text-gray-600">
-        <X className="h-4 w-4" />
-      </button>
-    </div>
-
-    <div className="max-h-96 overflow-y-auto divide-y divide-gray-50">
-      <AnimatePresence initial={false}>
-        {loadingNotifications ? (
-          <div className="flex flex-col items-center justify-center py-10 text-gray-400">
-            <p className="text-xs">Loading notifications...</p>
-          </div>
-        ) : notifications.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-10 text-gray-400">
-            <Bell className="mb-2 h-8 w-8 opacity-30" />
-            <p className="text-xs">No internal invoice notifications</p>
-          </div>
-        ) : (
-          notifications.map((notif) => {
-            const cfg = notifConfig[notif.type] || notifConfig.info;
-            const Icon = cfg.icon;
-
-            return (
-              <motion.div
-                key={notif._id}
-                layout
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: 40, transition: { duration: 0.2 } }}
-                className="group flex items-start gap-3 px-4 py-3 transition-colors hover:bg-gray-50"
-              >
-                <div className={`mt-1 h-1.5 w-1.5 flex-shrink-0 rounded-full ${cfg.dot}`} />
-                <div className={`flex-shrink-0 rounded-lg p-1.5 ${cfg.bg}`}>
-                  <Icon className={`h-3.5 w-3.5 ${cfg.color}`} />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs font-semibold text-gray-900">{notif.title}</p>
-                  <p className="mt-0.5 text-[11px] leading-relaxed text-gray-500">{notif.message}</p>
-                  <div className="mt-1 flex items-center gap-1">
-                    <Clock3 className="h-2.5 w-2.5 text-gray-400" />
-                    <span className="text-[10px] text-gray-400">{getTimeAgo(notif.createdAt)}</span>
-                  </div>
-                </div>
-                <button
-                  onClick={() => onDismiss(notif._id)}
-                  className="mt-0.5 flex-shrink-0 text-gray-300 opacity-0 transition-opacity hover:text-gray-500 group-hover:opacity-100"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              </motion.div>
-            );
-          })
-        )}
-      </AnimatePresence>
-    </div>
-
-    {notifications.length > 0 && (
-      <div className="border-t border-gray-100 px-4 py-2.5">
-        <button
-          onClick={onClearAll}
-          className="text-[11px] font-medium text-blue-600 transition-colors hover:text-blue-800"
-        >
-          Clear all
-        </button>
-      </div>
-    )}
-  </motion.div>
-);
 
 const StatusBadge = ({ status }) => {
   const styles = {
@@ -244,11 +131,6 @@ const FinanceDashboard = () => {
   const [summaryAppliedRange, setSummaryAppliedRange] = useState({ start: "", end: "" });
   const [dashboardData, setDashboardData] = useState(createEmptyDashboard());
   const [summaryData, setSummaryData] = useState(createEmptyDashboard());
-  const [notifications, setNotifications] = useState([]);
-  const [openNotifications, setOpenNotifications] = useState(false);
-  const [loadingNotifications, setLoadingNotifications] = useState(true);
-  const [bellPop, setBellPop] = useState(false);
-  const [hasFetchedNotifications, setHasFetchedNotifications] = useState(false);
   const [loading, setLoading] = useState(true);
   const [summaryLoading, setSummaryLoading] = useState(true);
   const [error, setError] = useState("");
@@ -320,65 +202,6 @@ const FinanceDashboard = () => {
 
     fetchSummary();
   }, [summaryRangeType, summaryAppliedRange]);
-
-  useEffect(() => {
-    const fetchNotifications = async (silent = false) => {
-      try {
-        if (!silent) setLoadingNotifications(true);
-        const { data } = await API.get("/admin/notifications");
-        const nextNotifications = data?.notifications || [];
-
-        setNotifications((prevNotifications) => {
-          const previousCount = prevNotifications.filter(
-            (notification) => notification?.title === "New Internal Invoice Submitted",
-          ).length;
-          const nextCount = nextNotifications.filter(
-            (notification) => notification?.title === "New Internal Invoice Submitted",
-          ).length;
-
-          if (hasFetchedNotifications && nextCount > previousCount) {
-            setBellPop(true);
-          }
-
-          return nextNotifications;
-        });
-      } catch (fetchError) {
-        console.error("Failed to load finance notifications", fetchError);
-      } finally {
-        setHasFetchedNotifications(true);
-        if (!silent) setLoadingNotifications(false);
-      }
-    };
-
-    fetchNotifications();
-    const intervalId = window.setInterval(() => {
-      fetchNotifications(true);
-    }, 20000);
-
-    return () => window.clearInterval(intervalId);
-  }, [hasFetchedNotifications]);
-
-  useEffect(() => {
-    if (!bellPop) return undefined;
-
-    const timeoutId = window.setTimeout(() => {
-      setBellPop(false);
-    }, 1400);
-
-    return () => window.clearTimeout(timeoutId);
-  }, [bellPop]);
-
-  const financeNotifications = useMemo(
-    () =>
-      notifications.filter(
-        (notification) => notification?.title === "New Internal Invoice Submitted",
-      ),
-    [notifications],
-  );
-
-  const unreadFinanceCount =
-    financeNotifications.filter((notification) => !notification.isRead).length ||
-    financeNotifications.length;
 
   const summaryLabel =
     summaryRangeType === "weekly"
@@ -460,33 +283,6 @@ const FinanceDashboard = () => {
     setSummaryAppliedRange({ start: summaryStartDate, end: summaryEndDate });
   };
 
-  const dismissNotification = async (id) => {
-    try {
-      await API.delete(`/admin/notifications/${id}`);
-      setNotifications((prev) => prev.filter((notification) => notification._id !== id));
-    } catch (fetchError) {
-      console.error("Failed to delete finance notification", fetchError);
-    }
-  };
-
-  const clearAllNotifications = async () => {
-    try {
-      await Promise.all(
-        financeNotifications.map((notification) =>
-          API.delete(`/admin/notifications/${notification._id}`),
-        ),
-      );
-      setNotifications((prev) =>
-        prev.filter(
-          (notification) => notification?.title !== "New Internal Invoice Submitted",
-        ),
-      );
-      setOpenNotifications(false);
-    } catch (fetchError) {
-      console.error("Failed to clear finance notifications", fetchError);
-    }
-  };
-
   return (
     <div className="mx-auto flex max-w-7xl flex-col gap-6  pb-1 text-slate-800">
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
@@ -541,38 +337,6 @@ const FinanceDashboard = () => {
                 {dashboardData.bankReconciliationStatus}
               </span>
             </div>
-          </div>
-
-          <div className="relative shrink-0">
-            <motion.button
-              onClick={() => setOpenNotifications((value) => !value)}
-              animate={
-                bellPop
-                  ? { scale: [1, 1.12, 1], rotate: [0, -10, 10, -6, 6, 0] }
-                  : { scale: 1, rotate: 0 }
-              }
-              transition={{ duration: 0.7, ease: "easeOut" }}
-              className="relative flex h-11 w-11 items-center justify-center rounded-full border border-gray-200 bg-white shadow-sm transition-colors hover:border-blue-200 hover:bg-blue-50"
-            >
-              <Bell className={`h-[18px] w-[18px] ${bellPop ? "text-blue-600" : "text-gray-600"}`} />
-              {unreadFinanceCount > 0 && (
-                <span className="absolute -right-1 -top-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white">
-                  {unreadFinanceCount}
-                </span>
-              )}
-            </motion.button>
-
-            <AnimatePresence>
-              {openNotifications && (
-                <NotificationPanel
-                  notifications={financeNotifications}
-                  onDismiss={dismissNotification}
-                  onClose={() => setOpenNotifications(false)}
-                  onClearAll={clearAllNotifications}
-                  loadingNotifications={loadingNotifications}
-                />
-              )}
-            </AnimatePresence>
           </div>
         </div>
       </div>

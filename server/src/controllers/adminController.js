@@ -36,6 +36,7 @@ const addQueryLogIfMissing = (query, action, performedBy) => {
 const MANAGED_USER_ROLES = [
   "admin",
   "operations",
+  "finance_partner",
   "dmc_partner",
   "operation_manager",
   "finance_manager",
@@ -44,6 +45,7 @@ const MANAGED_USER_ROLES = [
 const FRONTEND_ROLE_TO_BACKEND = {
   "Super Admin": "admin",
   "Ops Team": "operations",
+  "Finance Team": "finance_partner",
   "DMC Partner": "dmc_partner",
   "Operation Manager": "operation_manager",
   "Finance Manager": "finance_manager",
@@ -52,6 +54,7 @@ const FRONTEND_ROLE_TO_BACKEND = {
 const BACKEND_ROLE_TO_FRONTEND = {
   admin: "Super Admin",
   operations: "Ops Team",
+  finance_partner: "Finance Team",
   dmc_partner: "DMC Partner",
   operation_manager: "Operation Manager",
   finance_manager: "Finance Manager",
@@ -78,6 +81,7 @@ const formatManagedUser = (user) => ({
   deletedBy: user.deletedBy || "",
   deletionReason: user.deletionReason || "",
   accessExpiry: user.accessExpiry || null,
+  lastLoginAt: user.lastLoginAt || null,
   role: user.role,
   roleLabel: BACKEND_ROLE_TO_FRONTEND[user.role] || user.role,
   createdAt: user.createdAt,
@@ -711,6 +715,77 @@ export const deleteManagedUser = async (req, res, next) => {
   }
 };
 
+export const restoreManagedUser = async (req, res, next) => {
+  try {
+    ensureAdminAccess(req);
+
+    const { id } = req.params;
+
+    const user = await Auth.findOne({
+      _id: id,
+      role: { $in: MANAGED_USER_ROLES },
+    });
+
+    if (!user) {
+      return next(new ApiError(404, "User not found"));
+    }
+
+    if (!user.isDeleted) {
+      return next(new ApiError(400, "User is not deleted"));
+    }
+
+    user.isDeleted = false;
+    user.deletedAt = null;
+    user.deletedBy = "";
+    user.deletionReason = "";
+    user.accountStatus = "Active";
+    await user.save();
+
+    res.status(200).json({
+      success: true,
+      message: "User restored successfully",
+      user: formatManagedUser(user),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const permanentlyDeleteManagedUser = async (req, res, next) => {
+  try {
+    ensureAdminAccess(req);
+
+    const { id } = req.params;
+
+    const user = await Auth.findOne({
+      _id: id,
+      role: { $in: MANAGED_USER_ROLES },
+    });
+
+    if (!user) {
+      return next(new ApiError(404, "User not found"));
+    }
+
+    if (String(req.user?.id) === String(user._id)) {
+      return next(new ApiError(400, "You cannot permanently delete your own account"));
+    }
+
+    if (!user.isDeleted) {
+      return next(new ApiError(400, "Please soft delete the user first"));
+    }
+
+    await Auth.deleteOne({ _id: user._id });
+
+    res.status(200).json({
+      success: true,
+      message: "User permanently deleted successfully",
+      userId: String(user._id),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 
 // =============================== Create / Update Rate Contracts ===============================
 
@@ -1321,7 +1396,7 @@ export const getAdminDashboardData = async (req, res, next) => {
 
     const dashboardPayload = {
       header: {
-        title: "Dashboard",
+        title: "Admin Dashboard",
         roleLabel: "Administrator",
         subtitle: `${now.toLocaleDateString("en-US", {
           weekday: "long",
@@ -1460,7 +1535,6 @@ export const getAdminDashboardData = async (req, res, next) => {
           { name: "Ops Team", hours: Number(avgResponseHours.toFixed(1)) },
           { name: "Finance Team", hours: Number(financeReviewHours.toFixed(1)) },
           { name: "DMC Partners", hours: Number(dmcFulfillmentHours.toFixed(1)) },
-          { name: "Admin", hours: adminCoordinationHours },
         ],
         masterBookings: masterBookingRows,
       },
@@ -1764,6 +1838,36 @@ const resolveOpsConfirmedInvoiceAmount = (invoice = {}) => {
   );
 };
 
+const getCouponVerificationContext = (invoice = {}) => {
+  const couponApplication = invoice?.paymentSubmission?.couponApplication || null;
+  if (!couponApplication?.couponId) return null;
+
+  const subtotalAmount = Math.round(Number(couponApplication?.subtotalAmount || 0));
+  const discountAmount = Math.round(Number(couponApplication?.discountAmount || 0));
+  const payableAmount = Math.max(
+    Math.round(Number(couponApplication?.payableAmount || 0)),
+    0,
+  );
+  const discountValue = Number(couponApplication?.discountValue || 0);
+
+  return {
+    applied: true,
+    code: couponApplication.code || "",
+    discountType: couponApplication.discountType || "",
+    discountValue,
+    discountLabel: couponApplication.discountLabel || "",
+    subtotalAmount,
+    discountAmount,
+    payableAmount,
+    appliedAt: couponApplication.appliedAt || null,
+    appliedAtLabel: formatDashboardDate(couponApplication.appliedAt),
+    summary:
+      couponApplication.discountType === "percentage"
+        ? `${couponApplication.code || "Coupon"} applied with ${Number(discountValue || 0)}% off. Payable amount reduced to ${payableAmount}.`
+        : `${couponApplication.code || "Coupon"} applied with discount ${couponApplication.discountLabel || discountAmount}. Payable amount reduced to ${payableAmount}.`,
+  };
+};
+
 const formatPaymentVerificationRow = (invoice) => {
   const verificationStatus = getPaymentVerificationStatus(invoice);
   const workflowStatus = getPaymentWorkflowStatus(invoice);
@@ -1771,7 +1875,12 @@ const formatPaymentVerificationRow = (invoice) => {
     invoice.paymentVerification?.assignedTo ||
     invoice.paymentVerification?.reviewedBy ||
     null;
-  const expectedAmount = resolveOpsConfirmedInvoiceAmount(invoice);
+  const opsInvoiceAmount = resolveOpsConfirmedInvoiceAmount(invoice);
+  const couponContext = getCouponVerificationContext(invoice);
+  const expectedAmount =
+    couponContext?.applied && couponContext?.payableAmount >= 0
+      ? couponContext.payableAmount
+      : opsInvoiceAmount;
   const receivedAmount = Math.round(
     Number(invoice.paymentSubmission?.amount || 0),
   );
@@ -1796,6 +1905,7 @@ const formatPaymentVerificationRow = (invoice) => {
       "-",
     agentEmail: invoice.agent?.email || "",
     amount: expectedAmount,
+    opsInvoiceAmount,
     expectedAmount,
     receivedAmount,
     amountVariance,
@@ -1850,6 +1960,17 @@ const formatPaymentVerificationRow = (invoice) => {
     teamDecisionAtValue: invoice.paymentVerification?.teamDecisionAt || null,
     sentToManagerAt: formatDashboardDate(invoice.paymentVerification?.sentToManagerAt),
     sentToManagerAtValue: invoice.paymentVerification?.sentToManagerAt || null,
+    couponApplied: Boolean(couponContext?.applied),
+    couponCode: couponContext?.code || "",
+    couponDiscountLabel: couponContext?.discountLabel || "",
+    couponDiscountType: couponContext?.discountType || "",
+    couponDiscountValue: Number(couponContext?.discountValue || 0),
+    couponSubtotalAmount: Number(couponContext?.subtotalAmount || 0),
+    couponDiscountAmount: Number(couponContext?.discountAmount || 0),
+    couponPayableAmount: Number(couponContext?.payableAmount || 0),
+    couponAppliedAt: couponContext?.appliedAt || null,
+    couponAppliedAtLabel: couponContext?.appliedAtLabel || "",
+    couponSummary: couponContext?.summary || "",
     canGenerateInvoice: verificationStatus === "Verified",
     finalInvoiceStatus: invoice.finalInvoiceDispatch?.status || "Not Sent",
     finalInvoiceSentAt: formatDashboardDate(invoice.finalInvoiceDispatch?.sentAt),
@@ -2979,7 +3100,11 @@ export const reviewPaymentVerification = async (req, res, next) => {
       return next(new ApiError(400, "Payment submission is incomplete for verification"));
     }
 
-    const expectedAmount = resolveOpsConfirmedInvoiceAmount(invoice);
+    const couponContext = getCouponVerificationContext(invoice);
+    const expectedAmount =
+      couponContext?.applied && couponContext?.payableAmount >= 0
+        ? couponContext.payableAmount
+        : resolveOpsConfirmedInvoiceAmount(invoice);
     const receivedAmount = Math.round(
       Number(invoice.paymentSubmission?.amount || 0),
     );
@@ -2998,7 +3123,7 @@ export const reviewPaymentVerification = async (req, res, next) => {
         return next(
           new ApiError(
             400,
-            `Amount mismatch: expected ${expectedAmount} but received ${receivedAmount}`,
+            `Amount mismatch: expected ${expectedAmount} but received ${receivedAmount}${couponContext?.applied ? ` after coupon ${couponContext.code || "adjustment"}` : ""}`,
           ),
         );
       }
@@ -3360,6 +3485,9 @@ export const updateInternalInvoiceStatus = async (req, res, next) => {
     const {
       status,
       reason = "",
+      notifyAdmin = false,
+      mismatchReason = "",
+      adminMessage = "",
       payoutReference = "",
       payoutDate,
       payoutBank = "",
@@ -3464,7 +3592,7 @@ export const updateInternalInvoiceStatus = async (req, res, next) => {
     await Notification.create({
       user: invoice.dmc?._id || invoice.dmc,
       ...notificationPayload,
-      link: "/dmc/internalInvoice",
+      link: "/dmc/confirmation",
       meta: {
         internalInvoiceId: invoice._id,
         invoiceNumber: invoice.invoiceNumber,
@@ -3475,6 +3603,46 @@ export const updateInternalInvoiceStatus = async (req, res, next) => {
         payoutDate: invoice.payoutDate || null,
       },
     });
+
+    const shouldNotifyAdmin = status === "Rejected" && Boolean(notifyAdmin);
+    if (shouldNotifyAdmin) {
+      const adminUsers = await Auth.find({
+        role: "admin",
+        isDeleted: { $ne: true },
+        accountStatus: { $ne: "Inactive" },
+      }).select("_id");
+
+      const normalizedMismatchReason = String(mismatchReason || "").trim();
+      const normalizedAdminMessage = String(adminMessage || "").trim();
+      const escalationActor = req.user?.name || req.user?.companyName || reviewerName;
+      const escalationMessageParts = [
+        `${invoice.invoiceNumber} was escalated by ${escalationActor} for admin review.`,
+        normalizedMismatchReason ? `Reason for mismatch: ${normalizedMismatchReason}.` : "",
+        normalizedAdminMessage ? `Finance note: ${normalizedAdminMessage}` : "",
+      ].filter(Boolean);
+
+      if (adminUsers.length) {
+        await Notification.insertMany(
+          adminUsers.map((adminUser) => ({
+            user: adminUser._id,
+            type: "warning",
+            title: "Internal invoice mismatch escalated",
+            message: escalationMessageParts.join(" "),
+            link: "/finance/internalInvoice",
+            meta: {
+              internalInvoiceId: invoice._id,
+              invoiceNumber: invoice.invoiceNumber,
+              queryId: invoice.query?._id || invoice.query || null,
+              queryNumber: invoice.query?.queryId || invoice.queryCode || "",
+              mismatchReason: normalizedMismatchReason,
+              adminMessage: normalizedAdminMessage,
+              financeNotes: invoice.financeNotes || "",
+              source: "finance_internal_invoice_mismatch",
+            },
+          })),
+        );
+      }
+    }
 
     const quotation = await Quotation.findOne({ queryId: invoice.query?._id || invoice.query })
       .sort({ createdAt: -1 })

@@ -62,13 +62,13 @@ function IconAlertTriangle({ size = 13 }) {
 
 function perfBarColor(p) {
   if (p >= 90) return "bg-emerald-500";
-  if (p >= 80) return "bg-amber-500";
+  if (p >= 75) return "bg-amber-500";
   return "bg-rose-500";
 }
 
 function perfBarTrackColor(p) {
   if (p >= 90) return "bg-emerald-100";
-  if (p >= 80) return "bg-amber-100";
+  if (p >= 75) return "bg-amber-100";
   return "bg-rose-100";
 }
 

@@ -61,63 +61,95 @@ const formatDateLabel = (value) => {
 
 const getPaymentComparisonMeta = (payment = {}) => {
   const expectedAmount = Math.round(Number(payment?.expectedAmount ?? payment?.amount ?? 0));
+  const opsInvoiceAmount = Math.round(Number(payment?.opsInvoiceAmount ?? expectedAmount ?? 0));
   const receivedAmount = Math.round(Number(payment?.receivedAmount || 0));
   const hasReceivedAmount = receivedAmount > 0;
-  const variance = hasReceivedAmount ? receivedAmount - expectedAmount : 0;
-  const isMatched = hasReceivedAmount && variance === 0;
+  const couponApplied = Boolean(payment?.couponApplied);
+  const verificationVariance = hasReceivedAmount ? receivedAmount - expectedAmount : 0;
+  const displayVariance = hasReceivedAmount
+    ? couponApplied
+      ? receivedAmount - opsInvoiceAmount
+      : verificationVariance
+    : 0;
+  const isMatched = hasReceivedAmount && verificationVariance === 0;
+  const expectedAmountLabel = couponApplied ? "Coupon-adjusted amount" : "Ops invoice amount";
 
   if (!hasReceivedAmount) {
     return {
       expectedAmount,
+      opsInvoiceAmount,
       receivedAmount,
-      variance,
+      variance: displayVariance,
+      verificationVariance,
       hasReceivedAmount,
       isMatched,
+      couponApplied,
+      expectedAmountLabel,
       label: "Amount Needed",
       badgeClass: "border-amber-200 bg-amber-50 text-amber-700",
       varianceClass: "text-slate-400",
-      note: "Agent has not declared the transferred amount yet.",
+      note: couponApplied
+        ? "Agent has not declared the transferred amount yet. Coupon-adjusted payable amount should be used for verification."
+        : "Agent has not declared the transferred amount yet.",
     };
   }
 
   if (isMatched) {
     return {
       expectedAmount,
+      opsInvoiceAmount,
       receivedAmount,
-      variance,
+      variance: displayVariance,
+      verificationVariance,
       hasReceivedAmount,
       isMatched,
+      couponApplied,
+      expectedAmountLabel,
       label: "Perfect Match",
       badgeClass: "border-emerald-200 bg-emerald-50 text-emerald-700",
-      varianceClass: "text-emerald-700",
-      note: "Declared amount matches the ops invoice total exactly.",
+      varianceClass: couponApplied ? "text-rose-700" : "text-emerald-700",
+      note: couponApplied
+        ? "Declared amount matches the coupon-adjusted payable amount exactly, while the variance below shows the gap from the original ops total."
+        : "Declared amount matches the ops invoice total exactly.",
     };
   }
 
-  if (variance < 0) {
+  if (verificationVariance < 0) {
     return {
       expectedAmount,
+      opsInvoiceAmount,
       receivedAmount,
-      variance,
+      variance: displayVariance,
+      verificationVariance,
       hasReceivedAmount,
       isMatched,
+      couponApplied,
+      expectedAmountLabel,
       label: "Short Payment",
       badgeClass: "border-rose-200 bg-rose-50 text-rose-700",
       varianceClass: "text-rose-700",
-      note: "Declared amount is lower than the expected invoice total.",
+      note: couponApplied
+        ? "Declared amount is lower than the coupon-adjusted payable amount."
+        : "Declared amount is lower than the expected invoice total.",
     };
   }
 
   return {
     expectedAmount,
+    opsInvoiceAmount,
     receivedAmount,
-    variance,
+    variance: displayVariance,
+    verificationVariance,
     hasReceivedAmount,
     isMatched,
+    couponApplied,
+    expectedAmountLabel,
     label: "Excess Payment",
     badgeClass: "border-orange-200 bg-orange-50 text-orange-700",
     varianceClass: "text-orange-700",
-    note: "Declared amount is higher than the expected invoice total.",
+    note: couponApplied
+      ? "Declared amount is higher than the coupon-adjusted payable amount."
+      : "Declared amount is higher than the expected invoice total.",
   };
 };
 
@@ -874,6 +906,11 @@ const PaymentVerification = () => {
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <AmountCheckBadge payment={selectedPayment} />
+                  {selectedPayment.couponApplied && (
+                    <span className="inline-flex items-center rounded-full border border-violet-200 bg-violet-50 px-3 py-1 text-[11px] font-semibold text-violet-700">
+                      Coupon Applied
+                    </span>
+                  )}
                   <span className={`inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-semibold ${
                     hasSelectedPaymentContext
                       ? "border-indigo-200 bg-indigo-50 text-indigo-700"
@@ -886,8 +923,14 @@ const PaymentVerification = () => {
 
               <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
                 <div className="rounded-2xl border border-white/70 bg-white/90 px-4 py-3">
-                  <p className="text-[10px] uppercase tracking-[0.16em] text-slate-400">Ops Invoice Amount</p>
+                  <p className="text-[10px] uppercase tracking-[0.16em] text-slate-400">{selectedPaymentComparison.expectedAmountLabel}</p>
                   <p className="mt-2 text-xl font-bold text-slate-900">{formatCurrency(selectedPaymentComparison.expectedAmount)}</p>
+                  {selectedPayment.couponApplied && (
+                    <div className="mt-2 inline-flex flex-wrap items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1">
+                      <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-amber-700">Original Ops Total</span>
+                      <span className="text-[11px] font-bold text-amber-900">{formatCurrency(selectedPaymentComparison.opsInvoiceAmount)}</span>
+                    </div>
+                  )}
                 </div>
                 <div className="rounded-2xl border border-white/70 bg-white/90 px-4 py-3">
                   <p className="text-[10px] uppercase tracking-[0.16em] text-slate-400">Agent Declared Amount</p>
@@ -897,13 +940,22 @@ const PaymentVerification = () => {
                       : "Pending"}
                   </p>
                 </div>
-                <div className="rounded-2xl border border-white/70 bg-white/90 px-4 py-3">
+                <div className={`rounded-2xl border px-4 py-3 ${
+                  selectedPayment.couponApplied
+                    ? "border-violet-200 bg-violet-50/70"
+                    : "border-white/70 bg-white/90"
+                }`}>
                   <p className="text-[10px] uppercase tracking-[0.16em] text-slate-400">Variance</p>
                   <p className={`mt-2 text-xl font-bold ${selectedPaymentComparison.varianceClass}`}>
                     {selectedPaymentComparison.hasReceivedAmount
                       ? `${selectedPaymentComparison.variance > 0 ? "+" : ""}${formatCurrency(selectedPaymentComparison.variance)}`
                       : "Pending"}
                   </p>
+                  {selectedPayment.couponApplied ? (
+                    <p className="mt-1 text-[11px] text-slate-500">
+                      Variance from original ops total after coupon
+                    </p>
+                  ) : null}
                 </div>
                 <div className="rounded-2xl border border-white/70 bg-white/90 px-4 py-3">
                   <p className="text-[10px] uppercase tracking-[0.16em] text-slate-400">Payment On Behalf Of</p>
@@ -933,9 +985,13 @@ const PaymentVerification = () => {
                   <div className="space-y-4">
                     <div className="flex items-center justify-between"><p className="text-xs text-slate-500">Booking Reference</p><p className="text-sm font-bold text-slate-900">{selectedPayment.bookingReference}</p></div>
                     <div className="flex items-center justify-between"><p className="text-xs text-slate-500">Invoice Number</p><p className="text-sm font-semibold text-slate-800">{selectedPayment.invoiceNumber}</p></div>
-                    <div className="flex items-center justify-between"><p className="text-xs text-slate-500">Expected Invoice Amount</p><p className="text-lg font-bold text-slate-900">{formatCurrency(selectedPaymentComparison.expectedAmount)}</p></div>
+                    <div className="flex items-center justify-between"><p className="text-xs text-slate-500">{selectedPayment.couponApplied ? "Expected Payable Amount" : "Expected Invoice Amount"}</p><p className="text-lg font-bold text-slate-900">{formatCurrency(selectedPaymentComparison.expectedAmount)}</p></div>
+                    {selectedPayment.couponApplied && <div className="flex items-center justify-between rounded-xl border border-amber-200 bg-amber-50 px-3 py-2"><p className="text-xs font-semibold text-amber-700">Ops Invoice Total</p><p className="text-sm font-bold text-amber-900">{formatCurrency(selectedPaymentComparison.opsInvoiceAmount)}</p></div>}
+                    {selectedPayment.couponApplied && <div className="flex items-center justify-between gap-4"><p className="text-xs text-slate-500">Coupon Code</p><p className="text-right text-sm font-semibold text-violet-700">{selectedPayment.couponCode || "Applied"}</p></div>}
+                    {selectedPayment.couponApplied && <div className="flex items-center justify-between gap-4"><p className="text-xs text-slate-500">Coupon Discount</p><p className="text-right text-sm font-semibold text-emerald-700">{selectedPayment.couponDiscountLabel || formatCurrency(selectedPayment.couponDiscountAmount)}</p></div>}
+                    {selectedPayment.couponApplied && <div className="flex items-center justify-between gap-4"><p className="text-xs text-slate-500">Discount Amount</p><p className="text-right text-sm font-semibold text-emerald-700">- {formatCurrency(selectedPayment.couponDiscountAmount)}</p></div>}
                     <div className="flex items-center justify-between"><p className="text-xs text-slate-500">Declared Paid Amount</p><p className={`text-sm font-bold ${selectedPaymentComparison.hasReceivedAmount ? "text-emerald-700" : "text-slate-400"}`}>{selectedPaymentComparison.hasReceivedAmount ? formatCurrency(selectedPaymentComparison.receivedAmount) : "Pending"}</p></div>
-                    <div className="flex items-center justify-between"><p className="text-xs text-slate-500">Payment Difference</p><p className={`text-sm font-bold ${selectedPaymentComparison.varianceClass}`}>{selectedPaymentComparison.hasReceivedAmount ? `${selectedPaymentComparison.variance > 0 ? "+" : ""}${formatCurrency(selectedPaymentComparison.variance)}` : "Pending"}</p></div>
+                    <div className={`flex items-center justify-between rounded-xl px-3 py-2 ${selectedPayment.couponApplied ? "border border-violet-200 bg-violet-50/70" : ""}`}><p className="text-xs text-slate-500">{selectedPayment.couponApplied ? "Variance From Ops Total" : "Payment Difference"}</p><p className={`text-sm font-bold ${selectedPaymentComparison.varianceClass}`}>{selectedPaymentComparison.hasReceivedAmount ? `${selectedPaymentComparison.variance > 0 ? "+" : ""}${formatCurrency(selectedPaymentComparison.variance)}` : "Pending"}</p></div>
                     <div className="flex items-center justify-between gap-4"><p className="text-xs text-slate-500">Payment On Behalf Of</p><p className="text-right text-sm font-semibold text-slate-800">{selectedPayment.paymentOnBehalfOf || "Not shared"}</p></div>
                     <div className="flex items-center justify-between"><p className="text-xs text-slate-500">UTR Number</p><p className="font-mono text-[10px] font-semibold text-amber-500">{selectedPayment.utrNumber || "Pending"}</p></div>
                     <div className="flex items-center justify-between"><p className="text-xs text-slate-500">Bank Name</p><p className="text-sm font-semibold text-slate-800">{selectedPayment.bankName || "Pending"}</p></div>
@@ -945,7 +1001,7 @@ const PaymentVerification = () => {
                   </div>
                 </div>
 
-                {(selectedPayment.remarks || !hasSelectedPaymentContext || !selectedPaymentComparison.isMatched) && (
+                {(selectedPayment.remarks || !hasSelectedPaymentContext || !selectedPaymentComparison.isMatched || selectedPayment.couponApplied) && (
                   <div className={`mt-4 rounded-xl border px-4 py-3 ${
                     !hasSelectedPaymentContext || !selectedPaymentComparison.isMatched
                       ? "border-amber-200 bg-amber-50"
@@ -971,6 +1027,11 @@ const PaymentVerification = () => {
                     {selectedPayment.remarks && (
                       <p className="mt-2 text-xs leading-5 text-slate-700">
                         <span className="font-semibold">Agent note:</span> {selectedPayment.remarks}
+                      </p>
+                    )}
+                    {selectedPayment.couponApplied && (
+                      <p className="mt-2 text-xs leading-5 text-slate-700">
+                        <span className="font-semibold">Coupon context:</span> {selectedPayment.couponSummary || `${selectedPayment.couponCode} reduced the payable amount for this invoice.`}
                       </p>
                     )}
                   </div>

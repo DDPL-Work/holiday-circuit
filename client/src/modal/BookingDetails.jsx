@@ -77,6 +77,7 @@ const travelerDocumentRejectionOptions = [
 ];
 
 export default function BookingDetailsModal({ refresh, booking, onClose }) {
+  const CLOSE_ANIMATION_MS = 140;
   const navigate = useNavigate();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [open, setOpen] = useState(true);
@@ -208,7 +209,7 @@ export default function BookingDetailsModal({ refresh, booking, onClose }) {
 
     setTimeout(() => {
       onClose();
-    }, 200);
+    }, CLOSE_ANIMATION_MS);
   };
 
   function formatDate(date) {
@@ -242,18 +243,18 @@ export default function BookingDetailsModal({ refresh, booking, onClose }) {
   };
 
   const modal = {
-    hidden: { opacity: 0, scale: 0.95, y: 30 },
+    hidden: { opacity: 0, scale: 0.972, y: 24 },
     visible: {
       opacity: 1,
       scale: 1,
       y: 0,
-      transition: { duration: 0.25, ease: "easeOut" },
+      transition: { duration: 0.24, ease: [0.22, 1, 0.36, 1] },
     },
     exit: {
       opacity: 0,
-      scale: 0.95,
-      y: 20,
-      transition: { duration: 0.2 },
+      scale: 0.99,
+      y: 10,
+      transition: { duration: 0.14, ease: "easeOut" },
     },
   };
 
@@ -417,7 +418,8 @@ export default function BookingDetailsModal({ refresh, booking, onClose }) {
             initial="hidden"
             animate="visible"
             exit="hidden"
-            className="fixed inset-0 z-40 bg-linear-to-br from-black/70 via-black/60 to-black/80 backdrop-blur-md"
+            transition={{ duration: 0.2, ease: "easeOut" }}
+            className="fixed inset-0 z-40 bg-linear-to-br from-black/70 via-black/60 to-black/80"
             onClick={handleClose}
           />
 
@@ -429,7 +431,7 @@ export default function BookingDetailsModal({ refresh, booking, onClose }) {
           >
             <motion.div
               variants={modal}
-              className="relative flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-white p-6 shadow-2xl"
+              className="relative flex max-h-[90vh] w-full max-w-5xl transform-gpu flex-col overflow-hidden rounded-2xl bg-white p-6 shadow-2xl"
             >
               <button
                 onClick={handleClose}
@@ -957,9 +959,17 @@ export default function BookingDetailsModal({ refresh, booking, onClose }) {
               await refresh();
             }}
             queryId={currentBooking._id}
+            onDecisionSuccess={(updatedQuery) => {
+              if (!updatedQuery) return;
+
+              setCurrentBooking((prev) => ({
+                ...prev,
+                ...updatedQuery,
+                agent: updatedQuery?.agent || prev?.agent,
+              }));
+            }}
             onClose={() => {
               setIsModalOpen(false);
-              handleClose();
             }}
           />
         </>

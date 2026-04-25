@@ -2,8 +2,111 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import { AnimatePresence, motion } from "framer-motion";
-import { Activity, AlertCircle, BookOpen, Check, Eye, FileText, Loader2, ReceiptText, Send, UserRound, X } from "lucide-react";
+import { Activity, AlertCircle, BadgeCheck, BookOpen, Check, ClipboardCheck, Eye, FilePlus2, FileText, Loader2, ReceiptText, RefreshCcw, Send, Ticket, UserRound, X, XCircle } from "lucide-react";
 import API from "../../utils/Api";
+
+const pageShellVariants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.12,
+      delayChildren: 0.06,
+    },
+  },
+};
+
+const sectionRevealVariants = {
+  hidden: {
+    opacity: 0,
+    x: -28,
+  },
+  visible: {
+    opacity: 1,
+    x: 0,
+    transition: {
+      duration: 0.4,
+      ease: "easeOut",
+    },
+  },
+};
+
+const sideStackVariants = {
+  hidden: {},
+  visible: {
+    transition: {
+      staggerChildren: 0.1,
+    },
+  },
+};
+
+const rightCardVariants = {
+  hidden: {
+    opacity: 0,
+    x: 28,
+  },
+  visible: {
+    opacity: 1,
+    x: 0,
+    transition: {
+      duration: 0.4,
+      ease: "easeOut",
+    },
+  },
+};
+
+const serviceCardVariants = {
+  hidden: {
+    opacity: 0,
+    x: -24,
+  },
+  visible: (index = 0) => ({
+    opacity: 1,
+    x: 0,
+    transition: {
+      duration: 0.32,
+      delay: Math.min(index * 0.04, 0.28),
+      ease: "easeOut",
+    },
+  }),
+};
+
+function AdminHeaderArtwork() {
+  return (
+    <div className="relative flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl border border-violet-200 bg-gradient-to-br from-violet-50 via-white to-sky-100 shadow-sm">
+      <svg viewBox="0 0 64 64" className="h-9 w-9" aria-hidden="true">
+        <defs>
+          <linearGradient id="adminShield" x1="0%" x2="100%" y1="0%" y2="100%">
+            <stop offset="0%" stopColor="#8b5cf6" />
+            <stop offset="100%" stopColor="#2563eb" />
+          </linearGradient>
+          <linearGradient id="adminPanel" x1="0%" x2="100%" y1="0%" y2="100%">
+            <stop offset="0%" stopColor="#ffffff" />
+            <stop offset="100%" stopColor="#e0e7ff" />
+          </linearGradient>
+        </defs>
+        <circle cx="49" cy="15" r="7" fill="#f59e0b" opacity="0.2" />
+        <path d="M32 8 48 14v13c0 10-6.8 18.7-16 21-9.2-2.3-16-11-16-21V14L32 8Z" fill="url(#adminShield)" />
+        <path d="M32 13.5 44 18v8.7c0 7.2-4.6 13.6-12 15.8-7.4-2.2-12-8.6-12-15.8V18l12-4.5Z" fill="url(#adminPanel)" />
+        <rect x="25" y="22" width="14" height="3.5" rx="1.75" fill="#8b5cf6" />
+        <rect x="23" y="29" width="18" height="3.5" rx="1.75" fill="#2563eb" opacity="0.9" />
+        <rect x="27" y="36" width="10" height="3.5" rx="1.75" fill="#0f172a" opacity="0.7" />
+        <circle cx="49" cy="15" r="4" fill="#f59e0b" />
+        <path d="M49 12.8v4.4M46.8 15h4.4" stroke="#fff" strokeLinecap="round" strokeWidth="1.8" />
+        <path d="M15 49c3.4-5.1 8.8-8.2 15.5-8.2 6.5 0 11.5 3 14.7 7.5" fill="none" opacity="0.14" stroke="#1e293b" strokeLinecap="round" strokeWidth="3" />
+      </svg>
+    </div>
+  );
+}
+
+const getRecentQueryIcon = (opsStage) => {
+  if (opsStage === "Accepted") return BadgeCheck;
+  if (opsStage === "Confirmed") return ClipboardCheck;
+  if (opsStage === "Vouchered") return Ticket;
+  if (opsStage === "Revision Query") return RefreshCcw;
+  if (opsStage === "Rejected") return XCircle;
+  return FilePlus2;
+};
 
 const TABS = ["Overview", "Queries", "Bookings", "Vouchers", "Reports"];
 
@@ -84,20 +187,24 @@ const voucherStatusPill = {
   Expired: "bg-rose-50 text-rose-700 border border-rose-200",
 };
 
-function StatCard({ label, value, change, changeUp }) {
+function StatCard({ label, value, change, changeUp, index = 0 }) {
   const config = statIconMap[label] || statIconMap["Pending Actions"];
   const Icon = config.icon;
   return (
-    <div className="cursor-default rounded-xl border border-gray-100 bg-white p-4 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
+    <motion.div
+      variants={serviceCardVariants}
+      custom={index}
+      className="cursor-default rounded-xl border border-gray-300 bg-white p-4 transition-all duration-200 hover:-translate-y-0.2 hover:shadow-sm"
+    >
       <div className="flex items-start justify-between">
-        <span className="text-xs text-gray-400">{label}</span>
+        <span className="text-xs text-gray-600 font-semibold">{label}</span>
         <div className={`flex h-8 w-8 items-center justify-center rounded-full text-sm ${config.iconBg}`}>
           <Icon size={15} />
         </div>
       </div>
-      <div className="mt-1 text-3xl font-medium leading-none text-gray-800">{value}</div>
+      <div className="mt-1 text-2xl font-medium leading-none text-gray-800">{value}</div>
       <div className={`mt-1 text-xs ${changeUp ? "text-green-600" : "text-red-500"}`}>{change}</div>
-    </div>
+    </motion.div>
   );
 }
 
@@ -363,16 +470,17 @@ export default function Dashboard() {
   return (
     <div className="min-h-screen bg-gray-50 font-sans">
       {/* Top bar */}
-      <div className="border-b border-gray-100 bg-white px-4 py-3 sm:px-5">
+      <div className="border-b border-gray-200 bg-white px-3 py-2 sm:px-5 ">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-sm font-medium text-gray-800">{header.title || "Dashboard"}</span>
+              <AdminHeaderArtwork />
+              <span className="text-lg font-bold text-gray-800">{header.title || "Admin Dashboard"}</span>
               <span className="rounded-full bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-700">{header.roleLabel || "Administrator"}</span>
             </div>
-            <p className="text-xs text-gray-400">{header.subtitle || "Complete access to all system features"}</p>
+            <p className="text-xs text-gray-500">{header.subtitle || "Complete access to all system features"}</p>
           </div>
-          <span className="text-xs text-gray-400">Logged in as <strong className="text-gray-600">{header.loggedInAs || "Administrator"}</strong></span>
+          <span className="text-xs text-gray-500">Logged in as - <strong className="text-gray-600">{header.loggedInAs || "Administrator"}</strong></span>
         </div>
       </div>
 
@@ -389,32 +497,55 @@ export default function Dashboard() {
 
         {/* ── OVERVIEW ─────────────────────────────────────────── */}
         {visible === "Overview" && (
-          <div className="space-y-4 p-3 sm:p-5">
-            <div className="rounded-xl border border-gray-300 bg-white p-4">
+          <motion.div
+            initial="hidden"
+            animate="visible"
+            variants={pageShellVariants}
+            className="space-y-4 p-3 sm:p-5"
+          >
+            <motion.div
+              variants={sectionRevealVariants}
+              className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm"
+            >
               <p className="mb-3 text-xs font-medium uppercase tracking-wide text-gray-400">Permissions</p>
               <div className="grid gap-2 sm:grid-cols-2">
                 {permissions.map((permission, index) => (
-                  <div key={`${permission}-${index}`} className="flex items-center gap-2 text-xs text-gray-600">
+                  <div key={`${permission}-${index}`} className="flex items-center gap-2 text-sm text-gray-600">
                     <div className="flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full bg-green-100 text-green-600"><Check size={10} strokeWidth={3} /></div>
                     {permission}
                   </div>
                 ))}
               </div>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              {summaryCards.map((card) => <StatCard key={card.label} label={card.label} value={card.value} change={card.change} changeUp={card.changeUp} />)}
-            </div>
+            </motion.div>
+            <motion.div variants={sideStackVariants} className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              {summaryCards.map((card, index) => (
+                <StatCard
+                  key={card.label}
+                  index={index + 1}
+                  label={card.label}
+                  value={card.value}
+                  change={card.change}
+                  changeUp={card.changeUp}
+                />
+              ))}
+            </motion.div>
             <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
-              <div className="overflow-hidden rounded-xl border border-gray-300 bg-white">
+              <motion.div
+                variants={sectionRevealVariants}
+                className="overflow-hidden rounded-xl border border-gray-300 bg-white"
+              >
                 <div className="flex items-center gap-2 border-b border-gray-200 px-4 py-3 text-sm font-medium text-gray-800"><Activity size={15} className="text-violet-500" />Recent Activity</div>
                 {queryFlow.length ? (
                   <div className="space-y-4 p-4">
                     {queryFlow.slice(0, 5).map((query) => {
                       const presentation = getRecentQueryPresentation(query);
+                      const RecentIcon = getRecentQueryIcon(String(query?.opsStage || ""));
                       return (
                         <div key={query.id} className="flex items-center justify-between rounded-2xl border border-slate-300/80 px-4 py-4 transition-colors duration-150 hover:bg-slate-50">
                           <div className="flex min-w-0 items-center gap-3">
-                            <div className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-xs ${presentation.iconBg}`}>{presentation.icon}</div>
+                            <div className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-xs ${presentation.iconBg}`}>
+                              <RecentIcon size={14} />
+                            </div>
                             <div className="min-w-0">
                               <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-gray-700">
                                 <span>{presentation.label}</span>
@@ -429,13 +560,16 @@ export default function Dashboard() {
                     })}
                   </div>
                 ) : <EmptyState message="No queries available." />}
-              </div>
-              <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
+              </motion.div>
+              <motion.div
+                variants={rightCardVariants}
+                className="overflow-hidden rounded-xl border border-gray-300 bg-white"
+              >
                 <div className="flex items-center gap-2 border-b border-gray-200 px-4 py-3 text-sm font-medium text-gray-800"><Activity size={15} className="text-blue-500" />Team Performance</div>
                 <PerformanceBars rows={performance} animate={barsReady} />
-              </div>
+              </motion.div>
             </div>
-          </div>
+          </motion.div>
         )}
 
         {/* ── QUERIES ──────────────────────────────────────────── */}

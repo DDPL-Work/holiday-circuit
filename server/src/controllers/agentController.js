@@ -5,6 +5,7 @@ import TravelQuery from "../models/TravelQuery.model.js";
 import Counter from "../models/counter.model.js";
 import Quotation from "../models/quotation.model.js";
 import Invoice from "../models/invoice.model.js";
+import Coupon from "../models/coupon.model.js";
 import Notification from "../models/notification.model.js";
 import bcrypt from "bcrypt";
 import crypto from "crypto";
@@ -23,6 +24,54 @@ const INDIAN_DESTINATION_KEYWORDS = [
   "mussoorie", "jaisalmer", "jodhpur", "pushkar", "kochi", "munnar", "alleppey",
   "leh", "ladakh", "ahmedabad", "surat", "bhopal", "indore", "dehradun",
 ];
+
+const normalizeCouponCode = (value = "") => String(value || "").trim().toUpperCase();
+
+const isCouponExpiredNow = (coupon = null) => {
+  if (!coupon?.endDate) return false;
+  const endDate = new Date(coupon.endDate);
+  if (Number.isNaN(endDate.getTime())) return false;
+  endDate.setHours(23, 59, 59, 999);
+  return endDate < new Date();
+};
+
+const isCouponScheduledNow = (coupon = null) => {
+  if (!coupon?.startDate) return false;
+  const startDate = new Date(coupon.startDate);
+  if (Number.isNaN(startDate.getTime())) return false;
+  return startDate > new Date();
+};
+
+const isCouponRedeemedNow = (coupon = null) =>
+  Boolean(coupon?.redeemedAt || coupon?.redeemedByInvoice);
+
+const isCouponUsageExhaustedNow = (coupon = null) =>
+  Boolean(coupon?.usageLimit) && Number(coupon?.usageCount || 0) >= Number(coupon?.usageLimit || 0);
+
+const isCouponEligibleForAttempt = (coupon = null) =>
+  Boolean(coupon) &&
+  !isCouponExpiredNow(coupon) &&
+  !isCouponScheduledNow(coupon) &&
+  !isCouponRedeemedNow(coupon) &&
+  !isCouponUsageExhaustedNow(coupon);
+
+const calculateCouponDiscountAmount = (subtotal = 0, coupon = null) => {
+  const amount = Math.round(Number(subtotal || 0));
+  if (!coupon || amount <= 0) return 0;
+
+  if (coupon.discountType === "percentage") {
+    return Math.round((amount * Number(coupon.discountValue || 0)) / 100);
+  }
+
+  return Math.min(amount, Math.round(Number(coupon.discountValue || 0)));
+};
+
+const getLatestEligibleCouponForAttempt = async (agentId) =>
+  Coupon.findOne({
+    assignedAgent: agentId,
+    redeemedAt: null,
+    redeemedByInvoice: null,
+  }).sort({ lastSentAt: -1, createdAt: -1 });
 
 const verifyLegacyCompatiblePassword = async (inputPassword = "", storedPassword = "") => {
   const normalizedInputPassword = String(inputPassword ?? "");
@@ -63,6 +112,7 @@ const formatAuthenticatedUser = (user) => ({
   permissions: Array.isArray(user.permissions) ? user.permissions : [],
   accountStatus: user.accountStatus || "Active",
   accessExpiry: user.accessExpiry || null,
+  lastLoginAt: user.lastLoginAt || null,
 });
 
 const normalizeTravelerDocument = (document = {}) => ({
@@ -248,6 +298,250 @@ const getAgentCommissionAmount = (quotation = null) => {
 const formatAgentFinanceTransactionId = (prefix = "TXN", value = "") => {
   const normalized = String(value || "").replace(/[^A-Za-z0-9]/g, "").toUpperCase();
   return `${prefix}-${(normalized || "0000").slice(-6)}`;
+};
+
+const ACTIVE_BOOKING_STATUSES = ["Invoice_Requested", "Confirmed", "Vouchered"];
+
+const getStartOfToday = () => {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  return start;
+};
+
+const getMonthRange = (offset = 0) => {
+  const now = new Date();
+  return {
+    start: new Date(now.getFullYear(), now.getMonth() + offset, 1),
+    end: new Date(now.getFullYear(), now.getMonth() + offset + 1, 1),
+  };
+};
+
+const calculateTrendPercentage = (current = 0, previous = 0) => {
+  const normalizedCurrent = Number(current || 0);
+  const normalizedPrevious = Number(previous || 0);
+
+  if (normalizedPrevious <= 0) {
+    return normalizedCurrent > 0 ? 100 : 0;
+  }
+
+  return Math.round(((normalizedCurrent - normalizedPrevious) / normalizedPrevious) * 100);
+};
+
+const buildDashboardTrend = (current = 0, previous = 0) => {
+  const change = calculateTrendPercentage(current, previous);
+  return {
+    change,
+    direction: change > 0 ? "up" : change < 0 ? "down" : "flat",
+  };
+};
+
+const getDashboardActivityTone = (status = "") => {
+  const normalizedStatus = String(status || "").trim().toLowerCase();
+
+  if (["confirmed", "verified", "sent", "paid", "client approved", "quote sent"].includes(normalizedStatus)) {
+    return "success";
+  }
+
+  if (["pending", "awaiting decision", "in progress", "draft"].includes(normalizedStatus)) {
+    return "warning";
+  }
+
+  return "info";
+};
+
+const buildQueryActivityItem = (query = {}) => {
+  const latestLog = Array.isArray(query?.activityLog) && query.activityLog.length
+    ? [...query.activityLog]
+      .sort((left, right) => new Date(right?.timestamp || 0).getTime() - new Date(left?.timestamp || 0).getTime())[0]
+    : null;
+
+  const statusLabel =
+    query?.agentStatus === "Confirmed" || ["Confirmed", "Vouchered"].includes(query?.opsStatus)
+      ? "Confirmed"
+      : query?.agentStatus === "Quote Sent" || query?.quotationStatus === "Sent_To_Agent"
+        ? "Quote Sent"
+        : query?.agentStatus || query?.opsStatus || "New";
+
+  const title = latestLog?.action
+    ? latestLog.action
+    : query?.agentStatus === "Confirmed" || ["Confirmed", "Vouchered"].includes(query?.opsStatus)
+      ? `Booking confirmed for ${query?.destination || "trip"}`
+      : query?.quotationStatus === "Sent_To_Agent"
+        ? `Quotation shared for ${query?.destination || "trip"}`
+        : `New query for ${query?.destination || "trip"}`;
+
+  return {
+    id: `query-${query?._id || query?.queryId || Date.now()}`,
+    source: "query",
+    title,
+    subtitle: `${query?.queryId || "Travel Query"}${query?.destination ? ` · ${query.destination}` : ""}`,
+    status: statusLabel,
+    tone: getDashboardActivityTone(statusLabel),
+    date: latestLog?.timestamp || query?.updatedAt || query?.createdAt || null,
+    link: "/agent/queries",
+  };
+};
+
+const buildNotificationActivityItem = (notification = {}) => {
+  const statusMap = {
+    success: "Confirmed",
+    warning: "Pending",
+    info: "New",
+  };
+
+  return {
+    id: `notification-${notification?._id || Date.now()}`,
+    source: "notification",
+    title: notification?.title || "Update",
+    subtitle: notification?.message || "",
+    status: statusMap[notification?.type] || "New",
+    tone: notification?.type || "info",
+    date: notification?.createdAt || null,
+    link: notification?.link || "",
+  };
+};
+
+const buildAgentFinanceOverviewPayload = async (agentId, { includeTransactions = true } = {}) => {
+  const invoices = await Invoice.find({ agent: agentId })
+    .populate("query", "queryId destination")
+    .sort({ createdAt: -1 });
+
+  const queryIds = [...new Set(
+    invoices
+      .map((invoice) =>
+        invoice?.query?._id ? String(invoice.query._id) : invoice?.query ? String(invoice.query) : "",
+      )
+      .filter(Boolean),
+  )];
+
+  const quotations = queryIds.length
+    ? await Quotation.find({ agent: agentId, queryId: { $in: queryIds } })
+      .select("queryId quotationNumber pricing.totalAmount agentMarkup clientTotalAmount createdAt")
+      .sort({ createdAt: -1 })
+    : [];
+
+  const latestQuotationByQuery = quotations.reduce((acc, quotation) => {
+    const key = quotation?.queryId ? String(quotation.queryId) : "";
+    if (key && !acc[key]) {
+      acc[key] = quotation;
+    }
+    return acc;
+  }, {});
+
+  const transactions = [];
+  let currentBalance = 0;
+  let pendingCommissions = 0;
+  let totalEarnings = 0;
+
+  invoices.forEach((invoice) => {
+    const queryKey = invoice?.query?._id ? String(invoice.query._id) : invoice?.query ? String(invoice.query) : "";
+    const bookingReference =
+      String(invoice?.query?.queryId || invoice?.invoiceNumber || "").trim() || "Booking";
+    const latestQuotation = latestQuotationByQuery[queryKey] || null;
+    const commissionAmount = getAgentCommissionAmount(latestQuotation);
+    const couponApplication = invoice?.paymentSubmission?.couponApplication || null;
+    const markupAmount = Math.round(commissionAmount || 0);
+    const subtotalAmount = Math.round(
+      Number(
+        couponApplication?.subtotalAmount ||
+        latestQuotation?.clientTotalAmount ||
+        invoice?.totalAmount ||
+        0,
+      ),
+    );
+    const couponDiscountAmount = Math.round(
+      Number(couponApplication?.discountAmount || 0),
+    );
+    const payableAmount = Math.round(
+      Number(couponApplication?.payableAmount || invoice?.paymentSubmission?.amount || invoice?.totalAmount || 0),
+    );
+    const paymentAmount = Math.round(
+      Number(invoice?.paymentSubmission?.amount || payableAmount || invoice?.totalAmount || 0),
+    );
+    const paymentDate =
+      invoice?.paymentSubmission?.paymentDate ||
+      invoice?.paymentSubmission?.submittedAt ||
+      invoice?.paymentVerification?.reviewedAt ||
+      invoice?.createdAt ||
+      null;
+    const financeVerified = isPaymentVerifiedForBooking(invoice);
+    const paymentVerificationStatus = String(
+      invoice?.paymentVerification?.status || invoice?.paymentStatus || "Pending",
+    ).trim();
+    const normalizedPaymentStatus = financeVerified
+      ? "Success"
+      : paymentVerificationStatus === "Rejected"
+        ? "Rejected"
+        : "Pending";
+
+    if (commissionAmount > 0) {
+      totalEarnings += commissionAmount;
+      if (financeVerified) {
+        currentBalance += commissionAmount;
+      } else {
+        pendingCommissions += commissionAmount;
+      }
+
+      if (includeTransactions) {
+        transactions.push({
+          id: formatAgentFinanceTransactionId(
+            "COM",
+            latestQuotation?.quotationNumber || invoice?.invoiceNumber || invoice?._id,
+          ),
+          transactionType: "commission",
+          date: paymentDate,
+          description: `Booking Commission (${bookingReference})`,
+          amount: commissionAmount,
+          direction: "credit",
+          status: normalizedPaymentStatus,
+          meta: {
+            markupAmount,
+            couponDiscountAmount,
+            subtotalAmount,
+            payableAmount,
+          },
+        });
+      }
+    }
+
+    if (includeTransactions && paymentAmount > 0) {
+      transactions.push({
+        id: formatAgentFinanceTransactionId("PAY", invoice?.invoiceNumber || invoice?._id),
+        transactionType: "payment",
+        date: paymentDate,
+        description: `Booking Payment (${bookingReference})`,
+        amount: paymentAmount,
+        direction: "debit",
+        status: normalizedPaymentStatus,
+        meta: {
+          markupAmount,
+          couponDiscountAmount,
+          subtotalAmount,
+          payableAmount,
+          couponCode: String(couponApplication?.code || "").trim(),
+          couponLabel: String(couponApplication?.discountLabel || "").trim(),
+        },
+      });
+    }
+  });
+
+  const sortedTransactions = includeTransactions
+    ? transactions.sort((left, right) => {
+      const leftTime = left?.date ? new Date(left.date).getTime() : 0;
+      const rightTime = right?.date ? new Date(right.date).getTime() : 0;
+      return rightTime - leftTime;
+    })
+    : [];
+
+  return {
+    currency: "INR",
+    summary: {
+      currentBalance: Math.round(currentBalance),
+      pendingCommissions: Math.round(pendingCommissions),
+      totalEarnings: Math.round(totalEarnings),
+    },
+    transactions: sortedTransactions,
+  };
 };
 
 const getHashedOtp = (otp = "") =>
@@ -460,7 +754,6 @@ export const login = async (req, res, next) => {
 
     if (shouldUpgradeHash) {
       user.password = await bcrypt.hash(normalizedPassword, 10);
-      await user.save();
     }
 
     // Only agents need approval
@@ -495,6 +788,9 @@ export const login = async (req, res, next) => {
     if (user.accessExpiry && new Date(user.accessExpiry).getTime() < Date.now()) {
       return next(new ApiError(403, "Your account access has expired. Please contact the administrator."));
     }
+
+    user.lastLoginAt = new Date();
+    await user.save();
 
     const token = jwt.sign(
       { id: user._id,role: user.role ,name: user.name,email: user.email },process.env.JWT_SECRET,
@@ -729,19 +1025,129 @@ export const getAgentDashboard = async (req, res) => {
       return res.status(401).json({ message: "Unauthorized" });
     }
 
-    const totalQueries = await TravelQuery.countDocuments({ agent: agentId });
+    const currentMonth = getMonthRange(0);
+    const previousMonth = getMonthRange(-1);
+    const startOfToday = getStartOfToday();
 
-    const statusCounts = await TravelQuery.aggregate([
-      { $match: { agent: agentId } },
-      { $group: { _id: "$agentStatus", count: { $sum: 1 } } }
+    const [
+      totalQueries,
+      queriesThisMonth,
+      queriesLastMonth,
+      activeBookings,
+      activeBookingsTouchedToday,
+      pendingQuoteDecisions,
+      pendingDocuments,
+      confirmedTrips,
+      vouchersReady,
+      recentQueries,
+      recentNotifications,
+      financeOverview,
+    ] = await Promise.all([
+      TravelQuery.countDocuments({ agent: agentId }),
+      TravelQuery.countDocuments({
+        agent: agentId,
+        createdAt: { $gte: currentMonth.start, $lt: currentMonth.end },
+      }),
+      TravelQuery.countDocuments({
+        agent: agentId,
+        createdAt: { $gte: previousMonth.start, $lt: previousMonth.end },
+      }),
+      TravelQuery.countDocuments({
+        agent: agentId,
+        opsStatus: { $in: ACTIVE_BOOKING_STATUSES },
+      }),
+      TravelQuery.countDocuments({
+        agent: agentId,
+        opsStatus: { $in: ACTIVE_BOOKING_STATUSES },
+        updatedAt: { $gte: startOfToday },
+      }),
+      TravelQuery.countDocuments({
+        agent: agentId,
+        quotationStatus: "Sent_To_Agent",
+        agentStatus: { $nin: ["Client Approved", "Confirmed", "Rejected"] },
+      }),
+      TravelQuery.countDocuments({
+        agent: agentId,
+        opsStatus: { $in: ACTIVE_BOOKING_STATUSES },
+        "travelerDocumentVerification.status": { $in: ["Draft", "Pending", "Rejected"] },
+      }),
+      TravelQuery.countDocuments({
+        agent: agentId,
+        opsStatus: { $in: ["Confirmed", "Vouchered"] },
+      }),
+      TravelQuery.countDocuments({
+        agent: agentId,
+        voucherStatus: { $in: ["generated", "sent"] },
+      }),
+      TravelQuery.find({ agent: agentId })
+        .select(
+          "queryId destination agentStatus opsStatus quotationStatus voucherStatus activityLog createdAt updatedAt",
+        )
+        .sort({ updatedAt: -1, createdAt: -1 })
+        .limit(8)
+        .lean(),
+      Notification.find({
+        user: agentId,
+        $or: [
+          { "meta.kind": { $ne: "coupon" } },
+          { "meta.kind": { $exists: false } },
+        ],
+      })
+        .sort({ createdAt: -1 })
+        .limit(8)
+        .lean(),
+      buildAgentFinanceOverviewPayload(agentId, { includeTransactions: false }),
     ]);
 
-    const invoices = await Invoice.find({ agent: agentId });
+    const recentActivity = [...recentNotifications.map(buildNotificationActivityItem), ...recentQueries.map(buildQueryActivityItem)]
+      .filter((item) => item?.date)
+      .sort((left, right) => new Date(right.date).getTime() - new Date(left.date).getTime())
+      .slice(0, 6);
 
     res.json({
-      totalQueries,
-      statusCounts,
-      invoices
+      summary: {
+        totalQueries,
+        activeBookings,
+        activeBookingsTouchedToday,
+        walletBalance: financeOverview.summary.currentBalance,
+        pendingCommissions: financeOverview.summary.pendingCommissions,
+        totalEarnings: financeOverview.summary.totalEarnings,
+        currency: financeOverview.currency,
+      },
+      trends: {
+        queries: buildDashboardTrend(queriesThisMonth, queriesLastMonth),
+      },
+      pipeline: [
+        {
+          key: "quotes-awaiting",
+          label: "Awaiting Quote Decision",
+          count: pendingQuoteDecisions,
+          tone: "info",
+          link: "/agent/queries",
+        },
+        {
+          key: "documents-pending",
+          label: "Documents Pending",
+          count: pendingDocuments,
+          tone: "warning",
+          link: "/agent/documents",
+        },
+        {
+          key: "confirmed-trips",
+          label: "Confirmed Trips",
+          count: confirmedTrips,
+          tone: "success",
+          link: "/agent/bookings",
+        },
+        {
+          key: "vouchers-ready",
+          label: "Vouchers Ready",
+          count: vouchersReady,
+          tone: "success",
+          link: "/agent/bookings",
+        },
+      ],
+      recentActivity,
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -1583,112 +1989,11 @@ export const getAgentFinanceOverview = async (req, res) => {
       return res.status(401).json({ message: "Unauthorized" });
     }
 
-    const invoices = await Invoice.find({ agent: agentId })
-      .populate("query", "queryId destination")
-      .sort({ createdAt: -1 });
-
-    const queryIds = [...new Set(
-      invoices
-        .map((invoice) =>
-          invoice?.query?._id ? String(invoice.query._id) : invoice?.query ? String(invoice.query) : "",
-        )
-        .filter(Boolean),
-    )];
-
-    const quotations = queryIds.length
-      ? await Quotation.find({ agent: agentId, queryId: { $in: queryIds } })
-        .select("queryId quotationNumber pricing.totalAmount agentMarkup clientTotalAmount createdAt")
-        .sort({ createdAt: -1 })
-      : [];
-
-    const latestQuotationByQuery = quotations.reduce((acc, quotation) => {
-      const key = quotation?.queryId ? String(quotation.queryId) : "";
-      if (key && !acc[key]) {
-        acc[key] = quotation;
-      }
-      return acc;
-    }, {});
-
-    const transactions = [];
-    let currentBalance = 0;
-    let pendingCommissions = 0;
-    let totalEarnings = 0;
-
-    invoices.forEach((invoice) => {
-      const queryKey = invoice?.query?._id ? String(invoice.query._id) : invoice?.query ? String(invoice.query) : "";
-      const bookingReference =
-        String(invoice?.query?.queryId || invoice?.invoiceNumber || "").trim() || "Booking";
-      const latestQuotation = latestQuotationByQuery[queryKey] || null;
-      const commissionAmount = getAgentCommissionAmount(latestQuotation);
-      const paymentAmount = Math.round(
-        Number(invoice?.paymentSubmission?.amount || invoice?.totalAmount || 0),
-      );
-      const paymentDate =
-        invoice?.paymentSubmission?.paymentDate ||
-        invoice?.paymentSubmission?.submittedAt ||
-        invoice?.paymentVerification?.reviewedAt ||
-        invoice?.createdAt ||
-        null;
-      const financeVerified = isPaymentVerifiedForBooking(invoice);
-      const paymentVerificationStatus = String(
-        invoice?.paymentVerification?.status || invoice?.paymentStatus || "Pending",
-      ).trim();
-      const normalizedPaymentStatus = financeVerified
-        ? "Success"
-        : paymentVerificationStatus === "Rejected"
-          ? "Rejected"
-          : "Pending";
-
-      if (commissionAmount > 0) {
-        totalEarnings += commissionAmount;
-        if (financeVerified) {
-          currentBalance += commissionAmount;
-        } else {
-          pendingCommissions += commissionAmount;
-        }
-
-        transactions.push({
-          id: formatAgentFinanceTransactionId(
-            "COM",
-            latestQuotation?.quotationNumber || invoice?.invoiceNumber || invoice?._id,
-          ),
-          transactionType: "commission",
-          date: paymentDate,
-          description: `Booking Commission (${bookingReference})`,
-          amount: commissionAmount,
-          direction: "credit",
-          status: normalizedPaymentStatus,
-        });
-      }
-
-      if (paymentAmount > 0) {
-        transactions.push({
-          id: formatAgentFinanceTransactionId("PAY", invoice?.invoiceNumber || invoice?._id),
-          transactionType: "payment",
-          date: paymentDate,
-          description: `Booking Payment (${bookingReference})`,
-          amount: paymentAmount,
-          direction: "debit",
-          status: normalizedPaymentStatus,
-        });
-      }
+    const financeOverview = await buildAgentFinanceOverviewPayload(agentId, {
+      includeTransactions: true,
     });
 
-    const sortedTransactions = transactions.sort((left, right) => {
-      const leftTime = left?.date ? new Date(left.date).getTime() : 0;
-      const rightTime = right?.date ? new Date(right.date).getTime() : 0;
-      return rightTime - leftTime;
-    });
-
-    res.json({
-      currency: "INR",
-      summary: {
-        currentBalance: Math.round(currentBalance),
-        pendingCommissions: Math.round(pendingCommissions),
-        totalEarnings: Math.round(totalEarnings),
-      },
-      transactions: sortedTransactions,
-    });
+    res.json(financeOverview);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -1711,6 +2016,187 @@ export const getMyInvoices = async (req, res) => {
       .sort({ createdAt: -1 });
 
     res.json(invoices);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+export const applyCouponToInvoice = async (req, res) => {
+  try {
+    const agentId = getAuthenticatedUserId(req);
+
+    if (!agentId) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    const invoice = await Invoice.findOne({ _id: req.params.id, agent: agentId }).populate("query");
+
+    if (!invoice) {
+      return res.status(404).json({ message: "Invoice not found" });
+    }
+
+    if (invoice.paymentSubmission?.submittedAt) {
+      return res.status(400).json({
+        message: "Coupon cannot be changed after payment submission for this invoice",
+      });
+    }
+
+    const existingCouponApplication = invoice.paymentSubmission?.couponApplication || null;
+    if (existingCouponApplication?.couponId) {
+      await Notification.create({
+        user: agentId,
+        type: "warning",
+        title: "Coupon Reuse Blocked",
+        message: `A coupon is already locked for ${invoice.invoiceNumber}. You cannot apply another one on this payment.`,
+        link: "/agent/bookings",
+        meta: {
+          kind: "coupon",
+          invoiceId: invoice._id,
+          invoiceNumber: invoice.invoiceNumber,
+          couponId: existingCouponApplication.couponId,
+          code: existingCouponApplication.code || "",
+          event: "invoice_coupon_already_applied",
+        },
+      });
+
+      return res.status(400).json({
+        message: "A coupon has already been applied to this payment",
+      });
+    }
+
+    const couponCode = normalizeCouponCode(req.body?.couponCode || "");
+    const subtotalAmount = Math.round(Number(req.body?.subtotalAmount || invoice.totalAmount || 0));
+
+    if (!couponCode) {
+      return res.status(400).json({ message: "Coupon code is required" });
+    }
+
+    if (!Number.isFinite(subtotalAmount) || subtotalAmount <= 0) {
+      return res.status(400).json({ message: "Valid quotation amount is required before applying coupon" });
+    }
+
+    const exactCoupon = await Coupon.findOne({
+      assignedAgent: agentId,
+      code: couponCode,
+    });
+
+    if (!exactCoupon) {
+      const attemptCoupon = await getLatestEligibleCouponForAttempt(agentId);
+
+      if (!attemptCoupon) {
+        return res.status(400).json({
+          message: "No active coupon is available for attempt tracking right now",
+        });
+      }
+
+      attemptCoupon.usageCount = Number(attemptCoupon.usageCount || 0) + 1;
+      attemptCoupon.lastAttemptAt = new Date();
+      attemptCoupon.updatedBy = agentId;
+      await attemptCoupon.save();
+
+      const remainingAttempts = attemptCoupon.usageLimit
+        ? Math.max(Number(attemptCoupon.usageLimit || 0) - Number(attemptCoupon.usageCount || 0), 0)
+        : null;
+
+      return res.status(400).json({
+        message:
+          remainingAttempts === 0
+            ? `Invalid coupon code. ${attemptCoupon.code} has now exhausted all allowed attempts.`
+            : `Invalid coupon code. One usage has been consumed${remainingAttempts != null ? ` and ${remainingAttempts} attempt${remainingAttempts === 1 ? "" : "s"} remain` : ""}.`,
+      });
+    }
+
+    if (isCouponRedeemedNow(exactCoupon)) {
+      await Notification.create({
+        user: agentId,
+        type: "warning",
+        title: "Coupon Reuse Blocked",
+        message: `${exactCoupon.code} was already used for ${exactCoupon.redeemedInvoiceNumber || "another booking"} and cannot be used again.`,
+        link: "/agent/bookings",
+        meta: {
+          kind: "coupon",
+          couponId: exactCoupon._id,
+          code: exactCoupon.code,
+          invoiceId: invoice._id,
+          invoiceNumber: invoice.invoiceNumber,
+          redeemedInvoiceId: exactCoupon.redeemedByInvoice || null,
+          redeemedInvoiceNumber: exactCoupon.redeemedInvoiceNumber || "",
+          event: "coupon_reuse_blocked",
+        },
+      });
+
+      return res.status(400).json({
+        message: `${exactCoupon.code} has already been used and is no longer valid`,
+      });
+    }
+
+    if (isCouponExpiredNow(exactCoupon)) {
+      return res.status(400).json({
+        message: `${exactCoupon.code} expired on ${new Date(exactCoupon.endDate).toLocaleDateString("en-GB")}`,
+      });
+    }
+
+    if (isCouponScheduledNow(exactCoupon)) {
+      return res.status(400).json({
+        message: `${exactCoupon.code} will be active from ${new Date(exactCoupon.startDate).toLocaleDateString("en-GB")}`,
+      });
+    }
+
+    if (isCouponUsageExhaustedNow(exactCoupon)) {
+      return res.status(400).json({
+        message: `${exactCoupon.code} has exhausted all allowed attempts`,
+      });
+    }
+
+    const appliedAt = new Date();
+    const discountAmount = calculateCouponDiscountAmount(subtotalAmount, exactCoupon);
+    const payableAmount = Math.max(subtotalAmount - discountAmount, 0);
+
+    exactCoupon.usageCount = Number(exactCoupon.usageCount || 0) + 1;
+    exactCoupon.lastAttemptAt = appliedAt;
+    exactCoupon.redeemedAt = appliedAt;
+    exactCoupon.redeemedByInvoice = invoice._id;
+    exactCoupon.redeemedInvoiceNumber = invoice.invoiceNumber || "";
+    exactCoupon.redeemedByAgent = agentId;
+    exactCoupon.updatedBy = agentId;
+
+    invoice.paymentSubmission = {
+      ...(invoice.paymentSubmission?.toObject ? invoice.paymentSubmission.toObject() : invoice.paymentSubmission || {}),
+      couponApplication: {
+        couponId: exactCoupon._id,
+        code: exactCoupon.code,
+        discountType: exactCoupon.discountType || "",
+        discountValue: Number(exactCoupon.discountValue || 0),
+        discountLabel: exactCoupon.discountLabel || "",
+        subtotalAmount,
+        discountAmount,
+        payableAmount,
+        appliedAt,
+        appliedBy: agentId,
+      },
+    };
+    invoice.paymentUpdatedBy = agentId;
+
+    await Promise.all([exactCoupon.save(), invoice.save()]);
+
+    res.status(200).json({
+      success: true,
+      message: "Coupon applied successfully",
+      data: {
+        coupon: {
+          id: exactCoupon._id,
+          code: exactCoupon.code,
+          discount: exactCoupon.discountLabel,
+          discountType: exactCoupon.discountType,
+          discountValue: Number(exactCoupon.discountValue || 0),
+          usageCount: Number(exactCoupon.usageCount || 0),
+        },
+        subtotalAmount,
+        discountAmount,
+        payableAmount,
+        invoice,
+      },
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -1754,7 +2240,15 @@ export const updatePaymentStatus = async (req, res) => {
       : invoice.paymentSubmission?.receipt || {};
     const submittedPaymentAmount = Number(normalizedPaymentAmount);
     const hasPaymentAmountInput = normalizedPaymentAmount !== "";
-    const fallbackPaymentAmount = Number(invoice.totalAmount || 0);
+    const existingCouponApplication =
+      invoice.paymentSubmission?.couponApplication
+        ? invoice.paymentSubmission.couponApplication.toObject
+          ? invoice.paymentSubmission.couponApplication.toObject()
+          : invoice.paymentSubmission.couponApplication
+        : null;
+    const fallbackPaymentAmount = Number(
+      existingCouponApplication?.payableAmount || invoice.totalAmount || 0,
+    );
     const resolvedPaymentAmount = hasPaymentAmountInput ? submittedPaymentAmount : fallbackPaymentAmount;
     const resolvedPaymentOnBehalfOf =
       trimmedPaymentOnBehalfOf || invoice.invoiceNumber || "Booking Payment";
@@ -1826,6 +2320,7 @@ export const updatePaymentStatus = async (req, res) => {
         },
         submittedAt: submissionTimestamp,
         submittedBy: agentId,
+        couponApplication: existingCouponApplication,
       };
 
       invoice.paymentVerification = {
@@ -1855,6 +2350,9 @@ export const updatePaymentStatus = async (req, res) => {
         status: "Pending",
         remarks: [
           `Declared amount: ${invoice.currency || "INR"} ${Math.round(resolvedPaymentAmount)}`,
+          existingCouponApplication?.code
+            ? `Coupon used: ${existingCouponApplication.code} (${existingCouponApplication.discountLabel || "discount applied"})`
+            : "",
           `On behalf of: ${resolvedPaymentOnBehalfOf}`,
           trimmedRemarks,
           receiptAuditMessage,
@@ -1964,6 +2462,3 @@ export const deleteNotification = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
-
-
-

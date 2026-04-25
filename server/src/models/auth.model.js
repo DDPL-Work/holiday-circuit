@@ -143,6 +143,11 @@ gstNumber: {
     default: null,
   },
 
+  lastLoginAt: {
+    type: Date,
+    default: null,
+  },
+
   isApproved: {
     type: Boolean,
     default: false

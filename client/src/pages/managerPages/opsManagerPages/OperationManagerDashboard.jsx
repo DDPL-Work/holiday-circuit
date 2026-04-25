@@ -8,7 +8,7 @@ import {
 
 function perfBarColor(p) {
   if (p >= 90) return "bg-emerald-500";
-  if (p >= 80) return "bg-amber-500";
+  if (p >= 75) return "bg-amber-500";
   return "bg-rose-500";
 }
 
@@ -112,10 +112,10 @@ function MetricCard({ label, value, badge, badgeType, icon, iconBg }) {
         : "border border-slate-200 bg-slate-50 text-slate-600";
 
   return (
-    <div className="flex min-h-[116px] items-start justify-between rounded-[20px] border border-slate-200 bg-white px-5 py-5 shadow-[0_8px_24px_rgba(15,23,42,0.05)]">
+    <div className="flex min-h-[116px] items-start justify-between rounded-[20px] border border-slate-300 bg-white px-5 py-5">
       <div className="flex min-h-[76px] flex-col">
         <p className="mb-1 text-[13px] font-medium text-slate-700">{label}</p>
-        <p className="text-[24px] font-semibold leading-tight text-slate-950">{value}</p>
+        <p className="text-[22px] font-semibold leading-tight text-slate-950">{value}</p>
         <div className="mt-3 min-h-[28px]">
           {badge ? (
             <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium ${badgeStyle}`}>
@@ -128,6 +128,30 @@ function MetricCard({ label, value, badge, badgeType, icon, iconBg }) {
       <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${iconBg}`}>
         {icon}
       </div>
+    </div>
+  );
+}
+
+function OpsCommandArtwork() {
+  return (
+    <div className="relative flex h-12 w-12 items-center justify-center overflow-hidden rounded-2xl border border-cyan-100 bg-[radial-gradient(circle_at_top,_#e0f2fe,_#bae6fd_55%,_#7dd3fc)] shadow-[0_10px_24px_rgba(14,165,233,0.18)]">
+      <svg viewBox="0 0 48 48" className="h-11 w-11" aria-hidden="true">
+        <defs>
+          <linearGradient id="ops-command-grid" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#0284c7" />
+            <stop offset="100%" stopColor="#0f766e" />
+          </linearGradient>
+        </defs>
+        <rect x="10" y="12" width="28" height="22" rx="6" fill="#eff6ff" stroke="url(#ops-command-grid)" strokeWidth="1.6" />
+        <path d="M16 20h6M26 20h6M16 25h16" stroke="#38bdf8" strokeLinecap="round" strokeWidth="1.8" />
+        <path d="M18 31l4-4 3 2 5-6" fill="none" stroke="#0f766e" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+        <circle cx="15" cy="15" r="2.1" fill="#2563eb" />
+        <circle cx="33" cy="15" r="2.1" fill="#14b8a6" />
+        <circle cx="24" cy="10.5" r="2.2" fill="#f59e0b" />
+        <path d="M17 15h14" stroke="#93c5fd" strokeLinecap="round" strokeWidth="1.4" />
+        <path d="M24 12.7v5" stroke="#93c5fd" strokeLinecap="round" strokeWidth="1.4" />
+      </svg>
+      <div className="absolute inset-x-2 bottom-0 h-3 rounded-full bg-white/25 blur-sm" />
     </div>
   );
 }
@@ -235,10 +259,13 @@ export default function OperationManagerDashboard() {
         </div>
       </div>
 
-      <div className="max-w-6xl mx-auto px-1 py-1 pt-8">
+      <div className="max-w-6xl mx-auto px-1 py-1 pt-6.5">
         <div className="flex justify-between items-start mb-7">
           <div>
-            <h1 className="text-xl font-bold text-gray-900">{headerTitle}</h1>
+            <div className="flex items-center gap-3">
+              <OpsCommandArtwork />
+              <h1 className="text-xl font-bold text-gray-900">{headerTitle}</h1>
+            </div>
             <p className="text-sm text-gray-500 mt-1">{headerSubtitle}</p>
           </div>
           <button
@@ -268,7 +295,7 @@ export default function OperationManagerDashboard() {
           </div>
         )}
 
-        <div className="mb-8 grid gap-4 md:grid-cols-3">
+        <div className="mb-6 grid gap-3 md:grid-cols-3">
           <MetricCard
             label="Total Team Queries"
             value={summary.totalTeamQueries ?? 0}
@@ -293,8 +320,8 @@ export default function OperationManagerDashboard() {
           />
         </div>
 
-        <div className="overflow-hidden rounded-[20px] border border-slate-200 bg-white shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
-          <div className="border-b border-slate-200 px-5 py-5">
+        <div className="overflow-hidden rounded-[20px] border border-slate-300 bg-white shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
+          <div className="border-b border-slate-300 px-5 py-5">
             <div className="flex items-center gap-2">
               <IconUsers />
               <h2 className="text-[15px] font-semibold text-slate-900">Team Workload</h2>
@@ -305,17 +332,17 @@ export default function OperationManagerDashboard() {
           <div className="thin-scrollbar overflow-x-auto">
             <table className="min-w-[980px] w-full table-fixed">
               <colgroup>
-                <col style={{ width: "310px" }} />
-                <col style={{ width: "190px" }} />
                 <col style={{ width: "210px" }} />
-                <col style={{ width: "240px" }} />
+                <col style={{ width: "170px" }} />
+                <col style={{ width: "190px" }} />
+                <col style={{ width: "200px" }} />
                 <col style={{ width: "150px" }} />
                 <col style={{ width: "170px" }} />
               </colgroup>
               <thead>
-                <tr className="border-b border-slate-200 bg-slate-50/70">
+                <tr className="border-b border-slate-300 bg-slate-50/70">
                   {["Exec Name", "Active Queries", "Overdue Quotes", "Performance %", "Status", "Action"].map((header) => (
-                    <th key={header} className="px-5 py-3.5 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-[#35507a] whitespace-nowrap">
+                    <th key={header} className="px-5 py-3.5 text-center text-[10px] font-semibold uppercase tracking-[0.14em] text-[#35507a] whitespace-nowrap">
                       {header}
                     </th>
                   ))}
@@ -332,9 +359,9 @@ export default function OperationManagerDashboard() {
                   team.map((member) => (
                     <tr
                       key={member.id}
-                      className="border-b border-slate-200/90 transition-colors hover:bg-slate-50/40"
+                      className="border-b border-slate-300/90 transition-colors hover:bg-slate-50/40"
                     >
-                      <td className="px-5 py-4 align-middle">
+                      <td className="px-5 py-4 align-middle flex items-center justify-center ">
                         <div className="flex items-center gap-3">
                           {member.profileImage ? (
                             <img
@@ -343,37 +370,37 @@ export default function OperationManagerDashboard() {
                               className="h-8 w-8 shrink-0 rounded-full object-cover ring-1 ring-blue-100"
                             />
                           ) : (
-                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-50 text-xs font-semibold text-blue-600 ring-1 ring-blue-100">
+                            <div className="flex h-6 w-7 shrink-0 items-center justify-center rounded-full bg-blue-50 text-xs font-semibold text-blue-600 ring-1 ring-blue-100">
                               {member.initials}
                             </div>
                           )}
-                          <div className="min-w-0">
+                          <div className="min-w-0 ">
                             <p className="truncate text-[14px] font-medium text-slate-900">{member.name}</p>
                             <p className="truncate text-[12px] text-slate-500">{member.email}</p>
                           </div>
                         </div>
                       </td>
 
-                      <td className="px-5 py-4 align-middle text-[14px] font-medium tabular-nums text-slate-900">
-                        {member.activeQueries}
+                      <td className="px-4 py-2 text-[14px] font-medium tabular-nums text-slate-900">
+                        <span className="flex items-center justify-center">{member.activeQueries}</span>
                       </td>
 
-                      <td className="px-5 py-4 align-middle">
-                        <span className={`text-[14px] font-medium tabular-nums ${member.overdueQuotes === 0 ? "text-emerald-600" : "text-red-500"}`}>
+                      <td className="px-4 py-1 ">
+                        <span className={`text-[14px] flex items-center justify-center font-medium tabular-nums ${member.overdueQuotes === 0 ? "text-emerald-600" : "text-red-500"}`}>
                           {member.overdueQuotes}
                         </span>
                       </td>
 
                       <td className="px-5 py-4 align-middle">
-                        <div className="flex items-center gap-3 whitespace-nowrap">
-                          <div className="h-1.5 w-20 overflow-hidden rounded-full bg-slate-200">
+                        <div className="flex items-center justify-center gap-3 whitespace-nowrap">
+                          <div className="h-1.5 w-20 overflow-hidden  rounded-full bg-slate-200">
                             <div className={`h-full rounded-full ${perfBarColor(member.performance)}`} style={{ width: `${member.performance}%` }} />
                           </div>
-                          <span className="text-[13px] font-medium tabular-nums text-slate-700">{member.performance}%</span>
+                          <span className="text-[13px]  tabular-nums text-slate-700">{member.performance}%</span>
                         </div>
                       </td>
 
-                      <td className="px-5 py-4 align-middle">
+                      <td className="px-5 py-4 align-middle flex items-center justify-center">
                         <StatusBadge status={member.status} />
                       </td>
 
@@ -384,7 +411,7 @@ export default function OperationManagerDashboard() {
                             setReassignTarget(member);
                           }}
                           disabled={!member.canReassign || team.length < 2}
-                          className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-xl border border-blue-200 bg-blue-50 px-3.5 py-2 text-[12px] font-medium text-blue-600 transition hover:border-blue-300 hover:bg-blue-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-50 disabled:text-slate-300"
+                          className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-xl border border-blue-200 bg-blue-50 px-3.5 py-2 text-[12px] font-medium text-blue-600 transition hover:border-blue-300 hover:bg-blue-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-50 disabled:text-slate-300 cursor-pointer"
                         >
                           <IconReassign />
                           Re-assign

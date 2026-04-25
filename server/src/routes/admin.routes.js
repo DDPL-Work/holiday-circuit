@@ -1,6 +1,7 @@
 import express from "express";
 import isAuthenticated from "../middlewares/auth.middleware.js";
-import { getPendingAgents, approveAgent, getAllUsers, createRateContract, deactivateRateContract, getSystemStats, getAllPayments, updateRateContract, createOperationsUser, createDmcPartner, createFinancePartner, getFinanceDashboard, getAdvancedAnalytics, getInternalInvoices, updateInternalInvoiceStatus, getPaymentVerifications, reviewPaymentVerification, sendFinalInvoiceToAgent, getAdminDashboardData, getManagedUsers, createManagedUser, updateManagedUser, updateManagedUserStatus, deleteManagedUser, replyToOpsEscalation } from "../controllers/adminController.js";
+import { getPendingAgents, approveAgent, getAllUsers, createRateContract, deactivateRateContract, getSystemStats, getAllPayments, updateRateContract, createOperationsUser, createDmcPartner, createFinancePartner, getFinanceDashboard, getAdvancedAnalytics, getInternalInvoices, updateInternalInvoiceStatus, getPaymentVerifications, reviewPaymentVerification, sendFinalInvoiceToAgent, getAdminDashboardData, getManagedUsers, createManagedUser, updateManagedUser, updateManagedUserStatus, deleteManagedUser, restoreManagedUser, permanentlyDeleteManagedUser, replyToOpsEscalation } from "../controllers/adminController.js";
+import { createCoupon, deleteCoupon, generateCouponCode, getAdminCoupons, sendCouponToAgent, updateCoupon } from "../controllers/couponController.js";
 import { getMyNotifications, markAllNotificationsRead, deleteNotification } from "../controllers/agentController.js";
 import { getOperationManagerQueryQuotations } from "../controllers/opsManagerController.js";
 
@@ -16,11 +17,19 @@ routers.get("/managed-users", isAuthenticated, getManagedUsers);
 routers.post("/managed-users", isAuthenticated, createManagedUser);
 routers.patch("/managed-users/:id", isAuthenticated, updateManagedUser);
 routers.patch("/managed-users/:id/status", isAuthenticated, updateManagedUserStatus);
+routers.patch("/managed-users/:id/restore", isAuthenticated, restoreManagedUser);
 routers.delete("/managed-users/:id", isAuthenticated, deleteManagedUser);
+routers.delete("/managed-users/:id/permanent", isAuthenticated, permanentlyDeleteManagedUser);
 routers.post("/create-operations",isAuthenticated, createOperationsUser);
 routers.post("/create-dmc",isAuthenticated, createDmcPartner);
 routers.post("/create-finance-partner",isAuthenticated,createFinancePartner);
 // routers.put("/users/:id/role", isAuthenticated, changeUserRole);
+routers.get("/coupons", isAuthenticated, getAdminCoupons);
+routers.get("/coupons/generate-code", isAuthenticated, generateCouponCode);
+routers.post("/coupons", isAuthenticated, createCoupon);
+routers.patch("/coupons/:id", isAuthenticated, updateCoupon);
+routers.delete("/coupons/:id", isAuthenticated, deleteCoupon);
+routers.post("/coupons/:id/send", isAuthenticated, sendCouponToAgent);
 
 routers.post("/rate-contract", isAuthenticated, createRateContract);
 routers.put("/rate-contract/:contractId", isAuthenticated, updateRateContract );

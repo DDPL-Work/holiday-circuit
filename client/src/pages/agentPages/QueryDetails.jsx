@@ -825,7 +825,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                               Apply Agent Markup
                             </h2>
                             <p className="text-xs text-gray-500">
-                              Agent markup optional hai. Agar chaho to direct client ko ops quote bhi bhej sakte ho.
+                              Agent markup is optional. If you prefer, you can also send the ops quote directly to the client.
                             </p>
                           </div>
                           <div className="space-y-4">
@@ -900,23 +900,6 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                       />
                     </div>
                   )}
-
-                  {/* {quote.status === "Sent to Client" && (
-                    <div className="flex flex-col items-stretch justify-center gap-3 sm:flex-row sm:items-center sm:gap-4">
-                      <button
-                        onClick={() => openRevisionModal(quote._id)}
-                        className="rounded-full border border-[#BEDBFF] bg-white px-8 py-1.5 text-slate-700 cursor-pointer"
-                      >
-                        Request Revision
-                      </button>
-                      <button
-                        onClick={() => handleClientApproved(quote._id)}
-                        className="bg-indigo-600 text-white px-8 py-1.5 rounded-full cursor-pointer"
-                      >
-                        Client Approved
-                      </button>
-                    </div>
-                  )} */}
                 </div>
               </motion.div>
             ))}

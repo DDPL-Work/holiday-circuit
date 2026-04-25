@@ -1,89 +1,121 @@
 import { X, CheckCircle, XCircle } from "lucide-react";
-import API from "../utils/Api";
-import { useState } from "react";
-import toast from "react-hot-toast";
+import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import toast from "react-hot-toast";
+import API from "../utils/Api";
 
-export default function BookingDecisionModal({isOpen, onClose, mode = "accept", queryId, refresh}) {
+export default function BookingDecisionModal({
+  isOpen,
+  onClose,
+  mode = "accept",
+  queryId,
+  refresh,
+  onDecisionSuccess,
+}) {
   const [reason, setReason] = useState("");
   const [loading, setLoading] = useState(false);
+  const [shouldRender, setShouldRender] = useState(isOpen);
   const isAccept = mode === "accept";
+  const enterTransition = { duration: 0.22, ease: [0.22, 1, 0.36, 1] };
+  const exitTransition = { duration: 0.14, ease: "easeOut" };
 
- if (!isOpen) return null;
+  useEffect(() => {
+    if (isOpen) {
+      setShouldRender(true);
+    }
 
-  // ================= Reject =================
+    if (!isOpen) {
+      setReason("");
+      setLoading(false);
+      return;
+    }
+
+    if (isAccept) {
+      setReason("");
+    }
+  }, [isAccept, isOpen]);
+
+  if (!shouldRender) return null;
 
   const handleRejectQuery = async () => {
-        if (loading) return;   // 👈 important
-        setLoading(true);
+    if (loading) return;
+
     try {
       if (!reason.trim()) {
-        return toast.error("Please enter rejection reason");
+        toast.error("Please enter rejection reason");
+        return;
       }
-      const res = await API.patch(`/ops/queries/reject/${queryId}`, { reason, });
-      console.log("REJECT RESPONSE:", res.data);
-     if (res?.data?.success) {
-     toast.success("Query rejected");
-     await refresh(); // ✅ FIX
-     onClose();
-}
+
+      setLoading(true);
+      const res = await API.patch(`/ops/queries/reject/${queryId}`, { reason });
+
+      if (res?.data?.success) {
+        toast.success("Query rejected");
+        onDecisionSuccess?.(res?.data?.query);
+        await refresh?.();
+        onClose?.();
+      }
     } catch (error) {
       toast.error(error?.response?.data?.message || "Something went wrong");
-    }finally {
-    setLoading(false); // ✅ MUST
-  }
+    } finally {
+      setLoading(false);
+    }
   };
-
-  // ============================== Accept Query ========================
 
   const handleAcceptQuery = async () => {
-      if (loading) return;   
-     setLoading(true);
+    if (loading) return;
+
     try {
-      const res = await API.patch(`/ops/queries/accept/${queryId}`)
+      setLoading(true);
+      const res = await API.patch(`/ops/queries/accept/${queryId}`);
+
       if (res?.data?.success) {
         toast.success("Query accepted");
-        console.log("ACCEPT CLICKED");
-        await refresh();
-        onClose();
+        onDecisionSuccess?.(res?.data?.query);
+        await refresh?.();
+        onClose?.();
       }
     } catch (error) {
       toast.error(error?.response?.data?.message || "Something went wrong");
-    }finally {
-    setLoading(false); 
-  }
+    } finally {
+      setLoading(false);
+    }
   };
-  return (
-    <AnimatePresence>
-      {isOpen && (
-        <div className="fixed inset-0 z-999 flex items-center justify-center">
 
-          {/* BACKDROP */}
+  return (
+    <AnimatePresence
+      mode="wait"
+      onExitComplete={() => {
+        if (!isOpen) {
+          setShouldRender(false);
+        }
+      }}
+    >
+      {isOpen && (
+        <div className="fixed inset-0 z-999 flex items-center justify-center p-4">
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
+            transition={enterTransition}
             onClick={onClose}
-            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            className="absolute inset-0 bg-black/45"
           />
 
-          {/* MODAL */}
           <motion.div
-            initial={{ opacity: 0, scale: 0.85, y: 40 }}
+            initial={{ opacity: 0, scale: 0.965, y: 22 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.9, y: 30 }}
-            transition={{ duration: 0.35, ease: "easeOut" }}
-            className="relative bg-white w-full max-w-md rounded-2xl shadow-xl p-6 z-10"
+            exit={{ opacity: 0, scale: 0.99, y: 10, transition: exitTransition }}
+            transition={enterTransition}
+            className="relative z-10 w-full max-w-md transform-gpu rounded-2xl bg-white p-6 shadow-xl"
           >
-            {/* HEADER */}
-            <div className="flex justify-between items-start mb-4">
+            <div className="mb-4 flex items-start justify-between">
               <div className="flex items-center gap-3">
-
                 <motion.div
-                  initial={{ scale: 0 }}
-                  animate={{ scale: 1 }}
-                  transition={{ delay: 0.1 }}
-                  className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                  initial={{ scale: 0.9, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1], delay: 0.03 }}
+                  className={`flex h-10 w-10 items-center justify-center rounded-xl ${
                     isAccept ? "bg-green-100" : "bg-red-100"
                   }`}
                 >
@@ -111,36 +143,36 @@ export default function BookingDecisionModal({isOpen, onClose, mode = "accept", 
                 whileTap={{ scale: 0.9 }}
                 onClick={onClose}
               >
-                <X className="w-5 h-5 text-gray-400 hover:text-gray-600 cursor-pointer" />
+                <X className="h-5 w-5 cursor-pointer text-gray-400 hover:text-gray-600" />
               </motion.button>
             </div>
 
-            {/* BODY */}
             <div className="mb-5">
               {isAccept ? (
                 <>
-                  <p className="text-sm text-gray-600 mb-3">
+                  <p className="mb-3 text-sm text-gray-600">
                     This action will confirm the booking and allow quotation creation.
                   </p>
 
                   <motion.div
-                    initial={{ opacity: 0, y: 10 }}
+                    initial={{ opacity: 0, y: 12 }}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.2 }}
-                    className="bg-[#F0FDF4] border border-[#B9F8CF] rounded-xl p-5 text-sm text-[#016630]"
+                    transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1], delay: 0.05 }}
+                    className="rounded-xl border border-[#B9F8CF] bg-[#F0FDF4] p-5 text-sm text-[#016630]"
                   >
-                    This booking will be moved to the fulfillment pipeline where you can enter confirmation details and generate vouchers.
+                    This booking will be moved to the fulfillment pipeline where you can enter
+                    confirmation details and generate vouchers.
                   </motion.div>
                 </>
               ) : (
                 <>
-                  <label className="text-xs text-gray-600 font-semibold mb-1 block">
+                  <label className="mb-1 block text-xs font-semibold text-gray-600">
                     Rejection Reason
                   </label>
 
                   <textarea
                     placeholder="e.g., Insufficient inventory for requested dates..."
-                    className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-red-200"
+                    className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-red-200"
                     rows={4}
                     value={reason}
                     onChange={(e) => setReason(e.target.value)}
@@ -149,28 +181,34 @@ export default function BookingDecisionModal({isOpen, onClose, mode = "accept", 
               )}
             </div>
 
-            {/* FOOTER */}
             <div className="flex gap-3">
               <motion.button
                 whileHover={{ scale: 1.03 }}
                 whileTap={{ scale: 0.95 }}
                 onClick={onClose}
-                className="flex-1 border border-gray-300 rounded-xl py-2 text-sm text-gray-600 hover:bg-gray-50 cursor-pointer"
+                className="flex-1 cursor-pointer rounded-xl border border-gray-300 py-2 text-sm text-gray-600 hover:bg-gray-50"
               >
                 Cancel
               </motion.button>
 
               <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
+                whileHover={{ scale: loading ? 1 : 1.05 }}
+                whileTap={{ scale: loading ? 1 : 0.95 }}
                 onClick={isAccept ? handleAcceptQuery : handleRejectQuery}
-                className={`flex-1 rounded-xl py-2 text-sm text-white cursor-pointer ${
+                disabled={loading}
+                className={`flex-1 cursor-pointer rounded-xl py-2 text-sm text-white ${
                   isAccept
                     ? "bg-green-600 hover:bg-green-700"
                     : "bg-red-600 hover:bg-red-700"
-                }`}
+                } ${loading ? "cursor-not-allowed opacity-70" : ""}`}
               >
-                {isAccept ? "Confirm Accept" : "Confirm Reject"}
+                {loading
+                  ? isAccept
+                    ? "Confirming..."
+                    : "Rejecting..."
+                  : isAccept
+                    ? "Confirm Accept"
+                    : "Confirm Reject"}
               </motion.button>
             </div>
           </motion.div>

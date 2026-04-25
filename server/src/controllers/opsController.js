@@ -15,6 +15,273 @@ import mongoose from "mongoose";
 import Voucher from "../models/voucher.model.js";
 import Auth from "../models/auth.model.js";
 
+const OPS_DASHBOARD_PENDING_STATUSES = ["New_Query", "Pending_Accept", "Revision_Query"];
+const OPS_DASHBOARD_ACTIVE_BOOKING_STATUSES = ["Booking_Accepted", "Invoice_Requested", "Confirmed"];
+const OPS_DASHBOARD_RESPONSE_ACTIONS = new Set([
+  "Query Accepted",
+  "Query Rejected",
+  "Quotation Started",
+  "Quote Sent",
+  "Passed to Admin",
+  "Traveler Documents Verified",
+  "Voucher Sent",
+  "Invoice Generated",
+]);
+
+const startOfDay = (value = new Date()) => {
+  const date = new Date(value);
+  date.setHours(0, 0, 0, 0);
+  return date;
+};
+
+const shiftDays = (value, days) => {
+  const date = new Date(value);
+  date.setDate(date.getDate() + days);
+  return date;
+};
+
+const isValidDate = (value) => value instanceof Date && !Number.isNaN(value.getTime());
+
+const isDateWithinRange = (value, start, endExclusive) => {
+  if (!value) return false;
+  const date = new Date(value);
+  if (!isValidDate(date)) return false;
+  return date >= start && date < endExclusive;
+};
+
+const safePercent = (part, total) => {
+  const safeTotal = Number(total || 0);
+  if (!safeTotal) return 0;
+  return (Number(part || 0) / safeTotal) * 100;
+};
+
+const clampPercent = (value) =>
+  Math.max(0, Math.min(100, Math.round(Number(value || 0))));
+
+const formatCompactHours = (hours) => {
+  const safeHours = Number(hours || 0);
+
+  if (!safeHours) return "0h";
+  if (safeHours < 1) return `${Math.max(1, Math.round(safeHours * 60))}m`;
+  if (safeHours < 10) return `${safeHours.toFixed(1).replace(/\.0$/, "")}h`;
+
+  return `${Math.round(safeHours)}h`;
+};
+
+const formatVoucherPerDay = (value) => {
+  const safeValue = Number(value || 0);
+  if (!safeValue) return "0";
+  if (safeValue < 10) return safeValue.toFixed(1).replace(/\.0$/, "");
+  return `${Math.round(safeValue)}`;
+};
+
+const buildTrendMeta = (current = 0, previous = 0, fallbackText = "No change from last week") => {
+  const safeCurrent = Number(current || 0);
+  const safePrevious = Number(previous || 0);
+
+  if (!safeCurrent && !safePrevious) {
+    return { text: fallbackText, trend: "neutral" };
+  }
+
+  if (!safePrevious) {
+    return {
+      text: safeCurrent > 0 ? "+100% from last week" : fallbackText,
+      trend: safeCurrent > 0 ? "up" : "neutral",
+    };
+  }
+
+  const percent = Math.round(((safeCurrent - safePrevious) / safePrevious) * 100);
+  if (!percent) {
+    return { text: fallbackText, trend: "neutral" };
+  }
+
+  return {
+    text: `${percent > 0 ? "+" : "-"}${Math.abs(percent)}% from last week`,
+    trend: percent > 0 ? "up" : "down",
+  };
+};
+
+const getQuoteSentAtForDashboard = (query = {}) => {
+  const sentEntry = Array.isArray(query?.activityLog)
+    ? query.activityLog.find((entry) => String(entry?.action || "").trim() === "Quote Sent")
+    : null;
+
+  return sentEntry?.timestamp ? new Date(sentEntry.timestamp) : null;
+};
+
+const getFirstOpsResponseAt = (query = {}) => {
+  const timestamps = (Array.isArray(query?.activityLog) ? query.activityLog : [])
+    .filter((entry) => OPS_DASHBOARD_RESPONSE_ACTIONS.has(String(entry?.action || "").trim()))
+    .map((entry) => (entry?.timestamp ? new Date(entry.timestamp) : null))
+    .filter(isValidDate)
+    .sort((left, right) => left.getTime() - right.getTime());
+
+  return timestamps[0] || null;
+};
+
+const isConvertedOpsQuery = (query = {}) =>
+  ["Client Approved", "Confirmed"].includes(String(query?.agentStatus || "").trim()) ||
+  ["Confirmed", "Vouchered"].includes(String(query?.opsStatus || "").trim());
+
+const isHandledOpsQuery = (query = {}) => {
+  const opsStatus = String(query?.opsStatus || "").trim();
+  const quotationStatus = String(query?.quotationStatus || "").trim();
+
+  if (OPS_DASHBOARD_PENDING_STATUSES.includes(opsStatus)) {
+    return quotationStatus === "Quotation_Created" || Boolean(getFirstOpsResponseAt(query));
+  }
+
+  return true;
+};
+
+const buildPendingActionsConditions = () => ([
+  { opsStatus: { $in: OPS_DASHBOARD_PENDING_STATUSES } },
+  { "travelerDocumentVerification.status": "Pending" },
+  { "adminCoordination.status": "pending_admin_reply" },
+  {
+    $and: [
+      { opsStatus: "Confirmed" },
+      {
+        $or: [
+          { voucherStatus: "ready" },
+          { voucherStatus: { $exists: false } },
+        ],
+      },
+    ],
+  },
+]);
+
+const hasPendingActionQuery = (query = {}) => {
+  const opsStatus = String(query?.opsStatus || "").trim();
+  const verificationStatus = String(query?.travelerDocumentVerification?.status || "").trim();
+  const adminCoordinationStatus = String(query?.adminCoordination?.status || "").trim();
+  const voucherStatus = String(query?.voucherStatus || "").trim();
+
+  return (
+    OPS_DASHBOARD_PENDING_STATUSES.includes(opsStatus) ||
+    verificationStatus === "Pending" ||
+    adminCoordinationStatus === "pending_admin_reply" ||
+    (opsStatus === "Confirmed" && (!voucherStatus || voucherStatus === "ready"))
+  );
+};
+
+const buildDashboardActivityPresentation = (action = "") => {
+  const normalizedAction = String(action || "").trim();
+
+  if (normalizedAction === "Query Created") {
+    return { title: "New Query", tag: "New", variant: "new" };
+  }
+
+  if (normalizedAction === "Query Accepted") {
+    return { title: "Booking Accepted", tag: "Accepted", variant: "accepted" };
+  }
+
+  if (normalizedAction === "Quotation Started") {
+    return { title: "Quotation Started", tag: "Drafting", variant: "draft" };
+  }
+
+  if (normalizedAction === "Quote Sent") {
+    return { title: "Quotation Sent", tag: "Quoted", variant: "quoted" };
+  }
+
+  if (normalizedAction === "Voucher Generated") {
+    return { title: "Voucher Generated", tag: "Vouchered", variant: "voucher" };
+  }
+
+  if (normalizedAction === "Voucher Sent") {
+    return { title: "Voucher Sent", tag: "Sent", variant: "sent" };
+  }
+
+  if (normalizedAction === "Traveler Documents Verified") {
+    return { title: "Documents Verified", tag: "Verified", variant: "verified" };
+  }
+
+  if (normalizedAction === "Query Rejected") {
+    return { title: "Query Rejected", tag: "Rejected", variant: "rejected" };
+  }
+
+  if (normalizedAction === "Passed to Admin") {
+    return { title: "Passed to Admin", tag: "Escalated", variant: "escalated" };
+  }
+
+  if (normalizedAction === "Invoice Generated") {
+    return { title: "Invoice Generated", tag: "Invoiced", variant: "invoice" };
+  }
+
+  return {
+    title: normalizedAction || "Activity Updated",
+    tag: "Updated",
+    variant: "updated",
+  };
+};
+
+const buildOpsDashboardActivityFeed = (queries = []) =>
+  queries
+    .flatMap((query) => {
+      const company =
+        query?.agent?.companyName || query?.agent?.name || "Travel Partner";
+      const destination = query?.destination || "Destination pending";
+      const entries = [];
+
+      for (const entry of Array.isArray(query?.activityLog) ? query.activityLog : []) {
+        const timestamp = entry?.timestamp ? new Date(entry.timestamp) : null;
+        if (!isValidDate(timestamp)) continue;
+
+        const presentation = buildDashboardActivityPresentation(entry?.action);
+        entries.push({
+          id: `${query?._id || query?.queryId || "query"}-${presentation.title}-${timestamp.getTime()}`,
+          queryId: query?.queryId || "",
+          title: presentation.title,
+          tag: presentation.tag,
+          variant: presentation.variant,
+          company,
+          destination,
+          occurredAt: timestamp,
+        });
+      }
+
+      if (query?.voucherGeneratedAt) {
+        const voucherGeneratedAt = new Date(query.voucherGeneratedAt);
+        const alreadyLogged = entries.some((item) => item.title === "Voucher Generated");
+
+        if (isValidDate(voucherGeneratedAt) && !alreadyLogged) {
+          const presentation = buildDashboardActivityPresentation("Voucher Generated");
+          entries.push({
+            id: `${query?._id || query?.queryId || "query"}-${presentation.title}-${voucherGeneratedAt.getTime()}`,
+            queryId: query?.queryId || "",
+            title: presentation.title,
+            tag: presentation.tag,
+            variant: presentation.variant,
+            company,
+            destination,
+            occurredAt: voucherGeneratedAt,
+          });
+        }
+      }
+
+      if (!entries.length && query?.createdAt) {
+        const createdAt = new Date(query.createdAt);
+
+        if (isValidDate(createdAt)) {
+          const presentation = buildDashboardActivityPresentation("Query Created");
+          entries.push({
+            id: `${query?._id || query?.queryId || "query"}-${presentation.title}-${createdAt.getTime()}`,
+            queryId: query?.queryId || "",
+            title: presentation.title,
+            tag: presentation.tag,
+            variant: presentation.variant,
+            company,
+            destination,
+            occurredAt: createdAt,
+          });
+        }
+      }
+
+      return entries;
+    })
+    .sort((left, right) => new Date(right.occurredAt).getTime() - new Date(left.occurredAt).getTime())
+    .slice(0, 5);
+
 
 const normalizeUsageType = (value) => {
   if (!value) return "point-to-point";
@@ -643,6 +910,213 @@ export const getAllQueries = async (req, res, next) => {
   }
 };
 
+export const getOpsDashboard = async (req, res, next) => {
+  try {
+    const queryFilter = await getAssignedQueryFilter(req);
+    const now = new Date();
+    const todayStart = startOfDay(now);
+    const currentWeekStart = shiftDays(todayStart, -7);
+    const previousWeekStart = shiftDays(currentWeekStart, -7);
+    const performanceLookbackStart = shiftDays(todayStart, -30);
+    const activityLookbackStart = shiftDays(todayStart, -45);
+    const pendingActionConditions = buildPendingActionsConditions();
+
+    const [
+      pendingQueriesCount,
+      activeBookingsCount,
+      vouchersGeneratedCount,
+      pendingActionsCount,
+      pendingCurrentWindowCount,
+      pendingPreviousWindowCount,
+      activeCurrentWindowCount,
+      activePreviousWindowCount,
+      vouchersCurrentWindowCount,
+      vouchersPreviousWindowCount,
+      pendingActionsCurrentWindowCount,
+      pendingActionsPreviousWindowCount,
+      dashboardQueries,
+      activityQueries,
+    ] = await Promise.all([
+      TravelQuery.countDocuments({
+        ...queryFilter,
+        opsStatus: { $in: OPS_DASHBOARD_PENDING_STATUSES },
+      }),
+      TravelQuery.countDocuments({
+        ...queryFilter,
+        opsStatus: { $in: OPS_DASHBOARD_ACTIVE_BOOKING_STATUSES },
+      }),
+      TravelQuery.countDocuments({
+        ...queryFilter,
+        voucherStatus: { $in: ["generated", "sent"] },
+      }),
+      TravelQuery.countDocuments({
+        ...queryFilter,
+        $or: pendingActionConditions,
+      }),
+      TravelQuery.countDocuments({
+        ...queryFilter,
+        opsStatus: { $in: OPS_DASHBOARD_PENDING_STATUSES },
+        createdAt: { $gte: currentWeekStart, $lt: now },
+      }),
+      TravelQuery.countDocuments({
+        ...queryFilter,
+        opsStatus: { $in: OPS_DASHBOARD_PENDING_STATUSES },
+        createdAt: { $gte: previousWeekStart, $lt: currentWeekStart },
+      }),
+      TravelQuery.countDocuments({
+        ...queryFilter,
+        opsStatus: { $in: OPS_DASHBOARD_ACTIVE_BOOKING_STATUSES },
+        updatedAt: { $gte: currentWeekStart, $lt: now },
+      }),
+      TravelQuery.countDocuments({
+        ...queryFilter,
+        opsStatus: { $in: OPS_DASHBOARD_ACTIVE_BOOKING_STATUSES },
+        updatedAt: { $gte: previousWeekStart, $lt: currentWeekStart },
+      }),
+      TravelQuery.countDocuments({
+        ...queryFilter,
+        voucherGeneratedAt: { $gte: currentWeekStart, $lt: now },
+      }),
+      TravelQuery.countDocuments({
+        ...queryFilter,
+        voucherGeneratedAt: { $gte: previousWeekStart, $lt: currentWeekStart },
+      }),
+      TravelQuery.countDocuments({
+        ...queryFilter,
+        $and: [
+          { $or: pendingActionConditions },
+          { updatedAt: { $gte: currentWeekStart, $lt: now } },
+        ],
+      }),
+      TravelQuery.countDocuments({
+        ...queryFilter,
+        $and: [
+          { $or: pendingActionConditions },
+          { updatedAt: { $gte: previousWeekStart, $lt: currentWeekStart } },
+        ],
+      }),
+      TravelQuery.find({
+        ...queryFilter,
+        updatedAt: { $gte: performanceLookbackStart },
+      })
+        .select(
+          "queryId destination createdAt updatedAt opsStatus agentStatus quotationStatus voucherStatus voucherGeneratedAt travelerDocumentVerification adminCoordination activityLog agent",
+        )
+        .populate("agent", "name companyName email")
+        .sort({ updatedAt: -1 })
+        .lean(),
+      TravelQuery.find({
+        ...queryFilter,
+        updatedAt: { $gte: activityLookbackStart },
+      })
+        .select("queryId destination createdAt updatedAt voucherGeneratedAt activityLog agent")
+        .populate("agent", "name companyName email")
+        .sort({ updatedAt: -1 })
+        .limit(120)
+        .lean(),
+    ]);
+
+    const handledScopeQueries = dashboardQueries.filter(
+      (query) =>
+        isDateWithinRange(query?.createdAt, performanceLookbackStart, now) ||
+        isDateWithinRange(query?.updatedAt, performanceLookbackStart, now) ||
+        isDateWithinRange(query?.voucherGeneratedAt, performanceLookbackStart, now) ||
+        isDateWithinRange(getQuoteSentAtForDashboard(query), performanceLookbackStart, now),
+    );
+
+    const handledRate = clampPercent(
+      safePercent(
+        handledScopeQueries.filter((query) => isHandledOpsQuery(query)).length,
+        handledScopeQueries.length,
+      ),
+    );
+
+    const responseDurations = dashboardQueries
+      .map((query) => {
+        const createdAt = query?.createdAt ? new Date(query.createdAt) : null;
+        const firstResponseAt = getFirstOpsResponseAt(query);
+
+        if (!isValidDate(createdAt) || !isValidDate(firstResponseAt)) {
+          return null;
+        }
+
+        if (!isDateWithinRange(firstResponseAt, performanceLookbackStart, now)) {
+          return null;
+        }
+
+        const diffInHours = (firstResponseAt.getTime() - createdAt.getTime()) / (1000 * 60 * 60);
+        return diffInHours >= 0 ? diffInHours : null;
+      })
+      .filter((value) => value !== null);
+
+    const avgResponseHours = responseDurations.length
+      ? responseDurations.reduce((total, value) => total + value, 0) / responseDurations.length
+      : 0;
+
+    const vouchersGeneratedInLookback = dashboardQueries.filter((query) =>
+      isDateWithinRange(query?.voucherGeneratedAt, performanceLookbackStart, now),
+    ).length;
+    const vouchersPerDay = vouchersGeneratedInLookback / 30;
+
+    const recentActivity = buildOpsDashboardActivityFeed(activityQueries);
+
+    const dashboardPayload = {
+      generatedAt: now,
+      headerTitle: "OPS-DASHBOARD",
+      stats: {
+        pendingQueries: {
+          value: pendingQueriesCount,
+          ...buildTrendMeta(pendingCurrentWindowCount, pendingPreviousWindowCount),
+        },
+        activeBookings: {
+          value: activeBookingsCount,
+          ...buildTrendMeta(activeCurrentWindowCount, activePreviousWindowCount),
+        },
+        vouchersGenerated: {
+          value: vouchersGeneratedCount,
+          ...buildTrendMeta(vouchersCurrentWindowCount, vouchersPreviousWindowCount),
+        },
+        pendingActions: {
+          value: pendingActionsCount,
+          ...buildTrendMeta(pendingActionsCurrentWindowCount, pendingActionsPreviousWindowCount),
+        },
+      },
+      recentActivity: recentActivity.map((item) => ({
+        ...item,
+        occurredAt: item.occurredAt,
+      })),
+      performance: {
+        queriesHandled: {
+          label: "Queries Handled",
+          value: `${handledRate}%`,
+          progress: handledRate,
+        },
+        avgResponseTime: {
+          label: "Avg. Response Time",
+          value: formatCompactHours(avgResponseHours),
+          progress: clampPercent(100 - safePercent(avgResponseHours, 48)),
+        },
+        vouchersPerDay: {
+          label: "Vouchers / Day",
+          value: formatVoucherPerDay(vouchersPerDay),
+          progress: clampPercent(safePercent(vouchersPerDay, 5)),
+        },
+      },
+      meta: {
+        scopeDays: 30,
+        pendingActionCount: dashboardQueries.filter((query) => hasPendingActionQuery(query)).length,
+      },
+    };
+
+    res.status(200).json({
+      success: true,
+      data: dashboardPayload,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 
 // ==================== Reject Query by Ops ==================================
 
@@ -1055,11 +1529,12 @@ export const passToAdmin = async (req, res, next) => {
           type: "warning",
           title: "Ops escalation received",
           message: `${query.queryId} was passed to admin by ${actorName}.`,
-          link: "/admin/superAdminDashboard#queries",
+          link: "/ops/order-acceptance",
           meta: {
             queryId: query._id,
             queryNumber: query.queryId,
             note,
+            source: "ops_order_acceptance",
           },
         })),
       );

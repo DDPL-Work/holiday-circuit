@@ -366,6 +366,12 @@ function FeedbackToast({ feedback, onClose }) {
 
 function ValidateModal({ invoice, submitting, onClose, onConfirm }) {
   const [checked, setChecked] = useState(false);
+  const payoutAmountStyle =
+    invoice?.uiStatus === "Mismatch"
+      ? { color: "#dc2626", fontWeight: 700, fontSize: "15px" }
+      : invoice?.uiStatus === "Settled"
+        ? { color: "#00A63E", fontWeight: 700, fontSize: "15px" }
+        : { color: "#2563eb", fontWeight: 700, fontSize: "15px" };
 
   useEffect(() => {
     setChecked(false);
@@ -422,7 +428,7 @@ function ValidateModal({ invoice, submitting, onClose, onConfirm }) {
           <div className="overflow-hidden" style={{ borderRadius: "16px", border: "1px solid #BEDBFE", background: "#EFF5FC" }}>
             {[
               { label: "DMC Partner", value: invoice.partner, highlight: false },
-              { label: "Invoice No", value: invoice.id, highlight: false },
+              { label: "Invoice No", value: invoice.invoiceNumber || invoice.id, highlight: false },
               { label: "Payout Amount", value: invoice.amountDisplay, highlight: true },
             ].map(({ label, value, highlight }, index) => (
               <div
@@ -432,7 +438,7 @@ function ValidateModal({ invoice, submitting, onClose, onConfirm }) {
               >
                 <span style={{ color: "#64748b" }}>{label}</span>
                 <span style={highlight
-                  ? { color: "#00A63E", fontWeight: 700, fontSize: "15px" }
+                  ? payoutAmountStyle
                   : { color: "#636464", fontWeight: 600 }}>
                   {value}
                 </span>
@@ -553,7 +559,7 @@ function EscalatePanel({ invoice, submitting, onClose, onConfirm }) {
         animate={{ x: 0, opacity: 1 }}
         exit={{ x: "100%", opacity: 0.98 }}
         transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
-        className="fixed right-0 top-0 z-[70] flex h-full w-full max-w-[336px] flex-col overflow-hidden border-l border-white/6 bg-[#070707] shadow-[-24px_0_72px_rgba(0,0,0,0.58)]"
+        className="fixed right-0 top-0 z-[70] flex h-full w-full max-w-[336px] flex-col overflow-hidden border-l border-white/6 bg-[#070707] shadow-none"
       >
         <div className="border-b border-white/8 bg-[linear-gradient(180deg,#8d171d_0%,#4a0f16_46%,#131313_100%)] px-4 py-4">
           <div className="flex items-start justify-between gap-3">
@@ -855,6 +861,9 @@ export default function InternalDMCInvoices() {
         const { data: response } = await API.patch(`/admin/internal-invoices/${invoice.id}/status`, {
           status: "Rejected",
           reason: financeReason,
+          notifyAdmin: true,
+          mismatchReason: reason,
+          adminMessage: message.trim(),
         });
         updateInvoiceRow(response?.data);
       }

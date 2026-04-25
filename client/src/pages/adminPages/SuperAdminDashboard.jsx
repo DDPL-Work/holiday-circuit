@@ -43,6 +43,7 @@ import {
 } from "lucide-react";
 import AddNewUserModal from "../../modal/AddNewUserModal";
 import API from "../../utils/Api";
+import superAdminBadge from "../../assets/super-admin-badge.jpg";
 
 
 const roleAppearance = {
@@ -784,11 +785,26 @@ export default function SuperAdminDashboard() {
         <div style={{ padding: 20 }}>
           {/* Title + buttons row */}
           <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
-            <div>
-              <h1 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "#0f172a" }}>Super Admin Dashboard</h1>
-              <p style={{ margin: "6px 0 0", fontSize: 8, color: "#64748b", maxWidth: 480 }}>
-                Complete oversight and control of Holiday Circuit operations
-              </p>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <img
+                src={superAdminBadge}
+                alt="Super admin badge"
+                style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: 14,
+                  objectFit: "cover",
+                  border: "1px solid #fcd34d",
+                  boxShadow: "0 8px 20px rgba(245, 158, 11, 0.18)",
+                  background: "#fff",
+                }}
+              />
+              <div>
+                <h1 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "#0f172a" }}>Super Admin Dashboard</h1>
+                <p style={{ margin: "6px 0 0", fontSize: 8, color: "#64748b", maxWidth: 480 }}>
+                  Complete oversight and control of Holiday Circuit operations
+                </p>
+              </div>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
               {/* Agent queue button */}
@@ -1340,6 +1356,7 @@ export default function SuperAdminDashboard() {
       <div id="quotations" className="scroll-mt-5" />
       <div
         style={{
+          display: "none",
           background: "#fff",
           border: "1px solid #e2e8f0",
           borderRadius: 16,

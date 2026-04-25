@@ -172,14 +172,14 @@ const RejectInvoiceModal = ({ invoice, onClose, onConfirm }) => {
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.18, ease: 'easeOut' }}
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
+      className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4"
     >
       <motion.div
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: 12 }}
         transition={{ duration: 0.22, ease: 'easeOut' }}
-        className="w-full max-w-md rounded-2xl bg-white shadow-2xl"
+        className="w-full max-w-md rounded-2xl bg-white shadow-none"
       >
         <div className="flex items-center gap-3 px-6 pb-4 pt-6">
           <div className="rounded-full bg-red-50 p-2">
