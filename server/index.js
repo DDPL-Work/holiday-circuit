@@ -15,12 +15,13 @@ env.config({ quiet: true });
 
 const app = express(); 
 const PORT = process.env.PORT;
+const REQUEST_BODY_LIMIT = process.env.REQUEST_BODY_LIMIT || "25mb";
 dbConnect();
 
 // ====================== MIDDLEWARE ==================
 app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: REQUEST_BODY_LIMIT }));
+app.use(express.urlencoded({ extended: true, limit: REQUEST_BODY_LIMIT }));
 app.use(morgan("dev"));
 app.use("/uploads", express.static("uploads"))
 
@@ -45,6 +46,13 @@ message: "Route Not Found",
 // ====================== GLOBAL ERROR HANDLER ======================
 
 app.use((err, req, res, next) => {
+  if (err?.type === "entity.too.large") {
+    return res.status(413).json({
+      success: false,
+      message: `Request payload is too large. Max allowed size is ${REQUEST_BODY_LIMIT}.`,
+    });
+  }
+
   console.error(err.stack);
   res.status(err.status || 500).json({success: false, message: err.message || "Internal Server Error",
   });

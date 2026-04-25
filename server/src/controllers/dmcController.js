@@ -968,448 +968,783 @@ export const submitInternalInvoice = async (req, res, next) => {
 };
 
 
-export const getConfirmedQueriesForDmc = async (req, res, next) => {
-  try {
-    const isAdminAccess = req.user?.role === "admin";
-    const currentDmcId = req.user.id?.toString();
-    const currentDmc = await Auth.findById(currentDmcId)
-      .select("name companyName")
-      .lean();
-    const currentDmcNames = [
-      currentDmc?.companyName,
-      currentDmc?.name,
-    ]
-      .filter(Boolean)
-      .map((item) => item.trim().toLowerCase());
+const getDmcVisibleQueriesData = async (req) => {
+  const isAdminAccess = req.user?.role === "admin";
+  const currentDmcId = req.user.id?.toString();
+  const currentDmc = await Auth.findById(currentDmcId)
+    .select("name companyName")
+    .lean();
+  const currentDmcNames = [currentDmc?.companyName, currentDmc?.name]
+    .filter(Boolean)
+    .map((item) => item.trim().toLowerCase());
 
-    const getServiceModel = (type) => {
-      const normalized = (type || "").toLowerCase();
-      if (normalized === "hotel") return Hotel;
-      if (
-        normalized === "transfer" ||
-        normalized === "transport" ||
-        normalized === "car"
-      ) {
-        return Transfer;
-      }
-      if (normalized === "activity") return Activity;
-      if (normalized === "sightseeing") return Sightseeing;
-      return null;
-    };
+  const getServiceModel = (type) => {
+    const normalized = (type || "").toLowerCase();
+    if (normalized === "hotel") return Hotel;
+    if (
+      normalized === "transfer" ||
+      normalized === "transport" ||
+      normalized === "car"
+    ) {
+      return Transfer;
+    }
+    if (normalized === "activity") return Activity;
+    if (normalized === "sightseeing") return Sightseeing;
+    return null;
+  };
 
-    const buildServiceBreakdown = (service) => {
-      const normalizedType = (service.type || "").toLowerCase();
-      const currency = service.currency || "INR";
-      const unitPrice = Number(service.price || 0);
-      const totalAmount = Number(service.total || 0);
+  const buildServiceBreakdown = (service) => {
+    const normalizedType = (service.type || "").toLowerCase();
+    const currency = service.currency || "INR";
+    const unitPrice = Number(service.price || 0);
+    const totalAmount = Number(service.total || 0);
 
-      if (normalizedType === "hotel") {
-        const unitCount = Number(service.nights || 1);
-        const roomCount = Math.max(1, Number(service.rooms || 1));
-        return {
-          quantityValue: roomCount,
-          quantityLabel: `${roomCount} ${roomCount === 1 ? "Room" : "Rooms"}`,
-          stayLabel: `${unitCount} ${unitCount === 1 ? "Night" : "Nights"}`,
-          unitLabel: unitCount === 1 ? "per night" : "per night",
-          calculationText: `${unitCount} ${unitCount === 1 ? "night" : "nights"} x ${currency} ${unitPrice.toLocaleString()}`,
-          totalAmount,
-          currency,
-        };
-      }
-
-      if (
-        normalizedType === "transfer" ||
-        normalizedType === "transport" ||
-        normalizedType === "car"
-      ) {
-        const unitCount = Number(service.days || 1);
-        return {
-          quantityValue: unitCount,
-          quantityLabel: `${unitCount} ${unitCount === 1 ? "Day" : "Days"}`,
-          unitLabel: service.usageType || "transfer",
-          calculationText: `${unitCount} ${unitCount === 1 ? "day" : "days"} x ${currency} ${unitPrice.toLocaleString()}`,
-          totalAmount,
-          currency,
-        };
-      }
-
-      const unitCount = Number(service.pax || 1);
+    if (normalizedType === "hotel") {
+      const unitCount = Number(service.nights || 1);
+      const roomCount = Math.max(1, Number(service.rooms || 1));
       return {
-        quantityValue: unitCount,
-        quantityLabel: `${unitCount} ${unitCount === 1 ? "Pax" : "Pax"}`,
-        stayLabel: "",
-        unitLabel: normalizedType === "sightseeing" ? "per guest" : "per guest",
-        calculationText: `${unitCount} pax x ${currency} ${unitPrice.toLocaleString()}`,
+        quantityValue: roomCount,
+        quantityLabel: `${roomCount} ${roomCount === 1 ? "Room" : "Rooms"}`,
+        stayLabel: `${unitCount} ${unitCount === 1 ? "Night" : "Nights"}`,
+        unitLabel: "per night",
+        calculationText: `${unitCount} ${unitCount === 1 ? "night" : "nights"} x ${currency} ${unitPrice.toLocaleString()}`,
         totalAmount,
         currency,
       };
+    }
+
+    if (
+      normalizedType === "transfer" ||
+      normalizedType === "transport" ||
+      normalizedType === "car"
+    ) {
+      const unitCount = Number(service.days || 1);
+      return {
+        quantityValue: unitCount,
+        quantityLabel: `${unitCount} ${unitCount === 1 ? "Day" : "Days"}`,
+        unitLabel: service.usageType || "transfer",
+        calculationText: `${unitCount} ${unitCount === 1 ? "day" : "days"} x ${currency} ${unitPrice.toLocaleString()}`,
+        totalAmount,
+        currency,
+      };
+    }
+
+    const unitCount = Number(service.pax || 1);
+    return {
+      quantityValue: unitCount,
+      quantityLabel: `${unitCount} Pax`,
+      stayLabel: "",
+      unitLabel: "per guest",
+      calculationText: `${unitCount} pax x ${currency} ${unitPrice.toLocaleString()}`,
+      totalAmount,
+      currency,
     };
+  };
 
-    const normalizeText = (value) =>
-      String(value || "")
-        .trim()
-        .toLowerCase()
-        .replace(/\s+/g, " ");
+  const normalizeText = (value) =>
+    String(value || "")
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, " ");
 
-    const serviceMatchesDmcByName = (service) => {
-      if (isAdminAccess) return true;
+  const serviceMatchesDmcByName = (service) => {
+    if (isAdminAccess) return true;
 
-      const serviceNames = [
-        service?.supplierName,
-        service?.dmcName,
-        service?.supplier?.name,
-        service?.supplier?.companyName,
-      ]
+    const serviceNames = [
+      service?.supplierName,
+      service?.dmcName,
+      service?.supplier?.name,
+      service?.supplier?.companyName,
+    ]
+      .filter(Boolean)
+      .map((item) => normalizeText(item));
+
+    return serviceNames.some((item) => currentDmcNames.includes(item));
+  };
+
+  const serviceBelongsToCurrentDmcByDetails = async (service) => {
+    if (isAdminAccess) return true;
+
+    const ServiceModel = getServiceModel(service.type);
+    if (!ServiceModel) return false;
+
+    const normalizedTitle = normalizeText(service.title);
+    const normalizedCity = normalizeText(service.city);
+    const normalizedCountry = normalizeText(service.country);
+
+    const ownServices = await ServiceModel.find({ supplier: currentDmcId })
+      .select("hotelName name serviceName city country")
+      .lean();
+
+    return ownServices.some((item) => {
+      const candidateTitles = [item.hotelName, item.name, item.serviceName]
         .filter(Boolean)
-        .map((item) => normalizeText(item));
+        .map(normalizeText);
 
-      return serviceNames.some((item) => currentDmcNames.includes(item));
-    };
+      const candidateCity = normalizeText(item.city);
+      const candidateCountry = normalizeText(item.country);
 
-    const serviceBelongsToCurrentDmcByDetails = async (service) => {
-      if (isAdminAccess) return true;
+      const titleMatched = candidateTitles.some(
+        (candidateTitle) =>
+          candidateTitle &&
+          normalizedTitle &&
+          (candidateTitle === normalizedTitle ||
+            candidateTitle.includes(normalizedTitle) ||
+            normalizedTitle.includes(candidateTitle)),
+      );
 
-      const ServiceModel = getServiceModel(service.type);
-      if (!ServiceModel) return false;
+      if (!titleMatched) return false;
 
-      const normalizedTitle = normalizeText(service.title);
-      const normalizedCity = normalizeText(service.city);
-      const normalizedCountry = normalizeText(service.country);
+      const cityMatched =
+        !normalizedCity || !candidateCity || normalizedCity === candidateCity;
+      const countryMatched =
+        !normalizedCountry ||
+        !candidateCountry ||
+        normalizedCountry === candidateCountry;
 
-      const ownServices = await ServiceModel.find({ supplier: currentDmcId })
-        .select("hotelName name serviceName city country")
-        .lean();
+      return cityMatched && countryMatched;
+    });
+  };
 
-      return ownServices.some((item) => {
-        const candidateTitles = [
-          item.hotelName,
-          item.name,
-          item.serviceName,
-        ]
-          .filter(Boolean)
-          .map(normalizeText);
+  const formatDateForUi = (value) => {
+    if (!value) return "";
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return "";
+    return parsed.toISOString().slice(0, 10);
+  };
 
-        const candidateCity = normalizeText(item.city);
-        const candidateCountry = normalizeText(item.country);
+  const addDaysToDate = (value, daysToAdd = 0) => {
+    if (!value) return "";
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return "";
+    parsed.setDate(parsed.getDate() + Number(daysToAdd || 0));
+    return parsed.toISOString().slice(0, 10);
+  };
 
-        const titleMatched = candidateTitles.some(
-          (candidateTitle) =>
-            candidateTitle &&
-            normalizedTitle &&
-            (candidateTitle === normalizedTitle ||
-              candidateTitle.includes(normalizedTitle) ||
-              normalizedTitle.includes(candidateTitle)),
-        );
+  const getLaterDate = (firstDate, secondDate) => {
+    if (firstDate && secondDate) {
+      return firstDate > secondDate ? firstDate : secondDate;
+    }
 
-        if (!titleMatched) return false;
+    return firstDate || secondDate || "";
+  };
 
-        const cityMatched =
-          !normalizedCity || !candidateCity || normalizedCity === candidateCity;
-        const countryMatched =
-          !normalizedCountry ||
-          !candidateCountry ||
-          normalizedCountry === candidateCountry;
+  const deriveQuotationServiceSchedule = (services = [], tripStartDate) => {
+    let cursorDate = formatDateForUi(tripStartDate);
 
-        return cityMatched && countryMatched;
-      });
-    };
-
-    const formatDateForUi = (value) => {
-      if (!value) return "";
-      const parsed = new Date(value);
-      if (Number.isNaN(parsed.getTime())) return "";
-      return parsed.toISOString().slice(0, 10);
-    };
-
-    const addDaysToDate = (value, daysToAdd = 0) => {
-      if (!value) return "";
-      const parsed = new Date(value);
-      if (Number.isNaN(parsed.getTime())) return "";
-      parsed.setDate(parsed.getDate() + Number(daysToAdd || 0));
-      return parsed.toISOString().slice(0, 10);
-    };
-
-    const getLaterDate = (firstDate, secondDate) => {
-      if (firstDate && secondDate) {
-        return firstDate > secondDate ? firstDate : secondDate;
-      }
-
-      return firstDate || secondDate || "";
-    };
-
-    const deriveQuotationServiceSchedule = (services = [], tripStartDate) => {
-      let cursorDate = formatDateForUi(tripStartDate);
-
-      return services.map((service) => {
-        const explicitDate = formatDateForUi(service?.serviceDate);
-        const normalizedType = String(service?.type || "").toLowerCase();
-        const resolvedDate =
-          normalizedType === "hotel"
-            ? getLaterDate(explicitDate, cursorDate)
-            : explicitDate || cursorDate || "";
-        let serviceEndDate = resolvedDate;
-        let checkInDate = "";
-        let checkOutDate = "";
-
-        if (normalizedType === "hotel") {
-          const hotelNights = Math.max(1, Number(service?.nights || 1));
-          checkInDate = resolvedDate;
-          checkOutDate = addDaysToDate(resolvedDate || cursorDate, hotelNights);
-          serviceEndDate = addDaysToDate(
-            resolvedDate || cursorDate,
-            Math.max(hotelNights - 1, 0),
-          );
-          cursorDate = checkOutDate;
-        } else if (
-          (
-            normalizedType === "transfer" ||
-            normalizedType === "transport" ||
-            normalizedType === "car" ||
-            normalizedType === "sightseeing"
-          ) &&
-          Number(service?.days || 0) > 1
-        ) {
-          const serviceDays = Number(service.days || 1);
-          serviceEndDate = addDaysToDate(
-            resolvedDate || cursorDate,
-            Math.max(serviceDays - 1, 0),
-          );
-          cursorDate = addDaysToDate(resolvedDate || cursorDate, serviceDays);
-        }
-
-        return {
-          serviceStartDate: resolvedDate,
-          serviceEndDate,
-          checkInDate,
-          checkOutDate,
-        };
-      });
-    };
-
-    const mapQuotationServiceReference = (service, schedule = {}) => {
-      const breakdown = buildServiceBreakdown(service);
+    return services.map((service) => {
+      const explicitDate = formatDateForUi(service?.serviceDate);
       const normalizedType = String(service?.type || "").toLowerCase();
-      const resolvedServiceDate =
+      const resolvedDate =
         normalizedType === "hotel"
-          ? schedule?.serviceStartDate || formatDateForUi(service.serviceDate) || ""
-          : formatDateForUi(service.serviceDate) || schedule?.serviceStartDate || "";
+          ? getLaterDate(explicitDate, cursorDate)
+          : explicitDate || cursorDate || "";
+      let serviceEndDate = resolvedDate;
+      let checkInDate = "";
+      let checkOutDate = "";
+
+      if (normalizedType === "hotel") {
+        const hotelNights = Math.max(1, Number(service?.nights || 1));
+        checkInDate = resolvedDate;
+        checkOutDate = addDaysToDate(resolvedDate || cursorDate, hotelNights);
+        serviceEndDate = addDaysToDate(
+          resolvedDate || cursorDate,
+          Math.max(hotelNights - 1, 0),
+        );
+        cursorDate = checkOutDate;
+      } else if (
+        (
+          normalizedType === "transfer" ||
+          normalizedType === "transport" ||
+          normalizedType === "car" ||
+          normalizedType === "sightseeing"
+        ) &&
+        Number(service?.days || 0) > 1
+      ) {
+        const serviceDays = Number(service.days || 1);
+        serviceEndDate = addDaysToDate(
+          resolvedDate || cursorDate,
+          Math.max(serviceDays - 1, 0),
+        );
+        cursorDate = addDaysToDate(resolvedDate || cursorDate, serviceDays);
+      }
 
       return {
-        type: service.type,
-        serviceName: service.title || "",
-        serviceDate: resolvedServiceDate,
-        serviceEndDate: schedule?.serviceEndDate || resolvedServiceDate,
-        checkInDate: schedule?.checkInDate || "",
-        checkOutDate: schedule?.checkOutDate || "",
-        checkInTime: service.checkInTime || service.hotelCheckInTime || "",
-        checkOutTime: service.checkOutTime || service.hotelCheckOutTime || "",
-        status: "Confirmed",
-        confirmationNumber: "",
-        voucherNumber: "",
-        emergency: "",
-        city: service.city || "",
-        country: service.country || "",
-        supplierId: service.supplierId || service.dmcId || "",
-        supplierName: service.supplierName || service.dmcName || "",
-        currency: breakdown.currency,
-        rate: Number(service.price || 0),
-        total: breakdown.totalAmount,
-        quantityValue: breakdown.quantityValue,
-        quantityLabel: breakdown.quantityLabel,
-        stayLabel: breakdown.stayLabel || "",
-        unitLabel: breakdown.unitLabel,
-        calculationText: breakdown.calculationText,
+        serviceStartDate: resolvedDate,
+        serviceEndDate,
+        checkInDate,
+        checkOutDate,
       };
+    });
+  };
+
+  const mapQuotationServiceReference = (service, schedule = {}) => {
+    const breakdown = buildServiceBreakdown(service);
+    const normalizedType = String(service?.type || "").toLowerCase();
+    const resolvedServiceDate =
+      normalizedType === "hotel"
+        ? schedule?.serviceStartDate || formatDateForUi(service.serviceDate) || ""
+        : formatDateForUi(service.serviceDate) ||
+          schedule?.serviceStartDate ||
+          "";
+
+    return {
+      type: service.type,
+      serviceName: service.title || "",
+      serviceDate: resolvedServiceDate,
+      serviceEndDate: schedule?.serviceEndDate || resolvedServiceDate,
+      checkInDate: schedule?.checkInDate || "",
+      checkOutDate: schedule?.checkOutDate || "",
+      checkInTime: service.checkInTime || service.hotelCheckInTime || "",
+      checkOutTime: service.checkOutTime || service.hotelCheckOutTime || "",
+      status: "Confirmed",
+      confirmationNumber: "",
+      voucherNumber: "",
+      emergency: "",
+      city: service.city || "",
+      country: service.country || "",
+      supplierId: service.supplierId || service.dmcId || "",
+      supplierName: service.supplierName || service.dmcName || "",
+      currency: breakdown.currency,
+      rate: Number(service.price || 0),
+      total: breakdown.totalAmount,
+      quantityValue: breakdown.quantityValue,
+      quantityLabel: breakdown.quantityLabel,
+      stayLabel: breakdown.stayLabel || "",
+      unitLabel: breakdown.unitLabel,
+      calculationText: breakdown.calculationText,
     };
+  };
 
-    const mapDmcVisibleService = async (service, schedule = {}) => {
-      if (isAdminAccess) {
-        return mapQuotationServiceReference(service, schedule);
-      }
+  const mapDmcVisibleService = async (service, schedule = {}) => {
+    if (isAdminAccess) {
+      return mapQuotationServiceReference(service, schedule);
+    }
 
-      const serviceSupplierId =
-        service?.dmcId?.toString?.() ||
-        service?.dmcId ||
-        service?.supplierId?.toString?.() ||
-        service?.supplierId;
+    const serviceSupplierId =
+      service?.dmcId?.toString?.() ||
+      service?.dmcId ||
+      service?.supplierId?.toString?.() ||
+      service?.supplierId;
 
-      if (serviceSupplierId) {
-        if (serviceSupplierId !== currentDmcId) return null;
-        return mapQuotationServiceReference(service, schedule);
-      }
+    if (serviceSupplierId) {
+      if (serviceSupplierId !== currentDmcId) return null;
+      return mapQuotationServiceReference(service, schedule);
+    }
 
-      if (serviceMatchesDmcByName(service)) {
-        return mapQuotationServiceReference(service, schedule);
-      }
+    if (serviceMatchesDmcByName(service)) {
+      return mapQuotationServiceReference(service, schedule);
+    }
 
-      if (!service?.serviceId) {
-        const ownedByDetails = await serviceBelongsToCurrentDmcByDetails(service);
-        return ownedByDetails
-          ? mapQuotationServiceReference(service, schedule)
-          : null;
-      }
-
-      const ServiceModel = getServiceModel(service.type);
-      if (!ServiceModel) return null;
-
-      const sourceService = await ServiceModel.findById(service.serviceId)
-        .select("supplier")
-        .lean();
-
-      if (sourceService?.supplier?.toString() === currentDmcId) {
-        return mapQuotationServiceReference(service, schedule);
-      }
-
+    if (!service?.serviceId) {
       const ownedByDetails = await serviceBelongsToCurrentDmcByDetails(service);
       return ownedByDetails
         ? mapQuotationServiceReference(service, schedule)
         : null;
-    };
+    }
 
-    const queries = await TravelQuery.find({
-      opsStatus: { $in: ["Confirmed", "Vouchered"] }
-    })
-      .populate("agent", "name companyName email")
-      .sort({ createdAt: -1 });
+    const ServiceModel = getServiceModel(service.type);
+    if (!ServiceModel) return null;
 
-    const internalInvoices = await InternalInvoice.find({
-      ...(isAdminAccess ? {} : { dmc: currentDmcId }),
-      query: { $in: queries.map((query) => query._id) },
-    })
-      .select(
-        "query supplierName invoiceNumber invoiceDate dueDate items documents taxConfig summary status submittedAt updatedAt financeNotes payoutReference payoutDate payoutBank payoutAmount",
-      )
+    const sourceService = await ServiceModel.findById(service.serviceId)
+      .select("supplier")
       .lean();
 
-    const internalInvoiceByQueryId = new Map(
-      internalInvoices.map((invoice) => [invoice.query?.toString(), invoice]),
-    );
+    if (sourceService?.supplier?.toString() === currentDmcId) {
+      return mapQuotationServiceReference(service, schedule);
+    }
 
-    const data = await Promise.all(
-      queries.map(async (query) => {
-        const quotation = await Quotation.findOne({ queryId: query._id }).sort({ createdAt: -1 });
-        const confirmation = await Confirmation.findOne({
-          ...(isAdminAccess ? {} : { dmcId: currentDmcId }),
-          queryId: { $in: [query.queryId, query._id.toString()] }
+    const ownedByDetails = await serviceBelongsToCurrentDmcByDetails(service);
+    return ownedByDetails
+      ? mapQuotationServiceReference(service, schedule)
+      : null;
+  };
+
+  const queries = await TravelQuery.find({
+    opsStatus: { $in: ["Confirmed", "Vouchered"] },
+  })
+    .populate("agent", "name companyName email")
+    .sort({ createdAt: -1 });
+
+  const internalInvoices = await InternalInvoice.find({
+    ...(isAdminAccess ? {} : { dmc: currentDmcId }),
+    query: { $in: queries.map((query) => query._id) },
+  })
+    .select(
+      "query supplierName invoiceNumber invoiceDate dueDate items documents taxConfig summary status submittedAt updatedAt financeNotes payoutReference payoutDate payoutBank payoutAmount",
+    )
+    .lean();
+
+  const internalInvoiceByQueryId = new Map(
+    internalInvoices.map((invoice) => [invoice.query?.toString(), invoice]),
+  );
+
+  const data = await Promise.all(
+    queries.map(async (query) => {
+      const quotation = await Quotation.findOne({ queryId: query._id }).sort({
+        createdAt: -1,
+      });
+      const confirmation = await Confirmation.findOne({
+        ...(isAdminAccess ? {} : { dmcId: currentDmcId }),
+        queryId: { $in: [query.queryId, query._id.toString()] },
+      });
+
+      const passengers =
+        Number(query.numberOfAdults || 0) + Number(query.numberOfChildren || 0);
+
+      const startDate = query.startDate ? new Date(query.startDate) : null;
+      const endDate = query.endDate ? new Date(query.endDate) : null;
+      const days =
+        startDate && endDate
+          ? Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24))
+          : 0;
+      const nights = days > 0 ? days - 1 : 0;
+
+      const quotationServices = quotation?.services || [];
+      const derivedServiceSchedule = deriveQuotationServiceSchedule(
+        quotationServices,
+        query.startDate,
+      );
+      const quotationTaxableAmount =
+        Number(quotation?.pricing?.subTotal || 0) +
+        Number(quotation?.pricing?.packageTemplateAmount || 0) +
+        Number(quotation?.pricing?.opsMarkup?.amount || 0) +
+        Number(quotation?.pricing?.opsCharges?.serviceCharge || 0) +
+        Number(quotation?.pricing?.opsCharges?.handlingFee || 0);
+
+      const visibleServices = (
+        await Promise.all(
+          quotationServices.map((service, index) =>
+            mapDmcVisibleService(service, derivedServiceSchedule[index] || {}),
+          ),
+        )
+      ).filter(Boolean);
+
+      if (!visibleServices.length) {
+        return null;
+      }
+
+      const existingInternalInvoice = internalInvoiceByQueryId.get(
+        query._id?.toString(),
+      );
+
+      return {
+        _id: query._id,
+        queryId: query.queryId,
+        destination: query.destination,
+        opsStatus: query.opsStatus || "",
+        createdAt: query.createdAt || null,
+        updatedAt: query.updatedAt || null,
+        quotationCreatedAt: quotation?.createdAt || null,
+        quotationUpdatedAt: quotation?.updatedAt || null,
+        startDate: query.startDate,
+        endDate: query.endDate,
+        numberOfAdults: Number(query.numberOfAdults || 0),
+        numberOfChildren: Number(query.numberOfChildren || 0),
+        voucherNumber: query.voucherNumber || "",
+        voucherStatus: query.voucherStatus || "",
+        voucherGeneratedAt: query.voucherGeneratedAt || null,
+        voucherSentAt: query.voucherSentAt || null,
+        isVoucherGenerated:
+          Boolean(query.voucherNumber) ||
+          String(query.voucherStatus || "").toLowerCase() === "generated" ||
+          String(query.voucherStatus || "").toLowerCase() === "sent" ||
+          String(query.opsStatus || "").toLowerCase() === "vouchered",
+        quotationTaxableAmount,
+        passengers,
+        duration: `${nights}N/${days}D`,
+        agentName: query.agent?.companyName || query.agent?.name || "",
+        travelerDetails: (query.travelerDetails || []).map((traveler, index) => ({
+          id: traveler?._id?.toString?.() || `traveler-${index + 1}`,
+          fullName: String(traveler?.fullName || "").trim(),
+          travelerType:
+            traveler?.travelerType === "Child" ? "Child" : "Adult",
+          childAge:
+            traveler?.travelerType === "Child" &&
+            traveler?.childAge !== undefined &&
+            traveler?.childAge !== null
+              ? Number(traveler.childAge)
+              : null,
+          documentType:
+            String(traveler?.documentType || "Passport").trim() || "Passport",
+          documents: normalizeTravelerDocuments(
+            traveler?.documents,
+            traveler?.document,
+            traveler?.documentType,
+          ),
+        })),
+        travelerDocumentVerification: getTravelerDocumentVerification(query),
+        travelerDocumentAuditTrail: Array.isArray(
+          query.travelerDocumentAuditTrail,
+        )
+          ? query.travelerDocumentAuditTrail.map((entry) => ({
+              action: String(entry?.action || "").trim(),
+              status: String(entry?.status || "Draft").trim(),
+              performedByName: String(entry?.performedByName || "").trim(),
+              remarks: String(entry?.remarks || "").trim(),
+              performedAt: entry?.performedAt || null,
+            }))
+          : [],
+        internalInvoice: existingInternalInvoice
+          ? {
+              id: existingInternalInvoice._id,
+              supplierName: existingInternalInvoice.supplierName || "",
+              invoiceNumber: existingInternalInvoice.invoiceNumber || "",
+              invoiceDate: existingInternalInvoice.invoiceDate || null,
+              dueDate: existingInternalInvoice.dueDate || null,
+              items: Array.isArray(existingInternalInvoice.items)
+                ? existingInternalInvoice.items
+                : [],
+              documents: Array.isArray(existingInternalInvoice.documents)
+                ? existingInternalInvoice.documents
+                : [],
+              taxConfig: existingInternalInvoice.taxConfig || {},
+              summary: existingInternalInvoice.summary || {},
+              status: existingInternalInvoice.status || "Submitted",
+              submittedAt: existingInternalInvoice.submittedAt || null,
+              updatedAt: existingInternalInvoice.updatedAt || null,
+              financeNotes: existingInternalInvoice.financeNotes || "",
+              payoutReference: existingInternalInvoice.payoutReference || "",
+              payoutDate: existingInternalInvoice.payoutDate || null,
+              payoutBank: existingInternalInvoice.payoutBank || "",
+              payoutAmount: Number(existingInternalInvoice.payoutAmount || 0),
+            }
+          : null,
+        services: visibleServices,
+        existingConfirmation: confirmation || null,
+      };
+    }),
+  );
+
+  return data.filter(Boolean);
+};
+
+const clampPercent = (value) =>
+  Math.max(0, Math.min(100, Math.round(Number(value) || 0)));
+
+const formatDashboardDate = (value = new Date()) =>
+  new Intl.DateTimeFormat("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  }).format(new Date(value));
+
+const getWindowStart = (days) => {
+  const date = new Date();
+  date.setHours(0, 0, 0, 0);
+  date.setDate(date.getDate() - days);
+  return date;
+};
+
+const isWithinWindow = (value, start, end = new Date()) => {
+  if (!value) return false;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return false;
+  return parsed >= start && parsed < end;
+};
+
+const buildChangeMeta = (current, previous) => {
+  const currentValue = Number(current || 0);
+  const previousValue = Number(previous || 0);
+  const percentChange =
+    previousValue <= 0
+      ? currentValue > 0
+        ? 100
+        : 0
+      : Math.round(((currentValue - previousValue) / previousValue) * 100);
+
+  const sign = percentChange > 0 ? "+" : percentChange < 0 ? "-" : "";
+
+  return {
+    value: percentChange,
+    text: `${sign}${Math.abs(percentChange)}% from last week`,
+    tone: percentChange < 0 ? "negative" : "positive",
+  };
+};
+
+const getConfirmationServices = (query = {}) =>
+  Array.isArray(query?.existingConfirmation?.services)
+    ? query.existingConfirmation.services
+    : [];
+
+const hasSubmittedConfirmation = (query = {}) =>
+  String(query?.existingConfirmation?.status || "").toLowerCase() ===
+  "submitted";
+
+const getConfirmedServiceCount = (query = {}) =>
+  getConfirmationServices(query).filter(
+    (service) =>
+      service?.confirmationNumber ||
+      service?.voucherNumber ||
+      String(service?.status || "").toLowerCase() === "confirmed",
+  ).length;
+
+const getPendingActionCountForQuery = (query = {}) => {
+  const visibleServiceCount = Array.isArray(query?.services)
+    ? query.services.length
+    : 0;
+  const confirmedServiceCount = getConfirmedServiceCount(query);
+  const pendingServiceCount = Math.max(
+    visibleServiceCount - confirmedServiceCount,
+    0,
+  );
+
+  if (!hasSubmittedConfirmation(query)) {
+    return Math.max(pendingServiceCount, visibleServiceCount || 1);
+  }
+
+  return pendingServiceCount + (query?.isVoucherGenerated ? 0 : 1);
+};
+
+const getQueryAssignmentDate = (query = {}) =>
+  query?.quotationCreatedAt ||
+  query?.createdAt ||
+  query?.updatedAt ||
+  null;
+
+const getResponseTimeHours = (query = {}) => {
+  if (!hasSubmittedConfirmation(query)) return null;
+
+  const startedAt = getQueryAssignmentDate(query);
+  const completedAt =
+    query?.existingConfirmation?.updatedAt ||
+    query?.existingConfirmation?.createdAt;
+
+  if (!startedAt || !completedAt) return null;
+
+  const start = new Date(startedAt);
+  const end = new Date(completedAt);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return null;
+  }
+
+  const hours = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
+  return hours >= 0 ? hours : null;
+};
+
+const formatHoursCompact = (hours) => {
+  const numericHours = Number(hours || 0);
+  if (!numericHours) return "0h";
+  if (numericHours >= 24) {
+    return `${(numericHours / 24).toFixed(1)}d`;
+  }
+  return `${numericHours.toFixed(1)}h`;
+};
+
+const buildDmcRecentActivity = (queries = []) =>
+  queries
+    .flatMap((query) => {
+      const company = `${query?.agentName || "Assigned Agent"} -> ${query?.destination || "-"}`;
+      const items = [];
+      const newQueryAt = getQueryAssignmentDate(query);
+
+      if (newQueryAt) {
+        items.push({
+          title: "New Query",
+          badge: "New",
+          color: "bg-purple-100 text-purple-600",
+          company,
+          timestamp: newQueryAt,
         });
+      }
 
-        const passengers =
-          Number(query.numberOfAdults || 0) + Number(query.numberOfChildren || 0);
+      if (query?.opsStatus === "Confirmed" || query?.opsStatus === "Vouchered") {
+        items.push({
+          title: "Booking Accepted",
+          badge: "Accepted",
+          color: "bg-blue-100 text-blue-600",
+          company,
+          timestamp: query?.updatedAt || query?.quotationUpdatedAt || newQueryAt,
+        });
+      }
 
-        const startDate = query.startDate ? new Date(query.startDate) : null;
-        const endDate = query.endDate ? new Date(query.endDate) : null;
-        const days =
-          startDate && endDate
-            ? Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24))
-            : 0;
-        const nights = days > 0 ? days - 1 : 0;
+      if (hasSubmittedConfirmation(query)) {
+        items.push({
+          title: "Confirmation Entered",
+          badge: "Confirmed",
+          color: "bg-cyan-100 text-cyan-600",
+          company,
+          timestamp:
+            query?.existingConfirmation?.updatedAt ||
+            query?.existingConfirmation?.createdAt,
+        });
+      }
 
-        const quotationServices = quotation?.services || [];
-        const derivedServiceSchedule = deriveQuotationServiceSchedule(
-          quotationServices,
-          query.startDate,
-        );
-        const quotationTaxableAmount =
-          Number(quotation?.pricing?.subTotal || 0) +
-          Number(quotation?.pricing?.packageTemplateAmount || 0) +
-          Number(quotation?.pricing?.opsMarkup?.amount || 0) +
-          Number(quotation?.pricing?.opsCharges?.serviceCharge || 0) +
-          Number(quotation?.pricing?.opsCharges?.handlingFee || 0);
+      if (query?.isVoucherGenerated) {
+        items.push({
+          title: "Voucher Generated",
+          badge: "Vouchered",
+          color: "bg-green-100 text-green-600",
+          company,
+          timestamp:
+            query?.voucherGeneratedAt ||
+            query?.voucherSentAt ||
+            query?.updatedAt ||
+            query?.quotationUpdatedAt ||
+            newQueryAt,
+        });
+      }
 
-        const visibleServices = (
-          await Promise.all(
-            quotationServices.map((service, index) =>
-              mapDmcVisibleService(service, derivedServiceSchedule[index] || {}),
-            ),
-          )
-        ).filter(Boolean);
+      return items;
+    })
+    .filter((item) => item.timestamp)
+    .sort((left, right) => new Date(right.timestamp) - new Date(left.timestamp))
+    .slice(0, 5);
 
-        if (!visibleServices.length) {
-          return null;
-        }
+const buildDmcDashboardPayload = (queries = []) => {
+  const currentWeekStart = getWindowStart(7);
+  const previousWeekStart = getWindowStart(14);
+  const now = new Date();
 
-        const existingInternalInvoice = internalInvoiceByQueryId.get(
-          query._id?.toString(),
-        );
+  const activeBookings = queries.length;
+  const pendingQueries = queries.filter(
+    (query) => !hasSubmittedConfirmation(query),
+  ).length;
+  const vouchersGenerated = queries.filter(
+    (query) => query?.isVoucherGenerated,
+  ).length;
+  const pendingActions = queries.reduce(
+    (total, query) => total + getPendingActionCountForQuery(query),
+    0,
+  );
 
-        return {
-          _id: query._id,
-          queryId: query.queryId,
-          destination: query.destination,
-          startDate: query.startDate,
-          endDate: query.endDate,
-          numberOfAdults: Number(query.numberOfAdults || 0),
-          numberOfChildren: Number(query.numberOfChildren || 0),
-          voucherNumber: query.voucherNumber || "",
-          voucherStatus: query.voucherStatus || "",
-          isVoucherGenerated:
-            Boolean(query.voucherNumber) ||
-            String(query.voucherStatus || "").toLowerCase() === "generated" ||
-            String(query.voucherStatus || "").toLowerCase() === "sent" ||
-            String(query.opsStatus || "").toLowerCase() === "vouchered",
-          quotationTaxableAmount,
-          passengers,
-          duration: `${nights}N/${days}D`,
-          agentName: query.agent?.companyName || query.agent?.name || "",
-          travelerDetails: (query.travelerDetails || []).map((traveler, index) => ({
-            id: traveler?._id?.toString?.() || `traveler-${index + 1}`,
-            fullName: String(traveler?.fullName || "").trim(),
-            travelerType: traveler?.travelerType === "Child" ? "Child" : "Adult",
-            childAge:
-              traveler?.travelerType === "Child" && traveler?.childAge !== undefined && traveler?.childAge !== null
-                ? Number(traveler.childAge)
-                : null,
-            documentType: String(traveler?.documentType || "Passport").trim() || "Passport",
-            documents: normalizeTravelerDocuments(
-              traveler?.documents,
-              traveler?.document,
-              traveler?.documentType,
-            ),
-          })),
-          travelerDocumentVerification: getTravelerDocumentVerification(query),
-          travelerDocumentAuditTrail: Array.isArray(query.travelerDocumentAuditTrail)
-            ? query.travelerDocumentAuditTrail.map((entry) => ({
-                action: String(entry?.action || "").trim(),
-                status: String(entry?.status || "Draft").trim(),
-                performedByName: String(entry?.performedByName || "").trim(),
-                remarks: String(entry?.remarks || "").trim(),
-                performedAt: entry?.performedAt || null,
-              }))
-            : [],
-          internalInvoice: existingInternalInvoice
-            ? {
-                id: existingInternalInvoice._id,
-                supplierName: existingInternalInvoice.supplierName || "",
-                invoiceNumber: existingInternalInvoice.invoiceNumber || "",
-                invoiceDate: existingInternalInvoice.invoiceDate || null,
-                dueDate: existingInternalInvoice.dueDate || null,
-                items: Array.isArray(existingInternalInvoice.items)
-                  ? existingInternalInvoice.items
-                  : [],
-                documents: Array.isArray(existingInternalInvoice.documents)
-                  ? existingInternalInvoice.documents
-                  : [],
-                taxConfig: existingInternalInvoice.taxConfig || {},
-                summary: existingInternalInvoice.summary || {},
-                status: existingInternalInvoice.status || "Submitted",
-                submittedAt: existingInternalInvoice.submittedAt || null,
-                updatedAt: existingInternalInvoice.updatedAt || null,
-                financeNotes: existingInternalInvoice.financeNotes || "",
-                payoutReference: existingInternalInvoice.payoutReference || "",
-                payoutDate: existingInternalInvoice.payoutDate || null,
-                payoutBank: existingInternalInvoice.payoutBank || "",
-                payoutAmount: Number(existingInternalInvoice.payoutAmount || 0),
-              }
-            : null,
-          services: visibleServices,
-          existingConfirmation: confirmation || null,
-        };
-      })
-    );
+  const currentWeekAssigned = queries.filter((query) =>
+    isWithinWindow(getQueryAssignmentDate(query), currentWeekStart, now),
+  );
+  const previousWeekAssigned = queries.filter((query) =>
+    isWithinWindow(getQueryAssignmentDate(query), previousWeekStart, currentWeekStart),
+  );
+
+  const currentWeekPendingQueries = currentWeekAssigned.filter(
+    (query) => !hasSubmittedConfirmation(query),
+  ).length;
+  const previousWeekPendingQueries = previousWeekAssigned.filter(
+    (query) => !hasSubmittedConfirmation(query),
+  ).length;
+
+  const currentWeekVouchers = queries.filter((query) =>
+    isWithinWindow(
+      query?.voucherGeneratedAt ||
+        query?.voucherSentAt ||
+        (query?.isVoucherGenerated ? query?.updatedAt : null),
+      currentWeekStart,
+      now,
+    ),
+  ).length;
+  const previousWeekVouchers = queries.filter((query) =>
+    isWithinWindow(
+      query?.voucherGeneratedAt ||
+        query?.voucherSentAt ||
+        (query?.isVoucherGenerated ? query?.updatedAt : null),
+      previousWeekStart,
+      currentWeekStart,
+    ),
+  ).length;
+
+  const currentWeekPendingActions = currentWeekAssigned.reduce(
+    (total, query) => total + getPendingActionCountForQuery(query),
+    0,
+  );
+  const previousWeekPendingActions = previousWeekAssigned.reduce(
+    (total, query) => total + getPendingActionCountForQuery(query),
+    0,
+  );
+
+  const submittedCount = queries.filter((query) =>
+    hasSubmittedConfirmation(query),
+  ).length;
+  const queriesHandledPercent = activeBookings
+    ? Math.round((submittedCount / activeBookings) * 100)
+    : 0;
+
+  const responseTimeSamples = queries
+    .map((query) => getResponseTimeHours(query))
+    .filter((value) => value !== null);
+  const avgResponseHours = responseTimeSamples.length
+    ? responseTimeSamples.reduce((sum, value) => sum + value, 0) /
+      responseTimeSamples.length
+    : 0;
+
+  const voucherWindowStart = getWindowStart(30);
+  const recentVoucherTimestamps = queries
+    .map(
+      (query) =>
+        query?.voucherGeneratedAt ||
+        query?.voucherSentAt ||
+        (query?.isVoucherGenerated ? query?.updatedAt : null),
+    )
+    .filter((value) => isWithinWindow(value, voucherWindowStart, now));
+  const voucherActiveDays = new Set(
+    recentVoucherTimestamps.map((value) =>
+      new Date(value).toISOString().slice(0, 10),
+    ),
+  ).size;
+  const vouchersPerDay = recentVoucherTimestamps.length
+    ? Math.round(recentVoucherTimestamps.length / Math.max(voucherActiveDays, 1))
+    : 0;
+
+  return {
+    dateLabel: formatDashboardDate(),
+    summary: {
+      pendingQueries: {
+        value: pendingQueries,
+        ...buildChangeMeta(currentWeekPendingQueries, previousWeekPendingQueries),
+      },
+      activeBookings: {
+        value: activeBookings,
+        ...buildChangeMeta(currentWeekAssigned.length, previousWeekAssigned.length),
+      },
+      vouchersGenerated: {
+        value: vouchersGenerated,
+        ...buildChangeMeta(currentWeekVouchers, previousWeekVouchers),
+      },
+      pendingActions: {
+        value: pendingActions,
+        ...buildChangeMeta(currentWeekPendingActions, previousWeekPendingActions),
+      },
+    },
+    recentActivity: buildDmcRecentActivity(queries),
+    performance: {
+      queriesHandled: {
+        value: `${queriesHandledPercent}%`,
+        width: `${clampPercent(queriesHandledPercent)}%`,
+        color: "bg-blue-600",
+      },
+      avgResponseTime: {
+        value: formatHoursCompact(avgResponseHours),
+        width: `${clampPercent(avgResponseHours ? ((8 - Math.min(avgResponseHours, 8)) / 8) * 100 : 0)}%`,
+        color: "bg-green-600",
+      },
+      vouchersPerDay: {
+        value: `${vouchersPerDay}`,
+        width: `${clampPercent((vouchersPerDay / 25) * 100)}%`,
+        color: "bg-purple-600",
+      },
+    },
+  };
+};
+
+export const getConfirmedQueriesForDmc = async (req, res, next) => {
+  try {
+    const data = await getDmcVisibleQueriesData(req);
 
     res.status(200).json({
       success: true,
-      data: data.filter(Boolean),
+      data,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getDmcDashboard = async (req, res, next) => {
+  try {
+    const queries = await getDmcVisibleQueriesData(req);
+
+    res.status(200).json({
+      success: true,
+      data: buildDmcDashboardPayload(queries),
     });
   } catch (error) {
     next(error);

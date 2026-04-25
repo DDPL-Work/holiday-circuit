@@ -31,6 +31,7 @@ import MyOperationTeam from "../pages/managerPages/opsManagerPages/MyOperationTe
 import AllTeamTransactions from "../pages/managerPages/financeManagerPages/AllTeamTransactions";
 import InternalDMCInvoices from "../pages/managerPages/financeManagerPages/InternalDMCInvoices";
 import MyFinanceTeam from "../pages/managerPages/financeManagerPages/MyFinanceTeam";
+import UserManagement from "../pages/adminPages/UserManagement";
 
 export const appRouter = createBrowserRouter([
   {
@@ -71,7 +72,7 @@ export const appRouter = createBrowserRouter([
           { path: "/admin/superAdminDashboard", element: <SuperAdminDashboard/>},
           { path: "/admin/discount", element: <Discount/>},
           { path: "/admin/bookings-management", element:<BookingManagementHub/>},
-          {},
+          { path: "/admin/user-management", element:<UserManagement/>},
         ],
       },
     ],

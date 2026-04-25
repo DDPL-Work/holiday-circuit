@@ -8,7 +8,6 @@ import {
   AlertTriangle,
   CheckCheck,
   Calendar,
-  Activity,
 } from "lucide-react";
 import API from "../../../utils/Api";
 
@@ -246,6 +245,29 @@ function AnimatedAccuracyBar({ accuracy, barClassName }) {
   );
 }
 
+function FinanceCommandArtwork() {
+  return (
+    <div className="relative flex h-12 w-12 items-center justify-center overflow-hidden rounded-2xl border border-amber-100 bg-[radial-gradient(circle_at_top,_#fef3c7,_#fde68a_55%,_#fbbf24)] shadow-[0_10px_24px_rgba(245,158,11,0.2)]">
+      <svg viewBox="0 0 48 48" className="h-11 w-11" aria-hidden="true">
+        <defs>
+          <linearGradient id="finance-command-ledger" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#d97706" />
+            <stop offset="100%" stopColor="#0f766e" />
+          </linearGradient>
+        </defs>
+        <rect x="11" y="11" width="26" height="26" rx="7" fill="#fffbeb" stroke="url(#finance-command-ledger)" strokeWidth="1.6" />
+        <path d="M17 18h14M17 23h8M17 28h14" stroke="#f59e0b" strokeLinecap="round" strokeWidth="1.8" />
+        <circle cx="30.5" cy="22.5" r="4.5" fill="#0f766e" />
+        <path d="M30.5 19.9v5.2M28.4 22.5h4.2" stroke="#ecfdf5" strokeLinecap="round" strokeWidth="1.5" />
+        <path d="M19 32c1.8-2.4 3.6-3.6 5.5-3.6 2 0 3.6 1 4.8 2.9" fill="none" stroke="#2563eb" strokeLinecap="round" strokeWidth="1.8" />
+        <circle cx="15.5" cy="15.5" r="2" fill="#2563eb" />
+        <circle cx="33" cy="15" r="1.8" fill="#14b8a6" />
+      </svg>
+      <div className="absolute inset-x-2 bottom-0 h-3 rounded-full bg-white/25 blur-sm" />
+    </div>
+  );
+}
+
 export default function FinanceCommandCenter() {
   const defaultRange = useMemo(() => getDefaultDateRange(), []);
   const user = useSelector((state) => state.auth.user);
@@ -403,7 +425,7 @@ export default function FinanceCommandCenter() {
       <div className="px- py- pt-5 max-w-screen-xl mx-auto">
         <div className="mb-6">
           <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-            <Activity size={22} className="text-orange-500" />
+            <FinanceCommandArtwork />
             Finance Command Center - Week {weekNumber}
           </h2>
           <p className="text-sm text-gray-500 mt-1">

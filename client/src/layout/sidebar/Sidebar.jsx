@@ -31,7 +31,7 @@ const menuConfig = {
     { label: "Discount", path: "/admin/discount", icon: TicketPercent },
     { label: "Finance Dashboard", path: "/finance/dashboard", icon: Wallet },
     { label: "Advanced Analytics", path: "/finance/advancedAnalytics", icon: ClipboardList },
-    { label: "Users Management", path: "/admin/superAdminDashboard", hash: "#users-management", icon: Users },
+    { label: "Users Management", path: "/admin/user-management", hash: "#users-management", icon: Users },
     { label: "Contracted Rates", path: "/dmc/contractedRates", icon: Box },
     { label: "Booking Management", path: "/ops/bookings-management", icon: ClipboardList },
     { label: "Order Acceptance", path: "/ops/order-acceptance", icon: CircleCheckBig },

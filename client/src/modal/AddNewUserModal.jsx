@@ -37,6 +37,11 @@ const ROLES = [
     desc: "Ops leadership - oversee team queries, workload & escalations",
   },
   {
+    key: "Finance Team",
+    color: "#ca8a04",
+    desc: "Finance operations - verify payments, manage invoices & reconciliation",
+  },
+  {
     key: "Finance Manager",
     color: "#b45309",
     desc: "Finance leadership - manage team transactions & internal invoices",
@@ -56,6 +61,7 @@ const ALL_PERMISSIONS = [
 const ROLE_DEFAULT_PERMISSIONS = {
   "Super Admin": ["View", "Edit", "Export", "Override", "Delete", "Manage Users", "Approve Payments", "System Config"],
   "Ops Team": ["View", "Edit", "Export", "Manage Booking"],
+  "Finance Team": ["View", "Export", "Approve Payments", "Reject Payment"],
   "Operation Manager": ["View", "Edit", "Export", "Manage Booking"],
   "Finance Manager": ["View", "Export", "Approve Payments", "Reject Payment"],
   "DMC Partner": ["View", "Export", "Submit Invoice"],

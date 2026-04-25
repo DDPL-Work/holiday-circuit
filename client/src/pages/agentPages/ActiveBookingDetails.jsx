@@ -5,6 +5,7 @@ import {
   BadgePercent,
   Building2,
   CalendarDays,
+  ChevronDown,
   CheckCircle2,
   CreditCard,
   Download,
@@ -57,6 +58,13 @@ const formatInputDate = (v) => {
   const d = new Date(v);
   return Number.isNaN(d.getTime()) ? "" : d.toISOString().slice(0, 10);
 };
+const getBankShortCode = (value = "") =>
+  String(value || "")
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part[0]?.toUpperCase() || "")
+    .join("")
+    .slice(0, 3) || "BNK";
 const statusTone = (s) => s === "Verified"
   ? "border-emerald-200 bg-emerald-50 text-emerald-700"
   : s === "Pending"
@@ -237,6 +245,7 @@ export default function ActiveBookingDetails({ onClose, booking, onBookingUpdate
   const docsUnlocked = paymentStatus === "Verified" || booking?.paymentStatus === "Paid";
   const [feedback, setFeedback] = useState(null);
   const [bankName, setBankName] = useState(isRejectedPayment ? "" : paymentSubmission?.bankName || "");
+  const [bankMenuOpen, setBankMenuOpen] = useState(false);
   const [utrNumber, setUtrNumber] = useState(isRejectedPayment ? "" : paymentSubmission?.utrNumber || "");
   const [quotationAmount, setQuotationAmount] = useState("");
   const [couponModalOpen, setCouponModalOpen] = useState(false);
@@ -246,6 +255,7 @@ export default function ActiveBookingDetails({ onClose, booking, onBookingUpdate
   const [submittingPayment, setSubmittingPayment] = useState(false);
   const [uploadingKey, setUploadingKey] = useState("");
   const [submittingDocs, setSubmittingDocs] = useState(false);
+  const bankDropdownRef = useRef(null);
 
   const travelers = useMemo(() => (Array.isArray(booking?.travelerDetails) ? booking.travelerDetails : []).map((t) => ({ ...t, docs: resolveDocs(t) })), [booking?.travelerDetails]);
   const isInternationalTrip = useMemo(() => {
@@ -297,6 +307,7 @@ export default function ActiveBookingDetails({ onClose, booking, onBookingUpdate
 
   useEffect(() => {
     setBankName(isRejectedPayment ? "" : paymentSubmission?.bankName || "");
+    setBankMenuOpen(false);
     setUtrNumber(isRejectedPayment ? "" : paymentSubmission?.utrNumber || "");
     setQuotationAmount("");
     setPaymentDate(isRejectedPayment ? "" : formatInputDate(paymentSubmission?.paymentDate));
@@ -313,6 +324,27 @@ export default function ActiveBookingDetails({ onClose, booking, onBookingUpdate
     paymentSubmission?.receipt?.url,
     paymentSubmission?.utrNumber,
   ]);
+
+  useEffect(() => {
+    const handlePointerDown = (event) => {
+      if (!bankDropdownRef.current?.contains(event.target)) {
+        setBankMenuOpen(false);
+      }
+    };
+
+    const handleEscape = (event) => {
+      if (event.key === "Escape") {
+        setBankMenuOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, []);
 
   const handleView = (doc) => doc?.url && window.open(doc.url, "_blank", "noopener,noreferrer");
   const handleDownloadReceipt = () => currentReceipt?.url && window.open(currentReceipt.url, "_blank", "noopener,noreferrer");
@@ -426,22 +458,106 @@ export default function ActiveBookingDetails({ onClose, booking, onBookingUpdate
               <div className="grid gap-5 xl:grid-cols-3">
                 <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
                   <Label label="Bank Name" />
-                  <div className="relative">
-                    <Building2 className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                    <select value={bankName} onChange={(e) => setBankName(e.target.value)} className="h-14 w-full rounded-2xl border border-slate-200 bg-slate-50 pl-11 pr-4 text-[14px] text-slate-700 outline-none transition-colors focus:border-slate-300 focus:bg-white">
-                      <option value="">Select Bank</option>
-                      {bankOptions.map((b) => <option key={b} value={b}>{b}</option>)}
-                    </select>
+                  <div
+                    ref={bankDropdownRef}
+                    className={`relative rounded-[22px] border bg-[linear-gradient(135deg,#f8fafc_0%,#ffffff_45%,#f0fdf4_100%)] p-2 transition-all duration-200 ${
+                      bankMenuOpen
+                        ? "border-emerald-300 shadow-[0_18px_36px_rgba(16,185,129,0.14)]"
+                        : "border-slate-200 focus-within:border-emerald-300 focus-within:shadow-[0_14px_30px_rgba(16,185,129,0.12)]"
+                    }`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setBankMenuOpen((prev) => !prev)}
+                      className={`group flex h-14 w-full items-center gap-3 rounded-[18px] border bg-white pl-4 pr-3 text-left transition-all duration-200 ${
+                        bankMenuOpen
+                          ? "border-emerald-200"
+                          : "border-white/80 hover:border-emerald-100"
+                      }`}
+                      aria-haspopup="listbox"
+                      aria-expanded={bankMenuOpen}
+                    >
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100">
+                        <Building2 className="h-4 w-4" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className={`truncate text-[14px] font-semibold ${bankName ? "text-slate-800" : "text-slate-500"}`}>
+                          {bankName || "Choose your bank"}
+                        </p>
+                        <p className="mt-0.5 text-[11px] text-slate-400">
+                          {bankName ? "Selected for finance verification" : "Tap to view available banks"}
+                        </p>
+                      </div>
+                      <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-all duration-200 ${
+                        bankMenuOpen ? "bg-emerald-100 text-emerald-700 rotate-180" : "bg-emerald-50 text-emerald-700"
+                      }`}>
+                        <ChevronDown className="h-4 w-4" />
+                      </div>
+                    </button>
+
+                    {bankMenuOpen ? (
+                      <motion.div
+                        initial={{ opacity: 0, y: 10, scale: 0.98 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        transition={{ duration: 0.18, ease: "easeOut" }}
+                        className="absolute left-0 right-0 top-[calc(100%+10px)] z-30 overflow-hidden rounded-[22px] border border-emerald-100 bg-white/95 p-2 shadow-[0_28px_60px_rgba(15,23,42,0.18)] backdrop-blur"
+                        role="listbox"
+                        aria-label="Bank Name"
+                      >
+                        <div className="rounded-[18px] bg-[linear-gradient(180deg,#f8fafc_0%,#ffffff_100%)] p-1.5">
+                          {bankOptions.map((bank) => {
+                            const isSelected = bankName === bank;
+                            return (
+                              <button
+                                key={bank}
+                                type="button"
+                                onClick={() => {
+                                  setBankName(bank);
+                                  setBankMenuOpen(false);
+                                }}
+                                className={`flex w-full items-center gap-3 rounded-[16px] px-3 py-3 text-left transition-all duration-200 ${
+                                  isSelected
+                                    ? "bg-emerald-50 text-emerald-900 ring-1 ring-emerald-200"
+                                    : "text-slate-700 hover:bg-slate-50"
+                                }`}
+                                role="option"
+                                aria-selected={isSelected}
+                              >
+                                <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl text-[11px] font-bold ring-1 ${
+                                  isSelected
+                                    ? "bg-emerald-100 text-emerald-700 ring-emerald-200"
+                                    : "bg-slate-100 text-slate-500 ring-slate-200"
+                                }`}>
+                                  {getBankShortCode(bank)}
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <p className="truncate text-[14px] font-semibold">{bank}</p>
+                                  <p className="mt-0.5 text-[11px] text-slate-400">Available for payment verification</p>
+                                </div>
+                                <div className={`flex h-8 w-8 items-center justify-center rounded-full ${
+                                  isSelected ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-transparent"
+                                }`}>
+                                  <CheckCircle2 className="h-4 w-4" />
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </motion.div>
+                    ) : null}
                   </div>
+                  <p className="mt-2 min-h-[32px] px-1 text-[11px] leading-4 text-emerald-700">
+                    Select the bank from which the payment was transferred so finance can verify it faster.
+                  </p>
                 </div>
 
                 <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
                   <Label label="UTR / Transaction ID" />
                   <div className="relative">
-                    <Wallet className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                    <Wallet className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-600" />
                     <input value={utrNumber} onChange={(e) => setUtrNumber(e.target.value.toUpperCase())} placeholder="SBINR52012345678" className="h-14 w-full rounded-2xl border border-slate-200 bg-slate-50 pl-11 pr-4 text-[14px] text-slate-700 outline-none transition-colors focus:border-slate-300 focus:bg-white" />
                   </div>
-                  <p className="mt-2 min-h-[32px] px-1 text-[9px] leading-4 text-blue-700">
+                  <p className="mt-2 min-h-[32px] px-1 text-[11px] leading-4 text-blue-700">
                     Accepted examples: 312345678901, HDFC1234567890, SBINR52023012345678.
                   </p>
                 </div>
@@ -459,16 +575,16 @@ export default function ActiveBookingDetails({ onClose, booking, onBookingUpdate
                     </button>
                   </div>
                   <div className="relative">
-                    <CreditCard className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                    <CreditCard className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-600" />
                     <input
                       value={quotationAmount}
                       onChange={(e) => setQuotationAmount(formatAmountInput(e.target.value))}
                       inputMode="numeric"
-                      placeholder="1,25,000"
+                      placeholder="₹ 1,25,000"
                       className="h-14 w-full rounded-2xl border border-slate-200 bg-slate-50 pl-11 pr-4 text-[14px] text-slate-700 outline-none transition-colors focus:border-slate-300 focus:bg-white"
                     />
                   </div>
-                  <p className="mt-2 min-h-[32px] px-1 text-[9px] leading-4 text-blue-700">
+                  <p className="mt-2 min-h-[32px] px-1 text-[11px] leading-4 text-blue-700">
                     Enter whole amount only. Decimals are not allowed; commas will be added automatically.
                   </p>
                 </div>
@@ -478,7 +594,7 @@ export default function ActiveBookingDetails({ onClose, booking, onBookingUpdate
                 <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
                   <Label label="Payment Date" />
                   <div className="relative">
-                    <CalendarDays className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                    <CalendarDays className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-600" />
                     <input type="date" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} className="h-14 w-full rounded-2xl border border-slate-200 bg-slate-50 pl-11 pr-4 text-[14px] text-slate-700 outline-none transition-colors focus:border-slate-300 focus:bg-white" />
                   </div>
                 </div>
@@ -486,7 +602,7 @@ export default function ActiveBookingDetails({ onClose, booking, onBookingUpdate
                 <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
                   <Label label="Remarks" />
                   <div className="relative">
-                    <FileText className="pointer-events-none absolute left-4 top-4 h-4 w-4 text-slate-400" />
+                    <FileText className="pointer-events-none absolute left-4 top-4 h-4 w-4 text-slate-600" />
                     <textarea value={remarks} onChange={(e) => setRemarks(e.target.value)} rows={3} placeholder="Add a quick note for finance if needed" className="w-full rounded-2xl border border-slate-200 bg-slate-50 pl-11 pr-4 py-3 text-[14px] text-slate-700 outline-none transition-colors focus:border-slate-300 focus:bg-white" />
                   </div>
                 </div>
@@ -713,7 +829,22 @@ export default function ActiveBookingDetails({ onClose, booking, onBookingUpdate
         </div>
         </div>
       </motion.section>
-      <CouponBillingModal open={couponModalOpen} onClose={() => setCouponModalOpen(false)} />
+      <CouponBillingModal
+        open={couponModalOpen}
+        onClose={() => setCouponModalOpen(false)}
+        invoiceId={invoiceId}
+        subtotalAmount={Number(booking?.totalAmount || 0)}
+        currency={currency}
+        existingCouponApplication={booking?.paymentSubmission?.couponApplication || null}
+        onApplyCoupon={({ payableAmount, invoice }) => {
+          setQuotationAmount(formatAmountInput(String(Math.round(Number(payableAmount || 0)))));
+          if (invoice) {
+            onBookingUpdated?.({ type: "payment", invoice });
+          }
+          setCouponModalOpen(false);
+          notify("success", "Coupon Applied", "Discounted quotation amount has been added to the payment form.");
+        }}
+      />
     </motion.div>
   );
 }

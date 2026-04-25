@@ -58,6 +58,57 @@ const paymentSubmissionSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Auth",
     },
+    couponApplication: {
+      type: new mongoose.Schema(
+        {
+          couponId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Coupon",
+          },
+          code: {
+            type: String,
+            default: "",
+            trim: true,
+          },
+          discountType: {
+            type: String,
+            enum: ["percentage", "flat", ""],
+            default: "",
+          },
+          discountValue: {
+            type: Number,
+            default: 0,
+          },
+          discountLabel: {
+            type: String,
+            default: "",
+            trim: true,
+          },
+          subtotalAmount: {
+            type: Number,
+            default: 0,
+          },
+          discountAmount: {
+            type: Number,
+            default: 0,
+          },
+          payableAmount: {
+            type: Number,
+            default: 0,
+          },
+          appliedAt: {
+            type: Date,
+            default: null,
+          },
+          appliedBy: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Auth",
+          },
+        },
+        { _id: false },
+      ),
+      default: null,
+    },
   },
   { _id: false },
 );

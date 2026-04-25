@@ -1,360 +1,328 @@
-import { FileQuestionMark, CircleCheckBig, Wallet, ArrowUpRight, Bell, X, CheckCircle2, AlertCircle, Info, Clock, Gift } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
+import {
+  FileQuestionMark,
+  CircleCheckBig,
+  Wallet,
+  ArrowUpRight,
+  Clock,
+  Loader2,
+} from "lucide-react";
+import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import API from "../../utils/Api.js";
-import ExclusiveOfferModal from "../../modal/ExclusiveOfferModal.jsx";
 
-/* ===== Animations ===== */
 const containerVariant = {
   hidden: { opacity: 0 },
-  visible: { opacity: 1, transition: { staggerChildren: 0.15 } },
+  visible: { opacity: 1, transition: { staggerChildren: 0.12 } },
 };
+
 const cardVariant = {
-  hidden: { opacity: 0, y: 20 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: "easeOut" } },
+  hidden: { opacity: 0, y: 16 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.32, ease: "easeOut" } },
 };
 
-/* ===== Notification Data ===== */
-// const NOTIFICATIONS = [
-//   { id: 1, type: "success", title: "Booking Confirmed", message: "Maldives package for Priya Singh is confirmed.", time: "Just now" },
-//   { id: 2, type: "info", title: "New Query Received", message: "Europe Trip (12 Pax) from Corporate Tech Ltd.", time: "2 min ago" },
-//   { id: 3, type: "warning", title: "Quote Expiring Soon", message: "Bali package quote expires in 2 hours.", time: "10 min ago" },
-//   { id: 4, type: "success", title: "Commission Credited", message: "₹3,200 added to your wallet.", time: "1 hr ago" },
-//   { id: 5, type: "info", title: "Document Uploaded", message: "Passport for Rahul Sharma verified.", time: "3 hr ago" },
-// ];
-
-const notifConfig = {
-  success: { icon: CheckCircle2, color: "text-green-600", bg: "bg-green-50", border: "border-green-100", dot: "bg-green-500", bar: "bg-green-500" },
-  info:    { icon: Info,          color: "text-blue-600",  bg: "bg-blue-50",  border: "border-blue-100",  dot: "bg-blue-500",  bar: "bg-blue-500"  },
-  warning: { icon: AlertCircle,   color: "text-yellow-600",bg: "bg-yellow-50",border: "border-yellow-100",dot: "bg-yellow-500",bar: "bg-yellow-400"},
+const activityToneClasses = {
+  success: "bg-green-100 text-green-700",
+  warning: "bg-amber-100 text-amber-700",
+  info: "bg-blue-100 text-blue-700",
 };
+
+const emptyDashboard = {
+  summary: {
+    totalQueries: 0,
+    activeBookings: 0,
+    activeBookingsTouchedToday: 0,
+    walletBalance: 0,
+    pendingCommissions: 0,
+    totalEarnings: 0,
+    currency: "INR",
+  },
+  trends: {
+    queries: {
+      change: 0,
+      direction: "flat",
+    },
+  },
+  pipeline: [],
+  recentActivity: [],
+};
+
+const formatCurrency = (value, currency = "INR") => {
+  const amount = Math.round(Number(value || 0)).toLocaleString("en-IN");
+  return currency === "INR" ? `₹ ${amount}` : `${currency} ${amount}`;
+};
+
+const formatNumber = (value) => Number(value || 0).toLocaleString("en-IN");
 
 const getTimeAgo = (date) => {
+  if (!date) return "Just now";
   const now = new Date();
   const created = new Date(date);
   const diffInMinutes = Math.floor((now - created) / 60000);
-
   if (diffInMinutes < 1) return "Just now";
   if (diffInMinutes < 60) return `${diffInMinutes} min ago`;
   if (diffInMinutes < 1440) return `${Math.floor(diffInMinutes / 60)} hr ago`;
   return `${Math.floor(diffInMinutes / 1440)} day ago`;
 };
 
+const getTrendCopy = (trend = {}) => {
+  const change = Math.abs(Number(trend?.change || 0));
+  if (trend?.direction === "up") return `+${change}% from last month`;
+  if (trend?.direction === "down") return `-${change}% from last month`;
+  return "No change vs last month";
+};
 
-/* ===== Notification Panel ===== */
-const NotificationPanel = ({
-  notifications,
-  onDismiss,
-  onClose,
-  onClearAll,
-  loadingNotifications,
-  onOpenNotification,
-}) => (
-  <motion.div
-    initial={{ opacity: 0, y: -8, scale: 0.96 }}
-    animate={{ opacity: 1, y: 0, scale: 1 }}
-    exit={{ opacity: 0, y: -8, scale: 0.96 }}
-    transition={{ duration: 0.2, ease: "easeOut" }}
-    className="absolute right-0 top-12 z-50 w-[min(92vw,20rem)] overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-2xl sm:w-80"
-  >
-    {/* Header */}
-    <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
-      <div className="flex items-center gap-2">
-        <Bell className="w-4 h-4 text-gray-700" />
-        <span className="font-semibold text-sm text-gray-900">Notifications</span>
-        {notifications.length > 0 && (
-          <span className="bg-blue-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
-            {notifications.length}
-          </span>
-        )}
-      </div>
-      <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors">
-        <X className="w-4 h-4" />
-      </button>
-    </div>
+const getTrendColor = (direction = "flat") => {
+  if (direction === "up") return "text-green-600";
+  if (direction === "down") return "text-rose-600";
+  return "text-gray-500";
+};
 
-   {/* List */}
-<div className="max-h-96 overflow-y-auto divide-y divide-gray-50">
-  <AnimatePresence initial={false}>
-    {loadingNotifications ? (
-      <div className="flex flex-col items-center justify-center py-10 text-gray-400">
-        <p className="text-xs">Loading notifications...</p>
-      </div>
-    ) : notifications.length === 0 ? (
-      <div className="flex flex-col items-center justify-center py-10 text-gray-400">
-        <Bell className="w-8 h-8 mb-2 opacity-30" />
-        <p className="text-xs">No notifications</p>
-      </div>
-    ) : (
-      notifications.map((notif) => {
-        const cfg = notifConfig[notif.type];
-        const Icon = cfg.icon;
-        return (
-          <motion.div
-            key={notif._id}
-            layout
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 40, transition: { duration: 0.2 } }}
-            className="flex items-start gap-3 px-4 py-3 hover:bg-gray-50 transition-colors group"
-          >
-            <button
-              type="button"
-              onClick={() => onOpenNotification?.(notif)}
-              className="flex min-w-0 flex-1 items-start gap-3 text-left"
-            >
-              <div className={`mt-1 w-1.5 h-1.5 rounded-full flex-shrink-0 ${cfg.dot}`} />
-              <div className={`p-1.5 rounded-lg ${cfg.bg} flex-shrink-0`}>
-                <Icon className={`w-3.5 h-3.5 ${cfg.color}`} />
-              </div>
-
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-semibold text-gray-900">{notif.title}</p>
-                <p className="text-[11px] text-gray-500 mt-0.5 leading-relaxed">{notif.message}</p>
-                <div className="flex items-center gap-1 mt-1">
-                  <Clock className="w-2.5 h-2.5 text-gray-400" />
-                  <span className="text-[10px] text-gray-400">{getTimeAgo(notif.createdAt)}</span>
-                </div>
-              </div>
-            </button>
-
-            <button
-             onClick={(event) => {
-              event.stopPropagation();
-              onDismiss(notif._id);
-             }}
-              className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-300 hover:text-gray-500 flex-shrink-0 mt-0.5"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          </motion.div>
-        );
-      })
-    )}
-  </AnimatePresence>
-</div>
-
-    {/* Footer */}
-    {notifications.length > 0 && (
-      <div className="px-4 py-2.5 border-t border-gray-100">
-        <button
-          onClick={onClearAll}
-          className="text-[11px] text-blue-600 hover:text-blue-800 font-medium transition-colors"
-        >
-          Clear all
-        </button>
-      </div>
-    )}
-  </motion.div>
+const AgentHeaderArtwork = () => (
+  <div className="relative flex h-12 w-12 items-center justify-center overflow-hidden rounded-2xl border border-sky-100 bg-[radial-gradient(circle_at_top,_#dbeafe,_#bfdbfe_55%,_#93c5fd)] shadow-[0_10px_24px_rgba(59,130,246,0.18)]">
+    <svg viewBox="0 0 48 48" className="h-11 w-11" aria-hidden="true">
+      <defs>
+        <linearGradient id="agent-orbit" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#1d4ed8" />
+          <stop offset="100%" stopColor="#0f766e" />
+        </linearGradient>
+      </defs>
+      <circle cx="24" cy="24" r="15.5" fill="#eff6ff" stroke="url(#agent-orbit)" strokeWidth="1.6" />
+      <circle cx="24" cy="20" r="5.2" fill="#2563eb" />
+      <path d="M15.6 33.2c1.9-4.4 5.3-6.8 8.4-6.8s6.5 2.4 8.4 6.8" fill="#0f766e" />
+      <path d="M12.5 17.5a16.5 16.5 0 0 1 6.3-6.1" fill="none" stroke="#60a5fa" strokeLinecap="round" strokeWidth="1.8" />
+      <path d="M35.5 30.5a16.5 16.5 0 0 1-6.3 6.1" fill="none" stroke="#38bdf8" strokeLinecap="round" strokeWidth="1.8" />
+      <circle cx="13.5" cy="16.7" r="2.1" fill="#f59e0b" />
+      <circle cx="34.7" cy="31.6" r="1.8" fill="#14b8a6" />
+    </svg>
+    <div className="absolute inset-x-2 bottom-0 h-3 rounded-full bg-white/25 blur-sm" />
+  </div>
 );
 
-/* ===== Main Component ===== */
 const AgentDashboard = () => {
-const navigate = useNavigate();
+  const navigate = useNavigate();
 
-const [notifications, setNotifications] = useState([]);
-const [open, setOpen] = useState(false);
-const [offerOpen, setOfferOpen] = useState(false);
-const [loadingNotifications, setLoadingNotifications] = useState(false);
+  const [dashboard, setDashboard] = useState(emptyDashboard);
+  const [loadingDashboard, setLoadingDashboard] = useState(true);
+  const [dashboardError, setDashboardError] = useState("");
 
+  useEffect(() => {
+    const fetchDashboardData = async () => {
+      try {
+        setLoadingDashboard(true);
+        setDashboardError("");
+        const { data: dashboardData } = await API.get("/agent/dashboard");
 
-useEffect(() => {
-  const fetchNotifications = async () => {
-    try {
-      setLoadingNotifications(true);
-      const { data } = await API.get("/agent/notifications");
-      setNotifications(data.notifications || []);
-    } catch (error) {
-      console.error("Failed to fetch notifications", error);
-    } finally {
-      setLoadingNotifications(false);
-    }
-  };
+        setDashboard({
+          summary: {
+            totalQueries: Number(dashboardData?.summary?.totalQueries || 0),
+            activeBookings: Number(dashboardData?.summary?.activeBookings || 0),
+            activeBookingsTouchedToday: Number(dashboardData?.summary?.activeBookingsTouchedToday || 0),
+            walletBalance: Number(dashboardData?.summary?.walletBalance || 0),
+            pendingCommissions: Number(dashboardData?.summary?.pendingCommissions || 0),
+            totalEarnings: Number(dashboardData?.summary?.totalEarnings || 0),
+            currency: dashboardData?.summary?.currency || "INR",
+          },
+          trends: {
+            queries: {
+              change: Number(dashboardData?.trends?.queries?.change || 0),
+              direction: dashboardData?.trends?.queries?.direction || "flat",
+            },
+          },
+          pipeline: Array.isArray(dashboardData?.pipeline) ? dashboardData.pipeline : [],
+          recentActivity: Array.isArray(dashboardData?.recentActivity) ? dashboardData.recentActivity : [],
+        });
+      } catch (error) {
+        console.error("Failed to fetch dashboard data", error);
+        setDashboardError(error?.response?.data?.message || "Unable to load dashboard right now.");
+      } finally {
+        setLoadingDashboard(false);
+      }
+    };
 
-  fetchNotifications();
-}, []);
+    fetchDashboardData();
+  }, []);
 
+  const queryTrend = dashboard.trends.queries || { change: 0, direction: "flat" };
 
-
-  const dismiss = async (id) => {
-  try {
-    await API.delete(`/agent/notifications/${id}`);
-    setNotifications((prev) => prev.filter((n) => n._id !== id));
-  } catch (error) {
-    console.error("Failed to delete notification", error);
-  }
-};
-
-
-const clearAll = async () => {
-  try {
-    await API.patch("/agent/notifications/read-all");
-    setNotifications([]);
-  } catch (error) {
-    console.error("Failed to clear notifications", error);
-  }
-};
-
-const unreadCount = notifications.filter((n) => !n.isRead).length;
-
-const handleOpenNotification = (notification) => {
-  if (notification?.link) {
-    setOpen(false);
-    navigate(notification.link, {
-      state: notification?.meta ? { notificationMeta: notification.meta } : undefined,
-    });
-  }
-};
-
+  const stats = [
+    {
+      key: "queries",
+      label: "Total Queries",
+      value: formatNumber(dashboard.summary.totalQueries),
+      helper: getTrendCopy(queryTrend),
+      helperClassName: getTrendColor(queryTrend.direction),
+      icon: FileQuestionMark,
+      iconWrapClass: "bg-blue-100 text-blue-600",
+    },
+    {
+      key: "bookings",
+      label: "Active Bookings",
+      value: formatNumber(dashboard.summary.activeBookings),
+      helper: `+${formatNumber(dashboard.summary.activeBookingsTouchedToday)} updated today`,
+      helperClassName:
+        dashboard.summary.activeBookingsTouchedToday > 0 ? "text-green-600" : "text-gray-500",
+      icon: CircleCheckBig,
+      iconWrapClass: "bg-green-100 text-green-600",
+    },
+    {
+      key: "wallet",
+      label: "Wallet Balance",
+      value: formatCurrency(dashboard.summary.walletBalance, dashboard.summary.currency),
+      helper: `Pending commission: ${formatCurrency(
+        dashboard.summary.pendingCommissions,
+        dashboard.summary.currency,
+      )}`,
+      helperClassName: "text-gray-500",
+      icon: Wallet,
+      iconWrapClass: "bg-amber-100 text-amber-600",
+    },
+  ];
 
   return (
     <motion.section
       variants={containerVariant}
       initial="hidden"
       animate="visible"
-      className="space-y-3 p-"
+      className="space-y-5 p-  min-h-screen"
     >
-      {/*============================ PAGE TITLE + BELL ======================================== */}
-      <motion.header variants={cardVariant} className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      {/* ── Header ── */}
+      <motion.header
+        variants={cardVariant}
+        className="flex flex-col gap-3"
+      >
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-          <p className="text-xs text-gray-500">Overview of your travel agency performance.</p>
+          <div className="flex items-center gap-3">
+            <AgentHeaderArtwork />
+            <h1 className="text-[1.5rem] font-bold leading-tight text-gray-900">Agent Dashboard</h1>
+          </div>
+          <p className="mt-0.5 text-sm text-gray-500">Overview of your travel agency performance.</p>
         </div>
-
-        {/*=================================== Notification Bell Icon =========================================*/}
-        <div className="relative flex items-center gap-2">
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            type="button"
-            aria-label="Offers"
-            title="Offers"
-            onClick={() => setOfferOpen(true)}
-            className="relative bg-white border border-gray-200 shadow-sm rounded-full p-2.5 flex items-center justify-center"
-          >
-            <Gift className="w-4 h-4 text-gray-600" />
-          </motion.button>
-
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            onClick={() => setOpen((v) => !v)}
-            className="relative bg-white border border-gray-200 shadow-sm rounded-full p-2.5 flex items-center justify-center"
-          >
-            <Bell className="w-4 h-4 text-gray-600" />
-           {unreadCount > 0 && (
-           <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-bold w-4 h-4 rounded-full flex items-center justify-center">
-           {unreadCount}
-          </span>
-           )}
-          </motion.button>
-          <AnimatePresence>
-          {open && (
-  <NotificationPanel
-    notifications={notifications}
-    onDismiss={dismiss}
-    onClose={() => setOpen(false)}
-    onClearAll={clearAll}
-    loadingNotifications={loadingNotifications}
-    onOpenNotification={handleOpenNotification}
-  />
-)}
-          </AnimatePresence>
-        </div>
-
       </motion.header>
 
-      {/* STATS CARDS */}
-      <motion.section variants={containerVariant} className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <motion.article variants={cardVariant} whileHover={{ scale: 1.02 }} className="bg-white p-6 rounded-xl shadow-sm flex justify-between items-center">
-          <div>
-            <p className="text-sm text-gray-500">Total Queries</p>
-            <h2 className="text-xl font-semibold">1,284</h2>
-            <p className="text-xs text-green-600 mt-1">+12% from last month</p>
-          </div>
-          <div className="p-2 rounded-full bg-blue-100">
-            <FileQuestionMark className="text-blue-600 w-4 h-4" />
-          </div>
-        </motion.article>
+      {/* ── Error banner ── */}
+      {dashboardError && (
+        <motion.div
+          variants={cardVariant}
+          className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700"
+        >
+          {dashboardError}
+        </motion.div>
+      )}
 
-        <motion.article variants={cardVariant} whileHover={{ scale: 1.02 }} className="bg-white p-6 rounded-xl shadow-sm flex justify-between items-center">
-          <div>
-            <p className="text-sm text-gray-500">Active Bookings</p>
-            <h2 className="text-xl font-semibold">42</h2>
-            <p className="text-xs text-green-600 mt-1">+4 new today</p>
-          </div>
-          <div className="p-2 rounded-full bg-green-100">
-            <CircleCheckBig className="text-green-600 w-4 h-4" />
-          </div>
-        </motion.article>
-
-        <motion.article variants={cardVariant} whileHover={{ scale: 1.02 }} className="bg-white p-6 rounded-xl shadow-sm flex justify-between items-center">
-          <div>
-            <p className="text-sm text-gray-500">Wallet Balance</p>
-            <h2 className="text-xl font-semibold">₹ 48,200</h2>
-            <p className="text-xs text-gray-500 mt-1">Commission pending: ₹12k</p>
-          </div>
-          <div className="p-2 rounded-full bg-yellow-100">
-            <Wallet className="text-yellow-600 w-4 h-4" />
-          </div>
-        </motion.article>
+      {/* ── Stat cards ── */}
+      <motion.section variants={containerVariant} className="grid grid-cols-1 gap-2.5 md:grid-cols-3">
+        {stats.map((card) => {
+          const Icon = card.icon;
+          return (
+            <motion.article
+              key={card.key}
+              variants={cardVariant}
+              whileHover={{ y: -2 }}
+              className="rounded-[22px] border border-gray-100 bg-white p-4 shadow-sm"
+            >
+              <div className="flex items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="text-[0.9rem] text-gray-500">{card.label}</p>
+                  <h2 className="mt-1.5 text-[1.5rem] font-semibold leading-tight text-gray-900">
+                    {loadingDashboard ? "..." : card.value}
+                  </h2>
+                  <p className={`mt-2.5 text-[0.78rem] ${card.helperClassName}`}>
+                    {loadingDashboard ? "Loading..." : card.helper}
+                  </p>
+                </div>
+                <div
+                  className={`flex h-[40px] w-[40px] flex-shrink-0 items-center justify-center rounded-full ${card.iconWrapClass}`}
+                >
+                  <Icon className="h-[20px] w-[20px]" />
+                </div>
+              </div>
+            </motion.article>
+          );
+        })}
       </motion.section>
 
-      {/* LOWER SECTION */}
-      <motion.section variants={containerVariant} className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <motion.article variants={cardVariant} className="lg:col-span-2 bg-white p-6 rounded-xl shadow-sm">
-          <h3 className="font-medium text-xl mb-4">Recent Activity</h3>
-          <ul className="space-y-4 text-xs">
-            <li className="flex justify-between items-center">
-              <div>
-                <p className="font-medium">Quote Sent for Bali Package</p>
-                <p className="text-xs text-gray-500">Rahul Sharma · 2 hours ago</p>
-              </div>
-              <span className="px-3 py-1 text-xs rounded-full bg-yellow-100 text-yellow-700">Pending</span>
-            </li>
-            <li className="flex justify-between items-center">
-              <div>
-                <p className="font-medium">Booking Confirmed: Maldives</p>
-                <p className="text-xs text-gray-500">Priya Singh · 5 hours ago</p>
-              </div>
-              <span className="px-3 py-1 text-xs rounded-full bg-green-100 text-green-700">Confirmed</span>
-            </li>
-            <li className="flex justify-between items-center">
-              <div>
-                <p className="font-medium">New Query: Europe Trip (12 Pax)</p>
-                <p className="text-xs text-gray-500">Corporate Tech Ltd · 1 day ago</p>
-              </div>
-              <span className="px-3 py-1 text-xs rounded-full bg-blue-100 text-blue-700">New</span>
-            </li>
-            <li className="flex justify-between items-center">
-              <div>
-                <p className="font-medium">Commission Received</p>
-                <p className="text-xs text-gray-500">System · 1 day ago</p>
-              </div>
-              <span className="px-3 py-1 text-xs rounded-full bg-green-100 text-green-700">Confirmed</span>
-            </li>
-          </ul>
+      {/* ── Bottom grid ── */}
+      <motion.section variants={containerVariant} className="grid grid-cols-1 gap-2.5 lg:grid-cols-3">
+
+        {/* Recent Activity */}
+        <motion.article
+          variants={cardVariant}
+          className="rounded-[22px] border border-gray-100 bg-white p-5 shadow-sm lg:col-span-2"
+        >
+          <h3 className="mb-2 text-[1.1rem] font-semibold text-gray-900">Recent Activity</h3>
+
+          {loadingDashboard ? (
+            <div className="flex min-h-56 items-center justify-center text-gray-400">
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Loading activity...
+            </div>
+          ) : dashboard.recentActivity.length === 0 ? (
+            <div className="flex min-h-56 items-center justify-center rounded-2xl border border-dashed border-gray-300 bg-gray-50 text-sm text-gray-400">
+              No recent activity yet.
+            </div>
+          ) : (
+            <ul className="divide-y divide-gray-200">
+              {dashboard.recentActivity.map((item) => (
+                <li key={item.id} className="flex items-center justify-between gap-4 py-[14px]">
+                  <button
+                    type="button"
+                    onClick={() => item.link && navigate(item.link)}
+                    className="min-w-0 flex-1 text-left"
+                  >
+                    <p className="truncate text-[0.85rem] font-semibold text-gray-900">{item.title}</p>
+                    <p className="mt-0.5 flex items-center gap-1 text-[0.70rem] text-gray-500">
+                      <Clock className="h-3.5 w-3.5 flex-shrink-0" />
+                      {item.subtitle} · {getTimeAgo(item.date)}
+                    </p>
+                  </button>
+                  <span
+                    className={`inline-flex flex-shrink-0 items-center rounded-full px-4 py-1.5 text-[0.70rem] font-medium ${
+                      activityToneClasses[item.tone] || activityToneClasses.info
+                    }`}
+                  >
+                    {item.status}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
         </motion.article>
 
-        <motion.article variants={cardVariant} className="bg-white p-6 rounded-xl shadow-sm">
-          <h3 className="font-medium text-xl mb-4">Quick Actions</h3>
+        {/* Quick Actions */}
+        <motion.article
+          variants={cardVariant}
+          className="rounded-[22px] border border-gray-100 bg-white p-5 shadow-sm"
+        >
+          <h3 className="mb-5 text-[1.1rem] font-semibold text-gray-900">Quick Actions</h3>
+
           <div className="space-y-3">
-            {["Create New Query", "Upload Passport", "Check Wallet History"].map((action, i) => (
-              <motion.button key={i} whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }} className="w-full flex justify-between items-center px-4 py-2 border rounded-xl border-gray-300 text-xs hover:bg-gray-100">
-                {action}
-                <ArrowUpRight className="w-4 h-4 stroke-[1.8] text-gray-500" />
+            {[
+              { label: "Create New Query", path: "/agent/queries" },
+              { label: "Upload Passport", path: "/agent/documents" },
+              { label: "Check Wallet History", path: "/agent/finance" },
+            ].map((action) => (
+              <motion.button
+                key={action.label}
+                whileHover={{ scale: 1.01 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => navigate(action.path)}
+                className="flex w-full items-center justify-between rounded-2xl border border-gray-300 px-4 py-3 text-left transition-colors hover:bg-gray-50"
+              >
+                <span className="text-[0.70rem] font-medium text-gray-900">{action.label}</span>
+                <ArrowUpRight className="h-[15px] w-[15px] flex-shrink-0 text-gray-500" />
               </motion.button>
             ))}
           </div>
-          <div className="mt-6 text-xs text-gray-500">
-            <p className="font-medium text-black mb-1">Pro Tip</p>
-            <p className="font-normal mb-3 text-[8px]">Complete your KYC verification to unlock higher withdrawal limits and premium support.</p>
+
+          <div className="mt-5 rounded-2xl bg-slate-50 p-3">
+            <p className="text-[0.9rem] font-semibold text-gray-900">Pro Tip</p>
+            <p className="mt-1.5 text-[0.60rem] leading-[1.55] text-gray-500">
+              Complete your KYC verification to unlock higher withdrawal limits and premium support.
+            </p>
           </div>
         </motion.article>
       </motion.section>
-
-      <ExclusiveOfferModal open={offerOpen} onClose={() => setOfferOpen(false)} />
     </motion.section>
   );
 };

@@ -7,6 +7,7 @@ import {
   createQuotation,
   deleteQuotationService,
   generateInvoice,
+  getOpsDashboard,
   generateVoucher,
   getAllQueries,
   getOrderAcceptanceQueries,
@@ -38,6 +39,7 @@ import { getAllServices } from "../controllers/dmcController.js";
 
 const router = express.Router();
 
+router.get("/dashboard", isAuthenticated, getOpsDashboard);
 router.get("/queries", isAuthenticated, getAllQueries);
 router.put("/queries/:id/status", isAuthenticated, updateQueryStatus);
 router.patch("/queries/accept/:id", isAuthenticated, acceptQueryByOps);

@@ -12,6 +12,7 @@ import {
   confirmQuotation,
   requestQuotationRevision,
   getMyInvoices,
+  applyCouponToInvoice,
   updatePaymentStatus,
   getQuotationsByQuery,
   acceptQuotationByAgent,
@@ -19,6 +20,7 @@ import {
   markAllNotificationsRead,
   deleteNotification,
 } from "../controllers/agentController.js";
+import { getAgentCoupons, markAgentCouponNotificationsRead } from "../controllers/couponController.js";
  
 const routers = express.Router();
 
@@ -30,6 +32,8 @@ routers.get("/dashboard",isAuthenticated, getAgentDashboard);
 routers.get("/notifications", isAuthenticated, getMyNotifications);
 routers.patch("/notifications/read-all", isAuthenticated, markAllNotificationsRead);
 routers.delete("/notifications/:id", isAuthenticated, deleteNotification);
+routers.get("/coupons", isAuthenticated, getAgentCoupons);
+routers.patch("/coupons/read", isAuthenticated, markAgentCouponNotificationsRead);
 
 
 /* 🔹 TRAVEL QUERIES */
@@ -49,6 +53,7 @@ routers.put("/quotations/:id/confirm", isAuthenticated, confirmQuotation);
 
 /* 🔹 INVOICES & PAYMENTS */
 routers.get("/invoices", isAuthenticated, getMyInvoices);
+routers.post("/invoices/:id/apply-coupon", isAuthenticated, applyCouponToInvoice);
 routers.put("/invoices/:id/payment-status", isAuthenticated, upload.single("paymentReceipt"), updatePaymentStatus);
 
 export default routers;

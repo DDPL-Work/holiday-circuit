@@ -20,6 +20,7 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { RotatingLines } from "react-loader-spinner";
 import toast from "react-hot-toast";
 import { AnimatePresence, motion } from "framer-motion";
@@ -189,6 +190,8 @@ const formatDocumentSize = (value) => {
 };
 
 export default function FulfillmentConfirmation() {
+  const location = useLocation();
+  const navigate = useNavigate();
   const [confirmedQueries, setConfirmedQueries] = useState([]);
   const [selectedQueryId, setSelectedQueryId] = useState("");
   const [selectedQuery, setSelectedQuery] = useState(null);
@@ -403,6 +406,20 @@ export default function FulfillmentConfirmation() {
 
     fetchConfirmedQueries();
   }, []);
+
+  useEffect(() => {
+    const notifiedQueryCode = String(location.state?.notificationMeta?.queryId || "").trim();
+    if (!notifiedQueryCode || !confirmedQueries.length) return;
+
+    const matchingQuery = confirmedQueries.find(
+      (query) => String(query?.queryId || "").trim() === notifiedQueryCode,
+    );
+
+    if (!matchingQuery) return;
+
+    hydrateSelectedQuery(matchingQuery);
+    navigate(location.pathname, { replace: true, state: {} });
+  }, [confirmedQueries, location.pathname, location.state, navigate]);
 
   const handleSubmit = async (finalStatus) => {
     try {

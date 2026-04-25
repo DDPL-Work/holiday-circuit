@@ -41,16 +41,61 @@ const getAmountColor = (direction = "credit", status = "") => {
   return direction === "debit" ? "text-red-600" : "text-green-600";
 };
 
-const getSignedAmount = (amount = 0, direction = "credit", currency = "INR") =>
-  `${direction === "debit" ? "-" : "+"} ${formatCurrency(amount, currency)}`;
+// FIX: Use a non-breaking minus sign (‒) + non-breaking space so the
+// sign and number never wrap onto separate lines.
+const getSignedAmount = (amount = 0, direction = "credit", currency = "INR") => {
+  const sign = direction === "debit" ? "−\u00A0" : "+\u00A0"; // − and non-breaking space
+  return `${sign}${formatCurrency(amount, currency)}`;
+};
+
+const getTransactionMetaItems = (txn = {}, currency = "INR") => {
+  const markupAmount = Number(txn?.meta?.markupAmount || 0);
+  const couponDiscountAmount = Number(txn?.meta?.couponDiscountAmount || 0);
+  const subtotalAmount = Number(txn?.meta?.subtotalAmount || 0);
+  const payableAmount = Number(txn?.meta?.payableAmount || 0);
+  const couponCode = String(txn?.meta?.couponCode || "").trim();
+
+  if (txn?.transactionType === "payment") {
+    const items = [];
+    if (subtotalAmount > 0) {
+      items.push({ label: "Subtotal", value: formatCurrency(subtotalAmount, currency) });
+    }
+    items.push({ label: "Markup", value: formatCurrency(markupAmount, currency) });
+    items.push({
+      label: "Coupon Discount",
+      value: formatCurrency(couponDiscountAmount, currency),
+    });
+    if (payableAmount > 0) {
+      items.push({ label: "Final Payable", value: formatCurrency(payableAmount, currency) });
+    }
+    if (couponCode) {
+      items.push({ label: "Coupon", value: couponCode, accent: true });
+    }
+    return items;
+  }
+
+  if (txn?.transactionType === "commission") {
+    return [
+      {
+        label: "Markup Earned",
+        value: formatCurrency(markupAmount, currency),
+      },
+    ];
+  }
+
+  return [];
+};
 
 const buildStatementCsv = (transactions = [], currency = "INR") => {
   const rows = [
-    ["Transaction ID", "Date", "Description", "Amount", "Status"],
+    ["Transaction ID", "Date", "Description", "Details", "Amount", "Status"],
     ...transactions.map((txn) => [
       txn.id || "",
       formatDate(txn.date),
       txn.description || "",
+      getTransactionMetaItems(txn, currency)
+        .map((item) => `${item.label} ${item.value}`)
+        .join(" | "),
       getSignedAmount(txn.amount, txn.direction, currency),
       txn.status || "",
     ]),
@@ -66,6 +111,22 @@ const buildStatementCsv = (transactions = [], currency = "INR") => {
 };
 
 const Finance = () => {
+  const [expandedRows, setExpandedRows] = useState({});
+
+  const toggleRow = (id) =>
+    setExpandedRows((prev) => ({ ...prev, [id]: !prev[id] }));
+
+  // Close all dropdowns when clicking outside
+  useEffect(() => {
+    const handler = (e) => {
+      if (!e.target.closest("[data-txn-dropdown]")) {
+        setExpandedRows({});
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
   const [overview, setOverview] = useState({
     currency: "INR",
     summary: {
@@ -132,7 +193,7 @@ const Finance = () => {
   };
 
   return (
-    <motion.section className="space-y-3 " variants={container} initial="hidden" animate="visible">
+    <motion.section className="space-y-3" variants={container} initial="hidden" animate="visible">
       <motion.header variants={item} className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Finance</h1>
@@ -196,14 +257,20 @@ const Finance = () => {
 
       <motion.div variants={item} className="bg-white shadow-sm rounded-xl p-6">
         <h2 className="text-lg font-semibold mb-4">Transaction History</h2>
-        <div className="overflow-x-hidden">
-          <table className="w-full text-xs">
+        <table className="w-full text-xs table-auto">
+            <colgroup>
+              <col style={{ width: "190px" }} />
+              <col style={{ width: "170px" }} />
+              <col />
+              <col style={{ width: "170px" }} />
+              <col style={{ width: "130px" }} />
+            </colgroup>
             <thead className="text-gray-500 border-b border-b-gray-200">
               <tr>
                 <th className="text-left py-3">Transaction ID</th>
                 <th className="text-left py-3">Date</th>
                 <th className="text-left py-3">Description</th>
-                <th className="text-right py-3">Amount</th>
+                <th className="text-right py-3 whitespace-nowrap">Amount</th>
                 <th className="text-right py-3">Status</th>
               </tr>
             </thead>
@@ -230,14 +297,74 @@ const Finance = () => {
               ) : (
                 paginatedTransactions.map((txn) => (
                   <tr key={`${txn.id}-${txn.description}`} className="transition-colors hover:bg-slate-50">
-                    <td className="py-4 text-blue-600">{txn.id}</td>
-                    <td className="py-4">{formatDate(txn.date)}</td>
-                    <td className="py-4">{txn.description}</td>
-                    <td className={`py-4 text-right ${getAmountColor(txn.direction, txn.status)}`}>
+                    <td className="py-4 text-blue-600 align-top">{txn.id}</td>
+                    <td className="py-4 align-top whitespace-nowrap">{formatDate(txn.date)}</td>
+                    <td className="py-4 pr-4 align-top">
+                      {(() => {
+                        const metaItems = getTransactionMetaItems(txn, overview.currency);
+                        const isOpen = !!expandedRows[txn.id];
+                        return (
+                          <div className="relative w-full" data-txn-dropdown>
+                            {/* Description row with arrow */}
+                            <div className="inline-flex max-w-full items-center gap-1.5">
+                              <span className="whitespace-nowrap">{txn.description}</span>
+                              {metaItems.length > 0 && (
+                                <button
+                                  onClick={() => toggleRow(txn.id)}
+                                  className="flex items-center justify-center w-5 h-5 rounded-full bg-gray-100 hover:bg-gray-200 transition-colors shrink-0"
+                                >
+                                  <svg
+                                    style={{ transition: "transform 0.2s ease" }}
+                                    className={`w-3 h-3 text-gray-500 ${isOpen ? "rotate-180" : "rotate-0"}`}
+                                    viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
+                                  >
+                                    <polyline points="6 9 12 15 18 9" />
+                                  </svg>
+                                </button>
+                              )}
+                            </div>
+
+                            {/* Floating dropdown — absolutely positioned, won't push rows */}
+                            {metaItems.length > 0 && (
+                              <div
+                                style={{
+                                  position: "absolute",
+                                  top: "calc(100% + 6px)",
+                                  left: 0,
+                                  zIndex: 50,
+                                  minWidth: "240px",
+                                  opacity: isOpen ? 1 : 0,
+                                  transform: isOpen ? "translateY(0)" : "translateY(-6px)",
+                                  pointerEvents: isOpen ? "auto" : "none",
+                                  transition: "opacity 0.2s ease, transform 0.2s ease",
+                                }}
+                                className="bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden"
+                              >
+                                {metaItems.map((mi, idx) => (
+                                  <div
+                                    key={`${txn.id}-${mi.label}`}
+                                    className={`flex items-center justify-between px-3 py-2 text-[11px] ${
+                                      idx !== metaItems.length - 1 ? "border-b border-gray-100" : ""
+                                    } ${mi.accent ? "bg-blue-50 text-blue-600" : "text-gray-600"}`}
+                                  >
+                                    <span className="font-medium">{mi.label}</span>
+                                    <span className={mi.accent ? "font-semibold" : ""}>{mi.value}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
+                    </td>
+
+                    {/* FIX: whitespace-nowrap + align-top so amount stays on one line and aligns with top of row */}
+                    <td className={`py-4 text-right align-top whitespace-nowrap font-medium ${getAmountColor(txn.direction, txn.status)}`}>
                       {getSignedAmount(txn.amount, txn.direction, overview.currency)}
                     </td>
-                    <td className="py-4 text-right">
-                      <span className={`px-3 py-1 rounded-full text-xs ${getStatusColor(txn.status)}`}>
+
+                    <td className="py-4 text-right align-top">
+                      <span className={`inline-block px-3 py-1 rounded-full text-xs whitespace-nowrap ${getStatusColor(txn.status)}`}>
                         {txn.status}
                       </span>
                     </td>
@@ -246,7 +373,6 @@ const Finance = () => {
               )}
             </tbody>
           </table>
-        </div>
         {totalPages > 1 && (
           <div className="mt-4 flex flex-col items-center justify-between gap-4 border-t border-gray-100 bg-gray-50/50 px-2 pt-4 sm:flex-row">
             <span className="text-xs font-medium text-gray-500">

@@ -830,3 +830,84 @@ export const sendEmailFinalInvoice = async (email, invoiceDetails) => {
     rejected: info.rejected,
   };
 };
+
+const buildCouponEmailTemplate = (couponDetails = {}) => {
+  const agentName = escapeHtml(couponDetails.agentName || "Partner");
+  const code = escapeHtml(couponDetails.code || "-");
+  const discount = escapeHtml(couponDetails.discount || "-");
+  const description = escapeHtml(couponDetails.description || "Special savings from Holiday Circuit");
+  const startDate = escapeHtml(couponDetails.startDate ? formatDateLabel(couponDetails.startDate) : "Immediately");
+  const endDate = escapeHtml(couponDetails.endDate ? formatDateLabel(couponDetails.endDate) : "No end date");
+  const usageLimit = couponDetails.usageLimit ? `${couponDetails.usageLimit}` : "Unlimited";
+
+  return `
+    <div style="margin:0;padding:32px;background:#f8fafc;font-family:Arial,sans-serif;color:#0f172a;">
+      <div style="max-width:640px;margin:0 auto;background:#ffffff;border-radius:24px;overflow:hidden;border:1px solid #e2e8f0;">
+        <div style="padding:28px 32px;background:linear-gradient(135deg,#1d4ed8 0%,#2563eb 50%,#60a5fa 100%);color:#ffffff;">
+          <p style="margin:0 0 8px;font-size:12px;letter-spacing:0.14em;text-transform:uppercase;opacity:0.85;">Holiday Circuit</p>
+          <h1 style="margin:0;font-size:28px;line-height:1.2;">Your Coupon Is Ready</h1>
+        </div>
+        <div style="padding:28px 32px;">
+          <p style="margin:0 0 16px;font-size:15px;line-height:1.7;">Hello ${agentName},</p>
+          <p style="margin:0 0 20px;font-size:15px;line-height:1.7;color:#475569;">
+            A discount coupon has been created for your account. You can use the details below while completing your next payment.
+          </p>
+          <div style="border:1px solid #dbeafe;background:#eff6ff;border-radius:20px;padding:18px 20px;margin-bottom:20px;">
+            <p style="margin:0 0 8px;font-size:12px;letter-spacing:0.14em;text-transform:uppercase;color:#2563eb;">Coupon Code</p>
+            <p style="margin:0;font-size:28px;font-weight:700;letter-spacing:0.08em;color:#1e3a8a;">${code}</p>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-bottom:20px;">
+            <div style="border:1px solid #e2e8f0;border-radius:18px;padding:16px;">
+              <p style="margin:0 0 6px;font-size:12px;letter-spacing:0.12em;text-transform:uppercase;color:#94a3b8;">Discount</p>
+              <p style="margin:0;font-size:18px;font-weight:700;color:#0f172a;">${discount}</p>
+            </div>
+            <div style="border:1px solid #e2e8f0;border-radius:18px;padding:16px;">
+              <p style="margin:0 0 6px;font-size:12px;letter-spacing:0.12em;text-transform:uppercase;color:#94a3b8;">Usage Limit</p>
+              <p style="margin:0;font-size:18px;font-weight:700;color:#0f172a;">${escapeHtml(usageLimit)}</p>
+            </div>
+          </div>
+          <div style="border:1px solid #e2e8f0;border-radius:18px;padding:18px 20px;">
+            <p style="margin:0 0 8px;font-size:12px;letter-spacing:0.12em;text-transform:uppercase;color:#94a3b8;">Description</p>
+            <p style="margin:0 0 16px;font-size:14px;line-height:1.7;color:#475569;">${description}</p>
+            <p style="margin:0 0 6px;font-size:14px;color:#0f172a;"><strong>Start Date:</strong> ${startDate}</p>
+            <p style="margin:0;font-size:14px;color:#0f172a;"><strong>End Date:</strong> ${endDate}</p>
+          </div>
+          <p style="margin:20px 0 0;font-size:13px;line-height:1.7;color:#64748b;">
+            If you need help using this coupon, reply to this email and our team will assist you.
+          </p>
+        </div>
+      </div>
+    </div>
+  `;
+};
+
+export const sendCouponEmail = async (email, couponDetails = {}) => {
+  const transporter = createTransporter();
+  const html = buildCouponEmailTemplate(couponDetails);
+  const text = [
+    "Holiday Circuit - Coupon Details",
+    "",
+    `Coupon Code: ${couponDetails.code || "-"}`,
+    `Discount: ${couponDetails.discount || "-"}`,
+    `Description: ${couponDetails.description || "-"}`,
+    `Start Date: ${couponDetails.startDate ? formatDateLabel(couponDetails.startDate) : "Immediately"}`,
+    `End Date: ${couponDetails.endDate ? formatDateLabel(couponDetails.endDate) : "No end date"}`,
+    `Usage Limit: ${couponDetails.usageLimit || "Unlimited"}`,
+  ].join("\n");
+
+  const info = await transporter.sendMail({
+    from: `"Holiday Circuit" <${process.env.EMAIL_USER}>`,
+    to: email,
+    subject: `Coupon Code ${couponDetails.code || ""} from Holiday Circuit`,
+    html,
+    text,
+  });
+
+  return {
+    status: "sent",
+    email,
+    messageId: info.messageId,
+    accepted: info.accepted,
+    rejected: info.rejected,
+  };
+};

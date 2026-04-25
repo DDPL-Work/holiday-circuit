@@ -402,9 +402,10 @@
 
 import {MapPin,Calendar,Users,Clock,CheckCircle,TriangleAlert,Activity,Zap,FileCheck,UserCheck,AlertTriangle,XCircle,ShieldAlert,Sparkles,ChevronDown,ChevronUp,
 } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useSelector } from "react-redux";
 import { motion, AnimatePresence } from "framer-motion";
+import { useLocation, useNavigate } from "react-router-dom";
 import PassToAdminModal from "../../modal/PassToAdminModal";
 import ConfirmQuotationModal from "../../modal/ConfirmQuotationModal";
 import API from "../../utils/Api.js";
@@ -521,6 +522,8 @@ const ActivityStrip = ({ logs = [] }) => {
 
 export default function OrderAcceptance() {
   const currentUser = useSelector((state) => state.auth.user);
+  const location = useLocation();
+  const navigate = useNavigate();
   const currentUserId = String(currentUser?.id || currentUser?._id || "");
   const isAdminView = currentUser?.role === "admin";
   const [openModal, setOpenModal] = useState(false);
@@ -531,6 +534,8 @@ export default function OrderAcceptance() {
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [showAcceptGuardPopup, setShowAcceptGuardPopup] = useState(false);
   const [adminCoordinationVisibility, setAdminCoordinationVisibility] = useState({});
+  const [highlightedOrderId, setHighlightedOrderId] = useState("");
+  const handledNotificationOrderRef = useRef("");
 
 
 
@@ -563,6 +568,38 @@ useEffect(() => {
     }
   }
 }, [orders]);
+
+useEffect(() => {
+  const notificationOrderId = String(location.state?.notificationMeta?.queryId || "").trim();
+  if (!notificationOrderId || !orders.length) return;
+  if (handledNotificationOrderRef.current === notificationOrderId) return;
+
+  const targetOrder = orders.find(
+    (order) =>
+      String(order?._id || "") === notificationOrderId ||
+      String(order?.queryId || "") === notificationOrderId,
+  );
+
+  if (!targetOrder) return;
+
+  handledNotificationOrderRef.current = notificationOrderId;
+  setSelectedOrder(targetOrder);
+  setHighlightedOrderId(String(targetOrder._id || ""));
+
+  window.requestAnimationFrame(() => {
+    document
+      .getElementById(`order-card-${targetOrder._id}`)
+      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+  });
+
+  const clearHighlightTimer = window.setTimeout(() => {
+    setHighlightedOrderId("");
+  }, 2600);
+
+  navigate(location.pathname, { replace: true, state: {} });
+
+  return () => window.clearTimeout(clearHighlightTimer);
+}, [location.pathname, location.state, navigate, orders]);
 
 const handleStartQuotation = async (order) => {
   if (!["Booking_Accepted", "Invoice_Requested", "Revision_Query"].includes(order.opsStatus)) {
@@ -699,12 +736,17 @@ const handleStartQuotation = async (order) => {
 
   return (
             <motion.div
+              id={`order-card-${order._id}`}
               key={order._id}
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               whileHover={{ scale: 1.003 }}
               transition={{ duration: 0.3 }}
-              className="border border-gray-300 rounded-2xl p-5 hover:shadow-md transition"
+              className={`border rounded-2xl p-5 transition hover:shadow-md ${
+                highlightedOrderId === String(order._id)
+                  ? "border-blue-400 bg-blue-50/40 shadow-[0_0_0_4px_rgba(59,130,246,0.12)]"
+                  : "border-gray-300"
+              }`}
             >
               {/* TOP BAR */}
               <div className="flex justify-between items-start mb-4">

@@ -163,8 +163,8 @@ export default function BookingManagementHub() {
       <motion.div
         initial={{ opacity: 0, y: 15 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4 }}
-        className={`bg-white ${selectedBooking ? "blur-lg" : ""}`}
+        transition={{ duration: 0.28 }}
+        className={`bg-white transition-opacity duration-150 ${selectedBooking ? "pointer-events-none opacity-95" : "opacity-100"}`}
       >
         <div className="mb-5">
           <h2 className="text-lg font-bold text-[#0F172A]">Booking Management Hub</h2>
