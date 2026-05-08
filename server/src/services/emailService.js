@@ -1,19 +1,8 @@
-import nodemailer from "nodemailer";
-
-const createTransporter = () =>
-  nodemailer.createTransport({
-    host: process.env.EMAIL_HOST,
-    port: process.env.EMAIL_PORT,
-    secure: false,
-    service: "gmail",
-    auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS,
-    },
-    tls: {
-      rejectUnauthorized: false,
-    },
-  });
+import {
+  createTransporter,
+  MAIL_FROM_ADDRESS,
+  MAIL_REPLY_TO_ADDRESS,
+} from "./resendMailer.js";
 
 const formatCurrency = (value, currency = "INR") =>
   `${currency} ${Math.round(Number(value || 0)).toLocaleString("en-IN")}`;
@@ -47,6 +36,75 @@ const buildServiceMeta = (service = {}) => {
   return details.join(" | ");
 };
 
+const sanitizeQuoteList = (items = []) =>
+  Array.isArray(items)
+    ? items.map((item) => String(item || "").trim()).filter(Boolean)
+    : [];
+
+const buildQuoteListText = (items = []) =>
+  sanitizeQuoteList(items).length
+    ? sanitizeQuoteList(items).map((item, index) => `${index + 1}. ${item}`).join("\n")
+    : "None";
+
+const buildQuoteListHtml = (items = [], emptyLabel = "None provided") => {
+  const normalizedItems = sanitizeQuoteList(items);
+
+  if (!normalizedItems.length) {
+    return `<div style="color:#6b7280; font-size:11px;">${escapeHtml(emptyLabel)}</div>`;
+  }
+
+  return `
+    <ul style="margin:0; padding-left:18px; color:#222; line-height:1.6;">
+      ${normalizedItems.map((item) => `<li style="margin:0 0 6px;">${escapeHtml(item)}</li>`).join("")}
+    </ul>
+  `;
+};
+
+const sanitizeItineraryItems = (items = []) =>
+  Array.isArray(items)
+    ? items
+        .map((item, index) => ({
+          dayNumber: Math.max(1, Number(item?.dayNumber || index + 1)),
+          dayLabel: String(item?.dayLabel || "").trim(),
+          title: String(item?.title || item?.heading || "").trim(),
+          description: String(item?.description || "").trim(),
+        }))
+        .filter((item) => item.title || item.description)
+    : [];
+
+const buildItineraryText = (items = []) => {
+  const normalizedItems = sanitizeItineraryItems(items);
+
+  return normalizedItems.length
+    ? normalizedItems
+        .map((item) => {
+          const heading = [item.dayLabel, item.title].filter(Boolean).join(": ");
+          return [heading, item.description].filter(Boolean).join("\n");
+        })
+        .join("\n\n")
+    : "None";
+};
+
+const buildItineraryHtml = (items = [], emptyLabel = "No itinerary shared.") => {
+  const normalizedItems = sanitizeItineraryItems(items);
+
+  if (!normalizedItems.length) {
+    return `<div style="color:#6b7280; font-size:11px;">${escapeHtml(emptyLabel)}</div>`;
+  }
+
+  return normalizedItems
+    .map((item) => {
+      const heading = [item.dayLabel, item.title].filter(Boolean).join(": ");
+      return `
+        <div style="margin:0 0 10px; border:1px solid #fed7aa; border-radius:12px; background:#fffaf5; padding:10px 12px;">
+          <div style="font-size:11px; font-weight:700; color:#9a3412;">${escapeHtml(heading || `Day ${item.dayNumber}`)}</div>
+          ${item.description ? `<div style="margin-top:4px; color:#374151; font-size:11px; line-height:1.6; white-space:pre-line;">${escapeHtml(item.description)}</div>` : ""}
+        </div>
+      `;
+    })
+    .join("");
+};
+
 const buildAgentClientQuotationText = (quoteDetails = {}) => {
   const servicesText = (quoteDetails.services || [])
     .map((service, index) => {
@@ -74,123 +132,230 @@ const buildAgentClientQuotationText = (quoteDetails = {}) => {
     `Valid Till: ${quoteDetails.validTill || "-"}`,
     `Client Total: ${formatCurrency(quoteDetails.totalAmount, quoteDetails.currency)}`,
     "",
+    "Day Wise Itinerary",
+    buildItineraryText(quoteDetails.dayWiseItinerary),
+    "",
     "Services",
     servicesText || "No service details available.",
+    "",
+    "Inclusions",
+    buildQuoteListText(quoteDetails.inclusions),
+    "",
+    "Exclusions",
+    buildQuoteListText(quoteDetails.exclusions),
+    "",
+    "Additional Notes",
+    buildQuoteListText(quoteDetails.additionalNotes),
   ]
     .filter(Boolean)
     .join("\n");
 };
 
+const numberToWords = (num) => {
+  if (!num || isNaN(num)) return "";
+  const a = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"];
+  const b = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
+  let n = Math.floor(Number(num));
+  if (n === 0) return "Zero";
+  if (n > 999999999) return num.toString();
+  
+  let str = "";
+  const crore = Math.floor(n / 10000000);
+  n -= crore * 10000000;
+  const lakh = Math.floor(n / 100000);
+  n -= lakh * 100000;
+  const thousand = Math.floor(n / 1000);
+  n -= thousand * 1000;
+  const hundred = Math.floor(n / 100);
+  n -= hundred * 100;
+  
+  if (crore > 0) {
+    str += (crore < 20 ? a[crore] : b[Math.floor(crore / 10)] + (crore % 10 !== 0 ? "-" + a[crore % 10] : "")) + " Crore ";
+  }
+  if (lakh > 0) {
+    str += (lakh < 20 ? a[lakh] : b[Math.floor(lakh / 10)] + (lakh % 10 !== 0 ? "-" + a[lakh % 10] : "")) + " Lakh ";
+  }
+  if (thousand > 0) {
+    str += (thousand < 20 ? a[thousand] : b[Math.floor(thousand / 10)] + (thousand % 10 !== 0 ? "-" + a[thousand % 10] : "")) + " Thousand ";
+  }
+  if (hundred > 0) {
+    str += a[hundred] + " Hundred ";
+  }
+  if (n > 0) {
+    if (str !== "") str += "and ";
+    str += (n < 20 ? a[n] : b[Math.floor(n / 10)] + (n % 10 !== 0 ? "-" + a[n % 10] : ""));
+  }
+  return str.trim() + " Only";
+};
+
 const buildAgentClientQuotationTemplate = (quoteDetails = {}) => {
+  const issueDate = formatDateLabel(new Date());
+  const inclusionsHtml = buildQuoteListHtml(quoteDetails.inclusions, "No inclusions shared.");
+  const exclusionsHtml = buildQuoteListHtml(quoteDetails.exclusions, "No exclusions shared.");
+  const additionalNotesHtml = buildQuoteListHtml(quoteDetails.additionalNotes, "No additional notes shared.");
+  const itineraryHtml = buildItineraryHtml(quoteDetails.dayWiseItinerary, "No itinerary shared.");
+  
   const servicesHtml = (quoteDetails.services || [])
-    .map(
-      (service, index) => `
-        <tr>
-          <td style="padding:16px 0 16px 0;border-bottom:1px solid #edf2f7;vertical-align:top;color:#94a3b8;font-size:12px;font-weight:700;">
-            ${String(index + 1).padStart(2, "0")}
-          </td>
-          <td style="padding:16px 14px;border-bottom:1px solid #edf2f7;vertical-align:top;">
-            <div style="font-size:14px;font-weight:700;color:#0f172a;">${escapeHtml(service.title || "Service")}</div>
-            <div style="margin-top:4px;font-size:11px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#2563eb;">${escapeHtml(service.typeLabel || "Travel Service")}</div>
-            <div style="margin-top:6px;font-size:12px;line-height:1.7;color:#64748b;">${escapeHtml(buildServiceMeta(service) || "Configured service")}</div>
-            ${
-              service.description
-                ? `<div style="margin-top:6px;font-size:12px;line-height:1.7;color:#475569;">${escapeHtml(service.description)}</div>`
-                : ""
-            }
-          </td>
-        </tr>
-      `,
-    )
-    .join("");
+    .map((service, index) => {
+      const meta = buildServiceMeta(service);
+      const description = service.description ? `<br/><span style="color:#444; font-size: 10px; margin-top: 4px; display: inline-block;">${escapeHtml(service.description)}</span>` : '';
+      return `
+      <tr>
+        <td valign="top" style="border-bottom: 1px solid #eee; border-right: 1px solid #f9a87f; padding: 10px; color: #000; font-weight: 600;">${index + 1}.</td>
+        <td valign="top" style="border-bottom: 1px solid #eee; border-right: 1px solid #f9a87f; padding: 10px;">
+          <div style="font-weight: bold; margin-bottom: 3px; color: #000;">${escapeHtml(service.title || "Service")} <span style="font-weight: normal; color: #555; font-size: 10px;">(${escapeHtml(service.typeLabel || "Service")})</span></div>
+          <div style="color: #222;">${escapeHtml(meta)}</div>
+          ${description}
+        </td>
+        <td valign="top" align="right" style="border-bottom: 1px solid #eee; padding: 10px; color: #000; font-weight: 700;">
+          ${service.clientAmount ? escapeHtml(formatCurrency(service.clientAmount, quoteDetails.currency)) : ""}
+        </td>
+      </tr>
+      `;
+    }).join("");
+
+  const itemsHtml = servicesHtml || `
+    <tr>
+      <td valign="top" style="border-right: 1px solid #f9a87f; padding: 10px; color: #000; font-weight: 600;">1.</td>
+      <td valign="top" style="border-right: 1px solid #f9a87f; padding: 10px;">
+        <div style="font-weight: bold; margin-bottom: 3px; color: #000;">Quotation For: ${escapeHtml(quoteDetails.destination || "Trip")}</div>
+        <div style="color: #222;">Trip ID: ${escapeHtml(quoteDetails.queryId || "-")}</div>
+        <div style="color: #222;">Travelers: ${escapeHtml(quoteDetails.travelerSummary || "-")}</div>
+        <div style="color: #222;">Dates: ${escapeHtml(quoteDetails.travelDates || "-")} (${escapeHtml(quoteDetails.durationLabel || "-")})</div>
+      </td>
+      <td valign="top" align="right" style="padding: 10px; font-weight: 700; color: #000;">
+        ${formatCurrency(quoteDetails.totalAmount, quoteDetails.currency)}
+      </td>
+    </tr>
+  `;
 
   return `
-    <div style="background:#f8fafc;padding:32px 14px;font-family:Arial,sans-serif;">
-      <div style="max-width:760px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:24px;overflow:hidden;box-shadow:0 24px 60px rgba(15,23,42,0.12);">
-        <div style="padding:34px 34px 28px;background:radial-gradient(circle at top right, rgba(56,189,248,0.3), transparent 28%),linear-gradient(135deg,#0f172a 0%,#172554 52%,#1d4ed8 100%);">
-          <div style="display:inline-block;padding:7px 14px;border:1px solid rgba(191,219,254,0.24);border-radius:999px;background:rgba(255,255,255,0.08);color:#dbeafe;font-size:11px;font-weight:700;letter-spacing:0.16em;text-transform:uppercase;">
-            Client Quotation Summary
-          </div>
-          <h1 style="margin:18px 0 0;font-size:30px;line-height:1.2;color:#ffffff;">Holiday Circuit</h1>
-          <p style="margin:10px 0 0;max-width:520px;font-size:14px;line-height:1.8;color:rgba(255,255,255,0.82);">
-            Your travel quotation is ready. Here is a clean summary of the trip plan, selected services, and final commercials shared for review.
-          </p>
+    <div style="background-color: #f4f7f6; padding: 40px 15px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;">
+      <div style="max-width: 800px; margin: 0 auto; background-color: #ffffff; padding: 30px; box-shadow: 0 4px 15px rgba(0,0,0,0.05);">
+        
+        <div style="background-color: #d25d19; color: white; text-align: center; font-weight: bold; padding: 8px; font-size: 14px; letter-spacing: 1px; text-transform: uppercase;">
+          QUOTATION
         </div>
-
-        <div style="padding:30px 34px 34px;">
-          <p style="margin:0 0 10px;font-size:14px;line-height:1.8;color:#475569;">
-            Hello <strong style="color:#0f172a;">${escapeHtml(quoteDetails.recipientName || "Guest")}</strong>,
-          </p>
-          <p style="margin:0 0 22px;font-size:14px;line-height:1.8;color:#475569;">
-            Please review the quotation shared for <strong>${escapeHtml(quoteDetails.destination || "your trip")}</strong>. The summary below includes the selected services, inclusions, validity window, and the final amount to be shared with your client.
-          </p>
-
-          <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-bottom:22px;">
-            <div style="border:1px solid #dbeafe;border-radius:18px;background:#f8fbff;padding:16px 18px;">
-              <p style="margin:0;font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:#64748b;">Quotation Number</p>
-              <p style="margin:8px 0 0;font-size:18px;font-weight:700;color:#0f172a;">${escapeHtml(quoteDetails.quotationNumber || "-")}</p>
-              <p style="margin:10px 0 0;font-size:12px;color:#64748b;">${escapeHtml(quoteDetails.queryId || "Travel Query")}</p>
-            </div>
-            <div style="border:1px solid #dbeafe;border-radius:18px;background:#f8fbff;padding:16px 18px;">
-              <p style="margin:0;font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:#64748b;">Final Client Amount</p>
-              <p style="margin:8px 0 0;font-size:22px;font-weight:700;color:#14532d;">${escapeHtml(formatCurrency(quoteDetails.totalAmount, quoteDetails.currency))}</p>
-              <p style="margin:10px 0 0;font-size:12px;color:#64748b;">Valid till ${escapeHtml(quoteDetails.validTill || "-")}</p>
-            </div>
-          </div>
-
-          <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:24px;">
-            <div style="border:1px solid #e2e8f0;border-radius:18px;background:#ffffff;padding:14px 16px;">
-              <p style="margin:0;font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:#94a3b8;">Travel Dates</p>
-              <p style="margin:8px 0 0;font-size:14px;font-weight:700;color:#0f172a;">${escapeHtml(quoteDetails.travelDates || "-")}</p>
-            </div>
-            <div style="border:1px solid #e2e8f0;border-radius:18px;background:#ffffff;padding:14px 16px;">
-              <p style="margin:0;font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:#94a3b8;">Travelers</p>
-              <p style="margin:8px 0 0;font-size:14px;font-weight:700;color:#0f172a;">${escapeHtml(quoteDetails.travelerSummary || "-")}</p>
-            </div>
-            <div style="border:1px solid #e2e8f0;border-radius:18px;background:#ffffff;padding:14px 16px;">
-              <p style="margin:0;font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:#94a3b8;">Trip Duration</p>
-              <p style="margin:8px 0 0;font-size:14px;font-weight:700;color:#0f172a;">${escapeHtml(quoteDetails.durationLabel || "-")}</p>
-            </div>
-          </div>
-
-          <div style="border:1px solid #dbeafe;border-radius:22px;background:linear-gradient(180deg,#ffffff 0%,#f8fbff 100%);padding:22px 24px;margin-bottom:24px;">
-            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:14px;">
-              <div>
-                <p style="margin:0;font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:#64748b;">Selected Services</p>
-                <h2 style="margin:8px 0 0;font-size:20px;color:#0f172a;">Travel plan breakdown</h2>
-              </div>
-              <div style="padding:8px 12px;border-radius:999px;background:#eff6ff;border:1px solid #bfdbfe;font-size:11px;font-weight:700;color:#1d4ed8;">
-                ${quoteDetails.services?.length || 0} services
-              </div>
-            </div>
-
-            <table style="width:100%;border-collapse:collapse;">
-              <thead>
-                <tr>
-                  <th style="padding:0 0 12px;text-align:left;font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:#94a3b8;">#</th>
-                  <th style="padding:0 14px 12px;text-align:left;font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:#94a3b8;">Service</th>
+        
+        <table width="100%" style="margin-top: 15px; border-bottom: 1px solid #eee; padding-bottom: 15px;" cellspacing="0" cellpadding="0">
+          <tr>
+            <td width="50%" valign="middle">
+              <a href="#" style="text-decoration: none; display: inline-block;">
+                <img src="https://res.cloudinary.com/dszadvuz6/image/upload/e_trim/v1777932524/unzssx1sjkrigbgldg7h.png" alt="Holiday Circuit" width="85" style="max-width: 85px; height: auto; display: block; border: 0;" />
+              </a>
+            </td>
+            <td width="50%" valign="middle" align="right" style="font-size: 11px;">
+              <table align="right" cellspacing="0" cellpadding="0">
+                <tr style="font-weight: 700; color: #555;">
+                  <td style="padding: 0 10px; text-align: right;">Issue Date</td>
+                  <td style="padding: 0 10px; text-align: right;">Due Date</td>
+                  <td style="padding: 0 0 0 10px; text-align: right;">Trip ID</td>
                 </tr>
-              </thead>
-              <tbody>
-                ${
-                  servicesHtml ||
-                  `<tr><td colspan="2" style="padding:18px 0;text-align:center;font-size:13px;color:#64748b;">Service details are not available in this quotation.</td></tr>`
-                }
-              </tbody>
-            </table>
-          </div>
+                <tr style="color: #000; font-weight: 800;">
+                  <td style="padding: 4px 10px 0; text-align: right;">${issueDate}</td>
+                  <td style="padding: 4px 10px 0; text-align: right;">${escapeHtml(quoteDetails.validTill || "-")}</td>
+                  <td style="padding: 4px 0 0 10px; text-align: right;">${escapeHtml(quoteDetails.quotationNumber || quoteDetails.queryId || "-")}</td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
 
-          <div style="border:1px solid #dcfce7;border-radius:20px;background:linear-gradient(180deg,#f0fdf4 0%,#ffffff 100%);padding:20px 22px;">
-            <p style="margin:0;font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:#16a34a;">Final Quotation Amount</p>
-            <div style="display:flex;justify-content:space-between;gap:12px;padding-top:10px;font-size:18px;color:#14532d;">
-              <span style="font-weight:700;">Total Amount</span>
-              <strong>${escapeHtml(formatCurrency(quoteDetails.totalAmount, quoteDetails.currency))}</strong>
-            </div>
-            <p style="margin:14px 0 0;font-size:12px;line-height:1.7;color:#166534;">
-              Please review and confirm within the validity period to avoid rate or availability changes.
-            </p>
-          </div>
+        <table width="100%" style="margin-top: 20px; font-size: 11.5px; line-height: 1.5;" cellspacing="0" cellpadding="0">
+          <tr>
+            <td width="50%" valign="top">
+              <div style="font-weight: 700; color: #666; margin-bottom: 6px; text-transform: uppercase; font-size: 10px; letter-spacing: 0.5px;">Seller</div>
+              <div style="font-size: 14px; font-weight: 800; color: #000; margin-bottom: 4px;">Holiday Circuit</div>
+              <div style="color: #222; font-style: italic;">KG 3/101, Ground Floor, Vikas Puri, Landmark: Near UK<br/>Nursing Home</div>
+              <div style="color: #222;">Delhi, Delhi, India - 110018</div>
+              <div style="color: #222;">+91-885146665 &bull; ops@leelatravels.com</div>
+            </td>
+            <td width="50%" valign="top" align="right">
+              <div style="font-weight: 700; color: #666; margin-bottom: 6px; text-transform: uppercase; font-size: 10px; letter-spacing: 0.5px;">Buyer (Bill To)</div>
+              <div style="font-size: 14px; font-weight: 800; color: #000; margin-bottom: 4px;">${escapeHtml(quoteDetails.recipientName || "Guest")}</div>
+              ${quoteDetails.destination ? `<div style="color: #222;">Destination: ${escapeHtml(quoteDetails.destination)}</div>` : ''}
+              ${quoteDetails.travelDates ? `<div style="color: #222;">Dates: ${escapeHtml(quoteDetails.travelDates)}</div>` : ''}
+              ${quoteDetails.travelerSummary ? `<div style="color: #222;">Travelers: ${escapeHtml(quoteDetails.travelerSummary)}</div>` : ''}
+            </td>
+          </tr>
+        </table>
+
+        <table width="100%" cellspacing="0" cellpadding="0" style="margin-top: 25px; font-size: 11.5px;">
+          <tr style="background-color: #fff9f5; color: #000; font-weight: 800;">
+            <td width="8%" style="border-top: 2px solid #f08c4a; border-bottom: 1px solid #f08c4a; border-right: 1px solid #f9a87f; padding: 10px;">S.NO.</td>
+            <td width="67%" style="border-top: 2px solid #f08c4a; border-bottom: 1px solid #f08c4a; border-right: 1px solid #f9a87f; padding: 10px;">PARTICULARS</td>
+            <td width="25%" align="right" style="border-top: 2px solid #f08c4a; border-bottom: 1px solid #f08c4a; padding: 10px;">AMOUNT (${escapeHtml(quoteDetails.currency || "INR")})</td>
+          </tr>
+          
+          ${itemsHtml}
+          
+          <tr>
+            <td colspan="2" align="right" style="border-top: 2px solid #ddd; border-bottom: 1px solid #eee; border-right: 1px solid #eee; font-weight: 800; padding: 10px; color: #000;">Total (${escapeHtml(quoteDetails.currency || "INR")})</td>
+            <td align="right" style="border-top: 2px solid #ddd; border-bottom: 1px solid #eee; font-weight: 800; padding: 10px; color: #000;">${escapeHtml(formatCurrency(quoteDetails.totalAmount, quoteDetails.currency))}</td>
+          </tr>
+        </table>
+
+        <table width="100%" cellspacing="0" cellpadding="0" style="font-size: 11px;">
+          <tr>
+            <td valign="top" style="padding: 10px 0; border-bottom: 2px solid #f08c4a;">
+              <div style="color: #666; text-transform: uppercase; margin-bottom: 4px; font-size: 10px; font-weight: 700;">Amount Chargeable (In Words)</div>
+              <div style="font-weight: 800; color: #000;">${escapeHtml(quoteDetails.currency || "INR")}: ${numberToWords(quoteDetails.totalAmount)}</div>
+            </td>
+            <td valign="bottom" align="right" style="padding: 10px 0; border-bottom: 2px solid #f08c4a;">
+              <div style="color: #888; font-size: 10px;">E. & O.E.</div>
+            </td>
+          </tr>
+        </table>
+
+        <table width="100%" cellspacing="0" cellpadding="0" style="margin-top: 18px; font-size: 11px;">
+          <tr>
+            <td width="50%" valign="top" style="padding: 12px 12px 12px 0; border-bottom: 2px solid #f08c4a;">
+              <div style="font-weight: 800; color: #d25d19; text-transform: uppercase; margin-bottom: 8px; font-size: 11px; letter-spacing: 0.5px;">Inclusions</div>
+              ${inclusionsHtml}
+            </td>
+            <td width="50%" valign="top" style="padding: 12px 0 12px 12px; border-bottom: 2px solid #f08c4a;">
+              <div style="font-weight: 800; color: #d25d19; text-transform: uppercase; margin-bottom: 8px; font-size: 11px; letter-spacing: 0.5px;">Exclusions</div>
+              ${exclusionsHtml}
+            </td>
+          </tr>
+        </table>
+
+        <div style="font-size: 11px; line-height: 1.6; margin: 16px 0 20px;">
+          <div style="font-weight: 800; color: #d25d19; text-transform: uppercase; margin-bottom: 8px; font-size: 11px; letter-spacing: 0.5px;">Day Wise Itinerary</div>
+          ${itineraryHtml}
         </div>
+
+        <div style="font-size: 11px; line-height: 1.6; margin: 16px 0 20px;">
+          <div style="font-weight: 800; color: #d25d19; text-transform: uppercase; margin-bottom: 8px; font-size: 11px; letter-spacing: 0.5px;">Important Notes</div>
+          ${additionalNotesHtml}
+        </div>
+        
+        <div style="font-size: 11px; line-height: 1.5; margin-bottom: 25px; margin-top: 15px;">
+          <div style="font-weight: 800; color: #d25d19; text-transform: uppercase; margin-bottom: 8px; font-size: 11px; letter-spacing: 0.5px;">Seller's Bank Details</div>
+          <div style="color: #222;"><strong>Bank Name:</strong> HDFC Bank</div>
+          <div style="color: #222;"><strong>A/c Holder Name:</strong> Leela Travels</div>
+          <div style="color: #222;"><strong>A/c No.:</strong> 50200103968171</div>
+          <div style="color: #222;"><strong>IFSC:</strong> HDFC0004413</div>
+          <div style="color: #222;"><strong>Branch:</strong> RAMPHAL CHOWK SEC VII DWARKA</div>
+        </div>
+
+        <div style="background-color: #feece0; color: #d25d19; font-weight: 800; padding: 8px; text-align: center; font-size: 12px; margin-bottom: 12px; border-top: 2px solid #d25d19;">
+          Terms and Conditions
+        </div>
+        <div style="font-size: 11px; line-height: 1.6; color: #444; padding: 0 10px;">
+          1. Balance payment to be cleared before travel<br/>
+          2. Cancellation as per supplier policy; service charges non-refundable<br/>
+          3. Amendments subject to availability & extra cost<br/>
+          4. No refund for no-show / unused services<br/>
+          5. Guests must carry valid travel documents<br/>
+          6. Not liable for delays, cancellations, or unforeseen events<br/>
+          7. All disputes are subject to Delhi jurisdiction only
+        </div>
+
+        <div style="text-align: center; color: #888; font-size: 10px; margin-top: 40px;">
+          This is a computer generated document. No signature required.
+        </div>
+        
       </div>
     </div>
   `;
@@ -366,7 +531,7 @@ export const buildFinalInvoiceTemplate = (invoiceDetails = {}) => {
   const travelDateRange = escapeHtml(formatRangeLabel(trip.startDate, trip.endDate));
   const lineItems = Array.isArray(invoiceDetails.lineItems) ? invoiceDetails.lineItems : [];
   const preparedByName = escapeHtml(invoiceDetails.sentByName || "Holiday Circuit");
-  const preparedByEmail = escapeHtml(process.env.EMAIL_USER || "ops@leelatravels.com");
+  const preparedByEmail = escapeHtml(MAIL_REPLY_TO_ADDRESS || "support@holidaycircuit.com");
   const totalAmount = pricing.grandTotal || invoiceDetails.totalAmount || 0;
   const opsMarkupAmount = Number(pricing.opsMarkupAmount || 0);
   const serviceChargeAmount = Number(pricing.serviceCharge || 0);
@@ -743,7 +908,7 @@ export const sendEmailQuote = async (email, quoteDetails) => {
   `;
 
   const info = await transporter.sendMail({
-    from: `"Holiday Circuit" <${process.env.EMAIL_USER}>`,
+    from: MAIL_FROM_ADDRESS,
     to: email,
     subject: `Your Quotation - ${quoteDetails.destination}`,
     html: htmlTemplate,
@@ -753,15 +918,17 @@ export const sendEmailQuote = async (email, quoteDetails) => {
   return { status: "sent", email };
 };
 
+
+
 export const sendAgentClientQuotationMail = async (email, quoteDetails = {}) => {
   const transporter = createTransporter();
   const html = buildAgentClientQuotationTemplate(quoteDetails);
   const text = buildAgentClientQuotationText(quoteDetails);
 
   const info = await transporter.sendMail({
-    from: `"Holiday Circuit" <${process.env.EMAIL_USER}>`,
+    from: MAIL_FROM_ADDRESS,
     to: email,
-    replyTo: process.env.EMAIL_USER,
+    replyTo: MAIL_REPLY_TO_ADDRESS,
     subject: `Your Quotation - ${quoteDetails.destination || quoteDetails.quotationNumber || "Holiday Circuit"}`,
     html,
     text,
@@ -785,12 +952,14 @@ export const sendAgentClientQuotationMail = async (email, quoteDetails = {}) => 
   };
 };
 
+
+
 export const sendEmailVoucher = async (email, voucherDetails, branding = "with") => {
   const transporter = createTransporter();
   const html = buildVoucherTemplate(voucherDetails, branding);
 
   const info = await transporter.sendMail({
-    from: `"Holiday Circuit" <${process.env.EMAIL_USER}>`,
+    from: MAIL_FROM_ADDRESS,
     to: email,
     subject: `Your Voucher - ${voucherDetails.destination || voucherDetails.voucherNumber || "Holiday Circuit"}`,
     html,
@@ -800,6 +969,9 @@ export const sendEmailVoucher = async (email, voucherDetails, branding = "with")
   return { status: "sent", email };
 };
 
+
+
+ 
 export const sendEmailFinalInvoice = async (email, invoiceDetails) => {
   const transporter = createTransporter();
   const html = buildFinalInvoiceTemplate(invoiceDetails);
@@ -808,7 +980,7 @@ export const sendEmailFinalInvoice = async (email, invoiceDetails) => {
   const attachmentHtml = `<!DOCTYPE html><html><head><meta charset="utf-8" /></head><body>${html}</body></html>`;
 
   const info = await transporter.sendMail({
-    from: `"Holiday Circuit" <${process.env.EMAIL_USER}>`,
+    from: MAIL_FROM_ADDRESS,
     to: email,
     subject: `Final Invoice - ${invoiceDetails.invoiceNumber || invoiceDetails.destination || "Holiday Circuit"}`,
     html,
@@ -830,6 +1002,10 @@ export const sendEmailFinalInvoice = async (email, invoiceDetails) => {
     rejected: info.rejected,
   };
 };
+
+
+
+//------- Coupon Email Template -------------
 
 const buildCouponEmailTemplate = (couponDetails = {}) => {
   const agentName = escapeHtml(couponDetails.agentName || "Partner");
@@ -881,6 +1057,8 @@ const buildCouponEmailTemplate = (couponDetails = {}) => {
   `;
 };
 
+//-------------------------------- Send Coupon Email Service ------------------------
+
 export const sendCouponEmail = async (email, couponDetails = {}) => {
   const transporter = createTransporter();
   const html = buildCouponEmailTemplate(couponDetails);
@@ -896,7 +1074,7 @@ export const sendCouponEmail = async (email, couponDetails = {}) => {
   ].join("\n");
 
   const info = await transporter.sendMail({
-    from: `"Holiday Circuit" <${process.env.EMAIL_USER}>`,
+    from: MAIL_FROM_ADDRESS,
     to: email,
     subject: `Coupon Code ${couponDetails.code || ""} from Holiday Circuit`,
     html,

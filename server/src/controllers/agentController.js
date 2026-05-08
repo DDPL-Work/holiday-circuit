@@ -13,9 +13,14 @@ import jwt from "jsonwebtoken";
 import { sendAgentRegistrationReceivedMail, sendPasswordResetOtpMail } from "../services/sendEmail.js";
 import { sendAgentClientQuotationMail } from "../services/emailService.js";
 import { getRoundRobinFinanceAssignee } from "../services/financeTeamScopeService.js";
+import { getEmailDeliveryErrorMessage } from "../services/resendMailer.js";
 
 const getAuthenticatedUserId = (req) => req.user?.id || req.user?._id || null;
 const BCRYPT_HASH_PATTERN = /^\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}$/;
+const AGENT_MARKUP_POLICY = Object.freeze({
+  minPercent: 4,
+  maxPercent: 5,
+});
 const INDIAN_DESTINATION_KEYWORDS = [
   "india", "delhi", "jaipur", "udaipur", "goa", "kerala", "kashmir", "agra",
   "mumbai", "pune", "bengaluru", "bangalore", "chennai", "kolkata", "hyderabad",
@@ -24,6 +29,42 @@ const INDIAN_DESTINATION_KEYWORDS = [
   "mussoorie", "jaisalmer", "jodhpur", "pushkar", "kochi", "munnar", "alleppey",
   "leh", "ladakh", "ahmedabad", "surat", "bhopal", "indore", "dehradun",
 ];
+
+const getMaxAgentMarkupAmount = (opsTotal = 0) =>
+  Math.round(
+    (Math.max(0, Number(opsTotal) || 0) * AGENT_MARKUP_POLICY.maxPercent) / 100,
+  );
+
+const validateAgentMarkupPolicy = ({ markupType, markupValue, opsTotal }) => {
+  const normalizedType = String(markupType || "").trim().toUpperCase();
+  const normalizedValue = Number(markupValue);
+
+  if (!["PERCENT", "AMOUNT"].includes(normalizedType)) {
+    return "Invalid markup type";
+  }
+
+  if (!Number.isFinite(normalizedValue) || normalizedValue <= 0) {
+    return "Invalid markup";
+  }
+
+  if (normalizedType === "PERCENT") {
+    if (
+      normalizedValue < AGENT_MARKUP_POLICY.minPercent ||
+      normalizedValue > AGENT_MARKUP_POLICY.maxPercent
+    ) {
+      return `Agent markup percentage must stay between ${AGENT_MARKUP_POLICY.minPercent}% and ${AGENT_MARKUP_POLICY.maxPercent}%.`;
+    }
+
+    return "";
+  }
+
+  const maxAmount = getMaxAgentMarkupAmount(opsTotal);
+  if (normalizedValue > maxAmount) {
+    return `Agent markup amount cannot exceed ₹${maxAmount.toLocaleString("en-IN")} (${AGENT_MARKUP_POLICY.maxPercent}% of quote total).`;
+  }
+
+  return "";
+};
 
 const normalizeCouponCode = (value = "") => String(value || "").trim().toUpperCase();
 
@@ -295,6 +336,19 @@ const getAgentCommissionAmount = (quotation = null) => {
   return Math.max(0, Math.round(clientTotalAmount - opsTotalAmount));
 };
 
+const getInvoiceOpsSubtotalAmount = (invoice = null) => {
+  const pricingSnapshot = invoice?.pricingSnapshot || {};
+
+  return Math.round(
+    Number(pricingSnapshot.servicesTotal || 0) +
+    Number(pricingSnapshot.packageTemplateAmount || 0) +
+    Number(pricingSnapshot.opsMarkupAmount || 0) +
+    Number(pricingSnapshot.serviceCharge || 0) +
+    Number(pricingSnapshot.handlingFee || 0) +
+    Number(pricingSnapshot.totalTax || 0),
+  );
+};
+
 const formatAgentFinanceTransactionId = (prefix = "TXN", value = "") => {
   const normalized = String(value || "").replace(/[^A-Za-z0-9]/g, "").toUpperCase();
   return `${prefix}-${(normalized || "0000").slice(-6)}`;
@@ -438,13 +492,30 @@ const buildAgentFinanceOverviewPayload = async (agentId, { includeTransactions =
     const bookingReference =
       String(invoice?.query?.queryId || invoice?.invoiceNumber || "").trim() || "Booking";
     const latestQuotation = latestQuotationByQuery[queryKey] || null;
-    const commissionAmount = getAgentCommissionAmount(latestQuotation);
+    const invoiceOpsSubtotalAmount = getInvoiceOpsSubtotalAmount(invoice);
+    const snapshotMarkupAmount = Math.round(
+      Number(invoice?.pricingSnapshot?.agentMarkupAmount || 0),
+    );
+    const derivedInvoiceMarkupAmount = Math.max(
+      0,
+      Math.round(Number(invoice?.totalAmount || 0) - invoiceOpsSubtotalAmount),
+    );
+    const commissionAmount = Math.max(
+      0,
+      Math.round(
+        getAgentCommissionAmount(latestQuotation) ||
+        snapshotMarkupAmount ||
+        derivedInvoiceMarkupAmount,
+      ),
+    );
     const couponApplication = invoice?.paymentSubmission?.couponApplication || null;
     const markupAmount = Math.round(commissionAmount || 0);
     const subtotalAmount = Math.round(
       Number(
         couponApplication?.subtotalAmount ||
-        latestQuotation?.clientTotalAmount ||
+        latestQuotation?.pricing?.totalAmount ||
+        invoiceOpsSubtotalAmount ||
+        Math.max(0, Number(invoice?.totalAmount || 0) - markupAmount) ||
         invoice?.totalAmount ||
         0,
       ),
@@ -588,11 +659,30 @@ const buildDurationLabel = (query = {}) => {
 };
 
 const buildServiceQuantityLabel = (service = {}) => {
+  const normalizedType = String(service?.type || "")
+    .trim()
+    .toLowerCase();
   const details = [];
 
-  if (Number(service?.nights || 0) > 0) details.push(`${service.nights}N`);
+  if (normalizedType === "hotel") {
+    if (Number(service?.nights || 0) > 0) details.push(`${service.nights}N`);
+    if (Number(service?.rooms || 0) > 0) details.push(`${service.rooms} Room${Number(service.rooms) > 1 ? "s" : ""}`);
+    if (Number(service?.pax || 0) > 0) details.push(`${service.pax} Pax`);
+    return details.join(" | ");
+  }
+
+  if (normalizedType === "transfer" || normalizedType === "car") {
+    if (service?.usageType) details.push(String(service.usageType).replace(/-/g, " "));
+    if (Number(service?.passengerCapacity || 0) > 0) {
+      details.push(`${service.passengerCapacity} Pax`);
+    } else if (Number(service?.pax || 0) > 0) {
+      details.push(`${service.pax} Pax`);
+    }
+    if (service?.vehicleType) details.push(service.vehicleType);
+    return details.join(" | ");
+  }
+
   if (Number(service?.days || 0) > 0) details.push(`${service.days}D`);
-  if (Number(service?.rooms || 0) > 0) details.push(`${service.rooms} Room${Number(service.rooms) > 1 ? "s" : ""}`);
   if (Number(service?.pax || 0) > 0) details.push(`${service.pax} Pax`);
   if (Number(service?.passengerCapacity || 0) > 0) details.push(`${service.passengerCapacity} Pax`);
   if (service?.vehicleType) details.push(service.vehicleType);
@@ -603,32 +693,68 @@ const buildServiceQuantityLabel = (service = {}) => {
 const buildServiceLocationLabel = (service = {}) =>
   [service?.city, service?.country].filter(Boolean).join(", ");
 
-const buildQuotationClientEmailPayload = ({ quotation, query, agent }) => ({
-  recipientName: agent?.name || "Guest",
-  agencyName: agent?.companyName || "",
-  quotationNumber: quotation?.quotationNumber || "",
-  queryId: query?.queryId || "",
-  destination: query?.destination || "",
-  travelDates: `${formatMailDateLabel(query?.startDate)} - ${formatMailDateLabel(query?.endDate)}`,
-  durationLabel: buildDurationLabel(query),
-  travelerSummary: buildTravelerSummary(query),
-  validTill: formatMailDateLabel(quotation?.validTill),
-  totalAmount: Number(quotation?.clientTotalAmount || quotation?.pricing?.totalAmount || 0),
-  currency: quotation?.pricing?.currency || "INR",
-  services: Array.isArray(quotation?.services)
-    ? quotation.services.map((service) => ({
-      title: service?.title || "Service",
-      typeLabel: service?.type ? String(service.type).replace(/_/g, " ") : "Travel Service",
-      location: buildServiceLocationLabel(service),
-      serviceDateLabel: formatMailDateLabel(service?.serviceDate),
-      quantityLabel: buildServiceQuantityLabel(service),
-      description: String(service?.description || "").replace(/\|/g, " | ").trim(),
-    }))
-    : [],
-  inclusions: Array.isArray(quotation?.inclusions)
-    ? quotation.inclusions.filter(Boolean)
-    : [],
-});
+const buildQuotationClientEmailPayload = ({ quotation, query, agent }) => {
+  const totalAmount = Number(quotation?.clientTotalAmount || quotation?.pricing?.totalAmount || 0);
+  const totalServiceBase = Array.isArray(quotation?.services)
+    ? quotation.services.reduce((sum, s) => sum + Number(s.total || 0), 0)
+    : 0;
+
+  return {
+    recipientName: agent?.name || "Guest",
+    agencyName: agent?.companyName || "",
+    quotationNumber: quotation?.quotationNumber || "",
+    queryId: query?.queryId || "",
+    destination: query?.destination || "",
+    travelDates: `${formatMailDateLabel(query?.startDate)} - ${formatMailDateLabel(query?.endDate)}`,
+    durationLabel: buildDurationLabel(query),
+    travelerSummary: buildTravelerSummary(query),
+    validTill: formatMailDateLabel(quotation?.validTill),
+    totalAmount,
+    currency: quotation?.pricing?.currency || "INR",
+    services: Array.isArray(quotation?.services)
+      ? quotation.services.map((service) => {
+          const ratio = totalServiceBase > 0 ? Number(service.total || 0) / totalServiceBase : 0;
+          const clientAmount = totalServiceBase > 0 ? Math.round(totalAmount * ratio) : 0;
+          return {
+            title: service?.title || "Service",
+            typeLabel: service?.type ? String(service.type).replace(/_/g, " ") : "Travel Service",
+            location: buildServiceLocationLabel(service),
+            serviceDateLabel: formatMailDateLabel(service?.serviceDate),
+            quantityLabel: buildServiceQuantityLabel(service),
+            description: String(service?.description || "").replace(/\|/g, " | ").trim(),
+            clientAmount,
+          };
+        })
+      : [],
+    inclusions: Array.isArray(quotation?.inclusions)
+      ? quotation.inclusions.filter(Boolean)
+      : [],
+    exclusions: Array.isArray(quotation?.exclusions)
+      ? quotation.exclusions.filter(Boolean)
+      : [],
+    additionalNotes: Array.isArray(quotation?.additionalNotes)
+      ? quotation.additionalNotes.filter(Boolean)
+      : [],
+    dayWiseItinerary: Array.isArray(quotation?.dayWiseItinerary)
+      ? quotation.dayWiseItinerary
+          .map((item, index) => {
+            const dayNumber = Math.max(1, Number(item?.dayNumber || index + 1));
+            const parsedDate = item?.date ? new Date(item.date) : null;
+
+          return {
+              dayNumber,
+              dayLabel: String(item?.dayLabel || "").trim(),
+              date: parsedDate && !Number.isNaN(parsedDate.getTime())
+                ? parsedDate.toISOString()
+                : "",
+              title: String(item?.title || item?.heading || "").trim(),
+              description: String(item?.description || "").trim(),
+            };
+          })
+          .filter((item) => item.title || item.description)
+      : [],
+  };
+};
 
 
 // ========================== Register Agent ==========================
@@ -1328,7 +1454,7 @@ export const getMyActiveBookings = async (req, res) => {
       agent: agentId,
       opsStatus: { $in: ["Invoice_Requested", "Confirmed", "Vouchered"] },
     })
-      .sort({ startDate: 1, createdAt: -1 })
+      .sort({ createdAt: -1 })
       .lean();
 
     if (!queries.length) {
@@ -1382,6 +1508,8 @@ export const getMyActiveBookings = async (req, res) => {
 
         activeBookings.push({
           _id: query._id,
+          createdAt: query.createdAt || null,
+          updatedAt: query.updatedAt || null,
           queryId: query.queryId || "",
           destination: query.destination || "",
           startDate: query.startDate || null,
@@ -1709,24 +1837,36 @@ export const acceptQuotationByAgent = async (req, res, next) => {
 
     /* STEP 2: APPLY MARKUP */
     if (action === "APPLY_MARKUP") {
-      if (quotation.status !== "Quote Accepted") {
+      if (!["Quote Accepted", "Markup Applied"].includes(quotation.status)) {
         return next(new ApiError(400, "Accept quote first"));
       }
 
-      if (!markupType || markupValue <= 0) {
-        return next(new ApiError(400, "Invalid markup"));
+      const opsTotal = Number(quotation.pricing?.totalAmount || quotation.totalAmount || 0);
+      if (opsTotal <= 0) {
+        return next(new ApiError(400, "Ops quote total is missing"));
       }
 
-      const opsTotal = quotation.pricing.totalAmount;
+      const validationMessage = validateAgentMarkupPolicy({
+        markupType,
+        markupValue,
+        opsTotal,
+      });
+
+      if (validationMessage) {
+        return next(new ApiError(400, validationMessage));
+      }
+
+      const normalizedMarkupType = String(markupType || "").trim().toUpperCase();
+      const normalizedMarkupValue = Number(markupValue);
 
       const markupAmount =
-  markupType === "PERCENT"
-    ? Math.round((opsTotal * markupValue) / 100)
-    : Math.round(markupValue);
+  normalizedMarkupType === "PERCENT"
+    ? Math.round((opsTotal * normalizedMarkupValue) / 100)
+    : Math.round(normalizedMarkupValue);
 
 quotation.agentMarkup = {
-  type: markupType,
-  value: markupValue,
+  type: normalizedMarkupType,
+  value: normalizedMarkupValue,
   markupAmount
 };
 
@@ -1792,7 +1932,7 @@ quotation.clientTotalAmount = Math.round(opsTotal + markupAmount);
         console.error("Client quotation email send failed:", mailError);
         return next(new ApiError(
           502,
-          "Quotation email delivery failed. Please verify the recipient email and mail settings.",
+          `Quotation email delivery failed. ${getEmailDeliveryErrorMessage(mailError)}`,
         ));
       }
 

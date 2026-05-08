@@ -141,7 +141,10 @@ export default function DMCDashboard() {
   const performance = dashboard?.performance || defaultDashboard.performance;
   const recentActivity = useMemo(() => {
     if (Array.isArray(dashboard?.recentActivity) && dashboard.recentActivity.length) {
-      return dashboard.recentActivity;
+      return [...dashboard.recentActivity].sort(
+        (left, right) =>
+          new Date(right?.timestamp || 0).getTime() - new Date(left?.timestamp || 0).getTime(),
+      );
     }
 
     return [

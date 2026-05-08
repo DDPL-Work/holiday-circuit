@@ -358,6 +358,19 @@ const invoicePricingSnapshotSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    agentMarkupType: {
+      type: String,
+      enum: ["", "PERCENT", "AMOUNT"],
+      default: "",
+    },
+    agentMarkupValue: {
+      type: Number,
+      default: 0,
+    },
+    agentMarkupAmount: {
+      type: Number,
+      default: 0,
+    },
     serviceCharge: {
       type: Number,
       default: 0,

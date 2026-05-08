@@ -10,7 +10,8 @@ import Notification from "../models/notification.model.js";
 import Sightseeing from "../models/sightseeingDmc.model.js"
 import Confirmation from "../models/dmcConfirmation.js";
 import { sendAgentClientQuotationMail, sendEmailVoucher } from "../services/emailService.js";
-import {sendWhatsAppMessage}  from "../services/whatsappService.js";
+import { getWhatsAppDeliveryErrorMessage, sendWhatsAppMessage } from "../services/whatsappService.js";
+import { getEmailDeliveryErrorMessage } from "../services/resendMailer.js";
 import mongoose from "mongoose";
 import Voucher from "../models/voucher.model.js";
 import Auth from "../models/auth.model.js";
@@ -657,6 +658,9 @@ const buildInvoicePricingSnapshot = (quotation, totalAmount) => ({
   packageTemplateAmount: Number(quotation?.pricing?.packageTemplateAmount || 0),
   opsMarkupPercent: Number(quotation?.pricing?.opsMarkup?.percent || 0),
   opsMarkupAmount: Number(quotation?.pricing?.opsMarkup?.amount || 0),
+  agentMarkupType: String(quotation?.agentMarkup?.type || "").trim().toUpperCase(),
+  agentMarkupValue: Number(quotation?.agentMarkup?.value || 0),
+  agentMarkupAmount: Number(quotation?.agentMarkup?.markupAmount || 0),
   serviceCharge: Number(quotation?.pricing?.opsCharges?.serviceCharge || 0),
   handlingFee: Number(quotation?.pricing?.opsCharges?.handlingFee || 0),
   gstPercent: Number(quotation?.pricing?.tax?.gst?.percent || 0),
@@ -717,11 +721,30 @@ const buildDurationLabel = (query = {}) => {
 };
 
 const buildServiceQuantityLabel = (service = {}) => {
+  const normalizedType = String(service?.type || "")
+    .trim()
+    .toLowerCase();
   const details = [];
 
-  if (Number(service?.nights || 0) > 0) details.push(`${service.nights}N`);
+  if (normalizedType === "hotel") {
+    if (Number(service?.nights || 0) > 0) details.push(`${service.nights}N`);
+    if (Number(service?.rooms || 0) > 0) details.push(`${service.rooms} Room${Number(service.rooms) > 1 ? "s" : ""}`);
+    if (Number(service?.pax || 0) > 0) details.push(`${service.pax} Pax`);
+    return details.join(" | ");
+  }
+
+  if (normalizedType === "transfer" || normalizedType === "car") {
+    if (service?.usageType) details.push(String(service.usageType).replace(/-/g, " "));
+    if (Number(service?.passengerCapacity || 0) > 0) {
+      details.push(`${service.passengerCapacity} Pax`);
+    } else if (Number(service?.pax || 0) > 0) {
+      details.push(`${service.pax} Pax`);
+    }
+    if (service?.vehicleType) details.push(service.vehicleType);
+    return details.join(" | ");
+  }
+
   if (Number(service?.days || 0) > 0) details.push(`${service.days}D`);
-  if (Number(service?.rooms || 0) > 0) details.push(`${service.rooms} Room${Number(service.rooms) > 1 ? "s" : ""}`);
   if (Number(service?.pax || 0) > 0) details.push(`${service.pax} Pax`);
   if (Number(service?.passengerCapacity || 0) > 0) details.push(`${service.passengerCapacity} Pax`);
   if (service?.vehicleType) details.push(service.vehicleType);
@@ -732,32 +755,75 @@ const buildServiceQuantityLabel = (service = {}) => {
 const buildServiceLocationLabel = (service = {}) =>
   [service?.city, service?.country].filter(Boolean).join(", ");
 
-const buildAgentQuotationEmailPayload = ({ quotation, query }) => ({
-  recipientName:
-    query?.agent?.companyName ||
-    query?.agent?.name ||
-    "Guest",
-  agencyName: query?.agent?.companyName || "",
-  quotationNumber: quotation?.quotationNumber || "",
-  queryId: query?.queryId || "",
-  destination: query?.destination || "",
-  travelDates: `${formatMailDateLabel(query?.startDate)} - ${formatMailDateLabel(query?.endDate)}`,
-  durationLabel: buildDurationLabel(query),
-  travelerSummary: buildTravelerSummary(query),
-  validTill: formatMailDateLabel(quotation?.validTill),
-  totalAmount: Number(quotation?.pricing?.totalAmount || 0),
-  currency: quotation?.pricing?.currency || "INR",
-  services: Array.isArray(quotation?.services)
-    ? quotation.services.map((service) => ({
-        title: service?.title || "Service",
-        typeLabel: service?.type ? String(service.type).replace(/_/g, " ") : "Travel Service",
-        location: buildServiceLocationLabel(service),
-        serviceDateLabel: formatMailDateLabel(service?.serviceDate),
-        quantityLabel: buildServiceQuantityLabel(service),
-        description: String(service?.description || "").replace(/\|/g, " | ").trim(),
-      }))
-    : [],
-});
+const normalizeDayWiseItinerary = (items = []) =>
+  Array.isArray(items)
+    ? items
+        .map((item, index) => {
+          const dayNumber = Math.max(1, Number(item?.dayNumber || index + 1));
+          const parsedDate = item?.date ? new Date(item.date) : null;
+
+          return {
+            dayNumber,
+            dayLabel: String(item?.dayLabel || "").trim(),
+            date: parsedDate && !Number.isNaN(parsedDate.getTime()) ? parsedDate : null,
+            title: String(item?.title || item?.heading || "").trim(),
+            description: String(item?.description || "").trim(),
+          };
+        })
+        .filter((item) => item.dayLabel || item.title || item.description || item.date)
+    : [];
+
+const buildAgentQuotationEmailPayload = ({ quotation, query }) => {
+  const totalAmount = Number(quotation?.pricing?.totalAmount || 0);
+  const totalServiceBase = Array.isArray(quotation?.services)
+    ? quotation.services.reduce((sum, s) => sum + Number(s.total || 0), 0)
+    : 0;
+  const inclusions = Array.isArray(quotation?.inclusions)
+    ? quotation.inclusions.map((item) => String(item || "").trim()).filter(Boolean)
+    : [];
+  const exclusions = Array.isArray(quotation?.exclusions)
+    ? quotation.exclusions.map((item) => String(item || "").trim()).filter(Boolean)
+    : [];
+  const additionalNotes = Array.isArray(quotation?.additionalNotes)
+    ? quotation.additionalNotes.map((item) => String(item || "").trim()).filter(Boolean)
+    : [];
+
+  return {
+    recipientName:
+      query?.agent?.companyName ||
+      query?.agent?.name ||
+      "Guest",
+    agencyName: query?.agent?.companyName || "",
+    quotationNumber: quotation?.quotationNumber || "",
+    queryId: query?.queryId || "",
+    destination: query?.destination || "",
+    travelDates: `${formatMailDateLabel(query?.startDate)} - ${formatMailDateLabel(query?.endDate)}`,
+    durationLabel: buildDurationLabel(query),
+    travelerSummary: buildTravelerSummary(query),
+    validTill: formatMailDateLabel(quotation?.validTill),
+    totalAmount,
+    currency: quotation?.pricing?.currency || "INR",
+    inclusions,
+    exclusions,
+    additionalNotes,
+    dayWiseItinerary: normalizeDayWiseItinerary(quotation?.dayWiseItinerary),
+    services: Array.isArray(quotation?.services)
+      ? quotation.services.map((service) => {
+          const ratio = totalServiceBase > 0 ? Number(service.total || 0) / totalServiceBase : 0;
+          const clientAmount = totalServiceBase > 0 ? Math.round(totalAmount * ratio) : 0;
+          return {
+            title: service?.title || "Service",
+            typeLabel: service?.type ? String(service.type).replace(/_/g, " ") : "Travel Service",
+            location: buildServiceLocationLabel(service),
+            serviceDateLabel: formatMailDateLabel(service?.serviceDate),
+            quantityLabel: buildServiceQuantityLabel(service),
+            description: String(service?.description || "").replace(/\|/g, " | ").trim(),
+            clientAmount,
+          };
+        })
+      : [],
+  };
+};
 
 const getTravelerDocumentVerification = (query = {}) => ({
   status: String(query?.travelerDocumentVerification?.status || "Draft"),
@@ -897,7 +963,7 @@ export const getAllQueries = async (req, res, next) => {
 
     const queries = await TravelQuery.find(queryFilter)
     
-      .populate("agent", "name email")
+      .populate("agent", "name email phone companyName")
       .populate("assignedTo", "name email")
       .sort({ createdAt: -1 });
 
@@ -1587,7 +1653,7 @@ export const getOrderAcceptanceQueries = async (req, res, next) => {
     $in: ["Pending_Accept", "New_Query", "Rejected", "Revision_Query", "Booking_Accepted", "Invoice_Requested"]
   }
 })
-.populate("agent", "name companyName email")
+.populate("agent", "name companyName email phone")
 .populate("assignedTo", "name email")
 .sort({ createdAt: -1 });
 
@@ -1635,7 +1701,21 @@ export const createQuotation = async (req, res, next) => {
       serviceCharge = 0,
       handlingFee = 0,
       inclusions = [],
+      exclusions = [],
+      additionalNotes = [],
+      dayWiseItinerary = [],
     } = req.body;
+
+    const normalizedInclusions = Array.isArray(inclusions)
+      ? inclusions.map((item) => String(item || "").trim()).filter(Boolean)
+      : [];
+    const normalizedExclusions = Array.isArray(exclusions)
+      ? exclusions.map((item) => String(item || "").trim()).filter(Boolean)
+      : [];
+    const normalizedAdditionalNotes = Array.isArray(additionalNotes)
+      ? additionalNotes.map((item) => String(item || "").trim()).filter(Boolean)
+      : [];
+    const normalizedDayWiseItinerary = normalizeDayWiseItinerary(dayWiseItinerary);
 
     if (!services.length) {
   return next(new ApiError(400, "No services selected"));
@@ -1831,7 +1911,10 @@ console.log("🔥 DEBUG:", {
     quotation.queryId = query._id;
     quotation.agent = query.agent;
     quotation.createdBy = req.user.id;
-    quotation.inclusions = inclusions;
+    quotation.inclusions = normalizedInclusions;
+    quotation.exclusions = normalizedExclusions;
+    quotation.additionalNotes = normalizedAdditionalNotes;
+    quotation.dayWiseItinerary = normalizedDayWiseItinerary;
     quotation.services = formattedServices;
     quotation.pricing = {
       currency: "INR",
@@ -1894,12 +1977,19 @@ console.log("🔥 DEBUG:", {
         );
       } catch (emailError) {
         console.error("Quotation email send failed:", emailError);
-        deliveryWarnings.push("Quotation saved, but email delivery failed. Please verify SMTP credentials.");
+        deliveryWarnings.push(
+          `Quotation saved, but email delivery failed. ${getEmailDeliveryErrorMessage(emailError)}`,
+        );
       }
     }
 
     if (sendViaArray.includes("whatsapp")) {
-      await sendWhatsAppMessage(quoteDetails);
+      try {
+        await sendWhatsAppMessage(quoteDetails);
+      } catch (whatsappError) {
+        console.error("Quotation WhatsApp send failed:", whatsappError);
+        deliveryWarnings.push(getWhatsAppDeliveryErrorMessage(whatsappError));
+      }
     }
 
     await Notification.create({
@@ -1907,6 +1997,7 @@ console.log("🔥 DEBUG:", {
       type: "success",
       title: "Quotation Received",
       message: `Quotation ${quotation.quotationNumber} has been sent for ${query.destination}.`,
+      link: "/agent/queries",
       meta: {
         quotationId: quotation._id,
         queryId: query._id,
@@ -1939,7 +2030,10 @@ console.log("🔥 DEBUG:", {
   agent: query.agent,
   createdBy: req.user.id,
 
-  inclusions,
+  inclusions: normalizedInclusions,
+  exclusions: normalizedExclusions,
+  additionalNotes: normalizedAdditionalNotes,
+  dayWiseItinerary: normalizedDayWiseItinerary,
 
   services: formattedServices,   // ✅ ADD THIS
 
@@ -2005,12 +2099,19 @@ if (sendViaArray.includes("email")) {
     );
   } catch (emailError) {
     console.error("Quotation email send failed:", emailError);
-    deliveryWarnings.push("Quotation saved, but email delivery failed. Please verify SMTP credentials.");
+    deliveryWarnings.push(
+      `Quotation saved, but email delivery failed. ${getEmailDeliveryErrorMessage(emailError)}`,
+    );
   }
 }
 
 if (sendViaArray.includes("whatsapp")) {
-  await sendWhatsAppMessage(quoteDetails);
+  try {
+    await sendWhatsAppMessage(quoteDetails);
+  } catch (whatsappError) {
+    console.error("Quotation WhatsApp send failed:", whatsappError);
+    deliveryWarnings.push(getWhatsAppDeliveryErrorMessage(whatsappError));
+  }
 }
 
 await Notification.create({
@@ -2018,6 +2119,7 @@ await Notification.create({
   type: "success",
   title: "Quotation Received",
   message: `Quotation ${createdQuotation.quotationNumber} has been sent for ${query.destination}.`,
+  link: "/agent/queries",
   meta: {
     quotationId: createdQuotation._id,
     queryId: query._id,
@@ -2212,6 +2314,22 @@ const invoiceNumber = `INV-${counter.seq}`;
     }
     addLogIfNotExists(query, "Invoice Generated", "Ops Team");
     await query.save();
+
+    if (quotation.agent?._id || quotation.agent) {
+      await Notification.create({
+        user: quotation.agent?._id || quotation.agent,
+        type: "info",
+        title: "Finance Invoice Preparation Started",
+        message: `${invoiceNumber} has been prepared for ${query.queryId}. Finance will share the final invoice with you shortly.`,
+        link: "/agent/bookings",
+        meta: {
+          queryId: query._id,
+          invoiceId: invoice._id,
+          invoiceNumber,
+          kind: "finance_invoice_prepared",
+        },
+      });
+    }
 
     res.status(201).json({
       success: true,
@@ -2782,7 +2900,7 @@ export const sendVoucherToAgent = async (req, res, next) => {
       return res.status(502).json({
         success: false,
         message: isCredentialError
-          ? "Voucher email could not be sent because the configured Gmail credentials were rejected. Update EMAIL_USER and EMAIL_PASS with a valid Gmail address and App Password, then try again."
+          ? `Voucher email could not be sent. ${getEmailDeliveryErrorMessage(voucherError)}`
           : "Voucher email could not be sent. Please verify SMTP configuration and try again.",
       });
     }
@@ -2908,6 +3026,9 @@ export const getOrCreateQuotationDraft = async (req, res, next) => {
             totalAmount: 0,
           },
       inclusions: Array.isArray(baseQuotation?.inclusions) ? baseQuotation.inclusions : [],
+      exclusions: Array.isArray(baseQuotation?.exclusions) ? baseQuotation.exclusions : [],
+      additionalNotes: Array.isArray(baseQuotation?.additionalNotes) ? baseQuotation.additionalNotes : [],
+      dayWiseItinerary: normalizeDayWiseItinerary(baseQuotation?.dayWiseItinerary),
       services: Array.isArray(baseQuotation?.services)
         ? baseQuotation.services.map((service) => ({
             serviceId: service.serviceId,
@@ -2969,6 +3090,9 @@ export const getOrCreateQuotationDraft = async (req, res, next) => {
         quotation.validTill = draftPayload.validTill;
         quotation.pricing = draftPayload.pricing;
         quotation.inclusions = draftPayload.inclusions;
+        quotation.exclusions = draftPayload.exclusions;
+        quotation.additionalNotes = draftPayload.additionalNotes;
+        quotation.dayWiseItinerary = draftPayload.dayWiseItinerary;
         quotation.services = draftPayload.services;
         quotation.sourceQuotationId = draftPayload.sourceQuotationId;
         quotation.createdBy = req.user.id;
@@ -2989,6 +3113,9 @@ export const getOrCreateQuotationDraft = async (req, res, next) => {
         validTill: draftPayload.validTill,
         pricing: draftPayload.pricing,
         inclusions: draftPayload.inclusions,
+        exclusions: draftPayload.exclusions,
+        additionalNotes: draftPayload.additionalNotes,
+        dayWiseItinerary: draftPayload.dayWiseItinerary,
         services: draftPayload.services,
         sourceQuotationId: draftPayload.sourceQuotationId,
         status: draftPayload.status,
@@ -2998,6 +3125,7 @@ export const getOrCreateQuotationDraft = async (req, res, next) => {
     res.status(200).json({
       success: true,
       quotation,
+      query,
     });
   } catch (error) {
     console.error("Quotation Draft Error:", error);
@@ -3017,6 +3145,9 @@ export const saveQuotationDraft = async (req, res, next) => {
       serviceCharge = 0,
       handlingFee = 0,
       inclusions,
+      exclusions,
+      additionalNotes,
+      dayWiseItinerary,
     } = req.body;
 
     const { quotation } = await getAuthorizedQueryForQuotation(quotationId, req);
@@ -3113,7 +3244,16 @@ export const saveQuotationDraft = async (req, res, next) => {
     }));
 
     if (Array.isArray(inclusions)) {
-      quotation.inclusions = inclusions;
+      quotation.inclusions = inclusions.map((item) => String(item || "").trim()).filter(Boolean);
+    }
+    if (Array.isArray(exclusions)) {
+      quotation.exclusions = exclusions.map((item) => String(item || "").trim()).filter(Boolean);
+    }
+    if (Array.isArray(additionalNotes)) {
+      quotation.additionalNotes = additionalNotes.map((item) => String(item || "").trim()).filter(Boolean);
+    }
+    if (Array.isArray(dayWiseItinerary)) {
+      quotation.dayWiseItinerary = normalizeDayWiseItinerary(dayWiseItinerary);
     }
     quotation.services = formattedServices;
     quotation.validTill = validTill || quotation.validTill;

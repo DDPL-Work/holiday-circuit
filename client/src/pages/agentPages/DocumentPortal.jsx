@@ -6,6 +6,7 @@ import {
   FileText,
   AlertCircle,
   Users,
+  MapPin,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
@@ -160,6 +161,71 @@ const getStatusConfig = (row) => {
   };
 };
 
+// --- Helpers for avatar ---
+const getInitials = (fullName = "") => {
+  const parts = fullName.trim().split(" ").filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0][0].toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+};
+
+const avatarColorMap = [
+  { bg: "bg-blue-100", text: "text-blue-700" },
+  { bg: "bg-violet-100", text: "text-violet-700" },
+  { bg: "bg-emerald-100", text: "text-emerald-700" },
+  { bg: "bg-rose-100", text: "text-rose-700" },
+  { bg: "bg-amber-100", text: "text-amber-700" },
+  { bg: "bg-cyan-100", text: "text-cyan-700" },
+  { bg: "bg-fuchsia-100", text: "text-fuchsia-700" },
+  { bg: "bg-teal-100", text: "text-teal-700" },
+];
+
+const getAvatarColor = (name = "") => {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  return avatarColorMap[Math.abs(hash) % avatarColorMap.length];
+};
+
+// --- Stat card config ---
+const statCardConfig = {
+  verified: {
+    label: "Verified",
+    desc: "Bookings fully cleared by ops",
+    icon: ShieldCheck,
+    topBorder: "border-t-2 border-t-emerald-500",
+    iconBg: "bg-emerald-100",
+    iconColor: "text-emerald-600",
+    numberColor: "text-emerald-700",
+  },
+  reviewing: {
+    label: "Under Review",
+    desc: "Submitted and waiting for ops",
+    icon: Clock3,
+    topBorder: "border-t-2 border-t-blue-400",
+    iconBg: "bg-blue-100",
+    iconColor: "text-blue-600",
+    numberColor: "text-blue-700",
+  },
+  actionRequired: {
+    label: "Action Required",
+    desc: "Missing files or correction requests",
+    icon: ShieldAlert,
+    topBorder: "border-t-2 border-t-amber-400",
+    iconBg: "bg-amber-100",
+    iconColor: "text-amber-600",
+    numberColor: "text-amber-700",
+  },
+  ready: {
+    label: "Ready to Submit",
+    desc: "All files uploaded, pending agent submission",
+    icon: FileText,
+    topBorder: "border-t-2 border-t-slate-400",
+    iconBg: "bg-slate-100",
+    iconColor: "text-slate-500",
+    numberColor: "text-slate-700",
+  },
+};
+
 const DocumentPortal = () => {
   const navigate = useNavigate();
   const [rows, setRows] = useState([]);
@@ -259,9 +325,13 @@ const DocumentPortal = () => {
       variants={containerVariant}
       initial="hidden"
       animate="visible"
-      className="space-y-4 p-1"
+      className="space-y-4"
     >
-      <motion.header variants={itemVariant} className="relative z-10 flex items-start justify-between gap-4 rounded-2xl border border-slate-200 bg-white px-1 py-1 shadow-sm">
+      {/* Header */}
+      <motion.header
+        variants={itemVariant}
+        className="relative z-10 flex items-start justify-between gap-4 rounded-2xl border border-slate-200 bg-white px-1 py-1 shadow-sm"
+      >
         <div className="space-y-1 p-2">
           <h1 className="text-2xl font-bold">Document Portal</h1>
           <p className="text-sm text-gray-500">
@@ -270,29 +340,33 @@ const DocumentPortal = () => {
         </div>
       </motion.header>
 
+      {/* Summary Stat Cards */}
       <motion.div variants={itemVariant} className="grid gap-4 md:grid-cols-4">
-        <div className="flex h-full flex-col justify-between rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">Verified</p>
-          <p className="mt-1 text-2xl font-semibold text-slate-900">{summary.verified}</p>
-          <p className="mt-1 text-xs text-slate-500">Bookings fully cleared by ops</p>
-        </div>
-        <div className="flex h-full flex-col justify-between rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">Under Review</p>
-          <p className="mt-3 text-2xl font-semibold text-slate-900">{summary.reviewing}</p>
-          <p className="mt-1 text-xs text-slate-500">Submitted and waiting for ops</p>
-        </div>
-        <div className="flex h-full flex-col justify-between rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">Action Required</p>
-          <p className="mt-3 text-2xl font-semibold text-slate-900">{summary.actionRequired}</p>
-          <p className="mt-1 text-xs text-slate-500">Missing files or correction requests</p>
-        </div>
-        <div className="flex h-full flex-col justify-between rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">Ready to Submit</p>
-          <p className="mt-3 text-2xl font-semibold text-slate-900">{summary.ready}</p>
-          <p className="mt-1 text-xs text-slate-500">All files uploaded, waiting for agent submission</p>
-        </div>
+        {Object.entries(statCardConfig).map(([key, cfg]) => {
+          const Icon = cfg.icon;
+          return (
+            <div
+              key={key}
+              className={`flex flex-col justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm ${cfg.topBorder}`}
+            >
+              <div className="flex items-center justify-between">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                  {cfg.label}
+                </p>
+                <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${cfg.iconBg}`}>
+                  <Icon className={`h-4 w-4 ${cfg.iconColor}`} />
+                </div>
+              </div>
+              <p className={`text-3xl font-semibold leading-none ${cfg.numberColor}`}>
+                {summary[key]}
+              </p>
+              <p className="text-xs text-slate-500">{cfg.desc}</p>
+            </div>
+          );
+        })}
       </motion.div>
 
+      {/* Error */}
       {error && (
         <motion.div
           variants={itemVariant}
@@ -303,9 +377,10 @@ const DocumentPortal = () => {
         </motion.div>
       )}
 
+      {/* Table */}
       <motion.div variants={itemVariant} className="overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="sticky top-0 z-10 -mx-4 -mt-4 mb-4 border-b border-slate-100 bg-white px-4 py-4">
-          <h2 className="font-semibold text-md">Traveler Document Tracker</h2>
+          <h2 className="text-md font-semibold">Traveler Document Tracker</h2>
           <p className="text-xs text-gray-500">
             Only the lead client name is shown here. Click `View` to open the booking-level upload screen for the full traveler set.
           </p>
@@ -314,28 +389,28 @@ const DocumentPortal = () => {
         <div className="custom-scroll overflow-x-auto overflow-y-visible rounded-xl bg-white">
           <table className="w-full min-w-[1080px] table-fixed text-xs">
             <colgroup>
-              <col className="w-[13%]" />
-              <col className="w-[11%]" />
               <col className="w-[15%]" />
+              <col className="w-[11%]" />
+              <col className="w-[16%]" />
               <col className="w-[13%]" />
               <col className="w-[16%]" />
               <col className="w-[22%]" />
               <col className="w-[10%]" />
             </colgroup>
 
-            <thead className="sticky top-0 z-10 border-b border-b-gray-300 bg-white text-gray-500">
+            <thead className="border-b border-b-slate-200 bg-slate-50 text-slate-500">
               <tr>
-                <th className="px-4 py-3 text-left font-semibold whitespace-nowrap">Lead Client</th>
-                <th className="px-4 py-3 text-left font-semibold whitespace-nowrap">Booking Ref</th>
-                <th className="px-4 py-3 text-left font-semibold whitespace-nowrap">Trip</th>
-                <th className="px-4 py-3 text-left font-semibold whitespace-nowrap">Travelers</th>
-                <th className="px-4 py-3 text-left font-semibold whitespace-nowrap">Document Status</th>
-                <th className="px-4 py-3 text-left font-semibold whitespace-nowrap">Issue Summary</th>
-                <th className="px-4 py-3 text-right font-semibold whitespace-nowrap">Action</th>
+                <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide whitespace-nowrap">Lead Client</th>
+                <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide whitespace-nowrap">Booking Ref</th>
+                <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide whitespace-nowrap">Trip</th>
+                <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide whitespace-nowrap">Travelers</th>
+                <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide whitespace-nowrap">Document Status</th>
+                <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide whitespace-nowrap">Issue Summary</th>
+                <th className="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-wide whitespace-nowrap">Action</th>
               </tr>
             </thead>
 
-            <tbody className="divide-y divide-gray-200">
+            <tbody className="divide-y divide-gray-100">
               {loading ? (
                 <tr>
                   <td colSpan="7" className="px-2 py-12 text-center text-sm text-gray-400">
@@ -346,36 +421,59 @@ const DocumentPortal = () => {
                 paginatedRows.map((row) => {
                   const status = getStatusConfig(row);
                   const StatusIcon = status.icon;
+                  const initials = getInitials(row.leadClientName);
+                  const avatarColor = getAvatarColor(row.leadClientName);
 
                   return (
-                    <tr key={row._id}>
-                      <td className="px-4 py-4 align-center">
-                        <div>
-                          <p className="font-medium leading-5 text-slate-800 wrap-break-words">{row.leadClientName}</p>
-                          <p className=" text-[11px] leading-4 text-slate-400 wrap-break-words">{row.destination}</p>
+                    <tr key={row._id} className="hover:bg-slate-50/60 transition-colors">
+                      {/* Lead Client — avatar + name + destination */}
+                      <td className="px-4 py-4 align-middle">
+                        <div className="flex items-center gap-2.5">
+                          <div
+                            className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-[11px] font-semibold ${avatarColor.bg} ${avatarColor.text}`}
+                          >
+                            {initials}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="truncate font-medium leading-5 text-slate-800">{row.leadClientName}</p>
+                            <div className="flex items-center gap-1 mt-0.5">
+                              <MapPin className="h-3 w-3 flex-shrink-0 text-slate-400" />
+                              <p className="truncate text-[11px] leading-4 text-slate-400">{row.destination}</p>
+                            </div>
+                          </div>
                         </div>
                       </td>
-                      <td className="px-4 py-4 align-center">
+
+                      {/* Booking Ref */}
+                      <td className="px-4 py-4 align-middle">
                         <span className="inline-flex max-w-full rounded-xl border border-gray-300 px-2.5 py-1 text-xs leading-4 break-all">
                           {row.bookingReference}
                         </span>
                       </td>
-                      <td className="px-4 py-4 align-center text-slate-500">
+
+                      {/* Trip Dates */}
+                      <td className="px-4 py-4 align-middle text-slate-500">
                         <p className="whitespace-nowrap leading-5">{row.travelDates}</p>
                       </td>
-                      <td className="px-4 py-4 align-center">
+
+                      {/* Travelers */}
+                      <td className="px-2 py-4 align-middle">
                         <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1 text-slate-700 leading-4">
                           <Users className="h-3.5 w-3.5" />
                           {row.travelersCount} Travelers
                         </span>
                       </td>
-                      <td className="px-2 py-4 align-center">
+
+                      {/* Document Status */}
+                      <td className="px-2 py-4 align-middle">
                         <span className={`inline-flex w-fit max-w-full items-center gap-1 rounded-full px-3 py-1 text-xs font-medium leading-4 ${status.className}`}>
                           <StatusIcon className="h-3.5 w-3.5" />
                           {status.label}
                         </span>
                       </td>
-                      <td className="px-1 py-2 align-center ">
+
+                      {/* Issue Summary */}
+                      <td className="px-1 py-2 align-middle">
                         <p className="text-xs leading-4 text-slate-500 break-words">
                           {row.reviewStatus === "Rejected" || row.hasMissingDocuments
                             ? row.issueSummary
@@ -386,10 +484,12 @@ const DocumentPortal = () => {
                                 : "Files are uploaded. Submit them from Active Bookings when ready."}
                         </p>
                       </td>
-                      <td className="px-4 py-4 align-center text-right">
+
+                      {/* Action */}
+                      <td className="px-4 py-4 align-middle text-right">
                         <motion.button
                           whileHover={{ scale: 1.02 }}
-                          whileTap={{ scale: 0.98 }}
+                          whileTap={{ scale: 0.97 }}
                           onClick={() =>
                             navigate("/agent/bookings", {
                               state: {
@@ -400,9 +500,9 @@ const DocumentPortal = () => {
                               },
                             })
                           }
-                          className="inline-flex items-center gap-1 whitespace-nowrap rounded-xl border border-slate-200 px-3 py-1.5 text-sm text-slate-800 transition hover:bg-slate-50"
+                          className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm transition hover:bg-green-600 hover:border-green-300 hover:text-white cursor-pointer"
                         >
-                          <Eye className="h-4 w-4" />
+                          <Eye className="h-3.5 w-3.5" />
                           View
                         </motion.button>
                       </td>
@@ -419,6 +519,8 @@ const DocumentPortal = () => {
             </tbody>
           </table>
         </div>
+
+        {/* Pagination */}
         {totalPages > 1 && (
           <div className="mt-4 flex flex-col items-center justify-between gap-4 border-t border-gray-100 bg-gray-50/50 px-2 pt-4 sm:flex-row">
             <span className="text-xs font-medium text-gray-500">
@@ -476,11 +578,12 @@ const DocumentPortal = () => {
         )}
       </motion.div>
 
+      {/* Footer Note */}
       <motion.div
         variants={itemVariant}
         className="flex items-start gap-3 rounded-2xl border border-blue-200 bg-blue-50 p-3 text-xs text-blue-800"
       >
-        <ShieldCheck size={18} />
+        <ShieldCheck size={18} className="flex-shrink-0 mt-0.5" />
         <p>
           <strong>Portal Note:</strong> Upload actions are handled only from <strong>Active Bookings</strong> now.
           This page is for booking-wise tracking, verification status, and quick navigation to the correct correction screen.

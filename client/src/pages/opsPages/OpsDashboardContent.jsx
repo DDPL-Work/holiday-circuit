@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   CheckCircle,
   Clock,
@@ -66,6 +66,14 @@ export default function OpsDashboardContent() {
   const [dashboard, setDashboard] = useState(emptyDashboard);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const recentActivity = useMemo(
+    () =>
+      [...(Array.isArray(dashboard?.recentActivity) ? dashboard.recentActivity : [])].sort(
+        (left, right) =>
+          new Date(right?.occurredAt || 0).getTime() - new Date(left?.occurredAt || 0).getTime(),
+      ),
+    [dashboard?.recentActivity],
+  );
 
   useEffect(() => {
     const fetchDashboard = async () => {
@@ -221,7 +229,7 @@ export default function OpsDashboardContent() {
       </motion.div>
 
       <div className="grid gap-6 xl:grid-cols-3">
-        <RecentActivity items={dashboard.recentActivity} loading={loading} />
+        <RecentActivity items={recentActivity} loading={loading} />
         <TeamPerformance performance={dashboard.performance} loading={loading} />
       </div>
     </motion.div>

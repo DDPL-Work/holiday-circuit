@@ -7,7 +7,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { motion } from "framer-motion";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import API from "../../utils/Api.js";
 
@@ -143,6 +143,15 @@ const AgentDashboard = () => {
     fetchDashboardData();
   }, []);
 
+  const recentActivity = useMemo(
+    () =>
+      [...(Array.isArray(dashboard?.recentActivity) ? dashboard.recentActivity : [])].sort(
+        (left, right) =>
+          new Date(right?.date || 0).getTime() - new Date(left?.date || 0).getTime(),
+      ),
+    [dashboard?.recentActivity],
+  );
+
   const queryTrend = dashboard.trends.queries || { change: 0, direction: "flat" };
 
   const stats = [
@@ -257,13 +266,13 @@ const AgentDashboard = () => {
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               Loading activity...
             </div>
-          ) : dashboard.recentActivity.length === 0 ? (
+          ) : recentActivity.length === 0 ? (
             <div className="flex min-h-56 items-center justify-center rounded-2xl border border-dashed border-gray-300 bg-gray-50 text-sm text-gray-400">
               No recent activity yet.
             </div>
           ) : (
             <ul className="divide-y divide-gray-200">
-              {dashboard.recentActivity.map((item) => (
+              {recentActivity.map((item) => (
                 <li key={item.id} className="flex items-center justify-between gap-4 py-[14px]">
                   <button
                     type="button"

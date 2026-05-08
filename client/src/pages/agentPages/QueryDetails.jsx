@@ -10,6 +10,8 @@ import {
   Mail,
   Send,
   X,
+  RotateCcw,
+  ThumbsUp,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import API from "../../utils/Api.js";
@@ -30,7 +32,7 @@ const itemVariant = {
 };
 
 const formatMoney = (value) =>
-  `INR ${Math.round(Number(value || 0)).toLocaleString("en-IN")}`;
+  `₹${Math.round(Number(value || 0)).toLocaleString("en-IN")}`;
 
 const formatDisplayDate = (value) => {
   if (!value) return "";
@@ -42,6 +44,41 @@ const formatDisplayDate = (value) => {
     month: "short",
     year: "numeric",
   });
+};
+
+const getOrdinalSuffix = (value) => {
+  const normalized = Math.abs(Number(value || 0));
+  const remainder100 = normalized % 100;
+
+  if (remainder100 >= 11 && remainder100 <= 13) return "th";
+
+  switch (normalized % 10) {
+    case 1:
+      return "st";
+    case 2:
+      return "nd";
+    case 3:
+      return "rd";
+    default:
+      return "th";
+  }
+};
+
+const buildItineraryDayLabel = (dayNumber, startDate) => {
+  const numericDay = Math.max(1, Number(dayNumber || 1));
+  const prefix = `${numericDay}${getOrdinalSuffix(numericDay)} Day`;
+
+  if (!startDate) return prefix;
+
+  const parsed = new Date(startDate);
+  if (Number.isNaN(parsed.getTime())) return prefix;
+
+  parsed.setDate(parsed.getDate() + numericDay - 1);
+  const weekday = parsed.toLocaleDateString("en-GB", { weekday: "short" });
+  const month = parsed.toLocaleDateString("en-GB", { month: "short" });
+  const day = parsed.getDate();
+
+  return `${prefix} (${weekday} ${day}${getOrdinalSuffix(day)} ${month})`;
 };
 
 const formatUsageLabel = (value = "") =>
@@ -62,64 +99,444 @@ const getServiceDescriptionBits = (description = "") =>
     .map((item) => item.trim())
     .filter(Boolean);
 
+const SELLER_BANK_DETAILS = [
+  { label: "Bank Name", value: "HDFC Bank" },
+  { label: "A/c Holder Name", value: "Leela Travels" },
+  { label: "A/c No.", value: "50200103968171" },
+  { label: "IFSC", value: "HDFC0004413" },
+  { label: "Branch", value: "RAMPHAL CHOWK SEC VII DWARKA" },
+];
+
+const QUOTATION_TERMS = [
+  "Balance payment to be cleared before travel",
+  "Cancellation as per supplier policy; service charges non-refundable",
+  "Amendments subject to availability & extra cost",
+  "No refund for no-show / unused services",
+  "Guests must carry valid travel documents",
+  "Not liable for delays, cancellations, or unforeseen events",
+  "All disputes are subject to Delhi jurisdiction only",
+];
+
+const AGENT_MARKUP_POLICY = {
+  minPercent: 4,
+  maxPercent: 5,
+};
+
+const getMaxAgentMarkupAmount = (opsTotal = 0) =>
+  Math.round(
+    (Math.max(0, Number(opsTotal) || 0) * AGENT_MARKUP_POLICY.maxPercent) / 100,
+  );
+
+const validateAgentMarkupInput = ({ markupType, markupValue, opsTotal }) => {
+  const normalizedType = String(markupType || "").trim().toUpperCase();
+  const normalizedValue = Number(markupValue);
+
+  if (!Number.isFinite(normalizedValue) || normalizedValue <= 0) {
+    return "Please enter a valid markup value.";
+  }
+
+  if (normalizedType === "PERCENT") {
+    if (
+      normalizedValue < AGENT_MARKUP_POLICY.minPercent ||
+      normalizedValue > AGENT_MARKUP_POLICY.maxPercent
+    ) {
+      return `Markup percentage must stay between ${AGENT_MARKUP_POLICY.minPercent}% and ${AGENT_MARKUP_POLICY.maxPercent}%.`;
+    }
+
+    return "";
+  }
+
+  if (normalizedType === "AMOUNT") {
+    const maxAmount = getMaxAgentMarkupAmount(opsTotal);
+
+    if (normalizedValue > maxAmount) {
+      return `Fixed markup cannot exceed ${formatMoney(maxAmount)} (${AGENT_MARKUP_POLICY.maxPercent}% of ops quote).`;
+    }
+
+    return "";
+  }
+
+  return "Please select a valid markup type.";
+};
+
 const ActionPillButton = ({
   label,
-  hint,
   icon,
   onClick,
   disabled = false,
   tone = "slate",
+  className = "",
 }) => {
   const tones = {
-    sky: {
-      shell: "border-sky-200 bg-[linear-gradient(135deg,#38bdf8_0%,#2563eb_100%)] text-white shadow-[0_16px_30px_rgba(37,99,235,0.18)] hover:shadow-[0_20px_36px_rgba(37,99,235,0.24)]",
-      iconWrap: "bg-white text-sky-600",
-      hint: "text-white/75",
-    },
-    rose: {
-      shell: "border-rose-200 bg-[linear-gradient(135deg,#fb7185_0%,#ef4444_100%)] text-white shadow-[0_16px_30px_rgba(239,68,68,0.18)] hover:shadow-[0_20px_36px_rgba(239,68,68,0.24)]",
-      iconWrap: "bg-white text-rose-500",
-      hint: "text-white/75",
-    },
-    emerald: {
-      shell: "border-emerald-200 bg-[linear-gradient(135deg,#34d399_0%,#059669_100%)] text-white shadow-[0_16px_30px_rgba(5,150,105,0.18)] hover:shadow-[0_20px_36px_rgba(5,150,105,0.24)]",
-      iconWrap: "bg-white text-emerald-600",
-      hint: "text-white/75",
-    },
-    slate: {
-      shell: "border-slate-200 bg-slate-100 text-slate-500",
-      iconWrap: "bg-white text-slate-400",
-      hint: "text-slate-400",
-    },
+    sky: "bg-[#545CEB] hover:bg-[#434AC7] shadow-[0_6px_16px_rgba(84,92,235,0.2)]",
+    rose: "bg-[#F43F5E] hover:bg-[#E11D48] shadow-[0_6px_16px_rgba(244,63,94,0.2)]",
+    emerald: "bg-[#10B981] hover:bg-[#059669] shadow-[0_6px_16px_rgba(16,185,129,0.2)]",
+    slate: "bg-slate-600 hover:bg-slate-700 shadow-[0_6px_16px_rgba(71,85,105,0.2)]",
   };
 
-  const style = tones[tone] || tones.slate;
+  const shellStyle = tones[tone] || tones.slate;
 
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className={`group inline-flex w-full items-center overflow-hidden rounded-full border transition duration-200 ${
-        disabled ? "cursor-not-allowed opacity-70" : "hover:-translate-y-0.5"
-      } ${style.shell}`}
+      className={`flex items-center justify-center gap-2 rounded-full px-8 py-2 text-white transition-all duration-200 ${
+        disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer"
+      } ${shellStyle} ${className}`}
     >
-      <span className={`m-1 flex h-12 w-14 flex-shrink-0 items-center justify-center rounded-full ${style.iconWrap}`}>
+      <span className="flex items-center justify-center [&>svg]:w-3.5 [&>svg]:h-3.5">
         {icon}
       </span>
-      <span className="min-w-0 flex-1 px-3 py-3 text-left">
-        <span className="block text-[15px] font-semibold tracking-[0.24em] uppercase leading-none">
-          {label}
-        </span>
-        {hint ? (
-          <span className={`mt-1 block text-[10px] font-medium ${style.hint}`}>
-            {hint}
-          </span>
-        ) : null}
-      </span>
+      <span className="text-[11px]">{label}</span>
     </button>
   );
 };
+
+const QuoteInfoListCard = ({
+  title,
+  items = [],
+  tone = "slate",
+  emptyLabel = "No items provided",
+  icon = null,
+}) => {
+  const tones = {
+    emerald: {
+      border: "border-emerald-200",
+      shell: "bg-emerald-50",
+      iconBg: "bg-emerald-100",
+      iconText: "text-emerald-700",
+      badge: "bg-emerald-100 text-emerald-700 border border-emerald-200",
+      itemBorder: "border-l-[3px] border-emerald-500",
+    },
+    rose: {
+      border: "border-rose-200",
+      shell: "bg-rose-50",
+      iconBg: "bg-rose-100",
+      iconText: "text-rose-700",
+      badge: "bg-rose-100 text-rose-700 border border-rose-200",
+      itemBorder: "border-l-[3px] border-rose-500",
+    },
+    sky: {
+      border: "border-sky-200",
+      shell: "bg-sky-50",
+      iconBg: "bg-sky-100",
+      iconText: "text-sky-700",
+      badge: "bg-sky-100 text-sky-700 border border-sky-200",
+      itemBorder: "border-l-[3px] border-sky-500",
+    },
+    slate: {
+      border: "border-gray-200",
+      shell: "bg-gray-50",
+      iconBg: "bg-gray-100",
+      iconText: "text-gray-700",
+      badge: "bg-gray-100 text-gray-700 border border-gray-200",
+      itemBorder: "border-l-[3px] border-gray-400",
+    },
+  };
+
+  const currentTone = tones[tone] || tones.slate;
+  const normalizedItems = Array.isArray(items) ? items.filter(Boolean) : [];
+
+  return (
+    <div className={`mb-4 rounded-xl border bg-white p-3 ${currentTone.border}`}>
+      <div className="mb-3 flex items-center gap-2">
+        <div className={`flex h-7 w-7 items-center justify-center rounded-lg ${currentTone.iconBg} ${currentTone.iconText}`}>
+          {icon}
+        </div>
+        <h4 className="font-semibold text-sm text-gray-900">{title}</h4>
+        <span className={`ml-auto rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${currentTone.badge}`}>
+          {normalizedItems.length} item{normalizedItems.length === 1 ? "" : "s"}
+        </span>
+      </div>
+
+      {normalizedItems.length ? (
+        <ul className="space-y-2">
+          {normalizedItems.map((item, idx) => (
+            <li
+              key={`${title}-${idx}`}
+              className={`rounded-xl border border-gray-200 bg-gray-50 p-3 ${currentTone.itemBorder}`}
+            >
+              <span className="text-[13px] leading-relaxed text-slate-800">{item}</span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <div className={`rounded-xl border border-dashed p-3 text-sm italic ${currentTone.shell} ${currentTone.border} text-gray-500`}>
+          {emptyLabel}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const QuoteDayWiseItineraryCard = ({ items = [], startDate = "" }) => {
+  const normalizedItems = Array.isArray(items)
+    ? items.filter((item) => item && (item.heading || item.title || item.description))
+    : [];
+
+  if (!normalizedItems.length) return null;
+
+  return (
+    <div className="mb-4 rounded-xl border border-orange-200 bg-white p-3">
+      <div className="mb-3 flex items-center gap-2">
+        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-100 text-amber-700">
+          <Clock3 size={14} />
+        </div>
+        <h4 className="font-semibold text-sm text-gray-900">Day Wise Itinerary</h4>
+        <span className="ml-auto rounded-full border border-amber-200 bg-amber-100 px-2.5 py-0.5 text-[11px] font-semibold text-amber-700">
+          {normalizedItems.length} day{normalizedItems.length === 1 ? "" : "s"}
+        </span>
+      </div>
+
+      <div className="space-y-3">
+        {normalizedItems.map((item, index) => {
+          const dayLabel =
+            String(item?.dayLabel || "").trim() ||
+            buildItineraryDayLabel(item?.dayNumber || index + 1, startDate);
+          const heading = String(item?.heading || "").trim() || (item?.title ? `${dayLabel} : ${item.title}` : dayLabel);
+          const description = String(item?.description || "").trim();
+
+          return (
+            <div key={`quote-itinerary-${index}`} className="rounded-xl border border-gray-200 bg-gray-50 p-3" style={{ borderLeft: "3px solid #f59e0b" }}>
+              <div className="mb-1 flex items-center gap-2">
+                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-amber-100 text-[11px] font-semibold text-amber-700">
+                  {item?.dayNumber || index + 1}
+                </div>
+                <p className="text-[13px] font-semibold text-[#92400E]">{heading}</p>
+              </div>
+              {description ? (
+                <p className="mt-1 whitespace-pre-line text-[13px] leading-relaxed text-slate-700">{description}</p>
+              ) : (
+                <p className="mt-1 text-xs italic text-slate-400">Description pending.</p>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+const QuoteSellerBankDetailsCard = () => (
+  <div className="mb-4 rounded-xl border border-orange-200 bg-white p-3">
+    <div className="mb-3 flex items-center gap-2">
+      <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-orange-100 text-orange-700">
+        <CreditCard size={14} />
+      </div>
+      <h4 className="font-semibold text-sm text-gray-900">Seller&apos;s Bank Details</h4>
+    </div>
+
+    <div className="space-y-2">
+      {SELLER_BANK_DETAILS.map((item) => (
+        <div key={item.label} className="rounded-xl border border-gray-200 bg-gray-50 p-3" style={{ borderLeft: "3px solid #f97316" }}>
+          <p className="text-[13px] leading-relaxed text-slate-800">
+            <span className="font-semibold text-slate-900">{item.label}:</span>{" "}
+            <span>{item.value}</span>
+          </p>
+        </div>
+      ))}
+    </div>
+  </div>
+);
+
+const QuoteTermsAndConditionsCard = () => (
+  <div className="mb-4 rounded-xl border border-violet-200 bg-white p-3">
+    <div className="mb-3 flex items-center gap-2">
+      <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-violet-100 text-violet-700">
+        <ShieldAlert size={14} />
+      </div>
+      <h4 className="font-semibold text-sm text-gray-900">Terms and Conditions</h4>
+      <span className="ml-auto rounded-full border border-violet-200 bg-violet-100 px-2.5 py-0.5 text-[11px] font-semibold text-violet-700">
+        {QUOTATION_TERMS.length} points
+      </span>
+    </div>
+
+    <ol className="space-y-2">
+      {QUOTATION_TERMS.map((item, index) => (
+        <li
+          key={item}
+          className="flex items-start gap-2 rounded-xl border border-gray-200 bg-gray-50 p-3"
+          style={{ borderLeft: "3px solid #8b5cf6" }}
+        >
+          <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-violet-100 text-[10px] font-semibold text-violet-700">
+            {index + 1}
+          </span>
+          <span className="text-[13px] leading-relaxed text-slate-700">{item}</span>
+        </li>
+      ))}
+    </ol>
+  </div>
+);
+
+const QuoteServiceListCard = ({ services = [] }) => (
+  <div className="mb-4 rounded-xl border border-[#BEDBFF] bg-white p-3">
+    <div className="mb-3 flex items-center gap-2">
+      <div className="w-7 h-7 rounded-lg bg-blue-50 flex items-center justify-center">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>
+        </svg>
+      </div>
+      <h4 className="font-semibold text-sm text-gray-900">Selected Services</h4>
+      <span className="ml-auto bg-blue-50 text-blue-600 border border-blue-200 rounded-full px-2.5 py-0.5 text-[11px] font-semibold">
+        {services.length} item{services.length === 1 ? "" : "s"}
+      </span>
+    </div>
+
+    <ul className="space-y-2">
+      {services.length > 0 ? (
+        services.map((service, idx) => {
+          const descriptionBits = getServiceDescriptionBits(service.description);
+          const serviceDateLabel = formatDisplayDate(service.serviceDate);
+          const typeLabel = formatServiceTypeLabel(service.type);
+          const serviceTheme =
+            service.type === "hotel"
+              ? {
+                  borderColor: "#3b82f6",
+                  iconBg: "bg-blue-100",
+                  iconStroke: "#2563eb",
+                  badgeClass: "bg-blue-100 text-blue-700",
+                  metaClass: "bg-blue-50 text-blue-700 border border-blue-200",
+                }
+              : service.type === "transfer"
+                ? {
+                    borderColor: "#10b981",
+                    iconBg: "bg-green-100",
+                    iconStroke: "#15803d",
+                    badgeClass: "bg-green-100 text-green-800",
+                    metaClass: "bg-green-50 text-green-700 border border-green-200",
+                  }
+                : service.type === "activity"
+                  ? {
+                      borderColor: "#f59e0b",
+                      iconBg: "bg-amber-100",
+                      iconStroke: "#d97706",
+                      badgeClass: "bg-amber-100 text-amber-800",
+                      metaClass: "bg-amber-50 text-amber-700 border border-amber-200",
+                    }
+                  : {
+                      borderColor: "#8b5cf6",
+                      iconBg: "bg-violet-100",
+                      iconStroke: "#7c3aed",
+                      badgeClass: "bg-violet-100 text-violet-800",
+                      metaClass: "bg-violet-50 text-violet-700 border border-violet-200",
+                    };
+
+          const detailBadges = [];
+          const metaBadges = [typeLabel];
+
+          if (service.type === "hotel") {
+            if (Number(service.nights || 0) > 0) detailBadges.push(`${service.nights}N`);
+            if (Number(service.rooms || 0) > 0) detailBadges.push(`${service.rooms}R`);
+            if (service.roomType) detailBadges.push(service.roomType);
+            if (service.bedType) detailBadges.push(`${service.bedType} bed`);
+            if (Number(service.adults || 0) > 0) detailBadges.push(`${service.adults} Adult`);
+            if (Number(service.children || 0) > 0) detailBadges.push(`${service.children} Child`);
+          }
+
+          if (service.type === "transfer") {
+            if (service.vehicleType) detailBadges.push(service.vehicleType);
+            if (Number(service.passengerCapacity || 0) > 0) detailBadges.push(`${service.passengerCapacity} Pax`);
+            if (Number(service.luggageCapacity || 0) > 0) detailBadges.push(`${service.luggageCapacity} Luggage`);
+            if (service.usageType) detailBadges.push(formatUsageLabel(service.usageType));
+            if (Number(service.days || 0) > 0) detailBadges.push(`${service.days} Day${Number(service.days) > 1 ? "s" : ""}`);
+          }
+
+          if (service.type === "activity" || service.type === "sightseeing") {
+            if (Number(service.pax || 0) > 0) detailBadges.push(`${service.pax} Pax`);
+            if (Number(service.days || 0) > 0) detailBadges.push(`${service.days} Day${Number(service.days) > 1 ? "s" : ""}`);
+          }
+
+          if (serviceDateLabel) metaBadges.push(serviceDateLabel);
+
+          if (service.type === "hotel") metaBadges.push("Stay included");
+          if (service.type === "transfer") metaBadges.push("Transfer included");
+          if (service.type === "activity" || service.type === "sightseeing") metaBadges.push("Experience included");
+
+          return (
+            <li key={idx} className="bg-gray-50 border border-gray-200 rounded-xl p-3" style={{ borderLeft: `3px solid ${serviceTheme.borderColor}` }}>
+              <div className="flex items-start justify-between gap-3 mb-2">
+                <div className="flex items-start gap-2 min-w-0">
+                  <div className={`w-7 h-7 rounded-lg ${serviceTheme.iconBg} flex items-center justify-center flex-shrink-0`}>
+                    {service.type === "hotel" ? (
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={serviceTheme.iconStroke} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>
+                      </svg>
+                    ) : service.type === "transfer" ? (
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={serviceTheme.iconStroke} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M5 17H3a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v9a2 2 0 0 1-2 2h-2"/><circle cx="7.5" cy="17.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/>
+                      </svg>
+                    ) : service.type === "activity" ? (
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={serviceTheme.iconStroke} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M12 2v20"/><path d="M2 12h20"/><circle cx="12" cy="12" r="9"/>
+                      </svg>
+                    ) : (
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={serviceTheme.iconStroke} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M12 3l2.7 5.47 6.03.88-4.36 4.25 1.03 6.01L12 16.77l-5.4 2.84 1.03-6.01L3.27 9.35l6.03-.88L12 3z"/>
+                      </svg>
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="font-semibold text-xs text-gray-900 break-words">{service.title}</div>
+                    <div className="flex items-center gap-1 mt-0.5">
+                      <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
+                      </svg>
+                      <span className="text-[11px] text-gray-400 break-words">
+                        {[service.city, service.country].filter(Boolean).join(", ") || "Location shared in quotation"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                {detailBadges.length > 0 && (
+                  <div className="flex gap-1 flex-shrink-0 flex-wrap justify-end">
+                    {detailBadges.slice(0, 3).map((badge, badgeIndex) => (
+                      <span key={`${badge}-${badgeIndex}`} className={`flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-semibold ${serviceTheme.badgeClass}`}>
+                        {badge}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {detailBadges.length > 3 && (
+                <div className="mb-2 flex flex-wrap gap-1">
+                  {detailBadges.slice(3).map((badge, badgeIndex) => (
+                    <span key={`${badge}-${badgeIndex}`} className={`rounded-md px-2 py-0.5 text-[11px] font-semibold ${serviceTheme.badgeClass}`}>
+                      {badge}
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {metaBadges.length > 0 && (
+                <div className="mb-2 flex flex-wrap gap-1">
+                  {metaBadges.map((badge, badgeIndex) => (
+                    <span key={`${badge}-${badgeIndex}`} className={`rounded-md px-2 py-0.5 text-[10px] font-medium ${serviceTheme.metaClass}`}>
+                      {badge}
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {descriptionBits.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {descriptionBits.map((bit, bitIndex) => (
+                    <span key={`${bit}-${bitIndex}`} className="bg-white border border-gray-200 rounded px-2 py-0.5 text-[10px] text-gray-500">
+                      {bit}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </li>
+          );
+        })
+      ) : (
+        <li className="text-center py-4 text-xs text-gray-400">No services provided</li>
+      )}
+    </ul>
+  </div>
+);
 
 const QueryDetails = ({ query, onClose, onRefresh }) => {
   const [quotes, setQuotes] = useState([]);
@@ -155,6 +572,22 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
     );
   };
 
+  const openMarkupModal = (quote) => {
+    setActiveQuoteId(quote?._id || null);
+    setMarkupType(quote?.agentMarkup?.type || "PERCENT");
+    setMarkupValue(
+      quote?.agentMarkup?.value ? String(quote.agentMarkup.value) : "",
+    );
+    setIsMarkupModalOpen(true);
+  };
+
+  const closeMarkupModal = () => {
+    setIsMarkupModalOpen(false);
+    setActiveQuoteId(null);
+    setMarkupType("PERCENT");
+    setMarkupValue("");
+  };
+
   const handleAcceptQuote = async (quoteId) => {
     try {
       const res = await API.patch(`/agent/quotations/${quoteId}/accept`, {
@@ -168,17 +601,29 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
     }
   };
 
-  const handleApplyMarkup = async (id) => {
+  const handleApplyMarkup = async (quote) => {
+    const validationMessage = validateAgentMarkupInput({
+      markupType,
+      markupValue,
+      opsTotal: quote?.pricing?.totalAmount ?? quote?.totalAmount ?? 0,
+    });
+
+    if (validationMessage) {
+      toast.error(validationMessage);
+      return;
+    }
+
     try {
-      const res = await API.patch(`/agent/quotations/${id}/accept`, {
+      const res = await API.patch(`/agent/quotations/${quote._id}/accept`, {
         action: "APPLY_MARKUP",
         markupType,
         markupValue: Number(markupValue),
       });
       toast.success("Markup applied");
       updateQuote(res.data.quotation);
+      closeMarkupModal();
     } catch (err) {
-      toast.error(err.response?.data?.message);
+      toast.error(err.response?.data?.message || "Unable to apply markup");
     }
   };
 
@@ -422,7 +867,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
         <div className="flex items-start gap-2 sm:items-center">
           <button
             onClick={handleClose}
-            className="rounded-xl px-3 py-2 hover:bg-gray-100 cursor-pointer "
+            className="rounded-xl px-3 py-2 hover:bg-gray-200 cursor-pointer "
           >
             <ArrowLeft className="w-5 h-5 stroke-[1.8] text-black" />
           </button>
@@ -438,8 +883,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
           </div>
         </div>
 
-        {/*========================================= Status ============================== */}
-
+        {/* Status badges */}
         {query.agentStatus === "Quote Sent" && (
           <span className="w-fit bg-green-100 text-green-700 px-3 py-2 rounded-full text-xs">
             Quote Sent
@@ -465,446 +909,329 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
             Booking Confirmed
           </span>
         )}
-
       </motion.div>
 
-      <div className="grid gap-4 p-2 sm:p-4 xl:grid-cols-3">
+      <div className="grid gap-4 p-2 sm:p-1 xl:grid-cols-3">
         {/* LEFT MAIN SECTION */}
         <div className="space-y-4 xl:col-span-2">
           {/* QUOTE SENT UI */}
           {["Quote Sent", "Client Approved"].includes(query.agentStatus) &&
             quotes.length > 0 &&
-            quotes.map((quote, index) => (
-              <motion.div
-                key={quote._id}
-                variants={itemVariant}
-                initial="hidden"
-                animate="visible"
-                transition={{ delay: index * 0.05 }}
-                className="rounded-2xl p-4 bg-[#F6F9FD] shadow-sm border border-[#BEDBFF]"
-              >
-                {quote.status === "Confirmed" || query.agentStatus === "Client Approved" ? (
-                  <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-6 text-center">
-                    <p className="text-sm font-medium text-indigo-700">
-                      Client approval has been shared with operations
-                    </p>
-                    <p className="text-xs text-gray-500 mt-1">
-                      Finance team will share the final invoice with you after the internal finance handoff is completed.
-                    </p>
-                  </div>
-               ) : quote.status === "Sent to Client" ? (
-  <div className="overflow-hidden rounded-2xl border border-emerald-200 bg-white">
-    {/* Green accent top bar */}
-    <div className="h-[3px] w-full bg-gradient-to-r from-emerald-400 to-emerald-600" />
+            quotes.map((quote, index) => {
+              const normalizedQuoteStatus = String(quote?.status || "").trim();
+              const showAcceptActions =
+                normalizedQuoteStatus === "Quote Sent" ||
+                (!normalizedQuoteStatus && query.agentStatus === "Quote Sent");
+              const showMarkupActions = ["Quote Accepted", "Markup Applied"].includes(
+                normalizedQuoteStatus,
+              );
 
-    <div className="p-5">
-      {/* Header row */}
-      <div className="flex items-start justify-between gap-3 mb-4">
-        <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full border-[1.5px] border-emerald-300 bg-emerald-50">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#059669" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="20 6 9 17 4 12" />
-            </svg>
-          </div>
-          <div>
-            <p className="text-[15px] font-semibold text-gray-900 leading-tight">
-              Quotation sent to client
-            </p>
-            <p className="text-xs text-gray-500 mt-0.5">Awaiting their confirmation</p>
-          </div>
-        </div>
-        <span className="flex-shrink-0 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-medium text-emerald-800">
-          Quote Sent
-        </span>
-      </div>
-
-      {/* Status row */}
-      <div className="mb-4 flex items-center justify-between rounded-xl bg-gray-50 px-4 py-3">
-        <div className="flex items-center gap-2">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
-          </svg>
-          <span className="text-xs text-gray-500">Pending client response</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-amber-400" />
-          <span className="text-xs font-medium text-amber-800">Waiting</span>
-        </div>
-      </div>
-
-      {/* Info hint */}
-      <div className="flex items-start gap-2.5 rounded-xl border border-emerald-100 bg-emerald-50/60 px-4 py-3 mb-5">
-        <svg className="mt-0.5 flex-shrink-0" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#059669" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.63 3.38 2 2 0 0 1 3.6 1.18h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L7.91 8.96a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
-        </svg>
-        <p className="text-xs leading-[1.6] text-emerald-900">
-          You'll be notified here as soon as the client confirms or sends feedback.
-        </p>
-      </div>
-
-      {/* Action buttons */}
-      <div className="flex flex-col gap-2 sm:flex-row">
-        <button
-          onClick={() => openRevisionModal(quote._id)}
-          className="flex-1 rounded-full border border-gray-200 bg-white px-6 py-2 text-xs font-medium text-gray-700 cursor-pointer hover:bg-gray-50 transition-colors"
-        >
-          Request Revision
-        </button>
-        <button
-          onClick={() => handleClientApproved(quote._id)}
-          className="flex-1 rounded-full bg-indigo-600 px-6 py-2 text-xs font-semibold text-white cursor-pointer hover:bg-indigo-700 transition-colors"
-        >
-          Client Approved
-        </button>
-      </div>
-    </div>
-  </div>
-                ) : (
-                  <>
-                    {/* PRICE */}
-                    <div className="mb-1 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                      <h3 className="font-semibold text-lg">
-                        Quotation Received
-                      </h3>
-                      <span className="text-blue-600 font-bold text-lg">
-                       ₹{(quote.clientTotalAmount ?? quote.pricing?.totalAmount ?? 0).toLocaleString("en-IN")}
-                      </span>
+              return (
+                <motion.div
+                  key={quote._id}
+                  variants={itemVariant}
+                  initial="hidden"
+                  animate="visible"
+                  transition={{ delay: index * 0.05 }}
+                  className="rounded-2xl p-4 bg-[#F6F9FD] shadow-sm border border-[#BEDBFF]"
+                >
+                  {quote.status === "Confirmed" || query.agentStatus === "Client Approved" ? (
+                    <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-6 text-center">
+                      <p className="text-sm font-medium text-indigo-700">
+                        Client approval has been shared with operations
+                      </p>
+                      <p className="text-xs text-gray-500 mt-1">
+                        Finance team will share the final invoice with you after the internal finance handoff is completed.
+                      </p>
                     </div>
-                    <p className="text-xs text-gray-500 mb-4">
-                      Valid until{" "}
-                      {quote.validTill
-                        ? new Date(quote.validTill).toLocaleDateString()
-                        : "-"}
-                    </p>
+                  ) : quote.status === "Sent to Client" ? (
+                    <div className="overflow-hidden rounded-2xl border border-emerald-200 bg-white">
+                      {/* Green accent top bar */}
+                      <div className="h-[3px] w-full bg-gradient-to-r from-emerald-400 to-emerald-600" />
 
-  {/* ==============================  Inclusions Card Section  ========================================*/}
-
- <div className="border border-[#BEDBFF] rounded-xl p-3 bg-white mb-4">
-  <div className="flex items-center gap-2 mb-3">
-    <div className="w-7 h-7 rounded-lg bg-blue-50 flex items-center justify-center">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
-      </svg>
-    </div>
-    <h4 className="font-semibold text-sm text-gray-900">Inclusions</h4>
-    {(quote.services?.length > 0 || quote.inclusions?.length > 0) && (
-      <span className="ml-auto bg-blue-50 text-blue-600 border border-blue-200 rounded-full px-2.5 py-0.5 text-[11px] font-semibold">
-        {quote.services?.length || quote.inclusions?.length} items
-      </span>
-    )}
-  </div>
-
-  <ul className="space-y-2">
-    {quote.inclusions?.length > 0 ? (
-      quote.inclusions.map((item, idx) => (
-        <li key={idx} className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs text-gray-700">
-          {item}
-        </li>
-      ))
-    ) : quote.services?.length > 0 ? (
-      quote.services.map((service, idx) => {
-        const descriptionBits = getServiceDescriptionBits(service.description);
-        const serviceDateLabel = formatDisplayDate(service.serviceDate);
-        const typeLabel = formatServiceTypeLabel(service.type);
-        const serviceTheme =
-          service.type === "hotel"
-            ? {
-                borderColor: "#3b82f6",
-                iconBg: "bg-blue-100",
-                iconStroke: "#2563eb",
-                badgeClass: "bg-blue-100 text-blue-700",
-                metaClass: "bg-blue-50 text-blue-700 border border-blue-200",
-              }
-            : service.type === "transfer"
-              ? {
-                  borderColor: "#10b981",
-                  iconBg: "bg-green-100",
-                  iconStroke: "#15803d",
-                  badgeClass: "bg-green-100 text-green-800",
-                  metaClass: "bg-green-50 text-green-700 border border-green-200",
-                }
-              : service.type === "activity"
-                ? {
-                    borderColor: "#f59e0b",
-                    iconBg: "bg-amber-100",
-                    iconStroke: "#d97706",
-                    badgeClass: "bg-amber-100 text-amber-800",
-                    metaClass: "bg-amber-50 text-amber-700 border border-amber-200",
-                  }
-                : {
-                    borderColor: "#8b5cf6",
-                    iconBg: "bg-violet-100",
-                    iconStroke: "#7c3aed",
-                    badgeClass: "bg-violet-100 text-violet-800",
-                    metaClass: "bg-violet-50 text-violet-700 border border-violet-200",
-                  };
-
-        const detailBadges = [];
-        const metaBadges = [typeLabel];
-
-        if (service.type === "hotel") {
-          if (Number(service.nights || 0) > 0) detailBadges.push(`${service.nights}N`);
-          if (Number(service.rooms || 0) > 0) detailBadges.push(`${service.rooms}R`);
-          if (service.roomType) detailBadges.push(service.roomType);
-          if (service.bedType) detailBadges.push(`${service.bedType} bed`);
-          if (Number(service.adults || 0) > 0) detailBadges.push(`${service.adults} Adult`);
-          if (Number(service.children || 0) > 0) detailBadges.push(`${service.children} Child`);
-        }
-
-        if (service.type === "transfer") {
-          if (service.vehicleType) detailBadges.push(service.vehicleType);
-          if (Number(service.passengerCapacity || 0) > 0) detailBadges.push(`${service.passengerCapacity} Pax`);
-          if (Number(service.luggageCapacity || 0) > 0) detailBadges.push(`${service.luggageCapacity} Luggage`);
-          if (service.usageType) detailBadges.push(formatUsageLabel(service.usageType));
-          if (Number(service.days || 0) > 0) detailBadges.push(`${service.days} Day${Number(service.days) > 1 ? "s" : ""}`);
-        }
-
-        if (service.type === "activity" || service.type === "sightseeing") {
-          if (Number(service.pax || 0) > 0) detailBadges.push(`${service.pax} Pax`);
-          if (Number(service.days || 0) > 0) detailBadges.push(`${service.days} Day${Number(service.days) > 1 ? "s" : ""}`);
-        }
-
-        if (serviceDateLabel) metaBadges.push(serviceDateLabel);
-
-        if (service.type === "hotel") {
-          metaBadges.push("Stay included");
-        }
-
-        if (service.type === "transfer") {
-          metaBadges.push("Transfer included");
-        }
-
-        if (service.type === "activity" || service.type === "sightseeing") {
-          metaBadges.push("Experience included");
-        }
-
-        return (
-          <li key={idx} className="bg-gray-50 border border-gray-200 rounded-xl p-3" style={{ borderLeft: `3px solid ${serviceTheme.borderColor}` }}>
-            <div className="flex items-start justify-between gap-3 mb-2">
-              <div className="flex items-start gap-2 min-w-0">
-                <div className={`w-7 h-7 rounded-lg ${serviceTheme.iconBg} flex items-center justify-center flex-shrink-0`}>
-                  {service.type === "hotel" ? (
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={serviceTheme.iconStroke} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>
-                    </svg>
-                  ) : service.type === "transfer" ? (
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={serviceTheme.iconStroke} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M5 17H3a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v9a2 2 0 0 1-2 2h-2"/><circle cx="7.5" cy="17.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/>
-                    </svg>
-                  ) : service.type === "activity" ? (
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={serviceTheme.iconStroke} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M12 2v20"/><path d="M2 12h20"/><circle cx="12" cy="12" r="9"/>
-                    </svg>
-                  ) : (
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={serviceTheme.iconStroke} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M12 3l2.7 5.47 6.03.88-4.36 4.25 1.03 6.01L12 16.77l-5.4 2.84 1.03-6.01L3.27 9.35l6.03-.88L12 3z"/>
-                    </svg>
-                  )}
-                </div>
-                <div className="min-w-0">
-                  <div className="font-semibold text-xs text-gray-900 break-words">{service.title}</div>
-                  <div className="flex items-center gap-1 mt-0.5">
-                    <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
-                    </svg>
-                    <span className="text-[11px] text-gray-400 break-words">
-                      {[service.city, service.country].filter(Boolean).join(", ") || "Location shared in quotation"}
-                    </span>
-                  </div>
-                </div>
-              </div>
-              {detailBadges.length > 0 && (
-                <div className="flex gap-1 flex-shrink-0 flex-wrap justify-end">
-                  {detailBadges.slice(0, 3).map((badge, badgeIndex) => (
-                    <span key={`${badge}-${badgeIndex}`} className={`flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-semibold ${serviceTheme.badgeClass}`}>
-                      {badge}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {detailBadges.length > 3 && (
-              <div className="mb-2 flex flex-wrap gap-1">
-                {detailBadges.slice(3).map((badge, badgeIndex) => (
-                  <span key={`${badge}-${badgeIndex}`} className={`rounded-md px-2 py-0.5 text-[11px] font-semibold ${serviceTheme.badgeClass}`}>
-                    {badge}
-                  </span>
-                ))}
-              </div>
-            )}
-
-            {metaBadges.length > 0 && (
-              <div className="mb-2 flex flex-wrap gap-1">
-                {metaBadges.map((badge, badgeIndex) => (
-                  <span key={`${badge}-${badgeIndex}`} className={`rounded-md px-2 py-0.5 text-[10px] font-medium ${serviceTheme.metaClass}`}>
-                    {badge}
-                  </span>
-                ))}
-              </div>
-            )}
-
-            {descriptionBits.length > 0 && (
-              <div className="flex flex-wrap gap-1">
-                {descriptionBits.map((bit, bitIndex) => (
-                  <span key={`${bit}-${bitIndex}`} className="bg-white border border-gray-200 rounded px-2 py-0.5 text-[10px] text-gray-500">
-                    {bit}
-                  </span>
-                ))}
-              </div>
-            )}
-          </li>
-        );
-      })
-    ) : (
-      <li className="text-center py-4 text-xs text-gray-400">No inclusions provided</li>
-    )}
-  </ul>
-</div>
- </>
-)}
-
-                <div className="flex flex-col items-center gap-3">
-                  {/* STEP 1: ACCEPT */}
-                  {quote.status === "Quote Sent" && (
-                    <div className="flex flex-col items-stretch justify-center gap-3 sm:flex-row sm:items-center sm:gap-10">
-                      <button
-                        onClick={() => handleAcceptQuote(quote._id)}
-                        className="bg-green-600 text-white text-[10px] px-8 py-2 rounded-full cursor-pointer"
-                      >
-                        Accept Quote
-                      </button>
-                      <button
-                        onClick={() => openRevisionModal(quote._id)}
-                        className="border border-[#BEDBFF] text-[10px] px-8 py-2 rounded-full cursor-pointer"
-                      >
-                        Request Revision
-                      </button>
-                    </div>
-                  )}
-                  {quote.status === "Quote Accepted" && (
-                    <div className="w-[800px] flex flex-col items-stretch justify-between gap-3 sm:flex-row sm:items-center sm:gap-4">
-                      <ActionPillButton
-                        label="Markup"
-                        hint="Optional: set your final client margin"
-                        icon={<Sparkles size={16} />}
-                        tone="sky"
-                        onClick={() => {
-                          setActiveQuoteId(quote._id);
-                          setIsMarkupModalOpen(true);
-                        }}
-                      />
-                      <ActionPillButton
-                        label="E-Mail"
-                        hint={
-                          sendSubmittingId === quote._id
-                            ? "Preparing quotation email..."
-                            : "Send now, markup is optional"
-                        }
-                        icon={<Mail size={18} />}
-                        tone="rose"
-                        onClick={() => handleOpenSendModal(quote)}
-                        disabled={sendSubmittingId === quote._id}
-                      />
-                    </div>
-                  )}
-
-                  {/* STEP 2:------------------- MARKUP MODAL--------------------------------------- */}
-
-                  {isMarkupModalOpen &&
-                    activeQuoteId === quote._id &&
-                    quote.status === "Quote Accepted" && (
-                      <motion.div
-                        initial={{ opacity: 0, scale: 0.95 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        className="fixed inset-0 z-50 flex items-center justify-center bg-black/80"
-                      >
-                        <div className="bg-white w-full max-w-md rounded-2xl shadow-xl p-6 relative">
-                          <div className="mb-4">
-                            <h2 className="text-lg font-semibold">
-                              Apply Agent Markup
-                            </h2>
-                            <p className="text-xs text-gray-500">
-                              Agent markup is optional. If you prefer, you can also send the ops quote directly to the client.
-                            </p>
-                          </div>
-                          <div className="space-y-4">
-                            <div>
-                              <label className="text-xs font-medium text-gray-600">
-                                Markup Type
-                              </label>
-                              <select
-                                value={markupType}
-                                onChange={(e) => setMarkupType(e.target.value)}
-                                className="w-full mt-1 border rounded-lg px-3 py-2 text-sm"
-                              >
-                                <option value="PERCENT">Percentage (%)</option>
-                                <option value="AMOUNT">Fixed Amount (₹)</option>
-                              </select>
+                      <div className="p-5">
+                        {/* Header row */}
+                        <div className="flex items-start justify-between gap-3 mb-4">
+                          <div className="flex items-center gap-3">
+                            <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full border-[1.5px] border-emerald-300 bg-emerald-50">
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#059669" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                                <polyline points="20 6 9 17 4 12" />
+                              </svg>
                             </div>
                             <div>
-                              <label className="text-xs font-medium text-gray-600">
-                                Markup Value
-                              </label>
-                              <input
-                                type="number"
-                                placeholder="Enter value"
-                                value={markupValue}
-                                onChange={(e) => setMarkupValue(e.target.value)}
-                                className="w-full mt-1 border rounded-lg px-3 py-2 text-sm"
-                              />
+                              <p className="text-[15px] font-semibold text-gray-900 leading-tight">
+                                Quotation sent to client
+                              </p>
+                              <p className="text-xs text-gray-500 mt-0.5">Awaiting their confirmation</p>
                             </div>
                           </div>
-                          <div className="flex justify-end gap-3 mt-6">
-                            <button
-                              onClick={() => setIsMarkupModalOpen(false)}
-                              className="px-5 py-1.5 rounded-full border text-sm"
-                            >
-                              Cancel
-                            </button>
-                            <button
-                              onClick={async () => {
-                                await handleApplyMarkup(activeQuoteId);
-                                setIsMarkupModalOpen(false);
-                              }}
-                              className="px-6 py-1.5 rounded-full bg-blue-600 text-white text-sm cursor-pointer"
-                            >
-                              Apply Markup
-                            </button>
+                          <span className="flex-shrink-0 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-medium text-emerald-800">
+                            Quote Sent
+                          </span>
+                        </div>
+
+                        {/* Status row */}
+                        <div className="mb-4 flex items-center justify-between rounded-xl bg-gray-50 px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                              <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
+                            </svg>
+                            <span className="text-xs text-gray-500">Pending client response</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-amber-400" />
+                            <span className="text-xs font-medium text-amber-800">Waiting</span>
                           </div>
                         </div>
-                      </motion.div>
+
+                        {/* Info hint */}
+                        <div className="flex items-start gap-2.5 rounded-xl border border-emerald-100 bg-emerald-50/60 px-4 py-3 mb-5">
+                          <svg className="mt-0.5 flex-shrink-0" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#059669" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.63 3.38 2 2 0 0 1 3.6 1.18h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L7.91 8.96a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />
+                          </svg>
+                          <p className="text-xs leading-[1.6] text-emerald-900">
+                            You'll be notified here as soon as the client confirms or sends feedback.
+                          </p>
+                        </div>
+
+                        {/* ✅ FIX: Action buttons — icons added */}
+                        <div className="flex flex-col gap-2 sm:flex-row">
+                          <button
+                            onClick={() => openRevisionModal(quote._id)}
+                            className="flex-1 flex items-center justify-center gap-2 rounded-full border border-red-200 bg-[#ff0000b9] px-6 py-2 text-xs font-medium text-white cursor-pointer hover:bg-red-700 transition-colors"
+                          >
+                            <RotateCcw size={13} />
+                            Request Revision
+                          </button>
+                          <button
+                            onClick={() => handleClientApproved(quote._id)}
+                            className="flex-1 flex items-center justify-center gap-2 rounded-full bg-indigo-600 px-6 py-2 text-xs font-semibold text-white cursor-pointer hover:bg-indigo-800 transition-colors"
+                          >
+                            <ThumbsUp size={13} />
+                            Client Approved
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      {/* PRICE */}
+                      <div className="mb-1 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                        <h3 className="font-semibold text-lg">
+                          Quotation Received
+                        </h3>
+                        <span className="text-blue-600 font-bold text-lg">
+                          ₹{(quote.clientTotalAmount ?? quote.pricing?.totalAmount ?? 0).toLocaleString("en-IN")}
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-500 mb-4">
+                        Valid until{" "}
+                        {quote.validTill
+                          ? new Date(quote.validTill).toLocaleDateString()
+                          : "-"}
+                      </p>
+
+                      <QuoteServiceListCard services={quote.services || []} />
+
+                      <div className="mb-4 grid gap-4 lg:grid-cols-2 text-xs">
+                        <QuoteInfoListCard
+                          title="Inclusions"
+                          items={quote.inclusions}
+                          tone="emerald"
+                          emptyLabel="No inclusions provided"
+                          icon={<CheckCircle2 size={14} />}
+                        />
+                        <QuoteInfoListCard
+                          title="Exclusions"
+                          items={quote.exclusions}
+                          tone="rose"
+                          emptyLabel="No exclusions provided"
+                          icon={<X size={14} />}
+                        />
+                      </div>
+
+                      {quote.dayWiseItinerary?.length > 0 && (
+                        <QuoteDayWiseItineraryCard
+                          items={quote.dayWiseItinerary}
+                          startDate={query.startDate}
+                        />
+                      )}
+
+                      {quote.additionalNotes?.length > 0 && (
+                        <div className="mb-4">
+                          <QuoteInfoListCard
+                            title="Important Notes"
+                            items={quote.additionalNotes}
+                            tone="sky"
+                            emptyLabel="No important notes provided"
+                            icon={<FileCheck2 size={14} />}
+                          />
+                        </div>
+                      )}
+
+                      <QuoteSellerBankDetailsCard />
+                      <QuoteTermsAndConditionsCard />
+                    </>
+                  )}
+
+                  <div className="flex flex-col items-center gap-3 pt-2">
+                    {/* ✅ FIX: Accept / Request Revision buttons — icons added */}
+                    {showAcceptActions && (
+                      <div className="w-full flex flex-col sm:flex-row gap-3 mt-3">
+                        <button
+                          onClick={() => handleAcceptQuote(quote._id)}
+                          className="flex-1 flex items-center justify-center gap-2 bg-green-600 text-white text-xs font-medium px-6 py-2 rounded-full cursor-pointer hover:bg-green-700 transition-all duration-200 shadow-sm"
+                        >
+                          <CheckCircle2 size={13} />
+                          Accept Quote
+                        </button>
+                        <button
+                          onClick={() => openRevisionModal(quote._id)}
+                          className="flex-1 flex items-center justify-center gap-2 border border-[#f50505] bg-[#ff0000b9] text-slate-100 text-xs font-semibold py-2 px-6 rounded-[20px] cursor-pointer hover:bg-red-700 transition-all duration-200"
+                        >
+                          <RotateCcw size={13} />
+                          Request Revision
+                        </button>
+                      </div>
                     )}
 
-                  {/* STEP 3:-------------------------- SEND TO CLIENT------------------- */}
-                  {quote.status === "Markup Applied" && (
-                    <div className="flex flex-col items-stretch justify-center gap-3 sm:flex-row sm:items-center sm:gap-4">
-                      <ActionPillButton
-                        label="Markup"
-                        hint="Client pricing is ready"
-                        icon={<CheckCircle2 size={18} />}
-                        tone="sky"
-                        disabled
-                      />
-                      <ActionPillButton
-                        label="E-Mail"
-                        hint={
-                          sendSubmittingId === quote._id
-                            ? "Preparing quotation email..."
-                            : "Choose recipient email and send"
-                        }
-                        icon={<Mail size={18} />}
-                        tone="rose"
-                        onClick={() => handleOpenSendModal(quote)}
-                        disabled={sendSubmittingId === quote._id}
-                      />
-                    </div>
-                  )}
-                </div>
-              </motion.div>
-            ))}
+                    {showMarkupActions && (
+                      <div className="mt-3 flex w-full flex-col gap-3 sm:flex-row">
+                        <ActionPillButton
+                          label="Add Markup"
+                          icon={<Sparkles size={14} />}
+                          tone="sky"
+                          className="flex-1"
+                          onClick={() => openMarkupModal(quote)}
+                        />
+                        <ActionPillButton
+                          label={
+                            sendSubmittingId === quote._id
+                              ? "Preparing email..."
+                              : "Send to Client"
+                          }
+                          icon={<Mail size={14} />}
+                          tone="rose"
+                          className="flex-1"
+                          onClick={() => handleOpenSendModal(quote)}
+                          disabled={sendSubmittingId === quote._id}
+                        />
+                      </div>
+                    )}
 
-{/*============================================== PENDING UI ===================================================I */}
+                    {/* MARKUP MODAL */}
+                    {isMarkupModalOpen &&
+                      activeQuoteId === quote._id &&
+                      showMarkupActions && (
+                        <motion.div
+                          initial={{ opacity: 0, scale: 0.95 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80"
+                        >
+                          <div className="bg-white w-full max-w-md rounded-2xl shadow-xl p-6 relative">
+                            <div className="mb-4">
+                              <h2 className="text-lg font-semibold">
+                                Apply Agent Markup
+                              </h2>
+                              <p className="text-xs text-gray-500">
+                                Agent markup is optional. If you prefer, you can also send the ops quote directly to the client.
+                              </p>
+                            </div>
+                            <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+                              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">
+                                Agent Markup Policy
+                              </p>
+                              <p className="mt-2 text-sm text-slate-800">
+                                Percentage markup is allowed only between {AGENT_MARKUP_POLICY.minPercent}% and {AGENT_MARKUP_POLICY.maxPercent}%.
+                              </p>
+                              <p className="mt-1 text-sm text-slate-700">
+                                Fixed markup can go up to a maximum of{" "}
+                                {formatMoney(
+                                  getMaxAgentMarkupAmount(
+                                    quote?.pricing?.totalAmount ?? quote?.totalAmount ?? 0,
+                                  ),
+                                )}.
+                              </p>
+                            </div>
+                            <div className="space-y-4">
+                              <div>
+                                <label className="text-xs font-medium text-gray-600">
+                                  Markup Type
+                                </label>
+                                <select
+                                  value={markupType}
+                                  onChange={(e) => {
+                                    setMarkupType(e.target.value);
+                                    setMarkupValue("");
+                                  }}
+                                  className="w-full mt-1 border rounded-lg px-3 py-2 text-sm"
+                                >
+                                  <option value="PERCENT">Percentage (%)</option>
+                                  <option value="AMOUNT">Fixed Amount (₹)</option>
+                                </select>
+                              </div>
+                              <div>
+                                <label className="text-xs font-medium text-gray-600">
+                                  Markup Value
+                                </label>
+                                <input
+                                  type="number"
+                                  placeholder="Enter value"
+                                  value={markupValue}
+                                  onChange={(e) => setMarkupValue(e.target.value)}
+                                  min={
+                                    markupType === "PERCENT"
+                                      ? AGENT_MARKUP_POLICY.minPercent
+                                      : 1
+                                  }
+                                  max={
+                                    markupType === "PERCENT"
+                                      ? AGENT_MARKUP_POLICY.maxPercent
+                                      : getMaxAgentMarkupAmount(
+                                          quote?.pricing?.totalAmount ??
+                                            quote?.totalAmount ??
+                                            0,
+                                        )
+                                  }
+                                  step={markupType === "PERCENT" ? "0.1" : "1"}
+                                  className="w-full mt-1 border rounded-lg px-3 py-2 text-sm"
+                                />
+                                <p className="mt-1 text-xs text-gray-500">
+                                  {markupType === "PERCENT"
+                                    ? `Allowed range: ${AGENT_MARKUP_POLICY.minPercent}% to ${AGENT_MARKUP_POLICY.maxPercent}%`
+                                    : `Max allowed fixed markup: ${formatMoney(
+                                        getMaxAgentMarkupAmount(
+                                          quote?.pricing?.totalAmount ??
+                                            quote?.totalAmount ??
+                                            0,
+                                        ),
+                                      )}`}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex justify-end gap-3 mt-6">
+                              <button
+                                onClick={closeMarkupModal}
+                                className="px-5 py-1.5 rounded-full border text-sm"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                onClick={() => handleApplyMarkup(quote)}
+                                className="px-6 py-1.5 rounded-full bg-blue-600 text-white text-sm cursor-pointer"
+                              >
+                                Apply Markup
+                              </button>
+                            </div>
+                          </div>
+                        </motion.div>
+                      )}
+                  </div>
+                </motion.div>
+              );
+            })}
+
+          {/* PENDING UI */}
           {query.agentStatus === "Pending" && (
             <motion.div
               variants={itemVariant}
@@ -959,8 +1286,8 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
               </div>
             </motion.div>
           )}
- {/*======================================= REVISION REQUESTED UI =========================================== */}
 
+          {/* REVISION REQUESTED UI */}
           {query.agentStatus === "Revision Requested" && (
             <motion.div
               variants={itemVariant}
@@ -982,30 +1309,29 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
               </div>
             </motion.div>
           )}
-          
-{/*======================================= IN PROGRESS UI =========================================== */}
 
-{query.agentStatus === "In Progress" && (
-  <motion.div
-    variants={itemVariant}
-    className="rounded-2xl p-6 border border-blue-200 shadow-sm flex flex-col items-center justify-center text-center gap-2 bg-blue-50"
-  >
-    <div className="w-10 h-10 rounded-full border-2 border-blue-400 flex items-center justify-center">
-      ⚙️
-    </div>
-    <h3 className="font-semibold text-sm text-blue-700">
-      Your quotation is being prepared
-    </h3>
-    <p className="text-xs text-gray-600">
-      Our operations team is currently working on your travel plan.
-    </p>
-    <p className="text-xs text-gray-500">
-      You will be notified once the quotation is ready.
-    </p>
-  </motion.div>
-)}
+          {/* IN PROGRESS UI */}
+          {query.agentStatus === "In Progress" && (
+            <motion.div
+              variants={itemVariant}
+              className="rounded-2xl p-6 border border-blue-200 shadow-sm flex flex-col items-center justify-center text-center gap-2 bg-blue-50"
+            >
+              <div className="w-10 h-10 rounded-full border-2 border-blue-400 flex items-center justify-center">
+                ⚙️
+              </div>
+              <h3 className="font-semibold text-sm text-blue-700">
+                Your quotation is being prepared
+              </h3>
+              <p className="text-xs text-gray-600">
+                Our operations team is currently working on your travel plan.
+              </p>
+              <p className="text-xs text-gray-500">
+                You will be notified once the quotation is ready.
+              </p>
+            </motion.div>
+          )}
 
-{/*==================================== REQUIREMENTS ================================================== */}
+          {/* CONFIRMED UI */}
           {query.agentStatus === "Confirmed" && (
             <motion.div
               variants={itemVariant}
@@ -1051,7 +1377,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                     </p>
                     <p className="mt-1 text-sm font-semibold text-slate-900">
                       {latestQuote
-                        ? `INR ${(latestQuote.clientTotalAmount ?? latestQuote.pricing?.totalAmount ?? 0).toLocaleString("en-IN")}`
+                        ? `₹${(latestQuote.clientTotalAmount ?? latestQuote.pricing?.totalAmount ?? 0).toLocaleString("en-IN")}`
                         : "Shared in quotation"}
                     </p>
                   </div>
@@ -1075,6 +1401,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
             </motion.div>
           )}
 
+          {/* REQUIREMENTS */}
           <motion.div
             variants={itemVariant}
             className="border border-gray-200 shadow-sm rounded-2xl p-4 bg-white"
@@ -1110,375 +1437,378 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
               </div>
             </div>
 
-   <div className="mt-2 text-xs">
-   <p className="text-gray-700 mb-2 ">Preferences</p>
-  {query.specialRequirements ? (
-    <div className="flex flex-wrap gap-2">
-      {query.specialRequirements
-       .split(/[.,;\n]/)
-        .filter((item) => item.trim() !== "")
-        .map((item, index) => (
-          <span
-            key={index}
-            className="px-3 py-1 text-xs font-medium bg-blue-50 text-blue-900 border border-blue-300 rounded-full"
-          >
-            {item.trim()}
-          </span>
-        ))}
-    </div>
-  ) : (
-    <p className="font-medium">No special preferences</p>
-  )}
-</div>
-</motion.div>
-
-
-</div>
-
-{/*============================================ RIGHT ACTIVITY LOG ===================================*/}
-<motion.div
-  variants={itemVariant}
-  className="border border-gray-200 shadow-sm rounded-2xl p-5 h-fit"
->
-  {/* Header */}
-  <div className="flex items-center gap-2 mb-5">
-    <div className="w-6 h-6 rounded-lg bg-gray-100 flex items-center justify-center">
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
-      </svg>
-    </div>
-    <h3 className="font-semibold text-sm text-gray-900">Activity Log</h3>
-    {query.activityLog?.length > 0 && (
-      <span className="ml-auto bg-gray-100 text-gray-500 text-[10px] font-semibold px-2 py-0.5 rounded-full">
-        {query.activityLog.length} events
-      </span>
-    )}
-  </div>
-
-  <div className="space-y-1 relative">
-    {query.activityLog?.slice().reverse().map((log, index) => (
-      <div key={index} className="flex gap-3 relative">
-        {(() => {
-          const theme = getActivityTheme(log.action);
-          const LogIcon = theme.Icon;
-
-          return (
-            <>
-
-        {/* Vertical Line */}
-              {index !== query.activityLog.length - 1 && (
-                <span className={`absolute left-[9px] top-6 w-0.5 h-full ${theme.line} z-0`} />
+            <div className="mt-2 text-xs">
+              <p className="text-gray-700 mb-2">Preferences</p>
+              {query.specialRequirements ? (
+                <div className="flex flex-wrap gap-2">
+                  {query.specialRequirements
+                    .split(/[.,;\n]/)
+                    .filter((item) => item.trim() !== "")
+                    .map((item, index) => (
+                      <span
+                        key={index}
+                        className="px-3 py-1 text-xs font-medium bg-blue-50 text-blue-900 border border-blue-300 rounded-full"
+                      >
+                        {item.trim()}
+                      </span>
+                    ))}
+                </div>
+              ) : (
+                <p className="font-medium">No special preferences</p>
               )}
+            </div>
+          </motion.div>
+        </div>
 
-        {/* Dot */}
-              <span
-                className={`mt-1 flex h-5 w-5 items-center justify-center rounded-full z-10 flex-shrink-0 ring-4 ring-white ${theme.dot}`}
-              >
-                <LogIcon className="h-3 w-3 text-white" />
+        {/* RIGHT ACTIVITY LOG */}
+        <motion.div
+          variants={itemVariant}
+          className="border border-gray-200 shadow-sm rounded-2xl p-5 h-fit"
+        >
+          {/* Header */}
+          <div className="flex items-center gap-2 mb-5">
+            <div className="w-6 h-6 rounded-lg bg-gray-100 flex items-center justify-center">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+              </svg>
+            </div>
+            <h3 className="font-semibold text-sm text-gray-900">Activity Log</h3>
+            {query.activityLog?.length > 0 && (
+              <span className="ml-auto bg-gray-100 text-gray-500 text-[10px] font-semibold px-2 py-0.5 rounded-full">
+                {query.activityLog.length} events
               </span>
+            )}
+          </div>
 
-        {/* Content */}
-              <div className={`mb-3 flex-1 rounded-2xl border px-3 py-3 ${theme.surface}`}>
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                  <div>
-                    <p className="text-xs font-semibold text-gray-800 leading-tight">
-                      {getDisplayAction(log.action)}
-                    </p>
-                    <p className="text-[11px] text-gray-500 mt-1">
-                      {new Date(log.timestamp).toLocaleString("en-IN", {
-                        dateStyle: "medium",
-                        timeStyle: "short",
-                      })}
-                    </p>
+          <div className="space-y-1 relative">
+            {query.activityLog?.slice().reverse().map((log, index) => (
+              <div key={index} className="flex gap-3 relative">
+                {(() => {
+                  const theme = getActivityTheme(log.action);
+                  const LogIcon = theme.Icon;
+
+                  return (
+                    <>
+                      {/* Vertical Line */}
+                      {index !== query.activityLog.length - 1 && (
+                        <span className={`absolute left-[9px] top-6 w-0.5 h-full ${theme.line} z-0`} />
+                      )}
+
+                      {/* Dot */}
+                      <span
+                        className={`mt-1 flex h-5 w-5 items-center justify-center rounded-full z-10 flex-shrink-0 ring-4 ring-white ${theme.dot}`}
+                      >
+                        <LogIcon className="h-3 w-3 text-white" />
+                      </span>
+
+                      {/* Content */}
+                      <div className={`mb-3 flex-1 rounded-2xl border px-3 py-3 ${theme.surface}`}>
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                          <div>
+                            <p className="text-xs font-semibold text-gray-800 leading-tight">
+                              {getDisplayAction(log.action)}
+                            </p>
+                            <p className="text-[11px] text-gray-500 mt-1">
+                              {new Date(log.timestamp).toLocaleString("en-IN", {
+                                dateStyle: "medium",
+                                timeStyle: "short",
+                              })}
+                            </p>
+                          </div>
+                          <span className={`w-fit rounded-full px-2.5 py-1 text-[10px] font-semibold ${theme.badge}`}>
+                            {getDisplayAction(log.action)}
+                          </span>
+                        </div>
+                      </div>
+                    </>
+                  );
+                })()}
+              </div>
+            ))}
+          </div>
+        </motion.div>
+      </div>
+
+      {/* SEND MODAL */}
+      <AnimatePresence>
+        {isSendModalOpen && sendQuoteId && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/70 px-4"
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 18, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 12, scale: 0.98 }}
+              transition={{ duration: 0.24, ease: "easeOut" }}
+              className="w-full max-w-md overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_28px_80px_rgba(15,23,42,0.22)]"
+            >
+              <div className="border-b border-slate-100 bg-[linear-gradient(135deg,#f8fafc_0%,#eef2ff_45%,#ecfeff_100%)] px-6 py-5">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-900 text-white shadow-sm">
+                      <Mail size={18} />
+                    </div>
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                        Send Quotation
+                      </p>
+                      <h3 className="mt-1 text-lg font-semibold text-slate-900">
+                        Email quotation to client
+                      </h3>
+                    </div>
                   </div>
-                  <span className={`w-fit rounded-full px-2.5 py-1 text-[10px] font-semibold ${theme.badge}`}>
-                    {getDisplayAction(log.action)}
-                  </span>
+                  <button
+                    type="button"
+                    onClick={handleCloseSendModal}
+                    className="rounded-full border border-slate-200 bg-white p-2 text-slate-400 transition hover:text-slate-700"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+                <p className="mt-4 text-sm leading-6 text-slate-600">
+                  Confirm the client email below. The quotation summary will be sent directly to this inbox.
+                </p>
+              </div>
+
+              <div className="px-6 py-5">
+                <label className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                  Client Email
+                </label>
+                <input
+                  type="email"
+                  value={sendRecipientEmail}
+                  onChange={(e) => setSendRecipientEmail(e.target.value)}
+                  placeholder="Enter client email"
+                  className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:bg-white"
+                />
+
+                <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                  <div className="flex items-start gap-3">
+                    <div className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-xl bg-white text-slate-700 shadow-sm">
+                      <Send size={15} />
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">What will be sent</p>
+                      <p className="mt-1 text-xs leading-5 text-slate-600">
+                        Travel services, inclusions, validity, and final quotation amount in a clean email summary.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                  <button
+                    type="button"
+                    onClick={handleCloseSendModal}
+                    className="rounded-full border border-slate-200 px-5 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const selectedQuote = quotes.find((item) => item._id === sendQuoteId);
+                      if (selectedQuote) {
+                        handleSendToClient(selectedQuote, sendRecipientEmail);
+                      }
+                    }}
+                    disabled={sendSubmittingId === sendQuoteId}
+                    className="rounded-full bg-slate-900 px-5 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-70"
+                  >
+                    {sendSubmittingId === sendQuoteId ? "Sending..." : "Send Email"}
+                  </button>
                 </div>
               </div>
-            </>
-          );
-        })()}
-      </div>
-    ))}
-  </div>
-</motion.div>
-</div>
-<AnimatePresence>
-  {isSendModalOpen && sendQuoteId && (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/70 px-4"
-    >
-      <motion.div
-        initial={{ opacity: 0, y: 18, scale: 0.96 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        exit={{ opacity: 0, y: 12, scale: 0.98 }}
-        transition={{ duration: 0.24, ease: "easeOut" }}
-        className="w-full max-w-md overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_28px_80px_rgba(15,23,42,0.22)]"
-      >
-        <div className="border-b border-slate-100 bg-[linear-gradient(135deg,#f8fafc_0%,#eef2ff_45%,#ecfeff_100%)] px-6 py-5">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-900 text-white shadow-sm">
-                <Mail size={18} />
-              </div>
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                  Send Quotation
-                </p>
-                <h3 className="mt-1 text-lg font-semibold text-slate-900">
-                  Email quotation to client
-                </h3>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={handleCloseSendModal}
-              className="rounded-full border border-slate-200 bg-white p-2 text-slate-400 transition hover:text-slate-700"
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* SEND SUCCESS MODAL */}
+      <AnimatePresence>
+        {sendSuccessMeta && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/70 px-4"
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 18, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 12, scale: 0.98 }}
+              transition={{ duration: 0.24, ease: "easeOut" }}
+              className="relative w-full max-w-md overflow-hidden rounded-[30px] border border-emerald-200 bg-white shadow-[0_32px_90px_rgba(15,23,42,0.28)]"
             >
-              <X size={16} />
-            </button>
-          </div>
-          <p className="mt-4 text-sm leading-6 text-slate-600">
-            Confirm the client email below. The quotation summary will be sent directly to this inbox.
-          </p>
-        </div>
+              <div className="absolute -right-10 -top-10 h-32 w-32 rounded-full bg-emerald-200/50 blur-3xl" />
+              <div className="absolute -left-8 bottom-0 h-28 w-28 rounded-full bg-sky-200/40 blur-3xl" />
 
-        <div className="px-6 py-5">
-          <label className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-            Client Email
-          </label>
-          <input
-            type="email"
-            value={sendRecipientEmail}
-            onChange={(e) => setSendRecipientEmail(e.target.value)}
-            placeholder="Enter client email"
-            className="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:bg-white"
-          />
-
-          <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-            <div className="flex items-start gap-3">
-              <div className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-xl bg-white text-slate-700 shadow-sm">
-                <Send size={15} />
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-slate-900">What will be sent</p>
-                <p className="mt-1 text-xs leading-5 text-slate-600">
-                  Travel services, inclusions, validity, and final quotation amount in a clean email summary.
+              <div className="relative border-b border-emerald-100 bg-[linear-gradient(135deg,#ecfdf5_0%,#f0fdf4_45%,#eff6ff_100%)] px-6 py-6">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-500 text-white shadow-[0_14px_28px_rgba(16,185,129,0.28)]">
+                      <Send size={18} />
+                    </div>
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-emerald-700">Delivered</p>
+                      <h3 className="mt-1 text-xl font-semibold text-slate-900">Quotation sent successfully</h3>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSendSuccessMeta(null)}
+                    className="rounded-full border border-slate-200 bg-white p-2 text-slate-400 transition hover:text-slate-700"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+                <p className="mt-4 text-sm leading-6 text-slate-600">
+                  A dynamic quotation summary has been emailed with service-wise details, travel dates, inclusions, and the final client amount.
                 </p>
               </div>
-            </div>
-          </div>
 
-          <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-            <button
-              type="button"
-              onClick={handleCloseSendModal}
-              className="rounded-full border border-slate-200 px-5 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                const selectedQuote = quotes.find((item) => item._id === sendQuoteId);
-                if (selectedQuote) {
-                  handleSendToClient(selectedQuote, sendRecipientEmail);
-                }
-              }}
-              disabled={sendSubmittingId === sendQuoteId}
-              className="rounded-full bg-slate-900 px-5 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-70"
-            >
-              {sendSubmittingId === sendQuoteId ? "Sending..." : "Send Email"}
-            </button>
-          </div>
-        </div>
-      </motion.div>
-    </motion.div>
-  )}
-</AnimatePresence>
-<AnimatePresence>
-  {sendSuccessMeta && (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/70 px-4"
-    >
-      <motion.div
-        initial={{ opacity: 0, y: 18, scale: 0.96 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        exit={{ opacity: 0, y: 12, scale: 0.98 }}
-        transition={{ duration: 0.24, ease: "easeOut" }}
-        className="relative w-full max-w-md overflow-hidden rounded-[30px] border border-emerald-200 bg-white shadow-[0_32px_90px_rgba(15,23,42,0.28)]"
-      >
-        <div className="absolute -right-10 -top-10 h-32 w-32 rounded-full bg-emerald-200/50 blur-3xl" />
-        <div className="absolute -left-8 bottom-0 h-28 w-28 rounded-full bg-sky-200/40 blur-3xl" />
+              <div className="relative px-6 py-5">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Recipient</p>
+                    <p className="mt-1 break-all text-sm font-semibold text-slate-900">{sendSuccessMeta.recipientEmail || "Registered email"}</p>
+                  </div>
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Quotation</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-900">{sendSuccessMeta.quotationNumber || "Quotation Shared"}</p>
+                  </div>
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Destination</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-900">{sendSuccessMeta.destination || query.destination}</p>
+                  </div>
+                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Client Total</p>
+                    <p className="mt-1 text-sm font-semibold text-emerald-700">{formatMoney(sendSuccessMeta.totalAmount)}</p>
+                  </div>
+                </div>
 
-        <div className="relative border-b border-emerald-100 bg-[linear-gradient(135deg,#ecfdf5_0%,#f0fdf4_45%,#eff6ff_100%)] px-6 py-6">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-500 text-white shadow-[0_14px_28px_rgba(16,185,129,0.28)]">
-                <Send size={18} />
+                <div className="mt-4 rounded-2xl border border-emerald-100 bg-emerald-50/70 px-4 py-3">
+                  <div className="flex flex-wrap items-center gap-3 text-[12px] text-slate-700">
+                    <span className="rounded-full bg-white px-3 py-1 font-semibold text-emerald-700">
+                      {sendSuccessMeta.serviceCount} services
+                    </span>
+                    <span>Valid till {sendSuccessMeta.validTill || "-"}</span>
+                  </div>
+                </div>
+
+                <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setSendSuccessMeta(null)}
+                    className="rounded-full border border-slate-200 px-5 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
+                  >
+                    Stay Here
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSendSuccessMeta(null);
+                      onClose?.();
+                    }}
+                    className="rounded-full bg-slate-900 px-5 py-2 text-sm font-semibold text-white transition hover:bg-slate-700"
+                  >
+                    Back to Queries
+                  </button>
+                </div>
               </div>
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-emerald-700">Delivered</p>
-                <h3 className="mt-1 text-xl font-semibold text-slate-900">Quotation sent successfully</h3>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* REVISION MODAL */}
+      <AnimatePresence>
+        {isRevisionModalOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 px-4"
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 20, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 12, scale: 0.98 }}
+              transition={{ duration: 0.2, ease: "easeOut" }}
+              className="w-full max-w-lg rounded-[28px] border border-slate-200 bg-white p-6 shadow-2xl"
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-orange-500">
+                    Revision Request
+                  </p>
+                  <h3 className="mt-2 text-xl font-semibold text-slate-900">
+                    Send quotation back to operations
+                  </h3>
+                  <p className="mt-2 text-sm leading-6 text-slate-600">
+                    Add the client's requested changes here. Ops will be notified, the same query will reopen for quotation work, and the revised quote will come back to you on this page.
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    setIsRevisionModalOpen(false);
+                    setRevisionReason("");
+                    setRevisionQuoteId(null);
+                  }}
+                  className="rounded-full border border-slate-200 px-3 py-1.5 text-sm text-slate-500 transition hover:bg-slate-50"
+                >
+                  Close
+                </button>
               </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => setSendSuccessMeta(null)}
-              className="rounded-full border border-slate-200 bg-white p-2 text-slate-400 transition hover:text-slate-700"
-            >
-              <X size={16} />
-            </button>
-          </div>
-          <p className="mt-4 text-sm leading-6 text-slate-600">
-            A dynamic quotation summary has been emailed with service-wise details, travel dates, inclusions, and the final client amount.
-          </p>
-        </div>
 
-        <div className="relative px-6 py-5">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Recipient</p>
-              <p className="mt-1 break-all text-sm font-semibold text-slate-900">{sendSuccessMeta.recipientEmail || "Registered email"}</p>
-            </div>
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Quotation</p>
-              <p className="mt-1 text-sm font-semibold text-slate-900">{sendSuccessMeta.quotationNumber || "Quotation Shared"}</p>
-            </div>
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Destination</p>
-              <p className="mt-1 text-sm font-semibold text-slate-900">{sendSuccessMeta.destination || query.destination}</p>
-            </div>
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Client Total</p>
-              <p className="mt-1 text-sm font-semibold text-emerald-700">{formatMoney(sendSuccessMeta.totalAmount)}</p>
-            </div>
-          </div>
+              <div className="mt-5 rounded-2xl border border-orange-100 bg-orange-50/80 px-4 py-3">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-orange-600">
+                  What happens next
+                </p>
+                <p className="mt-2 text-sm text-slate-700">
+                  Ops gets a notification, the query moves into revision mode, and a fresh quotation can be prepared again for this same booking request.
+                </p>
+              </div>
 
-          <div className="mt-4 rounded-2xl border border-emerald-100 bg-emerald-50/70 px-4 py-3">
-            <div className="flex flex-wrap items-center gap-3 text-[12px] text-slate-700">
-              <span className="rounded-full bg-white px-3 py-1 font-semibold text-emerald-700">
-                {sendSuccessMeta.serviceCount} services
-              </span>
-              <span>Valid till {sendSuccessMeta.validTill || "-"}</span>
-            </div>
-          </div>
+              <div className="mt-5">
+                <label className="text-sm font-medium text-slate-800">
+                  Revision details
+                </label>
+                <textarea
+                  rows={5}
+                  value={revisionReason}
+                  onChange={(e) => setRevisionReason(e.target.value)}
+                  placeholder="Example: Client wants hotel option near city center, lower total budget, and airport transfer included."
+                  className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-orange-300 focus:ring-2 focus:ring-orange-100"
+                />
+              </div>
 
-          <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-            <button
-              type="button"
-              onClick={() => setSendSuccessMeta(null)}
-              className="rounded-full border border-slate-200 px-5 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
-            >
-              Stay Here
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setSendSuccessMeta(null);
-                onClose?.();
-              }}
-              className="rounded-full bg-slate-900 px-5 py-2 text-sm font-semibold text-white transition hover:bg-slate-700"
-            >
-              Back to Queries
-            </button>
-          </div>
-        </div>
-      </motion.div>
-    </motion.div>
-  )}
-</AnimatePresence>
-<AnimatePresence>
-  {isRevisionModalOpen && (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 px-4"
-    >
-      <motion.div
-        initial={{ opacity: 0, y: 20, scale: 0.96 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        exit={{ opacity: 0, y: 12, scale: 0.98 }}
-        transition={{ duration: 0.2, ease: "easeOut" }}
-        className="w-full max-w-lg rounded-[28px] border border-slate-200 bg-white p-6 shadow-2xl"
-      >
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-orange-500">
-              Revision Request
-            </p>
-            <h3 className="mt-2 text-xl font-semibold text-slate-900">
-              Send quotation back to operations
-            </h3>
-            <p className="mt-2 text-sm leading-6 text-slate-600">
-              Add the client's requested changes here. Ops will be notified, the same query will reopen for quotation work, and the revised quote will come back to you on this page.
-            </p>
-          </div>
-          <button
-            onClick={() => {
-              setIsRevisionModalOpen(false);
-              setRevisionReason("");
-              setRevisionQuoteId(null);
-            }}
-            className="rounded-full border border-slate-200 px-3 py-1.5 text-sm text-slate-500 transition hover:bg-slate-50"
-          >
-            Close
-          </button>
-        </div>
-
-        <div className="mt-5 rounded-2xl border border-orange-100 bg-orange-50/80 px-4 py-3">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-orange-600">
-            What happens next
-          </p>
-          <p className="mt-2 text-sm text-slate-700">
-            Ops gets a notification, the query moves into revision mode, and a fresh quotation can be prepared again for this same booking request.
-          </p>
-        </div>
-
-        <div className="mt-5">
-          <label className="text-sm font-medium text-slate-800">
-            Revision details
-          </label>
-          <textarea
-            rows={5}
-            value={revisionReason}
-            onChange={(e) => setRevisionReason(e.target.value)}
-            placeholder="Example: Client wants hotel option near city center, lower total budget, and airport transfer included."
-            className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-orange-300 focus:ring-2 focus:ring-orange-100"
-          />
-        </div>
-
-        <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-          <button
-            onClick={() => {
-              setIsRevisionModalOpen(false);
-              setRevisionReason("");
-              setRevisionQuoteId(null);
-            }}
-            className="rounded-full border border-slate-200 px-5 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleRequestRevision}
-            disabled={revisionSubmitting}
-            className="rounded-full bg-orange-500 px-5 py-2 text-sm font-semibold text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:bg-orange-300"
-          >
-            {revisionSubmitting ? "Sending..." : "Notify Ops Team"}
-          </button>
-        </div>
-      </motion.div>
-    </motion.div>
-  )}
-</AnimatePresence>
+              <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                <button
+                  onClick={() => {
+                    setIsRevisionModalOpen(false);
+                    setRevisionReason("");
+                    setRevisionQuoteId(null);
+                  }}
+                  className="rounded-full border border-slate-200 px-5 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleRequestRevision}
+                  disabled={revisionSubmitting}
+                  className="rounded-full bg-orange-500 px-5 py-2 text-sm font-semibold text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:bg-orange-300"
+                >
+                  {revisionSubmitting ? "Sending..." : "Notify Ops Team"}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 };

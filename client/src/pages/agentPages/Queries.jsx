@@ -35,18 +35,18 @@ const Queries = () => {
 
   // ================= API =================
 
-const fetchQueries = async () => {
-  try {
-    const res = await API.get("/agent/getAllQueries");
-    setQueries(res.data.queries || []);
-  } catch (err) {
-    console.error(err);
-  }
-};
+  const fetchQueries = async () => {
+    try {
+      const res = await API.get("/agent/getAllQueries");
+      setQueries(res.data.queries || []);
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
-useEffect(() => {
-  fetchQueries();
-}, []);
+  useEffect(() => {
+    fetchQueries();
+  }, []);
 
   // ================= Helpers =================
   const getStatusBadge = (status) => {
@@ -97,10 +97,10 @@ useEffect(() => {
       label: status || "Pending",
     };
   };
+
   const formatDates = (start, end) => {
     const options = { day: "2-digit", month: "short" };
-    return `${new Date(start).toLocaleDateString("en-IN", options)} - 
-            ${new Date(end).toLocaleDateString("en-IN", options)}`;
+    return `${new Date(start).toLocaleDateString("en-IN", options)} - ${new Date(end).toLocaleDateString("en-IN", options)}`;
   };
 
   const formatPax = (adults, children) =>
@@ -143,58 +143,59 @@ useEffect(() => {
       animate="visible"
       className="space-y-5"
     >
-     
-        <>
-          {/* Header */}
-          <motion.header
-            variants={itemVariant}
-            className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+      <>
+        {/* Header */}
+        <motion.header
+          variants={itemVariant}
+          className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+        >
+          <div>
+            <h1 className="text-2xl font-bold">Queries</h1>
+            <p className="text-sm text-gray-500">
+              Manage your travel requirements and quotes.
+            </p>
+          </div>
+
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={() => setOpenModal(true)}
+            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 py-2 text-sm text-white cursor-pointer sm:w-auto"
           >
-            <div>
-              <h1 className="text-2xl font-bold">Queries</h1>
-              <p className="text-sm text-gray-500">
-                Manage your travel requirements and quotes.
-              </p>
-            </div>
+            <Plus size={16} />
+            Create Query
+          </motion.button>
+        </motion.header>
 
-            <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={() => setOpenModal(true)}
-              className="flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 py-2 text-sm text-white cursor-pointer sm:w-auto"
-            >
-              <Plus size={16} />
-              Create Query
-            </motion.button>
-          </motion.header>
+        {/* Search */}
+        <motion.div variants={itemVariant} className="relative w-full max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
+          <input
+            type="text"
+            placeholder="Search queries..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full pl-9 pr-4 py-1.5 border rounded-2xl text-sm border-gray-300 focus:outline-none"
+          />
+        </motion.div>
 
-          {/* Search */}
-          <motion.div variants={itemVariant} className="relative w-full max-w-sm">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
-            <input
-              type="text"
-              placeholder="Search queries..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-9 pr-4 py-1.5 border rounded-2xl text-sm border-gray-300 focus:outline-none"
-            />
-          </motion.div>
-
-          {/* Table */}
-          <motion.div
-            variants={itemVariant}
-            className="bg-white shadow-xs rounded-xl overflow-hidden"
-          >
-            <div className="thin-scrollbar overflow-x-auto overflow-y-hidden pb-2">
-            <table className="min-w-[870px] w-full table-fixed text-xs">
+        {/* Table */}
+        <motion.div
+          variants={itemVariant}
+          className="bg-white shadow-xs rounded-xl overflow-hidden"
+        >
+          <div className="thin-scrollbar overflow-x-auto">
+          
+            <table className="min-w-225 w-full table-fixed text-xs">
+             
               <colgroup>
-                <col className="w-[14%]" />
-                <col className="w-[14%]" />
+                <col className="w-[12%]" />
+                <col className="w-[15%]" />
                 <col className="w-[16%]" />
-                <col className="w-[16%]" />
-                <col className="w-[18%]" />
-                <col className="w-[14%]" />
-                <col className="w-[8%]" />
+                <col className="w-[15%]" />
+                <col className="w-[19%]" />
+                <col className="w-[13%]" />
+                <col className="w-[10%]" />
               </colgroup>
               <thead className="bg-gray-50 text-gray-500 border-b-gray-200 border-b">
                 <tr>
@@ -203,137 +204,169 @@ useEffect(() => {
                   <th className="text-left px-6 py-3">Dates</th>
                   <th className="text-left px-6 py-3">Pax</th>
                   <th className="text-left px-6 py-3">Status</th>
-                  <th className="text-right px-6 py-3">Quote Price</th>
+                  {/* FIX: whitespace-nowrap add kiya — "Quote Price" ek line mein rahega */}
+                  <th className="text-right px-6 py-3 whitespace-nowrap">Quote Price</th>
                   <th className="px-6 py-3"></th>
                 </tr>
               </thead>
 
-              {/* IMPORTANT FIX: normal tbody */}
               <tbody className="divide-y divide-gray-200">
                 {paginatedQueries.length > 0 ? (
                   paginatedQueries.map((query) => (
-                  <tr
-                    key={query._id}
-                    className="cursor-pointer transition-colors hover:bg-[#F9FAFB]"
-                  >
-                    <td className="px-5 py-4 align-top">
-                      <div className="leading-tight">
-                        <p className="whitespace-nowrap font-semibold text-slate-900">
-                          {query.queryId}
-                        </p>
-                      </div>
-                    </td>
-                    <td className="px-5 py-4 align-top">
-                      <p className="leading-tight text-slate-700">{query.destination}</p>
-                    </td>
-                    <td className="px-5 py-4 align-top">
-                      <p className="leading-snug text-slate-700">
-                        {formatDates(query.startDate, query.endDate)}
-                      </p>
-                    </td>
-                    <td className="px-5 py-4 align-top">
-                      <p className="leading-snug text-slate-700">
-                        {formatPax(
-                          query.numberOfAdults,
-                          query.numberOfChildren
-                        )}
-                      </p>
-                    </td>
-                    <td className="px-5 py-4 align-top">
-                      <span
-                        className={`inline-flex w-[140px] items-center justify-center whitespace-nowrap rounded-full px-2.5 py-2 text-[11px] font-medium leading-none ${getStatusBadge(query.agentStatus).className}`}
-                      >
-                        {getStatusBadge(query.agentStatus).label}
-                      </span>
-                    </td>
-                    <td className="px-5 py-4 align-top text-right font-medium whitespace-nowrap">
-                      {query.customerBudget || "-"}
-                    </td>
-                    <td
-                      className="px-5 py-4 align-top text-right"
-                     onClick={(e) => {  e.stopPropagation(); setSelectedQuery(query); setOpenQueryDetails(true);}}
+                    <tr
+                      key={query._id}
+                      className="cursor-pointer transition-colors hover:bg-[#F9FAFB]"
                     >
-                      <span className="text-sm text-blue-600 px-2 py-2 rounded-lg hover:bg-gray-100">
-                        View
-                      </span>
+                      <td className="px-5 py-4 align-middle">
+                        <div className="leading-tight">
+                          <p className="whitespace-nowrap font-semibold text-slate-900">
+                            {query.queryId}
+                          </p>
+                        </div>
+                      </td>
+                      <td className="px-5 py-4 align-middle">
+                        <p className="leading-tight text-slate-700">{query.destination}</p>
+                      </td>
+                      <td className="px-5 py-4 align-middle">
+                        <p className="leading-snug text-slate-700 whitespace-nowrap">
+                          {formatDates(query.startDate, query.endDate)}
+                        </p>
+                      </td>
+                      <td className="px-5 py-4 align-middle">
+                        <p className="leading-snug text-slate-700 whitespace-nowrap">
+                          {formatPax(query.numberOfAdults, query.numberOfChildren)}
+                        </p>
+                      </td>
+                      <td className="px-5 py-4 align-middle">
+                        <span
+                          className={`inline-flex w-[140px] items-center justify-center whitespace-nowrap rounded-full px-2.5 py-2 text-[11px] font-medium leading-none ${getStatusBadge(query.agentStatus).className}`}
+                        >
+                          {getStatusBadge(query.agentStatus).label}
+                        </span>
+                      </td>
+                      <td className="px-5 py-4 align-middle text-right font-medium whitespace-nowrap">
+                        {query.customerBudget || "-"}
+                      </td>
+
+                      {/* FIX: View button — padding balanced, no overflow */}
+                      <td
+                        className="px-4 py-4 align-middle text-right"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedQuery(query);
+                          setOpenQueryDetails(true);
+                        }}
+                      >
+                        <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-blue-700 bg-blue-50 border border-blue-200 px-3 py-1.5 rounded-lg hover:bg-blue-100 hover:border-blue-300 cursor-pointer transition-colors whitespace-nowrap">
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            width="12"
+                            height="12"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                            <circle cx="12" cy="12" r="3" />
+                          </svg>
+                          View
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan="7" className="px-6 py-8 text-center text-sm text-gray-500">
+                      No queries found.
                     </td>
                   </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan="7" className="px-6 py-8 text-center text-sm text-gray-500">
-                    No queries found.
-                  </td>
-                </tr>
-              )}
+                )}
               </tbody>
             </table>
-            </div>
+          </div>
 
-            {/* Pagination Controls */}
-            {totalPages > 1 && (
-              <div className="flex flex-col items-center justify-between gap-4 border-t border-gray-100 bg-gray-50/50 px-6 py-4 sm:flex-row">
-                <span className="text-xs font-medium text-gray-500">
-                  Showing {startIndex + 1} to {Math.min(startIndex + itemsPerPage, filteredQueries.length)} of {filteredQueries.length} entries
-                </span>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
-                    disabled={currentPage === 1}
-                    className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    Previous
-                  </button>
-                  <div className="hidden items-center gap-1 sm:flex">
-                    {Array.from({ length: totalPages }).map((_, index) => {
-                      // Optional: simple ellipsis logic if many pages exist
-                      if (
-                        totalPages > 5 &&
-                        index !== 0 &&
-                        index !== totalPages - 1 &&
-                        Math.abs(currentPage - 1 - index) > 1
-                      ) {
-                        // Only show one ellipsis
-                        if (index === 1 && currentPage > 3) return <span key={index} className="px-1 text-gray-400">...</span>;
-                        if (index === totalPages - 2 && currentPage < totalPages - 2) return <span key={index} className="px-1 text-gray-400">...</span>;
-                        return null;
-                      }
+          {/* Pagination Controls */}
+          {totalPages > 1 && (
+            <div className="flex flex-col items-center justify-between gap-4 border-t border-gray-100 bg-gray-50/50 px-6 py-4 sm:flex-row">
+              <span className="text-xs font-medium text-gray-500">
+                Showing {startIndex + 1} to{" "}
+                {Math.min(startIndex + itemsPerPage, filteredQueries.length)} of{" "}
+                {filteredQueries.length} entries
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+                  disabled={currentPage === 1}
+                  className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Previous
+                </button>
+                <div className="hidden items-center gap-1 sm:flex">
+                  {Array.from({ length: totalPages }).map((_, index) => {
+                    if (
+                      totalPages > 5 &&
+                      index !== 0 &&
+                      index !== totalPages - 1 &&
+                      Math.abs(currentPage - 1 - index) > 1
+                    ) {
+                      if (index === 1 && currentPage > 3)
+                        return (
+                          <span key={index} className="px-1 text-gray-400">
+                            ...
+                          </span>
+                        );
+                      if (index === totalPages - 2 && currentPage < totalPages - 2)
+                        return (
+                          <span key={index} className="px-1 text-gray-400">
+                            ...
+                          </span>
+                        );
+                      return null;
+                    }
 
-                      return (
-                        <button
-                          key={index}
-                          onClick={() => setCurrentPage(index + 1)}
-                          className={`flex h-7 w-7 items-center justify-center rounded-lg text-xs font-medium transition-colors ${
-                            currentPage === index + 1
-                              ? "bg-slate-900 text-white"
-                              : "text-gray-500 hover:bg-gray-100 hover:text-gray-900"
-                          }`}
-                        >
-                          {index + 1}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <button
-                    onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
-                    disabled={currentPage === totalPages}
-                    className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    Next
-                  </button>
+                    return (
+                      <button
+                        key={index}
+                        onClick={() => setCurrentPage(index + 1)}
+                        className={`flex h-7 w-7 items-center justify-center rounded-lg text-xs font-medium transition-colors ${
+                          currentPage === index + 1
+                            ? "bg-slate-900 text-white"
+                            : "text-gray-500 hover:bg-gray-100 hover:text-gray-900"
+                        }`}
+                      >
+                        {index + 1}
+                      </button>
+                    );
+                  })}
                 </div>
+                <button
+                  onClick={() =>
+                    setCurrentPage((prev) => Math.min(prev + 1, totalPages))
+                  }
+                  disabled={currentPage === totalPages}
+                  className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Next
+                </button>
               </div>
-            )}
-          </motion.div>
-        </>
-    
-<AnimatePresence>
-  {openModal && (<CreateNewQueries onClose={() => { setOpenModal(false); // fetchQueries();
-}}
-/>
-  )}
-</AnimatePresence>
-</motion.section>
+            </div>
+          )}
+        </motion.div>
+      </>
+
+      <AnimatePresence>
+        {openModal && (
+          <CreateNewQueries
+            onClose={() => {
+              setOpenModal(false);
+            }}
+          />
+        )}
+      </AnimatePresence>
+    </motion.section>
   );
 };
 
