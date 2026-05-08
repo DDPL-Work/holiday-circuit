@@ -33,6 +33,18 @@ const isCouponNotification = (notification) =>
 const getNotificationEndpoint = (role) =>
   role === "agent" || role === "dmc_partner" ? "/agent/notifications" : "/admin/notifications";
 
+const getUnreadNotificationCount = (notifications = []) =>
+  notifications.filter((notification) => !notification?.isRead).length;
+
+const notificationBurstDots = [
+  { key: "top", className: "left-1/2 top-1.5", tx: "0px", ty: "-16px", color: "#60a5fa" },
+  { key: "top-right", className: "right-1.5 top-2.5", tx: "12px", ty: "-12px", color: "#facc15" },
+  { key: "right", className: "right-1 top-1/2", tx: "16px", ty: "0px", color: "#34d399" },
+  { key: "bottom-right", className: "right-2 bottom-1.5", tx: "12px", ty: "12px", color: "#fb7185" },
+  { key: "bottom", className: "left-1/2 bottom-1", tx: "0px", ty: "16px", color: "#a78bfa" },
+  { key: "left", className: "left-1 top-1/2", tx: "-16px", ty: "0px", color: "#38bdf8" },
+];
+
 const notificationRouteAllowlist = {
   admin: [
     "/admin/dashboard",
@@ -121,6 +133,40 @@ const isAllowedNotificationRoute = (role, link = "") => {
   return allowedRoutes.some((route) => pathname === route || pathname.startsWith(`${route}/`));
 };
 
+const formatNotificationTimeAgo = (value) => {
+  if (!value) return "";
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "";
+
+  const diffInMinutes = Math.max(0, Math.floor((Date.now() - parsed.getTime()) / 60000));
+
+  if (diffInMinutes < 1) return "Just now";
+  if (diffInMinutes < 60) return `${diffInMinutes} min ago`;
+
+  const hours = Math.floor(diffInMinutes / 60);
+  if (hours < 24) return `${hours} ${hours === 1 ? "hr" : "hrs"} ago`;
+
+  const days = Math.floor(hours / 24);
+  return `${days} ${days === 1 ? "day" : "days"} ago`;
+};
+
+const formatNotificationTimestamp = (value) => {
+  if (!value) return "";
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "";
+
+  return parsed.toLocaleString("en-IN", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+};
+
 const getContextualNotificationLink = (role, notification) => {
   const title = String(notification?.title || "").toLowerCase();
 
@@ -168,12 +214,6 @@ const resolveNotificationLink = (role, notification, fallbackLink) => {
 const filterNotificationsByRole = (role, notifications = []) => {
   if (role === "agent") {
     return notifications.filter((notification) => !isCouponNotification(notification));
-  }
-
-  if (role === "finance_partner") {
-    return notifications.filter(
-      (notification) => notification?.title === "New Internal Invoice Submitted",
-    );
   }
 
   return notifications;
@@ -267,7 +307,7 @@ const Header = ({ onMenuToggle }) => {
   );
 
   const unreadCount = useMemo(
-    () => baseNotifications.filter((notification) => !notification.isRead).length,
+    () => getUnreadNotificationCount(baseNotifications),
     [baseNotifications],
   );
 
@@ -286,12 +326,14 @@ const Header = ({ onMenuToggle }) => {
         : baseNotifications;
 
     return [...source].sort((a, b) => {
+      const createdAtDiff = new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
+      if (createdAtDiff !== 0) return createdAtDiff;
       if (a.isRead !== b.isRead) return a.isRead ? 1 : -1;
       if (a.type !== b.type) {
         if (a.type === "warning") return -1;
         if (b.type === "warning") return 1;
       }
-      return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
+      return 0;
     });
   }, [baseNotifications, canUseManagerFilter, filterMode]);
 
@@ -307,9 +349,7 @@ const Header = ({ onMenuToggle }) => {
       const { data } = await API.get(getNotificationEndpoint(role));
       const nextNotifications = data?.notifications || [];
       const nextVisibleNotifications = filterNotificationsByRole(role, nextNotifications);
-      const nextUnreadCount = nextVisibleNotifications.filter(
-        (notification) => !notification.isRead,
-      ).length;
+      const nextUnreadCount = getUnreadNotificationCount(nextVisibleNotifications);
 
       if (hasFetchedRef.current && nextUnreadCount > prevUnreadRef.current) {
         setBellPop(true);
@@ -347,21 +387,18 @@ const Header = ({ onMenuToggle }) => {
 
   const markAllRead = async () => {
     try {
+      setNotifications((prev) => prev.map((notification) => ({ ...notification, isRead: true })));
+      prevUnreadRef.current = 0;
+      setBellPop(false);
+      setOpenNotifications(false);
+
       await API.patch(`${getNotificationEndpoint(role)}/read-all`);
-      setNotifications((prev) =>
-        prev.map((notification) =>
-          filterNotificationsByRole(role, [notification]).length
-            ? { ...notification, isRead: true }
-            : notification,
-        ),
-      );
 
       if (canViewOffers) {
         setCouponUnreadCount(0);
       }
-
-      setOpenNotifications(false);
     } catch (error) {
+      fetchNotifications(true);
       console.error("Failed to mark notifications read", error);
     }
   };
@@ -377,6 +414,8 @@ const Header = ({ onMenuToggle }) => {
       setNotifications((prev) =>
         prev.filter((notification) => !baseNotifications.some((item) => item._id === notification._id)),
       );
+      prevUnreadRef.current = 0;
+      setBellPop(false);
       setOpenNotifications(false);
     } catch (error) {
       console.error("Failed to clear notifications", error);
@@ -460,9 +499,13 @@ const Header = ({ onMenuToggle }) => {
   useEffect(() => {
     if (!bellPop) return undefined;
 
-    const timeout = window.setTimeout(() => setBellPop(false), 1200);
+    const timeout = window.setTimeout(() => setBellPop(false), 1600);
     return () => window.clearTimeout(timeout);
   }, [bellPop]);
+
+  useEffect(() => {
+    prevUnreadRef.current = unreadCount;
+  }, [unreadCount]);
 
   const getNotificationMeta = (type) => {
     if (type === "warning") {
@@ -488,6 +531,34 @@ const Header = ({ onMenuToggle }) => {
 
   return (
     <>
+      <style>{`
+        @keyframes notification-bell-swing {
+          0% { transform: rotate(0deg) scale(0.92); }
+          14% { transform: rotate(-18deg) scale(1.06); }
+          28% { transform: rotate(16deg) scale(1.1); }
+          42% { transform: rotate(-12deg) scale(1.04); }
+          58% { transform: rotate(10deg) scale(1.02); }
+          74% { transform: rotate(-6deg) scale(1); }
+          100% { transform: rotate(0deg) scale(1); }
+        }
+
+        @keyframes notification-burst-ring {
+          0% { opacity: 0.55; transform: scale(0.62); }
+          100% { opacity: 0; transform: scale(1.72); }
+        }
+
+        @keyframes notification-burst-dot {
+          0% { opacity: 0; transform: translate(0, 0) scale(0.2); }
+          18% { opacity: 1; }
+          100% { opacity: 0; transform: translate(var(--tx), var(--ty)) scale(1); }
+        }
+
+        @keyframes notification-badge-pop {
+          0% { transform: scale(0.58); }
+          40% { transform: scale(1.16); }
+          100% { transform: scale(1); }
+        }
+      `}</style>
       <header className="h-16 border-b border-slate-800 bg-gray-900 pl-3 pr-3 sm:pr-5 md:pl-0 lg:pr-8">
         <div className="flex h-full items-center justify-between gap-3">
           <div className="flex h-full items-center gap-3 md:gap-0">
@@ -545,16 +616,62 @@ const Header = ({ onMenuToggle }) => {
                       fetchNotifications(false);
                     }
                   }}
-                  className={`relative flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-white transition hover:bg-white/10 ${
-                    bellPop ? "shadow-[0_0_0_4px_rgba(59,130,246,0.18)]" : ""
+                  className={`relative flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-white transition duration-300 hover:bg-white/10 ${
+                    bellPop
+                      ? "scale-110 -translate-y-0.5 shadow-[0_0_0_5px_rgba(59,130,246,0.16),0_14px_28px_rgba(15,23,42,0.35)]"
+                      : ""
                   }`}
                   aria-label="Notifications"
                   title="Notifications"
                 >
-                  <Bell className={`h-5 w-5 ${bellPop ? "text-blue-300" : ""}`} />
-                  {baseNotifications.length > 0 && (unreadCount || baseNotifications.length) ? (
-                    <span className="absolute -right-1 -top-1 min-w-[1.25rem] rounded-full bg-rose-500 px-1.5 py-0.5 text-[10px] font-semibold text-white">
-                      {unreadCount || baseNotifications.length}
+                  {bellPop && unreadCount > 0 ? (
+                    <>
+                      <span
+                        className="absolute inset-0 rounded-2xl border border-sky-300/70"
+                        style={{ animation: "notification-burst-ring 720ms ease-out forwards" }}
+                      />
+                      <span
+                        className="absolute inset-0 rounded-2xl border border-cyan-200/40"
+                        style={{ animation: "notification-burst-ring 980ms ease-out forwards" }}
+                      />
+                      <span className="absolute inset-0 rounded-2xl bg-blue-400/20 animate-ping" />
+                      {notificationBurstDots.map((dot) => (
+                        <span
+                          key={dot.key}
+                          className={`absolute h-1.5 w-1.5 rounded-full ${dot.className}`}
+                          style={{
+                            backgroundColor: dot.color,
+                            boxShadow: `0 0 12px ${dot.color}`,
+                            animation: "notification-burst-dot 780ms ease-out forwards",
+                            "--tx": dot.tx,
+                            "--ty": dot.ty,
+                          }}
+                        />
+                      ))}
+                    </>
+                  ) : null}
+                  <Bell
+                    className={`relative h-5 w-5 ${
+                      bellPop && unreadCount > 0 ? "text-blue-300" : ""
+                    }`}
+                    style={
+                      bellPop && unreadCount > 0
+                        ? { animation: "notification-bell-swing 760ms cubic-bezier(0.22, 1, 0.36, 1)" }
+                        : undefined
+                    }
+                  />
+                  {unreadCount > 0 ? (
+                    <span
+                      className={`absolute -right-1 -top-1 min-w-[1.25rem] rounded-full bg-rose-500 px-1.5 py-0.5 text-[10px] font-semibold text-white ${
+                        bellPop ? "animate-pulse" : ""
+                      }`}
+                      style={
+                        bellPop
+                          ? { animation: "notification-badge-pop 520ms cubic-bezier(0.34, 1.56, 0.64, 1), pulse 1s ease-in-out infinite" }
+                          : undefined
+                      }
+                    >
+                      {unreadCount}
                     </span>
                   ) : null}
                 </button>
@@ -735,17 +852,8 @@ const Header = ({ onMenuToggle }) => {
                             const { Icon, iconClass, dot } = getNotificationMeta(
                               notification?.type,
                             );
-                            const timestamp = notification?.createdAt
-                              ? new Date(notification.createdAt)
-                              : null;
-                            const timeLabel = timestamp
-                              ? timestamp.toLocaleString("en-IN", {
-                                  day: "2-digit",
-                                  month: "short",
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                })
-                              : "";
+                            const timeLabel = formatNotificationTimeAgo(notification?.createdAt);
+                            const timestampLabel = formatNotificationTimestamp(notification?.createdAt);
 
                             return (
                               <button
@@ -803,9 +911,10 @@ const Header = ({ onMenuToggle }) => {
                                         >
                                           {notification?.message || ""}
                                         </p>
-                                        {timeLabel ? (
+                                        {(timeLabel || timestampLabel) ? (
                                           <p className="mt-2 text-[11px] font-medium text-slate-400">
-                                            {timeLabel}
+                                            {timeLabel || "Recently"}
+                                            {timestampLabel ? ` • ${timestampLabel}` : ""}
                                           </p>
                                         ) : null}
                                       </div>

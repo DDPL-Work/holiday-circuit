@@ -30,6 +30,11 @@ const activitySchema = new mongoose.Schema({
     required: true
   },
 
+  description: {
+    type: String,
+    default: ""
+  },
+
   adultPrice:{
     type: Number
   },
@@ -44,7 +49,7 @@ const activitySchema = new mongoose.Schema({
 
   currency: {
     type: String,
-    enum: ["USD","INR","AED","EUR"],
+    enum: ["USD", "INR", "AED", "EUR", "IDR", "THB", "SGD", "GBP", "MYR", "EGP"],
     default: "USD"
   },
 

@@ -140,6 +140,42 @@ const ensureFinanceApiAccess = async (req) => {
   return getFinanceAccessContext(req.user);
 };
 
+const MANAGED_USER_NOTIFICATION_LINKS = {
+  admin: "/admin/user-management",
+  operations: "/ops/dashboard",
+  finance_partner: "/finance/dashboard",
+  dmc_partner: "/dmc/dashboard",
+  operation_manager: "/operationManager/operationManagerDashboard",
+  finance_manager: "/financeManager/financeManagerDashboard",
+};
+
+const getManagedUserNotificationLink = (role = "") =>
+  MANAGED_USER_NOTIFICATION_LINKS[String(role || "").trim()] || "";
+
+const notifyManagedUserAccountEvent = async (user, payload = {}) => {
+  if (!user?._id) return;
+
+  const {
+    type = "info",
+    title = "Account Updated",
+    message = "Your account details were updated.",
+    meta = {},
+  } = payload;
+
+  await Notification.create({
+    user: user._id,
+    type,
+    title,
+    message,
+    link: getManagedUserNotificationLink(user.role),
+    meta: {
+      kind: "managed_user_account",
+      role: user.role,
+      ...meta,
+    },
+  });
+};
+
 
 // =============================== Get Pending Agents ===============================
 
@@ -503,6 +539,16 @@ export const createManagedUser = async (req, res, next) => {
       credentialsEmailSent = true;
     }
 
+    await notifyManagedUserAccountEvent(createdUser, {
+      type: "success",
+      title: "Account Created",
+      message: `Your ${BACKEND_ROLE_TO_FRONTEND[normalizedRole] || normalizedRole} account is ready on Holiday Circuit.`,
+      meta: {
+        action: "created",
+        accountStatus: normalizedAccountStatus,
+      },
+    });
+
     res.status(201).json({
       success: true,
       message: credentialsEmailSent
@@ -611,6 +657,15 @@ export const updateManagedUser = async (req, res, next) => {
 
     await user.save();
 
+    await notifyManagedUserAccountEvent(user, {
+      title: "Profile Updated",
+      message: "Your account profile, role, or access details were updated by admin.",
+      meta: {
+        action: "updated",
+        accountStatus: normalizedAccountStatus,
+      },
+    });
+
     res.status(200).json({
       success: true,
       message: "User updated successfully",
@@ -647,6 +702,19 @@ export const updateManagedUserStatus = async (req, res, next) => {
 
     user.accountStatus = nextStatus;
     await user.save();
+
+    await notifyManagedUserAccountEvent(user, {
+      type: nextStatus === "Active" ? "success" : "warning",
+      title: nextStatus === "Active" ? "Account Activated" : "Account Deactivated",
+      message:
+        nextStatus === "Active"
+          ? "Your account access has been activated by admin."
+          : "Your account access has been deactivated by admin.",
+      meta: {
+        action: "status_changed",
+        accountStatus: nextStatus,
+      },
+    });
 
     res.status(200).json({
       success: true,
@@ -740,6 +808,16 @@ export const restoreManagedUser = async (req, res, next) => {
     user.deletionReason = "";
     user.accountStatus = "Active";
     await user.save();
+
+    await notifyManagedUserAccountEvent(user, {
+      type: "success",
+      title: "Account Restored",
+      message: "Your account has been restored and is active again.",
+      meta: {
+        action: "restored",
+        accountStatus: "Active",
+      },
+    });
 
     res.status(200).json({
       success: true,
@@ -3065,6 +3143,7 @@ export const reviewPaymentVerification = async (req, res, next) => {
       rejectionReason = "",
       rejectionRemarks = "",
       reviewRemarks = "",
+      reviewTarget = "",
       rejectionTarget = "",
     } = req.body || {};
 
@@ -3139,6 +3218,7 @@ export const reviewPaymentVerification = async (req, res, next) => {
     }
 
     const normalizedRejectionTarget = String(rejectionTarget || "").trim().toLowerCase();
+    const normalizedReviewTarget = String(reviewTarget || "").trim().toLowerCase();
     if (
       accessContext.scope === "member" &&
       status === "Rejected" &&
@@ -3146,6 +3226,14 @@ export const reviewPaymentVerification = async (req, res, next) => {
       !["agent", "manager"].includes(normalizedRejectionTarget)
     ) {
       return next(new ApiError(400, "Invalid rejection target"));
+    }
+    if (
+      accessContext.scope === "member" &&
+      status === "Verified" &&
+      normalizedReviewTarget &&
+      !["agent", "manager"].includes(normalizedReviewTarget)
+    ) {
+      return next(new ApiError(400, "Invalid verification target"));
     }
 
     const reviewerName = req.user?.name || req.user?.companyName || "Finance Team";
@@ -3166,8 +3254,18 @@ export const reviewPaymentVerification = async (req, res, next) => {
       accessContext.scope === "member" &&
       status === "Rejected" &&
       normalizedRejectionTarget === "agent";
+    const shouldSendVerifiedPaymentToManager =
+      accessContext.scope === "member" &&
+      status === "Verified" &&
+      normalizedReviewTarget !== "agent";
+    const shouldSendMemberReviewToManager =
+      accessContext.scope === "member" &&
+      (
+        shouldSendVerifiedPaymentToManager ||
+        (status === "Rejected" && !shouldReturnRejectedPaymentToAgent)
+      );
 
-    if (accessContext.scope === "member" && !shouldReturnRejectedPaymentToAgent) {
+    if (shouldSendMemberReviewToManager) {
       invoice.paymentVerification = {
         ...invoice.paymentVerification,
         status: "Pending",
@@ -3279,7 +3377,7 @@ export const reviewPaymentVerification = async (req, res, next) => {
       reviewedBy: req.user.id,
       reviewedByName: reviewerName,
       reviewedAt,
-      ...(shouldReturnRejectedPaymentToAgent
+      ...((accessContext.scope === "member" && status === "Verified") || shouldReturnRejectedPaymentToAgent
         ? {
             teamDecisionStatus: "",
             teamDecisionReason: "",
@@ -3368,7 +3466,9 @@ export const reviewPaymentVerification = async (req, res, next) => {
         status === "Verified"
           ? accessContext.scope === "manager"
             ? "Payment verified and approved by finance manager"
-            : "Payment verified successfully"
+            : accessContext.scope === "member"
+              ? "Payment verified by finance executive and sent forward successfully"
+              : "Payment verified successfully"
           : shouldReturnRejectedPaymentToAgent
             ? "Payment rejected by finance executive and sent back to agent"
             : accessContext.scope === "manager"

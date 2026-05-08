@@ -66,6 +66,8 @@ export default function BookingManagementHub() {
             destination: q.destination,
             date: `${formatDate(q.startDate)} - ${formatDate(q.endDate)}`,
             startDate: q.startDate,
+            adults: Number(q.numberOfAdults || 0),
+            children: Number(q.numberOfChildren || 0),
             pax: totalPax,
             status:
               isReceivedNewQuery
@@ -227,7 +229,7 @@ export default function BookingManagementHub() {
                     <th className="w-[130px] px-3 py-3 text-center">Agent Name</th>
                     <th className="w-[90px] px-3 py-3 text-center">Destination</th>
                     <th className="w-[90px] px-3 py-3 text-center">Travel Date</th>
-                    <th className="w-[90px] px-3 py-3 text-center">Pax</th>
+                    <th className="w-[130px] px-3 py-3 text-center">Pax</th>
                     <th className="w-[90px] px-3 py-3 text-center">Ops Status</th>
                     <th className="w-[130px] px-3 py-3 text-center">Document Review</th>
                     <th className="w-[90px] px-3 py-3 text-center">Actions</th>
@@ -284,7 +286,7 @@ export default function BookingManagementHub() {
                             </div>
                             {isReceivedQuery ? (
                               <div className="flex items-center">
-                                <span className="inline-flex max-w-full rounded-full bg-amber-50 px-2 py-1 text-[8px] font-semibold leading-4 text-amber-700">
+                                <span className="inline-flex max-w-full rounded-full bg-amber-50 px-1 py-1 text-[8px] font-semibold leading-4 text-amber-700">
                                   Received from {row.receivedFrom}
                                 </span>
                               </div>
@@ -306,7 +308,14 @@ export default function BookingManagementHub() {
                           </div>
                         </td>
 
-                        <td className="px-3 py-4 align-middle text-center text-gray-400">{row.pax}</td>
+                        <td className="px-3 py-4 align-middle text-center">
+                          <div className="leading-5">
+                            <p className="font-medium text-slate-700">{row.pax} Pax</p>
+                            <p className="text-[11px] text-gray-400">
+                              A: {row.adults} | C: {row.children}
+                            </p>
+                          </div>
+                        </td>
 
                         <td className="px-3 py-4 align-middle text-center">
                           <span className={`inline-flex h-9 min-w-[156px] items-center justify-center gap-1.5 whitespace-nowrap rounded-full px-3 text-xs font-medium leading-none ${status.color}`}>

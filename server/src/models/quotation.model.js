@@ -32,6 +32,17 @@ const quotationSchema = new mongoose.Schema(
   },
 
   inclusions: [{ type: String }],
+  exclusions: [{ type: String }],
+  additionalNotes: [{ type: String }],
+  dayWiseItinerary: [
+    {
+      dayNumber: { type: Number, default: 1 },
+      dayLabel: { type: String, default: "" },
+      date: { type: Date, default: null },
+      title: { type: String, default: "" },
+      description: { type: String, default: "" },
+    },
+  ],
 
   // ================= 🔥 SERVICES =================
   services: [

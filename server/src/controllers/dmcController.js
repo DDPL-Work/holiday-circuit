@@ -599,14 +599,28 @@ export const getAllServices = async (req, res, next) => {
 
     const [hotels, activities, transfers, sightseeing] = await Promise.all([
       Hotel.find(),
-      Activity.find(),
+      Activity.find().sort({ updatedAt: -1, createdAt: -1 }),
       Transfer.find(),
       Sightseeing.find()
     ]);
 
+    const dedupedActivities = Array.from(
+      new Map(
+        activities.map((item) => [
+          [
+            item?.supplier?.toString?.() || "",
+            String(item?.name || "").trim().toLowerCase(),
+            String(item?.city || "").trim().toLowerCase(),
+            String(item?.country || "").trim().toLowerCase(),
+          ].join("::"),
+          item,
+        ]),
+      ).values(),
+    );
+
     const ownerIds = [
       ...hotels.map((item) => item.supplier).filter(Boolean),
-      ...activities.map((item) => item.supplier).filter(Boolean),
+      ...dedupedActivities.map((item) => item.supplier).filter(Boolean),
       ...transfers.map((item) => item.supplier).filter(Boolean),
       ...sightseeing.map((item) => item.supplier).filter(Boolean),
     ].map((item) => item.toString());
@@ -646,7 +660,7 @@ export const getAllServices = async (req, res, next) => {
     }));
 
     // 🔹 FORMAT ACTIVITIES
-    const activityData = activities.map(a => ({
+    const activityData = dedupedActivities.map(a => ({
       id: a._id,
       supplierId: a.supplier,
       supplierName: a.supplierName || "",
@@ -655,6 +669,9 @@ export const getAllServices = async (req, res, next) => {
       type: "activity",
       title: a.name,
       subtitle: `${a.city} | Activity`,
+      description: a.description || a.serviceName || "",
+      city: a.city || "",
+      country: a.country || "",
       price: a.adultPrice || a.price,
       currency: a.currency
     }));
@@ -702,6 +719,7 @@ export const getAllServices = async (req, res, next) => {
       currency: s.currency,
       description: s.description || `${s.roomType || ""} | ${s.mealPlan || ""}`,
       city:s.city,
+      country:s.country || "",
       price:s.price,
     }));
 
@@ -1261,7 +1279,7 @@ const getDmcVisibleQueriesData = async (req) => {
   };
 
   const queries = await TravelQuery.find({
-    opsStatus: { $in: ["Confirmed", "Vouchered"] },
+    opsStatus: { $in: DMC_VISIBLE_BOOKING_STATUSES },
   })
     .populate("agent", "name companyName email")
     .sort({ createdAt: -1 });
@@ -1422,6 +1440,8 @@ const getDmcVisibleQueriesData = async (req) => {
 const clampPercent = (value) =>
   Math.max(0, Math.min(100, Math.round(Number(value) || 0)));
 
+const DMC_VISIBLE_BOOKING_STATUSES = ["Confirmed", "Vouchered", "Invoice_Requested"];
+
 const formatDashboardDate = (value = new Date()) =>
   new Intl.DateTimeFormat("en-US", {
     weekday: "long",
@@ -1549,7 +1569,7 @@ const buildDmcRecentActivity = (queries = []) =>
         });
       }
 
-      if (query?.opsStatus === "Confirmed" || query?.opsStatus === "Vouchered") {
+      if (DMC_VISIBLE_BOOKING_STATUSES.includes(String(query?.opsStatus || "").trim())) {
         items.push({
           title: "Booking Accepted",
           badge: "Accepted",

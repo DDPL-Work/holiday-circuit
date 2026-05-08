@@ -1,5 +1,6 @@
-import { CalendarDays, CheckCircle2, Send, Trash2 } from "lucide-react";
+import { CalendarDays, CheckCircle2, FileText, Send, Trash2, X } from "lucide-react";
 import React, { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { FaStar, FaWater } from "react-icons/fa";
 import { GiCityCar, GiModernCity, } from "react-icons/gi";
 import { FaCarSide } from "react-icons/fa";
@@ -109,7 +110,7 @@ const DEFAULT_EXCHANGE_RATES = Object.freeze({
 });
 
 const CURRENCY_LABELS = Object.freeze({
-  INR: "INR",
+  INR: "₹",
   USD: "$",
   EUR: "EUR",
   GBP: "GBP",
@@ -148,6 +149,695 @@ const formatExchangeRateValue = (value) =>
 
 const formatCurrencyValue = (value, currency = "INR") =>
   `${getCurrencyLabel(currency)} ${formatAmountValue(value)}`;
+
+const formatShareDate = (value) => {
+  if (!value) return "-";
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return String(value);
+  }
+
+  return parsed.toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+};
+
+const buildTravelerSummary = (query = {}) => {
+  const adults = Number(query?.numberOfAdults || 0);
+  const children = Number(query?.numberOfChildren || 0);
+  const infants = Number(query?.numberOfInfants || 0);
+  const parts = [];
+
+  if (adults > 0) parts.push(`${adults} Adult${adults === 1 ? "" : "s"}`);
+  if (children > 0) parts.push(`${children} Child${children === 1 ? "" : "ren"}`);
+  if (infants > 0) parts.push(`${infants} Infant${infants === 1 ? "" : "s"}`);
+
+  return parts.join(", ") || "Traveler details pending";
+};
+
+const buildShareServiceQuantityLabel = (service = {}) => {
+  const normalizedType = normalizeServiceFilterType(service?.type);
+  const details = [];
+
+  if (normalizedType === "hotel") {
+    if (Number(service?.nights || 0) > 0) details.push(`${service.nights}N`);
+    if (Number(service?.rooms || 0) > 0) details.push(`${service.rooms} Room${Number(service.rooms) > 1 ? "s" : ""}`);
+    if (Number(service?.pax || 0) > 0) details.push(`${service.pax} Pax`);
+    return details.join(" | ");
+  }
+
+  if (normalizedType === "transfer") {
+    if (service?.usageType) details.push(String(service.usageType).replace(/-/g, " "));
+    if (Number(service?.passengerCapacity || 0) > 0) {
+      details.push(`${service.passengerCapacity} Pax`);
+    } else if (Number(service?.pax || 0) > 0) {
+      details.push(`${service.pax} Pax`);
+    }
+    if (service?.vehicleType) details.push(service.vehicleType);
+    return details.join(" | ");
+  }
+
+  if (Number(service?.days || 0) > 0) details.push(`${service.days}D`);
+  if (Number(service?.pax || 0) > 0) details.push(`${service.pax} Pax`);
+  if (Number(service?.passengerCapacity || 0) > 0) details.push(`${service.passengerCapacity} Pax`);
+  if (service?.vehicleType) details.push(service.vehicleType);
+
+  return details.join(" | ");
+};
+
+const buildShareServiceLocationLabel = (service = {}) =>
+  [service?.city, service?.country].filter(Boolean).join(", ");
+
+const buildPlainTextQuotationSummary = (quotation = {}) => {
+  const dayWiseItineraryText = sanitizeDayWiseItineraryItems(quotation?.dayWiseItinerary)
+    .filter((item) => item.title || item.description)
+    .map((item) => {
+      const heading = [item.dayLabel, item.title].filter(Boolean).join(": ");
+      return [heading, item.description].filter(Boolean).join("\n");
+    })
+    .join("\n\n");
+  const servicesText = Array.isArray(quotation?.services) && quotation.services.length
+    ? quotation.services
+        .map((service, index) => {
+          const serviceLines = [
+            `${index + 1}. ${service?.title || "Service"} (${service?.typeLabel || "Travel Service"})`,
+            service?.location ? `   Location: ${service.location}` : "",
+            service?.serviceDateLabel ? `   Date: ${service.serviceDateLabel}` : "",
+            service?.quantityLabel ? `   Qty: ${service.quantityLabel}` : "",
+            service?.description ? `   Notes: ${service.description}` : "",
+          ].filter(Boolean);
+
+          return serviceLines.join("\n");
+        })
+        .join("\n\n")
+    : "No service details available.";
+
+  const inclusionsText = Array.isArray(quotation?.inclusions) && quotation.inclusions.length
+    ? quotation.inclusions.map((item, index) => `${index + 1}. ${item}`).join("\n")
+    : "None";
+
+  const exclusionsText = Array.isArray(quotation?.exclusions) && quotation.exclusions.length
+    ? quotation.exclusions.map((item, index) => `${index + 1}. ${item}`).join("\n")
+    : "None";
+
+  const additionalNotesText = Array.isArray(quotation?.additionalNotes) && quotation.additionalNotes.length
+    ? quotation.additionalNotes.map((item, index) => `${index + 1}. ${item}`).join("\n")
+    : "None";
+
+  return [
+    "Holiday Circuit - Quotation Summary",
+    "",
+    `Quotation Number: ${quotation?.quotationNumber || "-"}`,
+    `Query ID: ${quotation?.queryId || "-"}`,
+    `Destination: ${quotation?.destination || "-"}`,
+    `Travel Dates: ${quotation?.travelDates || "-"}`,
+    `Duration: ${quotation?.durationLabel || "-"}`,
+    `Travelers: ${quotation?.travelerSummary || "-"}`,
+    `Valid Till: ${quotation?.validTill || "-"}`,
+    `Total Amount: ${formatCurrencyValue(quotation?.totalAmount || 0, quotation?.currency || "INR")}`,
+    "",
+    "Day Wise Itinerary",
+    dayWiseItineraryText || "None",
+    "",
+    "Selected Services",
+    servicesText,
+    "",
+    "Inclusions",
+    inclusionsText,
+    "",
+    "Exclusions",
+    exclusionsText,
+    "",
+    "Additional Notes",
+    additionalNotesText,
+  ].join("\n");
+};
+
+const WHATSAPP_QUOTATION_BRAND = "Holiday Circuit";
+const WHATSAPP_SECTION_DIVIDER = "----------";
+const WHATSAPP_SUBSECTION_DIVIDER = "-------";
+
+const normalizeWhatsAppPhoneNumber = (value = "") => {
+  const digits = String(value || "").replace(/\D/g, "");
+
+  if (!digits) return "";
+  if (digits.length === 10) return `91${digits}`;
+  if (digits.length === 12 && digits.startsWith("91")) return digits;
+  if (String(value || "").trim().startsWith("+")) return digits;
+
+  return digits;
+};
+
+const parseWhatsAppDate = (value) => {
+  if (!value) return null;
+
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const formatWhatsAppDate = (value, { month = "short", weekday = undefined, includeYear = true } = {}) => {
+  const parsed = parseWhatsAppDate(value);
+  if (!parsed) return "-";
+
+  const day = parsed.getDate();
+  const monthLabel = parsed.toLocaleDateString("en-GB", { month });
+  const weekdayLabel = weekday
+    ? `${parsed.toLocaleDateString("en-GB", { weekday })}, `
+    : "";
+  const baseLabel = `${day} ${monthLabel}`;
+
+  return includeYear
+    ? `${weekdayLabel}${baseLabel}, ${parsed.getFullYear()}`
+    : `${weekdayLabel}${baseLabel}`;
+};
+
+const formatWhatsAppActivityDate = (value) => {
+  const parsed = parseWhatsAppDate(value);
+  if (!parsed) return "";
+
+  const weekday = parsed.toLocaleDateString("en-GB", { weekday: "short" });
+  const month = parsed.toLocaleDateString("en-GB", { month: "short" });
+  const year = String(parsed.getFullYear()).slice(-2);
+
+  return `${weekday}, ${getOrdinalValue(parsed.getDate())} ${month}'${year}`;
+};
+
+const formatWhatsAppItineraryDate = (value) => {
+  const parsed = parseWhatsAppDate(value);
+  if (!parsed) return "";
+
+  const weekday = parsed.toLocaleDateString("en-GB", { weekday: "long" });
+  const month = parsed.toLocaleDateString("en-GB", { month: "short" });
+
+  return `${weekday} ${getOrdinalValue(parsed.getDate())} ${month}, ${parsed.getFullYear()}`;
+};
+
+const addDaysForWhatsApp = (value, daysToAdd = 0) => {
+  const parsed = parseWhatsAppDate(value);
+  if (!parsed) return "";
+
+  parsed.setDate(parsed.getDate() + Number(daysToAdd || 0));
+  return parsed.toISOString();
+};
+
+const getWhatsAppDateDiff = (startDate, endDate) => {
+  const start = parseWhatsAppDate(startDate);
+  const end = parseWhatsAppDate(endDate);
+
+  if (!start || !end) return 0;
+
+  const normalizedStart = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+  const normalizedEnd = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+
+  return Math.max(
+    0,
+    Math.round((normalizedEnd.getTime() - normalizedStart.getTime()) / (1000 * 60 * 60 * 24)),
+  );
+};
+
+const inferSharingLabel = (services = []) => {
+  const primaryHotel = services.find(
+    (service) => normalizeServiceFilterType(service?.type) === "hotel",
+  );
+
+  const rawLabel = `${primaryHotel?.bedType || ""} ${primaryHotel?.roomType || ""}`.toLowerCase();
+
+  if (rawLabel.includes("triple")) return "Triple Sharing";
+  if (rawLabel.includes("double")) return "Double Sharing";
+  if (rawLabel.includes("twin")) return "Twin Sharing";
+  if (rawLabel.includes("single")) return "Single Sharing";
+
+  return "Per Person";
+};
+
+const buildWhatsAppTravelerSummary = (quotation = {}) => {
+  const adults = Number(quotation?.numberOfAdults || 0);
+  const children = Number(quotation?.numberOfChildren || 0);
+  const infants = Number(quotation?.numberOfInfants || 0);
+  const travelers = [];
+
+  if (adults > 0) travelers.push(`${adults} Adult${adults === 1 ? "" : "s"}`);
+  if (children > 0) travelers.push(`${children} ${children === 1 ? "Child" : "Children"}`);
+  if (infants > 0) travelers.push(`${infants} Infant${infants === 1 ? "" : "s"}`);
+
+  return travelers.join(", ") || "Traveler details pending";
+};
+
+const buildWhatsAppNightLabel = (serviceDate, nights, tripStartDate) => {
+  const totalNights = Math.max(1, Number(nights || 1));
+  const startNightNumber = getWhatsAppDateDiff(tripStartDate, serviceDate) + 1;
+  const nightLabels = Array.from({ length: totalNights }, (_, index) =>
+    getOrdinalValue(startNightNumber + index),
+  );
+
+  if (nightLabels.length === 1) {
+    return `${nightLabels[0]} Night`;
+  }
+
+  if (nightLabels.length <= 3) {
+    return `${nightLabels.join(", ")} Nights`;
+  }
+
+  return `${nightLabels[0]} - ${nightLabels[nightLabels.length - 1]} Nights`;
+};
+
+const buildWhatsAppHotelMeta = (service = {}, fallbackPax = 0) => {
+  const hotelPax =
+    Number(service?.pax || 0) +
+      Number(service?.adults || 0) +
+      Number(service?.children || 0) +
+      Number(service?.infants || 0) || fallbackPax;
+  const parts = [];
+  const description = String(service?.description || "").replace(/\s+/g, " ").trim();
+
+  if (description) {
+    parts.push(description);
+  }
+
+  const roomBits = [];
+  if (Number(service?.rooms || 0) > 0) {
+    roomBits.push(
+      `${service.rooms} ${service?.roomType || "Room"}${Number(service.rooms) > 1 ? "s" : ""}`,
+    );
+  } else if (service?.roomType) {
+    roomBits.push(service.roomType);
+  }
+
+  if (hotelPax > 0) {
+    roomBits.push(`(${hotelPax} Pax)`);
+  }
+
+  if (roomBits.length) {
+    parts.push(roomBits.join(" "));
+  }
+
+  return parts.join(" • ") || "Stay included";
+};
+
+const buildWhatsAppHotelsSection = (quotation = {}) => {
+  const hotels = Array.isArray(quotation?.services)
+    ? quotation.services
+        .filter((service) => normalizeServiceFilterType(service?.type) === "hotel")
+        .sort(
+          (left, right) =>
+            new Date(left?.serviceDate || 0).getTime() - new Date(right?.serviceDate || 0).getTime(),
+        )
+    : [];
+
+  if (!hotels.length) return "";
+
+  const totalPax =
+    Number(quotation?.numberOfAdults || 0) +
+    Number(quotation?.numberOfChildren || 0) +
+    Number(quotation?.numberOfInfants || 0);
+
+  const lines = ["🏨  *_Hotels_*", WHATSAPP_SECTION_DIVIDER];
+
+  hotels.forEach((hotel) => {
+    const checkInDate = hotel?.serviceDate || quotation?.startDate || "";
+    const checkOutDate = addDaysForWhatsApp(checkInDate, Number(hotel?.nights || 1));
+    const locationLabel = hotel?.city || quotation?.destination || "Destination";
+    const hotelTitle = hotel?.hotelCategory
+      ? `${hotel.title} (${hotel.hotelCategory})`
+      : hotel.title || "Hotel stay";
+
+    lines.push(`*${buildWhatsAppNightLabel(checkInDate, hotel?.nights, quotation?.startDate)}* _at_ *${locationLabel}*`);
+    lines.push(
+      `_Check-in: ${formatWhatsAppDate(checkInDate, { includeYear: false })}_ & _Check-out: ${formatWhatsAppDate(checkOutDate, { includeYear: false })}_`,
+    );
+    lines.push(`*${hotelTitle}*`);
+    lines.push(buildWhatsAppHotelMeta(hotel, totalPax));
+    lines.push("");
+  });
+
+  return lines.join("\n").trim();
+};
+
+const buildWhatsAppTransportSection = (quotation = {}) => {
+  const services = Array.isArray(quotation?.services)
+    ? quotation.services
+        .filter((service) => normalizeServiceFilterType(service?.type) !== "hotel")
+        .sort(
+          (left, right) =>
+            new Date(left?.serviceDate || 0).getTime() - new Date(right?.serviceDate || 0).getTime(),
+        )
+    : [];
+
+  if (!services.length) return "";
+
+  const groupedServices = services.reduce((accumulator, service) => {
+    const serviceDate = service?.serviceDate || "";
+    const groupKey = normalizeDateInputValue(serviceDate) || String(serviceDate || "undated");
+
+    if (!accumulator[groupKey]) {
+      accumulator[groupKey] = [];
+    }
+
+    accumulator[groupKey].push(service);
+    return accumulator;
+  }, {});
+
+  const lines = ["🚖  *Transportation and Activities*", WHATSAPP_SECTION_DIVIDER];
+
+  Object.entries(groupedServices).forEach(([groupDate, items], index) => {
+    const serviceDate = groupDate === "undated" ? "" : groupDate;
+    const dayNumber = serviceDate
+      ? getWhatsAppDateDiff(quotation?.startDate, serviceDate) + 1
+      : index + 1;
+
+    lines.push(`*${getOrdinalValue(dayNumber)} Day - ${formatWhatsAppActivityDate(serviceDate)}*`);
+
+    items.forEach((service) => {
+      const quantityLabel = service?.quantityLabel ? ` _(${service.quantityLabel})_` : "";
+      const description =
+        service?.description &&
+        String(service.description).trim().toLowerCase() !== String(service.title || "").trim().toLowerCase()
+          ? ` - ${service.description}`
+          : "";
+
+      lines.push(`• ${service?.title || "Service"}${description}${quantityLabel}`);
+    });
+
+    lines.push("");
+  });
+
+  return lines.join("\n").trim();
+};
+
+const buildWhatsAppInclusionsSection = (items = [], prefix = "+") => {
+  if (!Array.isArray(items) || !items.length) return "";
+
+  return items.map((item) => `${prefix} ${item}`).join("\n");
+};
+
+const buildWhatsAppExclusionsSection = (items = [], prefix = "-") => {
+  if (!Array.isArray(items) || !items.length) return "";
+
+  return items.map((item) => `${prefix} ${item}`).join("\n");
+};
+
+const buildWhatsAppDayWiseItinerary = (quotation = {}) => {
+  const itinerary = Array.isArray(quotation?.dayWiseItinerary)
+    ? quotation.dayWiseItinerary.filter((item) => item?.title || item?.description)
+    : [];
+
+  if (!itinerary.length) return "";
+
+  const lines = ["🗓️   *_Day Wise Itinerary_*", WHATSAPP_SECTION_DIVIDER];
+
+  itinerary.forEach((item, index) => {
+    const dayNumber = Number(item?.dayNumber || index + 1);
+    const itemDate = item?.date || addDaysForWhatsApp(quotation?.startDate, dayNumber - 1);
+
+    lines.push(`*${getOrdinalValue(dayNumber)} Day - ${formatWhatsAppItineraryDate(itemDate)}*`);
+    lines.push("----");
+
+    if (item?.title) {
+      lines.push(`*${item.title}*`);
+    }
+
+    if (item?.description) {
+      lines.push(String(item.description).trim());
+    }
+
+    lines.push("");
+    lines.push(WHATSAPP_SECTION_DIVIDER);
+    lines.push("");
+  });
+
+  return lines.join("\n").replace(/\n+\s*----------\s*$/, "").trim();
+};
+
+const buildWhatsAppQuotationMessage = (quotation = {}) => {
+  const totalPax =
+    Number(quotation?.numberOfAdults || 0) +
+    Number(quotation?.numberOfChildren || 0) +
+    Number(quotation?.numberOfInfants || 0);
+  const totalAmount = Math.round(Number(quotation?.totalAmount || 0));
+  const perPersonAmount = totalPax > 0 ? Math.round(totalAmount / totalPax) : 0;
+  const destinationLabel = quotation?.destination ? `${quotation.destination} Trip` : "Trip";
+  const notes = Array.isArray(quotation?.additionalNotes) ? quotation.additionalNotes : [];
+  const inclusions = Array.isArray(quotation?.inclusions) ? quotation.inclusions : [];
+  const exclusions = Array.isArray(quotation?.exclusions) ? quotation.exclusions : [];
+  const recipientName = quotation?.recipientName || quotation?.recipientCompanyName || "Partner";
+  const tcsIncludedLine =
+    Number(quotation?.tcsAmount || 0) > 0
+      ? ` _(inc. Tax Collected At Source)_`
+      : "";
+
+  const lines = [
+    `Hi ${recipientName},`,
+    "",
+    `Greetings from ${WHATSAPP_QUOTATION_BRAND}.`,
+    "",
+    "Thank you for your query with us. As per your requirements, following are the package details.",
+    "",
+    `*Trip ID ${quotation?.queryId || quotation?.quotationNumber || "-"}*`,
+    WHATSAPP_SECTION_DIVIDER,
+    `*${destinationLabel}*`,
+    `• *${formatWhatsAppDate(quotation?.startDate || "")}* _for_ *${quotation?.tripNights || 0} Nights, ${quotation?.tripDays || 0} Days*`,
+    `• *${buildWhatsAppTravelerSummary(quotation)}*`,
+    "",
+    "*Price (INR):*",
+    perPersonAmount > 0
+      ? `• *${formatAmountValue(perPersonAmount)} / Person (${inferSharingLabel(quotation?.services || [])})* x ${totalPax} Pax`
+      : "• Price on request",
+    `*Total: ${formatAmountValue(totalAmount)} /-*${tcsIncludedLine}`,
+  ];
+
+  if (notes.length) {
+    lines.push("");
+    lines.push("*_Notes_*");
+    lines.push(WHATSAPP_SUBSECTION_DIVIDER);
+    notes.forEach((note, index) => {
+      lines.push(`${index + 1}. ${note}`);
+    });
+    lines.push(WHATSAPP_SUBSECTION_DIVIDER);
+  }
+
+  const hotelsSection = buildWhatsAppHotelsSection(quotation);
+  if (hotelsSection) {
+    lines.push("");
+    lines.push(hotelsSection);
+  }
+
+  const transportSection = buildWhatsAppTransportSection(quotation);
+  if (transportSection) {
+    lines.push("");
+    lines.push(transportSection);
+  }
+
+  const inclusionsSection = buildWhatsAppInclusionsSection(inclusions, "+");
+  if (inclusionsSection) {
+    lines.push("");
+    lines.push("*_Inclusions_*");
+    lines.push(WHATSAPP_SECTION_DIVIDER);
+    lines.push(inclusionsSection);
+  }
+
+  const exclusionsSection = buildWhatsAppExclusionsSection(exclusions, "-");
+  if (exclusionsSection) {
+    lines.push("");
+    lines.push("*_Exclusions_*");
+    lines.push(WHATSAPP_SECTION_DIVIDER);
+    lines.push(exclusionsSection);
+    lines.push("");
+    lines.push("_*NOTE*: Anything not mentioned in the inclusions is excluded_");
+  }
+
+  const itinerarySection = buildWhatsAppDayWiseItinerary(quotation);
+  if (itinerarySection) {
+    lines.push("");
+    lines.push(itinerarySection);
+  }
+
+  return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+};
+
+const sanitizeDynamicListItems = (items = []) =>
+  Array.isArray(items)
+    ? items
+        .map((item) => String(item || "").replace(/\s+/g, " ").trim())
+        .filter(Boolean)
+    : [];
+
+const normalizeDateInputValue = (value) => {
+  if (!value) return "";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "";
+  return parsed.toISOString().slice(0, 10);
+};
+
+const addDaysToNormalizedDate = (value, daysToAdd = 0) => {
+  const normalizedValue = normalizeDateInputValue(value);
+  if (!normalizedValue) return "";
+
+  const parsed = new Date(normalizedValue);
+  if (Number.isNaN(parsed.getTime())) return "";
+
+  parsed.setDate(parsed.getDate() + Number(daysToAdd || 0));
+  return parsed.toISOString().slice(0, 10);
+};
+
+const getOrdinalValue = (value) => {
+  const number = Number(value || 0);
+  const remainderTen = number % 10;
+  const remainderHundred = number % 100;
+
+  if (remainderTen === 1 && remainderHundred !== 11) return `${number}st`;
+  if (remainderTen === 2 && remainderHundred !== 12) return `${number}nd`;
+  if (remainderTen === 3 && remainderHundred !== 13) return `${number}rd`;
+  return `${number}th`;
+};
+
+const formatItineraryDateLabel = (value) => {
+  const normalizedValue = normalizeDateInputValue(value);
+  if (!normalizedValue) return "";
+
+  const parsed = new Date(normalizedValue);
+  if (Number.isNaN(parsed.getTime())) return "";
+
+  return `${parsed.toLocaleDateString("en-GB", {
+    weekday: "short",
+  })} ${getOrdinalValue(parsed.getDate())} ${parsed.toLocaleDateString("en-GB", {
+    month: "short",
+  })}`;
+};
+
+const buildItineraryDayLabel = (dayNumber, dateValue = "") => {
+  const ordinalDay = getOrdinalValue(dayNumber);
+  const dateLabel = formatItineraryDateLabel(dateValue);
+  return dateLabel ? `${ordinalDay} Day (${dateLabel})` : `${ordinalDay} Day`;
+};
+
+const sanitizeDayWiseItineraryItems = (items = []) =>
+  Array.isArray(items)
+    ? items.map((item, index) => {
+        const dayNumber = Math.max(1, Number(item?.dayNumber || index + 1));
+        const date = normalizeDateInputValue(
+          item?.date || item?.serviceDate || item?.dayDate || "",
+        );
+
+        return {
+          dayNumber,
+          dayLabel: String(item?.dayLabel || buildItineraryDayLabel(dayNumber, date)).trim(),
+          date,
+          title: String(item?.title || item?.heading || "")
+            .replace(/\s+/g, " ")
+            .trim(),
+          description: String(item?.description || "")
+            .replace(/\r\n/g, "\n")
+            .replace(/\n{3,}/g, "\n\n")
+            .trim(),
+        };
+      })
+    : [];
+
+const areDayWiseItineraryItemsEqual = (currentItems = [], nextItems = []) =>
+  currentItems.length === nextItems.length &&
+  currentItems.every((item, index) => {
+    const nextItem = nextItems[index];
+
+    return (
+      nextItem &&
+      Number(item?.dayNumber || 0) === Number(nextItem?.dayNumber || 0) &&
+      String(item?.dayLabel || "") === String(nextItem?.dayLabel || "") &&
+      String(item?.date || "") === String(nextItem?.date || "") &&
+      String(item?.title || "") === String(nextItem?.title || "") &&
+      String(item?.description || "") === String(nextItem?.description || "")
+    );
+  });
+
+const reconcileDayWiseItineraryItems = (items = [], totalDays = 0, startDate = "") => {
+  const normalizedItems = sanitizeDayWiseItineraryItems(items);
+  const itemsByDay = new Map(
+    normalizedItems.map((item, index) => [
+      Math.max(1, Number(item?.dayNumber || index + 1)),
+      item,
+    ]),
+  );
+  const fallbackCount = normalizedItems.reduce(
+    (maxCount, item, index) => Math.max(maxCount, Number(item?.dayNumber || index + 1)),
+    0,
+  );
+  const resolvedDayCount = Math.max(Number(totalDays || 0), fallbackCount);
+
+  if (!resolvedDayCount) {
+    return normalizedItems;
+  }
+
+  return Array.from({ length: resolvedDayCount }, (_, index) => {
+    const dayNumber = index + 1;
+    const existingItem = itemsByDay.get(dayNumber) || {};
+    const date = startDate ? addDaysToNormalizedDate(startDate, index) : String(existingItem?.date || "");
+
+    return {
+      dayNumber,
+      dayLabel: buildItineraryDayLabel(dayNumber, date || existingItem?.date || ""),
+      date: date || existingItem?.date || "",
+      title: String(existingItem?.title || "").trim(),
+      description: String(existingItem?.description || "").trim(),
+    };
+  });
+};
+
+const copyTextToClipboard = async (value) => {
+  if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(value);
+    return;
+  }
+
+  if (typeof document === "undefined") {
+    throw new Error("Clipboard is not available in this environment.");
+  }
+
+  const textArea = document.createElement("textarea");
+  textArea.value = value;
+  textArea.setAttribute("readonly", "");
+  textArea.style.position = "fixed";
+  textArea.style.left = "-9999px";
+  document.body.appendChild(textArea);
+  textArea.select();
+
+  const copied = document.execCommand("copy");
+  document.body.removeChild(textArea);
+
+  if (!copied) {
+    throw new Error("Unable to copy quotation text.");
+  }
+};
+
+const getPublicBaseUrl = () => {
+  const browserOrigin = typeof window !== "undefined" ? window.location.origin : "http://localhost:3000";
+  const baseUrl = API.defaults.baseURL || browserOrigin;
+  return new URL(baseUrl, browserOrigin).origin;
+};
+
+const createPublicAssetUrl = (filePath = "") => {
+  if (!filePath) return "";
+  return new URL(filePath, getPublicBaseUrl()).toString();
+};
+
+const downloadFileFromUrl = async (fileUrl, fileName = "download") => {
+  const response = await fetch(fileUrl);
+
+  if (!response.ok) {
+    throw new Error("Unable to download the generated file.");
+  }
+
+  const blob = await response.blob();
+  const objectUrl = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  window.URL.revokeObjectURL(objectUrl);
+};
 
 const SERVICE_TYPE_LABELS = Object.freeze({
   hotel: "Hotel",
@@ -693,6 +1383,7 @@ const formatServiceDateLabel = (value) => {
 };
 
 const getServiceCardDomId = (serviceId) => `quotation-service-card-${serviceId}`;
+const getSelectedServiceSummaryDomId = (serviceId) => `quotation-selected-service-${serviceId}`;
 
 const isIndianDestination = (destination = "") => {
   const normalizedDestination = String(destination || "").trim().toLowerCase();
@@ -1315,7 +2006,9 @@ const QuotationBuilder = () => {
 
   // markup
   const location = useLocation();
-  const order = location.state;
+  const order = location.state ?? null;
+  const hasOrderContext = Boolean(order?._id);
+  const orderQueryId = order?.queryId || "";
   const navigate = useNavigate();
   const DEFAULT_GST_PERCENT = 5;
   const DEFAULT_TCS_PERCENT = 0;
@@ -1325,7 +2018,15 @@ const QuotationBuilder = () => {
   // markup
   const [markup, setMarkup] = useState(5);
   const [showSendOptions, setShowSendOptions] = useState(false);
-  const [notes, setNotes] = useState("");
+  const [inclusions, setInclusions] = useState([]);
+  const [exclusions, setExclusions] = useState([]);
+  const [additionalNotes, setAdditionalNotes] = useState([]);
+  const [dayWiseItinerary, setDayWiseItinerary] = useState([]);
+  const [dynamicNoteInputs, setDynamicNoteInputs] = useState({
+    inclusion: "",
+    exclusion: "",
+    additionalNote: "",
+  });
   // ops charges
   const [serviceCharge, setServiceCharge] = useState(0);
   const [handlingFee, setHandlingFee] = useState(0);
@@ -1370,10 +2071,14 @@ const QuotationBuilder = () => {
     totalAmount: 0,
     serviceCount: 0,
     agentName: "",
+    deliveryWarnings: [],
   });
   const [services, setServices] = useState([]);
   const [quotationId, setQuotationId] = useState("");
   const [loadedQuotationDraft, setLoadedQuotationDraft] = useState(null);
+  const [resolvedAgentPhone, setResolvedAgentPhone] = useState(
+    String(order?.agent?.phone || "").trim(),
+  );
   const [savingService, setSavingService] = useState(false);
   const [selectedSendOption, setSelectedSendOption] = useState(null);
   const [selectedPackageTemplate, setSelectedPackageTemplate] = useState(null);
@@ -1383,7 +2088,16 @@ const QuotationBuilder = () => {
   const [contractedRatesFilter, setContractedRatesFilter] = useState("all");
   const [focusedServiceCardId, setFocusedServiceCardId] = useState("");
   const [editingServiceCardId, setEditingServiceCardId] = useState("");
+  const [isSelectedServicesModalOpen, setIsSelectedServicesModalOpen] = useState(false);
+  const [selectedServicesModalTargetId, setSelectedServicesModalTargetId] = useState("");
+  const [selectedServicesModalScope, setSelectedServicesModalScope] = useState("all");
+  const [activeWorkspaceModal, setActiveWorkspaceModal] = useState("");
   const [draftHydrated, setDraftHydrated] = useState(false);
+  const [savingDraftQuote, setSavingDraftQuote] = useState(false);
+  const [showFinanceInvoiceConfirm, setShowFinanceInvoiceConfirm] = useState(false);
+  const [preparingFinanceInvoice, setPreparingFinanceInvoice] = useState(false);
+  const isAnyWorkspaceModalOpen =
+    isSelectedServicesModalOpen || Boolean(activeWorkspaceModal);
   const isInvoiceRequestedStage = order?.opsStatus === "Invoice_Requested";
   const quoteCategory = isIndianDestination(order?.destination)
     ? "domestic"
@@ -1391,6 +2105,49 @@ const QuotationBuilder = () => {
 
   const showQuickActionFeedback = (type, title, message) => {
     setQuickActionPopup({ type, title, message });
+  };
+
+  const updateDynamicNoteInput = (field, value) => {
+    setDynamicNoteInputs((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
+  };
+
+  const appendDynamicNoteItem = (field) => {
+    const normalizedValue = String(dynamicNoteInputs?.[field] || "")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    if (!normalizedValue) return;
+
+    const applyUpdate =
+      field === "inclusion"
+        ? setInclusions
+        : field === "exclusion"
+          ? setExclusions
+          : setAdditionalNotes;
+
+    applyUpdate((prev) => {
+      const nextItems = sanitizeDynamicListItems([...prev, normalizedValue]);
+      return Array.from(new Set(nextItems));
+    });
+
+    setDynamicNoteInputs((prev) => ({
+      ...prev,
+      [field]: "",
+    }));
+  };
+
+  const removeDynamicNoteItem = (field, indexToRemove) => {
+    const applyUpdate =
+      field === "inclusion"
+        ? setInclusions
+        : field === "exclusion"
+          ? setExclusions
+          : setAdditionalNotes;
+
+    applyUpdate((prev) => prev.filter((_, index) => index !== indexToRemove));
   };
 
   const openOpsChargesPopup = () => {
@@ -1451,6 +2208,76 @@ const QuotationBuilder = () => {
   }, [editingServiceCardId, services]);
 
   useEffect(() => {
+    if (!isAnyWorkspaceModalOpen || typeof document === "undefined") {
+      return undefined;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isAnyWorkspaceModalOpen]);
+
+  useEffect(() => {
+    if (!isAnyWorkspaceModalOpen || typeof window === "undefined") {
+      return undefined;
+    }
+
+    const handleEscape = (event) => {
+      if (event.key === "Escape") {
+        if (activeWorkspaceModal) {
+          setActiveWorkspaceModal("");
+          return;
+        }
+
+        closeSelectedServicesModal();
+      }
+    };
+
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
+  }, [activeWorkspaceModal, isAnyWorkspaceModalOpen]);
+
+  useEffect(() => {
+    if (!isSelectedServicesModalOpen || selectedServicesModalScope !== "single") return;
+
+    const targetExists = services.some(
+      (service) => service.checked && service.id === selectedServicesModalTargetId,
+    );
+
+    if (!targetExists) {
+      closeSelectedServicesModal();
+    }
+  }, [
+    isSelectedServicesModalOpen,
+    services,
+    selectedServicesModalScope,
+    selectedServicesModalTargetId,
+  ]);
+
+  useEffect(() => {
+    if (!isSelectedServicesModalOpen || !selectedServicesModalTargetId || typeof window === "undefined") {
+      return undefined;
+    }
+
+    const timer = window.setTimeout(() => {
+      const target = document.getElementById(
+        getSelectedServiceSummaryDomId(selectedServicesModalTargetId),
+      );
+
+      target?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }, 180);
+
+    return () => window.clearTimeout(timer);
+  }, [isSelectedServicesModalOpen, selectedServicesModalTargetId, services]);
+
+  useEffect(() => {
+    setResolvedAgentPhone(String(order?.agent?.phone || "").trim());
+  }, [order?._id, order?.agent?.phone]);
+
+  useEffect(() => {
     const loadQuotationDraft = async () => {
       try {
         if (!order?._id) return;
@@ -1465,6 +2292,13 @@ const QuotationBuilder = () => {
 
         const { data } = await API.get(`/ops/queries/${order._id}/quotation-draft`, requestConfig);
         const quotation = data?.quotation;
+        const latestAgentPhone = String(
+          data?.query?.agent?.phone || order?.agent?.phone || "",
+        ).trim();
+
+        if (latestAgentPhone) {
+          setResolvedAgentPhone(latestAgentPhone);
+        }
 
         if (!quotation) return;
 
@@ -1521,6 +2355,16 @@ const QuotationBuilder = () => {
         setTourismAmount(nextTourismAmount);
         setDraftTourismAmount(nextTourismAmount);
         setAppliedTaxTotal(nextTotalTax);
+        setInclusions(sanitizeDynamicListItems(quotation?.inclusions));
+        setExclusions(sanitizeDynamicListItems(quotation?.exclusions));
+        setAdditionalNotes(sanitizeDynamicListItems(quotation?.additionalNotes));
+        setDayWiseItinerary(
+          reconcileDayWiseItineraryItems(
+            quotation?.dayWiseItinerary,
+            getTripDuration(order?.startDate, order?.endDate).days,
+            formatDateInput(order?.startDate),
+          ),
+        );
       } catch (error) {
         console.error("Failed to load quotation draft", error);
       } finally {
@@ -2135,6 +2979,13 @@ const QuotationBuilder = () => {
   // total amount
   const totalAmount = roundCurrencyAmount(opsMarkupBasisAmount + markupAmount);
   const selectedServices = selectedServicesWithPricing;
+  const visibleSelectedServices = useMemo(() => {
+    if (selectedServicesModalScope === "single" && selectedServicesModalTargetId) {
+      return selectedServices.filter((service) => service.id === selectedServicesModalTargetId);
+    }
+
+    return selectedServices;
+  }, [selectedServices, selectedServicesModalScope, selectedServicesModalTargetId]);
 
 
   //=========================================== Api call ======================================
@@ -2145,8 +2996,12 @@ const QuotationBuilder = () => {
     }
 
     const payload = {
-      queryId: order.queryId,
+      queryId: orderQueryId,
       validTill: validTill || formatDateInput(loadedQuotationDraft?.validTill),
+      inclusions: sanitizeDynamicListItems(inclusions),
+      exclusions: sanitizeDynamicListItems(exclusions),
+      additionalNotes: sanitizeDynamicListItems(additionalNotes),
+      dayWiseItinerary: sanitizeDayWiseItineraryItems(itineraryEntries),
       services: selectedServices.map((service) => buildDraftServicePayload(service)),
       pricing: {
         currency: "INR",
@@ -2181,7 +3036,177 @@ const QuotationBuilder = () => {
     return data?.quotation || null;
   };
 
-  const sendQuotation = async (sendVia = []) => {
+  const resolveQuotationQueryId = (quotation) => {
+    const quotationQueryId = quotation?.queryId;
+
+    if (quotationQueryId && typeof quotationQueryId === "object") {
+      return quotationQueryId?._id || quotationQueryId?.id || "";
+    }
+
+    return quotationQueryId || order?._id || "";
+  };
+
+  const buildQuotationSharePayload = (quotation) => {
+    const servicesSource = Array.isArray(quotation?.services) && quotation.services.length
+      ? quotation.services
+      : selectedServices;
+
+    return {
+      recipientName:
+        order?.agent?.name ||
+        order?.agentName ||
+        order?.agent?.companyName ||
+        "Agent",
+      recipientCompanyName:
+        order?.agent?.companyName ||
+        order?.agentName ||
+        order?.agent?.name ||
+        "",
+      phone: resolvedAgentPhone || order?.agent?.phone || "",
+      quotationNumber: quotation?.quotationNumber || "",
+      queryId: order?.queryId || "",
+      destination: order?.destination || "",
+      startDate: order?.startDate || "",
+      endDate: order?.endDate || "",
+      travelDates: `${formatShareDate(order?.startDate)} - ${formatShareDate(order?.endDate)}`,
+      durationLabel: tripDuration.label || "-",
+      tripNights: Number(tripDuration?.nights || 0),
+      tripDays: Number(tripDuration?.days || 0),
+      travelerSummary: buildTravelerSummary(order),
+      numberOfAdults: Number(order?.numberOfAdults || 0),
+      numberOfChildren: Number(order?.numberOfChildren || 0),
+      numberOfInfants: Number(order?.numberOfInfants || 0),
+      validTill: formatShareDate(quotation?.validTill || validTill),
+      totalAmount: Number(quotation?.pricing?.totalAmount || totalAmount || 0),
+      currency: quotation?.pricing?.currency || "INR",
+      tcsAmount: Number(quotation?.pricing?.tax?.tcs?.amount || 0),
+      inclusions: sanitizeDynamicListItems(
+        Array.isArray(quotation?.inclusions) ? quotation.inclusions : inclusions,
+      ),
+      exclusions: sanitizeDynamicListItems(
+        Array.isArray(quotation?.exclusions) ? quotation.exclusions : exclusions,
+      ),
+      additionalNotes: sanitizeDynamicListItems(
+        Array.isArray(quotation?.additionalNotes) ? quotation.additionalNotes : additionalNotes,
+      ),
+      dayWiseItinerary: sanitizeDayWiseItineraryItems(
+        Array.isArray(quotation?.dayWiseItinerary) ? quotation.dayWiseItinerary : itineraryEntries,
+      )
+        .filter((entry) => entry.title || entry.description)
+        .map((entry) => {
+          const dayLabel = entry.dayLabel || buildItineraryDayLabel(entry.dayNumber, entry.date);
+          return {
+            ...entry,
+            dayLabel,
+            heading: entry.title ? `${dayLabel}: ${entry.title}` : dayLabel,
+          };
+        }),
+      services: servicesSource.map((service) => {
+        const normalizedType = normalizeQuotationServiceType(service?.type);
+
+        return {
+          title: service?.title || "Service",
+          type: normalizedType,
+          typeLabel: SERVICE_TYPE_LABELS[normalizedType] || "Travel Service",
+          location: buildShareServiceLocationLabel(service),
+          city: service?.city || "",
+          country: service?.country || "",
+          serviceDateLabel: formatShareDate(service?.serviceDate),
+          serviceDate: service?.serviceDate || "",
+          quantityLabel: buildShareServiceQuantityLabel(service),
+          description: String(service?.description || service?.desc || "").replace(/\s+/g, " ").trim(),
+          nights: Number(service?.nights || 0),
+          rooms: Number(service?.rooms || 0),
+          roomType: service?.roomType || "",
+          bedType: service?.bedType || "",
+          hotelCategory: service?.hotelCategory || "",
+          adults: Number(service?.adults || 0),
+          children: Number(service?.children || 0),
+          infants: Number(service?.infants || 0),
+          pax: Number(service?.pax || 0),
+          days: Number(service?.days || 0),
+          usageType: service?.usageType || "",
+          vehicleType: service?.vehicleType || "",
+          passengerCapacity: Number(service?.passengerCapacity || 0),
+        };
+      }),
+    };
+  };
+
+  const runPostSendAction = async (selectedAction, quotation) => {
+    if (!selectedAction) {
+      return "Quotation sent successfully";
+    }
+
+    const quoteDetails = buildQuotationSharePayload(quotation);
+
+    if (selectedAction === "Copy Text") {
+      await copyTextToClipboard(buildPlainTextQuotationSummary(quoteDetails));
+      return "Quotation summary copied";
+    }
+
+    if (selectedAction === "PDF Download") {
+      const queryDocumentId = resolveQuotationQueryId(quotation);
+
+      if (!queryDocumentId) {
+        throw new Error("Query reference missing for PDF generation.");
+      }
+
+      const { data } = await API.post("/ops/send", {
+        queryId: queryDocumentId,
+        channels: ["pdf"],
+        quoteDetails,
+        agent: {
+          email: order?.agent?.email || "",
+          phone: order?.agent?.phone || "",
+        },
+      });
+
+      const pdfMeta = data?.results?.pdf;
+      const publicFilePath = pdfMeta?.publicFilePath;
+
+      if (!publicFilePath) {
+        throw new Error("Quotation PDF could not be generated.");
+      }
+
+      await downloadFileFromUrl(
+        createPublicAssetUrl(publicFilePath),
+        pdfMeta?.fileName || `quotation_${quoteDetails.queryId || "quote"}.pdf`,
+      );
+
+      return "Quotation PDF downloaded";
+    }
+
+    if (selectedAction === "Dashboard Notification") {
+      return "Dashboard notification sent to agent";
+    }
+
+    if (selectedAction === "Email") {
+      return `Quotation sent to ${order?.agent?.email || "agent email"}`;
+    }
+
+    if (selectedAction === "WhatsApp") {
+      const normalizedPhone = normalizeWhatsAppPhoneNumber(quoteDetails?.phone);
+
+      if (!normalizedPhone) {
+        throw new Error("Agent phone number is missing for WhatsApp sharing.");
+      }
+
+      const message = buildWhatsAppQuotationMessage(quoteDetails);
+      const whatsappURL = `https://wa.me/${normalizedPhone}?text=${encodeURIComponent(message)}`;
+
+      if (typeof window === "undefined") {
+        throw new Error("WhatsApp sharing is only available in the browser.");
+      }
+
+      window.open(whatsappURL, "_blank", "noopener,noreferrer");
+      return "WhatsApp quotation is ready to send";
+    }
+
+    return "Quotation sent successfully";
+  };
+
+  const sendQuotation = async (sendVia = [], selectedAction = "") => {
     if (!validTill) {
       toast.error("Please select Valid Till date");
       return;
@@ -2233,10 +3258,14 @@ const QuotationBuilder = () => {
       // 🔥 MAIN PAYLOAD
       const payload = {
         quotationId,
-        queryId: order.queryId,
+        queryId: orderQueryId,
         validTill,
         baseAmount: baseRate,
         sendVia: sendVia,
+        inclusions: sanitizeDynamicListItems(inclusions),
+        exclusions: sanitizeDynamicListItems(exclusions),
+        additionalNotes: sanitizeDynamicListItems(additionalNotes),
+        dayWiseItinerary: sanitizeDayWiseItineraryItems(itineraryEntries),
         services: selectedServices.map(s => {
           const normalizedType = normalizeQuotationServiceType(s.type);
 
@@ -2326,11 +3355,22 @@ const QuotationBuilder = () => {
 
       // ✅ STEP 1: Create quotation
       const res = await API.post("/ops/quotations", payload);
-      console.log("payload", res.data)
+      const savedQuotation = res?.data?.quotation;
+      const warnings = Array.isArray(res?.data?.warnings) ? [...res.data.warnings] : [];
+      let actionSuccessMessage = "Quotation sent successfully";
+
+      try {
+        actionSuccessMessage = await runPostSendAction(selectedAction, savedQuotation);
+      } catch (actionError) {
+        console.error("Post-send action failed", actionError);
+        warnings.push(actionError?.message || "Quotation was saved, but the selected action could not be completed.");
+      }
+
+      const hasDeliveryWarnings = warnings.length > 0;
 
       toast.dismiss(loadingToast);
-      toast.success("Quotation sent successfully");
-      const savedQuotation = res?.data?.quotation;
+      toast.success(hasDeliveryWarnings ? "Quotation saved successfully" : actionSuccessMessage);
+      warnings.forEach((warning) => toast(warning, { icon: "!" }));
       setSuccessPopup({
         open: true,
         kind: "quote",
@@ -2349,6 +3389,7 @@ const QuotationBuilder = () => {
           order?.agent?.name ||
           order?.agentName ||
           "",
+        deliveryWarnings: warnings,
       });
 
     } catch (error) {
@@ -2364,6 +3405,13 @@ const QuotationBuilder = () => {
       toast.error("Quotation draft not ready yet");
       return;
     }
+
+    if (preparingFinanceInvoice) {
+      return;
+    }
+
+    setShowFinanceInvoiceConfirm(false);
+    setPreparingFinanceInvoice(true);
 
     const loadingToast = toast.loading("Preparing finance invoice...");
 
@@ -2389,6 +3437,8 @@ const QuotationBuilder = () => {
       toast.dismiss(loadingToast);
       console.error(error);
       toast.error(error?.response?.data?.message || "Failed to prepare finance invoice");
+    } finally {
+      setPreparingFinanceInvoice(false);
     }
   };
 
@@ -2406,11 +3456,29 @@ const QuotationBuilder = () => {
       "Copy Text": ["copy"]
     };
 
-    sendQuotation(map[selectedSendOption]);
+    sendQuotation(map[selectedSendOption], selectedSendOption);
 
     // optional UX
     setShowSendOptions(false);
     setSelectedSendOption(null);
+  };
+
+  const handleSaveDraftQuote = async () => {
+    if (!quotationId) {
+      toast.error("Quotation draft not ready yet");
+      return;
+    }
+
+    try {
+      setSavingDraftQuote(true);
+      await persistQuotationDraft();
+      toast.success("Draft saved successfully. Quote not sent yet.");
+    } catch (error) {
+      console.error("Failed to save quotation draft", error);
+      toast.error(error?.response?.data?.message || error?.message || "Failed to save draft");
+    } finally {
+      setSavingDraftQuote(false);
+    }
   };
 
   const tripDuration = useMemo(
@@ -2418,8 +3486,40 @@ const QuotationBuilder = () => {
     [order?.startDate, order?.endDate]
   );
   const tripNights = tripDuration.nights;
+  const itineraryStartDate = formatDateInput(order?.startDate);
+  const itineraryEntries = useMemo(
+    () =>
+      reconcileDayWiseItineraryItems(
+        dayWiseItinerary,
+        tripDuration.days,
+        itineraryStartDate,
+      ),
+    [dayWiseItinerary, itineraryStartDate, tripDuration.days],
+  );
+
+  const updateDayWiseItineraryEntry = (dayNumber, field, value) => {
+    setDayWiseItinerary((prev) =>
+      reconcileDayWiseItineraryItems(prev, tripDuration.days, itineraryStartDate).map((entry) =>
+        entry.dayNumber === dayNumber
+          ? { ...entry, [field]: value }
+          : entry,
+      ),
+    );
+  };
+
+  useEffect(() => {
+    setDayWiseItinerary((prev) => {
+      const nextEntries = reconcileDayWiseItineraryItems(
+        prev,
+        tripDuration.days,
+        itineraryStartDate,
+      );
+
+      return areDayWiseItineraryItemsEqual(prev, nextEntries) ? prev : nextEntries;
+    });
+  }, [itineraryStartDate, tripDuration.days]);
+
   const queryRequirementTags = [
-    order?.hotelCategory ? `${order.hotelCategory} Hotels` : null,
     order?.transportRequired ? "Transport Required" : null,
     order?.sightseeingRequired ? "Sightseeing Required" : null,
     order?.customerBudget ? `Budget ₹${Number(order.customerBudget).toLocaleString("en-IN")}` : null,
@@ -2472,8 +3572,9 @@ const QuotationBuilder = () => {
     return Math.max(1, Math.ceil(diff / (1000 * 60 * 60 * 24)));
   };
 
-  const totalPassengers =
-    Number(order?.numberOfAdults || 0) + Number(order?.numberOfChildren || 0);
+  const adultPassengers = Number(order?.numberOfAdults || 0);
+  const childPassengers = Number(order?.numberOfChildren || 0);
+  const totalPassengers = adultPassengers + childPassengers;
   const costPerPassenger =
     totalPassengers > 0 ? totalAmount / totalPassengers : 0;
 
@@ -2597,10 +3698,40 @@ const QuotationBuilder = () => {
     }, 180);
   };
 
+  const closeSelectedServicesModal = () => {
+    setIsSelectedServicesModalOpen(false);
+    setSelectedServicesModalTargetId("");
+    setSelectedServicesModalScope("all");
+  };
+
+  const openSelectedServicesModal = (serviceId = "", scope = "all") => {
+    setActiveWorkspaceModal("");
+    setSelectedServicesModalTargetId(serviceId || "");
+    setSelectedServicesModalScope(scope);
+    setIsSelectedServicesModalOpen(true);
+  };
+
+  const openWorkspaceModal = (workspace) => {
+    closeSelectedServicesModal();
+    setActiveWorkspaceModal(workspace);
+  };
+
+  const closeWorkspaceModal = () => {
+    setActiveWorkspaceModal("");
+  };
+
+  const openSelectedServicesModalForService = (service) => {
+    if (!service?.id || !service.checked) return;
+
+    setFocusedServiceCardId(service.id);
+    openSelectedServicesModal(service.id, "single");
+  };
+
   const handleSelectedServiceEditAction = async (service) => {
     if (!service?.id) return;
 
     if (editingServiceCardId !== service.id) {
+      closeSelectedServicesModal();
       focusServiceEditor(service);
       return;
     }
@@ -2617,6 +3748,7 @@ const QuotationBuilder = () => {
         `${service.title} changes have been saved successfully.`,
       );
       setEditingServiceCardId("");
+      closeSelectedServicesModal();
     } catch (error) {
       toast.dismiss(savingToast);
       console.error("Failed to save edited service", error);
@@ -2649,7 +3781,755 @@ const QuotationBuilder = () => {
     setServices((prev) => buildPackageMatchedServices(prev, pkg));
   };
 
+  const renderSelectedServicesList = (servicesToRender = selectedServices) => (
+    servicesToRender.length > 0 ? (
+      <div className={`dark-scrollbar space-y-3 overflow-y-auto pr-1 ${selectedServicesModalScope === "single" ? "mx-auto max-w-2xl" : ""}`}>
+        {servicesToRender.map((service) => {
+          const serviceEdits = getSelectedServiceQuotationEdits(service);
+          const isSingleServiceModalView =
+            selectedServicesModalScope === "single" && servicesToRender.length === 1;
 
+          const Chip = ({ icon, label, value, accent = "text-slate-300", iconColor = "text-slate-500" }) => (
+            <div className="inline-flex items-center gap-1.5 rounded-lg border border-[#212f45] bg-[#0a1018] px-2.5 py-[5px]">
+              {icon && (
+                <span className={`flex-shrink-0 ${iconColor}`} style={{ lineHeight: 0 }}>
+                  {icon}
+                </span>
+              )}
+              {label && (
+                <span className="flex-shrink-0 text-[10px] font-medium text-slate-500">{label}:</span>
+              )}
+              <span className={`max-w-[120px] truncate text-[10px] font-semibold leading-none ${accent}`}>
+                {value}
+              </span>
+            </div>
+          );
+
+          const typeAccent =
+            service.type === "hotel"
+              ? { bg: "bg-indigo-500/10", border: "border-indigo-500/20", text: "text-indigo-200" }
+              : service.type === "activity"
+                ? { bg: "bg-emerald-500/10", border: "border-emerald-500/20", text: "text-emerald-200" }
+                : service.type === "transfer" || service.type === "car"
+                  ? { bg: "bg-violet-500/10", border: "border-violet-500/20", text: "text-violet-200" }
+                  : { bg: "bg-blue-500/10", border: "border-blue-500/20", text: "text-blue-200" };
+          const isTargetedService = selectedServicesModalTargetId === service.id;
+
+          return (
+            <div
+              key={`selected-${service.id}`}
+              id={getSelectedServiceSummaryDomId(service.id)}
+              className={`rounded-[24px] border bg-[#050505] p-3 transition-all duration-200 ${
+                isTargetedService
+                  ? "border-sky-400/60 shadow-[0_0_0_1px_rgba(56,189,248,0.35)]"
+                  : "border-[#22314a]"
+              } ${isSingleServiceModalView ? "mx-auto w-full max-w-2xl" : ""}`}
+            >
+              <div className="rounded-[18px] border border-[#162233] bg-[#08111c] px-3 py-3">
+                <div className={`flex items-start gap-2.5 ${isSingleServiceModalView ? "flex-col" : ""}`}>
+                  <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full border border-[#27436d] bg-[#0b1627]">
+                    {renderSelectedServiceSummaryIcon(service)}
+                  </div>
+
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="truncate text-[13px] font-semibold leading-tight text-white">
+                        {service.title}
+                      </p>
+                      {isTargetedService && (
+                        <span className="rounded-full border border-sky-500/30 bg-sky-500/10 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-sky-300">
+                          Active
+                        </span>
+                      )}
+                    </div>
+                    {(service.city || service.country) && (
+                      <p className="mt-0.5 truncate text-[10px] text-slate-500">
+                        {[service.city, service.country].filter(Boolean).join(", ")}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className={`${isSingleServiceModalView ? "w-full pl-[46px] text-left" : "flex-shrink-0 pl-1 text-right"}`}>
+                    <p className="whitespace-nowrap text-[12px] font-semibold leading-tight text-yellow-300">
+                      {formatCurrencyValue(service.originalTotal || 0, service.currency)}
+                    </p>
+                    {service.isForeignCurrency && (
+                      <p className="mt-0.5 whitespace-nowrap text-[10px] text-sky-300">
+                        ₹ {formatAmountValue(service.totalInInr || 0)}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="mt-2.5 flex flex-wrap gap-1.5">
+                  <div className={`inline-flex items-center rounded-lg border px-2.5 py-[5px] ${typeAccent.bg} ${typeAccent.border}`}>
+                    <span className={`text-[10px] font-semibold leading-none ${typeAccent.text}`}>
+                      {getServiceTypeLabel(service.type)}
+                    </span>
+                  </div>
+
+                  {service.serviceDate && (
+                    <Chip
+                      icon={(
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <rect x="3" y="4" width="18" height="18" rx="2" />
+                          <line x1="16" y1="2" x2="16" y2="6" />
+                          <line x1="8" y1="2" x2="8" y2="6" />
+                          <line x1="3" y1="10" x2="21" y2="10" />
+                        </svg>
+                      )}
+                      value={formatServiceDateLabel(service.serviceDate)}
+                    />
+                  )}
+
+                  {service.type === "hotel" && Number(service.nights || 0) > 0 && (
+                    <Chip
+                      icon={(
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M2 4v16" />
+                          <path d="M2 8h18a2 2 0 0 1 2 2v10" />
+                          <path d="M2 17h20" />
+                          <path d="M6 8v9" />
+                        </svg>
+                      )}
+                      value={`${service.nights} night${Number(service.nights) > 1 ? "s" : ""}`}
+                      accent="text-sky-200"
+                    />
+                  )}
+
+                  {service.type === "hotel" && Number(service.rooms || 0) > 0 && (
+                    <Chip
+                      icon={(
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                          <polyline points="9 22 9 12 15 12 15 22" />
+                        </svg>
+                      )}
+                      value={`${service.rooms} room${Number(service.rooms) > 1 ? "s" : ""}`}
+                    />
+                  )}
+
+                  {service.type === "hotel" && service.bedType && (
+                    <Chip
+                      icon={(
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M2 9V4a1 1 0 0 1 1-1h18a1 1 0 0 1 1 1v5" />
+                          <path d="M2 20v-4a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v4" />
+                          <path d="M2 14h20" />
+                          <path d="M7 14v2" />
+                          <path d="M17 14v2" />
+                        </svg>
+                      )}
+                      value={getBedTypeOptionLabel(service.bedType)}
+                      accent="text-amber-200"
+                      iconColor="text-amber-400"
+                    />
+                  )}
+
+                  {(service.type === "transfer" || service.type === "car") && Number(service.days || 0) > 0 && (
+                    <Chip
+                      icon={(
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <circle cx="12" cy="12" r="10" />
+                          <polyline points="12 6 12 12 16 14" />
+                        </svg>
+                      )}
+                      value={`${service.days} day${Number(service.days) > 1 ? "s" : ""}`}
+                      accent="text-violet-200"
+                      iconColor="text-violet-400"
+                    />
+                  )}
+
+                  {service.type === "activity" && Number(service.pax || 0) > 0 && (
+                    <Chip
+                      icon={(
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                          <circle cx="9" cy="7" r="4" />
+                          <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                          <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                        </svg>
+                      )}
+                      value={`${service.pax} pax`}
+                      accent="text-emerald-200"
+                      iconColor="text-emerald-400"
+                    />
+                  )}
+
+                  {service.type === "sightseeing" && (
+                    <>
+                      {Number(service.pax || 0) > 0 && (
+                        <Chip
+                          icon={(
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                              <circle cx="9" cy="7" r="4" />
+                            </svg>
+                          )}
+                          value={`${service.pax} pax`}
+                          accent="text-blue-200"
+                          iconColor="text-blue-400"
+                        />
+                      )}
+                      {Number(service.days || 0) > 0 && (
+                        <Chip
+                          icon={(
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                              <circle cx="12" cy="12" r="10" />
+                              <polyline points="12 6 12 12 16 14" />
+                            </svg>
+                          )}
+                          value={`${service.days} day${Number(service.days) > 1 ? "s" : ""}`}
+                          accent="text-blue-200"
+                          iconColor="text-blue-400"
+                        />
+                      )}
+                    </>
+                  )}
+                </div>
+
+                {serviceEdits.length > 0 && (
+                  <div className="mt-3 rounded-[14px] border border-sky-500/20 bg-[#071420] px-3 py-2.5">
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <p className="text-[8px] font-semibold uppercase tracking-[0.18em] text-sky-200/80">
+                        Quotation Edits
+                      </p>
+                      <span className="rounded-full border border-sky-400/25 bg-sky-500/10 px-2 py-0.5 text-[7px] font-semibold text-sky-200">
+                        {serviceEdits.length} update{serviceEdits.length === 1 ? "" : "s"}
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {serviceEdits.map((edit) => {
+                        const toneClasses =
+                          edit.variant === "success"
+                            ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-200"
+                            : edit.variant === "warning"
+                              ? "border-yellow-500/25 bg-yellow-500/10 text-yellow-100"
+                              : edit.variant === "danger"
+                                ? "border-red-500/25 bg-red-500/10 text-red-200"
+                                : "border-sky-500/20 bg-sky-500/10 text-sky-100";
+                        const iconClasses =
+                          edit.variant === "success"
+                            ? "text-emerald-300"
+                            : edit.variant === "warning"
+                              ? "text-yellow-300"
+                              : edit.variant === "danger"
+                                ? "text-red-300"
+                                : "text-sky-300";
+
+                        return (
+                          <span
+                            key={`${service.id}-${edit.key}-${edit.label}`}
+                            className={`inline-flex items-center gap-1 rounded-[8px] border px-2.5 py-[5px] text-[10px] font-medium leading-none ${toneClasses}`}
+                          >
+                            <CheckCircle2 size={11} className={`shrink-0 ${iconClasses}`} />
+                            <span className="font-semibold">{edit.label}</span>
+                            <span className="opacity-40">:</span>
+                            <span>{edit.value}</span>
+                          </span>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="mt-2.5 flex items-center justify-between gap-3 px-0.5">
+                <p className="text-[10px] font-medium text-slate-400">Quick Actions</p>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => handleSelectedServiceEditAction(service)}
+                    className="cursor-pointer rounded-xl border border-sky-400/35 bg-sky-500/10 px-3.5 py-1.5 text-[11px] font-medium text-sky-200 transition hover:border-sky-300/50 hover:bg-sky-500/15"
+                  >
+                    {editingServiceCardId === service.id ? "Save" : "Edit"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSelectedServiceDelete(service)}
+                    className="cursor-pointer rounded-xl border border-red-400/25 bg-red-500/10 px-3.5 py-1.5 text-[11px] font-medium text-red-200 transition hover:border-red-300/50 hover:bg-red-500/15"
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    ) : (
+      <div className="rounded-2xl border border-dashed border-[#28303d] bg-[#090909] px-4 py-8 text-center">
+        <p className="text-sm font-medium text-white">No services selected yet</p>
+        <p className="mt-1 text-xs text-slate-400">
+          Pick services from the section above and they will appear here automatically.
+        </p>
+      </div>
+    )
+  );
+
+  const renderSelectedServicesModal = () => {
+    if (typeof document === "undefined") {
+      return null;
+    }
+
+    return createPortal(
+      <AnimatePresence>
+        {isSelectedServicesModalOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2, ease: "easeOut" }}
+            className="fixed inset-0 z-[120] flex h-screen w-screen items-center justify-center bg-black/70 px-3 py-4 backdrop-blur-sm"
+            onClick={closeSelectedServicesModal}
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 24, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 18, scale: 0.98 }}
+              transition={{ duration: 0.24, ease: "easeOut" }}
+              className={`flex w-full flex-col overflow-hidden rounded-[28px] border border-[#22314a] bg-[#050505] shadow-[0_24px_80px_rgba(0,0,0,0.45)] ${
+                selectedServicesModalScope === "single"
+                  ? "max-h-[90vh] max-w-3xl"
+                  : "h-[min(90vh,960px)] max-w-5xl"
+              }`}
+              onClick={(event) => event.stopPropagation()}
+              role="dialog"
+              aria-modal="true"
+              aria-label="Selected services"
+            >
+              <div className="flex items-start justify-between gap-4 border-b border-[#162233] bg-[#08111c] px-5 py-4">
+                <div>
+                  <h2 className="text-lg font-semibold text-white">
+                    {selectedServicesModalScope === "single" ? "Service Editor" : "Selected Services"}
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-400">
+                    {selectedServicesModalScope === "single"
+                      ? "This focused view shows only the service you chose to edit."
+                      : "All checked services are listed here for quick edit or delete."}
+                  </p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="rounded-full border border-yellow-500/30 bg-yellow-500/10 px-3 py-1 text-xs font-semibold text-yellow-200">
+                    {visibleSelectedServices.length} {selectedServicesModalScope === "single" ? "service" : "selected"}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={closeSelectedServicesModal}
+                    className="flex h-10 w-10 items-center justify-center rounded-full border border-[#22314a] bg-[#050505] text-slate-300 transition hover:border-sky-400/40 hover:text-white"
+                    aria-label="Close selected services modal"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+              </div>
+
+              <div
+                className={`dark-scrollbar overflow-y-auto px-5 py-5 ${
+                  selectedServicesModalScope === "single" ? "max-h-[calc(90vh-140px)]" : "flex-1"
+                }`}
+              >
+                {renderSelectedServicesList(visibleSelectedServices)}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>,
+      document.body,
+    );
+  };
+
+  const renderItineraryWorkspaceContent = () => (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#232323] bg-[#070707] px-4 py-3">
+        <div className="flex items-center gap-2">
+          <span className="flex h-8 w-8 items-center justify-center rounded-full border border-amber-500/30 bg-amber-500/10 text-amber-300">
+            <CalendarDays size={15} />
+          </span>
+          <div>
+            <p className="text-sm font-semibold text-white">Auto Synced With Duration</p>
+            <p className="mt-1 text-xs text-slate-500">
+              Duration: {tripDuration.label || "Trip dates pending"}{order?.startDate ? ` • Starts ${formatShareDate(order.startDate)}` : ""}
+            </p>
+          </div>
+        </div>
+        <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-[11px] font-medium text-amber-300">
+          {itineraryEntries.length} Day{itineraryEntries.length === 1 ? "" : "s"}
+        </span>
+      </div>
+
+      {itineraryEntries.length ? itineraryEntries.map((entry) => {
+        const dayLabel = entry.dayLabel || buildItineraryDayLabel(entry.dayNumber, entry.date);
+        const fullHeading = entry.title ? `${dayLabel}: ${entry.title}` : dayLabel;
+
+        return (
+          <div key={`itinerary-day-${entry.dayNumber}`} className="rounded-2xl border border-[#232323] bg-[#070707] p-3">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full border border-orange-500/30 bg-orange-500/10 text-orange-300">
+                  <MdOutlineTravelExplore size={15} />
+                </span>
+                <p className="truncate text-sm font-semibold text-white">{fullHeading}</p>
+              </div>
+              <span className="rounded-full border border-orange-500/30 bg-orange-500/10 px-2.5 py-1 text-[11px] font-medium text-orange-300">
+                Day {entry.dayNumber}
+              </span>
+            </div>
+
+            <div className="space-y-2">
+              <input
+                type="text"
+                value={entry.title}
+                onChange={(e) => updateDayWiseItineraryEntry(entry.dayNumber, "title", e.target.value)}
+                placeholder="Enter heading e.g. North Phu Quoc Airport to Phu Quoc Hotel - pvt"
+                className="w-full rounded-xl border border-gray-700 bg-black px-3 py-2 text-sm text-white outline-none transition focus:border-yellow-500"
+              />
+              <textarea
+                value={entry.description}
+                onChange={(e) => updateDayWiseItineraryEntry(entry.dayNumber, "description", e.target.value)}
+                rows={4}
+                placeholder="Add description, timings, activities, transfers, meals, or special notes for this day..."
+                className="min-h-[120px] w-full resize-y rounded-xl border border-gray-700 bg-black px-3 py-2 text-sm text-white outline-none transition focus:border-yellow-500"
+              />
+            </div>
+          </div>
+        );
+      }) : (
+        <p className="rounded-2xl border border-dashed border-[#2a2a2a] bg-[#070707] px-4 py-6 text-center text-xs text-slate-500">
+          Trip duration is not available yet, so itinerary days cannot be generated.
+        </p>
+      )}
+    </div>
+  );
+
+  const renderNotesWorkspaceContent = () => (
+    <div className="space-y-4">
+      {[
+        {
+          key: "inclusion",
+          title: "Inclusions",
+          placeholder: "Add included item and press Add",
+          items: inclusions,
+          accent: "border-emerald-500/30 bg-emerald-500/10 text-emerald-300",
+        },
+        {
+          key: "exclusion",
+          title: "Exclusions",
+          placeholder: "Add excluded item and press Add",
+          items: exclusions,
+          accent: "border-rose-500/30 bg-rose-500/10 text-rose-300",
+        },
+        {
+          key: "additionalNote",
+          title: "Important Notes",
+          placeholder: "Add special terms or extra information and press Add",
+          items: additionalNotes,
+          accent: "border-sky-500/30 bg-sky-500/10 text-sky-300",
+        },
+      ].map((section) => (
+        <div key={section.key} className="rounded-2xl border border-[#232323] bg-[#070707] p-3">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <span
+                className={`flex h-8 w-8 items-center justify-center rounded-full border ${
+                  section.key === "inclusion"
+                    ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+                    : section.key === "exclusion"
+                      ? "border-rose-500/30 bg-rose-500/10 text-rose-300"
+                      : "border-sky-500/30 bg-sky-500/10 text-sky-300"
+                }`}
+              >
+                {section.key === "inclusion" ? (
+                  <CheckCircle2 size={15} />
+                ) : section.key === "exclusion" ? (
+                  <X size={15} />
+                ) : (
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M9 3h6" />
+                    <path d="M10 12h4" />
+                    <path d="M10 16h4" />
+                    <path d="M9 8h6" />
+                    <path d="M5 3h1a2 2 0 0 1 2 2v16l-3-2-3 2V5a2 2 0 0 1 2-2Z" />
+                    <path d="M14 3h5a2 2 0 0 1 2 2v16l-3-2-3 2V5a2 2 0 0 0-2-2Z" />
+                  </svg>
+                )}
+              </span>
+              <p className="text-sm font-semibold text-white">{section.title}</p>
+            </div>
+            <span className={`rounded-full border px-2.5 py-1 text-[11px] font-medium ${section.accent}`}>
+              {section.items.length} item{section.items.length === 1 ? "" : "s"}
+            </span>
+          </div>
+
+          <div className="flex flex-col gap-2 md:flex-row">
+            <input
+              type="text"
+              value={dynamicNoteInputs[section.key]}
+              onChange={(e) => updateDynamicNoteInput(section.key, e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  appendDynamicNoteItem(section.key);
+                }
+              }}
+              placeholder={section.placeholder}
+              className="flex-1 rounded-xl border border-gray-700 bg-black px-3 py-2 text-sm text-white outline-none transition focus:border-yellow-500"
+            />
+            <button
+              type="button"
+              onClick={() => appendDynamicNoteItem(section.key)}
+              className="rounded-xl border border-yellow-500/40 bg-yellow-500/10 px-4 py-2 text-sm font-medium text-yellow-300 transition hover:bg-yellow-500/20"
+            >
+              Add
+            </button>
+          </div>
+
+          {section.items.length > 0 ? (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {section.items.map((item, index) => (
+                <div
+                  key={`${section.key}-${index}-${item}`}
+                  className="flex items-center gap-2 rounded-xl border border-[#2c2c2c] bg-[#111111] px-3 py-2 text-xs text-slate-200"
+                >
+                  <span>{item}</span>
+                  <button
+                    type="button"
+                    onClick={() => removeDynamicNoteItem(section.key, index)}
+                    className="text-slate-400 transition hover:text-red-300"
+                    aria-label={`Remove ${section.title} item`}
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-3 text-xs text-slate-500">No {section.title.toLowerCase()} added yet.</p>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+
+  const renderWorkspaceModal = () => {
+    if (typeof document === "undefined") {
+      return null;
+    }
+
+    const modalConfig = activeWorkspaceModal === "itinerary"
+      ? {
+          title: "Day Wise Itinerary",
+          description: "Add a heading and description for each day in a dedicated itinerary workspace.",
+          badge: `${itineraryEntries.length} Day${itineraryEntries.length === 1 ? "" : "s"}`,
+          ariaLabel: "Day wise itinerary workspace",
+          content: renderItineraryWorkspaceContent(),
+        }
+      : {
+          title: "Additional Notes",
+          description: "Manage inclusions, exclusions, and important notes that appear across quotation views.",
+          badge: `${inclusions.length + exclusions.length + additionalNotes.length} Items`,
+          ariaLabel: "Additional notes workspace",
+          content: renderNotesWorkspaceContent(),
+        };
+
+    return createPortal(
+      <AnimatePresence>
+        {activeWorkspaceModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2, ease: "easeOut" }}
+            className="fixed inset-0 z-[120] flex h-screen w-screen items-center justify-center bg-black/70 px-3 py-4 backdrop-blur-sm"
+            onClick={closeWorkspaceModal}
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 24, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 18, scale: 0.98 }}
+              transition={{ duration: 0.24, ease: "easeOut" }}
+            className="flex h-[min(90vh,960px)] w-full max-w-5xl flex-col overflow-hidden rounded-[28px] border border-[#22314a] bg-[#050505] shadow-[0_24px_80px_rgba(0,0,0,0.45)]"
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label={modalConfig.ariaLabel}
+          >
+            <div className="flex items-start justify-between gap-4 border-b border-[#162233] bg-[#08111c] px-5 py-4">
+              <div>
+                <div className="flex items-center gap-3">
+                  <span
+                    className={`flex h-10 w-10 items-center justify-center rounded-full border ${
+                      activeWorkspaceModal === "itinerary"
+                        ? "border-orange-500/30 bg-orange-500/10 text-orange-200"
+                        : "border-sky-500/30 bg-sky-500/10 text-sky-200"
+                    }`}
+                  >
+                    {activeWorkspaceModal === "itinerary" ? (
+                      <CalendarDays size={18} />
+                    ) : (
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M9 3h6" />
+                        <path d="M10 12h4" />
+                        <path d="M10 16h4" />
+                        <path d="M9 8h6" />
+                        <path d="M5 3h1a2 2 0 0 1 2 2v16l-3-2-3 2V5a2 2 0 0 1 2-2Z" />
+                        <path d="M14 3h5a2 2 0 0 1 2 2v16l-3-2-3 2V5a2 2 0 0 0-2-2Z" />
+                      </svg>
+                    )}
+                  </span>
+                  <h2 className="text-lg font-semibold text-white">{modalConfig.title}</h2>
+                </div>
+                <p className="mt-1 text-sm text-slate-400">{modalConfig.description}</p>
+              </div>
+                <div className="flex items-center gap-3">
+                  <div className="rounded-full border border-yellow-500/30 bg-yellow-500/10 px-3 py-1 text-xs font-semibold text-yellow-200">
+                    {modalConfig.badge}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={closeWorkspaceModal}
+                    className="flex h-10 w-10 items-center justify-center rounded-full border border-[#22314a] bg-[#050505] text-slate-300 transition hover:border-sky-400/40 hover:text-white"
+                    aria-label={`Close ${modalConfig.title} modal`}
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+              </div>
+
+              <div className="dark-scrollbar flex-1 overflow-y-auto px-5 py-5">
+                {modalConfig.content}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>,
+      document.body,
+    );
+  };
+
+  const renderSelectedServicesSection = (variants = sectionRevealVariants) => (
+    <>
+      <motion.div variants={variants} className="rounded-xl border border-gray-700 bg-[#0e0e0e] p-4">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-[13px] font-semibold text-white">Selected Services</h2>
+            <p className="mt-1 max-w-[240px] text-[11px] leading-relaxed text-slate-400">
+              Review, edit, and manage all selected services inside a focused modal workspace.
+            </p>
+          </div>
+          <div className="flex min-w-[88px] items-center justify-center gap-1 rounded-[28px] border border-yellow-500/40 bg-[#2a2208] px-2 py-1.5 text-center text-yellow-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+            <span className="text-[11px] font-semibold leading-none">{selectedServices.length}</span>
+            <span className="text-[11px] font-semibold leading-none">selected</span>
+          </div>
+        </div>
+
+        <div className="mt-4 rounded-2xl border border-[#1f2937] bg-[#080d14] p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                Service Desk
+              </p>
+              <p className="mt-1 text-xs text-slate-300">
+                Open the modal to work with the currently selected quotation services.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => openSelectedServicesModal(editingServiceCardId || "", "all")}
+              className="cursor-pointer rounded-xl border border-sky-400/35 bg-sky-500/10 px-4 py-2 text-[11px] font-medium text-sky-200 transition hover:border-sky-300/50 hover:bg-sky-500/15"
+            >
+              Open Selected Services
+            </button>
+          </div>
+        </div>
+      </motion.div>
+      {renderSelectedServicesModal()}
+    </>
+  );
+
+  const renderQuotationWorkspaceButtons = (variants = sectionRevealVariants) => {
+    const totalNoteItems = inclusions.length + exclusions.length + additionalNotes.length;
+
+    return (
+      <div className="space-y-3">
+        <motion.button
+          variants={variants}
+          type="button"
+          onClick={() => openWorkspaceModal("itinerary")}
+          className="flex w-full cursor-pointer items-center justify-center gap-3 rounded-xl bg-yellow-400 px-4 py-2 text-md font-semibold text-black transition hover:bg-yellow-500"
+        >
+          <CalendarDays size={18} />
+          <span>Day Wise Itinerary</span>
+          <span className="rounded-full border border-black/10 bg-black/10 px-2 py-0.5 text-xs font-semibold">
+            {itineraryEntries.length}D
+          </span>
+        </motion.button>
+
+        <motion.button
+          variants={variants}
+          type="button"
+          onClick={() => openWorkspaceModal("notes")}
+          className="flex w-full cursor-pointer items-center justify-center gap-3 rounded-xl bg-white px-4 py-2 text-md font-semibold text-slate-600 transition hover:bg-slate-100"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M8 3h8" />
+            <path d="M8 7h8" />
+            <path d="M8 11h5" />
+            <path d="M6 3h1a2 2 0 0 1 2 2v16l-3-2-3 2V5a2 2 0 0 1 2-2Z" />
+            <path d="M14 3h4a2 2 0 0 1 2 2v16l-3-2-3 2V5a2 2 0 0 0-2-2Z" />
+          </svg>
+          <span>Additional Notes</span>
+          <span className="rounded-full border border-slate-300 bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">
+            {totalNoteItems}
+          </span>
+        </motion.button>
+      </div>
+    );
+  };
+
+  if (!hasOrderContext) {
+    return (
+      <motion.section
+        initial="hidden"
+        animate="visible"
+        variants={pageShellVariants}
+        className="-m-3 min-h-[calc(100vh-24px)] overflow-x-hidden bg-black p-3 text-white font-sans sm:-m-4 sm:min-h-[calc(100vh-32px)] sm:p-4 lg:-m-5 lg:min-h-[calc(100vh-40px)] lg:p-5"
+      >
+        <motion.div variants={sectionRevealVariants} className="mx-auto flex min-h-[70vh] max-w-2xl items-center justify-center">
+          <div className="w-full rounded-3xl border border-yellow-500/30 bg-[#0b0f19] p-8 text-center shadow-[0_24px_80px_rgba(0,0,0,0.35)]">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-yellow-400">
+              Quotation Builder
+            </p>
+            <h1 className="mt-3 text-2xl font-bold text-white">
+              Query details are missing
+            </h1>
+            <p className="mt-3 text-sm leading-6 text-slate-300">
+              This page needs query data from Order Acceptance. Open the quotation builder from the previous screen so we can load the right quotation context.
+            </p>
+
+            <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
+              <button
+                type="button"
+                onClick={() => navigate("/ops/order-acceptance")}
+                className="rounded-full bg-yellow-500 px-6 py-2 text-sm font-semibold text-black transition hover:bg-yellow-400"
+              >
+                Go to Order Acceptance
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate(-1)}
+                className="rounded-full border border-slate-600 px-6 py-2 text-sm font-medium text-slate-200 transition hover:border-slate-400 hover:text-white"
+              >
+                Go Back
+              </button>
+            </div>
+          </div>
+        </motion.div>
+      </motion.section>
+    );
+  }
+
+  
   return (
     <>
       <motion.section
@@ -2668,22 +4548,25 @@ const QuotationBuilder = () => {
           </button>
           <div className="text-yellow-400 font-semibold">
             <p className="text-right text-[#90a1b9] text-xs">Query ID</p>
-            <span className="font-bold">{order.queryId}</span>
+            <span className="font-bold">{orderQueryId || "-"}</span>
           </div>
         </motion.div>
 
         {/* Title */}
-        <motion.div variants={sectionRevealVariants}>
-          <h1 className="text-2xl font-bold">Quotation Builder</h1>
-          <p className="text-gray-400 mb-6">
-            Create a quote from contracted rates
-          </p>
+        <motion.div variants={sectionRevealVariants} className="mb-6 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <h1 className="text-2xl font-bold">Quotation Builder</h1>
+            <p className="text-gray-400">
+              Create a quote from contracted rates
+            </p>
+          </div>
         </motion.div>
+        {renderWorkspaceModal()}
 
         {/* Layout */}
         <motion.div variants={sectionRevealVariants} className="grid grid-cols-1 lg:grid-cols-3 gap-3">
           {/* LEFT SIDE */}
-          <motion.div variants={sideStackVariants} className="lg:col-span-2 space-y-6">
+          <motion.div variants={sideStackVariants} className="lg:col-span-2 space-y-8">
 
             {/* Query Info */}
             <motion.div variants={sectionRevealVariants} className="bg-[#0b0f19] rounded-2xl p-6 border border-yellow-500/50">
@@ -2740,8 +4623,11 @@ const QuotationBuilder = () => {
                 {/* Passengers */}
                 <div>
                   <p className="text-gray-400 text-xs">Passengers</p>
-                  <p className="text-white  text-xs font-medium">
-                    {order?.numberOfAdults + order?.numberOfChildren} PAX
+                  <p className="text-white text-xs font-medium">
+                    {totalPassengers} PAX
+                  </p>
+                  <p className="mt-1 text-[11px] text-slate-400">
+                    {adultPassengers} Adult{adultPassengers === 1 ? "" : "s"} | {childPassengers} Child{childPassengers === 1 ? "" : "ren"}
                   </p>
                 </div>
 
@@ -2916,6 +4802,7 @@ const QuotationBuilder = () => {
                     toggleService={toggleService}
                     updateField={updateField}
                     deleteService={deleteService}
+                    onOpenSelectedServices={openSelectedServicesModalForService}
                     tripNights={tripNights}
                     remainingHotelNights={getRemainingHotelNights(services, service.id)}
                     hotelNightStart={getHotelNightStart(services, service.id)}
@@ -2932,17 +4819,8 @@ const QuotationBuilder = () => {
                 </div>
               )}
             </motion.div>
-            {/* Notes */}
-            <motion.div variants={sectionRevealVariants} className="bg-[#0e0e0e] border border-gray-700 rounded-3xl p-4">
-              <p className="text-gray-400 mb-2">Additional Notes (Optional)</p>
-              <textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="Add special terms, inclusions, exclusions, or any important information for the agent..."
-                className="w-full bg-black border border-gray-600 rounded-xl p-3 text-sm"
-                rows={4}
-              />
-            </motion.div>
+            {renderSelectedServicesSection()}
+
           </motion.div>
 
           {/*========================= RIGHT SIDE =================================================== */}
@@ -2998,15 +4876,16 @@ const QuotationBuilder = () => {
 
             {/* ==================================== Price Breakdown Section ============================================ */}
 
-            <motion.div variants={rightCardVariants} className="bg-[#0e0e0e] border border-gray-700 rounded-xl p-4 border ">
+            {selectedSendOption === "__price_breakdown_preview__" && (
+              <motion.div variants={rightCardVariants} className="bg-[#0e0e0e] border border-gray-700 rounded-xl p-4">
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <h2 className="text-[13px] font-semibold text-white">Selected Services</h2>
-                  <p className="mt-1 max-w-[190px] text-[8px] leading-relaxed text-slate-400">
+                  <p className="mt-1 max-w-47.5 text-[8px] leading-relaxed text-slate-400">
                     All checked services are listed here for quick edit or delete.
                   </p>
                 </div>
-                <div className="flex min-w-[80px] items-center justify-center gap-1 rounded-[28px] border border-yellow-500/40 bg-[#2a2208] px-1 py-1.5 text-center text-yellow-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+                <div className="flex min-w-20 items-center justify-center gap-1 rounded-[28px] border border-yellow-500/40 bg-[#2a2208] px-1 py-1.5 text-center text-yellow-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
                   <span className="text-[10px] font-semibold leading-none">
                     {selectedServices.length}
                   </span>
@@ -3017,7 +4896,7 @@ const QuotationBuilder = () => {
               </div>
 
               {selectedServices.length > 0 ? (
-                <div className="dark-scrollbar mt-4 max-h-[320px] space-y-3 overflow-y-auto pr-1">
+                <div className="dark-scrollbar mt-4 max-h-80 space-y-3 overflow-y-auto pr-1">
                   {/*
                  // ─────────────────────────────────────────────────────────────────────────────
 // DROP-IN REPLACEMENT for the selectedServices.map(...) block
@@ -3034,16 +4913,16 @@ const QuotationBuilder = () => {
 
   // ── Chip factory — every chip gets identical height + padding ──────────
   const Chip = ({ icon, label, value, accent = "text-slate-300", iconColor = "text-slate-500" }) => (
-    <div className="inline-flex items-center gap-1.5 rounded-lg border border-[#212f45] bg-[#0a1018] px-2.5 py-[5px]">
+    <div className="inline-flex items-center gap-1.5 rounded-lg border border-[#212f45] bg-[#0a1018] px-2.5 py-1.25">
       {icon && (
-        <span className={`flex-shrink-0 ${iconColor}`} style={{ lineHeight: 0 }}>
+        <span className={`shrink-0 ${iconColor}`} style={{ lineHeight: 0 }}>
           {icon}
         </span>
       )}
       {label && (
-        <span className="text-[10px] font-medium text-slate-500 flex-shrink-0">{label}:</span>
+        <span className="text-[10px] font-medium text-slate-500 shrink-0">{label}:</span>
       )}
-      <span className={`text-[10px] font-semibold leading-none truncate max-w-[120px] ${accent}`}>
+      <span className={`text-[10px] font-semibold leading-none truncate max-w-30 ${accent}`}>
         {value}
       </span>
     </div>
@@ -3091,7 +4970,7 @@ const QuotationBuilder = () => {
             </p>
             {service.isForeignCurrency && (
               <p className="mt-0.5 text-[10px] text-sky-300 whitespace-nowrap">
-                INR {formatAmountValue(service.totalInInr || 0)}
+                ₹ {formatAmountValue(service.totalInInr || 0)}
               </p>
             )}
           </div>
@@ -3238,12 +5117,21 @@ const QuotationBuilder = () => {
                       : edit.variant === "danger"
                         ? "border-red-500/25 bg-red-500/10 text-red-200"
                         : "border-sky-500/20 bg-sky-500/10 text-sky-100";
+                const iconClasses =
+                  edit.variant === "success"
+                    ? "text-emerald-300"
+                    : edit.variant === "warning"
+                      ? "text-yellow-300"
+                      : edit.variant === "danger"
+                        ? "text-red-300"
+                        : "text-sky-300";
 
                 return (
                   <span
                     key={`${service.id}-${edit.key}-${edit.label}`}
                     className={`inline-flex items-center gap-1 rounded-[8px] border px-2.5 py-[5px] text-[10px] font-medium leading-none ${toneClasses}`}
                   >
+                    <CheckCircle2 size={11} className={`shrink-0 ${iconClasses}`} />
                     <span className="font-semibold">{edit.label}</span>
                     <span className="opacity-40">:</span>
                     <span>{edit.value}</span>
@@ -3287,7 +5175,8 @@ const QuotationBuilder = () => {
                   </p>
                 </div>
               )}
-            </motion.div>
+              </motion.div>
+            )}
 
             <motion.div variants={rightCardVariants} className="bg-[#0e0e0e] border border-gray-700 rounded-xl p-4 text-sm space-y-4">
               <div className="flex  gap-3">
@@ -3313,11 +5202,11 @@ const QuotationBuilder = () => {
                   OPS Markup (
                   {marginType === "percentage"
                     ? `${markup}%`
-                    : `INR ${formatAmountValue(fixedMargin)}`}
+                    : `₹ ${formatAmountValue(fixedMargin)}`}
                   )
                 </span>
                 <span className="text-yellow-400">
-                  INR {formatAmountValue(opsMarkup)}
+                  ₹ {formatAmountValue(opsMarkup)}
                 </span>
               </p>
               <p className="flex justify-between">
@@ -3326,17 +5215,17 @@ const QuotationBuilder = () => {
                 </span>
                 <span
                   className={`${appliedTaxTotal > 0 ? "text-green-400" : "text-red-400"}`}>
-                  INR {formatAmountValue(appliedTaxTotal)}
+                  ₹ {formatAmountValue(appliedTaxTotal)}
                 </span>
               </p>
               <p className="flex justify-between">
                 <span className="text-[#90A1B9]">Services Total</span>
-                <span className={`${servicesTotal > 0 ? "text-sky-500" : "text-red-400"}`}>INR {formatAmountValue(servicesTotal)}</span>
+                <span className={`${servicesTotal > 0 ? "text-sky-500" : "text-red-400"}`}>₹ {formatAmountValue(servicesTotal)}</span>
               </p>
               <p className="flex justify-between">
                 <span className="text-[#90A1B9]">Package Template Add-on</span>
                 <span className={`${packageTemplateAmount > 0 ? "text-emerald-400" : "text-gray-500"}`}>
-                  INR {formatAmountValue(packageTemplateAmount)}
+                  ₹ {formatAmountValue(packageTemplateAmount)}
                 </span>
               </p>
               {shouldShowDualPricing && (
@@ -3353,11 +5242,11 @@ const QuotationBuilder = () => {
                             {formatCurrencyValue(item.originalTotal, item.currency)}
                           </p>
                           <p className="text-[11px] text-slate-400">
-                            1 {item.currency} = INR {formatExchangeRateValue(item.exchangeRate)}
+                            1 {item.currency} = ₹ {formatExchangeRateValue(item.exchangeRate)}
                           </p>
                         </div>
                         <span className="text-sky-300">
-                          INR {formatAmountValue(item.inrTotal)}
+                          ₹ {formatAmountValue(item.inrTotal)}
                         </span>
                       </div>
                     ))}
@@ -3366,7 +5255,7 @@ const QuotationBuilder = () => {
               )}
               {shouldShowDualPricing && (
                 <div className="rounded-xl border border-[#20262f] bg-black/30 px-3 py-3 text-xs">
-                  <p className="font-medium text-slate-200">FX to INR</p>
+                  <p className="font-medium text-slate-200">FX to ₹</p>
                   <div className="mt-2 space-y-2">
                     {foreignCurrencyBreakdown.map((item) => (
                       <label
@@ -3389,7 +5278,7 @@ const QuotationBuilder = () => {
                             }
                             className="w-24 rounded-lg border border-[#374151] bg-[#050505] px-2 py-1.5 text-right text-white outline-none focus:border-yellow-400"
                           />
-                          <span className="text-slate-400">INR</span>
+                          <span className="text-slate-400">₹</span>
                         </div>
                       </label>
                     ))}
@@ -3399,12 +5288,12 @@ const QuotationBuilder = () => {
               <div className="flex justify-between text-lg font-bold mt-4  border-t border-t-yellow-400 ">
                 <span className="mt-1.5">Total Amount</span>
                 <span className="text-yellow-400 mt-1.5">
-                  INR {formatAmountValue(totalAmount)}
+                  ₹ {formatAmountValue(totalAmount)}
                 </span>
               </div>
               <p className="flex justify-between text-gray-400">
                 <span>Cost per Passenger</span>
-                <span>INR {formatAmountValue(costPerPassenger)}</span>
+                <span>₹ {formatAmountValue(costPerPassenger)}</span>
               </p>
             </motion.div>
 
@@ -3412,11 +5301,12 @@ const QuotationBuilder = () => {
             <motion.div variants={rightCardVariants} className="relative w-full">
               {isInvoiceRequestedStage ? (
                 <button
-                  onClick={generateFinalInvoice}
-                  className="w-full bg-yellow-400 text-black text-md py-2 rounded-xl font-semibold hover:bg-yellow-500 flex items-center justify-center gap-2 cursor-pointer"
+                  onClick={() => setShowFinanceInvoiceConfirm(true)}
+                  disabled={preparingFinanceInvoice}
+                  className="w-full bg-yellow-400 text-black text-md py-2 rounded-xl font-semibold hover:bg-yellow-500 flex items-center justify-center gap-2 cursor-pointer disabled:cursor-not-allowed disabled:opacity-70"
                 >
                   <Send />
-                  Prepare Finance Invoice
+                  {preparingFinanceInvoice ? "Preparing..." : "Prepare Finance Invoice"}
                 </button>
               ) : (
                 <button
@@ -3447,7 +5337,7 @@ const QuotationBuilder = () => {
                     Selected Services: {services.filter(s => s.checked).length}
                   </p>
                   <p className="text-xs text-gray-500">
-                    Total Amount: INR {formatAmountValue(totalAmount)}
+                    Total Amount: ₹ {formatAmountValue(totalAmount)}
                   </p>
                 </div>
 
@@ -3488,8 +5378,17 @@ const QuotationBuilder = () => {
               </div>
             </motion.div>
 
-            <motion.button variants={rightCardVariants} className="w-full bg-white py-2 text-md font-semibold text-gray-600 rounded-xl hover:text-gray-600 cursor-pointer">
-              Save as Draft
+            {!isInvoiceRequestedStage && renderQuotationWorkspaceButtons(rightCardVariants)}
+
+            <motion.button
+              variants={rightCardVariants}
+              type="button"
+              onClick={handleSaveDraftQuote}
+              disabled={savingDraftQuote}
+              className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-white py-2 text-md font-semibold text-gray-600 hover:text-gray-600 disabled:cursor-not-allowed disabled:opacity-70"
+            >
+              <FileText size={18} />
+              {savingDraftQuote ? "Saving Draft..." : "Save as Draft"}
             </motion.button>
 
             {/* Footer Note */}
@@ -3537,7 +5436,7 @@ const QuotationBuilder = () => {
                     Ops Charges
                   </p>
                   <p className="mt-2 text-xl font-semibold text-white">
-                    INR {formatAmountValue(
+                    ₹ {formatAmountValue(
                       roundCurrencyAmount(Number(draftServiceCharge || 0) + Number(draftHandlingFee || 0)),
                     )}
                   </p>
@@ -3548,7 +5447,7 @@ const QuotationBuilder = () => {
                     Tax Preview
                   </p>
                   <p className="mt-2 text-xl font-semibold text-white">
-                    INR {formatAmountValue(draftTaxationTotal)}
+                    ₹ {formatAmountValue(draftTaxationTotal)}
                   </p>
                   <p className="mt-1 text-xs text-slate-400">Live GST, TCS and tourism total</p>
                 </div>
@@ -3691,7 +5590,7 @@ const QuotationBuilder = () => {
                     </div>
                     <p className="mt-2 flex items-center justify-between gap-3 text-[11px] leading-5 text-slate-400">
                       <span>GST amount will be calculated from the taxable quotation value.</span>
-                      <span className="text-emerald-300">INR {formatAmountValue(draftGstFinal)}</span>
+                      <span className="text-emerald-300">₹ {formatAmountValue(draftGstFinal)}</span>
                     </p>
                   </div>
 
@@ -3726,7 +5625,7 @@ const QuotationBuilder = () => {
 
                     <p className="mt-2 flex items-center justify-between gap-3 text-[11px] leading-5 text-slate-400">
                       <span>TCS amount will be calculated from the taxable quotation value.</span>
-                      <span className="text-emerald-300">INR {formatAmountValue(draftTcsFinal)}</span>
+                      <span className="text-emerald-300">₹ {formatAmountValue(draftTcsFinal)}</span>
                     </p>
                   </div>
 
@@ -3821,6 +5720,51 @@ const QuotationBuilder = () => {
       )}
 
       {/*======================== ✅ POPUP Success final Charges =============================================*/}
+      {showFinanceInvoiceConfirm && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-[28px] border border-yellow-400/20 bg-[#111111] p-6 shadow-[0_24px_80px_rgba(0,0,0,0.55)]">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-yellow-300/80">
+                  Finance Invoice
+                </p>
+                <h3 className="mt-2 text-xl font-semibold text-white">
+                  Send notification to agent?
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowFinanceInvoiceConfirm(false)}
+                className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-slate-400 transition hover:border-red-400/40 hover:bg-red-500/10 hover:text-red-300"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <p className="mt-3 text-sm leading-6 text-slate-300">
+              This will prepare the finance invoice and notify the agent that the booking has moved to the finance stage.
+            </p>
+
+            <div className="mt-6 flex gap-3">
+              <button
+                type="button"
+                onClick={() => setShowFinanceInvoiceConfirm(false)}
+                className="flex-1 rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-white/10"
+              >
+                No
+              </button>
+              <button
+                type="button"
+                onClick={generateFinalInvoice}
+                className="flex-1 rounded-xl bg-yellow-400 px-4 py-2.5 text-sm font-semibold text-black transition hover:bg-yellow-500"
+              >
+                Yes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {successPopup.open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
 
@@ -3835,14 +5779,20 @@ const QuotationBuilder = () => {
 
             {/* TITLE */}
             <h2 className="text-xl font-semibold text-white mb-2">
-              {successPopup.kind === "invoice" ? "Finance Invoice Prepared" : "Quotation Sent Successfully"}
+              {successPopup.kind === "invoice"
+                ? "Finance Invoice Prepared"
+                : successPopup.deliveryWarnings?.length
+                  ? "Quotation Saved"
+                  : "Quotation Sent Successfully"}
             </h2>
 
             {/* SUBTEXT */}
             <p className="text-gray-400 text-sm mb-4">
               {successPopup.kind === "invoice"
                 ? "The approved quotation has been converted into a finance-ready invoice. Finance team will share the final invoice with the agent."
-                : "Your quotation has been delivered to the agent via selected channels."}
+                : successPopup.deliveryWarnings?.length
+                  ? "Your quotation was saved, but one or more selected delivery channels could not be completed."
+                  : "Your quotation has been delivered to the agent via selected channels."}
             </p>
 
             {/* DETAILS */}
@@ -3865,7 +5815,7 @@ const QuotationBuilder = () => {
 
               <p className="flex justify-between mt-1">
                 <span className="text-gray-400">Total Amount</span>
-                <span className="text-yellow-400">INR {formatAmountValue(successPopup.totalAmount || 0)}</span>
+                <span className="text-yellow-400">₹ {formatAmountValue(successPopup.totalAmount || 0)}</span>
               </p>
 
               <p className="flex justify-between mt-1">
@@ -3873,6 +5823,17 @@ const QuotationBuilder = () => {
                 <span className="text-white">{successPopup.serviceCount}</span>
               </p>
             </div>
+
+            {successPopup.kind === "quote" && successPopup.deliveryWarnings?.length > 0 && (
+              <div className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-left">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-300">
+                  Delivery Issue
+                </p>
+                <p className="mt-1 text-sm text-amber-100">
+                  {successPopup.deliveryWarnings[0]}
+                </p>
+              </div>
+            )}
 
             {/* BUTTONS */}
             <div className="flex gap-3">
@@ -3971,6 +5932,7 @@ const Service = ({
   toggleService,
   updateField,
   deleteService,
+  onOpenSelectedServices,
   tripNights,
   remainingHotelNights,
   hotelNightStart,
@@ -4148,6 +6110,15 @@ const Service = ({
                 Custom
               </span>
             )}
+            {service.checked && (
+              <button
+                type="button"
+                onClick={() => onOpenSelectedServices?.(service)}
+                className="cursor-pointer rounded-lg border border-sky-400/30 bg-sky-500/10 px-3 py-1 text-[10px] font-medium text-sky-200 transition hover:border-sky-300/50 hover:bg-sky-500/15"
+              >
+                Click to Edit
+              </button>
+            )}
           </div>
 
           {/* location + stars */}
@@ -4191,16 +6162,18 @@ const Service = ({
 
         {/* right: total price (always visible when checked) */}
         {service.checked && (
-          <div className="flex-shrink-0 text-right ml-2">
-            <p className="text-[9px] uppercase tracking-widest text-slate-500 mb-1">Total</p>
-            <p className="text-[15px] font-semibold text-white leading-none">
-              {formatCurrencyValue(total, currencyCode)}
-            </p>
-            {isForeignCurrency && (
-              <p className="mt-1 text-[10px] text-sky-300">
-                INR {formatAmountValue(totalInInr)}
+          <div className="ml-2 flex flex-shrink-0 flex-col items-end text-right">
+            <div>
+              <p className="mb-1 text-[9px] uppercase tracking-widest text-slate-500">Total</p>
+              <p className="text-[15px] font-semibold leading-none text-white">
+                {formatCurrencyValue(total, currencyCode)}
               </p>
-            )}
+              {isForeignCurrency && (
+                <p className="mt-1 text-[10px] text-sky-300">
+                  ₹ {formatAmountValue(totalInInr)}
+                </p>
+              )}
+            </div>
           </div>
         )}
       </div>
@@ -4252,10 +6225,10 @@ const Service = ({
               {isForeignCurrency && (
                 <>
                   <p className="text-[10px] text-sky-300 mt-0.5">
-                    INR {formatAmountValue(baseRateInInr)}
+                    ₹ {formatAmountValue(baseRateInInr)}
                   </p>
                   <div className="mt-2 inline-flex items-center rounded-lg border border-sky-500/20 bg-sky-500/8 px-2.5 py-1 text-[10px] text-slate-200">
-                    1 {currencyCode} = <span className="ml-1 font-medium text-sky-300">INR {formatExchangeRateValue(exchangeRate)}</span>
+                    1 {currencyCode} = <span className="ml-1 font-medium text-sky-300">₹ {formatExchangeRateValue(exchangeRate)}</span>
                   </div>
                 </>
               )}
@@ -4285,7 +6258,7 @@ const Service = ({
             {isForeignCurrency && (
               <div className="rounded-xl border border-[#1f1f1f] bg-[#101010] px-3 py-2.5 flex items-center">
                 <p className="text-[11px] text-slate-300">
-                  1 {currencyCode} = <span className="text-sky-300 font-medium">INR {formatExchangeRateValue(exchangeRate)}</span>
+                  1 {currencyCode} = <span className="text-sky-300 font-medium">₹ {formatExchangeRateValue(exchangeRate)}</span>
                 </p>
               </div>
             )}
@@ -4638,7 +6611,7 @@ const AddonRow = ({
         </p>
         {isForeignCurrency && (
           <p className="text-[10px] text-sky-300">
-            INR {formatAmountValue(convertAmountToInr(rate, currencyCode, exchangeRates))}
+            ₹ {formatAmountValue(convertAmountToInr(rate, currencyCode, exchangeRates))}
           </p>
         )}
       </div>

@@ -62,6 +62,27 @@ const getDisplayStatus = (query, invoice) => {
   return { label: "Finance Pending", className: "bg-amber-100 text-amber-700" };
 };
 
+const getSortableTimestamp = (value) => {
+  const timestamp = new Date(value).getTime();
+  return Number.isNaN(timestamp) ? 0 : timestamp;
+};
+
+const sortBookingsByNewest = (records = []) =>
+  [...records].sort((left, right) => {
+    const rightTime = Math.max(
+      getSortableTimestamp(right?.createdAt),
+      getSortableTimestamp(right?.query?.createdAt),
+      getSortableTimestamp(right?.invoice?.createdAt),
+    );
+    const leftTime = Math.max(
+      getSortableTimestamp(left?.createdAt),
+      getSortableTimestamp(left?.query?.createdAt),
+      getSortableTimestamp(left?.invoice?.createdAt),
+    );
+
+    return rightTime - leftTime;
+  });
+
 const mapBookingRecord = (record) => {
   const query = {
     _id: record?._id,
@@ -76,6 +97,8 @@ const mapBookingRecord = (record) => {
     travelerDetails: record?.travelerDetails || [],
     travelerDocumentVerification: record?.travelerDocumentVerification || { status: "Draft" },
     travelerDocumentAuditTrail: record?.travelerDocumentAuditTrail || [],
+    createdAt: record?.createdAt || null,
+    updatedAt: record?.updatedAt || null,
     opsStatus: record?.opsStatus,
     agentStatus: record?.agentStatus,
     activityLog: record?.activityLog || [],
@@ -93,6 +116,7 @@ const mapBookingRecord = (record) => {
 
   return {
     _id: query?._id,
+    createdAt: record?.createdAt || invoice?.createdAt || null,
     invoiceId: invoice?._id || "",
     invoiceNumber: invoice?.invoiceNumber || "Invoice Pending",
     bookingReference: query?.queryId || invoice?.invoiceNumber || "Booking Pending",
@@ -148,7 +172,7 @@ const ActiveBookings = () => {
         setLoading(true);
         setError("");
         const { data } = await API.get("/agent/active-bookings");
-        setBookings((data || []).map(mapBookingRecord));
+        setBookings(sortBookingsByNewest((data || []).map(mapBookingRecord)));
       } catch (fetchError) {
         console.error(fetchError);
         setError(fetchError?.response?.data?.message || "Failed to load active bookings");
@@ -242,7 +266,9 @@ const ActiveBookings = () => {
     }
     const nextBooking = mapBookingRecord(nextRecord);
     setBookings((prev) =>
-      prev.map((booking) => (booking._id === nextBooking._id ? nextBooking : booking)),
+      sortBookingsByNewest(
+        prev.map((booking) => (booking._id === nextBooking._id ? nextBooking : booking)),
+      ),
     );
     setSelectedActiveBooking(nextBooking);
   };
