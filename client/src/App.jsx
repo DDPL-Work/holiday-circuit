@@ -1,9 +1,12 @@
 import AppRouter from "./routes";
 import { Toaster } from "react-hot-toast";
+import GlobalDatabaseLoader from "./components/GlobalDatabaseLoader";
+import "./App.css";
 
 function App() {
   return (
     <>
+   <GlobalDatabaseLoader />
    <Toaster 
         position="top-right"
         reverseOrder={false}

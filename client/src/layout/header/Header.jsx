@@ -346,7 +346,9 @@ const Header = ({ onMenuToggle }) => {
     try {
       if (!silent) setLoadingNotifications(true);
 
-      const { data } = await API.get(getNotificationEndpoint(role));
+      const { data } = await API.get(getNotificationEndpoint(role), {
+        skipGlobalLoader: silent,
+      });
       const nextNotifications = data?.notifications || [];
       const nextVisibleNotifications = filterNotificationsByRole(role, nextNotifications);
       const nextUnreadCount = getUnreadNotificationCount(nextVisibleNotifications);
@@ -369,7 +371,9 @@ const Header = ({ onMenuToggle }) => {
     if (!canViewOffers) return;
 
     try {
-      const { data } = await API.get("/agent/coupons");
+      const { data } = await API.get("/agent/coupons", {
+        skipGlobalLoader: true,
+      });
       setCouponUnreadCount(Number(data?.data?.unreadCount || 0));
     } catch (error) {
       console.error("Failed to fetch coupon notifications", error);
@@ -378,7 +382,9 @@ const Header = ({ onMenuToggle }) => {
 
   const dismissNotification = async (id) => {
     try {
-      await API.delete(`${getNotificationEndpoint(role)}/${id}`);
+      await API.delete(`${getNotificationEndpoint(role)}/${id}`, {
+        skipGlobalLoader: true,
+      });
       setNotifications((prev) => prev.filter((notification) => notification._id !== id));
     } catch (error) {
       console.error("Failed to dismiss notification", error);
@@ -392,7 +398,9 @@ const Header = ({ onMenuToggle }) => {
       setBellPop(false);
       setOpenNotifications(false);
 
-      await API.patch(`${getNotificationEndpoint(role)}/read-all`);
+      await API.patch(`${getNotificationEndpoint(role)}/read-all`, null, {
+        skipGlobalLoader: true,
+      });
 
       if (canViewOffers) {
         setCouponUnreadCount(0);
@@ -407,7 +415,9 @@ const Header = ({ onMenuToggle }) => {
     try {
       await Promise.all(
         baseNotifications.map((notification) =>
-          API.delete(`${getNotificationEndpoint(role)}/${notification._id}`),
+          API.delete(`${getNotificationEndpoint(role)}/${notification._id}`, {
+            skipGlobalLoader: true,
+          }),
         ),
       );
 
@@ -438,7 +448,9 @@ const Header = ({ onMenuToggle }) => {
     setCouponUnreadCount(0);
 
     try {
-      await API.patch("/agent/coupons/read");
+      await API.patch("/agent/coupons/read", null, {
+        skipGlobalLoader: true,
+      });
     } catch (error) {
       console.error("Failed to mark coupon notifications as read", error);
     }
