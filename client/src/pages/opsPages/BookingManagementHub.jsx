@@ -267,12 +267,12 @@ export default function BookingManagementHub() {
                             scale: 1,
                             transition: {
                               type: "spring",
-                              stiffness: 120,
+                              stiffness: 100,
                               damping: 16,
                             },
                           },
                         }}
-                        whileHover={{ x: 2 }} className="border-t border-gray-300 align-middle hover:bg-gray-50"
+                        whileHover={{ x: 1 }} className="border-t border-gray-300 align-middle hover:bg-gray-100"
                       >
                         <td className="whitespace-nowrap px-3 py-4 align-center font-semibold text-slate-800">
                           {row.id}
@@ -281,7 +281,7 @@ export default function BookingManagementHub() {
                         <td className="px-3 py-4 align-middle ">
                           <div className="min-w-0 space-y-2 text-gray-600 ">
                             <div className="flex items-center gap-2">
-                              <User className="h-3 w-3 shrink-0 text-gray-400" />
+                              <User className="h-3 w-3 shrink-0 text-yellow-500" />
                               <span className="truncate font-medium text-slate-700">{row.agent}</span>
                             </div>
                             {isReceivedQuery ? (
@@ -296,29 +296,29 @@ export default function BookingManagementHub() {
 
                         <td className="px-3 py-4 align-middle">
                           <div className="flex min-w-0 items-center gap-2 text-gray-600">
-                            <MapPin className="h-3 w-3 shrink-0 text-gray-400" />
+                            <MapPin className="h-3 w-3 shrink-0 text-red-500" />
                             <span className="truncate">{row.destination}</span>
                           </div>
                         </td>
 
                         <td className="px-3 py-4 align-middle">
                           <div className="flex items-center gap-2 text-gray-600">
-                            <Calendar className="h-3 w-3 shrink-0 text-gray-400" />
+                            <Calendar className="h-3 w-3 shrink-0 text-orange-700" />
                             <span className="whitespace-nowrap leading-5">{row.date}</span>
                           </div>
                         </td>
 
-                        <td className="px-3 py-4 align-middle text-center">
+                        <td className="px-3 align-middle text-center">
                           <div className="leading-5">
                             <p className="font-medium text-slate-700">{row.pax} Pax</p>
-                            <p className="text-[11px] text-gray-400">
+                            <p className="text-[10px] text-gray-500">
                               A: {row.adults} | C: {row.children}
                             </p>
                           </div>
                         </td>
 
-                        <td className="px-3 py-4 align-middle text-center">
-                          <span className={`inline-flex h-9 min-w-[156px] items-center justify-center gap-1.5 whitespace-nowrap rounded-full px-3 text-xs font-medium leading-none ${status.color}`}>
+                        <td className="px-3 py-3 align-middle text-center">
+                          <span className={`inline-flex h-8 min-w-[156px] items-center justify-center gap-1.5 whitespace-nowrap rounded-full px-3 text-xs font-sm leading-none ${status.color}`}>
                             {status.icon}
                             {status.label}
                           </span>
@@ -345,7 +345,7 @@ export default function BookingManagementHub() {
                             whileHover={{ scale: 1.05 }}
                             whileTap={{ scale: 0.95 }}
                             onClick={() => setSelectedBooking(row._raw)}
-                            className="inline-flex cursor-pointer items-center gap-1 text-sm text-blue-600"
+                            className="inline-flex cursor-pointer items-center gap-1 text-sm text-blue-600 px-2 py-1 rounded-2xl hover:text-white hover:bg-green-500  border"
                           >
                             <Eye className="h-3 w-3" />
                             View

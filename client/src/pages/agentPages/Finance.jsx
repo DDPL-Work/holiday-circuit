@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Wallet, Clock, TrendingUp, Download } from "lucide-react";
 import { motion } from "framer-motion";
 import API from "../../utils/Api";
@@ -111,6 +111,7 @@ const buildStatementCsv = (transactions = [], currency = "INR") => {
 };
 
 const Finance = () => {
+  const sectionRef = useRef(null);
   const [expandedRows, setExpandedRows] = useState({});
 
   const toggleRow = (id) =>
@@ -193,7 +194,13 @@ const Finance = () => {
   };
 
   return (
-    <motion.section className="space-y-3" variants={container} initial="hidden" animate="visible">
+    <motion.section
+      ref={sectionRef}
+      className="relative isolate min-h-[calc(100vh-120px)] space-y-3"
+      variants={container}
+      initial="hidden"
+      animate="visible"
+    >
       <motion.header variants={item} className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Finance</h1>
