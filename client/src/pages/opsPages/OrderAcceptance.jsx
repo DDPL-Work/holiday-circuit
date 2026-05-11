@@ -411,9 +411,10 @@ import ConfirmQuotationModal from "../../modal/ConfirmQuotationModal";
 import API from "../../utils/Api.js";
 
 /* ── Activity log config ── */
-const hiddenLogActions = new Set(["Query Received"]);
+const hiddenLogActions = new Set();
 
 const logConfig = {
+  "Query Received": { color: "bg-sky-500", light: "bg-sky-50", text: "text-sky-700", border: "border-sky-200", icon: Activity },
   "Query Accepted": { color: "bg-green-500", light: "bg-green-50", text: "text-green-700", border: "border-green-200", icon: FileCheck },
   "Query Rejected": { color: "bg-red-500", light: "bg-red-50", text: "text-red-700", border: "border-red-200", icon: XCircle },
   "Quotation Started": { color: "bg-amber-500", light: "bg-amber-50", text: "text-amber-700", border: "border-amber-200", icon: Activity },
@@ -450,13 +451,26 @@ const ActivityStrip = ({ logs = [] }) => {
   if (!uniqueLogs.length) {
     return null;
   }
+
+  const shouldLoop = uniqueLogs.length > 1;
+  const repeatCount = shouldLoop ? Math.max(2, Math.ceil(18 / uniqueLogs.length)) : 1;
+  const loopLogs = shouldLoop
+    ? Array.from({ length: repeatCount }).flatMap((_, repeatIndex) =>
+        uniqueLogs.map((log, baseIndex) => ({
+          ...log,
+          __repeatIndex: repeatIndex,
+          __baseIndex: baseIndex,
+        })),
+      )
+    : uniqueLogs;
+
   return (
 
     <motion.div
       initial={{ opacity: 0, y: -10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4 }}
-      className="thin-scrollbar w-full mb-6 overflow-x-auto overflow-y-hidden rounded-2xl border border-gray-200 bg-white px-4 py-3 pb-2 shadow-sm"
+      className="w-full mb-6 overflow-hidden rounded-2xl border border-gray-200 bg-white px-4 py-3 pb-2 shadow-sm"
     >
       <div className="mb-2.5 flex items-center gap-2">
         <Activity size={13} className="text-green-700" />
@@ -467,21 +481,34 @@ const ActivityStrip = ({ logs = [] }) => {
       </div>
 
       {/* Horizontal timeline */}
-      <div className="flex min-w-max items-start justify-center gap-1 pr-1">
-        {uniqueLogs.map((log, index) => {
-         const display = log.action;
+      <div className="activity-strip-viewport">
+        <div
+          className={`activity-strip-track ${
+            shouldLoop ? "activity-strip-track--loop" : "activity-strip-track--static"
+          }`}
+          style={
+            shouldLoop
+              ? { "--activity-loop-distance": `${100 / repeatCount}%` }
+              : undefined
+          }
+        >
+          {loopLogs.map((log, index) => {
+         const display = log.action === "Query Created" ? "Query Received" : log.action;
          const cfg = logConfig[display] || fallbackConfig;
          const Icon = cfg.icon;
-         const isLast = index === uniqueLogs.length - 1;
+         const isLast = index === loopLogs.length - 1;
 
           return (
 
-            <div key={index} className="flex items-center">
+            <div
+              key={`${display}-${log.timestamp}-${log.__repeatIndex ?? 0}-${log.__baseIndex ?? index}`}
+              className="activity-strip-item"
+            >
               {/* Node */}
               <motion.div
                 initial={{ scale: 0, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
-                transition={{ delay: index * 0.1, type: "spring", stiffness: 260, damping: 20 }}
+                transition={{ delay: Math.min(index, uniqueLogs.length - 1) * 0.08, type: "spring", stiffness: 260, damping: 20 }}
                 className="flex w-[68px] flex-col items-center text-center"
               >
                 {/* Icon bubble */}
@@ -515,6 +542,7 @@ const ActivityStrip = ({ logs = [] }) => {
             </div>
           );
         })}
+        </div>
       </div>
     </motion.div>
   );
@@ -699,6 +727,7 @@ const handleStartQuotation = async (order) => {
           className="space-y-5"
         >
 {orders.map((order) => {
+  const isActivityLogSelected = selectedOrder?._id === order._id;
   const receivedLog = order.activityLog?.find(
     (l) => l.action === "Query Received"
   );
@@ -745,11 +774,13 @@ const handleStartQuotation = async (order) => {
               className={`border rounded-2xl p-5 transition hover:shadow-md ${
                 highlightedOrderId === String(order._id)
                   ? "border-blue-400 bg-blue-50/40 shadow-[0_0_0_4px_rgba(59,130,246,0.12)]"
+                  : isActivityLogSelected
+                    ? "border-blue-300 bg-blue-50/20 shadow-[0_0_0_2px_rgba(59,130,246,0.08)]"
                   : "border-gray-300"
               }`}
             >
               {/* TOP BAR */}
-              <div className="flex justify-between items-start mb-4">
+              <div className="mb-4 flex items-start justify-between gap-4">
                 <div className="flex flex-col gap-1">
                   <div className="flex items-center gap-2">
                     <p className="text-md font-bold text-slate-900">{order.queryId}</p>
@@ -781,7 +812,16 @@ const handleStartQuotation = async (order) => {
                     ) : null}
                   </div>
                 </div>
-                <div className="text-right">
+                <div className="flex flex-col items-end gap-3">
+                  <label className="inline-flex cursor-pointer select-none items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-[11px] font-semibold text-blue-700">
+                    <input
+                      type="checkbox"
+                      checked={isActivityLogSelected}
+                      onChange={() => setSelectedOrder(order)}
+                      className="h-3.5 w-3.5 cursor-pointer rounded border-blue-300 text-blue-600 focus:ring-2 focus:ring-blue-200"
+                    />
+                    Show activity log
+                  </label>
                   <p className="text-xs text-[#62748E]">Estimated Value</p>
                   <p className="text-green-600 font-bold text-sm mt-1">
                     ₹{order.customerBudget?.toLocaleString("en-IN")}

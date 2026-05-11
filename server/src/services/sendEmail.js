@@ -35,8 +35,6 @@ export const sendAgentRegistrationReceivedMail = async (
   });
 };
 
-
-
 export const sendAgentApprovalMail = async (
   email,
   {

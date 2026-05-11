@@ -9,7 +9,7 @@ import { GiTeamDowngrade } from "react-icons/gi";
 import { FaFileInvoice } from "react-icons/fa6";
 import { VscGraph } from "react-icons/vsc";
 import { BsMicrosoftTeams } from "react-icons/bs";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { MdOutlineVerifiedUser } from "react-icons/md";
 import { useDispatch } from "react-redux";
 import { logout } from "../../redux/slices/authSlice";
@@ -74,6 +74,8 @@ const Sidebar = ({ user, mobileOpen = false, onMobileClose = () => {} }) => {
   const [collapsed, setCollapsed] = useState(false);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [isMobileViewport, setIsMobileViewport] = useState(false);
+  const [navNeedsScroll, setNavNeedsScroll] = useState(false);
+  const navRef = useRef(null);
   const menus = menuConfig[user.role] || [];
   const dispatch = useDispatch();
   const navigate = useNavigate();
@@ -82,6 +84,7 @@ const Sidebar = ({ user, mobileOpen = false, onMobileClose = () => {} }) => {
   const roleConfig = {
     agent: {
       label: "Travel Agent",
+      sidebarLabel: "Travel Agent",
       subtitle: user.companyName || "Agent Workspace",
       ring: "from-blue-500 to-cyan-400",
       badge: "border-blue-400/20 bg-blue-500/15 text-blue-100",
@@ -89,6 +92,7 @@ const Sidebar = ({ user, mobileOpen = false, onMobileClose = () => {} }) => {
     },
     admin: {
       label: "System Admin",
+      sidebarLabel: "Admin",
       subtitle: "Platform Control",
       ring: "from-amber-400 to-orange-500",
       badge: "border-amber-400/20 bg-amber-500/15 text-amber-100",
@@ -96,6 +100,7 @@ const Sidebar = ({ user, mobileOpen = false, onMobileClose = () => {} }) => {
     },
     operations: {
       label: "Operations Team",
+      sidebarLabel: "Ops Team",
       subtitle: "Booking Control Desk",
       ring: "from-violet-500 to-fuchsia-500",
       badge: "border-violet-400/20 bg-violet-500/15 text-violet-100",
@@ -103,6 +108,7 @@ const Sidebar = ({ user, mobileOpen = false, onMobileClose = () => {} }) => {
     },
     operation_manager: {
       label: "Operation Manager",
+      sidebarLabel: "Ops Manager",
       subtitle: "Ops Command Center",
       ring: "from-sky-500 to-cyan-400",
       badge: "border-sky-400/20 bg-sky-500/15 text-sky-100",
@@ -110,6 +116,7 @@ const Sidebar = ({ user, mobileOpen = false, onMobileClose = () => {} }) => {
     },
     dmc_partner: {
       label: "DMC Partner",
+      sidebarLabel: "DMC Partner",
       subtitle: user.companyName || "Fulfillment Desk",
       ring: "from-emerald-500 to-teal-400",
       badge: "border-emerald-400/20 bg-emerald-500/15 text-emerald-100",
@@ -117,6 +124,7 @@ const Sidebar = ({ user, mobileOpen = false, onMobileClose = () => {} }) => {
     },
     finance_partner: {
       label: "Finance Partner",
+      sidebarLabel: "Finance",
       subtitle: user.companyName || "Finance Desk",
       ring: "from-pink-500 to-rose-400",
       badge: "border-pink-400/20 bg-pink-500/15 text-pink-100",
@@ -124,6 +132,7 @@ const Sidebar = ({ user, mobileOpen = false, onMobileClose = () => {} }) => {
     },
     finance_manager: {
       label: "Finance Manager",
+      sidebarLabel: "Finance Mgr",
       subtitle: "Finance Command Center",
       ring: "from-amber-500 to-orange-400",
       badge: "border-amber-400/20 bg-amber-500/15 text-amber-100",
@@ -133,6 +142,7 @@ const Sidebar = ({ user, mobileOpen = false, onMobileClose = () => {} }) => {
 
   const activeRole = roleConfig[user.role] || {
     label: "Workspace User",
+    sidebarLabel: "Workspace",
     subtitle: user.companyName || "Holiday Circuit",
     ring: "from-slate-500 to-slate-300",
     badge: "border-slate-400/20 bg-slate-500/15 text-slate-100",
@@ -160,6 +170,34 @@ const Sidebar = ({ user, mobileOpen = false, onMobileClose = () => {} }) => {
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, [onMobileClose]);
+
+  useEffect(() => {
+    const navElement = navRef.current;
+    if (!navElement) return undefined;
+
+    const updateScrollState = () => {
+      const overflowAmount = navElement.scrollHeight - navElement.clientHeight;
+      setNavNeedsScroll(overflowAmount > 20);
+    };
+
+    updateScrollState();
+
+    const resizeObserver = new ResizeObserver(() => {
+      updateScrollState();
+    });
+
+    resizeObserver.observe(navElement);
+    if (navElement.firstElementChild) {
+      resizeObserver.observe(navElement.firstElementChild);
+    }
+
+    window.addEventListener("resize", updateScrollState);
+
+    return () => {
+      resizeObserver.disconnect();
+      window.removeEventListener("resize", updateScrollState);
+    };
+  }, [menus.length, effectiveCollapsed, isMobileViewport]);
 
   const getItemTarget = (item) =>
     item.hash ? { pathname: item.path, hash: item.hash } : item.path;
@@ -233,7 +271,7 @@ const Sidebar = ({ user, mobileOpen = false, onMobileClose = () => {} }) => {
           isMobileViewport
             ? "fixed inset-y-0 left-0 z-50 h-screen border-r border-gray-800"
             : "relative h-full border-r border-gray-800"
-        } flex flex-col justify-between overflow-x-hidden border-t border-gray-800 bg-gray-900`}
+        } grid grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden border-t border-gray-800 bg-gray-900`}
         variants={sidebarVariants}
         animate={
           isMobileViewport
@@ -264,7 +302,14 @@ const Sidebar = ({ user, mobileOpen = false, onMobileClose = () => {} }) => {
         </div>
 
         {/* MENU */}
-        <nav className="sidebar-scrollbar flex-1 space-y-0.5 overflow-y-auto overflow-x-hidden px-2.5 pb-3 pt-1">
+        <nav
+          ref={navRef}
+          className={`min-h-0 space-y-0.5 overflow-x-hidden px-2.5 pb-2 pt-1 ${
+            navNeedsScroll
+              ? "sidebar-scrollbar overflow-y-auto"
+              : "hide-scrollbar overflow-y-hidden"
+          }`}
+        >
           {menus.map((item) => {
             const Icon = item.icon;
             const isActive = isItemActive(item);
@@ -341,24 +386,27 @@ const Sidebar = ({ user, mobileOpen = false, onMobileClose = () => {} }) => {
                   animate={effectiveCollapsed ? "collapsed" : "expanded"}
                   className="min-w-0 flex-1 overflow-hidden"
                 >
-                  <div className="flex items-start justify-between gap-1.5">
-                    <div className="min-w-0">
+                  <div className="flex flex-wrap items-start justify-between gap-x-1.5 gap-y-2">
+                    <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-semibold text-white">{primaryIdentity}</p>
                       <p className="mt-0.5 truncate text-[11px] text-slate-300">{user.name}</p>
                     </div>
-                    <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold leading-tight ${activeRole.badge}`}>
-                      {activeRole.label}
+                    <span
+                      className={`shrink-0 whitespace-nowrap rounded-full border px-2 py-0.5 text-center text-[10px] font-semibold leading-tight ${activeRole.badge}`}
+                      title={activeRole.label}
+                    >
+                      {activeRole.sidebarLabel || activeRole.label}
                     </span>
                   </div>
 
-                  <div className="mt-2.5 flex items-center justify-between gap-2">
-                    <div className="min-w-0">
+                  <div className="mt-2.5 flex flex-wrap items-center justify-between gap-x-1.5 gap-y-2">
+                    <div className="min-w-0 flex-1">
                       <p className="truncate text-[11px] uppercase tracking-[0.16em] text-slate-400">Workspace</p>
                       <p className="truncate text-xs text-slate-200">{activeRole.subtitle}</p>
                     </div>
-                    <div className="flex shrink-0 items-center gap-1.5 rounded-full bg-white/6 px-2 py-1 text-[10px] text-emerald-200">
+                    <div className="flex shrink-0 items-center gap-1 rounded-full bg-white/6 px-2 py-1 text-[10px] text-emerald-200">
                       <span className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.8)]" />
-                      Active
+                      <span className="whitespace-nowrap">Active</span>
                     </div>
                   </div>
                 </motion.div>
