@@ -13,6 +13,7 @@ const amountColor = {
   "In Review": "text-blue-500",
   Approved: "text-green-500",
   Rejected: "text-red-500",
+  "Partially Paid": "text-amber-500",
 };
 
 const formatCurrency = (value, currency = "INR") =>
@@ -39,6 +40,7 @@ const StatusBadge = ({ status, method }) => {
     "In Review": "bg-blue-50 text-blue-600 border-blue-200",
     Approved: "bg-green-50 text-green-600 border-green-200",
     Rejected: "bg-red-50 text-red-600 border-red-200",
+    "Partially Paid": "bg-orange-50 text-orange-600 border-orange-200",
   };
   return (
     <div className="flex flex-col items-start">
@@ -92,6 +94,7 @@ const isDatePast = (value) => {
 
 const getInvoiceDisplayStatus = (status, dueDateValue) => {
   if (status === "Paid") return "Paid";
+  if (status === "Partially Paid") return "Partially Paid";
   if (status === "Rejected") return "Rejected";
   return isDatePast(dueDateValue) ? "Overdue" : "Pending";
 };
@@ -125,36 +128,55 @@ const InternalInvoices = () => {
 
   const invoicesData = useMemo(
     () =>
-      (invoiceData.invoices || []).map((invoice) => ({
-        _id: invoice.id,
-        id: invoice.invoiceNumber,
-        isDmc: true,
-        ref: invoice.queryId,
-        party: invoice.dmcName,
-        utr:
-          invoice.utrNumber ||
-          invoice.utr ||
-          invoice.transactionReference ||
-          invoice.payoutReference ||
-          "Pending",
-        bank: invoice.bankName || invoice.sourceBank || invoice.payoutBank || "Pending",
-        hasBank: Boolean(invoice.bankName || invoice.sourceBank || invoice.payoutBank),
-        date: invoice.dueDate || invoice.invoiceDate,
-        amountValue: Number(invoice.amount || 0),
-        amount: formatCurrency(invoice.amount, invoice.currency),
-        agreedRate: formatCurrency(invoice.opsServicesTotal || 0, invoice.currency),
-        agreedRateValue: Number(invoice.opsServicesTotal || 0),
-        dmcInvoiceAmount: formatCurrency(invoice.dmcServicesTotal || 0, invoice.currency),
-        dmcInvoiceAmountValue: Number(invoice.dmcServicesTotal || 0),
-        taxValue: Number(invoice.tax || 0),
-        tax: formatCurrency(invoice.tax, invoice.currency),
-        status: getInvoiceDisplayStatus(invoice.status, invoice.dueDateValue || invoice.invoiceDateValue),
-        method: invoice.templateVariant,
-        dateValue: invoice.dueDateValue || invoice.invoiceDateValue,
-        quotationNumber: invoice.quotationNumber,
-        items: invoice.items || [],
-        documents: invoice.documents || [],
-      })),
+      (invoiceData.invoices || []).map((invoice) => {
+        const payoutInstallments = invoice.payoutInstallments || [];
+        const cumulativePaid = payoutInstallments.reduce((sum, inst) => sum + Number(inst.amount || 0), 0);
+        const remainingAmount = Math.max(0, Number(invoice.amount || 0) - cumulativePaid);
+
+        return {
+          _id: invoice.id,
+          id: invoice.invoiceNumber,
+          isDmc: true,
+          ref: invoice.queryId,
+          party: invoice.dmcName,
+          utr:
+            invoice.utrNumber ||
+            invoice.utr ||
+            invoice.transactionReference ||
+            invoice.payoutReference ||
+            "Pending",
+          bank: invoice.bankName || invoice.sourceBank || invoice.payoutBank || "Pending",
+          hasBank: Boolean(invoice.bankName || invoice.sourceBank || invoice.payoutBank),
+          date: invoice.dueDate || invoice.invoiceDate,
+          amountValue: Number(invoice.amount || 0),
+          amount: formatCurrency(invoice.amount, invoice.currency),
+          remainingAmountValue: remainingAmount,
+          remainingAmount: formatCurrency(remainingAmount, invoice.currency),
+          payoutInstallments: payoutInstallments,
+          cumulativePaid: cumulativePaid,
+          agreedRate: formatCurrency(invoice.opsServicesTotal || 0, invoice.currency),
+          agreedRateValue: Number(invoice.opsServicesTotal || 0),
+          dmcInvoiceAmount: formatCurrency(invoice.dmcServicesTotal || 0, invoice.currency),
+          dmcInvoiceAmountValue: Number(invoice.dmcServicesTotal || 0),
+          taxValue: Number(invoice.tax || 0),
+          tax: formatCurrency(invoice.tax, invoice.currency),
+          dmcEmail: invoice.dmcEmail || "",
+          dmcPhone: invoice.dmcPhone || "",
+          startDate: invoice.startDate || "",
+          endDate: invoice.endDate || "",
+          adults: Number(invoice.adults || 0),
+          children: Number(invoice.children || 0),
+          destination: invoice.destination || "",
+          status: getInvoiceDisplayStatus(invoice.status, invoice.dueDateValue || invoice.invoiceDateValue),
+          method: invoice.templateVariant,
+          dateValue: invoice.dueDateValue || invoice.invoiceDateValue,
+          creditPeriodDays: Number(invoice.creditPeriodDays || 7),
+          creditTermLabel: invoice.creditTermLabel || `${Number(invoice.creditPeriodDays || 7)}-day credit`,
+          quotationNumber: invoice.quotationNumber,
+          items: invoice.items || [],
+          documents: invoice.documents || [],
+        };
+      }),
     [invoiceData.invoices],
   );
 
@@ -166,12 +188,17 @@ const InternalInvoices = () => {
 
         if (invoice.status === "Pending") {
           acc.pending += 1;
-          acc.pendingAmount += invoice.amountValue;
+          acc.pendingAmount += invoice.remainingAmountValue;
         }
 
         if (invoice.status === "Overdue") {
           acc.overdue += 1;
-          acc.pendingAmount += invoice.amountValue;
+          acc.pendingAmount += invoice.remainingAmountValue;
+        }
+
+        if (invoice.status === "Partially Paid") {
+          acc.pending += 1;
+          acc.pendingAmount += invoice.remainingAmountValue;
         }
 
         if (invoice.status === "Paid") {
@@ -238,6 +265,13 @@ const InternalInvoices = () => {
             dmcInvoiceAmountValue: Number(updatedInvoice.dmcServicesTotal || 0),
             taxValue: Number(updatedInvoice.tax || 0),
             tax: formatCurrency(updatedInvoice.tax, updatedInvoice.currency),
+            dmcEmail: updatedInvoice.dmcEmail || prev?.dmcEmail || "",
+            dmcPhone: updatedInvoice.dmcPhone || prev?.dmcPhone || "",
+            startDate: updatedInvoice.startDate || prev?.startDate || "",
+            endDate: updatedInvoice.endDate || prev?.endDate || "",
+            adults: Number(updatedInvoice.adults ?? prev?.adults ?? 0),
+            children: Number(updatedInvoice.children ?? prev?.children ?? 0),
+            destination: updatedInvoice.destination || prev?.destination || "",
             status: getInvoiceDisplayStatus(
               updatedInvoice.status,
               updatedInvoice.dueDateValue || updatedInvoice.invoiceDateValue,
@@ -433,6 +467,7 @@ const InternalInvoices = () => {
                         <Calendar className="w-3 h-3 shrink-0 text-slate-400" />
                         <span className="text-[11px] text-slate-500 truncate">{invoice.date}</span>
                       </div>
+                      <span className="mt-px block text-[9px] leading-3 text-slate-400">{invoice.creditTermLabel}</span>
                     </td>
 
                     <td className={rowCellClass}>

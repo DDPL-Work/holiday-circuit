@@ -211,6 +211,17 @@
   overflow: hidden;
 }
 
+.activity-strip-scroll-hidden {
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.activity-strip-scroll-hidden::-webkit-scrollbar {
+  display: none;
+}
+
 .activity-strip-track {
   display: flex;
   width: max-content;

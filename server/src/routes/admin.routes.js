@@ -1,6 +1,6 @@
 import express from "express";
 import isAuthenticated from "../middlewares/auth.middleware.js";
-import { getPendingAgents, approveAgent, getAllUsers, createRateContract, deactivateRateContract, getSystemStats, getAllPayments, updateRateContract, createOperationsUser, createDmcPartner, createFinancePartner, getFinanceDashboard, getAdvancedAnalytics, getInternalInvoices, updateInternalInvoiceStatus, getPaymentVerifications, reviewPaymentVerification, sendFinalInvoiceToAgent, getAdminDashboardData, getManagedUsers, createManagedUser, updateManagedUser, updateManagedUserStatus, deleteManagedUser, restoreManagedUser, permanentlyDeleteManagedUser, replyToOpsEscalation } from "../controllers/adminController.js";
+import { getPendingAgents, approveAgent, getAllUsers, createRateContract, deactivateRateContract, getSystemStats, getAllPayments, updateRateContract, createOperationsUser, createDmcPartner, createFinancePartner, getFinanceDashboard, getAdvancedAnalytics, getInternalInvoices, updateInternalInvoiceStatus, getPaymentVerifications, reviewPaymentVerification, sendFinalInvoiceToAgent, sendPaymentReceiptToAgent, verifyPaymentTrackerInstallment, getAdminDashboardData, getManagedUsers, createManagedUser, updateManagedUser, updateManagedUserStatus, deleteManagedUser, restoreManagedUser, permanentlyDeleteManagedUser, replyToOpsEscalation } from "../controllers/adminController.js";
 import { createCoupon, deleteCoupon, generateCouponCode, getAdminCoupons, sendCouponToAgent, updateCoupon } from "../controllers/couponController.js";
 import { getMyNotifications, markAllNotificationsRead, deleteNotification } from "../controllers/agentController.js";
 import { getOperationManagerQueryQuotations } from "../controllers/opsManagerController.js";
@@ -43,6 +43,8 @@ routers.get("/payments", getAllPayments);
 routers.get("/payment-verifications", isAuthenticated, getPaymentVerifications);
 routers.patch("/payment-verifications/:id/status", isAuthenticated, reviewPaymentVerification);
 routers.post("/payment-verifications/:id/send-final-invoice", isAuthenticated, sendFinalInvoiceToAgent);
+routers.post("/payment-verifications/:id/send-payment-receipt", isAuthenticated, sendPaymentReceiptToAgent);
+routers.post("/payment-verifications/:id/tracker-installments/:installmentIndex/verify", isAuthenticated, verifyPaymentTrackerInstallment);
 routers.get("/finance-dashboard", isAuthenticated, getFinanceDashboard);
 routers.get("/advanced-analytics", isAuthenticated, getAdvancedAnalytics);
 routers.get("/internal-invoices", isAuthenticated, getInternalInvoices);

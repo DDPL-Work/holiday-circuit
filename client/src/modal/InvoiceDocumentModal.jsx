@@ -2,6 +2,9 @@ import React, { useEffect, useState } from 'react';
 import {
   FileText,
   Download,
+  Eye,
+  Mail,
+  MessageCircle,
   CheckCircle,
   AlertTriangle,
   X,
@@ -140,6 +143,51 @@ const getDisplayDocuments = (invoiceDocuments = [], invoiceId = "") => {
   ].filter(Boolean);
 };
 
+const payoutDispatchOptions = [
+  {
+    key: "EMAIL",
+    label: "Email",
+    description: "Send payout receipt directly to the DMC email inbox",
+    icon: Mail,
+  },
+  {
+    key: "WHATSAPP",
+    label: "WhatsApp",
+    description: "Open WhatsApp with the payout receipt link ready to share",
+    icon: MessageCircle,
+  },
+  {
+    key: "PDF",
+    label: "PDF Download",
+    description: "Download the payout receipt PDF to your system",
+    icon: Download,
+  },
+];
+
+const normalizeWhatsAppPhoneNumber = (value = "") => {
+  const digits = String(value || '').replace(/\D/g, '');
+  if (!digits) return '';
+  if (digits.length === 10) return `91${digits}`;
+  return digits;
+};
+
+const triggerFileDownload = async (fileUrl, fileName = 'document.pdf') => {
+  const response = await fetch(fileUrl);
+  if (!response.ok) {
+    throw new Error(`Download failed with status ${response.status}`);
+  }
+
+  const blob = await response.blob();
+  const objectUrl = window.URL.createObjectURL(blob);
+  const anchor = window.document.createElement('a');
+  anchor.href = objectUrl;
+  anchor.download = fileName;
+  window.document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.URL.revokeObjectURL(objectUrl);
+};
+
 const feedbackConfig = {
   success: {
     icon: CheckCircle,
@@ -230,11 +278,10 @@ const RejectInvoiceModal = ({ invoice, onClose, onConfirm }) => {
             <button
               onClick={handleConfirm}
               disabled={!selectedReason}
-              className={`rounded-xl px-4 py-2.5 text-sm font-medium transition-colors ${
-                selectedReason
+              className={`rounded-xl px-4 py-2.5 text-sm font-medium transition-colors ${selectedReason
                   ? 'bg-red-400 text-white hover:bg-red-500'
                   : 'cursor-not-allowed bg-red-100 text-red-300'
-              }`}
+                }`}
             >
               Confirm Rejection
             </button>
@@ -245,18 +292,197 @@ const RejectInvoiceModal = ({ invoice, onClose, onConfirm }) => {
   );
 };
 
+const PayoutDispatchModal = ({
+  selectedChannel,
+  recipientEmail,
+  recipientPhone,
+  onSelectChannel,
+  onEmailChange,
+  onPhoneChange,
+  onClose,
+  onConfirm,
+  isSubmitting,
+  dmcName,
+}) => (
+  <motion.div
+    initial={{ opacity: 0 }}
+    animate={{ opacity: 1 }}
+    exit={{ opacity: 0 }}
+    transition={{ duration: 0.22, ease: 'easeOut' }}
+    className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/45 backdrop-blur-[5px] p-4"
+  >
+    <motion.div
+      initial={{ opacity: 0, y: 24, scale: 0.97 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: 16, scale: 0.975 }}
+      transition={{ type: 'spring', damping: 26, stiffness: 240 }}
+      className="w-full max-w-[410px] rounded-[24px] bg-white border border-slate-100/80 shadow-[0_20px_50px_-12px_rgba(15,23,42,0.18)] overflow-hidden relative"
+    >
+      {/* Top Premium Gradient Line */}
+      <div className="absolute top-0 inset-x-0 h-[4px] bg-gradient-to-r from-[#0b1e36] via-[#10b981] to-[#107c41]" />
+
+      <div className="flex items-start justify-between border-b border-slate-100 px-5 pb-3 pt-4.5">
+        <div>
+          <p className="text-[10px] font-extrabold uppercase tracking-[0.22em] bg-gradient-to-r from-[#0b1e36] to-[#10b981] bg-clip-text text-transparent">
+            Send Payout Receipt
+          </p>
+          <h2 className="mt-1 text-base font-bold text-slate-800 leading-tight">
+            Share with <span className="text-slate-900 underline decoration-emerald-400 decoration-2 underline-offset-4">{dmcName || 'DMC Partner'}</span>
+          </h2>
+        </div>
+        <button
+          onClick={onClose}
+          className="rounded-full p-1.5 text-slate-400 transition-all duration-200 hover:bg-slate-100 hover:text-slate-800 active:scale-90"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+
+      <div className="space-y-2.5 px-5 py-4">
+        {payoutDispatchOptions.map((option) => {
+          const Icon = option.icon;
+          const isActive = selectedChannel === option.key;
+          return (
+            <button
+              key={option.key}
+              type="button"
+              onClick={() => onSelectChannel(option.key)}
+              className={`w-full rounded-xl border px-4 py-2.5 text-left transition-all duration-300 relative group overflow-hidden ${
+                isActive
+                  ? 'border-emerald-500 bg-emerald-50/30 shadow-[0_8px_20px_-6px_rgba(16,185,129,0.12)]'
+                  : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/70'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <div className={`rounded-lg p-2 transition-all duration-300 ${
+                  isActive
+                    ? 'bg-gradient-to-br from-[#0b1e36] to-[#10b981] text-white shadow-sm shadow-emerald-500/10 rotate-3 scale-105'
+                    : 'bg-slate-100 text-slate-500 group-hover:bg-slate-200 group-hover:text-slate-700'
+                }`}>
+                  <Icon className="h-4 w-4" />
+                </div>
+                <div>
+                  <p className={`text-sm font-bold transition-colors ${
+                    isActive ? 'text-slate-900' : 'text-slate-700 group-hover:text-slate-900'
+                  }`}>
+                    {option.label}
+                  </p>
+                  <p className="text-[11px] text-slate-500 mt-0.5 leading-normal">{option.description}</p>
+                </div>
+              </div>
+            </button>
+          );
+        })}
+
+        {/* Smooth Slide & Fade for Inputs */}
+        <AnimatePresence mode="wait">
+          {selectedChannel === 'EMAIL' && (
+            <motion.div
+              key="email-field"
+              initial={{ opacity: 0, height: 0, y: -10 }}
+              animate={{ opacity: 1, height: 'auto', y: 0 }}
+              exit={{ opacity: 0, height: 0, y: -10 }}
+              transition={{ type: 'spring', damping: 20, stiffness: 220 }}
+              className="overflow-hidden"
+            >
+              <div className="rounded-xl border border-slate-200/80 bg-slate-50/50 p-3.5 mt-1 shadow-[inset_0_1px_2px_rgba(241,245,249,0.5)]">
+                <label className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500 flex items-center gap-1.5">
+                  <span className="w-1.2 h-1.2 rounded-full bg-emerald-500" />
+                  DMC Email Address
+                </label>
+                <input
+                  type="email"
+                  value={recipientEmail}
+                  onChange={(event) => onEmailChange(event.target.value)}
+                  placeholder="Enter DMC email address"
+                  className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-950 shadow-sm outline-none transition-all duration-200 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 placeholder:text-slate-400"
+                />
+              </div>
+            </motion.div>
+          )}
+          {selectedChannel === 'WHATSAPP' && (
+            <motion.div
+              key="phone-field"
+              initial={{ opacity: 0, height: 0, y: -10 }}
+              animate={{ opacity: 1, height: 'auto', y: 0 }}
+              exit={{ opacity: 0, height: 0, y: -10 }}
+              transition={{ type: 'spring', damping: 20, stiffness: 220 }}
+              className="overflow-hidden"
+            >
+              <div className="rounded-xl border border-slate-200/80 bg-slate-50/50 p-3.5 mt-1 shadow-[inset_0_1px_2px_rgba(241,245,249,0.5)]">
+                <label className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500 flex items-center gap-1.5">
+                  <span className="w-1.2 h-1.2 rounded-full bg-emerald-500" />
+                  DMC WhatsApp Number
+                </label>
+                <input
+                  type="tel"
+                  value={recipientPhone}
+                  onChange={(event) => onPhoneChange(event.target.value)}
+                  placeholder="Enter DMC WhatsApp number (e.g. 9876543210)"
+                  className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-950 shadow-sm outline-none transition-all duration-200 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 placeholder:text-slate-400"
+                />
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 border-t border-slate-100 px-5 py-4">
+        <button
+          onClick={onClose}
+          className="inline-flex h-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-600 transition-all duration-200 hover:bg-slate-50 hover:border-slate-300 hover:text-slate-800 active:scale-[0.98]"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={onConfirm}
+          disabled={isSubmitting}
+          className={`inline-flex h-10 items-center justify-center rounded-xl text-xs font-bold text-white transition-all duration-200 active:scale-95 shadow-md ${
+            isSubmitting
+              ? 'cursor-not-allowed bg-slate-300 shadow-none'
+              : 'bg-gradient-to-r from-[#0b1e36] to-[#1d3d63] hover:from-[#132d52] hover:to-[#234b7a] hover:shadow-lg hover:shadow-slate-900/12'
+          }`}
+        >
+          {isSubmitting
+            ? 'Processing...'
+            : selectedChannel === 'PDF'
+            ? 'Confirm & Download'
+            : selectedChannel === 'WHATSAPP'
+            ? 'Confirm & Open'
+            : 'Confirm & Send'}
+        </button>
+      </div>
+    </motion.div>
+  </motion.div>
+);
+
 const InvoiceDocumentModal = ({ invoice, onClose, onInvoiceUpdated, sidePanelOpen = false }) => {
-  if (!invoice) return null;
+  const shouldRender = Boolean(invoice);
+  invoice = invoice || {};
 
   const [isOpen, setIsOpen] = useState(true);
 
   const [utrInput, setUtrInput] = useState('');
   const [dateInput, setDateInput] = useState('');
   const [sourceBank, setSourceBank] = useState('');
+
+  const payoutInstallments = invoice.payoutInstallments || [];
+  const cumulativePaid = payoutInstallments.reduce(
+    (sum, inst) => sum + Number(inst.amount || 0),
+    0
+  );
+  const expectedPayoutAmount = Number(invoice.amountValue || getNumericAmount(invoice.amount) || 0);
+  const remainingBalance = Math.max(0, expectedPayoutAmount - cumulativePaid);
+  const roundedRemainingBalance = Math.round(remainingBalance);
+
   const [transferAmount, setTransferAmount] = useState(
-    invoice.payoutAmount ? formatIntegerInput(Math.round(invoice.payoutAmount)) : "",
+    remainingBalance > 0 ? formatIntegerInput(Math.round(remainingBalance)) : ""
   );
   const [showRejectModal, setShowRejectModal] = useState(false);
+  const [showDispatchModal, setShowDispatchModal] = useState(false);
+  const [selectedDispatchChannel, setSelectedDispatchChannel] = useState('EMAIL');
+  const [dispatchRecipientEmail, setDispatchRecipientEmail] = useState(invoice.dmcEmail || '');
+  const [dispatchRecipientPhone, setDispatchRecipientPhone] = useState(invoice.dmcPhone || '');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [feedback, setFeedback] = useState(null);
 
@@ -280,21 +506,18 @@ const InvoiceDocumentModal = ({ invoice, onClose, onInvoiceUpdated, sidePanelOpe
     (invoice.agreedRateValue ?? getNumericAmount(agreedRate)) ===
     (invoice.dmcInvoiceAmountValue ?? getNumericAmount(invoicedAmount));
   const isPaid = invoice.status === 'Paid';
-  const expectedPayoutAmount = Number(invoice.amountValue || getNumericAmount(invoice.amount) || 0);
-  const roundedExpectedPayoutAmount = Math.round(expectedPayoutAmount);
   const transferAmountValue = Math.round(getNumericAmount(transferAmount));
   const payoutAmountMatches =
     transferAmount !== "" &&
-    transferAmountValue === roundedExpectedPayoutAmount;
+    transferAmountValue > 0 &&
+    transferAmountValue <= roundedRemainingBalance;
   const bankReferenceMatched = referenceMatchesSelectedBank(utrInput, sourceBank);
   const payoutReferenceDetailsComplete = Boolean(utrInput && dateInput && sourceBank);
   const payoutDetailsComplete = payoutReferenceDetailsComplete && bankReferenceMatched;
 
   const bankOptions = ['HDFC Bank', 'ICICI Bank', 'State Bank of India', 'Axis Bank', 'Kotak Bank'];
   const documentList = getDisplayDocuments(invoice.documents || [], invoice.id);
-  const settledAmount = formatRoundedAmount(
-    invoice.payoutAmount || invoice.amountValue || invoice.amount || expectedPayoutAmount,
-  );
+  const settledAmount = formatRoundedAmount(cumulativePaid || expectedPayoutAmount);
   const settledDate = formatDisplayDate(invoice.payoutDateValue || invoice.payoutDate);
 
   const handleClose = () => {
@@ -314,20 +537,54 @@ const InvoiceDocumentModal = ({ invoice, onClose, onInvoiceUpdated, sidePanelOpe
     return () => window.clearTimeout(timeoutId);
   }, [feedback]);
 
+  if (!shouldRender) return null;
+
   const showFeedback = (type, title, message) => {
     setFeedback({ type, title, message });
   };
 
   const handleReject = () => setShowRejectModal(true);
 
-  const handleDownloadDocument = (document) => {
+  const handlePreviewDocument = (document) => {
+    const fileUrl = getFileUrl(document?.filePath || getFallbackDocumentPath(document));
+    if (!fileUrl) {
+      showFeedback('warning', 'Document Not Ready', 'This file is not available for preview yet.');
+      return;
+    }
+
+    window.open(fileUrl, '_blank', 'noopener,noreferrer');
+  };
+
+  const handleDownloadDocument = async (document) => {
     const fileUrl = getFileUrl(document?.filePath || getFallbackDocumentPath(document));
     if (!fileUrl) {
       showFeedback('warning', 'Document Not Ready', 'This file is not available for download yet.');
       return;
     }
 
-    window.open(fileUrl, '_blank', 'noopener,noreferrer');
+    try {
+      const response = await fetch(fileUrl);
+      if (!response.ok) {
+        throw new Error(`Download failed with status ${response.status}`);
+      }
+
+      const blob = await response.blob();
+      const objectUrl = window.URL.createObjectURL(blob);
+      const anchor = window.document.createElement('a');
+      anchor.href = objectUrl;
+      anchor.download = document?.name || 'internal-invoice-document';
+      window.document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.URL.revokeObjectURL(objectUrl);
+    } catch (error) {
+      console.error('Internal invoice download failed:', error);
+      showFeedback(
+        'error',
+        'Download Failed',
+        'Unable to download this file right now. Please try again.',
+      );
+    }
   };
 
   const handleRejectConfirm = async (reason) => {
@@ -355,15 +612,34 @@ const InvoiceDocumentModal = ({ invoice, onClose, onInvoiceUpdated, sidePanelOpe
         'error',
         'Unable To Reject',
         error?.response?.data?.message ||
-          error?.response?.data?.error ||
-          'Failed to reject invoice',
+        error?.response?.data?.error ||
+        'Failed to reject invoice',
       );
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handleConfirm = async () => {
+  const handleDispatchSuccess = async (dispatch = {}, receiptDocument = null) => {
+    if (selectedDispatchChannel === 'PDF' && receiptDocument?.filePath) {
+      const receiptUrl = getFileUrl(receiptDocument.filePath);
+      if (receiptUrl) {
+        await triggerFileDownload(receiptUrl, receiptDocument.name || 'DMC_Payout_Receipt.pdf');
+      }
+    }
+
+    if (selectedDispatchChannel === 'WHATSAPP') {
+      const normalizedPhone = normalizeWhatsAppPhoneNumber(
+        dispatch?.recipientPhone || dispatchRecipientPhone,
+      );
+      if (normalizedPhone && dispatch?.whatsappMessage) {
+        const whatsappUrl = `https://wa.me/${normalizedPhone}?text=${encodeURIComponent(dispatch.whatsappMessage)}`;
+        window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
+      }
+    }
+  };
+
+  const handleConfirm = () => {
     if (!payoutDetailsComplete) {
       showFeedback(
         'warning',
@@ -391,6 +667,20 @@ const InvoiceDocumentModal = ({ invoice, onClose, onInvoiceUpdated, sidePanelOpe
       return;
     }
 
+    setShowDispatchModal(true);
+  };
+
+  const handleDispatchConfirm = async () => {
+    if (selectedDispatchChannel === 'EMAIL' && !String(dispatchRecipientEmail || '').trim()) {
+      showFeedback('warning', 'DMC Email Required', 'Please enter the DMC email before sending the payout receipt.');
+      return;
+    }
+
+    if (selectedDispatchChannel === 'WHATSAPP' && !normalizeWhatsAppPhoneNumber(dispatchRecipientPhone)) {
+      showFeedback('warning', 'DMC WhatsApp Required', 'Please enter the DMC WhatsApp number before sharing the payout receipt.');
+      return;
+    }
+
     if (isSubmitting) return;
 
     try {
@@ -401,21 +691,45 @@ const InvoiceDocumentModal = ({ invoice, onClose, onInvoiceUpdated, sidePanelOpe
         payoutDate: dateInput,
         payoutBank: sourceBank,
         payoutAmount: transferAmountValue,
+        dispatchChannel: selectedDispatchChannel,
+        dispatchRecipientEmail: selectedDispatchChannel === 'EMAIL' ? dispatchRecipientEmail : '',
+        dispatchRecipientPhone: selectedDispatchChannel === 'WHATSAPP' ? dispatchRecipientPhone : '',
       });
 
       onInvoiceUpdated?.(data?.data);
+      setShowDispatchModal(false);
+      await handleDispatchSuccess(data?.dispatch, data?.receiptDocument);
+
+      // Reset input fields for the next installment if not fully paid
+      const nextRemaining = Math.max(0, expectedPayoutAmount - (cumulativePaid + transferAmountValue));
+      if (nextRemaining > 0) {
+        setUtrInput('');
+        setDateInput('');
+        setSourceBank('');
+        setTransferAmount(formatIntegerInput(Math.round(nextRemaining)));
+      }
+
+      if (data?.dispatch?.status === 'failed') {
+        showFeedback(
+          'warning',
+          'Payout Recorded',
+          `Finance recorded this payout for ${formatRoundedAmount(transferAmountValue)}. ${data?.dispatch?.message || 'Receipt dispatch could not be completed.'}`,
+        );
+        return;
+      }
+
       showFeedback(
         'success',
         'Payout Recorded',
-        `Finance marked this invoice as paid for ${formatRoundedAmount(transferAmountValue)}.`,
+        `Finance recorded this payout for ${formatRoundedAmount(transferAmountValue)}.`,
       );
     } catch (error) {
       showFeedback(
         'error',
         'Unable To Confirm Payout',
         error?.response?.data?.message ||
-          error?.response?.data?.error ||
-          'Failed to confirm payout',
+        error?.response?.data?.error ||
+        'Failed to confirm payout',
       );
     } finally {
       setIsSubmitting(false);
@@ -429,371 +743,430 @@ const InvoiceDocumentModal = ({ invoice, onClose, onInvoiceUpdated, sidePanelOpe
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.18, ease: 'easeOut' }}
-          className={`fixed inset-0 flex items-center justify-center overflow-y-auto bg-slate-950/35 p-3 backdrop-blur-[1px] sm:p-4 ${
-            sidePanelOpen ? "z-[65] lg:pr-[352px]" : "z-50"
-          }`}
+          className={`fixed inset-0 flex items-center justify-center overflow-y-auto bg-slate-950/35 p-3 backdrop-blur-[1px] sm:p-4 ${sidePanelOpen ? "z-[65] lg:pr-[352px]" : "z-50"
+            }`}
         >
-      {feedback && (
-        <div className="pointer-events-none fixed right-4 top-4 z-[70] w-full max-w-[320px] sm:right-6 sm:top-6">
-          <div
-            className={`pointer-events-auto rounded-2xl border px-3 py-2.5 shadow-[0_18px_50px_rgba(15,23,42,0.16)] backdrop-blur-sm ${feedbackConfig[feedback.type]?.accent || feedbackConfig.success.accent}`}
-          >
-            <div className="flex items-start gap-2.5">
-              <div className={`mt-0.5 rounded-full p-1.5 ${feedbackConfig[feedback.type]?.iconWrap || feedbackConfig.success.iconWrap}`}>
-                {React.createElement(
-                  feedbackConfig[feedback.type]?.icon || feedbackConfig.success.icon,
-                  { className: 'h-3.5 w-3.5' },
-                )}
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-[10px] font-bold uppercase tracking-[0.14em]">
-                  {feedback.title}
-                </p>
-                <p className="mt-1 text-[10px] leading-4 opacity-90">{feedback.message}</p>
-              </div>
-              <button
-                onClick={() => setFeedback(null)}
-                className="rounded-full p-1 text-current/60 transition-colors hover:bg-white/60 hover:text-current"
+          {feedback && (
+            <div className="pointer-events-none fixed right-4 top-4 z-[70] w-full max-w-[320px] sm:right-6 sm:top-6">
+              <div
+                className={`pointer-events-auto rounded-2xl border px-3 py-2.5 shadow-[0_18px_50px_rgba(15,23,42,0.16)] backdrop-blur-sm ${feedbackConfig[feedback.type]?.accent || feedbackConfig.success.accent}`}
               >
-                <X className="h-3 w-3" />
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      <motion.div
-        initial={{ opacity: 0, y: 18 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: 14 }}
-        transition={{ duration: 0.24, ease: 'easeOut' }}
-        className="relative my-auto flex max-h-[calc(100vh-24px)] w-full max-w-[460px] flex-col overflow-hidden rounded-[18px] border border-slate-200 bg-white shadow-[0_24px_60px_rgba(15,23,42,0.22)] sm:max-h-[calc(100vh-32px)]"
-      >
-        <div className="flex items-start justify-between border-b border-slate-100 px-4 py-3">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <h2 className="text-[12px] font-semibold text-slate-900">Internal Invoice View</h2>
-              {isPaid && (
-                <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[8px] font-bold uppercase tracking-[0.12em] text-emerald-700">
-                  Paid
-                </span>
-              )}
-            </div>
-            <p className="mt-0.5 truncate text-[9px] text-slate-400">
-              {invoice.id} | {invoice.ref}
-            </p>
-          </div>
-          <button
-            onClick={handleClose}
-            className="rounded-full p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
-        </div>
-
-        <div className="custom-scroll flex-1 space-y-3 overflow-y-auto px-3 py-3">
-          <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
-            <div className="mb-2.5 flex items-center gap-1.5">
-              <CheckCircle className="h-3 w-3 text-emerald-500" />
-              <span className="text-[8px] font-bold uppercase tracking-[0.14em] text-emerald-700">
-                Rate Validation / Match
-              </span>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2">
-              <div className="rounded-lg border border-emerald-100 bg-white p-2">
-                <p className="text-[7px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                  Ops Selected Services Total
-                </p>
-                <div className="mt-1 flex items-center gap-1">
-                  <CheckCircle className="h-3 w-3 shrink-0 text-emerald-500" />
-                  <span className="text-[16px] font-bold leading-none text-emerald-600">
-                    {roundedAgreedRate}
-                  </span>
-                </div>
-                <p className="mt-1 text-[8px] text-slate-400">
-                  Total of the services selected by ops in the quotation
-                </p>
-              </div>
-
-              <div className="rounded-lg border border-emerald-100 bg-white p-2">
-                <p className="text-[7px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                  DMC Internal Invoice Services Total
-                </p>
-                <div className="mt-1 flex items-center gap-1">
-                  {ratesMatch ? (
-                    <CheckCircle className="h-3 w-3 shrink-0 text-emerald-500" />
-                  ) : (
-                    <AlertTriangle className="h-3 w-3 shrink-0 text-amber-500" />
-                  )}
-                  <span className="text-[16px] font-bold leading-none text-emerald-600">
-                    {roundedInvoicedAmount}
-                  </span>
-                </div>
-                <p className="mt-1 text-[8px] text-slate-400">
-                  Total of DMC service prices. Invoice tax shown separately: {roundedTaxAmount}
-                </p>
-              </div>
-            </div>
-
-            <div className={`mt-2 rounded-lg border px-2.5 py-2 ${
-              ratesMatch
-                ? 'border-emerald-200 bg-white/80'
-                : 'border-amber-200 bg-amber-50'
-            }`}>
-              <p className={`text-[8px] leading-4 ${
-                ratesMatch ? 'text-emerald-700' : 'text-amber-700'
-              }`}>
-                {ratesMatch
-                  ? 'Both service totals match, so finance can continue with verification and payout processing.'
-                  : 'Service totals do not match. Finance should reject the invoice or review the reason before moving ahead. Rejection will notify the DMC on their dashboard bell icon.'}
-              </p>
-            </div>
-          </div>
-
-          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-            <h3 className="mb-2 text-[9px] font-semibold text-slate-700">Payment Details</h3>
-            <div className="grid grid-cols-2 gap-x-4 gap-y-2">
-              <div className="min-w-0">
-                <p className="text-[8px] text-slate-400">Party Name</p>
-                <p className="truncate text-[10px] font-semibold text-slate-700">{invoice.party}</p>
-              </div>
-              <div className="min-w-0 text-right">
-                <p className="text-[8px] text-slate-400">Invoice Number</p>
-                <p className="truncate text-[10px] font-semibold text-slate-700">{invoice.id}</p>
-              </div>
-              <div className="min-w-0">
-                <p className="text-[8px] text-slate-400">Due Date</p>
-                <p className="text-[10px] font-semibold text-slate-700">{invoice.date}</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-            <div className="mb-2">
-              <h3 className="text-[9px] font-semibold text-slate-700">Uploaded Documents</h3>
-              <p className="mt-0.5 text-[8px] text-slate-400">
-                DMC uploaded internal invoice files. Finance team can download and verify them here.
-              </p>
-            </div>
-            <div className="space-y-2">
-              {documentList.map((doc) => (
-                <div
-                  key={doc.name}
-                  className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-2.5 py-2"
-                >
-                  <div className="flex min-w-0 items-center gap-2">
-                    <FileText className="h-3.5 w-3.5 shrink-0 text-slate-400" />
-                    <div className="min-w-0">
-                      <p className="truncate text-[9px] font-medium text-slate-700">{doc.name}</p>
-                      <p className="text-[8px] text-slate-400">{getDocumentMeta(doc)}</p>
-                    </div>
+                <div className="flex items-start gap-2.5">
+                  <div className={`mt-0.5 rounded-full p-1.5 ${feedbackConfig[feedback.type]?.iconWrap || feedbackConfig.success.iconWrap}`}>
+                    {React.createElement(
+                      feedbackConfig[feedback.type]?.icon || feedbackConfig.success.icon,
+                      { className: 'h-3.5 w-3.5' },
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.14em]">
+                      {feedback.title}
+                    </p>
+                    <p className="mt-1 text-[10px] leading-4 opacity-90">{feedback.message}</p>
                   </div>
                   <button
-                    onClick={() => handleDownloadDocument(doc)}
-                    className="ml-2 inline-flex shrink-0 items-center gap-1 rounded-full border border-slate-200 px-2 py-1 text-[8px] font-semibold text-slate-500 transition-colors hover:bg-slate-50"
+                    onClick={() => setFeedback(null)}
+                    className="rounded-full p-1 text-current/60 transition-colors hover:bg-white/60 hover:text-current"
                   >
-                    <Download className="h-2.5 w-2.5" />
-                    Download
+                    <X className="h-3 w-3" />
                   </button>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {isPaid ? (
-            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
-              <div className="mb-2.5 flex items-center gap-1.5">
-                <CheckCircle className="h-3 w-3 text-emerald-600" />
-                <span className="text-[8px] font-bold uppercase tracking-[0.14em] text-emerald-700">
-                  Payout Completed
-                </span>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div className="rounded-lg border border-emerald-100 bg-white px-2.5 py-2">
-                  <p className="text-[8px] text-slate-400">Settled Amount</p>
-                  <p className="mt-1 text-[10px] font-bold text-emerald-700">{settledAmount}</p>
-                </div>
-                <div className="rounded-lg border border-emerald-100 bg-white px-2.5 py-2">
-                  <p className="text-[8px] text-slate-400">Source Bank</p>
-                  <p className="mt-1 text-[10px] font-bold text-slate-700">
-                    {invoice.payoutBank || 'Recorded'}
-                  </p>
-                </div>
-                <div className="rounded-lg border border-emerald-100 bg-white px-2.5 py-2">
-                  <p className="text-[8px] text-slate-400">Payout Reference</p>
-                  <p className="mt-1 text-[10px] font-bold text-slate-700">
-                    {invoice.payoutReference || 'Recorded'}
-                  </p>
-                </div>
-                <div className="rounded-lg border border-emerald-100 bg-white px-2.5 py-2">
-                  <p className="text-[8px] text-slate-400">Settled On</p>
-                  <p className="mt-1 text-[10px] font-bold text-slate-700">
-                    {settledDate || 'Recorded'}
-                  </p>
-                </div>
-              </div>
-
-              <div className="mt-2 rounded-lg border border-emerald-100 bg-white/90 px-2.5 py-2">
-                <p className="text-[8px] leading-4 text-emerald-700">
-                  This invoice has already been settled by finance. The payout has been recorded,
-                  and the DMC has been notified of the completed payment status.
-                </p>
-              </div>
-            </div>
-          ) : (
-            <div className="rounded-xl border border-sky-200 bg-sky-50 p-3">
-              <div className="mb-2.5 flex items-center gap-1.5">
-                <Shield className="h-3 w-3 text-sky-600" />
-                <span className="text-[8px] font-bold uppercase tracking-[0.14em] text-sky-700">
-                  Record Company Payout
-                </span>
-              </div>
-
-              <div className="space-y-2">
-                <div>
-                  <label className="mb-1 block text-[8px] font-semibold text-slate-500">
-                    UTR/Reference Number *
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Enter UTR or transaction reference number"
-                    value={utrInput}
-                    onChange={(e) => setUtrInput(e.target.value)}
-                    className="h-8 w-full rounded-lg border border-sky-100 bg-white px-2.5 text-[10px] text-slate-700 outline-none placeholder:text-slate-300 focus:border-sky-300"
-                  />
-                </div>
-
-                <div>
-                  <label className="mb-1 block text-[8px] font-semibold text-slate-500">
-                    Transfer Amount *
-                  </label>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    placeholder="Enter transfer amount"
-                    value={transferAmount}
-                    onChange={(e) => setTransferAmount(formatIntegerInput(e.target.value))}
-                    className="h-8 w-full rounded-lg border border-sky-100 bg-white px-2.5 text-[10px] text-slate-700 outline-none placeholder:text-slate-300 focus:border-sky-300"
-                  />
-                  <p className="mt-1 text-[8px] text-slate-400">
-                    Expected: {formatRoundedAmount(invoice.amountValue ?? invoice.amount ?? expectedPayoutAmount)}
-                  </p>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="mb-1 block text-[8px] font-semibold text-slate-500">
-                      Date of Transfer *
-                    </label>
-                    <input
-                      type="date"
-                      value={dateInput}
-                      onChange={(e) => setDateInput(e.target.value)}
-                      className="h-8 w-full rounded-lg border border-sky-100 bg-white px-2.5 text-[10px] text-slate-700 outline-none focus:border-sky-300"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="mb-1 block text-[8px] font-semibold text-slate-500">
-                      Source Bank *
-                    </label>
-                    <div className="relative">
-                      <select
-                        value={sourceBank}
-                        onChange={(e) => setSourceBank(e.target.value)}
-                        className="h-8 w-full appearance-none rounded-lg border border-sky-100 bg-white px-2.5 pr-7 text-[10px] text-slate-700 outline-none focus:border-sky-300"
-                      >
-                        <option value="">Select Bank</option>
-                        {bankOptions.map((bank) => (
-                          <option key={bank} value={bank}>
-                            {bank}
-                          </option>
-                        ))}
-                      </select>
-                      <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="rounded-lg border border-sky-100 bg-white/80 px-2.5 py-2">
-                  <p className="mb-1 text-[8px] font-semibold uppercase tracking-[0.08em] text-slate-500">
-                    Verification Checklist
-                  </p>
-                  <div className="space-y-1">
-                    <div className={`flex items-center justify-between text-[8px] ${ratesMatch ? "text-emerald-700" : "text-amber-700"}`}>
-                      <span>Rate validation matched</span>
-                      <span>{ratesMatch ? "Pass" : "Check"}</span>
-                    </div>
-                    <div className={`flex items-center justify-between text-[8px] ${payoutAmountMatches ? "text-emerald-700" : "text-amber-700"}`}>
-                      <span>Transfer amount matches invoice total</span>
-                      <span>{payoutAmountMatches ? "Pass" : "Check"}</span>
-                    </div>
-                    <div className={`flex items-center justify-between text-[8px] ${payoutDetailsComplete ? "text-emerald-700" : "text-amber-700"}`}>
-                      <span>Payout reference, date and bank entered</span>
-                      <span>{payoutDetailsComplete ? "Pass" : "Pending"}</span>
-                    </div>
-                  </div>
-                  {!bankReferenceMatched && payoutReferenceDetailsComplete && (
-                    <p className="mt-1 text-[8px] leading-4 text-amber-700">
-                      Selected bank should match the bank name/code present in the payout reference.
-                    </p>
-                  )}
-                </div>
-
-                <div className="rounded-lg border border-sky-100 bg-white/80 px-2.5 py-2">
-                  <p className="text-[8px] leading-4 text-slate-500">
-                    Important: Ensure all details match the actual bank transaction before
-                    confirming payout.
-                  </p>
                 </div>
               </div>
             </div>
           )}
-        </div>
-
-        {isPaid ? (
-          <div className="border-t border-slate-100 px-3 py-3">
-            <div className="inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 text-[10px] font-semibold text-emerald-700">
-              <CheckCircle className="h-3 w-3" />
-              Invoice Settled & Paid
-            </div>
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 gap-2 border-t border-slate-100 px-3 py-3">
+          <motion.div
+            initial={{ opacity: 0, y: 18 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 14 }}
+            transition={{ duration: 0.24, ease: 'easeOut' }}
+            className="relative my-auto flex max-h-[calc(100vh-24px)] w-full max-w-[460px] flex-col overflow-hidden rounded-[18px] border border-slate-200 bg-white shadow-[0_24px_60px_rgba(15,23,42,0.22)] sm:max-h-[calc(100vh-32px)]"
+          >
+            <div className="flex items-start justify-between border-b border-slate-100 px-4 py-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <h2 className="text-[12px] font-semibold text-slate-900">Internal Invoice View</h2>
+                  {isPaid && (
+                    <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[8px] font-bold uppercase tracking-[0.12em] text-emerald-700">
+                      Paid
+                    </span>
+                  )}
+                </div>
+                <p className="mt-0.5 truncate text-[9px] text-slate-400">
+                  {invoice.id} | {invoice.ref}
+                </p>
+              </div>
               <button
-                onClick={handleReject}
-                disabled={isSubmitting}
-                className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-red-200 bg-white text-[10px] font-semibold text-red-500 transition-colors hover:bg-red-50"
-            >
-              <X className="h-3 w-3" />
-              Reject Invoice
-            </button>
-            <button
-              onClick={handleConfirm}
-              disabled={isSubmitting || !ratesMatch || !payoutAmountMatches || !payoutDetailsComplete}
-              className={`inline-flex h-9 items-center justify-center gap-1.5 rounded-lg text-[10px] font-semibold text-white transition-colors ${
-                isSubmitting || !ratesMatch || !payoutAmountMatches || !payoutDetailsComplete
-                  ? "cursor-not-allowed bg-emerald-200"
-                  : "bg-emerald-400 hover:bg-emerald-500"
-              }`}
-            >
-              <CheckCircle className="h-3 w-3" />
-              {isSubmitting ? 'Processing...' : 'Confirm Payout & Settle'}
-            </button>
-          </div>
-        )}
-      </motion.div>
+                onClick={handleClose}
+                className="rounded-full p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
 
-      <AnimatePresence>
-        {showRejectModal && (
-          <RejectInvoiceModal
-            invoice={invoice}
-            onClose={() => setShowRejectModal(false)}
-            onConfirm={handleRejectConfirm}
-          />
-        )}
-      </AnimatePresence>
+            <div className="custom-scroll flex-1 space-y-3 overflow-y-auto px-3 py-3">
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+                <div className="mb-2.5 flex items-center gap-1.5">
+                  <CheckCircle className="h-3 w-3 text-emerald-500" />
+                  <span className="text-[8px] font-bold uppercase tracking-[0.14em] text-emerald-700">
+                    Rate Validation / Match
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="rounded-lg border border-emerald-100 bg-white p-2">
+                    <p className="text-[7px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                      Ops Selected Services Total
+                    </p>
+                    <div className="mt-1 flex items-center gap-1">
+                      <CheckCircle className="h-3 w-3 shrink-0 text-emerald-500" />
+                      <span className="text-[16px] font-bold leading-none text-emerald-600">
+                        {roundedAgreedRate}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-[8px] text-slate-400">
+                      Total of the services selected by ops in the quotation
+                    </p>
+                  </div>
+
+                  <div className="rounded-lg border border-emerald-100 bg-white p-2">
+                    <p className="text-[7px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                      DMC Internal Invoice Services Total
+                    </p>
+                    <div className="mt-1 flex items-center gap-1">
+                      {ratesMatch ? (
+                        <CheckCircle className="h-3 w-3 shrink-0 text-emerald-500" />
+                      ) : (
+                        <AlertTriangle className="h-3 w-3 shrink-0 text-amber-500" />
+                      )}
+                      <span className="text-[16px] font-bold leading-none text-emerald-600">
+                        {roundedInvoicedAmount}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-[8px] text-slate-400">
+                      Total of DMC service prices. Invoice tax shown separately: {roundedTaxAmount}
+                    </p>
+                  </div>
+                </div>
+
+                <div className={`mt-2 rounded-lg border px-2.5 py-2 ${ratesMatch
+                    ? 'border-emerald-200 bg-white/80'
+                    : 'border-amber-200 bg-amber-50'
+                  }`}>
+                  <p className={`text-[8px] leading-4 ${ratesMatch ? 'text-emerald-700' : 'text-amber-700'
+                    }`}>
+                    {ratesMatch
+                      ? 'Both service totals match, so finance can continue with verification and payout processing.'
+                      : 'Service totals do not match. Finance should reject the invoice or review the reason before moving ahead. Rejection will notify the DMC on their dashboard bell icon.'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <h3 className="mb-2 text-[9px] font-semibold text-slate-700">Payment Details</h3>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+                  <div className="min-w-0">
+                    <p className="text-[8px] text-slate-400">Party Name</p>
+                    <p className="truncate text-[10px] font-semibold text-slate-700">{invoice.party}</p>
+                  </div>
+                  <div className="min-w-0 text-right">
+                    <p className="text-[8px] text-slate-400">Invoice Number</p>
+                    <p className="truncate text-[10px] font-semibold text-slate-700">{invoice.id}</p>
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[8px] text-slate-400">Due Date</p>
+                    <p className="text-[10px] font-semibold text-slate-700">{invoice.date}</p>
+                  </div>
+                  <div className="min-w-0 text-right">
+                    <p className="text-[8px] text-slate-400">Credit Period</p>
+                    <p className="text-[10px] font-semibold text-slate-700">
+                      {invoice.creditTermLabel || `${Number(invoice.creditPeriodDays || 7)}-day credit`}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <div className="mb-2">
+                  <h3 className="text-[9px] font-semibold text-slate-700">Uploaded Documents</h3>
+                  <p className="mt-0.5 text-[8px] text-slate-400">
+                    DMC uploaded internal invoice files. Finance team can download and verify them here.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  {documentList.map((doc) => (
+                    <div
+                      key={doc.name}
+                      className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-2.5 py-2"
+                    >
+                      <div className="flex min-w-0 items-center gap-2">
+                        <FileText className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                        <div className="min-w-0">
+                          <p className="truncate text-[9px] font-medium text-slate-700">{doc.name}</p>
+                          <p className="text-[8px] text-slate-400">{getDocumentMeta(doc)}</p>
+                        </div>
+                      </div>
+                      <div className="ml-2 flex shrink-0 items-center gap-1.5">
+                        <button
+                          onClick={() => handlePreviewDocument(doc)}
+                          className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-2 py-1 text-[8px] font-semibold text-slate-500 transition-colors hover:bg-slate-50"
+                        >
+                          <Eye className="h-2.5 w-2.5" />
+                          Preview
+                        </button>
+                        <button
+                          onClick={() => handleDownloadDocument(doc)}
+                          className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-2 py-1 text-[8px] font-semibold text-slate-500 transition-colors hover:bg-slate-50"
+                        >
+                          <Download className="h-2.5 w-2.5" />
+                          Download
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {payoutInstallments.length > 0 && (
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <div className="mb-2 flex items-center justify-between">
+                    <h3 className="text-[9px] font-bold uppercase tracking-[0.08em] text-slate-700">DMC Payout Statement</h3>
+                    <span className="text-[8px] font-bold text-slate-500">
+                      Paid: {formatRoundedAmount(cumulativePaid)} / {formatRoundedAmount(expectedPayoutAmount)}
+                    </span>
+                  </div>
+                  <div className="space-y-1.5">
+                    {payoutInstallments.map((inst, index) => (
+                      <div
+                        key={inst.id || index}
+                        className="flex items-center justify-between rounded-lg border border-slate-100 bg-white px-2.5 py-1.5 text-[9px]"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-bold text-slate-800">Installment {index + 1}</span>
+                            <span className="text-[8px] text-slate-400">({inst.paymentDate || inst.date})</span>
+                          </div>
+                          <p className="mt-0.5 truncate text-[8px] text-slate-400">
+                            Ref: {inst.utrNumber} | Bank: {inst.bankName}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <span className="font-bold text-emerald-600">
+                            {formatRoundedAmount(inst.amount)}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {isPaid ? (
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+                  <div className="mb-2.5 flex items-center gap-1.5">
+                    <CheckCircle className="h-3 w-3 text-emerald-600" />
+                    <span className="text-[8px] font-bold uppercase tracking-[0.14em] text-emerald-700">
+                      Payout Completed
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="rounded-lg border border-emerald-100 bg-white px-2.5 py-2">
+                      <p className="text-[8px] text-slate-400">Settled Amount</p>
+                      <p className="mt-1 text-[10px] font-bold text-emerald-700">{settledAmount}</p>
+                    </div>
+                    <div className="rounded-lg border border-emerald-100 bg-white px-2.5 py-2">
+                      <p className="text-[8px] text-slate-400">Source Bank</p>
+                      <p className="mt-1 text-[10px] font-bold text-slate-700">
+                        {invoice.payoutBank || 'Recorded'}
+                      </p>
+                    </div>
+                    <div className="rounded-lg border border-emerald-100 bg-white px-2.5 py-2">
+                      <p className="text-[8px] text-slate-400">Payout Reference</p>
+                      <p className="mt-1 text-[10px] font-bold text-slate-700">
+                        {invoice.payoutReference || 'Recorded'}
+                      </p>
+                    </div>
+                    <div className="rounded-lg border border-emerald-100 bg-white px-2.5 py-2">
+                      <p className="text-[8px] text-slate-400">Settled On</p>
+                      <p className="mt-1 text-[10px] font-bold text-slate-700">
+                        {settledDate || 'Recorded'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-2 rounded-lg border border-emerald-100 bg-white/90 px-2.5 py-2">
+                    <p className="text-[8px] leading-4 text-emerald-700">
+                      This invoice has already been settled by finance. The payout has been recorded,
+                      and the DMC has been notified of the completed payment status.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-xl border border-sky-200 bg-sky-50 p-3">
+                  <div className="mb-2.5 flex items-center gap-1.5">
+                    <Shield className="h-3 w-3 text-sky-600" />
+                    <span className="text-[8px] font-bold uppercase tracking-[0.14em] text-sky-700">
+                      Record Company Payout
+                    </span>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div>
+                      <label className="mb-1 block text-[8px] font-semibold text-slate-500">
+                        UTR/Reference Number *
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Enter UTR or transaction reference number"
+                        value={utrInput}
+                        onChange={(e) => setUtrInput(e.target.value)}
+                        className="h-8 w-full rounded-lg border border-sky-100 bg-white px-2.5 text-[10px] text-slate-700 outline-none placeholder:text-slate-300 focus:border-sky-300"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-1 block text-[8px] font-semibold text-slate-500">
+                        Transfer Amount *
+                      </label>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        placeholder="Enter transfer amount"
+                        value={transferAmount}
+                        onChange={(e) => setTransferAmount(formatIntegerInput(e.target.value))}
+                        className="h-8 w-full rounded-lg border border-sky-100 bg-white px-2.5 text-[10px] text-slate-700 outline-none placeholder:text-slate-300 focus:border-sky-300"
+                      />
+                      <p className="mt-1 text-[8px] text-slate-400">
+                        Remaining Balance: {formatRoundedAmount(remainingBalance)} (Total: {formatRoundedAmount(expectedPayoutAmount)})
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="mb-1 block text-[8px] font-semibold text-slate-500">
+                          Date of Transfer *
+                        </label>
+                        <input
+                          type="date"
+                          value={dateInput}
+                          onChange={(e) => setDateInput(e.target.value)}
+                          className="h-8 w-full rounded-lg border border-sky-100 bg-white px-2.5 text-[10px] text-slate-700 outline-none focus:border-sky-300"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="mb-1 block text-[8px] font-semibold text-slate-500">
+                          Source Bank *
+                        </label>
+                        <div className="relative">
+                          <select
+                            value={sourceBank}
+                            onChange={(e) => setSourceBank(e.target.value)}
+                            className="h-8 w-full appearance-none rounded-lg border border-sky-100 bg-white px-2.5 pr-7 text-[10px] text-slate-700 outline-none focus:border-sky-300"
+                          >
+                            <option value="">Select Bank</option>
+                            {bankOptions.map((bank) => (
+                              <option key={bank} value={bank}>
+                                {bank}
+                              </option>
+                            ))}
+                          </select>
+                          <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="rounded-lg border border-sky-100 bg-white/80 px-2.5 py-2">
+                      <p className="mb-1 text-[8px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+                        Verification Checklist
+                      </p>
+                      <div className="space-y-1">
+                        <div className={`flex items-center justify-between text-[8px] ${ratesMatch ? "text-emerald-700" : "text-amber-700"}`}>
+                          <span>Rate validation matched</span>
+                          <span>{ratesMatch ? "Pass" : "Check"}</span>
+                        </div>
+                        <div className={`flex items-center justify-between text-[8px] ${payoutAmountMatches ? "text-emerald-700" : "text-amber-700"}`}>
+                          <span>Transfer amount is within remaining balance</span>
+                          <span>{payoutAmountMatches ? "Pass" : "Check"}</span>
+                        </div>
+                        <div className={`flex items-center justify-between text-[8px] ${payoutDetailsComplete ? "text-emerald-700" : "text-amber-700"}`}>
+                          <span>Payout reference, date and bank entered</span>
+                          <span>{payoutDetailsComplete ? "Pass" : "Pending"}</span>
+                        </div>
+                      </div>
+                      {!bankReferenceMatched && payoutReferenceDetailsComplete && (
+                        <p className="mt-1 text-[8px] leading-4 text-amber-700">
+                          Selected bank should match the bank name/code present in the payout reference.
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="rounded-lg border border-sky-100 bg-white/80 px-2.5 py-2">
+                      <p className="text-[8px] leading-4 text-slate-500">
+                        Important: Ensure all details match the actual bank transaction before
+                        confirming payout.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {isPaid ? (
+              <div className="border-t border-slate-100 px-3 py-3">
+                <div className="inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 text-[10px] font-semibold text-emerald-700">
+                  <CheckCircle className="h-3 w-3" />
+                  Invoice Settled & Paid
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-2 border-t border-slate-100 px-3 py-3">
+                <button
+                  onClick={handleReject}
+                  disabled={isSubmitting}
+                  className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-red-200 bg-white text-[10px] font-semibold text-red-500 transition-colors hover:bg-red-50"
+                >
+                  <X className="h-3 w-3" />
+                  Reject Invoice
+                </button>
+                <button
+                  onClick={handleConfirm}
+                  disabled={isSubmitting || !ratesMatch || !payoutAmountMatches || !payoutDetailsComplete}
+                  className={`inline-flex h-9 items-center justify-center gap-1.5 rounded-lg text-[10px] font-semibold text-white transition-colors ${isSubmitting || !ratesMatch || !payoutAmountMatches || !payoutDetailsComplete
+                      ? "cursor-not-allowed bg-emerald-200"
+                      : "bg-emerald-400 hover:bg-emerald-500"
+                    }`}
+                >
+                  <CheckCircle className="h-3 w-3" />
+                  {isSubmitting ? 'Processing...' : 'Confirm Payout & Settle'}
+                </button>
+              </div>
+            )}
+          </motion.div>
+
+          <AnimatePresence>
+            {showRejectModal && (
+              <RejectInvoiceModal
+                invoice={invoice}
+                onClose={() => setShowRejectModal(false)}
+                onConfirm={handleRejectConfirm}
+              />
+            )}
+            {showDispatchModal && (
+              <PayoutDispatchModal
+                selectedChannel={selectedDispatchChannel}
+                recipientEmail={dispatchRecipientEmail}
+                recipientPhone={dispatchRecipientPhone}
+                onSelectChannel={setSelectedDispatchChannel}
+                onEmailChange={setDispatchRecipientEmail}
+                onPhoneChange={setDispatchRecipientPhone}
+                onClose={() => setShowDispatchModal(false)}
+                onConfirm={handleDispatchConfirm}
+                isSubmitting={isSubmitting}
+                dmcName={invoice.party}
+              />
+            )}
+          </AnimatePresence>
         </motion.div>
       )}
     </AnimatePresence>

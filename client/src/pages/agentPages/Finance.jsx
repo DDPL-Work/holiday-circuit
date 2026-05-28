@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Wallet, Clock, TrendingUp, Download } from "lucide-react";
-import { motion } from "framer-motion";
+import { Wallet, Clock, TrendingUp, Download, FileText, Eye, EyeOff } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
 import API from "../../utils/Api";
 
 const container = {
@@ -27,6 +27,20 @@ const formatDate = (value) => {
     day: "2-digit",
     month: "short",
     year: "numeric",
+  });
+};
+
+const formatDateTime = (value) => {
+  if (!value) return "-";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "-";
+  return parsed.toLocaleString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
   });
 };
 
@@ -86,13 +100,54 @@ const getTransactionMetaItems = (txn = {}, currency = "INR") => {
   return [];
 };
 
+const getQuotationDetails = (txn = {}) =>
+  (Array.isArray(txn?.meta?.quotationDetails) ? txn.meta.quotationDetails : []).slice().sort((left, right) => {
+    const leftTime = left?.createdAt ? new Date(left.createdAt).getTime() : 0;
+    const rightTime = right?.createdAt ? new Date(right.createdAt).getTime() : 0;
+    return leftTime - rightTime;
+  });
+
+const formatServiceTypeLabel = (type = "") => {
+  const normalized = String(type || "").trim().toLowerCase();
+  if (!normalized) return "Service";
+  return normalized
+    .split("-")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+};
+
+const getQuoteStatusColor = (status = "") => {
+  const normalized = String(status || "").trim().toLowerCase();
+  if (normalized === "confirmed") return "bg-emerald-50 text-emerald-700 border border-emerald-200";
+  if (normalized === "revision requested") return "bg-rose-50 text-rose-700 border border-rose-200";
+  if (normalized === "quote sent" || normalized === "sent to client") {
+    return "bg-blue-50 text-blue-700 border border-blue-200";
+  }
+  return "bg-slate-100 text-slate-700 border border-slate-200";
+};
+
+const SpringChevron = ({ open = false, className = "w-3 h-3" }) => (
+  <motion.svg
+    animate={{ rotate: open ? 180 : 0, scale: open ? 1.06 : 1 }}
+    transition={{ type: "spring", stiffness: 380, damping: 24, mass: 0.8 }}
+    className={className}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2.5"
+  >
+    <polyline points="6 9 12 15 18 9" />
+  </motion.svg>
+);
+
 const buildStatementCsv = (transactions = [], currency = "INR") => {
   const rows = [
-    ["Transaction ID", "Date", "Description", "Details", "Amount", "Status"],
+    ["Transaction ID", "Date", "Description", "Reject Quotation", "Details", "Amount", "Status"],
     ...transactions.map((txn) => [
       txn.id || "",
       formatDate(txn.date),
       txn.description || "",
+      Number(txn?.meta?.quotationStats?.totalCount || 0),
       getTransactionMetaItems(txn, currency)
         .map((item) => `${item.label} ${item.value}`)
         .join(" | "),
@@ -112,16 +167,59 @@ const buildStatementCsv = (transactions = [], currency = "INR") => {
 
 const Finance = () => {
   const sectionRef = useRef(null);
+  const transactionHistoryRef = useRef(null);
   const [expandedRows, setExpandedRows] = useState({});
+  const [quotationPopupPlacement, setQuotationPopupPlacement] = useState({
+    left: null,
+    top: null,
+  });
+  const isQuotationHistoryOpen = useMemo(
+    () =>
+      Object.entries(expandedRows).some(
+        ([key, isOpen]) => Boolean(isOpen) && key.endsWith("-quotations"),
+      ),
+    [expandedRows],
+  );
 
   const toggleRow = (id) =>
     setExpandedRows((prev) => ({ ...prev, [id]: !prev[id] }));
+
+  const toggleQuotationHistory = (id, event) => {
+    const popupKey = `${id}-quotations`;
+    const nextOpen = !expandedRows[popupKey];
+
+    if (!nextOpen) {
+      setExpandedRows((prev) => ({ ...prev, [popupKey]: false }));
+      setQuotationPopupPlacement({ left: null, top: null });
+      return;
+    }
+
+    const anchor = event?.currentTarget?.closest?.("[data-quotation-anchor]");
+    const anchorRect = anchor?.getBoundingClientRect?.();
+    const cardRect = transactionHistoryRef.current?.getBoundingClientRect?.();
+
+    if (anchorRect && cardRect) {
+      const visibleTop = Math.max(cardRect.top, 0);
+      const visibleBottom = Math.min(cardRect.bottom, window.innerHeight);
+      const centerYViewport = visibleTop < visibleBottom
+        ? (visibleTop + visibleBottom) / 2
+        : cardRect.top + Math.min(cardRect.height * 0.28, 220);
+
+      setQuotationPopupPlacement({
+        left: cardRect.left + cardRect.width / 2 - anchorRect.left,
+        top: centerYViewport - anchorRect.top,
+      });
+    }
+
+    setExpandedRows((prev) => ({ ...prev, [popupKey]: true }));
+  };
 
   // Close all dropdowns when clicking outside
   useEffect(() => {
     const handler = (e) => {
       if (!e.target.closest("[data-txn-dropdown]")) {
         setExpandedRows({});
+        setQuotationPopupPlacement({ left: null, top: null });
       }
     };
     document.addEventListener("mousedown", handler);
@@ -182,7 +280,9 @@ const Finance = () => {
 
   const handleDownloadStatement = () => {
     const csvContent = buildStatementCsv(overview.transactions, overview.currency);
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    // Prepend UTF-8 Byte Order Mark (BOM) so Excel reads international currency symbols (₹) correctly
+    const bom = "\uFEFF";
+    const blob = new Blob([bom + csvContent], { type: "text/csv;charset=utf-8;" });
     const objectUrl = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = objectUrl;
@@ -262,13 +362,29 @@ const Finance = () => {
         </motion.article>
       </div>
 
-      <motion.div variants={item} className="bg-white shadow-sm rounded-xl p-6">
+      <motion.div
+        ref={transactionHistoryRef}
+        variants={item}
+        className="relative bg-white shadow-sm rounded-xl p-6"
+      >
+        <AnimatePresence>
+          {isQuotationHistoryOpen && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2, ease: "easeOut" }}
+              className="pointer-events-none absolute inset-0 z-30 rounded-xl bg-white/18 backdrop-blur-[4px]"
+            />
+          )}
+        </AnimatePresence>
         <h2 className="text-lg font-semibold mb-4">Transaction History</h2>
         <table className="w-full text-xs table-auto">
             <colgroup>
               <col style={{ width: "190px" }} />
               <col style={{ width: "170px" }} />
               <col />
+              <col style={{ width: "170px" }} />
               <col style={{ width: "170px" }} />
               <col style={{ width: "130px" }} />
             </colgroup>
@@ -277,6 +393,7 @@ const Finance = () => {
                 <th className="text-left py-3">Transaction ID</th>
                 <th className="text-left py-3">Date</th>
                 <th className="text-left py-3">Description</th>
+                <th className="py-3 text-center whitespace-nowrap">Reject Quotation</th>
                 <th className="text-right py-3 whitespace-nowrap">Amount</th>
                 <th className="text-right py-3">Status</th>
               </tr>
@@ -285,19 +402,19 @@ const Finance = () => {
             <tbody className="divide-y divide-gray-200">
               {loading ? (
                 <tr>
-                  <td colSpan={5} className="py-10 text-center text-gray-400">
+                  <td colSpan={6} className="py-10 text-center text-gray-400">
                     Loading transactions...
                   </td>
                 </tr>
               ) : error ? (
                 <tr>
-                  <td colSpan={5} className="py-10 text-center text-rose-500">
+                  <td colSpan={6} className="py-10 text-center text-rose-500">
                     {error}
                   </td>
                 </tr>
               ) : overview.transactions.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="py-10 text-center text-gray-400">
+                  <td colSpan={6} className="py-10 text-center text-gray-400">
                     No finance transactions found yet.
                   </td>
                 </tr>
@@ -320,13 +437,7 @@ const Finance = () => {
                                   onClick={() => toggleRow(txn.id)}
                                   className="flex items-center justify-center w-5 h-5 rounded-full bg-gray-100 hover:bg-gray-200 transition-colors shrink-0"
                                 >
-                                  <svg
-                                    style={{ transition: "transform 0.2s ease" }}
-                                    className={`w-3 h-3 text-gray-500 ${isOpen ? "rotate-180" : "rotate-0"}`}
-                                    viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
-                                  >
-                                    <polyline points="6 9 12 15 18 9" />
-                                  </svg>
+                                  <SpringChevron open={isOpen} className="w-3 h-3 text-gray-500" />
                                 </button>
                               )}
                             </div>
@@ -360,6 +471,304 @@ const Finance = () => {
                                 ))}
                               </div>
                             )}
+                          </div>
+                        );
+                      })()}
+                    </td>
+
+                    <td className="py-4 pr-4 align-top text-center">
+                      {(() => {
+                        const quotationDetails = getQuotationDetails(txn);
+                        const quotationCount = quotationDetails.length;
+                        const isOpen = !!expandedRows[`${txn.id}-quotations`];
+
+                        if (!quotationCount) {
+                          return <span className="text-gray-300">-</span>;
+                        }
+
+                        return (
+                          <div className="relative w-full" data-txn-dropdown data-quotation-anchor>
+                            <div className="inline-flex max-w-full items-center justify-center gap-1.5">
+                              <span className="whitespace-nowrap font-medium text-slate-700">{quotationCount}</span>
+                              <span className="whitespace-nowrap text-[11px] font-medium text-slate-500">
+                                Quotation Details
+                              </span>
+                              <button
+                                onClick={(event) => toggleQuotationHistory(txn.id, event)}
+                                className="flex items-center justify-center w-5 h-5 rounded-full bg-gray-100 hover:bg-gray-200 transition-colors shrink-0"
+                              >
+                                <SpringChevron open={isOpen} className="w-3 h-3 text-gray-500" />
+                              </button>
+                            </div>
+
+                            <AnimatePresence>
+                              {isOpen && (
+                                <motion.div
+                                  initial={{ opacity: 0, y: -8, scale: 0.985 }}
+                                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                                  exit={{ opacity: 0, y: -8, scale: 0.985 }}
+                                  transition={{ duration: 0.22, ease: "easeOut" }}
+                                  style={{
+                                    position: "absolute",
+                                    top: quotationPopupPlacement.top ?? 120,
+                                    left: quotationPopupPlacement.left ?? "50%",
+                                    zIndex: 80,
+                                    width: "min(760px, 90vw)",
+                                  }}
+                                  className="relative -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-[20px] border border-gray-200 bg-white text-left shadow-[0_24px_60px_rgba(15,23,42,0.16)]"
+                                >
+                                  <div className="rounded-t-[20px] border-b border-gray-100 bg-slate-50 px-4 py-3">
+                                    <div className="flex items-center gap-2">
+                                      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-100 text-blue-600">
+                                        <FileText size={12} strokeWidth={2.2} />
+                                      </span>
+                                      <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-600">
+                                        Quotation History
+                                      </p>
+                                    </div>
+                                    <p className="mt-1 text-xs text-slate-600">
+                                      Only confirmed and rejected quotations are shown here. Open any quotation below to view its price, agent remark, and services.
+                                    </p>
+                                  </div>
+
+                                  <div className="custom-scroll max-h-[420px] overflow-y-auto px-4 py-4">
+                                    <div className="space-y-3">
+                                      {quotationDetails.map((quote, quoteIndex) => {
+                                        const quoteKey = `${txn.id}-quote-${quote.id || quoteIndex}`;
+                                        const quoteOpen = !!expandedRows[quoteKey];
+
+                                        return (
+                                          <motion.div
+                                            key={quoteKey}
+                                            layout
+                                            transition={{ duration: 0.22, ease: "easeOut" }}
+                                            className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50/80"
+                                          >
+                                            <button
+                                              onClick={() => toggleRow(quoteKey)}
+                                              className="flex w-full items-start justify-between gap-3 px-3 py-3 text-left"
+                                            >
+                                              <div className="min-w-0 flex-1">
+                                                <div className="flex items-center gap-2">
+                                                  <span className="text-sm font-semibold text-slate-900">
+                                                    {`Quotation ${quoteIndex + 1}`}
+                                                  </span>
+                                                  {quote.quotationNumber && (
+                                                    <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-600">
+                                                      {quote.quotationNumber}
+                                                    </span>
+                                                  )}
+                                                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${getQuoteStatusColor(quote.status)}`}>
+                                                    {quote.status || "Pending"}
+                                                  </span>
+                                                </div>
+                                                <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-500">
+                                                  <span>{formatDateTime(quote.createdAt)}</span>
+                                                  <span>{formatCurrency(quote.clientTotalAmount || quote.opsTotalAmount || 0, quote.currency || overview.currency)}</span>
+                                                  <span>{(quote.services || []).length} services</span>
+                                                </div>
+                                              </div>
+
+                                              <div className="flex items-center gap-2">
+                                                <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                                                  quoteOpen
+                                                    ? "bg-rose-50 text-rose-600 ring-1 ring-rose-200"
+                                                    : "bg-sky-50 text-sky-700 ring-1 ring-sky-200"
+                                                }`}>
+                                                  {quoteOpen ? <EyeOff size={13} strokeWidth={2.2} /> : <Eye size={13} strokeWidth={2.2} />}
+                                                  {quoteOpen ? "Hide" : "View"}
+                                                </span>
+                                                <span className={`flex h-6 w-6 items-center justify-center rounded-full ${
+                                                  quoteOpen ? "bg-rose-100 text-rose-600" : "bg-sky-100 text-sky-700"
+                                                }`}>
+                                                  <SpringChevron open={quoteOpen} className="w-3 h-3" />
+                                                </span>
+                                              </div>
+                                            </button>
+
+                                            <AnimatePresence initial={false}>
+                                              {quoteOpen && (
+                                                <motion.div
+                                                  initial={{ height: 0, opacity: 0 }}
+                                                  animate={{ height: "auto", opacity: 1 }}
+                                                  exit={{ height: 0, opacity: 0 }}
+                                                  transition={{ duration: 0.24, ease: "easeInOut" }}
+                                                  className="overflow-hidden"
+                                                >
+                                                  <div className="border-t border-slate-200 bg-white px-3 py-3">
+                                                    <div className="grid grid-cols-2 gap-2 text-[11px] sm:grid-cols-3">
+                                                      <div className="rounded-lg bg-slate-50 px-2.5 py-2">
+                                                        <p className="text-slate-400">Quote Price</p>
+                                                        <p className="mt-0.5 font-semibold text-slate-800">
+                                                          {formatCurrency(quote.clientTotalAmount || quote.opsTotalAmount || 0, quote.currency || overview.currency)}
+                                                        </p>
+                                                      </div>
+                                                      <div className="rounded-lg bg-slate-50 px-2.5 py-2">
+                                                        <p className="text-slate-400">Valid Till</p>
+                                                        <p className="mt-0.5 font-semibold text-slate-800">
+                                                          {formatDate(quote.validTill)}
+                                                        </p>
+                                                      </div>
+                                                      <div className="rounded-lg bg-slate-50 px-2.5 py-2">
+                                                        <p className="text-slate-400">Services</p>
+                                                        <p className="mt-0.5 font-semibold text-slate-800">
+                                                          {(quote.services || []).length}
+                                                        </p>
+                                                      </div>
+                                                    </div>
+
+                                                    {quote.revisionRemark && (
+                                                      <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5">
+                                                        <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-amber-700">
+                                                          Agent Remark
+                                                        </p>
+                                                        <p className="mt-1 text-[11px] leading-5 text-amber-900">
+                                                          {quote.revisionRemark}
+                                                        </p>
+                                                      </div>
+                                                    )}
+
+                                                    {quote.status === "Revision Requested" && !quote.revisionRemark && (
+                                                      <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5">
+                                                        <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-amber-700">
+                                                          Agent Remark
+                                                        </p>
+                                                        <p className="mt-1 text-[11px] leading-5 text-amber-900">
+                                                          No rejection remark was shared for this quotation.
+                                                        </p>
+                                                      </div>
+                                                    )}
+
+                                                    <div className="mt-3">
+                                                      <div className="mb-2 flex items-center gap-2">
+                                                        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-sky-100 text-sky-700">
+                                                          <svg
+                                                            width="12"
+                                                            height="12"
+                                                            viewBox="0 0 24 24"
+                                                            fill="none"
+                                                            stroke="currentColor"
+                                                            strokeWidth="2"
+                                                            strokeLinecap="round"
+                                                            strokeLinejoin="round"
+                                                          >
+                                                            <path d="M3 7h18" />
+                                                            <path d="M6 12h12" />
+                                                            <path d="M10 17h4" />
+                                                          </svg>
+                                                        </span>
+                                                        <p className="text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-sky-700">
+                                                          Services
+                                                        </p>
+                                                      </div>
+                                                      <div className="space-y-2">
+                                                        {(quote.services || []).length > 0 ? (
+                                                          quote.services.map((service, serviceIndex) => {
+                                                            const serviceKey = `${quoteKey}-service-card-${serviceIndex}`;
+                                                            const serviceOpen = !!expandedRows[serviceKey];
+                                                            const serviceMeta = [
+                                                              formatServiceTypeLabel(service.type),
+                                                              [service.city, service.country].filter(Boolean).join(", "),
+                                                              formatDate(service.serviceDate),
+                                                            ].filter((value) => value && value !== "-");
+
+                                                            const serviceHighlights = [
+                                                              Number(service.nights || 0) > 0 ? `${service.nights}N` : "",
+                                                              Number(service.days || 0) > 0 ? `${service.days}D` : "",
+                                                              Number(service.rooms || 0) > 0 ? `${service.rooms} Room` : "",
+                                                              Number(service.adults || 0) > 0 ? `${service.adults} Adult` : "",
+                                                              Number(service.children || 0) > 0 ? `${service.children} Child` : "",
+                                                              Number(service.pax || 0) > 0 ? `${service.pax} Pax` : "",
+                                                              service.vehicleType || "",
+                                                              service.roomType || "",
+                                                            ].filter(Boolean);
+
+                                                            return (
+                                                              <motion.div
+                                                                key={`${quoteKey}-service-${serviceIndex}`}
+                                                                layout
+                                                                transition={{ duration: 0.2, ease: "easeOut" }}
+                                                                className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-left"
+                                                              >
+                                                                <div className="flex items-center justify-between gap-3">
+                                                                  <div className="min-w-0">
+                                                                    <p className="text-[11px] font-semibold text-slate-800">
+                                                                      {service.title || `Service ${serviceIndex + 1}`}
+                                                                    </p>
+                                                                    <p className="mt-0.5 text-[10px] text-slate-500">
+                                                                      {serviceMeta.join(" | ") || "Service details available"}
+                                                                    </p>
+                                                                  </div>
+                                                                  <div className="flex items-center self-center gap-2">
+                                                                    <span className="whitespace-nowrap text-[11px] font-semibold text-slate-700">
+                                                                      {formatCurrency(service.total || 0, service.currency || quote.currency || overview.currency)}
+                                                                    </span>
+                                                                    <button
+                                                                      type="button"
+                                                                      onClick={() => toggleRow(serviceKey)}
+                                                                      className={`inline-flex h-7 w-10 items-center justify-center rounded-lg transition-colors ${
+                                                                        serviceOpen
+                                                                          ? "bg-rose-50 text-rose-600 ring-1 ring-rose-200"
+                                                                          : "bg-sky-50 text-sky-700 ring-1 ring-sky-200"
+                                                                      }`}
+                                                                    >
+                                                                      {serviceOpen ? <EyeOff size={14} strokeWidth={2.2} /> : <Eye size={14} strokeWidth={2.2} />}
+                                                                    </button>
+                                                                  </div>
+                                                                </div>
+
+                                                                <AnimatePresence initial={false}>
+                                                                  {serviceOpen && (
+                                                                    <motion.div
+                                                                      initial={{ height: 0, opacity: 0 }}
+                                                                      animate={{ height: "auto", opacity: 1 }}
+                                                                      exit={{ height: 0, opacity: 0 }}
+                                                                      transition={{ duration: 0.22, ease: "easeInOut" }}
+                                                                      className="overflow-hidden"
+                                                                    >
+                                                                      {serviceHighlights.length > 0 && (
+                                                                        <div className="mt-2 flex flex-wrap gap-1.5">
+                                                                          {serviceHighlights.map((highlight, highlightIndex) => (
+                                                                            <span
+                                                                              key={`${quoteKey}-service-highlight-${highlightIndex}`}
+                                                                              className="rounded-md bg-white px-2 py-0.5 text-[10px] text-slate-600 ring-1 ring-slate-200"
+                                                                            >
+                                                                              {highlight}
+                                                                            </span>
+                                                                          ))}
+                                                                        </div>
+                                                                      )}
+
+                                                                      {service.description && (
+                                                                        <p className="mt-2 text-[10px] leading-4 text-slate-500">
+                                                                          {service.description}
+                                                                        </p>
+                                                                      )}
+                                                                    </motion.div>
+                                                                  )}
+                                                                </AnimatePresence>
+                                                              </motion.div>
+                                                            );
+                                                          })
+                                                        ) : (
+                                                          <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 py-3 text-[11px] text-slate-400">
+                                                            No services available for this quotation.
+                                                          </div>
+                                                        )}
+                                                      </div>
+                                                    </div>
+                                                  </div>
+                                                </motion.div>
+                                              )}
+                                            </AnimatePresence>
+                                          </motion.div>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                </motion.div>
+                              )}
+                            </AnimatePresence>
                           </div>
                         );
                       })()}

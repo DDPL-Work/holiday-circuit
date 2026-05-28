@@ -8,6 +8,8 @@ import {
   OpsManagerReassignModal,
 } from "../../../modal/OpsManagerReassignModals";
 
+const PERFORMANCE_CARD_EXIT_MS = 320;
+
 function IconUserPlus({ size = 15 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -70,6 +72,16 @@ function perfBarTrackColor(p) {
   if (p >= 90) return "bg-emerald-100";
   if (p >= 75) return "bg-amber-100";
   return "bg-rose-100";
+}
+
+function getPerformanceValueClass(p) {
+  if (p === null || p === undefined || Number.isNaN(Number(p))) {
+    return "text-slate-900";
+  }
+
+  if (p >= 90) return "text-emerald-600";
+  if (p >= 75) return "text-amber-600";
+  return "text-rose-500";
 }
 
 function formatPercentValue(value) {
@@ -173,17 +185,30 @@ export default function MyOperationTeam() {
   const [period, setPeriod] = useState("current_month");
   const [customStartDate, setCustomStartDate] = useState("");
   const [customEndDate, setCustomEndDate] = useState("");
+  const [modalPeriod, setModalPeriod] = useState("current_month");
+  const [modalCustomStartDate, setModalCustomStartDate] = useState("");
+  const [modalCustomEndDate, setModalCustomEndDate] = useState("");
+  const [modalTeam, setModalTeam] = useState([]);
+  const [modalPerformanceWindow, setModalPerformanceWindow] = useState({});
+  const [modalRefreshing, setModalRefreshing] = useState(false);
 
   const [showAdd, setShowAdd] = useState(false);
   const [addSubmitting, setAddSubmitting] = useState(false);
   const performanceCardTimerRef = useRef(null);
+  const performanceCardOpenFrameRef = useRef(null);
   const hasLoadedOnceRef = useRef(false);
   const latestLoadRequestRef = useRef(0);
+  const latestModalRequestRef = useRef(0);
 
   const clearPerformanceCardTimer = useCallback(() => {
     if (performanceCardTimerRef.current) {
       window.clearTimeout(performanceCardTimerRef.current);
       performanceCardTimerRef.current = null;
+    }
+
+    if (performanceCardOpenFrameRef.current) {
+      window.cancelAnimationFrame(performanceCardOpenFrameRef.current);
+      performanceCardOpenFrameRef.current = null;
     }
   }, []);
 
@@ -196,7 +221,7 @@ export default function MyOperationTeam() {
       performanceCardTimerRef.current = window.setTimeout(() => {
         setPerformanceCard(null);
         performanceCardTimerRef.current = null;
-      }, 180);
+      }, PERFORMANCE_CARD_EXIT_MS);
 
       return { ...current, open: false };
     });
@@ -204,12 +229,36 @@ export default function MyOperationTeam() {
 
   const openPerformanceCard = useCallback((memberId) => {
     clearPerformanceCardTimer();
+    setModalPeriod(period);
+    setModalCustomStartDate(customStartDate);
+    setModalCustomEndDate(customEndDate);
+    setModalTeam(team);
+    setModalPerformanceWindow(performanceWindow);
+    setModalRefreshing(false);
 
     setPerformanceCard({
       id: memberId,
-      open: true,
+      open: false,
     });
-  }, [clearPerformanceCardTimer]);
+
+    performanceCardOpenFrameRef.current = window.requestAnimationFrame(() => {
+      performanceCardOpenFrameRef.current = null;
+      setPerformanceCard((current) => {
+        if (!current || current.id !== memberId) {
+          return current;
+        }
+
+        return { ...current, open: true };
+      });
+    });
+  }, [
+    clearPerformanceCardTimer,
+    customEndDate,
+    customStartDate,
+    period,
+    performanceWindow,
+    team,
+  ]);
 
   useEffect(() => () => clearPerformanceCardTimer(), [clearPerformanceCardTimer]);
 
@@ -233,6 +282,31 @@ export default function MyOperationTeam() {
     };
   }, [closePerformanceCard, performanceCard]);
 
+  const fetchDashboardSnapshot = useCallback(async ({
+    periodValue,
+    startDateValue = "",
+    endDateValue = "",
+    skipGlobalLoader = false,
+  }) => {
+    const params = { period: periodValue };
+    if (periodValue === "custom") {
+      params.startDate = startDateValue;
+      params.endDate = endDateValue;
+    }
+
+    const { data } = await API.get("/ops/manager/dashboard", {
+      params,
+      skipGlobalLoader,
+    });
+
+    return {
+      team: data?.data?.team || [],
+      summary: data?.data?.summary || {},
+      performanceWindow: data?.data?.performanceWindow || {},
+      dateLabel: data?.data?.dateLabel || "",
+    };
+  }, []);
+
   const loadTeam = useCallback(async ({
     background = false,
     notifyOnError = false,
@@ -250,21 +324,19 @@ export default function MyOperationTeam() {
         setLoading(true);
       }
       setError("");
-
-      const params = { period: periodValue };
-      if (periodValue === "custom") {
-        params.startDate = startDateValue;
-        params.endDate = endDateValue;
-      }
-
-      const { data } = await API.get("/ops/manager/dashboard", { params });
+      const snapshot = await fetchDashboardSnapshot({
+        periodValue,
+        startDateValue,
+        endDateValue,
+        skipGlobalLoader: background,
+      });
       if (requestId !== latestLoadRequestRef.current) {
         return;
       }
-      setTeam(data?.data?.team || []);
-      setSummary(data?.data?.summary || {});
-      setPerformanceWindow(data?.data?.performanceWindow || {});
-      setDateLabel(data?.data?.dateLabel || "");
+      setTeam(snapshot.team);
+      setSummary(snapshot.summary);
+      setPerformanceWindow(snapshot.performanceWindow);
+      setDateLabel(snapshot.dateLabel);
       hasLoadedOnceRef.current = true;
     } catch (err) {
       if (requestId !== latestLoadRequestRef.current) {
@@ -284,7 +356,7 @@ export default function MyOperationTeam() {
         }
       }
     }
-  }, [customEndDate, customStartDate, period]);
+  }, [customEndDate, customStartDate, fetchDashboardSnapshot, period]);
 
   useEffect(() => {
     if (period === "custom" && (!customStartDate || !customEndDate)) {
@@ -298,6 +370,73 @@ export default function MyOperationTeam() {
       endDateValue: customEndDate,
     });
   }, [period, customStartDate, customEndDate, loadTeam]);
+
+  useEffect(() => {
+    if (!performanceCard?.open) {
+      return undefined;
+    }
+
+    if (modalPeriod === "custom" && (!modalCustomStartDate || !modalCustomEndDate)) {
+      return undefined;
+    }
+
+    const modalMatchesPageRange =
+      modalPeriod === period &&
+      modalCustomStartDate === customStartDate &&
+      modalCustomEndDate === customEndDate;
+
+    if (modalMatchesPageRange) {
+      setModalTeam(team);
+      setModalPerformanceWindow(performanceWindow);
+      setModalRefreshing(false);
+      return undefined;
+    }
+
+    let ignore = false;
+    const requestId = latestModalRequestRef.current + 1;
+    latestModalRequestRef.current = requestId;
+    setModalRefreshing(true);
+
+    fetchDashboardSnapshot({
+      periodValue: modalPeriod,
+      startDateValue: modalCustomStartDate,
+      endDateValue: modalCustomEndDate,
+      skipGlobalLoader: true,
+    })
+      .then((snapshot) => {
+        if (ignore || requestId !== latestModalRequestRef.current) {
+          return;
+        }
+        setModalTeam(snapshot.team);
+        setModalPerformanceWindow(snapshot.performanceWindow);
+      })
+      .catch((err) => {
+        if (ignore || requestId !== latestModalRequestRef.current) {
+          return;
+        }
+        toast.error(err?.response?.data?.message || "Failed to load performance preview");
+      })
+      .finally(() => {
+        if (!ignore && requestId === latestModalRequestRef.current) {
+          setModalRefreshing(false);
+        }
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, [
+    customEndDate,
+    customStartDate,
+    fetchDashboardSnapshot,
+    modalCustomEndDate,
+    modalCustomStartDate,
+    modalPeriod,
+    performanceCard?.open,
+    performanceWindow,
+    period,
+    team,
+  ]);
 
   const handleAdd = async (payload) => {
     try {
@@ -324,29 +463,24 @@ export default function MyOperationTeam() {
         : "text-red-500";
   const periodLabel = performanceWindow?.currentLabel || summary?.performanceWindowLabel || "Current period";
   const comparisonLabel = summary?.performanceDeltaLabel || performanceWindow?.comparisonLabel || "vs previous period";
-  const performanceMember = performanceCard ? team.find((member) => member.id === performanceCard.id) : null;
+  const modalCustomRangePending = modalPeriod === "custom" && (!modalCustomStartDate || !modalCustomEndDate);
+  const modalPeriodLabel = modalPerformanceWindow?.currentLabel || "Current period";
+  const performanceMember = performanceCard ? modalTeam.find((member) => member.id === performanceCard.id) : null;
   const performanceMemberCurrent =
-    customRangePending || performanceMember?.performanceCurrent === null || performanceMember?.performanceCurrent === undefined
+    modalCustomRangePending || performanceMember?.performanceCurrent === null || performanceMember?.performanceCurrent === undefined
       ? null
       : Number(performanceMember.performanceCurrent);
   const performanceMemberBarTone =
     performanceMemberCurrent === null
       ? { fill: "bg-slate-300", track: "bg-slate-200" }
       : { fill: perfBarColor(performanceMemberCurrent), track: perfBarTrackColor(performanceMemberCurrent) };
-  const performanceMemberValueClass =
-    performanceMemberCurrent === null
-      ? "text-slate-900"
-      : performanceMemberCurrent >= 90
-        ? "text-emerald-600"
-        : performanceMemberCurrent >= 80
-          ? "text-amber-600"
-          : "text-rose-500";
-  const selectedRangeStartValue = period === "custom"
-    ? customStartDate
-    : formatDateInputValue(performanceWindow?.current?.start);
-  const selectedRangeEndValue = period === "custom"
-    ? customEndDate
-    : formatDateInputValue(performanceWindow?.current?.endExclusive, { subtractOneDay: true });
+  const performanceMemberValueClass = getPerformanceValueClass(performanceMemberCurrent);
+  const selectedRangeStartValue = modalPeriod === "custom"
+    ? modalCustomStartDate
+    : formatDateInputValue(modalPerformanceWindow?.current?.start);
+  const selectedRangeEndValue = modalPeriod === "custom"
+    ? modalCustomEndDate
+    : formatDateInputValue(modalPerformanceWindow?.current?.endExclusive, { subtractOneDay: true });
 
   if (loading) {
     return (
@@ -446,8 +580,8 @@ export default function MyOperationTeam() {
               {customRangePending
                 ? "Choose a custom date range to measure performance"
                 : performanceDelta === null || performanceDelta === undefined
-                ? `Measured for ${periodLabel}`
-                : `${performanceDelta >= 0 ? "+" : "-"}${Math.abs(performanceDelta)}% ${comparisonLabel}`}
+                  ? `Measured for ${periodLabel}`
+                  : `${performanceDelta >= 0 ? "+" : "-"}${Math.abs(performanceDelta)}% ${comparisonLabel}`}
             </p>
           </div>
         </div>
@@ -575,107 +709,106 @@ export default function MyOperationTeam() {
                     const rowTone = getRowTone(member.status);
                     return (
                       <tr key={member.id} className={`border-b border-slate-200/90 transition-colors ${rowTone}`}>
-                          <td className="px-5 py-4 align-middle">
-                            <div className="flex items-center gap-3">
-                              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-50 text-xs font-semibold text-blue-600 ring-1 ring-blue-100">
-                                {member.initials}
-                              </div>
-                              <div className="min-w-0">
-                                <p className="whitespace-nowrap text-[14px] font-medium text-slate-900">{member.name}</p>
-                                <div className="mt-1 flex items-center gap-1.5 text-[11px] text-slate-500">
-                                  <Hash className="h-3.5 w-3.5 text-slate-400" />
-                                  <span>{member.employeeId || "Employee ID pending"}</span>
-                                </div>
+                        <td className="px-5 py-4 align-middle">
+                          <div className="flex items-center gap-3">
+                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-50 text-xs font-semibold text-blue-600 ring-1 ring-blue-100">
+                              {member.initials}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="whitespace-nowrap text-[14px] font-medium text-slate-900">{member.name}</p>
+                              <div className="mt-1 flex items-center gap-1.5 text-[11px] text-slate-500">
+                                <Hash className="h-3.5 w-3.5 text-slate-400" />
+                                <span>{member.employeeId || "Employee ID pending"}</span>
                               </div>
                             </div>
-                          </td>
-                          <td className="px-5 py-4 align-middle">
-                            <div className="space-y-2">
-                              <div className="flex items-center gap-2 text-[13px] text-slate-600">
-                                <Mail className="h-3.5 w-3.5 text-slate-400" />
-                                <span className="truncate">{member.email || "No email mapped"}</span>
-                              </div>
-                              <div className="flex items-center gap-2 text-[13px] text-slate-600">
-                                <Phone className="h-3.5 w-3.5 text-slate-400" />
-                                <span>{member.phone || "No phone mapped"}</span>
-                              </div>
+                          </div>
+                        </td>
+                        <td className="px-5 py-4 align-middle">
+                          <div className="space-y-2">
+                            <div className="flex items-center gap-2 text-[13px] text-slate-600">
+                              <Mail className="h-3.5 w-3.5 text-slate-400" />
+                              <span className="truncate">{member.email || "No email mapped"}</span>
                             </div>
-                          </td>
-                          <td className="px-5 py-4 align-middle text-[14px] font-medium tabular-nums text-slate-900">{member.activeQueries}</td>
-                          <td className="px-5 py-4 align-middle">
-                            <span className={`text-[14px] font-medium tabular-nums ${member.overdueQuotes === 0 ? "text-emerald-600" : "text-red-500"}`}>
-                              {member.overdueQuotes}
-                            </span>
-                          </td>
-                          <td className="relative px-5 py-4 align-middle">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (performanceCard?.id === member.id && performanceCard?.open) {
-                                  closePerformanceCard();
-                                  return;
-                                }
+                            <div className="flex items-center gap-2 text-[13px] text-slate-600">
+                              <Phone className="h-3.5 w-3.5 text-slate-400" />
+                              <span>{member.phone || "No phone mapped"}</span>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-5 py-4 align-middle text-[14px] font-medium tabular-nums text-slate-900">{member.activeQueries}</td>
+                        <td className="px-5 py-4 align-middle">
+                          <span className={`text-[14px] font-medium tabular-nums ${member.overdueQuotes === 0 ? "text-emerald-600" : "text-red-500"}`}>
+                            {member.overdueQuotes}
+                          </span>
+                        </td>
+                        <td className="relative px-5 py-4 align-middle">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (performanceCard?.id === member.id && performanceCard?.open) {
+                                closePerformanceCard();
+                                return;
+                              }
 
-                                openPerformanceCard(member.id);
-                              }}
-                              className={`flex w-full min-w-0 cursor-pointer items-center gap-3 rounded-2xl border px-3 py-2.5 text-left transition ${
-                                hasScopedPerformance
-                                  ? compactTrend !== null && compactTrend < 0
-                                    ? "border-rose-200 bg-rose-50/80 hover:bg-white hover:border-rose-300"
-                                    : "border-emerald-200 bg-emerald-50/70 hover:bg-white hover:border-emerald-300"
-                                  : "border-slate-200 bg-slate-50 hover:border-slate-300 hover:bg-white"
+                              openPerformanceCard(member.id);
+                            }}
+                            className={`flex w-full min-w-0 cursor-pointer items-center gap-3 rounded-2xl border px-3 py-2.5 text-left transition ${hasScopedPerformance
+                                ? compactTrend !== null && compactTrend < 0
+                                  ? "border-rose-200 bg-rose-50/80 hover:bg-white hover:border-rose-300"
+                                  : "border-emerald-200 bg-emerald-50/70 hover:bg-white hover:border-emerald-300"
+                                : "border-slate-200 bg-slate-50 hover:border-slate-300 hover:bg-white"
                               }`}
-                            >
-                              <div className="min-w-0 flex-1">
-                                <div className="flex items-center justify-between gap-2">
-                                  <span className="whitespace-nowrap text-[13px] font-semibold tabular-nums text-slate-900">
-                                    {formatPercentValue(compactPerformance)}
-                                  </span>
-                                  <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${trendMeta.badgeClass}`}>
-                                    {trendMeta.showIcon ? (
-                                      <span className={`inline-flex ${trendMeta.directionClass}`}>
-                                        <IconTrendUp size={11} />
-                                      </span>
-                                    ) : null}
-                                    {trendMeta.shortLabel}
-                                  </span>
-                                </div>
-                                <div className={`mt-2 h-1.5 overflow-hidden rounded-full ${barTrackColor}`}>
-                                  {hasScopedPerformance ? (
-                                    <div
-                                      className={`h-full rounded-full ${perfBarColor(compactPerformance)}`}
-                                      style={{ width: clampPercentWidth(compactPerformance) }}
-                                    />
-                                  ) : (
-                                    <div className="h-full w-8 rounded-full bg-slate-300" />
-                                  )}
-                                </div>
-                                <div className="mt-1 flex items-center justify-between gap-2">
-                                  <span className="truncate text-[10px] font-medium text-slate-500">
-                                    {customRangePending ? "Awaiting dates" : member.performanceScopeLabel || periodLabel}
-                                  </span>
-                                  <span className="whitespace-nowrap text-[10px] font-semibold text-slate-500">
-                                    {isExpanded ? "Hide details" : member.performanceComparisonLabel || comparisonLabel}
-                                  </span>
-                                </div>
+                          >
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="whitespace-nowrap text-[13px] font-semibold tabular-nums text-slate-900">
+                                  {formatPercentValue(compactPerformance)}
+                                </span>
+                                <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${trendMeta.badgeClass}`}>
+                                  {trendMeta.showIcon ? (
+                                    <span className={`inline-flex ${trendMeta.directionClass}`}>
+                                      <IconTrendUp size={11} />
+                                    </span>
+                                  ) : null}
+                                  {trendMeta.shortLabel}
+                                </span>
                               </div>
-                            </button>
-                          </td>
-                          <td className={`px-5 py-4 align-middle ${isExpanded ? "relative z-40" : ""}`}><StatusBadge status={member.status} /></td>
-                          <td className="px-5 py-4 align-middle">
-                            <button
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                setReassignTarget(member);
-                              }}
-                              disabled={!member.canReassign || team.length < 2}
-                              className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-xl border border-blue-200 bg-blue-50 px-3.5 py-2 text-[12px] font-medium text-blue-600 transition hover:border-blue-300 hover:bg-blue-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-50 disabled:text-slate-300"
-                            >
-                              <IconReassign />
-                              Re-assign
-                            </button>
-                          </td>
-                        </tr>
+                              <div className={`mt-2 h-1.5 overflow-hidden rounded-full ${barTrackColor}`}>
+                                {hasScopedPerformance ? (
+                                  <div
+                                    className={`h-full rounded-full ${perfBarColor(compactPerformance)}`}
+                                    style={{ width: clampPercentWidth(compactPerformance) }}
+                                  />
+                                ) : (
+                                  <div className="h-full w-8 rounded-full bg-slate-300" />
+                                )}
+                              </div>
+                              <div className="mt-1 flex items-center justify-between gap-2">
+                                <span className="truncate text-[10px] font-medium text-slate-500">
+                                  {customRangePending ? "Awaiting dates" : member.performanceScopeLabel || periodLabel}
+                                </span>
+                                <span className="whitespace-nowrap text-[10px] font-semibold text-slate-500">
+                                  {isExpanded ? "Hide details" : member.performanceComparisonLabel || comparisonLabel}
+                                </span>
+                              </div>
+                            </div>
+                          </button>
+                        </td>
+                        <td className={`px-5 py-4 align-middle ${isExpanded ? "relative z-40" : ""}`}><StatusBadge status={member.status} /></td>
+                        <td className="px-5 py-4 align-middle">
+                          <button
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setReassignTarget(member);
+                            }}
+                            disabled={!member.canReassign || team.length < 2}
+                            className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-xl border border-blue-200 bg-blue-50 px-3.5 py-2 text-[12px] font-medium text-blue-600 transition hover:border-blue-300 hover:bg-blue-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-50 disabled:text-slate-300"
+                          >
+                            <IconReassign />
+                            Re-assign
+                          </button>
+                        </td>
+                      </tr>
                     );
                   })
                 )}
@@ -688,7 +821,9 @@ export default function MyOperationTeam() {
       {performanceCard && performanceMember ? (
         <>
           <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/35 p-4 backdrop-blur-[2px]"
+            className={`fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-[2px] transition-all duration-200 ease-out ${
+              performanceCard.open ? "bg-slate-950/35 opacity-100" : "bg-slate-950/0 opacity-0"
+            }`}
             onClick={(event) => {
               if (event.target === event.currentTarget) {
                 closePerformanceCard();
@@ -696,9 +831,9 @@ export default function MyOperationTeam() {
             }}
           >
             <div
-              className={`relative flex max-h-[calc(100vh-32px)] w-full max-w-[360px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl transition-all duration-300 ease-out ${
-                performanceCard.open ? "translate-y-0 scale-100 opacity-100" : "translate-y-4 scale-95 opacity-0"
-              }`}
+              className={`relative flex max-h-[calc(100vh-32px)] w-full max-w-[360px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_28px_70px_rgba(15,23,42,0.24)] transition-all duration-300 ease-out ${
+                performanceCard.open ? "translate-y-0 scale-100 opacity-100" : "translate-y-6 scale-[0.96] opacity-0"
+                }`}
             >
               <div className="relative overflow-y-auto thin-scrollbar pb-4">
                 {/* 1. Classic Clean Header */}
@@ -751,7 +886,7 @@ export default function MyOperationTeam() {
                     <div className="flex flex-col">
                       <span className="text-[11px] font-bold uppercase tracking-widest text-slate-400">Overall Efficiency</span>
                       <span className="text-[12px] font-medium text-slate-500 mt-0.5">
-                        {customRangePending ? "Select dates" : performanceMember.performanceScopeLabel || periodLabel}
+                        {modalCustomRangePending ? "Select dates" : performanceMember.performanceScopeLabel || modalPeriodLabel}
                       </span>
                     </div>
                     <span className={`text-2xl font-bold tracking-tight ${performanceMemberValueClass}`}>
@@ -775,16 +910,16 @@ export default function MyOperationTeam() {
                   <div className="grid grid-cols-2 gap-2">
                     <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">
                       <p className="text-[10px] font-semibold uppercase tracking-[0.05em] text-slate-500">Scoped Queries</p>
-                      <p className="mt-1 text-[18px] font-semibold text-slate-900">{customRangePending ? "--" : performanceMember.performanceMetrics?.scopedQueries ?? 0}</p>
+                      <p className="mt-1 text-[18px] font-semibold text-slate-900">{modalCustomRangePending ? "--" : performanceMember.performanceMetrics?.scopedQueries ?? 0}</p>
                     </div>
                     <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">
                       <p className="text-[10px] font-semibold uppercase tracking-[0.05em] text-slate-500">Quotes Sent</p>
-                      <p className="mt-1 text-[18px] font-semibold text-slate-900">{customRangePending ? "--" : performanceMember.performanceMetrics?.quoteSentCount ?? 0}</p>
+                      <p className="mt-1 text-[18px] font-semibold text-slate-900">{modalCustomRangePending ? "--" : performanceMember.performanceMetrics?.quoteSentCount ?? 0}</p>
                     </div>
                     <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">
                       <p className="text-[10px] font-semibold uppercase tracking-[0.05em] text-slate-500">On-Time Rate</p>
                       <p className="mt-1 text-[18px] font-semibold text-slate-900">
-                        {customRangePending || performanceMember.performanceMetrics?.onTimeRate === null || performanceMember.performanceMetrics?.onTimeRate === undefined
+                        {modalCustomRangePending || performanceMember.performanceMetrics?.onTimeRate === null || performanceMember.performanceMetrics?.onTimeRate === undefined
                           ? "--"
                           : `${performanceMember.performanceMetrics.onTimeRate}%`}
                       </p>
@@ -792,7 +927,7 @@ export default function MyOperationTeam() {
                     <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">
                       <p className="text-[10px] font-semibold uppercase tracking-[0.05em] text-slate-500">Conversion</p>
                       <p className="mt-1 text-[18px] font-semibold text-slate-900">
-                        {customRangePending || performanceMember.performanceMetrics?.conversionRate === null || performanceMember.performanceMetrics?.conversionRate === undefined
+                        {modalCustomRangePending || performanceMember.performanceMetrics?.conversionRate === null || performanceMember.performanceMetrics?.conversionRate === undefined
                           ? "--"
                           : `${performanceMember.performanceMetrics.conversionRate}%`}
                       </p>
@@ -805,16 +940,24 @@ export default function MyOperationTeam() {
                   <div className="rounded-xl border border-slate-100 bg-slate-50 p-2.5">
                     <div className="mb-2 flex items-center justify-between gap-2">
                       <p className="text-[11px] font-semibold uppercase tracking-[0.05em] text-slate-500">Performance Range</p>
-                      <span className="text-[11px] font-medium text-slate-500">
-                        {period === "custom" ? "Custom" : periodLabel}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        {modalRefreshing ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-1 text-[10px] font-semibold text-slate-500 ring-1 ring-slate-200">
+                            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-slate-400" />
+                            Updating
+                          </span>
+                        ) : null}
+                        <span className="text-[11px] font-medium text-slate-500">
+                          {modalPeriod === "custom" ? "Custom" : modalPeriodLabel}
+                        </span>
+                      </div>
                     </div>
 
                     <div className="grid gap-2">
                       <div className="relative">
                         <select
-                          value={period}
-                          onChange={(event) => setPeriod(event.target.value)}
+                          value={modalPeriod}
+                          onChange={(event) => setModalPeriod(event.target.value)}
                           className="h-9 w-full appearance-none rounded-lg border border-slate-200 bg-white pl-3 pr-8 text-[12px] font-medium text-slate-700 outline-none transition focus:border-blue-400"
                         >
                           <option value="current_month">Current Month</option>
@@ -830,15 +973,15 @@ export default function MyOperationTeam() {
                         <input
                           type="date"
                           value={selectedRangeStartValue}
-                          onChange={(event) => setCustomStartDate(event.target.value)}
-                          disabled={period !== "custom"}
+                          onChange={(event) => setModalCustomStartDate(event.target.value)}
+                          disabled={modalPeriod !== "custom"}
                           className="h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-[11px] font-medium text-slate-700 outline-none transition focus:border-blue-400 disabled:cursor-not-allowed disabled:opacity-50"
                         />
                         <input
                           type="date"
                           value={selectedRangeEndValue}
-                          onChange={(event) => setCustomEndDate(event.target.value)}
-                          disabled={period !== "custom"}
+                          onChange={(event) => setModalCustomEndDate(event.target.value)}
+                          disabled={modalPeriod !== "custom"}
                           className="h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-[11px] font-medium text-slate-700 outline-none transition focus:border-blue-400 disabled:cursor-not-allowed disabled:opacity-50"
                         />
                       </div>

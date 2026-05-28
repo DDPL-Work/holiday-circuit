@@ -181,6 +181,8 @@ const normalizeInvoice = (invoice, index = 0) => {
     avatarClass: getAvatarTheme(assignedTo),
     amountDisplay: formatCurrency(invoice?.amount, invoice?.currency),
     dueDateLabel: formatDisplayDate(dueDateValue),
+    creditPeriodDays: Number(invoice?.creditPeriodDays || 7),
+    creditTermLabel: invoice?.creditTermLabel || `${Number(invoice?.creditPeriodDays || 7)}-day credit`,
     isDuePast: uiStatus !== "Settled" && isPastDate(dueDateValue),
     uiStatus,
   };
@@ -193,6 +195,8 @@ const buildInvoiceModalPayload = (invoice = {}) => ({
   party: invoice?.dmcName || invoice?.supplierName || "-",
   date: invoice?.dueDate || invoice?.invoiceDate || "-",
   dateValue: invoice?.dueDateValue || invoice?.invoiceDateValue || "",
+  creditPeriodDays: Number(invoice?.creditPeriodDays || 7),
+  creditTermLabel: invoice?.creditTermLabel || `${Number(invoice?.creditPeriodDays || 7)}-day credit`,
   amountValue: Number(invoice?.amount || 0),
   amount: formatCurrency(invoice?.amount, invoice?.currency),
   agreedRate: formatCurrency(invoice?.opsServicesTotal || 0, invoice?.currency),
@@ -373,10 +377,6 @@ function ValidateModal({ invoice, submitting, onClose, onConfirm }) {
         ? { color: "#00A63E", fontWeight: 700, fontSize: "15px" }
         : { color: "#2563eb", fontWeight: 700, fontSize: "15px" };
 
-  useEffect(() => {
-    setChecked(false);
-  }, [invoice?.id]);
-
   if (!invoice) return null;
 
   return (
@@ -494,8 +494,8 @@ function ValidateModal({ invoice, submitting, onClose, onConfirm }) {
           {/* Confirm & Validate */}
           <button
             type="button"
-            disabled={!checked}
-            onClick={() => checked && onClose()}
+            disabled={!checked || submitting}
+            onClick={() => checked && onConfirm?.(invoice)}
             style={{
               borderRadius: 14,
               padding: "11px 8px",
@@ -506,9 +506,9 @@ function ValidateModal({ invoice, submitting, onClose, onConfirm }) {
               justifyContent: "center",
               gap: 6,
               border: "none",
-              cursor: checked ? "pointer" : "not-allowed",
-              background: checked ? "#9bc6ff" : "#d9e8ff",
-              color: checked ? "#1f5fef" : "#8eb3f4",
+              cursor: checked && !submitting ? "pointer" : "not-allowed",
+              background: checked && !submitting ? "#9bc6ff" : "#d9e8ff",
+              color: checked && !submitting ? "#1f5fef" : "#8eb3f4",
               transition: "background 0.15s",
             }}
           >
@@ -526,11 +526,6 @@ function ValidateModal({ invoice, submitting, onClose, onConfirm }) {
 function EscalatePanel({ invoice, submitting, onClose, onConfirm }) {
   const [reason, setReason] = useState("");
   const [message, setMessage] = useState("");
-
-  useEffect(() => {
-    setReason("");
-    setMessage("");
-  }, [invoice?.id]);
 
   if (!invoice) return null;
 
@@ -665,8 +660,8 @@ function EscalatePanel({ invoice, submitting, onClose, onConfirm }) {
               disabled={isDisabled}
               onClick={() => onConfirm(invoice, reason, message)}
               className={`rounded-[12px] px-4 py-2.5 text-xs font-semibold transition ${isDisabled
-                  ? "cursor-not-allowed bg-rose-900/35 text-white/35"
-                  : "bg-[#b4171f] text-white hover:bg-[#cb1d27]"
+                ? "cursor-not-allowed bg-rose-900/35 text-white/35"
+                : "bg-[#b4171f] text-white hover:bg-[#cb1d27]"
                 }`}
             >
               <span className="flex items-center justify-center gap-2">
@@ -999,7 +994,8 @@ export default function InternalDMCInvoices() {
                           <StatusBadge status={invoice.uiStatus} />
                         </td>
                         <td className={`whitespace-nowrap px-4 py-4 text-[13px] font-semibold ${invoice.isDuePast ? "text-rose-500" : "text-slate-600"}`}>
-                          {invoice.dueDateLabel}
+                          <span className="block">{invoice.dueDateLabel}</span>
+                          <span className="mt-0.5 block text-[10px] font-medium text-slate-400">{invoice.creditTermLabel}</span>
                         </td>
                         <td className="whitespace-nowrap px-4 py-4">
                           <div className="flex items-center gap-2">
@@ -1074,11 +1070,10 @@ export default function InternalDMCInvoices() {
                       <button
                         key={index}
                         onClick={() => setCurrentPage(index + 1)}
-                        className={`flex h-7 w-7 items-center justify-center rounded-lg text-xs font-medium transition-colors ${
-                          currentPage === index + 1
+                        className={`flex h-7 w-7 items-center justify-center rounded-lg text-xs font-medium transition-colors ${currentPage === index + 1
                             ? "bg-slate-900 text-white"
                             : "text-gray-500 hover:bg-gray-100 hover:text-gray-900"
-                        }`}
+                          }`}
                       >
                         {index + 1}
                       </button>

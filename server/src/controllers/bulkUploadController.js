@@ -8,6 +8,9 @@ import { processActivityExcel } from "../services/activityProcessor.js"
 import { processPackageExcel } from "../services/packageProcessor.js"
 import { processSightseeingExcel } from "../services/sightseeingProcessor.js"
 import UploadHistory from "../models/uploadHistory.model.js"
+import Auth from "../models/auth.model.js"
+import Notification from "../models/notification.model.js"
+import mongoose from "mongoose"
 
 
 export const bulkUpload = async (req, res) => {
@@ -99,5 +102,137 @@ export const getBulkUploadHistory = async (req, res) => {
   }
 };
 
+export const viewUploadData = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const upload = await UploadHistory.findById(id).lean();
+    if (!upload) {
+      return res.status(404).json({ success: false, message: "Upload history not found" });
+    }
 
+    const fullPath = path.resolve(upload.filePath);
+    if (!fs.existsSync(fullPath)) {
+      return res.status(404).json({ success: false, message: "Excel file not found on server" });
+    }
 
+    const workbook = XLSX.readFile(fullPath);
+    const sheetName = workbook.SheetNames[0];
+    const sheet = workbook.Sheets[sheetName];
+    
+    // Parse sheet to JSON array
+    const rawData = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
+    const headers = rawData[0] || [];
+    const rows = rawData.slice(1).map((row, rowIndex) => {
+      const rowData = {};
+      headers.forEach((header, index) => {
+        if (header) {
+          rowData[header] = row[index] !== undefined ? row[index] : "";
+        }
+      });
+      return {
+        _id: `${upload._id}_row_${rowIndex}`,
+        rowIndex,
+        ...rowData
+      };
+    });
+
+    res.status(200).json({
+      success: true,
+      category: upload.category,
+      fileName: upload.fileName,
+      headers: headers.filter(Boolean),
+      rows
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const editSpreadsheetRowAndNotify = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { rowIndex, updatedRow, category, fileName } = req.body || {};
+    
+    const upload = await UploadHistory.findById(id);
+    if (!upload) {
+      return res.status(404).json({ success: false, message: "Upload history not found" });
+    }
+
+    const fullPath = path.resolve(upload.filePath);
+    if (!fs.existsSync(fullPath)) {
+      return res.status(404).json({ success: false, message: "Excel file not found on server" });
+    }
+
+    // 1. Read existing file
+    const workbook = XLSX.readFile(fullPath);
+    const sheetName = workbook.SheetNames[0];
+    const sheet = workbook.Sheets[sheetName];
+    
+    // 2. Parse to raw array of arrays
+    const rawData = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
+    const headers = rawData[0] || [];
+    
+    // 3. Update specific row
+    const rawRowIndex = Number(rowIndex) + 1;
+    const changes = [];
+    
+    if (rawData[rawRowIndex]) {
+      const originalRow = [...rawData[rawRowIndex]];
+      headers.forEach((header, colIndex) => {
+        if (header && updatedRow[header] !== undefined) {
+          const originalVal = String(originalRow[colIndex] !== undefined ? originalRow[colIndex] : "").trim();
+          const newVal = String(updatedRow[header]).trim();
+          
+          if (originalVal !== newVal) {
+            changes.push(`${header}: "${originalVal}" ➔ "${newVal}"`);
+          }
+          
+          rawData[rawRowIndex][colIndex] = updatedRow[header];
+        }
+      });
+    }
+
+    // 4. Write back to Excel file
+    const newSheet = XLSX.utils.aoa_to_sheet(rawData);
+    workbook.Sheets[sheetName] = newSheet;
+    XLSX.writeFile(workbook, fullPath);
+
+    // 5. Notify all Admin and Manager users
+    const staffUsers = await Auth.find({
+      role: { $in: ["admin", "finance_manager", "operation_manager", "operations"] },
+      isDeleted: { $ne: true },
+      accountStatus: { $ne: "Inactive" }
+    }).select("_id");
+
+    const dmcName = req.user?.companyName || req.user?.name || "DMC Partner";
+    const notificationTitle = "Contracted Rate Edited by DMC";
+    const changeSummary = changes.length > 0 ? ` Changes: ${changes.join(", ")}` : " No field changes detected.";
+    const notificationMsg = `DMC Partner "${dmcName}" edited a row in contracted rate file "${upload.fileName}" (Category: ${category}).${changeSummary}`;
+
+    if (staffUsers.length) {
+      await Notification.insertMany(
+        staffUsers.map((user) => ({
+          user: user._id,
+          type: "info",
+          title: notificationTitle,
+          message: notificationMsg,
+          link: "/dmc/contractedRates",
+          meta: {
+            uploadId: upload._id,
+            fileName: upload.fileName,
+            category,
+            editedBy: req.user.id
+          }
+        }))
+      );
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Spreadsheet row updated and managers notified successfully!",
+      updatedRow
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};

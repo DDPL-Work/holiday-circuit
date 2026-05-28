@@ -1,8 +1,12 @@
-import {
-  MAIL_FROM_ADDRESS,
-  MAIL_REPLY_TO_ADDRESS,
-  transporter,
-} from "./resendMailer.js";
+import {MAIL_FROM_ADDRESS,MAIL_REPLY_TO_ADDRESS,transporter,} from "./mailer.js";
+
+const escapeHtml = (value = "") =>
+  String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 
 
 
@@ -34,6 +38,7 @@ export const sendAgentRegistrationReceivedMail = async (
     `,
   });
 };
+
 
 export const sendAgentApprovalMail = async (
   email,
@@ -92,7 +97,6 @@ export const sendAgentRejectionMail = async (
     `,
   });
 };
-
 
 
 export const sendPasswordResetOtpMail = async (email, { name = "Team Member", otp = "" } = {}) => {
@@ -163,8 +167,6 @@ export const sendPasswordResetOtpMail = async (email, { name = "Team Member", ot
 };
 
 
-
-
 export const sendTeamMemberCredentialsMail = async (
   email,
   {
@@ -175,6 +177,12 @@ export const sendTeamMemberCredentialsMail = async (
     loginUrl = process.env.FRONTEND_LOGIN_URL,
   } = {},
 ) => {
+  const safeName = escapeHtml(name);
+  const safeRole = escapeHtml(role);
+  const safeLoginEmail = escapeHtml(loginEmail || email);
+  const safePassword = escapeHtml(password);
+  const safeLoginUrl = escapeHtml(String(loginUrl || "#").trim() || "#");
+
   await transporter.sendMail({
     from: MAIL_FROM_ADDRESS,
     to: email,
@@ -185,7 +193,7 @@ export const sendTeamMemberCredentialsMail = async (
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Email Preview – Holiday Circuit Credentials</title>
+  <title>Holiday Circuit Workspace Credentials</title>
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet"/>
 </head>
 <body style="margin:0;padding:0;background:#eef2ff;font-family:'Inter',sans-serif;">
@@ -221,10 +229,10 @@ export const sendTeamMemberCredentialsMail = async (
                       </svg>
                     </div>
                     <h1 style="margin:0 0 8px;font-family:'Syne',sans-serif;font-size:34px;font-weight:800;color:#ffffff;line-height:1.15;letter-spacing:-0.02em;">
-                      Your account<br/>is ready 🎉
+                      Your account<br/>is ready
                     </h1>
                     <p style="margin:0;font-size:14px;color:rgba(255,255,255,0.7);line-height:1.6;">
-                      Hello <strong style="color:#fff;font-weight:600;">Rahul Sharma</strong> — welcome aboard!
+                      Hello <strong style="color:#fff;font-weight:600;">${safeName}</strong>, welcome aboard.
                     </p>
                   </td>
                 </tr>
@@ -244,7 +252,7 @@ export const sendTeamMemberCredentialsMail = async (
               <div style="display:flex;align-items:center;margin-bottom:24px;">
                 <div style="background:linear-gradient(135deg,#f5f3ff,#fdf4ff);border:1px solid rgba(124,58,237,0.15);border-radius:14px;padding:14px 20px;width:100%;">
                   <p style="margin:0 0 4px;font-size:10px;font-weight:600;letter-spacing:0.2em;text-transform:uppercase;color:#a855f7;">Assigned Role</p>
-                  <p style="margin:0;font-family:'Syne',sans-serif;font-size:18px;font-weight:700;color:#4c1d95;">Marketing Manager</p>
+                  <p style="margin:0;font-family:'Syne',sans-serif;font-size:18px;font-weight:700;color:#4c1d95;">${safeRole}</p>
                 </div>
               </div>
 
@@ -254,13 +262,13 @@ export const sendTeamMemberCredentialsMail = async (
                   <!-- Login Email -->
                   <td width="48%" style="background:linear-gradient(135deg,#fff7ed,#fef3c7);border:1px solid rgba(245,158,11,0.2);border-radius:14px;padding:16px 18px;vertical-align:top;">
                     <p style="margin:0 0 4px;font-size:10px;font-weight:600;letter-spacing:0.2em;text-transform:uppercase;color:#d97706;">Login Email</p>
-                    <p style="margin:0;font-size:13px;font-weight:600;color:#92400e;word-break:break-all;">rahul.sharma@company.com</p>
+                    <p style="margin:0;font-size:13px;font-weight:600;color:#92400e;word-break:break-all;">${safeLoginEmail}</p>
                   </td>
                   <td width="4%"></td>
                   <!-- Role info -->
                   <td width="48%" style="background:linear-gradient(135deg,#ecfdf5,#d1fae5);border:1px solid rgba(16,185,129,0.2);border-radius:14px;padding:16px 18px;vertical-align:top;">
                     <p style="margin:0 0 4px;font-size:10px;font-weight:600;letter-spacing:0.2em;text-transform:uppercase;color:#059669;">Account Status</p>
-                    <p style="margin:0;font-size:13px;font-weight:600;color:#065f46;">✓ Active &amp; Ready</p>
+                    <p style="margin:0;font-size:13px;font-weight:600;color:#065f46;">Active &amp; Ready</p>
                   </td>
                 </tr>
               </table>
@@ -268,19 +276,15 @@ export const sendTeamMemberCredentialsMail = async (
               <!-- Password block -->
               <div style="border-radius:18px;overflow:hidden;margin-bottom:24px;box-shadow:0 4px 24px rgba(124,58,237,0.12);">
                 <div style="background:linear-gradient(135deg,#4c1d95,#6d28d9,#7c3aed);padding:12px 20px;">
-                  <p style="margin:0;font-size:10px;font-weight:700;letter-spacing:0.22em;text-transform:uppercase;color:rgba(255,255,255,0.6);">
-                    🔑 &nbsp;Temporary Password
-                  </p>
+                  <p style="margin:0;font-size:10px;font-weight:700;letter-spacing:0.22em;text-transform:uppercase;color:rgba(255,255,255,0.6);">Temporary Password</p>
                 </div>
                 <div style="background:#1e1b4b;padding:20px;text-align:center;">
                   <code style="font-size:26px;font-weight:700;letter-spacing:0.22em;color:#e9d5ff;font-family:'Courier New',monospace;">
-                    Xk9#mP2@vL
+                    ${safePassword}
                   </code>
                 </div>
                 <div style="background:linear-gradient(135deg,#fdf4ff,#f5f3ff);padding:10px 20px;">
-                  <p style="margin:0;font-size:12px;color:#7c3aed;">
-                    ⚠️ &nbsp;Change this password on your first login for security.
-                  </p>
+                  <p style="margin:0;font-size:12px;color:#7c3aed;">Change this password on your first login for security.</p>
                 </div>
               </div>
 
@@ -288,7 +292,7 @@ export const sendTeamMemberCredentialsMail = async (
               <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
                 <tr>
                   <td align="center">
-                    <a href="#" style="display:inline-block;padding:15px 48px;background:linear-gradient(135deg,#7c3aed,#a855f7,#ec4899);color:#ffffff;text-decoration:none;font-family:'Syne',sans-serif;font-size:15px;font-weight:700;border-radius:14px;letter-spacing:0.04em;box-shadow:0 6px 24px rgba(124,58,237,0.35);">
+                    <a href="${safeLoginUrl}" style="display:inline-block;padding:15px 48px;background:linear-gradient(135deg,#7c3aed,#a855f7,#ec4899);color:#ffffff;text-decoration:none;font-family:'Syne',sans-serif;font-size:15px;font-weight:700;border-radius:14px;letter-spacing:0.04em;box-shadow:0 6px 24px rgba(124,58,237,0.35);">
                       Open Login Portal →
                     </a>
                   </td>
@@ -332,8 +336,6 @@ export const sendTeamMemberCredentialsMail = async (
     `,
   });
 };
-
-
 
 
 
@@ -460,3 +462,5 @@ export const sendAccountDeletionMail = async (
     `,
   });
 };
+
+

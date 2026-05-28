@@ -71,17 +71,28 @@ const PackageTemplate = ({ onApply }) => {
   const [showDropdown, setShowDropdown] = useState(false);
   const [selectedPackage, setSelectedPackage] = useState(null);
   const [packages, setPackages] = useState([]);
+  const [packagesLoading, setPackagesLoading] = useState(true);
+  const [packagesError, setPackagesError] = useState("");
   const [search, setSearch] = useState("");
   const [isApplied, setIsApplied] = useState(false);
   const ref = useRef(null);
 
   useEffect(() => {
     const fetchPackages = async () => {
+      setPackagesLoading(true);
+      setPackagesError("");
+
       try {
-        const res = await API.get("/dmc/package");
+        const res = await API.get("/dmc/package", {
+          skipGlobalLoader: true,
+        });
         setPackages(res.data.data || []);
       } catch (error) {
         console.log(error);
+        setPackages([]);
+        setPackagesError("Package templates are not available right now.");
+      } finally {
+        setPackagesLoading(false);
       }
     };
 
@@ -170,6 +181,11 @@ const PackageTemplate = ({ onApply }) => {
         <p className="text-[10px] pl-7 text-gray-400">
           Apply pre-configured packages to quickly build quotations
         </p>
+        <p className="pl-7 text-[10px] text-yellow-200/70">
+          {packagesLoading
+            ? "Templates are loading in the background..."
+            : packagesError || `${packages.length} templates ready`}
+        </p>
       </div>
 
       <button className="text-xs text-yellow-400 flex items-center gap-2 mb-3 hover:underline">
@@ -182,19 +198,25 @@ const PackageTemplate = ({ onApply }) => {
 
         <input
           type="text"
-          placeholder="Search by city, country, package name or category..."
+          placeholder={packagesLoading ? "Loading package templates..." : "Search by city, country, package name or category..."}
           value={search}
+          disabled={packagesLoading}
           onClick={() => setShowDropdown(true)}
           onChange={(e) => {
             setSearch(e.target.value);
             setShowDropdown(true);
           }}
-          className="w-full bg-black border border-gray-700 rounded-xl pl-9 py-2 text-xs outline-none"
+          className="w-full bg-black border border-gray-700 rounded-xl pl-9 py-2 text-xs outline-none disabled:cursor-wait disabled:opacity-60"
         />
 
         {showDropdown && (
           <div className="absolute left-0 top-full mt-2 w-full border border-gray-700 rounded-sm bg-black max-h-65 overflow-y-auto z-50 animate-fadeIn custom-scroll">
-            {dropdownData.length === 0 ? (
+            {packagesLoading ? (
+              <div className="flex flex-col items-center justify-center py-10 text-gray-400 text-xs">
+                <div className="h-7 w-7 animate-spin rounded-full border-2 border-yellow-500/20 border-t-yellow-400" />
+                <p className="mt-3">Loading package templates...</p>
+              </div>
+            ) : dropdownData.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-10 text-gray-400 text-xs">
                 <div className="border border-gray-700 p-3 rounded-xl mb-3">
                   <Package size={18} />

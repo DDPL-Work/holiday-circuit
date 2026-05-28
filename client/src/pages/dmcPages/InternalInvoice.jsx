@@ -10,12 +10,10 @@ import {
   Hash,
   Landmark,
   MapPin,
-  Plus,
   Receipt,
-  Trash2,
   X,
 } from "lucide-react";
-import { createElement, useMemo, useState } from "react";
+import { createElement, useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import toast from "react-hot-toast";
 import API from "../../utils/Api";
@@ -46,12 +44,42 @@ const addDaysToDate = (value, daysToAdd = 0) => {
   return parsed.toISOString().slice(0, 10);
 };
 
+const CREDIT_PERIOD_OPTIONS = [7, 15];
+
+const TEMPLATE_OPTIONS = [
+  { value: "aurora-ledger", label: "Aurora Ledger" },
+  { value: "classic-ledger", label: "Classic Ledger" },
+  { value: "compact-ledger", label: "Compact Ledger" },
+  { value: "finance-ledger", label: "Finance Ledger" },
+];
+
+const normalizeTemplateVariant = (value) =>
+  TEMPLATE_OPTIONS.some((option) => option.value === value) ? value : "aurora-ledger";
+
+const normalizeCreditPeriodDays = (value) => {
+  const numericValue = Number(value);
+  return CREDIT_PERIOD_OPTIONS.includes(numericValue) ? numericValue : 7;
+};
+
+const getCreditPeriodFromDates = (invoiceDate, dueDate) => {
+  if (!invoiceDate || !dueDate) return 7;
+  const parsedInvoiceDate = new Date(invoiceDate);
+  const parsedDueDate = new Date(dueDate);
+  if (Number.isNaN(parsedInvoiceDate.getTime()) || Number.isNaN(parsedDueDate.getTime())) return 7;
+
+  parsedInvoiceDate.setHours(0, 0, 0, 0);
+  parsedDueDate.setHours(0, 0, 0, 0);
+  const diffDays = Math.round((parsedDueDate - parsedInvoiceDate) / (1000 * 60 * 60 * 24));
+  return normalizeCreditPeriodDays(diffDays);
+};
+
 const createEmptyItem = () => ({
   type: "Hotel",
   service: "",
   currency: "INR",
   qty: 1,
   rate: 0,
+  addonTotal: 0,
   subtotal: 0,
   tax: 0,
 });
@@ -61,14 +89,65 @@ const createInvoiceNumber = (queryId) => {
   return `INV-${String(queryId).replace(/[^a-zA-Z0-9-]/g, "")}`;
 };
 
+const extractLeadingNumber = (value = "") => {
+  const match = String(value || "").match(/(\d+(?:\.\d+)?)/);
+  if (!match) return 0;
+  return Number(match[1] || 0);
+};
+
+const getServiceInvoiceQuantity = (service = {}) => {
+  const normalizedType = normalizeServiceType(service.type);
+  const explicitBillableQuantity = Number(service.billableQuantityValue || 0);
+
+  if (Number.isFinite(explicitBillableQuantity) && explicitBillableQuantity > 0) {
+    return explicitBillableQuantity;
+  }
+
+  if (normalizedType === "Hotel") {
+    const roomCount = Math.max(
+      1,
+      Number(service.roomCount || service.rooms || service.quantityValue || extractLeadingNumber(service.quantityLabel) || 1),
+    );
+    const nightCount = Math.max(
+      1,
+      Number(service.nightCount || service.nights || extractLeadingNumber(service.stayLabel) || 1),
+    );
+
+    return roomCount * nightCount;
+  }
+
+  const quantityValue = Number(service.quantityValue || 1);
+  return Number.isFinite(quantityValue) && quantityValue > 0 ? quantityValue : 1;
+};
+
+const getResolvedMappedServiceSubtotal = (service = {}) => {
+  const normalizedType = normalizeServiceType(service.type);
+  const rawTotal = Number(service.total || 0);
+
+  if (normalizedType !== "Hotel") {
+    return rawTotal;
+  }
+
+  return rawTotal;
+};
+
 const createItemFromService = (service = {}) => ({
-  type: normalizeServiceType(service.type),
-  service: service.serviceName || service.title || "",
-  currency: service.currency || "INR",
-  qty: Number(service.quantityValue || 1),
-  rate: Number(service.rate || 0),
-  subtotal: Number(service.total || 0),
-  tax: 0,
+  ...(function buildResolvedItem() {
+    const qty = getServiceInvoiceQuantity(service);
+    const subtotal = getResolvedMappedServiceSubtotal(service);
+    const resolvedRate = Number(service.billableUnitRate || (qty > 0 ? subtotal / qty : service.rate) || 0);
+
+    return {
+      type: normalizeServiceType(service.type),
+      service: service.serviceName || service.title || "",
+      currency: service.currency || "INR",
+      qty,
+      rate: resolvedRate,
+      addonTotal: 0,
+      subtotal,
+      tax: 0,
+    };
+  })(),
 });
 
 const getDraftStorageKey = (queryId) => `dmc-internal-invoice-${queryId || "default"}`;
@@ -76,13 +155,15 @@ const getDraftStorageKey = (queryId) => `dmc-internal-invoice-${queryId || "defa
 const applyDerivedItemValues = (item, gstRate) => {
   const qty = Number(item.qty || 0);
   const rate = Number(item.rate || 0);
-  const subtotal = qty * rate;
+  const addonTotal = Number(item.addonTotal || 0);
+  const subtotal = (qty * rate) + addonTotal;
   const tax = (subtotal * Number(gstRate || 0)) / 100;
 
   return {
     ...item,
     qty,
     rate,
+    addonTotal,
     subtotal,
     tax: Number(tax.toFixed(2)),
   };
@@ -95,6 +176,32 @@ const normalizeServiceType = (value = "") => {
   if (normalized === "sightseeing") return "Sightseeing";
   return "Hotel";
 };
+
+const syncDraftItemWithMappedService = (item = {}, mappedItem = null) => {
+  if (!mappedItem) return item;
+
+  return {
+    ...item,
+    type: mappedItem.type,
+    service: mappedItem.service,
+    currency: mappedItem.currency || item.currency,
+    qty: mappedItem.qty,
+    rate: mappedItem.rate,
+    addonTotal: Number(mappedItem.addonTotal || 0),
+  };
+};
+
+const doItemsMatchMappedServices = (items = [], mappedItems = []) =>
+  items.length === mappedItems.length &&
+  items.every((item, index) => {
+    const mappedItem = mappedItems[index];
+
+    return (
+      normalizeServiceType(item.type) === normalizeServiceType(mappedItem?.type) &&
+      String(item.service || "").trim().toLowerCase() ===
+      String(mappedItem?.service || "").trim().toLowerCase()
+    );
+  });
 
 const getServiceTypeIcon = (type = "") => {
   const normalizedType = normalizeServiceType(type);
@@ -141,40 +248,61 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
   const existingDraft =
     typeof window !== "undefined"
       ? (() => {
-          try {
-            const raw = window.localStorage.getItem(draftStorageKey);
-            return raw ? JSON.parse(raw) : null;
-          } catch {
-            return null;
-          }
-        })()
+        try {
+          const raw = window.localStorage.getItem(draftStorageKey);
+          return raw ? JSON.parse(raw) : null;
+        } catch {
+          return null;
+        }
+      })()
       : null;
 
   const initialGstRate =
     existingInvoice?.taxConfig?.gstRate ??
     existingDraft?.taxConfig?.gstRate ??
     5;
+  const existingInvoiceMatchesQueryServices =
+    Array.isArray(existingInvoice?.items) &&
+    existingInvoice.items.length > 0 &&
+    mappedQueryItems.length > 0 &&
+    doItemsMatchMappedServices(existingInvoice.items, mappedQueryItems);
   const draftMatchesQueryServices =
-    existingDraft?.items?.length &&
-    mappedQueryItems.length &&
-    existingDraft.items.length === mappedQueryItems.length &&
-    existingDraft.items.every((item, index) => {
-      const mappedItem = mappedQueryItems[index];
-      return (
-        normalizeServiceType(item.type) === normalizeServiceType(mappedItem?.type) &&
-        String(item.service || "").trim().toLowerCase() ===
-          String(mappedItem?.service || "").trim().toLowerCase()
-      );
-    });
+    Array.isArray(existingDraft?.items) &&
+    existingDraft.items.length > 0 &&
+    mappedQueryItems.length > 0 &&
+    doItemsMatchMappedServices(existingDraft.items, mappedQueryItems);
+  const syncedExistingInvoiceItems = existingInvoiceMatchesQueryServices
+    ? existingInvoice.items.map((item, index) =>
+      syncDraftItemWithMappedService(item, mappedQueryItems[index]),
+    )
+    : existingInvoice?.items || [];
+  const draftItemsWithMappedQuantities = draftMatchesQueryServices
+    ? existingDraft.items.map((item, index) =>
+      syncDraftItemWithMappedService(item, mappedQueryItems[index]),
+    )
+    : existingDraft?.items || [];
   const initialItems = (
     existingInvoice?.items?.length
-      ? existingInvoice.items
+      ? syncedExistingInvoiceItems
       : draftMatchesQueryServices
-      ? existingDraft.items
-      : mappedQueryItems.length
-        ? mappedQueryItems
-        : [createEmptyItem()]
+        ? draftItemsWithMappedQuantities
+        : mappedQueryItems.length
+          ? mappedQueryItems
+          : [createEmptyItem()]
   ).map((item) => applyDerivedItemValues(item, initialGstRate));
+  const initialInvoiceDate =
+    formatDateInput(existingInvoice?.invoiceDate) ||
+    existingDraft?.invoiceMeta?.invoiceDate ||
+    formatDateInput(new Date());
+  const initialDueDate =
+    formatDateInput(existingInvoice?.dueDate) ||
+    existingDraft?.invoiceMeta?.dueDate ||
+    "";
+  const initialCreditPeriodDays = normalizeCreditPeriodDays(
+    existingInvoice?.creditPeriodDays ||
+    existingDraft?.invoiceMeta?.creditPeriodDays ||
+    getCreditPeriodFromDates(initialInvoiceDate, initialDueDate),
+  );
 
   const [invoiceMeta, setInvoiceMeta] = useState({
     supplierName:
@@ -186,14 +314,13 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
       existingInvoice?.invoiceNumber ||
       existingDraft?.invoiceMeta?.invoiceNumber ||
       createInvoiceNumber(selectedQuery?.queryId),
-    invoiceDate:
-      formatDateInput(existingInvoice?.invoiceDate) ||
-      existingDraft?.invoiceMeta?.invoiceDate ||
-      formatDateInput(new Date()),
-    dueDate:
-      formatDateInput(existingInvoice?.dueDate) ||
-      existingDraft?.invoiceMeta?.dueDate ||
-      addDaysToDate(new Date(), 7),
+    invoiceDate: initialInvoiceDate,
+    creditPeriodDays: initialCreditPeriodDays,
+    dueDate: addDaysToDate(initialInvoiceDate, initialCreditPeriodDays),
+    templateVariant: normalizeTemplateVariant(
+      existingInvoice?.templateVariant ||
+      existingDraft?.invoiceMeta?.templateVariant,
+    ),
   });
   const [items, setItems] = useState(initialItems);
   const [taxConfig, setTaxConfig] = useState({
@@ -209,6 +336,10 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [actionPopup, setActionPopup] = useState(null);
 
+  useEffect(() => {
+    setItems(initialItems);
+  }, [initialItems]);
+
   const showActionPopup = (title, message) => {
     setActionPopup({ title, message });
     setTimeout(() => {
@@ -218,19 +349,30 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
     }, 2400);
   };
 
-  const addItem = () => {
-    setItems((prev) => [...prev, applyDerivedItemValues(createEmptyItem(), taxConfig.gstRate)]);
-  };
-
-  const removeItem = (index) => {
-    setItems((prev) => prev.filter((_, itemIndex) => itemIndex !== index));
-  };
-
   const handleMetaChange = (field, value) => {
-    setInvoiceMeta((prev) => ({
-      ...prev,
-      [field]: value,
-    }));
+    setInvoiceMeta((prev) => {
+      if (field === "invoiceDate") {
+        return {
+          ...prev,
+          invoiceDate: value,
+          dueDate: addDaysToDate(value, prev.creditPeriodDays),
+        };
+      }
+
+      if (field === "creditPeriodDays") {
+        const creditPeriodDays = normalizeCreditPeriodDays(value);
+        return {
+          ...prev,
+          creditPeriodDays,
+          dueDate: addDaysToDate(prev.invoiceDate, creditPeriodDays),
+        };
+      }
+
+      return {
+        ...prev,
+        [field]: value,
+      };
+    });
   };
 
   const handleTaxChange = (field, value) => {
@@ -332,7 +474,7 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
       return;
     }
 
-    if (!invoiceMeta.supplierName || !invoiceMeta.invoiceNumber || !invoiceMeta.invoiceDate || !invoiceMeta.dueDate) {
+    if (!invoiceMeta.supplierName || !invoiceMeta.invoiceNumber || !invoiceMeta.invoiceDate || !invoiceMeta.dueDate || !invoiceMeta.templateVariant) {
       toast.error("Please fill all invoice header fields");
       return;
     }
@@ -355,7 +497,7 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
         items,
         taxConfig,
         summary,
-        templateVariant: "aurora-ledger",
+        templateVariant: invoiceMeta.templateVariant,
       });
 
       handleSaveDraft({ silent: true });
@@ -366,8 +508,8 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
     } catch (error) {
       toast.error(
         error?.response?.data?.message ||
-          error?.response?.data?.error ||
-          "Failed to send internal invoice to finance team",
+        error?.response?.data?.error ||
+        "Failed to send internal invoice to finance team",
       );
     } finally {
       setTimeout(() => {
@@ -390,24 +532,22 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
 
         {existingInvoice?.status ? (
           <div
-            className={`mt-4 rounded-2xl border px-4 py-3 ${
-              isFinanceVerified
+            className={`mt-4 rounded-2xl border px-4 py-3 ${isFinanceVerified
                 ? "border-emerald-200 bg-emerald-50"
                 : existingInvoice.status === "Rejected"
                   ? "border-rose-200 bg-rose-50"
                   : "border-sky-200 bg-sky-50"
-            }`}
+              }`}
           >
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div className="min-w-0">
                 <p
-                  className={`text-[11px] font-semibold uppercase tracking-[0.22em] ${
-                    isFinanceVerified
+                  className={`text-[11px] font-semibold uppercase tracking-[0.22em] ${isFinanceVerified
                       ? "text-emerald-700"
                       : existingInvoice.status === "Rejected"
                         ? "text-rose-700"
                         : "text-sky-700"
-                  }`}
+                    }`}
                 >
                   Finance Update
                 </p>
@@ -458,7 +598,7 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
       </div>
 
       <div className="p-4">
-        <div className="mb-6 grid grid-cols-4 gap-4">
+        <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-2">
           <div>
             <label className="text-xs text-gray-500">
               Supplier Name <span className="text-red-600">*</span>
@@ -503,15 +643,53 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
 
           <div>
             <label className="text-xs text-gray-500">
+              Credit Period <span className="text-red-600">*</span>
+            </label>
+            <FieldShell icon={Calendar} iconWrapClassName="bg-lime-100 text-lime-700">
+              <select
+                value={invoiceMeta.creditPeriodDays}
+                onChange={(e) => handleMetaChange("creditPeriodDays", e.target.value)}
+                className="w-full rounded-lg border border-gray-300 py-2 pl-11 pr-2 text-sm"
+              >
+                {CREDIT_PERIOD_OPTIONS.map((days) => (
+                  <option key={days} value={days}>
+                    {days}-day credit
+                  </option>
+                ))}
+              </select>
+            </FieldShell>
+          </div>
+
+          <div>
+            <label className="text-xs text-gray-500">
               Due Date <span className="text-red-600">*</span>
             </label>
             <FieldShell icon={Calendar} iconWrapClassName="bg-cyan-100 text-cyan-700">
               <input
                 type="date"
                 value={invoiceMeta.dueDate}
-                onChange={(e) => handleMetaChange("dueDate", e.target.value)}
-                className="w-full rounded-lg border border-gray-300 py-2 pl-11 pr-2 text-sm"
+                readOnly
+                className="w-full rounded-lg border border-gray-300 bg-gray-50 py-2 pl-11 pr-2 text-sm text-slate-700"
               />
+            </FieldShell>
+          </div>
+
+          <div>
+            <label className="text-xs text-gray-500">
+              Template <span className="text-red-600">*</span>
+            </label>
+            <FieldShell icon={FileText} iconWrapClassName="bg-rose-100 text-rose-700">
+              <select
+                value={invoiceMeta.templateVariant}
+                onChange={(e) => handleMetaChange("templateVariant", e.target.value)}
+                className="w-full rounded-lg border border-gray-300 py-2 pl-11 pr-2 text-sm"
+              >
+                {TEMPLATE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
             </FieldShell>
           </div>
         </div>
@@ -519,19 +697,11 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
         <div className="mb-6 overflow-hidden rounded-lg border border-gray-300 shadow">
           <div className="flex items-center justify-between border-b border-gray-300 p-3">
             <p className="text-sm font-medium">Itemized Service Table</p>
-
-            <button
-              onClick={addItem}
-              className="flex items-center gap-1 rounded-xl border border-gray-400 px-2 py-1 text-sm"
-            >
-              <Plus size={14} />
-              Add Line Item
-            </button>
           </div>
 
           <div className="custom-scroll overflow-x-auto pb-2">
-            <div className="min-w-[1140px]">
-              <div className="grid grid-cols-[130px_1.8fr_110px_100px_130px_130px_130px_44px] items-center gap-3 border-b border-gray-300 p-3 text-center font-bold text-xs text-gray-700">
+            <div className="min-w-[1080px]">
+              <div className="grid grid-cols-[130px_1.8fr_110px_100px_130px_130px_130px] items-center gap-3 border-b border-gray-300 p-3 text-center font-bold text-xs text-gray-700">
                 <span>Type</span>
                 <span>Service Name</span>
                 <span>Currency</span>
@@ -539,28 +709,22 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
                 <span>Net Rate</span>
                 <span>Subtotal</span>
                 <span>Tax</span>
-                <span></span>
               </div>
 
               {items.map((item, index) => (
                 <div
                   key={`invoice-item-${index}`}
-                  className="grid grid-cols-[130px_1.8fr_110px_100px_130px_130px_130px_44px] items-center gap-3 border-b border-gray-100 p-4 last:border-b-0"
+                  className="grid grid-cols-[130px_1.8fr_110px_100px_130px_130px_130px] items-center gap-3 border-b border-gray-100 p-4 last:border-b-0"
                 >
                   <FieldShell
                     icon={getServiceTypeIcon(item.type)}
                     iconWrapClassName="bg-blue-100 text-blue-700"
                   >
-                    <select
-                      className="w-full rounded-xl border border-gray-300 py-2 pl-11 pr-2 text-sm outline-none"
+                    <input
+                      className="w-full rounded-xl border border-gray-300 bg-gray-50 py-2 pl-11 pr-2 text-sm text-slate-700 outline-none"
                       value={item.type}
-                      onChange={(e) => handleItemChange(index, "type", e.target.value)}
-                    >
-                      <option>Hotel</option>
-                      <option>Transport</option>
-                      <option>Activity</option>
-                      <option>Sightseeing</option>
-                    </select>
+                      readOnly
+                    />
                   </FieldShell>
 
                   <FieldShell
@@ -568,12 +732,10 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
                     iconWrapClassName="bg-emerald-100 text-emerald-700"
                   >
                     <input
-                      className="w-full rounded-xl border border-gray-300 py-2 pl-11 pr-2 text-xs outline-none"
+                      className="w-full rounded-xl border border-gray-300 bg-gray-50 py-2 pl-11 pr-2 text-xs text-slate-700 outline-none"
                       placeholder="Service name"
                       value={item.service}
-                      onChange={(e) =>
-                        handleItemChange(index, "service", e.target.value)
-                      }
+                      readOnly
                     />
                   </FieldShell>
 
@@ -598,11 +760,10 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
 
                   <FieldShell icon={Hash} iconWrapClassName="bg-sky-100 text-sky-700">
                     <input
-                      className="w-full rounded-xl border border-gray-300 py-2 pl-11 pr-2 text-sm outline-none"
+                      className="w-full rounded-xl border border-gray-300 bg-gray-50 py-2 pl-11 pr-2 text-sm text-slate-700 outline-none"
                       value={item.qty}
                       type="number"
-                      min="1"
-                      onChange={(e) => handleItemChange(index, "qty", e.target.value)}
+                      readOnly
                     />
                   </FieldShell>
 
@@ -611,12 +772,11 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
                     iconWrapClassName="bg-orange-100 text-orange-700"
                   >
                     <input
-                      className="w-full rounded-xl border border-gray-300 py-2 pl-11 pr-2 text-sm outline-none"
+                      className="w-full rounded-xl border border-gray-300 bg-gray-50 py-2 pl-11 pr-2 text-sm text-slate-700 outline-none"
                       placeholder="0.00"
                       value={item.rate}
                       type="number"
-                      min="0"
-                      onChange={(e) => handleItemChange(index, "rate", e.target.value)}
+                      readOnly
                     />
                   </FieldShell>
 
@@ -640,16 +800,6 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
                     />
                   </FieldShell>
 
-                  {items.length > 1 ? (
-                    <button
-                      onClick={() => removeItem(index)}
-                      className="flex h-9 w-9 cursor-pointer items-center justify-center justify-self-end rounded-xl text-red-500 transition hover:bg-red-50 hover:text-red-600"
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  ) : (
-                    <div className="h-9 w-9 justify-self-end" />
-                  )}
                 </div>
               ))}
             </div>
@@ -758,11 +908,10 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
         <button
           onClick={handleGenerateInvoice}
           disabled={isGenerating || isFinanceVerified}
-          className={`rounded-xl px-4 py-2 text-sm text-white ${
-            isGenerating || isFinanceVerified
+          className={`rounded-xl px-4 py-2 text-sm text-white ${isGenerating || isFinanceVerified
               ? "cursor-not-allowed bg-slate-400"
               : "cursor-pointer bg-gray-900"
-          }`}
+            }`}
         >
           {isFinanceVerified
             ? "Verified by Finance"

@@ -32,7 +32,7 @@ const itemVariant = {
 
 const travelerDocumentOptions = [
   { key: "passport", label: "Passport" },
-  { key: "governmentId", label: "Govt ID" },
+  { key: "governmentId", label: "PAN Card" },
 ];
 
 const indianDestinationKeywords = [
@@ -54,7 +54,7 @@ const normalizeTravelerDocument = (document) => ({
 
 const getTravelerDocumentKey = (documentType = "Passport") => {
   const normalizedType = String(documentType || "").trim().toLowerCase();
-  return normalizedType.includes("gov") || normalizedType.includes("id") || normalizedType.includes("aad")
+  return normalizedType.includes("gov") || normalizedType.includes("id") || normalizedType.includes("aad") || normalizedType.includes("pan")
     ? "governmentId"
     : "passport";
 };
@@ -265,7 +265,7 @@ const DocumentPortal = () => {
           const missingTravelerNames = travelerRows
             .filter((traveler) => !traveler.isComplete)
             .map((traveler) => traveler.travelerName);
-          const requiredDocsLabel = internationalTrip ? "Passport and Govt ID" : "Govt ID";
+          const requiredDocsLabel = internationalTrip ? "Passport and PAN Card" : "PAN Card";
           const issueSummary =
             reviewStatus === "Rejected"
               ? getIssueSummary(verification?.issues, verification?.rejectionReason)

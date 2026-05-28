@@ -1,3 +1,5 @@
+import "dotenv/config";
+
 const RESEND_API_URL = "https://api.resend.com/emails";
 const TEST_SENDER_ADDRESS = "Holiday Circuit <onboarding@resend.dev>";
 const PERSONAL_SENDER_DOMAINS = new Set([

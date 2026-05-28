@@ -1,4 +1,17 @@
-import { CalendarDays, CheckCircle2, FileText, Send, Trash2, X } from "lucide-react";
+import {
+  AlertCircle,
+  Bell,
+  CalendarDays,
+  CheckCircle2,
+  Copy,
+  Download,
+  FileText,
+  Mail,
+  MessageCircle,
+  Send,
+  Trash2,
+  X,
+} from "lucide-react";
 import React, { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { FaStar, FaWater } from "react-icons/fa";
@@ -21,384 +34,445 @@ import { ChevronDown, ChevronUp } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 
 const pageShellVariants = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: {
-      staggerChildren: 0.12,
-      delayChildren: 0.06,
-    },
-  },
+hidden: { opacity: 0 },
+visible: {
+opacity: 1,
+transition: {
+staggerChildren: 0.12,
+delayChildren: 0.06,
+},
+},
 };
 
 const sectionRevealVariants = {
-  hidden: {
-    opacity: 0,
-    x: -28,
-  },
-  visible: {
-    opacity: 1,
-    x: 0,
-    transition: {
-      duration: 0.4,
-      ease: "easeOut",
-    },
-  },
+hidden: {
+opacity: 0,
+x: -28,
+},
+visible: {
+opacity: 1,
+x: 0,
+transition: {
+duration: 0.4,
+ease: "easeOut",
+},
+},
 };
 
 const sideStackVariants = {
-  hidden: {},
-  visible: {
-    transition: {
-      staggerChildren: 0.1,
-    },
-  },
+hidden: {},
+visible: {
+transition: {
+staggerChildren: 0.1,
+},
+},
 };
 
 const rightCardVariants = {
-  hidden: {
-    opacity: 0,
-    x: 28,
-  },
-  visible: {
-    opacity: 1,
-    x: 0,
-    transition: {
-      duration: 0.4,
-      ease: "easeOut",
-    },
-  },
+hidden: {
+opacity: 0,
+x: 28,
+},
+visible: {
+opacity: 1,
+x: 0,
+transition: {
+duration: 0.4,
+ease: "easeOut",
+},
+},
 };
 
 const serviceCardVariants = {
-  hidden: {
-    opacity: 0,
-    x: -24,
-  },
-  visible: (index = 0) => ({
-    opacity: 1,
-    x: 0,
-    transition: {
-      duration: 0.32,
-      delay: Math.min(index * 0.04, 0.28),
-      ease: "easeOut",
-    },
-  }),
+hidden: {
+opacity: 0,
+x: -24,
+},
+visible: (index = 0) => ({
+opacity: 1,
+x: 0,
+transition: {
+duration: 0.32,
+delay: Math.min(index * 0.04, 0.28),
+ease: "easeOut",
+},
+}),
+};
+
+const FlyingInvoiceIcon = ({ animate = false, busy = false }) => {
+const orbitDuration = busy ? 1.15 : 2.2;
+
+return (
+<span className="relative flex h-10 w-10 items-center justify-center">
+  {animate ? (
+  <>
+    <motion.span className="absolute inset-[4px] rounded-full border border-black/15 border-dashed"
+      animate={{ rotate: 360, opacity: [0.45, 0.75, 0.45] }} transition={{
+              rotate: {
+                duration: orbitDuration,
+                repeat: Infinity,
+                ease: "linear",
+              },
+              opacity: {
+                duration: orbitDuration,
+                repeat: Infinity,
+                ease: "easeInOut",
+              },
+            }} />
+    <motion.span className="absolute inset-[11px] rounded-full bg-black/10"
+      animate={{ scale: [0.92, 1.08, 0.92], opacity: [0.24, 0.42, 0.24] }} transition={{
+              duration: orbitDuration,
+              repeat: Infinity,
+              ease: "easeInOut",
+            }} />
+    <motion.span className="absolute inset-0" animate={{ rotate: 360 }} transition={{
+              duration: orbitDuration,
+              repeat: Infinity,
+              ease: "linear",
+            }}>
+      <motion.span
+        className="absolute left-1/2 top-1 flex h-4 w-4 -translate-x-1/2 items-center justify-center rounded-full bg-yellow-300 text-black shadow-[0_3px_8px_rgba(0,0,0,0.16)]"
+        animate={{
+                rotate: [-10, 10, -10],
+                scale: [0.96, 1.04, 0.96],
+              }} transition={{
+                duration: orbitDuration,
+                repeat: Infinity,
+                ease: "easeInOut",
+              }}>
+        <Send size={10} strokeWidth={2.4} />
+      </motion.span>
+    </motion.span>
+  </>
+  ) : (
+  <span
+    className="flex h-5 w-5 items-center justify-center rounded-full bg-yellow-300 text-black shadow-[0_3px_8px_rgba(0,0,0,0.16)]">
+    <Send size={11} strokeWidth={2.4} />
+  </span>
+  )}
+</span>
+);
 };
 
 const INDIAN_DESTINATION_KEYWORDS = [
-  "india", "delhi", "jaipur", "udaipur", "goa", "kerala", "kashmir", "agra",
-  "mumbai", "pune", "bengaluru", "bangalore", "chennai", "kolkata", "hyderabad",
-  "shimla", "manali", "darjeeling", "rajasthan", "himachal", "andaman", "sikkim",
-  "varanasi", "amritsar", "rishikesh", "ooty", "mysore", "coorg", "nainital",
-  "mussoorie", "jaisalmer", "jodhpur", "pushkar", "kochi", "munnar", "alleppey",
-  "leh", "ladakh", "ahmedabad", "surat", "bhopal", "indore", "dehradun",
+"india", "delhi", "jaipur", "udaipur", "goa", "kerala", "kashmir", "agra",
+"mumbai", "pune", "bengaluru", "bangalore", "chennai", "kolkata", "hyderabad",
+"shimla", "manali", "darjeeling", "rajasthan", "himachal", "andaman", "sikkim",
+"varanasi", "amritsar", "rishikesh", "ooty", "mysore", "coorg", "nainital",
+"mussoorie", "jaisalmer", "jodhpur", "pushkar", "kochi", "munnar", "alleppey",
+"leh", "ladakh", "ahmedabad", "surat", "bhopal", "indore", "dehradun",
 ];
 
 const DEFAULT_EXCHANGE_RATES = Object.freeze({
-  INR: 1,
-  USD: 83.5,
-  EUR: 90.5,
-  GBP: 105.5,
-  AED: 22.75,
-  THB: 2.3,
-  IDR: 0.0051,
-  SGD: 61.5,
-  MYR: 17.7,
-  EGP: 1.65,
-  AUD: 54.5,
+INR: 1,
+USD: 83.5,
+EUR: 90.5,
+GBP: 105.5,
+AED: 22.75,
+THB: 2.3,
+IDR: 0.0051,
+SGD: 61.5,
+MYR: 17.7,
+EGP: 1.65,
+AUD: 54.5,
 });
 
 const CURRENCY_LABELS = Object.freeze({
-  INR: "₹",
-  USD: "$",
-  EUR: "EUR",
-  GBP: "GBP",
-  AED: "AED",
-  THB: "THB",
-  IDR: "IDR",
-  SGD: "SGD",
-  MYR: "MYR",
-  EGP: "EGP",
-  AUD: "AUD",
+INR: "₹",
+USD: "$",
+EUR: "EUR",
+GBP: "GBP",
+AED: "AED",
+THB: "THB",
+IDR: "IDR",
+SGD: "SGD",
+MYR: "MYR",
+EGP: "EGP",
+AUD: "AUD",
 });
 
 const normalizeCurrencyCode = (currency = "INR") =>
-  String(currency || "INR").trim().toUpperCase() || "INR";
+String(currency || "INR").trim().toUpperCase() || "INR";
 
 const roundCurrencyAmount = (value) =>
-  Math.round(Number(value || 0));
+Math.round(Number(value || 0));
 
 const roundExchangeRateValue = (value) =>
-  Number(Number(value || 0).toFixed(4));
+Number(Number(value || 0).toFixed(4));
 
 const getCurrencyLabel = (currency = "INR") =>
-  CURRENCY_LABELS[normalizeCurrencyCode(currency)] || normalizeCurrencyCode(currency);
+CURRENCY_LABELS[normalizeCurrencyCode(currency)] || normalizeCurrencyCode(currency);
 
 const formatAmountValue = (value) =>
-  Number(value || 0).toLocaleString("en-IN", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  });
+Number(value || 0).toLocaleString("en-IN", {
+minimumFractionDigits: 0,
+maximumFractionDigits: 0,
+});
 
 const formatExchangeRateValue = (value) =>
-  Number(value || 0).toLocaleString("en-IN", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 4,
-  });
+Number(value || 0).toLocaleString("en-IN", {
+minimumFractionDigits: 0,
+maximumFractionDigits: 4,
+});
 
 const formatCurrencyValue = (value, currency = "INR") =>
-  `${getCurrencyLabel(currency)} ${formatAmountValue(value)}`;
+`${getCurrencyLabel(currency)} ${formatAmountValue(value)}`;
 
 const formatShareDate = (value) => {
-  if (!value) return "-";
+if (!value) return "-";
 
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    return String(value);
-  }
+const parsed = new Date(value);
+if (Number.isNaN(parsed.getTime())) {
+return String(value);
+}
 
-  return parsed.toLocaleDateString("en-GB", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
+return parsed.toLocaleDateString("en-GB", {
+day: "numeric",
+month: "short",
+year: "numeric",
+});
 };
 
 const buildTravelerSummary = (query = {}) => {
-  const adults = Number(query?.numberOfAdults || 0);
-  const children = Number(query?.numberOfChildren || 0);
-  const infants = Number(query?.numberOfInfants || 0);
-  const parts = [];
+const adults = Number(query?.numberOfAdults || 0);
+const children = Number(query?.numberOfChildren || 0);
+const infants = Number(query?.numberOfInfants || 0);
+const parts = [];
 
-  if (adults > 0) parts.push(`${adults} Adult${adults === 1 ? "" : "s"}`);
-  if (children > 0) parts.push(`${children} Child${children === 1 ? "" : "ren"}`);
-  if (infants > 0) parts.push(`${infants} Infant${infants === 1 ? "" : "s"}`);
+if (adults > 0) parts.push(`${adults} Adult${adults === 1 ? "" : "s"}`);
+if (children > 0) parts.push(`${children} Child${children === 1 ? "" : "ren"}`);
+if (infants > 0) parts.push(`${infants} Infant${infants === 1 ? "" : "s"}`);
 
-  return parts.join(", ") || "Traveler details pending";
+return parts.join(", ") || "Traveler details pending";
 };
 
 const buildShareServiceQuantityLabel = (service = {}) => {
-  const normalizedType = normalizeServiceFilterType(service?.type);
-  const details = [];
+const normalizedType = normalizeServiceFilterType(service?.type);
+const details = [];
 
-  if (normalizedType === "hotel") {
-    if (Number(service?.nights || 0) > 0) details.push(`${service.nights}N`);
-    if (Number(service?.rooms || 0) > 0) details.push(`${service.rooms} Room${Number(service.rooms) > 1 ? "s" : ""}`);
-    if (Number(service?.pax || 0) > 0) details.push(`${service.pax} Pax`);
-    return details.join(" | ");
-  }
+if (normalizedType === "hotel") {
+if (Number(service?.nights || 0) > 0) details.push(`${service.nights}N`);
+if (Number(service?.rooms || 0) > 0) details.push(`${service.rooms} Room${Number(service.rooms) > 1 ? "s" : ""}`);
+if (Number(service?.pax || 0) > 0) details.push(`${service.pax} Pax`);
+return details.join(" | ");
+}
 
-  if (normalizedType === "transfer") {
-    if (service?.usageType) details.push(String(service.usageType).replace(/-/g, " "));
-    if (Number(service?.passengerCapacity || 0) > 0) {
-      details.push(`${service.passengerCapacity} Pax`);
-    } else if (Number(service?.pax || 0) > 0) {
-      details.push(`${service.pax} Pax`);
-    }
-    if (service?.vehicleType) details.push(service.vehicleType);
-    return details.join(" | ");
-  }
+if (normalizedType === "transfer") {
+if (service?.usageType) details.push(String(service.usageType).replace(/-/g, " "));
+if (Number(service?.passengerCapacity || 0) > 0) {
+details.push(`${service.passengerCapacity} Pax`);
+} else if (Number(service?.pax || 0) > 0) {
+details.push(`${service.pax} Pax`);
+}
+if (service?.vehicleType) details.push(service.vehicleType);
+return details.join(" | ");
+}
 
-  if (Number(service?.days || 0) > 0) details.push(`${service.days}D`);
-  if (Number(service?.pax || 0) > 0) details.push(`${service.pax} Pax`);
-  if (Number(service?.passengerCapacity || 0) > 0) details.push(`${service.passengerCapacity} Pax`);
-  if (service?.vehicleType) details.push(service.vehicleType);
+if (Number(service?.days || 0) > 0) details.push(`${service.days}D`);
+if (Number(service?.pax || 0) > 0) details.push(`${service.pax} Pax`);
+if (Number(service?.passengerCapacity || 0) > 0) details.push(`${service.passengerCapacity} Pax`);
+if (service?.vehicleType) details.push(service.vehicleType);
 
-  return details.join(" | ");
+return details.join(" | ");
 };
 
 const buildShareServiceLocationLabel = (service = {}) =>
-  [service?.city, service?.country].filter(Boolean).join(", ");
+[service?.city, service?.country].filter(Boolean).join(", ");
 
 const buildPlainTextQuotationSummary = (quotation = {}) => {
-  const dayWiseItineraryText = sanitizeDayWiseItineraryItems(quotation?.dayWiseItinerary)
-    .filter((item) => item.title || item.description)
-    .map((item) => {
-      const heading = [item.dayLabel, item.title].filter(Boolean).join(": ");
-      return [heading, item.description].filter(Boolean).join("\n");
-    })
-    .join("\n\n");
-  const servicesText = Array.isArray(quotation?.services) && quotation.services.length
-    ? quotation.services
-        .map((service, index) => {
-          const serviceLines = [
-            `${index + 1}. ${service?.title || "Service"} (${service?.typeLabel || "Travel Service"})`,
-            service?.location ? `   Location: ${service.location}` : "",
-            service?.serviceDateLabel ? `   Date: ${service.serviceDateLabel}` : "",
-            service?.quantityLabel ? `   Qty: ${service.quantityLabel}` : "",
-            service?.description ? `   Notes: ${service.description}` : "",
-          ].filter(Boolean);
+const dayWiseItineraryText = sanitizeDayWiseItineraryItems(quotation?.dayWiseItinerary)
+.filter((item) => item.title || item.description)
+.map((item) => {
+const heading = [item.dayLabel, item.title].filter(Boolean).join(": ");
+return [heading, item.description].filter(Boolean).join("\n");
+})
+.join("\n\n");
+const servicesText = Array.isArray(quotation?.services) && quotation.services.length
+? quotation.services
+.map((service, index) => {
+const serviceLines = [
+`${index + 1}. ${service?.title || "Service"} (${service?.typeLabel || "Travel Service"})`,
+service?.location ? ` Location: ${service.location}` : "",
+service?.serviceDateLabel ? ` Date: ${service.serviceDateLabel}` : "",
+service?.quantityLabel ? ` Qty: ${service.quantityLabel}` : "",
+service?.description ? ` Notes: ${service.description}` : "",
+].filter(Boolean);
 
-          return serviceLines.join("\n");
-        })
-        .join("\n\n")
-    : "No service details available.";
+return serviceLines.join("\n");
+})
+.join("\n\n")
+: "No service details available.";
 
-  const inclusionsText = Array.isArray(quotation?.inclusions) && quotation.inclusions.length
-    ? quotation.inclusions.map((item, index) => `${index + 1}. ${item}`).join("\n")
-    : "None";
+const inclusionsText = Array.isArray(quotation?.inclusions) && quotation.inclusions.length
+? quotation.inclusions.map((item, index) => `${index + 1}. ${item}`).join("\n")
+: "None";
 
-  const exclusionsText = Array.isArray(quotation?.exclusions) && quotation.exclusions.length
-    ? quotation.exclusions.map((item, index) => `${index + 1}. ${item}`).join("\n")
-    : "None";
+const exclusionsText = Array.isArray(quotation?.exclusions) && quotation.exclusions.length
+? quotation.exclusions.map((item, index) => `${index + 1}. ${item}`).join("\n")
+: "None";
 
-  const additionalNotesText = Array.isArray(quotation?.additionalNotes) && quotation.additionalNotes.length
-    ? quotation.additionalNotes.map((item, index) => `${index + 1}. ${item}`).join("\n")
-    : "None";
+const additionalNotesText = Array.isArray(quotation?.additionalNotes) && quotation.additionalNotes.length
+? quotation.additionalNotes.map((item, index) => `${index + 1}. ${item}`).join("\n")
+: "None";
 
-  return [
-    "Holiday Circuit - Quotation Summary",
-    "",
-    `Quotation Number: ${quotation?.quotationNumber || "-"}`,
-    `Query ID: ${quotation?.queryId || "-"}`,
-    `Destination: ${quotation?.destination || "-"}`,
-    `Travel Dates: ${quotation?.travelDates || "-"}`,
-    `Duration: ${quotation?.durationLabel || "-"}`,
-    `Travelers: ${quotation?.travelerSummary || "-"}`,
-    `Valid Till: ${quotation?.validTill || "-"}`,
-    `Total Amount: ${formatCurrencyValue(quotation?.totalAmount || 0, quotation?.currency || "INR")}`,
-    "",
-    "Day Wise Itinerary",
-    dayWiseItineraryText || "None",
-    "",
-    "Selected Services",
-    servicesText,
-    "",
-    "Inclusions",
-    inclusionsText,
-    "",
-    "Exclusions",
-    exclusionsText,
-    "",
-    "Additional Notes",
-    additionalNotesText,
-  ].join("\n");
+return [
+"Holiday Circuit - Quotation Summary",
+"",
+`Quotation Number: ${quotation?.quotationNumber || "-"}`,
+`Query ID: ${quotation?.queryId || "-"}`,
+`Destination: ${quotation?.destination || "-"}`,
+`Travel Dates: ${quotation?.travelDates || "-"}`,
+`Duration: ${quotation?.durationLabel || "-"}`,
+`Travelers: ${quotation?.travelerSummary || "-"}`,
+`Valid Till: ${quotation?.validTill || "-"}`,
+`Total Amount: ${formatCurrencyValue(quotation?.totalAmount || 0, quotation?.currency || "INR")}`,
+"",
+"Day Wise Itinerary",
+dayWiseItineraryText || "None",
+"",
+"Selected Services",
+servicesText,
+"",
+"Inclusions",
+inclusionsText,
+"",
+"Exclusions",
+exclusionsText,
+"",
+"Additional Notes",
+additionalNotesText,
+].join("\n");
 };
 
 const WHATSAPP_QUOTATION_BRAND = "Holiday Circuit";
 const WHATSAPP_SECTION_DIVIDER = "----------";
 const WHATSAPP_SUBSECTION_DIVIDER = "-------";
+const DEFAULT_WHATSAPP_TERMS = Object.freeze([
+  "Rates are subject to availability and confirmation at the time of booking.",
+  "Only the services listed in this quotation are included in the shared amount.",
+  "Any amendment after confirmation may affect availability and final pricing.",
+  "Hotel check-in, check-out, and supplier-specific policies will apply as per service rules.",
+  "Please review and confirm within the validity period to avoid fare or rate changes.",
+]);
 
 const normalizeWhatsAppPhoneNumber = (value = "") => {
-  const digits = String(value || "").replace(/\D/g, "");
+const digits = String(value || "").replace(/\D/g, "");
 
-  if (!digits) return "";
-  if (digits.length === 10) return `91${digits}`;
-  if (digits.length === 12 && digits.startsWith("91")) return digits;
-  if (String(value || "").trim().startsWith("+")) return digits;
+if (!digits) return "";
+if (digits.length === 10) return `91${digits}`;
+if (digits.length === 12 && digits.startsWith("91")) return digits;
+if (String(value || "").trim().startsWith("+")) return digits;
 
-  return digits;
+return digits;
 };
 
 const parseWhatsAppDate = (value) => {
-  if (!value) return null;
+if (!value) return null;
 
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
+const parsed = new Date(value);
+return Number.isNaN(parsed.getTime()) ? null : parsed;
 };
 
 const formatWhatsAppDate = (value, { month = "short", weekday = undefined, includeYear = true } = {}) => {
-  const parsed = parseWhatsAppDate(value);
-  if (!parsed) return "-";
+const parsed = parseWhatsAppDate(value);
+if (!parsed) return "-";
 
-  const day = parsed.getDate();
-  const monthLabel = parsed.toLocaleDateString("en-GB", { month });
-  const weekdayLabel = weekday
-    ? `${parsed.toLocaleDateString("en-GB", { weekday })}, `
-    : "";
-  const baseLabel = `${day} ${monthLabel}`;
+const day = parsed.getDate();
+const monthLabel = parsed.toLocaleDateString("en-GB", { month });
+const weekdayLabel = weekday
+? `${parsed.toLocaleDateString("en-GB", { weekday })}, `
+: "";
+const baseLabel = `${day} ${monthLabel}`;
 
-  return includeYear
-    ? `${weekdayLabel}${baseLabel}, ${parsed.getFullYear()}`
-    : `${weekdayLabel}${baseLabel}`;
+return includeYear
+? `${weekdayLabel}${baseLabel}, ${parsed.getFullYear()}`
+: `${weekdayLabel}${baseLabel}`;
 };
 
 const formatWhatsAppActivityDate = (value) => {
-  const parsed = parseWhatsAppDate(value);
-  if (!parsed) return "";
+const parsed = parseWhatsAppDate(value);
+if (!parsed) return "";
 
-  const weekday = parsed.toLocaleDateString("en-GB", { weekday: "short" });
-  const month = parsed.toLocaleDateString("en-GB", { month: "short" });
-  const year = String(parsed.getFullYear()).slice(-2);
+const weekday = parsed.toLocaleDateString("en-GB", { weekday: "short" });
+const month = parsed.toLocaleDateString("en-GB", { month: "short" });
+const year = String(parsed.getFullYear()).slice(-2);
 
-  return `${weekday}, ${getOrdinalValue(parsed.getDate())} ${month}'${year}`;
+return `${weekday}, ${getOrdinalValue(parsed.getDate())} ${month}'${year}`;
 };
 
 const formatWhatsAppItineraryDate = (value) => {
-  const parsed = parseWhatsAppDate(value);
-  if (!parsed) return "";
+const parsed = parseWhatsAppDate(value);
+if (!parsed) return "";
 
-  const weekday = parsed.toLocaleDateString("en-GB", { weekday: "long" });
-  const month = parsed.toLocaleDateString("en-GB", { month: "short" });
+const weekday = parsed.toLocaleDateString("en-GB", { weekday: "long" });
+const month = parsed.toLocaleDateString("en-GB", { month: "short" });
 
-  return `${weekday} ${getOrdinalValue(parsed.getDate())} ${month}, ${parsed.getFullYear()}`;
+return `${weekday} ${getOrdinalValue(parsed.getDate())} ${month}, ${parsed.getFullYear()}`;
 };
 
 const addDaysForWhatsApp = (value, daysToAdd = 0) => {
-  const parsed = parseWhatsAppDate(value);
-  if (!parsed) return "";
+const parsed = parseWhatsAppDate(value);
+if (!parsed) return "";
 
-  parsed.setDate(parsed.getDate() + Number(daysToAdd || 0));
-  return parsed.toISOString();
+parsed.setDate(parsed.getDate() + Number(daysToAdd || 0));
+return parsed.toISOString();
 };
 
 const getWhatsAppDateDiff = (startDate, endDate) => {
-  const start = parseWhatsAppDate(startDate);
-  const end = parseWhatsAppDate(endDate);
+const start = parseWhatsAppDate(startDate);
+const end = parseWhatsAppDate(endDate);
 
-  if (!start || !end) return 0;
+if (!start || !end) return 0;
 
-  const normalizedStart = new Date(start.getFullYear(), start.getMonth(), start.getDate());
-  const normalizedEnd = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+const normalizedStart = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+const normalizedEnd = new Date(end.getFullYear(), end.getMonth(), end.getDate());
 
-  return Math.max(
-    0,
-    Math.round((normalizedEnd.getTime() - normalizedStart.getTime()) / (1000 * 60 * 60 * 24)),
-  );
+return Math.max(
+0,
+Math.round((normalizedEnd.getTime() - normalizedStart.getTime()) / (1000 * 60 * 60 * 24)),
+);
 };
 
 const inferSharingLabel = (services = []) => {
-  const primaryHotel = services.find(
-    (service) => normalizeServiceFilterType(service?.type) === "hotel",
-  );
+const primaryHotel = services.find(
+(service) => normalizeServiceFilterType(service?.type) === "hotel",
+);
 
-  const rawLabel = `${primaryHotel?.bedType || ""} ${primaryHotel?.roomType || ""}`.toLowerCase();
+const rawLabel = `${primaryHotel?.bedType || ""} ${primaryHotel?.roomType || ""}`.toLowerCase();
 
-  if (rawLabel.includes("triple")) return "Triple Sharing";
-  if (rawLabel.includes("double")) return "Double Sharing";
-  if (rawLabel.includes("twin")) return "Twin Sharing";
-  if (rawLabel.includes("single")) return "Single Sharing";
+if (rawLabel.includes("triple")) return "Triple Sharing";
+if (rawLabel.includes("double")) return "Double Sharing";
+if (rawLabel.includes("twin")) return "Twin Sharing";
+if (rawLabel.includes("single")) return "Single Sharing";
 
-  return "Per Person";
+return "Per Person";
 };
 
 const buildWhatsAppTravelerSummary = (quotation = {}) => {
-  const adults = Number(quotation?.numberOfAdults || 0);
-  const children = Number(quotation?.numberOfChildren || 0);
-  const infants = Number(quotation?.numberOfInfants || 0);
-  const travelers = [];
+const adults = Number(quotation?.numberOfAdults || 0);
+const children = Number(quotation?.numberOfChildren || 0);
+const infants = Number(quotation?.numberOfInfants || 0);
+const travelers = [];
 
-  if (adults > 0) travelers.push(`${adults} Adult${adults === 1 ? "" : "s"}`);
-  if (children > 0) travelers.push(`${children} ${children === 1 ? "Child" : "Children"}`);
-  if (infants > 0) travelers.push(`${infants} Infant${infants === 1 ? "" : "s"}`);
+if (adults > 0) travelers.push(`${adults} Adult${adults === 1 ? "" : "s"}`);
+if (children > 0) travelers.push(`${children} ${children === 1 ? "Child" : "Children"}`);
+if (infants > 0) travelers.push(`${infants} Infant${infants === 1 ? "" : "s"}`);
 
-  return travelers.join(", ") || "Traveler details pending";
+return travelers.join(", ") || "Traveler details pending";
 };
 
 const buildWhatsAppNightLabel = (serviceDate, nights, tripStartDate) => {
-  const totalNights = Math.max(1, Number(nights || 1));
-  const startNightNumber = getWhatsAppDateDiff(tripStartDate, serviceDate) + 1;
-  const nightLabels = Array.from({ length: totalNights }, (_, index) =>
-    getOrdinalValue(startNightNumber + index),
-  );
+const totalNights = Math.max(1, Number(nights || 1));
+const startNightNumber = getWhatsAppDateDiff(tripStartDate, serviceDate) + 1;
+const nightLabels = Array.from({ length: totalNights }, (_, index) =>
+getOrdinalValue(startNightNumber + index),
+);
 
-  if (nightLabels.length === 1) {
-    return `${nightLabels[0]} Night`;
-  }
+if (nightLabels.length === 1) {
+return `${nightLabels[0]} Night`;
+}
 
-  if (nightLabels.length <= 3) {
-    return `${nightLabels.join(", ")} Nights`;
+if (nightLabels.length <= 3) { return `${nightLabels.join(", ")} Nights`;
   }
 
   return `${nightLabels[0]} - ${nightLabels[nightLabels.length - 1]} Nights`;
@@ -420,118 +494,119 @@ const buildWhatsAppHotelMeta = (service = {}, fallbackPax = 0) => {
   const roomBits = [];
   if (Number(service?.rooms || 0) > 0) {
     roomBits.push(
-      `${service.rooms} ${service?.roomType || "Room"}${Number(service.rooms) > 1 ? "s" : ""}`,
-    );
+      `${service.rooms} ${service?.roomType || " Room"}${Number(service.rooms)> 1 ? "s" : ""}`,
+  );
   } else if (service?.roomType) {
-    roomBits.push(service.roomType);
+  roomBits.push(service.roomType);
   }
 
   if (hotelPax > 0) {
-    roomBits.push(`(${hotelPax} Pax)`);
+  roomBits.push(`(${hotelPax} Pax)`);
   }
 
   if (roomBits.length) {
-    parts.push(roomBits.join(" "));
+  parts.push(roomBits.join(" "));
   }
 
   return parts.join(" • ") || "Stay included";
-};
+  };
 
-const buildWhatsAppHotelsSection = (quotation = {}) => {
+  const buildWhatsAppHotelsSection = (quotation = {}) => {
   const hotels = Array.isArray(quotation?.services)
-    ? quotation.services
-        .filter((service) => normalizeServiceFilterType(service?.type) === "hotel")
-        .sort(
-          (left, right) =>
-            new Date(left?.serviceDate || 0).getTime() - new Date(right?.serviceDate || 0).getTime(),
-        )
-    : [];
+  ? quotation.services
+  .filter((service) => normalizeServiceFilterType(service?.type) === "hotel")
+  .sort(
+  (left, right) =>
+  new Date(left?.serviceDate || 0).getTime() - new Date(right?.serviceDate || 0).getTime(),
+  )
+  : [];
 
   if (!hotels.length) return "";
 
   const totalPax =
-    Number(quotation?.numberOfAdults || 0) +
-    Number(quotation?.numberOfChildren || 0) +
-    Number(quotation?.numberOfInfants || 0);
+  Number(quotation?.numberOfAdults || 0) +
+  Number(quotation?.numberOfChildren || 0) +
+  Number(quotation?.numberOfInfants || 0);
 
-  const lines = ["🏨  *_Hotels_*", WHATSAPP_SECTION_DIVIDER];
+  const lines = ["🏨 *_Hotels_*", WHATSAPP_SECTION_DIVIDER];
 
   hotels.forEach((hotel) => {
-    const checkInDate = hotel?.serviceDate || quotation?.startDate || "";
-    const checkOutDate = addDaysForWhatsApp(checkInDate, Number(hotel?.nights || 1));
-    const locationLabel = hotel?.city || quotation?.destination || "Destination";
-    const hotelTitle = hotel?.hotelCategory
-      ? `${hotel.title} (${hotel.hotelCategory})`
-      : hotel.title || "Hotel stay";
+  const checkInDate = hotel?.serviceDate || quotation?.startDate || "";
+  const checkOutDate = addDaysForWhatsApp(checkInDate, Number(hotel?.nights || 1));
+  const locationLabel = hotel?.city || quotation?.destination || "Destination";
+  const hotelTitle = hotel?.hotelCategory
+  ? `${hotel.title} (${hotel.hotelCategory})`
+  : hotel.title || "Hotel stay";
 
-    lines.push(`*${buildWhatsAppNightLabel(checkInDate, hotel?.nights, quotation?.startDate)}* _at_ *${locationLabel}*`);
-    lines.push(
-      `_Check-in: ${formatWhatsAppDate(checkInDate, { includeYear: false })}_ & _Check-out: ${formatWhatsAppDate(checkOutDate, { includeYear: false })}_`,
-    );
-    lines.push(`*${hotelTitle}*`);
-    lines.push(buildWhatsAppHotelMeta(hotel, totalPax));
-    lines.push("");
+  lines.push(`*${buildWhatsAppNightLabel(checkInDate, hotel?.nights, quotation?.startDate)}* _at_ *${locationLabel}*`);
+  lines.push(
+  `_Check-in: ${formatWhatsAppDate(checkInDate, { includeYear: false })}_ & _Check-out:
+  ${formatWhatsAppDate(checkOutDate, { includeYear: false })}_`,
+  );
+  lines.push(`*${hotelTitle}*`);
+  lines.push(buildWhatsAppHotelMeta(hotel, totalPax));
+  lines.push("");
   });
 
   return lines.join("\n").trim();
-};
+  };
 
-const buildWhatsAppTransportSection = (quotation = {}) => {
+  const buildWhatsAppTransportSection = (quotation = {}) => {
   const services = Array.isArray(quotation?.services)
-    ? quotation.services
-        .filter((service) => normalizeServiceFilterType(service?.type) !== "hotel")
-        .sort(
-          (left, right) =>
-            new Date(left?.serviceDate || 0).getTime() - new Date(right?.serviceDate || 0).getTime(),
-        )
-    : [];
+  ? quotation.services
+  .filter((service) => normalizeServiceFilterType(service?.type) !== "hotel")
+  .sort(
+  (left, right) =>
+  new Date(left?.serviceDate || 0).getTime() - new Date(right?.serviceDate || 0).getTime(),
+  )
+  : [];
 
   if (!services.length) return "";
 
   const groupedServices = services.reduce((accumulator, service) => {
-    const serviceDate = service?.serviceDate || "";
-    const groupKey = normalizeDateInputValue(serviceDate) || String(serviceDate || "undated");
+  const serviceDate = service?.serviceDate || "";
+  const groupKey = normalizeDateInputValue(serviceDate) || String(serviceDate || "undated");
 
-    if (!accumulator[groupKey]) {
-      accumulator[groupKey] = [];
-    }
+  if (!accumulator[groupKey]) {
+  accumulator[groupKey] = [];
+  }
 
-    accumulator[groupKey].push(service);
-    return accumulator;
+  accumulator[groupKey].push(service);
+  return accumulator;
   }, {});
 
-  const lines = ["🚖  *Transportation and Activities*", WHATSAPP_SECTION_DIVIDER];
+  const lines = ["🚖 *Transportation and Activities*", WHATSAPP_SECTION_DIVIDER];
 
   Object.entries(groupedServices).forEach(([groupDate, items], index) => {
-    const serviceDate = groupDate === "undated" ? "" : groupDate;
-    const dayNumber = serviceDate
-      ? getWhatsAppDateDiff(quotation?.startDate, serviceDate) + 1
-      : index + 1;
+  const serviceDate = groupDate === "undated" ? "" : groupDate;
+  const dayNumber = serviceDate
+  ? getWhatsAppDateDiff(quotation?.startDate, serviceDate) + 1
+  : index + 1;
 
-    lines.push(`*${getOrdinalValue(dayNumber)} Day - ${formatWhatsAppActivityDate(serviceDate)}*`);
+  lines.push(`*${getOrdinalValue(dayNumber)} Day - ${formatWhatsAppActivityDate(serviceDate)}*`);
 
-    items.forEach((service) => {
-      const quantityLabel = service?.quantityLabel ? ` _(${service.quantityLabel})_` : "";
-      const description =
-        service?.description &&
-        String(service.description).trim().toLowerCase() !== String(service.title || "").trim().toLowerCase()
-          ? ` - ${service.description}`
-          : "";
+  items.forEach((service) => {
+  const quantityLabel = service?.quantityLabel ? ` _(${service.quantityLabel})_` : "";
+  const description =
+  service?.description &&
+  String(service.description).trim().toLowerCase() !== String(service.title || "").trim().toLowerCase()
+  ? ` - ${service.description}`
+  : "";
 
-      lines.push(`• ${service?.title || "Service"}${description}${quantityLabel}`);
-    });
+  lines.push(`• ${service?.title || "Service"}${description}${quantityLabel}`);
+  });
 
-    lines.push("");
+  lines.push("");
   });
 
   return lines.join("\n").trim();
-};
+  };
 
-const buildWhatsAppInclusionsSection = (items = [], prefix = "+") => {
+  const buildWhatsAppInclusionsSection = (items = [], prefix = "+") => {
   if (!Array.isArray(items) || !items.length) return "";
 
   return items.map((item) => `${prefix} ${item}`).join("\n");
-};
+  };
 
 const buildWhatsAppExclusionsSection = (items = [], prefix = "-") => {
   if (!Array.isArray(items) || !items.length) return "";
@@ -539,43 +614,77 @@ const buildWhatsAppExclusionsSection = (items = [], prefix = "-") => {
   return items.map((item) => `${prefix} ${item}`).join("\n");
 };
 
-const buildWhatsAppDayWiseItinerary = (quotation = {}) => {
-  const itinerary = Array.isArray(quotation?.dayWiseItinerary)
-    ? quotation.dayWiseItinerary.filter((item) => item?.title || item?.description)
+const buildWhatsAppSellerBankDetailsSection = (items = []) => {
+  const normalizedItems = Array.isArray(items)
+    ? items
+        .map((item) => ({
+          label: String(item?.label || "").trim(),
+          value: String(item?.value || "").trim(),
+        }))
+        .filter((item) => item.label && item.value)
     : [];
+
+  if (!normalizedItems.length) return "";
+
+  return [
+    "*_Seller Bank Details_*",
+    WHATSAPP_SECTION_DIVIDER,
+    ...normalizedItems.map((item) => `*${item.label}:* ${item.value}`),
+  ].join("\n");
+};
+
+const buildWhatsAppTermsSection = (items = []) => {
+  const normalizedItems = Array.isArray(items)
+    ? items.map((item) => String(item || "").trim()).filter(Boolean)
+    : [];
+  const terms = normalizedItems.length ? normalizedItems : [...DEFAULT_WHATSAPP_TERMS];
+
+  if (!terms.length) return "";
+
+  return [
+    "*_Terms and Conditions_*",
+    WHATSAPP_SECTION_DIVIDER,
+    ...terms.map((item, index) => `${index + 1}. ${item}`),
+  ].join("\n");
+};
+
+  const buildWhatsAppDayWiseItinerary = (quotation = {}) => {
+  const itinerary = Array.isArray(quotation?.dayWiseItinerary)
+  ? quotation.dayWiseItinerary.filter((item) => item?.title || item?.description)
+  : [];
 
   if (!itinerary.length) return "";
 
-  const lines = ["🗓️   *_Day Wise Itinerary_*", WHATSAPP_SECTION_DIVIDER];
+  const lines = ["🗓️ *_Day Wise Itinerary_*", WHATSAPP_SECTION_DIVIDER];
 
   itinerary.forEach((item, index) => {
-    const dayNumber = Number(item?.dayNumber || index + 1);
-    const itemDate = item?.date || addDaysForWhatsApp(quotation?.startDate, dayNumber - 1);
+  const dayNumber = Number(item?.dayNumber || index + 1);
+  const itemDate = item?.date || addDaysForWhatsApp(quotation?.startDate, dayNumber - 1);
 
-    lines.push(`*${getOrdinalValue(dayNumber)} Day - ${formatWhatsAppItineraryDate(itemDate)}*`);
-    lines.push("----");
+  lines.push(`*${getOrdinalValue(dayNumber)} Day - ${formatWhatsAppItineraryDate(itemDate)}*`);
+  lines.push("----");
 
-    if (item?.title) {
-      lines.push(`*${item.title}*`);
-    }
+  if (item?.title) {
+  lines.push(`*${item.title}*`);
+  }
 
-    if (item?.description) {
-      lines.push(String(item.description).trim());
-    }
+  if (item?.description) {
+  lines.push(String(item.description).trim());
+  }
 
-    lines.push("");
-    lines.push(WHATSAPP_SECTION_DIVIDER);
-    lines.push("");
+  lines.push("");
+  lines.push(WHATSAPP_SECTION_DIVIDER);
+  lines.push("");
   });
 
   return lines.join("\n").replace(/\n+\s*----------\s*$/, "").trim();
-};
+  };
 
-const buildWhatsAppQuotationMessage = (quotation = {}) => {
+  const buildWhatsAppQuotationMessage = (quotation = {}) => {
   const totalPax =
-    Number(quotation?.numberOfAdults || 0) +
-    Number(quotation?.numberOfChildren || 0) +
-    Number(quotation?.numberOfInfants || 0);
+  Number(quotation?.numberOfAdults || 0) +
+  Number(quotation?.numberOfChildren || 0) +
+  Number(quotation?.numberOfInfants || 0);
   const totalAmount = Math.round(Number(quotation?.totalAmount || 0));
   const perPersonAmount = totalPax > 0 ? Math.round(totalAmount / totalPax) : 0;
   const destinationLabel = quotation?.destination ? `${quotation.destination} Trip` : "Trip";
@@ -584,94 +693,110 @@ const buildWhatsAppQuotationMessage = (quotation = {}) => {
   const exclusions = Array.isArray(quotation?.exclusions) ? quotation.exclusions : [];
   const recipientName = quotation?.recipientName || quotation?.recipientCompanyName || "Partner";
   const tcsIncludedLine =
-    Number(quotation?.tcsAmount || 0) > 0
-      ? ` _(inc. Tax Collected At Source)_`
-      : "";
+  Number(quotation?.tcsAmount || 0) > 0
+  ? ` _(inc. Tax Collected At Source)_`
+  : "";
 
   const lines = [
-    `Hi ${recipientName},`,
-    "",
-    `Greetings from ${WHATSAPP_QUOTATION_BRAND}.`,
-    "",
-    "Thank you for your query with us. As per your requirements, following are the package details.",
-    "",
-    `*Trip ID ${quotation?.queryId || quotation?.quotationNumber || "-"}*`,
-    WHATSAPP_SECTION_DIVIDER,
-    `*${destinationLabel}*`,
-    `• *${formatWhatsAppDate(quotation?.startDate || "")}* _for_ *${quotation?.tripNights || 0} Nights, ${quotation?.tripDays || 0} Days*`,
-    `• *${buildWhatsAppTravelerSummary(quotation)}*`,
-    "",
-    "*Price (INR):*",
-    perPersonAmount > 0
-      ? `• *${formatAmountValue(perPersonAmount)} / Person (${inferSharingLabel(quotation?.services || [])})* x ${totalPax} Pax`
-      : "• Price on request",
-    `*Total: ${formatAmountValue(totalAmount)} /-*${tcsIncludedLine}`,
+  `Hi ${recipientName},`,
+  "",
+  `Greetings from ${WHATSAPP_QUOTATION_BRAND}.`,
+  "",
+  "Thank you for your query with us. As per your requirements, following are the package details.",
+  "",
+  `*Trip ID ${quotation?.queryId || quotation?.quotationNumber || "-"}*`,
+  WHATSAPP_SECTION_DIVIDER,
+  `*${destinationLabel}*`,
+  `• *${formatWhatsAppDate(quotation?.startDate || "")}* _for_ *${quotation?.tripNights || 0} Nights,
+  ${quotation?.tripDays || 0} Days*`,
+  `• *${buildWhatsAppTravelerSummary(quotation)}*`,
+  "",
+  "*Price (INR):*",
+  perPersonAmount > 0
+  ? `• *${formatAmountValue(perPersonAmount)} / Person (${inferSharingLabel(quotation?.services || [])})* x ${totalPax}
+  Pax`
+  : "• Price on request",
+  `*Total: ${formatAmountValue(totalAmount)} /-*${tcsIncludedLine}`,
   ];
 
   if (notes.length) {
-    lines.push("");
-    lines.push("*_Notes_*");
-    lines.push(WHATSAPP_SUBSECTION_DIVIDER);
-    notes.forEach((note, index) => {
-      lines.push(`${index + 1}. ${note}`);
-    });
-    lines.push(WHATSAPP_SUBSECTION_DIVIDER);
+  lines.push("");
+  lines.push("*_Notes_*");
+  lines.push(WHATSAPP_SUBSECTION_DIVIDER);
+  notes.forEach((note, index) => {
+  lines.push(`${index + 1}. ${note}`);
+  });
+  lines.push(WHATSAPP_SUBSECTION_DIVIDER);
   }
 
   const hotelsSection = buildWhatsAppHotelsSection(quotation);
   if (hotelsSection) {
-    lines.push("");
-    lines.push(hotelsSection);
+  lines.push("");
+  lines.push(hotelsSection);
   }
 
   const transportSection = buildWhatsAppTransportSection(quotation);
   if (transportSection) {
-    lines.push("");
-    lines.push(transportSection);
+  lines.push("");
+  lines.push(transportSection);
   }
 
   const inclusionsSection = buildWhatsAppInclusionsSection(inclusions, "+");
   if (inclusionsSection) {
-    lines.push("");
-    lines.push("*_Inclusions_*");
-    lines.push(WHATSAPP_SECTION_DIVIDER);
-    lines.push(inclusionsSection);
+  lines.push("");
+  lines.push("*_Inclusions_*");
+  lines.push(WHATSAPP_SECTION_DIVIDER);
+  lines.push(inclusionsSection);
   }
 
   const exclusionsSection = buildWhatsAppExclusionsSection(exclusions, "-");
   if (exclusionsSection) {
-    lines.push("");
-    lines.push("*_Exclusions_*");
-    lines.push(WHATSAPP_SECTION_DIVIDER);
-    lines.push(exclusionsSection);
-    lines.push("");
-    lines.push("_*NOTE*: Anything not mentioned in the inclusions is excluded_");
+  lines.push("");
+  lines.push("*_Exclusions_*");
+  lines.push(WHATSAPP_SECTION_DIVIDER);
+  lines.push(exclusionsSection);
+  lines.push("");
+  lines.push("_*NOTE*: Anything not mentioned in the inclusions is excluded_");
   }
 
   const itinerarySection = buildWhatsAppDayWiseItinerary(quotation);
   if (itinerarySection) {
-    lines.push("");
-    lines.push(itinerarySection);
+  lines.push("");
+  lines.push(itinerarySection);
+  }
+
+  const sellerBankDetailsSection = buildWhatsAppSellerBankDetailsSection(
+  quotation?.sellerBankDetails,
+  );
+  if (sellerBankDetailsSection) {
+  lines.push("");
+  lines.push(sellerBankDetailsSection);
+  }
+
+  const termsSection = buildWhatsAppTermsSection(quotation?.termsAndConditions);
+  if (termsSection) {
+  lines.push("");
+  lines.push(termsSection);
   }
 
   return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
-};
+  };
 
-const sanitizeDynamicListItems = (items = []) =>
+  const sanitizeDynamicListItems = (items = []) =>
   Array.isArray(items)
-    ? items
-        .map((item) => String(item || "").replace(/\s+/g, " ").trim())
-        .filter(Boolean)
-    : [];
+  ? items
+  .map((item) => String(item || "").replace(/\s+/g, " ").trim())
+  .filter(Boolean)
+  : [];
 
-const normalizeDateInputValue = (value) => {
+  const normalizeDateInputValue = (value) => {
   if (!value) return "";
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return "";
   return parsed.toISOString().slice(0, 10);
-};
+  };
 
-const addDaysToNormalizedDate = (value, daysToAdd = 0) => {
+  const addDaysToNormalizedDate = (value, daysToAdd = 0) => {
   const normalizedValue = normalizeDateInputValue(value);
   if (!normalizedValue) return "";
 
@@ -680,9 +805,9 @@ const addDaysToNormalizedDate = (value, daysToAdd = 0) => {
 
   parsed.setDate(parsed.getDate() + Number(daysToAdd || 0));
   return parsed.toISOString().slice(0, 10);
-};
+  };
 
-const getOrdinalValue = (value) => {
+  const getOrdinalValue = (value) => {
   const number = Number(value || 0);
   const remainderTen = number % 10;
   const remainderHundred = number % 100;
@@ -691,9 +816,9 @@ const getOrdinalValue = (value) => {
   if (remainderTen === 2 && remainderHundred !== 12) return `${number}nd`;
   if (remainderTen === 3 && remainderHundred !== 13) return `${number}rd`;
   return `${number}th`;
-};
+  };
 
-const formatItineraryDateLabel = (value) => {
+  const formatItineraryDateLabel = (value) => {
   const normalizedValue = normalizeDateInputValue(value);
   if (!normalizedValue) return "";
 
@@ -701,97 +826,97 @@ const formatItineraryDateLabel = (value) => {
   if (Number.isNaN(parsed.getTime())) return "";
 
   return `${parsed.toLocaleDateString("en-GB", {
-    weekday: "short",
+  weekday: "short",
   })} ${getOrdinalValue(parsed.getDate())} ${parsed.toLocaleDateString("en-GB", {
-    month: "short",
+  month: "short",
   })}`;
-};
+  };
 
-const buildItineraryDayLabel = (dayNumber, dateValue = "") => {
+  const buildItineraryDayLabel = (dayNumber, dateValue = "") => {
   const ordinalDay = getOrdinalValue(dayNumber);
   const dateLabel = formatItineraryDateLabel(dateValue);
   return dateLabel ? `${ordinalDay} Day (${dateLabel})` : `${ordinalDay} Day`;
-};
+  };
 
-const sanitizeDayWiseItineraryItems = (items = []) =>
+  const sanitizeDayWiseItineraryItems = (items = []) =>
   Array.isArray(items)
-    ? items.map((item, index) => {
-        const dayNumber = Math.max(1, Number(item?.dayNumber || index + 1));
-        const date = normalizeDateInputValue(
-          item?.date || item?.serviceDate || item?.dayDate || "",
-        );
+  ? items.map((item, index) => {
+  const dayNumber = Math.max(1, Number(item?.dayNumber || index + 1));
+  const date = normalizeDateInputValue(
+  item?.date || item?.serviceDate || item?.dayDate || "",
+  );
 
-        return {
-          dayNumber,
-          dayLabel: String(item?.dayLabel || buildItineraryDayLabel(dayNumber, date)).trim(),
-          date,
-          title: String(item?.title || item?.heading || "")
-            .replace(/\s+/g, " ")
-            .trim(),
-          description: String(item?.description || "")
-            .replace(/\r\n/g, "\n")
-            .replace(/\n{3,}/g, "\n\n")
-            .trim(),
-        };
-      })
-    : [];
+  return {
+  dayNumber,
+  dayLabel: String(item?.dayLabel || buildItineraryDayLabel(dayNumber, date)).trim(),
+  date,
+  title: String(item?.title || item?.heading || "")
+  .replace(/\s+/g, " ")
+  .trim(),
+  description: String(item?.description || "")
+  .replace(/\r\n/g, "\n")
+  .replace(/\n{3,}/g, "\n\n")
+  .trim(),
+  };
+  })
+  : [];
 
-const areDayWiseItineraryItemsEqual = (currentItems = [], nextItems = []) =>
+  const areDayWiseItineraryItemsEqual = (currentItems = [], nextItems = []) =>
   currentItems.length === nextItems.length &&
   currentItems.every((item, index) => {
-    const nextItem = nextItems[index];
+  const nextItem = nextItems[index];
 
-    return (
-      nextItem &&
-      Number(item?.dayNumber || 0) === Number(nextItem?.dayNumber || 0) &&
-      String(item?.dayLabel || "") === String(nextItem?.dayLabel || "") &&
-      String(item?.date || "") === String(nextItem?.date || "") &&
-      String(item?.title || "") === String(nextItem?.title || "") &&
-      String(item?.description || "") === String(nextItem?.description || "")
-    );
+  return (
+  nextItem &&
+  Number(item?.dayNumber || 0) === Number(nextItem?.dayNumber || 0) &&
+  String(item?.dayLabel || "") === String(nextItem?.dayLabel || "") &&
+  String(item?.date || "") === String(nextItem?.date || "") &&
+  String(item?.title || "") === String(nextItem?.title || "") &&
+  String(item?.description || "") === String(nextItem?.description || "")
+  );
   });
 
-const reconcileDayWiseItineraryItems = (items = [], totalDays = 0, startDate = "") => {
+  const reconcileDayWiseItineraryItems = (items = [], totalDays = 0, startDate = "") => {
   const normalizedItems = sanitizeDayWiseItineraryItems(items);
   const itemsByDay = new Map(
-    normalizedItems.map((item, index) => [
-      Math.max(1, Number(item?.dayNumber || index + 1)),
-      item,
-    ]),
+  normalizedItems.map((item, index) => [
+  Math.max(1, Number(item?.dayNumber || index + 1)),
+  item,
+  ]),
   );
   const fallbackCount = normalizedItems.reduce(
-    (maxCount, item, index) => Math.max(maxCount, Number(item?.dayNumber || index + 1)),
-    0,
+  (maxCount, item, index) => Math.max(maxCount, Number(item?.dayNumber || index + 1)),
+  0,
   );
   const resolvedDayCount = Math.max(Number(totalDays || 0), fallbackCount);
 
   if (!resolvedDayCount) {
-    return normalizedItems;
+  return normalizedItems;
   }
 
   return Array.from({ length: resolvedDayCount }, (_, index) => {
-    const dayNumber = index + 1;
-    const existingItem = itemsByDay.get(dayNumber) || {};
-    const date = startDate ? addDaysToNormalizedDate(startDate, index) : String(existingItem?.date || "");
+  const dayNumber = index + 1;
+  const existingItem = itemsByDay.get(dayNumber) || {};
+  const date = startDate ? addDaysToNormalizedDate(startDate, index) : String(existingItem?.date || "");
 
-    return {
-      dayNumber,
-      dayLabel: buildItineraryDayLabel(dayNumber, date || existingItem?.date || ""),
-      date: date || existingItem?.date || "",
-      title: String(existingItem?.title || "").trim(),
-      description: String(existingItem?.description || "").trim(),
-    };
+  return {
+  dayNumber,
+  dayLabel: buildItineraryDayLabel(dayNumber, date || existingItem?.date || ""),
+  date: date || existingItem?.date || "",
+  title: String(existingItem?.title || "").trim(),
+  description: String(existingItem?.description || "").trim(),
+  };
   });
-};
+  };
 
-const copyTextToClipboard = async (value) => {
+  const copyTextToClipboard = async (value) => {
   if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
-    await navigator.clipboard.writeText(value);
-    return;
+  await navigator.clipboard.writeText(value);
+  return;
   }
 
   if (typeof document === "undefined") {
-    throw new Error("Clipboard is not available in this environment.");
+  throw new Error("Clipboard is not available in this environment.");
   }
 
   const textArea = document.createElement("textarea");
@@ -806,26 +931,26 @@ const copyTextToClipboard = async (value) => {
   document.body.removeChild(textArea);
 
   if (!copied) {
-    throw new Error("Unable to copy quotation text.");
+  throw new Error("Unable to copy quotation text.");
   }
-};
+  };
 
-const getPublicBaseUrl = () => {
+  const getPublicBaseUrl = () => {
   const browserOrigin = typeof window !== "undefined" ? window.location.origin : "http://localhost:3000";
   const baseUrl = API.defaults.baseURL || browserOrigin;
   return new URL(baseUrl, browserOrigin).origin;
-};
+  };
 
-const createPublicAssetUrl = (filePath = "") => {
+  const createPublicAssetUrl = (filePath = "") => {
   if (!filePath) return "";
   return new URL(filePath, getPublicBaseUrl()).toString();
-};
+  };
 
-const downloadFileFromUrl = async (fileUrl, fileName = "download") => {
+  const downloadFileFromUrl = async (fileUrl, fileName = "download") => {
   const response = await fetch(fileUrl);
 
   if (!response.ok) {
-    throw new Error("Unable to download the generated file.");
+  throw new Error("Unable to download the generated file.");
   }
 
   const blob = await response.blob();
@@ -837,25 +962,175 @@ const downloadFileFromUrl = async (fileUrl, fileName = "download") => {
   link.click();
   document.body.removeChild(link);
   window.URL.revokeObjectURL(objectUrl);
-};
+  };
 
-const SERVICE_TYPE_LABELS = Object.freeze({
+  const escapeWordHtml = (value = "") =>
+  String(value ?? "")
+  .replace(/&/g, "&amp;")
+  .replace(/</g, "&lt;")
+  .replace(/>/g, "&gt;")
+  .replace(/"/g, "&quot;")
+  .replace(/'/g, "&#39;");
+
+  const buildWordQuotationDocumentHtml = (quotation = {}) => {
+  const servicesMarkup = (quotation.services || [])
+  .map((service, index) => `
+    <tr>
+      <td>${index + 1}</td>
+      <td>${escapeWordHtml(service.title || "Service")}</td>
+      <td>${escapeWordHtml(service.typeLabel || "Service")}</td>
+      <td>${escapeWordHtml(service.location || "-")}</td>
+      <td>${escapeWordHtml(service.serviceDateLabel || "-")}</td>
+      <td>${escapeWordHtml(service.quantityLabel || "-")}</td>
+      <td>${escapeWordHtml(service.description || "-")}</td>
+    </tr>
+  `)
+  .join("");
+
+  const itineraryMarkup = (quotation.dayWiseItinerary || [])
+  .map((item) => `
+    <div class="block">
+      <h4>${escapeWordHtml(item.heading || item.dayLabel || "Day Plan")}</h4>
+      <p>${escapeWordHtml(item.description || "-")}</p>
+    </div>
+  `)
+  .join("");
+
+  const listMarkup = (items = []) =>
+  items.length
+  ? `<ul>${items.map((item) => `<li>${escapeWordHtml(item)}</li>`).join("")}</ul>`
+  : `<p class="muted">Not specified</p>`;
+
+  const normalizedTerms = Array.isArray(quotation.termsAndConditions) &&
+  quotation.termsAndConditions.length
+  ? quotation.termsAndConditions
+  : [...DEFAULT_WHATSAPP_TERMS];
+
+  const bankMarkup = (quotation.sellerBankDetails || [])
+  .map((item) => `
+    <tr>
+      <td>${escapeWordHtml(item.label || "")}</td>
+      <td>${escapeWordHtml(item.value || "-")}</td>
+    </tr>
+  `)
+  .join("");
+
+  return `<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Quotation ${escapeWordHtml(quotation.queryId || "Quote")}</title>
+    <style>
+      body { font-family: Calibri, Arial, sans-serif; color: #1f2937; margin: 28px; line-height: 1.5; }
+      h1, h2, h3, h4 { margin: 0; }
+      h1 { font-size: 26px; margin-bottom: 6px; color: #111827; }
+      h2 { font-size: 18px; margin: 22px 0 10px; color: #1d4ed8; }
+      h3 { font-size: 14px; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.08em; color: #475569; }
+      h4 { font-size: 14px; margin-bottom: 6px; color: #0f172a; }
+      p { margin: 0 0 8px; }
+      .muted { color: #64748b; }
+      .hero { border-bottom: 2px solid #e5e7eb; padding-bottom: 16px; margin-bottom: 18px; }
+      .grid { width: 100%; border-collapse: collapse; margin-top: 12px; }
+      .grid td { padding: 8px 10px; border: 1px solid #dbeafe; vertical-align: top; }
+      .services th, .services td { border: 1px solid #d1d5db; padding: 8px 10px; text-align: left; vertical-align: top; }
+      .services th { background: #eff6ff; color: #1e3a8a; }
+      .card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px; margin-top: 12px; }
+      .block { margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid #e5e7eb; }
+      .block:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+      ul { margin: 8px 0 0 18px; padding: 0; }
+      li { margin-bottom: 4px; }
+      .amount { font-size: 20px; font-weight: 700; color: #15803d; }
+    </style>
+  </head>
+  <body>
+    <div class="hero">
+      <h1>Holiday Circuit Quotation</h1>
+      <p class="muted">Quotation No: ${escapeWordHtml(quotation.quotationNumber || "-")}</p>
+      <p class="muted">Query ID: ${escapeWordHtml(quotation.queryId || "-")}</p>
+    </div>
+
+    <h2>Trip Overview</h2>
+    <table class="grid">
+      <tr><td><strong>Agent</strong></td><td>${escapeWordHtml(quotation.recipientCompanyName || quotation.recipientName || "-")}</td></tr>
+      <tr><td><strong>Destination</strong></td><td>${escapeWordHtml(quotation.destination || "-")}</td></tr>
+      <tr><td><strong>Travel Dates</strong></td><td>${escapeWordHtml(quotation.travelDates || "-")}</td></tr>
+      <tr><td><strong>Duration</strong></td><td>${escapeWordHtml(quotation.durationLabel || "-")}</td></tr>
+      <tr><td><strong>Travellers</strong></td><td>${escapeWordHtml(quotation.travelerSummary || "-")}</td></tr>
+      <tr><td><strong>Valid Till</strong></td><td>${escapeWordHtml(quotation.validTill || "-")}</td></tr>
+      <tr><td><strong>Total Amount</strong></td><td class="amount">${escapeWordHtml(quotation.currency || "INR")} ${escapeWordHtml(quotation.totalAmount || 0)}</td></tr>
+    </table>
+
+    <h2>Services</h2>
+    <table class="services" style="width: 100%; border-collapse: collapse;">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Service</th>
+          <th>Type</th>
+          <th>Location</th>
+          <th>Date</th>
+          <th>Quantity</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${servicesMarkup || `<tr><td colspan="7">No services selected</td></tr>`}
+      </tbody>
+    </table>
+
+    <h2>Inclusions</h2>
+    <div class="card">${listMarkup(quotation.inclusions || [])}</div>
+
+    <h2>Exclusions</h2>
+    <div class="card">${listMarkup(quotation.exclusions || [])}</div>
+
+    <h2>Additional Notes</h2>
+    <div class="card">${listMarkup(quotation.additionalNotes || [])}</div>
+
+    <h2>Day-wise Itinerary</h2>
+    <div class="card">${itineraryMarkup || `<p class="muted">No itinerary added</p>`}</div>
+
+    <h2>Bank Details</h2>
+    <table class="grid">
+      ${bankMarkup}
+    </table>
+
+    <h2>Terms and Conditions</h2>
+    <div class="card">${listMarkup(normalizedTerms)}</div>
+  </body>
+</html>`;
+  };
+
+  const downloadWordDocument = (quotation = {}, fileName = "quotation.doc") => {
+  const html = buildWordQuotationDocumentHtml(quotation);
+  const blob = new Blob([html], { type: "application/msword;charset=utf-8" });
+  const objectUrl = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  window.URL.revokeObjectURL(objectUrl);
+  };
+
+  const SERVICE_TYPE_LABELS = Object.freeze({
   hotel: "Hotel",
   transfer: "Transport",
   car: "Transport",
   activity: "Activity",
   sightseeing: "Sightseeing",
-});
+  });
 
-const CONTRACTED_RATE_FILTER_OPTIONS = [
+  const CONTRACTED_RATE_FILTER_OPTIONS = [
   { value: "all", label: "All" },
   { value: "hotel", label: "Hotels" },
   { value: "transfer", label: "Transport" },
   { value: "activity", label: "Activities" },
   { value: "sightseeing", label: "Sightseeing" },
-];
+  ];
 
-const HOTEL_ROOM_TYPE_OPTIONS = [
+  const HOTEL_ROOM_TYPE_OPTIONS = [
   "Standard",
   "Deluxe",
   "Super Deluxe",
@@ -866,9 +1141,9 @@ const HOTEL_ROOM_TYPE_OPTIONS = [
   "Family Room",
   "Villa",
   "Cottage",
-];
+  ];
 
-const HOTEL_ROOM_CATEGORY_OPTIONS = [
+  const HOTEL_ROOM_CATEGORY_OPTIONS = [
   "Single",
   "Double",
   "Twin",
@@ -876,18 +1151,18 @@ const HOTEL_ROOM_CATEGORY_OPTIONS = [
   "Quad",
   "Family",
   "Interconnecting",
-];
+  ];
 
-const HOTEL_BED_TYPE_OPTIONS = [
+  const HOTEL_BED_TYPE_OPTIONS = [
   { value: "king-bed", label: "King Bed" },
   { value: "queen-bed", label: "Queen Bed" },
   { value: "twin-beds", label: "Twin Beds" },
   { value: "double-bed", label: "Double Bed" },
   { value: "single-bed", label: "Single Bed" },
   { value: "extra-bed-rollaway-bed", label: "Extra Bed / Rollaway Bed" },
-];
+  ];
 
-const HOTEL_ROOM_TYPE_FIXED_PRICES = Object.freeze({
+  const HOTEL_ROOM_TYPE_FIXED_PRICES = Object.freeze({
   standard: 5000,
   deluxe: 6000,
   "super deluxe": 9000,
@@ -898,88 +1173,88 @@ const HOTEL_ROOM_TYPE_FIXED_PRICES = Object.freeze({
   "family room": 9500,
   villa: 15000,
   cottage: 7500,
-});
+  });
 
-const HOTEL_BED_TYPE_FIXED_PRICES = Object.freeze({
+  const HOTEL_BED_TYPE_FIXED_PRICES = Object.freeze({
   "king-bed": 7000,
   "queen-bed": 6500,
   "twin-beds": 6200,
   "double-bed": 6000,
   "single-bed": 4500,
   "extra-bed-rollaway-bed": 3000,
-});
+  });
 
-const TRANSPORT_USAGE_OPTIONS = Object.freeze([
+  const TRANSPORT_USAGE_OPTIONS = Object.freeze([
   { value: "point-to-point", label: "One Way", price: 2500 },
   { value: "round-trip", label: "Two Way", price: 4500 },
   { value: "full-day", label: "Full Day", price: 7000 },
   { value: "half-day", label: "Half Day", price: 4000 },
-]);
+  ]);
 
-const TRANSPORT_USAGE_FIXED_PRICES = Object.freeze(
+  const TRANSPORT_USAGE_FIXED_PRICES = Object.freeze(
   TRANSPORT_USAGE_OPTIONS.reduce((accumulator, option) => {
-    accumulator[option.value] = option.price;
-    return accumulator;
+  accumulator[option.value] = option.price;
+  return accumulator;
   }, {}),
-);
+  );
 
-const normalizeServiceFilterType = (type = "") => {
+  const normalizeServiceFilterType = (type = "") => {
   const normalizedType = String(type || "").toLowerCase().trim();
   if (normalizedType === "car" || normalizedType === "transport") {
-    return "transfer";
+  return "transfer";
   }
 
   return normalizedType;
-};
+  };
 
-const normalizeBedTypeValue = (value = "") => {
+  const normalizeBedTypeValue = (value = "") => {
   const normalizedValue = String(value || "").trim().toLowerCase();
 
   if (!normalizedValue) return "";
   if (
-    [
-      "king-bed",
-      "queen-bed",
-      "twin-beds",
-      "double-bed",
-      "single-bed",
-      "extra-bed-rollaway-bed",
-    ].includes(normalizedValue)
+  [
+  "king-bed",
+  "queen-bed",
+  "twin-beds",
+  "double-bed",
+  "single-bed",
+  "extra-bed-rollaway-bed",
+  ].includes(normalizedValue)
   ) {
-    return normalizedValue;
+  return normalizedValue;
   }
   if (normalizedValue.includes("rollaway") || normalizedValue.includes("extra bed")) {
-    return "extra-bed-rollaway-bed";
+  return "extra-bed-rollaway-bed";
   }
   if (normalizedValue.includes("king")) {
-    return "king-bed";
+  return "king-bed";
   }
   if (normalizedValue.includes("queen")) {
-    return "queen-bed";
+  return "queen-bed";
   }
   if (normalizedValue.includes("twin")) {
-    return "twin-beds";
+  return "twin-beds";
   }
   if (normalizedValue.includes("double")) {
-    return "double-bed";
+  return "double-bed";
   }
   if (normalizedValue.includes("single")) {
-    return "single-bed";
+  return "single-bed";
   }
 
   return "";
-};
+  };
 
-const getBedTypeOptionLabel = (value = "") =>
+  const getBedTypeOptionLabel = (value = "") =>
   HOTEL_BED_TYPE_OPTIONS.find((option) => option.value === normalizeBedTypeValue(value))?.label ||
   formatHotelOptionLabel(String(value || "").replace(/-/g, " "));
 
-const formatHotelOptionLabel = (value = "") =>
+  const formatHotelOptionLabel = (value = "") =>
   String(value || "")
-    .trim()
-    .replace(/\b\w/g, (char) => char.toUpperCase());
+  .trim()
+  .replace(/\b\w/g, (char) => char.toUpperCase());
 
-const formatRoomOccupancyLabel = (value = "") => {
+  const formatRoomOccupancyLabel = (value = "") => {
   const normalizedValue = String(value || "").trim().toLowerCase();
 
   if (normalizedValue === "single") return "Single (1 person)";
@@ -991,81 +1266,148 @@ const formatRoomOccupancyLabel = (value = "") => {
   if (normalizedValue === "interconnecting") return "Interconnecting";
 
   return formatHotelOptionLabel(value);
-};
+  };
 
-const buildHotelVariantGroupKey = (service = {}) =>
+  const buildHotelVariantGroupKey = (service = {}) =>
   [
-    service.supplierId || service.dmcId || "",
-    service.title || "",
-    service.city || "",
-    service.country || "",
+  service.supplierId || service.dmcId || "",
+  service.supplierName || service.hotelName || service.title || "",
+  service.city || "",
+  service.country || "",
   ]
-    .map((value) => normalizeComparisonTextValue(value))
-    .join("::");
+  .map((value) => normalizeComparisonTextValue(value))
+  .join("::");
 
-const getHotelVariantServices = (services = [], service = {}) =>
+  const getHotelVariantServices = (services = [], service = {}) =>
   services.filter(
-    (candidate) =>
-      normalizeServiceFilterType(candidate.type) === "hotel" &&
-      buildHotelVariantGroupKey(candidate) === buildHotelVariantGroupKey(service),
+  (candidate) =>
+  normalizeServiceFilterType(candidate.type) === "hotel" &&
+  buildHotelVariantGroupKey(candidate) === buildHotelVariantGroupKey(service),
   );
 
-const buildSelectOptionsWithFallback = (values = [], fallbackValues = []) => {
+  const buildSelectOptionsWithFallback = (values = [], fallbackValues = []) => {
   const optionSet = new Set();
 
   fallbackValues.forEach((value) => {
-    const normalizedValue = String(value || "").trim();
-    if (normalizedValue) {
-      optionSet.add(normalizedValue);
-    }
+  const normalizedValue = String(value || "").trim();
+  if (normalizedValue) {
+  optionSet.add(normalizedValue);
+  }
   });
 
   values.forEach((value) => {
-    const normalizedValue = String(value || "").trim();
-    if (normalizedValue) {
-      optionSet.add(normalizedValue);
-    }
+  const normalizedValue = String(value || "").trim();
+  if (normalizedValue) {
+  optionSet.add(normalizedValue);
+  }
   });
 
   return Array.from(optionSet);
-};
+  };
 
-const normalizeHotelOptionLookupKey = (value = "") =>
+  const normalizeHotelOptionLookupKey = (value = "") =>
   String(value || "").trim().toLowerCase();
 
-const normalizeTransportUsageValue = (value = "") => {
+  const normalizeHotelRoomTypeLookupKey = (value = "") => {
+  const normalizedValue = String(value || "").trim().toLowerCase();
+
+  if (!normalizedValue) {
+  return "";
+  }
+
+  const canonicalMatch = [...HOTEL_ROOM_TYPE_OPTIONS]
+  .sort((left, right) => right.length - left.length)
+  .find((option) => normalizedValue.includes(String(option).toLowerCase()));
+
+  if (canonicalMatch) {
+  return String(canonicalMatch).toLowerCase();
+  }
+
+  return normalizedValue.replace(/\s+room$/i, "").trim();
+  };
+
+  const normalizeTransportUsageValue = (value = "") => {
   const normalizedValue = String(value || "").trim().toLowerCase();
 
   if (!normalizedValue) return "";
   if (TRANSPORT_USAGE_FIXED_PRICES[normalizedValue]) {
-    return normalizedValue;
+  return normalizedValue;
   }
   if (normalizedValue.includes("round") || normalizedValue.includes("two way")) {
-    return "round-trip";
+  return "round-trip";
   }
   if (normalizedValue.includes("full")) {
-    return "full-day";
+  return "full-day";
   }
   if (normalizedValue.includes("half")) {
-    return "half-day";
+  return "half-day";
   }
   if (normalizedValue.includes("point") || normalizedValue.includes("one way")) {
-    return "point-to-point";
+  return "point-to-point";
   }
 
   return normalizedValue;
-};
+  };
 
-const getFixedHotelRoomTypePrice = (roomType = "") =>
-  HOTEL_ROOM_TYPE_FIXED_PRICES[normalizeHotelOptionLookupKey(roomType)] || 0;
+  const getFixedHotelRoomTypePrice = (roomType = "") =>
+  HOTEL_ROOM_TYPE_FIXED_PRICES[normalizeHotelRoomTypeLookupKey(roomType)] || 0;
 
-const getFixedHotelBedTypePrice = (bedType = "") =>
+  const inferHotelRoomTypeValue = (service = {}) => {
+  const explicitRoomType = String(service?.roomType || "").trim();
+  if (explicitRoomType) {
+  return (
+  HOTEL_ROOM_TYPE_OPTIONS.find(
+  (option) =>
+  normalizeHotelRoomTypeLookupKey(option) === normalizeHotelRoomTypeLookupKey(explicitRoomType),
+  ) || explicitRoomType
+  );
+  }
+
+  const haystack = [
+  service?.title,
+  service?.hotelName,
+  service?.description,
+  service?.desc,
+  ]
+  .filter(Boolean)
+  .join(" ")
+  .toLowerCase();
+
+  if (!haystack) {
+  return "";
+  }
+
+  return (
+  [...HOTEL_ROOM_TYPE_OPTIONS]
+  .sort((left, right) => right.length - left.length)
+  .find((option) => haystack.includes(String(option).toLowerCase())) || ""
+  );
+  };
+
+  const getFixedHotelBedTypePrice = (bedType = "") =>
   HOTEL_BED_TYPE_FIXED_PRICES[normalizeHotelOptionLookupKey(bedType)] || 0;
 
-const getFixedTransportUsagePrice = (usageType = "") =>
+  const getFixedTransportUsagePrice = (usageType = "") =>
   TRANSPORT_USAGE_FIXED_PRICES[normalizeTransportUsageValue(usageType)] || 0;
 
-const getTransportUsageOptionDisplayPrice = (service = {}, usageType = "") => {
+  const getResolvedHotelBaseRate = (service = {}, fallbackRate = 0) => {
+  if (normalizeServiceFilterType(service?.type) !== "hotel") {
+  return roundCurrencyAmount(Number(fallbackRate ?? service?.rate ?? service?.price ?? 0));
+  }
+
+  if (service?.hotelRateMode === "service-total") {
+  return roundCurrencyAmount(Number(fallbackRate ?? service?.rate ?? service?.price ?? 0));
+  }
+
+  const fixedRoomTypePrice = getFixedHotelRoomTypePrice(service?.roomType);
+  if (fixedRoomTypePrice > 0) {
+  return roundCurrencyAmount(fixedRoomTypePrice);
+  }
+
+  return roundCurrencyAmount(Number(fallbackRate ?? service?.rate ?? service?.price ?? 0));
+  };
+
+  const getTransportUsageOptionDisplayPrice = (service = {}, usageType = "") => {
   const normalizedUsageType = normalizeTransportUsageValue(usageType);
   const baseline = service.editBaseline || buildServiceEditBaseline(service);
   const baselineUsageType = normalizeTransportUsageValue(baseline.usageType);
@@ -1074,160 +1416,178 @@ const getTransportUsageOptionDisplayPrice = (service = {}, usageType = "") => {
   const selectedFixedPrice = getFixedTransportUsagePrice(normalizedUsageType);
 
   if (
-    normalizedUsageType &&
-    baselineUsageType &&
-    baselineRate > 0 &&
-    baselineFixedPrice > 0 &&
-    selectedFixedPrice > 0
+  normalizedUsageType &&
+  baselineUsageType &&
+  baselineRate > 0 &&
+  baselineFixedPrice > 0 &&
+  selectedFixedPrice > 0
   ) {
-    return Math.max(
-      0,
-      roundCurrencyAmount(baselineRate + (selectedFixedPrice - baselineFixedPrice)),
-    );
+  return Math.max(
+  0,
+  roundCurrencyAmount(baselineRate + (selectedFixedPrice - baselineFixedPrice)),
+  );
   }
 
   return selectedFixedPrice;
-};
+  };
 
-const getFixedHotelOptionDelta = (baselineValue = "", selectedValue = "", getPrice = () => 0) => {
-  if (normalizeHotelOptionLookupKey(baselineValue) === normalizeHotelOptionLookupKey(selectedValue)) {
-    return 0;
+  const getFixedHotelOptionDelta = (
+  baselineValue = "",
+  selectedValue = "",
+  getPrice = () => 0,
+  normalizer = normalizeHotelOptionLookupKey,
+  ) => {
+  if (normalizer(baselineValue) === normalizer(selectedValue)) {
+  return 0;
   }
 
   const baselinePrice = getPrice(baselineValue);
   const selectedPrice = getPrice(selectedValue);
 
   if (!baselinePrice || !selectedPrice) {
-    return 0;
+  return 0;
   }
 
   return selectedPrice - baselinePrice;
-};
+  };
 
-const applyFixedHotelOptionPricing = (service = {}, fallbackRate = 0, fallbackCurrency = "INR") => {
+  const applyFixedHotelOptionPricing = (service = {}, fallbackRate = 0, fallbackCurrency = "INR") => {
   const baseline = service.editBaseline || buildServiceEditBaseline(service);
   const baselineRate = Number(baseline.rate ?? fallbackRate ?? service.rate ?? 0);
   const roomTypeDelta = getFixedHotelOptionDelta(
-    baseline.roomType,
-    service.roomType,
-    getFixedHotelRoomTypePrice,
+  baseline.roomType,
+  service.roomType,
+  getFixedHotelRoomTypePrice,
+  normalizeHotelRoomTypeLookupKey,
   );
   const bedTypeDelta = getFixedHotelOptionDelta(
-    baseline.bedType,
-    service.bedType,
-    getFixedHotelBedTypePrice,
+  baseline.bedType,
+  service.bedType,
+  getFixedHotelBedTypePrice,
   );
-  const adjustedRate = Math.max(0, roundCurrencyAmount(baselineRate + roomTypeDelta + bedTypeDelta));
+  const totalUnitDelta = roomTypeDelta + bedTypeDelta;
+  const adjustedRate =
+  service?.hotelRateMode === "service-total"
+  ? Math.max(0, roundCurrencyAmount(baselineRate + totalUnitDelta))
+  : Math.max(
+    0,
+    roundCurrencyAmount(
+    getResolvedHotelBaseRate(
+    service,
+    totalUnitDelta ? baselineRate + totalUnitDelta : fallbackRate,
+    ),
+    ),
+    );
 
   return {
-    ...service,
-    rate: adjustedRate,
-    currency: normalizeCurrencyCode(fallbackCurrency || service.currency || "INR"),
+  ...service,
+  rate: adjustedRate,
+  currency: normalizeCurrencyCode(fallbackCurrency || service.currency || "INR"),
   };
-};
+  };
 
-const applyFixedTransportUsagePricing = (service = {}, fallbackRate = 0, fallbackCurrency = "INR") => {
+  const applyFixedTransportUsagePricing = (service = {}, fallbackRate = 0, fallbackCurrency = "INR") => {
   const baseline = service.editBaseline || buildServiceEditBaseline(service);
   const baselineRate = Number(baseline.rate ?? fallbackRate ?? service.rate ?? 0);
   const usageDelta = getFixedHotelOptionDelta(
-    baseline.usageType,
-    service.usageType,
-    getFixedTransportUsagePrice,
+  baseline.usageType,
+  service.usageType,
+  getFixedTransportUsagePrice,
   );
 
   return {
-    ...service,
-    usageType: normalizeTransportUsageValue(service.usageType),
-    rate: Math.max(0, roundCurrencyAmount(baselineRate + usageDelta)),
-    currency: normalizeCurrencyCode(fallbackCurrency || service.currency || "INR"),
+  ...service,
+  usageType: normalizeTransportUsageValue(service.usageType),
+  rate: Math.max(0, roundCurrencyAmount(baselineRate + usageDelta)),
+  currency: normalizeCurrencyCode(fallbackCurrency || service.currency || "INR"),
   };
-};
+  };
 
-const doesHotelVariantMatchField = (variant = {}, field = "", value = "") => {
+  const doesHotelVariantMatchField = (variant = {}, field = "", value = "") => {
   if (!field) return false;
 
   if (field === "bedType") {
-    return normalizeBedTypeValue(variant.bedType) === normalizeBedTypeValue(value);
+  return normalizeBedTypeValue(variant.bedType) === normalizeBedTypeValue(value);
   }
 
   return normalizeComparisonTextValue(variant[field]) === normalizeComparisonTextValue(value);
-};
+  };
 
-const getHotelVariantForOption = (hotelVariants = [], service = {}, field = "", value = "") => {
+  const getHotelVariantForOption = (hotelVariants = [], service = {}, field = "", value = "") => {
   const exactMatches = hotelVariants.filter((variant) =>
-    doesHotelVariantMatchField(variant, field, value),
+  doesHotelVariantMatchField(variant, field, value),
   );
 
   if (!exactMatches.length) {
-    return null;
+  return null;
   }
 
   const nextService = {
-    ...service,
-    [field]: field === "bedType" ? normalizeBedTypeValue(value) : value,
+  ...service,
+  [field]: field === "bedType" ? normalizeBedTypeValue(value) : value,
   };
 
   return (
-    exactMatches
-      .map((variant) => ({
-        variant,
-        score: scoreHotelVariantMatch(variant, nextService, field),
-      }))
-      .sort((left, right) => right.score - left.score)[0]?.variant || null
+  exactMatches
+  .map((variant) => ({
+  variant,
+  score: scoreHotelVariantMatch(variant, nextService, field),
+  }))
+  .sort((left, right) => right.score - left.score)[0]?.variant || null
   );
-};
+  };
 
-const getHotelVariantOptions = (services = [], service = {}) => {
+  const getHotelVariantOptions = (services = [], service = {}) => {
   const hotelVariants = getHotelVariantServices(services, service);
   const roomCategories = buildSelectOptionsWithFallback(
-    [
-      ...hotelVariants.map((variant) => variant.roomCategory),
-      service.roomCategory,
-    ],
-    HOTEL_ROOM_CATEGORY_OPTIONS,
+  [
+  ...hotelVariants.map((variant) => variant.roomCategory),
+  service.roomCategory,
+  ],
+  HOTEL_ROOM_CATEGORY_OPTIONS,
   );
   const roomTypes = buildSelectOptionsWithFallback(
-    [
-      ...hotelVariants.map((variant) => variant.roomType),
-      service.roomType,
-    ],
-    HOTEL_ROOM_TYPE_OPTIONS,
+  [
+  ...hotelVariants.map((variant) => variant.roomType),
+  service.roomType,
+  ],
+  HOTEL_ROOM_TYPE_OPTIONS,
   );
   const roomTypeOptions = roomTypes.map((value) => {
-    const bestVariant = getHotelVariantForOption(hotelVariants, service, "roomType", value);
-    const fixedPrice = getFixedHotelRoomTypePrice(value);
-    const rate = fixedPrice || Number(bestVariant?.rate ?? bestVariant?.price ?? 0);
-    const currency = fixedPrice ? "INR" : normalizeCurrencyCode(bestVariant?.currency || service.currency || "INR");
-    const hasPrice = rate > 0;
+  const bestVariant = getHotelVariantForOption(hotelVariants, service, "roomType", value);
+  const fixedPrice = getFixedHotelRoomTypePrice(value);
+  const rate = fixedPrice || Number(bestVariant?.rate ?? bestVariant?.price ?? 0);
+  const currency = fixedPrice ? "INR" : normalizeCurrencyCode(bestVariant?.currency || service.currency || "INR");
+  const hasPrice = rate > 0;
 
-    return {
-      value,
-      label: hasPrice ? `${value} (${formatCurrencyValue(rate, currency)})` : value,
-    };
+  return {
+  value,
+  label: hasPrice ? `${value} (${formatCurrencyValue(rate, currency)})` : value,
+  };
   });
   const bedTypes = Array.from(
-    new Set(
-      [
-        ...HOTEL_BED_TYPE_OPTIONS.map((option) => option.value),
-        ...hotelVariants.map((variant) => normalizeBedTypeValue(variant.bedType)),
-        normalizeBedTypeValue(service.bedType),
-      ].filter(Boolean),
-    ),
+  new Set(
+  [
+  ...HOTEL_BED_TYPE_OPTIONS.map((option) => option.value),
+  ...hotelVariants.map((variant) => normalizeBedTypeValue(variant.bedType)),
+  normalizeBedTypeValue(service.bedType),
+  ].filter(Boolean),
+  ),
   );
 
   return {
-    roomCategories,
-    roomTypes: roomTypeOptions,
-    bedTypes: bedTypes.map((value) => ({
-      value,
-      label:
-        HOTEL_BED_TYPE_OPTIONS.find((option) => option.value === value)?.label ||
-        formatHotelOptionLabel(value),
-    })),
+  roomCategories,
+  roomTypes: roomTypeOptions,
+  bedTypes: bedTypes.map((value) => ({
+  value,
+  label:
+  HOTEL_BED_TYPE_OPTIONS.find((option) => option.value === value)?.label ||
+  formatHotelOptionLabel(value),
+  })),
   };
-};
+  };
 
-const scoreHotelVariantMatch = (variant = {}, nextService = {}, changedField = "") => {
+  const scoreHotelVariantMatch = (variant = {}, nextService = {}, changedField = "") => {
   let score = 0;
 
   const roomCategory = normalizeComparisonTextValue(nextService.roomCategory);
@@ -1238,589 +1598,660 @@ const scoreHotelVariantMatch = (variant = {}, nextService = {}, changedField = "
   const variantBedType = normalizeBedTypeValue(variant.bedType);
 
   if (roomCategory && variantRoomCategory === roomCategory) {
-    score += changedField === "roomCategory" ? 120 : 30;
+  score += changedField === "roomCategory" ? 120 : 30;
   }
 
   if (roomType && variantRoomType === roomType) {
-    score += changedField === "roomType" ? 120 : 30;
+  score += changedField === "roomType" ? 120 : 30;
   }
 
   if (bedType && variantBedType === bedType) {
-    score += changedField === "bedType" ? 120 : 30;
+  score += changedField === "bedType" ? 120 : 30;
   }
 
   if (
-    String(variant.serviceId || variant.id || "").trim() ===
-    String(nextService.serviceId || nextService.id || "").trim()
+  String(variant.serviceId || variant.id || "").trim() ===
+  String(nextService.serviceId || nextService.id || "").trim()
   ) {
-    score += 5;
+  score += 5;
   }
 
   return score;
-};
+  };
 
-const resolveHotelVariantSelection = (services = [], service = {}, changedField = "", value = "") => {
+  const resolveHotelVariantSelection = (services = [], service = {}, changedField = "", value = "") => {
   const nextService = {
-    ...service,
-    [changedField]: changedField === "bedType" ? normalizeBedTypeValue(value) : value,
+  ...service,
+  [changedField]: changedField === "bedType" ? normalizeBedTypeValue(value) : value,
   };
   const hotelVariants = getHotelVariantServices(services, service);
 
   if (!hotelVariants.length) {
-    return applyFixedHotelOptionPricing(nextService, nextService.rate, nextService.currency);
+  return applyFixedHotelOptionPricing(nextService, nextService.rate, nextService.currency);
   }
 
   const bestVariant = getHotelVariantForOption(
-    hotelVariants,
-    nextService,
-    changedField,
-    value,
+  hotelVariants,
+  nextService,
+  changedField,
+  value,
   );
 
   if (!bestVariant) {
-    return applyFixedHotelOptionPricing(nextService, nextService.rate, nextService.currency);
+  return applyFixedHotelOptionPricing(nextService, nextService.rate, nextService.currency);
   }
 
-  return applyFixedHotelOptionPricing({
-    ...nextService,
-    serviceId: bestVariant.serviceId || bestVariant.id || nextService.serviceId,
-    supplierId: bestVariant.supplierId || nextService.supplierId,
-    supplierName: bestVariant.supplierName || nextService.supplierName,
-    dmcId: bestVariant.dmcId || nextService.dmcId,
-    dmcName: bestVariant.dmcName || nextService.dmcName,
-    roomCategory: bestVariant.roomCategory || nextService.roomCategory,
-    roomType: bestVariant.roomType || nextService.roomType,
-    hotelCategory: bestVariant.hotelCategory || nextService.hotelCategory,
-    bedType: normalizeBedTypeValue(bestVariant.bedType) || nextService.bedType,
-    awebRate: Number(bestVariant.awebRate || 0),
-    cwebRate: Number(bestVariant.cwebRate || 0),
-    cwoebRate: Number(bestVariant.cwoebRate || 0),
-  }, bestVariant.rate ?? bestVariant.price ?? nextService.rate ?? 0, bestVariant.currency || nextService.currency || "INR");
-};
+  const matchedVariantRate = Number(bestVariant.rate ?? bestVariant.price ?? 0);
+  const matchedVariantCurrency = normalizeCurrencyCode(
+  bestVariant.currency || nextService.currency || "INR",
+  );
+  const matchedVariantService = {
+  ...nextService,
+  serviceId: bestVariant.serviceId || bestVariant.id || nextService.serviceId,
+  supplierId: bestVariant.supplierId || nextService.supplierId,
+  supplierName: bestVariant.supplierName || nextService.supplierName,
+  title: bestVariant.title || nextService.title,
+  desc: bestVariant.description || bestVariant.desc || nextService.desc,
+  city: bestVariant.city || nextService.city,
+  country: bestVariant.country || nextService.country,
+  dmcId: bestVariant.dmcId || nextService.dmcId,
+  dmcName: bestVariant.dmcName || nextService.dmcName,
+  roomCategory: bestVariant.roomCategory || nextService.roomCategory,
+  roomType: bestVariant.roomType || nextService.roomType,
+  hotelCategory: bestVariant.hotelCategory || nextService.hotelCategory,
+  bedType: normalizeBedTypeValue(bestVariant.bedType) || nextService.bedType,
+  awebRate: Number(bestVariant.awebRate || 0),
+  cwebRate: Number(bestVariant.cwebRate || 0),
+  cwoebRate: Number(bestVariant.cwoebRate || 0),
+  };
 
-const getServiceSearchAliases = (type = "") => {
+  if (matchedVariantRate > 0 && matchedVariantService.hotelRateMode !== "service-total") {
+  return {
+  ...matchedVariantService,
+  rate: roundCurrencyAmount(matchedVariantRate),
+  currency: matchedVariantCurrency,
+  };
+  }
+
+  return applyFixedHotelOptionPricing(
+  matchedVariantService,
+  nextService.rate ?? 0,
+  matchedVariantCurrency,
+  );
+  };
+
+  const getServiceSearchAliases = (type = "") => {
   switch (normalizeServiceFilterType(type)) {
-    case "hotel":
-      return "hotel stay room";
-    case "transfer":
-      return "transport transfer car cab vehicle";
-    case "activity":
-      return "activity experience";
-    case "sightseeing":
-      return "sightseeing sightsheeting tour";
-    default:
-      return "";
+  case "hotel":
+  return "hotel stay room";
+  case "transfer":
+  return "transport transfer car cab vehicle";
+  case "activity":
+  return "activity experience";
+  case "sightseeing":
+  return "sightseeing sightsheeting tour";
+  default:
+  return "";
   }
-};
+  };
 
-const getServiceSearchText = (service = {}) =>
+  const getServiceSearchText = (service = {}) =>
   [
+  service.title,
+  service.serviceName,
+  service.hotelName,
+  service.city,
+  service.country,
+  service.vehicleType,
+  service.usageType,
+  service.hotelCategory,
+  service.roomType,
+  service.bedType,
+  service.desc,
+  normalizeServiceFilterType(service.type),
+  getServiceSearchAliases(service.type),
+  ]
+  .map((value) => String(value || "").trim().toLowerCase())
+  .filter(Boolean)
+  .join(" ");
+
+  const normalizeDestinationMatchText = (value = "") =>
+  String(value || "")
+  .toLowerCase()
+  .replace(/[^a-z0-9]+/g, " ")
+  .replace(/\s+/g, " ")
+  .trim();
+
+  const getDestinationMatchTerms = (destination = "") => {
+  const rawDestination = String(destination || "").trim();
+  if (!rawDestination) return [];
+
+  const normalizedFull = normalizeDestinationMatchText(rawDestination);
+  const normalizedParts = rawDestination
+  .split(/[,/|&+>-]+/)
+  .map((part) => normalizeDestinationMatchText(part))
+  .filter((part) => part && part.length >= 3);
+
+  return Array.from(new Set([normalizedFull, ...normalizedParts].filter(Boolean)));
+  };
+
+  const doesServiceMatchDestination = (service = {}, destination = "") => {
+  const destinationTerms = getDestinationMatchTerms(destination);
+  if (!destinationTerms.length) return true;
+
+  const serviceLocationText = normalizeDestinationMatchText([
+    service.city,
+    service.country,
     service.title,
     service.serviceName,
     service.hotelName,
-    service.city,
-    service.country,
-    service.vehicleType,
-    service.usageType,
-    service.hotelCategory,
-    service.roomType,
-    service.bedType,
     service.desc,
-    normalizeServiceFilterType(service.type),
-    getServiceSearchAliases(service.type),
-  ]
-    .map((value) => String(value || "").trim().toLowerCase())
-    .filter(Boolean)
-    .join(" ");
+    service.description,
+  ].join(" "));
 
-const getServiceTypeLabel = (type = "") =>
+  if (!serviceLocationText) {
+    return false;
+  }
+
+  return destinationTerms.some((term) => serviceLocationText.includes(term));
+  };
+
+  const getServiceTypeLabel = (type = "") =>
   SERVICE_TYPE_LABELS[String(type || "").toLowerCase()] || "Service";
 
-const getSelectedServiceIconTone = (type = "") => {
+  const getSelectedServiceIconTone = (type = "") => {
   switch (normalizeServiceFilterType(type)) {
-    case "hotel":
-      return "bg-[#2f7cf6]";
-    case "activity":
-      return "bg-[#00C950]";
-    case "transfer":
-      return "bg-[#AD46FF]";
-    case "sightseeing":
-      return "bg-[#4f8bff]";
-    default:
-      return "bg-slate-500";
+  case "hotel":
+  return "bg-[#2f7cf6]";
+  case "activity":
+  return "bg-[#00C950]";
+  case "transfer":
+  return "bg-[#AD46FF]";
+  case "sightseeing":
+  return "bg-[#4f8bff]";
+  default:
+  return "bg-slate-500";
   }
-};
+  };
 
-const renderSelectedServiceSummaryIcon = (service = {}) => {
+  const renderSelectedServiceSummaryIcon = (service = {}) => {
   const iconTone = getSelectedServiceIconTone(service.type);
 
   if (React.isValidElement(service.icon)) {
-    return React.cloneElement(service.icon, {
-      className: `h-5 w-5 rounded-lg p-1 text-white ${iconTone}`,
-    });
+  return React.cloneElement(service.icon, {
+  className: `h-5 w-5 rounded-lg p-1 text-white ${iconTone}`,
+  });
   }
 
   return (
-    <span
-      className={`flex h-6 w-6 items-center justify-center rounded-lg text-[11px] font-semibold text-white ${iconTone}`}
-    >
-      {String(service.icon || service.title || "S").trim().charAt(0).toUpperCase()}
-    </span>
+  <span className={`flex h-6 w-6 items-center justify-center rounded-lg text-[11px] font-semibold text-white
+    ${iconTone}`}>
+    {String(service.icon || service.title || "S").trim().charAt(0).toUpperCase()}
+  </span>
   );
-};
+  };
 
-const formatServiceDateLabel = (value) => {
+  const getSelectedServiceIncludedItems = (service = {}) => {
+  const normalizedItems = String(service?.desc || service?.description || "")
+  .split(/,|\||\n/)
+  .map((item) => item.trim())
+  .filter(Boolean);
+
+  return Array.from(new Set(normalizedItems)).slice(0, 12);
+  };
+
+  const formatServiceDateLabel = (value) => {
   if (!value) return "Date pending";
 
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return value;
 
   return parsed.toLocaleDateString("en-GB", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
+  day: "2-digit",
+  month: "short",
+  year: "numeric",
   });
-};
+  };
 
-const getServiceCardDomId = (serviceId) => `quotation-service-card-${serviceId}`;
-const getSelectedServiceSummaryDomId = (serviceId) => `quotation-selected-service-${serviceId}`;
+  const getServiceCardDomId = (serviceId) => `quotation-service-card-${serviceId}`;
+  const getSelectedServiceSummaryDomId = (serviceId) => `quotation-selected-service-${serviceId}`;
 
-const isIndianDestination = (destination = "") => {
+  const isIndianDestination = (destination = "") => {
   const normalizedDestination = String(destination || "").trim().toLowerCase();
   if (!normalizedDestination) return false;
 
   return INDIAN_DESTINATION_KEYWORDS.some((keyword) =>
-    normalizedDestination.includes(keyword),
+  normalizedDestination.includes(keyword),
   );
-};
+  };
 
-const getExchangeRateForCurrency = (currency = "INR", exchangeRates = {}) => {
+  const getExchangeRateForCurrency = (currency = "INR", exchangeRates = {}) => {
   const code = normalizeCurrencyCode(currency);
   if (code === "INR") return 1;
 
   const configuredRate = Number(exchangeRates?.[code]);
   if (Number.isFinite(configuredRate) && configuredRate > 0) {
-    return configuredRate;
+  return configuredRate;
   }
 
   return Number(DEFAULT_EXCHANGE_RATES[code] || 1);
-};
+  };
 
-const convertAmountToInr = (value, currency = "INR", exchangeRates = {}) =>
+  const convertAmountToInr = (value, currency = "INR", exchangeRates = {}) =>
   roundCurrencyAmount(
-    Number(value || 0) * getExchangeRateForCurrency(currency, exchangeRates),
+  Number(value || 0) * getExchangeRateForCurrency(currency, exchangeRates),
   );
 
-const calculateServiceOriginalTotal = (service = {}) => {
+  const calculateServiceOriginalTotal = (service = {}) => {
   const normalizedType = String(service?.type || "").toLowerCase();
 
   if (normalizedType === "hotel") {
-    const nights = Number(service?.nights || 0);
-    const rooms = Math.max(Number(service?.rooms || 1), 1);
-    let total = Number(service?.rate || 0) * nights;
+  const nights = Math.max(Number(service?.nights || 0), 0);
+  const rooms = Math.max(Number(service?.rooms || 1), 1);
+  const hotelQuantity = (nights || 1) * rooms;
+  const hotelBaseAmount = Number(service?.rate || 0) * hotelQuantity;
+  const addonMultiplier = hotelQuantity;
+  let total = hotelBaseAmount;
 
-    if (service?.extraAdult) {
-      total += Number(service?.awebRate || 0) * nights;
-    }
+  if (service?.extraAdult) {
+  total += Number(service?.awebRate || 0) * addonMultiplier;
+  }
 
-    if (service?.childWithBed) {
-      total += Number(service?.cwebRate || 0) * nights;
-    }
+  if (service?.childWithBed) {
+  total += Number(service?.cwebRate || 0) * addonMultiplier;
+  }
 
-    if (service?.childWithoutBed) {
-      total += Number(service?.cwoebRate || 0) * nights;
-    }
+  if (service?.childWithoutBed) {
+  total += Number(service?.cwoebRate || 0) * addonMultiplier;
+  }
 
-    return roundCurrencyAmount(total * rooms);
+  return roundCurrencyAmount(total);
   }
 
   if (normalizedType === "transfer" || normalizedType === "car") {
-    return roundCurrencyAmount(Number(service?.rate || 0) * Number(service?.days || 1));
+  return roundCurrencyAmount(Number(service?.rate || 0) * Number(service?.days || 1));
   }
 
   if (normalizedType === "activity") {
-    return roundCurrencyAmount(Number(service?.rate || 0) * Number(service?.pax || 1));
+  return roundCurrencyAmount(Number(service?.rate || 0) * Number(service?.pax || 1));
   }
 
   if (normalizedType === "sightseeing") {
-    return roundCurrencyAmount(
-      Number(service?.rate || 0) *
-      Math.max(Number(service?.pax || 1), Number(service?.days || 1)),
-    );
+  return roundCurrencyAmount(
+  Number(service?.rate || 0) *
+  Math.max(Number(service?.pax || 1), Number(service?.days || 1)),
+  );
   }
 
   return roundCurrencyAmount(Number(service?.rate || 0));
-};
+  };
 
-const normalizeComparisonDateValue = (value) => {
+  const normalizeComparisonDateValue = (value) => {
   if (!value) return "";
 
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) {
-    return String(value || "").trim();
+  return String(value || "").trim();
   }
 
   return parsed.toISOString().slice(0, 10);
-};
+  };
 
-const normalizeComparisonTextValue = (value = "") =>
+  const normalizeComparisonTextValue = (value = "") =>
   String(value || "").trim().toLowerCase();
 
-const normalizeComparisonCountValue = (value, fallback = 0) => {
+  const normalizeComparisonCountValue = (value, fallback = 0) => {
   if (value === "" || value === null || value === undefined) {
-    return "";
+  return "";
   }
 
   return Number(value || fallback);
-};
+  };
 
-const buildServiceEditBaseline = (service = {}) => {
+  const buildServiceEditBaseline = (service = {}) => {
   const normalizedType = normalizeServiceFilterType(service.type);
   const normalizedRoomCategory =
-    normalizedType === "hotel" ? service.roomCategory || "Double" : service.roomCategory;
+  normalizedType === "hotel" ? service.roomCategory || "Double" : service.roomCategory;
+  const resolvedRoomType =
+  normalizedType === "hotel" ? inferHotelRoomTypeValue(service) : String(service.roomType || "");
   const normalizedBedType =
-    normalizedType === "hotel"
-      ? normalizeBedTypeValue(service.bedType) || "double-bed"
-      : normalizeBedTypeValue(service.bedType) || normalizeComparisonTextValue(service.bedType);
+  normalizedType === "hotel"
+  ? normalizeBedTypeValue(service.bedType) || "double-bed"
+  : normalizeBedTypeValue(service.bedType) || normalizeComparisonTextValue(service.bedType);
 
   return ({
-    rate: roundCurrencyAmount(service.price ?? service.rate ?? 0),
-    serviceDate: normalizeComparisonDateValue(service.serviceDate),
-    nights: normalizeComparisonCountValue(service.nights),
-    days: Number(service.days || 1),
-    pax: Number(service.pax || 1),
-    rooms: Number(service.rooms || 1),
-    usageType: normalizeTransportUsageValue(service.usageType),
-    roomCategory: normalizeComparisonTextValue(normalizedRoomCategory),
-    roomType: normalizeComparisonTextValue(service.roomType),
-    bedType: normalizedBedType,
-    extraAdult: Boolean(service.extraAdult),
-    childWithBed: Boolean(service.childWithBed),
-    childWithoutBed: Boolean(service.childWithoutBed),
-    awebRate: roundCurrencyAmount(service.awebRate || 0),
-    cwebRate: roundCurrencyAmount(service.cwebRate || 0),
-    cwoebRate: roundCurrencyAmount(service.cwoebRate || 0),
+  rate: roundCurrencyAmount(service.price ?? service.rate ?? 0),
+  serviceDate: normalizeComparisonDateValue(service.serviceDate),
+  nights: normalizeComparisonCountValue(service.nights),
+  days: Number(service.days || 1),
+  pax: Number(service.pax || 1),
+  rooms: Number(service.rooms || 1),
+  usageType: normalizeTransportUsageValue(service.usageType),
+  roomCategory: normalizeComparisonTextValue(normalizedRoomCategory),
+  roomType: normalizeComparisonTextValue(resolvedRoomType),
+  bedType: normalizedBedType,
+  extraAdult: Boolean(service.extraAdult),
+  childWithBed: Boolean(service.childWithBed),
+  childWithoutBed: Boolean(service.childWithoutBed),
+  awebRate: roundCurrencyAmount(service.awebRate || 0),
+  cwebRate: roundCurrencyAmount(service.cwebRate || 0),
+  cwoebRate: roundCurrencyAmount(service.cwoebRate || 0),
   });
-};
+  };
 
-const getSelectedServiceQuotationEdits = (service = {}) => {
+  const getSelectedServiceQuotationEdits = (service = {}) => {
   const baseline = service.editBaseline || buildServiceEditBaseline(service);
   const edits = [];
   const serviceType = normalizeServiceFilterType(service.type);
   const currencyCode = normalizeCurrencyCode(service.currency || "INR");
 
   const pushEdit = (key, label, value, variant = "info") => {
-    edits.push({ key, label, value, variant });
+  edits.push({ key, label, value, variant });
   };
 
   if (roundCurrencyAmount(service.rate || 0) !== roundCurrencyAmount(baseline.rate || 0)) {
-    pushEdit("rate", "Rate", formatCurrencyValue(service.rate || 0, currencyCode), "warning");
+  pushEdit("rate", "Rate", formatCurrencyValue(service.rate || 0, currencyCode), "warning");
   }
 
   if (normalizeComparisonDateValue(service.serviceDate) !== normalizeComparisonDateValue(baseline.serviceDate)) {
-    pushEdit("serviceDate", "Date", formatServiceDateLabel(service.serviceDate), "info");
+  pushEdit("serviceDate", "Date", formatServiceDateLabel(service.serviceDate), "info");
   }
 
   if (serviceType === "hotel") {
-    if (normalizeComparisonCountValue(service.nights) !== normalizeComparisonCountValue(baseline.nights)) {
-      pushEdit(
-        "nights",
-        "Nights",
-        `${Number(service.nights || 0)} night${Number(service.nights || 0) === 1 ? "" : "s"}`,
-        "info",
-      );
-    }
+  if (normalizeComparisonCountValue(service.nights) !== normalizeComparisonCountValue(baseline.nights)) {
+  pushEdit(
+  "nights",
+  "Nights",
+  `${Number(service.nights || 0)} night${Number(service.nights || 0) === 1 ? "" : "s"}`,
+  "info",
+  );
+  }
 
-    if (Number(service.rooms || 1) !== Number(baseline.rooms || 1)) {
-      pushEdit(
-        "rooms",
-        "Rooms",
-        `${Number(service.rooms || 0)} room${Number(service.rooms || 0) === 1 ? "" : "s"}`,
-        "info",
-      );
-    }
+  if (Number(service.rooms || 1) !== Number(baseline.rooms || 1)) {
+  pushEdit(
+  "rooms",
+  "Rooms",
+  `${Number(service.rooms || 0)} room${Number(service.rooms || 0) === 1 ? "" : "s"}`,
+  "info",
+  );
+  }
 
-    if (normalizeComparisonTextValue(service.roomType) !== normalizeComparisonTextValue(baseline.roomType)) {
-      pushEdit("roomType", "Room", service.roomType || "Updated", "info");
-    }
+  if (normalizeComparisonTextValue(service.roomType) !== normalizeComparisonTextValue(baseline.roomType)) {
+  pushEdit("roomType", "Room", service.roomType || "Updated", "info");
+  }
 
-    if (normalizeComparisonTextValue(service.roomCategory) !== normalizeComparisonTextValue(baseline.roomCategory)) {
-      pushEdit("roomCategory", "Category", service.roomCategory || "Updated", "info");
-    }
+  if (normalizeComparisonTextValue(service.roomCategory) !== normalizeComparisonTextValue(baseline.roomCategory)) {
+  pushEdit("roomCategory", "Category", service.roomCategory || "Updated", "info");
+  }
 
-    if (normalizeComparisonTextValue(service.bedType) !== normalizeComparisonTextValue(baseline.bedType)) {
-      const bedLabel = getBedTypeOptionLabel(service.bedType) || "Updated";
-      pushEdit("bedType", "Bed", bedLabel, "info");
-    }
+  if (normalizeComparisonTextValue(service.bedType) !== normalizeComparisonTextValue(baseline.bedType)) {
+  const bedLabel = getBedTypeOptionLabel(service.bedType) || "Updated";
+  pushEdit("bedType", "Bed", bedLabel, "info");
+  }
   }
 
   if (serviceType === "transfer") {
-    if (Number(service.days || 1) !== Number(baseline.days || 1)) {
-      pushEdit(
-        "days",
-        "Days",
-        `${Number(service.days || 0)} day${Number(service.days || 0) === 1 ? "" : "s"}`,
-        "info",
-      );
-    }
+  if (Number(service.days || 1) !== Number(baseline.days || 1)) {
+  pushEdit(
+  "days",
+  "Days",
+  `${Number(service.days || 0)} day${Number(service.days || 0) === 1 ? "" : "s"}`,
+  "info",
+  );
+  }
 
-    if (normalizeComparisonTextValue(service.usageType) !== normalizeComparisonTextValue(baseline.usageType)) {
-      pushEdit(
-        "usageType",
-        "Usage",
-        String(service.usageType || "")
-          .replace(/-/g, " ")
-          .replace(/\b\w/g, (char) => char.toUpperCase()) || "Updated",
-        "info",
-      );
-    }
+  if (normalizeComparisonTextValue(service.usageType) !== normalizeComparisonTextValue(baseline.usageType)) {
+  pushEdit(
+  "usageType",
+  "Usage",
+  String(service.usageType || "")
+  .replace(/-/g, " ")
+  .replace(/\b\w/g, (char) => char.toUpperCase()) || "Updated",
+  "info",
+  );
+  }
   }
 
   if (serviceType === "activity" || serviceType === "sightseeing") {
-    if (Number(service.pax || 1) !== Number(baseline.pax || 1)) {
-      pushEdit("pax", "Pax", `${Number(service.pax || 0)} pax`, "info");
-    }
+  if (Number(service.pax || 1) !== Number(baseline.pax || 1)) {
+  pushEdit("pax", "Pax", `${Number(service.pax || 0)} pax`, "info");
+  }
   }
 
   if (serviceType === "sightseeing" && Number(service.days || 1) !== Number(baseline.days || 1)) {
-    pushEdit(
-      "days",
-      "Days",
-      `${Number(service.days || 0)} day${Number(service.days || 0) === 1 ? "" : "s"}`,
-      "info",
-    );
+  pushEdit(
+  "days",
+  "Days",
+  `${Number(service.days || 0)} day${Number(service.days || 0) === 1 ? "" : "s"}`,
+  "info",
+  );
   }
 
   [
-    {
-      key: "aweb",
-      enabled: Boolean(service.extraAdult),
-      baselineEnabled: Boolean(baseline.extraAdult),
-      rate: roundCurrencyAmount(service.awebRate || 0),
-      baselineRate: roundCurrencyAmount(baseline.awebRate || 0),
-      label: "A.W.E.B",
-    },
-    {
-      key: "cweb",
-      enabled: Boolean(service.childWithBed),
-      baselineEnabled: Boolean(baseline.childWithBed),
-      rate: roundCurrencyAmount(service.cwebRate || 0),
-      baselineRate: roundCurrencyAmount(baseline.cwebRate || 0),
-      label: "C.W.E.B",
-    },
-    {
-      key: "cwoeb",
-      enabled: Boolean(service.childWithoutBed),
-      baselineEnabled: Boolean(baseline.childWithoutBed),
-      rate: roundCurrencyAmount(service.cwoebRate || 0),
-      baselineRate: roundCurrencyAmount(baseline.cwoebRate || 0),
-      label: "C.Wo.E.B",
-    },
+  {
+  key: "aweb",
+  enabled: Boolean(service.extraAdult),
+  baselineEnabled: Boolean(baseline.extraAdult),
+  rate: roundCurrencyAmount(service.awebRate || 0),
+  baselineRate: roundCurrencyAmount(baseline.awebRate || 0),
+  label: "A.W.E.B",
+  },
+  {
+  key: "cweb",
+  enabled: Boolean(service.childWithBed),
+  baselineEnabled: Boolean(baseline.childWithBed),
+  rate: roundCurrencyAmount(service.cwebRate || 0),
+  baselineRate: roundCurrencyAmount(baseline.cwebRate || 0),
+  label: "C.W.E.B",
+  },
+  {
+  key: "cwoeb",
+  enabled: Boolean(service.childWithoutBed),
+  baselineEnabled: Boolean(baseline.childWithoutBed),
+  rate: roundCurrencyAmount(service.cwoebRate || 0),
+  baselineRate: roundCurrencyAmount(baseline.cwoebRate || 0),
+  label: "C.Wo.E.B",
+  },
   ].forEach((addon) => {
-    const enabledChanged = addon.enabled !== addon.baselineEnabled;
-    const rateChanged = addon.rate !== addon.baselineRate;
+  const enabledChanged = addon.enabled !== addon.baselineEnabled;
+  const rateChanged = addon.rate !== addon.baselineRate;
 
-    if (addon.enabled && (enabledChanged || rateChanged)) {
-      pushEdit(
-        addon.key,
-        addon.label,
-        `${formatCurrencyValue(addon.rate, currencyCode)}/night`,
-        "success",
-      );
-      return;
-    }
+  if (addon.enabled && (enabledChanged || rateChanged)) {
+  pushEdit(
+  addon.key,
+  addon.label,
+  `${formatCurrencyValue(addon.rate, currencyCode)}/night`,
+  "success",
+  );
+  return;
+  }
 
-    if (!addon.enabled && addon.baselineEnabled) {
-      pushEdit(addon.key, addon.label, "Removed", "danger");
-    }
+  if (!addon.enabled && addon.baselineEnabled) {
+  pushEdit(addon.key, addon.label, "Removed", "danger");
+  }
   });
 
   return edits;
-};
+  };
 
-
-const QuotationBuilder = () => {
+  const QuotationBuilder = () => {
   const resolveDmcOwner = (service = {}) => ({
-    dmcId: service.dmcId || service.supplierId || "",
-    dmcName: service.dmcName || "",
+  dmcId: service.dmcId || service.supplierId || "",
+  dmcName: service.dmcName || "",
   });
 
   const formatDateInput = (value) => {
-    if (!value) return "";
-    const parsed = new Date(value);
-    if (Number.isNaN(parsed.getTime())) return "";
-    return parsed.toISOString().slice(0, 10);
+  if (!value) return "";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "";
+  return parsed.toISOString().slice(0, 10);
   };
 
   const addDaysToDate = (value, daysToAdd = 0) => {
-    const parsed = new Date(value);
-    if (Number.isNaN(parsed.getTime())) return "";
-    parsed.setDate(parsed.getDate() + Number(daysToAdd || 0));
-    return parsed.toISOString().slice(0, 10);
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "";
+  parsed.setDate(parsed.getDate() + Number(daysToAdd || 0));
+  return parsed.toISOString().slice(0, 10);
   };
 
   const normalizeQuotationServiceType = (type) => {
-    const normalizedType = String(type || "").toLowerCase();
-    if (normalizedType === "car" || normalizedType === "transport") {
-      return "transfer";
-    }
+  const normalizedType = String(type || "").toLowerCase();
+  if (normalizedType === "car" || normalizedType === "transport") {
+  return "transfer";
+  }
 
-    return normalizedType || type;
+  return normalizedType || type;
   };
 
   const parsePackageServiceDayNumber = (value) => {
-    if (value === null || value === undefined || value === "") return null;
+  if (value === null || value === undefined || value === "") return null;
 
-    const match = String(value).match(/(\d+)/);
-    if (!match) return null;
+  const match = String(value).match(/(\d+)/);
+  if (!match) return null;
 
-    const parsedDay = Number(match[1]);
-    if (!Number.isFinite(parsedDay) || parsedDay <= 0) return null;
-
-    return parsedDay;
-  };
-
-  const getPackageServiceDate = (serviceDay) => {
+  const parsedDay = Number(match[1]);
+  if (!Number.isFinite(parsedDay) || parsedDay <= 0) return null; return parsedDay; }; const
+    getPackageServiceDate=(serviceDay)=> {
     const dayNumber = parsePackageServiceDayNumber(serviceDay);
     if (!dayNumber || !order?.startDate) return "";
 
     return addDaysToDate(order.startDate, dayNumber - 1);
-  };
+    };
 
-  const getPackageServiceQuantity = (item = {}, fallbackKeys = []) => {
+    const getPackageServiceQuantity = (item = {}, fallbackKeys = []) => {
     const keys = ["quantity", "qty", ...fallbackKeys];
 
     for (const key of keys) {
-      const value = Number(item?.[key]);
-      if (Number.isFinite(value) && value > 0) {
-        return value;
-      }
+    const value = Number(item?.[key]);
+    if (Number.isFinite(value) && value > 0) {
+    return value;
+    }
     }
 
     return 1;
-  };
+    };
 
-  const getPackageMatchedServiceDayValue = (item = {}, serviceType = "") => {
+    const getPackageMatchedServiceDayValue = (item = {}, serviceType = "") => {
     const directDayValue = item.day || item.dayNumber || item.serviceDay || "";
     if (directDayValue) return directDayValue;
 
     const normalizedType = String(serviceType || "").toLowerCase();
     if (
-      (normalizedType === "transfer" || normalizedType === "car") &&
-      !item.quantity &&
-      !item.qty
+    (normalizedType === "transfer" || normalizedType === "car") &&
+    !item.quantity &&
+    !item.qty
     ) {
-      return item.days || "";
+    return item.days || "";
     }
 
     return "";
-  };
+    };
 
-  const normalizeServiceLabel = (value) =>
+    const normalizeServiceLabel = (value) =>
     (value || "")
-      .toString()
-      .toLowerCase()
-      .replace(/[^a-z0-9]/g, "");
+    .toString()
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
 
-  const normalizeLocationLabel = (value) =>
+    const normalizeLocationLabel = (value) =>
     (value || "")
-      .toString()
-      .toLowerCase()
-      .replace(/[^a-z0-9\s]/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
+    .toString()
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 
-  const getServiceTokens = (value) =>
+    const getServiceTokens = (value) =>
     (value || "")
-      .toString()
-      .toLowerCase()
-      .replace(/[^a-z0-9\s]/g, " ")
-      .split(/\s+/)
-      .filter((token) => token.length > 2);
+    .toString()
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter((token) => token.length > 2);
 
-  const getComparableServiceType = (type = "") => {
+    const getComparableServiceType = (type = "") => {
     const normalizedType = normalizeQuotationServiceType(type);
     return normalizedType === "transport" ? "transfer" : normalizedType;
-  };
+    };
 
-  const getPackageItemDisplayNames = (item = {}) =>
+    const getPackageItemDisplayNames = (item = {}) =>
     [
-      item.name,
-      item.hotelName,
-      item.serviceName,
-      item.title,
+    item.name,
+    item.hotelName,
+    item.serviceName,
+    item.title,
     ]
-      .map((value) => String(value || "").trim())
-      .filter(Boolean);
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
 
-  const getContractedServiceDisplayNames = (service = {}) =>
+    const getContractedServiceDisplayNames = (service = {}) =>
     [
-      service.title,
-      service.serviceName,
-      service.hotelName,
+    service.title,
+    service.serviceName,
+    service.hotelName,
     ]
-      .map((value) => String(value || "").trim())
-      .filter(Boolean);
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
 
-  const getPackageLocationNames = (pkg = {}) =>
+    const getPackageLocationNames = (pkg = {}) =>
     [
-      pkg.destination,
-      pkg.city,
-      pkg.country,
+    pkg.destination,
+    pkg.city,
+    pkg.country,
     ]
-      .map((value) => normalizeLocationLabel(value))
-      .filter(Boolean);
+    .map((value) => normalizeLocationLabel(value))
+    .filter(Boolean);
 
-  const getServiceLocationNames = (service = {}) =>
+    const getServiceLocationNames = (service = {}) =>
     [
-      service.city,
-      service.country,
+    service.city,
+    service.country,
     ]
-      .map((value) => normalizeLocationLabel(value))
-      .filter(Boolean);
+    .map((value) => normalizeLocationLabel(value))
+    .filter(Boolean);
 
-  const doesServiceMatchPackageLocation = (service = {}, pkg = {}) => {
+    const doesServiceMatchPackageLocation = (service = {}, pkg = {}) => {
     const packageLocations = getPackageLocationNames(pkg);
     if (!packageLocations.length) {
-      return true;
+    return true;
     }
 
     const serviceLocations = getServiceLocationNames(service);
     if (!serviceLocations.length) {
-      return false;
+    return false;
     }
 
     return packageLocations.some((packageLocation) =>
-      serviceLocations.some((serviceLocation) => {
-        if (!packageLocation || !serviceLocation) {
-          return false;
-        }
+    serviceLocations.some((serviceLocation) => {
+    if (!packageLocation || !serviceLocation) {
+    return false;
+    }
 
-        if (
-          packageLocation === serviceLocation ||
-          packageLocation.includes(serviceLocation) ||
-          serviceLocation.includes(packageLocation)
-        ) {
-          return true;
-        }
-
-        const packageTokens = getServiceTokens(packageLocation);
-        const serviceTokens = getServiceTokens(serviceLocation);
-        const overlappingTokens = packageTokens.filter((token) =>
-          serviceTokens.includes(token),
-        );
-
-        return overlappingTokens.length > 0;
-      }),
-    );
-  };
-
-  const getPackageItemMatchScore = (item = {}, service = {}) => {
     if (
-      getComparableServiceType(item.packageType || item.type) !==
-      getComparableServiceType(service.type)
+    packageLocation === serviceLocation ||
+    packageLocation.includes(serviceLocation) ||
+    serviceLocation.includes(packageLocation)
     ) {
-      return -1;
+    return true;
+    }
+
+    const packageTokens = getServiceTokens(packageLocation);
+    const serviceTokens = getServiceTokens(serviceLocation);
+    const overlappingTokens = packageTokens.filter((token) =>
+    serviceTokens.includes(token),
+    );
+
+    return overlappingTokens.length > 0;
+    }),
+    );
+    };
+
+    const getPackageItemMatchScore = (item = {}, service = {}) => {
+    if (
+    getComparableServiceType(item.packageType || item.type) !==
+    getComparableServiceType(service.type)
+    ) {
+    return -1;
     }
 
     const packageNames = getPackageItemDisplayNames(item);
@@ -1828,616 +2259,803 @@ const QuotationBuilder = () => {
     let bestScore = 0;
 
     for (const packageName of packageNames) {
-      const normalizedPackageName = normalizeServiceLabel(packageName);
-      const packageTokens = getServiceTokens(packageName);
+    const normalizedPackageName = normalizeServiceLabel(packageName);
+    const packageTokens = getServiceTokens(packageName);
 
-      for (const serviceName of serviceNames) {
-        const normalizedServiceName = normalizeServiceLabel(serviceName);
-        const serviceTokens = getServiceTokens(serviceName);
+    for (const serviceName of serviceNames) {
+    const normalizedServiceName = normalizeServiceLabel(serviceName);
+    const serviceTokens = getServiceTokens(serviceName);
 
-        if (!normalizedPackageName || !normalizedServiceName) {
-          continue;
-        }
-
-        if (normalizedPackageName === normalizedServiceName) {
-          bestScore = Math.max(bestScore, 100);
-          continue;
-        }
-
-        if (
-          normalizedPackageName.includes(normalizedServiceName) ||
-          normalizedServiceName.includes(normalizedPackageName)
-        ) {
-          bestScore = Math.max(bestScore, 88);
-          continue;
-        }
-
-        const overlappingTokens = packageTokens.filter((token) =>
-          serviceTokens.includes(token),
-        );
-
-        if (
-          packageTokens.length > 0 &&
-          serviceTokens.length > 0 &&
-          overlappingTokens.length >= Math.min(2, packageTokens.length, serviceTokens.length)
-        ) {
-          bestScore = Math.max(bestScore, 72 + overlappingTokens.length);
-          continue;
-        }
-
-        if (
-          overlappingTokens.length === 1 &&
-          (packageTokens.length <= 2 || serviceTokens.length <= 2)
-        ) {
-          bestScore = Math.max(bestScore, 58);
-        }
-      }
+    if (!normalizedPackageName || !normalizedServiceName) {
+    continue;
     }
 
-    return bestScore;
-  };
+    if (normalizedPackageName === normalizedServiceName) {
+    bestScore = Math.max(bestScore, 100);
+    continue;
+    }
 
-  const buildPackageServicePatch = (item = {}, service = {}) => {
-    const quantity = getPackageServiceQuantity(
+    if (
+    normalizedPackageName.includes(normalizedServiceName) ||
+    normalizedServiceName.includes(normalizedPackageName)
+    ) {
+    bestScore = Math.max(bestScore, 88);
+    continue;
+    }
+
+    const overlappingTokens = packageTokens.filter((token) =>
+    serviceTokens.includes(token),
+    );
+
+    if (
+    packageTokens.length > 0 &&
+    serviceTokens.length > 0 &&
+    overlappingTokens.length >= Math.min(2, packageTokens.length, serviceTokens.length)
+    ) {
+    bestScore = Math.max(bestScore, 72 + overlappingTokens.length);
+    continue;
+    }
+
+    if (
+    overlappingTokens.length === 1 &&
+    (packageTokens.length <= 2 || serviceTokens.length <=2) ) { bestScore=Math.max(bestScore, 58); } } } return
+      bestScore; }; const buildPackageServicePatch=(item={}, service={})=> {
+      const quantity = getPackageServiceQuantity(
       item,
       service.type === "hotel"
-        ? ["nights", "days"]
-        : service.type === "transfer" || service.type === "car"
-          ? ["days", "duration"]
-          : ["pax", "days"],
-    );
-    const serviceDate =
+      ? ["nights", "days"]
+      : service.type === "transfer" || service.type === "car"
+      ? ["days", "duration"]
+      : ["pax", "days"],
+      );
+      const serviceDate =
       getPackageServiceDate(getPackageMatchedServiceDayValue(item, service.type)) ||
       service.serviceDate ||
       formatDateInput(order?.startDate);
-    const unit = String(item.unit || "").toLowerCase();
+      const unit = String(item.unit || "").toLowerCase();
 
-    if (service.type === "hotel") {
+      if (service.type === "hotel") {
       return {
-        checked: true,
-        serviceDate,
-        nights: Math.max(1, quantity),
-      };
-    }
-
-    if (service.type === "transfer" || service.type === "car") {
-      return {
-        checked: true,
-        serviceDate,
-        days: Math.max(1, quantity),
-      };
-    }
-
-    if (service.type === "activity") {
-      return {
-        checked: true,
-        serviceDate,
-        pax: Math.max(1, quantity),
-      };
-    }
-
-    if (service.type === "sightseeing") {
-      return {
-        checked: true,
-        serviceDate,
-        ...(unit.includes("day")
-          ? { days: Math.max(1, quantity) }
-          : { pax: Math.max(1, quantity) }),
-      };
-    }
-
-    return {
       checked: true,
       serviceDate,
-    };
-  };
+      nights: Math.max(1, quantity),
+      };
+      }
 
-  const buildPackageMatchedServices = (availableServices = [], pkg) => {
-    if (!pkg) {
+      if (service.type === "transfer" || service.type === "car") {
+      return {
+      checked: true,
+      serviceDate,
+      days: Math.max(1, quantity),
+      };
+      }
+
+      if (service.type === "activity") {
+      return {
+      checked: true,
+      serviceDate,
+      pax: Math.max(1, quantity),
+      };
+      }
+
+      if (service.type === "sightseeing") {
+      return {
+      checked: true,
+      serviceDate,
+      ...(unit.includes("day")
+      ? { days: Math.max(1, quantity) }
+      : { pax: Math.max(1, quantity) }),
+      };
+      }
+
+      return {
+      checked: true,
+      serviceDate,
+      };
+      };
+
+      const buildPackageMatchedServices = (availableServices = [], pkg) => {
+      if (!pkg) {
       return availableServices;
-    }
+      }
 
-    const packageServices = [
+      const packageServices = [
       ...(pkg.hotels || []).map((item) => ({ ...item, packageType: "hotel" })),
       ...(pkg.activities || []).map((item) => ({ ...item, packageType: "activity" })),
       ...(pkg.sightseeing || []).map((item) => ({ ...item, packageType: "sightseeing" })),
       ...(pkg.transfers || []).map((item) => ({ ...item, packageType: "transfer" })),
-    ];
+      ];
 
-    const matchedUpdates = new Map();
-    const usedServiceIds = new Set();
+      const matchedUpdates = new Map();
+      const usedServiceIds = new Set();
 
-    packageServices.forEach((item) => {
+      packageServices.forEach((item) => {
       const compatibleServices = availableServices.filter(
-        (service) =>
-          !usedServiceIds.has(service.id) &&
-          getComparableServiceType(service.type) === getComparableServiceType(item.packageType) &&
-          doesServiceMatchPackageLocation(service, pkg),
+      (service) =>
+      !usedServiceIds.has(service.id) &&
+      getComparableServiceType(service.type) === getComparableServiceType(item.packageType) &&
+      doesServiceMatchPackageLocation(service, pkg),
       );
 
       if (!compatibleServices.length) {
-        return;
+      return;
       }
 
       const rankedMatches = compatibleServices
-        .map((service) => ({
-          service,
-          score: getPackageItemMatchScore(item, service),
-        }))
-        .sort((first, second) => second.score - first.score);
+      .map((service) => ({
+      service,
+      score: getPackageItemMatchScore(item, service),
+      }))
+      .sort((first, second) => second.score - first.score);
 
       const strongMatch = rankedMatches.find(({ score }) => score >= 58)?.service;
       const selectedService = strongMatch || compatibleServices[0];
 
       if (!selectedService) {
-        return;
+      return;
       }
 
       usedServiceIds.add(selectedService.id);
       matchedUpdates.set(
-        selectedService.id,
-        buildPackageServicePatch(item, selectedService),
+      selectedService.id,
+      buildPackageServicePatch(item, selectedService),
       );
-    });
+      });
 
-    return availableServices.map((service) =>
+      return availableServices.map((service) =>
       matchedUpdates.has(service.id)
-        ? { ...service, ...matchedUpdates.get(service.id) }
-        : { ...service, checked: false },
-    );
-  };
+      ? { ...service, ...matchedUpdates.get(service.id) }
+      : { ...service, checked: false },
+      );
+      };
 
-  const havePackageSelectionsChanged = (previousServices = [], nextServices = []) =>
-    nextServices.some((service, index) => {
+      const havePackageSelectionsChanged = (previousServices = [], nextServices = []) =>
+      nextServices.some((service, index) => {
       const previous = previousServices[index];
 
       if (!previous) {
-        return true;
+      return true;
       }
 
       return (
-        previous.checked !== service.checked ||
-        previous.serviceDate !== service.serviceDate ||
-        Number(previous.nights || 0) !== Number(service.nights || 0) ||
-        Number(previous.days || 0) !== Number(service.days || 0) ||
-        Number(previous.pax || 0) !== Number(service.pax || 0)
+      previous.checked !== service.checked ||
+      previous.serviceDate !== service.serviceDate ||
+      Number(previous.nights || 0) !== Number(service.nights || 0) ||
+      Number(previous.days || 0) !== Number(service.days || 0) ||
+      Number(previous.pax || 0) !== Number(service.pax || 0)
       );
-    });
+      });
 
-  // markup
-  const location = useLocation();
-  const order = location.state ?? null;
-  const hasOrderContext = Boolean(order?._id);
-  const orderQueryId = order?.queryId || "";
-  const navigate = useNavigate();
-  const DEFAULT_GST_PERCENT = 5;
-  const DEFAULT_TCS_PERCENT = 0;
-  const DEFAULT_TOURISM_AMOUNT = 500;
+      // markup
+      const location = useLocation();
+      const order = location.state ?? null;
+      const hasOrderContext = Boolean(order?._id);
+      const orderQueryId = order?.queryId || "";
+      const navigate = useNavigate();
+      const DEFAULT_GST_PERCENT = 5;
+      const DEFAULT_TCS_PERCENT = 0;
+      const DEFAULT_TOURISM_AMOUNT = 500;
 
-  const [showOpsPopup, setShowOpsPopup] = useState(false);
-  // markup
-  const [markup, setMarkup] = useState(5);
-  const [showSendOptions, setShowSendOptions] = useState(false);
-  const [inclusions, setInclusions] = useState([]);
-  const [exclusions, setExclusions] = useState([]);
-  const [additionalNotes, setAdditionalNotes] = useState([]);
-  const [dayWiseItinerary, setDayWiseItinerary] = useState([]);
-  const [dynamicNoteInputs, setDynamicNoteInputs] = useState({
-    inclusion: "",
-    exclusion: "",
-    additionalNote: "",
-  });
-  // ops charges
-  const [serviceCharge, setServiceCharge] = useState(0);
-  const [handlingFee, setHandlingFee] = useState(0);
+      const [showOpsPopup, setShowOpsPopup] = useState(false);
+      // markup
+      const [markup, setMarkup] = useState(5);
+      const [showSendOptions, setShowSendOptions] = useState(false);
+      const [inclusions, setInclusions] = useState([]);
+      const [exclusions, setExclusions] = useState([]);
+      const [additionalNotes, setAdditionalNotes] = useState([]);
+      const [dayWiseItinerary, setDayWiseItinerary] = useState([]);
+      const [dynamicNoteInputs, setDynamicNoteInputs] = useState({
+      inclusion: "",
+      exclusion: "",
+      additionalNote: "",
+      });
+      // ops charges
+      const [serviceCharge, setServiceCharge] = useState(0);
+      const [handlingFee, setHandlingFee] = useState(0);
 
-  const [appliedTaxTotal, setAppliedTaxTotal] = useState(0);
+      const [appliedTaxTotal, setAppliedTaxTotal] = useState(0);
 
-  // tax toggle
-  const [gstChecked, setGstChecked] = useState(false);
-  const [tcsChecked, setTcsChecked] = useState(false);
-  const [tourismChecked, setTourismChecked] = useState(false);
+      // tax toggle
+      const [gstChecked, setGstChecked] = useState(false);
+      const [tcsChecked, setTcsChecked] = useState(false);
+      const [tourismChecked, setTourismChecked] = useState(false);
 
-  // manual override
-  const [gstAmount, setGstAmount] = useState("");
-  const [tcsAmount, setTcsAmount] = useState("");
-  const [tourismAmount, setTourismAmount] = useState("");
+      // manual override
+      const [gstAmount, setGstAmount] = useState("");
+      const [tcsAmount, setTcsAmount] = useState("");
+      const [tourismAmount, setTourismAmount] = useState("");
 
-  // quotation
-  const [validTill, setValidTill] = useState("");
+      // quotation
+      const [validTill, setValidTill] = useState("");
 
-  const [draftServiceCharge, setDraftServiceCharge] = useState(0);
-  const [draftHandlingFee, setDraftHandlingFee] = useState(0);
-  const [draftValidTill, setDraftValidTill] = useState("");
+      const [draftServiceCharge, setDraftServiceCharge] = useState(0);
+      const [draftHandlingFee, setDraftHandlingFee] = useState(0);
+      const [draftValidTill, setDraftValidTill] = useState("");
 
-  const [draftGstChecked, setDraftGstChecked] = useState(false);
-  const [draftTcsChecked, setDraftTcsChecked] = useState(false);
-  const [draftTourismChecked, setDraftTourismChecked] = useState(false);
-  const [gstPercent, setGstPercent] = useState(DEFAULT_GST_PERCENT);
-  const [tcsPercent, setTcsPercent] = useState(DEFAULT_TCS_PERCENT);
-  const [draftGstPercent, setDraftGstPercent] = useState(DEFAULT_GST_PERCENT);
-  const [draftTcsPercent, setDraftTcsPercent] = useState(DEFAULT_TCS_PERCENT);
-  const [draftTourismAmount, setDraftTourismAmount] = useState(0);
-  const [taxSetupMode, setTaxSetupMode] = useState("manual");
+      const [draftGstChecked, setDraftGstChecked] = useState(false);
+      const [draftTcsChecked, setDraftTcsChecked] = useState(false);
+      const [draftTourismChecked, setDraftTourismChecked] = useState(false);
+      const [gstPercent, setGstPercent] = useState(DEFAULT_GST_PERCENT);
+      const [tcsPercent, setTcsPercent] = useState(DEFAULT_TCS_PERCENT);
+      const [draftGstPercent, setDraftGstPercent] = useState(DEFAULT_GST_PERCENT);
+      const [draftTcsPercent, setDraftTcsPercent] = useState(DEFAULT_TCS_PERCENT);
+      const [draftTourismAmount, setDraftTourismAmount] = useState(0);
+      const [taxSetupMode, setTaxSetupMode] = useState("manual");
 
-  const [showQuickServiceModal, setShowQuickServiceModal] = useState(false);
-  const [showQueryRequirements, setShowQueryRequirements] = useState(false);
-  const [marginType, setMarginType] = useState("percentage");
-  const [fixedMargin, setFixedMargin] = useState(0);
-  const [successPopup, setSuccessPopup] = useState({
-    open: false,
-    kind: "quote",
-    invoiceNumber: "",
-    totalAmount: 0,
-    serviceCount: 0,
-    agentName: "",
-    deliveryWarnings: [],
-  });
-  const [services, setServices] = useState([]);
-  const [quotationId, setQuotationId] = useState("");
-  const [loadedQuotationDraft, setLoadedQuotationDraft] = useState(null);
-  const [resolvedAgentPhone, setResolvedAgentPhone] = useState(
-    String(order?.agent?.phone || "").trim(),
-  );
-  const [savingService, setSavingService] = useState(false);
-  const [selectedSendOption, setSelectedSendOption] = useState(null);
-  const [selectedPackageTemplate, setSelectedPackageTemplate] = useState(null);
-  const [exchangeRates, setExchangeRates] = useState(() => ({ ...DEFAULT_EXCHANGE_RATES }));
-  const [quickActionPopup, setQuickActionPopup] = useState(null);
-  const [contractedRatesSearch, setContractedRatesSearch] = useState("");
-  const [contractedRatesFilter, setContractedRatesFilter] = useState("all");
-  const [focusedServiceCardId, setFocusedServiceCardId] = useState("");
-  const [editingServiceCardId, setEditingServiceCardId] = useState("");
-  const [isSelectedServicesModalOpen, setIsSelectedServicesModalOpen] = useState(false);
-  const [selectedServicesModalTargetId, setSelectedServicesModalTargetId] = useState("");
-  const [selectedServicesModalScope, setSelectedServicesModalScope] = useState("all");
-  const [activeWorkspaceModal, setActiveWorkspaceModal] = useState("");
-  const [draftHydrated, setDraftHydrated] = useState(false);
-  const [savingDraftQuote, setSavingDraftQuote] = useState(false);
-  const [showFinanceInvoiceConfirm, setShowFinanceInvoiceConfirm] = useState(false);
-  const [preparingFinanceInvoice, setPreparingFinanceInvoice] = useState(false);
-  const isAnyWorkspaceModalOpen =
-    isSelectedServicesModalOpen || Boolean(activeWorkspaceModal);
-  const isInvoiceRequestedStage = order?.opsStatus === "Invoice_Requested";
-  const quoteCategory = isIndianDestination(order?.destination)
-    ? "domestic"
-    : "international";
+      const [showQuickServiceModal, setShowQuickServiceModal] = useState(false);
+      const [showQueryRequirements, setShowQueryRequirements] = useState(false);
+      const [marginType, setMarginType] = useState("percentage");
+      const [fixedMargin, setFixedMargin] = useState(0);
+      const [successPopup, setSuccessPopup] = useState({
+      open: false,
+      kind: "quote",
+      invoiceNumber: "",
+      totalAmount: 0,
+      serviceCount: 0,
+      agentName: "",
+      deliveryWarnings: [],
+      });
+      const [services, setServices] = useState([]);
+      const [servicesLoading, setServicesLoading] = useState(true);
+      const [servicesLoadError, setServicesLoadError] = useState("");
+      const [quotationId, setQuotationId] = useState("");
+      const [loadedQuotationDraft, setLoadedQuotationDraft] = useState(null);
+      const [baseServicesSnapshot, setBaseServicesSnapshot] = useState([]);
+      const [quotationHistory, setQuotationHistory] = useState([]);
+      const [quotationHistoryLoading, setQuotationHistoryLoading] = useState(false);
+      const [quotationHistoryLoadError, setQuotationHistoryLoadError] = useState("");
+      const [isQuotationHistoryOpen, setIsQuotationHistoryOpen] = useState(false);
+      const [selectedHistoryQuotationId, setSelectedHistoryQuotationId] = useState("");
+      const [activeDraftSourceQuotationId, setActiveDraftSourceQuotationId] = useState(
+      String(order?.editQuotationId || "").trim(),
+      );
+      const [editingTargetQuotationId, setEditingTargetQuotationId] = useState(
+      String(order?.editQuotationId || "").trim(),
+      );
+      const [isFreshDraftMode, setIsFreshDraftMode] = useState(false);
+      const [resolvedAgentPhone, setResolvedAgentPhone] = useState(
+      String(order?.agent?.phone || "").trim(),
+      );
+      const [savingService, setSavingService] = useState(false);
+      const [selectedSendOption, setSelectedSendOption] = useState(null);
+      const [selectedPackageTemplate, setSelectedPackageTemplate] = useState(null);
+      const [exchangeRates, setExchangeRates] = useState(() => ({ ...DEFAULT_EXCHANGE_RATES }));
+      const [quickActionPopup, setQuickActionPopup] = useState(null);
+      const [contractedRatesSearch, setContractedRatesSearch] = useState("");
+      const [contractedRatesFilter, setContractedRatesFilter] = useState("all");
+      const [focusedServiceCardId, setFocusedServiceCardId] = useState("");
+      const [editingServiceCardId, setEditingServiceCardId] = useState("");
+      const [isSelectedServicesModalOpen, setIsSelectedServicesModalOpen] = useState(false);
+      const [selectedServicesModalTargetId, setSelectedServicesModalTargetId] = useState("");
+      const [selectedServicesModalScope, setSelectedServicesModalScope] = useState("all");
+      const [activeWorkspaceModal, setActiveWorkspaceModal] = useState("");
+      const [draftHydrated, setDraftHydrated] = useState(false);
+      const [savingDraftQuote, setSavingDraftQuote] = useState(false);
+      const [showFinanceInvoiceConfirm, setShowFinanceInvoiceConfirm] = useState(false);
+      const [transportSelectionConfirm, setTransportSelectionConfirm] = useState({
+      open: false,
+      serviceId: "",
+      serviceTitle: "",
+      passengerCapacity: 0,
+      passengerCount: 0,
+      });
+      const [preparingFinanceInvoice, setPreparingFinanceInvoice] = useState(false);
+      const isEditingHistoricalQuotation = Boolean(editingTargetQuotationId);
+      const isAnyWorkspaceModalOpen =
+      isSelectedServicesModalOpen || Boolean(activeWorkspaceModal);
+      const isInvoiceRequestedStage = order?.opsStatus === "Invoice_Requested";
+      const quoteCategory = isIndianDestination(order?.destination)
+      ? "domestic"
+      : "international";
+      const sendOptions = [
+      {
+      label: "Dashboard Notification",
+      description: "In-app alert to agent",
+      icon: Bell,
+      },
+      {
+      label: "Email",
+      description: `Send to ${order?.agent?.email || "agent email"}`,
+      icon: Mail,
+      },
+      {
+      label: "WhatsApp",
+      description: "Direct message link",
+      icon: MessageCircle,
+      },
+      {
+      label: "PDF Download",
+      description: "Formatted quote document",
+      icon: Download,
+      },
+      {
+      label: "Word Format",
+      description: "Editable quotation document",
+      icon: FileText,
+      },
+      ];
 
-  const showQuickActionFeedback = (type, title, message) => {
-    setQuickActionPopup({ type, title, message });
-  };
+      const sendOptionsPanelStyle = {
+      width: "100%",
+      maxWidth: "100%",
+      minWidth: 0,
+      };
 
-  const updateDynamicNoteInput = (field, value) => {
-    setDynamicNoteInputs((prev) => ({
+      const showQuickActionFeedback = (type, title, message) => {
+      setQuickActionPopup({ type, title, message });
+      };
+
+      const updateDynamicNoteInput = (field, value) => {
+      setDynamicNoteInputs((prev) => ({
       ...prev,
       [field]: value,
-    }));
-  };
+      }));
+      };
 
-  const appendDynamicNoteItem = (field) => {
-    const normalizedValue = String(dynamicNoteInputs?.[field] || "")
+      const appendDynamicNoteItem = (field) => {
+      const normalizedValue = String(dynamicNoteInputs?.[field] || "")
       .replace(/\s+/g, " ")
       .trim();
 
-    if (!normalizedValue) return;
+      if (!normalizedValue) return;
 
-    const applyUpdate =
+      const applyUpdate =
       field === "inclusion"
-        ? setInclusions
-        : field === "exclusion"
-          ? setExclusions
-          : setAdditionalNotes;
+      ? setInclusions
+      : field === "exclusion"
+      ? setExclusions
+      : setAdditionalNotes;
 
-    applyUpdate((prev) => {
+      applyUpdate((prev) => {
       const nextItems = sanitizeDynamicListItems([...prev, normalizedValue]);
       return Array.from(new Set(nextItems));
-    });
+      });
 
-    setDynamicNoteInputs((prev) => ({
+      setDynamicNoteInputs((prev) => ({
       ...prev,
       [field]: "",
-    }));
-  };
+      }));
+      };
 
-  const removeDynamicNoteItem = (field, indexToRemove) => {
-    const applyUpdate =
+      const removeDynamicNoteItem = (field, indexToRemove) => {
+      const applyUpdate =
       field === "inclusion"
-        ? setInclusions
-        : field === "exclusion"
-          ? setExclusions
-          : setAdditionalNotes;
+      ? setInclusions
+      : field === "exclusion"
+      ? setExclusions
+      : setAdditionalNotes;
 
-    applyUpdate((prev) => prev.filter((_, index) => index !== indexToRemove));
-  };
+      applyUpdate((prev) => prev.filter((_, index) => index !== indexToRemove));
+      };
 
-  const openOpsChargesPopup = () => {
-    setShowOpsPopup(true);
-    setDraftServiceCharge(roundCurrencyAmount(serviceCharge));
-    setDraftHandlingFee(roundCurrencyAmount(handlingFee));
-    setDraftValidTill(validTill);
-    setDraftGstChecked(gstChecked);
-    setDraftTcsChecked(tcsChecked);
-    setDraftTourismChecked(tourismChecked);
-    setDraftGstPercent(Number(gstPercent || DEFAULT_GST_PERCENT));
-    setDraftTcsPercent(Number(tcsPercent || DEFAULT_TCS_PERCENT));
-    setDraftTourismAmount(roundCurrencyAmount(tourismAmount || DEFAULT_TOURISM_AMOUNT));
-    setTaxSetupMode("manual");
-  };
+      const openOpsChargesPopup = () => {
+      setShowOpsPopup(true);
+      setDraftServiceCharge(roundCurrencyAmount(serviceCharge));
+      setDraftHandlingFee(roundCurrencyAmount(handlingFee));
+      setDraftValidTill(validTill);
+      setDraftGstChecked(gstChecked);
+      setDraftTcsChecked(tcsChecked);
+      setDraftTourismChecked(tourismChecked);
+      setDraftGstPercent(Number(gstPercent || DEFAULT_GST_PERCENT));
+      setDraftTcsPercent(Number(tcsPercent || DEFAULT_TCS_PERCENT));
+      setDraftTourismAmount(roundCurrencyAmount(tourismAmount || DEFAULT_TOURISM_AMOUNT));
+      setTaxSetupMode("manual");
+      };
 
-  const applyAutoTaxPreset = () => {
-    setTaxSetupMode("auto");
-    setDraftGstChecked(true);
-    setDraftTcsChecked(true);
-    setDraftTourismChecked(true);
-    setDraftGstPercent((prev) =>
+      const applyAutoTaxPreset = () => {
+      setTaxSetupMode("auto");
+      setDraftGstChecked(true);
+      setDraftTcsChecked(true);
+      setDraftTourismChecked(true);
+      setDraftGstPercent((prev) =>
       Number(prev || DEFAULT_GST_PERCENT) || DEFAULT_GST_PERCENT
-    );
-    setDraftTcsPercent((prev) => Number(prev || DEFAULT_TCS_PERCENT));
-    setDraftTourismAmount((prev) =>
+      );
+      setDraftTcsPercent((prev) => Number(prev || DEFAULT_TCS_PERCENT));
+      setDraftTourismAmount((prev) =>
       roundCurrencyAmount(prev || DEFAULT_TOURISM_AMOUNT) || DEFAULT_TOURISM_AMOUNT
-    );
-  };
+      );
+      };
 
-  useEffect(() => {
-    if (!quickActionPopup) return undefined;
+      useEffect(() => {
+      if (!quickActionPopup) return undefined;
 
-    const timer = setTimeout(() => {
+      const timer = setTimeout(() => {
       setQuickActionPopup(null);
-    }, 2200);
+      }, 2200);
 
-    return () => clearTimeout(timer);
-  }, [quickActionPopup]);
+      return () => clearTimeout(timer);
+      }, [quickActionPopup]);
 
-  useEffect(() => {
-    if (!focusedServiceCardId) return undefined;
+      useEffect(() => {
+      if (!focusedServiceCardId) return undefined;
 
-    const timer = setTimeout(() => {
+      const timer = setTimeout(() => {
       setFocusedServiceCardId("");
-    }, 2200);
+      }, 2200);
 
-    return () => clearTimeout(timer);
-  }, [focusedServiceCardId]);
+      return () => clearTimeout(timer);
+      }, [focusedServiceCardId]);
 
-  useEffect(() => {
-    if (!editingServiceCardId) return;
+      useEffect(() => {
+      if (!editingServiceCardId) return;
 
-    const activeService = services.find((service) => service.id === editingServiceCardId);
-    if (!activeService || !activeService.checked) {
+      const activeService = services.find((service) => service.id === editingServiceCardId);
+      if (!activeService || !activeService.checked) {
       setEditingServiceCardId("");
-    }
-  }, [editingServiceCardId, services]);
-
-  useEffect(() => {
-    if (!isAnyWorkspaceModalOpen || typeof document === "undefined") {
-      return undefined;
-    }
-
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [isAnyWorkspaceModalOpen]);
-
-  useEffect(() => {
-    if (!isAnyWorkspaceModalOpen || typeof window === "undefined") {
-      return undefined;
-    }
-
-    const handleEscape = (event) => {
-      if (event.key === "Escape") {
-        if (activeWorkspaceModal) {
-          setActiveWorkspaceModal("");
-          return;
-        }
-
-        closeSelectedServicesModal();
       }
-    };
+      }, [editingServiceCardId, services]);
 
-    window.addEventListener("keydown", handleEscape);
-    return () => window.removeEventListener("keydown", handleEscape);
-  }, [activeWorkspaceModal, isAnyWorkspaceModalOpen]);
-
-  useEffect(() => {
-    if (!isSelectedServicesModalOpen || selectedServicesModalScope !== "single") return;
-
-    const targetExists = services.some(
-      (service) => service.checked && service.id === selectedServicesModalTargetId,
-    );
-
-    if (!targetExists) {
-      closeSelectedServicesModal();
-    }
-  }, [
-    isSelectedServicesModalOpen,
-    services,
-    selectedServicesModalScope,
-    selectedServicesModalTargetId,
-  ]);
-
-  useEffect(() => {
-    if (!isSelectedServicesModalOpen || !selectedServicesModalTargetId || typeof window === "undefined") {
+      useEffect(() => {
+      if (!isAnyWorkspaceModalOpen || typeof document === "undefined") {
       return undefined;
-    }
+      }
 
-    const timer = window.setTimeout(() => {
+      const previousOverflow = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+
+      return () => {
+      document.body.style.overflow = previousOverflow;
+      };
+      }, [isAnyWorkspaceModalOpen]);
+
+      useEffect(() => {
+      if (!isAnyWorkspaceModalOpen || typeof window === "undefined") {
+      return undefined;
+      }
+
+      const handleEscape = (event) => {
+      if (event.key === "Escape") {
+      if (activeWorkspaceModal) {
+      setActiveWorkspaceModal("");
+      return;
+      }
+
+      closeSelectedServicesModal();
+      }
+      };
+
+      window.addEventListener("keydown", handleEscape);
+      return () => window.removeEventListener("keydown", handleEscape);
+      }, [activeWorkspaceModal, isAnyWorkspaceModalOpen]);
+
+      useEffect(() => {
+      if (!isSelectedServicesModalOpen || selectedServicesModalScope !== "single") return;
+
+      const targetExists = services.some(
+      (service) => service.checked && service.id === selectedServicesModalTargetId,
+      );
+
+      if (!targetExists) {
+      closeSelectedServicesModal();
+      }
+      }, [
+      isSelectedServicesModalOpen,
+      services,
+      selectedServicesModalScope,
+      selectedServicesModalTargetId,
+      ]);
+
+      useEffect(() => {
+      if (!isSelectedServicesModalOpen || !selectedServicesModalTargetId || typeof window === "undefined") {
+      return undefined;
+      }
+
+      const timer = window.setTimeout(() => {
       const target = document.getElementById(
-        getSelectedServiceSummaryDomId(selectedServicesModalTargetId),
+      getSelectedServiceSummaryDomId(selectedServicesModalTargetId),
       );
 
       target?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-    }, 180);
+      }, 180);
 
-    return () => window.clearTimeout(timer);
-  }, [isSelectedServicesModalOpen, selectedServicesModalTargetId, services]);
+      return () => window.clearTimeout(timer);
+      }, [isSelectedServicesModalOpen, selectedServicesModalTargetId, services]);
 
-  useEffect(() => {
-    setResolvedAgentPhone(String(order?.agent?.phone || "").trim());
-  }, [order?._id, order?.agent?.phone]);
+      useEffect(() => {
+      setResolvedAgentPhone(String(order?.agent?.phone || "").trim());
+      }, [order?._id, order?.agent?.phone]);
 
-  useEffect(() => {
-    const loadQuotationDraft = async () => {
-      try {
-        if (!order?._id) return;
+      useEffect(() => {
+      let isDisposed = false;
 
-        const requestConfig = order?.editQuotationId
-          ? {
-              params: {
-                sourceQuotationId: order.editQuotationId,
-              },
-            }
-          : undefined;
-
-        const { data } = await API.get(`/ops/queries/${order._id}/quotation-draft`, requestConfig);
-        const quotation = data?.quotation;
-        const latestAgentPhone = String(
-          data?.query?.agent?.phone || order?.agent?.phone || "",
-        ).trim();
-
-        if (latestAgentPhone) {
-          setResolvedAgentPhone(latestAgentPhone);
-        }
-
-        if (!quotation) return;
-
-        setQuotationId(quotation._id);
-        setLoadedQuotationDraft(quotation);
-        setValidTill(formatDateInput(quotation.validTill));
-        setDraftValidTill(formatDateInput(quotation.validTill));
-
-        const draftOpsMarkupPercent = Number(quotation?.pricing?.opsMarkup?.percent || 0);
-        const draftOpsMarkupAmount = roundCurrencyAmount(quotation?.pricing?.opsMarkup?.amount || 0);
-        if (draftOpsMarkupPercent > 0) {
-          setMarginType("percentage");
-          setMarkup(draftOpsMarkupPercent);
-          setFixedMargin(0);
-        } else if (draftOpsMarkupAmount > 0) {
-          setMarginType("fixed");
-          setFixedMargin(draftOpsMarkupAmount);
-          setMarkup(0);
-        } else {
-          setMarginType("percentage");
-          setMarkup(0);
-          setFixedMargin(0);
-        }
-
-        const nextServiceCharge = roundCurrencyAmount(quotation?.pricing?.opsCharges?.serviceCharge || 0);
-        const nextHandlingFee = roundCurrencyAmount(quotation?.pricing?.opsCharges?.handlingFee || 0);
-        setServiceCharge(nextServiceCharge);
-        setHandlingFee(nextHandlingFee);
-        setDraftServiceCharge(nextServiceCharge);
-        setDraftHandlingFee(nextHandlingFee);
-
-        const nextGstPercent = Number(quotation?.pricing?.tax?.gst?.percent || DEFAULT_GST_PERCENT);
-        const nextTcsPercent = Number(quotation?.pricing?.tax?.tcs?.percent || DEFAULT_TCS_PERCENT);
-        const nextGstAmount = roundCurrencyAmount(quotation?.pricing?.tax?.gst?.amount || 0);
-        const nextTcsAmount = roundCurrencyAmount(quotation?.pricing?.tax?.tcs?.amount || 0);
-        const nextTourismAmount = roundCurrencyAmount(quotation?.pricing?.tax?.tourismFee?.amount || 0);
-        const nextTotalTax = roundCurrencyAmount(quotation?.pricing?.tax?.totalTax || 0);
-        const hasGst = nextGstAmount > 0 || nextGstPercent > 0;
-        const hasTcs = nextTcsAmount > 0 || nextTcsPercent > 0;
-        const hasTourism = nextTourismAmount > 0;
-
-        setGstChecked(hasGst);
-        setTcsChecked(hasTcs);
-        setTourismChecked(hasTourism);
-        setDraftGstChecked(hasGst);
-        setDraftTcsChecked(hasTcs);
-        setDraftTourismChecked(hasTourism);
-        setGstPercent(nextGstPercent);
-        setTcsPercent(nextTcsPercent);
-        setDraftGstPercent(nextGstPercent);
-        setDraftTcsPercent(nextTcsPercent);
-        setGstAmount(nextGstAmount);
-        setTcsAmount(nextTcsAmount);
-        setTourismAmount(nextTourismAmount);
-        setDraftTourismAmount(nextTourismAmount);
-        setAppliedTaxTotal(nextTotalTax);
-        setInclusions(sanitizeDynamicListItems(quotation?.inclusions));
-        setExclusions(sanitizeDynamicListItems(quotation?.exclusions));
-        setAdditionalNotes(sanitizeDynamicListItems(quotation?.additionalNotes));
-        setDayWiseItinerary(
-          reconcileDayWiseItineraryItems(
-            quotation?.dayWiseItinerary,
-            getTripDuration(order?.startDate, order?.endDate).days,
-            formatDateInput(order?.startDate),
-          ),
-        );
-      } catch (error) {
-        console.error("Failed to load quotation draft", error);
-      } finally {
-        setDraftHydrated(false);
+      const loadQuotationHistory = async () => {
+      if (!order?._id) {
+      setQuotationHistory([]);
+      setSelectedHistoryQuotationId("");
+      setQuotationHistoryLoadError("");
+      return;
       }
-    };
 
-    loadQuotationDraft();
-  }, [order?._id]);
+      try {
+      setQuotationHistoryLoading(true);
+      setQuotationHistoryLoadError("");
+      const { data } = await API.get(`/ops/queries/${order._id}/quotations`);
+      const nextHistory = Array.isArray(data?.data?.quotations) ? data.data.quotations : [];
 
+      if (isDisposed) {
+      return;
+      }
 
+      setQuotationHistory(nextHistory);
+      setSelectedHistoryQuotationId((prev) => {
+      if (prev && nextHistory.some((quotation) => quotation.id === prev)) {
+      return prev;
+      }
 
+      return nextHistory[0]?.id || "";
+      });
+      } catch (error) {
+      if (isDisposed) {
+      return;
+      }
 
+      console.error("Failed to load quotation history", error);
+      setQuotationHistory([]);
+      setSelectedHistoryQuotationId("");
+      setQuotationHistoryLoadError(
+      error?.response?.data?.message || "Unable to load quotation history right now.",
+      );
+      } finally {
+      if (!isDisposed) {
+      setQuotationHistoryLoading(false);
+      }
+      }
+      };
 
+      loadQuotationHistory();
 
-  const getTripDuration = (start, end) => {
-    if (!start || !end) {
+      return () => {
+      isDisposed = true;
+      };
+      }, [order?._id]);
+
+      const selectedHistoryQuotation = useMemo(
+      () =>
+      quotationHistory.find((quotation) => quotation.id === selectedHistoryQuotationId) || null,
+      [quotationHistory, selectedHistoryQuotationId],
+      );
+
+      const activeHistoryQuotation = useMemo(
+      () =>
+      quotationHistory.find((quotation) => quotation.id === editingTargetQuotationId) || null,
+      [quotationHistory, editingTargetQuotationId],
+      );
+
+      const resetBuilderWorkspace = () => {
+      setQuotationId("");
+      setLoadedQuotationDraft(null);
+      setValidTill("");
+      setDraftValidTill("");
+      setMarginType("percentage");
+      setMarkup(0);
+      setFixedMargin(0);
+      setServiceCharge(0);
+      setHandlingFee(0);
+      setDraftServiceCharge(0);
+      setDraftHandlingFee(0);
+      setGstChecked(false);
+      setTcsChecked(false);
+      setTourismChecked(false);
+      setDraftGstChecked(false);
+      setDraftTcsChecked(false);
+      setDraftTourismChecked(false);
+      setGstPercent(DEFAULT_GST_PERCENT);
+      setTcsPercent(DEFAULT_TCS_PERCENT);
+      setDraftGstPercent(DEFAULT_GST_PERCENT);
+      setDraftTcsPercent(DEFAULT_TCS_PERCENT);
+      setGstAmount("");
+      setTcsAmount("");
+      setTourismAmount("");
+      setDraftTourismAmount(0);
+      setAppliedTaxTotal(0);
+      setInclusions([]);
+      setExclusions([]);
+      setAdditionalNotes([]);
+      setSelectedPackageTemplate(null);
+      setDayWiseItinerary(
+      reconcileDayWiseItineraryItems(
+      [],
+      getTripDuration(order?.startDate, order?.endDate).days,
+      formatDateInput(order?.startDate),
+      ),
+      );
+      setDraftHydrated(false);
+
+      if (baseServicesSnapshot.length) {
+      setServices(baseServicesSnapshot.map((service) => ({ ...service })));
+      }
+      };
+
+      const applyQuotationDraftToBuilder = (quotation) => {
+      if (!quotation) return;
+
+      setQuotationId(quotation._id || quotation.id || "");
+      setLoadedQuotationDraft(quotation);
+      setValidTill(formatDateInput(quotation.validTill));
+      setDraftValidTill(formatDateInput(quotation.validTill));
+
+      const draftOpsMarkupPercent = Number(quotation?.pricing?.opsMarkup?.percent || 0);
+      const draftOpsMarkupAmount = roundCurrencyAmount(quotation?.pricing?.opsMarkup?.amount || 0);
+      if (draftOpsMarkupPercent > 0) {
+      setMarginType("percentage");
+      setMarkup(draftOpsMarkupPercent);
+      setFixedMargin(0);
+      } else if (draftOpsMarkupAmount > 0) {
+      setMarginType("fixed");
+      setFixedMargin(draftOpsMarkupAmount);
+      setMarkup(0);
+      } else {
+      setMarginType("percentage");
+      setMarkup(0);
+      setFixedMargin(0);
+      }
+
+      const nextServiceCharge = roundCurrencyAmount(quotation?.pricing?.opsCharges?.serviceCharge || 0);
+      const nextHandlingFee = roundCurrencyAmount(quotation?.pricing?.opsCharges?.handlingFee || 0);
+      setServiceCharge(nextServiceCharge);
+      setHandlingFee(nextHandlingFee);
+      setDraftServiceCharge(nextServiceCharge);
+      setDraftHandlingFee(nextHandlingFee);
+
+      const nextGstPercent = Number(quotation?.pricing?.tax?.gst?.percent || DEFAULT_GST_PERCENT);
+      const nextTcsPercent = Number(quotation?.pricing?.tax?.tcs?.percent || DEFAULT_TCS_PERCENT);
+      const nextGstAmount = roundCurrencyAmount(quotation?.pricing?.tax?.gst?.amount || 0);
+      const nextTcsAmount = roundCurrencyAmount(quotation?.pricing?.tax?.tcs?.amount || 0);
+      const nextTourismAmount = roundCurrencyAmount(quotation?.pricing?.tax?.tourismFee?.amount || 0);
+      const nextTotalTax = roundCurrencyAmount(quotation?.pricing?.tax?.totalTax || 0);
+      const hasGst = nextGstAmount > 0 || nextGstPercent > 0;
+      const hasTcs = nextTcsAmount > 0 || nextTcsPercent > 0;
+      const hasTourism = nextTourismAmount > 0;
+
+      setGstChecked(hasGst);
+      setTcsChecked(hasTcs);
+      setTourismChecked(hasTourism);
+      setDraftGstChecked(hasGst);
+      setDraftTcsChecked(hasTcs);
+      setDraftTourismChecked(hasTourism);
+      setGstPercent(nextGstPercent);
+      setTcsPercent(nextTcsPercent);
+      setDraftGstPercent(nextGstPercent);
+      setDraftTcsPercent(nextTcsPercent);
+      setGstAmount(nextGstAmount);
+      setTcsAmount(nextTcsAmount);
+      setTourismAmount(nextTourismAmount);
+      setDraftTourismAmount(nextTourismAmount);
+      setAppliedTaxTotal(nextTotalTax);
+      setInclusions(sanitizeDynamicListItems(quotation?.inclusions));
+      setExclusions(sanitizeDynamicListItems(quotation?.exclusions));
+      setAdditionalNotes(sanitizeDynamicListItems(quotation?.additionalNotes));
+      setDayWiseItinerary(
+      reconcileDayWiseItineraryItems(
+      quotation?.dayWiseItinerary,
+      getTripDuration(order?.startDate, order?.endDate).days,
+      formatDateInput(order?.startDate),
+      ),
+      );
+      };
+
+      useEffect(() => {
+      const loadQuotationDraft = async () => {
+      try {
+      if (!order?._id) return;
+
+      resetBuilderWorkspace();
+
+      const requestConfig = isFreshDraftMode
+      ? {
+      params: {
+      freshDraft: true,
+      },
+      }
+      : activeDraftSourceQuotationId
+        ? {
+        params: {
+        sourceQuotationId: activeDraftSourceQuotationId,
+        },
+        }
+        : undefined;
+
+      const { data } = await API.get(`/ops/queries/${order._id}/quotation-draft`, requestConfig);
+      const quotation = data?.quotation;
+      const latestAgentPhone = String(
+      data?.query?.agent?.phone || order?.agent?.phone || "",
+      ).trim();
+
+      if (latestAgentPhone) {
+      setResolvedAgentPhone(latestAgentPhone);
+      }
+
+      if (!quotation) return;
+      applyQuotationDraftToBuilder(quotation);
+      } catch (error) {
+      console.error("Failed to load quotation draft", error);
+      } finally {
+      setDraftHydrated(false);
+      }
+      };
+
+      loadQuotationDraft();
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      }, [order?._id, activeDraftSourceQuotationId, isFreshDraftMode, baseServicesSnapshot.length]);
+
+      const getTripDuration = (start, end) => {
+      if (!start || !end) {
       return { nights: 0, days: 0, label: "" };
-    }
+      }
 
-    const startDate = new Date(start);
-    const endDate = new Date(end);
-    const diff = endDate - startDate;
-    const days = Math.max(1, Math.ceil(diff / (1000 * 60 * 60 * 24)));
-    const nights = Math.max(0, days - 1);
+      const startDate = new Date(start);
+      const endDate = new Date(end);
+      const diff = endDate - startDate;
+      const days = Math.max(1, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+      const nights = Math.max(0, days - 1);
 
-    return {
+      return {
       nights,
       days,
       label: `${nights}N / ${days}D`,
-    };
-  };
+      };
+      };
 
-  const getServiceMeta = (type) => {
-    switch (type) {
+      const getServiceMeta = (type) => {
+      switch (type) {
       case "hotel":
-        return {
-          icon: <LiaHotelSolid className="w-6 h-5 bg-blue-500 text-white rounded-md p-0.5" />,
-          color: "text-blue-400"
-        };
+      return {
+      icon:
+      <LiaHotelSolid className="w-6 h-5 bg-blue-500 text-white rounded-md p-0.5" />,
+      color: "text-blue-400"
+      };
 
       case "activity":
-        return {
-          icon: <FaWater className=" w-6 h-5 bg-[#00C950] text-white rounded-md p-0.5" />,
-          color: "text-green-400 text-[18px]"
-        };
+      return {
+      icon:
+      <FaWater className=" w-6 h-5 bg-[#00C950] text-white rounded-md p-0.5" />,
+      color: "text-green-400 text-[18px]"
+      };
 
       case "transfer":
       case "car":
-        return {
-          icon: <GiCityCar className=" w-6 h-5 bg-[#AD46FF] text-white rounded-md p-0.5" />,
-          color: "text-blue-400"
-        };
+      return {
+      icon:
+      <GiCityCar className=" w-6 h-5 bg-[#AD46FF] text-white rounded-md p-0.5" />,
+      color: "text-blue-400"
+      };
 
       case "sightseeing":
-        return {
-          icon: <GiModernCity className=" w-6 h-5 bg-blue-500 text-white rounded-md p-0.5" />,
-          color: "text-purple-400"
-        };
+      return {
+      icon:
+      <GiModernCity className=" w-6 h-5 bg-blue-500 text-white rounded-md p-0.5" />,
+      color: "text-purple-400"
+      };
 
       default:
-        return {
-          icon: <GiModernCity />,
-          color: "text-gray-400"
-        };
-    }
-  };
+      return {
+      icon:
+      <GiModernCity />,
+      color: "text-gray-400"
+      };
+      }
+      };
 
-  const mapDraftServiceToUi = (service = {}, overrides = {}) => {
-    const meta = getServiceMeta(service.type);
-    const owner = resolveDmcOwner(service);
+      const mapDraftServiceToUi = (service = {}, overrides = {}) => {
+      const meta = getServiceMeta(service.type);
+      const owner = resolveDmcOwner(service);
+      const resolvedRoomType = inferHotelRoomTypeValue(service) || overrides.fallbackRoomType || "";
+      const resolvedRoomCategory = service.roomCategory || overrides.fallbackRoomCategory || "Double";
+      const resolvedBedType =
+      normalizeBedTypeValue(service.bedType) ||
+      normalizeBedTypeValue(overrides.fallbackBedType) ||
+      "double-bed";
+      const resolvedRate = getResolvedHotelBaseRate(
+      {
+      ...service,
+      roomType: resolvedRoomType,
+      roomCategory: resolvedRoomCategory,
+      bedType: resolvedBedType,
+      },
+      Number(service.price ?? service.rate ?? 0),
+      );
 
-    return {
+      return {
       id: overrides.id || service.serviceId || service._id,
       serviceId: service.serviceId || "",
       dbServiceId: service._id || service.dbServiceId || "",
@@ -2454,22 +3072,24 @@ const QuotationBuilder = () => {
       usageType: service.usageType || "",
       passengerCapacity: service.passengerCapacity || 0,
       luggageCapacity: service.luggageCapacity || 0,
-      rate: Number(service.price ?? service.rate ?? 0),
+      rate: resolvedRate,
       awebRate: Number(service.awebRate || 0),
       cwebRate: Number(service.cwebRate || 0),
       cwoebRate: Number(service.cwoebRate || 0),
       currency: normalizeCurrencyCode(service.currency || "INR"),
       exchangeRate: Number(service.exchangeRate || 1),
       priceInInr: Number(service.priceInInr || 0),
+      originalTotal: Number(service.total || 0),
       totalInInr: Number(service.totalInInr || 0),
+      useStoredPricing: overrides.useStoredPricing ?? true,
       serviceDate: formatDateInput(service.serviceDate),
       nights: service.nights || "",
       days: service.days || 1,
       pax: service.pax || 1,
-      roomCategory: service.roomCategory || "Double",
-      roomType: service.roomType || "",
+      roomCategory: resolvedRoomCategory,
+      roomType: resolvedRoomType,
       hotelCategory: service.hotelCategory || "",
-      bedType: normalizeBedTypeValue(service.bedType) || "double-bed",
+      bedType: resolvedBedType,
       adults: service.adults || 2,
       children: service.children || 0,
       infants: service.infants || 0,
@@ -2477,525 +3097,592 @@ const QuotationBuilder = () => {
       extraAdult: Boolean(service.extraAdult),
       childWithBed: Boolean(service.childWithBed),
       childWithoutBed: Boolean(service.childWithoutBed),
+      hotelRateMode:
+      normalizeServiceFilterType(service.type) === "hotel"
+      ? "service-total"
+      : "unit-rate",
       checked: overrides.checked ?? true,
       custom: overrides.custom ?? !service.serviceId,
       editBaseline: overrides.editBaseline || buildServiceEditBaseline(service),
       icon: meta.icon,
       color: meta.color,
-    };
-  };
+      };
+      };
 
-  const mergeDraftServicesIntoAvailableServices = (availableServices = [], quotation = null) => {
-    const draftServices = Array.isArray(quotation?.services) ? quotation.services : [];
+      const mergeDraftServicesIntoAvailableServices = (availableServices = [], quotation = null) => {
+      const draftServices = Array.isArray(quotation?.services) ? quotation.services : [];
 
-    if (!draftServices.length) {
+      if (!draftServices.length) {
       return availableServices;
-    }
+      }
 
-    const usedDraftIndexes = new Set();
+      const usedDraftIndexes = new Set();
 
-    const mergedBaseServices = availableServices.map((service) => {
+      const mergedBaseServices = availableServices.map((service) => {
       const matchIndex = draftServices.findIndex((draftService, index) => {
-        if (usedDraftIndexes.has(index)) return false;
+      if (usedDraftIndexes.has(index)) return false;
 
-        const draftSourceId = String(draftService?.serviceId || "").trim();
-        const currentSourceId = String(service?.serviceId || service?.id || "").trim();
+      const draftSourceId = String(draftService?.serviceId || "").trim();
+      const currentSourceId = String(service?.serviceId || service?.id || "").trim();
 
-        return Boolean(draftSourceId && currentSourceId && draftSourceId === currentSourceId);
+      return Boolean(draftSourceId && currentSourceId && draftSourceId === currentSourceId);
       });
 
       if (matchIndex === -1) {
-        return service;
+      return service;
       }
 
       usedDraftIndexes.add(matchIndex);
       const draftService = draftServices[matchIndex];
 
       return {
-        ...service,
-        ...mapDraftServiceToUi(draftService, {
-          id: service.id,
-          custom: false,
-          editBaseline: service.editBaseline || buildServiceEditBaseline(service),
-        }),
+      ...service,
+      ...mapDraftServiceToUi(draftService, {
+      id: service.id,
+      custom: false,
+      useStoredPricing: true,
+      fallbackRoomType: service.roomType || "",
+      fallbackRoomCategory: service.roomCategory || "Double",
+      fallbackBedType: service.bedType || "",
+      editBaseline: buildServiceEditBaseline({
+      ...draftService,
+      roomType: inferHotelRoomTypeValue(draftService) || service.roomType || "",
+      roomCategory: draftService.roomCategory || service.roomCategory || "Double",
+      bedType: normalizeBedTypeValue(draftService.bedType) || service.bedType || "",
+      }),
+      }),
       };
-    });
+      });
 
-    const customDraftServices = draftServices
+      const customDraftServices = draftServices
       .filter((_, index) => !usedDraftIndexes.has(index))
-      .map((draftService) => mapDraftServiceToUi(draftService, { custom: true }));
+      .map((draftService) => mapDraftServiceToUi(draftService, { custom: true, useStoredPricing: true }));
 
-    return [...mergedBaseServices, ...customDraftServices];
-  };
+      return [...mergedBaseServices, ...customDraftServices];
+      };
 
-  const buildDraftServicePayload = (service = {}) => ({
-    draftServiceId: service.dbServiceId || "",
-    serviceId: service.custom ? service.serviceId || "" : service.serviceId || service.id,
-    dmcId: resolveDmcOwner(service).dmcId,
-    dmcName: resolveDmcOwner(service).dmcName,
-    supplierId: service.supplierId || "",
-    supplierName: service.supplierName || "",
-    type: normalizeQuotationServiceType(service.type),
-    title: service.title,
-    city: service.city || "",
-    country: service.country || "",
-    description: service.desc || service.description || "",
-    serviceDate: service.serviceDate || "",
-    roomCategory: service.roomCategory || "",
-    roomType: service.roomType || "",
-    hotelCategory: service.hotelCategory || "",
-    bedType: normalizeBedTypeValue(service.bedType),
-    adults: Number(service.adults || 0),
-    children: Number(service.children || 0),
-    infants: Number(service.infants || 0),
-    rooms: Number(service.rooms || 1),
-    nights: Number(service.nights || 0),
-    vehicleType: service.vehicleType || "",
-    passengerCapacity: Number(service.passengerCapacity || 0),
-    luggageCapacity: Number(service.luggageCapacity || 0),
-    usageType: service.usageType || "",
-    days: Number(service.days || 1),
-    pax: Number(service.pax || 1),
-    currency: normalizeCurrencyCode(service.currency || "INR"),
-    price: roundCurrencyAmount(service.rate || 0),
-    exchangeRate: Number(service.exchangeRate || getExchangeRateForCurrency(service.currency, exchangeRates)),
-    priceInInr: roundCurrencyAmount(service.priceInInr || 0),
-    extraAdult: Boolean(service.extraAdult),
-    childWithBed: Boolean(service.childWithBed),
-    childWithoutBed: Boolean(service.childWithoutBed),
-    awebRate: roundCurrencyAmount(service.awebRate || 0),
-    cwebRate: roundCurrencyAmount(service.cwebRate || 0),
-    cwoebRate: roundCurrencyAmount(service.cwoebRate || 0),
-    total: roundCurrencyAmount(service.originalTotal || calculateServiceOriginalTotal(service)),
-    totalInInr: roundCurrencyAmount(
+      const buildDraftServicePayload = (service = {}) => ({
+      draftServiceId: service.dbServiceId || "",
+      serviceId: service.custom ? service.serviceId || "" : service.serviceId || service.id,
+      dmcId: resolveDmcOwner(service).dmcId,
+      dmcName: resolveDmcOwner(service).dmcName,
+      supplierId: service.supplierId || "",
+      supplierName: service.supplierName || "",
+      type: normalizeQuotationServiceType(service.type),
+      title: service.title,
+      city: service.city || "",
+      country: service.country || "",
+      description: service.desc || service.description || "",
+      serviceDate: service.serviceDate || "",
+      roomCategory: service.roomCategory || "",
+      roomType: service.roomType || "",
+      hotelCategory: service.hotelCategory || "",
+      bedType: normalizeBedTypeValue(service.bedType),
+      adults: Number(service.adults || 0),
+      children: Number(service.children || 0),
+      infants: Number(service.infants || 0),
+      rooms: Number(service.rooms || 1),
+      nights: Number(service.nights || 0),
+      vehicleType: service.vehicleType || "",
+      passengerCapacity: Number(service.passengerCapacity || 0),
+      luggageCapacity: Number(service.luggageCapacity || 0),
+      usageType: service.usageType || "",
+      days: Number(service.days || 1),
+      pax: Number(service.pax || 1),
+      currency: normalizeCurrencyCode(service.currency || "INR"),
+      price: roundCurrencyAmount(service.rate || 0),
+      exchangeRate: Number(service.exchangeRate || getExchangeRateForCurrency(service.currency, exchangeRates)),
+      priceInInr: roundCurrencyAmount(service.priceInInr || 0),
+      extraAdult: Boolean(service.extraAdult),
+      childWithBed: Boolean(service.childWithBed),
+      childWithoutBed: Boolean(service.childWithoutBed),
+      awebRate: roundCurrencyAmount(service.awebRate || 0),
+      cwebRate: roundCurrencyAmount(service.cwebRate || 0),
+      cwoebRate: roundCurrencyAmount(service.cwoebRate || 0),
+      total: roundCurrencyAmount(service.originalTotal || calculateServiceOriginalTotal(service)),
+      totalInInr: roundCurrencyAmount(
       service.totalInInr || convertAmountToInr(
-        calculateServiceOriginalTotal(service),
-        service.currency,
-        exchangeRates,
+      calculateServiceOriginalTotal(service),
+      service.currency,
+      exchangeRates,
       ),
-    ),
-  });
+      ),
+      });
 
+      useEffect(() => {
+      const loadServices = async () => {
+      setServicesLoading(true);
+      setServicesLoadError("");
 
-  useEffect(() => {
-    const loadServices = async () => {
       try {
-        const res = await API.get("/ops/dmcAllGetServices");
-        console.log("services", res.data.data);
-        const formatted = res.data.data.map((s) => {
-          const meta = getServiceMeta(s.type);
-          const owner = resolveDmcOwner(s);
-          return {
-            id: s.id,
-            serviceId: s.id,
-            dmcId: owner.dmcId,
-            dmcName: owner.dmcName,
-            supplierId: s.supplierId || "",
-            supplierName: s.supplierName || "",
-            type: s.type,
-            title: s.title,
-            desc: s.description || "",
-            city: s.city || "",
-            country: s.country || "",
-            vehicleType: s.vehicleType || "",
-            usageType: s.usageType || "",
-            passengerCapacity: s.passengerCapacity || 0,
-            luggageCapacity: s.luggageCapacity || 0,
-            rate: s.price || 0,
-            // 🔥 ADD THIS
-            awebRate: s.awebRate || 0,
-            cwebRate: s.cwebRate || 0,
-            cwoebRate: s.cwoebRate || 0,
-            currency: normalizeCurrencyCode(s.currency),
-            serviceDate: s.serviceDate || "",
-            nights: "",
-            days: 1,
-            pax: 1,
-            // ================== ADD THIS ==================
-            roomCategory: s.roomCategory || "Double",
-            roomType: s.roomType,
-            hotelCategory: s.hotelCategory,
-            bedType: normalizeBedTypeValue(s.bedType) || "double-bed",
-            adults: 2,
-            children: 0,
-            infants: 0,
-            rooms: s.rooms || 1,
-          extraAdult: false,
-          childWithBed: false,
-          childWithoutBed: false,
-          editBaseline: buildServiceEditBaseline({
-            ...s,
-            price: s.price || 0,
-            serviceDate: s.serviceDate || "",
-            days: 1,
-            pax: 1,
-          }),
-          // ============================================
-          checked: false,
-          custom: false,
-          icon: meta.icon,
-            color: meta.color
-          };
-        });
+      const res = await API.get("/ops/dmcAllGetServices", {
+      skipGlobalLoader: true,
+      });
+      console.log("services", res.data.data);
+      const formatted = res.data.data.map((s) => {
+      const meta = getServiceMeta(s.type);
+      const owner = resolveDmcOwner(s);
+      const resolvedRoomType = inferHotelRoomTypeValue(s);
+      const resolvedRoomCategory = s.roomCategory || "Double";
+      const resolvedRate = getResolvedHotelBaseRate(
+      { ...s, type: s.type, roomType: resolvedRoomType, roomCategory: resolvedRoomCategory },
+      s.price || 0,
+      );
+      return {
+      id: s.id,
+      serviceId: s.id,
+      dmcId: owner.dmcId,
+      dmcName: owner.dmcName,
+      supplierId: s.supplierId || "",
+      supplierName: s.supplierName || "",
+      type: s.type,
+      title: s.title,
+      desc: s.description || "",
+      city: s.city || "",
+      country: s.country || "",
+      vehicleType: s.vehicleType || "",
+      usageType: s.usageType || "",
+      passengerCapacity: s.passengerCapacity || 0,
+      luggageCapacity: s.luggageCapacity || 0,
+      rate: resolvedRate,
+      // 🔥 ADD THIS
+      awebRate: s.awebRate || 0,
+      cwebRate: s.cwebRate || 0,
+      cwoebRate: s.cwoebRate || 0,
+      currency: normalizeCurrencyCode(s.currency),
+      serviceDate: s.serviceDate || "",
+      nights: "",
+      days: 1,
+      pax: 1,
+      // ================== ADD THIS ==================
+      roomCategory: resolvedRoomCategory,
+      roomType: resolvedRoomType,
+      hotelCategory: s.hotelCategory,
+      bedType: normalizeBedTypeValue(s.bedType) || "double-bed",
+      adults: 2,
+      children: 0,
+      infants: 0,
+      rooms: s.rooms || 1,
+      extraAdult: false,
+      childWithBed: false,
+      childWithoutBed: false,
+      hotelRateMode: normalizeServiceFilterType(s.type) === "hotel" ? "unit-rate" : "unit-rate",
+      editBaseline: buildServiceEditBaseline({
+      ...s,
+      price: s.price || 0,
+      serviceDate: s.serviceDate || "",
+      days: 1,
+      pax: 1,
+      }),
+      // ============================================
+      checked: false,
+      custom: false,
+      icon: meta.icon,
+      color: meta.color
+      };
+      });
 
-        setServices(formatted);
+      setServices(formatted);
+      setBaseServicesSnapshot(formatted.map((service) => ({ ...service })));
       } catch (err) {
-        console.error(err);
+      console.error(err);
+      setServices([]);
+      setBaseServicesSnapshot([]);
+      setServicesLoadError("Unable to load contracted rates right now.");
+      } finally {
+      setServicesLoading(false);
       }
-    };
+      };
 
-    loadServices();
-  }, []);
+      loadServices();
+      }, []);
 
-  useEffect(() => {
-    if (!loadedQuotationDraft || !services.length || draftHydrated) {
+      useEffect(() => {
+      if (!loadedQuotationDraft || !services.length || draftHydrated) {
       return;
-    }
+      }
 
-    setServices((prev) => mergeDraftServicesIntoAvailableServices(prev, loadedQuotationDraft));
-    setDraftHydrated(true);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draftHydrated, loadedQuotationDraft, services.length]);
+      setServices((prev) => mergeDraftServicesIntoAvailableServices(prev, loadedQuotationDraft));
+      setDraftHydrated(true);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      }, [draftHydrated, loadedQuotationDraft, services.length]);
 
-  useEffect(() => {
-    if (!selectedPackageTemplate || !services.length) {
+      useEffect(() => {
+      if (!selectedPackageTemplate || !services.length) {
       return;
-    }
+      }
 
-    setServices((prev) => {
+      setServices((prev) => {
       const next = buildPackageMatchedServices(prev, selectedPackageTemplate);
       return havePackageSelectionsChanged(prev, next) ? next : prev;
-    });
-  }, [selectedPackageTemplate, services.length]);
+      });
+      }, [selectedPackageTemplate, services.length]);
 
-
-
-  const addCustomService = async (data) => {
-    try {
+      const addCustomService = async (data) => {
+      try {
       if (!quotationId) {
-        toast.error("Quotation draft not ready yet");
-        return;
+      toast.error("Quotation draft not ready yet");
+      return;
       }
 
       setSavingService(true);
 
       const payload = {
-        type: data.type,
-        title: data.title,
-        supplierId: data.supplierId || "",
-        supplierName: data.supplierName || "",
-        dmcId: data.dmcId || data.supplierId || "",
-        dmcName: data.dmcName || "",
-        description: data.desc,
-        city: data.city || order?.destination || "",
-        country: data.country || "",
-        serviceDate: data.serviceDate || "",
-        nights: data.nights || "",
-        days: data.days || 1,
-        pax: data.pax || 1,
-        vehicleType: data.vehicleType || "",
-        usageType: data.usageType || "point-to-point",
-        passengerCapacity: data.passengerCapacity || 0,
-        luggageCapacity: data.luggageCapacity || 0,
-        price: data.rate,
-        currency: normalizeCurrencyCode(data.currency || "INR"),
-        exchangeRate: getExchangeRateForCurrency(data.currency || "INR", exchangeRates),
-        priceInInr: convertAmountToInr(data.rate || 0, data.currency || "INR", exchangeRates),
-        totalInInr: convertAmountToInr(
-          calculateServiceOriginalTotal({
-            type: data.type,
-            rate: data.rate,
-            nights: data.nights,
-            days: data.days,
-            pax: data.pax,
-          }),
-          data.currency || "INR",
-          exchangeRates,
-        ),
-        adults: data.adults || 0,
-        children: data.children || 0,
-        infants: data.infants || 0,
-        rooms: data.rooms || 1,
-        bedType: normalizeBedTypeValue(data.bedType) || "double-bed",
+      type: data.type,
+      title: data.title,
+      supplierId: data.supplierId || "",
+      supplierName: data.supplierName || "",
+      dmcId: data.dmcId || data.supplierId || "",
+      dmcName: data.dmcName || "",
+      description: data.desc,
+      city: data.city || order?.destination || "",
+      country: data.country || "",
+      serviceDate: data.serviceDate || "",
+      nights: data.nights || "",
+      days: data.days || 1,
+      pax: data.pax || 1,
+      vehicleType: data.vehicleType || "",
+      usageType: data.usageType || "point-to-point",
+      passengerCapacity: data.passengerCapacity || 0,
+      luggageCapacity: data.luggageCapacity || 0,
+      price: data.rate,
+      currency: normalizeCurrencyCode(data.currency || "INR"),
+      exchangeRate: getExchangeRateForCurrency(data.currency || "INR", exchangeRates),
+      priceInInr: convertAmountToInr(data.rate || 0, data.currency || "INR", exchangeRates),
+      totalInInr: convertAmountToInr(
+      calculateServiceOriginalTotal({
+      type: data.type,
+      rate: data.rate,
+      nights: data.nights,
+      days: data.days,
+      pax: data.pax,
+      }),
+      data.currency || "INR",
+      exchangeRates,
+      ),
+      adults: data.adults || 0,
+      children: data.children || 0,
+      infants: data.infants || 0,
+      rooms: data.rooms || 1,
+      bedType: normalizeBedTypeValue(data.bedType) || "double-bed",
       };
 
       const { data: response } = await API.post(`/ops/quotations/${quotationId}/services`, payload);
 
       const mappedServices = (response.services || []).map((s) => {
-        const meta = getServiceMeta(s.type);
-        const owner = resolveDmcOwner(s);
-        return {
-          id: s._id,
-          serviceId: s.serviceId || "",
-          dbServiceId: s._id,
-          dmcId: owner.dmcId,
-          dmcName: owner.dmcName,
-          supplierId: s.supplierId || "",
-          supplierName: s.supplierName || "",
-          type: s.type,
-          title: s.title,
-          desc: s.description || "",
-          city: s.city || "",
-          country: s.country || "",
-          vehicleType: s.vehicleType || "",
-          usageType: s.usageType || "",
-          passengerCapacity: s.passengerCapacity || 0,
-          luggageCapacity: s.luggageCapacity || 0,
-          rate: s.price || 0,
-          currency: normalizeCurrencyCode(s.currency || "INR"),
-          exchangeRate: Number(s.exchangeRate || 1),
-          priceInInr: Number(s.priceInInr || 0),
-          totalInInr: Number(s.totalInInr || 0),
-          serviceDate: s.serviceDate || "",
-          nights: s.nights || "",
-          days: s.days || 1,
-          pax: s.pax || 1,
-          adults: s.adults || 0,
-          children: s.children || 0,
-          infants: s.infants || 0,
-          rooms: s.rooms || 1,
-          bedType: normalizeBedTypeValue(s.bedType) || "double-bed",
-          roomCategory: s.roomCategory || "Double",
-          roomType: s.roomType || "",
-          hotelCategory: s.hotelCategory || "",
-          extraAdult: Boolean(s.extraAdult),
-          childWithBed: Boolean(s.childWithBed),
-          childWithoutBed: Boolean(s.childWithoutBed),
-          awebRate: Number(s.awebRate || 0),
-          cwebRate: Number(s.cwebRate || 0),
-          cwoebRate: Number(s.cwoebRate || 0),
-          editBaseline: buildServiceEditBaseline(s),
-          checked: true,
-          custom: true,
-          icon: meta.icon,
-          color: meta.color,
-        };
+      const meta = getServiceMeta(s.type);
+      const owner = resolveDmcOwner(s);
+      const resolvedRoomType = inferHotelRoomTypeValue(s);
+      const resolvedRoomCategory = s.roomCategory || "Double";
+      const resolvedRate = getResolvedHotelBaseRate(
+      { ...s, type: s.type, roomType: resolvedRoomType, roomCategory: resolvedRoomCategory },
+      s.price || 0,
+      );
+      return {
+      id: s._id,
+      serviceId: s.serviceId || "",
+      dbServiceId: s._id,
+      dmcId: owner.dmcId,
+      dmcName: owner.dmcName,
+      supplierId: s.supplierId || "",
+      supplierName: s.supplierName || "",
+      type: s.type,
+      title: s.title,
+      desc: s.description || "",
+      city: s.city || "",
+      country: s.country || "",
+      vehicleType: s.vehicleType || "",
+      usageType: s.usageType || "",
+      passengerCapacity: s.passengerCapacity || 0,
+      luggageCapacity: s.luggageCapacity || 0,
+      rate: resolvedRate,
+      currency: normalizeCurrencyCode(s.currency || "INR"),
+      exchangeRate: Number(s.exchangeRate || 1),
+      priceInInr: Number(s.priceInInr || 0),
+      totalInInr: Number(s.totalInInr || 0),
+      serviceDate: s.serviceDate || "",
+      nights: s.nights || "",
+      days: s.days || 1,
+      pax: s.pax || 1,
+      adults: s.adults || 0,
+      children: s.children || 0,
+      infants: s.infants || 0,
+      rooms: s.rooms || 1,
+      bedType: normalizeBedTypeValue(s.bedType) || "double-bed",
+      roomCategory: resolvedRoomCategory,
+      roomType: resolvedRoomType,
+      hotelCategory: s.hotelCategory || "",
+      extraAdult: Boolean(s.extraAdult),
+      childWithBed: Boolean(s.childWithBed),
+      childWithoutBed: Boolean(s.childWithoutBed),
+      hotelRateMode:
+      normalizeServiceFilterType(s.type) === "hotel"
+      ? "service-total"
+      : "unit-rate",
+      awebRate: Number(s.awebRate || 0),
+      cwebRate: Number(s.cwebRate || 0),
+      cwoebRate: Number(s.cwoebRate || 0),
+      editBaseline: buildServiceEditBaseline(s),
+      checked: true,
+      custom: true,
+      icon: meta.icon,
+      color: meta.color,
+      };
       });
 
       setServices((prev) => {
-        const normalServices = prev.filter((item) => !item.custom);
-        return [...normalServices, ...mappedServices];
+      const normalServices = prev.filter((item) => !item.custom);
+      return [...normalServices, ...mappedServices];
       });
 
       showQuickActionFeedback(
-        "success",
-        "Service Added",
-        `${data.title} has been added to this quotation.`
+      "success",
+      "Service Added",
+      `${data.title} has been added to this quotation.`
       );
-    } catch (error) {
+      } catch (error) {
       console.error("Failed to add custom service", error);
       toast.error(error?.response?.data?.message || "Failed to add service");
-    } finally {
+      } finally {
       setSavingService(false);
-    }
-  };
+      }
+      };
 
-
-  const deleteService = async (id) => {
-    try {
+      const deleteService = async (id) => {
+      try {
       const target = services.find((item) => item.id === id);
 
       if (!target?.custom || !target?.dbServiceId) {
-        setServices((prev) => prev.filter((s) => s.id !== id));
-        return;
+      setServices((prev) => prev.filter((s) => s.id !== id));
+      return;
       }
 
       await API.delete(`/ops/quotations/${quotationId}/services/${target.dbServiceId}`);
 
       setServices((prev) => prev.filter((s) => s.id !== id));
       showQuickActionFeedback(
-        "delete",
-        "Service Removed",
-        `${target.title} has been removed from this quotation.`
+      "delete",
+      "Service Removed",
+      `${target.title} has been removed from this quotation.`
       );
-    } catch (error) {
+      } catch (error) {
       console.error("Failed to delete service", error);
       toast.error(error?.response?.data?.message || "Failed to delete service");
-    }
-  };
+      }
+      };
 
-  const selectedServicesWithPricing = useMemo(
-    () =>
+      const selectedServicesWithPricing = useMemo(
+      () =>
       services
-        .filter((service) => service.checked === true)
-        .map((service) => {
-          const currency = normalizeCurrencyCode(service.currency);
-          const exchangeRate = getExchangeRateForCurrency(currency, exchangeRates);
-          const originalTotal = calculateServiceOriginalTotal(service);
-          const priceInInr = convertAmountToInr(
-            Number(service.rate || 0),
-            currency,
-            exchangeRates,
-          );
-          const totalInInr = convertAmountToInr(
-            originalTotal,
-            currency,
-            exchangeRates,
-          );
-
-          return {
-            ...service,
-            currency,
-            exchangeRate,
-            originalTotal,
-            priceInInr,
-            totalInInr,
-            isForeignCurrency: currency !== "INR",
-          };
-        }),
-    [exchangeRates, services],
-  );
-
-  const contractedRateFilterCounts = useMemo(
-    () =>
-      services.reduce(
-        (counts, service) => {
-          counts.all += 1;
-          const type = normalizeServiceFilterType(service.type);
-          if (counts[type] !== undefined) {
-            counts[type] += 1;
-          }
-          return counts;
-        },
-        {
-          all: 0,
-          hotel: 0,
-          transfer: 0,
-          activity: 0,
-          sightseeing: 0,
-        },
+      .filter((service) => service.checked === true)
+      .map((service) => {
+      const currency = normalizeCurrencyCode(service.currency);
+      const storedExchangeRate = Number(service.exchangeRate || 1);
+      const exchangeRate = service.useStoredPricing
+      ? storedExchangeRate
+      : getExchangeRateForCurrency(currency, exchangeRates);
+      const originalTotal = service.useStoredPricing
+      ? roundCurrencyAmount(service.originalTotal || service.total || 0)
+      : calculateServiceOriginalTotal(service);
+      const priceInInr = service.useStoredPricing
+      ? roundCurrencyAmount(
+      service.priceInInr || convertAmountToInr(
+      Number(service.rate || 0),
+      currency,
+      { ...exchangeRates, [currency]: exchangeRate },
       ),
-    [services],
-  );
+      )
+      : convertAmountToInr(
+      Number(service.rate || 0),
+      currency,
+      exchangeRates,
+      );
+      const totalInInr = service.useStoredPricing
+      ? roundCurrencyAmount(
+      service.totalInInr || convertAmountToInr(
+      originalTotal,
+      currency,
+      { ...exchangeRates, [currency]: exchangeRate },
+      ),
+      )
+      : convertAmountToInr(
+      originalTotal,
+      currency,
+      exchangeRates,
+      );
 
-  const filteredServices = useMemo(() => {
-    const normalizedSearch = contractedRatesSearch.trim().toLowerCase();
+      return {
+      ...service,
+      currency,
+      exchangeRate,
+      originalTotal,
+      priceInInr,
+      totalInInr,
+      isForeignCurrency: currency !== "INR",
+      };
+      }),
+      [exchangeRates, services],
+      );
 
-    return services.filter((service) => {
+      const contractedRateFilterCounts = useMemo(
+      () =>
+      services
+      .filter((service) => doesServiceMatchDestination(service, order?.destination))
+      .reduce(
+      (counts, service) => {
+      counts.all += 1;
+      const type = normalizeServiceFilterType(service.type);
+      if (counts[type] !== undefined) {
+      counts[type] += 1;
+      }
+      return counts;
+      },
+      {
+      all: 0,
+      hotel: 0,
+      transfer: 0,
+      activity: 0,
+      sightseeing: 0,
+      },
+      ),
+      [order?.destination, services],
+      );
+
+      const destinationMatchedServices = useMemo(
+      () =>
+      services.filter((service) =>
+      doesServiceMatchDestination(service, order?.destination),
+      ),
+      [order?.destination, services],
+      );
+
+      const filteredServices = useMemo(() => {
+      const normalizedSearch = contractedRatesSearch.trim().toLowerCase();
+
+      return destinationMatchedServices.filter((service) => {
       const matchesType =
-        contractedRatesFilter === "all" ||
-        normalizeServiceFilterType(service.type) === contractedRatesFilter;
+      contractedRatesFilter === "all" ||
+      normalizeServiceFilterType(service.type) === contractedRatesFilter;
 
       if (!matchesType) {
-        return false;
+      return false;
       }
 
       if (!normalizedSearch) {
-        return true;
+      return true;
       }
 
       return getServiceSearchText(service).includes(normalizedSearch);
-    });
-  }, [contractedRatesFilter, contractedRatesSearch, services]);
+      });
+      }, [contractedRatesFilter, contractedRatesSearch, destinationMatchedServices]);
 
-  const servicesTotal = useMemo(
-    () =>
+      const servicesTotal = useMemo(
+      () =>
       selectedServicesWithPricing.reduce(
-        (sum, service) => sum + Number(service.totalInInr || 0),
-        0,
+      (sum, service) => sum + Number(service.totalInInr || 0),
+      0,
       ),
-    [selectedServicesWithPricing],
-  );
+      [selectedServicesWithPricing],
+      );
 
-  const foreignCurrencyBreakdown = useMemo(() => {
-    const totals = new Map();
+      const foreignCurrencyBreakdown = useMemo(() => {
+      const totals = new Map();
 
-    selectedServicesWithPricing.forEach((service) => {
+      selectedServicesWithPricing.forEach((service) => {
       if (!service.isForeignCurrency) return;
 
       const existing = totals.get(service.currency) || {
-        currency: service.currency,
-        exchangeRate: service.exchangeRate,
-        originalTotal: 0,
-        inrTotal: 0,
+      currency: service.currency,
+      exchangeRate: service.exchangeRate,
+      originalTotal: 0,
+      inrTotal: 0,
       };
 
       existing.originalTotal += Number(service.originalTotal || 0);
       existing.inrTotal += Number(service.totalInInr || 0);
       existing.exchangeRate = service.exchangeRate;
       totals.set(service.currency, existing);
-    });
+      });
 
-    return Array.from(totals.values()).map((item) => ({
+      return Array.from(totals.values()).map((item) => ({
       ...item,
       originalTotal: roundCurrencyAmount(item.originalTotal),
       inrTotal: roundCurrencyAmount(item.inrTotal),
       exchangeRate: roundExchangeRateValue(item.exchangeRate),
-    }));
-  }, [selectedServicesWithPricing]);
+      }));
+      }, [selectedServicesWithPricing]);
 
-  const shouldShowDualPricing =
-    quoteCategory === "international" && foreignCurrencyBreakdown.length > 0;
+      const shouldShowDualPricing =
+      quoteCategory === "international" && foreignCurrencyBreakdown.length > 0;
 
-  const baseRate = roundCurrencyAmount(order?.customerBudget || 0);
+      const baseRate = roundCurrencyAmount(order?.customerBudget || 0);
 
-  const serviceFeeAmount = roundCurrencyAmount(serviceCharge || 0);
-  const handlingFeeAmount = roundCurrencyAmount(handlingFee || 0);
-  const packageTemplateAmount = roundCurrencyAmount(selectedPackageTemplate?.price || 0);
+      const serviceFeeAmount = roundCurrencyAmount(serviceCharge || 0);
+      const handlingFeeAmount = roundCurrencyAmount(handlingFee || 0);
+      const packageTemplateAmount = roundCurrencyAmount(selectedPackageTemplate?.price || 0);
 
-  const opsMarkupBasisAmount = servicesTotal + packageTemplateAmount;
+      const opsMarkupBasisAmount = servicesTotal + packageTemplateAmount;
 
-  // OPS markup
-  let opsMarkup = 0;
+      // OPS markup
+      let opsMarkup = 0;
 
-  if (marginType === "percentage") {
-    opsMarkup = roundCurrencyAmount((opsMarkupBasisAmount * Number(markup || 0)) / 100);
-  } else {
-    opsMarkup = roundCurrencyAmount(fixedMargin || 0);
-  }
+      if (marginType === "percentage") {
+      opsMarkup = roundCurrencyAmount((opsMarkupBasisAmount * Number(markup || 0)) / 100);
+      } else {
+      opsMarkup = roundCurrencyAmount(fixedMargin || 0);
+      }
 
-  const taxableAmountForTaxes =
-    opsMarkupBasisAmount + opsMarkup + serviceFeeAmount + handlingFeeAmount;
-  const draftGstFinal = draftGstChecked
-    ? roundCurrencyAmount((taxableAmountForTaxes * Number(draftGstPercent || 0)) / 100)
-    : 0;
+      const taxableAmountForTaxes =
+      opsMarkupBasisAmount + opsMarkup + serviceFeeAmount + handlingFeeAmount;
+      const draftGstFinal = draftGstChecked
+      ? roundCurrencyAmount((taxableAmountForTaxes * Number(draftGstPercent || 0)) / 100)
+      : 0;
 
-  const draftTcsFinal = draftTcsChecked
-    ? roundCurrencyAmount((taxableAmountForTaxes * Number(draftTcsPercent || 0)) / 100)
-    : 0;
+      const draftTcsFinal = draftTcsChecked
+      ? roundCurrencyAmount((taxableAmountForTaxes * Number(draftTcsPercent || 0)) / 100)
+      : 0;
 
-  const draftTourismFinal = draftTourismChecked
-    ? roundCurrencyAmount(draftTourismAmount || DEFAULT_TOURISM_AMOUNT)
-    : 0;
+      const draftTourismFinal = draftTourismChecked
+      ? roundCurrencyAmount(draftTourismAmount || DEFAULT_TOURISM_AMOUNT)
+      : 0;
 
-  const draftTaxationTotal = roundCurrencyAmount(
-    draftGstFinal + draftTcsFinal + draftTourismFinal,
-  );
+      const draftTaxationTotal = roundCurrencyAmount(
+      draftGstFinal + draftTcsFinal + draftTourismFinal,
+      );
 
-  useEffect(() => {
-    const nextAppliedTaxTotal =
+      useEffect(() => {
+      const nextAppliedTaxTotal =
       (gstChecked ? Number(gstAmount || 0) : 0) +
       (tcsChecked ? Number(tcsAmount || 0) : 0) +
       (tourismChecked ? Number(tourismAmount || 0) : 0);
 
-    setAppliedTaxTotal(roundCurrencyAmount(nextAppliedTaxTotal));
-  }, [gstAmount, gstChecked, tcsAmount, tcsChecked, tourismAmount, tourismChecked]);
+      setAppliedTaxTotal(roundCurrencyAmount(nextAppliedTaxTotal));
+      }, [gstAmount, gstChecked, tcsAmount, tcsChecked, tourismAmount, tourismChecked]);
 
-  // OPS charges
-  const opsChargesTotal = roundCurrencyAmount(serviceFeeAmount + handlingFeeAmount);
-  // markup amount (OPS charges + markup + tax)
-  const markupAmount = roundCurrencyAmount(opsChargesTotal + opsMarkup + appliedTaxTotal);
+      // OPS charges
+      const opsChargesTotal = roundCurrencyAmount(serviceFeeAmount + handlingFeeAmount);
+      // markup amount (OPS charges + markup + tax)
+      const markupAmount = roundCurrencyAmount(opsChargesTotal + opsMarkup + appliedTaxTotal);
 
-  // total amount
-  const totalAmount = roundCurrencyAmount(opsMarkupBasisAmount + markupAmount);
-  const selectedServices = selectedServicesWithPricing;
-  const visibleSelectedServices = useMemo(() => {
-    if (selectedServicesModalScope === "single" && selectedServicesModalTargetId) {
+      // total amount
+      const totalAmount = roundCurrencyAmount(opsMarkupBasisAmount + markupAmount);
+      const selectedServices = selectedServicesWithPricing;
+      const visibleSelectedServices = useMemo(() => {
+      if (selectedServicesModalScope === "single" && selectedServicesModalTargetId) {
       return selectedServices.filter((service) => service.id === selectedServicesModalTargetId);
-    }
+      }
 
-    return selectedServices;
-  }, [selectedServices, selectedServicesModalScope, selectedServicesModalTargetId]);
+      return selectedServices;
+      }, [selectedServices, selectedServicesModalScope, selectedServicesModalTargetId]);
 
+      //=========================================== Api call ======================================
 
-  //=========================================== Api call ======================================
-
-  const persistQuotationDraft = async () => {
-    if (!quotationId) {
+      const persistQuotationDraft = async () => {
+      if (!quotationId) {
       throw new Error("Quotation draft not ready yet");
-    }
+      }
 
-    const payload = {
+      const payload = {
       queryId: orderQueryId,
       validTill: validTill || formatDateInput(loadedQuotationDraft?.validTill),
       inclusions: sanitizeDynamicListItems(inclusions),
@@ -3004,64 +3691,64 @@ const QuotationBuilder = () => {
       dayWiseItinerary: sanitizeDayWiseItineraryItems(itineraryEntries),
       services: selectedServices.map((service) => buildDraftServicePayload(service)),
       pricing: {
-        currency: "INR",
-        quoteCategory,
-        baseAmount: roundCurrencyAmount(baseRate || 0),
-        subTotal: roundCurrencyAmount(servicesTotal || 0),
-        packageTemplateAmount,
-        totalAmount: roundCurrencyAmount(totalAmount || 0),
+      currency: "INR",
+      quoteCategory,
+      baseAmount: roundCurrencyAmount(baseRate || 0),
+      subTotal: roundCurrencyAmount(servicesTotal || 0),
+      packageTemplateAmount,
+      totalAmount: roundCurrencyAmount(totalAmount || 0),
       },
       opsPercent: marginType === "percentage" ? Number(markup || 0) : 0,
       opsAmount: marginType === "fixed"
-        ? roundCurrencyAmount(fixedMargin || 0)
-        : roundCurrencyAmount(opsMarkup || 0),
+      ? roundCurrencyAmount(fixedMargin || 0)
+      : roundCurrencyAmount(opsMarkup || 0),
       serviceCharge: roundCurrencyAmount(serviceCharge || 0),
       handlingFee: roundCurrencyAmount(handlingFee || 0),
       tax: {
-        gstAmount: gstChecked ? roundCurrencyAmount(gstAmount || draftGstFinal || 0) : 0,
-        gstPercent: gstChecked ? Number(gstPercent || 0) : 0,
-        tcsAmount: tcsChecked ? roundCurrencyAmount(tcsAmount || draftTcsFinal || 0) : 0,
-        tcsPercent: tcsChecked ? Number(tcsPercent || 0) : 0,
-        tourismAmount: tourismChecked
-          ? roundCurrencyAmount(tourismAmount || draftTourismFinal || 0)
-          : 0,
+      gstAmount: gstChecked ? roundCurrencyAmount(gstAmount || draftGstFinal || 0) : 0,
+      gstPercent: gstChecked ? Number(gstPercent || 0) : 0,
+      tcsAmount: tcsChecked ? roundCurrencyAmount(tcsAmount || draftTcsFinal || 0) : 0,
+      tcsPercent: tcsChecked ? Number(tcsPercent || 0) : 0,
+      tourismAmount: tourismChecked
+      ? roundCurrencyAmount(tourismAmount || draftTourismFinal || 0)
+      : 0,
       },
-    };
+      };
 
-    const { data } = await API.put(`/ops/quotations/${quotationId}/draft`, payload);
-    if (data?.quotation) {
+      const { data } = await API.put(`/ops/quotations/${quotationId}/draft`, payload);
+      if (data?.quotation) {
       setLoadedQuotationDraft(data.quotation);
-    }
+      }
 
-    return data?.quotation || null;
-  };
+      return data?.quotation || null;
+      };
 
-  const resolveQuotationQueryId = (quotation) => {
-    const quotationQueryId = quotation?.queryId;
+      const resolveQuotationQueryId = (quotation) => {
+      const quotationQueryId = quotation?.queryId;
 
-    if (quotationQueryId && typeof quotationQueryId === "object") {
+      if (quotationQueryId && typeof quotationQueryId === "object") {
       return quotationQueryId?._id || quotationQueryId?.id || "";
-    }
+      }
 
-    return quotationQueryId || order?._id || "";
-  };
+      return quotationQueryId || order?._id || "";
+      };
 
-  const buildQuotationSharePayload = (quotation) => {
-    const servicesSource = Array.isArray(quotation?.services) && quotation.services.length
+      const buildQuotationSharePayload = (quotation) => {
+      const servicesSource = Array.isArray(quotation?.services) && quotation.services.length
       ? quotation.services
       : selectedServices;
 
-    return {
+      return {
       recipientName:
-        order?.agent?.name ||
-        order?.agentName ||
-        order?.agent?.companyName ||
-        "Agent",
+      order?.agent?.name ||
+      order?.agentName ||
+      order?.agent?.companyName ||
+      "Agent",
       recipientCompanyName:
-        order?.agent?.companyName ||
-        order?.agentName ||
-        order?.agent?.name ||
-        "",
+      order?.agent?.companyName ||
+      order?.agentName ||
+      order?.agent?.name ||
+      "",
       phone: resolvedAgentPhone || order?.agent?.phone || "",
       quotationNumber: quotation?.quotationNumber || "",
       queryId: order?.queryId || "",
@@ -3081,274 +3768,296 @@ const QuotationBuilder = () => {
       currency: quotation?.pricing?.currency || "INR",
       tcsAmount: Number(quotation?.pricing?.tax?.tcs?.amount || 0),
       inclusions: sanitizeDynamicListItems(
-        Array.isArray(quotation?.inclusions) ? quotation.inclusions : inclusions,
+      Array.isArray(quotation?.inclusions) ? quotation.inclusions : inclusions,
       ),
       exclusions: sanitizeDynamicListItems(
-        Array.isArray(quotation?.exclusions) ? quotation.exclusions : exclusions,
+      Array.isArray(quotation?.exclusions) ? quotation.exclusions : exclusions,
       ),
       additionalNotes: sanitizeDynamicListItems(
-        Array.isArray(quotation?.additionalNotes) ? quotation.additionalNotes : additionalNotes,
+      Array.isArray(quotation?.additionalNotes) ? quotation.additionalNotes : additionalNotes,
       ),
+      termsAndConditions: Array.isArray(quotation?.termsAndConditions) &&
+      quotation.termsAndConditions.length
+      ? sanitizeDynamicListItems(quotation.termsAndConditions)
+      : [...DEFAULT_WHATSAPP_TERMS],
       dayWiseItinerary: sanitizeDayWiseItineraryItems(
-        Array.isArray(quotation?.dayWiseItinerary) ? quotation.dayWiseItinerary : itineraryEntries,
+      Array.isArray(quotation?.dayWiseItinerary) ? quotation.dayWiseItinerary : itineraryEntries,
       )
-        .filter((entry) => entry.title || entry.description)
-        .map((entry) => {
-          const dayLabel = entry.dayLabel || buildItineraryDayLabel(entry.dayNumber, entry.date);
-          return {
-            ...entry,
-            dayLabel,
-            heading: entry.title ? `${dayLabel}: ${entry.title}` : dayLabel,
-          };
-        }),
-      services: servicesSource.map((service) => {
-        const normalizedType = normalizeQuotationServiceType(service?.type);
-
-        return {
-          title: service?.title || "Service",
-          type: normalizedType,
-          typeLabel: SERVICE_TYPE_LABELS[normalizedType] || "Travel Service",
-          location: buildShareServiceLocationLabel(service),
-          city: service?.city || "",
-          country: service?.country || "",
-          serviceDateLabel: formatShareDate(service?.serviceDate),
-          serviceDate: service?.serviceDate || "",
-          quantityLabel: buildShareServiceQuantityLabel(service),
-          description: String(service?.description || service?.desc || "").replace(/\s+/g, " ").trim(),
-          nights: Number(service?.nights || 0),
-          rooms: Number(service?.rooms || 0),
-          roomType: service?.roomType || "",
-          bedType: service?.bedType || "",
-          hotelCategory: service?.hotelCategory || "",
-          adults: Number(service?.adults || 0),
-          children: Number(service?.children || 0),
-          infants: Number(service?.infants || 0),
-          pax: Number(service?.pax || 0),
-          days: Number(service?.days || 0),
-          usageType: service?.usageType || "",
-          vehicleType: service?.vehicleType || "",
-          passengerCapacity: Number(service?.passengerCapacity || 0),
-        };
+      .filter((entry) => entry.title || entry.description)
+      .map((entry) => {
+      const dayLabel = entry.dayLabel || buildItineraryDayLabel(entry.dayNumber, entry.date);
+      return {
+      ...entry,
+      dayLabel,
+      heading: entry.title ? `${dayLabel}: ${entry.title}` : dayLabel,
+      };
       }),
-    };
-  };
+      sellerBankDetails: [
+      { label: "Bank Name", value: "HDFC Bank" },
+      { label: "A/c Holder Name", value: "Leela Travels" },
+      { label: "A/c No.", value: "50200103968171" },
+      { label: "IFSC", value: "HDFC0004413" },
+      { label: "Branch", value: "RAMPHAL CHOWK SEC VII DWARKA" },
+      ],
+      services: servicesSource.map((service) => {
+      const normalizedType = normalizeQuotationServiceType(service?.type);
 
-  const runPostSendAction = async (selectedAction, quotation) => {
-    if (!selectedAction) {
+      return {
+      title: service?.title || "Service",
+      type: normalizedType,
+      typeLabel: SERVICE_TYPE_LABELS[normalizedType] || "Travel Service",
+      location: buildShareServiceLocationLabel(service),
+      city: service?.city || "",
+      country: service?.country || "",
+      serviceDateLabel: formatShareDate(service?.serviceDate),
+      serviceDate: service?.serviceDate || "",
+      quantityLabel: buildShareServiceQuantityLabel(service),
+      description: String(service?.description || service?.desc || "").replace(/\s+/g, " ").trim(),
+      nights: Number(service?.nights || 0),
+      rooms: Number(service?.rooms || 0),
+      roomType: service?.roomType || "",
+      bedType: service?.bedType || "",
+      hotelCategory: service?.hotelCategory || "",
+      adults: Number(service?.adults || 0),
+      children: Number(service?.children || 0),
+      infants: Number(service?.infants || 0),
+      pax: Number(service?.pax || 0),
+      days: Number(service?.days || 0),
+      usageType: service?.usageType || "",
+      vehicleType: service?.vehicleType || "",
+      passengerCapacity: Number(service?.passengerCapacity || 0),
+      };
+      }),
+      };
+      };
+
+      const runPostSendAction = async (selectedAction, quotation) => {
+      if (!selectedAction) {
       return "Quotation sent successfully";
-    }
+      }
 
-    const quoteDetails = buildQuotationSharePayload(quotation);
+      const quoteDetails = buildQuotationSharePayload(quotation);
 
-    if (selectedAction === "Copy Text") {
+      if (selectedAction === "Copy Text") {
       await copyTextToClipboard(buildPlainTextQuotationSummary(quoteDetails));
       return "Quotation summary copied";
-    }
+      }
 
-    if (selectedAction === "PDF Download") {
+      if (selectedAction === "PDF Download") {
       const queryDocumentId = resolveQuotationQueryId(quotation);
 
       if (!queryDocumentId) {
-        throw new Error("Query reference missing for PDF generation.");
+      throw new Error("Query reference missing for PDF generation.");
       }
 
       const { data } = await API.post("/ops/send", {
-        queryId: queryDocumentId,
-        channels: ["pdf"],
-        quoteDetails,
-        agent: {
-          email: order?.agent?.email || "",
-          phone: order?.agent?.phone || "",
-        },
+      queryId: queryDocumentId,
+      channels: ["pdf"],
+      quoteDetails,
+      agent: {
+      email: order?.agent?.email || "",
+      phone: order?.agent?.phone || "",
+      },
       });
 
       const pdfMeta = data?.results?.pdf;
       const publicFilePath = pdfMeta?.publicFilePath;
 
       if (!publicFilePath) {
-        throw new Error("Quotation PDF could not be generated.");
+      throw new Error("Quotation PDF could not be generated.");
       }
 
       await downloadFileFromUrl(
-        createPublicAssetUrl(publicFilePath),
-        pdfMeta?.fileName || `quotation_${quoteDetails.queryId || "quote"}.pdf`,
+      createPublicAssetUrl(publicFilePath),
+      pdfMeta?.fileName || `quotation_${quoteDetails.queryId || "quote"}.pdf`,
       );
 
       return "Quotation PDF downloaded";
-    }
+      }
 
-    if (selectedAction === "Dashboard Notification") {
+      if (selectedAction === "Word Format") {
+      downloadWordDocument(
+      quoteDetails,
+      `quotation_${quoteDetails.queryId || "quote"}.doc`,
+      );
+      return "Quotation Word document downloaded";
+      }
+
+      if (selectedAction === "Dashboard Notification") {
       return "Dashboard notification sent to agent";
-    }
+      }
 
-    if (selectedAction === "Email") {
+      if (selectedAction === "Email") {
       return `Quotation sent to ${order?.agent?.email || "agent email"}`;
-    }
+      }
 
-    if (selectedAction === "WhatsApp") {
+      if (selectedAction === "WhatsApp") {
       const normalizedPhone = normalizeWhatsAppPhoneNumber(quoteDetails?.phone);
 
       if (!normalizedPhone) {
-        throw new Error("Agent phone number is missing for WhatsApp sharing.");
+      throw new Error("Agent phone number is missing for WhatsApp sharing.");
       }
 
       const message = buildWhatsAppQuotationMessage(quoteDetails);
       const whatsappURL = `https://wa.me/${normalizedPhone}?text=${encodeURIComponent(message)}`;
 
       if (typeof window === "undefined") {
-        throw new Error("WhatsApp sharing is only available in the browser.");
+      throw new Error("WhatsApp sharing is only available in the browser.");
       }
 
       window.open(whatsappURL, "_blank", "noopener,noreferrer");
       return "WhatsApp quotation is ready to send";
-    }
+      }
 
-    return "Quotation sent successfully";
-  };
+      return "Quotation sent successfully";
+      };
 
-  const sendQuotation = async (sendVia = [], selectedAction = "") => {
-    if (!validTill) {
+      const sendQuotation = async (sendVia = [], selectedAction = "") => {
+      if (!validTill) {
       toast.error("Please select Valid Till date");
       return;
-    }
+      }
 
-    if (!selectedServices.length) {
+      if (!selectedServices.length) {
       toast.error("No services selected");
       return;
-    }
+      }
 
-    const hotelsWithoutNights = selectedServices.filter(
+      const hotelsWithoutNights = selectedServices.filter(
       (service) => service.type === "hotel" && !Number(service.nights),
-    );
-    if (hotelsWithoutNights.length) {
+      );
+      if (hotelsWithoutNights.length) {
       toast.error(
-        `Select nights first: ${hotelsWithoutNights
-          .map((service) => service.title)
-          .join(", ")}`,
+      `Select nights first: ${hotelsWithoutNights
+      .map((service) => service.title)
+      .join(", ")}`,
       );
       return;
-    }
+      }
 
-    const servicesWithoutDate = selectedServices.filter((service) => !service.serviceDate);
-    if (servicesWithoutDate.length) {
+      const servicesWithoutDate = selectedServices.filter((service) => !service.serviceDate);
+      if (servicesWithoutDate.length) {
       toast.error(
-        `Select service date first: ${servicesWithoutDate
-          .map((service) => service.title)
-          .join(", ")}`,
+      `Select service date first: ${servicesWithoutDate
+      .map((service) => service.title)
+      .join(", ")}`,
       );
       return;
-    }
+      }
 
-    const unmappedServices = selectedServices.filter(
+      const unmappedServices = selectedServices.filter(
       (service) => !resolveDmcOwner(service).dmcId,
-    );
-    if (unmappedServices.length) {
+      );
+      if (unmappedServices.length) {
       toast.error(
-        `Assign DMC owner first: ${unmappedServices
-          .map((service) => service.title)
-          .join(", ")}`,
+      `Assign DMC owner first: ${unmappedServices
+      .map((service) => service.title)
+      .join(", ")}`,
       );
       return;
-    }
+      }
 
-    const loadingToast = toast.loading("Sending quotation...");
+      const loadingToast = toast.loading("Sending quotation...");
 
-    try {
+      try {
 
       // 🔥 MAIN PAYLOAD
+      const targetQuotationId = editingTargetQuotationId || quotationId;
       const payload = {
-        quotationId,
-        queryId: orderQueryId,
-        validTill,
-        baseAmount: baseRate,
-        sendVia: sendVia,
-        inclusions: sanitizeDynamicListItems(inclusions),
-        exclusions: sanitizeDynamicListItems(exclusions),
-        additionalNotes: sanitizeDynamicListItems(additionalNotes),
-        dayWiseItinerary: sanitizeDayWiseItineraryItems(itineraryEntries),
-        services: selectedServices.map(s => {
-          const normalizedType = normalizeQuotationServiceType(s.type);
+      quotationId: targetQuotationId,
+      editExistingQuotation: isEditingHistoricalQuotation,
+      queryId: orderQueryId,
+      selectedAction,
+      validTill,
+      baseAmount: baseRate,
+      sendVia: sendVia,
+      inclusions: sanitizeDynamicListItems(inclusions),
+      exclusions: sanitizeDynamicListItems(exclusions),
+      additionalNotes: sanitizeDynamicListItems(additionalNotes),
+      dayWiseItinerary: sanitizeDayWiseItineraryItems(itineraryEntries),
+      services: selectedServices.map(s => {
+      const normalizedType = normalizeQuotationServiceType(s.type);
 
-          return {
-            serviceId: s.serviceId || (!s.custom ? s.id : undefined),
-            dmcId: resolveDmcOwner(s).dmcId,
-            dmcName: resolveDmcOwner(s).dmcName,
-            supplierId: s.supplierId || "",
-            supplierName: s.supplierName || "",
-            type: normalizedType,
-            title: s.title,
+      return {
+      serviceId: s.serviceId || (!s.custom ? s.id : undefined),
+      dmcId: resolveDmcOwner(s).dmcId,
+      dmcName: resolveDmcOwner(s).dmcName,
+      supplierId: s.supplierId || "",
+      supplierName: s.supplierName || "",
+      type: normalizedType,
+      title: s.title,
 
-            city: s.city,
-            country: s.country,
-            description: s.desc,
-            serviceDate: s.serviceDate,
-            roomCategory: s.roomCategory || "",
-            roomType: s.roomType || "",
-            hotelCategory: s.hotelCategory || "",
-            rooms: Number(s.rooms || 1),
-            adults: Number(s.adults || 0),
-            children: Number(s.children || 0),
-            infants: Number(s.infants || 0),
-            bedType: normalizeBedTypeValue(s.bedType),
-            extraAdult: Boolean(s.extraAdult),
-            childWithBed: Boolean(s.childWithBed),
-            childWithoutBed: Boolean(s.childWithoutBed),
-            awebRate: roundCurrencyAmount(s.awebRate || 0),
-            cwebRate: roundCurrencyAmount(s.cwebRate || 0),
-            cwoebRate: roundCurrencyAmount(s.cwoebRate || 0),
+      city: s.city,
+      country: s.country,
+      description: s.desc,
+      serviceDate: s.serviceDate,
+      roomCategory: s.roomCategory || "",
+      roomType: s.roomType || "",
+      hotelCategory: s.hotelCategory || "",
+      rooms: Number(s.rooms || 1),
+      adults: Number(s.adults || 0),
+      children: Number(s.children || 0),
+      infants: Number(s.infants || 0),
+      bedType: normalizeBedTypeValue(s.bedType),
+      extraAdult: Boolean(s.extraAdult),
+      childWithBed: Boolean(s.childWithBed),
+      childWithoutBed: Boolean(s.childWithoutBed),
+      awebRate: roundCurrencyAmount(s.awebRate || 0),
+      cwebRate: roundCurrencyAmount(s.cwebRate || 0),
+      cwoebRate: roundCurrencyAmount(s.cwoebRate || 0),
 
-            // HOTEL
-            nights: Number(s.nights || 0),
+      // HOTEL
+      nights: Number(s.nights || 0),
 
-            // TRANSFER
-            vehicleType: s.vehicleType,
-            passengerCapacity: s.passengerCapacity,
-            luggageCapacity: s.luggageCapacity,
-            usageType: s.usageType,
-            days: s.days || 1,
+      // TRANSFER
+      vehicleType: s.vehicleType,
+      passengerCapacity: s.passengerCapacity,
+      luggageCapacity: s.luggageCapacity,
+      usageType: s.usageType,
+      days: s.days || 1,
 
-            // ACTIVITY / SIGHTSEEING
-            pax: s.pax || 1,
+      // ACTIVITY / SIGHTSEEING
+      pax: s.pax || 1,
 
-            // PRICE
-            currency: s.currency,
-            exchangeRate: s.exchangeRate,
-            price: roundCurrencyAmount(s.rate || 0),
-            priceInInr: roundCurrencyAmount(s.priceInInr || 0),
-            total: roundCurrencyAmount(s.originalTotal || 0),
-            totalInInr: roundCurrencyAmount(s.totalInInr || 0),
-          };
-        }),
+      // PRICE
+      currency: s.currency,
+      exchangeRate: s.exchangeRate,
+      price: roundCurrencyAmount(s.rate || 0),
+      priceInInr: roundCurrencyAmount(s.priceInInr || 0),
+      total: roundCurrencyAmount(s.originalTotal || 0),
+      totalInInr: roundCurrencyAmount(s.totalInInr || 0),
+      };
+      }),
 
-        pricing: {
-          currency: "INR",
-          quoteCategory,
-          baseAmount: baseRate,
-          subTotal: roundCurrencyAmount(servicesTotal),
-          packageTemplateAmount,
-          serviceCurrencyBreakdown: foreignCurrencyBreakdown.map((item) => ({
-            currency: item.currency,
-            amount: roundCurrencyAmount(item.originalTotal || 0),
-            amountInInr: roundCurrencyAmount(item.inrTotal || 0),
-            exchangeRate: Number(item.exchangeRate || 1),
-          })),
-          totalAmount: roundCurrencyAmount(totalAmount)
-        },
+      pricing: {
+      currency: "INR",
+      quoteCategory,
+      baseAmount: baseRate,
+      subTotal: roundCurrencyAmount(servicesTotal),
+      packageTemplateAmount,
+      serviceCurrencyBreakdown: foreignCurrencyBreakdown.map((item) => ({
+      currency: item.currency,
+      amount: roundCurrencyAmount(item.originalTotal || 0),
+      amountInInr: roundCurrencyAmount(item.inrTotal || 0),
+      exchangeRate: Number(item.exchangeRate || 1),
+      })),
+      totalAmount: roundCurrencyAmount(totalAmount)
+      },
 
-        opsPercent: marginType === "percentage" ? Number(markup || 0) : 0,
-        opsAmount: marginType === "fixed"
-          ? roundCurrencyAmount(fixedMargin || 0)
-          : roundCurrencyAmount(opsMarkup || 0),
-        // OPS + TAX
-        serviceCharge: roundCurrencyAmount(serviceCharge || 0),
-        handlingFee: roundCurrencyAmount(handlingFee || 0),
-        tax: {
-          gstAmount: gstChecked ? roundCurrencyAmount(gstAmount || draftGstFinal || 0) : 0,
-          gstPercent: gstChecked ? Number(gstPercent || 0) : 0,
-          tcsAmount: tcsChecked ? roundCurrencyAmount(tcsAmount || draftTcsFinal || 0) : 0,
-          tcsPercent: tcsChecked ? Number(tcsPercent || 0) : 0,
-          tourismAmount: roundCurrencyAmount(tourismAmount || draftTourismFinal || 0)
-        }
+      opsPercent: marginType === "percentage" ? Number(markup || 0) : 0,
+      opsAmount: marginType === "fixed"
+      ? roundCurrencyAmount(fixedMargin || 0)
+      : roundCurrencyAmount(opsMarkup || 0),
+      // OPS + TAX
+      serviceCharge: roundCurrencyAmount(serviceCharge || 0),
+      handlingFee: roundCurrencyAmount(handlingFee || 0),
+      tax: {
+      gstAmount: gstChecked ? roundCurrencyAmount(gstAmount || draftGstFinal || 0) : 0,
+      gstPercent: gstChecked ? Number(gstPercent || 0) : 0,
+      tcsAmount: tcsChecked ? roundCurrencyAmount(tcsAmount || draftTcsFinal || 0) : 0,
+      tcsPercent: tcsChecked ? Number(tcsPercent || 0) : 0,
+      tourismAmount: roundCurrencyAmount(tourismAmount || draftTourismFinal || 0)
+      }
       };
 
       console.log("🔥 FINAL PAYLOAD:", payload);
@@ -3357,13 +4066,16 @@ const QuotationBuilder = () => {
       const res = await API.post("/ops/quotations", payload);
       const savedQuotation = res?.data?.quotation;
       const warnings = Array.isArray(res?.data?.warnings) ? [...res.data.warnings] : [];
-      let actionSuccessMessage = "Quotation sent successfully";
+      const sentToAgent = Boolean(res?.data?.sentToAgent);
+      let actionSuccessMessage = sentToAgent
+      ? "Quotation sent successfully"
+      : "Quotation saved successfully";
 
       try {
-        actionSuccessMessage = await runPostSendAction(selectedAction, savedQuotation);
+      actionSuccessMessage = await runPostSendAction(selectedAction, savedQuotation);
       } catch (actionError) {
-        console.error("Post-send action failed", actionError);
-        warnings.push(actionError?.message || "Quotation was saved, but the selected action could not be completed.");
+      console.error("Post-send action failed", actionError);
+      warnings.push(actionError?.message || "Quotation was saved, but the selected action could not be completed.");
       }
 
       const hasDeliveryWarnings = warnings.length > 0;
@@ -3372,821 +4084,868 @@ const QuotationBuilder = () => {
       toast.success(hasDeliveryWarnings ? "Quotation saved successfully" : actionSuccessMessage);
       warnings.forEach((warning) => toast(warning, { icon: "!" }));
       setSuccessPopup({
-        open: true,
-        kind: "quote",
-        invoiceNumber: "",
-        totalAmount: Number(
-          savedQuotation?.pricing?.totalAmount ||
-          savedQuotation?.clientTotalAmount ||
-          totalAmount ||
-          0,
-        ),
-        serviceCount: Number(
-          savedQuotation?.services?.length || selectedServices.length || 0,
-        ),
-        agentName:
-          order?.agent?.companyName ||
-          order?.agent?.name ||
-          order?.agentName ||
-          "",
-        deliveryWarnings: warnings,
+      open: true,
+      kind: "quote",
+      invoiceNumber: "",
+      totalAmount: Number(
+      savedQuotation?.pricing?.totalAmount ||
+      savedQuotation?.clientTotalAmount ||
+      totalAmount ||
+      0,
+      ),
+      serviceCount: Number(
+      savedQuotation?.services?.length || selectedServices.length || 0,
+      ),
+      agentName:
+      order?.agent?.companyName ||
+      order?.agent?.name ||
+      order?.agentName ||
+      "",
+      deliveryWarnings: warnings,
       });
 
-    } catch (error) {
+      } catch (error) {
       toast.dismiss(loadingToast);
       console.error(error);
       toast.error(error?.response?.data?.message || "Failed to send quotation");
-    }
+      }
 
-  };
+      };
 
-  const generateFinalInvoice = async () => {
-    if (!quotationId) {
+      const generateFinalInvoice = async () => {
+      if (!quotationId) {
       toast.error("Quotation draft not ready yet");
       return;
-    }
+      }
 
-    if (preparingFinanceInvoice) {
+      if (preparingFinanceInvoice) {
       return;
-    }
+      }
 
-    setShowFinanceInvoiceConfirm(false);
-    setPreparingFinanceInvoice(true);
+      setShowFinanceInvoiceConfirm(false);
+      setPreparingFinanceInvoice(true);
 
-    const loadingToast = toast.loading("Preparing finance invoice...");
+      const loadingToast = toast.loading("Preparing finance invoice...");
 
-    try {
+      try {
       const { data } = await API.post("/ops/invoices", { quotationId });
 
       toast.dismiss(loadingToast);
       toast.success("Finance invoice prepared successfully");
       const generatedInvoice = data?.invoice;
       setSuccessPopup({
-        open: true,
-        kind: "invoice",
-        invoiceNumber: generatedInvoice?.invoiceNumber || "",
-        totalAmount: Number(generatedInvoice?.totalAmount || totalAmount || 0),
-        serviceCount: Number(generatedInvoice?.lineItems?.length || 0),
-        agentName:
-          order?.agent?.companyName ||
-          order?.agent?.name ||
-          order?.agentName ||
-          "",
+      open: true,
+      kind: "invoice",
+      invoiceNumber: generatedInvoice?.invoiceNumber || "",
+      totalAmount: Number(generatedInvoice?.totalAmount || totalAmount || 0),
+      serviceCount: Number(generatedInvoice?.lineItems?.length || 0),
+      agentName:
+      order?.agent?.companyName ||
+      order?.agent?.name ||
+      order?.agentName ||
+      "",
       });
-    } catch (error) {
+      } catch (error) {
       toast.dismiss(loadingToast);
       console.error(error);
       toast.error(error?.response?.data?.message || "Failed to prepare finance invoice");
-    } finally {
+      } finally {
       setPreparingFinanceInvoice(false);
-    }
-  };
+      }
+      };
 
-  const handleFinalSend = () => {
-    if (!selectedSendOption) {
+      const handleFinalSend = () => {
+      if (!selectedSendOption) {
       toast.error("Please select an option");
       return;
-    }
+      }
 
-    const map = {
+      const map = {
       "Email": ["email"],
       "WhatsApp": ["whatsapp"],
       "Dashboard Notification": ["dashboard_notification"],
       "PDF Download": ["pdf"],
+      "Word Format": [],
       "Copy Text": ["copy"]
-    };
+      };
 
-    sendQuotation(map[selectedSendOption], selectedSendOption);
+      sendQuotation(map[selectedSendOption], selectedSendOption);
 
-    // optional UX
-    setShowSendOptions(false);
-    setSelectedSendOption(null);
-  };
+      // optional UX
+      setShowSendOptions(false);
+      setSelectedSendOption(null);
+      };
 
-  const handleSaveDraftQuote = async () => {
-    if (!quotationId) {
+      const handleSaveDraftQuote = async () => {
+      if (!quotationId) {
       toast.error("Quotation draft not ready yet");
       return;
-    }
+      }
 
-    try {
+      try {
       setSavingDraftQuote(true);
       await persistQuotationDraft();
       toast.success("Draft saved successfully. Quote not sent yet.");
-    } catch (error) {
+      } catch (error) {
       console.error("Failed to save quotation draft", error);
       toast.error(error?.response?.data?.message || error?.message || "Failed to save draft");
-    } finally {
+      } finally {
       setSavingDraftQuote(false);
-    }
-  };
+      }
+      };
 
-  const tripDuration = useMemo(
-    () => getTripDuration(order?.startDate, order?.endDate),
-    [order?.startDate, order?.endDate]
-  );
-  const tripNights = tripDuration.nights;
-  const itineraryStartDate = formatDateInput(order?.startDate);
-  const itineraryEntries = useMemo(
-    () =>
+      const tripDuration = useMemo(
+      () => getTripDuration(order?.startDate, order?.endDate),
+      [order?.startDate, order?.endDate]
+      );
+      const tripNights = tripDuration.nights;
+      const itineraryStartDate = formatDateInput(order?.startDate);
+      const itineraryEntries = useMemo(
+      () =>
       reconcileDayWiseItineraryItems(
-        dayWiseItinerary,
-        tripDuration.days,
-        itineraryStartDate,
+      dayWiseItinerary,
+      tripDuration.days,
+      itineraryStartDate,
       ),
-    [dayWiseItinerary, itineraryStartDate, tripDuration.days],
-  );
+      [dayWiseItinerary, itineraryStartDate, tripDuration.days],
+      );
 
-  const updateDayWiseItineraryEntry = (dayNumber, field, value) => {
-    setDayWiseItinerary((prev) =>
+      const updateDayWiseItineraryEntry = (dayNumber, field, value) => {
+      setDayWiseItinerary((prev) =>
       reconcileDayWiseItineraryItems(prev, tripDuration.days, itineraryStartDate).map((entry) =>
-        entry.dayNumber === dayNumber
-          ? { ...entry, [field]: value }
-          : entry,
+      entry.dayNumber === dayNumber
+      ? { ...entry, [field]: value }
+      : entry,
       ),
-    );
-  };
+      );
+      };
 
-  useEffect(() => {
-    setDayWiseItinerary((prev) => {
+      useEffect(() => {
+      setDayWiseItinerary((prev) => {
       const nextEntries = reconcileDayWiseItineraryItems(
-        prev,
-        tripDuration.days,
-        itineraryStartDate,
+      prev,
+      tripDuration.days,
+      itineraryStartDate,
       );
 
       return areDayWiseItineraryItemsEqual(prev, nextEntries) ? prev : nextEntries;
-    });
-  }, [itineraryStartDate, tripDuration.days]);
+      });
+      }, [itineraryStartDate, tripDuration.days]);
 
-  const queryRequirementTags = [
-    order?.transportRequired ? "Transport Required" : null,
-    order?.sightseeingRequired ? "Sightseeing Required" : null,
-    order?.customerBudget ? `Budget ₹${Number(order.customerBudget).toLocaleString("en-IN")}` : null,
-  ].filter(Boolean);
+      const queryRequirementTags = [
+      order?.transportRequired ? "Transport Required" : null,
+      order?.sightseeingRequired ? "Sightseeing Required" : null,
+      order?.customerBudget ? `Budget ₹${Number(order.customerBudget).toLocaleString("en-IN")}` : null,
+      ].filter(Boolean);
 
-
-  const getRemainingHotelNights = (allServices, currentId) => {
-    const usedByOtherHotels = allServices
+      const getRemainingHotelNights = (allServices, currentId) => {
+      const usedByOtherHotels = allServices
       .filter((service) => service.type === "hotel" && service.checked && service.id !== currentId)
       .reduce((sum, service) => sum + Number(service.nights || 0), 0);
 
-    return Math.max(0, tripNights - usedByOtherHotels);
-  };
+      return Math.max(0, tripNights - usedByOtherHotels);
+      };
 
-  const getHotelNightStart = (allServices, currentId) => {
-    let usedByPreviousHotels = 0;
+      const getHotelNightStart = (allServices, currentId) => {
+      let usedByPreviousHotels = 0;
 
-    for (const service of allServices) {
+      for (const service of allServices) {
       if (service.id === currentId) break;
 
       if (service.type === "hotel" && service.checked) {
-        usedByPreviousHotels += Number(service.nights || 0);
+      usedByPreviousHotels += Number(service.nights || 0);
       }
-    }
+      }
 
-    if (!tripNights) return 0;
+      if (!tripNights) return 0;
 
-    return Math.min(tripNights, usedByPreviousHotels + 1);
-  };
+      return Math.min(tripNights, usedByPreviousHotels + 1);
+      };
 
-  const getHotelDefaultStartDate = (allServices, currentId) => {
-    if (!order?.startDate) return "";
+      const getHotelDefaultStartDate = (allServices, currentId) => {
+      if (!order?.startDate) return "";
 
-    const usedByPreviousHotels = Math.max(0, getHotelNightStart(allServices, currentId) - 1);
+      const usedByPreviousHotels = Math.max(0, getHotelNightStart(allServices, currentId) - 1);
 
-    return addDaysToDate(order.startDate, usedByPreviousHotels);
-  };
+      return addDaysToDate(order.startDate, usedByPreviousHotels);
+      };
 
-  const getAvailableTransportDaysFromDate = (startDateValue) => {
-    if (!startDateValue || !order?.endDate) return 1;
+      const getAvailableTransportDaysFromDate = (startDateValue) => {
+      if (!startDateValue || !order?.endDate) return 1;
 
-    const startDate = new Date(startDateValue);
-    const tripEndDate = new Date(order.endDate);
+      const startDate = new Date(startDateValue);
+      const tripEndDate = new Date(order.endDate);
 
-    if (Number.isNaN(startDate.getTime()) || Number.isNaN(tripEndDate.getTime())) {
+      if (Number.isNaN(startDate.getTime()) || Number.isNaN(tripEndDate.getTime())) {
       return 1;
-    }
+      }
 
-    const diff = tripEndDate - startDate;
-    return Math.max(1, Math.ceil(diff / (1000 * 60 * 60 * 24)));
-  };
+      const diff = tripEndDate - startDate;
+      return Math.max(1, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+      };
 
-  const adultPassengers = Number(order?.numberOfAdults || 0);
-  const childPassengers = Number(order?.numberOfChildren || 0);
-  const totalPassengers = adultPassengers + childPassengers;
-  const costPerPassenger =
-    totalPassengers > 0 ? totalAmount / totalPassengers : 0;
+      const adultPassengers = Number(order?.numberOfAdults || 0);
+      const childPassengers = Number(order?.numberOfChildren || 0);
+      const totalPassengers = adultPassengers + childPassengers;
+      const costPerPassenger =
+      totalPassengers > 0 ? totalAmount / totalPassengers : 0;
 
-  const toggleService = (id) => {
-    setServices((prev) =>
+const toggleService = (id, force = false) => {
+const targetService = services.find((service) => service.id === id);
+const normalizedTargetType = normalizeServiceFilterType(targetService?.type);
+const nextChecked = !targetService?.checked;
+const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
+
+      if (
+      !force &&
+      nextChecked &&
+      (normalizedTargetType === "transfer" || normalizedTargetType === "car") &&
+      servicePassengerCapacity > 0 &&
+      totalPassengers > 0 &&
+      servicePassengerCapacity > totalPassengers
+      ) {
+      setTransportSelectionConfirm({
+      open: true,
+      serviceId: id,
+      serviceTitle: targetService?.title || "Selected transport service",
+      passengerCapacity: servicePassengerCapacity,
+      passengerCount: totalPassengers,
+      });
+      return;
+      }
+
+      if (
+      normalizedTargetType === "hotel" &&
+      nextChecked &&
+      getRemainingHotelNights(services, id) === 0
+      ) {
+      toast.error("All trip nights are already assigned to other hotels.", {
+      id: `hotel-night-limit-${id}`,
+      });
+      return;
+      }
+
+      setServices((prev) =>
       prev.map((service) => {
-        if (service.id !== id) {
-          return service;
-        }
+      if (service.id !== id) {
+      return service;
+      }
 
-        const nextChecked = !service.checked;
+      const nextChecked = !service.checked;
 
-        if (service.type !== "hotel") {
-          return {
-            ...service,
-            checked: nextChecked,
-            serviceDate: nextChecked
-              ? service.serviceDate || formatDateInput(order?.startDate)
-              : service.serviceDate,
-          };
-        }
+      if (service.type !== "hotel") {
+      return {
+      ...service,
+      checked: nextChecked,
+      useStoredPricing: nextChecked ? service.useStoredPricing : false,
+      serviceDate: nextChecked
+      ? service.serviceDate || formatDateInput(order?.startDate)
+      : service.serviceDate,
+      };
+      }
 
-        if (!nextChecked) {
-          return { ...service, checked: false, nights: "" };
-        }
+      if (!nextChecked) {
+      return { ...service, checked: false, nights: "", useStoredPricing: false };
+      }
 
-        const remainingHotelNights = getRemainingHotelNights(prev, id);
-
-        if (remainingHotelNights === 0) {
-          toast.error("All trip nights are already assigned to other hotels.");
-          return service;
-        }
-
-        return {
-          ...service,
-          checked: true,
-          serviceDate:
-            service.serviceDate || getHotelDefaultStartDate(prev, id),
-          nights: "",
-        };
+      return {
+      ...service,
+      checked: true,
+      useStoredPricing: service.useStoredPricing,
+      serviceDate:
+      service.serviceDate || getHotelDefaultStartDate(prev, id),
+      nights: "",
+      };
       })
-    );
-  };
+      );
+      };
 
-  const updateField = (id, field, value) => {
-    setServices((prev) =>
+      const updateField = (id, field, value) => {
+      setServices((prev) =>
       prev.map((service) => {
-        if (service.id !== id) {
-          return service;
-        }
+      if (service.id !== id) {
+      return service;
+      }
 
-        if (service.type === "hotel" && field === "nights") {
-          const remainingHotelNights = getRemainingHotelNights(prev, id);
-          const selectedNights = Number(value);
+      if (service.type === "hotel" && field === "nights") {
+      const remainingHotelNights = getRemainingHotelNights(prev, id);
+      const selectedNights = Number(value);
 
-          if (!selectedNights) {
-            return { ...service, nights: "" };
-          }
+      if (!selectedNights) {
+      return { ...service, nights: "", useStoredPricing: false };
+      }
 
-          const safeNights = Math.min(selectedNights, remainingHotelNights);
+      const safeNights = Math.min(selectedNights, remainingHotelNights);
 
-          return { ...service, nights: safeNights > 0 ? safeNights : "" };
-        }
+      return { ...service, nights: safeNights > 0 ? safeNights : "", useStoredPricing: false };
+      }
 
-        if (service.type === "hotel" && field === "serviceDate") {
-          return { ...service, serviceDate: value };
-        }
+      if (service.type === "hotel" && field === "serviceDate") {
+      return { ...service, serviceDate: value, useStoredPricing: false };
+      }
 
-        if (service.type === "hotel" && field === "rooms") {
-          return {
-            ...service,
-            rooms: Math.max(1, Number(value || 1)),
-          };
-        }
+      if (service.type === "hotel" && field === "rooms") {
+      const requestedRooms = Math.max(1, Number(value || 1));
+      const maxAllowedRooms = Math.max(1, adultPassengers || 0);
 
-        if (
-          service.type === "hotel" &&
-          ["roomCategory", "roomType", "bedType"].includes(field)
-        ) {
-          return resolveHotelVariantSelection(prev, service, field, value);
-        }
+      if (requestedRooms > maxAllowedRooms) {
+      toast.error(
+      `You can book rooms only according to the number of adults, not more than that.`,
+      { id: `room-limit-${id}` },
+      );
+      return {
+      ...service,
+      rooms: maxAllowedRooms,
+      useStoredPricing: false,
+      };
+      }
 
-        if ((service.type === "transfer" || service.type === "car") && field === "usageType") {
-          return applyFixedTransportUsagePricing(
-            { ...service, usageType: normalizeTransportUsageValue(value) },
-            service.rate,
-            service.currency,
-          );
-        }
+      return {
+      ...service,
+      rooms: requestedRooms,
+      useStoredPricing: false,
+      };
+      }
 
-        if ((service.type === "transfer" || service.type === "car") && field === "days") {
-          const availableTransportDays = getAvailableTransportDaysFromDate(
-            service.serviceDate || formatDateInput(order?.startDate),
-          );
-          const safeDays = Math.min(Math.max(Number(value || 1), 1), availableTransportDays);
-          return { ...service, days: safeDays };
-        }
+      if (
+      service.type === "hotel" &&
+      ["roomCategory", "roomType", "bedType"].includes(field)
+      ) {
+      return resolveHotelVariantSelection(prev, service, field, value);
+      }
 
-        if ((service.type === "transfer" || service.type === "car") && field === "serviceDate") {
-          const availableTransportDays = getAvailableTransportDaysFromDate(value);
-          const safeDays = Math.min(Math.max(Number(service.days || 1), 1), availableTransportDays);
-          return { ...service, serviceDate: value, days: safeDays };
-        }
+      if ((service.type === "transfer" || service.type === "car") && field === "usageType") {
+      return applyFixedTransportUsagePricing(
+      { ...service, usageType: normalizeTransportUsageValue(value), useStoredPricing: false },
+      service.rate,
+      service.currency,
+      );
+      }
 
-        return { ...service, [field]: value };
+      if ((service.type === "transfer" || service.type === "car") && field === "days") {
+      const availableTransportDays = getAvailableTransportDaysFromDate(
+      service.serviceDate || formatDateInput(order?.startDate),
+      );
+      const safeDays = Math.min(Math.max(Number(value || 1), 1), availableTransportDays);
+      return { ...service, days: safeDays, useStoredPricing: false };
+      }
+
+      if ((service.type === "transfer" || service.type === "car") && field === "serviceDate") {
+      const availableTransportDays = getAvailableTransportDaysFromDate(value);
+      const safeDays = Math.min(Math.max(Number(service.days || 1), 1), availableTransportDays);
+      return { ...service, serviceDate: value, days: safeDays, useStoredPricing: false };
+      }
+
+      return { ...service, [field]: value, useStoredPricing: false };
       })
-    );
-  };
+      );
+      };
 
-  const focusServiceEditor = (service) => {
-    if (!service?.id) return;
+      const focusServiceEditor = (service) => {
+      if (!service?.id) return;
 
-    setContractedRatesSearch("");
-    setContractedRatesFilter(normalizeServiceFilterType(service.type) || "all");
-    setFocusedServiceCardId(service.id);
-    setEditingServiceCardId(service.id);
+      setContractedRatesSearch("");
+      setContractedRatesFilter(normalizeServiceFilterType(service.type) || "all");
+      setFocusedServiceCardId(service.id);
+      setEditingServiceCardId(service.id);
 
-    window.setTimeout(() => {
+      window.setTimeout(() => {
       const target = document.getElementById(getServiceCardDomId(service.id));
       target?.scrollIntoView({ behavior: "smooth", block: "center" });
-    }, 180);
-  };
+      }, 180);
+      };
 
-  const closeSelectedServicesModal = () => {
-    setIsSelectedServicesModalOpen(false);
-    setSelectedServicesModalTargetId("");
-    setSelectedServicesModalScope("all");
-  };
+      const closeSelectedServicesModal = () => {
+      setIsSelectedServicesModalOpen(false);
+      setSelectedServicesModalTargetId("");
+      setSelectedServicesModalScope("all");
+      };
 
-  const openSelectedServicesModal = (serviceId = "", scope = "all") => {
-    setActiveWorkspaceModal("");
-    setSelectedServicesModalTargetId(serviceId || "");
-    setSelectedServicesModalScope(scope);
-    setIsSelectedServicesModalOpen(true);
-  };
+      const openSelectedServicesModal = (serviceId = "", scope = "all") => {
+      setActiveWorkspaceModal("");
+      setSelectedServicesModalTargetId(serviceId || "");
+      setSelectedServicesModalScope(scope);
+      setIsSelectedServicesModalOpen(true);
+      };
 
-  const openWorkspaceModal = (workspace) => {
-    closeSelectedServicesModal();
-    setActiveWorkspaceModal(workspace);
-  };
+      const openWorkspaceModal = (workspace) => {
+      closeSelectedServicesModal();
+      setActiveWorkspaceModal(workspace);
+      };
 
-  const closeWorkspaceModal = () => {
-    setActiveWorkspaceModal("");
-  };
+      const closeWorkspaceModal = () => {
+      setActiveWorkspaceModal("");
+      };
 
-  const openSelectedServicesModalForService = (service) => {
-    if (!service?.id || !service.checked) return;
+      const openSelectedServicesModalForService = (service) => {
+      if (!service?.id || !service.checked) return;
 
-    setFocusedServiceCardId(service.id);
-    openSelectedServicesModal(service.id, "single");
-  };
+      setFocusedServiceCardId(service.id);
+      openSelectedServicesModal(service.id, "single");
+      };
 
-  const handleSelectedServiceEditAction = async (service) => {
-    if (!service?.id) return;
+      const handleSelectedServiceEditAction = async (service) => {
+      if (!service?.id) return;
 
-    if (editingServiceCardId !== service.id) {
+      if (editingServiceCardId !== service.id) {
       closeSelectedServicesModal();
       focusServiceEditor(service);
       return;
-    }
+      }
 
-    const savingToast = toast.loading("Saving edited service...");
+      const savingToast = toast.loading("Saving edited service...");
 
-    try {
+      try {
       await persistQuotationDraft();
       toast.dismiss(savingToast);
       toast.success("Edited service saved");
       showQuickActionFeedback(
-        "success",
-        "Edit Saved",
-        `${service.title} changes have been saved successfully.`,
+      "success",
+      "Edit Saved",
+      `${service.title} changes have been saved successfully.`,
       );
       setEditingServiceCardId("");
       closeSelectedServicesModal();
-    } catch (error) {
+      } catch (error) {
       toast.dismiss(savingToast);
       console.error("Failed to save edited service", error);
       toast.error(error?.response?.data?.message || "Failed to save edited service");
-    }
-  };
+      }
+      };
 
-  const handleSelectedServiceDelete = async (service) => {
-    if (!service?.id) return;
+      const handleSelectedServiceDelete = async (service) => {
+      if (!service?.id) return;
 
-    if (editingServiceCardId === service.id) {
+      if (editingServiceCardId === service.id) {
       setEditingServiceCardId("");
-    }
+      }
 
-    if (service.custom) {
+      if (service.custom) {
       await deleteService(service.id);
       return;
-    }
+      }
 
-    toggleService(service.id);
-  };
+      toggleService(service.id);
+      };
 
-  const applyPackageToServices = (pkg) => {
-    setSelectedPackageTemplate(pkg);
+      const applyPackageToServices = (pkg) => {
+      setSelectedPackageTemplate(pkg);
 
-    if (!pkg) {
+      if (!pkg) {
       return;
-    }
+      }
 
-    setServices((prev) => buildPackageMatchedServices(prev, pkg));
-  };
+      setServices((prev) => buildPackageMatchedServices(prev, pkg));
+      };
 
-  const renderSelectedServicesList = (servicesToRender = selectedServices) => (
-    servicesToRender.length > 0 ? (
-      <div className={`dark-scrollbar space-y-3 overflow-y-auto pr-1 ${selectedServicesModalScope === "single" ? "mx-auto max-w-2xl" : ""}`}>
+      const renderSelectedServicesList = (servicesToRender = selectedServices) => (
+      servicesToRender.length > 0 ? (
+      <div className={`dark-scrollbar space-y-3 overflow-y-auto pr-1 ${selectedServicesModalScope==="single"
+        ? "mx-auto max-w-2xl" : "" }`}>
         {servicesToRender.map((service) => {
-          const serviceEdits = getSelectedServiceQuotationEdits(service);
-          const isSingleServiceModalView =
-            selectedServicesModalScope === "single" && servicesToRender.length === 1;
+        const serviceEdits = getSelectedServiceQuotationEdits(service);
+        const serviceIncludedItems = getSelectedServiceIncludedItems(service);
+        const isSingleServiceModalView =
+        selectedServicesModalScope === "single" && servicesToRender.length === 1;
 
-          const Chip = ({ icon, label, value, accent = "text-slate-300", iconColor = "text-slate-500" }) => (
-            <div className="inline-flex items-center gap-1.5 rounded-lg border border-[#212f45] bg-[#0a1018] px-2.5 py-[5px]">
-              {icon && (
-                <span className={`flex-shrink-0 ${iconColor}`} style={{ lineHeight: 0 }}>
-                  {icon}
-                </span>
-              )}
-              {label && (
-                <span className="flex-shrink-0 text-[10px] font-medium text-slate-500">{label}:</span>
-              )}
-              <span className={`max-w-[120px] truncate text-[10px] font-semibold leading-none ${accent}`}>
-                {value}
-              </span>
-            </div>
-          );
+        const Chip = ({ icon, label, value, accent = "text-slate-300", iconColor = "text-slate-500" }) => (
+        <div
+          className="inline-flex items-center gap-1.5 rounded-lg border border-[#212f45] bg-[#0a1018] px-2.5 py-[5px]">
+          {icon && (
+          <span className={`flex-shrink-0 ${iconColor}`} style={{ lineHeight: 0 }}>
+            {icon}
+          </span>
+          )}
+          {label && (
+          <span className="flex-shrink-0 text-[10px] font-medium text-slate-500">{label}:</span>
+          )}
+          <span className={`max-w-[120px] truncate text-[10px] font-semibold leading-none ${accent}`}>
+            {value}
+          </span>
+        </div>
+        );
 
-          const typeAccent =
-            service.type === "hotel"
-              ? { bg: "bg-indigo-500/10", border: "border-indigo-500/20", text: "text-indigo-200" }
-              : service.type === "activity"
-                ? { bg: "bg-emerald-500/10", border: "border-emerald-500/20", text: "text-emerald-200" }
-                : service.type === "transfer" || service.type === "car"
-                  ? { bg: "bg-violet-500/10", border: "border-violet-500/20", text: "text-violet-200" }
-                  : { bg: "bg-blue-500/10", border: "border-blue-500/20", text: "text-blue-200" };
-          const isTargetedService = selectedServicesModalTargetId === service.id;
+        const typeAccent =
+        service.type === "hotel"
+        ? { bg: "bg-indigo-500/10", border: "border-indigo-500/20", text: "text-indigo-200" }
+        : service.type === "activity"
+        ? { bg: "bg-emerald-500/10", border: "border-emerald-500/20", text: "text-emerald-200" }
+        : service.type === "transfer" || service.type === "car"
+        ? { bg: "bg-violet-500/10", border: "border-violet-500/20", text: "text-violet-200" }
+        : { bg: "bg-blue-500/10", border: "border-blue-500/20", text: "text-blue-200" };
+        const isTargetedService = selectedServicesModalTargetId === service.id;
 
-          return (
-            <div
-              key={`selected-${service.id}`}
-              id={getSelectedServiceSummaryDomId(service.id)}
-              className={`rounded-[24px] border bg-[#050505] p-3 transition-all duration-200 ${
-                isTargetedService
-                  ? "border-sky-400/60 shadow-[0_0_0_1px_rgba(56,189,248,0.35)]"
-                  : "border-[#22314a]"
-              } ${isSingleServiceModalView ? "mx-auto w-full max-w-2xl" : ""}`}
-            >
-              <div className="rounded-[18px] border border-[#162233] bg-[#08111c] px-3 py-3">
-                <div className={`flex items-start gap-2.5 ${isSingleServiceModalView ? "flex-col" : ""}`}>
-                  <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full border border-[#27436d] bg-[#0b1627]">
-                    {renderSelectedServiceSummaryIcon(service)}
-                  </div>
+        return (
+        <div key={`selected-${service.id}`} id={getSelectedServiceSummaryDomId(service.id)} className={`rounded-[24px]
+          border bg-[#050505] p-3 transition-all duration-200 ${ isTargetedService
+          ? "border-sky-400/60 shadow-[0_0_0_1px_rgba(56,189,248,0.35)]" : "border-[#22314a]" }
+          ${isSingleServiceModalView ? "mx-auto w-full max-w-2xl" : "" }`}>
+          <div className="rounded-[18px] border border-[#162233] bg-[#08111c] px-3 py-3">
+            <div className={`flex items-start gap-2.5 ${isSingleServiceModalView ? "flex-col" : "" }`}>
+              <div
+                className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full border border-[#27436d] bg-[#0b1627]">
+                {renderSelectedServiceSummaryIcon(service)}
+              </div>
 
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="truncate text-[13px] font-semibold leading-tight text-white">
-                        {service.title}
-                      </p>
-                      {isTargetedService && (
-                        <span className="rounded-full border border-sky-500/30 bg-sky-500/10 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-sky-300">
-                          Active
-                        </span>
-                      )}
-                    </div>
-                    {(service.city || service.country) && (
-                      <p className="mt-0.5 truncate text-[10px] text-slate-500">
-                        {[service.city, service.country].filter(Boolean).join(", ")}
-                      </p>
-                    )}
-                  </div>
-
-                  <div className={`${isSingleServiceModalView ? "w-full pl-[46px] text-left" : "flex-shrink-0 pl-1 text-right"}`}>
-                    <p className="whitespace-nowrap text-[12px] font-semibold leading-tight text-yellow-300">
-                      {formatCurrencyValue(service.originalTotal || 0, service.currency)}
-                    </p>
-                    {service.isForeignCurrency && (
-                      <p className="mt-0.5 whitespace-nowrap text-[10px] text-sky-300">
-                        ₹ {formatAmountValue(service.totalInInr || 0)}
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                <div className="mt-2.5 flex flex-wrap gap-1.5">
-                  <div className={`inline-flex items-center rounded-lg border px-2.5 py-[5px] ${typeAccent.bg} ${typeAccent.border}`}>
-                    <span className={`text-[10px] font-semibold leading-none ${typeAccent.text}`}>
-                      {getServiceTypeLabel(service.type)}
-                    </span>
-                  </div>
-
-                  {service.serviceDate && (
-                    <Chip
-                      icon={(
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                          <rect x="3" y="4" width="18" height="18" rx="2" />
-                          <line x1="16" y1="2" x2="16" y2="6" />
-                          <line x1="8" y1="2" x2="8" y2="6" />
-                          <line x1="3" y1="10" x2="21" y2="10" />
-                        </svg>
-                      )}
-                      value={formatServiceDateLabel(service.serviceDate)}
-                    />
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="truncate text-[13px] font-semibold leading-tight text-white">
+                    {service.title}
+                  </p>
+                  {isTargetedService && (
+                  <span
+                    className="rounded-full border border-sky-500/30 bg-sky-500/10 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-sky-300">
+                    Active
+                  </span>
                   )}
+                </div>
+                {(service.city || service.country) && (
+                <p className="mt-0.5 truncate text-[10px] text-slate-500">
+                  {[service.city, service.country].filter(Boolean).join(", ")}
+                </p>
+                )}
+              </div>
 
-                  {service.type === "hotel" && Number(service.nights || 0) > 0 && (
-                    <Chip
-                      icon={(
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M2 4v16" />
-                          <path d="M2 8h18a2 2 0 0 1 2 2v10" />
-                          <path d="M2 17h20" />
-                          <path d="M6 8v9" />
-                        </svg>
-                      )}
-                      value={`${service.nights} night${Number(service.nights) > 1 ? "s" : ""}`}
-                      accent="text-sky-200"
-                    />
+              <div className={`${isSingleServiceModalView ? "w-full pl-[46px] text-left"
+                : "flex-shrink-0 pl-1 text-right" }`}>
+                <p className="whitespace-nowrap text-[12px] font-semibold leading-tight text-yellow-300">
+                  {formatCurrencyValue(service.originalTotal || 0, service.currency)}
+                </p>
+                {service.isForeignCurrency && (
+                <p className="mt-0.5 whitespace-nowrap text-[10px] text-sky-300">
+                  ₹ {formatAmountValue(service.totalInInr || 0)}
+                </p>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-2.5 flex flex-wrap gap-1.5">
+              <div className={`inline-flex items-center rounded-lg border px-2.5 py-[5px] ${typeAccent.bg}
+                ${typeAccent.border}`}>
+                <span className={`text-[10px] font-semibold leading-none ${typeAccent.text}`}>
+                  {getServiceTypeLabel(service.type)}
+                </span>
+              </div>
+
+              {service.serviceDate && (
+              <Chip icon={( <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="4" width="18" height="18" rx="2" />
+                <line x1="16" y1="2" x2="16" y2="6" />
+                <line x1="8" y1="2" x2="8" y2="6" />
+                <line x1="3" y1="10" x2="21" y2="10" />
+                </svg>
+                )}
+                value={formatServiceDateLabel(service.serviceDate)}
+                />
+                )}
+
+                {service.type === "hotel" && Number(service.nights || 0) > 0 && (
+                <Chip icon={( <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                  strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M2 4v16" />
+                  <path d="M2 8h18a2 2 0 0 1 2 2v10" />
+                  <path d="M2 17h20" />
+                  <path d="M6 8v9" />
+                  </svg>
+                  )}
+                  value={`${service.nights} night${Number(service.nights) > 1 ? "s" : ""}`}
+                  accent="text-sky-200"
+                  />
                   )}
 
                   {service.type === "hotel" && Number(service.rooms || 0) > 0 && (
-                    <Chip
-                      icon={(
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-                          <polyline points="9 22 9 12 15 12 15 22" />
-                        </svg>
-                      )}
-                      value={`${service.rooms} room${Number(service.rooms) > 1 ? "s" : ""}`}
+                  <Chip icon={( <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                    <polyline points="9 22 9 12 15 12 15 22" />
+                    </svg>
+                    )}
+                    value={`${service.rooms} room${Number(service.rooms) > 1 ? "s" : ""}`}
                     />
-                  )}
+                    )}
 
-                  {service.type === "hotel" && service.bedType && (
-                    <Chip
-                      icon={(
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M2 9V4a1 1 0 0 1 1-1h18a1 1 0 0 1 1 1v5" />
-                          <path d="M2 20v-4a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v4" />
-                          <path d="M2 14h20" />
-                          <path d="M7 14v2" />
-                          <path d="M17 14v2" />
-                        </svg>
+                    {service.type === "hotel" && service.bedType && (
+                    <Chip icon={( <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                      strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M2 9V4a1 1 0 0 1 1-1h18a1 1 0 0 1 1 1v5" />
+                      <path d="M2 20v-4a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v4" />
+                      <path d="M2 14h20" />
+                      <path d="M7 14v2" />
+                      <path d="M17 14v2" />
+                      </svg>
                       )}
                       value={getBedTypeOptionLabel(service.bedType)}
                       accent="text-amber-200"
                       iconColor="text-amber-400"
-                    />
-                  )}
-
-                  {(service.type === "transfer" || service.type === "car") && Number(service.days || 0) > 0 && (
-                    <Chip
-                      icon={(
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                          <circle cx="12" cy="12" r="10" />
-                          <polyline points="12 6 12 12 16 14" />
-                        </svg>
+                      />
                       )}
-                      value={`${service.days} day${Number(service.days) > 1 ? "s" : ""}`}
-                      accent="text-violet-200"
-                      iconColor="text-violet-400"
-                    />
-                  )}
 
-                  {service.type === "activity" && Number(service.pax || 0) > 0 && (
-                    <Chip
-                      icon={(
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      {(service.type === "transfer" || service.type === "car") && Number(service.days || 0) > 0 && (
+                      <Chip icon={( <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <circle cx="12" cy="12" r="10" />
+                        <polyline points="12 6 12 12 16 14" />
+                        </svg>
+                        )}
+                        value={`${service.days} day${Number(service.days) > 1 ? "s" : ""}`}
+                        accent="text-violet-200"
+                        iconColor="text-violet-400"
+                        />
+                        )}
+
+                        {service.type === "activity" && Number(service.pax || 0) > 0 && (
+                        <Chip icon={( <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                          strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                           <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
                           <circle cx="9" cy="7" r="4" />
                           <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
                           <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-                        </svg>
-                      )}
-                      value={`${service.pax} pax`}
-                      accent="text-emerald-200"
-                      iconColor="text-emerald-400"
-                    />
-                  )}
-
-                  {service.type === "sightseeing" && (
-                    <>
-                      {Number(service.pax || 0) > 0 && (
-                        <Chip
-                          icon={(
-                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-                              <circle cx="9" cy="7" r="4" />
-                            </svg>
+                          </svg>
                           )}
                           value={`${service.pax} pax`}
-                          accent="text-blue-200"
-                          iconColor="text-blue-400"
-                        />
-                      )}
-                      {Number(service.days || 0) > 0 && (
-                        <Chip
-                          icon={(
-                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                              <circle cx="12" cy="12" r="10" />
-                              <polyline points="12 6 12 12 16 14" />
-                            </svg>
+                          accent="text-emerald-200"
+                          iconColor="text-emerald-400"
+                          />
                           )}
-                          value={`${service.days} day${Number(service.days) > 1 ? "s" : ""}`}
-                          accent="text-blue-200"
-                          iconColor="text-blue-400"
-                        />
-                      )}
-                    </>
-                  )}
-                </div>
 
-                {serviceEdits.length > 0 && (
-                  <div className="mt-3 rounded-[14px] border border-sky-500/20 bg-[#071420] px-3 py-2.5">
-                    <div className="mb-2 flex items-center justify-between gap-2">
-                      <p className="text-[8px] font-semibold uppercase tracking-[0.18em] text-sky-200/80">
-                        Quotation Edits
-                      </p>
-                      <span className="rounded-full border border-sky-400/25 bg-sky-500/10 px-2 py-0.5 text-[7px] font-semibold text-sky-200">
-                        {serviceEdits.length} update{serviceEdits.length === 1 ? "" : "s"}
-                      </span>
-                    </div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {serviceEdits.map((edit) => {
-                        const toneClasses =
-                          edit.variant === "success"
-                            ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-200"
-                            : edit.variant === "warning"
-                              ? "border-yellow-500/25 bg-yellow-500/10 text-yellow-100"
-                              : edit.variant === "danger"
-                                ? "border-red-500/25 bg-red-500/10 text-red-200"
-                                : "border-sky-500/20 bg-sky-500/10 text-sky-100";
-                        const iconClasses =
-                          edit.variant === "success"
-                            ? "text-emerald-300"
-                            : edit.variant === "warning"
-                              ? "text-yellow-300"
-                              : edit.variant === "danger"
-                                ? "text-red-300"
-                                : "text-sky-300";
+                          {service.type === "sightseeing" && (
+                          <>
+                            {Number(service.pax || 0) > 0 && (
+                            <Chip icon={( <svg width="10" height="10" viewBox="0 0 24 24" fill="none"
+                              stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                              <circle cx="9" cy="7" r="4" />
+                              </svg>
+                              )}
+                              value={`${service.pax} pax`}
+                              accent="text-blue-200"
+                              iconColor="text-blue-400"
+                              />
+                              )}
+                              {Number(service.days || 0) > 0 && (
+                              <Chip icon={( <svg width="10" height="10" viewBox="0 0 24 24" fill="none"
+                                stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                <circle cx="12" cy="12" r="10" />
+                                <polyline points="12 6 12 12 16 14" />
+                                </svg>
+                                )}
+                                value={`${service.days} day${Number(service.days) > 1 ? "s" : ""}`}
+                                accent="text-blue-200"
+                                iconColor="text-blue-400"
+                                />
+                                )}
+                          </>
+                          )}
+            </div>
 
-                        return (
-                          <span
-                            key={`${service.id}-${edit.key}-${edit.label}`}
-                            className={`inline-flex items-center gap-1 rounded-[8px] border px-2.5 py-[5px] text-[10px] font-medium leading-none ${toneClasses}`}
-                          >
-                            <CheckCircle2 size={11} className={`shrink-0 ${iconClasses}`} />
-                            <span className="font-semibold">{edit.label}</span>
-                            <span className="opacity-40">:</span>
-                            <span>{edit.value}</span>
-                          </span>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
+            {serviceIncludedItems.length > 0 && (
+            <div className="mt-3 rounded-[14px] border border-emerald-500/18 bg-[#07150f] px-3 py-2.5">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <p className="text-[8px] font-semibold uppercase tracking-[0.18em] text-emerald-200/80">
+                  Included In Service
+                </p>
+                <span className="rounded-full border border-emerald-400/25 bg-emerald-500/10 px-2 py-0.5 text-[7px] font-semibold text-emerald-200">
+                  {serviceIncludedItems.length} item{serviceIncludedItems.length === 1 ? "" : "s"}
+                </span>
               </div>
-
-              <div className="mt-2.5 flex items-center justify-between gap-3 px-0.5">
-                <p className="text-[10px] font-medium text-slate-400">Quick Actions</p>
-                <div className="flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => handleSelectedServiceEditAction(service)}
-                    className="cursor-pointer rounded-xl border border-sky-400/35 bg-sky-500/10 px-3.5 py-1.5 text-[11px] font-medium text-sky-200 transition hover:border-sky-300/50 hover:bg-sky-500/15"
-                  >
-                    {editingServiceCardId === service.id ? "Save" : "Edit"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleSelectedServiceDelete(service)}
-                    className="cursor-pointer rounded-xl border border-red-400/25 bg-red-500/10 px-3.5 py-1.5 text-[11px] font-medium text-red-200 transition hover:border-red-300/50 hover:bg-red-500/15"
-                  >
-                    Delete
-                  </button>
-                </div>
+              <div className="flex flex-wrap gap-1.5">
+                {serviceIncludedItems.map((item, itemIndex) => (
+                <span
+                  key={`${service.id}-include-${itemIndex}`}
+                  className="inline-flex items-center rounded-[8px] border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-[5px] text-[10px] font-medium leading-none text-emerald-100"
+                >
+                  {item}
+                </span>
+                ))}
               </div>
             </div>
-          );
+            )}
+
+            {serviceEdits.length > 0 && (
+            <div className="mt-3 rounded-[14px] border border-sky-500/20 bg-[#071420] px-3 py-2.5">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <p className="text-[8px] font-semibold uppercase tracking-[0.18em] text-sky-200/80">
+                  Quotation Edits
+                </p>
+                <span
+                  className="rounded-full border border-sky-400/25 bg-sky-500/10 px-2 py-0.5 text-[7px] font-semibold text-sky-200">
+                  {serviceEdits.length} update{serviceEdits.length === 1 ? "" : "s"}
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {serviceEdits.map((edit) => {
+                const toneClasses =
+                edit.variant === "success"
+                ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-200"
+                : edit.variant === "warning"
+                ? "border-yellow-500/25 bg-yellow-500/10 text-yellow-100"
+                : edit.variant === "danger"
+                ? "border-red-500/25 bg-red-500/10 text-red-200"
+                : "border-sky-500/20 bg-sky-500/10 text-sky-100";
+                const iconClasses =
+                edit.variant === "success"
+                ? "text-emerald-300"
+                : edit.variant === "warning"
+                ? "text-yellow-300"
+                : edit.variant === "danger"
+                ? "text-red-300"
+                : "text-sky-300";
+
+                return (
+                <span key={`${service.id}-${edit.key}-${edit.label}`} className={`inline-flex items-center gap-1
+                  rounded-[8px] border px-2.5 py-[5px] text-[10px] font-medium leading-none ${toneClasses}`}>
+                  <CheckCircle2 size={11} className={`shrink-0 ${iconClasses}`} />
+                  <span className="font-semibold">{edit.label}</span>
+                  <span className="opacity-40">:</span>
+                  <span>{edit.value}</span>
+                </span>
+                );
+                })}
+              </div>
+            </div>
+            )}
+          </div>
+
+          <div className="mt-2.5 flex items-center justify-between gap-3 px-0.5">
+            <p className="text-[10px] font-medium text-slate-400">Quick Actions</p>
+            <div className="flex items-center gap-1.5">
+              <button type="button" onClick={()=> handleSelectedServiceEditAction(service)}
+                className="cursor-pointer rounded-xl border border-sky-400/35 bg-sky-500/10 px-3.5 py-1.5 text-[11px]
+                font-medium text-sky-200 transition hover:border-sky-300/50 hover:bg-sky-500/15"
+                >
+                {editingServiceCardId === service.id ? "Save" : "Edit"}
+              </button>
+              <button type="button" onClick={()=> handleSelectedServiceDelete(service)}
+                className="cursor-pointer rounded-xl border border-red-400/25 bg-red-500/10 px-3.5 py-1.5 text-[11px]
+                font-medium text-red-200 transition hover:border-red-300/50 hover:bg-red-500/15"
+                >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+        );
         })}
       </div>
-    ) : (
+      ) : (
       <div className="rounded-2xl border border-dashed border-[#28303d] bg-[#090909] px-4 py-8 text-center">
         <p className="text-sm font-medium text-white">No services selected yet</p>
         <p className="mt-1 text-xs text-slate-400">
           Pick services from the section above and they will appear here automatically.
         </p>
       </div>
-    )
-  );
+      )
+      );
 
-  const renderSelectedServicesModal = () => {
-    if (typeof document === "undefined") {
+      const renderSelectedServicesModal = () => {
+      if (typeof document === "undefined") {
       return null;
-    }
+      }
 
-    return createPortal(
+      return createPortal(
       <AnimatePresence>
         {isSelectedServicesModalOpen && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.2, ease: "easeOut" }}
-            className="fixed inset-0 z-[120] flex h-screen w-screen items-center justify-center bg-black/70 px-3 py-4 backdrop-blur-sm"
-            onClick={closeSelectedServicesModal}
-          >
-            <motion.div
-              initial={{ opacity: 0, y: 24, scale: 0.98 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 18, scale: 0.98 }}
-              transition={{ duration: 0.24, ease: "easeOut" }}
-              className={`flex w-full flex-col overflow-hidden rounded-[28px] border border-[#22314a] bg-[#050505] shadow-[0_24px_80px_rgba(0,0,0,0.45)] ${
-                selectedServicesModalScope === "single"
-                  ? "max-h-[90vh] max-w-3xl"
-                  : "h-[min(90vh,960px)] max-w-5xl"
-              }`}
-              onClick={(event) => event.stopPropagation()}
-              role="dialog"
-              aria-modal="true"
-              aria-label="Selected services"
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+          transition={{ duration: 0.2, ease: "easeOut" }}
+          className="fixed inset-0 z-[120] flex h-screen w-screen items-center justify-center bg-black/70 px-3 py-4 backdrop-blur-sm"
+          onClick={closeSelectedServicesModal}>
+          <motion.div initial={{ opacity: 0, y: 24, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 18, scale: 0.98 }} transition={{ duration: 0.24, ease: "easeOut" }} className={`flex
+            w-full flex-col overflow-hidden rounded-[28px] border border-[#22314a] bg-[#050505]
+            shadow-[0_24px_80px_rgba(0,0,0,0.45)] ${ selectedServicesModalScope==="single" ? "max-h-[90vh] max-w-3xl"
+            : "h-[min(90vh,960px)] max-w-5xl" }`} onClick={(event)=> event.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Selected services"
             >
-              <div className="flex items-start justify-between gap-4 border-b border-[#162233] bg-[#08111c] px-5 py-4">
-                <div>
-                  <h2 className="text-lg font-semibold text-white">
-                    {selectedServicesModalScope === "single" ? "Service Editor" : "Selected Services"}
-                  </h2>
-                  <p className="mt-1 text-sm text-slate-400">
-                    {selectedServicesModalScope === "single"
-                      ? "This focused view shows only the service you chose to edit."
-                      : "All checked services are listed here for quick edit or delete."}
-                  </p>
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="rounded-full border border-yellow-500/30 bg-yellow-500/10 px-3 py-1 text-xs font-semibold text-yellow-200">
-                    {visibleSelectedServices.length} {selectedServicesModalScope === "single" ? "service" : "selected"}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={closeSelectedServicesModal}
-                    className="flex h-10 w-10 items-center justify-center rounded-full border border-[#22314a] bg-[#050505] text-slate-300 transition hover:border-sky-400/40 hover:text-white"
-                    aria-label="Close selected services modal"
-                  >
-                    <X size={18} />
-                  </button>
-                </div>
+            <div className="flex items-start justify-between gap-4 border-b border-[#162233] bg-[#08111c] px-5 py-4">
+              <div>
+                <h2 className="text-lg font-semibold text-white">
+                  {selectedServicesModalScope === "single" ? "Service Editor" : "Selected Services"}
+                </h2>
+                <p className="mt-1 text-sm text-slate-400">
+                  {selectedServicesModalScope === "single"
+                  ? "This focused view shows only the service you chose to edit."
+                  : "All checked services are listed here for quick edit or delete."}
+                </p>
               </div>
+              <div className="flex items-center gap-3">
+                <div
+                  className="rounded-full border border-yellow-500/30 bg-yellow-500/10 px-3 py-1 text-xs font-semibold text-yellow-200">
+                  {visibleSelectedServices.length} {selectedServicesModalScope === "single" ? "service" : "selected"}
+                </div>
+                <button type="button" onClick={closeSelectedServicesModal}
+                  className="flex h-10 w-10 items-center justify-center rounded-full border border-[#22314a] bg-[#050505] text-slate-300 transition hover:border-sky-400/40 hover:text-white"
+                  aria-label="Close selected services modal">
+                  <X size={18} />
+                </button>
+              </div>
+            </div>
 
-              <div
-                className={`dark-scrollbar overflow-y-auto px-5 py-5 ${
-                  selectedServicesModalScope === "single" ? "max-h-[calc(90vh-140px)]" : "flex-1"
-                }`}
-              >
-                {renderSelectedServicesList(visibleSelectedServices)}
-              </div>
-            </motion.div>
+            <div className={`dark-scrollbar overflow-y-auto px-5 py-5 ${ selectedServicesModalScope==="single"
+              ? "max-h-[calc(90vh-140px)]" : "flex-1" }`}>
+              {renderSelectedServicesList(visibleSelectedServices)}
+            </div>
           </motion.div>
+        </motion.div>
         )}
       </AnimatePresence>,
       document.body,
-    );
-  };
+      );
+      };
 
-  const renderItineraryWorkspaceContent = () => (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#232323] bg-[#070707] px-4 py-3">
-        <div className="flex items-center gap-2">
-          <span className="flex h-8 w-8 items-center justify-center rounded-full border border-amber-500/30 bg-amber-500/10 text-amber-300">
-            <CalendarDays size={15} />
-          </span>
-          <div>
-            <p className="text-sm font-semibold text-white">Auto Synced With Duration</p>
-            <p className="mt-1 text-xs text-slate-500">
-              Duration: {tripDuration.label || "Trip dates pending"}{order?.startDate ? ` • Starts ${formatShareDate(order.startDate)}` : ""}
-            </p>
+      const renderItineraryWorkspaceContent = () => (
+      <div className="space-y-4">
+        <div
+          className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#232323] bg-[#070707] px-4 py-3">
+          <div className="flex items-center gap-2">
+            <span
+              className="flex h-8 w-8 items-center justify-center rounded-full border border-amber-500/30 bg-amber-500/10 text-amber-300">
+              <CalendarDays size={15} />
+            </span>
+            <div>
+              <p className="text-sm font-semibold text-white">Auto Synced With Duration</p>
+              <p className="mt-1 text-xs text-slate-500">
+                Duration: {tripDuration.label || "Trip dates pending"}{order?.startDate ? ` • Starts
+                ${formatShareDate(order.startDate)}` : ""}
+              </p>
+            </div>
           </div>
+          <span
+            className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-[11px] font-medium text-amber-300">
+            {itineraryEntries.length} Day{itineraryEntries.length === 1 ? "" : "s"}
+          </span>
         </div>
-        <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-[11px] font-medium text-amber-300">
-          {itineraryEntries.length} Day{itineraryEntries.length === 1 ? "" : "s"}
-        </span>
-      </div>
 
-      {itineraryEntries.length ? itineraryEntries.map((entry) => {
+        {itineraryEntries.length ? itineraryEntries.map((entry) => {
         const dayLabel = entry.dayLabel || buildItineraryDayLabel(entry.dayNumber, entry.date);
         const fullHeading = entry.title ? `${dayLabel}: ${entry.title}` : dayLabel;
 
         return (
-          <div key={`itinerary-day-${entry.dayNumber}`} className="rounded-2xl border border-[#232323] bg-[#070707] p-3">
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <div className="flex min-w-0 items-center gap-2">
-                <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full border border-orange-500/30 bg-orange-500/10 text-orange-300">
-                  <MdOutlineTravelExplore size={15} />
-                </span>
-                <p className="truncate text-sm font-semibold text-white">{fullHeading}</p>
-              </div>
-              <span className="rounded-full border border-orange-500/30 bg-orange-500/10 px-2.5 py-1 text-[11px] font-medium text-orange-300">
-                Day {entry.dayNumber}
+        <div key={`itinerary-day-${entry.dayNumber}`} className="rounded-2xl border border-[#232323] bg-[#070707] p-3">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-2">
+              <span
+                className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full border border-orange-500/30 bg-orange-500/10 text-orange-300">
+                <MdOutlineTravelExplore size={15} />
               </span>
+              <p className="truncate text-sm font-semibold text-white">{fullHeading}</p>
             </div>
+            <span
+              className="rounded-full border border-orange-500/30 bg-orange-500/10 px-2.5 py-1 text-[11px] font-medium text-orange-300">
+              Day {entry.dayNumber}
+            </span>
+          </div>
 
-            <div className="space-y-2">
-              <input
-                type="text"
-                value={entry.title}
-                onChange={(e) => updateDayWiseItineraryEntry(entry.dayNumber, "title", e.target.value)}
-                placeholder="Enter heading e.g. North Phu Quoc Airport to Phu Quoc Hotel - pvt"
-                className="w-full rounded-xl border border-gray-700 bg-black px-3 py-2 text-sm text-white outline-none transition focus:border-yellow-500"
-              />
-              <textarea
-                value={entry.description}
-                onChange={(e) => updateDayWiseItineraryEntry(entry.dayNumber, "description", e.target.value)}
+          <div className="space-y-2">
+            <input type="text" value={entry.title} onChange={(e)=> updateDayWiseItineraryEntry(entry.dayNumber, "title",
+            e.target.value)}
+            placeholder="Enter heading e.g. North Phu Quoc Airport to Phu Quoc Hotel - pvt"
+            className="w-full rounded-xl border border-gray-700 bg-black px-3 py-2 text-sm text-white outline-none
+            transition focus:border-yellow-500"
+            />
+            <textarea value={entry.description} onChange={(e)=> updateDayWiseItineraryEntry(entry.dayNumber, "description", e.target.value)}
                 rows={4}
                 placeholder="Add description, timings, activities, transfers, meals, or special notes for this day..."
                 className="min-h-[120px] w-full resize-y rounded-xl border border-gray-700 bg-black px-3 py-2 text-sm text-white outline-none transition focus:border-yellow-500"
@@ -4413,7 +5172,7 @@ const QuotationBuilder = () => {
         <div className="flex items-start justify-between gap-4">
           <div>
             <h2 className="text-[13px] font-semibold text-white">Selected Services</h2>
-            <p className="mt-1 max-w-[240px] text-[11px] leading-relaxed text-slate-400">
+            <p className="mt-1 whitespace-nowrap text-[11px] leading-relaxed text-slate-400">
               Review, edit, and manage all selected services inside a focused modal workspace.
             </p>
           </div>
@@ -4438,7 +5197,7 @@ const QuotationBuilder = () => {
               onClick={() => openSelectedServicesModal(editingServiceCardId || "", "all")}
               className="cursor-pointer rounded-xl border border-sky-400/35 bg-sky-500/10 px-4 py-2 text-[11px] font-medium text-sky-200 transition hover:border-sky-300/50 hover:bg-sky-500/15"
             >
-              Open Selected Services
+              Open All Selected Services
             </button>
           </div>
         </div>
@@ -4539,16 +5298,220 @@ const QuotationBuilder = () => {
         className="-m-3 min-h-[calc(100vh-24px)] overflow-x-hidden bg-black p-3 text-white font-sans sm:-m-4 sm:min-h-[calc(100vh-32px)] sm:p-4 lg:-m-5 lg:min-h-[calc(100vh-40px)] lg:p-5"
       >
         {/* Header */}
-        <motion.div variants={sectionRevealVariants} className="flex justify-between items-center mb-2.5">
+        <motion.div variants={sectionRevealVariants} className="mb-2.5 flex items-center justify-between">
           <button
             onClick={() => navigate(-1)}
             className="text-yellow-400 text-sm cursor-pointer"
           >
             ← Back to Order Acceptance
           </button>
-          <div className="text-yellow-400 font-semibold">
-            <p className="text-right text-[#90a1b9] text-xs">Query ID</p>
-            <span className="font-bold">{orderQueryId || "-"}</span>
+          <div className="flex items-start gap-3">
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setIsQuotationHistoryOpen((prev) => !prev)}
+                className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-yellow-500/35 bg-[#131a28] px-3 py-2 text-xs font-semibold text-yellow-300 transition hover:border-yellow-400/60 hover:bg-[#172033]"
+              >
+                <FileText size={14} />
+                <span>Quotation History</span>
+                <span className="rounded-full bg-yellow-500/15 px-2 py-0.5 text-[11px] text-yellow-200">
+                  {quotationHistory.length}
+                </span>
+                {isQuotationHistoryOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+              </button>
+
+              <AnimatePresence>
+                {isQuotationHistoryOpen && (
+                <motion.div
+                  initial={{ opacity: 0, y: -10, scale: 0.97 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -8, scale: 0.97 }}
+                  transition={{ duration: 0.22, ease: "easeOut" }}
+                  className="absolute right-0 top-full z-30 mt-2 w-[320px] origin-top-right overflow-hidden rounded-2xl border border-yellow-500/25 bg-[#0f1522] shadow-[0_20px_60px_rgba(0,0,0,0.45)]"
+                >
+                  <div className="border-b border-slate-800 px-4 py-3">
+                    <p className="text-sm font-semibold text-white">Previous Quotations</p>
+                    <p className="mt-1 text-[11px] text-slate-400">
+                      Select any quotation to review it first, then click edit if you want to load it in the builder.
+                    </p>
+                  </div>
+
+                  <div className="max-h-[28rem] overflow-y-auto px-2 py-2 [scrollbar-color:transparent_transparent] [scrollbar-width:none] [&::-webkit-scrollbar]:w-0 [&::-webkit-scrollbar-thumb]:bg-transparent [&::-webkit-scrollbar-track]:bg-transparent">
+                    {quotationHistoryLoading ? (
+                      <p className="px-2 py-3 text-xs text-slate-400">Loading quotation history...</p>
+                    ) : quotationHistoryLoadError ? (
+                      <p className="px-2 py-3 text-xs text-rose-300">{quotationHistoryLoadError}</p>
+                    ) : quotationHistory.length ? (
+                      quotationHistory.map((quotation) => {
+                        const isSelected = quotation.id === selectedHistoryQuotationId;
+
+                        return (
+                          <button
+                            key={quotation.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedHistoryQuotationId(quotation.id);
+                            }}
+                            className={`mb-2 flex w-full items-start gap-3 rounded-2xl border px-3 py-3 text-left transition ${
+                              isSelected
+                                ? "border-yellow-400/60 bg-yellow-500/10"
+                                : "border-slate-800 bg-[#111827] hover:border-slate-700 hover:bg-[#151f30]"
+                            }`}
+                          >
+                            <span
+                              className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
+                                isSelected
+                                  ? "border-yellow-400 bg-yellow-400 text-black"
+                                  : "border-slate-600 bg-transparent text-transparent"
+                              }`}
+                            >
+                              <CheckCircle2 size={11} strokeWidth={3} />
+                            </span>
+
+                            <span className="min-w-0 flex-1">
+                              <span className="flex items-center justify-between gap-2">
+                                <span className="truncate text-sm font-semibold text-white">
+                                  {quotation.quotationNumber || `Quotation ${quotation.attemptNumber}`}
+                                </span>
+                                {quotation.isLatest && (
+                                  <span className="rounded-full border border-emerald-400/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-emerald-300">
+                                    Latest
+                                  </span>
+                                )}
+                              </span>
+                              <span className="mt-1 block text-[11px] text-slate-400">
+                                {quotation.status} • {quotation.createdAtLabel || "Date unavailable"}
+                              </span>
+                              <span className="mt-1 block text-xs font-semibold text-yellow-200">
+                                {formatCurrencyValue(quotation.displayAmount || 0, quotation.pricing?.currency || "INR")}
+                              </span>
+                            </span>
+                          </button>
+                        );
+                      })
+                    ) : (
+                      <p className="px-2 py-3 text-xs text-slate-400">
+                        No previous quotations found for this query yet.
+                      </p>
+                    )}
+
+                    {selectedHistoryQuotation && !quotationHistoryLoading && !quotationHistoryLoadError && (
+                      <div className="mt-3 rounded-2xl border border-sky-400/20 bg-[#0b1220] p-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-sky-300">
+                              Selected History
+                            </p>
+                            <p className="mt-1 text-sm font-semibold text-white">
+                              {selectedHistoryQuotation.quotationNumber || `Quotation ${selectedHistoryQuotation.attemptNumber}`}
+                            </p>
+                            <p className="mt-1 text-[11px] text-slate-400">
+                              {selectedHistoryQuotation.status} • {selectedHistoryQuotation.createdAtLabel || "Date unavailable"}
+                            </p>
+                          </div>
+                          <span className="rounded-full border border-emerald-400/30 bg-emerald-500/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-300">
+                            Preview
+                          </span>
+                        </div>
+
+                        <div className="mt-3 grid grid-cols-2 gap-2">
+                          <div className="rounded-xl border border-slate-800 bg-[#111827] px-3 py-2">
+                            <p className="text-[10px] uppercase tracking-[0.14em] text-slate-500">OPS Total</p>
+                            <p className="mt-1 text-xs font-semibold text-white">
+                              {formatCurrencyValue(selectedHistoryQuotation.opsTotalAmount || 0, selectedHistoryQuotation.pricing?.currency || "INR")}
+                            </p>
+                          </div>
+                          <div className="rounded-xl border border-slate-800 bg-[#111827] px-3 py-2">
+                            <p className="text-[10px] uppercase tracking-[0.14em] text-slate-500">Valid Till</p>
+                            <p className="mt-1 text-xs font-semibold text-violet-300">
+                              {selectedHistoryQuotation.validTillLabel || "-"}
+                            </p>
+                          </div>
+                          <div className="rounded-xl border border-slate-800 bg-[#111827] px-3 py-2">
+                            <p className="text-[10px] uppercase tracking-[0.14em] text-slate-500">Services</p>
+                            <p className="mt-1 text-xs font-semibold text-sky-300">
+                              {selectedHistoryQuotation.serviceCount || 0} item{selectedHistoryQuotation.serviceCount === 1 ? "" : "s"}
+                            </p>
+                          </div>
+                          <div className="rounded-xl border border-slate-800 bg-[#111827] px-3 py-2">
+                            <p className="text-[10px] uppercase tracking-[0.14em] text-slate-500">Taxes</p>
+                            <p className="mt-1 text-xs font-semibold text-emerald-300">
+                              {formatCurrencyValue(selectedHistoryQuotation.pricing?.tax?.totalTax || 0, selectedHistoryQuotation.pricing?.currency || "INR")}
+                            </p>
+                          </div>
+                        </div>
+
+                        {selectedHistoryQuotation.agentRevisionRemark && (
+                          <div className="mt-3 rounded-xl border border-rose-400/20 bg-rose-500/8 px-3 py-2">
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-rose-300">
+                              Revision Remark
+                            </p>
+                            <p className="mt-1 text-xs leading-5 text-rose-100">
+                              {selectedHistoryQuotation.agentRevisionRemark}
+                            </p>
+                          </div>
+                        )}
+
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <span className="rounded-full border border-slate-700 bg-[#111827] px-2.5 py-1 text-[10px] font-medium text-slate-300">
+                            Inclusions {selectedHistoryQuotation.inclusions?.length || 0}
+                          </span>
+                          <span className="rounded-full border border-slate-700 bg-[#111827] px-2.5 py-1 text-[10px] font-medium text-slate-300">
+                            Exclusions {selectedHistoryQuotation.exclusions?.length || 0}
+                          </span>
+                          <span className="rounded-full border border-slate-700 bg-[#111827] px-2.5 py-1 text-[10px] font-medium text-slate-300">
+                            Notes {selectedHistoryQuotation.additionalNotes?.length || 0}
+                          </span>
+                        </div>
+
+                        <div className="mt-3 grid grid-cols-1 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsFreshDraftMode(false);
+                              setActiveDraftSourceQuotationId(selectedHistoryQuotation.id);
+                              setEditingTargetQuotationId(selectedHistoryQuotation.id);
+                              setIsQuotationHistoryOpen(false);
+                            }}
+                            className={`rounded-xl px-3 py-2 text-xs font-semibold transition ${
+                              editingTargetQuotationId === selectedHistoryQuotation.id
+                                ? "border border-emerald-400/40 bg-emerald-500/15 text-emerald-200"
+                                : "border border-sky-400/30 bg-sky-500/10 text-sky-200 hover:border-sky-300/50 hover:bg-sky-500/15"
+                            }`}
+                          >
+                            Edit This Quotation
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              resetBuilderWorkspace();
+                              setIsFreshDraftMode(true);
+                              setActiveDraftSourceQuotationId("");
+                              setEditingTargetQuotationId("");
+                              setSelectedHistoryQuotationId("");
+                              setIsQuotationHistoryOpen(false);
+                            }}
+                            className={`rounded-xl border px-3 py-2 text-xs font-semibold transition ${
+                              !isEditingHistoricalQuotation
+                                ? "border-yellow-400/40 bg-yellow-500/12 text-yellow-200"
+                                : "border-slate-700 bg-[#111827] text-slate-200 hover:border-slate-500 hover:text-white"
+                            }`}
+                          >
+                            Start Fresh Draft
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </motion.div>
+              )}
+              </AnimatePresence>
+            </div>
+
+            <div className="text-right font-semibold text-yellow-400">
+              <p className="text-xs text-[#90a1b9]">Query ID</p>
+              <span className="font-bold">{orderQueryId || "-"}</span>
+            </div>
           </div>
         </motion.div>
 
@@ -4559,8 +5522,142 @@ const QuotationBuilder = () => {
             <p className="text-gray-400">
               Create a quote from contracted rates
             </p>
+            {order?.opsStatus === "Revision_Query" && (
+              <p className="mt-2 inline-flex rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-300">
+                Revision builder now starts with a fresh draft
+              </p>
+            )}
           </div>
         </motion.div>
+        {false && selectedHistoryQuotation && (
+          <motion.div
+            variants={sectionRevealVariants}
+            className="mb-6 rounded-3xl border border-slate-800 bg-[#0d1320] p-5 shadow-[0_16px_44px_rgba(0,0,0,0.24)]"
+          >
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="rounded-full border border-sky-400/30 bg-sky-500/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-sky-300">
+                    Reference History
+                  </span>
+                  <h2 className="text-lg font-semibold text-white">
+                    {selectedHistoryQuotation.quotationNumber || `Quotation ${selectedHistoryQuotation.attemptNumber}`}
+                  </h2>
+                  <span className="rounded-full border border-slate-700 bg-[#111827] px-3 py-1 text-[11px] font-medium text-slate-300">
+                    {selectedHistoryQuotation.status}
+                  </span>
+                </div>
+                <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">
+                  This quotation is shown only for comparison. The active revision draft below is fresh and independent from this history entry.
+                </p>
+              </div>
+
+              <div className="grid gap-2 text-sm sm:grid-cols-2">
+                <div className="rounded-2xl border border-slate-800 bg-[#111827] px-4 py-3">
+                  <p className="text-[11px] uppercase tracking-[0.14em] text-slate-500">Created</p>
+                  <p className="mt-1 font-semibold text-white">{selectedHistoryQuotation.createdAtLabel || "-"}</p>
+                </div>
+                <div className="rounded-2xl border border-slate-800 bg-[#111827] px-4 py-3">
+                  <p className="text-[11px] uppercase tracking-[0.14em] text-slate-500">Valid Till</p>
+                  <p className="mt-1 font-semibold text-white">{selectedHistoryQuotation.validTillLabel || "-"}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-3 md:grid-cols-3 xl:grid-cols-6">
+              <div className="rounded-2xl border border-slate-800 bg-[#111827] px-4 py-3">
+                <p className="text-[11px] uppercase tracking-[0.14em] text-slate-500">Services Total</p>
+                <p className="mt-1 text-sm font-semibold text-sky-300">
+                  {formatCurrencyValue(selectedHistoryQuotation.pricing?.subTotal || 0, selectedHistoryQuotation.pricing?.currency || "INR")}
+                </p>
+              </div>
+              <div className="rounded-2xl border border-slate-800 bg-[#111827] px-4 py-3">
+                <p className="text-[11px] uppercase tracking-[0.14em] text-slate-500">OPS Markup</p>
+                <p className="mt-1 text-sm font-semibold text-yellow-300">
+                  {formatCurrencyValue(selectedHistoryQuotation.pricing?.opsMarkup?.amount || 0, selectedHistoryQuotation.pricing?.currency || "INR")}
+                </p>
+              </div>
+              <div className="rounded-2xl border border-slate-800 bg-[#111827] px-4 py-3">
+                <p className="text-[11px] uppercase tracking-[0.14em] text-slate-500">OPS Charges</p>
+                <p className="mt-1 text-sm font-semibold text-orange-300">
+                  {formatCurrencyValue(
+                    Number(selectedHistoryQuotation.pricing?.opsCharges?.serviceCharge || 0) +
+                    Number(selectedHistoryQuotation.pricing?.opsCharges?.handlingFee || 0),
+                    selectedHistoryQuotation.pricing?.currency || "INR",
+                  )}
+                </p>
+              </div>
+              <div className="rounded-2xl border border-slate-800 bg-[#111827] px-4 py-3">
+                <p className="text-[11px] uppercase tracking-[0.14em] text-slate-500">Taxes</p>
+                <p className="mt-1 text-sm font-semibold text-emerald-300">
+                  {formatCurrencyValue(selectedHistoryQuotation.pricing?.tax?.totalTax || 0, selectedHistoryQuotation.pricing?.currency || "INR")}
+                </p>
+              </div>
+              <div className="rounded-2xl border border-slate-800 bg-[#111827] px-4 py-3">
+                <p className="text-[11px] uppercase tracking-[0.14em] text-slate-500">OPS Total</p>
+                <p className="mt-1 text-sm font-semibold text-white">
+                  {formatCurrencyValue(selectedHistoryQuotation.opsTotalAmount || 0, selectedHistoryQuotation.pricing?.currency || "INR")}
+                </p>
+              </div>
+              <div className="rounded-2xl border border-slate-800 bg-[#111827] px-4 py-3">
+                <p className="text-[11px] uppercase tracking-[0.14em] text-slate-500">Client Total</p>
+                <p className="mt-1 text-sm font-semibold text-violet-300">
+                  {selectedHistoryQuotation.clientTotalAmount !== null && selectedHistoryQuotation.clientTotalAmount !== undefined
+                    ? formatCurrencyValue(selectedHistoryQuotation.clientTotalAmount, selectedHistoryQuotation.pricing?.currency || "INR")
+                    : "Not shared"}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-4 xl:grid-cols-[1.3fr_0.7fr]">
+              <div className="rounded-2xl border border-slate-800 bg-[#111827] p-4">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <h3 className="text-sm font-semibold text-white">Services in this quotation</h3>
+                  <span className="rounded-full border border-slate-700 bg-[#0d1320] px-2.5 py-1 text-[11px] font-semibold text-slate-300">
+                    {selectedHistoryQuotation.serviceCount} item{selectedHistoryQuotation.serviceCount === 1 ? "" : "s"}
+                  </span>
+                </div>
+                <div className="space-y-2">
+                  {selectedHistoryQuotation.services?.length ? (
+                    selectedHistoryQuotation.services.map((service, index) => (
+                      <div key={`${selectedHistoryQuotation.id}-service-${index}`} className="rounded-2xl border border-slate-800 bg-[#0d1320] px-3 py-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-sm font-semibold text-white">{service?.title || "Service"}</p>
+                          <span className="text-xs font-medium text-slate-400">
+                            {formatCurrencyValue(service?.totalInInr || service?.total || 0, selectedHistoryQuotation.pricing?.currency || "INR")}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-xs text-slate-400">
+                          {service?.type || "service"}{service?.city ? ` • ${service.city}` : ""}{service?.serviceDate ? ` • ${formatShareDate(service.serviceDate)}` : ""}
+                        </p>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-xs text-slate-400">No services were saved in this quotation.</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                {selectedHistoryQuotation.agentRevisionRemark && (
+                  <div className="rounded-2xl border border-rose-500/25 bg-rose-500/10 p-4">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-rose-300">Revision Remark</p>
+                    <p className="mt-2 text-sm leading-6 text-rose-100">{selectedHistoryQuotation.agentRevisionRemark}</p>
+                  </div>
+                )}
+
+                <div className="rounded-2xl border border-slate-800 bg-[#111827] p-4">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Inclusions</p>
+                  <p className="mt-2 text-sm text-white">{selectedHistoryQuotation.inclusions?.length || 0}</p>
+                  <p className="mt-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Exclusions</p>
+                  <p className="mt-2 text-sm text-white">{selectedHistoryQuotation.exclusions?.length || 0}</p>
+                  <p className="mt-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Additional Notes</p>
+                  <p className="mt-2 text-sm text-white">{selectedHistoryQuotation.additionalNotes?.length || 0}</p>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
         {renderWorkspaceModal()}
 
         {/* Layout */}
@@ -4708,118 +5805,156 @@ const QuotationBuilder = () => {
               </div>
             </motion.div>
 
-            <motion.div variants={sectionRevealVariants}>
-              <PackageTemplate onApply={applyPackageToServices} />
-            </motion.div>
-
-
-            {/*=================================== Select Contracted Rates Service =============================== */}
-
-            <motion.div variants={sectionRevealVariants} className="dark-scrollbar h-120 overflow-y-auto bg-black pr-1">
-              <div className="sticky top-0 z-10 mb-3 bg-black p-2">
-                <div className="flex items-center justify-between gap-3 flex-wrap">
+            {isInvoiceRequestedStage && (
+              <motion.div
+                variants={sectionRevealVariants}
+                className="rounded-2xl border border-amber-400/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100 shadow-[0_16px_35px_rgba(0,0,0,0.18)]"
+              >
+                <div className="flex items-start gap-3">
+                  <div className="mt-0.5 h-2.5 w-2.5 rounded-full bg-amber-300 shadow-[0_0_12px_rgba(252,211,77,0.8)]" />
                   <div>
-                    <h2 className="font-semibold">
-                      Select Contracted Rates
-                    </h2>
-                    <p className="max-w-2xl text-[8px] leading-6 text-slate-400">
-                      Tune ops charges and tax values from one compact control desk before sharing the quotation.
+                    <p className="font-semibold text-white">Client approval is already received for this query</p>
+                    <p className="mt-1 text-xs leading-5 text-amber-100/90">
+                      This booking has moved ahead from quotation building and is now in the amount and documents workflow.
                     </p>
                   </div>
-
-                  <button
-                    onClick={() => setShowQuickServiceModal(true)}
-                    className="text-xs bg-yellow-400 text-black px-3 py-2 rounded-lg hover:bg-yellow-500 font-medium cursor-pointer"
-                  >
-                    + Quick Add Service
-                  </button>
                 </div>
+              </motion.div>
+            )}
 
-                <div className="mt-3 rounded-2xl border border-[#1f1f1f] bg-[#0b0b0b] p-3">
-                  <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-col gap-2 sm:flex-row">
-                        <input
-                          type="text"
-                          value={contractedRatesSearch}
-                          onChange={(e) => setContractedRatesSearch(e.target.value)}
-                          placeholder="Search hotel, transport, activity or sightseeing"
-                          className="w-full rounded-xl border border-[#2a2a2a] bg-[#111111] px-3 py-2 text-xs text-white outline-none transition-colors focus:border-yellow-500"
-                        />
-                        {(contractedRatesSearch || contractedRatesFilter !== "all") && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setContractedRatesSearch("");
-                              setContractedRatesFilter("all");
-                            }}
-                            className="rounded-xl border border-[#2a2a2a] px-3 py-2 text-[11px] text-slate-300 transition-colors hover:border-yellow-500/50 hover:text-white cursor-pointer"
-                          >
-                            Clear
-                          </button>
-                        )}
+            <>
+              <motion.div variants={sectionRevealVariants}>
+                <PackageTemplate onApply={applyPackageToServices} />
+              </motion.div>
+
+
+                {/*=================================== Select Contracted Rates Service =============================== */}
+
+                <motion.div variants={sectionRevealVariants} className="dark-scrollbar h-120 overflow-y-auto bg-black pr-1">
+                  <div className="sticky top-0 z-10 mb-3 bg-black p-2">
+                    <div className="flex items-center justify-between gap-3 flex-wrap">
+                      <div>
+                        <h2 className="font-semibold">
+                          Select Contracted Rates
+                        </h2>
+                        <p className="max-w-2xl text-[8px] leading-6 text-slate-400">
+                          Tune ops charges and tax values from one compact control desk before sharing the quotation.
+                        </p>
                       </div>
-                      <p className="mt-2 text-[10px] text-slate-500">
-                        {filteredServices.length === services.length
-                          ? `${services.length} services available`
-                          : `Showing ${filteredServices.length} of ${services.length} services`}
-                      </p>
+
+                      <button
+                        onClick={() => setShowQuickServiceModal(true)}
+                        className="text-xs bg-yellow-400 text-black px-3 py-2 rounded-lg hover:bg-yellow-500 font-medium cursor-pointer"
+                      >
+                        + Quick Add Service
+                      </button>
                     </div>
 
-                    <div className="flex flex-wrap gap-2">
-                      {CONTRACTED_RATE_FILTER_OPTIONS.map((option) => {
-                        const isActive = contractedRatesFilter === option.value;
-                        return (
-                          <button
-                            key={option.value}
-                            type="button"
-                            onClick={() => setContractedRatesFilter(option.value)}
-                            className={`rounded-full border px-3 py-1.5 text-[11px] font-medium transition-colors cursor-pointer ${isActive
-                              ? "border-yellow-500 bg-yellow-500/10 text-yellow-300"
-                              : "border-[#2a2a2a] bg-[#111111] text-slate-300 hover:border-yellow-500/40 hover:text-white"
-                              }`}
-                          >
-                            {option.label} ({contractedRateFilterCounts[option.value] || 0})
-                          </button>
-                        );
-                      })}
+                    <div className="mt-3 rounded-2xl border border-[#1f1f1f] bg-[#0b0b0b] p-3">
+                      <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-col gap-2 sm:flex-row">
+                            <input
+                              type="text"
+                              value={contractedRatesSearch}
+                              onChange={(e) => setContractedRatesSearch(e.target.value)}
+                              placeholder={servicesLoading ? "Loading contracted rates..." : "Search hotel, transport, activity or sightseeing"}
+                              disabled={servicesLoading}
+                              className="w-full rounded-xl border border-[#2a2a2a] bg-[#111111] px-3 py-2 text-xs text-white outline-none transition-colors focus:border-yellow-500 disabled:cursor-wait disabled:opacity-60"
+                            />
+                            {(contractedRatesSearch || contractedRatesFilter !== "all") && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setContractedRatesSearch("");
+                                  setContractedRatesFilter("all");
+                                }}
+                                className="rounded-xl border border-[#2a2a2a] px-3 py-2 text-[11px] text-slate-300 transition-colors hover:border-yellow-500/50 hover:text-white cursor-pointer"
+                              >
+                                Clear
+                              </button>
+                            )}
+                          </div>
+                          <p className="mt-2 text-[10px] text-slate-500">
+                            {servicesLoading
+                              ? "Contracted rates are loading in the background..."
+                              : filteredServices.length === destinationMatchedServices.length
+                              ? `${destinationMatchedServices.length} services available for ${order?.destination || "this destination"}`
+                              : `Showing ${filteredServices.length} of ${destinationMatchedServices.length} services for ${order?.destination || "this destination"}`}
+                          </p>
+                        </div>
+
+                        <div className="flex flex-wrap gap-2">
+                          {CONTRACTED_RATE_FILTER_OPTIONS.map((option) => {
+                            const isActive = contractedRatesFilter === option.value;
+                            return (
+                              <button
+                                key={option.value}
+                                type="button"
+                                disabled={servicesLoading}
+                                onClick={() => setContractedRatesFilter(option.value)}
+                                className={`rounded-full border px-3 py-1.5 text-[11px] font-medium transition-colors cursor-pointer ${isActive
+                                  ? "border-yellow-500 bg-yellow-500/10 text-yellow-300"
+                                  : "border-[#2a2a2a] bg-[#111111] text-slate-300 hover:border-yellow-500/40 hover:text-white"
+                                  } disabled:cursor-wait disabled:opacity-60`}
+                              >
+                                {option.label} ({contractedRateFilterCounts[option.value] || 0})
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </div>
-              </div>
-              {/* Service Card */}
-              {filteredServices.length > 0 ? (
-                filteredServices.map((service, index) => (
-                  <Service
-                    key={service.id}
-                    index={index}
-                    service={service}
-                    cardDomId={getServiceCardDomId(service.id)}
-                    isEditorFocused={focusedServiceCardId === service.id}
-                    isEditMode={editingServiceCardId === service.id}
-                    exchangeRates={exchangeRates}
-                    allServices={services}
-                    toggleService={toggleService}
-                    updateField={updateField}
-                    deleteService={deleteService}
-                    onOpenSelectedServices={openSelectedServicesModalForService}
-                    tripNights={tripNights}
-                    remainingHotelNights={getRemainingHotelNights(services, service.id)}
-                    hotelNightStart={getHotelNightStart(services, service.id)}
-                    tripStartDate={formatDateInput(order?.startDate)}
-                    tripEndDate={formatDateInput(order?.endDate)}
-                  />
-                ))
-              ) : (
-                <div className="rounded-2xl border border-dashed border-[#2a2a2a] bg-[#0b0b0b] px-4 py-8 text-center">
-                  <p className="text-sm font-medium text-white">No contracted services found</p>
-                  <p className="mt-2 text-xs text-slate-400">
-                    Try another hotel name or switch the service filter to see more results.
-                  </p>
-                </div>
-              )}
-            </motion.div>
-            {renderSelectedServicesSection()}
+                  {/* Service Card */}
+                  {servicesLoading ? (
+                    <div className="rounded-2xl border border-dashed border-[#2a2a2a] bg-[#0b0b0b] px-4 py-8 text-center">
+                      <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-yellow-500/20 border-t-yellow-400" />
+                      <p className="mt-3 text-sm font-medium text-white">Loading contracted services</p>
+                      <p className="mt-2 text-xs text-slate-400">
+                        Quotation Builder is ready. Rates are being fetched in the background.
+                      </p>
+                    </div>
+                  ) : servicesLoadError ? (
+                    <div className="rounded-2xl border border-dashed border-red-500/30 bg-red-500/5 px-4 py-8 text-center">
+                      <p className="text-sm font-medium text-white">{servicesLoadError}</p>
+                      <p className="mt-2 text-xs text-slate-400">
+                        Refresh the page or try again in a moment.
+                      </p>
+                    </div>
+                  ) : filteredServices.length > 0 ? (
+                    filteredServices.map((service, index) => (
+                      <Service
+                        key={service.id}
+                        index={index}
+                        service={service}
+                        cardDomId={getServiceCardDomId(service.id)}
+                        isEditorFocused={focusedServiceCardId === service.id}
+                        isEditMode={editingServiceCardId === service.id}
+                        exchangeRates={exchangeRates}
+                        allServices={services}
+                        toggleService={toggleService}
+                        updateField={updateField}
+                        deleteService={deleteService}
+                        onOpenSelectedServices={openSelectedServicesModalForService}
+                        tripNights={tripNights}
+                        remainingHotelNights={getRemainingHotelNights(services, service.id)}
+                        hotelNightStart={getHotelNightStart(services, service.id)}
+                        tripStartDate={formatDateInput(order?.startDate)}
+                        tripEndDate={formatDateInput(order?.endDate)}
+                      />
+                    ))
+                  ) : (
+                    <div className="rounded-2xl border border-dashed border-[#2a2a2a] bg-[#0b0b0b] px-4 py-8 text-center">
+                      <p className="text-sm font-medium text-white">No contracted services found</p>
+                      <p className="mt-2 text-xs text-slate-400">
+                        Try another search term or check whether contracted services exist for {order?.destination || "this destination"}.
+                      </p>
+                    </div>
+                  )}
+                </motion.div>
+                {!isInvoiceRequestedStage && renderSelectedServicesSection()}
+              </>
 
           </motion.div>
 
@@ -4827,7 +5962,6 @@ const QuotationBuilder = () => {
 
           <motion.div variants={sideStackVariants} className="space-y-6">
             {/*=========================== DMC Margin Section ============================= */}
-
             <motion.div variants={rightCardVariants} className="bg-[#1a1600] border border-yellow-500 rounded-xl p-6">
               {/* Title */}
               <h2 className="font-semibold mb-4 text-start flex items-center gap-2">
@@ -4876,7 +6010,7 @@ const QuotationBuilder = () => {
 
             {/* ==================================== Price Breakdown Section ============================================ */}
 
-            {selectedSendOption === "__price_breakdown_preview__" && (
+            {!isInvoiceRequestedStage && selectedSendOption === "__price_breakdown_preview__" && (
               <motion.div variants={rightCardVariants} className="bg-[#0e0e0e] border border-gray-700 rounded-xl p-4">
               <div className="flex items-start justify-between gap-4">
                 <div>
@@ -5191,7 +6325,7 @@ const QuotationBuilder = () => {
               </div>
               <p className="flex justify-between border-b border-[#232426] ">
                 <span className="text-[#90A1B9] mb-2">Selected Items</span>
-                <span>{selectedServices.length} items</span>
+                <span>{isInvoiceRequestedStage ? 0 : selectedServices.length} items</span>
               </p>
               {/* <p className="flex justify-between">
                 <span className="text-[#90A1B9]">Subtotal (Base Rates)</span>
@@ -5206,7 +6340,7 @@ const QuotationBuilder = () => {
                   )
                 </span>
                 <span className="text-yellow-400">
-                  ₹ {formatAmountValue(opsMarkup)}
+                  ₹ {formatAmountValue(isInvoiceRequestedStage ? 0 : opsMarkup)}
                 </span>
               </p>
               <p className="flex justify-between">
@@ -5214,21 +6348,21 @@ const QuotationBuilder = () => {
                   Taxes (GST + TCS + Other)
                 </span>
                 <span
-                  className={`${appliedTaxTotal > 0 ? "text-green-400" : "text-red-400"}`}>
-                  ₹ {formatAmountValue(appliedTaxTotal)}
+                  className={`${(isInvoiceRequestedStage ? 0 : appliedTaxTotal) > 0 ? "text-green-400" : "text-red-400"}`}>
+                  ₹ {formatAmountValue(isInvoiceRequestedStage ? 0 : appliedTaxTotal)}
                 </span>
               </p>
               <p className="flex justify-between">
                 <span className="text-[#90A1B9]">Services Total</span>
-                <span className={`${servicesTotal > 0 ? "text-sky-500" : "text-red-400"}`}>₹ {formatAmountValue(servicesTotal)}</span>
+                <span className={`${(isInvoiceRequestedStage ? 0 : servicesTotal) > 0 ? "text-sky-500" : "text-red-400"}`}>₹ {formatAmountValue(isInvoiceRequestedStage ? 0 : servicesTotal)}</span>
               </p>
               <p className="flex justify-between">
                 <span className="text-[#90A1B9]">Package Template Add-on</span>
-                <span className={`${packageTemplateAmount > 0 ? "text-emerald-400" : "text-gray-500"}`}>
-                  ₹ {formatAmountValue(packageTemplateAmount)}
+                <span className={`${(isInvoiceRequestedStage ? 0 : packageTemplateAmount) > 0 ? "text-emerald-400" : "text-gray-500"}`}>
+                  ₹ {formatAmountValue(isInvoiceRequestedStage ? 0 : packageTemplateAmount)}
                 </span>
               </p>
-              {shouldShowDualPricing && (
+              {!isInvoiceRequestedStage && shouldShowDualPricing && (
                 <div className="rounded-xl border border-[#20262f] bg-black/30 px-3 py-3 text-xs">
                   <p className="font-medium text-slate-200">Foreign Currency Snapshot</p>
                   <div className="mt-2 space-y-2">
@@ -5253,7 +6387,7 @@ const QuotationBuilder = () => {
                   </div>
                 </div>
               )}
-              {shouldShowDualPricing && (
+              {!isInvoiceRequestedStage && shouldShowDualPricing && (
                 <div className="rounded-xl border border-[#20262f] bg-black/30 px-3 py-3 text-xs">
                   <p className="font-medium text-slate-200">FX to ₹</p>
                   <div className="mt-2 space-y-2">
@@ -5288,26 +6422,26 @@ const QuotationBuilder = () => {
               <div className="flex justify-between text-lg font-bold mt-4  border-t border-t-yellow-400 ">
                 <span className="mt-1.5">Total Amount</span>
                 <span className="text-yellow-400 mt-1.5">
-                  ₹ {formatAmountValue(totalAmount)}
+                  ₹ {formatAmountValue(isInvoiceRequestedStage ? 0 : totalAmount)}
                 </span>
               </div>
               <p className="flex justify-between text-gray-400">
                 <span>Cost per Passenger</span>
-                <span>₹ {formatAmountValue(costPerPassenger)}</span>
+                <span>₹ {formatAmountValue(isInvoiceRequestedStage ? 0 : costPerPassenger)}</span>
               </p>
             </motion.div>
 
             {/*============================================ Buttons Finalize Button ==================================  */}
-            <motion.div variants={rightCardVariants} className="relative w-full">
+            <motion.div variants={rightCardVariants} className="hidden">
               {isInvoiceRequestedStage ? (
-                <button
-                  onClick={() => setShowFinanceInvoiceConfirm(true)}
-                  disabled={preparingFinanceInvoice}
-                  className="w-full bg-yellow-400 text-black text-md py-2 rounded-xl font-semibold hover:bg-yellow-500 flex items-center justify-center gap-2 cursor-pointer disabled:cursor-not-allowed disabled:opacity-70"
-                >
-                  <Send />
-                  {preparingFinanceInvoice ? "Preparing..." : "Prepare Finance Invoice"}
-                </button>
+                <div className="space-y-2 rounded-xl border border-sky-400/35 bg-sky-500/10 px-3 py-3 text-[11px] leading-5 text-sky-100">
+                  <div className="flex items-start gap-2">
+                    <div className="mt-0.5 flex shrink-0 items-center gap-1 text-sky-300">
+                      <AlertCircle size={12} strokeWidth={2.4} />
+                    </div>
+                    <p>Client approval is already received. This booking now continues in the shared amount and documents workflow.</p>
+                  </div>
+                </div>
               ) : (
                 <button
                   onClick={() => setShowSendOptions(!showSendOptions)}
@@ -5321,7 +6455,8 @@ const QuotationBuilder = () => {
               {/*======================== POPUp Send To =================================================== */}
               {/* Popup */}
               <div
-                className={`absolute bottom-full mb-3 right-0 w-69 backdrop-blur-xl
+                style={sendOptionsPanelStyle}
+                className={`absolute bottom-full mb-3 right-0 min-w-[320px] backdrop-blur-xl
       bg-linear-to-br from-[#8787875e] to-[#11111113] border border-gray-700/60
       rounded-xl shadow-[0_10px_40px_rgba(0,0,0,0.6)] overflow-hidden z-50
       transform transition-all duration-300 ease-out origin-bottom-right
@@ -5337,37 +6472,30 @@ const QuotationBuilder = () => {
                     Selected Services: {services.filter(s => s.checked).length}
                   </p>
                   <p className="text-xs text-gray-500">
-                    Total Amount: ₹ {formatAmountValue(totalAmount)}
+                    Total Amount: {"\u20B9"} {formatAmountValue(totalAmount)}
                   </p>
                 </div>
 
                 {/** Options */}
-                {["Dashboard Notification", "Email", "WhatsApp", "PDF Download", "Copy Text"].map((option, idx) => (
-                  <div
-                    key={idx}
-                    onClick={() => setSelectedSendOption(option)}
-                    className={`flex items-center gap-3 px-5 py-3 cursor-pointer border-b
-  ${selectedSendOption === option ? "bg-yellow-400/20" : "hover:bg-white/5"}`}
-                  >
-                    <span className="text-lg">
-                      {option === "Email" ? "📧" :
-                        option === "WhatsApp" ? "💬" :
-                          option === "PDF Download" ? "⬇" :
-                            option === "Copy Text" ? "📋" : "🔔"}
-                    </span>
-                    <div>
-                      <p className="text-sm font-medium text-white">{option}</p>
-                      <p className="text-xs text-gray-400">
-                        {option === "Email" ? `Send to ${order?.agent?.email}` : ""}
-                        {option === "WhatsApp" ? "Direct message link" : ""}
-                        {option === "PDF Download" ? "Formatted quote document" : ""}
-                        {option === "Copy Text" ? "Plain text format" : ""}
-                        {option === "Dashboard Notification" ? "In-app alert to agent" : ""}
-                      </p>
-
+                {sendOptions.map((option, idx) => {
+                  const Icon = option.icon;
+                  return (
+                    <div
+                      key={idx}
+                      onClick={() => setSelectedSendOption(option.label)}
+                      className={`flex items-center gap-3 px-5 py-3 cursor-pointer border-b
+  ${selectedSendOption === option.label ? "bg-yellow-400/20" : "hover:bg-white/5"}`}
+                    >
+                      <span className="flex h-9 w-9 items-center justify-center rounded-full bg-white/8 text-yellow-300">
+                        <Icon className="h-4 w-4" />
+                      </span>
+                      <div>
+                        <p className="text-sm font-medium text-white">{option.label}</p>
+                        <p className="text-xs text-gray-400">{option.description}</p>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
 
                 <button
                   onClick={() => handleFinalSend()}
@@ -5380,34 +6508,103 @@ const QuotationBuilder = () => {
 
             {!isInvoiceRequestedStage && renderQuotationWorkspaceButtons(rightCardVariants)}
 
-            <motion.button
-              variants={rightCardVariants}
-              type="button"
-              onClick={handleSaveDraftQuote}
-              disabled={savingDraftQuote}
-              className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-white py-2 text-md font-semibold text-gray-600 hover:text-gray-600 disabled:cursor-not-allowed disabled:opacity-70"
-            >
-              <FileText size={18} />
-              {savingDraftQuote ? "Saving Draft..." : "Save as Draft"}
-            </motion.button>
+            {/*============================================ Buttons Finalize Button ==================================  */}
+            <motion.div variants={rightCardVariants} className="relative w-full">
+              {!isInvoiceRequestedStage && (
+                <button
+                  onClick={() => setShowSendOptions(!showSendOptions)}
+                  className="w-full bg-yellow-400 text-black text-md py-2 rounded-xl font-semibold hover:bg-yellow-500 flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <Send />
+                  Finalize & Send Quote
+                </button>
+              )}
+
+              <div
+                style={sendOptionsPanelStyle}
+                className={`absolute bottom-full mb-3 right-0 min-w-[320px] backdrop-blur-xl
+      bg-linear-to-br from-[#8787875e] to-[#11111113] border border-gray-700/60
+      rounded-xl shadow-[0_10px_40px_rgba(0,0,0,0.6)] overflow-hidden z-50
+      transform transition-all duration-300 ease-out origin-bottom-right
+      ${!isInvoiceRequestedStage && showSendOptions ? "opacity-100 scale-100 translate-y-0 pointer-events-auto"
+                    : "opacity-0 scale-95 translate-y-2 pointer-events-none"
+                  }`}
+              >
+                <div className="px-5 py-3 border-b border-gray-700/60">
+                  <p className="text-sm text-gray-400">Agent: {order?.agent?.companyName}</p>
+                  <p className="text-xs text-gray-500">Email: {order?.agent?.email}</p>
+                  <p className="text-xs text-gray-500">
+                    Selected Services: {services.filter((s) => s.checked).length}
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    Total Amount: {"\u20B9"} {formatAmountValue(totalAmount)}
+                  </p>
+                </div>
+
+                {sendOptions.map((option, idx) => {
+                  const Icon = option.icon;
+                  return (
+                    <div
+                      key={idx}
+                      onClick={() => setSelectedSendOption(option.label)}
+                      className={`flex items-center gap-3 px-5 py-3 cursor-pointer border-b
+  ${selectedSendOption === option.label ? "bg-yellow-400/20" : "hover:bg-white/5"}`}
+                    >
+                      <span className="flex h-9 w-9 items-center justify-center rounded-full bg-white/8 text-yellow-300">
+                        <Icon className="h-4 w-4" />
+                      </span>
+                      <div>
+                        <p className="text-sm font-medium text-white">{option.label}</p>
+                        <p className="text-xs text-gray-400">{option.description}</p>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                <button
+                  onClick={() => handleFinalSend()}
+                  className="w-full bg-yellow-400 text-black py-2 font-semibold cursor-pointer"
+                >
+                  Send Now
+                </button>
+              </div>
+            </motion.div>
+
+            {!isInvoiceRequestedStage && (
+              <motion.button
+                variants={rightCardVariants}
+                type="button"
+                onClick={handleSaveDraftQuote}
+                disabled={savingDraftQuote}
+                className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-white py-2 text-md font-semibold text-gray-600 hover:text-gray-600 disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                <FileText size={18} />
+                {savingDraftQuote ? "Saving Draft..." : "Save as Draft"}
+              </motion.button>
+            )}
 
             {/* Footer Note */}
-            <motion.p variants={rightCardVariants} className="text-xs border p-5 rounded-2xl text-[#8EC5FF] bg-[#2B7FFF1A]">
-              {isInvoiceRequestedStage
-                ? `Note: Client approval is already received for ${order?.queryId}. Prepare the finance invoice from here and finance will share the final invoice with the agent.`
-                : `Note: The quotation will be sent to ${order?.agent?.email || "agent email"}. Once the agent uploads the payment receipt, you can track the verification status in the Booking Hub.`}
-            </motion.p>
+            {!isInvoiceRequestedStage && (
+              <motion.p variants={rightCardVariants} className="text-xs border p-5 rounded-2xl text-[#8EC5FF] bg-[#2B7FFF1A]">
+                {`Note: The quotation will be sent to ${order?.agent?.email || "agent email"}. Once the agent uploads the payment receipt, you can track the verification status in the Booking Hub.`}
+              </motion.p>
+            )}
           </motion.div>
         </motion.div>
       </motion.section>
 
       {/*======================== ✅ POPUP Ops Charges =============================================*/}
 
-      {showOpsPopup && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-[#050505]/78 p-3 backdrop-blur-[6px] sm:p-4">
-          <div className="relative my-auto flex max-h-[calc(100vh-24px)] w-full max-w-5xl flex-col overflow-hidden rounded-[30px] border border-yellow-500/25 bg-[#101010]/95 shadow-[0_28px_120px_rgba(0,0,0,0.65)] animate-slideDown sm:max-h-[calc(100vh-32px)]">
-            {/* Header */}
-            <div className="relative overflow-hidden border-b border-[#2a2a2a] bg-[radial-gradient(circle_at_top_left,_rgba(250,204,21,0.16),_transparent_38%),linear-gradient(135deg,#171717_0%,#101010_65%,#0b0b0b_100%)] px-5 py-5 sm:px-6">
+
+
+
+
+    {showOpsPopup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#050505]/78 p-3 backdrop-blur-[6px] sm:p-4">
+          <div className="relative my-auto flex h-[calc(100vh-16px)] w-full max-w-6xl flex-col overflow-hidden rounded-[30px] border border-yellow-500/25 bg-[#101010]/95 shadow-[0_28px_120px_rgba(0,0,0,0.65)] animate-slideDown sm:h-[calc(100vh-24px)]">
+
+            {/* ===== HEADER (title + close only) ===== */}
+            <div className="relative border-b border-[#2a2a2a] bg-[radial-gradient(circle_at_top_left,_rgba(250,204,21,0.16),_transparent_38%),linear-gradient(135deg,#171717_0%,#101010_65%,#0b0b0b_100%)] px-5 py-3 sm:px-6">
               <div className="absolute inset-y-0 right-0 w-48 bg-[radial-gradient(circle_at_center,_rgba(59,130,246,0.16),_transparent_68%)]" />
               <div className="relative flex items-start justify-between gap-4">
                 <div>
@@ -5421,55 +6618,59 @@ const QuotationBuilder = () => {
                     Tune ops charges and tax values from one compact control desk before sharing the quotation.
                   </p>
                 </div>
-
                 <button
                   onClick={() => setShowOpsPopup(false)}
-                  className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/5 text-gray-400 transition hover:border-red-400/40 hover:bg-red-500/10 hover:text-red-300 cursor-pointer"
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5 text-gray-400 transition hover:border-red-400/40 hover:bg-red-500/10 hover:text-red-300 cursor-pointer"
                 >
                   ✕
                 </button>
               </div>
+            </div>
 
-              <div className="relative mt-5 grid grid-cols-1 gap-3 md:grid-cols-3">
-                <div className="rounded-2xl border border-white/8 bg-black/25 px-4 py-3 backdrop-blur-sm">
+            {/* ===== STICKY SUMMARY CARDS (won't scroll) ===== */}
+            <div className="border-b border-[#1e1e1e] px-5 pt-3 pb-3 sm:px-6">
+              <div className="grid grid-cols-3 gap-2">
+                <div className="rounded-2xl border border-white/8 bg-black/25 px-3 py-2.5">
                   <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
                     Ops Charges
                   </p>
-                  <p className="mt-2 text-xl font-semibold text-white">
+                  <p className="mt-1.5 text-lg font-semibold text-white">
                     ₹ {formatAmountValue(
                       roundCurrencyAmount(Number(draftServiceCharge || 0) + Number(draftHandlingFee || 0)),
                     )}
                   </p>
-                  <p className="mt-1 text-xs text-slate-400">Service + handling setup</p>
+                  <p className="mt-0.5 text-xs text-slate-400">Service + handling setup</p>
                 </div>
-                <div className="rounded-2xl border border-white/8 bg-black/25 px-4 py-3 backdrop-blur-sm">
+                <div className="rounded-2xl border border-white/8 bg-black/25 px-3 py-2.5">
                   <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
                     Tax Preview
                   </p>
-                  <p className="mt-2 text-xl font-semibold text-white">
+                  <p className="mt-1.5 text-lg font-semibold text-white">
                     ₹ {formatAmountValue(draftTaxationTotal)}
                   </p>
-                  <p className="mt-1 text-xs text-slate-400">Live GST, TCS and tourism total</p>
+                  <p className="mt-0.5 text-xs text-slate-400">Live GST, TCS and tourism total</p>
                 </div>
-                <div className="rounded-2xl border border-white/8 bg-black/25 px-4 py-3 backdrop-blur-sm">
+                <div className="rounded-2xl border border-white/8 bg-black/25 px-3 py-2.5">
                   <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
                     Quote Validity
                   </p>
-                  <p className="mt-2 text-xl font-semibold text-white">
+                  <p className="mt-1.5 text-lg font-semibold text-white">
                     {draftValidTill || "Not set"}
                   </p>
-                  <p className="mt-1 text-xs text-slate-400">Applied to the current quotation</p>
+                  <p className="mt-0.5 text-xs text-slate-400">Applied to the current quotation</p>
                 </div>
               </div>
             </div>
 
-            <div className="dark-scrollbar flex-1 overflow-y-auto px-5 py-5 sm:px-6">
-              {/* 2 Column Layout */}
-              <div className="grid grid-cols-1 gap-4 xl:grid-cols-[0.9fr_1.1fr]">
-                {/*========================= OPS CHARGES ========================================= */}
+            {/* ===== SCROLLABLE BODY ===== */}
+            <div className="dark-scrollbar flex-1 overflow-y-auto px-5 py-3 sm:px-6">
 
-                <div className="rounded-[24px] border border-[#2d3238] bg-[linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0.01))] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
-                  <div className="mb-4 flex items-start justify-between gap-3">
+              {/* Two-column layout */}
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-[0.9fr_1.1fr]">
+
+                {/* ======= OPS CHARGES ======= */}
+                <div className="rounded-[24px] border border-[#2d3238] bg-[linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0.01))] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+                  <div className="mb-3 flex items-start justify-between gap-3">
                     <div>
                       <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-yellow-300/75">
                         Classic Desk
@@ -5488,9 +6689,7 @@ const QuotationBuilder = () => {
                     <input
                       type="number"
                       value={draftServiceCharge}
-                      onChange={(e) =>
-                        setDraftServiceCharge(roundCurrencyAmount(e.target.value))
-                      }
+                      onChange={(e) => setDraftServiceCharge(roundCurrencyAmount(e.target.value))}
                       className="mt-2 w-full rounded-2xl border border-[#31363f] bg-[#0d0d0d] px-4 py-3 text-sm text-white placeholder:text-slate-500 outline-none transition focus:border-yellow-400 focus:bg-[#111]"
                     />
                   </div>
@@ -5502,15 +6701,15 @@ const QuotationBuilder = () => {
                     <input
                       type="number"
                       value={draftHandlingFee}
-                      onChange={(e) =>
-                        setDraftHandlingFee(roundCurrencyAmount(e.target.value))
-                      }
+                      onChange={(e) => setDraftHandlingFee(roundCurrencyAmount(e.target.value))}
                       className="mt-2 w-full rounded-2xl border border-[#31363f] bg-[#0d0d0d] px-4 py-3 text-sm text-white placeholder:text-slate-500 outline-none transition focus:border-yellow-400 focus:bg-[#111]"
                     />
                   </div>
 
                   <div>
-                    <label className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">Valid Till</label>
+                    <label className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">
+                      Valid Till
+                    </label>
                     <input
                       type="date"
                       value={draftValidTill}
@@ -5524,10 +6723,9 @@ const QuotationBuilder = () => {
                   </div>
                 </div>
 
-                {/*============================== TAXATION CHARGES ===========================*/}
-
-                <div className="rounded-[24px] border border-[#2d3238] bg-[linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0.01))] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
-                  <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+                {/* ======= TAXATION ======= */}
+                <div className="rounded-[24px] border border-[#2d3238] bg-[linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0.01))] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+                  <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
                     <div>
                       <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-sky-300/70">
                         Tax Console
@@ -5541,20 +6739,22 @@ const QuotationBuilder = () => {
                       <button
                         type="button"
                         onClick={applyAutoTaxPreset}
-                        className={`rounded-full px-3 py-1.5 text-[11px] font-semibold transition cursor-pointer ${taxSetupMode === "auto"
-                          ? "border border-emerald-400/40 bg-emerald-500/15 text-emerald-200"
-                          : "border border-[#3a4456] bg-black/20 text-slate-300 hover:border-emerald-400/30 hover:text-emerald-200"
-                          }`}
+                        className={`rounded-full px-3 py-1.5 text-[11px] font-semibold transition cursor-pointer ${
+                          taxSetupMode === "auto"
+                            ? "border border-emerald-400/40 bg-emerald-500/15 text-emerald-200"
+                            : "border border-[#3a4456] bg-black/20 text-slate-300 hover:border-emerald-400/30 hover:text-emerald-200"
+                        }`}
                       >
                         Auto Taxes
                       </button>
                       <button
                         type="button"
                         onClick={() => setTaxSetupMode("manual")}
-                        className={`rounded-full px-3 py-1.5 text-[11px] font-semibold transition cursor-pointer ${taxSetupMode === "manual"
-                          ? "border border-yellow-400/40 bg-yellow-500/12 text-yellow-200"
-                          : "border border-[#3a4456] bg-black/20 text-slate-300 hover:border-yellow-400/30 hover:text-yellow-200"
-                          }`}
+                        className={`rounded-full px-3 py-1.5 text-[11px] font-semibold transition cursor-pointer ${
+                          taxSetupMode === "manual"
+                            ? "border border-yellow-400/40 bg-yellow-500/12 text-yellow-200"
+                            : "border border-[#3a4456] bg-black/20 text-slate-300 hover:border-yellow-400/30 hover:text-yellow-200"
+                        }`}
                       >
                         Manual
                       </button>
@@ -5594,8 +6794,7 @@ const QuotationBuilder = () => {
                     </p>
                   </div>
 
-                  {/*============================== TCS Charges ====================================== */}
-
+                  {/* TCS */}
                   <div className="mb-3 flex flex-col justify-between rounded-2xl border border-[#31363f] bg-[#171717] p-3">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <label className="flex items-center gap-2 text-sm font-medium text-slate-100">
@@ -5622,15 +6821,13 @@ const QuotationBuilder = () => {
                         <span className="text-blue-400 text-xs">%</span>
                       </div>
                     </div>
-
                     <p className="mt-2 flex items-center justify-between gap-3 text-[11px] leading-5 text-slate-400">
                       <span>TCS amount will be calculated from the taxable quotation value.</span>
                       <span className="text-emerald-300">₹ {formatAmountValue(draftTcsFinal)}</span>
                     </p>
                   </div>
 
-                  {/*================================== Tourism Fees ============================================ */}
-
+                  {/* Tourism Fees */}
                   <div className="mb-3 flex flex-col justify-end rounded-2xl border border-[#31363f] bg-[#171717] p-3">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <label className="flex items-center gap-2 text-sm font-medium text-slate-100">
@@ -5646,7 +6843,6 @@ const QuotationBuilder = () => {
                       </label>
                       <span className="text-blue-400 text-sm">₹{DEFAULT_TOURISM_AMOUNT}</span>
                     </div>
-
                     {draftTourismChecked && (
                       <input
                         type="number"
@@ -5660,22 +6856,20 @@ const QuotationBuilder = () => {
                     )}
                   </div>
 
-                  {/*========================== Total Tax ============================================*/}
-
+                  {/* Total Tax */}
                   <div className="mt-4 flex justify-between rounded-2xl border border-white/6 bg-black/25 px-4 py-3">
-                    <span className="text-sm font-medium text-slate-300">
-                      Total Tax Amount
-                    </span>
+                    <span className="text-sm font-medium text-slate-300">Total Tax Amount</span>
                     <span className="text-lg font-semibold text-white">
                       ₹{formatAmountValue(draftTaxationTotal)}
                     </span>
                   </div>
                 </div>
+
               </div>
             </div>
 
-            {/* Buttons */}
-            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#2a2a2a] bg-black/20 px-5 py-4 sm:px-6">
+            {/* ===== FOOTER BUTTONS ===== */}
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#2a2a2a] bg-black/20 px-5 py-3 sm:px-6">
               <p className="text-xs uppercase tracking-[0.16em] text-slate-500">
                 Quote control panel
               </p>
@@ -5686,23 +6880,19 @@ const QuotationBuilder = () => {
                 >
                   Cancel
                 </button>
-
                 <button
                   onClick={() => {
                     setServiceCharge(roundCurrencyAmount(draftServiceCharge));
                     setHandlingFee(roundCurrencyAmount(draftHandlingFee));
                     setValidTill(draftValidTill);
-
                     setGstChecked(draftGstChecked);
                     setTcsChecked(draftTcsChecked);
                     setTourismChecked(draftTourismChecked);
                     setGstPercent(draftGstPercent);
                     setTcsPercent(draftTcsPercent);
-
                     setGstAmount(roundCurrencyAmount(draftGstFinal));
                     setTcsAmount(roundCurrencyAmount(draftTcsFinal));
                     setTourismAmount(roundCurrencyAmount(draftTourismFinal));
-
                     setAppliedTaxTotal(draftTaxationTotal);
                     setShowOpsPopup(false);
                     setTimeout(() => {
@@ -5715,9 +6905,111 @@ const QuotationBuilder = () => {
                 </button>
               </div>
             </div>
+
           </div>
         </div>
       )}
+
+
+
+
+
+
+
+
+      <AnimatePresence>
+        {transportSelectionConfirm.open && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.22, ease: "easeOut" }}
+            className="fixed inset-0 z-[71] flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm"
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 18, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 18, scale: 0.96 }}
+              transition={{ duration: 0.24, ease: "easeOut" }}
+              className="w-full max-w-sm rounded-[28px] border border-yellow-400/20 bg-[#111111] p-6 shadow-[0_24px_80px_rgba(0,0,0,0.55)]"
+            >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-yellow-300/80">
+                  Transport Warning
+                </p>
+                <h3 className="mt-2 text-xl font-semibold text-white">
+                  Confirm this transport service?
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() =>
+                  setTransportSelectionConfirm({
+                    open: false,
+                    serviceId: "",
+                    serviceTitle: "",
+                    passengerCapacity: 0,
+                    passengerCount: 0,
+                  })
+                }
+                className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-slate-400 transition hover:border-red-400/40 hover:bg-red-500/10 hover:text-red-300"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <p className="mt-3 text-sm leading-6 text-slate-300">
+              This transport service is for{" "}
+              <span className="font-semibold text-yellow-300">{transportSelectionConfirm.passengerCapacity} pax</span>,
+              while this booking currently has{" "}
+              <span className="font-semibold text-white">
+                {transportSelectionConfirm.passengerCount} passenger{transportSelectionConfirm.passengerCount === 1 ? "" : "s"}
+              </span>.
+              Are you sure you want to continue with{" "}
+              <span className="font-semibold text-white">{transportSelectionConfirm.serviceTitle}</span>?
+            </p>
+
+            <div className="mt-6 flex gap-3">
+              <button
+                type="button"
+                onClick={() =>
+                  setTransportSelectionConfirm({
+                    open: false,
+                    serviceId: "",
+                    serviceTitle: "",
+                    passengerCapacity: 0,
+                    passengerCount: 0,
+                  })
+                }
+                className="flex-1 rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-white/10"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const pendingServiceId = transportSelectionConfirm.serviceId;
+                  setTransportSelectionConfirm({
+                    open: false,
+                    serviceId: "",
+                    serviceTitle: "",
+                    passengerCapacity: 0,
+                    passengerCount: 0,
+                  });
+                  if (pendingServiceId) {
+                    toggleService(pendingServiceId, true);
+                  }
+                }}
+                className="flex-1 rounded-xl bg-yellow-400 px-4 py-2.5 text-sm font-semibold text-black transition hover:bg-yellow-500"
+              >
+                Yes, Continue
+              </button>
+            </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/*======================== ✅ POPUP Success final Charges =============================================*/}
       {showFinanceInvoiceConfirm && (
@@ -5729,7 +7021,7 @@ const QuotationBuilder = () => {
                   Finance Invoice
                 </p>
                 <h3 className="mt-2 text-xl font-semibold text-white">
-                  Send notification to agent?
+                  Continue with approved booking?
                 </h3>
               </div>
               <button
@@ -5742,7 +7034,7 @@ const QuotationBuilder = () => {
             </div>
 
             <p className="mt-3 text-sm leading-6 text-slate-300">
-              This will prepare the finance invoice and notify the agent that the booking has moved to the finance stage.
+              This will continue the approved booking flow and notify the agent that the booking is in the amount and documents stage.
             </p>
 
             <div className="mt-6 flex gap-3">
@@ -6025,6 +7317,12 @@ const Service = ({
     transportStartDate && selectedTransportDays > 0
       ? addDaysToServiceDate(transportStartDate, selectedTransportDays - 1)
       : "";
+  const transportDateOptions = useMemo(() => {
+    if (!tripStartDate) return transportStartDate ? [transportStartDate] : [];
+
+    const availableDateCount = Math.max(1, calculateTripDayCountFromDate(tripStartDate, tripEndDate));
+    return Array.from({ length: availableDateCount }, (_, index) => addDaysToServiceDate(tripStartDate, index)).filter(Boolean);
+  }, [tripEndDate, tripStartDate, transportStartDate]);
 
   const getNightOptionLabel = (count) => {
     const startNight = Number(hotelNightStart || 1);
@@ -6241,6 +7539,8 @@ const Service = ({
                   type="date"
                   value={service.serviceDate || ""}
                   onChange={(e) => updateField(service.id, "serviceDate", e.target.value)}
+                  min={tripStartDate || undefined}
+                  max={transportDateOptions[transportDateOptions.length - 1] || tripEndDate || undefined}
                   tabIndex={-1}
                   className={`${dateCls} pointer-events-none w-full`}
                 />
@@ -6271,6 +7571,8 @@ const Service = ({
               type="date"
               value={service.serviceDate || ""}
               onChange={(e) => updateField(service.id, "serviceDate", e.target.value)}
+              min={tripStartDate || undefined}
+              max={transportDateOptions[transportDateOptions.length - 1] || tripEndDate || undefined}
               className={dateCls}
             />
           </div>
@@ -6322,7 +7624,7 @@ const Service = ({
               <div className="flex flex-wrap gap-x-4 gap-y-1">
                 {transportStartDate && (
                   <span className="text-[10px] text-emerald-400">
-                    Up to {maxTransportDays} day{maxTransportDays > 1 ? "s" : ""} from start date
+                    Up to {maxTransportDays} day{maxTransportDays > 1 ? "s" : ""} from selected date
                   </span>
                 )}
                 {transportStartDate && transportEndDate && (
@@ -6333,6 +7635,34 @@ const Service = ({
                   </span>
                 )}
               </div>
+
+              {transportDateOptions.length > 1 && (
+                <div>
+                  <p className="mb-1.5 text-[9px] text-slate-500">Start Day</p>
+                  <div className="flex flex-wrap gap-2">
+                    {transportDateOptions.map((dateValue) => {
+                      const isActive = dateValue === transportStartDate;
+                      return (
+                        <button
+                          key={dateValue}
+                          type="button"
+                          onClick={() => updateField(service.id, "serviceDate", dateValue)}
+                          className={`cursor-pointer rounded-full border px-3 py-1.5 text-[10px] font-medium transition ${
+                            isActive
+                              ? "border-yellow-500/50 bg-yellow-500/12 text-yellow-300"
+                              : "border-[#2c2c2c] bg-[#0b0b0b] text-slate-300 hover:border-yellow-500/35 hover:text-white"
+                          }`}
+                        >
+                          {formatDisplayDate(dateValue)}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="mt-2 text-[10px] text-slate-400">
+                    Choose any trip day first, then select `1 Day`, `2 Days`, or more from that date.
+                  </p>
+                </div>
+              )}
 
               <div className="flex flex-wrap items-center gap-3">
                 <div>
@@ -6620,3 +7950,6 @@ const AddonRow = ({
 );
 
 export default QuotationBuilder;
+
+
+

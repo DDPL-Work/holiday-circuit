@@ -5,6 +5,7 @@ import { AnimatePresence } from "framer-motion";
 import CreateNewQueries from "../../modal/CreateNewQueries.Modal";
 import QueryDetails from "./QueryDetails.jsx";
 import API from "../../utils/Api.js";
+import toast from "react-hot-toast";
 
 /* ===== Page Animation (one time only) ===== */
 const containerVariant = {
@@ -26,6 +27,7 @@ const itemVariant = {
 
 const Queries = () => {
   const [openModal, setOpenModal] = useState(false);
+  const [openEditModal, setOpenEditModal] = useState(false);
   const [openQueryDetails, setOpenQueryDetails] = useState(false);
   const [selectedQuery, setSelectedQuery] = useState(null);
   const [queries, setQueries] = useState([]);
@@ -44,6 +46,16 @@ const Queries = () => {
     }
   };
 
+  const handleQueryCreated = (createdQuery) => {
+    if (!createdQuery?._id) return;
+
+    setQueries((prevQueries) => [
+      createdQuery,
+      ...prevQueries.filter((query) => query._id !== createdQuery._id),
+    ]);
+    setCurrentPage(1);
+  };
+
   useEffect(() => {
     fetchQueries();
   }, []);
@@ -53,7 +65,7 @@ const Queries = () => {
     if (status === "Quote Sent") {
       return {
         className: "bg-green-200 text-green-700",
-        label: "Quote Sent",
+        label: "Quote Received",
       };
     }
 
@@ -191,11 +203,11 @@ const Queries = () => {
               <colgroup>
                 <col className="w-[12%]" />
                 <col className="w-[15%]" />
-                <col className="w-[16%]" />
                 <col className="w-[15%]" />
-                <col className="w-[19%]" />
                 <col className="w-[13%]" />
-                <col className="w-[10%]" />
+                <col className="w-[16%]" />
+                <col className="w-[12%]" />
+                <col className="w-[17%]" />
               </colgroup>
               <thead className="bg-gray-50 text-gray-500 border-b-gray-200 border-b">
                 <tr>
@@ -248,32 +260,123 @@ const Queries = () => {
                         {query.customerBudget || "-"}
                       </td>
 
-                      {/* FIX: View button — padding balanced, no overflow */}
-                      <td
-                        className="px-4 py-4 align-middle text-right"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedQuery(query);
-                          setOpenQueryDetails(true);
-                        }}
-                      >
-                        <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-blue-700 bg-blue-50 border border-blue-200 px-3 py-1.5 rounded-lg hover:bg-blue-100 hover:border-blue-300 cursor-pointer transition-colors whitespace-nowrap">
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            width="12"
-                            height="12"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
+                      {/* FIX: View & Edit buttons — padding balanced, no overflow */}
+                      <td className="px-4 py-4 align-middle text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <span
+                            className="inline-flex items-center gap-1.5 text-[11px] font-medium text-blue-700 bg-blue-50 border border-blue-200 px-3 py-1.5 rounded-lg hover:bg-blue-100 hover:border-blue-300 cursor-pointer transition-colors whitespace-nowrap"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedQuery(query);
+                              setOpenQueryDetails(true);
+                            }}
                           >
-                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                            <circle cx="12" cy="12" r="3" />
-                          </svg>
-                          View
-                        </span>
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              width="12"
+                              height="12"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            >
+                              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                              <circle cx="12" cy="12" r="3" />
+                            </svg>
+                            View
+                          </span>
+
+                          <span
+                            className="inline-flex items-center gap-1.5 text-[11px] font-medium text-amber-700 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-lg hover:bg-amber-100 hover:border-amber-300 cursor-pointer transition-colors whitespace-nowrap"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const isConfirmed = ["Confirmed", "Vouchered", "Payment_Completed", "Invoice_Requested"].includes(query.opsStatus) || query.agentStatus === "Confirmed";
+                              if (isConfirmed) {
+                                toast.custom((t) => (
+                                  <div
+                                    className={`${
+                                      t.visible ? 'animate-in fade-in duration-200' : 'animate-out fade-out duration-200'
+                                    } bg-white border-l-[4px] border-[#2563eb] px-4 py-3 shadow-[0_4px_16px_rgba(0,0,0,0.12)] flex items-start gap-3 pointer-events-auto`}
+                                    style={{ width: '420px', minWidth: '420px', borderRadius: '0px', pointerEvents: 'auto' }}
+                                  >
+                                    <div className="mt-0.5 text-[#2563eb] shrink-0">
+                                      <svg
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        width="18"
+                                        height="18"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        strokeWidth="2.2"
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                      >
+                                        <circle cx="12" cy="12" r="10" />
+                                        <line x1="12" y1="16" x2="12" y2="12" />
+                                        <line x1="12" y1="8" x2="12.01" y2="8" />
+                                      </svg>
+                                    </div>
+                                    <div className="flex-1 flex flex-col gap-1">
+                                      <div className="flex items-center justify-between">
+                                        <h4 className="text-[13px] font-bold text-slate-800 leading-none">Info</h4>
+                                        <button
+                                          onClick={() => toast.dismiss(t.id)}
+                                          className="text-gray-400 hover:text-gray-600 shrink-0 cursor-pointer bg-transparent border-none outline-none p-0 transition-colors flex items-center justify-center"
+                                          aria-label="Close notification"
+                                        >
+                                          <svg
+                                            xmlns="http://www.w3.org/2000/svg"
+                                            width="16"
+                                            height="16"
+                                            viewBox="0 0 24 24"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            strokeWidth="2"
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                          >
+                                            <line x1="18" y1="6" x2="6" y2="18" />
+                                            <line x1="6" y1="6" x2="18" y2="18" />
+                                          </svg>
+                                        </button>
+                                      </div>
+                                      <p
+                                        className="text-[11px] text-slate-600 leading-snug font-medium whitespace-nowrap"
+                                        style={{ whiteSpace: 'nowrap' }}
+                                      >
+                                        Booking has been confirmed. This query cannot be edited.
+                                      </p>
+                                    </div>
+                                  </div>
+                                ), {
+                                  duration: 4000,
+                                  position: 'top-right'
+                                });
+                              } else {
+                                setSelectedQuery(query);
+                                setOpenEditModal(true);
+                              }
+                            }}
+                          >
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              width="12"
+                              height="12"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            >
+                              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                              <path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                            </svg>
+                            Edit
+                          </span>
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -360,8 +463,19 @@ const Queries = () => {
       <AnimatePresence>
         {openModal && (
           <CreateNewQueries
+            onCreated={handleQueryCreated}
             onClose={() => {
               setOpenModal(false);
+            }}
+          />
+        )}
+        {openEditModal && (
+          <CreateNewQueries
+            queryToEdit={selectedQuery}
+            onCreated={handleQueryCreated}
+            onClose={() => {
+              setOpenEditModal(false);
+              setSelectedQuery(null);
             }}
           />
         )}

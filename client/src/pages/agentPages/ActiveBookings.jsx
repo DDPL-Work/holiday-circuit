@@ -34,6 +34,10 @@ const formatDateRange = (startDate, endDate) => {
 };
 
 const getDisplayStatus = (query, invoice) => {
+  if (query?.opsStatus === "Payment_Completed") {
+    return { label: "Payment Completed", className: "bg-emerald-100 text-emerald-700" };
+  }
+
   if (query?.opsStatus === "Vouchered") {
     return { label: "Vouchered", className: "bg-indigo-100 text-indigo-700" };
   }
@@ -48,7 +52,7 @@ const getDisplayStatus = (query, invoice) => {
   }
 
   if (!invoice) {
-    return { label: "Invoice Pending", className: "bg-slate-100 text-slate-700" };
+    return { label: "Amount/Docs Pending", className: "bg-amber-100 text-amber-700" };
   }
 
   if (verificationStatus === "Rejected") {
@@ -59,7 +63,7 @@ const getDisplayStatus = (query, invoice) => {
     return { label: "Under Review", className: "bg-blue-100 text-blue-700" };
   }
 
-  return { label: "Finance Pending", className: "bg-amber-100 text-amber-700" };
+  return { label: "Amount/Docs Pending", className: "bg-amber-100 text-amber-700" };
 };
 
 const getSortableTimestamp = (value) => {
@@ -118,7 +122,7 @@ const mapBookingRecord = (record) => {
     _id: query?._id,
     createdAt: record?.createdAt || invoice?.createdAt || null,
     invoiceId: invoice?._id || "",
-    invoiceNumber: invoice?.invoiceNumber || "Invoice Pending",
+    invoiceNumber: invoice?.invoiceNumber || "Amount/Docs Pending",
     bookingReference: query?.queryId || invoice?.invoiceNumber || "Booking Pending",
     destination: query?.destination || "Destination Pending",
     dates: formatDateRange(query?.startDate, query?.endDate),

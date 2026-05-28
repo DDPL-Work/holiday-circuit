@@ -400,7 +400,7 @@
 // }
 
 
-import {MapPin,Calendar,Users,Clock,CheckCircle,TriangleAlert,Activity,Zap,FileCheck,UserCheck,AlertTriangle,XCircle,ShieldAlert,Sparkles,ChevronDown,ChevronUp,
+import {MapPin,Calendar,Users,Clock,CheckCircle,TriangleAlert,Activity,Zap,FileCheck,UserCheck,AlertTriangle,XCircle,ShieldAlert,Sparkles,ChevronLeft,ChevronRight,
 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { useSelector } from "react-redux";
@@ -420,6 +420,7 @@ const logConfig = {
   "Quotation Started": { color: "bg-amber-500", light: "bg-amber-50", text: "text-amber-700", border: "border-amber-200", icon: Activity },
   "Quote Sent": { color: "bg-blue-500", light: "bg-blue-50", text: "text-blue-700", border: "border-blue-200", icon: Zap },
   "Passed to Admin": { color: "bg-orange-500", light: "bg-orange-50", text: "text-orange-700", border: "border-orange-200", icon: AlertTriangle },
+  "Passed to Manager": { color: "bg-orange-500", light: "bg-orange-50", text: "text-orange-700", border: "border-orange-200", icon: AlertTriangle },
   "Admin Replied": { color: "bg-indigo-500", light: "bg-indigo-50", text: "text-indigo-700", border: "border-indigo-200", icon: UserCheck },
   "Revision Requested": { color: "bg-rose-500", light: "bg-rose-50", text: "text-rose-700", border: "border-rose-200", icon: ShieldAlert },
   "Booking Confirmed": { color: "bg-emerald-500", light: "bg-emerald-50", text: "text-emerald-700", border: "border-emerald-200", icon: CheckCircle },
@@ -431,38 +432,143 @@ const logConfig = {
 };
 const fallbackConfig = { color: "bg-sky-500", light: "bg-sky-50", text: "text-sky-700", border: "border-sky-200", icon: Activity };
 
+const getLatestReassignmentEntry = (order = {}) => {
+  const history = Array.isArray(order?.reassignmentHistory) ? order.reassignmentHistory : [];
+  return history.length ? history[history.length - 1] : null;
+};
+
+const getOrderStatusMeta = (order = {}) => {
+  const isRevisionRequested =
+    String(order?.agentStatus || "").trim() === "Revision Requested" ||
+    String(order?.opsStatus || "").trim() === "Revision_Query";
+
+  if (isRevisionRequested) {
+    return {
+      label: "Quotation Rejected",
+      detail: String(order?.rejectionNote || "").trim() || "Client or agent asked for changes on this quotation.",
+      badgeClassName: "border-rose-200 bg-rose-50 text-rose-700",
+      noticeClassName: "border-rose-200 bg-rose-50/80",
+      noticeIconClassName: "bg-rose-100 text-rose-600",
+      noticeTitle: "Revision Needed For This Query",
+      noticeBody:
+        String(order?.rejectionNote || "").trim() ||
+        "The earlier quotation was rejected for this specific query. Open the builder and resend a revised quotation.",
+      Icon: XCircle,
+    };
+  }
+
+  if (String(order?.opsStatus || "").trim() === "Invoice_Requested") {
+    return {
+      label: "Client Approved",
+      detail: "Client has approved the quotation. Booking is now in the amount and documents stage.",
+      badgeClassName: "border-emerald-200 bg-emerald-50 text-emerald-700",
+      noticeClassName: "",
+      noticeIconClassName: "",
+      noticeTitle: "",
+      noticeBody: "",
+      Icon: CheckCircle,
+    };
+  }
+
+  if (String(order?.quotationStatus || "").trim() === "Sent_To_Agent") {
+    return {
+      label: "Sent To Agent",
+      detail: "Quotation has been shared with the agent and is awaiting their action.",
+      badgeClassName: "border-blue-200 bg-blue-50 text-blue-700",
+      noticeClassName: "",
+      noticeIconClassName: "",
+      noticeTitle: "",
+      noticeBody: "",
+      Icon: Zap,
+    };
+  }
+
+  if (String(order?.quotationStatus || "").trim() === "Quotation_Created") {
+    return {
+      label: "Quotation Created",
+      detail: "Quotation draft is ready for sharing.",
+      badgeClassName: "border-amber-200 bg-amber-50 text-amber-700",
+      noticeClassName: "",
+      noticeIconClassName: "",
+      noticeTitle: "",
+      noticeBody: "",
+      Icon: Activity,
+    };
+  }
+
+  return {
+    label: String(order?.quotationStatus || "Awaiting_Decision").replaceAll("_", " "),
+    detail: "This query is currently waiting for the next quotation action.",
+    badgeClassName: "border-orange-300 bg-[#FEF3C6] text-[#BB4D00]",
+    noticeClassName: "",
+    noticeIconClassName: "",
+    noticeTitle: "",
+    noticeBody: "",
+    Icon: Clock,
+  };
+};
+
 /* ── Horizontal Activity Log Strip ── */
 const ActivityStrip = ({ logs = [] }) => {
+  const viewportRef = useRef(null);
+  const [hasOverflow, setHasOverflow] = useState(false);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
   const sortedLogs = [...logs].sort(
   (a, b) => new Date(a.timestamp) - new Date(b.timestamp)
 );
- const seenActions = new Set();
- const uniqueLogs = sortedLogs.filter((log) => {
-  if (hiddenLogActions.has(String(log?.action || "").trim())) {
-    return false;
-  }
-  if (log.action === "Quote Sent") {
-    if (seenActions.has("Quote Sent")) return false;
-    seenActions.add("Quote Sent");
-  }
-  return true;
-});
+  const seenActions = new Set();
+  const uniqueLogs = sortedLogs.filter((log) => {
+    if (hiddenLogActions.has(String(log?.action || "").trim())) {
+      return false;
+    }
+    if (log.action === "Quote Sent") {
+      if (seenActions.has("Quote Sent")) return false;
+      seenActions.add("Quote Sent");
+    }
+    return true;
+  });
 
   if (!uniqueLogs.length) {
     return null;
   }
 
-  const shouldLoop = uniqueLogs.length > 1;
-  const repeatCount = shouldLoop ? Math.max(2, Math.ceil(18 / uniqueLogs.length)) : 1;
-  const loopLogs = shouldLoop
-    ? Array.from({ length: repeatCount }).flatMap((_, repeatIndex) =>
-        uniqueLogs.map((log, baseIndex) => ({
-          ...log,
-          __repeatIndex: repeatIndex,
-          __baseIndex: baseIndex,
-        })),
-      )
-    : uniqueLogs;
+  const syncNavigationState = () => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+
+    const nextHasOverflow = viewport.scrollWidth - viewport.clientWidth > 8;
+    const maxScrollLeft = Math.max(0, viewport.scrollWidth - viewport.clientWidth);
+
+    setHasOverflow(nextHasOverflow);
+    setCanScrollLeft(nextHasOverflow && viewport.scrollLeft > 4);
+    setCanScrollRight(nextHasOverflow && viewport.scrollLeft < maxScrollLeft - 4);
+  };
+
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) return undefined;
+
+    const syncOnFrame = window.requestAnimationFrame(syncNavigationState);
+    const handleResize = () => syncNavigationState();
+
+    window.addEventListener("resize", handleResize);
+    return () => {
+      window.cancelAnimationFrame(syncOnFrame);
+      window.removeEventListener("resize", handleResize);
+    };
+  }, [uniqueLogs.length]);
+
+  const handleActivityScroll = (direction) => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+
+    const scrollStep = Math.max(220, Math.round(viewport.clientWidth * 0.7));
+    viewport.scrollBy({
+      left: direction === "left" ? -scrollStep : scrollStep,
+      behavior: "smooth",
+    });
+  };
 
   return (
 
@@ -470,7 +576,7 @@ const ActivityStrip = ({ logs = [] }) => {
       initial={{ opacity: 0, y: -10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4 }}
-      className="w-full mb-6 overflow-hidden rounded-2xl border border-gray-200 bg-white px-4 py-3 pb-2 shadow-sm"
+      className="relative w-full mb-6 overflow-visible rounded-2xl border border-gray-200 bg-white px-4 py-3 pb-2 shadow-sm"
     >
       <div className="mb-2.5 flex items-center gap-2">
         <Activity size={13} className="text-green-700" />
@@ -481,67 +587,94 @@ const ActivityStrip = ({ logs = [] }) => {
       </div>
 
       {/* Horizontal timeline */}
-      <div className="activity-strip-viewport">
+      <div className="relative">
+        {hasOverflow ? (
+          <button
+            type="button"
+            onClick={() => handleActivityScroll("left")}
+            disabled={!canScrollLeft}
+            className={`absolute -left-7 top-[1rem] z-10 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full border bg-white text-[#233CFF] shadow-md transition ${
+              canScrollLeft
+                ? "cursor-pointer border-slate-200 opacity-100 hover:scale-105 hover:border-slate-300"
+                : "cursor-not-allowed border-slate-100 opacity-45"
+            }`}
+            aria-label="Show previous activity"
+          >
+            <ChevronLeft size={14} />
+          </button>
+        ) : null}
+
+        {hasOverflow ? (
+          <button
+            type="button"
+            onClick={() => handleActivityScroll("right")}
+            disabled={!canScrollRight}
+            className={`absolute -right-7 top-[1rem] z-10 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full border bg-white text-[#233CFF] shadow-md transition ${
+              canScrollRight
+                ? "cursor-pointer border-slate-200 opacity-100 hover:scale-105 hover:border-slate-300"
+                : "cursor-not-allowed border-slate-100 opacity-45"
+            }`}
+            aria-label="Show next activity"
+          >
+            <ChevronRight size={14} />
+          </button>
+        ) : null}
+
         <div
-          className={`activity-strip-track ${
-            shouldLoop ? "activity-strip-track--loop" : "activity-strip-track--static"
-          }`}
-          style={
-            shouldLoop
-              ? { "--activity-loop-distance": `${100 / repeatCount}%` }
-              : undefined
-          }
+          ref={viewportRef}
+          onScroll={syncNavigationState}
+          className={`activity-strip-viewport activity-strip-scroll-hidden pb-1 ${hasOverflow ? "px-4" : ""}`}
         >
-          {loopLogs.map((log, index) => {
-         const display = log.action === "Query Created" ? "Query Received" : log.action;
-         const cfg = logConfig[display] || fallbackConfig;
-         const Icon = cfg.icon;
-         const isLast = index === loopLogs.length - 1;
-
-          return (
-
-            <div
-              key={`${display}-${log.timestamp}-${log.__repeatIndex ?? 0}-${log.__baseIndex ?? index}`}
-              className="activity-strip-item"
-            >
-              {/* Node */}
-              <motion.div
-                initial={{ scale: 0, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                transition={{ delay: Math.min(index, uniqueLogs.length - 1) * 0.08, type: "spring", stiffness: 260, damping: 20 }}
-                className="flex w-[68px] flex-col items-center text-center"
+          <div className={`flex items-start gap-1 pr-1 ${hasOverflow ? "w-max min-w-max" : "w-full justify-center"}`}>
+          {uniqueLogs.map((log, index) => {
+            const display = log.action === "Query Created" ? "Query Received" : log.action;
+            const cfg = logConfig[display] || fallbackConfig;
+            const Icon = cfg.icon;
+            const isLast = index === uniqueLogs.length - 1;
+            return (
+              <div
+                key={`${display}-${log.timestamp}-${index}`}
+                className="flex items-center"
               >
-                {/* Icon bubble */}
-                <div className={`mb-1 flex h-6 w-6 items-center justify-center rounded-full ${cfg.light} border ${cfg.border} shadow-sm`}>
-                  <Icon size={10} className={cfg.text} />
-                </div>
+                {/* Node */}
+                <motion.div
+                  initial={{ scale: 0, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  transition={{ delay: Math.min(index, uniqueLogs.length - 1) * 0.08, type: "spring", stiffness: 260, damping: 20 }}
+                  className="flex w-[92px] flex-col items-center text-center"
+                >
+                  {/* Icon bubble */}
+                  <div className={`mb-1 flex h-6 w-6 items-center justify-center rounded-full ${cfg.light} border ${cfg.border} shadow-sm`}>
+                    <Icon size={10} className={cfg.text} />
+                  </div>
 
-                {/* Label */}
-                <span className={`w-full text-center text-[8px] font-semibold leading-[1.2] ${cfg.text}`}>
-                {display}
-                </span>
+                  {/* Label */}
+                  <span className={`w-full text-center text-[8px] font-semibold leading-[1.2] ${cfg.text}`}>
+                    {display}
+                  </span>
 
-                {/* Timestamp */}
-                <span className="mt-0.5 w-full text-center text-[7px] leading-[1.2] text-gray-400">
-                  {new Date(log.timestamp).toLocaleString("en-IN", {
-                    day: "numeric",
-                    month: "short",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
-                </span>
-              </motion.div>
+                  {/* Timestamp */}
+                  <span className="mt-0.5 w-full text-center text-[7px] leading-[1.2] text-gray-400">
+                    {new Date(log.timestamp).toLocaleString("en-IN", {
+                      day: "numeric",
+                      month: "short",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </span>
+                </motion.div>
 
-              {/* Connector line */}
-              {!isLast && (
-                <div className="mx-0.5 mb-5 flex items-center">
-                  <div className={`h-0.5 w-6 rounded-full ${cfg.color} opacity-30`} />
-                  <div className={`-ml-0.5 h-1.5 w-1.5 rounded-full ${cfg.color} opacity-55`} />
-                </div>
-              )}
-            </div>
-          );
-        })}
+                {/* Connector line */}
+                {!isLast && (
+                  <div className="mx-0.5 mb-5 flex items-center">
+                    <div className={`h-0.5 w-6 rounded-full ${cfg.color} opacity-30`} />
+                    <div className={`-ml-0.5 h-1.5 w-1.5 rounded-full ${cfg.color} opacity-55`} />
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          </div>
         </div>
       </div>
     </motion.div>
@@ -554,14 +687,15 @@ export default function OrderAcceptance() {
   const navigate = useNavigate();
   const currentUserId = String(currentUser?.id || currentUser?._id || "");
   const isAdminView = currentUser?.role === "admin";
+  const isOperationManagerView = currentUser?.role === "operation_manager";
   const [openModal, setOpenModal] = useState(false);
   const [openConfirmQuotationModal, setOpenConfirmQuotationModal] = useState(false);
   const [orders, setOrders] = useState([]);
   const [pendingOrders, setPendingOrders] = useState(0);
   const [avgTime, setAvgTime] = useState(0);
   const [selectedOrder, setSelectedOrder] = useState(null);
+  const [relativeNow, setRelativeNow] = useState(() => Date.now());
   const [showAcceptGuardPopup, setShowAcceptGuardPopup] = useState(false);
-  const [adminCoordinationVisibility, setAdminCoordinationVisibility] = useState({});
   const [highlightedOrderId, setHighlightedOrderId] = useState("");
   const handledNotificationOrderRef = useRef("");
 
@@ -570,10 +704,11 @@ export default function OrderAcceptance() {
  const fetchOrders = async () => {
   try {
     const res = await API.get("/ops/queries/order-acceptance", {
-  headers: {
-    "Cache-Control": "no-cache"
-  }
-}); 
+      headers: {
+        "Cache-Control": "no-cache"
+      },
+      skipGlobalLoader: true,
+    }); 
     setOrders(res.data.queries);
     setPendingOrders(res.data.pendingOrders);
     setAvgTime(res.data.avgResponseTime);
@@ -583,19 +718,50 @@ export default function OrderAcceptance() {
 };
 
 useEffect(() => {
- fetchOrders();
+  const timerId = window.setTimeout(() => {
+    fetchOrders();
+  }, 0);
+
+  return () => window.clearTimeout(timerId);
+}, []);
+
+useEffect(() => {
+  const refreshOrders = () => {
+    if (document.visibilityState === "visible") {
+      fetchOrders();
+    }
+  };
+
+  const intervalId = window.setInterval(refreshOrders, 15000);
+  window.addEventListener("focus", refreshOrders);
+
+  return () => {
+    window.clearInterval(intervalId);
+    window.removeEventListener("focus", refreshOrders);
+  };
+}, []);
+
+useEffect(() => {
+  const timerId = window.setInterval(() => {
+    setRelativeNow(Date.now());
+  }, 60000);
+
+  return () => window.clearInterval(timerId);
 }, []);
 
 useEffect(() => {
   if (orders.length > 0) {
-    if (selectedOrder?._id) {
-      const updated = orders.find(o => o._id === selectedOrder._id);
-      setSelectedOrder(updated || null);
-    } else {
-      setSelectedOrder(orders[0]);
-    }
+    const nextSelectedOrder = selectedOrder?._id
+      ? orders.find((o) => o._id === selectedOrder._id) || null
+      : orders[0];
+
+    const frameId = window.requestAnimationFrame(() => {
+      setSelectedOrder(nextSelectedOrder);
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
   }
-}, [orders]);
+}, [orders, selectedOrder?._id]);
 
 useEffect(() => {
   const notificationOrderId = String(location.state?.notificationMeta?.queryId || "").trim();
@@ -611,10 +777,9 @@ useEffect(() => {
   if (!targetOrder) return;
 
   handledNotificationOrderRef.current = notificationOrderId;
-  setSelectedOrder(targetOrder);
-  setHighlightedOrderId(String(targetOrder._id || ""));
-
-  window.requestAnimationFrame(() => {
+  const frameId = window.requestAnimationFrame(() => {
+    setSelectedOrder(targetOrder);
+    setHighlightedOrderId(String(targetOrder._id || ""));
     document
       .getElementById(`order-card-${targetOrder._id}`)
       ?.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -626,10 +791,18 @@ useEffect(() => {
 
   navigate(location.pathname, { replace: true, state: {} });
 
-  return () => window.clearTimeout(clearHighlightTimer);
+  return () => {
+    window.cancelAnimationFrame(frameId);
+    window.clearTimeout(clearHighlightTimer);
+  };
 }, [location.pathname, location.state, navigate, orders]);
 
 const handleStartQuotation = async (order) => {
+  const assignedExecutiveId = String(order?.assignedTo?._id || order?.assignedTo?.id || "");
+  if (currentUser?.role === "operations" && assignedExecutiveId && assignedExecutiveId !== currentUserId) {
+    return;
+  }
+
   if (!["Booking_Accepted", "Invoice_Requested", "Revision_Query"].includes(order.opsStatus)) {
     setSelectedOrder(order);
     setShowAcceptGuardPopup(true);
@@ -714,7 +887,7 @@ const handleStartQuotation = async (order) => {
             </div>
             <div className="text-right">
               <p className="text-xs text-gray-400">Avg Response Time</p>
-              <p className="text-sm font-semibold text-slate-900">{avgTime} hours</p>
+              <p className="text-sm font-semibold text-slate-900">{avgTime}</p>
             </div>
           </div>
         </motion.div>
@@ -732,36 +905,60 @@ const handleStartQuotation = async (order) => {
     (l) => l.action === "Query Received"
   );
   const baseTime = receivedLog?.timestamp || order.createdAt;
-  const diffMs = Date.now() - new Date(baseTime);
+  const diffMs = relativeNow - new Date(baseTime);
   const hours = Math.floor(diffMs / (1000 * 60 * 60));
   const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
   const assignedExecutiveId = String(order.assignedTo?._id || order.assignedTo?.id || "");
-  const latestReassignment = Array.isArray(order.reassignmentHistory)
-    ? order.reassignmentHistory[order.reassignmentHistory.length - 1]
-    : null;
+  const latestReassignment = getLatestReassignmentEntry(order);
   const isAssignedToCurrentUser =
     currentUserId && assignedExecutiveId && assignedExecutiveId === currentUserId;
+  const movedAwayFromCurrentUser =
+    currentUser?.role === "operations" &&
+    currentUserId &&
+    !isAssignedToCurrentUser &&
+    String(latestReassignment?.fromUser || latestReassignment?.fromUser?._id || "") === currentUserId;
   const receivedFrom =
     isAssignedToCurrentUser &&
     String(latestReassignment?.toUser || latestReassignment?.toUser?._id || "") === currentUserId
       ? latestReassignment?.fromName || ""
       : "";
   const isReceivedQuery = Boolean(receivedFrom);
+  const isReadOnlyReassigned = Boolean(movedAwayFromCurrentUser);
   const assignedExecutive = order.assignedTo?.name || order.assignedTo?.email || "Unassigned";
+  const readOnlyAssigneeName =
+    latestReassignment?.toName || assignedExecutive || "another team member";
+  const readOnlyReason = `This query is now assigned to ${readOnlyAssigneeName}. You can only view updates here.`;
   const adminCoordination = order.adminCoordination || {};
   const adminCoordinationStatus = String(adminCoordination.status || "idle");
   const pendingAdminReply = adminCoordinationStatus === "pending_admin_reply";
   const hasAdminReply = Boolean(String(adminCoordination.lastAdminReply || "").trim());
-  const hasAdminRequest = Boolean(String(adminCoordination.lastOpsMessage || "").trim());
+  const latestCoordinationEntry = Array.isArray(adminCoordination.thread) && adminCoordination.thread.length
+    ? adminCoordination.thread[adminCoordination.thread.length - 1]
+    : null;
+  const orderStatusMeta = getOrderStatusMeta(order);
+  const StatusBadgeIcon = orderStatusMeta.Icon;
+  const latestCoordinationSenderRole = String(latestCoordinationEntry?.senderRole || "").trim();
+  const isAwaitingAdminReview =
+    isOperationManagerView &&
+    pendingAdminReply &&
+    latestCoordinationSenderRole === "operation_manager";
+  const isEscalationActionDisabled =
+    isAdminView ||
+    isReadOnlyReassigned ||
+    (isOperationManagerView ? isAwaitingAdminReview : pendingAdminReply);
   const adminButtonLabel = isAdminView
     ? "Reply from Admin Dashboard"
+    : isOperationManagerView
+      ? isAwaitingAdminReview
+        ? "Awaiting Admin Review"
+        : hasAdminReply
+          ? "Re-open with Admin"
+          : "Pass to Admin"
     : pendingAdminReply
-      ? "Awaiting Admin Reply"
+      ? "Awaiting Manager Review"
       : hasAdminReply
-        ? "Re-open with Admin"
-        : "Pass to Admin";
-  const isAdminCoordinationOpen =
-    adminCoordinationVisibility[order._id] ?? (pendingAdminReply || hasAdminReply);
+        ? "Re-open with Manager"
+        : "Pass to Manager";
 
   return (
             <motion.div
@@ -769,11 +966,15 @@ const handleStartQuotation = async (order) => {
               key={order._id}
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              whileHover={{ scale: 1.003 }}
+              whileHover={isReadOnlyReassigned ? undefined : { scale: 1.003 }}
               transition={{ duration: 0.3 }}
-              className={`border rounded-2xl p-5 transition hover:shadow-md ${
+              className={`border rounded-2xl p-5 transition ${
+                isReadOnlyReassigned ? "" : "hover:shadow-md"
+              } ${
                 highlightedOrderId === String(order._id)
                   ? "border-blue-400 bg-blue-50/40 shadow-[0_0_0_4px_rgba(59,130,246,0.12)]"
+                  : isReadOnlyReassigned
+                    ? "border-slate-300 bg-slate-100/90 opacity-80 shadow-none"
                   : isActivityLogSelected
                     ? "border-blue-300 bg-blue-50/20 shadow-[0_0_0_2px_rgba(59,130,246,0.08)]"
                   : "border-gray-300"
@@ -784,9 +985,9 @@ const handleStartQuotation = async (order) => {
                 <div className="flex flex-col gap-1">
                   <div className="flex items-center gap-2">
                     <p className="text-md font-bold text-slate-900">{order.queryId}</p>
-                    <span className="inline-flex items-center gap-1 rounded-full border border-orange-300 bg-[#FEF3C6] px-2 py-1 text-xs text-[#BB4D00]">
-                      <Clock size={12} />
-                      {order.quotationStatus?.replace("_", " ")}
+                    <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs font-medium ${orderStatusMeta.badgeClassName}`}>
+                      <StatusBadgeIcon size={12} />
+                      {orderStatusMeta.label}
                     </span>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
@@ -810,6 +1011,12 @@ const handleStartQuotation = async (order) => {
                         Received From: {receivedFrom}
                       </span>
                     ) : null}
+                    {isReadOnlyReassigned ? (
+                      <span className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-slate-200 px-2 py-1 text-[11px] font-medium text-slate-700">
+                        <TriangleAlert size={10} />
+                        Read Only
+                      </span>
+                    ) : null}
                   </div>
                 </div>
                 <div className="flex flex-col items-end gap-3">
@@ -828,6 +1035,22 @@ const handleStartQuotation = async (order) => {
                   </p>
                 </div>
               </div>
+
+              {orderStatusMeta.noticeBody ? (
+                <div className={`mb-4 rounded-2xl border p-4 ${orderStatusMeta.noticeClassName}`}>
+                  <div className="flex items-start gap-3">
+                    <div className={`mt-0.5 rounded-full p-2 ${orderStatusMeta.noticeIconClassName}`}>
+                      <StatusBadgeIcon size={14} />
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-rose-700">
+                        {orderStatusMeta.noticeTitle}
+                      </p>
+                      <p className="mt-1 text-sm font-medium text-slate-900">{orderStatusMeta.noticeBody}</p>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
 
               {/* INFO GRID */}
               <div className={`mb-4 grid gap-4 rounded-2xl border border-gray-200 p-5 text-sm text-gray-600 ${
@@ -883,6 +1106,25 @@ const handleStartQuotation = async (order) => {
                 ) : null}
               </div>
 
+              {isReadOnlyReassigned ? (
+                <div className="mb-4 rounded-2xl border border-slate-300 bg-slate-200/70 p-4">
+                  <div className="flex items-start gap-3">
+                    <div className="mt-0.5 rounded-full bg-slate-300 p-2 text-slate-700">
+                      <TriangleAlert size={14} />
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-600">
+                        Reassigned By Manager
+                      </p>
+                      <p className="mt-1 text-sm font-medium text-slate-800">{readOnlyReason}</p>
+                      <p className="mt-2 text-xs text-slate-600">
+                        Actions are disabled for you because this booking has moved out of your queue.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
               {/* REQUIREMENTS */}
               <div className="mb-4">
                 <p className="text-xs text-gray-500 mb-2">Requirements</p>
@@ -903,122 +1145,50 @@ const handleStartQuotation = async (order) => {
                 </div>
               </div>
 
-              {(hasAdminRequest || hasAdminReply || pendingAdminReply) ? (
-                <div className="mb-4 rounded-2xl border border-orange-200 bg-gradient-to-r from-orange-50 via-white to-amber-50 p-4">
-                  <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-orange-600">
-                        Admin Coordination
-                      </p>
-                      <p className="mt-1 text-sm font-medium text-slate-900">
-                        {pendingAdminReply ? "Waiting for admin response" : hasAdminReply ? "Admin has replied" : "Escalated to admin"}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2 self-start md:self-auto">
-                      <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold ${
-                        pendingAdminReply
-                          ? "border border-orange-200 bg-orange-100 text-orange-700"
-                          : hasAdminReply
-                            ? "border border-indigo-200 bg-indigo-100 text-indigo-700"
-                            : "border border-slate-200 bg-slate-100 text-slate-700"
-                      }`}>
-                        <TriangleAlert size={12} />
-                        {pendingAdminReply ? "Pending Admin Reply" : hasAdminReply ? "Reply Received" : "Escalated"}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setAdminCoordinationVisibility((prev) => ({
-                            ...prev,
-                            [order._id]: !isAdminCoordinationOpen,
-                          }))
-                        }
-                        className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-50"
-                      >
-                        {isAdminCoordinationOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-                        {isAdminCoordinationOpen ? "Hide details" : "Show details"}
-                      </button>
-                    </div>
-                  </div>
-
-                  {isAdminCoordinationOpen ? (
-                    <>
-                      {hasAdminRequest ? (
-                        <div className="mt-3 rounded-2xl border border-orange-100 bg-white/90 p-3">
-                          <p className="text-[11px] font-semibold uppercase tracking-wide text-orange-600">Ops note</p>
-                          <p className="mt-1 text-sm text-slate-700">{adminCoordination.lastOpsMessage}</p>
-                          <p className="mt-2 text-[11px] text-slate-500">
-                            {adminCoordination.lastOpsMessageByName || "Operations"} | {" "}
-                            {adminCoordination.lastOpsMessageAt
-                              ? new Date(adminCoordination.lastOpsMessageAt).toLocaleString("en-IN", {
-                                  day: "numeric",
-                                  month: "short",
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                })
-                              : "Just now"}
-                          </p>
-                        </div>
-                      ) : null}
-
-                      {hasAdminReply ? (
-                        <div className="mt-3 rounded-2xl border border-indigo-100 bg-indigo-50/70 p-3">
-                          <p className="text-[11px] font-semibold uppercase tracking-wide text-indigo-600">Admin reply</p>
-                          <p className="mt-1 text-sm text-slate-700">{adminCoordination.lastAdminReply}</p>
-                          <p className="mt-2 text-[11px] text-slate-500">
-                            {adminCoordination.lastAdminReplyByName || "Admin"} | {" "}
-                            {adminCoordination.lastAdminReplyAt
-                              ? new Date(adminCoordination.lastAdminReplyAt).toLocaleString("en-IN", {
-                                  day: "numeric",
-                                  month: "short",
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                })
-                              : "Just now"}
-                          </p>
-                        </div>
-                      ) : pendingAdminReply ? (
-                        <p className="mt-3 text-xs text-orange-700">
-                          Admin has been notified. The reply will appear here once shared.
-                        </p>
-                      ) : null}
-                    </>
-                  ) : null}
-                </div>
-              ) : null}
-
               {/* ACTION BUTTONS */}
               <div className="flex gap-3">
                 <motion.button
                   whileHover={{ scale: 1.005 }}
                   whileTap={{ scale: 0.95 }}
-                 onClick={() => handleStartQuotation(order)}
-                  className="flex-1 flex items-center justify-center gap-2 font-semibold bg-green-600 text-white py-2 rounded-xl text-sm hover:bg-green-700 transition cursor-pointer"
+                 onClick={() => {
+                    if (isReadOnlyReassigned) return;
+                    handleStartQuotation(order);
+                  }}
+                  disabled={isReadOnlyReassigned}
+                  className={`flex-1 flex items-center justify-center gap-2 font-semibold py-2 rounded-xl text-sm transition ${
+                    isReadOnlyReassigned
+                      ? "cursor-not-allowed border border-slate-300 bg-slate-200 text-slate-500"
+                      : "cursor-pointer bg-green-600 text-white hover:bg-green-700"
+                  }`}
                 >
                   <CheckCircle size={16} />
-                  {order.opsStatus === "Invoice_Requested"
-                    ? "Open Builder for Finance Invoice"
-                    : order.opsStatus === "Revision_Query"
-                      ? "Open Builder for Revision"
-                      : "Confirm & Create Quotation"}
+                  {isReadOnlyReassigned
+                    ? "Query Reassigned"
+                    : order.opsStatus === "Invoice_Requested"
+                      ? "Open Approved Booking"
+                      : order.opsStatus === "Revision_Query"
+                        ? "Open Builder for Revision"
+                        : "Confirm & Create Quotation"}
                 </motion.button>
                 <motion.button
                   whileHover={{ scale: 1.005 }}
                   whileTap={{ scale: 0.95 }}
                   onClick={() => {
-                    if (isAdminView || pendingAdminReply) return;
+                    if (isEscalationActionDisabled) return;
                     setSelectedOrder(order);
                     setOpenModal(true);
                   }}
-                  disabled={isAdminView || pendingAdminReply}
+                  disabled={isEscalationActionDisabled}
                   className={`flex-1 flex items-center justify-center gap-2 border font-semibold py-2 rounded-xl text-sm transition ${
-                    isAdminView || pendingAdminReply
-                      ? "cursor-not-allowed border-orange-200 bg-orange-50 text-orange-400"
-                      : "cursor-pointer border-orange-300 text-[#BB4D00] hover:bg-orange-50"
+                    isReadOnlyReassigned
+                      ? "cursor-not-allowed border-slate-300 bg-slate-200 text-slate-500"
+                      : isEscalationActionDisabled
+                        ? "cursor-not-allowed border-orange-200 bg-orange-50 text-orange-400"
+                        : "cursor-pointer border-orange-300 text-[#BB4D00] hover:bg-orange-50"
                   }`}
                 >
                   <TriangleAlert size={16} />
-                  {adminButtonLabel}
+                  {isReadOnlyReassigned ? "Manager Reassigned" : adminButtonLabel}
                 </motion.button>
               </div>
             </motion.div>
@@ -1026,13 +1196,15 @@ const handleStartQuotation = async (order) => {
         </motion.div>
       </motion.div>
 
-      {openModal && (
-        <PassToAdminModal
-          onClose={() => setOpenModal(false)}
-          order={selectedOrder}
-          onSuccess={fetchOrders}
-        />
-      )}
+      <AnimatePresence>
+        {openModal ? (
+          <PassToAdminModal
+            onClose={() => setOpenModal(false)}
+            order={selectedOrder}
+            onSuccess={fetchOrders}
+          />
+        ) : null}
+      </AnimatePresence>
       {openConfirmQuotationModal && (
     <ConfirmQuotationModal order={selectedOrder} onClose={() => setOpenConfirmQuotationModal(false)} refresh={fetchOrders} />
       )}

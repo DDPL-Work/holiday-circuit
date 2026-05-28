@@ -7,7 +7,7 @@ import Quotation from "../models/quotation.model.js";
 
 import { sendTeamMemberCredentialsMail } from "../services/sendEmail.js";
 
-const TERMINAL_OPS_STATUSES = new Set(["Rejected", "Vouchered"]);
+const TERMINAL_OPS_STATUSES = new Set(["Rejected", "Vouchered", "Payment_Completed"]);
 const TERMINAL_AGENT_STATUSES = new Set(["Rejected"]);
 const CONVERTED_AGENT_STATUSES = new Set(["Client Approved", "Confirmed"]);
 const REASSIGNABLE_OPS_STATUSES = new Set([
@@ -823,6 +823,7 @@ const buildQueryRows = (queries = []) =>
     return {
       id: query.queryId || "",
       queryObjectId: query._id,
+      _id: query._id,
       client: query?.agent?.companyName || query?.agent?.name || "Travel Partner",
       clientEmail: query?.agent?.email || "",
       destination: query?.destination || "",
@@ -835,12 +836,16 @@ const buildQueryRows = (queries = []) =>
       deadlineRed: status === "Overdue",
       amount: formatCurrency(query?.customerBudget || 0),
       amountValue: Number(query?.customerBudget || 0),
-      startDate: formatDateLabel(query?.startDate),
-      endDate: formatDateLabel(query?.endDate),
+      startDate: query?.startDate || null,
+      endDate: query?.endDate || null,
       opsStatus: query?.opsStatus || "",
       agentStatus: query?.agentStatus || "",
       quotationStatus: query?.quotationStatus || "",
       createdAt: query?.createdAt || null,
+      numberOfAdults: Number(query?.numberOfAdults || 0),
+      numberOfChildren: Number(query?.numberOfChildren || 0),
+      specialRequirements: query?.specialRequirements || "",
+      travelerDetails: query?.travelerDetails || [],
       builderState: {
         _id: query?._id || null,
         queryId: query?.queryId || "",
@@ -1238,7 +1243,7 @@ export const getOperationManagerQueries = async (req, res, next) => {
     const teamMembers = await getManagedTeamMembers(req);
     const teamIds = teamMembers.map((member) => member._id);
     const queries = await getManagedTeamQueries(teamIds, {
-      select: "queryId destination customerBudget createdAt startDate endDate quotationStatus agentStatus opsStatus activityLog assignedTo numberOfAdults numberOfChildren hotelCategory transportRequired sightseeingRequired specialRequirements reassignmentHistory agent",
+      select: "queryId destination customerBudget createdAt startDate endDate quotationStatus agentStatus opsStatus activityLog assignedTo numberOfAdults numberOfChildren hotelCategory transportRequired sightseeingRequired specialRequirements reassignmentHistory agent travelerDetails",
       populate: [
         { path: "agent", select: "name companyName email" },
         { path: "assignedTo", select: "name email" },

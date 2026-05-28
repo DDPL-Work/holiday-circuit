@@ -4,6 +4,7 @@ import { useSelector } from "react-redux";
 import { motion, AnimatePresence } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import API from "../../../utils/Api";
+import CreateNewQueries from "../../../modal/CreateNewQueries.Modal";
 
 const statusStyles = {
   "In Progress": "bg-amber-50 text-amber-700 border border-amber-200",
@@ -401,6 +402,8 @@ export default function AllTeamQueries() {
   const [submitted, setSubmitted] = useState(false);
   const [reportSubmitting, setReportSubmitting] = useState(false);
   const [page, setPage] = useState(1);
+  const [openEditModal, setOpenEditModal] = useState(false);
+  const [selectedQueryToEdit, setSelectedQueryToEdit] = useState(null);
 
   const loadQueries = async () => {
     try {
@@ -575,18 +578,18 @@ export default function AllTeamQueries() {
           <div className="thin-scrollbar overflow-x-auto min-h-[200px]">
             <table className="min-w-[1050px] w-full table-fixed">
               <colgroup>
-                <col style={{ width: "130px" }} />
-                <col style={{ width: "180px" }} />
-                <col style={{ width: "150px" }} />
-                <col style={{ width: "170px" }} />
+                <col style={{ width: "120px" }} />
+                <col style={{ width: "160px" }} />
+                <col style={{ width: "140px" }} />
+                <col style={{ width: "160px" }} />
                 <col style={{ width: "120px" }} />
                 <col style={{ width: "110px" }} />
                 <col style={{ width: "120px" }} />
-                <col style={{ width: "80px" }} />
+                <col style={{ width: "160px" }} />
               </colgroup>
               <thead>
                 <tr className="border-b border-gray-200">
-                  {["Query ID", "Client", "Destination", "Assigned To", "Status", "Deadline", "Est. Amount", ""].map((header) => (
+                  {["Query ID", "Client", "Destination", "Assigned To", "Status", "Deadline", "Est. Amount", "Actions"].map((header) => (
                     <th key={header} className="text-left text-xs font-medium text-gray-400 uppercase tracking-wide py-2.5 pr-3">
                       {header}
                     </th>
@@ -640,13 +643,105 @@ export default function AllTeamQueries() {
                         <span className="text-sm font-medium text-gray-800">{query.amount}</span>
                       </td>
                       <td className="py-2.5">
-                        <button
-                          onClick={() => setSelected(query)}
-                          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-gray-200 text-gray-500 hover:text-blue-600 hover:border-blue-200 hover:bg-blue-50 transition text-xs font-medium"
-                          title="View quotation tracker">
-                          <IconEye />
-                          View
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => setSelected(query)}
+                            className="flex items-center gap-1 text-[11px] px-2 py-1.5 rounded-lg border border-gray-200 text-gray-500 hover:text-blue-600 hover:border-blue-200 hover:bg-blue-50 transition font-medium"
+                            title="View quotation tracker"
+                          >
+                            <IconEye size={12} />
+                            View
+                          </button>
+
+                          <button
+                            onClick={() => {
+                              const isConfirmed = ["Confirmed", "Vouchered", "Invoice_Requested"].includes(query.opsStatus) || query.agentStatus === "Confirmed";
+                              if (isConfirmed) {
+                                toast.custom((t) => (
+                                  <div
+                                    className={`${
+                                      t.visible ? 'animate-in fade-in duration-200' : 'animate-out fade-out duration-200'
+                                    } bg-white border-l-[4px] border-[#2563eb] px-4 py-3 shadow-[0_4px_16px_rgba(0,0,0,0.12)] flex items-start gap-3 pointer-events-auto`}
+                                    style={{ width: '420px', minWidth: '420px', borderRadius: '0px', pointerEvents: 'auto' }}
+                                  >
+                                    <div className="mt-0.5 text-[#2563eb] shrink-0">
+                                      <svg
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        width="18"
+                                        height="18"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        strokeWidth="2.2"
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                      >
+                                        <circle cx="12" cy="12" r="10" />
+                                        <line x1="12" y1="16" x2="12" y2="12" />
+                                        <line x1="12" y1="8" x2="12.01" y2="8" />
+                                      </svg>
+                                    </div>
+                                    <div className="flex-1 flex flex-col gap-1">
+                                      <div className="flex items-center justify-between">
+                                        <h4 className="text-[13px] font-bold text-slate-800 leading-none">Info</h4>
+                                        <button
+                                          onClick={() => toast.dismiss(t.id)}
+                                          className="text-gray-400 hover:text-gray-600 shrink-0 cursor-pointer bg-transparent border-none outline-none p-0 transition-colors flex items-center justify-center"
+                                          aria-label="Close notification"
+                                        >
+                                          <svg
+                                            xmlns="http://www.w3.org/2000/svg"
+                                            width="16"
+                                            height="16"
+                                            viewBox="0 0 24 24"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            strokeWidth="2"
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                          >
+                                            <line x1="18" y1="6" x2="6" y2="18" />
+                                            <line x1="6" y1="6" x2="18" y2="18" />
+                                          </svg>
+                                        </button>
+                                      </div>
+                                      <p 
+                                        className="text-[11px] text-slate-600 leading-snug font-medium whitespace-nowrap"
+                                        style={{ whiteSpace: 'nowrap' }}
+                                      >
+                                        Booking has been confirmed. This query cannot be edited.
+                                      </p>
+                                    </div>
+                                  </div>
+                                ), {
+                                  duration: 4000,
+                                  position: 'top-right'
+                                });
+                              } else {
+                                setSelectedQueryToEdit(query);
+                                setOpenEditModal(true);
+                              }
+                            }}
+                            className="flex items-center gap-1 text-[11px] px-2 py-1.5 rounded-lg border border-amber-200 text-amber-700 bg-amber-50 hover:bg-amber-100 hover:text-amber-800 transition font-medium"
+                            title="Edit query details"
+                          >
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              width="12"
+                              height="12"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            >
+                              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                              <path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                            </svg>
+                            Edit
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -696,6 +791,19 @@ export default function AllTeamQueries() {
 
       <AnimatePresence>
         {selected && <DetailModal query={selected} onClose={() => setSelected(null)} />}
+        {openEditModal && (
+          <CreateNewQueries
+            queryToEdit={selectedQueryToEdit}
+            isOpsView={true}
+            onCreated={() => {
+              loadQueries();
+            }}
+            onClose={() => {
+              setOpenEditModal(false);
+              setSelectedQueryToEdit(null);
+            }}
+          />
+        )}
       </AnimatePresence>
     </div>
   );

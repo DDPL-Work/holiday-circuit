@@ -8,10 +8,10 @@ const voucherSchema = new mongoose.Schema(
       required: true,
     },
     quotation: {
-  type: mongoose.Schema.Types.ObjectId,
-  ref: "Quotation",
-  default: null,
-},
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Quotation",
+      default: null,
+    },
 
     agent: {
       type: mongoose.Schema.Types.ObjectId,
@@ -37,9 +37,9 @@ const voucherSchema = new mongoose.Schema(
       default: "",
     },
     passengers: {
-  type: String,
-  default: "",
-},
+      type: String,
+      default: "",
+    },
 
     services: [
       {
@@ -52,6 +52,10 @@ const voucherSchema = new mongoose.Schema(
           default: "",
         },
         confirmation: {
+          type: String,
+          default: "",
+        },
+        status: {
           type: String,
           default: "",
         },

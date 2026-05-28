@@ -2,15 +2,15 @@
 import mongoose from "mongoose";
 
 const documentSchema = new mongoose.Schema({
-  supplierConfirmation: { 
-        type: String,
-    },
-  voucherReference: { 
-        type: String,
-    },
-  termsConditions: { 
-        type: String,
-    },
+  supplierConfirmation: {
+    type: String,
+  },
+  voucherReference: {
+    type: String,
+  },
+  termsConditions: {
+    type: String,
+  },
 });
 
 const confirmationSchema = new mongoose.Schema({
@@ -26,30 +26,30 @@ const confirmationSchema = new mongoose.Schema({
   },
   services: [
     {
-      type: { 
+      type: {
         type: String,
-    },
-      serviceName: { 
+      },
+      serviceName: {
         type: String,
-    },
-      serviceDate:{ 
+      },
+      serviceDate: {
         type: String,
-    },
-      status: { 
+      },
+      status: {
         type: String,
-    },
-      confirmationNumber: { 
+      },
+      confirmationNumber: {
         type: String,
-    },
-      voucherNumber: { 
+      },
+      voucherNumber: {
         type: String,
-    },
+      },
 
     },
   ],
-  emergencyContact:  { 
-        type: String,
-    },
+  emergencyContact: {
+    type: String,
+  },
 
   documents: documentSchema,
 
@@ -58,10 +58,10 @@ const confirmationSchema = new mongoose.Schema({
     enum: ["draft", "submitted"],
     default: "draft",
   },
-  
-}, 
 
-{ timestamps: true }
+},
+
+  { timestamps: true }
 
 );
 

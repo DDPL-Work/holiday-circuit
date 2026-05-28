@@ -22,6 +22,77 @@ const paymentReceiptSchema = new mongoose.Schema(
   { _id: false },
 );
 
+const paymentTrackerEntrySchema = new mongoose.Schema(
+  {
+    amount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    note: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    paymentDate: {
+      type: Date,
+      default: null,
+    },
+    displayDate: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    bankName: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    utrNumber: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    createdAt: {
+      type: Date,
+      default: Date.now,
+    },
+    verificationStatus: {
+      type: String,
+      enum: ["Pending", "Verified"],
+      default: "Pending",
+    },
+    verifiedAt: {
+      type: Date,
+      default: null,
+    },
+    verifiedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Auth",
+    },
+    verifiedByName: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    receiptStatus: {
+      type: String,
+      enum: ["", "Sent"],
+      default: "",
+    },
+    receiptSentAt: {
+      type: Date,
+      default: null,
+    },
+    receiptSentByName: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+  },
+  { _id: false },
+);
+
 const paymentSubmissionSchema = new mongoose.Schema(
   {
     amount: {
@@ -57,6 +128,10 @@ const paymentSubmissionSchema = new mongoose.Schema(
     submittedBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Auth",
+    },
+    trackerPayments: {
+      type: [paymentTrackerEntrySchema],
+      default: [],
     },
     couponApplication: {
       type: new mongoose.Schema(
@@ -542,6 +617,11 @@ const invoiceSchema = new mongoose.Schema(
   finalInvoiceDispatch: {
     type: finalInvoiceDispatchSchema,
     default: () => ({ status: "Not Sent" }),
+  },
+
+  paymentReceiptDispatch: {
+    type: finalInvoiceDispatchSchema,
+    default: () => ({ status: "Not Sent", templateVariant: "agent-payment-receipt" }),
   },
 
 },

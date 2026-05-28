@@ -108,9 +108,41 @@ const travelerDocumentVerificationSchema = new mongoose.Schema(
       ],
       default: [],
     },
+    verifiedDocuments: {
+      type: [
+        new mongoose.Schema(
+          {
+            travelerId: {
+              type: String,
+              default: "",
+              trim: true,
+            },
+            travelerName: {
+              type: String,
+              default: "",
+              trim: true,
+            },
+            documentKey: {
+              type: String,
+              default: "",
+              trim: true,
+            },
+            documentLabel: {
+              type: String,
+              default: "",
+              trim: true,
+            },
+          },
+          { _id: false },
+        ),
+      ],
+      default: [],
+    },
   },
   { _id: false },
 );
+
+
 
 const travelerDocumentAuditSchema = new mongoose.Schema(
   {
@@ -146,6 +178,8 @@ const travelerDocumentAuditSchema = new mongoose.Schema(
   },
   { _id: false },
 );
+
+
 
 const reassignmentHistorySchema = new mongoose.Schema(
   {
@@ -187,6 +221,9 @@ const reassignmentHistorySchema = new mongoose.Schema(
   { _id: false },
 );
 
+
+
+
 const adminCoordinationMessageSchema = new mongoose.Schema(
   {
     senderRole: {
@@ -216,6 +253,8 @@ const adminCoordinationMessageSchema = new mongoose.Schema(
   },
   { _id: false },
 );
+
+
 
 const adminCoordinationSchema = new mongoose.Schema(
   {
@@ -270,6 +309,7 @@ const adminCoordinationSchema = new mongoose.Schema(
   { _id: false },
 );
 
+
 const travelerDetailSchema = new mongoose.Schema(
   {
     fullName: {
@@ -304,6 +344,7 @@ const travelerDetailSchema = new mongoose.Schema(
   },
   { timestamps: true },
 );
+
 
 const travelQuerySchema = new mongoose.Schema(
 {
@@ -393,7 +434,7 @@ const travelQuerySchema = new mongoose.Schema(
 
   opsStatus: {
   type: String,
-  enum: ["New_Query", "Pending_Accept", "Revision_Query", "Rejected", "Booking_Accepted", "Invoice_Requested", "Confirmed", "Vouchered"],
+  enum: ["New_Query", "Pending_Accept", "Revision_Query", "Rejected", "Booking_Accepted", "Invoice_Requested", "Confirmed", "Vouchered", "Payment_Completed"],
   default: "New_Query"
 },
 
@@ -463,5 +504,7 @@ adminCoordination: {
 { timestamps: true }
 
 );
+
+
 
 export default mongoose.model("TravelQuery", travelQuerySchema);
