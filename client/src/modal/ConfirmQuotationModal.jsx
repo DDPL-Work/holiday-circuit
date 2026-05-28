@@ -78,7 +78,7 @@ export default function ConfirmQuotationModal({ order, onClose }) {
             <h2 className="text-xl font-semibold flex items-center gap-2 mb-1">
               <FileText size={18} className="text-[#00A63E]" />
               {isInvoiceRequestedStage
-                ? "Open Builder For Finance Invoice"
+                ? "Open Approved Booking"
                 : isRevisionStage
                   ? "Open Builder For Revised Quotation"
                   : "Confirm & Create Quotation"}
@@ -86,7 +86,7 @@ export default function ConfirmQuotationModal({ order, onClose }) {
 
             <p className="text-[#717182] text-sm mb-5">
               {isInvoiceRequestedStage
-                ? "You will be redirected to the Quotation Builder to review the approved quotation and prepare the finance-side invoice."
+                ? "You will be redirected to the Quotation Builder to review the approved quotation details for this booking."
                 : isRevisionStage
                   ? "Agent has requested changes. Open the builder to prepare and send a revised quotation for the same query."
                   : "You will be redirected to the Quotation Builder to select rates and create a quote"}
@@ -100,7 +100,7 @@ export default function ConfirmQuotationModal({ order, onClose }) {
             >
               <strong>{order?.queryId}</strong>{" "}
               {isInvoiceRequestedStage
-                ? "already has client approval. Open the builder to prepare the finance invoice record. Finance team will share the final invoice with the agent."
+                ? "already has client approval. This booking now moves to the shared amount and documents stage for the agent."
                 : isRevisionStage
                   ? "is back for quotation revision. Update services/pricing and send the revised quote back to the agent."
                   : "will be moved to quotation stage. You'll select contracted rates, add markup, and send the quote to the agent."}
@@ -138,7 +138,7 @@ export default function ConfirmQuotationModal({ order, onClose }) {
                 className="px-3 py-2 bg-green-600 text-white rounded-xl hover:bg-green-700 cursor-pointer"
               >
                 {isInvoiceRequestedStage
-                  ? "Open Quotation Builder"
+                  ? "Open Booking"
                   : isRevisionStage
                     ? "Open Revised Builder"
                     : "Proceed to Quotation Builder"}

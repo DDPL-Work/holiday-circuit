@@ -1,151 +1,244 @@
-import React, { useMemo, useState } from "react";
-import { X, Download, Send } from "lucide-react";
+import React, { useMemo, useState, useEffect } from "react";
+import { X, Download, Send, Mail, MessageCircle } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
+import {
+  buildVoucherHtml,
+  formatServiceTypeLabel,
+  getVoucherStatusNote,
+} from "../utils/voucherTemplate";
 
-const getVoucherStatusNote = (services = [], isAlreadySent = false) => {
-  const missingServices = (services || []).filter(
-    (service) => !String(service?.title || service?.name || "").trim(),
-  );
-  const missingConfirmations = (services || []).filter((service) => {
-    const confirmation = String(service?.confirmation || "").trim().toLowerCase();
-    return !confirmation || confirmation === "pending";
-  });
+const voucherDispatchOptions = [
+  {
+    key: "EMAIL",
+    label: "Email",
+    description: "Send voucher directly to the agent's email inbox",
+    icon: Mail,
+    colorClass: "bg-[#2563eb]",
+  },
+  {
+    key: "WHATSAPP",
+    label: "WhatsApp",
+    description: "Open WhatsApp with the voucher link ready to share",
+    icon: MessageCircle,
+    colorClass: "bg-[#16a34a]",
+  },
+  {
+    key: "PDF",
+    label: "PDF Download",
+    description: "Download the voucher HTML to your system",
+    icon: Download,
+    colorClass: "bg-[#f59e0b]",
+  },
+];
 
-  if (!services.length) {
-    return {
-      tone: "red",
-      title: "Voucher Services Missing",
-      message:
-        "No services are mapped in this voucher yet. Add services before sending it to the client.",
-      canSend: false,
-    };
-  }
-
-  if (missingServices.length && missingConfirmations.length) {
-    return {
-      tone: "red",
-      title: "Services And Confirmations Missing",
-      message:
-        "Some voucher services are missing and some DMC confirmation numbers are still pending. Client sharing will stay blocked until both are complete.",
-      canSend: false,
-    };
-  }
-
-  if (missingServices.length) {
-    return {
-      tone: "red",
-      title: "Service Details Missing",
-      message:
-        "Some voucher services are missing. Complete all service names before sending the voucher to the client.",
-      canSend: false,
-    };
-  }
-
-  if (missingConfirmations.length) {
-    return {
-      tone: "red",
-      title: "DMC Confirmation Pending",
-      message:
-        "Some DMC confirmation numbers are still pending. Client sharing will stay blocked until all confirmations are updated.",
-      canSend: false,
-    };
-  }
-
-  if (isAlreadySent) {
-    return {
-      tone: "green",
-      title: "Voucher Already Shared",
-      message:
-        "This voucher has already been sent successfully. You can review or download the final shared copy here.",
-      canSend: false,
-    };
-  }
-
-  return {
-    tone: "green",
-    title: "Client Ready To Send",
-    message:
-      "All services and DMC confirmation numbers are available. This voucher is ready to share with the client.",
-    canSend: true,
-  };
+const normalizeWhatsAppPhoneNumber = (value = "") => {
+  const digits = String(value || '').replace(/\D/g, '');
+  if (!digits) return '';
+  if (digits.length === 10) return `91${digits}`;
+  return digits;
 };
 
-const buildVoucherHtml = (data, branding) => {
-  const showBranding = branding === "with";
-  const statusNote = getVoucherStatusNote(data.services || [], data?.status === "sent");
-  const serviceRows = (data.services || [])
-    .map(
-      (service) => `
-        <tr>
-          <td style="padding:10px 0;border-bottom:1px solid #e5e7eb;">${service.type || "Service"}</td>
-          <td style="padding:10px 0;border-bottom:1px solid #e5e7eb;">${service.title || service.name || "Service missing"}</td>
-          <td style="padding:10px 0;border-bottom:1px solid #e5e7eb;text-align:right;">${service.confirmation || "Pending"}</td>
-        </tr>
-      `
-    )
-    .join("");
+const VoucherDispatchModal = ({
+  selectedChannel,
+  recipientEmail,
+  recipientPhone,
+  onSelectChannel,
+  onEmailChange,
+  onPhoneChange,
+  onClose,
+  onConfirm,
+  isSubmitting,
+  agentName,
+}) => (
+  <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/70 px-4 py-8 md:py-10">
+    <motion.div
+      initial={{ opacity: 0, y: 18, scale: 0.96 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: 12, scale: 0.98 }}
+      transition={{ duration: 0.24, ease: "easeOut" }}
+      className="w-full max-w-[400px] overflow-hidden rounded-[28px] border border-[#e2e8f0] bg-white shadow-[0_28px_80px_rgba(15,23,42,0.25)]"
+    >
+      {/* Header with soft navy gradient */}
+      <div className="border-b border-slate-100 bg-[linear-gradient(180deg,#f0f4ff_0%,#f8faff_52%,#ffffff_100%)] px-5 py-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-gradient-to-br from-[#1e3a8a] to-[#0f172a] text-white shadow-md">
+              <Send size={15} />
+            </div>
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-blue-700">
+                Send Travel Voucher
+              </p>
+              <h3 className="mt-0.5 text-[17px] font-semibold leading-none text-slate-900">
+                Share with {agentName || 'Agent'}
+              </h3>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400 transition hover:text-slate-700"
+          >
+            <X size={16} />
+          </button>
+        </div>
+      </div>
 
-  return `
-    <html>
-      <head>
-        <title>${data.voucherNumber || data.query}</title>
-      </head>
-      <body style="margin:0;background:#f8fafc;padding:24px;font-family:Arial,sans-serif;">
-        <div style="max-width:720px;margin:0 auto;background:#fff;border:1px solid #e5e7eb;border-radius:16px;overflow:hidden;">
-          ${
-            showBranding
-              ? `<div style="background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;text-align:center;padding:28px 20px;">
-                  <h1 style="margin:0;font-size:28px;">Holiday Circuit</h1>
-                  <p style="margin:8px 0 0;font-size:12px;letter-spacing:1px;">TRAVEL VOUCHER</p>
-                </div>`
-              : `<div style="padding:22px 20px;border-bottom:1px solid #e5e7eb;text-align:center;">
-                  <h1 style="margin:0;font-size:24px;color:#111827;">Travel Voucher</h1>
-                </div>`
-          }
-          <div style="padding:24px;">
-            <div style="display:flex;justify-content:space-between;gap:16px;margin-bottom:20px;">
-              <div>
-                <div style="font-size:12px;color:#6b7280;">Voucher No.</div>
-                <div style="font-size:16px;font-weight:700;color:#111827;">${data.voucherNumber || data.query}</div>
+      <div className="px-5 py-3">
+        {/* Navy & Black Gradient Option Cards */}
+        <div className="space-y-2">
+          {voucherDispatchOptions.map((option) => {
+            const Icon = option.icon;
+            const isActive = selectedChannel === option.key;
+            return (
+              <button
+                key={option.key}
+                type="button"
+                onClick={() => onSelectChannel(option.key)}
+                className={`flex w-full items-start gap-3 rounded-2xl border px-4 py-2.5 text-left transition ${
+                  isActive
+                    ? "border-slate-800 bg-gradient-to-br from-[#1e3a8a] via-[#0f172a] to-black text-white shadow-[0_12px_30px_rgba(15,23,42,0.25)]"
+                    : "border-slate-200 bg-white hover:bg-slate-50"
+                }`}
+              >
+                <span
+                  className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-[10px] ${
+                    isActive
+                      ? "border-white/15 bg-white/10 text-white"
+                      : `${option.colorClass} text-white`
+                  }`}
+                >
+                  <Icon size={14} />
+                </span>
+                <span className="min-w-0">
+                  <span className={`block text-sm font-semibold ${isActive ? "text-white" : "text-slate-900"}`}>
+                    {option.label}
+                  </span>
+                  <span className={`mt-0.5 block text-[11px] leading-4 ${isActive ? "text-slate-300" : "text-slate-500"}`}>
+                    {option.description}
+                  </span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Inputs */}
+        <AnimatePresence initial={false} mode="wait">
+          {selectedChannel === "EMAIL" ? (
+            <motion.div
+              key="send-email-input"
+              initial={{ opacity: 0, height: 0, y: -8 }}
+              animate={{ opacity: 1, height: "auto", y: 0 }}
+              exit={{ opacity: 0, height: 0, y: -8 }}
+              transition={{ duration: 0.22, ease: "easeOut" }}
+              className="overflow-hidden"
+            >
+              <div className="mt-2.5">
+                <label className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                  <span className="flex h-5 w-5 items-center justify-center rounded-[20px] bg-[#1e3a8a] text-white">
+                    <Mail size={11} />
+                  </span>
+                  Agent Email
+                </label>
+                <input
+                  type="email"
+                  value={recipientEmail}
+                  onChange={(e) => onEmailChange(e.target.value)}
+                  placeholder="Enter agent email"
+                  className="mt-1.5 w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-slate-400"
+                />
               </div>
-              <div style="text-align:right;">
-                <div style="font-size:12px;color:#6b7280;">Destination</div>
-                <div style="font-size:16px;font-weight:700;color:#111827;">${data.destination || "-"}</div>
+            </motion.div>
+          ) : selectedChannel === "WHATSAPP" ? (
+            <motion.div
+              key="send-whatsapp-input"
+              initial={{ opacity: 0, height: 0, y: -8 }}
+              animate={{ opacity: 1, height: "auto", y: 0 }}
+              exit={{ opacity: 0, height: 0, y: -8 }}
+              transition={{ duration: 0.22, ease: "easeOut" }}
+              className="overflow-hidden"
+            >
+              <div className="mt-2.5">
+                <label className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                  <span className="flex h-5 w-5 items-center justify-center rounded-[20px] bg-[#16a34a] text-white">
+                    <MessageCircle size={11} />
+                  </span>
+                  WhatsApp Number
+                </label>
+                <input
+                  type="tel"
+                  value={recipientPhone}
+                  onChange={(e) => onPhoneChange(e.target.value)}
+                  placeholder="Enter WhatsApp number"
+                  className="mt-1.5 w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-slate-400"
+                />
               </div>
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
+
+        {/* Soft navy explanation block */}
+        <div className="mt-2.5 rounded-2xl border border-blue-100/70 bg-blue-50/20 px-4 py-3">
+          <div className="flex items-start gap-3">
+            <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-3xl border border-slate-200 bg-white text-slate-600">
+              {selectedChannel === "EMAIL" ? (
+                <span className="flex h-5 w-5 items-center justify-center rounded-[20px] bg-[#1e3a8a] text-white">
+                  <Mail size={12} />
+                </span>
+              ) : selectedChannel === "WHATSAPP" ? (
+                <span className="flex h-5 w-5 items-center justify-center rounded-[20px] bg-[#16a34a] text-white">
+                  <MessageCircle size={12} />
+                </span>
+              ) : (
+                <span className="flex h-5 w-5 items-center justify-center rounded-[20px] bg-[#f59e0b] text-white">
+                  <Download size={12} />
+                </span>
+              )}
+            </span>
+            <div>
+              <p className="text-sm font-semibold text-slate-900">What will happen</p>
+              <p className="mt-1 text-[11px] leading-5 text-slate-500">
+                {selectedChannel === "EMAIL"
+                  ? "The travel voucher with all confirmed service information will be sent directly to the agent's email."
+                  : selectedChannel === "WHATSAPP"
+                    ? "WhatsApp will open with a ready-to-share message linking to the agent's online travel voucher."
+                    : "A clean travel voucher copy will be downloaded in HTML format for offline sharing."}
+              </p>
             </div>
-            <table style="width:100%;border-collapse:collapse;margin-bottom:20px;">
-              <tr><td style="padding:8px 0;color:#6b7280;">Guest Name</td><td style="padding:8px 0;text-align:right;font-weight:600;color:#111827;">${data.name || "-"}</td></tr>
-              <tr><td style="padding:8px 0;color:#6b7280;">Passengers</td><td style="padding:8px 0;text-align:right;font-weight:600;color:#111827;">${data.passengers || "-"}</td></tr>
-              <tr><td style="padding:8px 0;color:#6b7280;">Duration</td><td style="padding:8px 0;text-align:right;font-weight:600;color:#111827;">${data.duration || "-"}</td></tr>
-            </table>
-            <div style="margin:0 0 16px;border:1px solid ${
-              statusNote.tone === "red" ? "#fecaca" : "#bbf7d0"
-            };background:${statusNote.tone === "red" ? "#fef2f2" : "#f0fdf4"};border-radius:14px;padding:12px 14px;">
-              <p style="margin:0;font-size:11px;font-weight:700;color:${
-                statusNote.tone === "red" ? "#b91c1c" : "#15803d"
-              };text-transform:uppercase;letter-spacing:0.04em;">${statusNote.title}</p>
-              <p style="margin:6px 0 0;font-size:12px;line-height:1.6;color:${
-                statusNote.tone === "red" ? "#991b1b" : "#166534"
-              };">${statusNote.message}</p>
-            </div>
-            <h3 style="margin:0 0 12px;color:#111827;">Service Details</h3>
-            <table style="width:100%;border-collapse:collapse;">
-              <thead>
-                <tr>
-                  <th style="text-align:left;padding:10px 0;border-bottom:1px solid #e5e7eb;color:#6b7280;font-size:12px;">Type</th>
-                  <th style="text-align:left;padding:10px 0;border-bottom:1px solid #e5e7eb;color:#6b7280;font-size:12px;">Service</th>
-                  <th style="text-align:right;padding:10px 0;border-bottom:1px solid #e5e7eb;color:#6b7280;font-size:12px;">Confirmation</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${serviceRows || '<tr><td colspan="3" style="padding:12px 0;color:#6b7280;">No services available</td></tr>'}
-              </tbody>
-            </table>
           </div>
         </div>
-      </body>
-    </html>
-  `;
-};
+
+        {/* Actions Button Panel */}
+        <div className="mt-3 flex flex-col-reverse gap-2.5 sm:flex-row sm:justify-end">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-full border border-slate-200 bg-white px-6 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={isSubmitting}
+            className="rounded-full bg-gradient-to-br from-[#1e3a8a] via-[#0f172a] to-black px-6 py-2.5 text-sm font-semibold text-white transition hover:from-[#1d4ed8] hover:to-[#0f172a] disabled:cursor-not-allowed disabled:opacity-70 shadow-[0_4px_15px_rgba(30,58,138,0.25)]"
+          >
+            {isSubmitting
+              ? selectedChannel === "EMAIL"
+                ? "Sending..."
+                : "Preparing..."
+              : selectedChannel === "EMAIL"
+                ? "Send Email"
+                : selectedChannel === "WHATSAPP"
+                  ? "Open WhatsApp"
+                  : "Download"}
+          </button>
+        </div>
+      </div>
+    </motion.div>
+  </div>
+);
 
 const VoucherPreviewModal = ({
   data,
@@ -156,17 +249,29 @@ const VoucherPreviewModal = ({
   loading = false,
 }) => {
   const [brandingSelections, setBrandingSelections] = useState({});
+  const [showDispatchModal, setShowDispatchModal] = useState(false);
+  const [selectedDispatchChannel, setSelectedDispatchChannel] = useState("EMAIL");
+  const [dispatchRecipientEmail, setDispatchRecipientEmail] = useState(data?.agentEmail || "agent@holidaycircuit.com");
+  const [dispatchRecipientPhone, setDispatchRecipientPhone] = useState(data?.agentPhone || "9876543210");
+
+  useEffect(() => {
+    if (data) {
+      setDispatchRecipientEmail(data.agentEmail || "agent@holidaycircuit.com");
+      setDispatchRecipientPhone(data.agentPhone || "9876543210");
+    }
+  }, [data]);
+
   const voucherKey = data?.voucherNumber || data?.query || "default";
 
   const isSentView = mode === "view";
   const branding = brandingSelections[voucherKey] ?? data?.branding ?? "with";
   const statusNote = useMemo(
     () => getVoucherStatusNote(data?.services || [], data?.status === "sent" || isSentView),
-    [data?.services, data?.status, isSentView]
+    [data?.services, data?.status, isSentView],
   );
   const footerText = useMemo(
     () => `Voucher will ${branding === "with" ? "include" : "not include"} branding`,
-    [branding]
+    [branding],
   );
 
   if (!data) return null;
@@ -189,8 +294,46 @@ const VoucherPreviewModal = ({
     URL.revokeObjectURL(url);
   };
 
+  const handleDispatchConfirm = async () => {
+    if (selectedDispatchChannel === "EMAIL" && !String(dispatchRecipientEmail || "").trim()) {
+      alert("Please enter a valid email address");
+      return;
+    }
+    if (selectedDispatchChannel === "WHATSAPP" && !normalizeWhatsAppPhoneNumber(dispatchRecipientPhone)) {
+      alert("Please enter a valid phone number");
+      return;
+    }
+
+    try {
+      if (onSend) {
+        await onSend(
+          branding,
+          selectedDispatchChannel,
+          dispatchRecipientEmail,
+          dispatchRecipientPhone
+        );
+      }
+
+      if (selectedDispatchChannel === "WHATSAPP") {
+        const normalizedPhone = normalizeWhatsAppPhoneNumber(dispatchRecipientPhone);
+        if (normalizedPhone) {
+          const msg = `Hello ${data.agentName || 'Agent'}, here is the voucher for your query ${data.query || data.voucherNumber}. Direct Link: ${window.location.origin}/voucher/${data.id}`;
+          const whatsappUrl = `https://wa.me/${normalizedPhone}?text=${encodeURIComponent(msg)}`;
+          window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
+        }
+      } else if (selectedDispatchChannel === "PDF") {
+        handleDownload();
+      }
+
+      setShowDispatchModal(false);
+    } catch (err) {
+      console.error("Voucher dispatch confirm failed", err);
+    }
+  };
+
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-[3px]">
+    <>
+      <div className={`fixed inset-0 z-50 bg-black/60 backdrop-blur-[3px] ${showDispatchModal ? "hidden" : ""}`}>
       <div className="flex min-h-full items-center justify-center px-3 py-2">
         <div
           onClick={(e) => e.stopPropagation()}
@@ -214,9 +357,7 @@ const VoucherPreviewModal = ({
             </div>
           </div>
 
-          <div
-            className="custom-scroll flex-1 overflow-y-auto px-4 py-3"
-          >
+          <div className="custom-scroll flex-1 overflow-y-auto px-4 py-3">
             <div className="rounded-[18px] bg-gradient-to-r from-blue-600 to-blue-800 py-4 text-center text-white">
               <h1 className="text-base font-semibold">{branding === "with" ? "Holiday Circuit" : "Travel Voucher"}</h1>
               <p className="mt-1 text-[10px]">{branding === "with" ? "Travel Voucher" : "Clean Voucher Copy"}</p>
@@ -230,43 +371,20 @@ const VoucherPreviewModal = ({
             <div className="mt-3 grid grid-cols-2 gap-2.5 text-[11px]">
               <div>
                 <p className="text-gray-500">Guest Name</p>
-                <p className="font-medium text-gray-900">{data.name}</p>
+                <p className="font-medium text-gray-900">{data.name || "-"}</p>
               </div>
               <div>
                 <p className="text-gray-500">Passengers</p>
-                <p className="font-medium text-gray-900">{data.passengers}</p>
+                <p className="font-medium text-gray-900">{data.passengers || "-"}</p>
               </div>
               <div>
                 <p className="text-gray-500">Destination</p>
-                <p className="font-medium text-gray-900">{data.destination}</p>
+                <p className="font-medium text-gray-900">{data.destination || "-"}</p>
               </div>
               <div>
                 <p className="text-gray-500">Duration</p>
-                <p className="font-medium text-gray-900">{data.duration}</p>
+                <p className="font-medium text-gray-900">{data.duration || "-"}</p>
               </div>
-            </div>
-
-            <div
-              className={`mt-3 rounded-[14px] border px-3 py-2.5 ${
-                statusNote.tone === "red"
-                  ? "border-red-200 bg-red-50"
-                  : "border-green-200 bg-green-50"
-              }`}
-            >
-              <p
-                className={`text-[11px] font-semibold uppercase tracking-[0.04em] ${
-                  statusNote.tone === "red" ? "text-red-700" : "text-green-700"
-                }`}
-              >
-                {statusNote.title}
-              </p>
-              <p
-                className={`mt-1 text-[11px] leading-5 ${
-                  statusNote.tone === "red" ? "text-red-700" : "text-green-700"
-                }`}
-              >
-                {statusNote.message}
-              </p>
             </div>
 
             <div className="mt-3">
@@ -278,7 +396,7 @@ const VoucherPreviewModal = ({
                     className="rounded-[14px] border border-gray-200 bg-sky-50 px-3 py-2.5"
                   >
                     <p className="mb-1 text-sm font-medium text-gray-900">
-                      {(service.type?.charAt(0).toUpperCase() + service.type?.slice(1)) || "Service"}
+                      {formatServiceTypeLabel(service.type)}
                     </p>
                     <div className="flex justify-between gap-3 text-[11px]">
                       <div className="min-w-0 flex-1">
@@ -289,7 +407,10 @@ const VoucherPreviewModal = ({
                       </div>
                       <div className="text-right">
                         <p className="text-gray-500">Confirmation</p>
-                        <p className="text-gray-900">{service.confirmation || "Pending"}</p>
+                        <p className="text-gray-900">
+                          {service.confirmation || "Pending"}
+                          {service.status ? ` (${service.status})` : ""}
+                        </p>
                       </div>
                     </div>
                   </div>
@@ -352,7 +473,7 @@ const VoucherPreviewModal = ({
               </button>
               {mode === "send" ? (
                 <button
-                  onClick={() => onSend?.(branding)}
+                  onClick={() => setShowDispatchModal(true)}
                   disabled={loading || !statusNote.canSend}
                   className="flex flex-1 items-center justify-center gap-1 rounded-[12px] bg-green-600 px-4 py-2 text-[11px] font-semibold text-white transition hover:bg-green-700 disabled:opacity-60"
                 >
@@ -372,7 +493,25 @@ const VoucherPreviewModal = ({
           </div>
         </div>
       </div>
-    </div>
+      </div>
+
+      <AnimatePresence>
+        {showDispatchModal && (
+          <VoucherDispatchModal
+            selectedChannel={selectedDispatchChannel}
+            recipientEmail={dispatchRecipientEmail}
+            recipientPhone={dispatchRecipientPhone}
+            onSelectChannel={setSelectedDispatchChannel}
+            onEmailChange={setDispatchRecipientEmail}
+            onPhoneChange={setDispatchRecipientPhone}
+            onClose={() => setShowDispatchModal(false)}
+            onConfirm={handleDispatchConfirm}
+            isSubmitting={loading}
+            agentName={data.agentName}
+          />
+        )}
+      </AnimatePresence>
+    </>
   );
 };
 

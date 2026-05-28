@@ -17,7 +17,7 @@ const getTodayDateString = () => {
   return new Date(today.getTime() - timezoneOffset).toISOString().slice(0, 10);
 };
 
-const CreateNewQueries = ({ onClose }) => {
+const CreateNewQueries = ({ onClose, onCreated, queryToEdit = null, isOpsView = false }) => {
   const [step, setStep] = useState(1);
   const [isModalVisible, setIsModalVisible] = useState(true);
   const [formData, setFormData] = useState({
@@ -55,6 +55,31 @@ const CreateNewQueries = ({ onClose }) => {
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (queryToEdit) {
+      const adults = (queryToEdit.travelerDetails || [])
+        .filter((t) => t.travelerType === "Adult")
+        .map((t) => ({ fullName: t.fullName }));
+      
+      const children = (queryToEdit.travelerDetails || [])
+        .filter((t) => t.travelerType === "Child")
+        .map((t) => ({ fullName: t.fullName, age: t.childAge || "" }));
+
+      setFormData({
+        destination: queryToEdit.destination || "",
+        clientEmail: queryToEdit.clientEmail || "",
+        startDate: queryToEdit.startDate ? new Date(queryToEdit.startDate).toISOString().slice(0, 10) : "",
+        endDate: queryToEdit.endDate ? new Date(queryToEdit.endDate).toISOString().slice(0, 10) : "",
+        numberOfAdults: queryToEdit.numberOfAdults || adults.length || 1,
+        numberOfChildren: queryToEdit.numberOfChildren || children.length || 0,
+        customerBudget: queryToEdit.customerBudget || 0,
+        specialRequirements: queryToEdit.specialRequirements || "",
+        adultTravelers: adults.length > 0 ? adults : [createAdultTraveler()],
+        childTravelers: children,
+      });
+    }
+  }, [queryToEdit]);
 
   const resetForm = () => {
     setFormData({
@@ -193,7 +218,7 @@ const CreateNewQueries = ({ onClose }) => {
       return;
     }
 
-    if (formData.startDate < todayDate) {
+    if (!queryToEdit && formData.startDate < todayDate) {
       setFormAlert({
         title: "Invalid Start Date",
         message: "Start date can only be today or a future date.",
@@ -217,11 +242,14 @@ const CreateNewQueries = ({ onClose }) => {
         travelerDetails: buildTravelerPayload(),
       };
 
-      await API.post("/agent/queries", payload);
+      const response = queryToEdit
+        ? await API.put(`/agent/queries/${queryToEdit._id}`, payload)
+        : await API.post("/agent/queries", payload);
+      onCreated?.(response?.data?.query);
       setShowSuccessPopup(true);
     } catch (error) {
       console.error(error.response?.data || error.message);
-      window.alert(error?.response?.data?.message || "Unable to create query right now.");
+      window.alert(error?.response?.data?.message || "Unable to save query right now.");
     }
   };
 
@@ -291,21 +319,42 @@ const CreateNewQueries = ({ onClose }) => {
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.985, y: 18 }}
               transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-              className="relative z-10 flex max-h-[calc(100vh-20px)] w-full max-w-[520px] flex-col overflow-hidden rounded-2xl border border-[#BEDBFF] bg-[#f9fafb] p-2 shadow-sm sm:max-h-[calc(100vh-32px)] sm:p-3"
+              className={`relative z-10 flex max-h-[calc(100vh-20px)] w-full flex-col overflow-hidden rounded-2xl border border-[#BEDBFF] bg-[#f9fafb] p-2 shadow-sm sm:max-h-[calc(100vh-32px)] sm:p-3 ${isOpsView ? 'max-w-[460px]' : 'max-w-[520px]'}`}
             >
-          <header className="mb-2 flex items-center justify-between">
-            <div
-              onClick={handleClose}
-              className="flex cursor-pointer items-center gap-1 rounded-xl p-1 hover:bg-gray-100"
-            >
-              <ArrowLeft className="h-5 w-5 stroke-[1.8] text-gray-800" />
-              <h2 className="text-md font-semibold">Back</h2>
+          {isOpsView ? (
+            <div className="relative -mx-2 -mt-2 mb-4 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 px-5 py-4 text-white sm:-mx-3 sm:-mt-3 sm:mb-5">
+              <div className="flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={handleClose}
+                  className="flex items-center gap-1.5 text-slate-300 hover:text-white transition bg-transparent border-none outline-none p-0 cursor-pointer"
+                >
+                  <ArrowLeft className="h-5 w-5 stroke-[1.8]" />
+                  <span className="text-sm font-semibold">Back</span>
+                </button>
+                <div className="text-right">
+                  <h3 className="text-sm font-bold tracking-wide uppercase text-indigo-200">
+                    {queryToEdit ? "Edit Query" : "New Query"}
+                  </h3>
+                  <p className="text-[11px] text-slate-400 mt-0.5">Step {step} of 3</p>
+                </div>
+              </div>
             </div>
+          ) : (
+            <header className="mb-2 flex items-center justify-between">
+              <div
+                onClick={handleClose}
+                className="flex cursor-pointer items-center gap-1 rounded-xl p-1 hover:bg-gray-100"
+              >
+                <ArrowLeft className="h-5 w-5 stroke-[1.8] text-gray-800" />
+                <h2 className="text-md font-semibold">Back</h2>
+              </div>
 
-            <div>
-              <p className="text-sm text-gray-500">Step {step} of 3</p>
-            </div>
-          </header>
+              <div>
+                <p className="text-sm text-gray-500">Step {step} of 3</p>
+              </div>
+            </header>
+          )}
 
           <AnimatePresence>
             {formAlert && (
@@ -351,41 +400,75 @@ const CreateNewQueries = ({ onClose }) => {
                   initial="hidden"
                   animate="visible"
                   exit="exit"
-                  className="mx-auto min-h-[300px] w-full max-w-[500px] rounded-2xl bg-white p-6"
+                  className={`mx-auto w-full rounded-2xl bg-white ${isOpsView ? 'min-h-0 max-w-[430px] p-4 shadow-sm' : 'min-h-[300px] max-w-[500px] p-6'}`}
                 >
-                <div className="mb-6">
-                  <h2 className="mt-1 text-xl font-semibold">Create New Query</h2>
+                <div className={isOpsView ? "mb-3" : "mb-6"}>
+                  <h2 className="mt-1 text-xl font-semibold">{queryToEdit ? "Edit Query" : "Create New Query"}</h2>
                   <p className="mt-1 text-sm text-gray-500">
                     Tell us about the travel requirements.
                   </p>
                 </div>
 
-                <div className="relative mb-3">
-                  <label className="mb-1 block text-sm font-medium">Destination</label>
-                  <MapPin
-                    size={16}
-                    className="absolute left-5 top-11 -translate-y-1/2 text-gray-400"
-                  />
-                  <input
-                    name="destination"
-                    placeholder="maldives, paris"
-                    value={formData.destination}
-                    onChange={handleChange}
-                    className="w-full rounded-xl border border-gray-300 py-1.5 pl-10 pr-4 focus:outline-none"
-                  />
-                </div>
+                {isOpsView ? (
+                  <div className="grid grid-cols-2 gap-4 mb-3">
+                    <div>
+                      <label className="mb-1 block text-sm font-medium">Destination</label>
+                      <div className="relative">
+                        <MapPin
+                          size={16}
+                          className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                        />
+                        <input
+                          name="destination"
+                          placeholder="maldives, paris"
+                          value={formData.destination}
+                          onChange={handleChange}
+                          className="w-full rounded-xl border border-gray-300 py-1.5 pl-9 pr-4 focus:outline-none text-sm"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-sm font-medium">Client Email</label>
+                      <input
+                        type="email"
+                        name="clientEmail"
+                        placeholder="client@example.com"
+                        value={formData.clientEmail}
+                        onChange={handleChange}
+                        className="w-full rounded-xl border border-gray-300 px-4 py-1.5 focus:outline-none text-sm"
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="relative mb-3">
+                      <label className="mb-1 block text-sm font-medium">Destination</label>
+                      <MapPin
+                        size={16}
+                        className="absolute left-5 top-11 -translate-y-1/2 text-gray-400"
+                      />
+                      <input
+                        name="destination"
+                        placeholder="maldives, paris"
+                        value={formData.destination}
+                        onChange={handleChange}
+                        className="w-full rounded-xl border border-gray-300 py-1.5 pl-10 pr-4 focus:outline-none"
+                      />
+                    </div>
 
-                <div className="mb-3">
-                  <label className="mb-1 block text-sm font-medium">Client Email</label>
-                  <input
-                    type="email"
-                    name="clientEmail"
-                    placeholder="client@example.com"
-                    value={formData.clientEmail}
-                    onChange={handleChange}
-                    className="w-full rounded-xl border border-gray-300 px-4 py-2 focus:outline-none"
-                  />
-                </div>
+                    <div className="mb-3">
+                      <label className="mb-1 block text-sm font-medium">Client Email</label>
+                      <input
+                        type="email"
+                        name="clientEmail"
+                        placeholder="client@example.com"
+                        value={formData.clientEmail}
+                        onChange={handleChange}
+                        className="w-full rounded-xl border border-gray-300 px-4 py-2 focus:outline-none"
+                      />
+                    </div>
+                  </>
+                )}
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -450,10 +533,10 @@ const CreateNewQueries = ({ onClose }) => {
                   initial="hidden"
                   animate="visible"
                   exit="exit"
-                  className="mx-auto min-h-[300px] w-full max-w-[450px] rounded-2xl bg-white p-6"
+                  className={`mx-auto w-full rounded-2xl bg-white ${isOpsView ? 'min-h-0 max-w-[430px] p-4 shadow-sm' : 'min-h-[300px] max-w-[450px] p-6'}`}
                 >
-                <h2 className="text-xl font-semibold">Create New Query</h2>
-                <p className="mb-6 text-sm text-gray-500">
+                <h2 className="text-xl font-semibold">{queryToEdit ? "Edit Query" : "Create New Query"}</h2>
+                <p className={`${isOpsView ? 'mb-3' : 'mb-6'} text-sm text-gray-500`}>
                   Tell us about the travel requirements.
                 </p>
 
@@ -589,14 +672,14 @@ const CreateNewQueries = ({ onClose }) => {
                   initial="hidden"
                   animate="visible"
                   exit="exit"
-                  className="mx-auto min-h-[350px] w-full max-w-[500px] rounded-2xl bg-white p-6"
+                  className={`mx-auto w-full rounded-2xl bg-white ${isOpsView ? 'min-h-0 max-w-[430px] p-4 shadow-sm' : 'min-h-[350px] max-w-[500px] p-6'}`}
                 >
-                <h2 className="text-xl font-semibold">Create New Query</h2>
-                <p className="mb-6 text-sm text-gray-500">
+                <h2 className="text-xl font-semibold">{queryToEdit ? "Edit Query" : "Create New Query"}</h2>
+                <p className={`${isOpsView ? 'mb-3' : 'mb-6'} text-sm text-gray-500`}>
                   Tell us about the travel requirements.
                 </p>
 
-                <div className="mb-6">
+                <div className={isOpsView ? "mb-3" : "mb-6"}>
                   <label className="mb-1 block text-sm font-medium">
                     Special Preferences / Notes
                   </label>
@@ -625,7 +708,7 @@ const CreateNewQueries = ({ onClose }) => {
                     onClick={handleSubmit}
                     className="cursor-pointer rounded-xl bg-slate-900 px-6 py-2 text-sm text-white"
                   >
-                    Submit Query →
+                    {queryToEdit ? "Save Changes →" : "Submit Query →"}
                   </button>
                 </div>
                 </motion.div>
@@ -665,13 +748,15 @@ const CreateNewQueries = ({ onClose }) => {
                 </div>
 
                 <p className="text-[11px] uppercase tracking-[0.24em] text-emerald-50/90">
-                  Query Submitted
+                  {queryToEdit ? "Query Updated" : "Query Submitted"}
                 </p>
                 <h3 className="mt-2 text-2xl font-semibold leading-tight">
-                  Travel Query Created Successfully
+                  {queryToEdit ? "Travel Query Updated Successfully" : "Travel Query Created Successfully"}
                 </h3>
                 <p className="mt-2 text-sm text-white/85">
-                  Your request is now in the pipeline and will move into ops processing shortly.
+                  {queryToEdit
+                    ? "Your query details have been updated successfully and will be processed shortly."
+                    : "Your request is now in the pipeline and will move into ops processing shortly."}
                 </p>
               </div>
 
@@ -698,10 +783,12 @@ const CreateNewQueries = ({ onClose }) => {
                     </div>
                     <div>
                       <p className="text-sm font-medium text-emerald-900">
-                        Next Step
+                        {queryToEdit ? "Information" : "Next Step"}
                       </p>
                       <p className="mt-1 text-xs leading-5 text-emerald-800/90">
-                        Ops team will review availability, prepare pricing, and move this query forward for quotation.
+                        {queryToEdit
+                          ? "The operations team will be notified of the updates and adapt the itinerary/quotation if required."
+                          : "Ops team will review availability, prepare pricing, and move this query forward for quotation."}
                       </p>
                     </div>
                   </div>

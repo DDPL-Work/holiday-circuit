@@ -16,6 +16,18 @@ import {
   X,
 } from "lucide-react";
 
+const COMMON_DOMAIN_TYPOS = new Map([
+  ["gamil.com", "gmail.com"],
+  ["gmial.com", "gmail.com"],
+  ["gnail.com", "gmail.com"],
+  ["gmail.co", "gmail.com"],
+  ["yaho.com", "yahoo.com"],
+  ["yhoo.com", "yahoo.com"],
+  ["outlok.com", "outlook.com"],
+  ["hotmial.com", "hotmail.com"],
+  ["icloud.co", "icloud.com"],
+]);
+
 const FINANCE_EXEC_PERMISSIONS = ["View", "Edit", "Export", "Manage Verifications"];
 const INITIAL_FORM = {
   fullName: "",
@@ -28,6 +40,29 @@ const INITIAL_FORM = {
   accountStatus: "Active",
   accessExpiry: "",
   sendWelcome: true,
+};
+
+const getEmailValidationError = (value = "") => {
+  const normalizedEmail = String(value || "").trim().toLowerCase();
+
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+    return "Please enter a valid email address.";
+  }
+
+  const atIndex = normalizedEmail.lastIndexOf("@");
+  if (atIndex <= 0 || atIndex === normalizedEmail.length - 1) {
+    return "Please enter a valid email address.";
+  }
+
+  const localPart = normalizedEmail.slice(0, atIndex);
+  const domain = normalizedEmail.slice(atIndex + 1);
+  const suggestedDomain = COMMON_DOMAIN_TYPOS.get(domain);
+
+  if (!suggestedDomain) {
+    return "";
+  }
+
+  return `Email address looks mistyped. Did you mean ${localPart}@${suggestedDomain}?`;
 };
 
 function StepPill({ stepNumber, label, active, complete }) {
@@ -104,6 +139,12 @@ export default function AddFinanceExecutiveModal({ loading, managerName, onClose
   };
 
   const handleCreate = async () => {
+    const emailError = getEmailValidationError(form.email);
+    if (emailError) {
+      setError(emailError);
+      return;
+    }
+
     if (form.passwordMode === "manual" && form.manualPassword.trim().length < 8) {
       setError("Manual password must be at least 8 characters.");
       return;
@@ -263,7 +304,24 @@ export default function AddFinanceExecutiveModal({ loading, managerName, onClose
 
               <div className="flex items-center justify-between border-t border-slate-100 px-5 py-4">
                 <FooterButton onClick={onClose}><X className="h-3.5 w-3.5" />Cancel</FooterButton>
-                <FooterButton variant="primary" onClick={() => canContinuePersonal ? setStep(2) : setError("Full name, email, and phone number are required to continue.")} disabled={!canContinuePersonal}>
+                <FooterButton
+                  variant="primary"
+                  onClick={() => {
+                    if (!canContinuePersonal) {
+                      setError("Full name, email, and phone number are required to continue.");
+                      return;
+                    }
+
+                    const emailError = getEmailValidationError(form.email);
+                    if (emailError) {
+                      setError(emailError);
+                      return;
+                    }
+
+                    setStep(2);
+                  }}
+                  disabled={!canContinuePersonal}
+                >
                   Continue
                   <ChevronRight className="h-3.5 w-3.5" />
                 </FooterButton>

@@ -107,7 +107,9 @@ export default function BookingDecisionModal({
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.99, y: 10, transition: exitTransition }}
             transition={enterTransition}
-            className="relative z-10 w-full max-w-md transform-gpu rounded-2xl bg-white p-6 shadow-xl"
+            className={`relative z-10 w-full transform-gpu rounded-2xl bg-white shadow-xl ${
+              isAccept ? "max-w-sm p-5" : "max-w-md p-6"
+            }`}
           >
             <div className="mb-4 flex items-start justify-between">
               <div className="flex items-center gap-3">
@@ -128,11 +130,11 @@ export default function BookingDecisionModal({
 
                 <div>
                   <h3 className="text-lg font-semibold text-slate-900">
-                    {isAccept ? "Accept Booking" : "Reject Booking"}
+                    {isAccept ? "Accept Query" : "Reject Booking"}
                   </h3>
                   <p className="text-sm text-gray-500">
                     {isAccept
-                      ? "Confirm and proceed with this booking"
+                      ? "Please confirm before continuing"
                       : "Provide a reason to reject this booking"}
                   </p>
                 </div>
@@ -150,19 +152,9 @@ export default function BookingDecisionModal({
             <div className="mb-5">
               {isAccept ? (
                 <>
-                  <p className="mb-3 text-sm text-gray-600">
-                    This action will confirm the booking and allow quotation creation.
+                  <p className="text-sm leading-6 text-gray-600">
+                    Are you sure you want to accept this query?
                   </p>
-
-                  <motion.div
-                    initial={{ opacity: 0, y: 12 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1], delay: 0.05 }}
-                    className="rounded-xl border border-[#B9F8CF] bg-[#F0FDF4] p-5 text-sm text-[#016630]"
-                  >
-                    This booking will be moved to the fulfillment pipeline where you can enter
-                    confirmation details and generate vouchers.
-                  </motion.div>
                 </>
               ) : (
                 <>
@@ -188,7 +180,7 @@ export default function BookingDecisionModal({
                 onClick={onClose}
                 className="flex-1 cursor-pointer rounded-xl border border-gray-300 py-2 text-sm text-gray-600 hover:bg-gray-50"
               >
-                Cancel
+                {isAccept ? "No" : "Cancel"}
               </motion.button>
 
               <motion.button
@@ -204,10 +196,10 @@ export default function BookingDecisionModal({
               >
                 {loading
                   ? isAccept
-                    ? "Confirming..."
+                    ? "Accepting..."
                     : "Rejecting..."
                   : isAccept
-                    ? "Confirm Accept"
+                    ? "Yes, Accept"
                     : "Confirm Reject"}
               </motion.button>
             </div>

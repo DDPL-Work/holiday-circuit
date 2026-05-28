@@ -118,6 +118,11 @@ const internalInvoiceSchema = new mongoose.Schema(
       type: Date,
       required: true,
     },
+    creditPeriodDays: {
+      type: Number,
+      enum: [7, 15],
+      default: 7,
+    },
     items: {
       type: [internalInvoiceItemSchema],
       default: [],
@@ -145,7 +150,7 @@ const internalInvoiceSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["Submitted", "In Review", "Approved", "Rejected", "Paid"],
+      enum: ["Submitted", "In Review", "Approved", "Rejected", "Partially Paid", "Paid"],
       default: "Submitted",
     },
     submittedBy: {
@@ -174,6 +179,21 @@ const internalInvoiceSchema = new mongoose.Schema(
     payoutAmount: {
       type: Number,
       default: 0,
+    },
+    payoutInstallments: {
+      type: [
+        {
+          amount: { type: Number, required: true },
+          utrNumber: { type: String, required: true },
+          bankName: { type: String, required: true },
+          paymentDate: { type: Date, required: true },
+          financeNotes: { type: String, default: "" },
+          paidBy: { type: mongoose.Schema.Types.ObjectId, ref: "Auth" },
+          paidByName: { type: String },
+          createdAt: { type: Date, default: Date.now },
+        }
+      ],
+      default: []
     },
     financeNotes: {
       type: String,

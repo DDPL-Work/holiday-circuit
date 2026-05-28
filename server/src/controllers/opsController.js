@@ -11,23 +11,81 @@ import Sightseeing from "../models/sightseeingDmc.model.js"
 import Confirmation from "../models/dmcConfirmation.js";
 import { sendAgentClientQuotationMail, sendEmailVoucher } from "../services/emailService.js";
 import { getWhatsAppDeliveryErrorMessage, sendWhatsAppMessage } from "../services/whatsappService.js";
-import { getEmailDeliveryErrorMessage } from "../services/resendMailer.js";
+import { getEmailDeliveryErrorMessage } from "../services/mailer.js";
+import {
+  createNotification,
+  createNotifications,
+} from "../services/notificationDispatchService.js";
 import mongoose from "mongoose";
 import Voucher from "../models/voucher.model.js";
 import Auth from "../models/auth.model.js";
 
 const OPS_DASHBOARD_PENDING_STATUSES = ["New_Query", "Pending_Accept", "Revision_Query"];
-const OPS_DASHBOARD_ACTIVE_BOOKING_STATUSES = ["Booking_Accepted", "Invoice_Requested", "Confirmed"];
+const OPS_DASHBOARD_ACTIVE_BOOKING_STATUSES = ["Booking_Accepted", "Invoice_Requested", "Confirmed", "Vouchered", "Payment_Completed"];
+const ORDER_ACCEPTANCE_PENDING_STATUSES = ["New_Query", "Pending_Accept", "Rejected"];
+const ORDER_ACCEPTANCE_VISIBLE_STATUSES = [
+  "New_Query",
+  "Pending_Accept",
+  "Rejected",
+  "Booking_Accepted",
+  "Revision_Query",
+  "Invoice_Requested",
+];
+const ORDER_ACCEPTANCE_STATUS_PRIORITY = {
+  New_Query: 0,
+  Pending_Accept: 1,
+  Rejected: 2,
+  Booking_Accepted: 3,
+  Revision_Query: 4,
+  Invoice_Requested: 5,
+};
 const OPS_DASHBOARD_RESPONSE_ACTIONS = new Set([
   "Query Accepted",
   "Query Rejected",
   "Quotation Started",
   "Quote Sent",
   "Passed to Admin",
+  "Passed to Manager",
   "Traveler Documents Verified",
   "Voucher Sent",
   "Invoice Generated",
 ]);
+const OPS_DASHBOARD_COMPLETION_ACTIONS = new Set([
+  "Voucher Sent",
+]);
+
+const createOpsSideNotification = (req, payload) =>
+  createNotification(payload, {
+    mirrorToAdmins: true,
+    sourceRole: req.user?.role,
+    sourceUserId: req.user?.id || req.user?._id || null,
+    sourceName: req.user?.name || req.user?.companyName || "Operations",
+  });
+
+const createOpsSideNotifications = (req, payloads, options = {}) =>
+  createNotifications(payloads, {
+    mirrorToAdmins: true,
+    sourceRole: req.user?.role,
+    sourceUserId: req.user?.id || req.user?._id || null,
+    sourceName: req.user?.name || req.user?.companyName || "Operations",
+    ...options,
+  });
+
+const OPERATIONAL_QUOTATION_STATUSES = [
+  "Sent to Client",
+  "Markup Applied",
+  "Quote Accepted",
+  "Quote Sent",
+  "Confirmed",
+  "Quote Finalized",
+  "Revised",
+];
+
+const getLatestOperationalQuotation = (queryId) =>
+  Quotation.findOne({
+    queryId,
+    status: { $in: OPERATIONAL_QUOTATION_STATUSES },
+  }).sort({ createdAt: -1 });
 
 const startOfDay = (value = new Date()) => {
   const date = new Date(value);
@@ -120,9 +178,29 @@ const getFirstOpsResponseAt = (query = {}) => {
   return timestamps[0] || null;
 };
 
+const getQueryAcceptedAt = (query = {}) => {
+  const timestamps = (Array.isArray(query?.activityLog) ? query.activityLog : [])
+    .filter((entry) => String(entry?.action || "").trim() === "Query Accepted")
+    .map((entry) => (entry?.timestamp ? new Date(entry.timestamp) : null))
+    .filter(isValidDate)
+    .sort((left, right) => left.getTime() - right.getTime());
+
+  return timestamps[0] || null;
+};
+
+const getFinalOpsCompletionAt = (query = {}) => {
+  const timestamps = (Array.isArray(query?.activityLog) ? query.activityLog : [])
+    .filter((entry) => OPS_DASHBOARD_COMPLETION_ACTIONS.has(String(entry?.action || "").trim()))
+    .map((entry) => (entry?.timestamp ? new Date(entry.timestamp) : null))
+    .filter(isValidDate)
+    .sort((left, right) => right.getTime() - left.getTime());
+
+  return timestamps[0] || null;
+};
+
 const isConvertedOpsQuery = (query = {}) =>
   ["Client Approved", "Confirmed"].includes(String(query?.agentStatus || "").trim()) ||
-  ["Confirmed", "Vouchered"].includes(String(query?.opsStatus || "").trim());
+  ["Confirmed", "Vouchered", "Payment_Completed"].includes(String(query?.opsStatus || "").trim());
 
 const isHandledOpsQuery = (query = {}) => {
   const opsStatus = String(query?.opsStatus || "").trim();
@@ -203,6 +281,10 @@ const buildDashboardActivityPresentation = (action = "") => {
 
   if (normalizedAction === "Passed to Admin") {
     return { title: "Passed to Admin", tag: "Escalated", variant: "escalated" };
+  }
+
+  if (normalizedAction === "Passed to Manager") {
+    return { title: "Passed to Manager", tag: "Escalated", variant: "escalated" };
   }
 
   if (normalizedAction === "Invoice Generated") {
@@ -694,6 +776,93 @@ const formatMailDateLabel = (value) => {
   });
 };
 
+const formatHistoryDateTimeLabel = (value) => {
+  if (!value) return "";
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "";
+
+  return parsed.toLocaleString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
+
+const mapQuotationHistoryRow = (quotation = {}, index = 0, total = 0, latestRevisionRemark = "") => {
+  const opsTotalAmount = Number(quotation?.pricing?.totalAmount || 0);
+  const clientTotalAmount =
+    quotation?.clientTotalAmount === undefined || quotation?.clientTotalAmount === null
+      ? null
+      : Number(quotation.clientTotalAmount);
+  const markupAmount = Number(quotation?.agentMarkup?.markupAmount || 0);
+
+  return {
+    id: String(quotation?._id || ""),
+    quotationNumber: quotation?.quotationNumber || `Quotation ${index + 1}`,
+    status: quotation?.status || "Pending",
+    attemptNumber: total - index,
+    isLatest: index === 0,
+    createdAt: quotation?.createdAt || null,
+    createdAtLabel: formatHistoryDateTimeLabel(quotation?.createdAt),
+    updatedAt: quotation?.updatedAt || null,
+    updatedAtLabel: formatHistoryDateTimeLabel(quotation?.updatedAt),
+    validTill: quotation?.validTill || null,
+    validTillLabel: formatMailDateLabel(quotation?.validTill),
+    opsTotalAmount,
+    clientTotalAmount,
+    displayAmount: opsTotalAmount,
+    pricing: {
+      currency: quotation?.pricing?.currency || "INR",
+      quoteCategory: quotation?.pricing?.quoteCategory || "domestic",
+      baseAmount: Number(quotation?.pricing?.baseAmount || 0),
+      subTotal: Number(quotation?.pricing?.subTotal || 0),
+      packageTemplateAmount: Number(quotation?.pricing?.packageTemplateAmount || 0),
+      totalAmount: opsTotalAmount,
+      opsMarkup: {
+        percent: Number(quotation?.pricing?.opsMarkup?.percent || 0),
+        amount: Number(quotation?.pricing?.opsMarkup?.amount || 0),
+      },
+      opsCharges: {
+        serviceCharge: Number(quotation?.pricing?.opsCharges?.serviceCharge || 0),
+        handlingFee: Number(quotation?.pricing?.opsCharges?.handlingFee || 0),
+      },
+      tax: {
+        gst: {
+          percent: Number(quotation?.pricing?.tax?.gst?.percent || 0),
+          amount: Number(quotation?.pricing?.tax?.gst?.amount || 0),
+        },
+        tcs: {
+          percent: Number(quotation?.pricing?.tax?.tcs?.percent || 0),
+          amount: Number(quotation?.pricing?.tax?.tcs?.amount || 0),
+        },
+        tourismFee: {
+          amount: Number(quotation?.pricing?.tax?.tourismFee?.amount || 0),
+        },
+        totalTax: Number(quotation?.pricing?.tax?.totalTax || 0),
+      },
+    },
+    agentMarkup: {
+      type: String(quotation?.agentMarkup?.type || "").trim().toUpperCase(),
+      value: Number(quotation?.agentMarkup?.value || 0),
+      markupAmount,
+    },
+    agentRevisionRemark:
+      String(quotation?.agentRevisionRemark || "").trim() ||
+      (index === 0 && quotation?.status === "Revision Requested"
+        ? String(latestRevisionRemark || "").trim()
+        : ""),
+    inclusions: Array.isArray(quotation?.inclusions) ? quotation.inclusions : [],
+    exclusions: Array.isArray(quotation?.exclusions) ? quotation.exclusions : [],
+    additionalNotes: Array.isArray(quotation?.additionalNotes) ? quotation.additionalNotes : [],
+    dayWiseItinerary: Array.isArray(quotation?.dayWiseItinerary) ? quotation.dayWiseItinerary : [],
+    services: Array.isArray(quotation?.services) ? quotation.services : [],
+    serviceCount: Array.isArray(quotation?.services) ? quotation.services.length : 0,
+  };
+};
+
 const buildTravelerSummary = (query = {}) => {
   const adults = Number(query?.numberOfAdults || 0);
   const children = Number(query?.numberOfChildren || 0);
@@ -755,22 +924,30 @@ const buildServiceQuantityLabel = (service = {}) => {
 const buildServiceLocationLabel = (service = {}) =>
   [service?.city, service?.country].filter(Boolean).join(", ");
 
+const MAIL_SERVICE_TYPE_LABELS = Object.freeze({
+  hotel: "Hotel",
+  transfer: "Transport",
+  car: "Transport",
+  activity: "Activity",
+  sightseeing: "Sightseeing",
+});
+
 const normalizeDayWiseItinerary = (items = []) =>
   Array.isArray(items)
     ? items
-        .map((item, index) => {
-          const dayNumber = Math.max(1, Number(item?.dayNumber || index + 1));
-          const parsedDate = item?.date ? new Date(item.date) : null;
+      .map((item, index) => {
+        const dayNumber = Math.max(1, Number(item?.dayNumber || index + 1));
+        const parsedDate = item?.date ? new Date(item.date) : null;
 
-          return {
-            dayNumber,
-            dayLabel: String(item?.dayLabel || "").trim(),
-            date: parsedDate && !Number.isNaN(parsedDate.getTime()) ? parsedDate : null,
-            title: String(item?.title || item?.heading || "").trim(),
-            description: String(item?.description || "").trim(),
-          };
-        })
-        .filter((item) => item.dayLabel || item.title || item.description || item.date)
+        return {
+          dayNumber,
+          dayLabel: String(item?.dayLabel || "").trim(),
+          date: parsedDate && !Number.isNaN(parsedDate.getTime()) ? parsedDate : null,
+          title: String(item?.title || item?.heading || "").trim(),
+          description: String(item?.description || "").trim(),
+        };
+      })
+      .filter((item) => item.dayLabel || item.title || item.description || item.date)
     : [];
 
 const buildAgentQuotationEmailPayload = ({ quotation, query }) => {
@@ -787,6 +964,13 @@ const buildAgentQuotationEmailPayload = ({ quotation, query }) => {
   const additionalNotes = Array.isArray(quotation?.additionalNotes)
     ? quotation.additionalNotes.map((item) => String(item || "").trim()).filter(Boolean)
     : [];
+  const sellerBankDetails = [
+    { label: "Bank Name", value: "HDFC Bank" },
+    { label: "A/c Holder Name", value: "Leela Travels" },
+    { label: "A/c No.", value: "50200103968171" },
+    { label: "IFSC", value: "HDFC0004413" },
+    { label: "Branch", value: "RAMPHAL CHOWK SEC VII DWARKA" },
+  ];
 
   return {
     recipientName:
@@ -806,21 +990,23 @@ const buildAgentQuotationEmailPayload = ({ quotation, query }) => {
     inclusions,
     exclusions,
     additionalNotes,
+    sellerBankDetails,
     dayWiseItinerary: normalizeDayWiseItinerary(quotation?.dayWiseItinerary),
     services: Array.isArray(quotation?.services)
       ? quotation.services.map((service) => {
-          const ratio = totalServiceBase > 0 ? Number(service.total || 0) / totalServiceBase : 0;
-          const clientAmount = totalServiceBase > 0 ? Math.round(totalAmount * ratio) : 0;
-          return {
-            title: service?.title || "Service",
-            typeLabel: service?.type ? String(service.type).replace(/_/g, " ") : "Travel Service",
-            location: buildServiceLocationLabel(service),
-            serviceDateLabel: formatMailDateLabel(service?.serviceDate),
-            quantityLabel: buildServiceQuantityLabel(service),
-            description: String(service?.description || "").replace(/\|/g, " | ").trim(),
-            clientAmount,
-          };
-        })
+        const normalizedServiceType = normalizeQuotationServiceType(service?.type);
+        const ratio = totalServiceBase > 0 ? Number(service.total || 0) / totalServiceBase : 0;
+        const clientAmount = totalServiceBase > 0 ? Math.round(totalAmount * ratio) : 0;
+        return {
+          title: service?.title || "Service",
+          typeLabel: MAIL_SERVICE_TYPE_LABELS[normalizedServiceType] || "Travel Service",
+          location: buildServiceLocationLabel(service),
+          serviceDateLabel: formatMailDateLabel(service?.serviceDate),
+          quantityLabel: buildServiceQuantityLabel(service),
+          description: String(service?.description || "").replace(/\|/g, " | ").trim(),
+          clientAmount,
+        };
+      })
       : [],
   };
 };
@@ -835,11 +1021,19 @@ const getTravelerDocumentVerification = (query = {}) => ({
   rejectionRemarks: String(query?.travelerDocumentVerification?.rejectionRemarks || "").trim(),
   issues: Array.isArray(query?.travelerDocumentVerification?.issues)
     ? query.travelerDocumentVerification.issues.map((issue) => ({
-        travelerId: String(issue?.travelerId || "").trim(),
-        travelerName: String(issue?.travelerName || "").trim(),
-        documentKey: String(issue?.documentKey || "").trim(),
-        documentLabel: String(issue?.documentLabel || "").trim(),
-      }))
+      travelerId: String(issue?.travelerId || "").trim(),
+      travelerName: String(issue?.travelerName || "").trim(),
+      documentKey: String(issue?.documentKey || "").trim(),
+      documentLabel: String(issue?.documentLabel || "").trim(),
+    }))
+    : [],
+  verifiedDocuments: Array.isArray(query?.travelerDocumentVerification?.verifiedDocuments)
+    ? query.travelerDocumentVerification.verifiedDocuments.map((document) => ({
+      travelerId: String(document?.travelerId || "").trim(),
+      travelerName: String(document?.travelerName || "").trim(),
+      documentKey: String(document?.documentKey || "").trim(),
+      documentLabel: String(document?.documentLabel || "").trim(),
+    }))
     : [],
 });
 
@@ -933,6 +1127,34 @@ const canManageAssignedQuery = async (req, query) => {
   return assignedUserId === String(req.user?.id || "");
 };
 
+const getLatestReassignmentEntry = (query = {}) => {
+  const history = Array.isArray(query?.reassignmentHistory) ? query.reassignmentHistory : [];
+  return history.length ? history[history.length - 1] : null;
+};
+
+const wasReassignedAwayFromOperationsUser = (query = {}, userId = "") => {
+  const normalizedUserId = String(userId || "").trim();
+  if (!normalizedUserId) {
+    return false;
+  }
+
+  const latestEntry = getLatestReassignmentEntry(query);
+  if (!latestEntry) {
+    return false;
+  }
+
+  const latestFromUserId = String(latestEntry?.fromUser || latestEntry?.fromUser?._id || "").trim();
+  const latestToUserId = String(latestEntry?.toUser || latestEntry?.toUser?._id || "").trim();
+  const assignedUserId = getAssignedQueryUserId(query);
+
+  return (
+    latestFromUserId === normalizedUserId &&
+    latestToUserId &&
+    latestToUserId !== normalizedUserId &&
+    assignedUserId !== normalizedUserId
+  );
+};
+
 const getAuthorizedQueryForQuotation = async (quotationId, req) => {
   const quotation = await Quotation.findById(quotationId);
 
@@ -962,7 +1184,7 @@ export const getAllQueries = async (req, res, next) => {
     const queryFilter = await getAssignedQueryFilter(req);
 
     const queries = await TravelQuery.find(queryFilter)
-    
+
       .populate("agent", "name email phone companyName")
       .populate("assignedTo", "name email")
       .sort({ createdAt: -1 });
@@ -1183,9 +1405,59 @@ export const getOpsDashboard = async (req, res, next) => {
   }
 };
 
+export const getVouchers = async (req, res, next) => {
+  try {
+    const vouchers = await Voucher.find()
+      .populate("agent", "name companyName email phone")
+      .populate("query", "queryId startDate endDate destination numberOfAdults numberOfChildren")
+      .sort({ createdAt: -1 });
+
+    const formatted = vouchers.map((voucher) => ({
+      id: voucher._id,
+      status: voucher.status,
+      query: voucher.query?.queryId || voucher.voucherNumber,
+      voucherNumber: voucher.voucherNumber,
+      name: voucher.guestName,
+      destination: voucher.destination,
+      date: voucher.travelDate,
+      duration: voucher.duration,
+      passengers: voucher.passengers,
+      services: voucher.services,
+      agentName: voucher.agent?.companyName || voucher.agent?.name || "",
+      agentEmail: voucher.agent?.email || "",
+      agentPhone: voucher.agent?.phone || "",
+    }));
+
+    console.log("getVouchers format sample:", formatted[0] ? {
+      agentName: formatted[0].agentName,
+      agentEmail: formatted[0].agentEmail,
+      agentPhone: formatted[0].agentPhone,
+    } : "No vouchers");
+
+    res.status(200).json({
+      success: true,
+      vouchers: formatted,
+      stats: {
+        ready: formatted.filter((v) => v.status === "ready").length,
+        generated: formatted.filter((v) => v.status === "generated").length,
+        sent: formatted.filter((v) => v.status === "sent").length,
+      },
+      data: {
+        vouchers: formatted,
+        stats: {
+          ready: formatted.filter((v) => v.status === "ready").length,
+          generated: formatted.filter((v) => v.status === "generated").length,
+          sent: formatted.filter((v) => v.status === "sent").length,
+        }
+      }
+    });
+
+  } catch (error) {
+    next(error);
+  }
+};
 
 // ==================== Reject Query by Ops ==================================
-
 export const rejectQueryByOps = async (req, res, next) => {
   try {
     const { reason } = req.body;
@@ -1208,19 +1480,19 @@ export const rejectQueryByOps = async (req, res, next) => {
     query.agentStatus = "Revision Requested";
     query.rejectionNote = reason;
 
-   query.activityLog.push({action: "Query Rejected", performedBy: req.user.name || "Operations", timestamp: new Date()});
+    query.activityLog.push({ action: "Query Rejected", performedBy: req.user.name || "Operations", timestamp: new Date() });
 
-   await Notification.create({
-  user: query.agent,
-  type: "warning",
-  title: "Query Rejected",
-  message: `Your query ${query.queryId} has been rejected by operations.`,
-  meta: {
-    queryId: query._id,
-    queryNumber: query.queryId,
-    reason: reason || "",
-  },
-});
+    await createOpsSideNotification(req, {
+      user: query.agent,
+      type: "warning",
+      title: "Query Rejected",
+      message: `Your query ${query.queryId} has been rejected by operations.`,
+      meta: {
+        queryId: query._id,
+        queryNumber: query.queryId,
+        reason: reason || "",
+      },
+    });
 
     await query.save();
 
@@ -1264,16 +1536,16 @@ export const acceptQueryByOps = async (req, res, next) => {
 
     addLogIfNotExists(query, "Query Accepted", "Operations");
 
-    await Notification.create({
-  user: query.agent,
-  type: "success",
-  title: "Query Accepted",
-  message: `Your query ${query.queryId} has been accepted by operations.`,
-  meta: {
-    queryId: query._id,
-    queryNumber: query.queryId,
-  },
-});
+    await createOpsSideNotification(req, {
+      user: query.agent,
+      type: "success",
+      title: "Query Accepted",
+      message: `Your query ${query.queryId} has been accepted by operations.`,
+      meta: {
+        queryId: query._id,
+        queryNumber: query.queryId,
+      },
+    });
 
     await query.save();
 
@@ -1287,7 +1559,7 @@ export const acceptQueryByOps = async (req, res, next) => {
 export const reviewTravelerDocumentsByOps = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const { action, reason = "", remarks = "", issues = [] } = req.body;
+    const { action, reason = "", remarks = "", issues = [], verifiedDocuments = [] } = req.body;
 
     const query = await TravelQuery.findById(id);
 
@@ -1308,6 +1580,16 @@ export const reviewTravelerDocumentsByOps = async (req, res, next) => {
     const normalizedAction = String(action || "").trim().toUpperCase();
     const reviewerName = req.user?.name || "Operations";
     const reviewedAt = new Date();
+    const normalizedVerifiedDocuments = Array.isArray(verifiedDocuments)
+      ? verifiedDocuments
+        .map((document) => ({
+          travelerId: String(document?.travelerId || "").trim(),
+          travelerName: String(document?.travelerName || "").trim(),
+          documentKey: String(document?.documentKey || "").trim(),
+          documentLabel: String(document?.documentLabel || "").trim(),
+        }))
+        .filter((document) => document.travelerId && document.documentKey)
+      : [];
 
     if (normalizedAction === "APPROVE") {
       query.travelerDocumentVerification = {
@@ -1319,6 +1601,7 @@ export const reviewTravelerDocumentsByOps = async (req, res, next) => {
         rejectionReason: "",
         rejectionRemarks: "",
         issues: [],
+        verifiedDocuments: normalizedVerifiedDocuments,
       };
       query.activityLog.push({
         action: "Traveler Documents Verified",
@@ -1336,7 +1619,7 @@ export const reviewTravelerDocumentsByOps = async (req, res, next) => {
 
       await query.save();
 
-      await Notification.create({
+      await createOpsSideNotification(req, {
         user: query.agent,
         type: "success",
         title: "Traveler Documents Verified",
@@ -1360,13 +1643,13 @@ export const reviewTravelerDocumentsByOps = async (req, res, next) => {
       const rejectionRemarks = String(remarks || "").trim();
       const normalizedIssues = Array.isArray(issues)
         ? issues
-            .map((issue) => ({
-              travelerId: String(issue?.travelerId || "").trim(),
-              travelerName: String(issue?.travelerName || "").trim(),
-              documentKey: String(issue?.documentKey || "").trim(),
-              documentLabel: String(issue?.documentLabel || "").trim(),
-            }))
-            .filter((issue) => issue.travelerId && issue.documentKey)
+          .map((issue) => ({
+            travelerId: String(issue?.travelerId || "").trim(),
+            travelerName: String(issue?.travelerName || "").trim(),
+            documentKey: String(issue?.documentKey || "").trim(),
+            documentLabel: String(issue?.documentLabel || "").trim(),
+          }))
+          .filter((issue) => issue.travelerId && issue.documentKey)
         : [];
 
       if (!rejectionReason) {
@@ -1382,6 +1665,14 @@ export const reviewTravelerDocumentsByOps = async (req, res, next) => {
         rejectionReason,
         rejectionRemarks,
         issues: normalizedIssues,
+        verifiedDocuments: normalizedVerifiedDocuments.filter(
+          (document) =>
+            !normalizedIssues.some(
+              (issue) =>
+                issue.travelerId === document.travelerId &&
+                issue.documentKey === document.documentKey,
+            ),
+        ),
       };
       query.activityLog.push({
         action: "Traveler Documents Rejected",
@@ -1399,7 +1690,7 @@ export const reviewTravelerDocumentsByOps = async (req, res, next) => {
 
       await query.save();
 
-      await Notification.create({
+      await createOpsSideNotification(req, {
         user: query.agent,
         type: "warning",
         title: "Traveler Documents Rejected",
@@ -1447,7 +1738,7 @@ export const reviewTravelerDocumentsByOps = async (req, res, next) => {
 //   performedBy: "Ops",
 //   timestamp: new Date()
 // });
- 
+
 //     await query.save();
 
 //     res.json({ success: true, message: "Query accepted" });
@@ -1500,7 +1791,8 @@ export const sendQuotation = async (req, res, next) => {
     }
 
     // optional safety
-    if (query.quotationStatus === "Sent_To_Agent") {return res.status(400).json({
+    if (query.quotationStatus === "Sent_To_Agent") {
+      return res.status(400).json({
         success: false,
         message: "Quotation already sent"
       });
@@ -1539,17 +1831,30 @@ export const passToAdmin = async (req, res, next) => {
     }
 
     const note = String(req.body?.note || "").trim();
+    const actorName = req.user?.name || req.user?.email || "Operations";
+    const isOperationManagerActor = req.user?.role === "operation_manager";
+    const targetRole = isOperationManagerActor ? "admin" : "operation_manager";
+    const activityAction = isOperationManagerActor ? "Passed to Admin" : "Passed to Manager";
+    const notificationTitle = isOperationManagerActor
+      ? "Admin review requested"
+      : "Ops manager review requested";
+    const notificationMessage = isOperationManagerActor
+      ? `${query.queryId} was passed to admin by ${actorName}.`
+      : `${query.queryId} was passed to ops manager by ${actorName}.`;
+    const notificationLink = isOperationManagerActor
+      ? "/admin/dashboard"
+      : "/ops/order-acceptance";
+    const senderRole = isOperationManagerActor ? "operation_manager" : "operations";
 
     if (!note) {
-      return next(new ApiError(400, "Note for admin is required"));
+      return next(new ApiError(400, `Note for ${isOperationManagerActor ? "admin" : "manager"} is required`));
     }
 
-    const actorName = req.user?.name || req.user?.email || "Operations";
     const createdAt = new Date();
 
     query.activityLog = Array.isArray(query.activityLog) ? query.activityLog : [];
     query.activityLog.push({
-      action: "Passed to Admin",
+      action: activityAction,
       performedBy: actorName,
       timestamp: createdAt,
     });
@@ -1571,7 +1876,7 @@ export const passToAdmin = async (req, res, next) => {
       thread: [
         ...(Array.isArray(currentAdminCoordination.thread) ? currentAdminCoordination.thread : []),
         {
-          senderRole: "operations",
+          senderRole,
           senderId: req.user?.id || null,
           senderName: actorName,
           message: note,
@@ -1583,32 +1888,51 @@ export const passToAdmin = async (req, res, next) => {
     await query.save();
 
     const adminUsers = await Auth.find({
-      role: "admin",
+      role: targetRole,
       isDeleted: { $ne: true },
       accountStatus: { $ne: "Inactive" },
     }).select("_id");
 
     if (adminUsers.length) {
-      await Notification.insertMany(
-        adminUsers.map((adminUser) => ({
-          user: adminUser._id,
-          type: "warning",
-          title: "Ops escalation received",
-          message: `${query.queryId} was passed to admin by ${actorName}.`,
-          link: "/ops/order-acceptance",
-          meta: {
-            queryId: query._id,
-            queryNumber: query.queryId,
-            note,
-            source: "ops_order_acceptance",
-          },
-        })),
-      );
+      const notificationPayloads = adminUsers.map((adminUser) => ({
+        user: adminUser._id,
+        type: "warning",
+        title: notificationTitle,
+        message: notificationMessage,
+        link: notificationLink,
+        meta: {
+          queryId: query._id,
+          queryNumber: query.queryId,
+          note,
+          source: "ops_order_acceptance",
+        },
+      }));
+
+      if (isOperationManagerActor) {
+        await Notification.insertMany(notificationPayloads);
+      } else {
+        await createOpsSideNotifications(req, notificationPayloads, {
+          adminPayloads: [
+            {
+              type: "warning",
+              title: "Ops manager review requested",
+              message: `${query.queryId} was passed to ops manager by ${actorName}.`,
+              link: "/admin/dashboard",
+              meta: {
+                queryId: query._id,
+                queryNumber: query.queryId,
+                note,
+                source: "ops_order_acceptance_admin_copy",
+              },
+            },
+          ],
+        });
+      }
     }
 
     res.json({
       success: true,
-      message: "Query passed to admin successfully",
+      message: `Query passed to ${isOperationManagerActor ? "admin" : "manager"} successfully`,
       query,
     });
   } catch (error) {
@@ -1635,7 +1959,7 @@ export const updateQueryStatus = async (req, res, next) => {
     query.status = status;
     await query.save();
 
-    return res.json({message: "Query status updated successfully", query});
+    return res.json({ message: "Query status updated successfully", query });
   } catch (error) {
     next(error);
   }
@@ -1645,39 +1969,98 @@ export const updateQueryStatus = async (req, res, next) => {
 
 export const getOrderAcceptanceQueries = async (req, res, next) => {
   try {
-  const assignmentFilter = await getAssignedQueryFilter(req);
+    const assignmentFilter = await getAssignedQueryFilter(req);
+    const normalizedUserId = String(req.user?.id || "").trim();
+    const isOperationsUser = req.user?.role === "operations";
+    const sortOrderAcceptanceQueries = (items = []) =>
+      [...items].sort((left, right) => {
+        const leftPriority =
+          ORDER_ACCEPTANCE_STATUS_PRIORITY[String(left?.opsStatus || "").trim()] ?? Number.MAX_SAFE_INTEGER;
+        const rightPriority =
+          ORDER_ACCEPTANCE_STATUS_PRIORITY[String(right?.opsStatus || "").trim()] ?? Number.MAX_SAFE_INTEGER;
 
-  const queries = await TravelQuery.find({
-  ...assignmentFilter,
-  opsStatus: { 
-    $in: ["Pending_Accept", "New_Query", "Rejected", "Revision_Query", "Booking_Accepted", "Invoice_Requested"]
-  }
-})
-.populate("agent", "name companyName email phone")
-.populate("assignedTo", "name email")
-.sort({ createdAt: -1 });
+        if (leftPriority !== rightPriority) {
+          return leftPriority - rightPriority;
+        }
+
+        return new Date(right?.createdAt || 0).getTime() - new Date(left?.createdAt || 0).getTime();
+      });
+
+    let queries = [];
+    const metricQueries = await TravelQuery.find({
+      ...assignmentFilter,
+    }).select("createdAt activityLog assignedTo");
+
+    if (isOperationsUser && normalizedUserId) {
+      const visibleQueries = await TravelQuery.find({
+        opsStatus: {
+          $in: ORDER_ACCEPTANCE_VISIBLE_STATUSES,
+        },
+        $or: [
+          { assignedTo: new mongoose.Types.ObjectId(normalizedUserId) },
+          { "reassignmentHistory.fromUser": new mongoose.Types.ObjectId(normalizedUserId) },
+        ],
+      })
+        .populate("agent", "name companyName email phone")
+        .populate("assignedTo", "name email")
+        .sort({ createdAt: -1 });
+
+      queries = visibleQueries.filter((query) => {
+        const assignedUserId = getAssignedQueryUserId(query);
+        return (
+          assignedUserId === normalizedUserId ||
+          wasReassignedAwayFromOperationsUser(query, normalizedUserId)
+        );
+      });
+      queries = sortOrderAcceptanceQueries(queries);
+    } else {
+      queries = await TravelQuery.find({
+        ...assignmentFilter,
+        opsStatus: {
+          $in: ORDER_ACCEPTANCE_VISIBLE_STATUSES,
+        },
+      })
+        .populate("agent", "name companyName email phone")
+        .populate("assignedTo", "name email")
+        .sort({ createdAt: -1 });
+      queries = sortOrderAcceptanceQueries(queries);
+    }
 
     // Pending orders count
- const pendingOrders = await TravelQuery.countDocuments({
-  ...assignmentFilter,
-  opsStatus: { $in: ["New_Query", "Pending_Accept", "Revision_Query"] }
-});
+    const pendingOrders = await TravelQuery.countDocuments({
+      ...assignmentFilter,
+      opsStatus: { $in: ORDER_ACCEPTANCE_PENDING_STATUSES }
+    });
 
+    let avgResponseTime = "0m";
+    const resolutionDurations = metricQueries
+      .map((query) => {
+        const acceptedAt = getQueryAcceptedAt(query);
+        const completedAt = getFinalOpsCompletionAt(query);
 
- let avgResponseTime = "0m";
-  if (queries.length > 0) {
-  const totalTime = queries.reduce((sum, q) => {
-    return sum + (new Date() - new Date(q.createdAt));
-  }, 0);
-  const avgMs = totalTime / queries.length;
-  const totalMinutes = Math.floor(avgMs / (1000 * 60));
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-  avgResponseTime =
-    hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
-}
+        if (!isValidDate(acceptedAt) || !isValidDate(completedAt)) {
+          return null;
+        }
 
-    res.status(200).json({ success: true, pendingOrders, avgResponseTime,queries });
+        const diffInMinutes = Math.floor(
+          (completedAt.getTime() - acceptedAt.getTime()) / (1000 * 60),
+        );
+
+        return diffInMinutes >= 0 ? diffInMinutes : null;
+      })
+      .filter((value) => value !== null);
+
+    if (resolutionDurations.length > 0) {
+      const totalMinutes = Math.floor(
+        resolutionDurations.reduce((sum, value) => sum + value, 0) / resolutionDurations.length,
+      );
+      const hours = Math.floor(totalMinutes / 60);
+      const minutes = totalMinutes % 60;
+      avgResponseTime =
+        hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+    }
+
+    res.status(200).json({ success: true, pendingOrders, avgResponseTime, queries });
 
   } catch (error) {
     next(error);
@@ -1691,10 +2074,12 @@ export const createQuotation = async (req, res, next) => {
 
     const {
       quotationId,
+      editExistingQuotation = false,
       queryId,
       validTill,
       pricing,
-      sendVia = [] ,
+      sendVia = [],
+      selectedAction = "",
       services = [],
       opsPercent = 0,
       opsAmount = 0,
@@ -1716,10 +2101,22 @@ export const createQuotation = async (req, res, next) => {
       ? additionalNotes.map((item) => String(item || "").trim()).filter(Boolean)
       : [];
     const normalizedDayWiseItinerary = normalizeDayWiseItinerary(dayWiseItinerary);
+    const sendViaArray = Array.isArray(sendVia)
+      ? sendVia.map((channel) => String(channel || "").trim().toLowerCase()).filter(Boolean)
+      : [String(sendVia || "").trim().toLowerCase()].filter(Boolean);
+    const normalizedSelectedAction = String(selectedAction || "").trim();
+    const shouldSendDashboardNotification =
+      sendViaArray.includes("dashboard") ||
+      sendViaArray.includes("dashboard_notification") ||
+      normalizedSelectedAction === "Dashboard Notification";
+    const shouldSendEmail = sendViaArray.includes("email");
+    const shouldSendWhatsApp = sendViaArray.includes("whatsapp");
+    const shouldMarkAsSent =
+      shouldSendDashboardNotification || shouldSendEmail || shouldSendWhatsApp;
 
     if (!services.length) {
-  return next(new ApiError(400, "No services selected"));
-}
+      return next(new ApiError(400, "No services selected"));
+    }
 
     const quoteCategory =
       pricing?.quoteCategory === "international"
@@ -1765,7 +2162,7 @@ export const createQuotation = async (req, res, next) => {
       return next(new ApiError(400, "Required fields are missing"));
     }
 
-   const query = await TravelQuery.findOne({ queryId }).populate("agent");
+    const query = await TravelQuery.findOne({ queryId }).populate("agent");
 
     if (!query) {
       return next(new ApiError(404, "Query not found"));
@@ -1775,181 +2172,330 @@ export const createQuotation = async (req, res, next) => {
       return next(new ApiError(403, "Not authorized"));
     }
 
-   let quotation = null;
+    let quotation = null;
 
-if (quotationId) {
-  const requestedQuotation = await Quotation.findById(quotationId);
-  if (
-    requestedQuotation &&
-    String(requestedQuotation.queryId) === String(query._id) &&
-    requestedQuotation.status === "Pending"
-  ) {
-    quotation = requestedQuotation;
-  }
-}
+    if (quotationId) {
+      const requestedQuotation = await Quotation.findById(quotationId);
+      if (
+        requestedQuotation &&
+        String(requestedQuotation.queryId) === String(query._id) &&
+        (requestedQuotation.status === "Pending" || Boolean(editExistingQuotation))
+      ) {
+        quotation = requestedQuotation;
+      }
+    }
 
-if (!quotation) {
-  quotation = await Quotation.findOne({
-    queryId: query._id,
-    status: "Pending",
-  }).sort({ createdAt: -1 });
-}
+    if (!quotation) {
+      quotation = await Quotation.findOne({
+        queryId: query._id,
+        status: "Pending",
+      }).sort({ createdAt: -1 });
+    }
 
-let quotationNumber = quotation?.quotationNumber || "";
+    let quotationNumber = quotation?.quotationNumber || "";
 
-if (!quotationNumber) {
-  quotationNumber = await generateUniqueQuotationNumber();
-}
+    if (!quotationNumber) {
+      quotationNumber = await generateUniqueQuotationNumber();
+    }
 
 
-const baseAmount = pricing?.baseAmount;
-const packageTemplateAmount = Number(pricing?.packageTemplateAmount || 0);
-const taxPayload = req.body.tax || {};
-const tourismAmount = Number(taxPayload?.tourismAmount ?? 0);
-const servicesTotal = resolvedServices.reduce((sum, s) => {return sum + Number(s.totalInInr || 0)}, 0);
-const serviceCurrencyBreakdown = buildServiceCurrencyBreakdown(resolvedServices);
-const opsMarkupBasisAmount = Number(servicesTotal + packageTemplateAmount);
+    const baseAmount = pricing?.baseAmount;
+    const packageTemplateAmount = Number(pricing?.packageTemplateAmount || 0);
+    const taxPayload = req.body.tax || {};
+    const tourismAmount = Number(taxPayload?.tourismAmount ?? 0);
+    const servicesTotal = resolvedServices.reduce((sum, s) => { return sum + Number(s.totalInInr || 0) }, 0);
+    const serviceCurrencyBreakdown = buildServiceCurrencyBreakdown(resolvedServices);
+    const opsMarkupBasisAmount = Number(servicesTotal + packageTemplateAmount);
 
     const base = Number(baseAmount || 0);
     console.log("🔥 BASE:", base);
     const ops = Number(opsPercent)
     const opsAmt = Number(opsAmount)
     let finalOpsAmount = 0;
-   if (opsAmt > 0) {
-  finalOpsAmount = opsAmt;
-  } else if (ops > 0) {
-  finalOpsAmount = (opsMarkupBasisAmount * ops) / 100;
-  }
+    if (opsAmt > 0) {
+      finalOpsAmount = opsAmt;
+    } else if (ops > 0) {
+      finalOpsAmount = (opsMarkupBasisAmount * ops) / 100;
+    }
 
-  console.log("🔥 OPS FINAL:", {
-  opsPercent: ops,
-  opsAmount: opsAmt,
-  finalOpsAmount
-});
+    console.log("🔥 OPS FINAL:", {
+      opsPercent: ops,
+      opsAmount: opsAmt,
+      finalOpsAmount
+    });
 
     const service = Number(serviceCharge || 0);
     const handling = Number(handlingFee || 0);
     const tourismAmt = Number(tourismAmount);
-     const subTotal = Number(
+    const subTotal = Number(
       servicesTotal + packageTemplateAmount + finalOpsAmount + service + handling
-     );
-     
-const gstPercent = Number(taxPayload?.gstPercent || 0);
-const tcsPercent = Number(taxPayload?.tcsPercent || 0);
-const finalGstAmount = Number(taxPayload?.gstAmount || 0);
-const finalTcsAmount = Number(taxPayload?.tcsAmount || 0);
+    );
 
-const taxTotal = Number(finalGstAmount + finalTcsAmount + tourismAmount);
+    const gstPercent = Number(taxPayload?.gstPercent || 0);
+    const tcsPercent = Number(taxPayload?.tcsPercent || 0);
+    const finalGstAmount = Number(taxPayload?.gstAmount || 0);
+    const finalTcsAmount = Number(taxPayload?.tcsAmount || 0);
+
+    const taxTotal = Number(finalGstAmount + finalTcsAmount + tourismAmount);
     // const subTotal = base + opsAmt + service + handling;
-const totalAmount = Number(subTotal + taxTotal);
+    const totalAmount = Number(subTotal + taxTotal);
 
-const formattedServices = resolvedServices.map(s => ({
-  serviceId: s.serviceId,
-  supplierId: s.supplierId || undefined,
-  supplierName: s.supplierName || "",
-  dmcId: s.dmcId || s.supplierId || undefined,
-  dmcName: s.dmcName || "",
-  type: s.type,
-  title: s.title,
+    const formattedServices = resolvedServices.map(s => ({
+      serviceId: s.serviceId,
+      supplierId: s.supplierId || undefined,
+      supplierName: s.supplierName || "",
+      dmcId: s.dmcId || s.supplierId || undefined,
+      dmcName: s.dmcName || "",
+      type: s.type || s.serviceType || s.category || "",
+      title:
+        s.title ||
+        s.serviceName ||
+        s.name ||
+        s.hotelName ||
+        s.activityName ||
+        s.sightseeingName ||
+        s.transferName ||
+        s.description ||
+        "Service",
 
-  city: s.city,
-  country: s.country,
-  description: s.description,
-  serviceDate: s.serviceDate || undefined,
+      city: s.city,
+      country: s.country,
+      description: s.description,
+      serviceDate: s.serviceDate || undefined,
 
-  roomCategory: s.roomCategory,
-  roomType: s.roomType,
-  hotelCategory: s.hotelCategory,
-  bedType: normalizeBedType(s.bedType),
-  adults: s.adults,
-  children: s.children,
-  infants: s.infants,
+      roomCategory: s.roomCategory,
+      roomType: s.roomType,
+      hotelCategory: s.hotelCategory,
+      bedType: normalizeBedType(s.bedType),
+      adults: s.adults,
+      children: s.children,
+      infants: s.infants,
 
-  // HOTEL
-  nights: s.nights || 1,
-  adults: s.adults || 0,
-  children: s.children || 0,
-  infants: s.infants || 0,
-  rooms: s.rooms || 1,
-  bedType: normalizeBedType(s.bedType),
+      // HOTEL
+      nights: s.nights || 1,
+      adults: s.adults || 0,
+      children: s.children || 0,
+      infants: s.infants || 0,
+      rooms: s.rooms || 1,
+      bedType: normalizeBedType(s.bedType),
 
-  // TRANSFER
-  vehicleType: s.vehicleType,
-  passengerCapacity: s.passengerCapacity,
-  luggageCapacity: s.luggageCapacity,
-  days: s.days || 1,
+      // TRANSFER
+      vehicleType: s.vehicleType,
+      passengerCapacity: s.passengerCapacity,
+      luggageCapacity: s.luggageCapacity,
+      days: s.days || 1,
 
-  // ACTIVITY
-  pax: s.pax || 1,
+      // ACTIVITY
+      pax: s.pax || 1,
 
-  // PRICE
-  currency: s.currency || "INR",
-  price: s.price || 0,
-  exchangeRate: Number(s.exchangeRate || 1),
-  priceInInr: Number(s.priceInInr || 0),
-  extraAdult: Boolean(s.extraAdult),
-  childWithBed: Boolean(s.childWithBed),
-  childWithoutBed: Boolean(s.childWithoutBed),
-  awebRate: Number(s.awebRate || 0),
-  cwebRate: Number(s.cwebRate || 0),
-  cwoebRate: Number(s.cwoebRate || 0),
-  total: s.total || 0,
-  totalInInr: Number(s.totalInInr || 0),
-  usageType: normalizeUsageType(s.usageType)
-}));
+      // PRICE
+      currency: s.currency || "INR",
+      price: s.price || 0,
+      exchangeRate: Number(s.exchangeRate || 1),
+      priceInInr: Number(s.priceInInr || 0),
+      extraAdult: Boolean(s.extraAdult),
+      childWithBed: Boolean(s.childWithBed),
+      childWithoutBed: Boolean(s.childWithoutBed),
+      awebRate: Number(s.awebRate || 0),
+      cwebRate: Number(s.cwebRate || 0),
+      cwoebRate: Number(s.cwoebRate || 0),
+      total: s.total || 0,
+      totalInInr: Number(s.totalInInr || 0),
+      usageType: normalizeUsageType(s.usageType)
+    }));
 
-console.log("🔥 DEBUG:", {
-  subTotal,
-  gstPercent,
-  finalGstAmount,
-  tcsPercent,
-  finalTcsAmount
-});
+    console.log("🔥 DEBUG:", {
+      subTotal,
+      gstPercent,
+      finalGstAmount,
+      tcsPercent,
+      finalTcsAmount
+    });
 
-  if (quotation) {
-    quotation.quotationNumber = quotationNumber;
-    quotation.queryId = query._id;
-    quotation.agent = query.agent;
-    quotation.createdBy = req.user.id;
-    quotation.inclusions = normalizedInclusions;
-    quotation.exclusions = normalizedExclusions;
-    quotation.additionalNotes = normalizedAdditionalNotes;
-    quotation.dayWiseItinerary = normalizedDayWiseItinerary;
-    quotation.services = formattedServices;
-    quotation.pricing = {
-      currency: "INR",
-      quoteCategory,
-      baseAmount: base,
-      subTotal: servicesTotal,
-      packageTemplateAmount,
-      serviceCurrencyBreakdown,
-      opsMarkup: {
-        percent: ops,
-        amount: finalOpsAmount,
-      },
-      opsCharges: {
-        serviceCharge: service,
-        handlingFee: handling,
-      },
-      tax: {
-        gst: {
-          percent: gstPercent,
-          amount: finalGstAmount,
+    if (quotation) {
+      quotation.quotationNumber = quotationNumber;
+      quotation.queryId = query._id;
+      quotation.agent = query.agent;
+      quotation.createdBy = req.user.id;
+      quotation.inclusions = normalizedInclusions;
+      quotation.exclusions = normalizedExclusions;
+      quotation.additionalNotes = normalizedAdditionalNotes;
+      quotation.dayWiseItinerary = normalizedDayWiseItinerary;
+      quotation.services = formattedServices;
+      quotation.pricing = {
+        currency: "INR",
+        quoteCategory,
+        baseAmount: base,
+        subTotal: servicesTotal,
+        packageTemplateAmount,
+        serviceCurrencyBreakdown,
+        opsMarkup: {
+          percent: ops,
+          amount: finalOpsAmount,
         },
-        tcs: {
-          percent: tcsPercent,
-          amount: finalTcsAmount,
+        opsCharges: {
+          serviceCharge: service,
+          handlingFee: handling,
         },
-        tourismFee: {
-          amount: tourismAmount,
+        tax: {
+          gst: {
+            percent: gstPercent,
+            amount: finalGstAmount,
+          },
+          tcs: {
+            percent: tcsPercent,
+            amount: finalTcsAmount,
+          },
+          tourismFee: {
+            amount: tourismAmount,
+          },
+          totalTax: taxTotal,
         },
-        totalTax: taxTotal,
+        totalAmount: totalAmount,
+      };
+      quotation.validTill = validTill;
+      const previousQuotationStatus = String(quotation.status || "").trim();
+      quotation.status = shouldMarkAsSent
+        ? "Quote Sent"
+        : (Boolean(editExistingQuotation) && previousQuotationStatus && previousQuotationStatus !== "Pending"
+          ? previousQuotationStatus
+          : "Pending");
+      await quotation.save();
+
+      const quoteDetails = {
+        name: query.agent?.name,
+        agentName: query.agent?.name,
+        destination: query.destination,
+        days: query.totalDays || 5,
+        price: totalAmount,
+        totalAmount: totalAmount,
+        validTill: new Date(validTill).toDateString(),
+        phone: query.agent?.phone,
+        sellerBankDetails: [
+          { label: "Bank Name", value: "HDFC Bank" },
+          { label: "A/c Holder Name", value: "Leela Travels" },
+          { label: "A/c No.", value: "50200103968171" },
+          { label: "IFSC", value: "HDFC0004413" },
+          { label: "Branch", value: "RAMPHAL CHOWK SEC VII DWARKA" },
+        ],
+      };
+
+      if (isNaN(totalAmount)) {
+        return next(new ApiError(400, "Total amount calculation failed"));
+      }
+
+      const deliveryWarnings = [];
+
+      if (shouldSendEmail) {
+        try {
+          await sendAgentClientQuotationMail(
+            query.agent.email,
+            buildAgentQuotationEmailPayload({ quotation, query }),
+          );
+        } catch (emailError) {
+          console.error("Quotation email send failed:", emailError);
+          deliveryWarnings.push(
+            `Quotation saved, but email delivery failed. ${getEmailDeliveryErrorMessage(emailError)}`,
+          );
+        }
+      }
+
+      if (shouldSendWhatsApp) {
+        try {
+          await sendWhatsAppMessage(quoteDetails);
+        } catch (whatsappError) {
+          console.error("Quotation WhatsApp send failed:", whatsappError);
+          deliveryWarnings.push(getWhatsAppDeliveryErrorMessage(whatsappError));
+        }
+      }
+
+      if (shouldSendDashboardNotification) {
+        await createOpsSideNotification(req, {
+          user: query.agent._id,
+          type: "success",
+          title: "Quotation Received",
+          message: `Quotation ${quotation.quotationNumber} has been sent for ${query.destination}.`,
+          link: "/agent/queries",
+          meta: {
+            quotationId: quotation._id,
+            queryId: query._id,
+            quotationNumber: quotation.quotationNumber,
+            destination: query.destination,
+            totalAmount,
+          },
+        });
+      }
+
+      if (shouldMarkAsSent) {
+        query.quotationStatus = "Sent_To_Agent";
+        if (!["Confirmed", "Vouchered", "Payment_Completed"].includes(query.opsStatus)) {
+          query.opsStatus = "Booking_Accepted";
+        }
+        query.agentStatus = "Quote Sent";
+        addLogIfNotExists(query, "Quote Sent", "Ops Team");
+
+        await query.save();
+      }
+
+      return res.status(201).json({
+        success: true,
+        message: shouldMarkAsSent
+          ? "Quotation created and sent successfully"
+          : "Quotation saved successfully",
+        quotation,
+        warnings: deliveryWarnings,
+        sentToAgent: shouldMarkAsSent,
+      });
+    }
+
+    const createdQuotation = await Quotation.create({
+      quotationNumber,
+      queryId: query._id,
+      agent: query.agent,
+      createdBy: req.user.id,
+
+      inclusions: normalizedInclusions,
+      exclusions: normalizedExclusions,
+      additionalNotes: normalizedAdditionalNotes,
+      dayWiseItinerary: normalizedDayWiseItinerary,
+
+      services: formattedServices,   // ✅ ADD THIS
+
+      pricing: {
+        currency: "INR",
+        quoteCategory,
+        baseAmount: base,
+        subTotal: servicesTotal,
+        packageTemplateAmount,
+        serviceCurrencyBreakdown,
+        opsMarkup: {
+          percent: ops,
+          amount: finalOpsAmount,
+        },
+        opsCharges: {
+          serviceCharge: service,
+          handlingFee: handling
+        },
+        tax: {
+          gst: {
+            percent: gstPercent,
+            amount: finalGstAmount
+          },
+          tcs: {
+            percent: tcsPercent,
+            amount: finalTcsAmount
+          },
+          tourismFee: {
+            amount: tourismAmount
+          },
+          totalTax: taxTotal
+        },
+        totalAmount: totalAmount
       },
-      totalAmount: totalAmount,
-    };
-    quotation.validTill = validTill;
-    quotation.status = "Quote Sent";
-    await quotation.save();
+
+      validTill,
+      status: shouldMarkAsSent ? "Quote Sent" : "Pending"
+    });
 
     const quoteDetails = {
       name: query.agent?.name,
@@ -1960,20 +2506,26 @@ console.log("🔥 DEBUG:", {
       totalAmount: totalAmount,
       validTill: new Date(validTill).toDateString(),
       phone: query.agent?.phone,
+      sellerBankDetails: [
+        { label: "Bank Name", value: "HDFC Bank" },
+        { label: "A/c Holder Name", value: "Leela Travels" },
+        { label: "A/c No.", value: "50200103968171" },
+        { label: "IFSC", value: "HDFC0004413" },
+        { label: "Branch", value: "RAMPHAL CHOWK SEC VII DWARKA" },
+      ],
     };
 
     if (isNaN(totalAmount)) {
       return next(new ApiError(400, "Total amount calculation failed"));
     }
-
-    const sendViaArray = Array.isArray(sendVia) ? sendVia : [sendVia];
+    // 🔥 SEND EMAIL / WHATSAPP BASED ON USER SELECTION
     const deliveryWarnings = [];
 
-    if (sendViaArray.includes("email")) {
+    if (shouldSendEmail) {
       try {
         await sendAgentClientQuotationMail(
           query.agent.email,
-          buildAgentQuotationEmailPayload({ quotation, query }),
+          buildAgentQuotationEmailPayload({ quotation: createdQuotation, query }),
         );
       } catch (emailError) {
         console.error("Quotation email send failed:", emailError);
@@ -1983,7 +2535,7 @@ console.log("🔥 DEBUG:", {
       }
     }
 
-    if (sendViaArray.includes("whatsapp")) {
+    if (shouldSendWhatsApp) {
       try {
         await sendWhatsAppMessage(quoteDetails);
       } catch (whatsappError) {
@@ -1992,159 +2544,44 @@ console.log("🔥 DEBUG:", {
       }
     }
 
-    await Notification.create({
-      user: query.agent._id,
-      type: "success",
-      title: "Quotation Received",
-      message: `Quotation ${quotation.quotationNumber} has been sent for ${query.destination}.`,
-      link: "/agent/queries",
-      meta: {
-        quotationId: quotation._id,
-        queryId: query._id,
-        quotationNumber: quotation.quotationNumber,
-        destination: query.destination,
-        totalAmount,
-      },
-    });
-
-    query.quotationStatus = "Sent_To_Agent";
-    if (!["Confirmed", "Vouchered"].includes(query.opsStatus)) {
-      query.opsStatus = "Booking_Accepted";
+    if (shouldSendDashboardNotification) {
+      await createOpsSideNotification(req, {
+        user: query.agent._id,
+        type: "success",
+        title: "Quotation Received",
+        message: `Quotation ${createdQuotation.quotationNumber} has been sent for ${query.destination}.`,
+        link: "/agent/queries",
+        meta: {
+          quotationId: createdQuotation._id,
+          queryId: query._id,
+          quotationNumber: createdQuotation.quotationNumber,
+          destination: query.destination,
+          totalAmount,
+        },
+      });
     }
-    query.agentStatus = "Quote Sent";
-    addLogIfNotExists(query, "Quote Sent", "Ops Team");
 
-    await query.save();
+    if (shouldMarkAsSent) {
+      query.quotationStatus = "Sent_To_Agent";
+      if (!["Confirmed", "Vouchered", "Payment_Completed"].includes(query.opsStatus)) {
+        query.opsStatus = "Booking_Accepted";
+      }
+      query.agentStatus = "Quote Sent";
 
-    return res.status(201).json({
-      success: true,
-      message: "Quotation created successfully",
-      quotation,
-      warnings: deliveryWarnings,
-    });
-  }
+      // Keep "Quote Sent" as a single timeline event even if multiple quotations are created/sent.
+      addLogIfNotExists(query, "Quote Sent", "Ops Team");
 
-  const createdQuotation = await Quotation.create({
-  quotationNumber,
-  queryId: query._id,
-  agent: query.agent,
-  createdBy: req.user.id,
-
-  inclusions: normalizedInclusions,
-  exclusions: normalizedExclusions,
-  additionalNotes: normalizedAdditionalNotes,
-  dayWiseItinerary: normalizedDayWiseItinerary,
-
-  services: formattedServices,   // ✅ ADD THIS
-
-  pricing: {
-    currency: "INR",
-    quoteCategory,
-    baseAmount: base,
-    subTotal: servicesTotal,
-    packageTemplateAmount,
-    serviceCurrencyBreakdown,
-    opsMarkup:{
-    percent: ops,
-    amount:finalOpsAmount,
-    },
-    opsCharges: {
-      serviceCharge: service,
-      handlingFee: handling
-    },
-   tax: {
-  gst: {
-    percent: gstPercent,
-    amount: finalGstAmount
-  },
-  tcs: {
-    percent: tcsPercent,
-    amount: finalTcsAmount
-  },
-  tourismFee: {
-    amount: tourismAmount
-  },
-  totalTax: taxTotal
-},
-totalAmount: totalAmount
-},
-
-  validTill,
-  status: "Quote Sent"
-});
-
-const quoteDetails = {
-  name: query.agent?.name,
-  agentName: query.agent?.name,
-  destination: query.destination,
-  days: query.totalDays || 5,
-  price: totalAmount,
-  totalAmount: totalAmount,
-  validTill: new Date(validTill).toDateString(),
-  phone: query.agent?.phone,
-};
-
-if (isNaN(totalAmount)) {
-  return next(new ApiError(400, "Total amount calculation failed"));
-}
-// 🔥 SEND EMAIL / WHATSAPP BASED ON USER SELECTION
-const sendViaArray = Array.isArray(sendVia) ? sendVia : [sendVia];
-const deliveryWarnings = [];
-
-if (sendViaArray.includes("email")) {
-  try {
-    await sendAgentClientQuotationMail(
-      query.agent.email,
-      buildAgentQuotationEmailPayload({ quotation: createdQuotation, query }),
-    );
-  } catch (emailError) {
-    console.error("Quotation email send failed:", emailError);
-    deliveryWarnings.push(
-      `Quotation saved, but email delivery failed. ${getEmailDeliveryErrorMessage(emailError)}`,
-    );
-  }
-}
-
-if (sendViaArray.includes("whatsapp")) {
-  try {
-    await sendWhatsAppMessage(quoteDetails);
-  } catch (whatsappError) {
-    console.error("Quotation WhatsApp send failed:", whatsappError);
-    deliveryWarnings.push(getWhatsAppDeliveryErrorMessage(whatsappError));
-  }
-}
-
-await Notification.create({
-  user: query.agent._id,
-  type: "success",
-  title: "Quotation Received",
-  message: `Quotation ${createdQuotation.quotationNumber} has been sent for ${query.destination}.`,
-  link: "/agent/queries",
-  meta: {
-    quotationId: createdQuotation._id,
-    queryId: query._id,
-    quotationNumber: createdQuotation.quotationNumber,
-    destination: query.destination,
-    totalAmount,
-  },
-});
-
-    query.quotationStatus = "Sent_To_Agent";
-    if (!["Confirmed", "Vouchered"].includes(query.opsStatus)) {
-      query.opsStatus = "Booking_Accepted";
+      await query.save();
     }
-    query.agentStatus = "Quote Sent";
-
-    // Keep "Quote Sent" as a single timeline event even if multiple quotations are created/sent.
-    addLogIfNotExists(query, "Quote Sent", "Ops Team");
-
-    await query.save();
 
     res.status(201).json({
       success: true,
-      message : "Quotation created successfully",
+      message: shouldMarkAsSent
+        ? "Quotation created and sent successfully"
+        : "Quotation saved successfully",
       quotation: createdQuotation,
       warnings: deliveryWarnings,
+      sentToAgent: shouldMarkAsSent,
     });
 
   } catch (error) {
@@ -2263,22 +2700,22 @@ export const generateInvoice = async (req, res, next) => {
         ),
       );
     }
-      
+
     let counter = await Counter.findOne({ name: "invoice" });
 
-if (!counter) {
-  // first time
-  counter = await Counter.create({
-    name: "invoice",
-    seq: 1000
-  });
-}
+    if (!counter) {
+      // first time
+      counter = await Counter.create({
+        name: "invoice",
+        seq: 1000
+      });
+    }
 
-// increment
-counter.seq += 1;
-await counter.save();
+    // increment
+    counter.seq += 1;
+    await counter.save();
 
-const invoiceNumber = `INV-${counter.seq}`;
+    const invoiceNumber = `INV-${counter.seq}`;
     const finalInvoiceAmount = Number(
       quotation.clientTotalAmount ||
       quotation.pricing?.totalAmount ||
@@ -2316,11 +2753,11 @@ const invoiceNumber = `INV-${counter.seq}`;
     await query.save();
 
     if (quotation.agent?._id || quotation.agent) {
-      await Notification.create({
+      await createOpsSideNotification(req, {
         user: quotation.agent?._id || quotation.agent,
         type: "info",
-        title: "Finance Invoice Preparation Started",
-        message: `${invoiceNumber} has been prepared for ${query.queryId}. Finance will share the final invoice with you shortly.`,
+        title: "Booking Amount Ready",
+        message: `${invoiceNumber} has been prepared for ${query.queryId}. You can now continue the amount and documents process from Active Bookings.`,
         link: "/agent/bookings",
         meta: {
           queryId: query._id,
@@ -2341,8 +2778,6 @@ const invoiceNumber = `INV-${counter.seq}`;
     next(error);
   }
 };
-
-//============================= Search by destination, package name, or services=======================
 
 export const searchServices = async (req, res, next) => {
   try {
@@ -2412,42 +2847,42 @@ export const searchServices = async (req, res, next) => {
 
 
 
-export const getVouchers = async (req, res, next) => {
-  try {
-    const vouchers = await voucherModel.find()
-      .populate("agent", "name companyName email")
-      .populate("query", "queryId startDate endDate destination numberOfAdults numberOfChildren")
-      .sort({ createdAt: -1 });
+const getLatestInvoiceByQueryId = async (queryIds = []) => {
+  const normalizedQueryIds = queryIds.filter(Boolean);
+  if (!normalizedQueryIds.length) return new Map();
 
-    const formatted = vouchers.map((voucher) => ({
-      id: voucher._id,
-      status: voucher.status,
-      query: voucher.query?.queryId || voucher.voucherNumber,
-      voucherNumber: voucher.voucherNumber,
-      name: voucher.guestName,
-      destination: voucher.destination,
-      date: voucher.travelDate,
-      duration: voucher.duration,
-      passengers: voucher.passengers,
-      services: voucher.services,
-      agentName: voucher.agent?.companyName || voucher.agent?.name || "",
-    }));
+  const invoices = await Invoice.find({ query: { $in: normalizedQueryIds } })
+    .select("query paymentStatus paymentVerification.status createdAt")
+    .sort({ createdAt: -1 })
+    .lean();
 
-    const stats = {
-      ready: formatted.filter((v) => v.status === "ready").length,
-      generated: formatted.filter((v) => v.status === "generated").length,
-      sent: formatted.filter((v) => v.status === "sent").length,
-    };
+  const invoiceMap = new Map();
+  invoices.forEach((invoice) => {
+    const queryId = invoice.query?.toString?.() || String(invoice.query || "");
+    if (queryId && !invoiceMap.has(queryId)) {
+      invoiceMap.set(queryId, invoice);
+    }
+  });
 
-      res.status(200).json({
-      success: true, stats});
+  return invoiceMap;
+};
 
-  } catch (error) {
-    next(error);
-  }
-}
+const isPaymentVerifiedForVoucherGeneration = (invoice = null) => {
+  const paymentStatus = String(invoice?.paymentStatus || "").trim();
+  const verificationStatus = String(invoice?.paymentVerification?.status || "").trim();
 
+  return (
+    verificationStatus === "Verified" &&
+    ["Partially Paid", "Paid"].includes(paymentStatus)
+  );
+};
 
+const isPaymentVerifiedForVoucherDispatch = (invoice = null) =>
+  isPaymentVerifiedForVoucherGeneration(invoice);
+
+const isPaymentFullyVerifiedForVoucherDispatch = (invoice = null) =>
+  String(invoice?.paymentVerification?.status || "").trim() === "Verified" &&
+  String(invoice?.paymentStatus || "").trim() === "Paid";
 
 export const getVoucherManagementData = async (req, res, next) => {
   try {
@@ -2456,7 +2891,7 @@ export const getVoucherManagementData = async (req, res, next) => {
     const rawVoucherDocs = await Voucher.find()
       .populate("query")
       .populate("quotation", "services")
-      .populate("agent", "name companyName email")
+      .populate("agent", "name companyName email phone")
       .sort({ createdAt: -1 });
 
     const voucherDocs = [];
@@ -2470,11 +2905,29 @@ export const getVoucherManagementData = async (req, res, next) => {
       .map((voucher) => voucher.query?._id?.toString() || voucher.query?.toString())
       .filter(Boolean);
 
-    const readyQueries = await TravelQuery.find({
+    const candidateReadyQueries = await TravelQuery.find({
       ...assignmentFilter,
-      opsStatus: { $in: ["Confirmed", "Vouchered"] },
+      opsStatus: { $in: ["Invoice_Requested", "Confirmed", "Vouchered", "Payment_Completed"] },
       _id: { $nin: voucherQueryIds },
-    }).populate("agent", "name companyName email");
+    }).populate("agent", "name companyName email phone");
+
+    const readyInvoiceMap = await getLatestInvoiceByQueryId(
+      candidateReadyQueries.map((query) => query._id),
+    );
+    const voucherInvoiceMap = await getLatestInvoiceByQueryId(
+      voucherDocs
+        .map((voucher) => voucher.query?._id || voucher.query)
+        .filter(Boolean),
+    );
+
+    const readyQueries = candidateReadyQueries.filter((query) => {
+      const opsStatus = String(query.opsStatus || "").trim();
+      if (["Confirmed", "Vouchered", "Payment_Completed"].includes(opsStatus)) return true;
+
+      return isPaymentVerifiedForVoucherGeneration(
+        readyInvoiceMap.get(query._id?.toString()),
+      );
+    });
 
     const confirmationQueryIds = [
       ...new Set(
@@ -2508,23 +2961,35 @@ export const getVoucherManagementData = async (req, res, next) => {
             : 0;
         const nights = days > 0 ? days - 1 : 0;
 
-        const quotation = await Quotation.findOne({ queryId: query._id }).sort({
-          createdAt: -1,
-        });
+        const quotation = await getLatestOperationalQuotation(query._id);
 
         return {
           id: query._id,
           query: query.queryId,
           voucherNumber: query.voucherNumber || "",
           status: "ready",
+          invoicePaymentStatus:
+            readyInvoiceMap.get(query._id?.toString())?.paymentStatus || "",
+          paymentVerificationStatus:
+            readyInvoiceMap.get(query._id?.toString())?.paymentVerification?.status || "",
+          canSendVoucher: false,
           name: query.agent?.name || query.agent?.companyName || "Guest",
           destination: query.destination || "",
           date: query.startDate,
+          travelDate: query.startDate || null,
           duration: `${nights}N/${days}D`,
           passengers: `${passengers} PAX`,
+          adults: Number(query.numberOfAdults || 0),
+          children: Number(query.numberOfChildren || 0),
+          travelerSummary: buildTravelerSummary(query),
           services: (quotation?.services || []).map((service, index) => ({
             type: service.type,
             title: service.title,
+            status: getServiceConfirmationStatus(
+              getConfirmationServicesForQuery(confirmationMap, query),
+              service,
+              index
+            ) || "",
             confirmation: getServiceConfirmation(
               getConfirmationServicesForQuery(confirmationMap, query),
               service,
@@ -2533,11 +2998,16 @@ export const getVoucherManagementData = async (req, res, next) => {
           })),
           branding: "with",
           agentName: query.agent?.companyName || query.agent?.name || "",
+          agentEmail: query.agent?.email || "",
+          agentPhone: query.agent?.phone || "",
         };
       })
     );
 
     const generatedSentItems = await Promise.all(voucherDocs.map(async (voucher) => {
+      const latestInvoice = voucherInvoiceMap.get(
+        voucher.query?._id?.toString?.() || voucher.query?.toString?.() || "",
+      );
       const confirmationServices = getConfirmationServicesForQuery(
         confirmationMap,
         voucher.query,
@@ -2545,9 +3015,8 @@ export const getVoucherManagementData = async (req, res, next) => {
       const fallbackQuotation =
         voucher.quotation ||
         (voucher.query?._id
-          ? await Quotation.findOne({ queryId: voucher.query._id })
-              .select("services")
-              .sort({ createdAt: -1 })
+          ? await getLatestOperationalQuotation(voucher.query._id)
+            .select("services")
           : null);
       const quotationServices = fallbackQuotation?.services || [];
       const resolvedVoucherServices = buildResolvedVoucherServices({
@@ -2561,18 +3030,28 @@ export const getVoucherManagementData = async (req, res, next) => {
         query: voucher.query?.queryId || "",
         voucherNumber: voucher.voucherNumber,
         status: voucher.status || "generated",
+        invoicePaymentStatus: latestInvoice?.paymentStatus || "",
+        paymentVerificationStatus: latestInvoice?.paymentVerification?.status || "",
+        canSendVoucher: isPaymentVerifiedForVoucherDispatch(latestInvoice),
         name: voucher.guestName || voucher.agent?.name || "Guest",
         destination: voucher.destination || voucher.query?.destination || "",
         date: voucher.travelDate,
+        travelDate: voucher.travelDate || voucher.query?.startDate || null,
         duration: voucher.duration,
         passengers: voucher.passengers,
+        adults: Number(voucher.query?.numberOfAdults || 0),
+        children: Number(voucher.query?.numberOfChildren || 0),
+        travelerSummary: buildTravelerSummary(voucher.query || {}),
         services: resolvedVoucherServices.map((service) => ({
           type: service.type || "service",
           title: service.name || "Service missing",
+          status: service.status || "",
           confirmation: service.confirmation || "Pending",
         })),
         branding: voucher.branding || "with",
         agentName: voucher.agent?.companyName || voucher.agent?.name || "",
+        agentEmail: voucher.agent?.email || "",
+        agentPhone: voucher.agent?.phone || "",
       };
     }));
 
@@ -2648,6 +3127,37 @@ const getServiceConfirmation = (confirmationServices = [], service, serviceIndex
   return "Pending";
 };
 
+const getServiceConfirmationStatus = (confirmationServices = [], service, serviceIndex = -1) => {
+  const rawServiceTitle = service.title || service.name || service.serviceName;
+  const serviceTitle = normalizeServiceLabel(rawServiceTitle);
+  const serviceTokens = getServiceTokens(rawServiceTitle);
+
+  const matched = confirmationServices.find((item) => {
+    const confirmationName = normalizeServiceLabel(item.serviceName);
+    const confirmationTokens = getServiceTokens(item.serviceName);
+    const overlappingTokens = serviceTokens.filter((token) =>
+      confirmationTokens.includes(token)
+    );
+
+    return (
+      confirmationName === serviceTitle ||
+      confirmationName.includes(serviceTitle) ||
+      serviceTitle.includes(confirmationName) ||
+      overlappingTokens.length >= Math.min(2, serviceTokens.length || 0)
+    );
+  });
+
+  if (matched?.status) {
+    return matched.status;
+  }
+
+  if (serviceIndex >= 0 && confirmationServices[serviceIndex]?.status) {
+    return confirmationServices[serviceIndex].status;
+  }
+
+  return "";
+};
+
 const buildResolvedVoucherServices = ({
   voucherServices = [],
   quotationServices = [],
@@ -2668,6 +3178,16 @@ const buildResolvedVoucherServices = ({
     return {
       type: service?.type || fallbackQuotationService?.type || "service",
       name: resolvedServiceName,
+      status:
+        getServiceConfirmationStatus(
+          confirmationServices,
+          {
+            type: service?.type || fallbackQuotationService?.type,
+            title: resolvedServiceName,
+            name: resolvedServiceName,
+          },
+          index,
+        ) || service?.status || "",
       confirmation:
         getServiceConfirmation(
           confirmationServices,
@@ -2726,6 +3246,21 @@ export const generateVoucher = async (req, res, next) => {
       });
     }
 
+    const latestInvoice = await Invoice.findOne({ query: query._id })
+      .select("paymentStatus paymentVerification.status createdAt")
+      .sort({ createdAt: -1 })
+      .lean();
+    const canGenerateVoucher =
+      ["Confirmed", "Vouchered", "Payment_Completed"].includes(String(query.opsStatus || "").trim()) ||
+      isPaymentVerifiedForVoucherGeneration(latestInvoice);
+
+    if (!canGenerateVoucher) {
+      return res.status(400).json({
+        success: false,
+        message: "Voucher can be generated only after finance verifies a partial or full payment",
+      });
+    }
+
     let counter = await Counter.findOne({ name: "voucher" });
 
     if (!counter) {
@@ -2737,9 +3272,11 @@ export const generateVoucher = async (req, res, next) => {
 
     const voucherNumber = `VCH-${counter.seq}`;
 
-    const quotation = await Quotation.findOne({ queryId: query._id }).sort({
-      createdAt: -1,
-    });
+    const quotation = await getLatestOperationalQuotation(query._id);
+    const confirmation = await Confirmation.findOne({
+      queryId: { $in: [query.queryId, query._id.toString()] },
+    }).lean();
+    const confirmationServices = confirmation?.services || [];
 
     const passengers =
       Number(query.numberOfAdults || 0) + Number(query.numberOfChildren || 0);
@@ -2758,29 +3295,38 @@ export const generateVoucher = async (req, res, next) => {
     query.voucherNumber = voucherNumber;
     query.voucherStatus = "generated";
     query.voucherGeneratedAt = new Date();
-    query.opsStatus = "Vouchered";
+    if (isPaymentFullyVerifiedForVoucherDispatch(latestInvoice)) {
+      query.opsStatus = "Payment_Completed";
+    } else if (query.opsStatus === "Confirmed") {
+      query.opsStatus = "Vouchered";
+    }
 
     await query.save();
 
     // 2. Create Voucher entry
     const voucher = await Voucher.create({
-  query: query._id,
-  quotation: quotation?._id || null,
-  agent: query.agent?._id || query.agent, voucherNumber,
-  status: "generated",
-  guestName: query.agent?.name || "",
-  destination: query.destination || "",
-  travelDate: query.startDate || null,
-  passengers: `${passengers} PAX`,
-  duration: `${nights}N/${days}D`,
-  services: (quotation?.services || []).map((service) => ({
-    type: service.type || "service",
-    name: service.title || "",
-    confirmation: "Pending",
-  })),
-  generatedBy: req.user.id,
-  generatedAt: new Date(),
-});
+      query: query._id,
+      quotation: quotation?._id || null,
+      agent: query.agent?._id || query.agent, voucherNumber,
+      status: "generated",
+      guestName: query.agent?.name || "",
+      destination: query.destination || "",
+      travelDate: query.startDate || null,
+      passengers: `${passengers} PAX`,
+      duration: `${nights}N/${days}D`,
+      services: (quotation?.services || []).map((service, index) => ({
+        type: service.type || "service",
+        name: service.title || "",
+        status: getServiceConfirmationStatus(
+          confirmationServices,
+          service,
+          index,
+        ) || "",
+        confirmation: "Pending",
+      })),
+      generatedBy: req.user.id,
+      generatedAt: new Date(),
+    });
 
 
     res.status(200).json({
@@ -2789,20 +3335,19 @@ export const generateVoucher = async (req, res, next) => {
       voucherNumber,
       voucher,
     });
- } catch (error) {
-  console.error("Generate Voucher Error:", error);
-  return res.status(500).json({
-    success: false,
-    message: error.message,
-    error,
-  });
-}
+  } catch (error) {
+    console.error("Generate Voucher Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+      error,
+    });
+  }
 };
-
 
 export const sendVoucherToAgent = async (req, res, next) => {
   try {
-    const { branding = "with" } = req.body;
+    const { branding = "with", email, phone, dispatchChannel = "EMAIL" } = req.body;
     const query = await TravelQuery.findById(req.params.id).populate("agent");
 
     if (!query) {
@@ -2825,13 +3370,25 @@ export const sendVoucherToAgent = async (req, res, next) => {
       });
     }
 
+    const latestInvoice = await Invoice.findOne({ query: query._id })
+      .select("paymentStatus paymentVerification.status createdAt")
+      .sort({ createdAt: -1 })
+      .lean();
+
+    if (!isPaymentVerifiedForVoucherDispatch(latestInvoice)) {
+      return res.status(400).json({
+        success: false,
+        message: "Voucher can be sent to the agent only after finance verifies a partial or full payment",
+      });
+    }
+
     const quotation =
       (voucher.quotation
         ? await Quotation.findById(voucher.quotation).select("services")
         : null) ||
-      (await Quotation.findOne({ queryId: query._id })
+      (await getLatestOperationalQuotation(query._id)
         .select("services")
-        .sort({ createdAt: -1 }));
+      );
 
     const confirmationQueryIds = [
       query.queryId,
@@ -2871,43 +3428,55 @@ export const sendVoucherToAgent = async (req, res, next) => {
       });
     }
 
-    try {
-      await sendEmailVoucher(
-        query.agent?.email,
-        {
-          voucherNumber: voucher.voucherNumber,
-          name: voucher.guestName || query.agent?.name || "",
-          destination: voucher.destination || query.destination || "",
-          passengers: voucher.passengers,
-          duration: voucher.duration,
-          services: resolvedVoucherServices.map((service) => ({
-            type: service.type,
-            title: service.name,
-            confirmation: service.confirmation,
-          })),
-        },
-        branding
-      );
-    } catch (emailError) {
-      console.error("Voucher email send failed:", emailError);
+    if (dispatchChannel === "EMAIL") {
+      try {
+        await sendEmailVoucher(
+          email || query.agent?.email,
+          {
+            voucherNumber: voucher.voucherNumber,
+            name: voucher.guestName || query.agent?.name || "",
+            destination: voucher.destination || query.destination || "",
+            passengers: voucher.passengers,
+            duration: voucher.duration,
+            travelDate: voucher.travelDate || query.startDate || null,
+            adults: Number(query.numberOfAdults || 0),
+            children: Number(query.numberOfChildren || 0),
+            travelerSummary: buildTravelerSummary(query),
+            services: resolvedVoucherServices.map((service) => ({
+              type: service.type,
+              title: service.name,
+              status: service.status || "",
+              confirmation: service.confirmation,
+            })),
+          },
+          branding
+        );
+      } catch (emailError) {
+        console.error("Voucher email send failed:", emailError);
 
-      const normalizedMessage = String(emailError?.message || "");
-      const isCredentialError =
-        normalizedMessage.includes("Username and Password not accepted") ||
-        normalizedMessage.includes("BadCredentials") ||
-        normalizedMessage.includes("Invalid login");
+        const normalizedMessage = String(emailError?.message || "");
+        const isCredentialError =
+          normalizedMessage.includes("Username and Password not accepted") ||
+          normalizedMessage.includes("BadCredentials") ||
+          normalizedMessage.includes("Invalid login");
 
-      return res.status(502).json({
-        success: false,
-        message: isCredentialError
-          ? `Voucher email could not be sent. ${getEmailDeliveryErrorMessage(voucherError)}`
-          : "Voucher email could not be sent. Please verify SMTP configuration and try again.",
-      });
+        return res.status(502).json({
+          success: false,
+          message: isCredentialError
+            ? `Voucher email could not be sent. ${emailError.message}`
+            : "Voucher email could not be sent. Please verify SMTP configuration and try again.",
+        });
+      }
     }
 
     query.voucherStatus = "sent";
     query.voucherSentAt = new Date();
     query.voucherPdfUrl = "";
+    if (isPaymentFullyVerifiedForVoucherDispatch(latestInvoice)) {
+      query.opsStatus = "Payment_Completed";
+    } else if (query.opsStatus !== "Vouchered") {
+      query.opsStatus = "Vouchered";
+    }
 
     addLogIfNotExists(query, "Voucher Sent", "Ops Team");
 
@@ -2919,11 +3488,12 @@ export const sendVoucherToAgent = async (req, res, next) => {
     voucher.services = resolvedVoucherServices.map((service) => ({
       type: service.type,
       name: service.name,
+      status: service.status || "",
       confirmation: service.confirmation,
     }));
     await voucher.save();
 
-    await Notification.create({
+    await createOpsSideNotification(req, {
       user: query.agent._id,
       type: "success",
       title: "Voucher Sent",
@@ -2954,122 +3524,136 @@ export const getOrCreateQuotationDraft = async (req, res, next) => {
   try {
     const query = await TravelQuery.findById(req.params.queryId).populate("agent");
     const requestedSourceQuotationId = String(req.query?.sourceQuotationId || "").trim();
+    const requestedFreshDraft =
+      String(req.query?.freshDraft || "").trim().toLowerCase() === "true";
 
     if (!query) {
       return res.status(404).json({ success: false, message: "Query not found" });
     }
 
+    const shouldStartBlankRevisionDraft =
+      requestedFreshDraft ||
+      (
+        String(query?.opsStatus || "").trim() === "Revision_Query" &&
+        !requestedSourceQuotationId
+      );
+
     if (!(await canManageAssignedQuery(req, query))) {
       return res.status(403).json({ success: false, message: "Not authorized" });
     }
-    const latestQuotation = await Quotation.findOne({ queryId: query._id }).sort({ createdAt: -1 });
+    const latestQuotation = await Quotation.findOne({
+      queryId: query._id,
+      status: { $ne: "Pending" },
+    }).sort({ createdAt: -1 });
     const sourceQuotation = requestedSourceQuotationId
       ? await Quotation.findOne({ _id: requestedSourceQuotationId, queryId: query._id })
-      : latestQuotation;
+      : shouldStartBlankRevisionDraft
+        ? null
+        : latestQuotation;
 
     const buildDraftPayload = (baseQuotation) => ({
       validTill: baseQuotation?.validTill || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
       pricing: baseQuotation?.pricing
         ? {
-            currency: baseQuotation.pricing.currency || "INR",
-            quoteCategory: baseQuotation.pricing.quoteCategory || "domestic",
-            baseAmount: Number(baseQuotation.pricing.baseAmount || query.customerBudget || 0),
-            subTotal: Number(baseQuotation.pricing.subTotal || 0),
-            packageTemplateAmount: Number(baseQuotation.pricing.packageTemplateAmount || 0),
-            serviceCurrencyBreakdown: Array.isArray(baseQuotation.pricing.serviceCurrencyBreakdown)
-              ? baseQuotation.pricing.serviceCurrencyBreakdown.map((item) => ({
-                  currency: item.currency || "INR",
-                  amount: Number(item.amount || 0),
-                  amountInInr: Number(item.amountInInr || 0),
-                  exchangeRate: Number(item.exchangeRate || 1),
-                }))
-              : [],
-            opsMarkup: {
-              percent: Number(baseQuotation.pricing.opsMarkup?.percent || 0),
-              amount: Number(baseQuotation.pricing.opsMarkup?.amount || 0),
-            },
-            opsCharges: {
-              serviceCharge: Number(baseQuotation.pricing.opsCharges?.serviceCharge || 0),
-              handlingFee: Number(baseQuotation.pricing.opsCharges?.handlingFee || 0),
-            },
-            tax: {
-              gst: {
-                percent: Number(baseQuotation.pricing.tax?.gst?.percent || 0),
-                amount: Number(baseQuotation.pricing.tax?.gst?.amount || 0),
-              },
-              tcs: {
-                percent: Number(baseQuotation.pricing.tax?.tcs?.percent || 0),
-                amount: Number(baseQuotation.pricing.tax?.tcs?.amount || 0),
-              },
-              tourismFee: {
-                amount: Number(baseQuotation.pricing.tax?.tourismFee?.amount || 0),
-              },
-              totalTax: Number(baseQuotation.pricing.tax?.totalTax || 0),
-            },
-            totalAmount: Number(baseQuotation.pricing.totalAmount || 0),
-          }
-        : {
-            currency: "INR",
-            quoteCategory: "domestic",
-            baseAmount: Number(query.customerBudget || 0),
-            subTotal: 0,
-            packageTemplateAmount: 0,
-            serviceCurrencyBreakdown: [],
-            opsMarkup: { percent: 0, amount: 0 },
-            opsCharges: { serviceCharge: 0, handlingFee: 0 },
-            tax: {
-              gst: { percent: 0, amount: 0 },
-              tcs: { percent: 0, amount: 0 },
-              tourismFee: { amount: 0 },
-              totalTax: 0,
-            },
-            totalAmount: 0,
+          currency: baseQuotation.pricing.currency || "INR",
+          quoteCategory: baseQuotation.pricing.quoteCategory || "domestic",
+          baseAmount: Number(baseQuotation.pricing.baseAmount || query.customerBudget || 0),
+          subTotal: Number(baseQuotation.pricing.subTotal || 0),
+          packageTemplateAmount: Number(baseQuotation.pricing.packageTemplateAmount || 0),
+          serviceCurrencyBreakdown: Array.isArray(baseQuotation.pricing.serviceCurrencyBreakdown)
+            ? baseQuotation.pricing.serviceCurrencyBreakdown.map((item) => ({
+              currency: item.currency || "INR",
+              amount: Number(item.amount || 0),
+              amountInInr: Number(item.amountInInr || 0),
+              exchangeRate: Number(item.exchangeRate || 1),
+            }))
+            : [],
+          opsMarkup: {
+            percent: Number(baseQuotation.pricing.opsMarkup?.percent || 0),
+            amount: Number(baseQuotation.pricing.opsMarkup?.amount || 0),
           },
+          opsCharges: {
+            serviceCharge: Number(baseQuotation.pricing.opsCharges?.serviceCharge || 0),
+            handlingFee: Number(baseQuotation.pricing.opsCharges?.handlingFee || 0),
+          },
+          tax: {
+            gst: {
+              percent: Number(baseQuotation.pricing.tax?.gst?.percent || 0),
+              amount: Number(baseQuotation.pricing.tax?.gst?.amount || 0),
+            },
+            tcs: {
+              percent: Number(baseQuotation.pricing.tax?.tcs?.percent || 0),
+              amount: Number(baseQuotation.pricing.tax?.tcs?.amount || 0),
+            },
+            tourismFee: {
+              amount: Number(baseQuotation.pricing.tax?.tourismFee?.amount || 0),
+            },
+            totalTax: Number(baseQuotation.pricing.tax?.totalTax || 0),
+          },
+          totalAmount: Number(baseQuotation.pricing.totalAmount || 0),
+        }
+        : {
+          currency: "INR",
+          quoteCategory: "domestic",
+          baseAmount: Number(query.customerBudget || 0),
+          subTotal: 0,
+          packageTemplateAmount: 0,
+          serviceCurrencyBreakdown: [],
+          opsMarkup: { percent: 0, amount: 0 },
+          opsCharges: { serviceCharge: 0, handlingFee: 0 },
+          tax: {
+            gst: { percent: 0, amount: 0 },
+            tcs: { percent: 0, amount: 0 },
+            tourismFee: { amount: 0 },
+            totalTax: 0,
+          },
+          totalAmount: 0,
+        },
       inclusions: Array.isArray(baseQuotation?.inclusions) ? baseQuotation.inclusions : [],
       exclusions: Array.isArray(baseQuotation?.exclusions) ? baseQuotation.exclusions : [],
       additionalNotes: Array.isArray(baseQuotation?.additionalNotes) ? baseQuotation.additionalNotes : [],
       dayWiseItinerary: normalizeDayWiseItinerary(baseQuotation?.dayWiseItinerary),
       services: Array.isArray(baseQuotation?.services)
         ? baseQuotation.services.map((service) => ({
-            serviceId: service.serviceId,
-            supplierId: service.supplierId,
-            supplierName: service.supplierName || "",
-            dmcId: service.dmcId,
-            dmcName: service.dmcName || "",
-            type: service.type,
-            title: service.title,
-            city: service.city || "",
-            country: service.country || "",
-            description: service.description || "",
-            serviceDate: service.serviceDate,
-            roomCategory: service.roomCategory || "",
-            roomType: service.roomType || "",
-            hotelCategory: service.hotelCategory || "",
-            adults: Number(service.adults || 0),
-            children: Number(service.children || 0),
-            infants: Number(service.infants || 0),
-            rooms: Number(service.rooms || 1),
-            bedType: service.bedType,
-            nights: Number(service.nights || 1),
-            vehicleType: service.vehicleType || "",
-            passengerCapacity: Number(service.passengerCapacity || 0),
-            luggageCapacity: Number(service.luggageCapacity || 0),
-            usageType: service.usageType || "point-to-point",
-            days: Number(service.days || 1),
-            pax: Number(service.pax || 1),
-            currency: service.currency || "INR",
-            price: Number(service.price || 0),
-            exchangeRate: Number(service.exchangeRate || 1),
-            priceInInr: Number(service.priceInInr || 0),
-            extraAdult: Boolean(service.extraAdult),
-            childWithBed: Boolean(service.childWithBed),
-            childWithoutBed: Boolean(service.childWithoutBed),
-            awebRate: Number(service.awebRate || 0),
-            cwebRate: Number(service.cwebRate || 0),
-            cwoebRate: Number(service.cwoebRate || 0),
-            total: Number(service.total || 0),
-            totalInInr: Number(service.totalInInr || 0),
-          }))
+          serviceId: service.serviceId,
+          supplierId: service.supplierId,
+          supplierName: service.supplierName || "",
+          dmcId: service.dmcId,
+          dmcName: service.dmcName || "",
+          type: service.type,
+          title: service.title,
+          city: service.city || "",
+          country: service.country || "",
+          description: service.description || "",
+          serviceDate: service.serviceDate,
+          roomCategory: service.roomCategory || "",
+          roomType: service.roomType || "",
+          hotelCategory: service.hotelCategory || "",
+          adults: Number(service.adults || 0),
+          children: Number(service.children || 0),
+          infants: Number(service.infants || 0),
+          rooms: Number(service.rooms || 1),
+          bedType: service.bedType,
+          nights: Number(service.nights || 1),
+          vehicleType: service.vehicleType || "",
+          passengerCapacity: Number(service.passengerCapacity || 0),
+          luggageCapacity: Number(service.luggageCapacity || 0),
+          usageType: service.usageType || "point-to-point",
+          days: Number(service.days || 1),
+          pax: Number(service.pax || 1),
+          currency: service.currency || "INR",
+          price: Number(service.price || 0),
+          exchangeRate: Number(service.exchangeRate || 1),
+          priceInInr: Number(service.priceInInr || 0),
+          extraAdult: Boolean(service.extraAdult),
+          childWithBed: Boolean(service.childWithBed),
+          childWithoutBed: Boolean(service.childWithoutBed),
+          awebRate: Number(service.awebRate || 0),
+          cwebRate: Number(service.cwebRate || 0),
+          cwoebRate: Number(service.cwoebRate || 0),
+          total: Number(service.total || 0),
+          totalInInr: Number(service.totalInInr || 0),
+        }))
         : [],
       sourceQuotationId: baseQuotation?._id || undefined,
       status: "Pending",
@@ -3080,7 +3664,20 @@ export const getOrCreateQuotationDraft = async (req, res, next) => {
       status: "Pending",
     }).sort({ createdAt: -1 });
 
-    if (quotation && requestedSourceQuotationId) {
+    if (quotation && shouldStartBlankRevisionDraft) {
+      const draftPayload = buildDraftPayload(null);
+      quotation.validTill = draftPayload.validTill;
+      quotation.pricing = draftPayload.pricing;
+      quotation.inclusions = draftPayload.inclusions;
+      quotation.exclusions = draftPayload.exclusions;
+      quotation.additionalNotes = draftPayload.additionalNotes;
+      quotation.dayWiseItinerary = draftPayload.dayWiseItinerary;
+      quotation.services = draftPayload.services;
+      quotation.sourceQuotationId = undefined;
+      quotation.createdBy = req.user.id;
+      quotation.status = "Pending";
+      await quotation.save();
+    } else if (quotation && requestedSourceQuotationId) {
       const pendingSourceId = String(quotation.sourceQuotationId || "");
       if (
         sourceQuotation &&
@@ -3129,6 +3726,50 @@ export const getOrCreateQuotationDraft = async (req, res, next) => {
     });
   } catch (error) {
     console.error("Quotation Draft Error:", error);
+    next(error);
+  }
+};
+
+export const getOpsQueryQuotations = async (req, res, next) => {
+  try {
+    const query = await TravelQuery.findById(req.params.queryId).select(
+      "_id queryId rejectionNote opsStatus assignedTo",
+    );
+
+    if (!query) {
+      return res.status(404).json({ success: false, message: "Query not found" });
+    }
+
+    if (!(await canManageAssignedQuery(req, query))) {
+      return res.status(403).json({ success: false, message: "Not authorized" });
+    }
+
+    const quotations = await Quotation.find({
+      queryId: query._id,
+      status: { $ne: "Pending" },
+    })
+      .select(
+        "quotationNumber status pricing clientTotalAmount validTill services inclusions exclusions additionalNotes dayWiseItinerary agentMarkup agentRevisionRemark createdAt updatedAt",
+      )
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const rows = quotations.map((quotation, index, list) =>
+      mapQuotationHistoryRow(quotation, index, list.length, query?.rejectionNote || ""),
+    );
+
+    res.status(200).json({
+      success: true,
+      data: {
+        queryId: query.queryId || "",
+        quotations: rows,
+        summary: {
+          totalQuotations: rows.length,
+          latestStatus: rows[0]?.status || "",
+        },
+      },
+    });
+  } catch (error) {
     next(error);
   }
 };
@@ -3208,8 +3849,17 @@ export const saveQuotationDraft = async (req, res, next) => {
       supplierName: service.supplierName || "",
       dmcId: service.dmcId || service.supplierId || undefined,
       dmcName: service.dmcName || "",
-      type: service.type,
-      title: service.title,
+      type: service.type || service.serviceType || service.category || "",
+      title:
+        service.title ||
+        service.serviceName ||
+        service.name ||
+        service.hotelName ||
+        service.activityName ||
+        service.sightseeingName ||
+        service.transferName ||
+        service.description ||
+        "Service",
       city: service.city || "",
       country: service.country || "",
       description: service.description || service.desc || "",
@@ -3380,15 +4030,15 @@ export const addQuotationService = async (req, res, next) => {
           : 1;
     const resolvedPriceInInr = roundCurrencyAmount(
       priceInInr ??
-        (resolvedCurrency === "INR"
-          ? Number(price || 0)
-          : Number(price || 0) * resolvedExchangeRate),
+      (resolvedCurrency === "INR"
+        ? Number(price || 0)
+        : Number(price || 0) * resolvedExchangeRate),
     );
     const resolvedTotalInInr = roundCurrencyAmount(
       totalInInr ??
-        (resolvedCurrency === "INR"
-          ? total
-          : total * resolvedExchangeRate),
+      (resolvedCurrency === "INR"
+        ? total
+        : total * resolvedExchangeRate),
     );
 
     quotation.services.push({

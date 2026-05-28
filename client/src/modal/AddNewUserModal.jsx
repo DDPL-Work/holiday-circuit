@@ -82,6 +82,41 @@ const FALLBACK_MANAGERS = [
   "Sneha Patel",
 ];
 
+const COMMON_DOMAIN_TYPOS = new Map([
+  ["gamil.com", "gmail.com"],
+  ["gmial.com", "gmail.com"],
+  ["gnail.com", "gmail.com"],
+  ["gmail.co", "gmail.com"],
+  ["yaho.com", "yahoo.com"],
+  ["yhoo.com", "yahoo.com"],
+  ["outlok.com", "outlook.com"],
+  ["hotmial.com", "hotmail.com"],
+  ["icloud.co", "icloud.com"],
+]);
+
+const getEmailValidationError = (value = "") => {
+  const normalizedEmail = String(value || "").trim().toLowerCase();
+
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+    return "Please enter a valid email address.";
+  }
+
+  const atIndex = normalizedEmail.lastIndexOf("@");
+  if (atIndex <= 0 || atIndex === normalizedEmail.length - 1) {
+    return "Please enter a valid email address.";
+  }
+
+  const localPart = normalizedEmail.slice(0, atIndex);
+  const domain = normalizedEmail.slice(atIndex + 1);
+  const suggestedDomain = COMMON_DOMAIN_TYPOS.get(domain);
+
+  if (!suggestedDomain) {
+    return "";
+  }
+
+  return `Email address looks mistyped. Did you mean ${localPart}@${suggestedDomain}?`;
+};
+
 const overlayVariant = {
   hidden: { opacity: 0 },
   visible: { opacity: 1, transition: { duration: 0.24, ease: "easeOut" } },
@@ -271,8 +306,9 @@ export default function AddNewUserModal({
       return;
     }
 
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
-      toast.error("Please enter a valid email address.");
+    const emailError = getEmailValidationError(email);
+    if (emailError) {
+      toast.error(emailError);
       return;
     }
 
@@ -320,6 +356,12 @@ export default function AddNewUserModal({
   }, [passwordMode, showManualPassword]);
 
   const handleSubmitUser = async () => {
+    const emailError = getEmailValidationError(email);
+    if (emailError) {
+      toast.error(emailError);
+      return;
+    }
+
     if (!isEditMode && passwordMode === "manual" && manualPassword.trim().length < 8) {
       toast.error("Manual password must be at least 8 characters.");
       return;

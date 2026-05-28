@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSelector } from "react-redux";
 import { useLocation, useNavigate } from "react-router-dom";
-import { Bell, CheckCircle2, AlertCircle, Info, Menu, X, Gift } from "lucide-react";
+import { Bell, CheckCircle2, AlertCircle, Info, LoaderCircle, Menu, X, Gift } from "lucide-react";
 import logo from "../../assets/logo img.png";
 import ExclusiveOfferModal from "../../modal/ExclusiveOfferModal.jsx";
 import API from "../../utils/Api";
@@ -44,6 +44,11 @@ const notificationBurstDots = [
   { key: "bottom", className: "left-1/2 bottom-1", tx: "0px", ty: "16px", color: "#a78bfa" },
   { key: "left", className: "left-1 top-1/2", tx: "-16px", ty: "0px", color: "#38bdf8" },
 ];
+
+const NOTIFICATION_POLL_INTERVAL_MS = 10000;
+
+const isDocumentVisible = () =>
+  typeof document === "undefined" || document.visibilityState === "visible";
 
 const notificationRouteAllowlist = {
   admin: [
@@ -219,6 +224,51 @@ const filterNotificationsByRole = (role, notifications = []) => {
   return notifications;
 };
 
+const isMirroredNotification = (notification) =>
+  Boolean(notification?.meta?.mirroredForAdmin);
+
+const getNotificationSourceRole = (notification) =>
+  String(notification?.meta?.notificationSourceRole || "").trim().toLowerCase();
+
+const getAdminNotificationSourceGroup = (notification) => {
+  if (!isMirroredNotification(notification)) {
+    return "direct";
+  }
+
+  const sourceRole = getNotificationSourceRole(notification);
+
+  if (sourceRole === "agent") return "agent";
+  if (["operations", "operation_manager"].includes(sourceRole)) return "ops";
+  if (["finance_partner", "finance_manager"].includes(sourceRole)) return "finance";
+
+  return "other";
+};
+
+const getAdminNotificationSourceLabel = (notification) => {
+  if (!isMirroredNotification(notification)) {
+    return "Admin Alert";
+  }
+
+  const sourceRole = getNotificationSourceRole(notification);
+
+  if (sourceRole === "agent") return "From Agent";
+  if (sourceRole === "operations") return "From Ops";
+  if (sourceRole === "operation_manager") return "From Ops Manager";
+  if (sourceRole === "finance_partner") return "From Finance";
+  if (sourceRole === "finance_manager") return "From Finance Manager";
+
+  return "Team Update";
+};
+
+const adminNotificationFilters = [
+  { key: "all", label: "All" },
+  { key: "direct", label: "Admin Alerts" },
+  { key: "mirrored", label: "Team Updates" },
+  { key: "agent", label: "Agent Updates" },
+  { key: "ops", label: "Ops Updates" },
+  { key: "finance", label: "Finance Updates" },
+];
+
 const getDefaultNotificationLink = (role) => {
   if (role === "admin") return "/admin/superAdminDashboard#agent-approvals";
   if (role === "finance_manager") return "/financeManager/financeManagerDashboard";
@@ -278,27 +328,42 @@ const getNotificationCopy = (role) => {
   };
 };
 
+const getWorkspaceBranding = (user = null) => {
+  const isAgent = user?.role === "agent";
+
+  return {
+    logo: isAgent ? String(user?.brandingLogo || "").trim() : "",
+    name: isAgent
+      ? String(user?.brandingName || "Holiday Circuit").trim()
+      : "Holiday Circuit",
+  };
+};
+
 const Header = ({ onMenuToggle }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useSelector((state) => state.auth);
+  const workspaceBranding = getWorkspaceBranding(user);
 
   const role = user?.role || "";
   const isQuotationBuilder = location.pathname === "/ops/quotation-builder";
   const canViewNotifications = notificationRoles.has(role);
   const canUseManagerFilter = managerFilterRoles.has(role);
   const canViewOffers = role === "agent";
+  const canUseAdminMirrorFilters = role === "admin";
 
   const [openNotifications, setOpenNotifications] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [loadingNotifications, setLoadingNotifications] = useState(false);
   const [bellPop, setBellPop] = useState(false);
+  const [bellPopKey, setBellPopKey] = useState(0);
   const [filterMode, setFilterMode] = useState("all");
   const [offerOpen, setOfferOpen] = useState(false);
   const [couponUnreadCount, setCouponUnreadCount] = useState(0);
 
   const hasFetchedRef = useRef(false);
   const prevUnreadRef = useRef(0);
+  const bellPopFrameRef = useRef(null);
   const wrapRef = useRef(null);
 
   const baseNotifications = useMemo(
@@ -319,11 +384,33 @@ const Header = ({ onMenuToggle }) => {
     [baseNotifications],
   );
 
+  const adminFilterCounts = useMemo(
+    () => ({
+      direct: baseNotifications.filter((notification) => !isMirroredNotification(notification)).length,
+      mirrored: baseNotifications.filter((notification) => isMirroredNotification(notification)).length,
+      agent: baseNotifications.filter((notification) => getAdminNotificationSourceGroup(notification) === "agent").length,
+      ops: baseNotifications.filter((notification) => getAdminNotificationSourceGroup(notification) === "ops").length,
+      finance: baseNotifications.filter((notification) => getAdminNotificationSourceGroup(notification) === "finance").length,
+    }),
+    [baseNotifications],
+  );
+
   const visibleNotifications = useMemo(() => {
-    const source =
-      canUseManagerFilter && filterMode === "important"
-        ? baseNotifications.filter((notification) => notification.type === "warning")
-        : baseNotifications;
+    let source = baseNotifications;
+
+    if (canUseAdminMirrorFilters) {
+      if (filterMode === "direct") {
+        source = baseNotifications.filter((notification) => !isMirroredNotification(notification));
+      } else if (filterMode === "mirrored") {
+        source = baseNotifications.filter((notification) => isMirroredNotification(notification));
+      } else if (["agent", "ops", "finance"].includes(filterMode)) {
+        source = baseNotifications.filter(
+          (notification) => getAdminNotificationSourceGroup(notification) === filterMode,
+        );
+      }
+    } else if (canUseManagerFilter && filterMode === "important") {
+      source = baseNotifications.filter((notification) => notification.type === "warning");
+    }
 
     return [...source].sort((a, b) => {
       const createdAtDiff = new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
@@ -335,7 +422,7 @@ const Header = ({ onMenuToggle }) => {
       }
       return 0;
     });
-  }, [baseNotifications, canUseManagerFilter, filterMode]);
+  }, [baseNotifications, canUseAdminMirrorFilters, canUseManagerFilter, filterMode]);
 
   const notificationCopy = getNotificationCopy(role);
   const defaultNotificationLink = getDefaultNotificationLink(role);
@@ -347,14 +434,22 @@ const Header = ({ onMenuToggle }) => {
       if (!silent) setLoadingNotifications(true);
 
       const { data } = await API.get(getNotificationEndpoint(role), {
-        skipGlobalLoader: silent,
+        skipGlobalLoader: true,
       });
       const nextNotifications = data?.notifications || [];
       const nextVisibleNotifications = filterNotificationsByRole(role, nextNotifications);
       const nextUnreadCount = getUnreadNotificationCount(nextVisibleNotifications);
 
       if (hasFetchedRef.current && nextUnreadCount > prevUnreadRef.current) {
-        setBellPop(true);
+        if (bellPopFrameRef.current) {
+          window.cancelAnimationFrame(bellPopFrameRef.current);
+        }
+        setBellPop(false);
+        setBellPopKey((current) => current + 1);
+        bellPopFrameRef.current = window.requestAnimationFrame(() => {
+          setBellPop(true);
+          bellPopFrameRef.current = null;
+        });
       }
 
       prevUnreadRef.current = nextUnreadCount;
@@ -368,15 +463,18 @@ const Header = ({ onMenuToggle }) => {
   };
 
   const fetchCouponUnreadCount = async () => {
-    if (!canViewOffers) return;
+    if (!canViewOffers) return 0;
 
     try {
       const { data } = await API.get("/agent/coupons", {
         skipGlobalLoader: true,
       });
-      setCouponUnreadCount(Number(data?.data?.unreadCount || 0));
+      const nextUnreadCount = Number(data?.data?.unreadCount || 0);
+      setCouponUnreadCount(nextUnreadCount);
+      return nextUnreadCount;
     } catch (error) {
       console.error("Failed to fetch coupon notifications", error);
+      return 0;
     }
   };
 
@@ -441,9 +539,10 @@ const Header = ({ onMenuToggle }) => {
   };
 
   const handleOpenOffers = async () => {
+    const latestCouponUnreadCount = await fetchCouponUnreadCount();
     setOfferOpen(true);
 
-    if (!couponUnreadCount) return;
+    if (!latestCouponUnreadCount) return;
 
     setCouponUnreadCount(0);
 
@@ -487,8 +586,9 @@ const Header = ({ onMenuToggle }) => {
     if (!canViewNotifications) return undefined;
 
     const interval = window.setInterval(() => {
+      if (!isDocumentVisible()) return;
       fetchNotifications(true);
-    }, 25000);
+    }, NOTIFICATION_POLL_INTERVAL_MS);
 
     return () => window.clearInterval(interval);
   }, [canViewNotifications, role]);
@@ -499,14 +599,35 @@ const Header = ({ onMenuToggle }) => {
   }, [canViewOffers]);
 
   useEffect(() => {
-    if (!canViewOffers) return undefined;
-
-    const interval = window.setInterval(() => {
+    if (!openNotifications) return;
+    if (canViewNotifications) {
+      fetchNotifications(false);
+    }
+    if (canViewOffers) {
       fetchCouponUnreadCount();
-    }, 25000);
+    }
+  }, [openNotifications, canViewNotifications, canViewOffers, role]);
 
-    return () => window.clearInterval(interval);
-  }, [canViewOffers]);
+  useEffect(() => {
+    if (!canViewNotifications && !canViewOffers) return undefined;
+
+    const handleForegroundRefresh = () => {
+      if (!isDocumentVisible()) return;
+      if (canViewNotifications) {
+        fetchNotifications(true);
+      }
+      if (canViewOffers) {
+        fetchCouponUnreadCount();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleForegroundRefresh);
+    window.addEventListener("focus", handleForegroundRefresh);
+    return () => {
+      document.removeEventListener("visibilitychange", handleForegroundRefresh);
+      window.removeEventListener("focus", handleForegroundRefresh);
+    };
+  }, [canViewNotifications, canViewOffers, role]);
 
   useEffect(() => {
     if (!bellPop) return undefined;
@@ -514,6 +635,12 @@ const Header = ({ onMenuToggle }) => {
     const timeout = window.setTimeout(() => setBellPop(false), 1600);
     return () => window.clearTimeout(timeout);
   }, [bellPop]);
+
+  useEffect(() => () => {
+    if (bellPopFrameRef.current) {
+      window.cancelAnimationFrame(bellPopFrameRef.current);
+    }
+  }, []);
 
   useEffect(() => {
     prevUnreadRef.current = unreadCount;
@@ -584,11 +711,15 @@ const Header = ({ onMenuToggle }) => {
 
             <div className="group flex h-full cursor-pointer items-center gap-3 px-4 transition-all duration-300 sm:w-60 md:pl-5 md:pr-4">
               <div className="relative flex shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white p-1 shadow-inner ring-1 ring-black/5 transition-transform duration-500">
-                <img src={logo} alt="Logo" className="h-7 w-auto object-contain sm:h-8" />
+                <img
+                  src={workspaceBranding.logo || logo}
+                  alt={workspaceBranding.name || "Logo"}
+                  className="h-7 w-auto object-contain sm:h-8"
+                />
               </div>
               <div className="hidden min-w-0 flex-1 sm:block">
                 <p className="truncate bg-linear-to-r from-white to-slate-300 bg-clip-text text-[15px] font-bold tracking-wide text-transparent">
-                  Holiday Circuit
+                  {workspaceBranding.name || "Holiday Circuit"}
                 </p>
                 <p className="mt-0.5 truncate text-[9px] font-bold uppercase tracking-[0.2em] text-sky-400">
                   Workspace
@@ -625,10 +756,9 @@ const Header = ({ onMenuToggle }) => {
 
                     if (next) {
                       setFilterMode("all");
-                      fetchNotifications(false);
                     }
                   }}
-                  className={`relative flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-white transition duration-300 hover:bg-white/10 ${
+                  className={`relative flex h-10 w-10 cursor-pointer items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-white transition duration-300 hover:bg-white/10 ${
                     bellPop
                       ? "scale-110 -translate-y-0.5 shadow-[0_0_0_5px_rgba(59,130,246,0.16),0_14px_28px_rgba(15,23,42,0.35)]"
                       : ""
@@ -637,7 +767,7 @@ const Header = ({ onMenuToggle }) => {
                   title="Notifications"
                 >
                   {bellPop && unreadCount > 0 ? (
-                    <>
+                    <span key={bellPopKey} className="absolute inset-0">
                       <span
                         className="absolute inset-0 rounded-2xl border border-sky-300/70"
                         style={{ animation: "notification-burst-ring 720ms ease-out forwards" }}
@@ -660,7 +790,7 @@ const Header = ({ onMenuToggle }) => {
                           }}
                         />
                       ))}
-                    </>
+                    </span>
                   ) : null}
                   <Bell
                     className={`relative h-5 w-5 ${
@@ -742,7 +872,7 @@ const Header = ({ onMenuToggle }) => {
                       <button
                         type="button"
                         onClick={() => setOpenNotifications(false)}
-                        className={`flex h-9 w-9 items-center justify-center rounded-2xl border transition ${
+                        className={`flex h-9 w-9 cursor-pointer items-center justify-center rounded-2xl border transition ${
                           isQuotationBuilder
                             ? "text-slate-200 hover:text-white"
                             : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
@@ -763,7 +893,47 @@ const Header = ({ onMenuToggle }) => {
                     </div>
 
                     <div className="flex items-center gap-2 px-4 py-3">
-                      {canUseManagerFilter ? (
+                      {canUseAdminMirrorFilters ? (
+                        <div className="ml-auto flex items-center gap-2">
+                          <span
+                            className={`text-[11px] font-semibold uppercase tracking-[0.16em] ${
+                              isQuotationBuilder ? "text-slate-300" : "text-slate-500"
+                            }`}
+                          >
+                            View
+                          </span>
+                          <select
+                            value={filterMode}
+                            onChange={(event) => setFilterMode(event.target.value)}
+                            className={`cursor-pointer rounded-xl border px-3 py-2 text-xs font-semibold outline-none transition ${
+                              isQuotationBuilder
+                                ? "border-white/10 bg-white/8 text-white"
+                                : "border-slate-200 bg-white text-slate-700"
+                            }`}
+                            style={
+                              isQuotationBuilder
+                                ? {
+                                    background: "rgba(255,255,255,0.08)",
+                                    color: "#fff",
+                                  }
+                                : undefined
+                            }
+                          >
+                            {adminNotificationFilters.map((filter) => {
+                              const countSuffix =
+                                filter.key === "all"
+                                  ? baseNotifications.length
+                                  : adminFilterCounts[filter.key] || 0;
+
+                              return (
+                                <option key={filter.key} value={filter.key}>
+                                  {filter.label}{countSuffix ? ` (${countSuffix})` : ""}
+                                </option>
+                              );
+                            })}
+                          </select>
+                        </div>
+                      ) : canUseManagerFilter ? (
                         <div
                           className="flex items-center gap-1 rounded-2xl p-1"
                           style={
@@ -775,7 +945,7 @@ const Header = ({ onMenuToggle }) => {
                           <button
                             type="button"
                             onClick={() => setFilterMode("all")}
-                            className={`rounded-xl px-3 py-1 text-xs font-semibold transition ${
+                            className={`cursor-pointer rounded-xl px-3 py-1 text-xs font-semibold transition ${
                               filterMode === "all"
                                 ? isQuotationBuilder
                                   ? "text-white shadow-sm"
@@ -795,7 +965,7 @@ const Header = ({ onMenuToggle }) => {
                           <button
                             type="button"
                             onClick={() => setFilterMode("important")}
-                            className={`rounded-xl px-3 py-1 text-xs font-semibold transition ${
+                            className={`cursor-pointer rounded-xl px-3 py-1 text-xs font-semibold transition ${
                               filterMode === "important"
                                 ? isQuotationBuilder
                                   ? "text-white shadow-sm"
@@ -820,7 +990,7 @@ const Header = ({ onMenuToggle }) => {
                         <button
                           type="button"
                           onClick={handleBulkAction}
-                          className={`ml-auto text-xs font-semibold ${
+                          className={`ml-auto cursor-pointer text-xs font-semibold ${
                             isQuotationBuilder
                               ? "text-sky-300 hover:text-sky-200"
                               : "text-blue-600 hover:text-blue-700"
@@ -843,7 +1013,10 @@ const Header = ({ onMenuToggle }) => {
                             isQuotationBuilder ? { background: "rgba(255,255,255,0.06)" } : undefined
                           }
                         >
-                          Loading notifications...
+                          <div className="flex items-center justify-center gap-2">
+                            <LoaderCircle size={16} className="animate-spin" />
+                            <span>Loading notifications...</span>
+                          </div>
                         </div>
                       ) : visibleNotifications.length === 0 ? (
                         <div
@@ -866,13 +1039,14 @@ const Header = ({ onMenuToggle }) => {
                             );
                             const timeLabel = formatNotificationTimeAgo(notification?.createdAt);
                             const timestampLabel = formatNotificationTimestamp(notification?.createdAt);
+                            const sourceLabel = getAdminNotificationSourceLabel(notification);
 
                             return (
                               <button
                                 type="button"
                                 key={notification._id}
                                 onClick={() => openNotification(notification)}
-                                className={`w-full rounded-2xl border px-4 py-3 text-left transition ${
+                                className={`w-full cursor-pointer rounded-2xl border px-4 py-3 text-left transition ${
                                   isQuotationBuilder
                                     ? ""
                                     : notification?.isRead
@@ -923,8 +1097,19 @@ const Header = ({ onMenuToggle }) => {
                                         >
                                           {notification?.message || ""}
                                         </p>
+                                        {notification?.meta?.source === "ops_order_acceptance" &&
+                                        notification?.meta?.note ? (
+                                          <p
+                                            className={`mt-1 line-clamp-2 text-xs leading-5 font-medium ${
+                                              isQuotationBuilder ? "text-amber-200" : "text-amber-700"
+                                            }`}
+                                          >
+                                            Ops Team Note: {notification.meta.note}
+                                          </p>
+                                        ) : null}
                                         {(timeLabel || timestampLabel) ? (
                                           <p className="mt-2 text-[11px] font-medium text-slate-400">
+                                            {role === "admin" ? `${sourceLabel} • ` : ""}
                                             {timeLabel || "Recently"}
                                             {timestampLabel ? ` • ${timestampLabel}` : ""}
                                           </p>

@@ -26,9 +26,16 @@ const formatDateLabel = (value) => {
   });
 };
 
-const drawRoundedCard = (doc, x, y, width, height, fillColor, strokeColor = null) => {
+const formatTemplateLabel = (value = "") =>
+  String(value || "aurora-ledger")
+    .split("-")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+
+const drawRoundedCard = (doc, x, y, width, height, fillColor, strokeColor = null, radius = 14) => {
   doc.save();
-  doc.roundedRect(x, y, width, height, 14);
+  doc.roundedRect(x, y, width, height, radius);
   if (fillColor) {
     doc.fillAndStroke(fillColor, strokeColor || fillColor);
   } else {
@@ -45,7 +52,235 @@ const drawLabelValue = (doc, { x, y, label, value, width, align = "left" }) => {
   });
 };
 
-const drawItemsTableHeader = (doc, y) => {
+const TEMPLATE_CONFIG = {
+  "aurora-ledger": {
+    key: "aurora-ledger",
+    accent: "#1d4ed8",
+    headerFill: "#0f172a",
+    headerText: "#ffffff",
+    mutedText: "#64748b",
+    cardFill: "#f8fafc",
+    cardStroke: "#e2e8f0",
+    tableHeaderFill: "#eff6ff",
+    summaryFill: "#eff6ff",
+    noteFill: "#f8fafc",
+    radius: 14,
+  },
+  "classic-ledger": {
+    key: "classic-ledger",
+    accent: "#374151",
+    headerFill: "#ffffff",
+    headerText: "#111827",
+    mutedText: "#4b5563",
+    cardFill: "#ffffff",
+    cardStroke: "#d1d5db",
+    tableHeaderFill: "#f3f4f6",
+    summaryFill: "#f9fafb",
+    noteFill: "#ffffff",
+    radius: 8,
+  },
+  "compact-ledger": {
+    key: "compact-ledger",
+    accent: "#0891b2",
+    headerFill: "#ecfeff",
+    headerText: "#164e63",
+    mutedText: "#475569",
+    cardFill: "#ffffff",
+    cardStroke: "#bae6fd",
+    tableHeaderFill: "#ecfeff",
+    summaryFill: "#f0fdfa",
+    noteFill: "#f8fafc",
+    radius: 8,
+  },
+  "finance-ledger": {
+    key: "finance-ledger",
+    accent: "#047857",
+    headerFill: "#064e3b",
+    headerText: "#ffffff",
+    mutedText: "#64748b",
+    cardFill: "#f8fafc",
+    cardStroke: "#bbf7d0",
+    tableHeaderFill: "#ecfdf5",
+    summaryFill: "#ecfdf5",
+    noteFill: "#f0fdf4",
+    radius: 12,
+  },
+};
+
+const getTemplateConfig = (templateVariant = "") =>
+  TEMPLATE_CONFIG[templateVariant] || TEMPLATE_CONFIG["aurora-ledger"];
+
+const drawInvoiceHeader = (doc, { config, queryCode }) => {
+  if (config.key === "classic-ledger") {
+    doc.font("Helvetica-Bold").fontSize(22).fillColor(config.headerText).text("Internal Invoice", 40, 44);
+    doc
+      .font("Helvetica")
+      .fontSize(9)
+      .fillColor(config.mutedText)
+      .text("Finance review copy for DMC settlement validation", 40, 72);
+
+    drawRoundedCard(doc, 420, 42, 135, 50, "#ffffff", config.cardStroke, config.radius);
+    doc.font("Helvetica-Bold").fontSize(8).fillColor(config.mutedText).text("BOOKING REF", 438, 54, {
+      width: 100,
+      align: "center",
+    });
+    doc.font("Helvetica-Bold").fontSize(12).fillColor(config.headerText).text(queryCode || "-", 438, 68, {
+      width: 100,
+      align: "center",
+    });
+    doc.moveTo(40, 104).lineTo(555, 104).strokeColor(config.cardStroke).stroke();
+    return 122;
+  }
+
+  if (config.key === "compact-ledger") {
+    drawRoundedCard(doc, 40, 34, 515, 58, config.headerFill, config.cardStroke, config.radius);
+    doc.font("Helvetica-Bold").fontSize(18).fillColor(config.headerText).text("Internal Invoice", 56, 48);
+    doc
+      .font("Helvetica")
+      .fontSize(8)
+      .fillColor(config.mutedText)
+      .text("Compact finance review copy", 56, 70);
+    doc.font("Helvetica-Bold").fontSize(8).fillColor(config.accent).text("BOOKING REF", 430, 49, {
+      width: 92,
+      align: "right",
+    });
+    doc.font("Helvetica-Bold").fontSize(12).fillColor(config.headerText).text(queryCode || "-", 430, 64, {
+      width: 92,
+      align: "right",
+    });
+    return 106;
+  }
+
+  if (config.key === "finance-ledger") {
+    drawRoundedCard(doc, 40, 40, 515, 92, config.headerFill, config.headerFill, config.radius);
+    doc.rect(40, 40, 10, 92).fill("#10b981");
+    doc.font("Helvetica-Bold").fontSize(22).fillColor(config.headerText).text("Finance Ledger", 64, 58);
+    doc
+      .font("Helvetica")
+      .fontSize(10)
+      .fillColor("#d1fae5")
+      .text("Internal invoice payout validation copy", 64, 88);
+
+    drawRoundedCard(doc, 420, 58, 115, 52, "#065f46", "#10b981", config.radius);
+    doc.font("Helvetica-Bold").fontSize(8).fillColor("#a7f3d0").text("BOOKING REF", 435, 72, {
+      width: 85,
+      align: "center",
+    });
+    doc.font("Helvetica-Bold").fontSize(12).fillColor(config.headerText).text(queryCode || "-", 435, 86, {
+      width: 85,
+      align: "center",
+    });
+    return 148;
+  }
+
+  drawRoundedCard(doc, 40, 40, 515, 92, config.headerFill, config.headerFill, config.radius);
+  doc.font("Helvetica-Bold").fontSize(22).fillColor(config.headerText).text("Internal Invoice", 58, 58);
+  doc
+    .font("Helvetica")
+    .fontSize(10)
+    .fillColor("#cbd5e1")
+    .text("Finance review copy for DMC settlement validation", 58, 88);
+
+  drawRoundedCard(doc, 420, 58, 115, 52, config.accent, config.accent, config.radius);
+  doc.font("Helvetica-Bold").fontSize(8).fillColor("#bfdbfe").text("BOOKING REF", 435, 72, {
+    width: 85,
+    align: "center",
+  });
+  doc.font("Helvetica-Bold").fontSize(12).fillColor(config.headerText).text(queryCode || "-", 435, 86, {
+    width: 85,
+    align: "center",
+  });
+  return 148;
+};
+
+const drawSnapshotSection = (doc, {
+  config,
+  y,
+  invoiceMeta = {},
+  dmcName = "",
+  destination = "",
+  templateVariant = "",
+}) => {
+  if (config.key === "compact-ledger") {
+    drawRoundedCard(doc, 40, y, 515, 76, config.cardFill, config.cardStroke, config.radius);
+    const cells = [
+      ["DMC / Supplier", invoiceMeta.supplierName || dmcName || "-"],
+      ["Destination", destination || "-"],
+      ["Invoice No.", invoiceMeta.invoiceNumber || "-"],
+      ["Invoice Date", formatDateLabel(invoiceMeta.invoiceDate)],
+      [`${Number(invoiceMeta.creditPeriodDays || 7)}-day Credit`, formatDateLabel(invoiceMeta.dueDate)],
+      ["Template", formatTemplateLabel(templateVariant)],
+    ];
+
+    cells.forEach(([label, value], index) => {
+      const col = index % 3;
+      const row = Math.floor(index / 3);
+      drawLabelValue(doc, {
+        x: 56 + col * 166,
+        y: y + 14 + row * 32,
+        label,
+        value,
+        width: 145,
+      });
+    });
+    return y + 98;
+  }
+
+  drawRoundedCard(doc, 40, y, 252, 92, config.cardFill, config.cardStroke, config.radius);
+  drawRoundedCard(doc, 303, y, 252, 92, config.cardFill, config.cardStroke, config.radius);
+
+  doc.font("Helvetica-Bold").fontSize(10).fillColor("#0f172a").text("Partner Snapshot", 56, y + 16);
+  drawLabelValue(doc, {
+    x: 56,
+    y: y + 36,
+    label: "DMC / Supplier",
+    value: invoiceMeta.supplierName || dmcName || "-",
+    width: 210,
+  });
+  drawLabelValue(doc, {
+    x: 56,
+    y: y + 66,
+    label: "Destination",
+    value: destination || "-",
+    width: 210,
+  });
+
+  doc.font("Helvetica-Bold").fontSize(10).fillColor("#0f172a").text("Invoice Snapshot", 319, y + 16);
+  drawLabelValue(doc, {
+    x: 319,
+    y: y + 36,
+    label: "Invoice No.",
+    value: invoiceMeta.invoiceNumber || "-",
+    width: 95,
+  });
+  drawLabelValue(doc, {
+    x: 430,
+    y: y + 36,
+    label: "Template",
+    value: formatTemplateLabel(templateVariant),
+    width: 95,
+    align: "right",
+  });
+  drawLabelValue(doc, {
+    x: 319,
+    y: y + 66,
+    label: "Invoice Date",
+    value: formatDateLabel(invoiceMeta.invoiceDate),
+    width: 95,
+  });
+  drawLabelValue(doc, {
+    x: 430,
+    y: y + 66,
+    label: `${Number(invoiceMeta.creditPeriodDays || 7)}-day Credit`,
+    value: formatDateLabel(invoiceMeta.dueDate),
+    width: 95,
+    align: "right",
+  });
+
+  return y + 114;
+};
+
+const drawItemsTableHeader = (doc, y, config = TEMPLATE_CONFIG["aurora-ledger"]) => {
   const columns = [
     { key: "service", label: "Service", x: 44, width: 170, align: "left" },
     { key: "type", label: "Type", x: 220, width: 60, align: "left" },
@@ -56,7 +291,7 @@ const drawItemsTableHeader = (doc, y) => {
   ];
 
   doc.save();
-  doc.roundedRect(40, y, 515, 24, 10).fill("#eff6ff");
+  doc.roundedRect(40, y, 515, 24, config.radius).fill(config.tableHeaderFill);
   columns.forEach((column) => {
     doc
       .font("Helvetica-Bold")
@@ -88,6 +323,7 @@ export const generateInternalInvoicePdf = async ({
   destination = "",
   templateVariant = "",
 }) => {
+  const config = getTemplateConfig(templateVariant);
   const dirPath = ensureUploadsDir();
   const sanitizedInvoiceNumber = String(invoiceMeta.invoiceNumber || queryCode || "invoice")
     .replace(/[^a-zA-Z0-9-_]/g, "");
@@ -99,85 +335,33 @@ export const generateInternalInvoicePdf = async ({
   const stream = fs.createWriteStream(absoluteFilePath);
   doc.pipe(stream);
 
-  drawRoundedCard(doc, 40, 40, 515, 92, "#0f172a");
-  doc.font("Helvetica-Bold").fontSize(22).fillColor("#ffffff").text("Internal Invoice", 58, 58);
-  doc
-    .font("Helvetica")
-    .fontSize(10)
-    .fillColor("#cbd5e1")
-    .text("Finance review copy for DMC settlement validation", 58, 88);
-
-  drawRoundedCard(doc, 420, 58, 115, 52, "#1d4ed8");
-  doc.font("Helvetica-Bold").fontSize(8).fillColor("#bfdbfe").text("BOOKING REF", 435, 72, {
-    width: 85,
-    align: "center",
+  const snapshotY = drawInvoiceHeader(doc, { config, queryCode });
+  const itemizedHeadingY = drawSnapshotSection(doc, {
+    config,
+    y: snapshotY,
+    invoiceMeta,
+    dmcName,
+    destination,
+    templateVariant,
   });
-  doc.font("Helvetica-Bold").fontSize(12).fillColor("#ffffff").text(queryCode || "-", 435, 86, {
-    width: 85,
-    align: "center",
+  doc.y = itemizedHeadingY;
+  doc.font("Helvetica-Bold").fontSize(12).fillColor("#0f172a").text("Itemized Services", 40, itemizedHeadingY, {
+    width: 515,
+    align: "left",
   });
-
-  drawRoundedCard(doc, 40, 148, 252, 92, "#f8fafc", "#e2e8f0");
-  drawRoundedCard(doc, 303, 148, 252, 92, "#f8fafc", "#e2e8f0");
-
-  doc.font("Helvetica-Bold").fontSize(10).fillColor("#0f172a").text("Partner Snapshot", 56, 164);
-  drawLabelValue(doc, {
-    x: 56,
-    y: 184,
-    label: "DMC / Supplier",
-    value: invoiceMeta.supplierName || dmcName || "-",
-    width: 210,
-  });
-  drawLabelValue(doc, {
-    x: 56,
-    y: 214,
-    label: "Destination",
-    value: destination || "-",
-    width: 210,
-  });
-
-  doc.font("Helvetica-Bold").fontSize(10).fillColor("#0f172a").text("Invoice Snapshot", 319, 164);
-  drawLabelValue(doc, {
-    x: 319,
-    y: 184,
-    label: "Invoice No.",
-    value: invoiceMeta.invoiceNumber || "-",
-    width: 95,
-  });
-  drawLabelValue(doc, {
-    x: 430,
-    y: 184,
-    label: "Template",
-    value: templateVariant || "aurora-ledger",
-    width: 95,
-    align: "right",
-  });
-  drawLabelValue(doc, {
-    x: 319,
-    y: 214,
-    label: "Invoice Date",
-    value: formatDateLabel(invoiceMeta.invoiceDate),
-    width: 95,
-  });
-  drawLabelValue(doc, {
-    x: 430,
-    y: 214,
-    label: "Due Date",
-    value: formatDateLabel(invoiceMeta.dueDate),
-    width: 95,
-    align: "right",
-  });
-
-  doc.y = 262;
-  doc.font("Helvetica-Bold").fontSize(12).fillColor("#0f172a").text("Itemized Services");
   doc
     .font("Helvetica")
     .fontSize(9)
-    .fillColor("#64748b")
-    .text("Auto-generated from DMC internal invoice line items submitted to finance.");
-  doc.moveDown(0.6);
+    .fillColor(config.mutedText)
+    .text(
+      "Auto-generated from DMC internal invoice line items submitted to finance.",
+      40,
+      itemizedHeadingY + 16,
+      { width: 515, align: "left" },
+    );
+  doc.y = itemizedHeadingY + 38;
 
-  let columns = drawItemsTableHeader(doc, doc.y);
+  let columns = drawItemsTableHeader(doc, doc.y, config);
   doc.y += 32;
 
   items.forEach((item, index) => {
@@ -188,9 +372,13 @@ export const generateInternalInvoicePdf = async ({
     const rowHeight = Math.max(26, serviceHeight + 12);
 
     ensureSpaceForBlock(doc, rowHeight + 18, () => {
-      doc.font("Helvetica-Bold").fontSize(12).fillColor("#0f172a").text("Itemized Services (cont.)");
-      doc.moveDown(0.5);
-      columns = drawItemsTableHeader(doc, doc.y);
+      const continuedY = doc.y;
+      doc.font("Helvetica-Bold").fontSize(12).fillColor("#0f172a").text("Itemized Services (cont.)", 40, continuedY, {
+        width: 515,
+        align: "left",
+      });
+      doc.y = continuedY + 22;
+      columns = drawItemsTableHeader(doc, doc.y, config);
       doc.y += 32;
     });
 
@@ -201,8 +389,9 @@ export const generateInternalInvoicePdf = async ({
       rowY,
       515,
       rowHeight,
-      index % 2 === 0 ? "#ffffff" : "#f8fafc",
-      "#e2e8f0",
+      index % 2 === 0 ? "#ffffff" : config.cardFill,
+      config.cardStroke,
+      config.radius,
     );
 
     doc.font("Helvetica").fontSize(9).fillColor("#0f172a");
@@ -236,11 +425,11 @@ export const generateInternalInvoicePdf = async ({
 
   ensureSpaceForBlock(doc, 170);
 
-  drawRoundedCard(doc, 40, doc.y, 250, 118, "#eff6ff", "#bfdbfe");
-  drawRoundedCard(doc, 305, doc.y, 250, 118, "#f8fafc", "#e2e8f0");
+  drawRoundedCard(doc, 40, doc.y, 250, 118, config.summaryFill, config.cardStroke, config.radius);
+  drawRoundedCard(doc, 305, doc.y, 250, 118, config.cardFill, config.cardStroke, config.radius);
 
   const summaryY = doc.y;
-  doc.font("Helvetica-Bold").fontSize(10).fillColor("#1d4ed8").text("Tax Configuration", 56, summaryY + 14);
+  doc.font("Helvetica-Bold").fontSize(10).fillColor(config.accent).text("Tax Configuration", 56, summaryY + 14);
   doc.font("Helvetica").fontSize(9).fillColor("#334155");
   doc.text(`GST Rate: ${taxConfig.gstRate || 0}%`, 56, summaryY + 36);
   doc.text(`TCS Rate: ${taxConfig.tcsRate || 0}%`, 56, summaryY + 54);
@@ -266,8 +455,13 @@ export const generateInternalInvoicePdf = async ({
   });
 
   doc.y = summaryY + 136;
-  drawRoundedCard(doc, 40, doc.y, 515, 48, "#f8fafc", "#e2e8f0");
-  doc.font("Helvetica-Bold").fontSize(9).fillColor("#0f172a").text("Finance Review Note", 56, doc.y + 12);
+  ensureSpaceForBlock(doc, 66);
+  const noteY = doc.y;
+  drawRoundedCard(doc, 40, noteY, 515, 58, config.noteFill, config.cardStroke, config.radius);
+  doc.font("Helvetica-Bold").fontSize(9).fillColor("#0f172a").text("Finance Review Note", 56, noteY + 12, {
+    width: 470,
+    align: "left",
+  });
   doc
     .font("Helvetica")
     .fontSize(8.5)
@@ -275,9 +469,10 @@ export const generateInternalInvoicePdf = async ({
     .text(
       "Use this document to validate DMC-submitted service totals, taxes, and payout readiness before settling the invoice.",
       56,
-      doc.y + 25,
+      noteY + 28,
       { width: 470 },
     );
+  doc.y = noteY + 70;
 
   doc.end();
 

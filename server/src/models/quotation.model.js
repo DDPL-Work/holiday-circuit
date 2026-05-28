@@ -283,6 +283,16 @@ const quotationSchema = new mongoose.Schema(
     type: Number
   },
 
+  agentLogo: {
+    type: String,
+    default: ""
+  },
+
+  agentBrandingName: {
+    type: String,
+    default: ""
+  },
+
   agentRevisionRemark: {
     type: String,
     default: ""
@@ -295,8 +305,7 @@ const quotationSchema = new mongoose.Schema(
 
   status: {
     type: String,
-    enum: ["Quote Sent","Revision Requested","Revised","Pending","Quote Accepted",
-      "Quote Finalized",
+    enum: ["Quote Sent","Revision Requested","Revised","Pending","Quote Accepted","Quote Finalized",
       "Markup Applied",
       "Sent to Client",
       "Confirmed"

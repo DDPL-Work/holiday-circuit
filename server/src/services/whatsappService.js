@@ -22,7 +22,59 @@ const normalizeIndianPhoneNumber = (value = "") => {
   return `+${digits}`;
 };
 
-const buildWhatsappMessage = (quoteDetails = {}) => `
+const DEFAULT_SELLER_BANK_DETAILS = Object.freeze([
+  { label: "Bank Name", value: "HDFC Bank" },
+  { label: "A/c Holder Name", value: "Leela Travels" },
+  { label: "A/c No.", value: "50200103968171" },
+  { label: "IFSC", value: "HDFC0004413" },
+  { label: "Branch", value: "RAMPHAL CHOWK SEC VII DWARKA" },
+]);
+
+const DEFAULT_WHATSAPP_TERMS = Object.freeze([
+  "Rates are subject to availability and confirmation at the time of booking.",
+  "Only the services listed in this quotation are included in the shared amount.",
+  "Any amendment after confirmation may affect availability and final pricing.",
+  "Hotel check-in, check-out, and supplier-specific policies will apply as per service rules.",
+  "Please review and confirm within the validity period to avoid fare or rate changes.",
+]);
+
+const normalizeSellerBankDetails = (items = []) => {
+  const normalizedItems = Array.isArray(items)
+    ? items
+        .map((item) => ({
+          label: String(item?.label || "").trim(),
+          value: String(item?.value || "").trim(),
+        }))
+        .filter((item) => item.label && item.value)
+    : [];
+
+  return normalizedItems.length ? normalizedItems : [...DEFAULT_SELLER_BANK_DETAILS];
+};
+
+const normalizeTermsAndConditions = (items = []) => {
+  const normalizedItems = Array.isArray(items)
+    ? items.map((item) => String(item || "").trim()).filter(Boolean)
+    : [];
+
+  return normalizedItems.length ? normalizedItems : [...DEFAULT_WHATSAPP_TERMS];
+};
+
+const buildWhatsappMessage = (quoteDetails = {}) => {
+  const includeSellerBankDetails = quoteDetails?.includeSellerBankDetails !== false;
+  const sellerBankDetails = normalizeSellerBankDetails(quoteDetails?.sellerBankDetails);
+  const termsAndConditions = normalizeTermsAndConditions(quoteDetails?.termsAndConditions);
+  const sellerBankSection = includeSellerBankDetails && sellerBankDetails.length
+    ? `\n\nSeller Bank Details\n----------\n${sellerBankDetails
+        .map((item) => `${item.label}: ${item.value}`)
+        .join("\n")}`
+    : "";
+  const termsSection = termsAndConditions.length
+    ? `\n\nTerms and Conditions\n----------\n${termsAndConditions
+        .map((item, index) => `${index + 1}. ${item}`)
+        .join("\n")}`
+    : "";
+
+  return `
 *Holiday Circuit*
 
 Dear ${quoteDetails.agentName || quoteDetails.recipientName || "Partner"},
@@ -34,11 +86,15 @@ Destination: ${quoteDetails.destination || "-"}
 Total Amount: INR ${Math.round(Number(quoteDetails.totalAmount || quoteDetails.price || 0)).toLocaleString("en-IN")}
 Valid Until: ${quoteDetails.validTill || "-"}
 
+${sellerBankSection}
+${termsSection}
+
 Please review the quotation and confirm at the earliest to secure availability and pricing.
 
 Regards,
 Holiday Circuit Team
 `.trim();
+};
 
 export const getWhatsAppDeliveryErrorMessage = (error) => {
   const errorCode = Number(error?.code || error?.status || 0);

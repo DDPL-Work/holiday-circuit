@@ -24,6 +24,17 @@ const Layout = () => {
 
   useEffect(() => {
     const mainElement = mainRef.current;
+    if (!mainElement) return;
+
+    mainElement.scrollTo({
+      top: 0,
+      left: 0,
+      behavior: "auto",
+    });
+  }, [location.pathname, location.search]);
+
+  useEffect(() => {
+    const mainElement = mainRef.current;
     if (!mainElement) return undefined;
 
     const sidebarScrollArea = document.querySelector(".sidebar-scrollbar");
@@ -91,11 +102,10 @@ const Layout = () => {
         )}
         <main
           ref={mainRef}
-          className={`relative flex-1 overflow-y-scroll bg-gray-50 custom-scroll ${
-            isSuperAdminDashboardRoute
+          className={`relative flex-1 overflow-y-scroll bg-gray-50 custom-scroll ${isSuperAdminDashboardRoute
               ? "px-0 py-0"
               : "px-3 py-3 sm:px-4 sm:py-4 lg:px-5 lg:py-5"
-          }`}
+            }`}
         >
           <GlobalDatabaseLoader scoped label="Loading..." />
           <Outlet />

@@ -2,7 +2,10 @@ import bcrypt from "bcrypt";
 import Auth from "../models/auth.model.js";
 import Invoice from "../models/invoice.model.js";
 import ApiError from "../utils/ApiError.js";
+import { getEmailValidationError } from "../utils/emailValidation.js";
+import { normalizeAccessExpiry } from "../utils/accessExpiry.js";
 import { sendTeamMemberCredentialsMail } from "../services/sendEmail.js";
+import { notifyTeamMemberCreationStakeholders } from "../services/teamMemberNotificationService.js";
 import {
   decorateFinanceAssignment,
   getManagedFinanceMembers,
@@ -306,14 +309,15 @@ export const createFinanceTeamMember = async (req, res, next) => {
     const normalizedPermissions = normalizePermissionList(permissions);
     const normalizedPasswordMode = String(passwordMode || "auto").trim().toLowerCase();
     const normalizedAccountStatus = accountStatus === "Inactive" ? "Inactive" : "Active";
-    const normalizedAccessExpiry = accessExpiry ? new Date(accessExpiry) : null;
+    const normalizedAccessExpiry = normalizeAccessExpiry(accessExpiry);
 
     if (!trimmedName || !normalizedEmail || !normalizedPhone || !normalizedDesignation) {
       return next(new ApiError(400, "Name, email, phone, and designation are required"));
     }
 
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
-      return next(new ApiError(400, "Please enter a valid email address"));
+    const emailValidationError = getEmailValidationError(normalizedEmail);
+    if (emailValidationError) {
+      return next(new ApiError(400, emailValidationError));
     }
 
     if (!["auto", "manual"].includes(normalizedPasswordMode)) {
@@ -374,7 +378,7 @@ export const createFinanceTeamMember = async (req, res, next) => {
       try {
         await sendTeamMemberCredentialsMail(normalizedEmail, {
           name: trimmedName,
-          role: ROLE_LABEL,
+          role: normalizedDesignation || TEAM_DESIGNATION,
           loginEmail: normalizedEmail,
           password: initialPassword,
         });
@@ -383,6 +387,16 @@ export const createFinanceTeamMember = async (req, res, next) => {
         credentialsEmailSent = false;
       }
     }
+
+    await notifyTeamMemberCreationStakeholders({
+      createdUser,
+      actorUserId: req.user?.id || req.user?._id || "",
+      actorRole: req.user?.role || "finance_manager",
+      actorName: req.user?.name || "Finance Manager",
+      managerRef: String(req.user?.id || req.user?._id || ""),
+      expectedManagerRoles: ["finance_manager"],
+      includeAdminBroadcast: true,
+    });
 
     res.status(201).json({
       success: true,

@@ -18,6 +18,10 @@ import {
   Calendar,
   Building2,
   Send,
+  User,
+  Mail,
+  History,
+  PieChart
 } from "lucide-react";
 import API from "../../utils/Api";
 import { AnimatePresence, motion } from "framer-motion";
@@ -78,7 +82,7 @@ const getPaymentComparisonMeta = (payment = {}) => {
     return {
       expectedAmount, opsInvoiceAmount, receivedAmount,
       variance: displayVariance, verificationVariance, hasReceivedAmount, isMatched, couponApplied, expectedAmountLabel,
-      label: "Amount Needed",
+      label: "Pending Amount",
       badgeClass: "border-amber-200 bg-amber-50 text-amber-700",
       varianceClass: "text-slate-400",
       note: couponApplied
@@ -91,7 +95,7 @@ const getPaymentComparisonMeta = (payment = {}) => {
     return {
       expectedAmount, opsInvoiceAmount, receivedAmount,
       variance: displayVariance, verificationVariance, hasReceivedAmount, isMatched, couponApplied, expectedAmountLabel,
-      label: "Perfect Match",
+      label: "Fully Paid",
       badgeClass: "border-emerald-200 bg-emerald-50 text-emerald-700",
       varianceClass: couponApplied ? "text-rose-700" : "text-emerald-700",
       note: couponApplied
@@ -104,7 +108,7 @@ const getPaymentComparisonMeta = (payment = {}) => {
     return {
       expectedAmount, opsInvoiceAmount, receivedAmount,
       variance: displayVariance, verificationVariance, hasReceivedAmount, isMatched, couponApplied, expectedAmountLabel,
-      label: "Short Payment",
+      label: "Partially Paid",
       badgeClass: "border-rose-200 bg-rose-50 text-rose-700",
       varianceClass: "text-rose-700",
       note: couponApplied
@@ -116,7 +120,7 @@ const getPaymentComparisonMeta = (payment = {}) => {
   return {
     expectedAmount, opsInvoiceAmount, receivedAmount,
     variance: displayVariance, verificationVariance, hasReceivedAmount, isMatched, couponApplied, expectedAmountLabel,
-    label: "Excess Payment",
+    label: "Excess Amount",
     badgeClass: "border-orange-200 bg-orange-50 text-orange-700",
     varianceClass: "text-orange-700",
     note: couponApplied
@@ -164,6 +168,116 @@ const isImageReceipt = (payment) => {
   );
 };
 
+const AUDIT_AMOUNT_LABEL_PATTERN = /(amount|invoice total|difference|variance|discount|payable)/i;
+
+const formatAuditAmountToken = (rawValue = "") => {
+  const normalized = String(rawValue || "").replace(/INR|₹/gi, "").replace(/\s+/g, "").trim();
+  const isNegative = normalized.startsWith("-");
+  const isPositive = normalized.startsWith("+");
+  const digitsOnly = normalized.replace(/^[+-]/, "").replace(/,/g, "");
+
+  if (!/^\d+$/.test(digitsOnly)) {
+    return String(rawValue || "").trim();
+  }
+
+  const formattedAmount = formatCurrency(Number(digitsOnly));
+  if (isNegative) return `-${formattedAmount}`;
+  if (isPositive) return `+${formattedAmount}`;
+  return formattedAmount;
+};
+
+const formatAuditValue = (label = "", value = "") => {
+  const normalizedLabel = String(label || "").trim();
+  const trimmedValue = String(value || "").trim();
+
+  if (!trimmedValue) return "";
+
+  if (AUDIT_AMOUNT_LABEL_PATTERN.test(normalizedLabel)) {
+    return formatAuditAmountToken(trimmedValue);
+  }
+
+  return trimmedValue.replace(/INR\s*([+-]?\s*[\d,]+)/gi, (_, amount) => formatAuditAmountToken(amount));
+};
+
+const parseAuditDetailItems = (value = "") =>
+  String(value || "")
+    .split("|")
+    .map((item) => String(item || "").trim())
+    .filter(Boolean)
+    .map((item, index) => {
+      const separatorIndex = item.indexOf(":");
+      if (separatorIndex === -1) {
+        return {
+          id: `${index}-${item}`,
+          label: "",
+          value: formatAuditValue("", item),
+          isAmount: false,
+        };
+      }
+
+      const label = item.slice(0, separatorIndex).trim();
+      const rawValue = item.slice(separatorIndex + 1).trim();
+      return {
+        id: `${index}-${label}`,
+        label,
+        value: formatAuditValue(label, rawValue),
+        isAmount: AUDIT_AMOUNT_LABEL_PATTERN.test(label),
+      };
+    });
+
+const AuditDetailGroup = ({ title, value }) => {
+  const items = parseAuditDetailItems(value);
+  if (!items.length) return null;
+
+  return (
+    <div className="mt-3">
+      <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">
+        {title}
+      </p>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {items.map((item) => (
+          <div
+            key={item.id}
+            className="rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm"
+          >
+            {item.label ? (
+              <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                {item.label}
+              </p>
+            ) : null}
+            <p
+              className={`text-xs font-semibold ${
+                item.isAmount
+                  ? item.value.startsWith("-")
+                    ? "text-rose-700"
+                    : item.value.startsWith("+")
+                      ? "text-orange-700"
+                      : "text-emerald-700"
+                  : "text-slate-700"
+              }`}
+            >
+              {item.value}
+            </p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const formatAuditText = (value = "") =>
+  String(value || "").replace(/INR\s*([+-]?\s*[\d,]+)/gi, (_, amount) => {
+    const normalized = String(amount || "").replace(/\s+/g, "").trim();
+    const sign = normalized.startsWith("-") ? "-" : normalized.startsWith("+") ? "+" : "";
+    const digitsOnly = normalized.replace(/^[+-]/, "").replace(/,/g, "");
+
+    if (!/^\d+$/.test(digitsOnly)) {
+      return `₹${normalized}`;
+    }
+
+    return `${sign}${formatCurrency(Number(digitsOnly))}`;
+  });
+
 const AmountCheckBadge = ({ payment }) => {
   const meta = getPaymentComparisonMeta(payment);
   return (
@@ -194,7 +308,442 @@ const StatusBadge = ({ status }) => {
   );
 };
 
-const FeedbackToast = ({ feedback, onClose }) => {
+
+
+const PaymentTrackerModal = ({
+  payment,
+  onClose,
+  onSendAgentReceipt,
+  onVerifyInstallment,
+  sendingAgentReceipt = false,
+  verifyingInstallmentIndex = null,
+  canSendAgentReceipt = false,
+  canVerifyInstallments = false,
+}) => {
+  const totalAmount = Math.round(
+    Number(payment?.paymentTrackerTotal || payment?.expectedAmount || 0),
+  );
+  const trackerPayments = Array.isArray(payment?.paymentTrackerEntries)
+    ? payment.paymentTrackerEntries
+    : [];
+  const paidAmount = trackerPayments.reduce(
+    (sum, entry) => sum + Math.round(Number(entry?.amount || 0)),
+    0,
+  );
+  const remainingAmount = Math.max(0, totalAmount - paidAmount);
+  const progress = totalAmount > 0 ? Math.min(100, Math.round((paidAmount / totalAmount) * 100)) : 0;
+  const isComplete = totalAmount > 0 && remainingAmount === 0;
+  const installmentCount = trackerPayments.length;
+  const ringRadius = 62;
+  const ringCircumference = 2 * Math.PI * ringRadius;
+  const paidStrokeOffset = ringCircumference - (ringCircumference * progress) / 100;
+  const progressDotPosition = totalAmount > 0 ? Math.max(2, Math.min(98, progress)) : 2;
+  const lastInstallmentIndex = installmentCount > 0 ? installmentCount - 1 : -1;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/60 px-4 py-5 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ scale: 0.96, opacity: 0, y: 12 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        exit={{ scale: 0.96, opacity: 0, y: 12 }}
+        transition={{ duration: 0.2, ease: "easeOut" }}
+        onClick={(event) => event.stopPropagation()}
+        className="flex max-h-[94vh] w-full max-w-[78rem] flex-col overflow-hidden rounded-[19px] bg-white shadow-[0_40px_100px_rgba(15,23,42,0.28)]"
+      >
+        <div className="flex items-start justify-between bg-gradient-to-r from-slate-900 via-[#163B72] to-[#1e3a8a] px-6 py-4">
+          <div className="min-w-0">
+            <span className="inline-block rounded-full bg-white/16 px-3 py-1 text-[9px] font-bold uppercase tracking-[0.18em] text-white">
+              Payment Tracker
+            </span>
+            <div className="mt-2 flex flex-wrap items-end gap-x-3 gap-y-1">
+              <h3 className="text-[1.3rem] font-bold leading-none text-white">
+                {payment?.bookingReference || "Booking Payment"}
+              </h3>
+              <p className="text-[0.9rem] font-medium text-blue-50">
+                {payment?.invoiceNumber || "-"} • {payment?.agentName || "Agent"}
+              </p>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <div className="rounded-xl bg-white/12 px-3 py-1.5">
+                <p className="text-[9px] font-bold uppercase tracking-[0.16em] text-white/70">
+                  Installments
+                </p>
+                <p className="mt-0.5 text-[12px] font-semibold text-white">
+                  {installmentCount || 0} recorded
+                </p>
+              </div>
+              <div className="rounded-xl bg-white/12 px-3 py-1.5">
+                <p className="text-[9px] font-bold uppercase tracking-[0.16em] text-white/70">
+                  Status
+                </p>
+                <p className="mt-0.5 text-[12px] font-semibold text-white">
+                  {isComplete ? "Fully Paid" : "Partially Paid"}
+                </p>
+              </div>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/16 text-white transition hover:bg-white/24"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="border-b border-slate-100 bg-slate-50/80 px-5 py-3.5">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="group relative overflow-hidden rounded-2xl border border-slate-200 bg-white px-4 py-3 text-center shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
+              <div className="mb-1.5 flex items-center justify-center gap-1.5 text-slate-400">
+                <DollarSign className="h-3.5 w-3.5" />
+                <p className="text-[10px] font-bold uppercase tracking-[0.18em]">Total</p>
+              </div>
+              <p className="text-[1.08rem] font-semibold leading-none text-slate-800">{formatCurrency(totalAmount)}</p>
+              <div className="absolute bottom-0 left-0 h-[3px] w-0 rounded-full bg-slate-700 transition-all duration-300 group-hover:w-full" />
+            </div>
+            <div className="group relative overflow-hidden rounded-2xl border border-emerald-100 bg-white px-4 py-3 text-center shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
+              <div className="mb-1.5 flex items-center justify-center gap-1.5 text-emerald-500">
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                <p className="text-[10px] font-bold uppercase tracking-[0.18em]">Paid</p>
+              </div>
+              <p className="text-[1.08rem] font-semibold leading-none text-emerald-600">{formatCurrency(paidAmount)}</p>
+              <div className="absolute bottom-0 left-0 h-[3px] w-0 rounded-full bg-emerald-500 transition-all duration-300 group-hover:w-full" />
+            </div>
+            <div className="group relative overflow-hidden rounded-2xl border border-amber-100 bg-white px-4 py-3 text-center shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
+              <div className="mb-1.5 flex items-center justify-center gap-1.5 text-amber-500">
+                <Clock className="h-3.5 w-3.5" />
+                <p className="text-[10px] font-bold uppercase tracking-[0.18em]">Remaining</p>
+              </div>
+              <p className="text-[1.08rem] font-semibold leading-none text-amber-600">{formatCurrency(remainingAmount)}</p>
+              <div className="absolute bottom-0 left-0 h-[3px] w-0 rounded-full bg-amber-500 transition-all duration-300 group-hover:w-full" />
+            </div>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-6 py-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div className="grid gap-4 lg:grid-cols-[1.18fr_0.9fr]">
+            <div>
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">
+                  <History className="h-3.5 w-3.5 text-indigo-500" /> Payment History
+                </p>
+                <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold text-slate-500">
+                  {installmentCount || 0} instalment{installmentCount === 1 ? "" : "s"}
+                </span>
+              </div>
+
+              {!trackerPayments.length ? (
+                <div className="rounded-[24px] border border-dashed border-slate-200 bg-slate-50 px-5 py-10 text-center text-sm text-slate-400">
+                  No payment entries have been recorded by the agent yet.
+                </div>
+              ) : (
+                <div className="relative pl-10">
+                  <div className="absolute left-[15px] top-2 bottom-2 w-px bg-slate-200" />
+                  <div className="space-y-3">
+                    {trackerPayments.map((entry, index) => {
+                      const isInstallmentVerified = entry?.verificationStatus === "Verified";
+                      const isVerifyingThisInstallment = verifyingInstallmentIndex === index;
+
+                      return (
+                        <div key={entry.id || `${entry.amount}-${index}`} className="relative">
+                          <div className="absolute left-[-34.5px] top-3.5 flex h-5 w-5 items-center justify-center rounded-full bg-[#163B72] shadow-sm">
+                            <svg className="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.8}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                            </svg>
+                          </div>
+                          <div className="rounded-2xl border border-slate-100 bg-white px-4 py-3 shadow-sm">
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="flex items-center gap-2">
+                                <p className="text-[14px] font-semibold text-slate-700">Instalment {index + 1}</p>
+                                <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-600">
+                                  <Check className="h-3 w-3" /> Paid
+                                </span>
+                                <span className={`inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                                  isInstallmentVerified
+                                    ? "bg-teal-50 text-teal-700"
+                                    : "bg-amber-50 text-amber-700"
+                                }`}>
+                                  {isInstallmentVerified ? (
+                                    <>
+                                      <Check className="h-3 w-3" /> Verified
+                                    </>
+                                  ) : (
+                                    "Pending verification"
+                                  )}
+                                </span>
+                              </div>
+                              <div className="flex flex-wrap items-center justify-end gap-2">
+                                {!isInstallmentVerified ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => onVerifyInstallment(index)}
+                                    disabled={isVerifyingThisInstallment || !canVerifyInstallments}
+                                    className={`inline-flex cursor-pointer items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-semibold transition disabled:cursor-not-allowed ${
+                                      isVerifyingThisInstallment || !canVerifyInstallments
+                                        ? "cursor-not-allowed bg-slate-100 text-slate-400"
+                                        : "bg-emerald-600 text-white shadow-[0_8px_18px_rgba(5,150,105,0.22)] hover:bg-emerald-700"
+                                    }`}
+                                  >
+                                    <CheckCircle2 className="h-3.5 w-3.5" />
+                                    {isVerifyingThisInstallment ? "Verifying..." : "Verify payment"}
+                                  </button>
+                                ) : null}
+                                <button
+                                  type="button"
+                                  onClick={() => onSendAgentReceipt(index)}
+                                  disabled={sendingAgentReceipt}
+                                  className={`inline-flex cursor-pointer items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-semibold transition disabled:cursor-not-allowed ${
+                                    sendingAgentReceipt
+                                      ? "cursor-not-allowed bg-slate-100 text-slate-400"
+                                      : isInstallmentVerified
+                                        ? "bg-indigo-600 text-white shadow-[0_8px_18px_rgba(79,70,229,0.24)] hover:bg-indigo-700"
+                                        : "bg-amber-100 text-amber-700 hover:bg-amber-200"
+                                  }`}
+                                >
+                                  <Send className="h-3 w-3" />
+                                  Send receipt
+                                </button>
+                              </div>
+                            </div>
+                            <div className="mt-2 flex items-end justify-between gap-3">
+                              <p className="text-[1.05rem] font-semibold leading-none text-slate-900">{formatCurrency(entry.amount)}</p>
+                              <span className="flex items-center gap-1 text-[12px] text-slate-400">
+                                <Calendar className="h-3 w-3" />
+                                {entry.date || formatDateLabel(entry.rawDate)}
+                              </span>
+                            </div>
+                            {entry?.verifiedAtLabel || entry?.verifiedByName ? (
+                              <p className="mt-2 text-[10px] text-slate-500">
+                                Verified {entry?.verifiedAtLabel ? `on ${entry.verifiedAtLabel}` : ""}{entry?.verifiedByName ? ` by ${entry.verifiedByName}` : ""}
+                              </p>
+                            ) : null}
+                            {entry.note && (
+                              <p className="mt-2 rounded-xl bg-slate-50 px-3 py-1.5 text-[12px] leading-5 text-slate-500">
+                                {entry.note}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    <div className="relative">
+                      <div
+                    className={`absolute left-[-34.5px] top-3.5 flex h-5 w-5 items-center justify-center rounded-full shadow-sm ${
+                          isComplete ? "bg-emerald-500" : "bg-amber-400"
+                        }`}
+                      >
+                        {isComplete ? (
+                          <svg className="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.8}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                          </svg>
+                        ) : (
+                          <div className="h-2 w-2 rounded-full bg-white" />
+                        )}
+                      </div>
+                      <div
+                        className={`ml-3 rounded-2xl border px-4 py-3 ${
+                          isComplete
+                            ? "border-emerald-100 bg-emerald-50"
+                            : "border-dashed border-amber-200 bg-amber-50"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <p className={`text-[14px] font-semibold ${isComplete ? "text-emerald-700" : "text-amber-700"}`}>
+                            {isComplete ? "Payment complete" : "Remaining balance"}
+                          </p>
+                          <p className={`text-[1.05rem] font-semibold leading-none ${isComplete ? "text-emerald-700" : "text-amber-600"}`}>
+                            {isComplete ? formatCurrency(totalAmount) : formatCurrency(remainingAmount)}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {trackerPayments.length ? (
+                      <div className="relative">
+                        <div className="absolute left-[-34.5px] top-20 flex h-5 w-5 items-center justify-center rounded-full bg-[#5b5ff8] shadow-sm">
+                          <Send className="h-2.5 w-2.5 translate-x-[1px] translate-y-[0.5px] text-white" />
+                        </div>
+                        <div className="group relative ml-3 overflow-hidden rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50 to-white px-4 py-3 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <p className="text-[14px] font-semibold text-indigo-700">Send latest payment receipt</p>
+                              <p className="mt-1 text-[12px] text-slate-600">
+                                Share the latest instalment receipt with the agent after finance verification.
+                              </p>
+                            </div>
+                            <span className="rounded-full bg-indigo-100 px-2.5 py-0.5 text-[10px] font-bold text-indigo-700">
+                              Latest
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => onSendAgentReceipt(lastInstallmentIndex)}
+                            disabled={sendingAgentReceipt}
+                            className={`mt-3 inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-[12px] font-semibold transition-all duration-200 disabled:cursor-not-allowed ${
+                              sendingAgentReceipt
+                                ? "cursor-not-allowed border border-slate-200 bg-slate-100 text-slate-400"
+                                : canSendAgentReceipt
+                                  ? "border border-indigo-200 bg-indigo-600 text-white shadow-[0_10px_24px_rgba(79,70,229,0.28)] hover:bg-indigo-700 hover:shadow-[0_12px_28px_rgba(79,70,229,0.35)]"
+                                  : "border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100"
+                            }`}
+                          >
+                            <Send className={`h-3.5 w-3.5 ${sendingAgentReceipt ? "animate-pulse" : ""}`} />
+                            {sendingAgentReceipt
+                              ? "Sending..."
+                              : "Send Latest Receipt"}
+                          </button>
+                          {!canSendAgentReceipt ? (
+                            <p className="mt-2 text-[10px] text-slate-400">
+                           Once the latest installment is verified, the receipt modal will open automatically. You can add the agent’s email in the email modal.
+                            </p>
+                          ) : null}
+                          <div className="absolute bottom-0 left-0 h-[3px] w-0 rounded-full bg-indigo-500 transition-all duration-300 group-hover:w-full" />
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              )}
+            </div>
+
+
+
+            <div>
+              <div className="rounded-[24px] border border-slate-200 bg-gradient-to-br from-slate-50 via-white to-cyan-50/50 px-4 py-4 shadow-sm">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">
+                    <PieChart className="h-3.5 w-3.5 text-emerald-500" /> Payment Progress
+                  </p>
+                  <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-bold text-emerald-700">{progress}%</span>
+                </div>
+
+                <div className="flex flex-col items-center gap-4">
+                  <div className="group relative flex h-[154px] w-[154px] cursor-pointer items-center justify-center transition-transform duration-300 hover:scale-[1.02]">
+                    <svg className="h-full w-full -rotate-90 transition-transform duration-700 ease-out group-hover:rotate-[270deg]" viewBox="0 0 160 160">
+                      <defs>
+                        <linearGradient id="paymentTrackerRing" x1="0%" y1="0%" x2="100%" y2="100%">
+                          <stop offset="0%" stopColor="#4f46e5" />
+                          <stop offset="52%" stopColor="#615fff" />
+                          <stop offset="100%" stopColor="#0f172a" />
+                        </linearGradient>
+                      </defs>
+                      <circle cx="80" cy="80" r={ringRadius} fill="none" stroke="#E2E8F0" strokeWidth="9" />
+                      <motion.circle
+                        cx="80"
+                        cy="80"
+                        r={ringRadius}
+                        fill="none"
+                        stroke="url(#paymentTrackerRing)"
+                        strokeWidth="9"
+                        strokeLinecap="round"
+                        strokeDasharray={ringCircumference}
+                        initial={{ strokeDashoffset: ringCircumference }}
+                        animate={{ strokeDashoffset: paidStrokeOffset }}
+                        transition={{ duration: 1, ease: "easeOut" }}
+                      />
+                    </svg>
+                    <div className="absolute inset-0 flex flex-col items-center justify-center text-center transition-all duration-300 group-hover:scale-95 group-hover:opacity-0">
+                      <p className="text-[1.1rem] font-semibold leading-none text-slate-900">{formatCurrency(totalAmount)}</p>
+                      <p className="mt-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                        Total amount
+                      </p>
+                    </div>
+                    <div className="absolute inset-0 flex flex-col items-center justify-center text-center opacity-0 transition-all duration-300 group-hover:scale-100 group-hover:opacity-100 scale-105">
+                      <p className="text-3xl font-bold bg-gradient-to-r from-[#163B72] to-[#5b5ff8] bg-clip-text text-transparent">{progress}%</p>
+                      <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.14em] text-indigo-400">
+                        Paid
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="relative pl-7 w-full">
+                    {/* Vertical dashed line */}
+                    <div className="absolute left-[11px] top-8 bottom-5 border-l-2 border-dashed border-slate-200" />
+
+                    <div className="grid w-full gap-3">
+                      {/* Total paid */}
+                      <div className="relative">
+                        <div className="absolute left-[-21px] top-1/2 -translate-y-1/2 h-2.5 w-2.5 rounded-full bg-[#5b5ff8] ring-[3px] ring-slate-50" />
+                        <div className="group relative overflow-hidden rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
+                          <p className="text-[12px] font-semibold text-slate-500">Total paid</p>
+                          <p className="mt-0.5 text-[1.05rem] font-semibold text-slate-900">{formatCurrency(paidAmount)}</p>
+                          <div className="absolute bottom-0 left-0 h-[3px] w-0 rounded-full bg-[#5b5ff8] transition-all duration-300 group-hover:w-full" />
+                        </div>
+                      </div>
+
+                      {/* Remaining */}
+                      <div className="relative">
+                        <div className="absolute left-[-21px] top-1/2 -translate-y-1/2 h-2.5 w-2.5 rounded-full bg-slate-300 ring-[3px] ring-slate-50" />
+                        <div className="group relative overflow-hidden rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
+                          <p className="text-[12px] font-semibold text-slate-500">Remaining</p>
+                          <p className="mt-0.5 text-[1.05rem] font-semibold text-slate-900">{formatCurrency(remainingAmount)}</p>
+                          <div className="absolute bottom-0 left-0 h-[3px] w-0 rounded-full bg-slate-400 transition-all duration-300 group-hover:w-full" />
+                        </div>
+                      </div>
+
+                      {/* Status */}
+                      <div className="relative">
+                        <div className={`absolute left-[-21px] top-1/2 -translate-y-1/2 h-2.5 w-2.5 rounded-full ring-[3px] ring-slate-50 ${isComplete ? "bg-emerald-500" : "bg-amber-400"}`} />
+                        <div className="group relative overflow-hidden rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
+                          <p className="text-[12px] font-semibold text-slate-500">Status</p>
+                          <p className={`mt-0.5 text-[1.05rem] font-semibold ${isComplete ? "text-emerald-600" : "text-amber-600"}`}>
+                            {isComplete ? "Fully Paid" : "Partially Paid"}
+                          </p>
+                          <div className={`absolute bottom-0 left-0 h-[3px] w-0 rounded-full transition-all duration-300 group-hover:w-full ${isComplete ? "bg-emerald-500" : "bg-amber-400"}`} />
+                        </div>
+                      </div>
+
+                    </div>
+                  </div>
+
+                  <div className="w-full rounded-2xl bg-white/90 px-3 py-2.5 shadow-sm">
+                    <div className="mb-3 flex items-end justify-between gap-3 text-[12px]">
+                      <span className="font-semibold text-slate-400">{formatCurrency(0)}</span>
+                      <span className="flex items-center gap-1.5 rounded-full border border-indigo-100 bg-indigo-50/80 px-2.5 py-0.5 text-[11px] font-semibold shadow-sm">
+                        <span className="text-[#5b5ff8]">{formatCurrency(paidAmount)}</span>
+                        <span className="text-indigo-300">/</span>
+                        <span className="text-slate-700">{formatCurrency(totalAmount)}</span>
+                      </span>
+                    </div>
+                    <div className="relative h-2.5 overflow-visible rounded-full bg-slate-200">
+                      <motion.div
+                        className="h-full rounded-full bg-gradient-to-r from-[#163B72] to-[#5b5ff8]"
+                        initial={{ width: 0 }}
+                        animate={{ width: `${progress}%` }}
+                        transition={{ duration: 0.8, ease: "easeOut" }}
+                      />
+                      <motion.div
+                        className="group absolute top-1/2 h-4 w-4 -translate-y-1/2 cursor-pointer rounded-full border-[4px] border-indigo-600 bg-white shadow-[0_2px_10px_rgba(79,70,229,0.28)]"
+                        initial={{ left: "calc(2% - 8px)", opacity: 0 }}
+                        animate={{ left: `calc(${progressDotPosition}% - 8px)`, opacity: 1 }}
+                        transition={{ duration: 0.8, ease: "easeOut" }}
+                      >
+                        <div className="pointer-events-none absolute bottom-full left-1/2 mb-2 -translate-x-1/2 whitespace-nowrap rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 opacity-0 shadow-xl transition-all duration-200 group-hover:-translate-y-1 group-hover:opacity-100">
+                          <div className="flex flex-col items-center gap-0.5 text-center">
+                            <p className="text-sm font-bold text-white">{progress}% Paid</p>
+                            <p className="text-[10px] text-slate-300">{payment?.agentName || "Agent"}</p>
+                            <p className="text-[9px] uppercase tracking-wider text-slate-400">{payment?.paymentDate || "N/A"}</p>
+                          </div>
+                          <div className="absolute -bottom-1.5 left-1/2 h-3 w-3 -translate-x-1/2 rotate-45 border-b border-r border-slate-700 bg-slate-900"></div>
+                        </div>
+                      </motion.div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+};const FeedbackToast = ({ feedback, onClose }) => {
   if (!feedback) return null;
   const styles = {
     success: "border-emerald-200 bg-emerald-50 text-emerald-700",
@@ -203,7 +752,7 @@ const FeedbackToast = ({ feedback, onClose }) => {
   };
   const Icon = feedback.type === "success" ? CheckCircle2 : AlertCircle;
   return (
-    <div className="fixed right-4 top-4 z-[70] w-full max-w-sm sm:right-6 sm:top-6">
+    <div className="fixed right-4 top-4 z-[200] w-full max-w-sm sm:right-6 sm:top-6">
       <div className={`rounded-2xl border px-4 py-3 shadow-xl ${styles[feedback.type] || styles.success}`}>
         <div className="flex items-start gap-3">
           <div className="rounded-full bg-white/80 p-1.5"><Icon className="h-4 w-4" /></div>
@@ -256,64 +805,64 @@ const ReviewActionModal = ({ mode, payment, submitting, userRole, onClose, onCon
         animate={{ scale: 1, opacity: 1, y: 0 }}
         exit={{ scale: 0.95, opacity: 0, y: 15 }}
         transition={{ duration: 0.2, ease: "easeOut" }}
-        className={`flex max-h-[90vh] w-full max-w-lg flex-col rounded-2xl border bg-white shadow-2xl ${isVerifyMode ? "border-emerald-100" : "border-red-100"}`}
+        className={`flex max-h-[90vh] w-full max-w-[420px] flex-col rounded-2xl border bg-white shadow-2xl ${isVerifyMode ? "border-emerald-100" : "border-red-100"}`}
       >
-        <div className="flex shrink-0 items-start justify-between border-b border-slate-100 px-6 py-5">
+        <div className="flex shrink-0 items-start justify-between border-b border-slate-100 px-6 py-4">
           <div>
-            <h2 className="text-base font-bold text-slate-900">
+            <h2 className="text-[15px] font-bold text-slate-900">
               {isVerifyMode ? "Verify Payment And Send" : "Reject Payment And Send"}
             </h2>
-            <p className="mt-1 text-xs text-slate-400">{payment?.bookingReference} | {payment?.invoiceNumber}</p>
+            <p className="mt-0.5 text-[11px] text-slate-400">{payment?.bookingReference} | {payment?.invoiceNumber}</p>
           </div>
-          <button onClick={onClose} className="rounded-full p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700">
+          <button onClick={onClose} className="rounded-full p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700">
             <X className="h-4 w-4" />
           </button>
         </div>
-        <div className="custom-scroll space-y-4 overflow-y-auto px-6 py-5">
+        <div className="custom-scroll space-y-3 overflow-y-auto px-6 py-4">
           {!isVerifyMode && (
             <div>
-              <label className="mb-2 block text-sm font-semibold text-slate-700">Rejection Reason <span className="text-red-500">*</span></label>
+              <label className="mb-1.5 block text-[13px] font-semibold text-slate-700">Rejection Reason <span className="text-red-500">*</span></label>
               <div className="relative">
-                <select value={reason} onChange={(e) => setReason(e.target.value)} className={`w-full appearance-none rounded-xl border px-4 py-3 text-sm outline-none transition-colors ${submitted && !reason ? "border-red-300 bg-red-50/40 text-slate-500" : "border-slate-200 bg-white text-slate-700 focus:border-blue-300"}`}>
+                <select value={reason} onChange={(e) => setReason(e.target.value)} className={`w-full appearance-none rounded-lg border px-3.5 py-2 text-[13px] outline-none transition-colors ${submitted && !reason ? "border-red-300 bg-red-50/40 text-slate-500" : "border-slate-200 bg-white text-slate-700 focus:border-blue-300"}`}>
                   <option value="">Select rejection reason</option>
                   {rejectionReasons.map((item) => <option key={item} value={item}>{item}</option>)}
                 </select>
                 <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               </div>
-              {submitted && !reason && <p className="mt-1.5 text-xs text-red-500">A rejection reason is required.</p>}
+              {submitted && !reason && <p className="mt-1 text-[11px] text-red-500">A rejection reason is required.</p>}
             </div>
           )}
           <div>
-            <label className="mb-2 block text-sm font-semibold text-slate-700">
+            <label className="mb-1.5 block text-[13px] font-semibold text-slate-700">
               {isVerifyMode ? "Verification Remarks" : "Remarks"}
             </label>
             <textarea
-              rows={4}
+              rows={3}
               value={remarks}
               onChange={(e) => setRemarks(e.target.value)}
               placeholder={isVerifyMode ? "Add remarks for the agent or finance manager before sending..." : "Add optional remarks for the agent and finance audit trail..."}
-              className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm text-slate-700 outline-none transition-colors placeholder:text-slate-300 focus:border-blue-300"
+              className="w-full rounded-lg border border-slate-200 px-3.5 py-2 text-[13px] text-slate-700 outline-none transition-colors placeholder:text-slate-300 focus:border-blue-300"
             />
           </div>
           {showTargetOptions && (
             <div>
-              <label className="mb-2 block text-sm font-semibold text-slate-700">
+              <label className="mb-1.5 block text-[13px] font-semibold text-slate-700">
                 {isVerifyMode ? "Send Verification To" : "Send Rejection To"}
               </label>
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-2.5 sm:grid-cols-2">
                 {targetOptions.map((option) => {
                   const isActive = reviewTarget === option.value;
                   return (
-                    <button key={option.value} type="button" onClick={() => setReviewTarget(option.value)}
-                      className={`rounded-xl border px-4 py-3 text-left transition-colors ${isActive ? "border-blue-300 bg-blue-50 text-blue-700" : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50"}`}
+                      <button key={option.value} type="button" onClick={() => setReviewTarget(option.value)}
+                      className={`rounded-lg border px-3.5 py-2 text-left transition-colors ${isActive ? "border-blue-300 bg-blue-50 text-blue-700" : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50"}`}
                     >
-                      <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-start justify-between gap-2.5">
                         <div>
-                          <p className="text-sm font-semibold">{option.title}</p>
-                          <p className="mt-1 text-xs leading-5">{option.description}</p>
+                          <p className="text-[13px] font-semibold">{option.title}</p>
+                          <p className="mt-0.5 text-[11px] leading-snug">{option.description}</p>
                         </div>
-                        <span className={`mt-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full border text-[0px] ${isActive ? "border-blue-400 bg-white text-blue-600" : "border-slate-300 text-transparent"}`}>
-                          ✓<Check className="h-3.5 w-3.5" />
+                        <span className={`mt-0.5 inline-flex h-4 w-4 items-center justify-center rounded-full border text-[0px] ${isActive ? "border-blue-400 bg-white text-blue-600" : "border-slate-300 text-transparent"}`}>
+                          <Check className="h-3 w-3" />
                         </span>
                       </div>
                     </button>
@@ -322,10 +871,10 @@ const ReviewActionModal = ({ mode, payment, submitting, userRole, onClose, onCon
               </div>
             </div>
           )}
-          <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3">
-            <div className="flex items-start gap-2">
-              <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
-              <p className="text-xs leading-5 text-amber-800">
+          <div className="rounded-lg border border-amber-100 bg-amber-50 px-3.5 py-2">
+            <div className="flex items-start gap-1.5">
+              <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600" />
+              <p className="text-[11px] leading-snug text-amber-800">
                 {showTargetOptions
                   ? isVerifyMode
                     ? "This action records reviewer, timestamp, remarks, and routes the verification to the selected owner."
@@ -338,17 +887,263 @@ const ReviewActionModal = ({ mode, payment, submitting, userRole, onClose, onCon
           </div>
         </div>
         <div className="grid shrink-0 grid-cols-2 gap-3 border-t border-slate-100 px-6 py-4">
-          <button onClick={onClose} className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50">Cancel</button>
+          <button onClick={onClose} className="rounded-lg border border-slate-200 px-4 py-2 text-[13px] font-medium text-slate-600 transition-colors hover:bg-slate-50">Cancel</button>
           <button
             onClick={handleSubmit}
             disabled={submitting}
-            className={`rounded-xl px-4 py-2.5 text-sm font-medium text-white transition-colors ${submitting ? isVerifyMode ? "cursor-not-allowed bg-emerald-300" : "cursor-not-allowed bg-red-300" : isVerifyMode ? "bg-emerald-500 hover:bg-emerald-600" : "bg-red-500 hover:bg-red-600"}`}
+            className={`rounded-lg px-4 py-2 text-[13px] font-medium text-white transition-colors ${submitting ? isVerifyMode ? "cursor-not-allowed bg-emerald-300" : "cursor-not-allowed bg-red-300" : isVerifyMode ? "bg-emerald-500 hover:bg-emerald-600" : "bg-red-500 hover:bg-red-600"}`}
           >
             {submitting ? isVerifyMode ? "Sending..." : "Rejecting..." : isVerifyMode ? "Verify and Send" : "Reject and Send"}
           </button>
         </div>
       </motion.div>
     </motion.div>
+  );
+};
+
+const VerifyInstallmentConfirmationModal = ({
+  installmentIndex,
+  payment,
+  onClose,
+  onConfirm,
+  submitting = false,
+}) => {
+  const installment = Array.isArray(payment?.paymentTrackerEntries)
+    ? payment.paymentTrackerEntries[installmentIndex] || {}
+    : {};
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm"
+    >
+      <motion.div
+        initial={{ scale: 0.95, opacity: 0, y: 15 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        exit={{ scale: 0.95, opacity: 0, y: 15 }}
+        transition={{ duration: 0.2, ease: "easeOut" }}
+        className="flex max-h-[90vh] w-full max-w-[420px] flex-col rounded-2xl border border-emerald-100 bg-white shadow-2xl"
+      >
+        <div className="flex shrink-0 items-start justify-between border-b border-slate-100 px-6 py-4">
+          <div>
+            <h2 className="text-[15px] font-bold text-slate-900">
+              Confirm Payment Verification
+            </h2>
+            <p className="mt-0.5 text-[11px] text-slate-400">
+              {payment?.bookingReference} | {payment?.invoiceNumber}
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="rounded-full p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="space-y-4 px-6 py-5">
+          <div className="flex items-center gap-3 rounded-2xl bg-emerald-50/70 border border-emerald-100 p-3.5">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white shadow-md shadow-emerald-500/20">
+              <ShieldCheck className="h-5.5 w-5.5" />
+            </div>
+            <div>
+              <p className="text-[13px] font-bold text-emerald-800">Review & Confirmation</p>
+              <p className="mt-0.5 text-[11.5px] text-emerald-600/90 leading-normal font-medium">
+                I have reviewed the payment submitted by the agent and verified it against the bank records. All details are correct.
+              </p>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-slate-100 bg-slate-50/50 p-3.5 space-y-2 text-[12.5px]">
+            <div className="flex justify-between">
+              <span className="text-slate-400 font-semibold">Payment Amount:</span>
+              <span className="font-bold text-slate-800">
+                {`₹${Math.round(Number(installment?.amount || 0)).toLocaleString("en-IN")}`}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-400 font-semibold">Payment Date:</span>
+              <span className="font-bold text-slate-800">
+                {installment?.date || "Pending"}
+              </span>
+            </div>
+            {installment?.note && (
+              <div className="pt-2 border-t border-slate-100/80">
+                <span className="block text-[11px] text-slate-400 font-bold mb-1">Remarks:</span>
+                <p className="rounded-lg bg-white px-2.5 py-1.5 border border-slate-200/60 text-[11.5px] leading-relaxed text-slate-650 font-medium">
+                  {installment.note}
+                </p>
+              </div>
+            )}
+          </div>
+
+          <p className="text-[11px] text-slate-400 leading-normal text-center font-medium">
+            By confirming, this installment will be marked as <strong className="text-slate-500 font-bold">Verified</strong> and locked from further edits by the agent.
+          </p>
+        </div>
+
+        <div className="flex justify-end gap-2 border-t border-slate-100 bg-slate-50/50 px-6 py-3.5 rounded-b-2xl">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={submitting}
+            className="rounded-xl border border-slate-200 bg-white hover:bg-slate-50 px-4 py-2 text-[12px] font-semibold text-slate-600 transition active:scale-95 disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={submitting}
+            className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2 text-[12px] font-semibold text-white shadow-sm shadow-emerald-600/10 transition active:scale-95 disabled:opacity-50"
+          >
+            {submitting ? (
+              <>
+                <svg className="animate-spin h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                </svg>
+                Verifying...
+              </>
+            ) : (
+              <>
+                <Check className="h-3.5 w-3.5" />
+                Confirm Verification
+              </>
+            )}
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+};
+
+const SendAgentReceiptModal = ({
+  payment,
+  trackerEntry = null,
+  installmentIndex = null,
+  recipientEmail,
+  onRecipientEmailChange,
+  sending = false,
+  onClose,
+  onSend,
+}) => {
+  const installmentAmount = Math.round(Number(trackerEntry?.amount || 0));
+  const allTrackerEntries = Array.isArray(payment?.paymentTrackerEntries) ? payment.paymentTrackerEntries : [];
+  const cumulativePaid = trackerEntry && installmentIndex !== null
+    ? allTrackerEntries
+        .slice(0, installmentIndex + 1)
+        .reduce((sum, entry) => sum + Math.round(Number(entry?.amount || 0)), 0)
+    : Math.round(Number(payment?.paymentTrackerPaidAmount || payment?.receivedAmount || 0));
+  const remainingBalance = Math.max(
+    0,
+    Math.round(Number(payment?.paymentTrackerTotal || payment?.expectedAmount || 0)) - cumulativePaid,
+  );
+
+  return (
+  <motion.div
+    initial={{ opacity: 0 }}
+    animate={{ opacity: 1 }}
+    exit={{ opacity: 0 }}
+    className="fixed inset-0 z-[95] flex items-center justify-center bg-slate-950/65 px-4 py-4 backdrop-blur-sm"
+    onClick={onClose}
+  >
+    <motion.div
+      initial={{ opacity: 0, y: 18, scale: 0.96 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: 12, scale: 0.98 }}
+      transition={{ duration: 0.22, ease: "easeOut" }}
+      onClick={(event) => event.stopPropagation()}
+      className="flex w-full max-w-[410px] flex-col overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_28px_80px_rgba(15,23,42,0.24)]"
+    >
+      <div className="border-b border-slate-100 bg-[linear-gradient(135deg,#f8fafc_0%,#eef2ff_45%,#ecfeff_100%)] px-5 py-4">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-8 w-8 items-center justify-center rounded-[14px] bg-[#163B72] text-white shadow-sm">
+              <Mail className="h-4 w-4" />
+            </div>
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Send Receipt</p>
+              <h3 className="text-[15px] font-semibold leading-tight text-slate-900">Share with agent</h3>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-full border border-slate-200 bg-white p-1.5 text-slate-400 transition hover:text-slate-700"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+
+      <div className="space-y-4 px-5 py-4">
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Receipt Summary</p>
+          <div className="mt-2 grid gap-2 text-sm text-slate-700">
+            <p><span className="font-semibold text-slate-900">Query:</span> {payment?.bookingReference || "-"}</p>
+            <p><span className="font-semibold text-slate-900">Invoice:</span> {payment?.invoiceNumber || "-"}</p>
+            {trackerEntry ? (
+              <p><span className="font-semibold text-slate-900">Instalment:</span> {`Instalment ${Number(installmentIndex) + 1}`}</p>
+            ) : null}
+            <p><span className="font-semibold text-slate-900">Receipt Amount:</span> {formatCurrency(installmentAmount || payment?.paymentTrackerPaidAmount || payment?.receivedAmount || 0)}</p>
+            <p><span className="font-semibold text-slate-900">Received So Far:</span> {formatCurrency(cumulativePaid)}</p>
+            <p><span className="font-semibold text-slate-900">Remaining:</span> {formatCurrency(remainingBalance)}</p>
+          </div>
+        </div>
+
+        <div>
+          <label className="mb-1.5 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+            <span className="flex h-6 w-6 items-center justify-center rounded-full border border-indigo-200 bg-gradient-to-br from-indigo-500 to-sky-500 text-white shadow-sm shadow-indigo-200/70">
+              <Mail className="h-3 w-3" />
+            </span>
+            <span>Agent Email</span>
+          </label>
+          <input
+            type="email"
+            value={recipientEmail}
+            onChange={(e) => onRecipientEmailChange(e.target.value)}
+            placeholder="Enter agent email"
+            className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:bg-white"
+          />
+        </div>
+
+        <div className="rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5">
+          <div className="flex items-start gap-2.5">
+            <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-white text-slate-700 shadow-sm">
+              <Send className="h-3.5 w-3.5" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-slate-900">What will happen</p>
+              <p className="mt-0.5 text-[11px] leading-4 text-slate-500">
+                A Holiday Circuit branded payment receipt PDF will be generated and sent to the agent on this email.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex justify-end gap-3 border-t border-slate-100 px-5 py-3">
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-full border border-slate-200 px-4 py-1.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={onSend}
+          disabled={sending}
+          className="cursor-pointer rounded-full bg-slate-900 px-5 py-1.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-70"
+        >
+          {sending ? "Sending..." : trackerEntry ? "Send Instalment Receipt" : "Send Receipt"}
+        </button>
+      </div>
+    </motion.div>
+  </motion.div>
   );
 };
 
@@ -365,8 +1160,16 @@ const PaymentVerification = () => {
   const [feedback, setFeedback] = useState(null);
   const [openVerifyModal, setOpenVerifyModal] = useState(false);
   const [openRejectModal, setOpenRejectModal] = useState(false);
+  const [openPaymentTrackerModal, setOpenPaymentTrackerModal] = useState(false);
+  const [openSendAgentReceiptModal, setOpenSendAgentReceiptModal] = useState(false);
+  const [openReceiptPreview, setOpenReceiptPreview] = useState(false);
   const [submittingAction, setSubmittingAction] = useState(false);
   const [sendingFinalInvoice, setSendingFinalInvoice] = useState(false);
+  const [sendingAgentReceipt, setSendingAgentReceipt] = useState(false);
+  const [verifyingInstallmentIndex, setVerifyingInstallmentIndex] = useState(null);
+  const [agentReceiptEmail, setAgentReceiptEmail] = useState("");
+  const [selectedReceiptInstallmentIndex, setSelectedReceiptInstallmentIndex] = useState(null);
+  const [installmentToVerifyConfirmIndex, setInstallmentToVerifyConfirmIndex] = useState(null);
   const itemsPerPage = 8;
   const selectedWorkflowStatus = selectedPayment?.workflowStatus || selectedPayment?.status || "Pending";
   const isAwaitingManager = selectedWorkflowStatus === "Manager Review";
@@ -381,8 +1184,42 @@ const PaymentVerification = () => {
         : false);
   const selectedPaymentComparison = useMemo(() => getPaymentComparisonMeta(selectedPayment || {}), [selectedPayment]);
   const hasSelectedPaymentContext = Boolean(String(selectedPayment?.paymentOnBehalfOf || "").trim());
-  const canVerifySelectedPayment = canCurrentUserReview && selectedPaymentComparison.isMatched && hasSelectedPaymentContext;
-  const canSendFinalInvoice = isFinalVerified && Boolean(String(selectedPayment?.agentEmail || "").trim());
+  const isPartialPayment =
+    selectedPaymentComparison.hasReceivedAmount &&
+    selectedPaymentComparison.verificationVariance < 0;
+  const isExcessPayment =
+    selectedPaymentComparison.hasReceivedAmount &&
+    selectedPaymentComparison.verificationVariance > 0;
+  const isPaymentFullyPaid = selectedPayment?.invoicePaymentStatus
+    ? selectedPayment.invoicePaymentStatus === "Paid"
+    : selectedPaymentComparison.isMatched;
+  const canVerifySelectedPayment =
+    canCurrentUserReview &&
+    hasSelectedPaymentContext &&
+    (selectedPaymentComparison.isMatched || isPartialPayment);
+  const canSendFinalInvoice = isFinalVerified && isPaymentFullyPaid && Boolean(String(selectedPayment?.agentEmail || "").trim());
+  const canSendPaymentReceipt =
+    Math.round(Number(selectedPayment?.paymentTrackerPaidAmount || selectedPayment?.receivedAmount || 0)) > 0;
+  const canVerifyInstallments =
+    Boolean(selectedPayment) &&
+    !isAwaitingManager &&
+    !isFinalRejected &&
+    (canCurrentUserReview || isFinalVerified);
+  const selectedReceiptTrackerEntry =
+    selectedReceiptInstallmentIndex !== null &&
+    Array.isArray(selectedPayment?.paymentTrackerEntries)
+      ? selectedPayment.paymentTrackerEntries[selectedReceiptInstallmentIndex] || null
+      : null;
+
+  useEffect(() => {
+    setOpenReceiptPreview(false);
+    setOpenPaymentTrackerModal(false);
+    setOpenSendAgentReceiptModal(false);
+    setAgentReceiptEmail(String(selectedPayment?.paymentReceiptRecipientEmail || selectedPayment?.agentEmail || "").trim());
+    setSelectedReceiptInstallmentIndex(null);
+    setVerifyingInstallmentIndex(null);
+    setInstallmentToVerifyConfirmIndex(null);
+  }, [selectedPayment?.id, selectedPayment?.receiptUrl]);
 
   useEffect(() => {
     const fetchPayments = async () => {
@@ -492,14 +1329,34 @@ const PaymentVerification = () => {
     }
   };
 
+  const handlePreviewReceipt = () => {
+    if (!selectedPayment?.receiptUrl) {
+      setFeedback({ type: "warning", title: "Receipt Missing", message: "No receipt file is available for preview yet." });
+      return;
+    }
+
+    if (isImageReceipt(selectedPayment)) {
+      setOpenReceiptPreview(true);
+      return;
+    }
+
+    window.open(selectedPayment.receiptUrl, "_blank", "noopener,noreferrer");
+  };
+
   const handleVerify = async ({ remarks = "", reviewTarget = "" } = {}) => {
     if (!selectedPayment || submittingAction) return;
     if (!selectedPaymentComparison.hasReceivedAmount) {
       setFeedback({ type: "warning", title: "Amount Missing", message: "Agent must submit the transferred amount before finance can verify this payment." });
       return;
     }
-    if (!selectedPaymentComparison.isMatched) {
-      setFeedback({ type: "warning", title: "Amount Mismatch", message: "Declared payment does not match the expected invoice amount. Reject or ask for correction before verifying." });
+    if (!selectedPaymentComparison.isMatched && !isPartialPayment) {
+      setFeedback({
+        type: "warning",
+        title: isExcessPayment ? "Excess Amount" : "Amount Mismatch",
+        message: isExcessPayment
+          ? "Declared payment is higher than the expected invoice amount. Reject or ask for correction before verifying."
+          : "Declared payment does not match the expected invoice amount. Reject or ask for correction before verifying.",
+      });
       return;
     }
     if (!hasSelectedPaymentContext) {
@@ -518,9 +1375,13 @@ const PaymentVerification = () => {
         title: sentToManager ? "Sent To Manager" : "Payment Verified",
         message: sentToManager
           ? "Your verification remarks have been sent to the finance manager for final approval."
-          : isFinanceMember
-            ? "Payment has been verified at team level and sent forward to the agent."
-            : "UTR and payment proof have been verified. Invoice workflow is now unlocked.",
+            : isFinanceMember
+              ? isPartialPayment
+                ? "Partial payment has been verified at team level. Service confirmation workflow can continue."
+                : "Payment has been verified at team level and sent forward to the agent."
+              : isPartialPayment
+                ? "Partial payment proof has been verified. Voucher generation is now available for service confirmations."
+                : "UTR and payment proof have been verified. Invoice workflow is now unlocked.",
       });
     } catch (actionError) {
       setFeedback({ type: "error", title: "Verification Failed", message: actionError?.response?.data?.message || actionError?.response?.data?.error || "Unable to verify this payment right now." });
@@ -572,6 +1433,87 @@ const PaymentVerification = () => {
     }
   };
 
+  const handleVerifyInstallment = async (installmentIndex) => {
+    if (!selectedPayment || verifyingInstallmentIndex !== null) return;
+
+    try {
+      setVerifyingInstallmentIndex(installmentIndex);
+      const { data } = await API.post(
+        `/admin/payment-verifications/${selectedPayment.id}/tracker-installments/${installmentIndex}/verify`,
+      );
+      refreshPaymentRecord(data?.data);
+      setFeedback({
+        type: "success",
+        title: "Installment Verified",
+        message: data?.message || `Instalment ${Number(installmentIndex) + 1} verified successfully.`,
+      });
+    } catch (actionError) {
+      setFeedback({
+        type: "error",
+        title: "Verification Failed",
+        message: actionError?.response?.data?.message || actionError?.response?.data?.error || "Unable to verify this installment right now.",
+      });
+    } finally {
+      setVerifyingInstallmentIndex(null);
+    }
+  };
+
+  const handleOpenAgentReceiptModal = (installmentIndex = null) => {
+    if (!selectedPayment) return;
+    const targetedEntry =
+      Number.isInteger(installmentIndex) && Array.isArray(selectedPayment?.paymentTrackerEntries)
+        ? selectedPayment.paymentTrackerEntries[installmentIndex] || null
+        : null;
+    const isInstallmentVerified =
+      targetedEntry?.verificationStatus === "Verified" ||
+      (targetedEntry === null && isFinalVerified);
+
+    if (!isInstallmentVerified) {
+      setFeedback({
+        type: "warning",
+        title: "Verify Installment First",
+        message: "The finance team must verify the payment before sending the installment receipt.",
+      });
+      return;
+    }
+    setSelectedReceiptInstallmentIndex(
+      Number.isInteger(installmentIndex) ? installmentIndex : null,
+    );
+    setAgentReceiptEmail(String(selectedPayment.paymentReceiptRecipientEmail || selectedPayment.agentEmail || "").trim());
+    setOpenSendAgentReceiptModal(true);
+  };
+
+  const handleSendAgentReceipt = async () => {
+    if (!selectedPayment || sendingAgentReceipt) return;
+    if (!agentReceiptEmail.trim()) {
+      setFeedback({ type: "warning", title: "Agent Email Missing", message: "Please enter the agent email before sending the receipt." });
+      return;
+    }
+
+    try {
+      setSendingAgentReceipt(true);
+      const { data } = await API.post(`/admin/payment-verifications/${selectedPayment.id}/send-payment-receipt`, {
+        recipientEmail: agentReceiptEmail.trim(),
+        ...(selectedReceiptInstallmentIndex !== null ? { installmentIndex: selectedReceiptInstallmentIndex } : {}),
+      });
+      refreshPaymentRecord(data?.data);
+      setOpenSendAgentReceiptModal(false);
+      setSelectedReceiptInstallmentIndex(null);
+      setFeedback({
+        type: "success",
+        title: "Receipt Sent",
+        message: data?.message || "Holiday Circuit payment receipt has been emailed to the agent successfully.",
+      });
+    } catch (actionError) {
+      setFeedback({
+        type: "error",
+        title: "Send Failed",
+        message: actionError?.response?.data?.message || actionError?.response?.data?.error || "Unable to send the payment receipt right now.",
+      });
+    } finally {
+      setSendingAgentReceipt(false);
+    }
+  };
   return (
     <>
       <FeedbackToast feedback={feedback} onClose={() => setFeedback(null)} />
@@ -758,7 +1700,17 @@ const PaymentVerification = () => {
                   <h2 className="text-xl font-bold text-slate-900">Payment Verification Details</h2>
                   <p className="mt-1 text-sm text-slate-500">{selectedPayment.bookingReference} | {selectedPayment.invoiceNumber}</p>
                 </div>
-                <button onClick={() => { setSelectedPayment(null); setOpenRejectModal(false); }} className="rounded-2xl border border-gray-200 px-4 py-2 text-sm font-medium transition-colors bg-[#000000e3] text-white hover:bg-gray-20 cursor-pointer">Back to List</button>
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setOpenPaymentTrackerModal(true)}
+                    className="inline-flex items-center gap-2 rounded-2xl border border-b-[4px] border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700 transition-all hover:bg-emerald-100 hover:border-b-[4px] hover:border-emerald-300 active:translate-y-[2px] active:border-b-[2px]"
+                  >
+                    <Clock className="h-4 w-4" />
+                    Payment Tracker
+                  </button>
+                  <button onClick={() => { setSelectedPayment(null); setOpenRejectModal(false); setOpenPaymentTrackerModal(false); }} className="rounded-2xl border border-gray-200 px-4 py-2 text-sm font-medium transition-colors bg-[#000000e3] text-white hover:bg-gray-20 cursor-pointer">Back to List</button>
+                </div>
               </div>
 
               {/* Status Cards Row */}
@@ -855,37 +1807,130 @@ const PaymentVerification = () => {
                   <div className="flex-1 rounded-xl border border-slate-100 bg-slate-50 p-5">
                     <div className="mb-4 flex items-start justify-between border-b border-slate-200 pb-4">
                       <div>
-                        <p className="mb-1 text-[10px] uppercase tracking-wider text-slate-500">Agent Name</p>
-                        <p className="text-sm font-bold text-slate-900">{selectedPayment.agentName}</p>
-                        {selectedPayment.agentEmail && <p className="mt-1 text-xs text-slate-400">{selectedPayment.agentEmail}</p>}
+                        <p className="mb-1 flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-slate-500">
+                          <User className="h-3 w-3 text-sky-500" /> Agent Name
+                        </p>
+                        <p className="flex items-center gap-1.5 text-sm font-bold text-slate-900">
+                          <Building2 className="h-4 w-4 text-[#5b5ff8]" /> {selectedPayment.agentName}
+                        </p>
+                        {selectedPayment.agentEmail && (
+                          <p className="mt-1 flex items-center gap-1.5 text-xs text-slate-400">
+                            <Mail className="h-3 w-3 text-violet-500" /> {selectedPayment.agentEmail}
+                          </p>
+                        )}
                       </div>
                       <StatusBadge status={selectedWorkflowStatus} />
                     </div>
-                    <div className="space-y-4">
-                      <div className="flex items-center justify-between"><p className="text-xs text-slate-500">Booking Reference</p><p className="text-sm font-bold text-slate-900">{selectedPayment.bookingReference}</p></div>
-                      <div className="flex items-center justify-between"><p className="text-xs text-slate-500">Invoice Number</p><p className="text-sm font-semibold text-slate-800">{selectedPayment.invoiceNumber}</p></div>
-                      <div className="flex items-center justify-between"><p className="text-xs text-slate-500">{selectedPayment.couponApplied ? "Expected Payable Amount" : "Expected Invoice Amount"}</p><p className="text-lg font-bold text-slate-900">{formatCurrency(selectedPaymentComparison.expectedAmount)}</p></div>
-                      {selectedPayment.couponApplied && <div className="flex items-center justify-between rounded-xl border border-amber-200 bg-amber-50 px-3 py-2"><p className="text-xs font-semibold text-amber-700">Ops Invoice Total</p><p className="text-sm font-bold text-amber-900">{formatCurrency(selectedPaymentComparison.opsInvoiceAmount)}</p></div>}
-                      {selectedPayment.couponApplied && <div className="flex items-center justify-between gap-4"><p className="text-xs text-slate-500">Coupon Code</p><p className="text-right text-sm font-semibold text-violet-700">{selectedPayment.couponCode || "Applied"}</p></div>}
-                      {selectedPayment.couponApplied && <div className="flex items-center justify-between gap-4"><p className="text-xs text-slate-500">Coupon Discount</p><p className="text-right text-sm font-semibold text-emerald-700">{selectedPayment.couponDiscountLabel || formatCurrency(selectedPayment.couponDiscountAmount)}</p></div>}
-                      {selectedPayment.couponApplied && <div className="flex items-center justify-between gap-4"><p className="text-xs text-slate-500">Discount Amount</p><p className="text-right text-sm font-semibold text-emerald-700">- {formatCurrency(selectedPayment.couponDiscountAmount)}</p></div>}
-                      <div className="flex items-center justify-between"><p className="text-xs text-slate-500">Declared Paid Amount</p><p className={`text-sm font-bold ${selectedPaymentComparison.hasReceivedAmount ? "text-emerald-700" : "text-slate-400"}`}>{selectedPaymentComparison.hasReceivedAmount ? formatCurrency(selectedPaymentComparison.receivedAmount) : "Pending"}</p></div>
-                      <div className={`flex items-center justify-between rounded-xl px-3 py-2 ${selectedPayment.couponApplied ? "border border-violet-200 bg-violet-50/70" : ""}`}><p className="text-xs text-slate-500">{selectedPayment.couponApplied ? "Variance From Ops Total" : "Payment Difference"}</p><p className={`text-sm font-bold ${selectedPaymentComparison.varianceClass}`}>{selectedPaymentComparison.hasReceivedAmount ? `${selectedPaymentComparison.variance > 0 ? "+" : ""}${formatCurrency(selectedPaymentComparison.variance)}` : "Pending"}</p></div>
-                      <div className="flex items-center justify-between gap-4"><p className="text-xs text-slate-500">Payment On Behalf Of</p><p className="text-right text-sm font-semibold text-slate-800">{selectedPayment.paymentOnBehalfOf || "Not shared"}</p></div>
-                      <div className="flex items-center justify-between"><p className="text-xs text-slate-500">UTR Number</p><p className="font-mono text-[10px] font-semibold text-amber-500">{selectedPayment.utrNumber || "Pending"}</p></div>
-                      <div className="flex items-center justify-between"><p className="text-xs text-slate-500">Bank Name</p><p className="text-sm font-semibold text-slate-800">{selectedPayment.bankName || "Pending"}</p></div>
-                      <div className="flex items-center justify-between"><p className="text-xs text-slate-500">Payment Date</p><p className="flex items-center gap-1.5 text-sm font-semibold text-slate-800"><Calendar className="h-3.5 w-3.5 text-slate-400" />{selectedPayment.paymentDate}</p></div>
-                      <div className="flex items-center justify-between"><p className="text-xs text-slate-500">Submitted</p><p className="text-sm font-semibold text-slate-800">{selectedPayment.submittedAt || "Pending"}</p></div>
-                      <div className="flex items-center justify-between gap-4"><p className="text-xs text-slate-500">Assigned Finance</p><p className="text-right text-sm font-semibold text-slate-800">{selectedPayment.assignedFinanceName || "Awaiting assignment"}</p></div>
+                    <div className="relative pl-7 space-y-4 mt-2">
+                      <div className="absolute left-[11px] top-1.5 bottom-1.5 border-l-2 border-dashed border-slate-200" />
+
+                      <div className="relative flex items-center justify-between">
+                        <div className="absolute left-[-21px] top-1/2 -translate-y-1/2 h-2.5 w-2.5 rounded-full bg-slate-300 ring-[3px] ring-slate-50" />
+                        <p className="text-xs text-slate-500">Booking Reference</p>
+                        <p className="text-sm font-bold text-slate-900">{selectedPayment.bookingReference}</p>
+                      </div>
+
+                      <div className="relative flex items-center justify-between">
+                        <div className="absolute left-[-21px] top-1/2 -translate-y-1/2 h-2.5 w-2.5 rounded-full bg-slate-300 ring-[3px] ring-slate-50" />
+                        <p className="text-xs text-slate-500">Invoice Number</p>
+                        <p className="text-sm font-semibold text-slate-800">{selectedPayment.invoiceNumber}</p>
+                      </div>
+
+                      <div className="relative flex items-center justify-between">
+                        <div className="absolute left-[-21px] top-1/2 -translate-y-1/2 h-2.5 w-2.5 rounded-full bg-sky-400 ring-[3px] ring-slate-50" />
+                        <p className="text-xs text-slate-500">{selectedPayment.couponApplied ? "Expected Payable Amount" : "Expected Invoice Amount"}</p>
+                        <p className="text-lg font-bold text-slate-900">{formatCurrency(selectedPaymentComparison.expectedAmount)}</p>
+                      </div>
+
+                      {selectedPayment.couponApplied && (
+                        <div className="relative flex items-center justify-between rounded-xl border border-amber-200 bg-amber-50 px-3 py-2">
+                          <div className="absolute left-[-21px] top-1/2 -translate-y-1/2 h-2.5 w-2.5 rounded-full bg-amber-400 ring-[3px] ring-slate-50" />
+                          <p className="text-xs font-semibold text-amber-700">Ops Invoice Total</p>
+                          <p className="text-sm font-bold text-amber-900">{formatCurrency(selectedPaymentComparison.opsInvoiceAmount)}</p>
+                        </div>
+                      )}
+
+                      {selectedPayment.couponApplied && (
+                        <div className="relative flex items-center justify-between gap-4">
+                          <div className="absolute left-[-21px] top-1/2 -translate-y-1/2 h-2.5 w-2.5 rounded-full bg-violet-400 ring-[3px] ring-slate-50" />
+                          <p className="text-xs text-slate-500">Coupon Code</p>
+                          <p className="text-right text-sm font-semibold text-violet-700">{selectedPayment.couponCode || "Applied"}</p>
+                        </div>
+                      )}
+
+                      {selectedPayment.couponApplied && (
+                        <div className="relative flex items-center justify-between gap-4">
+                          <div className="absolute left-[-21px] top-1/2 -translate-y-1/2 h-2.5 w-2.5 rounded-full bg-emerald-400 ring-[3px] ring-slate-50" />
+                          <p className="text-xs text-slate-500">Coupon Discount</p>
+                          <p className="text-right text-sm font-semibold text-emerald-700">{selectedPayment.couponDiscountLabel || formatCurrency(selectedPayment.couponDiscountAmount)}</p>
+                        </div>
+                      )}
+
+                      {selectedPayment.couponApplied && (
+                        <div className="relative flex items-center justify-between gap-4">
+                          <div className="absolute left-[-21px] top-1/2 -translate-y-1/2 h-2.5 w-2.5 rounded-full bg-emerald-400 ring-[3px] ring-slate-50" />
+                          <p className="text-xs text-slate-500">Discount Amount</p>
+                          <p className="text-right text-sm font-semibold text-emerald-700">- {formatCurrency(selectedPayment.couponDiscountAmount)}</p>
+                        </div>
+                      )}
+
+                      <div className="relative flex items-center justify-between">
+                        <div className="absolute left-[-21px] top-1/2 -translate-y-1/2 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-[3px] ring-slate-50" />
+                        <p className="text-xs text-slate-500">Declared Paid Amount</p>
+                        <p className={`text-sm font-bold ${selectedPaymentComparison.hasReceivedAmount ? "text-emerald-700" : "text-slate-400"}`}>{selectedPaymentComparison.hasReceivedAmount ? formatCurrency(selectedPaymentComparison.receivedAmount) : "Pending"}</p>
+                      </div>
+
+                      <div className={`relative flex items-center justify-between ${selectedPayment.couponApplied ? "rounded-xl border border-violet-200 bg-violet-50/70 px-3 py-2" : ""}`}>
+                        <div className="absolute left-[-21px] top-1/2 -translate-y-1/2 h-2.5 w-2.5 rounded-full bg-rose-400 ring-[3px] ring-slate-50" />
+                        <p className="text-xs text-slate-500">{selectedPayment.couponApplied ? "Variance From Ops Total" : "Payment Difference"}</p>
+                        <p className={`text-sm font-bold ${selectedPaymentComparison.varianceClass}`}>{selectedPaymentComparison.hasReceivedAmount ? `${selectedPaymentComparison.variance > 0 ? "+" : ""}${formatCurrency(selectedPaymentComparison.variance)}` : "Pending"}</p>
+                      </div>
+
+                      <div className="relative flex items-center justify-between gap-4">
+                        <div className="absolute left-[-21px] top-1/2 -translate-y-1/2 h-2.5 w-2.5 rounded-full bg-slate-300 ring-[3px] ring-slate-50" />
+                        <p className="text-xs text-slate-500">Payment On Behalf Of</p>
+                        <p className="text-right text-sm font-semibold text-slate-800">{selectedPayment.paymentOnBehalfOf || "Not shared"}</p>
+                      </div>
+
+                      <div className="relative flex items-center justify-between">
+                        <div className="absolute left-[-21px] top-1/2 -translate-y-1/2 h-2.5 w-2.5 rounded-full bg-amber-400 ring-[3px] ring-slate-50" />
+                        <p className="text-xs text-slate-500">UTR Number</p>
+                        <p className="font-mono text-[10px] font-semibold text-amber-500">{selectedPayment.utrNumber || "Pending"}</p>
+                      </div>
+
+                      <div className="relative flex items-center justify-between">
+                        <div className="absolute left-[-21px] top-1/2 -translate-y-1/2 h-2.5 w-2.5 rounded-full bg-slate-300 ring-[3px] ring-slate-50" />
+                        <p className="text-xs text-slate-500">Bank Name</p>
+                        <p className="text-sm font-semibold text-slate-800">{selectedPayment.bankName || "Pending"}</p>
+                      </div>
+
+                      <div className="relative flex items-center justify-between">
+                        <div className="absolute left-[-21px] top-1/2 -translate-y-1/2 h-2.5 w-2.5 rounded-full bg-slate-300 ring-[3px] ring-slate-50" />
+                        <p className="text-xs text-slate-500">Payment Date</p>
+                        <p className="flex items-center gap-1.5 text-sm font-semibold text-slate-800"><Calendar className="h-3.5 w-3.5 text-slate-400" />{selectedPayment.paymentDate}</p>
+                      </div>
+
+                      <div className="relative flex items-center justify-between">
+                        <div className="absolute left-[-21px] top-1/2 -translate-y-1/2 h-2.5 w-2.5 rounded-full bg-slate-300 ring-[3px] ring-slate-50" />
+                        <p className="text-xs text-slate-500">Submitted</p>
+                        <p className="text-sm font-semibold text-slate-800">{selectedPayment.submittedAt || "Pending"}</p>
+                      </div>
+
+                      <div className="relative flex items-center justify-between gap-4">
+                        <div className="absolute left-[-21px] top-1/2 -translate-y-1/2 h-2.5 w-2.5 rounded-full bg-slate-300 ring-[3px] ring-slate-50" />
+                        <p className="text-xs text-slate-500">Assigned Finance</p>
+                        <p className="text-right text-sm font-semibold text-slate-800">{selectedPayment.assignedFinanceName || "Awaiting assignment"}</p>
+                      </div>
                     </div>
                   </div>
 
                   {/* Finance Review Note */}
                   {(selectedPayment.remarks || !hasSelectedPaymentContext || !selectedPaymentComparison.isMatched || selectedPayment.couponApplied) && (
-                    <div className={`mt-4 rounded-xl border px-4 py-3 ${!hasSelectedPaymentContext || !selectedPaymentComparison.isMatched ? "border-amber-200 bg-amber-50" : "border-slate-200 bg-slate-50"}`}>
-                      <p className={`text-[10px] font-bold uppercase tracking-[0.14em] ${!hasSelectedPaymentContext || !selectedPaymentComparison.isMatched ? "text-amber-700" : "text-slate-500"}`}>Finance Review Note</p>
+                    <div className={`mt-4 rounded-xl border px-4 py-3 ${!hasSelectedPaymentContext || isExcessPayment ? "border-amber-200 bg-amber-50" : "border-slate-200 bg-slate-50"}`}>
+                      <p className={`text-[10px] font-bold uppercase tracking-[0.14em] ${!hasSelectedPaymentContext || isExcessPayment ? "text-amber-700" : "text-slate-500"}`}>Finance Review Note</p>
                       {!hasSelectedPaymentContext && <p className="mt-2 text-xs leading-5 text-amber-800">Agent has not shared who this payment is for. Verification should wait until the behalf detail is submitted.</p>}
-                      {hasSelectedPaymentContext && !selectedPaymentComparison.isMatched && <p className="mt-2 text-xs leading-5 text-amber-800">The declared amount does not match the ops invoice total. Use rejection or ask for corrected resubmission.</p>}
+                      {hasSelectedPaymentContext && isPartialPayment && <p className="mt-2 text-xs leading-5 text-slate-700">This is a partial payment. Verifying it will keep the invoice partially paid and unlock provisional voucher generation for service confirmations.</p>}
+                      {hasSelectedPaymentContext && isExcessPayment && <p className="mt-2 text-xs leading-5 text-amber-800">The declared amount is higher than the expected invoice total. Use rejection or ask for corrected resubmission.</p>}
                       {selectedPayment.remarks && <p className="mt-2 text-xs leading-5 text-slate-700"><span className="font-semibold">Agent note:</span> {selectedPayment.remarks}</p>}
                       {selectedPayment.couponApplied && <p className="mt-2 text-xs leading-5 text-slate-700"><span className="font-semibold">Coupon context:</span> {selectedPayment.couponSummary || `${selectedPayment.couponCode} reduced the payable amount for this invoice.`}</p>}
                     </div>
@@ -937,7 +1982,7 @@ const PaymentVerification = () => {
                         <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
                           <div className="flex items-start gap-2">
                             <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
-                            <p className="text-xs leading-5 text-amber-800">Verification unlocks only when the agent-declared amount matches the invoice total and the payment behalf detail is available.</p>
+                            <p className="text-xs leading-5 text-amber-800">Verification unlocks when the payment behalf detail is available and the submitted amount is either partial or exactly matched. Excess payment must be corrected first.</p>
                           </div>
                         </div>
                       )}
@@ -975,10 +2020,20 @@ const PaymentVerification = () => {
                       <ImageIcon className="h-5 w-5 text-slate-600" />
                       <h3 className="text-sm font-bold text-slate-800">Payment Receipt</h3>
                     </div>
-                    <div className="flex flex-col rounded-xl border border-slate-200 bg-white p-2">
+                    <div className="group flex flex-col rounded-xl border border-slate-200 bg-white p-2">
                       {selectedPayment.receiptUrl ? (
                         isImageReceipt(selectedPayment) ? (
-                          <img src={selectedPayment.receiptUrl} alt="Payment Receipt" className="h-72 w-full rounded-lg object-cover" />
+                          <div className="relative overflow-hidden rounded-lg">
+                            <img src={selectedPayment.receiptUrl} alt="Payment Receipt" className="h-72 w-full rounded-lg object-cover" />
+                            <button
+                              type="button"
+                              onClick={handlePreviewReceipt}
+                              className="absolute right-3 top-3 inline-flex cursor-pointer items-center gap-1.5 rounded-full bg-slate-900/85 px-3 py-1.5 text-xs font-semibold text-white opacity-100 shadow-lg transition hover:bg-slate-800 sm:opacity-0 sm:group-hover:opacity-100"
+                            >
+                              <Eye className="h-3.5 w-3.5" />
+                              Preview
+                            </button>
+                          </div>
                         ) : (
                           <div className="flex h-72 w-full flex-col items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50 text-center">
                             <FileText className="mb-3 h-10 w-10 text-slate-400" />
@@ -993,14 +2048,16 @@ const PaymentVerification = () => {
                           <p className="mt-1 text-xs text-slate-400">Agent payment proof is not available yet.</p>
                         </div>
                       )}
-                      <button onClick={handleDownloadReceipt} className="mt-4 flex w-full items-center justify-center gap-2 rounded-3xl cursor-pointer bg-slate-900 py-3 text-sm font-medium text-white transition-colors hover:bg-slate-900">
-                        <Download className="h-4 w-4" />
-                        Download Receipt
-                      </button>
+                      <div className="mt-5 flex">
+                        <button onClick={handleDownloadReceipt} className="flex h-11 w-full items-center justify-center gap-2 rounded-3xl cursor-pointer bg-slate-900 py-3 text-sm font-medium text-white transition-colors hover:bg-slate-900">
+                          <Download className="h-4 w-4" />
+                          Download Receipt
+                        </button>
+                      </div>
                     </div>
                   </div>
 
-                  {/* Audit Trail — fixed height, internal scroll only */}
+                  {/* Audit Trail â€” fixed height, internal scroll only */}
                   <div className="rounded-xl border border-slate-200 bg-slate-50 p-5">
                     <div className="mb-4 flex items-center gap-2">
                       <Building2 className="h-5 w-5 text-slate-600" />
@@ -1019,8 +2076,8 @@ const PaymentVerification = () => {
                             </div>
                             {(entry.reason || entry.remarks) && (
                               <div className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
-                                {entry.reason && <p><span className="font-semibold">Reason:</span> {entry.reason}</p>}
-                                {entry.remarks && <p className="mt-1"><span className="font-semibold">Remarks:</span> {entry.remarks}</p>}
+                                {entry.reason && <p><span className="font-semibold">Reason:</span> {formatAuditText(entry.reason)}</p>}
+                                {entry.remarks && <p className="mt-1"><span className="font-semibold">Remarks:</span> {formatAuditText(entry.remarks)}</p>}
                               </div>
                             )}
                           </div>
@@ -1035,8 +2092,22 @@ const PaymentVerification = () => {
                 </div>
               </div>
 
-              {/* Full-width Final Invoice Dispatch — only when Verified */}
-              {isFinalVerified && (
+              {/* Full-width Final Invoice Dispatch â€” only when Verified */}
+              {isFinalVerified && !isPaymentFullyPaid && (
+                <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4">
+                  <div className="flex items-start gap-3">
+                    <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+                    <div>
+                      <p className="text-sm font-semibold text-amber-800">Partial payment verified</p>
+                      <p className="mt-1 text-xs leading-5 text-amber-700">
+                        Voucher generation is available for service confirmations. Final invoice dispatch and final voucher send will unlock after the remaining payment is verified.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {isFinalVerified && isPaymentFullyPaid && (
                 <div className="mt-6 overflow-hidden rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 via-white to-teal-50/60">
                   {/* Top status strip */}
                   <div className="flex items-center gap-2 border-b border-emerald-100 bg-emerald-50/80 px-6 py-3">
@@ -1047,14 +2118,14 @@ const PaymentVerification = () => {
                     </span>
                   </div>
 
-                  {/* Main body — full width, info left + button right */}
+                  {/* Main body â€” full width, info left + button right */}
                   <div className="flex items-center gap-6 px-6 py-5">
                     {/* Icon */}
                     <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600">
                       <Send className="h-5 w-5" />
                     </div>
 
-                    {/* Info — takes all remaining space */}
+                    {/* Info â€” takes all remaining space */}
                     <div className="min-w-0 flex-1">
                       <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-emerald-700">Final Invoice Dispatch</p>
                       <p className="mt-0.5 text-sm font-semibold leading-5 text-slate-900">
@@ -1068,13 +2139,13 @@ const PaymentVerification = () => {
                         </p>
                         {selectedPayment.finalInvoiceSentAt && (
                           <p className="text-xs text-slate-400">
-                            Sent {selectedPayment.finalInvoiceSentAt} · {selectedPayment.finalInvoiceSentByName || "Finance Team"}
+                            Sent {selectedPayment.finalInvoiceSentAt} • {selectedPayment.finalInvoiceSentByName || "Finance Team"}
                           </p>
                         )}
                       </div>
                     </div>
 
-                    {/* Button — right edge */}
+                    {/* Button â€” right edge */}
                     <button
                       type="button"
                       onClick={handleSendFinalInvoice}
@@ -1112,6 +2183,51 @@ const PaymentVerification = () => {
       </div>
 
       <AnimatePresence>
+        {openPaymentTrackerModal && selectedPayment && (
+          <PaymentTrackerModal
+            payment={selectedPayment}
+            onClose={() => setOpenPaymentTrackerModal(false)}
+            onSendAgentReceipt={handleOpenAgentReceiptModal}
+            onVerifyInstallment={(index) => setInstallmentToVerifyConfirmIndex(index)}
+            sendingAgentReceipt={sendingAgentReceipt}
+            verifyingInstallmentIndex={verifyingInstallmentIndex}
+            canSendAgentReceipt={canSendPaymentReceipt}
+            canVerifyInstallments={canVerifyInstallments}
+          />
+        )}
+      </AnimatePresence>
+      <AnimatePresence>
+        {installmentToVerifyConfirmIndex !== null && selectedPayment && (
+          <VerifyInstallmentConfirmationModal
+            installmentIndex={installmentToVerifyConfirmIndex}
+            payment={selectedPayment}
+            submitting={verifyingInstallmentIndex !== null}
+            onClose={() => setInstallmentToVerifyConfirmIndex(null)}
+            onConfirm={async () => {
+              await handleVerifyInstallment(installmentToVerifyConfirmIndex);
+              setInstallmentToVerifyConfirmIndex(null);
+            }}
+          />
+        )}
+      </AnimatePresence>
+      <AnimatePresence>
+        {openSendAgentReceiptModal && selectedPayment && (
+          <SendAgentReceiptModal
+            payment={selectedPayment}
+            trackerEntry={selectedReceiptTrackerEntry}
+            installmentIndex={selectedReceiptInstallmentIndex}
+            recipientEmail={agentReceiptEmail}
+            onRecipientEmailChange={setAgentReceiptEmail}
+            sending={sendingAgentReceipt}
+            onClose={() => {
+              setOpenSendAgentReceiptModal(false);
+              setSelectedReceiptInstallmentIndex(null);
+            }}
+            onSend={handleSendAgentReceipt}
+          />
+        )}
+      </AnimatePresence>
+      <AnimatePresence>
         {openVerifyModal && selectedPayment && (
           <ReviewActionModal mode="verify" payment={selectedPayment} submitting={submittingAction} userRole={user?.role} onClose={() => setOpenVerifyModal(false)} onConfirm={handleVerify} />
         )}
@@ -1119,6 +2235,39 @@ const PaymentVerification = () => {
       <AnimatePresence>
         {openRejectModal && selectedPayment && (
           <ReviewActionModal mode="reject" payment={selectedPayment} submitting={submittingAction} userRole={user?.role} onClose={() => setOpenRejectModal(false)} onConfirm={handleReject} />
+        )}
+      </AnimatePresence>
+      <AnimatePresence>
+        {openReceiptPreview && selectedPayment?.receiptUrl && isImageReceipt(selectedPayment) && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[80] flex items-center justify-center bg-black/80 p-4"
+            onClick={() => setOpenReceiptPreview(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.96, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.96, opacity: 0 }}
+              transition={{ duration: 0.2, ease: "easeOut" }}
+              className="relative flex max-h-[90vh] w-full max-w-5xl items-center justify-center"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <button
+                type="button"
+                onClick={() => setOpenReceiptPreview(false)}
+                className="absolute right-2 top-2 z-10 inline-flex h-11 w-11 items-center justify-center rounded-full bg-black/55 text-white transition hover:bg-black/70"
+              >
+                <X className="h-5 w-5" />
+              </button>
+              <img
+                src={selectedPayment.receiptUrl}
+                alt={selectedPayment.receiptName || "Payment Receipt"}
+                className="max-h-[86vh] w-auto max-w-full object-contain"
+              />
+            </motion.div>
+          </motion.div>
         )}
       </AnimatePresence>
     </>

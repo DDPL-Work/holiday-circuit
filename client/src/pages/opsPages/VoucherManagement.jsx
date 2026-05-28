@@ -13,6 +13,7 @@ import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import VoucherPreviewModal from "../../modal/VoucherPreviewModal";
 import API from "../../utils/Api.js";
+import { buildVoucherHtml } from "../../utils/voucherTemplate";
 
 const formatDisplayDate = (value) => {
   if (!value) return "-";
@@ -25,74 +26,6 @@ const formatDisplayDate = (value) => {
     month: "short",
     year: "numeric",
   });
-};
-
-const getVoucherStatusNote = (services = [], isAlreadySent = false) => {
-  const missingServices = (services || []).filter(
-    (service) => !String(service?.title || service?.name || "").trim(),
-  );
-  const missingConfirmations = (services || []).filter((service) => {
-    const confirmation = String(service?.confirmation || "").trim().toLowerCase();
-    return !confirmation || confirmation === "pending";
-  });
-
-  if (!services.length) {
-    return {
-      tone: "red",
-      title: "Voucher Services Missing",
-      message:
-        "No services are mapped in this voucher yet. Add services before sending it to the client.",
-      canSend: false,
-    };
-  }
-
-  if (missingServices.length && missingConfirmations.length) {
-    return {
-      tone: "red",
-      title: "Services And Confirmations Missing",
-      message:
-        "Some voucher services are missing and some DMC confirmation numbers are still pending. Client sharing will stay blocked until both are complete.",
-      canSend: false,
-    };
-  }
-
-  if (missingServices.length) {
-    return {
-      tone: "red",
-      title: "Service Details Missing",
-      message:
-        "Some voucher services are missing. Complete all service names before sending the voucher to the client.",
-      canSend: false,
-    };
-  }
-
-  if (missingConfirmations.length) {
-    return {
-      tone: "red",
-      title: "DMC Confirmation Pending",
-      message:
-        "Some DMC confirmation numbers are still pending. Client sharing will stay blocked until all confirmations are updated.",
-      canSend: false,
-    };
-  }
-
-  if (isAlreadySent) {
-    return {
-      tone: "green",
-      title: "Voucher Already Shared",
-      message:
-        "This voucher has already been sent successfully. You can review or download the final shared copy here.",
-      canSend: false,
-    };
-  }
-
-  return {
-    tone: "green",
-    title: "Client Ready To Send",
-    message:
-      "All services and DMC confirmation numbers are available. This voucher is ready to share with the client.",
-    canSend: true,
-  };
 };
 
 export default function VoucherManagement() {
@@ -145,10 +78,15 @@ export default function VoucherManagement() {
     }
   };
 
-  const handleSendVoucher = async (id, branding = "with") => {
+  const handleSendVoucher = async (id, branding = "with", dispatchChannel = "EMAIL", recipientEmail = "", recipientPhone = "") => {
     try {
       setSendingVoucher(true);
-      const { data } = await API.patch(`/ops/vouchers/${id}/send`, { branding });
+      const { data } = await API.patch(`/ops/vouchers/${id}/send`, {
+        branding,
+        dispatchChannel,
+        email: recipientEmail,
+        phone: recipientPhone,
+      });
       toast.success(data?.message || "Voucher sent successfully");
       setShowPreview(false);
       await fetchVouchers();
@@ -167,52 +105,7 @@ export default function VoucherManagement() {
   };
 
   const handleDownloadVoucher = (voucher, branding) => {
-    const statusNote = getVoucherStatusNote(voucher.services || [], voucher.status === "sent");
-    const servicesMarkup = (voucher.services || [])
-      .map(
-        (service) =>
-          `<tr><td style="padding:10px 0;border-bottom:1px solid #e5e7eb;">${service.type || "Service"}</td><td style="padding:10px 0;border-bottom:1px solid #e5e7eb;">${service.title || service.name || "Service missing"}</td><td style="padding:10px 0;border-bottom:1px solid #e5e7eb;text-align:right;">${service.confirmation || "Pending"}</td></tr>`
-      )
-      .join("");
-
-    const html = `
-      <html>
-        <body style="margin:0;background:#f8fafc;padding:24px;font-family:Arial,sans-serif;">
-          <div style="max-width:720px;margin:0 auto;background:#fff;border:1px solid #e5e7eb;border-radius:16px;overflow:hidden;">
-            ${
-              branding === "with"
-                ? `<div style="background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;text-align:center;padding:28px 20px;"><h1 style="margin:0;font-size:28px;">Holiday Circuit</h1><p style="margin:8px 0 0;font-size:12px;letter-spacing:1px;">TRAVEL VOUCHER</p></div>`
-                : `<div style="padding:22px 20px;border-bottom:1px solid #e5e7eb;text-align:center;"><h1 style="margin:0;font-size:24px;color:#111827;">Travel Voucher</h1></div>`
-            }
-            <div style="padding:24px;">
-              <div style="display:flex;justify-content:space-between;gap:16px;margin-bottom:20px;">
-                <div><div style="font-size:12px;color:#6b7280;">Voucher No.</div><div style="font-size:16px;font-weight:700;color:#111827;">${voucher.voucherNumber || voucher.query}</div></div>
-                <div style="text-align:right;"><div style="font-size:12px;color:#6b7280;">Destination</div><div style="font-size:16px;font-weight:700;color:#111827;">${voucher.destination || "-"}</div></div>
-              </div>
-              <table style="width:100%;border-collapse:collapse;margin-bottom:20px;">
-                <tr><td style="padding:8px 0;color:#6b7280;">Guest Name</td><td style="padding:8px 0;text-align:right;font-weight:600;color:#111827;">${voucher.name || "-"}</td></tr>
-                <tr><td style="padding:8px 0;color:#6b7280;">Passengers</td><td style="padding:8px 0;text-align:right;font-weight:600;color:#111827;">${voucher.passengers || "-"}</td></tr>
-                <tr><td style="padding:8px 0;color:#6b7280;">Duration</td><td style="padding:8px 0;text-align:right;font-weight:600;color:#111827;">${voucher.duration || "-"}</td></tr>
-              </table>
-              <div style="margin:0 0 16px;border:1px solid ${
-                statusNote.tone === "red" ? "#fecaca" : "#bbf7d0"
-              };background:${statusNote.tone === "red" ? "#fef2f2" : "#f0fdf4"};border-radius:14px;padding:12px 14px;">
-                <p style="margin:0;font-size:11px;font-weight:700;color:${
-                  statusNote.tone === "red" ? "#b91c1c" : "#15803d"
-                };text-transform:uppercase;letter-spacing:0.04em;">${statusNote.title}</p>
-                <p style="margin:6px 0 0;font-size:12px;line-height:1.6;color:${
-                  statusNote.tone === "red" ? "#991b1b" : "#166534"
-                };">${statusNote.message}</p>
-              </div>
-              <h3 style="margin:0 0 12px;color:#111827;">Service Details</h3>
-              <table style="width:100%;border-collapse:collapse;">
-                <thead><tr><th style="text-align:left;padding:10px 0;border-bottom:1px solid #e5e7eb;color:#6b7280;font-size:12px;">Type</th><th style="text-align:left;padding:10px 0;border-bottom:1px solid #e5e7eb;color:#6b7280;font-size:12px;">Service</th><th style="text-align:right;padding:10px 0;border-bottom:1px solid #e5e7eb;color:#6b7280;font-size:12px;">Confirmation</th></tr></thead>
-                <tbody>${servicesMarkup || '<tr><td colspan="3" style="padding:12px 0;color:#6b7280;">No services available</td></tr>'}</tbody>
-              </table>
-            </div>
-          </div>
-        </body>
-      </html>`;
+    const html = buildVoucherHtml(voucher, branding);
 
     const blob = new Blob([html], { type: "text/html;charset=utf-8" });
     const url = URL.createObjectURL(blob);
@@ -272,10 +165,20 @@ export default function VoucherManagement() {
                 name={voucher.name}
                 destination={voucher.destination}
                 date={voucher.date}
+                travelDate={voucher.travelDate}
                 duration={voucher.duration}
                 passengers={voucher.passengers}
+                adults={voucher.adults}
+                children={voucher.children}
+                travelerSummary={voucher.travelerSummary}
                 services={voucher.services || []}
                 branding={voucher.branding || "with"}
+                agentName={voucher.agentName}
+                agentEmail={voucher.agentEmail}
+                agentPhone={voucher.agentPhone}
+                invoicePaymentStatus={voucher.invoicePaymentStatus}
+                paymentVerificationStatus={voucher.paymentVerificationStatus}
+                canSendVoucher={voucher.canSendVoucher}
                 onPreview={handlePreview}
                 onGenerate={handleGenerateVoucher}
               />
@@ -289,7 +192,9 @@ export default function VoucherManagement() {
           data={selectedVoucher}
           mode={modalMode}
           loading={sendingVoucher}
-          onSend={(branding) => handleSendVoucher(selectedVoucher.id, branding)}
+          onSend={(branding, dispatchChannel, recipientEmail, recipientPhone) =>
+            handleSendVoucher(selectedVoucher.id, branding, dispatchChannel, recipientEmail, recipientPhone)
+          }
           onDownload={handleDownloadVoucher}
           onClose={() => setShowPreview(false)}
         />
@@ -320,10 +225,20 @@ function VoucherCard({
   name,
   destination,
   date,
+  travelDate,
   duration,
   passengers,
+  adults,
+  children,
+  travelerSummary,
   services,
   branding,
+  agentName,
+  agentEmail,
+  agentPhone,
+  invoicePaymentStatus,
+  paymentVerificationStatus,
+  canSendVoucher,
   onPreview,
   onGenerate,
 }) {
@@ -352,11 +267,22 @@ function VoucherCard({
     name,
     destination,
     date,
+    travelDate,
     duration,
     passengers,
+    adults,
+    children,
+    travelerSummary,
     services,
     branding,
+    agentName,
+    agentEmail,
+    agentPhone,
+    invoicePaymentStatus,
+    paymentVerificationStatus,
+    canSendVoucher,
   };
+  const canSendFinalVoucher = Boolean(canSendVoucher);
 
   return (
     <div className="bg-white border border-gray-200 shadow-sm rounded-3xl p-6 flex flex-col gap-1">
@@ -420,10 +346,16 @@ function VoucherCard({
 
             <button
               onClick={() => onPreview(voucherPayload, "send")}
-              className="flex items-center gap-1 bg-green-600 text-white px-4 py-2 rounded-xl text-sm"
+              disabled={!canSendFinalVoucher}
+              title={canSendFinalVoucher ? "Send voucher to agent" : "Payment must be verified before sending the voucher"}
+              className={`flex items-center gap-1 px-4 py-2 rounded-xl text-sm ${
+                canSendFinalVoucher
+                  ? "bg-green-600 text-white"
+                  : "cursor-not-allowed bg-gray-200 text-gray-500"
+              }`}
             >
               <Send size={14} />
-              Send to Agent
+              {canSendFinalVoucher ? "Send to Agent" : "Awaiting Verification"}
             </button>
           </>
         )}

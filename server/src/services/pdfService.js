@@ -1,6 +1,40 @@
 import PDFDocument from "pdfkit";
 import fs from "fs";
 import path from "path";
+import https from "https";
+import http from "http";
+
+const getLogoBuffer = (url) => {
+  return new Promise((resolve) => {
+    try {
+      if (!url || typeof url !== "string") {
+        resolve(null);
+        return;
+      }
+      const client = url.startsWith("https") ? https : http;
+      client.get(url, (res) => {
+        if (res.statusCode !== 200) {
+          resolve(null);
+          return;
+        }
+        const data = [];
+        res.on("data", (chunk) => {
+          data.push(chunk);
+        });
+        res.on("end", () => {
+          resolve(Buffer.concat(data));
+        });
+        res.on("error", () => {
+          resolve(null);
+        });
+      }).on("error", () => {
+        resolve(null);
+      });
+    } catch (e) {
+      resolve(null);
+    }
+  });
+};
 
 const BRAND = Object.freeze({
   name: "Holiday Circuit",
@@ -32,10 +66,121 @@ const PAGE = Object.freeze({
   footerY: 790,
 });
 
+const CONTENT_BOTTOM_LIMIT = PAGE.footerY - 24;
+const SERVICE_ROW_BREAK_LIMIT = CONTENT_BOTTOM_LIMIT - 6;
+
+const DEFAULT_SELLER_BANK_DETAILS = Object.freeze([
+  { label: "Bank Name", value: "HDFC Bank" },
+  { label: "A/c Holder Name", value: "Leela Travels" },
+  { label: "A/c No.", value: "50200103968171" },
+  { label: "IFSC", value: "HDFC0004413" },
+  { label: "Branch", value: "RAMPHAL CHOWK SEC VII DWARKA" },
+]);
+
 const ensureDirectory = (dirPath) => {
   if (!fs.existsSync(dirPath)) {
     fs.mkdirSync(dirPath, { recursive: true });
   }
+};
+
+const FONTS_DIR = path.join(process.cwd(), "src", "assets", "fonts");
+const FONT_REGULAR_PATH = path.join(FONTS_DIR, "Roboto-Regular.ttf");
+const FONT_BOLD_PATH = path.join(FONTS_DIR, "Roboto-Bold.ttf");
+
+const downloadFont = (url, destPath) => {
+  return new Promise((resolve, reject) => {
+    ensureDirectory(path.dirname(destPath));
+    const file = fs.createWriteStream(destPath);
+    https.get(url, (response) => {
+      if (response.statusCode !== 200) {
+        reject(new Error(`Failed to download font: status code ${response.statusCode}`));
+        return;
+      }
+      response.pipe(file);
+      file.on("finish", () => {
+        file.close(resolve);
+      });
+    }).on("error", (err) => {
+      fs.unlink(destPath, () => {});
+      reject(err);
+    });
+  });
+};
+
+const ensureFontsExist = async () => {
+  try {
+    if (fs.existsSync(FONT_REGULAR_PATH) && fs.existsSync(FONT_BOLD_PATH)) {
+      const regSize = fs.statSync(FONT_REGULAR_PATH).size;
+      const boldSize = fs.statSync(FONT_BOLD_PATH).size;
+      if (regSize > 10000 && boldSize > 10000) {
+        return true;
+      }
+      // If either file is empty/corrupted, delete them
+      if (fs.existsSync(FONT_REGULAR_PATH)) fs.unlinkSync(FONT_REGULAR_PATH);
+      if (fs.existsSync(FONT_BOLD_PATH)) fs.unlinkSync(FONT_BOLD_PATH);
+    }
+  } catch (statErr) {
+    console.error("Error statting font files:", statErr);
+  }
+
+  try {
+    const regularUrl = "https://raw.githubusercontent.com/google/fonts/main/apache/roboto/static/Roboto-Regular.ttf";
+    const boldUrl = "https://raw.githubusercontent.com/google/fonts/main/apache/roboto/static/Roboto-Bold.ttf";
+
+    if (!fs.existsSync(FONT_REGULAR_PATH)) {
+      await downloadFont(regularUrl, FONT_REGULAR_PATH);
+    }
+    if (!fs.existsSync(FONT_BOLD_PATH)) {
+      await downloadFont(boldUrl, FONT_BOLD_PATH);
+    }
+    
+    // Final verification of newly downloaded files
+    if (fs.existsSync(FONT_REGULAR_PATH) && fs.existsSync(FONT_BOLD_PATH)) {
+      const regSize = fs.statSync(FONT_REGULAR_PATH).size;
+      const boldSize = fs.statSync(FONT_BOLD_PATH).size;
+      if (regSize > 10000 && boldSize > 10000) {
+        return true;
+      }
+    }
+    return false;
+  } catch (error) {
+    console.error("Error downloading Roboto fonts, falling back to standard Helvetica:", error);
+    try {
+      if (fs.existsSync(FONT_REGULAR_PATH)) fs.unlinkSync(FONT_REGULAR_PATH);
+      if (fs.existsSync(FONT_BOLD_PATH)) fs.unlinkSync(FONT_BOLD_PATH);
+    } catch (cleanErr) {}
+    return false;
+  }
+};
+
+const getInitials = (name) => {
+  if (!name || typeof name !== "string") return "HC";
+  const noise = ["pvt", "ltd", "private", "limited"];
+  const words = name
+    .trim()
+    .split(/\s+/)
+    .map(w => w.replace(/[^a-zA-Z]/g, "")) // Keep only alphabetic characters
+    .filter(w => w.length > 0 && !noise.includes(w.toLowerCase()));
+
+  if (words.length === 0) {
+    const fallbackWords = name
+      .trim()
+      .split(/\s+/)
+      .map(w => w.replace(/[^a-zA-Z]/g, ""))
+      .filter(w => w.length > 0);
+    if (fallbackWords.length === 0) return "HC";
+    return fallbackWords[0].slice(0, 2).toUpperCase();
+  }
+
+  if (words.length >= 2) {
+    return (words[0][0] + words[1][0]).toUpperCase();
+  }
+  
+  const word = words[0];
+  if (word.length >= 2) {
+    return word.slice(0, 2).toUpperCase();
+  }
+  return word[0].toUpperCase();
 };
 
 const sanitizeFileToken = (value = "") =>
@@ -45,8 +190,40 @@ const sanitizeFileToken = (value = "") =>
     .replace(/^_+|_+$/g, "")
     .slice(0, 80) || "quote";
 
-const formatCurrency = (value, currency = "INR") =>
-  `${String(currency || "INR").toUpperCase()} ${Math.round(Number(value || 0)).toLocaleString("en-IN")}`;
+const INR_SYMBOL = "\u20B9";
+
+const formatCurrency = (value, currency = "INR") => {
+  const symbol = String(currency || "INR").toUpperCase() === "INR" ? INR_SYMBOL : currency;
+  return `${symbol} ${Math.round(Number(value || 0)).toLocaleString("en-IN")}`;
+};
+
+const drawRupeeSymbol = (doc, x, y, options = {}) => {
+  const size = Number(options?.size || 12);
+  const color = options?.color || COLORS.ink;
+  const strokeWidth = Number(options?.strokeWidth || Math.max(1, size * 0.1));
+  const stemX = x + size * 0.18;
+  const topY = y;
+  const midY = y + size * 0.28;
+  const joinY = y + size * 0.5;
+  const tailY = y + size;
+
+  doc
+    .save()
+    .lineCap("round")
+    .lineJoin("round")
+    .lineWidth(strokeWidth)
+    .strokeColor(color)
+    .moveTo(stemX, topY)
+    .lineTo(x + size * 0.84, topY)
+    .moveTo(stemX, midY)
+    .lineTo(x + size * 0.7, midY)
+    .moveTo(stemX, topY)
+    .lineTo(stemX, joinY)
+    .moveTo(stemX, joinY)
+    .lineTo(x + size * 0.72, tailY)
+    .stroke()
+    .restore();
+};
 
 const formatDateLabel = (value) => {
   if (!value) return "-";
@@ -178,13 +355,15 @@ const drawPageFrame = (doc) => {
     .stroke()
     .restore();
 
+  const brandName = doc.brandName || "Holiday Circuit";
+
   doc.save();
   doc.rect(PAGE.contentX, PAGE.topRibbonY, PAGE.contentWidth, 20).fill(COLORS.accent);
   doc
-    .font("Helvetica-Bold")
+    .font(doc.fontBold || "Helvetica-Bold")
     .fontSize(8)
     .fillColor("#ffffff")
-    .text("HOLIDAY CIRCUIT QUOTATION", PAGE.contentX, PAGE.topRibbonY + 6, {
+    .text(`${brandName.toUpperCase()} QUOTATION`, PAGE.contentX, PAGE.topRibbonY + 6, {
       width: PAGE.contentWidth,
       align: "center",
       characterSpacing: 1.2,
@@ -192,7 +371,7 @@ const drawPageFrame = (doc) => {
   doc.restore();
 
   doc
-    .font("Helvetica")
+    .font(doc.fontRegular || "Helvetica")
     .fontSize(8)
     .fillColor(COLORS.muted)
     .text("This is a computer-generated quotation and does not require a signature.", PAGE.contentX, PAGE.footerY, {
@@ -201,7 +380,7 @@ const drawPageFrame = (doc) => {
     });
 };
 
-const drawLogoBadge = (doc, logoPath, x, y) => {
+const drawLogoBadge = (doc, logoPath, x, y, initials = "HC") => {
   if (logoPath) {
     try {
       doc.image(logoPath, x, y, {
@@ -211,29 +390,29 @@ const drawLogoBadge = (doc, logoPath, x, y) => {
       });
       return;
     } catch (error) {
-      // Fall back to the HC badge if the image cannot be rendered.
+      // Fall back to the initials if the image cannot be rendered.
     }
   }
 
   doc.save();
   doc.roundedRect(x, y, 48, 48, 10).fillAndStroke("#ffffff", COLORS.border);
   doc
-    .font("Helvetica-Bold")
+    .font(doc.fontBold || "Helvetica-Bold")
     .fontSize(18)
     .fillColor(COLORS.accent)
-    .text("HC", x, y + 14, { width: 48, align: "center" });
+    .text(initials, x, y + 14, { width: 48, align: "center" });
   doc.restore();
 };
 
 const drawMetaCell = (doc, { x, y, width, label, value }) => {
   doc
-    .font("Helvetica-Bold")
+    .font(doc.fontBold || "Helvetica-Bold")
     .fontSize(7.4)
     .fillColor(COLORS.muted)
     .text(label, x, y, { width, align: "center" });
 
   doc
-    .font("Helvetica-Bold")
+    .font(doc.fontBold || "Helvetica-Bold")
     .fontSize(8.5)
     .fillColor(COLORS.ink)
     .text(value || "-", x, y + 10, { width, align: "center" });
@@ -243,7 +422,7 @@ const drawPartyBlock = (doc, { x, y, width, title, primary, lines = [], align = 
   drawRoundedBox(doc, x, y, width, height, "#ffffff");
 
   doc
-    .font("Helvetica-Bold")
+    .font(doc.fontBold || "Helvetica-Bold")
     .fontSize(8)
     .fillColor(COLORS.muted)
     .text(title, x + 10, y + 10, {
@@ -253,7 +432,7 @@ const drawPartyBlock = (doc, { x, y, width, title, primary, lines = [], align = 
     });
 
   doc
-    .font("Helvetica-Bold")
+    .font(doc.fontBold || "Helvetica-Bold")
     .fontSize(13)
     .fillColor(COLORS.ink)
     .text(primary || "-", x + 10, y + 24, {
@@ -266,7 +445,7 @@ const drawPartyBlock = (doc, { x, y, width, title, primary, lines = [], align = 
     if (!line) return;
 
     doc
-      .font("Helvetica")
+      .font(doc.fontRegular || "Helvetica")
       .fontSize(8.2)
       .fillColor(COLORS.text)
       .text(line, x + 10, cursorY, {
@@ -281,7 +460,7 @@ const drawPartyBlock = (doc, { x, y, width, title, primary, lines = [], align = 
 const drawSectionBar = (doc, y, title) => {
   drawRoundedBox(doc, PAGE.contentX, y, PAGE.contentWidth, 22, "#ecfeff", COLORS.accentBorder, 6);
   doc
-    .font("Helvetica-Bold")
+    .font(doc.fontBold || "Helvetica-Bold")
     .fontSize(9)
     .fillColor(COLORS.accent)
     .text(title, PAGE.contentX, y + 7, {
@@ -339,13 +518,13 @@ const drawSnapshotGrid = (doc, quoteDetails = {}) => {
     const cellY = gridY + row * rowHeight;
 
     doc
-      .font("Helvetica-Bold")
+      .font(doc.fontBold || "Helvetica-Bold")
       .fontSize(7.2)
       .fillColor(COLORS.muted)
       .text(item.label, cellX + 10, cellY + 10, { width: columnWidth - 20 });
 
     doc
-      .font("Helvetica-Bold")
+      .font(doc.fontBold || "Helvetica-Bold")
       .fontSize(8.2)
       .fillColor(COLORS.ink)
       .text(item.value || "-", cellX + 10, cellY + 21, {
@@ -375,13 +554,13 @@ const getServiceBadgePalette = (typeLabel = "") => {
 
 const drawServiceTypePill = (doc, x, y, width, label) => {
   const palette = getServiceBadgePalette(label);
-  const pillWidth = Math.min(width - 12, Math.max(46, doc.widthOfString(label || "-", { font: "Helvetica-Bold", size: 7.6 }) + 18));
+  const pillWidth = Math.min(width - 12, Math.max(46, doc.widthOfString(label || "-", { font: doc.fontBold || "Helvetica-Bold", size: 7.6 }) + 18));
   const pillX = x + Math.max(6, (width - pillWidth) / 2);
 
   doc.save();
   doc.roundedRect(pillX, y, pillWidth, 16, 8).fillAndStroke(palette.fill, palette.stroke);
   doc
-    .font("Helvetica-Bold")
+    .font(doc.fontBold || "Helvetica-Bold")
     .fontSize(7.6)
     .fillColor(palette.text)
     .text(label || "-", pillX, y + 5, {
@@ -416,7 +595,7 @@ const drawServicesTableHeader = (doc, y) => {
     }
 
     doc
-      .font("Helvetica-Bold")
+      .font(doc.fontBold || "Helvetica-Bold")
       .fontSize(7.5)
       .fillColor(COLORS.ink)
       .text(column.label, column.x + 6, y + 8, {
@@ -435,12 +614,12 @@ const drawServiceRow = (doc, columns, y, service = {}, index = 0) => {
   const locationText = service?.location || "-";
   const dateText = service?.serviceDateLabel || "-";
   const titleText = service?.title || "Service";
-  const typeText = service?.typeLabel || "Travel Service";
+  const typeText = normalizeServiceTypeLabel(service?.typeLabel);
 
-  doc.font("Helvetica-Bold").fontSize(10);
+  doc.font(doc.fontBold || "Helvetica-Bold").fontSize(10);
   const titleHeight = doc.heightOfString(titleText, { width: columns[1].width - 16 });
 
-  doc.font("Helvetica").fontSize(8.3);
+  doc.font(doc.fontRegular || "Helvetica").fontSize(8.3);
   const notesHeight = notesText ? doc.heightOfString(notesText, { width: columns[1].width - 16 }) : 0;
   const locationHeight = doc.heightOfString(locationText, { width: columns[4].width - 16 });
   const quantityHeight = doc.heightOfString(quantityText, { width: columns[5].width - 16, align: "center" });
@@ -479,7 +658,7 @@ const drawServiceRow = (doc, columns, y, service = {}, index = 0) => {
   });
 
   doc
-    .font("Helvetica-Bold")
+    .font(doc.fontBold || "Helvetica-Bold")
     .fontSize(9)
     .fillColor(COLORS.ink)
     .text(String(index + 1), columns[0].x + 4, y + 14, {
@@ -488,7 +667,7 @@ const drawServiceRow = (doc, columns, y, service = {}, index = 0) => {
     });
 
   doc
-    .font("Helvetica-Bold")
+    .font(doc.fontBold || "Helvetica-Bold")
     .fontSize(10)
     .fillColor(COLORS.ink)
     .text(titleText, columns[1].x + 8, y + 8, {
@@ -497,7 +676,7 @@ const drawServiceRow = (doc, columns, y, service = {}, index = 0) => {
 
   if (notesText) {
     doc
-      .font("Helvetica")
+      .font(doc.fontRegular || "Helvetica")
       .fontSize(8.3)
       .fillColor(COLORS.text)
       .text(notesText, columns[1].x + 8, y + 8 + titleHeight + 4, {
@@ -508,7 +687,7 @@ const drawServiceRow = (doc, columns, y, service = {}, index = 0) => {
   drawServiceTypePill(doc, columns[2].x, y + Math.max(10, rowHeight / 2 - 8), columns[2].width, typeText);
 
   doc
-    .font("Helvetica")
+    .font(doc.fontRegular || "Helvetica")
     .fontSize(8.6)
     .fillColor(COLORS.text)
     .text(dateText, columns[3].x + 6, y + 12, {
@@ -517,7 +696,7 @@ const drawServiceRow = (doc, columns, y, service = {}, index = 0) => {
     });
 
   doc
-    .font("Helvetica")
+    .font(doc.fontRegular || "Helvetica")
     .fontSize(8.6)
     .fillColor(COLORS.text)
     .text(locationText, columns[4].x + 8, y + 12, {
@@ -525,7 +704,7 @@ const drawServiceRow = (doc, columns, y, service = {}, index = 0) => {
     });
 
   doc
-    .font("Helvetica")
+    .font(doc.fontRegular || "Helvetica")
     .fontSize(8.6)
     .fillColor(COLORS.text)
     .text(quantityText, columns[5].x + 6, y + 12, {
@@ -536,15 +715,19 @@ const drawServiceRow = (doc, columns, y, service = {}, index = 0) => {
   return rowHeight;
 };
 
-const drawContinuationHeader = (doc, quoteDetails = {}) => {
+const drawContinuationHeader = (
+  doc,
+  quoteDetails = {},
+  title = "Quotation Details (Continued)",
+) => {
   doc
-    .font("Helvetica-Bold")
+    .font(doc.fontBold || "Helvetica-Bold")
     .fontSize(15)
     .fillColor(COLORS.ink)
-    .text("Selected Services (Continued)", PAGE.contentX, 88);
+    .text(title, PAGE.contentX, 88);
 
   doc
-    .font("Helvetica")
+    .font(doc.fontRegular || "Helvetica")
     .fontSize(9)
     .fillColor(COLORS.muted)
     .text(
@@ -563,8 +746,12 @@ const drawSummarySection = (doc, y, quoteDetails = {}, servicesCount = 0) => {
   const rightWidth = 165;
   const leftX = PAGE.contentX;
   const rightX = PAGE.contentX + leftWidth + 16;
-  const amountText = formatCurrency(quoteDetails?.totalAmount || 0, quoteDetails?.currency || "INR");
+  const normalizedCurrency = String(quoteDetails?.currency || "INR").trim().toUpperCase() || "INR";
+  const totalAmountNumber = Math.round(Number(quoteDetails?.totalAmount || 0));
+  const amountText = formatCurrency(totalAmountNumber, normalizedCurrency);
+  const amountValueText = totalAmountNumber.toLocaleString("en-IN");
   const amountWords = formatAmountInWords(quoteDetails?.totalAmount || 0);
+  const isInrCurrency = normalizedCurrency === "INR";
 
   drawSectionBar(doc, y, "QUOTATION SUMMARY");
 
@@ -572,21 +759,33 @@ const drawSummarySection = (doc, y, quoteDetails = {}, servicesCount = 0) => {
   drawRoundedBox(doc, rightX, y + 30, rightWidth, 66, COLORS.totalBg, "#bbf7d0");
 
   doc
-    .font("Helvetica-Bold")
+    .font(doc.fontBold || "Helvetica-Bold")
     .fontSize(8.2)
     .fillColor(COLORS.muted)
     .text("AMOUNT CHARGEABLE (IN WORDS)", leftX + 12, y + 40);
 
   doc
-    .font("Helvetica-Bold")
+    .font(doc.fontBold || "Helvetica-Bold")
     .fontSize(10)
-    .fillColor(COLORS.ink)
-    .text(`INR: ${amountWords}`, leftX + 12, y + 52, {
+    .fillColor(COLORS.ink);
+
+  if (isInrCurrency) {
+    drawRupeeSymbol(doc, leftX + 12, y + 55, {
+      size: 9,
+      color: COLORS.ink,
+      strokeWidth: 1.05,
+    });
+    doc.text(amountWords, leftX + 25, y + 52, {
+      width: leftWidth - 37,
+    });
+  } else {
+    doc.text(`${normalizedCurrency}: ${amountWords}`, leftX + 12, y + 52, {
       width: leftWidth - 24,
     });
+  }
 
   doc
-    .font("Helvetica")
+    .font(doc.fontRegular || "Helvetica")
     .fontSize(8)
     .fillColor(COLORS.text)
     .text(
@@ -599,7 +798,7 @@ const drawSummarySection = (doc, y, quoteDetails = {}, servicesCount = 0) => {
     );
 
   doc
-    .font("Helvetica-Bold")
+    .font(doc.fontBold || "Helvetica-Bold")
     .fontSize(8.2)
     .fillColor(COLORS.totalText)
     .text("FINAL AMOUNT", rightX, y + 40, {
@@ -609,16 +808,33 @@ const drawSummarySection = (doc, y, quoteDetails = {}, servicesCount = 0) => {
     });
 
   doc
-    .font("Helvetica-Bold")
+    .font(doc.fontBold || "Helvetica-Bold")
     .fontSize(18)
-    .fillColor(COLORS.totalText)
-    .text(amountText, rightX, y + 54, {
+    .fillColor(COLORS.totalText);
+
+  if (isInrCurrency) {
+    const amountWidth = doc.widthOfString(amountValueText);
+    const rupeeBlockWidth = amountWidth + 18;
+    const startX = rightX + Math.max(10, (rightWidth - rupeeBlockWidth) / 2);
+
+    drawRupeeSymbol(doc, startX, y + 59, {
+      size: 13,
+      color: COLORS.totalText,
+      strokeWidth: 1.45,
+    });
+    doc.text(amountValueText, startX + 16, y + 54, {
+      width: amountWidth + 2,
+      align: "left",
+    });
+  } else {
+    doc.text(amountText, rightX, y + 54, {
       width: rightWidth,
       align: "center",
     });
+  }
 
   doc
-    .font("Helvetica")
+    .font(doc.fontRegular || "Helvetica")
     .fontSize(7.8)
     .fillColor(COLORS.text)
     .text("Taxes and charges are already reflected in the total shared by operations.", rightX + 10, y + 76, {
@@ -628,6 +844,9 @@ const drawSummarySection = (doc, y, quoteDetails = {}, servicesCount = 0) => {
 
   return y + 106;
 };
+
+const SUMMARY_SECTION_HEIGHT = 106;
+const TERMS_SECTION_HEIGHT = 132;
 
 const drawTermsSection = (doc, y) => {
   const terms = [
@@ -644,7 +863,7 @@ const drawTermsSection = (doc, y) => {
   let cursorY = y + 40;
   terms.forEach((term, index) => {
     doc
-      .font("Helvetica")
+      .font(doc.fontRegular || "Helvetica")
       .fontSize(8.2)
       .fillColor(COLORS.text)
       .text(`${index + 1}. ${term}`, PAGE.contentX + 14, cursorY, {
@@ -653,6 +872,82 @@ const drawTermsSection = (doc, y) => {
 
     cursorY = doc.y + 5;
   });
+
+  return y + 132;
+};
+
+const normalizeSellerBankDetails = (items = []) => {
+  const normalizedItems = Array.isArray(items)
+    ? items
+        .map((item) => ({
+          label: String(item?.label || "").trim(),
+          value: String(item?.value || "").trim(),
+        }))
+        .filter((item) => item.label && item.value)
+    : [];
+
+  return normalizedItems.length ? normalizedItems : [...DEFAULT_SELLER_BANK_DETAILS];
+};
+
+const normalizeServiceTypeLabel = (value = "") => {
+  const normalizedValue = String(value || "").trim().toLowerCase().replace(/_/g, " ");
+
+  if (!normalizedValue) return "Travel Service";
+  if (normalizedValue === "hotel") return "Hotel";
+  if (normalizedValue === "transfer" || normalizedValue === "transport" || normalizedValue === "car") {
+    return "Transport";
+  }
+  if (normalizedValue === "activity") return "Activity";
+  if (normalizedValue === "sightseeing") return "Sightseeing";
+
+  return normalizedValue.replace(/\b\w/g, (character) => character.toUpperCase());
+};
+
+const getSellerBankDetailsSectionHeight = (items = []) => {
+  const normalizedItems = normalizeSellerBankDetails(items);
+  return 30 + Math.max(64, normalizedItems.length * 28 + 12) + 14;
+};
+
+const drawSellerBankDetailsSection = (doc, y, items = []) => {
+  const normalizedItems = normalizeSellerBankDetails(items);
+  const sectionHeight = Math.max(64, normalizedItems.length * 28 + 12);
+
+  drawSectionBar(doc, y, "SELLER'S BANK DETAILS");
+  drawRoundedBox(doc, PAGE.contentX, y + 30, PAGE.contentWidth, sectionHeight, "#ffffff");
+
+  let cursorY = y + 42;
+  normalizedItems.forEach((item, index) => {
+    if (index > 0) {
+      doc
+        .save()
+        .moveTo(PAGE.contentX + 14, cursorY - 8)
+        .lineTo(PAGE.contentX + PAGE.contentWidth - 14, cursorY - 8)
+        .lineWidth(0.55)
+        .strokeColor(COLORS.border)
+        .stroke()
+        .restore();
+    }
+
+    doc
+      .font(doc.fontBold || "Helvetica-Bold")
+      .fontSize(8.4)
+      .fillColor(COLORS.muted)
+      .text(item.label, PAGE.contentX + 14, cursorY, {
+        width: 140,
+      });
+
+    doc
+      .font(doc.fontBold || "Helvetica-Bold")
+      .fontSize(8.8)
+      .fillColor(COLORS.ink)
+      .text(item.value, PAGE.contentX + 164, cursorY, {
+        width: PAGE.contentWidth - 178,
+      });
+
+    cursorY += 28;
+  });
+
+  return y + 30 + sectionHeight + 14;
 };
 
 const drawBulletListSection = (doc, y, title, items = [], emptyLabel = "No items provided.") => {
@@ -664,7 +959,7 @@ const drawBulletListSection = (doc, y, title, items = [], emptyLabel = "No items
 
   const contentItems = normalizedItems.length ? normalizedItems : [emptyLabel];
   let contentHeight = 18;
-  doc.font("Helvetica").fontSize(8.2);
+  doc.font(doc.fontRegular || "Helvetica").fontSize(8.2);
 
   contentItems.forEach((item, index) => {
     contentHeight += doc.heightOfString(
@@ -678,7 +973,7 @@ const drawBulletListSection = (doc, y, title, items = [], emptyLabel = "No items
   let cursorY = y + 40;
   contentItems.forEach((item, index) => {
     doc
-      .font("Helvetica")
+      .font(doc.fontRegular || "Helvetica")
       .fontSize(8.2)
       .fillColor(normalizedItems.length ? COLORS.text : COLORS.muted)
       .text(normalizedItems.length ? `${index + 1}. ${item}` : item, PAGE.contentX + 14, cursorY, {
@@ -689,6 +984,25 @@ const drawBulletListSection = (doc, y, title, items = [], emptyLabel = "No items
   });
 
   return y + 30 + Math.max(46, contentHeight) + 14;
+};
+
+const getBulletListSectionHeight = (doc, items = [], emptyLabel = "No items provided.") => {
+  const normalizedItems = Array.isArray(items)
+    ? items.map((item) => String(item || "").trim()).filter(Boolean)
+    : [];
+
+  const contentItems = normalizedItems.length ? normalizedItems : [emptyLabel];
+  let contentHeight = 18;
+  doc.font(doc.fontRegular || "Helvetica").fontSize(8.2);
+
+  contentItems.forEach((item, index) => {
+    contentHeight += doc.heightOfString(
+      normalizedItems.length ? `${index + 1}. ${item}` : item,
+      { width: PAGE.contentWidth - 28 },
+    ) + 6;
+  });
+
+  return 30 + Math.max(46, contentHeight) + 14;
 };
 
 const normalizeItineraryItems = (items = []) =>
@@ -708,10 +1022,10 @@ const drawItinerarySection = (doc, y, items = [], quoteDetails = {}) => {
   let cursorY = y;
 
   const startSection = () => {
-    if (cursorY + 70 > 740) {
+    if (cursorY + 70 > CONTENT_BOTTOM_LIMIT) {
       doc.addPage();
       drawPageFrame(doc);
-      drawContinuationHeader(doc, quoteDetails);
+      drawContinuationHeader(doc, quoteDetails, "Day Wise Itinerary (Continued)");
       cursorY = 132;
     }
 
@@ -724,7 +1038,7 @@ const drawItinerarySection = (doc, y, items = [], quoteDetails = {}) => {
   if (!normalizedItems.length) {
     drawRoundedBox(doc, PAGE.contentX, cursorY, PAGE.contentWidth, 46, "#ffffff");
     doc
-      .font("Helvetica")
+      .font(doc.fontRegular || "Helvetica")
       .fontSize(8.4)
       .fillColor(COLORS.muted)
       .text("No day wise itinerary provided.", PAGE.contentX + 14, cursorY + 16, {
@@ -738,20 +1052,20 @@ const drawItinerarySection = (doc, y, items = [], quoteDetails = {}) => {
     const heading = [item.dayLabel, item.title].filter(Boolean).join(": ") || `Day ${item.dayNumber}`;
     const description = item.description || "";
 
-    doc.font("Helvetica-Bold").fontSize(9.2);
+    doc.font(doc.fontBold || "Helvetica-Bold").fontSize(9.2);
     const headingHeight = doc.heightOfString(heading, {
       width: PAGE.contentWidth - 28,
     });
-    doc.font("Helvetica").fontSize(8.2);
+    doc.font(doc.fontRegular || "Helvetica").fontSize(8.2);
     const descriptionHeight = description
       ? doc.heightOfString(description, { width: PAGE.contentWidth - 28 })
       : 0;
     const cardHeight = Math.max(48, headingHeight + descriptionHeight + 22);
 
-    if (cursorY + cardHeight > 740) {
+    if (cursorY + cardHeight > CONTENT_BOTTOM_LIMIT) {
       doc.addPage();
       drawPageFrame(doc);
-      drawContinuationHeader(doc, quoteDetails);
+      drawContinuationHeader(doc, quoteDetails, "Day Wise Itinerary (Continued)");
       cursorY = 132;
       drawSectionBar(doc, cursorY, "DAY WISE ITINERARY");
       cursorY += 30;
@@ -759,7 +1073,7 @@ const drawItinerarySection = (doc, y, items = [], quoteDetails = {}) => {
 
     drawRoundedBox(doc, PAGE.contentX, cursorY, PAGE.contentWidth, cardHeight, "#ffffff");
     doc
-      .font("Helvetica-Bold")
+      .font(doc.fontBold || "Helvetica-Bold")
       .fontSize(9.2)
       .fillColor("#9a3412")
       .text(heading, PAGE.contentX + 14, cursorY + 12, {
@@ -768,7 +1082,7 @@ const drawItinerarySection = (doc, y, items = [], quoteDetails = {}) => {
 
     if (description) {
       doc
-        .font("Helvetica")
+        .font(doc.fontRegular || "Helvetica")
         .fontSize(8.2)
         .fillColor(COLORS.text)
         .text(description, PAGE.contentX + 14, doc.y + 4, {
@@ -782,7 +1096,7 @@ const drawItinerarySection = (doc, y, items = [], quoteDetails = {}) => {
   return cursorY + 6;
 };
 
-const drawInclusionsExclusionsSection = (doc, y, inclusions = [], exclusions = []) => {
+const drawInclusionsExclusionsSection = (doc, y, inclusions = [], exclusions = [], quoteDetails = {}) => {
   const normalizedInclusions = Array.isArray(inclusions)
     ? inclusions.map((item) => String(item || "").trim()).filter(Boolean)
     : [];
@@ -790,95 +1104,42 @@ const drawInclusionsExclusionsSection = (doc, y, inclusions = [], exclusions = [
     ? exclusions.map((item) => String(item || "").trim()).filter(Boolean)
     : [];
 
-  const leftItems = normalizedInclusions.length ? normalizedInclusions : ["No inclusions provided."];
-  const rightItems = normalizedExclusions.length ? normalizedExclusions : ["No exclusions provided."];
-  const sectionX = PAGE.contentX;
-  const sectionWidth = PAGE.contentWidth;
-  const leftX = sectionX + 14;
-  const columnGap = 24;
-  const columnWidth = (sectionWidth - 28 - columnGap) / 2;
-  const rightX = leftX + columnWidth + columnGap;
-  const contentStartY = y + 44;
+  let currentY = y;
+  const ensureSpace = (requiredHeight) => {
+    if (currentY + requiredHeight > CONTENT_BOTTOM_LIMIT) {
+      doc.addPage();
+      drawPageFrame(doc);
+      drawContinuationHeader(doc, quoteDetails, "Quotation Details (Continued)");
+      currentY = 132;
+    }
+  };
 
-  doc.save();
-  doc.roundedRect(sectionX, y, sectionWidth, 28, 8).fillAndStroke("#ffe2bd", "#ffd2a3");
-  doc.rect(sectionX, y, 6, 28).fill("#f97316");
-  doc
-    .font("Helvetica-Bold")
-    .fontSize(14)
-    .fillColor("#9a3412")
-    .text("Inclusions/Exclusions", sectionX + 16, y + 8, {
-      width: sectionWidth - 32,
-    });
-  doc.restore();
+  const inclusionHeight = getBulletListSectionHeight(doc, normalizedInclusions, "No inclusions provided.");
+  ensureSpace(inclusionHeight);
+  currentY = drawBulletListSection(
+    doc,
+    currentY,
+    "INCLUSIONS",
+    normalizedInclusions,
+    "No inclusions provided.",
+  );
 
-  doc.font("Helvetica").fontSize(8.6);
+  const exclusionHeight = getBulletListSectionHeight(doc, normalizedExclusions, "No exclusions provided.");
+  ensureSpace(exclusionHeight);
+  currentY = drawBulletListSection(
+    doc,
+    currentY,
+    "EXCLUSIONS",
+    normalizedExclusions,
+    "No exclusions provided.",
+  );
 
-  const getColumnHeight = (items) =>
-    items.reduce((total, item, index) => (
-      total + doc.heightOfString(`${index + 1}. ${item}`, { width: columnWidth - 22 }) + 10
-    ), 28);
-
-  const contentHeight = Math.max(getColumnHeight(leftItems), getColumnHeight(rightItems), 60);
-
-  drawRoundedBox(doc, sectionX, y + 38, sectionWidth, contentHeight + 18, "#ffffff");
-
-  doc
-    .font("Helvetica-Bold")
-    .fontSize(10.5)
-    .fillColor(COLORS.ink)
-    .text("Inclusions", leftX, contentStartY, { width: columnWidth - 12 });
-  doc
-    .save()
-    .moveTo(leftX, contentStartY + 16)
-    .lineTo(leftX + 78, contentStartY + 16)
-    .lineWidth(3)
-    .strokeColor("#16a34a")
-    .stroke()
-    .restore();
-
-  doc
-    .font("Helvetica-Bold")
-    .fontSize(10.5)
-    .fillColor(COLORS.ink)
-    .text("Exclusions", rightX, contentStartY, { width: columnWidth - 12 });
-  doc
-    .save()
-    .moveTo(rightX, contentStartY + 16)
-    .lineTo(rightX + 78, contentStartY + 16)
-    .lineWidth(3)
-    .strokeColor("#dc2626")
-    .stroke()
-    .restore();
-
-  let leftCursorY = contentStartY + 30;
-  leftItems.forEach((item, index) => {
-    doc
-      .font("Helvetica")
-      .fontSize(8.6)
-      .fillColor(normalizedInclusions.length ? COLORS.text : COLORS.muted)
-      .text(`${index + 1}. ${item}`, leftX, leftCursorY, {
-        width: columnWidth - 12,
-      });
-
-    leftCursorY = doc.y + 7;
-  });
-
-  let rightCursorY = contentStartY + 30;
-  rightItems.forEach((item, index) => {
-    doc
-      .font("Helvetica")
-      .fontSize(8.6)
-      .fillColor(normalizedExclusions.length ? COLORS.text : COLORS.muted)
-      .text(`${index + 1}. ${item}`, rightX, rightCursorY, {
-        width: columnWidth - 12,
-      });
-
-    rightCursorY = doc.y + 7;
-  });
-
-  return y + 38 + contentHeight + 32;
+  return currentY;
 };
+
+const getInclusionsExclusionsSectionHeight = (doc, inclusions = [], exclusions = []) =>
+  getBulletListSectionHeight(doc, inclusions, "No inclusions provided.")
+  + getBulletListSectionHeight(doc, exclusions, "No exclusions provided.");
 
 export const generatePDF = async (quoteDetails = {}) => {
   const uploadsDir = path.join(process.cwd(), "uploads", "quotations");
@@ -887,34 +1148,74 @@ export const generatePDF = async (quoteDetails = {}) => {
   const fileToken = sanitizeFileToken(
     quoteDetails?.quotationNumber || quoteDetails?.queryId || quoteDetails?.destination,
   );
-  const fileName = `quotation_${fileToken}.pdf`;
+  const fileVariantSuffix = quoteDetails?.includeSellerBankDetails === false ? "_client" : "";
+  const fileName = `quotation_${fileToken}${fileVariantSuffix}.pdf`;
   const filePath = path.join(uploadsDir, fileName);
   const publicFilePath = `/uploads/quotations/${fileName}`;
+
+  const brandName = quoteDetails.agentBrandingName || BRAND.name;
+  const brandSubline = quoteDetails.agentBrandingName
+    ? "Travel Quotation | Curated travel services for your booking review"
+    : `${BRAND.subline} | Curated travel services for your booking review`;
+
+  const hasFonts = await ensureFontsExist();
 
   const doc = new PDFDocument({
     size: "A4",
     margin: 36,
   });
+  doc.brandName = brandName; // Store it for drawPageFrame!
+
+  let loadedFonts = false;
+  if (hasFonts) {
+    try {
+      doc.registerFont("Roboto", FONT_REGULAR_PATH);
+      doc.registerFont("Roboto-Bold", FONT_BOLD_PATH);
+      doc.fontRegular = "Roboto";
+      doc.fontBold = "Roboto-Bold";
+      loadedFonts = true;
+    } catch (fontRegisterError) {
+      console.error("Failed to register Roboto fonts, falling back to Helvetica:", fontRegisterError);
+      try {
+        if (fs.existsSync(FONT_REGULAR_PATH)) fs.unlinkSync(FONT_REGULAR_PATH);
+        if (fs.existsSync(FONT_BOLD_PATH)) fs.unlinkSync(FONT_BOLD_PATH);
+      } catch (cleanupErr) {}
+    }
+  }
+
+  if (!loadedFonts) {
+    doc.fontRegular = "Helvetica";
+    doc.fontBold = "Helvetica-Bold";
+  }
+
+  // Set the default font
+  doc.font(doc.fontRegular);
 
   const stream = fs.createWriteStream(filePath);
   doc.pipe(stream);
 
-  const logoPath = resolveBrandLogoPath();
+  let logoPath = resolveBrandLogoPath();
+  if (quoteDetails.agentLogo) {
+    const logoBuffer = await getLogoBuffer(quoteDetails.agentLogo);
+    if (logoBuffer) {
+      logoPath = logoBuffer;
+    }
+  }
 
   drawPageFrame(doc);
-  drawLogoBadge(doc, logoPath, PAGE.contentX + 8, 88);
+  drawLogoBadge(doc, logoPath, PAGE.contentX + 8, 88, getInitials(brandName));
 
   doc
-    .font("Helvetica-Bold")
+    .font(doc.fontBold || "Helvetica-Bold")
     .fontSize(18)
     .fillColor(COLORS.ink)
-    .text(BRAND.name, PAGE.contentX + 68, 92);
+    .text(brandName, PAGE.contentX + 68, 92);
 
   doc
-    .font("Helvetica")
+    .font(doc.fontRegular || "Helvetica")
     .fontSize(9)
     .fillColor(COLORS.muted)
-    .text(`${BRAND.subline} | Curated travel services for your booking review`, PAGE.contentX + 68, 114);
+    .text(brandSubline, PAGE.contentX + 68, 114);
 
   const metaStartX = PAGE.contentX + 360;
   const metaCellWidth = 48;
@@ -945,8 +1246,14 @@ export const generatePDF = async (quoteDetails = {}) => {
     y: 138,
     width: 245,
     title: "SELLER",
-    primary: BRAND.name,
-    lines: [BRAND.address, `Email: ${BRAND.email}`, `Phone: ${BRAND.phone}`],
+    primary: brandName,
+    lines: quoteDetails.agentBrandingName
+      ? [
+          quoteDetails.agentEmail ? `Email: ${quoteDetails.agentEmail}` : "",
+          quoteDetails.agentPhone ? `Phone: ${quoteDetails.agentPhone}` : "",
+          quoteDetails.agentGstNumber ? `GST: ${quoteDetails.agentGstNumber}` : ""
+        ].filter(Boolean)
+      : [BRAND.address, `Email: ${BRAND.email}`, `Phone: ${BRAND.phone}`],
   });
 
   drawPartyBlock(doc, {
@@ -974,7 +1281,7 @@ export const generatePDF = async (quoteDetails = {}) => {
   if (!services.length) {
     drawRoundedBox(doc, PAGE.contentX, cursorY, PAGE.contentWidth, 42, "#ffffff");
     doc
-      .font("Helvetica")
+      .font(doc.fontRegular || "Helvetica")
       .fontSize(9.5)
       .fillColor(COLORS.muted)
       .text("No service details are available for this quotation.", PAGE.contentX, cursorY + 15, {
@@ -984,9 +1291,9 @@ export const generatePDF = async (quoteDetails = {}) => {
     cursorY += 56;
   } else {
     services.forEach((service, index) => {
-      doc.font("Helvetica-Bold").fontSize(10);
+      doc.font(doc.fontBold || "Helvetica-Bold").fontSize(10);
       const titleHeight = doc.heightOfString(service?.title || "Service", { width: 159 });
-      doc.font("Helvetica").fontSize(8.3);
+      doc.font(doc.fontRegular || "Helvetica").fontSize(8.3);
       const notesHeight = service?.description
         ? doc.heightOfString(`Notes: ${service.description}`, { width: 159 })
         : 0;
@@ -1002,10 +1309,10 @@ export const generatePDF = async (quoteDetails = {}) => {
         dateHeight + 18,
       );
 
-      if (cursorY + estimatedRowHeight > 690) {
+      if (cursorY + estimatedRowHeight > SERVICE_ROW_BREAK_LIMIT) {
         doc.addPage();
         drawPageFrame(doc);
-        drawContinuationHeader(doc, quoteDetails);
+        drawContinuationHeader(doc, quoteDetails, "Selected Services (Continued)");
         drawSectionBar(doc, 132, "SELECTED SERVICES");
         servicesTableY = 164;
         columns = drawServicesTableHeader(doc, servicesTableY);
@@ -1013,14 +1320,14 @@ export const generatePDF = async (quoteDetails = {}) => {
       }
 
       const rowHeight = drawServiceRow(doc, columns, cursorY, service, index);
-      cursorY += rowHeight + 8;
+      cursorY += rowHeight + 6;
     });
   }
 
-  if (cursorY > 630) {
+  if (cursorY + SUMMARY_SECTION_HEIGHT > CONTENT_BOTTOM_LIMIT) {
     doc.addPage();
     drawPageFrame(doc);
-    drawContinuationHeader(doc, quoteDetails);
+    drawContinuationHeader(doc, quoteDetails, "Quotation Details (Continued)");
     cursorY = 132;
   } else {
     cursorY += 10;
@@ -1028,24 +1335,18 @@ export const generatePDF = async (quoteDetails = {}) => {
 
   cursorY = drawSummarySection(doc, cursorY, quoteDetails, services.length);
 
-  if (cursorY + 140 > 740) {
-    doc.addPage();
-    drawPageFrame(doc);
-    drawContinuationHeader(doc, quoteDetails);
-    cursorY = 132;
-  }
-
   cursorY = drawInclusionsExclusionsSection(
     doc,
     cursorY,
     quoteDetails?.inclusions,
     quoteDetails?.exclusions,
+    quoteDetails,
   );
 
-  if (cursorY + 120 > 740) {
+  if (cursorY + 70 > CONTENT_BOTTOM_LIMIT) {
     doc.addPage();
     drawPageFrame(doc);
-    drawContinuationHeader(doc, quoteDetails);
+    drawContinuationHeader(doc, quoteDetails, "Quotation Details (Continued)");
     cursorY = 132;
   }
 
@@ -1056,10 +1357,16 @@ export const generatePDF = async (quoteDetails = {}) => {
     quoteDetails,
   );
 
-  if (cursorY + 120 > 740) {
+  const importantNotesHeight = getBulletListSectionHeight(
+    doc,
+    quoteDetails?.additionalNotes,
+    "No additional notes provided.",
+  );
+
+  if (cursorY + importantNotesHeight > CONTENT_BOTTOM_LIMIT) {
     doc.addPage();
     drawPageFrame(doc);
-    drawContinuationHeader(doc, quoteDetails);
+    drawContinuationHeader(doc, quoteDetails, "Quotation Details (Continued)");
     cursorY = 132;
   }
 
@@ -1070,15 +1377,33 @@ export const generatePDF = async (quoteDetails = {}) => {
     quoteDetails?.additionalNotes,
     "No additional notes provided.",
   );
+  if (quoteDetails?.includeSellerBankDetails !== false) {
+    const sellerBankDetailsHeight = getSellerBankDetailsSectionHeight(
+      quoteDetails?.sellerBankDetails,
+    );
 
-  if (cursorY + 140 > 740) {
+    if (cursorY + sellerBankDetailsHeight > CONTENT_BOTTOM_LIMIT) {
+      doc.addPage();
+      drawPageFrame(doc);
+      drawContinuationHeader(doc, quoteDetails, "Quotation Details (Continued)");
+      cursorY = 132;
+    }
+
+    cursorY = drawSellerBankDetailsSection(
+      doc,
+      cursorY,
+      quoteDetails?.sellerBankDetails,
+    );
+  }
+
+  if (cursorY + 12 + TERMS_SECTION_HEIGHT > CONTENT_BOTTOM_LIMIT) {
     doc.addPage();
     drawPageFrame(doc);
-    drawContinuationHeader(doc, quoteDetails);
+    drawContinuationHeader(doc, quoteDetails, "Quotation Details (Continued)");
     cursorY = 132;
   }
 
-  drawTermsSection(doc, cursorY);
+  drawTermsSection(doc, cursorY + 12);
 
   doc.end();
 
