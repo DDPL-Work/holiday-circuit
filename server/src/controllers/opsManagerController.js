@@ -4,6 +4,7 @@ import ApiError from "../utils/ApiError.js";
 import Notification from "../models/notification.model.js";
 import TravelQuery from "../models/TravelQuery.model.js";
 import Quotation from "../models/quotation.model.js";
+import { createNotification } from "../services/notificationDispatchService.js";
 
 import { sendTeamMemberCredentialsMail } from "../services/sendEmail.js";
 
@@ -71,6 +72,79 @@ const generateTemporaryPassword = () => {
   const random = Math.random().toString(36).slice(2, 8);
   const suffix = `${Math.floor(100 + Math.random() * 900)}`;
   return `HC@${random}${suffix}`;
+};
+
+const normalizeExistingTraveler = (traveler = {}) =>
+  traveler?.toObject ? traveler.toObject() : traveler || {};
+
+const normalizeOpsManagerTravelerDetails = (
+  travelerDetails = [],
+  numberOfAdults = 0,
+  numberOfChildren = 0,
+  existingTravelerDetails = [],
+) => {
+  const normalizedAdults = Number(numberOfAdults || 0);
+  const normalizedChildren = Number(numberOfChildren || 0);
+  const rawTravelers = Array.isArray(travelerDetails) ? travelerDetails : [];
+  const existingByType = {
+    Adult: existingTravelerDetails
+      .map(normalizeExistingTraveler)
+      .filter((traveler) => traveler?.travelerType !== "Child"),
+    Child: existingTravelerDetails
+      .map(normalizeExistingTraveler)
+      .filter((traveler) => traveler?.travelerType === "Child"),
+  };
+  const consumedByType = { Adult: 0, Child: 0 };
+
+  const cleanedTravelers = rawTravelers
+    .map((traveler) => {
+      const travelerType = traveler?.travelerType === "Child" ? "Child" : "Adult";
+      const existingTraveler = existingByType[travelerType][consumedByType[travelerType]++] || {};
+
+      return {
+        fullName: String(traveler?.fullName || "").trim(),
+        travelerType,
+        childAge:
+          travelerType === "Child" && traveler?.childAge !== undefined && traveler?.childAge !== null
+            ? Number(traveler.childAge)
+            : null,
+        documentType: String(traveler?.documentType || existingTraveler.documentType || "Passport").trim() || "Passport",
+        document: traveler?.document || existingTraveler.document || {},
+        documents: traveler?.documents || existingTraveler.documents || {},
+      };
+    })
+    .filter((traveler) => traveler.fullName);
+
+  const adults = cleanedTravelers.filter((traveler) => traveler.travelerType === "Adult");
+  const children = cleanedTravelers.filter((traveler) => traveler.travelerType === "Child");
+
+  if (adults.length !== normalizedAdults || children.length !== normalizedChildren) {
+    throw new ApiError(400, "Traveler details must match adult and child counts");
+  }
+
+  const hasInvalidChildAge = children.some(
+    (traveler) => !Number.isInteger(traveler.childAge) || traveler.childAge < 1 || traveler.childAge > 12,
+  );
+
+  if (hasInvalidChildAge) {
+    throw new ApiError(400, "Each child traveler must have an age between 1 and 12");
+  }
+
+  return [...adults, ...children];
+};
+
+const getComparableTravelerDetails = (travelerDetails = []) =>
+  travelerDetails.map((traveler) => ({
+    fullName: String(traveler?.fullName || "").trim(),
+    travelerType: traveler?.travelerType === "Child" ? "Child" : "Adult",
+    childAge: traveler?.travelerType === "Child" ? Number(traveler?.childAge || 0) : null,
+    documentType: String(traveler?.documentType || "Passport").trim() || "Passport",
+  }));
+
+const formatIsoDateOnly = (value) => {
+  if (!value) return "";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "" : date.toISOString().slice(0, 10);
 };
 
 const formatHours = (hours) => {
@@ -490,7 +564,7 @@ const getHoursBetween = (start, end = new Date()) => {
 };
 
 const getManagedTeamMembers = async (req) => {
-  const manager = await Auth.findById(req.user.id).select("name email employeeId _id");
+  const manager = await Auth.findById(req.user.id).select("name email employeeId _id").lean();
 
   if (!manager) {
     throw new ApiError(404, "Manager profile not found");
@@ -508,7 +582,8 @@ const getManagedTeamMembers = async (req) => {
     manager: { $in: identityCandidates },
   })
     .select("name email phone employeeId profileImage accountStatus manager createdAt")
-    .sort({ createdAt: 1 });
+    .sort({ createdAt: 1 })
+    .lean();
 };
 
 const getManagedTeamQueries = async (teamIds, queryOptions = {}) => {
@@ -528,7 +603,7 @@ const getManagedTeamQueries = async (teamIds, queryOptions = {}) => {
     });
   }
 
-  return request.sort({ createdAt: -1 });
+  return request.sort({ createdAt: -1 }).lean();
 };
 
 const getPeriodScopedQueries = (queries = [], start, endExclusive) =>
@@ -825,7 +900,7 @@ const buildQueryRows = (queries = []) =>
       queryObjectId: query._id,
       _id: query._id,
       client: query?.agent?.companyName || query?.agent?.name || "Travel Partner",
-      clientEmail: query?.agent?.email || "",
+      clientEmail: query?.clientEmail || "",
       destination: query?.destination || "",
       assignedTo: assignedUserName,
       assignedToEmail: query?.assignedTo?.email || "",
@@ -844,6 +919,9 @@ const buildQueryRows = (queries = []) =>
       createdAt: query?.createdAt || null,
       numberOfAdults: Number(query?.numberOfAdults || 0),
       numberOfChildren: Number(query?.numberOfChildren || 0),
+      hotelCategory: query?.hotelCategory || "4 Star",
+      transportRequired: Boolean(query?.transportRequired),
+      sightseeingRequired: Boolean(query?.sightseeingRequired),
       specialRequirements: query?.specialRequirements || "",
       travelerDetails: query?.travelerDetails || [],
       builderState: {
@@ -1243,7 +1321,7 @@ export const getOperationManagerQueries = async (req, res, next) => {
     const teamMembers = await getManagedTeamMembers(req);
     const teamIds = teamMembers.map((member) => member._id);
     const queries = await getManagedTeamQueries(teamIds, {
-      select: "queryId destination customerBudget createdAt startDate endDate quotationStatus agentStatus opsStatus activityLog assignedTo numberOfAdults numberOfChildren hotelCategory transportRequired sightseeingRequired specialRequirements reassignmentHistory agent travelerDetails",
+      select: "queryId destination clientEmail customerBudget createdAt startDate endDate quotationStatus agentStatus opsStatus activityLog assignedTo numberOfAdults numberOfChildren hotelCategory transportRequired sightseeingRequired specialRequirements reassignmentHistory agent travelerDetails",
       populate: [
         { path: "agent", select: "name companyName email" },
         { path: "assignedTo", select: "name email" },
@@ -1269,6 +1347,209 @@ export const getOperationManagerQueries = async (req, res, next) => {
           quotedCount: rows.filter((item) => item.status === "Quoted").length,
           overdueCount: rows.filter((item) => item.status === "Overdue").length,
         },
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateOperationManagerQuery = async (req, res, next) => {
+  try {
+    ensureOperationManagerAccess(req);
+
+    const queryId = String(req.params?.queryId || "").trim();
+    if (!queryId) {
+      return next(new ApiError(400, "Query id is required"));
+    }
+
+    const teamMembers = await getManagedTeamMembers(req);
+    const teamIds = teamMembers.map((member) => member._id);
+    const query = await TravelQuery.findOne({
+      _id: queryId,
+      assignedTo: { $in: teamIds },
+    }).populate("agent", "name companyName email").populate("assignedTo", "name email");
+
+    if (!query) {
+      return next(new ApiError(404, "Query not found in your team"));
+    }
+
+    if (["Confirmed", "Vouchered", "Payment_Completed", "Invoice_Requested"].includes(query.opsStatus)) {
+      return next(new ApiError(400, "Query cannot be modified after confirmation or invoice request"));
+    }
+
+    const {
+      destination,
+      clientEmail,
+      startDate,
+      endDate,
+      numberOfAdults,
+      numberOfChildren,
+      customerBudget,
+      hotelCategory,
+      transportRequired,
+      sightseeingRequired,
+      specialRequirements,
+      travelerDetails,
+    } = req.body || {};
+
+    if (!destination || !startDate || !endDate || !numberOfAdults) {
+      return next(new ApiError(400, "Required fields are missing"));
+    }
+
+    const normalizedClientEmail = String(clientEmail || "").trim().toLowerCase();
+    if (!normalizedClientEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedClientEmail)) {
+      return next(new ApiError(400, "A valid client email address is required"));
+    }
+
+    const parsedStartDate = new Date(startDate);
+    const parsedEndDate = new Date(endDate);
+    if (Number.isNaN(parsedStartDate.getTime()) || Number.isNaN(parsedEndDate.getTime())) {
+      return next(new ApiError(400, "Valid travel dates are required"));
+    }
+    if (parsedEndDate < parsedStartDate) {
+      return next(new ApiError(400, "End date cannot be earlier than start date"));
+    }
+
+    const normalizedAdults = Number(numberOfAdults || 0);
+    const normalizedChildren = Number(numberOfChildren || 0);
+    if (!Number.isInteger(normalizedAdults) || normalizedAdults < 1) {
+      return next(new ApiError(400, "At least one adult traveler is required"));
+    }
+    if (!Number.isInteger(normalizedChildren) || normalizedChildren < 0) {
+      return next(new ApiError(400, "Children count cannot be negative"));
+    }
+
+    const normalizedHotelCategory = ["3 Star", "4 Star", "5 Star"].includes(String(hotelCategory || "").trim())
+      ? String(hotelCategory).trim()
+      : "4 Star";
+    const normalizedTravelerDetails = normalizeOpsManagerTravelerDetails(
+      travelerDetails,
+      normalizedAdults,
+      normalizedChildren,
+      query.travelerDetails || [],
+    );
+
+    const changes = [];
+    const oldDestination = query.destination || "";
+    if (String(destination).trim() !== oldDestination) {
+      changes.push(`Destination: "${oldDestination}" -> "${String(destination).trim()}"`);
+    }
+    if (normalizedClientEmail !== String(query.clientEmail || "").trim().toLowerCase()) {
+      changes.push(`Client Email: "${query.clientEmail || "-"}" -> "${normalizedClientEmail}"`);
+    }
+
+    const oldStart = formatIsoDateOnly(query.startDate);
+    const newStart = formatIsoDateOnly(parsedStartDate);
+    if (oldStart !== newStart) changes.push(`Start Date: ${oldStart || "-"} -> ${newStart || "-"}`);
+
+    const oldEnd = formatIsoDateOnly(query.endDate);
+    const newEnd = formatIsoDateOnly(parsedEndDate);
+    if (oldEnd !== newEnd) changes.push(`End Date: ${oldEnd || "-"} -> ${newEnd || "-"}`);
+
+    if (normalizedAdults !== Number(query.numberOfAdults || 0)) {
+      changes.push(`Adults: ${query.numberOfAdults || 0} -> ${normalizedAdults}`);
+    }
+    if (normalizedChildren !== Number(query.numberOfChildren || 0)) {
+      changes.push(`Children: ${query.numberOfChildren || 0} -> ${normalizedChildren}`);
+    }
+    if (Number(customerBudget || 0) !== Number(query.customerBudget || 0)) {
+      changes.push(`Budget: ${query.customerBudget || 0} -> ${Number(customerBudget || 0)}`);
+    }
+    if (normalizedHotelCategory !== (query.hotelCategory || "4 Star")) {
+      changes.push(`Hotel Category: ${query.hotelCategory || "4 Star"} -> ${normalizedHotelCategory}`);
+    }
+    if (Boolean(transportRequired) !== Boolean(query.transportRequired)) {
+      changes.push(`Transport: ${query.transportRequired ? "Yes" : "No"} -> ${transportRequired ? "Yes" : "No"}`);
+    }
+    if (Boolean(sightseeingRequired) !== Boolean(query.sightseeingRequired)) {
+      changes.push(`Sightseeing: ${query.sightseeingRequired ? "Yes" : "No"} -> ${sightseeingRequired ? "Yes" : "No"}`);
+    }
+    if (String(specialRequirements || "") !== String(query.specialRequirements || "")) {
+      changes.push("Special requirements updated");
+    }
+
+    const travelerDetailsChanged =
+      JSON.stringify(getComparableTravelerDetails(normalizedTravelerDetails)) !==
+      JSON.stringify(getComparableTravelerDetails(query.travelerDetails || []));
+    if (travelerDetailsChanged) {
+      changes.push("Traveler/client names updated");
+    }
+
+    query.destination = String(destination).trim();
+    query.clientEmail = normalizedClientEmail;
+    query.startDate = parsedStartDate;
+    query.endDate = parsedEndDate;
+    query.numberOfAdults = normalizedAdults;
+    query.numberOfChildren = normalizedChildren;
+    query.customerBudget = Number(customerBudget || 0);
+    query.hotelCategory = normalizedHotelCategory;
+    query.transportRequired = Boolean(transportRequired);
+    query.sightseeingRequired = Boolean(sightseeingRequired);
+    query.specialRequirements = String(specialRequirements || "").trim();
+    query.travelerDetails = normalizedTravelerDetails;
+    query.activityLog.push({
+      action: "Query Updated by Ops Manager",
+      performedBy: req.user?.name || "Operation Manager",
+      timestamp: new Date(),
+    });
+
+    await query.save();
+
+    if (changes.length > 0) {
+      const changeMessage = changes.join(", ");
+      await createNotification(
+        {
+          user: query.agent?._id || query.agent,
+          type: "info",
+          title: `Query ${query.queryId} Updated`,
+          message: `Operations Manager updated ${query.queryId}. Changes: ${changeMessage}`,
+          link: "/agent/queries",
+          meta: {
+            queryId: query._id,
+            queryNumber: query.queryId,
+            changes,
+          },
+        },
+        {
+          mirrorToAdmins: true,
+          sourceRole: req.user?.role,
+          sourceUserId: req.user?.id || req.user?._id || null,
+          sourceName: req.user?.name || "Operation Manager",
+        },
+      );
+
+      if (query.assignedTo?._id) {
+        await createNotification(
+          {
+            user: query.assignedTo._id,
+            type: "info",
+            title: `Manager Updated ${query.queryId}`,
+            message: `Your manager updated query details. Changes: ${changeMessage}`,
+            link: "/ops/bookings-management",
+            meta: {
+              queryId: query._id,
+              queryNumber: query.queryId,
+              changes,
+            },
+          },
+          {
+            sourceRole: req.user?.role,
+            sourceUserId: req.user?.id || req.user?._id || null,
+            sourceName: req.user?.name || "Operation Manager",
+          },
+        );
+      }
+    }
+
+    const [updatedRow] = buildQueryRows([query]);
+
+    res.status(200).json({
+      success: true,
+      message: "Query updated successfully",
+      query,
+      data: {
+        query: updatedRow,
       },
     });
   } catch (error) {

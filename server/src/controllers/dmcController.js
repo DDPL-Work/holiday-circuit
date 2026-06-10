@@ -4,7 +4,9 @@ import Transfer from "../models/transferDmc.model.js";
 import Package from "../models/PackageDmc.model.js";
 import Sightseeing from "../models/sightseeingDmc.model.js"
 import Confirmation from "../models/dmcConfirmation.js"
+import Invoice from "../models/invoice.model.js";
 import InternalInvoice from "../models/internalInvoice.model.js";
+import DmcSettlementBatch from "../models/dmcSettlementBatch.model.js";
 import Auth from "../models/auth.model.js";
 import Notification from "../models/notification.model.js";
 import UploadHistory from "../models/uploadHistory.model.js"
@@ -13,11 +15,18 @@ import Quotation from "../models/quotation.model.js";
 import Voucher from "../models/voucher.model.js";
 import ApiError from "../utils/ApiError.js";
 import mongoose from "mongoose";
+import XLSX from "xlsx";
 import path from "path"
 import fs from "fs"
 import { generateInternalInvoicePdf } from "../services/internalInvoicePdfService.js";
 import { getRoundRobinFinanceAssignee } from "../services/financeTeamScopeService.js";
 import { createNotification } from "../services/notificationDispatchService.js";
+import { analyzeInvoiceFile } from "../services/invoiceExtractionService.js";
+import {
+  findBlackoutMatch,
+  formatBlackoutLabel,
+  parseBlackoutDatesFromWorkbook,
+} from "../utils/blackoutDates.js";
 
 const createDmcSideNotification = (req, payload) =>
   createNotification(payload, {
@@ -41,7 +50,7 @@ const getLatestOperationalQuotation = (queryId) =>
   Quotation.findOne({
     queryId,
     status: { $in: OPERATIONAL_QUOTATION_STATUSES },
-  }).sort({ createdAt: -1 });
+  }).sort({ createdAt: -1 }).lean();
 
 const roundMoney = (value = 0) => Math.round(Number(value || 0));
 
@@ -344,20 +353,29 @@ const normalizeDetailCandidateService = (service = {}) => ({
   serviceName: service?.serviceName || service?.name || service?.title || "",
 });
 
-const enrichQuotationServicesWithDetails = async (queryId, services = [], extraDetailSources = []) => {
+const enrichQuotationServicesWithDetails = async (
+  queryId,
+  services = [],
+  extraDetailSources = [],
+  cachedSources = {},
+) => {
   if (!services.length) return services;
 
   const needsDetails = services.some((service) => !hasUsableQuotationServiceDetails(service));
   if (!needsDetails) return services;
 
-  const quotations = await Quotation.find({ queryId })
-    .sort({ createdAt: -1 })
-    .select("services")
-    .lean();
-  const voucherRows = await Voucher.find({ query: queryId })
-    .sort({ createdAt: -1 })
-    .select("services")
-    .lean();
+  const quotations = Array.isArray(cachedSources.quotations)
+    ? cachedSources.quotations
+    : await Quotation.find({ queryId })
+      .sort({ createdAt: -1 })
+      .select("services")
+      .lean();
+  const voucherRows = Array.isArray(cachedSources.vouchers)
+    ? cachedSources.vouchers
+    : await Voucher.find({ query: queryId })
+      .sort({ createdAt: -1 })
+      .select("services")
+      .lean();
   const candidateServices = [
     ...extraDetailSources,
     ...voucherRows.flatMap((voucher) =>
@@ -418,6 +436,19 @@ const getBestServiceDetailQuotation = async (queryId, currentQuotation = null) =
     .select("services createdAt")
     .lean();
 
+  const candidates = [
+    currentQuotation?.toObject ? currentQuotation.toObject() : currentQuotation,
+    ...quotations,
+  ].filter((quotation) => Array.isArray(quotation?.services) && quotation.services.length);
+
+  return candidates.reduce((best, quotation) =>
+    getQuotationDetailScore(quotation) > getQuotationDetailScore(best)
+      ? quotation
+      : best,
+  candidates[0] || null);
+};
+
+const getBestServiceDetailQuotationFromList = (quotations = [], currentQuotation = null) => {
   const candidates = [
     currentQuotation?.toObject ? currentQuotation.toObject() : currentQuotation,
     ...quotations,
@@ -1007,8 +1038,106 @@ export const downloadUpload = async (req, res) => {
 
 // ======================= GET ALL SERVICES (QUOTATION BUILDER) =======================
 
+const getTravelQueryForBlackoutCheck = async (queryId = "") => {
+  const normalizedQueryId = String(queryId || "").trim();
+  if (!normalizedQueryId) return null;
+
+  const filters = [{ queryId: normalizedQueryId }];
+  if (mongoose.Types.ObjectId.isValid(normalizedQueryId)) {
+    filters.push({ _id: normalizedQueryId });
+  }
+
+  return TravelQuery.findOne({ $or: filters })
+    .select("_id queryId destination startDate endDate")
+    .lean();
+};
+
+const notifyOpsForBlackoutQuery = async ({ query, blackout, serviceCount = 0 }) => {
+  if (!query || !blackout) return;
+
+  const alertKey = [
+    "blackout-query",
+    query._id?.toString?.() || query.queryId,
+    blackout.startDateKey || blackout.startDate || "",
+    blackout.endDateKey || blackout.endDate || "",
+  ].join(":");
+
+  const alreadyExists = await Notification.exists({ "meta.blackoutAlertKey": alertKey });
+  if (alreadyExists) return;
+
+  const staffUsers = await Auth.find({
+    role: { $in: ["admin", "operation_manager", "operations"] },
+    isDeleted: { $ne: true },
+    accountStatus: { $ne: "Inactive" },
+  }).select("_id").lean();
+
+  if (!staffUsers.length) return;
+
+  const blackoutLabel = formatBlackoutLabel(blackout) || "configured blackout date";
+  await Notification.insertMany(
+    staffUsers.map((user) => ({
+      user: user._id,
+      type: "warning",
+      title: "Blackout Date Booking Alert",
+      message: `Query ${query.queryId || query._id} for ${query.destination || "selected destination"} overlaps ${blackoutLabel}. Contracted hotel rates are blocked for the matching service${serviceCount > 1 ? "s" : ""}.`,
+      link: "/operationManager/allTeamQueries",
+      meta: {
+        blackoutAlertKey: alertKey,
+        queryId: query._id,
+        queryNumber: query.queryId,
+        destination: query.destination,
+        blackout,
+        serviceCount,
+      },
+    })),
+  );
+};
+
+const getFallbackBlackoutDatesForSupplier = async (supplierId = "") => {
+  const normalizedSupplierId = String(supplierId || "").trim();
+  if (!mongoose.Types.ObjectId.isValid(normalizedSupplierId)) return [];
+
+  const upload = await UploadHistory.findOne({
+    uploadedAuth: normalizedSupplierId,
+    category: "hotel",
+    status: "success",
+  }).sort({ createdAt: -1 });
+
+  if (!upload?.filePath) return [];
+
+  if (Array.isArray(upload.blackoutDates) && upload.blackoutDates.length) {
+    return upload.blackoutDates;
+  }
+
+  const fullPath = path.resolve(upload.filePath);
+  if (!fs.existsSync(fullPath)) return [];
+
+  const workbook = XLSX.readFile(fullPath);
+  const blackoutDates = parseBlackoutDatesFromWorkbook(workbook);
+  if (!blackoutDates.length) return [];
+
+  upload.blackoutDates = blackoutDates;
+  await upload.save();
+
+  await Hotel.updateMany(
+    {
+      supplier: normalizedSupplierId,
+      $or: [
+        { blackoutDates: { $exists: false } },
+        { blackoutDates: { $size: 0 } },
+      ],
+    },
+    { $set: { blackoutDates } },
+  );
+
+  return blackoutDates;
+};
+
 export const getAllServices = async (req, res, next) => {
   try {
+    const queryContext = await getTravelQueryForBlackoutCheck(
+      req.query?.queryId || req.query?.query || "",
+    );
 
     const [hotels, activities, transfers, sightseeing] = await Promise.all([
       Hotel.find(),
@@ -1049,28 +1178,93 @@ export const getAllServices = async (req, res, next) => {
       ]),
     );
 
+    const hotelSuppliersMissingBlackouts = [
+      ...new Set(
+        hotels
+          .filter((hotel) => !Array.isArray(hotel.blackoutDates) || !hotel.blackoutDates.length)
+          .map((hotel) => hotel.supplier?.toString?.())
+          .filter(Boolean),
+      ),
+    ];
+
+    const fallbackBlackoutBySupplier = new Map(
+      await Promise.all(
+        hotelSuppliersMissingBlackouts.map(async (supplierId) => [
+          supplierId,
+          await getFallbackBlackoutDatesForSupplier(supplierId),
+        ]),
+      ),
+    );
+
     // 🔹 FORMAT HOTELS
-    const hotelData = hotels.map(h => ({
-      id: h._id,
-      supplierId: h.supplier,
-      supplierName: h.supplierName || "",
-      dmcId: h.supplier,
-      dmcName: ownerMap.get(h.supplier?.toString()) || "",
-      type: "hotel",
-      title: h.hotelName,
-      description: h.description || `${h.roomType || ""} | ${h.mealPlan || ""}`,
-      country: h.country,
-      city: h.city,
-      price: h.price,
-      currency: h.currency,
-      hotelCategory: h.hotelCategory,
-      roomCategory: h.roomCategory || "Double",
-      bedType: h.bedType,
-      roomType: h.roomType,
-      awebRate: h.awebRate || 0,
-      cwebRate: h.cwebRate || 0,
-      cwoebRate: h.cwoebRate || 0,
-    }));
+    const hotelData = hotels.map(h => {
+      const resolvedBlackoutDates = Array.isArray(h.blackoutDates) && h.blackoutDates.length
+        ? h.blackoutDates
+        : fallbackBlackoutBySupplier.get(h.supplier?.toString?.() || "") || [];
+      const blackoutMatch = queryContext
+        ? findBlackoutMatch({
+          blackoutDates: resolvedBlackoutDates,
+          travelStart: queryContext.startDate,
+          travelEnd: queryContext.endDate,
+          country: h.country,
+          city: h.city,
+          destination: queryContext.destination,
+        })
+        : null;
+
+      return {
+        id: h._id,
+        supplierId: h.supplier,
+        supplierName: h.supplierName || "",
+        dmcId: h.supplier,
+        dmcName: ownerMap.get(h.supplier?.toString()) || "",
+        type: "hotel",
+        title: h.hotelName,
+        description: h.description || `${h.roomType || ""} | ${h.mealPlan || ""}`,
+        country: h.country,
+        city: h.city,
+        price: h.price,
+        currency: h.currency,
+        hotelCategory: h.hotelCategory,
+        roomCategory: h.roomCategory || "Double",
+        bedType: h.bedType,
+        roomType: h.roomType,
+        awebRate: h.awebRate || 0,
+        cwebRate: h.cwebRate || 0,
+        cwoebRate: h.cwoebRate || 0,
+        blackoutDates: resolvedBlackoutDates,
+        blackout: blackoutMatch
+          ? {
+            isBlackout: true,
+            label: formatBlackoutLabel(blackoutMatch),
+            reason: blackoutMatch.occasion || blackoutMatch.category || "Blackout date",
+            startDate: blackoutMatch.startDateKey,
+            endDate: blackoutMatch.endDateKey,
+            applicableRegion: blackoutMatch.applicableRegion || "",
+          }
+          : { isBlackout: false },
+      };
+    });
+
+    const blackoutHotelServices = hotelData.filter((service) => service.blackout?.isBlackout);
+    if (queryContext && blackoutHotelServices.length) {
+      const firstBlackout = findBlackoutMatch({
+        blackoutDates: hotels.flatMap((hotel) => (
+          Array.isArray(hotel.blackoutDates) && hotel.blackoutDates.length
+            ? hotel.blackoutDates
+            : fallbackBlackoutBySupplier.get(hotel.supplier?.toString?.() || "") || []
+        )),
+        travelStart: queryContext.startDate,
+        travelEnd: queryContext.endDate,
+        destination: queryContext.destination,
+      });
+
+      await notifyOpsForBlackoutQuery({
+        query: queryContext,
+        blackout: firstBlackout,
+        serviceCount: blackoutHotelServices.length,
+      });
+    }
 
     // 🔹 FORMAT ACTIVITIES
     const activityData = dedupedActivities.map(a => ({
@@ -1171,16 +1365,19 @@ export const createOrUpdateConfirmation = async (req, res) => {
     const wasSubmittedBefore =
       String(confirmation?.status || "").trim().toLowerCase() === "submitted";
 
-    const documents = {
-      supplierConfirmation:
-        req.files?.supplierConfirmation?.[0]?.path,
+    const documents = {};
 
-      voucherReference:
-        req.files?.voucherReference?.[0]?.path,
+    if (req.files?.supplierConfirmation?.[0]?.path) {
+      documents.supplierConfirmation = req.files.supplierConfirmation[0].path;
+    }
 
-      termsConditions:
-        req.files?.termsConditions?.[0]?.path,
-    };
+    if (req.files?.voucherReference?.[0]?.path) {
+      documents.voucherReference = req.files.voucherReference[0].path;
+    }
+
+    if (req.files?.termsConditions?.[0]?.path) {
+      documents.termsConditions = req.files.termsConditions[0].path;
+    }
 
     if (confirmation) {
       confirmation.services = services
@@ -1190,7 +1387,7 @@ export const createOrUpdateConfirmation = async (req, res) => {
       confirmation.emergencyContact = emergencyContact;
 
       confirmation.documents = {
-        ...confirmation.documents,
+        ...(confirmation.documents?.toObject?.() || confirmation.documents || {}),
         ...documents,
       };
 
@@ -1257,6 +1454,74 @@ const normalizeInternalInvoiceTemplateVariant = (value) =>
     ? String(value).trim()
     : "aurora-ledger";
 
+const parseRequestJsonField = (value, fallback) => {
+  if (value === undefined || value === null || value === "") return fallback;
+  if (typeof value !== "string") return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return fallback;
+  }
+};
+
+const normalizeInvoiceSource = (value = "") =>
+  String(value || "").trim() === "uploaded_invoice"
+    ? "uploaded_invoice"
+    : "system_template";
+
+const buildUploadedInvoiceDocument = (file) => {
+  if (!file?.path) return null;
+  const normalizedFilePath = String(file.path).replace(/\\/g, "/");
+  const absoluteFilePath = path.join(process.cwd(), normalizedFilePath);
+  const fileSizeKb =
+    fs.existsSync(absoluteFilePath)
+      ? Math.max(1, Math.round(fs.statSync(absoluteFilePath).size / 1024))
+      : null;
+
+  return {
+    name: file.originalname || path.basename(file.path),
+    filePath: `/${normalizedFilePath.replace(/^\/+/, "")}`,
+    size: fileSizeKb ? `${fileSizeKb} kB` : "",
+    mimeType: file.mimetype || "",
+    kind: "invoice",
+  };
+};
+
+const normalizeClaimedSummary = (value = {}) => ({
+  subtotal: Number(value?.subtotal || 0),
+  taxAmount: Number(value?.taxAmount || value?.totalTax || 0),
+  grandTotal: Number(value?.grandTotal || 0),
+});
+
+export const previewUploadedInvoiceExtraction = async (req, res, next) => {
+  try {
+    if (!req.file) {
+      return next(new ApiError(400, "Upload an invoice file to parse"));
+    }
+
+    const claimedSummary = normalizeClaimedSummary(
+      parseRequestJsonField(req.body?.claimedSummary, {}),
+    );
+    const expectedSummary = parseRequestJsonField(req.body?.expectedSummary, {});
+    const extraction = await analyzeInvoiceFile(req.file, {
+      claimedSummary,
+      expectedSummary,
+    });
+
+    await fs.promises.unlink(req.file.path).catch(() => null);
+
+    res.status(200).json({
+      success: true,
+      message: extraction.status === "parsed"
+        ? "Invoice parsed successfully"
+        : "Invoice uploaded, but automatic extraction needs manual review",
+      data: extraction,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 const calculateCreditDueDate = (invoiceDate, creditPeriodDays) => {
   const parsedDate = new Date(invoiceDate);
   if (Number.isNaN(parsedDate.getTime())) return null;
@@ -1277,16 +1542,53 @@ const inferCreditPeriodDays = (invoiceDate, dueDate) => {
   return normalizeCreditPeriodDays(diffDays);
 };
 
+const getAgentFinanceAssigneeForQueries = async (queryIds = []) => {
+  const normalizedQueryIds = [...new Set(
+    (Array.isArray(queryIds) ? queryIds : [queryIds])
+      .map((queryId) => String(queryId || "").trim())
+      .filter(Boolean),
+  )];
+
+  if (!normalizedQueryIds.length) return "";
+
+  const agentInvoices = await Invoice.find({
+    query: { $in: normalizedQueryIds },
+    $or: [
+      { "paymentVerification.assignedTo": { $exists: true, $ne: null } },
+      { "paymentVerification.reviewedBy": { $exists: true, $ne: null } },
+    ],
+  })
+    .select("query paymentVerification.assignedTo paymentVerification.reviewedBy paymentSubmission.submittedAt updatedAt")
+    .sort({
+      "paymentSubmission.submittedAt": -1,
+      updatedAt: -1,
+    })
+    .lean();
+
+  for (const queryId of normalizedQueryIds) {
+    const matchingInvoice = agentInvoices.find((invoice) => String(invoice.query || "") === queryId);
+    const preferredAssignee =
+      matchingInvoice?.paymentVerification?.assignedTo ||
+      matchingInvoice?.paymentVerification?.reviewedBy ||
+      "";
+    if (preferredAssignee) return preferredAssignee;
+  }
+
+  return "";
+};
+
 export const submitInternalInvoice = async (req, res, next) => {
   try {
-    const {
-      queryId,
-      invoiceMeta = {},
-      items = [],
-      taxConfig = {},
-      summary = {},
-      templateVariant = "aurora-ledger",
-    } = req.body;
+    const queryId = req.body?.queryId;
+    const invoiceMeta = parseRequestJsonField(req.body?.invoiceMeta, {});
+    const items = parseRequestJsonField(req.body?.items, []);
+    const taxConfig = parseRequestJsonField(req.body?.taxConfig, {});
+    const rawSummary = parseRequestJsonField(req.body?.summary, {});
+    const claimedSummary = normalizeClaimedSummary(
+      parseRequestJsonField(req.body?.claimedSummary, {}),
+    );
+    const invoiceSource = normalizeInvoiceSource(req.body?.invoiceSource || invoiceMeta?.invoiceSource);
+    const templateVariant = req.body?.templateVariant || invoiceMeta?.templateVariant || "aurora-ledger";
 
     if (!queryId) {
       return next(new ApiError(400, "Query is required"));
@@ -1311,12 +1613,24 @@ export const submitInternalInvoice = async (req, res, next) => {
       creditPeriodDays,
       dueDate: calculatedDueDate,
     };
-    const normalizedTemplateVariant = normalizeInternalInvoiceTemplateVariant(
-      invoiceMeta?.templateVariant || templateVariant,
-    );
+    const normalizedTemplateVariant =
+      invoiceSource === "system_template"
+        ? normalizeInternalInvoiceTemplateVariant(invoiceMeta?.templateVariant || templateVariant)
+        : "";
 
     if (!Array.isArray(items) || !items.length) {
       return next(new ApiError(400, "At least one line item is required"));
+    }
+
+    const uploadedInvoiceDocument = buildUploadedInvoiceDocument(req.file);
+    if (invoiceSource === "uploaded_invoice") {
+      if (!uploadedInvoiceDocument) {
+        return next(new ApiError(400, "Please upload your invoice PDF or Word document"));
+      }
+
+      if (Number(claimedSummary.grandTotal || 0) <= 0) {
+        return next(new ApiError(400, "Claimed invoice total is required"));
+      }
     }
 
     const queryLookup = mongoose.Types.ObjectId.isValid(queryId)
@@ -1352,8 +1666,12 @@ export const submitInternalInvoice = async (req, res, next) => {
     const dmc = await Auth.findById(req.user.id)
       .select("name companyName")
       .lean();
+    const agentFinanceAssigneeId = await getAgentFinanceAssigneeForQueries([query._id]);
     const assignedFinanceMember = await getRoundRobinFinanceAssignee({
-      keepAssigneeId: existingInvoice?.assignedTo || existingInvoice?.reviewedBy,
+      keepAssigneeId:
+        agentFinanceAssigneeId ||
+        existingInvoice?.assignedTo ||
+        existingInvoice?.reviewedBy,
     });
 
     const normalizedItems = items.map((item) => ({
@@ -1371,16 +1689,38 @@ export const submitInternalInvoice = async (req, res, next) => {
       dmcId: req.user.id,
     }).lean();
 
-    const generatedInvoiceDocument = await generateInternalInvoicePdf({
-      queryCode: query.queryId,
-      invoiceMeta: normalizedInvoiceMeta,
-      items: normalizedItems,
-      summary,
-      taxConfig,
-      dmcName: dmc?.companyName || dmc?.name || "",
-      destination: query.destination || "",
-      templateVariant: normalizedTemplateVariant,
-    });
+    const effectiveSummary =
+      invoiceSource === "uploaded_invoice"
+        ? {
+          subtotal: claimedSummary.subtotal,
+          gstAmount: 0,
+          tcsAmount: 0,
+          otherTaxAmount: claimedSummary.taxAmount,
+          totalTax: claimedSummary.taxAmount,
+          grandTotal: claimedSummary.grandTotal,
+        }
+        : rawSummary;
+
+    const generatedInvoiceDocument =
+      invoiceSource === "system_template"
+        ? await generateInternalInvoicePdf({
+          queryCode: query.queryId,
+          invoiceMeta: normalizedInvoiceMeta,
+          items: normalizedItems,
+          summary: effectiveSummary,
+          taxConfig,
+          dmcName: dmc?.companyName || dmc?.name || "",
+          destination: query.destination || "",
+          templateVariant: normalizedTemplateVariant,
+        })
+        : uploadedInvoiceDocument;
+    const invoiceExtraction =
+      invoiceSource === "uploaded_invoice"
+        ? await analyzeInvoiceFile(req.file, {
+          claimedSummary,
+          expectedSummary: rawSummary,
+        })
+        : {};
 
     const supportingDocuments = [
       confirmation?.documents?.supplierConfirmation,
@@ -1424,13 +1764,24 @@ export const submitInternalInvoice = async (req, res, next) => {
         otherTax: Number(taxConfig.otherTax || 0),
       },
       summary: {
-        subtotal: Number(summary.subtotal || 0),
-        gstAmount: Number(summary.gstAmount || 0),
-        tcsAmount: Number(summary.tcsAmount || 0),
-        otherTaxAmount: Number(summary.otherTaxAmount || 0),
-        totalTax: Number(summary.totalTax || 0),
-        grandTotal: Number(summary.grandTotal || 0),
+        subtotal: Number(effectiveSummary.subtotal || 0),
+        gstAmount: Number(effectiveSummary.gstAmount || 0),
+        tcsAmount: Number(effectiveSummary.tcsAmount || 0),
+        otherTaxAmount: Number(effectiveSummary.otherTaxAmount || 0),
+        totalTax: Number(effectiveSummary.totalTax || 0),
+        grandTotal: Number(effectiveSummary.grandTotal || 0),
       },
+      invoiceSource,
+      uploadedInvoice: invoiceSource === "uploaded_invoice"
+        ? {
+          name: uploadedInvoiceDocument.name,
+          filePath: uploadedInvoiceDocument.filePath,
+          size: uploadedInvoiceDocument.size,
+          mimeType: uploadedInvoiceDocument.mimeType,
+        }
+        : { name: "", filePath: "", size: "", mimeType: "" },
+      claimedSummary,
+      invoiceExtraction,
       documents: [generatedInvoiceDocument, ...supportingDocuments],
       templateVariant: normalizedTemplateVariant,
       status: "Submitted",
@@ -1485,6 +1836,467 @@ export const submitInternalInvoice = async (req, res, next) => {
 };
 
 
+const parseDateOrNull = (value) => {
+  if (!value) return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const formatDateOnly = (value) => {
+  const parsed = parseDateOrNull(value);
+  return parsed ? parsed.toISOString().slice(0, 10) : "";
+};
+
+const addCreditDays = (value, daysToAdd = 0) => {
+  const parsed = parseDateOrNull(value);
+  if (!parsed) return null;
+  parsed.setDate(parsed.getDate() + Number(daysToAdd || 0));
+  return parsed;
+};
+
+const getPayableCreditStartDate = (service = {}, query = {}) =>
+  parseDateOrNull(
+    service.checkOutDate ||
+    service.serviceEndDate ||
+    service.serviceDate ||
+    query.endDate ||
+    query.startDate ||
+    query.updatedAt ||
+    query.createdAt,
+  );
+
+const buildPayableServiceRef = (query = {}, service = {}, index = 0) =>
+  `${query._id || query.queryId}:${Number(service.serviceIndex ?? index)}`;
+
+const getInternalInvoiceClaimStatus = (query = {}) => {
+  const status = String(query?.internalInvoice?.status || "").trim();
+  if (!status || status === "Rejected") return null;
+  return {
+    status,
+    invoiceNumber: query.internalInvoice?.invoiceNumber || "",
+    source: "single",
+  };
+};
+
+const getDocumentByKind = (documents = [], kind = "") =>
+  (Array.isArray(documents) ? documents : []).find(
+    (document) => String(document?.kind || "").trim() === kind,
+  ) || null;
+
+const formatDmcFinanceUploadedInvoice = (batch = {}) => {
+  const invoiceDocument =
+    batch.uploadedInvoice?.filePath
+      ? {
+        name: batch.uploadedInvoice.name || batch.invoiceNumber,
+        filePath: batch.uploadedInvoice.filePath,
+        size: batch.uploadedInvoice.size || "",
+        mimeType: batch.uploadedInvoice.mimeType || "",
+        kind: "invoice",
+      }
+      : getDocumentByKind(batch.documents, "invoice");
+  const receiptDocument =
+    getDocumentByKind(batch.documents, "payout_receipt") ||
+    getDocumentByKind(batch.documents, "receipt");
+  const payoutInstallments = Array.isArray(batch.payoutInstallments)
+    ? batch.payoutInstallments
+    : [];
+  const totalAmount = Number(
+    batch.summary?.grandTotal ||
+    batch.claimedSummary?.grandTotal ||
+    batch.payoutAmount ||
+    0,
+  );
+  const paidAmount = payoutInstallments.reduce(
+    (sum, item) => sum + Number(item.amount || 0),
+    Number(batch.payoutAmount || 0) && !payoutInstallments.length
+      ? Number(batch.payoutAmount || 0)
+      : 0,
+  );
+
+  return {
+    id: batch._id,
+    batchNumber: batch.batchNumber || "",
+    invoiceNumber: batch.invoiceNumber || "",
+    uploadedByName:
+      batch.submittedBy?.companyName ||
+      batch.submittedBy?.name ||
+      "Finance Team",
+    invoiceDate: batch.invoiceDate || null,
+    dueDate: batch.dueDate || null,
+    submittedAt: batch.submittedAt || batch.createdAt || null,
+    creditPeriodDays: Number(batch.creditPeriodDays || 7),
+    amount: totalAmount,
+    paidAmount,
+    remainingAmount: Math.max(0, totalAmount - paidAmount),
+    currency: batch.items?.[0]?.currency || "INR",
+    status: batch.status || "Submitted",
+    invoiceDocument,
+    receiptDocument,
+    payoutReference: batch.payoutReference || "",
+    payoutDate: batch.payoutDate || null,
+    payoutBank: batch.payoutBank || "",
+    payoutAmount: Number(batch.payoutAmount || 0),
+    payoutInstallments: payoutInstallments.map((item) => ({
+      amount: Number(item.amount || 0),
+      utrNumber: item.utrNumber || "",
+      bankName: item.bankName || "",
+      paymentDate: item.paymentDate || null,
+      financeNotes: item.financeNotes || "",
+      paidByName: item.paidByName || "",
+      createdAt: item.createdAt || null,
+    })),
+    financeNotes: batch.financeNotes || "",
+  };
+};
+
+const buildPayableLedgerRows = async (req, creditPeriodDays = 7) => {
+  const normalizedCreditPeriodDays = normalizeCreditPeriodDays(creditPeriodDays);
+  const queries = await getDmcVisibleQueriesData(req);
+  const currentDmcId = req.user.id;
+
+  const activeBatches = await DmcSettlementBatch.find({
+    dmc: currentDmcId,
+    status: { $ne: "Rejected" },
+  })
+    .select("batchNumber invoiceNumber status items.serviceRef")
+    .lean();
+
+  const financeUploadedBatches = await DmcSettlementBatch.find({
+    dmc: currentDmcId,
+    invoiceSource: "uploaded_invoice",
+    submittedBy: { $ne: currentDmcId },
+  })
+    .select(
+      "batchNumber invoiceNumber invoiceDate dueDate creditPeriodDays status uploadedInvoice claimedSummary summary documents payoutReference payoutDate payoutBank payoutAmount payoutInstallments financeNotes submittedAt createdAt submittedBy items.currency",
+    )
+    .populate("submittedBy", "name companyName email role")
+    .sort({ submittedAt: -1, createdAt: -1 })
+    .lean();
+
+  const batchClaimByServiceRef = new Map();
+  activeBatches.forEach((batch) => {
+    (batch.items || []).forEach((item) => {
+      if (!item?.serviceRef || batchClaimByServiceRef.has(item.serviceRef)) return;
+      batchClaimByServiceRef.set(item.serviceRef, {
+        status: batch.status,
+        invoiceNumber: batch.invoiceNumber || batch.batchNumber,
+        batchNumber: batch.batchNumber,
+        source: "bulk",
+      });
+    });
+  });
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const rows = queries.flatMap((query) => {
+    const singleInvoiceClaim = getInternalInvoiceClaimStatus(query);
+
+    return (query.services || []).map((service, index) => {
+      const serviceRef = buildPayableServiceRef(query, service, index);
+      const creditStartDate = getPayableCreditStartDate(service, query);
+      const dueDate = addCreditDays(creditStartDate, normalizedCreditPeriodDays);
+      const dueDateMidnight = dueDate ? new Date(dueDate) : null;
+      if (dueDateMidnight) dueDateMidnight.setHours(0, 0, 0, 0);
+      const batchClaim = batchClaimByServiceRef.get(serviceRef);
+      const claim = singleInvoiceClaim || batchClaim || null;
+      const amount = Number(service.total || 0);
+      const qty = Math.max(1, Number(service.billableQuantityValue || service.quantityValue || 1));
+      const rate = Number(service.billableUnitRate || service.rate || (qty > 0 ? amount / qty : amount) || 0);
+
+      return {
+        id: serviceRef,
+        serviceRef,
+        queryObjectId: query._id,
+        queryId: query.queryId,
+        destination: query.destination || "",
+        voucherNumber: query.voucherNumber || "",
+        type: service.type || "Service",
+        serviceName: service.serviceName || "",
+        serviceDate: service.serviceDate || null,
+        creditStartDate,
+        dueDate,
+        creditStartDateLabel: formatDateOnly(creditStartDate),
+        dueDateLabel: formatDateOnly(dueDate),
+        creditPeriodDays: normalizedCreditPeriodDays,
+        currency: service.currency || "INR",
+        qty,
+        rate,
+        amount,
+        status: claim ? claim.status : "Unbilled",
+        claimSource: claim?.source || "",
+        claimInvoiceNumber: claim?.invoiceNumber || "",
+        isClaimed: Boolean(claim),
+        isDue: Boolean(dueDateMidnight && dueDateMidnight <= today),
+        isOverdue: Boolean(dueDateMidnight && dueDateMidnight < today && !claim),
+      };
+    });
+  });
+
+  const eligibleRows = rows.filter((row) => !row.isClaimed);
+
+  return {
+    creditPeriodDays: normalizedCreditPeriodDays,
+    generatedAt: new Date(),
+    summary: {
+      totalServices: rows.length,
+      eligibleServices: eligibleRows.length,
+      dueServices: eligibleRows.filter((row) => row.isDue).length,
+      overdueServices: eligibleRows.filter((row) => row.isOverdue).length,
+      eligibleAmount: eligibleRows.reduce((sum, row) => sum + Number(row.amount || 0), 0),
+      dueAmount: eligibleRows
+        .filter((row) => row.isDue)
+        .reduce((sum, row) => sum + Number(row.amount || 0), 0),
+    },
+    services: rows.sort((left, right) => {
+      if (left.isClaimed !== right.isClaimed) return left.isClaimed ? 1 : -1;
+      const leftDue = left.dueDate ? new Date(left.dueDate).getTime() : Number.MAX_SAFE_INTEGER;
+      const rightDue = right.dueDate ? new Date(right.dueDate).getTime() : Number.MAX_SAFE_INTEGER;
+      if (leftDue !== rightDue) return leftDue - rightDue;
+      return String(left.queryId || "").localeCompare(String(right.queryId || ""));
+    }),
+    financeUploadedInvoices: financeUploadedBatches.map(formatDmcFinanceUploadedInvoice),
+  };
+};
+
+export const getDmcPaymentLedger = async (req, res, next) => {
+  try {
+    const creditPeriodDays = normalizeCreditPeriodDays(req.query?.creditPeriodDays || 7);
+    const ledger = await buildPayableLedgerRows(req, creditPeriodDays);
+
+    res.status(200).json({
+      success: true,
+      data: ledger,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const submitDmcSettlementBatch = async (req, res, next) => {
+  try {
+    const serviceRefs = parseRequestJsonField(req.body?.serviceRefs, []);
+    const invoiceMeta = parseRequestJsonField(req.body?.invoiceMeta, {});
+    const taxConfig = parseRequestJsonField(req.body?.taxConfig, {});
+    const claimedSummary = normalizeClaimedSummary(
+      parseRequestJsonField(req.body?.claimedSummary, {}),
+    );
+    const invoiceSource = normalizeInvoiceSource(req.body?.invoiceSource || invoiceMeta?.invoiceSource);
+    const templateVariant = req.body?.templateVariant || invoiceMeta?.templateVariant || "aurora-ledger";
+
+    const normalizedServiceRefs = Array.isArray(serviceRefs)
+      ? serviceRefs.map((item) => String(item || "").trim()).filter(Boolean)
+      : [];
+
+    if (!normalizedServiceRefs.length) {
+      return next(new ApiError(400, "Select at least one payable service"));
+    }
+
+    const creditPeriodDays = normalizeCreditPeriodDays(invoiceMeta?.creditPeriodDays || 7);
+    const invoiceDate = parseDateOrNull(invoiceMeta?.invoiceDate) || new Date();
+    const dueDate = calculateCreditDueDate(invoiceDate, creditPeriodDays);
+    const normalizedTemplateVariant =
+      invoiceSource === "system_template"
+        ? normalizeInternalInvoiceTemplateVariant(invoiceMeta?.templateVariant || templateVariant)
+        : "";
+    const ledger = await buildPayableLedgerRows(req, creditPeriodDays);
+    const selectedRows = ledger.services.filter((row) => normalizedServiceRefs.includes(row.serviceRef));
+
+    if (selectedRows.length !== normalizedServiceRefs.length) {
+      return next(new ApiError(400, "Some selected services are no longer available in your payable ledger"));
+    }
+
+    const alreadyClaimed = selectedRows.filter((row) => row.isClaimed);
+    if (alreadyClaimed.length) {
+      return next(
+        new ApiError(
+          409,
+          `Some services are already claimed in ${alreadyClaimed[0].claimInvoiceNumber || "another invoice"}`,
+        ),
+      );
+    }
+
+    const dmc = await Auth.findById(req.user.id).select("name companyName email").lean();
+    const supplierName =
+      String(invoiceMeta?.supplierName || "").trim() ||
+      dmc?.companyName ||
+      dmc?.name ||
+      "DMC Partner";
+    const batchNumber = `BULK-${Date.now()}`;
+    const invoiceNumber =
+      String(invoiceMeta?.invoiceNumber || "").trim() ||
+      `BULK-INV-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-${selectedRows.length}`;
+    const gstRate = Number(taxConfig?.gstRate || 0);
+    const tcsRate = Number(taxConfig?.tcsRate || 0);
+    const otherTaxAmount = Number(taxConfig?.otherTax || 0);
+
+    const items = selectedRows.map((row) => {
+      const subtotal = Number(row.amount || 0);
+      return {
+        query: row.queryObjectId,
+        queryCode: row.queryId,
+        destination: row.destination || "",
+        serviceRef: row.serviceRef,
+        serviceIndex: Number(String(row.serviceRef).split(":").pop() || 0),
+        type: row.type || "Service",
+        service: `${row.queryId} - ${row.serviceName}`,
+        serviceDate: parseDateOrNull(row.serviceDate),
+        creditStartDate: parseDateOrNull(row.creditStartDate),
+        currency: row.currency || "INR",
+        qty: Number(row.qty || 1),
+        rate: Number(row.rate || 0),
+        subtotal,
+        tax: Number(((subtotal * gstRate) / 100).toFixed(2)),
+      };
+    });
+
+    const subtotal = items.reduce((sum, item) => sum + Number(item.subtotal || 0), 0);
+    const gstAmount = items.reduce((sum, item) => sum + Number(item.tax || 0), 0);
+    const tcsAmount = Number(((subtotal * tcsRate) / 100).toFixed(2));
+    const totalTax = gstAmount + tcsAmount + otherTaxAmount;
+    const summary = {
+      subtotal,
+      gstAmount,
+      tcsAmount,
+      otherTaxAmount,
+      totalTax,
+      grandTotal: subtotal + totalTax,
+      currency: selectedRows[0]?.currency || "INR",
+    };
+    const normalizedTaxConfig = { gstRate, tcsRate, otherTax: otherTaxAmount };
+    const effectiveSummary =
+      invoiceSource === "uploaded_invoice"
+        ? {
+          subtotal: claimedSummary.subtotal,
+          gstAmount: 0,
+          tcsAmount: 0,
+          otherTaxAmount: claimedSummary.taxAmount,
+          totalTax: claimedSummary.taxAmount,
+          grandTotal: claimedSummary.grandTotal,
+        }
+        : summary;
+
+    const uploadedInvoiceDocument = buildUploadedInvoiceDocument(req.file);
+    if (invoiceSource === "uploaded_invoice") {
+      if (!uploadedInvoiceDocument) {
+        return next(new ApiError(400, "Please upload your invoice PDF or Word document"));
+      }
+
+      if (Number(claimedSummary.grandTotal || 0) <= 0) {
+        return next(new ApiError(400, "Claimed invoice total is required"));
+      }
+    }
+
+    const coveredQueries = Array.from(
+      new Map(
+        selectedRows.map((row) => [
+          row.queryObjectId,
+          {
+            query: row.queryObjectId,
+            queryCode: row.queryId,
+            destination: row.destination || "",
+          },
+        ]),
+      ).values(),
+    );
+    const agentFinanceAssigneeId = await getAgentFinanceAssigneeForQueries(
+      coveredQueries.map((covered) => covered.query),
+    );
+    const assignedFinanceMember = await getRoundRobinFinanceAssignee({
+      keepAssigneeId: agentFinanceAssigneeId,
+    });
+
+    const generatedInvoiceDocument =
+      invoiceSource === "system_template"
+        ? await generateInternalInvoicePdf({
+          queryCode: batchNumber,
+          invoiceMeta: {
+            ...invoiceMeta,
+            supplierName,
+            invoiceNumber,
+            invoiceDate,
+            creditPeriodDays,
+            dueDate,
+          },
+          items,
+          summary: effectiveSummary,
+          taxConfig: normalizedTaxConfig,
+          dmcName: supplierName,
+          destination: `${coveredQueries.length} bookings bulk settlement`,
+          templateVariant: normalizedTemplateVariant,
+        })
+        : uploadedInvoiceDocument;
+    const invoiceExtraction =
+      invoiceSource === "uploaded_invoice"
+        ? await analyzeInvoiceFile(req.file, {
+          claimedSummary,
+          expectedSummary: summary,
+        })
+        : {};
+
+    const batch = await DmcSettlementBatch.create({
+      batchNumber,
+      invoiceNumber,
+      dmc: req.user.id,
+      dmcName: supplierName,
+      supplierName,
+      coveredQueries,
+      invoiceDate,
+      dueDate,
+      creditPeriodDays,
+      items,
+      documents: [generatedInvoiceDocument],
+      invoiceSource,
+      uploadedInvoice: invoiceSource === "uploaded_invoice"
+        ? {
+          name: uploadedInvoiceDocument.name,
+          filePath: uploadedInvoiceDocument.filePath,
+          size: uploadedInvoiceDocument.size,
+          mimeType: uploadedInvoiceDocument.mimeType,
+        }
+        : { name: "", filePath: "", size: "", mimeType: "" },
+      claimedSummary,
+      invoiceExtraction,
+      taxConfig: normalizedTaxConfig,
+      summary: effectiveSummary,
+      templateVariant: normalizedTemplateVariant,
+      status: "Submitted",
+      submittedBy: req.user.id,
+      submittedAt: new Date(),
+      assignedTo: assignedFinanceMember?._id || null,
+      assignedToName: assignedFinanceMember?.name || "",
+      assignedToEmail: assignedFinanceMember?.email || "",
+      assignedAt: assignedFinanceMember ? new Date() : null,
+    });
+
+    if (assignedFinanceMember?._id) {
+      await Notification.create({
+        user: assignedFinanceMember._id,
+        type: "info",
+        title: "New DMC Bulk Settlement",
+        message: `${supplierName} submitted ${invoiceNumber} covering ${items.length} services across ${coveredQueries.length} bookings.`,
+        link: "/finance/internalInvoice",
+        meta: {
+          settlementBatchId: batch._id,
+          invoiceNumber,
+          batchNumber,
+          dmcId: req.user.id,
+          assignedTo: assignedFinanceMember._id,
+        },
+      });
+    }
+
+    res.status(201).json({
+      success: true,
+      message: "Bulk settlement sent to finance team",
+      data: batch,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+
 const getDmcVisibleQueriesData = async (req) => {
   const isAdminAccess = req.user?.role === "admin";
   const currentDmcId = req.user.id?.toString();
@@ -1494,6 +2306,8 @@ const getDmcVisibleQueriesData = async (req) => {
   const currentDmcNames = [currentDmc?.companyName, currentDmc?.name]
     .filter(Boolean)
     .map((item) => item.trim().toLowerCase());
+  const ownedServicesByType = new Map();
+  const sourceServiceSupplierByKey = new Map();
 
   const getServiceModel = (type) => {
     const normalized = (type || "").toLowerCase();
@@ -1639,14 +2453,22 @@ const getDmcVisibleQueriesData = async (req) => {
 
     const ServiceModel = getServiceModel(service.type);
     if (!ServiceModel) return false;
+    const normalizedType = String(service.type || "").trim().toLowerCase();
 
     const normalizedTitle = normalizeText(service.title);
     const normalizedCity = normalizeText(service.city);
     const normalizedCountry = normalizeText(service.country);
 
-    const ownServices = await ServiceModel.find({ supplier: currentDmcId })
-      .select("hotelName name serviceName city country")
-      .lean();
+    if (!ownedServicesByType.has(normalizedType)) {
+      ownedServicesByType.set(
+        normalizedType,
+        await ServiceModel.find({ supplier: currentDmcId })
+          .select("hotelName name serviceName city country")
+          .lean(),
+      );
+    }
+
+    const ownServices = ownedServicesByType.get(normalizedType) || [];
 
     return ownServices.some((item) => {
       const candidateTitles = [item.hotelName, item.name, item.serviceName]
@@ -1764,6 +2586,7 @@ const getDmcVisibleQueriesData = async (req) => {
 
     return {
       type: resolvedType,
+      serviceIndex: index,
       serviceName: resolveQuotationServiceName(alignedService, index),
       description: buildDisplayServiceDescription(alignedService),
       serviceDate: resolvedServiceDate,
@@ -1828,11 +2651,15 @@ const getDmcVisibleQueriesData = async (req) => {
     const ServiceModel = getServiceModel(service.type);
     if (!ServiceModel) return null;
 
-    const sourceService = await ServiceModel.findById(service.serviceId)
-      .select("supplier")
-      .lean();
+    const sourceServiceKey = `${String(service.type || "").trim().toLowerCase()}:${service.serviceId}`;
+    if (!sourceServiceSupplierByKey.has(sourceServiceKey)) {
+      const sourceService = await ServiceModel.findById(service.serviceId)
+        .select("supplier")
+        .lean();
+      sourceServiceSupplierByKey.set(sourceServiceKey, sourceService?.supplier?.toString() || "");
+    }
 
-    if (sourceService?.supplier?.toString() === currentDmcId) {
+    if (sourceServiceSupplierByKey.get(sourceServiceKey) === currentDmcId) {
       return mapQuotationServiceReference(service, schedule, alignedTotal, index);
     }
 
@@ -1845,15 +2672,20 @@ const getDmcVisibleQueriesData = async (req) => {
   const queries = await TravelQuery.find({
     opsStatus: { $in: DMC_VISIBLE_BOOKING_STATUSES },
   })
+    .select(
+      "queryId destination opsStatus startDate endDate numberOfAdults numberOfChildren travelerDetails travelerDocumentVerification travelerDocumentAuditTrail voucherNumber voucherStatus voucherGeneratedAt voucherSentAt createdAt updatedAt agent",
+    )
     .populate("agent", "name companyName email")
-    .sort({ createdAt: -1 });
+    .sort({ createdAt: -1 })
+    .limit(80)
+    .lean();
 
   const internalInvoices = await InternalInvoice.find({
     ...(isAdminAccess ? {} : { dmc: currentDmcId }),
     query: { $in: queries.map((query) => query._id) },
   })
     .select(
-      "query supplierName invoiceNumber invoiceDate dueDate creditPeriodDays templateVariant items documents taxConfig summary status submittedAt updatedAt financeNotes payoutReference payoutDate payoutBank payoutAmount",
+      "query supplierName invoiceNumber invoiceDate dueDate creditPeriodDays templateVariant items documents invoiceSource uploadedInvoice claimedSummary taxConfig summary status submittedAt updatedAt financeNotes payoutReference payoutDate payoutBank payoutAmount",
     )
     .lean();
 
@@ -1861,13 +2693,66 @@ const getDmcVisibleQueriesData = async (req) => {
     internalInvoices.map((invoice) => [invoice.query?.toString(), invoice]),
   );
 
+  const queryObjectIds = queries.map((query) => query._id);
+  const queryObjectIdStrings = queryObjectIds.map((queryId) => queryId?.toString()).filter(Boolean);
+  const queryCodes = queries.map((query) => String(query.queryId || "").trim()).filter(Boolean);
+  const allQuotations = await Quotation.find({ queryId: { $in: queryObjectIds } })
+    .select("queryId services pricing clientTotalAmount createdAt updatedAt status")
+    .sort({ createdAt: -1 })
+    .lean();
+  const quotationsByQueryId = new Map();
+  const latestOperationalQuotationByQueryId = new Map();
+
+  allQuotations.forEach((quotation) => {
+    const queryKey = quotation.queryId?.toString();
+    if (!queryKey) return;
+
+    if (!quotationsByQueryId.has(queryKey)) {
+      quotationsByQueryId.set(queryKey, []);
+    }
+    quotationsByQueryId.get(queryKey).push(quotation);
+
+    if (
+      !latestOperationalQuotationByQueryId.has(queryKey) &&
+      OPERATIONAL_QUOTATION_STATUSES.includes(quotation.status)
+    ) {
+      latestOperationalQuotationByQueryId.set(queryKey, quotation);
+    }
+  });
+
+  const vouchers = await Voucher.find({ query: { $in: queryObjectIds } })
+    .select("query services createdAt")
+    .sort({ createdAt: -1 })
+    .lean();
+  const vouchersByQueryId = new Map();
+  vouchers.forEach((voucher) => {
+    const queryKey = voucher.query?.toString();
+    if (!queryKey) return;
+    if (!vouchersByQueryId.has(queryKey)) {
+      vouchersByQueryId.set(queryKey, []);
+    }
+    vouchersByQueryId.get(queryKey).push(voucher);
+  });
+
+  const confirmations = await Confirmation.find({
+    ...(isAdminAccess ? {} : { dmcId: currentDmcId }),
+    queryId: { $in: [...queryCodes, ...queryObjectIdStrings] },
+  }).lean();
+  const confirmationByQueryIdentifier = new Map(
+    confirmations.flatMap((confirmation) => [
+      [String(confirmation.queryId || "").trim(), confirmation],
+    ]),
+  );
+
   const data = await Promise.all(
     queries.map(async (query) => {
-      const quotation = await getLatestOperationalQuotation(query._id);
-      const confirmation = await Confirmation.findOne({
-        ...(isAdminAccess ? {} : { dmcId: currentDmcId }),
-        queryId: { $in: [query.queryId, query._id.toString()] },
-      });
+      const queryKey = query._id?.toString();
+      const quotationRows = quotationsByQueryId.get(queryKey) || [];
+      const quotation = latestOperationalQuotationByQueryId.get(queryKey) || null;
+      const confirmation =
+        confirmationByQueryIdentifier.get(String(query.queryId || "").trim()) ||
+        confirmationByQueryIdentifier.get(queryKey) ||
+        null;
 
       const passengers =
         Number(query.numberOfAdults || 0) + Number(query.numberOfChildren || 0);
@@ -1880,7 +2765,7 @@ const getDmcVisibleQueriesData = async (req) => {
           : 0;
       const nights = days > 0 ? days - 1 : 0;
 
-      const detailQuotation = await getBestServiceDetailQuotation(query._id, quotation);
+      const detailQuotation = getBestServiceDetailQuotationFromList(quotationRows, quotation);
       const detailServices =
         Array.isArray(detailQuotation?.services) && detailQuotation.services.length
           ? detailQuotation.services
@@ -1891,6 +2776,10 @@ const getDmcVisibleQueriesData = async (req) => {
         Array.isArray(confirmation?.services)
           ? confirmation.services.map(normalizeDetailCandidateService)
           : [],
+        {
+          quotations: quotationRows,
+          vouchers: vouchersByQueryId.get(queryKey) || [],
+        },
       );
       const derivedServiceSchedule = deriveQuotationServiceSchedule(
         quotationServices,
@@ -2000,6 +2889,9 @@ const getDmcVisibleQueriesData = async (req) => {
             documents: Array.isArray(existingInternalInvoice.documents)
               ? existingInternalInvoice.documents
               : [],
+            invoiceSource: existingInternalInvoice.invoiceSource || "system_template",
+            uploadedInvoice: existingInternalInvoice.uploadedInvoice || {},
+            claimedSummary: existingInternalInvoice.claimedSummary || {},
             taxConfig: existingInternalInvoice.taxConfig || {},
             summary: existingInternalInvoice.summary || {},
             status: existingInternalInvoice.status || "Submitted",

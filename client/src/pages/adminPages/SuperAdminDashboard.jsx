@@ -69,6 +69,33 @@ const statCardToneMap = {
   time: { badgeBg: "#fffbeb", badgeBorder: "#fde68a", badgeText: "#b45309" },
 };
 
+const statCardStyles = {
+  revenue: {
+    gradient: "linear-gradient(135deg, rgba(220, 252, 231, 0.4) 0%, rgba(255, 255, 255, 0.95) 100%)",
+    borderColor: "#e2e8f0",
+    borderBottom: "4px solid #16a34a",
+    shadow: "0 4px 12px rgba(22, 163, 74, 0.04)",
+  },
+  bookings: {
+    gradient: "linear-gradient(135deg, rgba(219, 234, 254, 0.4) 0%, rgba(255, 255, 255, 0.95) 100%)",
+    borderColor: "#e2e8f0",
+    borderBottom: "4px solid #2563eb",
+    shadow: "0 4px 12px rgba(37, 99, 235, 0.04)",
+  },
+  users: {
+    gradient: "linear-gradient(135deg, rgba(243, 232, 255, 0.4) 0%, rgba(255, 255, 255, 0.95) 100%)",
+    borderColor: "#e2e8f0",
+    borderBottom: "4px solid #7c3aed",
+    shadow: "0 4px 12px rgba(124, 58, 237, 0.04)",
+  },
+  time: {
+    gradient: "linear-gradient(135deg, rgba(254, 243, 199, 0.4) 0%, rgba(255, 255, 255, 0.95) 100%)",
+    borderColor: "#e2e8f0",
+    borderBottom: "4px solid #d97706",
+    shadow: "0 4px 12px rgba(217, 119, 6, 0.04)",
+  },
+};
+
 const _bookings = [
   {
     id: "BK-2024-001",
@@ -205,6 +232,16 @@ const getAgentReviewStatusMeta = (status) => {
   };
 };
 
+const getOverrideStatusMeta = (status = "Open") => {
+  if (status === "Overridden" || status === "Resolved") {
+    return { bg: "#ecfdf3", border: "#bbf7d0", color: "#15803d" };
+  }
+  if (status === "Rejected") {
+    return { bg: "#fff1f2", border: "#fecdd3", color: "#be123c" };
+  }
+  return { bg: "#fff7ed", border: "#fed7aa", color: "#c2410c" };
+};
+
 const filterAgentApprovalRows = (rows = [], filter = "pending") => {
   if (filter === "all") return rows;
   return rows.filter((row) => row.status === filter);
@@ -297,14 +334,18 @@ const buildAxisTicks = (values = [], minimumMax = 0, segments = 4) => {
   return { max, ticks };
 };
 
-const formatPlainNumber = (value = 0) => Number(value || 0).toLocaleString("en-IN");
+const formatPlainNumber = (value = 0) => {
+  const num = Number(value || 0);
+  if (num >= 100000) {
+    return `${(num / 100000).toFixed(1).replace(".0", "")} L`;
+  }
+  if (num >= 1000) {
+    return `${(num / 1000).toFixed(1).replace(".0", "")} k`;
+  }
+  return num.toString();
+};
 
-const formatCompactNumber = (value = 0) =>
-  new Intl.NumberFormat("en-IN", { notation: "compact", maximumFractionDigits: 1 }).format(Number(value || 0));
-
-const formatCompactCurrency = (value = 0) => `₹${formatCompactNumber(value)}`;
-
-const getRoundedBarPath = (x, y, width, height, radius = 6) => {
+const getRoundedBarPath = (x, y, width, height, radius = 8) => {
   const safeHeight = Math.max(height, 0);
   const r = Math.min(radius, safeHeight, width / 2);
   const bottom = y + safeHeight;
@@ -323,8 +364,8 @@ const AnimatedBar = (props) => {
   const { x, y, width, height, fill, index = 0 } = props;
   if (!height || height <= 0) return null;
   const collapsedY = y + height;
-  const collapsedPath = getRoundedBarPath(x, collapsedY, width, 0, 6);
-  const expandedPath = getRoundedBarPath(x, y, width, height, 6);
+  const collapsedPath = getRoundedBarPath(x, collapsedY, width, 0, 8);
+  const expandedPath = getRoundedBarPath(x, y, width, height, 8);
   return (
     <motion.path
       d={expandedPath}
@@ -339,10 +380,20 @@ const AnimatedBar = (props) => {
 const CustomTooltipGreen = ({ active, payload, label }) => {
   if (active && payload && payload.length) {
     return (
-      <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, padding: "10px 14px", fontSize: 12 }}>
-        <p style={{ margin: 0, fontWeight: 600, color: "#0f172a" }}>{label}</p>
-        <p style={{ margin: "4px 0 0", color: "#16a34a", fontWeight: 500 }}>
-          Revenue : ₹{payload[0].value.toLocaleString("en-IN")}
+      <div 
+        style={{ 
+          background: "rgba(255, 255, 255, 0.96)", 
+          backdropFilter: "blur(4px)",
+          border: "1px solid #e2e8f0", 
+          borderRadius: 12, 
+          padding: "10px 14px", 
+          fontSize: 12,
+          boxShadow: "0 10px 25px -5px rgba(0,0,0,0.08), 0 8px 10px -6px rgba(0,0,0,0.03)"
+        }}
+      >
+        <p style={{ margin: 0, fontWeight: 605, color: "#475569" }}>{label}</p>
+        <p style={{ margin: "4px 0 0", color: "#10b981", fontWeight: 700, fontSize: 13 }}>
+          ₹{payload[0].value.toLocaleString("en-IN")}
         </p>
       </div>
     );
@@ -353,10 +404,20 @@ const CustomTooltipGreen = ({ active, payload, label }) => {
 const CustomTooltipBlue = ({ active, payload, label }) => {
   if (active && payload && payload.length) {
     return (
-      <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, padding: "10px 14px", fontSize: 12 }}>
-        <p style={{ margin: 0, fontWeight: 600, color: "#0f172a" }}>{label}</p>
-        <p style={{ margin: "4px 0 0", color: "#2563eb", fontWeight: 500 }}>
-          Avg Time : {payload[0].value}h
+      <div 
+        style={{ 
+          background: "rgba(255, 255, 255, 0.96)", 
+          backdropFilter: "blur(4px)",
+          border: "1px solid #e2e8f0", 
+          borderRadius: 12, 
+          padding: "10px 14px", 
+          fontSize: 12,
+          boxShadow: "0 10px 25px -5px rgba(0,0,0,0.08), 0 8px 10px -6px rgba(0,0,0,0.03)"
+        }}
+      >
+        <p style={{ margin: 0, fontWeight: 605, color: "#475569" }}>{label}</p>
+        <p style={{ margin: "4px 0 0", color: "#3b82f6", fontWeight: 700, fontSize: 13 }}>
+          {payload[0].value} hours
         </p>
       </div>
     );
@@ -388,6 +449,10 @@ export default function SuperAdminDashboard() {
   const [selectedEscalation, setSelectedEscalation] = useState(null);
   const [escalationReply, setEscalationReply] = useState("");
   const [escalationActionId, setEscalationActionId] = useState("");
+  const [selectedOverrideCase, setSelectedOverrideCase] = useState(null);
+  const [overrideDecision, setOverrideDecision] = useState("approve");
+  const [overrideNote, setOverrideNote] = useState("");
+  const [overrideActionId, setOverrideActionId] = useState("");
   const location = useLocation();
   const currentUser = useSelector((state) => state.auth.user);
 
@@ -522,11 +587,11 @@ export default function SuperAdminDashboard() {
   }, []);
 
   useEffect(() => {
-    if (!deleteDialogUser && !agentRejectDialogUser && !selectedEscalation) return;
+    if (!deleteDialogUser && !agentRejectDialogUser && !selectedEscalation && !selectedOverrideCase) return;
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => { document.body.style.overflow = prev; };
-  }, [deleteDialogUser, agentRejectDialogUser, selectedEscalation]);
+  }, [deleteDialogUser, agentRejectDialogUser, selectedEscalation, selectedOverrideCase]);
 
   useEffect(() => {
     const filteredRows = filterAgentApprovalRows(agentApprovalRows, agentApprovalFilter);
@@ -644,6 +709,18 @@ export default function SuperAdminDashboard() {
     setEscalationReply("");
   };
 
+  const closeOverrideDialog = () => {
+    setSelectedOverrideCase(null);
+    setOverrideDecision("approve");
+    setOverrideNote("");
+  };
+
+  const openOverrideDialog = (entry, decision = "approve") => {
+    setSelectedOverrideCase(entry);
+    setOverrideDecision(decision);
+    setOverrideNote("");
+  };
+
   const openQuotationBuilder = (query) => {
     if (!query?.builderState?._id) {
       toast.error("Query details are incomplete for quotation editing.");
@@ -681,6 +758,39 @@ export default function SuperAdminDashboard() {
     }
   };
 
+  const handleSubmitOverrideResolution = async () => {
+    const trimmedNote = overrideNote.trim();
+
+    if (!selectedOverrideCase?.targetType || !selectedOverrideCase?.targetId) {
+      toast.error("Override case details are missing.");
+      return;
+    }
+
+    if (!trimmedNote) {
+      toast.error("Please add a resolution note.");
+      return;
+    }
+
+    try {
+      setOverrideActionId(selectedOverrideCase.id || selectedOverrideCase.targetId);
+      const { data } = await API.patch(
+        `/admin/override-cases/${selectedOverrideCase.targetType}/${selectedOverrideCase.targetId}/resolve`,
+        {
+          decision: overrideDecision,
+          resolutionNote: trimmedNote,
+        },
+      );
+      toast.success(data?.message || "Override resolved successfully");
+      closeOverrideDialog();
+      await fetchDashboardData();
+      await fetchAgentApprovals(true);
+    } catch (error) {
+      toast.error(error?.response?.data?.message || "Unable to resolve override right now.");
+    } finally {
+      setOverrideActionId("");
+    }
+  };
+
   const isBusyAction = (id) => userActionId === id;
   const managerOptions = userList
     .filter((u) => u?.role === "Operation Manager" || u?.role === "Finance Manager")
@@ -697,6 +807,8 @@ export default function SuperAdminDashboard() {
   const agentPerformanceData = superAdminData.agentPerformance || [];
   const teamEfficiencyData = superAdminData.teamEfficiency || [];
   const bookingRows = superAdminData.masterBookings || [];
+  const overrideRows = Array.isArray(superAdminData.overrideCases) ? superAdminData.overrideCases : [];
+  const openOverrideCount = Number(superAdminData.overrideSummary?.open || overrideRows.filter((entry) => entry.status === "Open").length);
   const pendingBookingCount = bookingRows.filter((entry) => String(entry?.paymentStatus || "").trim().toLowerCase() === "pending").length;
   const verifiedBookingCount = bookingRows.filter((entry) => {
     const status = String(entry?.paymentStatus || "").trim().toLowerCase();
@@ -723,42 +835,18 @@ export default function SuperAdminDashboard() {
     : "No new agent registrations are waiting for admin action.";
   const agentAxis = buildAxisTicks(agentPerformanceData.map((entry) => entry.revenue), 0, 4);
   const efficiencyAxis = buildAxisTicks(teamEfficiencyData.map((entry) => entry.hours), 8, 4);
-  const totalAgentRevenue = agentPerformanceData.reduce((sum, entry) => sum + Number(entry?.revenue || 0), 0);
-  const topAgentEntry = agentPerformanceData.reduce(
-    (best, entry) => {
-      const nextValue = Number(entry?.revenue || 0);
-      const bestValue = Number(best?.revenue || 0);
-      return nextValue > bestValue ? entry : best;
-    },
-    agentPerformanceData[0] || null,
-  );
-  const averageTeamHours = teamEfficiencyData.length
-    ? teamEfficiencyData.reduce((sum, entry) => sum + Number(entry?.hours || 0), 0) / teamEfficiencyData.length
-    : 0;
-  const fastestTeamEntry = teamEfficiencyData.reduce(
-    (best, entry) => {
-      const nextValue = Number(entry?.hours || 0);
-      const bestValue = Number(best?.hours ?? Number.POSITIVE_INFINITY);
-      return nextValue < bestValue ? entry : best;
-    },
-    null,
-  );
 
   return (
     <>
     <div
       id="overview"
       className="scroll-mt-5"
-      style={{ fontFamily: "Inter, system-ui, sans-serif", background: "#f8fafc", minHeight: "100%", width: "100%" }}
+      style={{ fontFamily: "Inter, system-ui, sans-serif", background: "#f8fafc", minHeight: "100%", width: "100%", padding: "12px 0px" }}
     >
       {/* ── Overview Card ── */}
       <div
         style={{
-          background: "#fff",
-          // border: "1px solid #e2e8f0",
-          // borderRadius: 20,
-          overflow: "hidden",
-          // boxShadow: "0 1px 4px rgba(15,23,42,0.06)",
+          background: "transparent",
           marginBottom: 16,
         }}
       >
@@ -768,45 +856,45 @@ export default function SuperAdminDashboard() {
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
-            padding: "14px 20px",
+            padding: "0 16px 8px 16px",
             borderBottom: "1px solid #e2e8f0",
           }}
         >
           <div>
-            <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: "#0f172a" }}>Super Admin Dashboard</p>
-            <p style={{ margin: "2px 0 0", fontSize: 12, color: "#64748b" }}>{overviewDateLabel}</p>
+            <p style={{ margin: 0, fontSize: 12, fontWeight: 605, color: "#0f172a" }}>Super Admin Dashboard</p>
+            <p style={{ margin: "3px 0 0", fontSize: 12, color: "#64748b" }}>{overviewDateLabel}</p>
           </div>
           <div style={{ textAlign: "right" }}>
-            <p style={{ margin: 0, fontSize: 11, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.1em" }}>Logged in as</p>
-            <p style={{ margin: "2px 0 0", fontSize: 13, fontWeight: 600, color: "#0f172a" }}>{currentRoleLabel}</p>
+            <p style={{ margin: 0, fontSize: 10, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.12em", fontWeight: 700 }}>Logged in as</p>
+            <p style={{ margin: "3px 0 0", fontSize: 13, fontWeight: 600, color: "#0f172a" }}>{currentRoleLabel}</p>
           </div>
         </div>
 
-        <div style={{ padding: 20 }}>
+        <div style={{ padding: "16px 16px 0 16px" }}>
           {/* Title + buttons row */}
-          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 20, flexWrap: "wrap", marginBottom: 28 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
               <img
                 src={superAdminBadge}
                 alt="Super admin badge"
                 style={{
-                  width: 44,
-                  height: 44,
-                  borderRadius: 14,
+                  width: 52,
+                  height: 52,
+                  borderRadius: 16,
                   objectFit: "cover",
-                  border: "1px solid #fcd34d",
-                  boxShadow: "0 8px 20px rgba(245, 158, 11, 0.18)",
+                  border: "2px solid #fcd34d",
+                  boxShadow: "0 8px 20px rgba(245, 158, 11, 0.15)",
                   background: "#fff",
                 }}
               />
               <div>
-                <h1 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "#0f172a" }}>Super Admin Dashboard</h1>
-                <p style={{ margin: "6px 0 0", fontSize: 8, color: "#64748b", maxWidth: 480 }}>
+                <h1 style={{ margin: 0, fontSize: "21px", fontWeight: 800, color: "#0f172a", letterSpacing: "-0.02em" }}>Super Admin Dashboard</h1>
+                <p style={{ margin: "4px 0 0", fontSize: "11px", color: "#64748b", fontWeight: 500 }}>
                   Complete oversight and control of Holiday Circuit operations
                 </p>
               </div>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginLeft: "auto" }}>
               {/* Agent queue button */}
               <button
                 type="button"
@@ -814,22 +902,27 @@ export default function SuperAdminDashboard() {
                 style={{
                   display: "flex",
                   alignItems: "center",
-                  gap: 10,
-                  minHeight: 48,
-                  padding: "0 14px",
-                  borderRadius: 14,
-                  border: `1px solid ${isAgentDeskOpen ? "#93c5fd" : "#dbeafe"}`,
-                  background: isAgentDeskOpen ? "#eff6ff" : "#fff",
+                  gap: 8,
+                  height: 38,
+                  minHeight: 38,
+                  padding: "0 12px",
+                  borderRadius: 12,
+                  border: `1px solid ${isAgentDeskOpen ? "#6366f1" : "#e2e8f0"}`,
+                  background: isAgentDeskOpen 
+                    ? "linear-gradient(135deg, #f5f3ff 0%, #eff6ff 100%)" 
+                    : "linear-gradient(135deg, #ffffff 0%, #f8fafc 100%)",
                   cursor: "pointer",
                   position: "relative",
+                  boxShadow: isAgentDeskOpen ? "0 4px 12px rgba(99, 102, 241, 0.08)" : "0 1px 3px rgba(0,0,0,0.02)",
+                  transition: "all 0.2s ease",
                 }}
                 title={`${agentQueueLabel}. ${agentQueueNote}`}
               >
                 <span
                   style={{
-                    width: 34,
-                    height: 34,
-                    borderRadius: 10,
+                    width: 26,
+                    height: 26,
+                    borderRadius: 8,
                     background: isAgentDeskOpen ? "#dbeafe" : "#eff6ff",
                     border: `1px solid ${isAgentDeskOpen ? "#93c5fd" : "#bfdbfe"}`,
                     display: "flex",
@@ -837,22 +930,22 @@ export default function SuperAdminDashboard() {
                     justifyContent: "center",
                   }}
                 >
-                  <UserPlus size={15} color="#2563eb" />
+                  <UserPlus size={13} color="#2563eb" />
                 </span>
                 <div style={{ textAlign: "left" }}>
-                  <p style={{ margin: 0, fontSize: 10, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.14em" }}>Agent Queue</p>
-                  <p style={{ margin: "2px 0 0", fontSize: 13, fontWeight: 600, color: "#0f172a" }}>{agentQueueLabel}</p>
+                  <p style={{ margin: 0, fontSize: 7.5, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.1em", fontWeight: 700 }}>Agent Queue</p>
+                  <p style={{ margin: "1px 0 0", fontSize: 11, fontWeight: 650, color: "#0f172a" }}>{pendingAgentApprovals ? `${pendingAgentApprovals} pending` : "Queue clear"}</p>
                 </div>
                 <span
                   style={{
-                    minWidth: 22,
-                    height: 22,
+                    minWidth: 18,
+                    height: 18,
                     borderRadius: 999,
-                    padding: "0 6px",
+                    padding: "0 5px",
                     display: "inline-flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    fontSize: 11,
+                    fontSize: 9.5,
                     fontWeight: 700,
                     background: pendingAgentApprovals ? "#fee2e2" : "#f0fdf4",
                     color: pendingAgentApprovals ? "#b91c1c" : "#15803d",
@@ -868,19 +961,21 @@ export default function SuperAdminDashboard() {
                 style={{
                   display: "inline-flex",
                   alignItems: "center",
-                  gap: 7,
-                  minHeight: 42,
-                  padding: "0 18px",
+                  gap: 6,
+                  height: 38,
+                  padding: "0 14px",
                   borderRadius: 12,
                   border: "none",
-                  background: "#16a34a",
+                  background: "linear-gradient(135deg, #16a34a 0%, #15803d 100%)",
                   color: "#fff",
-                  fontSize: 13,
-                  fontWeight: 600,
+                  fontSize: 11.5,
+                  fontWeight: 700,
                   cursor: "pointer",
+                  boxShadow: "0 4px 12px rgba(22, 163, 74, 0.15)",
+                  transition: "all 0.2s ease",
                 }}
               >
-                <Download size={14} />
+                <Download size={13} />
                 Export Report
               </button>
 
@@ -889,19 +984,20 @@ export default function SuperAdminDashboard() {
                 style={{
                   display: "flex",
                   alignItems: "center",
-                  gap: 10,
-                  minHeight: 48,
-                  padding: "0 14px",
-                  borderRadius: 14,
+                  gap: 8,
+                  height: 38,
+                  minHeight: 38,
+                  padding: "0 12px",
+                  borderRadius: 12,
                   border: "1px solid #e2e8f0",
-                  background: "#fff",
+                  background: "linear-gradient(135deg, #ffffff 0%, #f8fafc 100%)",
                 }}
               >
                 <span
                   style={{
-                    width: 34,
-                    height: 34,
-                    borderRadius: 10,
+                    width: 26,
+                    height: 26,
+                    borderRadius: 8,
                     background: "#faf5ff",
                     border: "1px solid #e9d5ff",
                     display: "flex",
@@ -909,78 +1005,107 @@ export default function SuperAdminDashboard() {
                     justifyContent: "center",
                   }}
                 >
-                  <Shield size={15} color="#9333ea" />
+                  <Shield size={13} color="#9333ea" />
                 </span>
                 <div>
-                  <p style={{ margin: 0, fontSize: 10, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.14em" }}>Access Level</p>
-                  <p style={{ margin: "2px 0 0", fontSize: 13, fontWeight: 600, color: "#7c3aed" }}>{currentRoleLabel}</p>
+                  <p style={{ margin: 0, fontSize: 7.5, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.1em", fontWeight: 700 }}>Access Level</p>
+                  <p style={{ margin: "1px 0 0", fontSize: 11, fontWeight: 650, color: "#7c3aed" }}>{currentRoleLabel}</p>
                 </div>
               </div>
             </div>
           </div>
 
           {/* Stat cards */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginTop: 20 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 20, marginTop: 28 }}>
             {statCards.map((s) => {
               const meta = statCardMeta[s.iconKey] || statCardMeta.users;
               const tone = statCardToneMap[s.iconKey] || statCardToneMap.users;
+              const style = statCardStyles[s.iconKey] || statCardStyles.users;
               const Icon = meta.icon;
               return (
-                <div
+                <motion.div
                   key={s.label}
+                  whileHover={{ y: -4 }}
+                  transition={{ type: "spring", stiffness: 350, damping: 25 }}
                   style={{
-                    background: "#fff",
-                    border: "1px solid #e2e8f0",
-                    borderRadius: 14,
-                    padding: 10,
+                    background: style.gradient,
+                    border: `1px solid ${style.borderColor}`,
+                    borderBottom: style.borderBottom,
+                    borderRadius: 20,
+                    padding: "20px 24px",
                     display: "flex",
                     flexDirection: "column",
-                    gap: 12,
+                    justifyContent: "space-between",
+                    minHeight: 125,
+                    boxShadow: style.shadow,
+                    cursor: "default",
                   }}
+                  className="transition-all duration-300 hover:shadow-lg"
                 >
-                  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
-                    <div>
-                      <p style={{ margin: 0, fontSize: 13, color: "#64748b" }}>{s.label}</p>
-                      <p style={{ margin: "6px 0 0", fontSize: 25 , fontWeight: 600, color: "#0f172a", lineHeight: 1 }}>
-                        {isDashboardLoading ? "--" : s.value}
-                      </p>
+                  {/* Top Row: Icon, Label, and Trend Badge */}
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+                      <span
+                        style={{
+                          width: 38,
+                          height: 38,
+                          borderRadius: 10,
+                          background: meta.iconBg,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          flexShrink: 0,
+                          boxShadow: "inset 0 2px 4px rgba(0,0,0,0.02)",
+                        }}
+                      >
+                        <Icon size={18} color={meta.iconColor} />
+                      </span>
+                      <span
+                        style={{
+                          margin: 0,
+                          fontSize: 11,
+                          fontWeight: 700,
+                          textTransform: "uppercase",
+                          letterSpacing: "0.05em",
+                          color: "#64748b",
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis"
+                        }}
+                      >
+                        {s.label}
+                      </span>
                     </div>
-                    <span
-                      style={{
-                        width: 42,
-                        height: 42,
-                        borderRadius: 12,
-                        background: meta.iconBg,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        flexShrink: 0,
-                      }}
-                    >
-                      <Icon size={20} color={meta.iconColor} />
+                    {s.sub ? (
+                      <span
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 4,
+                          padding: "4px 10px",
+                          borderRadius: 8,
+                          border: `1px solid ${tone.badgeBorder}`,
+                          background: tone.badgeBg,
+                          color: tone.badgeText,
+                          fontSize: 11,
+                          fontWeight: 700,
+                          whiteSpace: "nowrap",
+                          flexShrink: 0,
+                        }}
+                      >
+                        <TrendingUp size={11} />
+                        {s.sub}
+                      </span>
+                    ) : null}
+                  </div>
+
+                  {/* Bottom Row: Large Value */}
+                  <div style={{ display: "flex", alignItems: "baseline", marginTop: 12 }}>
+                    <span style={{ fontSize: "28px", fontWeight: 800, color: "#0f172a", lineHeight: 1.1, letterSpacing: "-0.03em" }}>
+                  {isDashboardLoading ? "--" : s.value}
                     </span>
                   </div>
-                  {s.sub ? (
-                    <span
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: 6,
-                        width: "fit-content",
-                        padding: "4px 10px",
-                        borderRadius: 999,
-                        border: `1px solid ${tone.badgeBorder}`,
-                        background: tone.badgeBg,
-                        color: tone.badgeText,
-                        fontSize: 11,
-                        fontWeight: 600,
-                      }}
-                    >
-                      <TrendingUp size={11} />
-                      {s.sub}
-                    </span>
-                  ) : null}
-                </div>
+                </motion.div>
               );
             })}
           </div>
@@ -988,36 +1113,39 @@ export default function SuperAdminDashboard() {
           {/* Charts row */}
           <div id="finance-dashboard" className="scroll-mt-5" />
           <div id="advanced-analytics" className="scroll-mt-5" />
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginTop: 16 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginTop: 16 }}>
             {/* Agent Performance */}
-            <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 16, padding: 20 }}>
-              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 14 }}>
+            <div 
+              style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 16, padding: 20 }}
+              className="transition-all duration-300 hover:shadow-[0_8px_30px_rgba(0,0,0,0.04)]"
+            >
+              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 16 }}>
                 <div>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                    <div style={{ width: 26, height: 26, borderRadius: 8, background: "#dcfce7", border: "1px solid #bbf7d0", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                      <BarChart3 size={14} color="#16a34a" />
+                    <div style={{ width: 26, height: 26, borderRadius: 8, background: "#ecfdf5", border: "1px solid #a7f3d0", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <BarChart3 size={14} color="#059669" />
                     </div>
                     <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: "#0f172a" }}>Agent Performance</p>
                   </div>
                   <p style={{ margin: 0, fontSize: 12, color: "#64748b" }}>Revenue by Agent (in ₹)</p>
                 </div>
-                <span style={{ padding: "5px 10px", borderRadius: 999, background: "#ecfdf3", border: "1px solid #bbf7d0", color: "#15803d", fontSize: 11, fontWeight: 700, whiteSpace: "nowrap" }}>
+                <span style={{ padding: "4px 8px", borderRadius: 8, background: "#ecfdf5", border: "1px solid #a7f3d0", color: "#047857", fontSize: 10.5, fontWeight: 700, whiteSpace: "nowrap" }}>
                   +12.4% growth
                 </span>
               </div>
-              <div style={{ borderRadius: 12, padding: 14, border: "1px solid #e2e8f0", background: "#f8fdf9" }}>
-                <ResponsiveContainer width="100%" height={210}>
-                  <BarChart data={agentPerformanceData} barSize={32} margin={{ top: 8, right: 6, left: 8, bottom: 8 }}>
+              <div style={{ width: "100%", height: 210, marginTop: 14 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={agentPerformanceData} barSize={24} margin={{ top: 8, right: 6, left: 8, bottom: 8 }}>
                     <defs>
                       <linearGradient id="agentRevenueGradient" x1="0" x2="0" y1="0" y2="1">
-                        <stop offset="0%" stopColor="#22c55e" />
-                        <stop offset="100%" stopColor="#16a34a" />
+                        <stop offset="0%" stopColor="#10b981" />
+                        <stop offset="100%" stopColor="#047857" />
                       </linearGradient>
                     </defs>
-                    <CartesianGrid strokeDasharray="3 5" stroke="#dbe7f3" vertical={false} />
-                    <XAxis dataKey="name" height={50} angle={-12} textAnchor="end" tickMargin={10} tick={{ fontSize: 10, fill: "#64748b" }} axisLine={false} tickLine={false} interval={0} />
-                    <YAxis width={62} tickMargin={10} domain={[0, agentAxis.max]} ticks={agentAxis.ticks} tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} tickFormatter={formatPlainNumber} />
-                    <Tooltip content={<CustomTooltipGreen />} cursor={{ fill: "rgba(34,197,94,0.07)" }} />
+                    <CartesianGrid strokeDasharray="4 4" stroke="#f1f5f9" vertical={false} />
+                    <XAxis dataKey="name" height={36} tickMargin={8} tick={{ fontSize: 10.5, fontWeight: 500, fill: "#64748b" }} axisLine={false} tickLine={false} interval={0} />
+                    <YAxis width={40} tickMargin={8} domain={[0, agentAxis.max]} ticks={agentAxis.ticks} tick={{ fontSize: 10.5, fontWeight: 500, fill: "#94a3b8" }} axisLine={false} tickLine={false} tickFormatter={formatPlainNumber} />
+                    <Tooltip content={<CustomTooltipGreen />} cursor={{ fill: "rgba(16,185,129,0.04)" }} />
                     <Bar dataKey="revenue" fill="url(#agentRevenueGradient)" shape={<AnimatedBar />} isAnimationActive={false} />
                   </BarChart>
                 </ResponsiveContainer>
@@ -1025,34 +1153,37 @@ export default function SuperAdminDashboard() {
             </div>
 
             {/* Team Efficiency */}
-            <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 16, padding: 20 }}>
-              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 14 }}>
+            <div 
+              style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 16, padding: 20 }}
+              className="transition-all duration-300 hover:shadow-[0_8px_30px_rgba(0,0,0,0.04)]"
+            >
+              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 16 }}>
                 <div>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                    <div style={{ width: 26, height: 26, borderRadius: 8, background: "#dbeafe", border: "1px solid #bfdbfe", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <div style={{ width: 26, height: 26, borderRadius: 8, background: "#eff6ff", border: "1px solid #bfdbfe", display: "flex", alignItems: "center", justifyContent: "center" }}>
                       <Clock size={14} color="#2563eb" />
                     </div>
                     <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: "#0f172a" }}>Team Efficiency</p>
                   </div>
                   <p style={{ margin: 0, fontSize: 12, color: "#64748b" }}>Average time to process a quote (in hours)</p>
                 </div>
-                <span style={{ padding: "5px 10px", borderRadius: 999, background: "#eff6ff", border: "1px solid #bfdbfe", color: "#2563eb", fontSize: 11, fontWeight: 700, whiteSpace: "nowrap" }}>
+                <span style={{ padding: "4px 8px", borderRadius: 8, background: "#eff6ff", border: "1px solid #bfdbfe", color: "#1d4ed8", fontSize: 10.5, fontWeight: 700, whiteSpace: "nowrap" }}>
                   Lower is better
                 </span>
               </div>
-              <div style={{ borderRadius: 12, padding: 14, border: "1px solid #e2e8f0", background: "#f8fbff" }}>
-                <ResponsiveContainer width="100%" height={210}>
-                  <BarChart data={teamEfficiencyData} barSize={42} margin={{ top: 8, right: 6, left: 8, bottom: 8 }}>
+              <div style={{ width: "100%", height: 210, marginTop: 14 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={teamEfficiencyData} barSize={32} margin={{ top: 8, right: 6, left: 8, bottom: 8 }}>
                     <defs>
                       <linearGradient id="teamEfficiencyGradient" x1="0" x2="0" y1="0" y2="1">
                         <stop offset="0%" stopColor="#60a5fa" />
-                        <stop offset="100%" stopColor="#3b82f6" />
+                        <stop offset="100%" stopColor="#2563eb" />
                       </linearGradient>
                     </defs>
-                    <CartesianGrid strokeDasharray="3 5" stroke="#dbe7f3" vertical={false} />
-                    <XAxis dataKey="name" height={42} tickMargin={8} tick={{ fontSize: 10, fill: "#64748b" }} axisLine={false} tickLine={false} interval={0} />
-                    <YAxis width={44} tickMargin={10} tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} domain={[0, efficiencyAxis.max]} ticks={efficiencyAxis.ticks} />
-                    <Tooltip content={<CustomTooltipBlue />} cursor={{ fill: "rgba(59,130,246,0.07)" }} />
+                    <CartesianGrid strokeDasharray="4 4" stroke="#f1f5f9" vertical={false} />
+                    <XAxis dataKey="name" height={36} tickMargin={8} tick={{ fontSize: 10.5, fontWeight: 500, fill: "#64748b" }} axisLine={false} tickLine={false} interval={0} />
+                    <YAxis width={32} tickMargin={8} tick={{ fontSize: 10.5, fontWeight: 500, fill: "#94a3b8" }} axisLine={false} tickLine={false} domain={[0, efficiencyAxis.max]} ticks={efficiencyAxis.ticks} />
+                    <Tooltip content={<CustomTooltipBlue />} cursor={{ fill: "rgba(37,99,235,0.04)" }} />
                     <Bar dataKey="hours" fill="url(#teamEfficiencyGradient)" shape={<AnimatedBar />} isAnimationActive={false} />
                   </BarChart>
                 </ResponsiveContainer>
@@ -1073,8 +1204,8 @@ export default function SuperAdminDashboard() {
             transition={{ duration: 0.22, ease: "easeOut" }}
             style={{
               background: "#fff",
-               border: "1px solid #e2e8f0",
-               borderRadius: 20,
+              border: "1px solid #e2e8f0",
+              borderRadius: 20,
               overflow: "hidden",
               marginBottom: 16,
             }}
@@ -1452,6 +1583,122 @@ export default function SuperAdminDashboard() {
       <div
         style={{
           background: "#fff",
+          border: "1px solid #e2e8f0",
+          borderRadius: 16,
+          overflow: "hidden",
+          marginBottom: 16,
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "16px 20px",
+            borderBottom: "1px solid #e2e8f0",
+            flexWrap: "wrap",
+            gap: 12,
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: "#eef2ff", border: "1px solid #c7d2fe", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <Shield size={16} color="#4338ca" />
+            </div>
+            <div>
+              <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "#0f172a" }}>Override & Dispute Desk</p>
+              <p style={{ margin: "2px 0 0", fontSize: 12, color: "#64748b" }}>Universal Super Admin decisions across ops, agents, finance, and DMC invoices</p>
+            </div>
+          </div>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 12px", borderRadius: 999, background: "#f8fafc", border: "1px solid #e2e8f0", color: "#475569", fontSize: 12, fontWeight: 600 }}>
+            <AlertTriangle size={12} />
+            {openOverrideCount} open
+          </span>
+        </div>
+
+        <div style={{ padding: 20 }}>
+          {overrideRows.length ? (
+            <div style={{ display: "grid", gap: 12 }}>
+              {overrideRows.map((entry) => {
+                const statusMeta = getOverrideStatusMeta(entry.status);
+                const isClosed = entry.status !== "Open";
+                return (
+                  <div
+                    key={`${entry.targetType}-${entry.targetId}-${entry.status}`}
+                    style={{ border: "1px solid #e2e8f0", background: "#f8fafc", borderRadius: 14, padding: 16 }}
+                  >
+                    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+                      <div style={{ minWidth: 220, flex: 1 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8, flexWrap: "wrap" }}>
+                          <p style={{ margin: 0, fontSize: 14, fontWeight: 800, color: "#0f172a" }}>{entry.reference}</p>
+                          <span style={{ display: "inline-flex", padding: "3px 8px", borderRadius: 6, background: statusMeta.bg, border: `1px solid ${statusMeta.border}`, color: statusMeta.color, fontSize: 11, fontWeight: 700 }}>
+                            {entry.status}
+                          </span>
+                          <span style={{ display: "inline-flex", padding: "3px 8px", borderRadius: 6, background: "#eff6ff", color: "#1d4ed8", fontSize: 11, fontWeight: 700 }}>
+                            {entry.sourceModule}
+                          </span>
+                        </div>
+                        <p style={{ margin: 0, fontSize: 13, color: "#0f172a", fontWeight: 700 }}>{entry.title}</p>
+                        <p style={{ margin: "4px 0 0", fontSize: 12, color: "#64748b", lineHeight: 1.5 }}>{entry.description || "No dispute details shared."}</p>
+                        <p style={{ margin: "6px 0 0", fontSize: 11, color: "#94a3b8" }}>
+                          Raised by {entry.requestedByName || "System"} • {entry.requestedAtLabel || "recently"}
+                        </p>
+                        {isClosed && entry.resolutionNote ? (
+                          <p style={{ margin: "8px 0 0", fontSize: 12, color: "#475569", lineHeight: 1.5 }}>
+                            Resolution: {entry.resolutionNote}
+                          </p>
+                        ) : null}
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                        {isClosed ? (
+                          <span style={{ fontSize: 12, color: "#64748b", fontWeight: 700 }}>
+                            {entry.resolvedByName ? `By ${entry.resolvedByName}` : "Resolved"}
+                          </span>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => openOverrideDialog(entry, "approve")}
+                              style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 12px", borderRadius: 8, border: "1px solid #bbf7d0", background: "#ecfdf3", color: "#15803d", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                            >
+                              <CheckCircle2 size={12} />
+                              Approve
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => openOverrideDialog(entry, "reject")}
+                              style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 12px", borderRadius: 8, border: "1px solid #fecdd3", background: "#fff1f2", color: "#be123c", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                            >
+                              <XCircle size={12} />
+                              Reject
+                            </button>
+                            {!["agent_approval", "payment_verification"].includes(entry.targetType) ? (
+                              <button
+                                type="button"
+                                onClick={() => openOverrideDialog(entry, "resolve")}
+                                style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 12px", borderRadius: 8, border: "1px solid #e2e8f0", background: "#fff", color: "#0f172a", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                              >
+                                <Send size={12} />
+                                Resolve
+                              </button>
+                            ) : null}
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div style={{ padding: 24, textAlign: "center" }}>
+              <p style={{ margin: 0, fontSize: 13, color: "#94a3b8" }}>No override or dispute cases right now.</p>
+            </div>
+          )}
+        </div>
+      </div>
+      <div
+        style={{
+          background: "#fff",
           // border: "1px solid #e2e8f0",
           borderRadius: 10,
           overflow: "hidden",
@@ -1618,7 +1865,8 @@ export default function SuperAdminDashboard() {
                           { key: "edit", Icon: Edit2, title: "Edit", disabled: user.isDeleted, onClick: () => { setEditingUser(user); setIsAddUserModalOpen(true); } },
                           { key: "toggle-status", Icon: RefreshCw, title: displayStatus === "Active" ? "Mark Inactive" : "Mark Active", disabled: user.isDeleted, onClick: () => handleToggleUserStatus(user) },
                           { key: "delete", Icon: Trash2, title: "Delete", disabled: user.isDeleted, onClick: () => { setDeleteReason(""); setDeleteDialogUser(user); } },
-                        ].map(({ key, Icon: ActionIcon, title, onClick, disabled }) => {
+                        ].map(({ key, Icon, title, onClick, disabled }) => {
+                          const ActionIcon = Icon;
                           const isBusy = !disabled && Boolean(onClick) && isBusyAction(user.id);
                           const isStatusAction = key === "toggle-status";
                           return (
@@ -1800,6 +2048,142 @@ export default function SuperAdminDashboard() {
           onCreateUser={handleCreateUser}
           onUpdateUser={handleUpdateUser}
         />
+      ) : null}
+
+      {selectedOverrideCase ? (
+        <motion.div
+          key="admin-override-dialog"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          style={{ position: "fixed", inset: 0, zIndex: 1000, background: "rgba(15,23,42,0.45)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
+          onMouseDown={(e) => { if (e.target === e.currentTarget) closeOverrideDialog(); }}
+        >
+          <motion.div
+            initial={{ opacity: 0, y: 12, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 8, scale: 0.98 }}
+            transition={{ type: "spring", stiffness: 280, damping: 26 }}
+            style={{ width: "min(460px, calc(100vw - 32px))", borderRadius: 16, background: "#fff", border: "1px solid rgba(226,232,240,0.9)", boxShadow: "0 20px 50px rgba(15,23,42,0.18)", overflow: "hidden" }}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <div style={{ padding: "14px 16px 12px", display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, background: "linear-gradient(135deg, #eef2ff 0%, #f5f3ff 50%, #ffffff 100%)", borderBottom: "1px solid #e2e8f0" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{ width: 32, height: 32, borderRadius: 10, background: "#e0e7ff", border: "1px solid #c7d2fe", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <Shield size={14} color="#4338ca" />
+                </div>
+                <div>
+                  <p style={{ margin: 0, fontSize: 8.5, fontWeight: 700, letterSpacing: "0.14em", color: "#4338ca", textTransform: "uppercase" }}>Super Admin Override</p>
+                  <h3 style={{ margin: "2px 0 0", fontSize: 16, fontWeight: 800, color: "#0f172a" }}>{selectedOverrideCase.reference}</h3>
+                  <p style={{ margin: "1px 0 0", fontSize: 11.5, color: "#64748b", fontWeight: 500 }}>{selectedOverrideCase.title}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={closeOverrideDialog}
+                disabled={Boolean(overrideActionId)}
+                style={{ width: 28, height: 28, borderRadius: 8, border: "1px solid #e2e8f0", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: overrideActionId ? "not-allowed" : "pointer" }}
+              >
+                <X size={14} color="#64748b" />
+              </button>
+            </div>
+
+            <div style={{ padding: 16 }}>
+              <div style={{ borderRadius: 12, border: "1px solid #dbeafe", background: "linear-gradient(135deg, #eff6ff 0%, #f5f3ff 100%)", padding: "10px 12px" }}>
+                <p style={{ margin: 0, fontSize: 9, fontWeight: 700, color: "#2563eb", textTransform: "uppercase", letterSpacing: "0.10em" }}>Case details</p>
+                <p style={{ margin: "4px 0 0", fontSize: 12, color: "#0f172a", lineHeight: 1.5, fontWeight: 500 }}>{selectedOverrideCase.description || "No details shared."}</p>
+                <p style={{ margin: "4px 0 0", fontSize: 10.5, color: "#64748b", fontWeight: 500 }}>{selectedOverrideCase.sourceModule} • Raised by {selectedOverrideCase.requestedByName || "System"}</p>
+              </div>
+
+              <div style={{ marginTop: 14 }}>
+                <label style={{ display: "block", marginBottom: 6, fontSize: 12, fontWeight: 700, color: "#0f172a" }}>Decision</label>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {[
+                    { value: "approve", label: "Approve / Override" },
+                    { value: "reject", label: "Reject" },
+                    { value: "resolve", label: "Resolve Note" },
+                  ]
+                    .filter((item) =>
+                      item.value !== "resolve" ||
+                      !["agent_approval", "payment_verification"].includes(selectedOverrideCase.targetType),
+                    )
+                    .map((item) => {
+                      const isSelected = overrideDecision === item.value;
+                      return (
+                        <button
+                          key={item.value}
+                          type="button"
+                          onClick={() => setOverrideDecision(item.value)}
+                          style={{
+                            height: 32,
+                            padding: "0 12px",
+                            borderRadius: 8,
+                            border: isSelected ? "none" : "1px solid #e2e8f0",
+                            background: isSelected 
+                              ? "linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)" 
+                              : "#fff",
+                            color: isSelected ? "#fff" : "#475569",
+                            fontSize: 11.5,
+                            fontWeight: 700,
+                            cursor: "pointer",
+                            boxShadow: isSelected ? "0 4px 10px rgba(99, 102, 241, 0.2)" : "none",
+                            transition: "all 0.15s ease",
+                          }}
+                        >
+                          {item.label}
+                        </button>
+                      );
+                    })}
+                </div>
+              </div>
+
+              <div style={{ marginTop: 14 }}>
+                <label style={{ display: "block", marginBottom: 6, fontSize: 12, fontWeight: 700, color: "#0f172a" }}>Resolution note</label>
+                <textarea
+                  value={overrideNote}
+                  onChange={(event) => setOverrideNote(event.target.value)}
+                  placeholder="Write the Super Admin decision reason, approval basis, or dispute resolution note..."
+                  rows={3}
+                  style={{ width: "100%", minHeight: 80, borderRadius: 12, border: "1px solid #cbd5e1", padding: "10px 12px", fontSize: 12, outline: "none", resize: "vertical", color: "#0f172a", lineHeight: 1.5 }}
+                />
+              </div>
+
+              <div style={{ marginTop: 14, display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                <button
+                  type="button"
+                  onClick={closeOverrideDialog}
+                  disabled={Boolean(overrideActionId)}
+                  style={{ height: 34, padding: "0 14px", borderRadius: 10, border: "1px solid #cbd5e1", background: "#fff", color: "#475569", fontSize: 12, fontWeight: 700, cursor: overrideActionId ? "not-allowed" : "pointer" }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSubmitOverrideResolution}
+                  disabled={Boolean(overrideActionId)}
+                  style={{ 
+                    display: "inline-flex", 
+                    alignItems: "center", 
+                    gap: 6, 
+                    height: 34, 
+                    padding: "0 14px", 
+                    borderRadius: 10, 
+                    border: "none", 
+                    background: "linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)", 
+                    color: "#fff", 
+                    fontSize: 12, 
+                    fontWeight: 700, 
+                    cursor: overrideActionId ? "not-allowed" : "pointer",
+                    boxShadow: "0 4px 12px rgba(99, 102, 241, 0.15)",
+                  }}
+                >
+                  <Send size={12} />
+                  {overrideActionId ? "Saving..." : "Save Decision"}
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        </motion.div>
       ) : null}
 
       {selectedEscalation ? (

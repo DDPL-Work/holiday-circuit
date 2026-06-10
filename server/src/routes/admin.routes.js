@@ -1,11 +1,18 @@
 import express from "express";
 import isAuthenticated from "../middlewares/auth.middleware.js";
-import { getPendingAgents, approveAgent, getAllUsers, createRateContract, deactivateRateContract, getSystemStats, getAllPayments, updateRateContract, createOperationsUser, createDmcPartner, createFinancePartner, getFinanceDashboard, getAdvancedAnalytics, getInternalInvoices, updateInternalInvoiceStatus, getPaymentVerifications, reviewPaymentVerification, sendFinalInvoiceToAgent, sendPaymentReceiptToAgent, verifyPaymentTrackerInstallment, getAdminDashboardData, getManagedUsers, createManagedUser, updateManagedUser, updateManagedUserStatus, deleteManagedUser, restoreManagedUser, permanentlyDeleteManagedUser, replyToOpsEscalation } from "../controllers/adminController.js";
+import { getPendingAgents, approveAgent, getAllUsers, createRateContract, deactivateRateContract, getSystemStats, getAllPayments, updateRateContract, createOperationsUser, createDmcPartner, createFinancePartner, getFinanceDashboard, getAdvancedAnalytics, getInternalInvoices, updateInternalInvoiceStatus, getPaymentVerifications, reviewPaymentVerification, sendFinalInvoiceToAgent, sendPaymentReceiptToAgent, verifyPaymentTrackerInstallment, getAdminDashboardData, getManagedUsers, createManagedUser, updateManagedUser, updateManagedUserStatus, deleteManagedUser, restoreManagedUser, permanentlyDeleteManagedUser, replyToOpsEscalation, resolveAdminOverrideCase, getFinanceDmcVendors, uploadManualBulkInvoice, previewManualInvoiceExtraction } from "../controllers/adminController.js";
 import { createCoupon, deleteCoupon, generateCouponCode, getAdminCoupons, sendCouponToAgent, updateCoupon } from "../controllers/couponController.js";
 import { getMyNotifications, markAllNotificationsRead, deleteNotification } from "../controllers/agentController.js";
 import { getOperationManagerQueryQuotations } from "../controllers/opsManagerController.js";
+import multer from "multer";
 
 const routers = express.Router();
+const manualBulkInvoiceUpload = multer({
+  storage: multer.diskStorage({
+    destination: function (_req, _file, cb) { cb(null, "uploads/") },
+    filename: function (_req, file, cb) { cb(null, Date.now() + "-" + file.originalname) },
+  }),
+});
 
 routers.get("/pending-agents", isAuthenticated, getPendingAgents);
 routers.put("/approve-agent/:id" , isAuthenticated, approveAgent);
@@ -39,6 +46,7 @@ routers.get("/stats", isAuthenticated , getSystemStats);
 routers.get("/dashboard", isAuthenticated, getAdminDashboardData);
 routers.get("/queries/:queryId/quotations", isAuthenticated, getOperationManagerQueryQuotations);
 routers.patch("/queries/:id/reply-to-ops", isAuthenticated, replyToOpsEscalation);
+routers.patch("/override-cases/:targetType/:id/resolve", isAuthenticated, resolveAdminOverrideCase);
 routers.get("/payments", getAllPayments);
 routers.get("/payment-verifications", isAuthenticated, getPaymentVerifications);
 routers.patch("/payment-verifications/:id/status", isAuthenticated, reviewPaymentVerification);
@@ -48,6 +56,19 @@ routers.post("/payment-verifications/:id/tracker-installments/:installmentIndex/
 routers.get("/finance-dashboard", isAuthenticated, getFinanceDashboard);
 routers.get("/advanced-analytics", isAuthenticated, getAdvancedAnalytics);
 routers.get("/internal-invoices", isAuthenticated, getInternalInvoices);
+routers.get("/vendors", isAuthenticated, getFinanceDmcVendors);
+routers.post(
+  "/internal-invoices/parse-upload",
+  isAuthenticated,
+  manualBulkInvoiceUpload.single("uploadedInvoice"),
+  previewManualInvoiceExtraction,
+);
+routers.post(
+  "/internal-invoices/manual-bulk-upload",
+  isAuthenticated,
+  manualBulkInvoiceUpload.single("uploadedInvoice"),
+  uploadManualBulkInvoice,
+);
 routers.patch("/internal-invoices/:id/status", isAuthenticated, updateInternalInvoiceStatus);
 routers.get("/notifications", isAuthenticated, getMyNotifications);
 routers.patch("/notifications/read-all", isAuthenticated, markAllNotificationsRead);

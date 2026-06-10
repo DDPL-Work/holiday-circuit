@@ -7,9 +7,14 @@ import Quotation from "../models/quotation.model.js";
 import Invoice from "../models/invoice.model.js";
 import Coupon from "../models/coupon.model.js";
 import Notification from "../models/notification.model.js";
+import Hotel from "../models/hotelDmc.model.js";
+import Activity from "../models/activityDmc.model.js";
+import Transfer from "../models/transferDmc.model.js";
+import Sightseeing from "../models/sightseeingDmc.model.js";
 import bcrypt from "bcrypt";
 import crypto from "crypto";
 import jwt from "jsonwebtoken";
+import mongoose from "mongoose";
 import { sendAgentRegistrationReceivedMail, sendPasswordResetOtpMail } from "../services/sendEmail.js";
 import { sendAgentClientQuotationMail } from "../services/emailService.js";
 import { getRoundRobinFinanceAssignee } from "../services/financeTeamScopeService.js";
@@ -63,6 +68,12 @@ const roundCurrencyAmount = (value) => Number(Number(value || 0).toFixed(2));
 const normalizeCurrencyCode = (value) =>
   String(value || "INR").trim().toUpperCase() || "INR";
 
+const normalizeQuotationServiceType = (type = "") => {
+  const normalizedType = String(type || "").trim().toLowerCase();
+  if (normalizedType === "car" || normalizedType === "transport") return "transfer";
+  return normalizedType;
+};
+
 const getResolvedExchangeRate = (service = {}) => {
   const currency = normalizeCurrencyCode(service?.currency);
   const exchangeRate = Number(service?.exchangeRate || 0);
@@ -93,6 +104,144 @@ const buildInrPricingForService = (service = {}) => {
       resolvedTotalInInr > 0 ? resolvedTotalInInr : fallbackTotalInInr,
     ),
   };
+};
+
+const getLiveServiceModel = (type = "") => {
+  const normalizedType = normalizeQuotationServiceType(type);
+  if (normalizedType === "hotel") return Hotel;
+  if (normalizedType === "activity") return Activity;
+  if (normalizedType === "transfer") return Transfer;
+  if (normalizedType === "sightseeing") return Sightseeing;
+  return null;
+};
+
+const getLiveServiceRateSnapshot = (service = {}, typeOverride = "") => {
+  const type = normalizeQuotationServiceType(typeOverride || service?.type || service?.serviceCategory);
+
+  if (type === "hotel") {
+    return {
+      currency: normalizeCurrencyCode(service?.currency),
+      price: Number(service?.price || 0),
+      awebRate: Number(service?.awebRate || 0),
+      cwebRate: Number(service?.cwebRate || 0),
+      cwoebRate: Number(service?.cwoebRate || 0),
+    };
+  }
+
+  if (type === "activity") {
+    return {
+      currency: normalizeCurrencyCode(service?.currency),
+      price: Number(service?.adultPrice ?? service?.price ?? 0),
+    };
+  }
+
+  return {
+    currency: normalizeCurrencyCode(service?.currency),
+    price: Number(service?.price || 0),
+  };
+};
+
+const getQuotedServiceRateSnapshot = (service = {}) => ({
+  currency: normalizeCurrencyCode(service?.currency),
+  price: Number(service?.price || 0),
+  awebRate: Number(service?.awebRate || 0),
+  cwebRate: Number(service?.cwebRate || 0),
+  cwoebRate: Number(service?.cwoebRate || 0),
+});
+
+const areRateValuesDifferent = (left, right) =>
+  Math.abs(Number(left || 0) - Number(right || 0)) >= 0.5;
+
+const formatRateValidationAmount = (currency, amount) =>
+  `${normalizeCurrencyCode(currency)} ${Number(amount || 0).toLocaleString("en-IN", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  })}`;
+
+const buildQuotationRateMismatch = (service = {}, liveService = null) => {
+  const type = normalizeQuotationServiceType(service?.type);
+  if (!liveService) {
+    return {
+      serviceTitle: service?.title || "Service",
+      type,
+      reason: "service_not_found",
+      message: `${service?.title || "Service"} is no longer available in live supplier rates.`,
+    };
+  }
+
+  const quoted = getQuotedServiceRateSnapshot(service);
+  const live = getLiveServiceRateSnapshot(liveService, type);
+  const changedFields = [];
+
+  if (quoted.currency !== live.currency) {
+    changedFields.push(`currency ${quoted.currency} -> ${live.currency}`);
+  }
+
+  if (areRateValuesDifferent(quoted.price, live.price)) {
+    changedFields.push(
+      `base rate ${formatRateValidationAmount(quoted.currency, quoted.price)} -> ${formatRateValidationAmount(live.currency, live.price)}`,
+    );
+  }
+
+  if (type === "hotel") {
+    [
+      ["awebRate", "extra adult rate"],
+      ["cwebRate", "child with bed rate"],
+      ["cwoebRate", "child without bed rate"],
+    ].forEach(([key, label]) => {
+      if (areRateValuesDifferent(quoted[key], live[key])) {
+        changedFields.push(
+          `${label} ${formatRateValidationAmount(quoted.currency, quoted[key])} -> ${formatRateValidationAmount(live.currency, live[key])}`,
+        );
+      }
+    });
+  }
+
+  if (!changedFields.length) return null;
+
+  return {
+    serviceTitle: service?.title || liveService?.hotelName || liveService?.name || liveService?.serviceName || "Service",
+    type,
+    reason: "rate_changed",
+    quoted,
+    live,
+    changedFields,
+    message: `${service?.title || "Service"}: ${changedFields.join(", ")}`,
+  };
+};
+
+const validateQuotationSupplierRates = async (quotation = {}) => {
+  const services = Array.isArray(quotation?.services) ? quotation.services : [];
+  const mismatches = [];
+
+  await Promise.all(services.map(async (service) => {
+    const serviceId = String(service?.serviceId || "").trim();
+    const Model = getLiveServiceModel(service?.type);
+
+    if (!Model || !serviceId || !mongoose.Types.ObjectId.isValid(serviceId)) return;
+
+    const liveService = await Model.findById(serviceId).lean();
+    const mismatch = buildQuotationRateMismatch(service, liveService);
+    if (mismatch) mismatches.push(mismatch);
+  }));
+
+  return {
+    valid: mismatches.length === 0,
+    mismatches,
+  };
+};
+
+const getLatestAgentVisibleQuotation = async ({ queryId, agentId }) => {
+  if (!queryId || !agentId) return null;
+
+  return Quotation.findOne({
+    queryId,
+    agent: agentId,
+    status: { $in: AGENT_VISIBLE_QUOTATION_STATUSES },
+  })
+    .select("_id quotationNumber status updatedAt createdAt")
+    .sort({ updatedAt: -1, createdAt: -1 })
+    .lean();
 };
 
 const buildInvoiceLineItemsFromQuotation = (quotation = {}) =>
@@ -201,9 +350,9 @@ const ensureInvoiceForConfirmedQuotation = async ({ quotation, query, actorId })
 
   const invoiceNumber = await generateUniqueInvoiceNumber();
   const finalInvoiceAmount = Number(
-    quotation?.clientTotalAmount ||
     quotation?.pricing?.totalAmount ||
     quotation?.pricing?.subTotal ||
+    quotation?.clientTotalAmount ||
     quotation?.totalAmount ||
     0,
   );
@@ -319,6 +468,7 @@ const formatAuthenticatedUser = (user) => ({
   accountStatus: user.accountStatus || "Active",
   accessExpiry: user.accessExpiry || null,
   lastLoginAt: user.lastLoginAt || null,
+  creditDays: Array.isArray(user.creditDays) ? user.creditDays : (user.creditDays !== undefined ? [user.creditDays] : [7]),
 });
 
 const resolveAgentBranding = ({ quotation = {}, agent = {} }) => ({
@@ -339,6 +489,24 @@ const normalizeTravelerDocument = (document = {}) => ({
   size: Number(document?.size || 0),
   uploadedAt: document?.uploadedAt ? new Date(document.uploadedAt) : null,
 });
+
+const emptyTravelerDocument = () => ({
+  url: "",
+  fileName: "",
+  mimeType: "",
+  size: 0,
+  uploadedAt: null,
+});
+
+const hasTravelerDocumentTypeMismatch = (documentKey = "", document = {}) => {
+  const fileName = String(document?.fileName || "").trim().toLowerCase();
+  if (!fileName) return false;
+  const looksLikePan = /\bpan\b|pan[-_\s]?card|aadhaar|aadhar|government[-_\s]?id|govt[-_\s]?id/.test(fileName);
+  const looksLikePassport = /passport|pass[-_\s]?port/.test(fileName);
+  if (documentKey === "passport") return looksLikePan;
+  if (documentKey === "governmentId") return looksLikePassport;
+  return false;
+};
 
 const getTravelerDocumentKey = (documentType = "Passport") => {
   const normalizedType = String(documentType || "").trim().toLowerCase();
@@ -547,11 +715,15 @@ const getTravelerDocumentCompletion = (query = {}) => {
       traveler?.document,
       traveler?.documentType,
     );
+    const mismatchedDocumentKeys = ["passport", "governmentId"].filter(
+      (key) => documents?.[key]?.url && hasTravelerDocumentTypeMismatch(key, documents[key]),
+    );
     const uploadedRequiredCount = requiredDocumentKeys.filter((key) => documents?.[key]?.url).length;
     return {
       id: traveler?._id || null,
       name: traveler?.fullName || "Traveler",
-      isComplete: uploadedRequiredCount === requiredDocumentKeys.length,
+      mismatchedDocumentKeys,
+      isComplete: uploadedRequiredCount === requiredDocumentKeys.length && mismatchedDocumentKeys.length === 0,
     };
   });
 
@@ -726,8 +898,8 @@ const buildAgentFinanceOverviewPayload = async (agentId, { includeTransactions =
         queryId: { $in: queryIds },
         status: { $in: AGENT_VISIBLE_QUOTATION_STATUSES },
       })
-      .select("queryId quotationNumber pricing.totalAmount agentMarkup clientTotalAmount createdAt")
-      .sort({ createdAt: -1 })
+      .select("queryId quotationNumber pricing.totalAmount agentMarkup clientTotalAmount createdAt updatedAt")
+      .sort({ updatedAt: -1, createdAt: -1 })
     : [];
 
   const latestQuotationByQuery = quotations.reduce((acc, quotation) => {
@@ -915,6 +1087,11 @@ const buildTravelerSummary = (query = {}) => {
   return parts.join(", ") || "Traveler details pending";
 };
 
+const getQueryPassengerCount = (query = {}) => {
+  const { adults, children } = getQueryTravelerCounts(query);
+  return Number(adults || 0) + Number(children || 0);
+};
+
 const buildDurationLabel = (query = {}) => {
   const start = query?.startDate ? new Date(query.startDate) : null;
   const end = query?.endDate ? new Date(query.endDate) : null;
@@ -930,16 +1107,17 @@ const buildDurationLabel = (query = {}) => {
   return `${totalNights} Night${totalNights === 1 ? "" : "s"} / ${totalDays} Day${totalDays === 1 ? "" : "s"}`;
 };
 
-const buildServiceQuantityLabel = (service = {}) => {
+const buildServiceQuantityLabel = (service = {}, fallbackPax = 0) => {
   const normalizedType = String(service?.type || "")
     .trim()
     .toLowerCase();
   const details = [];
 
   if (normalizedType === "hotel") {
+    const hotelPax = Number(fallbackPax || 0) || Number(service?.pax || 0);
     if (Number(service?.nights || 0) > 0) details.push(`${service.nights}N`);
     if (Number(service?.rooms || 0) > 0) details.push(`${service.rooms} Room${Number(service.rooms) > 1 ? "s" : ""}`);
-    if (Number(service?.pax || 0) > 0) details.push(`${service.pax} Pax`);
+    if (hotelPax > 0) details.push(`${hotelPax} Pax`);
     return details.join(" | ");
   }
 
@@ -991,6 +1169,7 @@ const buildQuotationClientEmailPayload = ({ quotation, query, agent }) => {
     ? quotation.services.reduce((sum, s) => sum + Number(s.total || 0), 0)
     : 0;
   const resolvedBranding = resolveAgentBranding({ quotation, agent });
+  const queryPax = getQueryPassengerCount(query);
 
   return {
     includeSellerBankDetails: false,
@@ -1019,7 +1198,7 @@ const buildQuotationClientEmailPayload = ({ quotation, query, agent }) => {
             typeLabel: service?.type ? String(service.type).replace(/_/g, " ") : "Travel Service",
             location: buildServiceLocationLabel(service),
             serviceDateLabel: formatMailDateLabel(service?.serviceDate),
-            quantityLabel: buildServiceQuantityLabel(service),
+            quantityLabel: buildServiceQuantityLabel(service, queryPax),
             description: String(service?.description || "").replace(/\|/g, " | ").trim(),
             clientAmount,
           };
@@ -1695,6 +1874,7 @@ export const createQuery = async (req, res, next) => {
       numberOfAdults,
       numberOfChildren,
       customerBudget,
+      hotelCategory,
       transportRequired,
       sightseeingRequired,
       specialRequirements,
@@ -1718,6 +1898,9 @@ export const createQuery = async (req, res, next) => {
       normalizedAdults,
       normalizedChildren,
     );
+    const normalizedHotelCategory = ["3 Star", "4 Star", "5 Star"].includes(String(hotelCategory || "").trim())
+      ? String(hotelCategory).trim()
+      : "4 Star";
 
     /* ================= QUERY NUMBER ================= */
 
@@ -1781,7 +1964,7 @@ export const createQuery = async (req, res, next) => {
       numberOfAdults: normalizedAdults,
       numberOfChildren: normalizedChildren,
       customerBudget,
-      hotelCategory: "4 Star",
+      hotelCategory: normalizedHotelCategory,
       transportRequired,
       sightseeingRequired,
       specialRequirements,
@@ -1872,7 +2055,11 @@ export const getMyActiveBookings = async (req, res) => {
       agent: agentId,
       opsStatus: { $in: ["Invoice_Requested", "Confirmed", "Vouchered", "Payment_Completed"] },
     })
+      .select(
+        "queryId destination startDate endDate numberOfAdults numberOfChildren customerBudget specialRequirements travelerDetails travelerDocumentVerification travelerDocumentAuditTrail opsStatus agentStatus activityLog createdAt updatedAt",
+      )
       .sort({ createdAt: -1 })
+      .limit(80)
       .lean();
 
     if (!queries.length) {
@@ -1886,6 +2073,9 @@ export const getMyActiveBookings = async (req, res) => {
         agent: agentId,
         query: { $in: queryIds },
       })
+        .select(
+          "query invoiceNumber totalAmount currency lineItems pricingSnapshot tripSnapshot templateVariant paymentStatus remarks paymentSubmission paymentVerification paymentAuditTrail createdAt",
+        )
         .sort({ createdAt: -1 })
         .lean(),
       Quotation.find({
@@ -1893,7 +2083,8 @@ export const getMyActiveBookings = async (req, res) => {
         queryId: { $in: queryIds },
         status: { $in: AGENT_VISIBLE_QUOTATION_STATUSES },
       })
-        .sort({ createdAt: -1 })
+        .select("queryId quotationNumber clientTotalAmount pricing validTill status createdAt updatedAt")
+        .sort({ updatedAt: -1, createdAt: -1 })
         .lean(),
     ]);
 
@@ -2041,6 +2232,18 @@ export const uploadTravelerDocument = async (req, res, next) => {
       size: Number(req.file?.size || 0),
       uploadedAt: new Date(),
     };
+
+    if (hasTravelerDocumentTypeMismatch(documentKey, uploadedDocument)) {
+      return next(
+        new ApiError(
+          400,
+          documentKey === "passport"
+            ? "This looks like a PAN/Government ID file. Please upload it in the PAN Card slot, or rename the file if this is actually a passport."
+            : "This looks like a passport file. Please upload it in the Passport slot, or rename the file if this is actually a PAN Card.",
+        ),
+      );
+    }
+
     const existingDocuments = normalizeTravelerDocuments(
       traveler.documents,
       traveler.document,
@@ -2110,6 +2313,101 @@ export const uploadTravelerDocument = async (req, res, next) => {
   }
 };
 
+export const removeTravelerDocument = async (req, res, next) => {
+  try {
+    const agentId = getAuthenticatedUserId(req);
+    const { queryId, travelerId } = req.params;
+    const documentKey = String(req.params?.documentKey || "").trim();
+
+    if (!agentId) {
+      return next(new ApiError(401, "Unauthorized"));
+    }
+
+    if (!["passport", "governmentId"].includes(documentKey)) {
+      return next(new ApiError(400, "Invalid traveler document slot"));
+    }
+
+    const query = await TravelQuery.findOne({
+      _id: queryId,
+      agent: agentId,
+    });
+
+    if (!query) {
+      return next(new ApiError(404, "Booking not found"));
+    }
+
+    const traveler = query.travelerDetails.id(travelerId);
+
+    if (!traveler) {
+      return next(new ApiError(404, "Traveler not found"));
+    }
+
+    const existingDocuments = normalizeTravelerDocuments(
+      traveler.documents,
+      traveler.document,
+      traveler.documentType,
+    );
+    const removedDocument = existingDocuments[documentKey] || {};
+
+    if (!removedDocument.url) {
+      return next(new ApiError(400, "No document uploaded in this slot"));
+    }
+
+    traveler.documents = {
+      ...existingDocuments,
+      [documentKey]: emptyTravelerDocument(),
+    };
+
+    const legacyDocument = normalizeTravelerDocument(traveler.document);
+    if (legacyDocument.url && legacyDocument.url === removedDocument.url) {
+      traveler.document = emptyTravelerDocument();
+      traveler.documentType = documentKey === "governmentId" ? "PAN Card" : "Passport";
+    }
+
+    const currentVerification = getTravelerDocumentVerification(query);
+    const remainingIssues = currentVerification.issues.filter(
+      (issue) => !matchesTravelerDocumentReviewEntry(issue, traveler, documentKey),
+    );
+    const remainingVerifiedDocuments = currentVerification.verifiedDocuments.filter(
+      (document) => !matchesTravelerDocumentReviewEntry(document, traveler, documentKey),
+    );
+
+    if (currentVerification.status !== "Draft" || remainingIssues.length !== currentVerification.issues.length || remainingVerifiedDocuments.length !== currentVerification.verifiedDocuments.length) {
+      resetTravelerDocumentVerification(query, currentVerification.status === "Rejected" ? "Rejected" : "Draft", {
+        issues: remainingIssues,
+        verifiedDocuments: remainingVerifiedDocuments,
+        rejectionReason:
+          currentVerification.status === "Rejected"
+            ? currentVerification.rejectionReason
+            : "",
+        rejectionRemarks:
+          currentVerification.status === "Rejected"
+            ? currentVerification.rejectionRemarks
+            : "",
+      });
+    }
+
+    query.travelerDocumentAuditTrail.push({
+      action: "Traveler document removed",
+      status: query.travelerDocumentVerification.status,
+      performedBy: agentId,
+      performedByName: req.user?.name || "Agent",
+      remarks: `${traveler.fullName || "Traveler"} ${documentKey === "passport" ? "Passport" : "PAN Card"} removed by agent.`,
+      performedAt: new Date(),
+    });
+
+    await query.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Traveler document removed successfully",
+      query,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const submitTravelerDocumentsForVerification = async (req, res, next) => {
   try {
     const agentId = getAuthenticatedUserId(req);
@@ -2152,6 +2450,16 @@ export const submitTravelerDocumentsForVerification = async (req, res, next) => 
     }
 
     if (!completion.allComplete) {
+      const mismatchRows = completion.rows.filter((row) => row.mismatchedDocumentKeys?.length);
+      if (mismatchRows.length) {
+        return next(
+          new ApiError(
+            400,
+            "One or more documents look uploaded in the wrong slot. Please remove or replace the highlighted file before submitting.",
+          ),
+        );
+      }
+
       return next(
         new ApiError(
           400,
@@ -2234,7 +2542,7 @@ export const getQuotationsByQuery = async (req, res, next) => {
     const quotations = await Quotation.find({
       queryId: query._id,
       status: { $in: AGENT_VISIBLE_QUOTATION_STATUSES },
-    }).sort({ createdAt: -1 });
+    }).sort({ updatedAt: -1, createdAt: -1 });
 
     res.status(200).json({
       success: true,
@@ -2499,19 +2807,38 @@ export const requestQuotationRevision = async (req, res) => {
 
       await query.save();
 
+      const usersToNotify = new Set();
       if (query.assignedTo) {
+        usersToNotify.add(query.assignedTo.toString());
+      }
+      if (quotation.createdBy) {
+        usersToNotify.add(quotation.createdBy.toString());
+      }
+      try {
+        const managers = await Auth.find({ role: "operation_manager" }).select("_id");
+        for (const manager of managers) {
+          usersToNotify.add(manager._id.toString());
+        }
+      } catch (err) {
+        console.error("Failed to fetch operation managers for notification:", err);
+      }
+
+      const reasonText = String(reason || "").trim();
+      const msgSuffix = reasonText ? ` Reason: "${reasonText}"` : "";
+
+      for (const userId of usersToNotify) {
         await Notification.create({
-          user: query.assignedTo,
+          user: userId,
           type: "warning",
           title: "Quotation Revision Requested",
-          message: `Agent requested quotation changes for ${query.queryId}. Please prepare a revised quotation.`,
+          message: `Agent requested quotation changes for ${query.queryId}.${msgSuffix} Please prepare a revised quotation.`,
           link: "/ops/bookings-management",
           meta: {
             queryId: query._id,
             queryNumber: query.queryId,
             quotationId: quotation._id,
             destination: query.destination,
-            revisionReason: String(reason || "").trim(),
+            revisionReason: reasonText,
             nextAction: "revise_quotation",
           },
         });
@@ -2560,6 +2887,33 @@ export const confirmQuotation = async (req, res) => {
       });
     }
 
+    const latestQuotation = await getLatestAgentVisibleQuotation({
+      queryId: quotation.queryId,
+      agentId,
+    });
+
+    if (latestQuotation && String(latestQuotation._id) !== String(quotation._id)) {
+      return res.status(409).json({
+        success: false,
+        code: "OUTDATED_QUOTATION",
+        message: "This is an older quotation. Please use the latest revised quotation before confirming client approval.",
+        latestQuotation,
+      });
+    }
+
+    const rateValidation = await validateQuotationSupplierRates(quotation);
+    if (!rateValidation.valid) {
+      return res.status(409).json({
+        success: false,
+        code: "SUPPLIER_RATE_CHANGED",
+        message: `Supplier rates have changed. Please review the quotation again before confirming the booking. ${rateValidation.mismatches
+          .slice(0, 3)
+          .map((item) => item.message)
+          .join(" | ")}`,
+        mismatches: rateValidation.mismatches,
+      });
+    }
+
     quotation.status = "Confirmed";
     await quotation.save();
 
@@ -2591,9 +2945,17 @@ export const confirmQuotation = async (req, res) => {
 
       await query.save();
 
+      const usersToNotify = new Set();
       if (query.assignedTo) {
+        usersToNotify.add(query.assignedTo.toString());
+      }
+      if (quotation.createdBy) {
+        usersToNotify.add(quotation.createdBy.toString());
+      }
+
+      for (const userId of usersToNotify) {
         await Notification.create({
-          user: query.assignedTo,
+          user: userId,
           type: "info",
           title: "Client Approved Quotation",
           message: `Agent approved quotation for ${query.queryId}. Booking has moved to the amount and documents stage.`,
@@ -2602,6 +2964,7 @@ export const confirmQuotation = async (req, res) => {
             queryId: query._id,
             queryNumber: query.queryId,
             quotationId: quotation._id,
+            quotationNumber: quotation.quotationNumber,
             destination: query.destination,
             nextAction: "review_approved_booking",
           },
@@ -3244,7 +3607,10 @@ export const updatePaymentStatus = async (req, res) => {
 export const getMyNotifications = async (req, res) => {
   try {
     const notifications = await Notification.find({ user: req.user.id })
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .limit(50)
+      .select("type title message isRead link meta createdAt updatedAt")
+      .lean();
 
     res.status(200).json({
       success: true,
@@ -3329,6 +3695,7 @@ export const updateQueryByAgent = async (req, res, next) => {
       numberOfAdults,
       numberOfChildren,
       customerBudget,
+      hotelCategory,
       transportRequired,
       sightseeingRequired,
       specialRequirements,
@@ -3352,6 +3719,9 @@ export const updateQueryByAgent = async (req, res, next) => {
       normalizedAdults,
       normalizedChildren,
     );
+    const normalizedHotelCategory = ["3 Star", "4 Star", "5 Star"].includes(String(hotelCategory || "").trim())
+      ? String(hotelCategory).trim()
+      : "4 Star";
 
     // Update query fields
     const changes = [];
@@ -3389,6 +3759,9 @@ export const updateQueryByAgent = async (req, res, next) => {
     if (Number(customerBudget || 0) !== Number(query.customerBudget || 0)) {
       changes.push(`Budget: ${query.customerBudget || 0} ➔ ${customerBudget || 0}`);
     }
+    if (normalizedHotelCategory !== (query.hotelCategory || "4 Star")) {
+      changes.push(`Hotel Category: ${query.hotelCategory || "4 Star"} ➔ ${normalizedHotelCategory}`);
+    }
     if (Boolean(transportRequired) !== Boolean(query.transportRequired)) {
       changes.push(`Transport: ${query.transportRequired ? "Yes" : "No"} ➔ ${transportRequired ? "Yes" : "No"}`);
     }
@@ -3411,6 +3784,7 @@ export const updateQueryByAgent = async (req, res, next) => {
     query.numberOfAdults = normalizedAdults;
     query.numberOfChildren = normalizedChildren;
     query.customerBudget = customerBudget;
+    query.hotelCategory = normalizedHotelCategory;
     query.transportRequired = transportRequired;
     query.sightseeingRequired = sightseeingRequired;
     query.specialRequirements = specialRequirements;

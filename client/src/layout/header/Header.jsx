@@ -260,6 +260,10 @@ const getAdminNotificationSourceLabel = (notification) => {
   return "Team Update";
 };
 
+const isContractedRateNotification = (notification) =>
+  String(notification?.title || "").toLowerCase().includes("contracted rate") ||
+  Boolean(notification?.meta?.changeReasonLabel || notification?.meta?.changeReasonNote);
+
 const adminNotificationFilters = [
   { key: "all", label: "All" },
   { key: "direct", label: "Admin Alerts" },
@@ -354,12 +358,21 @@ const Header = ({ onMenuToggle }) => {
 
   const [openNotifications, setOpenNotifications] = useState(false);
   const [notifications, setNotifications] = useState([]);
+  const [expandedNotifications, setExpandedNotifications] = useState({});
   const [loadingNotifications, setLoadingNotifications] = useState(false);
   const [bellPop, setBellPop] = useState(false);
   const [bellPopKey, setBellPopKey] = useState(0);
   const [filterMode, setFilterMode] = useState("all");
   const [offerOpen, setOfferOpen] = useState(false);
   const [couponUnreadCount, setCouponUnreadCount] = useState(0);
+
+  const toggleExpandNotification = (id, event) => {
+    event.stopPropagation();
+    setExpandedNotifications((prev) => ({
+      ...prev,
+      [id]: !prev[id],
+    }));
+  };
 
   const hasFetchedRef = useRef(false);
   const prevUnreadRef = useRef(0);
@@ -671,6 +684,20 @@ const Header = ({ onMenuToggle }) => {
   return (
     <>
       <style>{`
+        /* Transparent scrollbar styles */
+        .custom-scroll::-webkit-scrollbar {
+          width: 5px;
+          height: 5px;
+          background: transparent;
+        }
+        .custom-scroll::-webkit-scrollbar-thumb {
+          background: transparent;
+        }
+        .custom-scroll {
+          scrollbar-width: none; /* Firefox */
+          -ms-overflow-style: none; /* IE/Edge */
+        }
+
         @keyframes notification-bell-swing {
           0% { transform: rotate(0deg) scale(0.92); }
           14% { transform: rotate(-18deg) scale(1.06); }
@@ -820,7 +847,7 @@ const Header = ({ onMenuToggle }) => {
 
                 {openNotifications ? (
                   <div
-                    className={`absolute right-0 top-12 z-50 w-[min(92vw,26rem)] overflow-hidden rounded-3xl border shadow-2xl ${
+                    className={`absolute right-0 top-12 z-50 w-[min(92vw,22.5rem)] overflow-hidden rounded-3xl border shadow-2xl ${
                       isQuotationBuilder ? "" : "border-slate-200 bg-white"
                     }`}
                     style={
@@ -990,9 +1017,9 @@ const Header = ({ onMenuToggle }) => {
                         <button
                           type="button"
                           onClick={handleBulkAction}
-                          className={`ml-auto cursor-pointer text-xs font-semibold ${
+                          className={`ml-auto cursor-pointer text-xs font-semibold transition hover:underline ${
                             isQuotationBuilder
-                              ? "text-sky-300 hover:text-sky-200"
+                              ? "text-sky-400 hover:text-sky-300"
                               : "text-blue-600 hover:text-blue-700"
                           }`}
                         >
@@ -1001,22 +1028,14 @@ const Header = ({ onMenuToggle }) => {
                       ) : null}
                     </div>
 
-                    <div className="max-h-[360px] overflow-y-auto p-4 pt-0 custom-scroll">
+                    <div className="max-h-[360px] overflow-y-auto px-1 pb-4 pt-0 custom-scroll">
                       {loadingNotifications ? (
                         <div
-                          className={`rounded-2xl px-4 py-6 text-center text-xs ${
-                            isQuotationBuilder
-                              ? "text-slate-300"
-                              : "bg-slate-50 text-slate-500"
+                          className={`flex items-center justify-center py-12 ${
+                            isQuotationBuilder ? "text-slate-300" : "text-slate-500"
                           }`}
-                          style={
-                            isQuotationBuilder ? { background: "rgba(255,255,255,0.06)" } : undefined
-                          }
                         >
-                          <div className="flex items-center justify-center gap-2">
-                            <LoaderCircle size={16} className="animate-spin" />
-                            <span>Loading notifications...</span>
-                          </div>
+                          <LoaderCircle className="h-6 w-6 animate-spin" />
                         </div>
                       ) : visibleNotifications.length === 0 ? (
                         <div
@@ -1040,13 +1059,23 @@ const Header = ({ onMenuToggle }) => {
                             const timeLabel = formatNotificationTimeAgo(notification?.createdAt);
                             const timestampLabel = formatNotificationTimestamp(notification?.createdAt);
                             const sourceLabel = getAdminNotificationSourceLabel(notification);
+                            const rateReasonLabel = String(notification?.meta?.changeReasonLabel || "").trim();
+                            const rateReasonNote = String(notification?.meta?.changeReasonNote || "").trim();
+                            const rateFields = Array.isArray(notification?.meta?.rateSensitiveFields)
+                              ? notification.meta.rateSensitiveFields.filter(Boolean)
+                              : [];
+                            const isExpanded = Boolean(expandedNotifications[notification._id]);
+                            const messageText = notification?.message || "";
+                            const isLongText = messageText.length > 90;
+                            const hasMetadata = Boolean(rateReasonLabel || rateReasonNote || rateFields.length || notification?.meta?.revisionReason || (notification?.meta?.source === "ops_order_acceptance" && notification?.meta?.note));
+                            const isExpandable = isLongText || hasMetadata;
 
                             return (
                               <button
                                 type="button"
                                 key={notification._id}
                                 onClick={() => openNotification(notification)}
-                                className={`w-full cursor-pointer rounded-2xl border px-4 py-3 text-left transition ${
+                                className={`w-full cursor-pointer rounded-2xl border px-3 py-2.5 text-left transition ${
                                   isQuotationBuilder
                                     ? ""
                                     : notification?.isRead
@@ -1066,9 +1095,9 @@ const Header = ({ onMenuToggle }) => {
                                     : undefined
                                 }
                               >
-                                <div className="flex items-start gap-3">
+                                <div className="flex items-start gap-2.5">
                                   <div
-                                    className={`mt-0.5 flex h-9 w-9 items-center justify-center rounded-2xl shadow-sm ${
+                                    className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl shadow-sm ${
                                       isQuotationBuilder ? "" : "bg-white"
                                     }`}
                                     style={
@@ -1080,8 +1109,8 @@ const Header = ({ onMenuToggle }) => {
                                     <Icon className={`h-4 w-4 ${iconClass}`} />
                                   </div>
                                   <div className="min-w-0 flex-1">
-                                    <div className="flex items-start gap-2">
-                                      <div className={`mt-1.5 h-2 w-2 rounded-full ${dot}`} />
+                                    <div className="flex items-start gap-1.5">
+                                      <div className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${dot}`} />
                                       <div className="min-w-0 flex-1">
                                         <p
                                           className={`truncate text-xs font-semibold ${
@@ -1091,22 +1120,73 @@ const Header = ({ onMenuToggle }) => {
                                           {notification?.title || "Notification"}
                                         </p>
                                         <p
-                                          className={`mt-1 line-clamp-2 text-xs leading-5 ${
+                                          className={`mt-1 text-xs leading-5 ${
+                                            isExpandable && !isExpanded ? "line-clamp-2" : ""
+                                          } ${
                                             isQuotationBuilder ? "text-slate-300" : "text-slate-600"
                                           }`}
+                                          style={{ wordBreak: "break-word" }}
                                         >
-                                          {notification?.message || ""}
+                                          {messageText}
                                         </p>
-                                        {notification?.meta?.source === "ops_order_acceptance" &&
-                                        notification?.meta?.note ? (
-                                          <p
-                                            className={`mt-1 line-clamp-2 text-xs leading-5 font-medium ${
-                                              isQuotationBuilder ? "text-amber-200" : "text-amber-700"
+                                        {isExpanded && (
+                                          <>
+                                            {(rateReasonLabel || rateReasonNote) ? (
+                                              <p
+                                                className={`mt-1.5 rounded-xl px-2.5 py-2 text-xs leading-5 font-semibold ${
+                                                  isQuotationBuilder
+                                                    ? "bg-amber-300/10 text-amber-100"
+                                                    : "bg-amber-50 text-amber-800"
+                                                }`}
+                                              >
+                                                Reason: {[rateReasonLabel, rateReasonNote].filter(Boolean).join(" - ")}
+                                              </p>
+                                            ) : null}
+                                            {notification?.meta?.revisionReason ? (
+                                              <p
+                                                className={`mt-1.5 rounded-xl px-2.5 py-2 text-xs leading-5 font-semibold ${
+                                                  isQuotationBuilder
+                                                    ? "bg-rose-300/10 text-rose-200"
+                                                    : "bg-rose-50 text-rose-800"
+                                                }`}
+                                              >
+                                                Revision Remark: {notification.meta.revisionReason}
+                                              </p>
+                                            ) : null}
+                                            {rateFields.length ? (
+                                              <p
+                                                className={`mt-1 text-[11px] font-semibold ${
+                                                  isQuotationBuilder ? "text-slate-300" : "text-slate-500"
+                                                }`}
+                                              >
+                                                Changed fields: {rateFields.join(", ")}
+                                              </p>
+                                            ) : null}
+                                            {notification?.meta?.source === "ops_order_acceptance" &&
+                                            notification?.meta?.note ? (
+                                              <p
+                                                className={`mt-1 text-xs leading-5 font-medium ${
+                                                  isQuotationBuilder ? "text-amber-200" : "text-amber-700"
+                                                }`}
+                                              >
+                                                Ops Team Note: {notification.meta.note}
+                                              </p>
+                                            ) : null}
+                                          </>
+                                        )}
+                                        {isExpandable && (
+                                          <button
+                                            type="button"
+                                            onClick={(e) => toggleExpandNotification(notification._id, e)}
+                                            className={`mt-1 inline-flex items-center text-[10px] font-bold ${
+                                              isQuotationBuilder
+                                                ? "text-sky-400 hover:text-sky-300"
+                                                : "text-blue-600 hover:text-blue-700"
                                             }`}
                                           >
-                                            Ops Team Note: {notification.meta.note}
-                                          </p>
-                                        ) : null}
+                                            {isExpanded ? "Read Less" : "Read More"}
+                                          </button>
+                                        )}
                                         {(timeLabel || timestampLabel) ? (
                                           <p className="mt-2 text-[11px] font-medium text-slate-400">
                                             {role === "admin" ? `${sourceLabel} • ` : ""}

@@ -360,8 +360,7 @@ const travelQuerySchema = new mongoose.Schema(
     },
 
    queryId: {
-    type: String,
-    unique: true
+    type: String
   },
 
   destination: {
@@ -505,6 +504,12 @@ adminCoordination: {
 
 );
 
+travelQuerySchema.index({ agent: 1, createdAt: -1 });
+travelQuerySchema.index({ opsStatus: 1, createdAt: -1 });
+travelQuerySchema.index({ status: 1, createdAt: -1 });
+travelQuerySchema.index({ queryId: 1 }, { unique: true, sparse: true });
+travelQuerySchema.index({ assignedTo: 1, createdAt: -1 });
+travelQuerySchema.index({ "travelerDocumentVerification.status": 1, updatedAt: -1 });
 
 
 export default mongoose.model("TravelQuery", travelQuerySchema);

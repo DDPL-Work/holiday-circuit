@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Loader2 } from "lucide-react";
+import { Loader2, Clock, CheckCircle2, AlertCircle, Coins, Receipt, Upload } from "lucide-react";
 import { useSelector } from "react-redux";
 import API from "../../../utils/Api";
 import InvoiceDocumentModal from "../../../modal/InvoiceDocumentModal";
+import AddNewUserModal from "../../../modal/AddNewUserModal";
+import ManualBulkInvoiceUploadModal from "../../../modal/ManualBulkInvoiceUploadModal";
 
 const mockInvoices = [
   {
@@ -100,6 +102,29 @@ const feedbackStyles = {
   success: "border-emerald-200 bg-emerald-50 text-emerald-700",
   warning: "border-amber-200 bg-amber-50 text-amber-700",
   error: "border-rose-200 bg-rose-50 text-rose-700",
+};
+
+const cardThemes = {
+  "Under Review": {
+    bg: "bg-gradient-to-br from-[#fef3c7]/30 via-white to-white",
+    border: "border border-amber-200/80 border-b-4 border-b-amber-500 shadow-[0_4px_12px_rgba(245,158,11,0.03)]",
+    iconColor: "text-amber-500 bg-amber-50",
+  },
+  "Validated": {
+    bg: "bg-gradient-to-br from-[#dbeafe]/30 via-white to-white",
+    border: "border border-blue-200/80 border-b-4 border-b-blue-500 shadow-[0_4px_12px_rgba(59,130,246,0.03)]",
+    iconColor: "text-blue-500 bg-blue-50",
+  },
+  "Mismatched": {
+    bg: "bg-gradient-to-br from-[#ffe4e6]/30 via-white to-white",
+    border: "border border-rose-200/80 border-b-4 border-b-rose-500 shadow-[0_4px_12px_rgba(244,63,94,0.03)]",
+    iconColor: "text-rose-500 bg-rose-50",
+  },
+  "Settled": {
+    bg: "bg-gradient-to-br from-[#d1fae5]/30 via-white to-white",
+    border: "border border-emerald-200/80 border-b-4 border-b-emerald-500 shadow-[0_4px_12px_rgba(16,185,129,0.03)]",
+    iconColor: "text-emerald-500 bg-emerald-50",
+  },
 };
 
 const formatCurrency = (value, currency = "INR") => {
@@ -205,8 +230,18 @@ const buildInvoiceModalPayload = (invoice = {}) => ({
   dmcInvoiceAmountValue: Number(invoice?.dmcServicesTotal || 0),
   taxValue: Number(invoice?.tax || 0),
   tax: formatCurrency(invoice?.tax || 0, invoice?.currency),
+  dmcEmail: invoice?.dmcEmail || "",
+  dmcPhone: invoice?.dmcPhone || "",
   status: invoice?.status || "Submitted",
-  method: invoice?.templateVariant || "",
+  method:
+    invoice?.invoiceSource === "uploaded_invoice"
+      ? "Uploaded Invoice"
+      : invoice?.templateVariant || "",
+  invoiceSource: invoice?.invoiceSource || "system_template",
+  uploadedInvoice: invoice?.uploadedInvoice || {},
+  claimedSummary: invoice?.claimedSummary || {},
+  taxConfig: invoice?.taxConfig || {},
+  summary: invoice?.summary || {},
   quotationNumber: invoice?.quotationNumber || "",
   items: invoice?.items || [],
   documents: invoice?.documents || [],
@@ -293,6 +328,14 @@ function ReportIcon() {
         strokeLinejoin="round"
         strokeWidth="2"
       />
+    </svg>
+  );
+}
+
+function UserPlusIcon() {
+  return (
+    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
     </svg>
   );
 }
@@ -687,7 +730,19 @@ export default function InternalDMCInvoices() {
   const [selectedInvoice, setSelectedInvoice] = useState(null);
   const [escalateInvoice, setEscalateInvoice] = useState(null);
   const [actionLoading, setActionLoading] = useState(false);
+  const [showAddVendor, setShowAddVendor] = useState(false);
+  const [showBulkUpload, setShowBulkUpload] = useState(false);
   const itemsPerPage = 8;
+
+  const handleAddVendor = async (payload) => {
+    const { data } = await API.post("/finance-manager/vendors", payload);
+    setFeedback({
+      type: "success",
+      title: "Vendor Added",
+      message: data?.message || "DMC Partner vendor created successfully.",
+    });
+    return data;
+  };
 
   const loadInvoices = async () => {
     try {
@@ -721,7 +776,7 @@ export default function InternalDMCInvoices() {
   }, [feedback]);
 
   useEffect(() => {
-    const isOverlayOpen = Boolean(validateInvoice || selectedInvoice || escalateInvoice);
+    const isOverlayOpen = Boolean(validateInvoice || selectedInvoice || escalateInvoice || showAddVendor || showBulkUpload);
     if (!isOverlayOpen) return undefined;
 
     const previousOverflow = document.body.style.overflow;
@@ -730,7 +785,7 @@ export default function InternalDMCInvoices() {
     return () => {
       document.body.style.overflow = previousOverflow;
     };
-  }, [validateInvoice, selectedInvoice, escalateInvoice]);
+  }, [validateInvoice, selectedInvoice, escalateInvoice, showAddVendor, showBulkUpload]);
 
   const displayInvoices = useMemo(
     () => invoices.map((invoice, index) => normalizeInvoice(invoice, index)),
@@ -885,52 +940,104 @@ export default function InternalDMCInvoices() {
     <div className="min-h-screen overflow-x-hidden bg-[#f6f8fc] font-sans">
       <FeedbackToast feedback={feedback} onClose={() => setFeedback(null)} />
 
-      <div className="sticky top-0 z-20 border-b border-slate-200 bg-white">
-        <div className="flex items-start justify-between px-2 py-3">
-          <div>
-            <p className="text-[15px] font-semibold text-slate-800">Internal DMC Invoices</p>
-            <p className="mt-0.5 text-xs text-slate-500">Thursday, April 9, 2026</p>
+      <div className="border-b border-slate-200 bg-gradient-to-r from-white via-[#f8fafc] to-[#EFF5FC]">
+        <div className="flex items-center justify-between px-0 py-2">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-50 text-blue-600 border border-blue-100/80 shadow-sm">
+              <Receipt size={14} className="stroke-[2.2]" />
+            </div>
+            <div>
+              <p className="text-[13px] font-bold text-slate-800 leading-none">Internal DMC Invoices</p>
+              <p className="text-[9.5px] text-slate-400 mt-0.5 font-semibold">Thursday, April 9, 2026</p>
+            </div>
           </div>
           <div className="text-right">
-            <p className="text-[10px] text-slate-400">Logged in as</p>
-            <p className="text-sm font-semibold text-slate-800">{user?.name || "Finance Manager"}</p>
+            <p className="text-[9.5px] text-slate-400">Logged in as</p>
+            <p className="text-xs font-semibold text-slate-700">{user?.name || "Finance Manager"}</p>
           </div>
         </div>
       </div>
-
-      <div className="px- py- pt-6  ">
+      <div className="px-0 pt-4">
         <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <h1 className="text-[18px] font-bold text-slate-900">Internal DMC Invoices</h1>
-            <p className="mt-1 text-[14px] text-slate-500">Payout validation view - review and settle DMC invoices</p>
+          <div className="flex items-start gap-3">
+            <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-slate-800 to-slate-950 text-white shadow-md shadow-slate-900/10">
+              <Receipt size={19} className="stroke-[2.2]" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h1 className="text-[18px] font-extrabold text-slate-900 tracking-tight leading-none">
+                  Internal DMC Invoices
+                </h1>
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-100 px-2 py-0.5 text-[9.5px] font-bold text-emerald-700 tracking-wide uppercase">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  Finance Portal
+                </span>
+              </div>
+              <p className="mt-1 text-[13.5px] text-slate-500 font-medium">Payout validation view &bull; review and settle DMC invoices</p>
+            </div>
           </div>
-          <button
-            type="button"
-            className="inline-flex items-center gap-2 self-start rounded-2xl bg-[#11192d] px-5 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#1b2642]"
-          >
-            <ReportIcon />
-            Submit Finance Report
-          </button>
+          <div className="flex items-center gap-2.5 self-start shrink-0">
+            <button
+              type="button"
+              onClick={() => setShowBulkUpload(true)}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-[#0f172a] to-[#1d4ed8] px-4 py-2 text-[12.5px] font-semibold text-white shadow-md hover:shadow-lg transition-all duration-300 hover:opacity-95"
+            >
+              <Upload size={14} />
+              Upload Bulk Invoice
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowAddVendor(true)}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-[#1d4ed8] to-[#2563eb] px-4 py-2 text-[12.5px] font-semibold text-white shadow-md hover:shadow-lg transition-all duration-300 hover:opacity-95"
+            >
+              <UserPlusIcon />
+              Add Vendors
+            </button>
+            <button
+              type="button"
+              className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-[#0b1e36] via-[#1d3d63] to-[#107c41] px-4 py-2 text-[12.5px] font-semibold text-white shadow-md hover:shadow-lg transition-all duration-300 hover:opacity-95"
+            >
+              <ReportIcon />
+              Submit Finance Report
+            </button>
+          </div>
         </div>
 
         <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {[
-            { label: "Under Review", value: summary.underReview, color: "text-amber-500" },
-            { label: "Validated", value: summary.validated, color: "text-blue-500" },
-            { label: "Mismatched", value: summary.mismatch, color: "text-rose-500" },
-            { label: "Settled", value: summary.settled, color: "text-emerald-500" },
-          ].map((card) => (
-            <div key={card.label} className="rounded-[12px] border border-slate-200 bg-white px-5 py-4 shadow-xs">
-              <p className="text-xs text-slate-500">{card.label}</p>
-              <div className="mt-2 min-h-[28px] flex items-center">
-                {loading ? (
-                  <ContentLoader label="Loading..." />
-                ) : (
-                  <p className={`text-[18px] font-bold ${card.color}`}>{card.value}</p>
-                )}
+            { label: "Under Review", value: summary.underReview, color: "text-amber-600", themeKey: "Under Review" },
+            { label: "Validated", value: summary.validated, color: "text-blue-600", themeKey: "Validated" },
+            { label: "Mismatched", value: summary.mismatch, color: "text-rose-600", themeKey: "Mismatched" },
+            { label: "Settled", value: summary.settled, color: "text-emerald-600", themeKey: "Settled" },
+          ].map((card) => {
+            const theme = cardThemes[card.themeKey];
+            return (
+              <div
+                key={card.label}
+                className={`rounded-[12px] p-5 transition-all duration-300 ${theme.bg} ${theme.border}`}
+              >
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">{card.label}</p>
+                  <span className={`flex h-6 w-6 items-center justify-center rounded-full ${theme.iconColor}`}>
+                    {card.themeKey === "Under Review" && <Clock size={12.5} />}
+                    {card.themeKey === "Validated" && <CheckCircle2 size={12.5} />}
+                    {card.themeKey === "Mismatched" && <AlertCircle size={12.5} />}
+                    {card.themeKey === "Settled" && <Coins size={12.5} />}
+                  </span>
+                </div>
+                <div className="mt-3 min-h-[32px] flex items-baseline justify-between">
+                  {loading ? (
+                    <ContentLoader label="Loading..." />
+                  ) : (
+                    <>
+                      <p className={`text-2xl font-extrabold ${card.color}`}>{card.value}</p>
+                      <span className="text-[10px] font-medium text-slate-400">DMC Invoices</span>
+                    </>
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         {error ? (
@@ -947,22 +1054,37 @@ export default function InternalDMCInvoices() {
         ) : null}
 
         <div className="overflow-hidden rounded-[12px] border border-slate-200 bg-white shadow-sm">
-          <div className="flex items-center gap-3 border-b border-slate-200 px-5 py-4">
-            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-blue-50 text-blue-500">
-              <FileIcon />
+          <div className="flex items-center gap-3.5 border-b border-slate-200 px-5 py-4 bg-gradient-to-r from-slate-50/80 via-slate-50/30 to-white">
+            <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white shadow-[0_4px_12px_rgba(59,130,246,0.22)] transition-transform duration-300 hover:scale-105">
+              <div className="absolute inset-0 rounded-xl bg-white opacity-0 hover:opacity-10 transition-opacity" />
+              <Receipt size={18} className="drop-shadow-[0_1px_1px_rgba(0,0,0,0.15)]" />
+              <div className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-emerald-500 shadow-sm animate-pulse" />
             </div>
-            <h2 className="text-[15px] font-semibold text-slate-900">DMC Invoice Payout Tracker</h2>
+            <div className="flex-1 min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-[15px] font-extrabold text-slate-900 tracking-tight leading-none">
+                  DMC Invoice <span className="bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">Payout Tracker</span>
+                </h2>
+                <span className="inline-flex items-center gap-1 rounded-full bg-blue-50/80 border border-blue-100 px-2 py-0.5 text-[9.5px] font-semibold text-blue-700 tracking-wide uppercase">
+                  <span className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse" />
+                  Live Sync
+                </span>
+              </div>
+              <p className="text-[10.5px] text-slate-500 mt-1 font-medium leading-relaxed">
+                Real-time payout validation log &amp; assigned finance entries
+              </p>
+            </div>
           </div>
 
           <div className="finance-transparent-scrollbar overflow-x-auto overflow-y-hidden pb-2">
-            <div className="min-w-305">
-              <table className="w-full text-sm">
+            <div className="min-w-[950px]">
+              <table className="w-full text-[13px]">
                 <thead>
                   <tr className="border-b border-slate-200 bg-slate-50">
                     {["Invoice No", "DMC Partner", "Amount", "Assigned To", "Status", "Due Date", "Action"].map((heading) => (
                       <th
                         key={heading}
-                        className="whitespace-nowrap px-4 py-3 text-left text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400"
+                        className="whitespace-nowrap px-4 py-2 text-left text-[9.5px] font-bold uppercase tracking-[0.16em] text-slate-400"
                       >
                         {heading}
                       </th>
@@ -979,32 +1101,32 @@ export default function InternalDMCInvoices() {
                   ) : paginatedInvoices.length ? (
                     paginatedInvoices.map((invoice) => (
                       <tr key={invoice.id} className="border-b border-slate-200 last:border-b-0 hover:bg-slate-50/80">
-                        <td className="whitespace-nowrap px-4 py-4 text-[13px] font-semibold text-slate-900">{invoice.invoiceNumber}</td>
-                        <td className="whitespace-nowrap px-4 py-4 text-[14px] font-semibold text-slate-700">{invoice.dmcName}</td>
-                        <td className="whitespace-nowrap px-4 py-4 text-[14px] font-semibold text-slate-900">{invoice.amountDisplay}</td>
-                        <td className="whitespace-nowrap px-4 py-4">
-                          <div className="flex items-center gap-2.5">
-                            <span className={`flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-bold ${invoice.avatarClass}`}>
+                        <td className="whitespace-nowrap px-4 py-2.5 text-[12px] font-semibold text-slate-900">{invoice.invoiceNumber}</td>
+                        <td className="whitespace-nowrap px-4 py-2.5 text-[12.5px] font-semibold text-slate-700">{invoice.dmcName}</td>
+                        <td className="whitespace-nowrap px-4 py-2.5 text-[12.5px] font-semibold text-slate-900">{invoice.amountDisplay}</td>
+                        <td className="whitespace-nowrap px-4 py-2.5">
+                          <div className="flex items-center gap-2">
+                            <span className={`flex h-5 w-5 items-center justify-center rounded-full text-[9px] font-bold ${invoice.avatarClass}`}>
                               {invoice.avatar}
                             </span>
-                            <span className="text-[14px] text-slate-700">{invoice.assignedTo}</span>
+                            <span className="text-[12.5px] text-slate-700">{invoice.assignedTo}</span>
                           </div>
                         </td>
-                        <td className="whitespace-nowrap px-4 py-4">
+                        <td className="whitespace-nowrap px-4 py-2.5">
                           <StatusBadge status={invoice.uiStatus} />
                         </td>
-                        <td className={`whitespace-nowrap px-4 py-4 text-[13px] font-semibold ${invoice.isDuePast ? "text-rose-500" : "text-slate-600"}`}>
+                        <td className={`whitespace-nowrap px-4 py-2.5 text-[12px] font-semibold ${invoice.isDuePast ? "text-rose-500" : "text-slate-600"}`}>
                           <span className="block">{invoice.dueDateLabel}</span>
-                          <span className="mt-0.5 block text-[10px] font-medium text-slate-400">{invoice.creditTermLabel}</span>
+                          <span className="mt-0.5 block text-[9.5px] font-medium text-slate-400">{invoice.creditTermLabel}</span>
                         </td>
-                        <td className="whitespace-nowrap px-4 py-4">
-                          <div className="flex items-center gap-2">
+                        <td className="whitespace-nowrap px-4 py-2.5">
+                          <div className="flex items-center gap-1.5">
                             <button
                               type="button"
                               onClick={() => setValidateInvoice(invoice)}
-                              className="inline-flex items-center gap-1.5 rounded-xl border border-blue-200 bg-blue-50 px-3 py-1.5 text-[11px] font-semibold text-blue-600 transition hover:bg-blue-100"
+                              className="inline-flex items-center gap-1 rounded-xl border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-[10.5px] font-semibold text-blue-600 transition hover:bg-blue-100"
                             >
-                              <EyeIcon className="h-3 w-3" />
+                              <EyeIcon className="h-2.5 w-2.5" />
                               Validate
                             </button>
 
@@ -1015,9 +1137,9 @@ export default function InternalDMCInvoices() {
                                   setSelectedInvoice(buildInvoiceModalPayload(invoice));
                                   setEscalateInvoice(invoice);
                                 }}
-                                className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3 py-1.5 text-[11px] font-semibold text-rose-600 transition hover:bg-rose-100"
+                                className="inline-flex items-center gap-1 rounded-xl border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-[10.5px] font-semibold text-rose-600 transition hover:bg-rose-100"
                               >
-                                <AlertIcon className="h-3 w-3" />
+                                <AlertIcon className="h-2.5 w-2.5" />
                                 Escalate
                               </button>
                             ) : null}
@@ -1130,6 +1252,25 @@ export default function InternalDMCInvoices() {
               }
             }}
             onInvoiceUpdated={handleInvoiceUpdated}
+          />
+        ) : null}
+      </AnimatePresence>
+
+      <AnimatePresence mode="wait">
+        {showBulkUpload ? (
+          <ManualBulkInvoiceUploadModal
+            onClose={() => setShowBulkUpload(false)}
+            onUploaded={() => loadInvoices()}
+          />
+        ) : null}
+      </AnimatePresence>
+
+      <AnimatePresence mode="wait">
+        {showAddVendor ? (
+          <AddNewUserModal
+            onClose={() => setShowAddVendor(false)}
+            onCreateUser={handleAddVendor}
+            vendorMode={true}
           />
         ) : null}
       </AnimatePresence>

@@ -89,9 +89,27 @@ cwoebRate: {
     required: true
   },
 
-  validTo: {
+    validTo: {
     type: Date,
     required: true
+  },
+
+  blackoutDates: {
+    type: [
+      {
+        rowNumber: { type: Number, default: 0 },
+        rawPeriod: { type: String, default: "" },
+        startDate: { type: Date, default: null },
+        endDate: { type: Date, default: null },
+        startDateKey: { type: String, default: "" },
+        endDateKey: { type: String, default: "" },
+        occasion: { type: String, default: "" },
+        category: { type: String, default: "" },
+        applicableRegion: { type: String, default: "" },
+        sourceSheet: { type: String, default: "" },
+      },
+    ],
+    default: [],
   },
 
   supplier: {

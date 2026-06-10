@@ -9,6 +9,7 @@ import {
   ensureActiveBookingInvoice,
   getAgentFinanceOverview,
   uploadTravelerDocument,
+  removeTravelerDocument,
   submitTravelerDocumentsForVerification,
   confirmQuotation,
   requestQuotationRevision,
@@ -48,6 +49,7 @@ routers.get("/active-bookings", isAuthenticated, getMyActiveBookings);
 routers.post("/quotations/:id/ensure-invoice", isAuthenticated, ensureActiveBookingInvoice);
 routers.get("/finance-overview", isAuthenticated, getAgentFinanceOverview);
 routers.put("/queries/:queryId/travelers/:travelerId/document", isAuthenticated, upload.single("travelerDocument"), uploadTravelerDocument);
+routers.delete("/queries/:queryId/travelers/:travelerId/document/:documentKey", isAuthenticated, removeTravelerDocument);
 routers.patch("/queries/:queryId/traveler-documents/submit", isAuthenticated, submitTravelerDocumentsForVerification);
 
 /* 🔹 QUOTATIONS */

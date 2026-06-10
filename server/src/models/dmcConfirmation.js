@@ -66,5 +66,7 @@ const confirmationSchema = new mongoose.Schema({
 );
 
 confirmationSchema.index({ dmcId: 1, queryId: 1 }, { unique: true });
+confirmationSchema.index({ queryId: 1, updatedAt: -1 });
+confirmationSchema.index({ status: 1, updatedAt: -1 });
 
 export default mongoose.model("Confirmation", confirmationSchema);

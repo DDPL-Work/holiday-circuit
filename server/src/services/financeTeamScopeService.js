@@ -44,7 +44,8 @@ export const getActiveFinanceMembersForAssignment = async () =>
     accountStatus: "Active",
   })
     .select("name email employeeId manager profileImage accountStatus createdAt")
-    .sort({ createdAt: 1, name: 1 });
+    .sort({ createdAt: 1, name: 1 })
+    .lean();
 
 const resolveManagerByIdentity = async (identity = "") => {
   const normalizedIdentity = normalizeValue(identity);
@@ -63,7 +64,7 @@ const resolveManagerByIdentity = async (identity = "") => {
   return Auth.findOne({
     isDeleted: { $ne: true },
     $or: conditions,
-  }).select("name email employeeId _id");
+  }).select("name email employeeId _id").lean();
 };
 
 export const getManagedFinanceMembers = async (managerIdentity = "") => {
@@ -85,7 +86,8 @@ export const getManagedFinanceMembers = async (managerIdentity = "") => {
     manager: { $in: identityCandidates },
   })
     .select("name email employeeId manager profileImage accountStatus createdAt")
-    .sort({ createdAt: 1, name: 1 });
+    .sort({ createdAt: 1, name: 1 })
+    .lean();
 };
 
 export const getRoundRobinFinanceAssignee = async ({ keepAssigneeId = "" } = {}) => {
@@ -129,7 +131,7 @@ export const getFinanceAccessContext = async (user = {}) => {
   }
 
   if (user?.role === "finance_manager") {
-    const manager = await Auth.findById(user.id).select("name email employeeId _id role isDeleted");
+    const manager = await Auth.findById(user.id).select("name email employeeId _id role isDeleted").lean();
 
     if (!manager || manager.isDeleted) {
       throw new ApiError(404, "Finance manager profile not found");
@@ -149,7 +151,7 @@ export const getFinanceAccessContext = async (user = {}) => {
   if (user?.role === TEAM_ROLE) {
     const financeUser = await Auth.findById(user.id).select(
       "name email employeeId manager _id role isDeleted accountStatus",
-    );
+    ).lean();
 
     if (!financeUser || financeUser.isDeleted) {
       throw new ApiError(404, "Finance executive profile not found");

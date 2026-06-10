@@ -146,15 +146,16 @@ function getTrendMeta(delta, fallbackLabel = "No comparison available") {
 }
 
 function getRowTone(status) {
+  // Return premium subtle background colors with silky hover transitions
   if (status === "At Risk") {
-    return "bg-rose-50/45 hover:bg-rose-50/70";
+    return "bg-white hover:bg-gradient-to-r hover:from-rose-50/20 hover:to-white/80 transition-all duration-300";
   }
 
   if (status === "Active") {
-    return "bg-emerald-50/35 hover:bg-emerald-50/60";
+    return "bg-white hover:bg-gradient-to-r hover:from-emerald-50/15 hover:to-white/80 transition-all duration-300";
   }
 
-  return "bg-amber-50/35 hover:bg-amber-50/55";
+  return "bg-white hover:bg-gradient-to-r hover:from-amber-50/15 hover:to-white/80 transition-all duration-300";
 }
 
 const statusStyles = {
@@ -164,8 +165,15 @@ const statusStyles = {
 };
 
 function StatusBadge({ status }) {
+  const dotColor =
+    status === "Active"
+      ? "bg-emerald-500 animate-pulse"
+      : status === "At Risk"
+        ? "bg-rose-500"
+        : "bg-amber-500";
   return (
-    <span className={`inline-flex items-center justify-center rounded-[10px] px-3 py-1 text-[11px] font-medium whitespace-nowrap ${statusStyles[status] || statusStyles.Active}`}>
+    <span className={`inline-flex items-center gap-1.5 justify-center rounded-full px-3 py-1 text-[11px] font-semibold border whitespace-nowrap transition-all duration-200 shadow-sm ${statusStyles[status] || statusStyles.Active}`}>
+      <span className={`h-1.5 w-1.5 rounded-full ${dotColor}`} />
       {status}
     </span>
   );
@@ -526,14 +534,17 @@ export default function MyOperationTeam() {
       </div>
 
       <div className="max-w-6xl mx-auto px- py-2 pt-8">
-        <div className="flex justify-between items-start mb-7">
+        <div className="flex justify-between items-center mb-7">
           <div>
-            <h1 className="text-xl font-medium text-gray-900">My Team</h1>
-            <p className="text-sm text-gray-500 mt-1">Executive roster and workload management</p>
+            <h1 className="text-[26px] font-black bg-gradient-to-r from-slate-900 via-blue-950 to-slate-900 bg-clip-text text-transparent tracking-tight leading-none">My Team</h1>
+            <p className="text-sm text-gray-500 mt-1.5 flex items-center">
+              <span className="inline-block h-2 w-2 rounded-full bg-emerald-500 animate-pulse mr-2" />
+              Executive roster and workload management
+            </p>
           </div>
           <button
             onClick={() => setShowAdd(true)}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-gray-900 text-white text-sm font-medium hover:bg-gray-700 transition"
+            className="flex items-center gap-2 px-6 py-2.5 rounded-full bg-gradient-to-r from-[#0f172a] via-[#1e3a8a] to-[#2563eb] hover:from-[#1e3a8a] hover:via-[#2563eb] hover:to-[#3b82f6] text-white text-sm font-extrabold shadow-md shadow-blue-500/10 hover:shadow-lg hover:shadow-blue-500/15 transition-all duration-300 transform active:scale-[0.98] cursor-pointer"
           >
             <IconUserPlus />
             Add Ops Executive
@@ -554,31 +565,48 @@ export default function MyOperationTeam() {
         )}
 
         <div className="mb-7 grid gap-4 md:grid-cols-3">
-          <div className="h-full bg-white border border-gray-200 rounded-xl p-5">
-            <p className="text-xs text-gray-500 mb-1">Total Executives</p>
-            <p className="text-3xl font-medium text-gray-900">{summary?.totalExecutives ?? team.length}</p>
-            <p className="text-xs text-green-600 mt-2 flex items-center gap-1">
+          {/* Total Executives */}
+          <div className="group relative flex min-h-[120px] flex-col justify-between rounded-2xl border border-slate-200 border-b-[4.5px] p-5 bg-gradient-to-br from-blue-50/90 via-white to-white border-blue-100/70 border-b-blue-600 hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300">
+            <div>
+              <p className="text-[10px] font-extrabold uppercase tracking-[0.15em] text-slate-400 whitespace-nowrap">Total Executives</p>
+              <p className="text-3xl font-black text-slate-800 tracking-tight leading-none mt-1.5">{summary?.totalExecutives ?? team.length}</p>
+            </div>
+            <p className="text-xs text-green-600 font-bold mt-3 flex items-center gap-1.5 bg-green-50/50 rounded-lg px-2.5 py-1 border border-green-100/60 self-start">
               <IconTrendUp />
               {addedThisWeek} added this week
             </p>
           </div>
-          <div className="h-full bg-white border border-gray-200 rounded-xl p-5">
-            <p className="text-xs text-gray-500 mb-1">At Risk Executives</p>
-            <p className="text-3xl font-medium text-red-500">{atRisk}</p>
-            <p className="text-xs text-gray-400 mt-2 flex items-center gap-1">
+
+          {/* At Risk Executives */}
+          <div className="group relative flex min-h-[120px] flex-col justify-between rounded-2xl border border-slate-200 border-b-[4.5px] p-5 bg-gradient-to-br from-rose-50/90 via-white to-white border-rose-100/70 border-b-rose-600 hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300">
+            <div>
+              <p className="text-[10px] font-extrabold uppercase tracking-[0.15em] text-slate-400 whitespace-nowrap">At Risk Executives</p>
+              <p className="text-3xl font-black text-rose-600 tracking-tight leading-none mt-1.5">{atRisk}</p>
+            </div>
+            <p className="text-xs text-rose-600 font-bold mt-3 flex items-center gap-1.5 bg-rose-50/50 rounded-lg px-2.5 py-1 border border-rose-100/60 self-start">
               <IconAlertTriangle />
               Need immediate attention
             </p>
           </div>
-          <div className="h-full bg-white border border-gray-200 rounded-xl p-5">
-            <p className="text-xs text-gray-500 mb-1">Avg. Team Performance</p>
-            <p className="text-3xl font-medium text-gray-900">
-              {displayedAvgPerformance === null ? "--" : `${displayedAvgPerformance}%`}
-            </p>
-            <p className={`text-xs mt-2 flex items-center gap-1 ${performanceDeltaClass}`}>
+
+          {/* Avg. Team Performance */}
+          <div className="group relative flex min-h-[120px] flex-col justify-between rounded-2xl border border-slate-200 border-b-[4.5px] p-5 bg-gradient-to-br from-emerald-50/90 via-white to-white border-emerald-100/70 border-b-emerald-600 hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300">
+            <div>
+              <p className="text-[10px] font-extrabold uppercase tracking-[0.15em] text-slate-400 whitespace-nowrap">Avg. Team Performance</p>
+              <p className="text-3xl font-black text-slate-800 tracking-tight leading-none mt-1.5">
+                {displayedAvgPerformance === null ? "--" : `${displayedAvgPerformance}%`}
+              </p>
+            </div>
+            <p className={`text-xs font-bold mt-3 flex items-center gap-1.5 rounded-lg px-2.5 py-1 border self-start ${
+              customRangePending 
+                ? "text-slate-500 bg-slate-50 border-slate-100" 
+                : performanceDeltaClass === "text-green-600" 
+                  ? "text-green-600 bg-green-50/50 border-green-100/60" 
+                  : "text-rose-600 bg-rose-50/50 border-rose-100/60"
+            }`}>
               <IconTrendUp />
               {customRangePending
-                ? "Choose a custom date range to measure performance"
+                ? "Choose a custom date range"
                 : performanceDelta === null || performanceDelta === undefined
                   ? `Measured for ${periodLabel}`
                   : `${performanceDelta >= 0 ? "+" : "-"}${Math.abs(performanceDelta)}% ${comparisonLabel}`}
@@ -586,33 +614,35 @@ export default function MyOperationTeam() {
           </div>
         </div>
 
-        <div className="mb-7 rounded-[20px] border border-slate-200 bg-white p-4 shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+        <div className="mb-7 rounded-[20px] border border-slate-200 bg-gradient-to-br from-slate-50/20 via-white to-white p-5">
+          <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
             <div className="space-y-2">
-              <div className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700">
-                <CalendarRange className="h-3.5 w-3.5" />
-                {customRangePending
-                  ? "Select both dates to load performance"
-                  : `Showing performance for ${periodLabel}`}
-              </div>
-              {refreshing ? (
-                <div className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-600">
-                  <span className="h-2 w-2 animate-pulse rounded-full bg-slate-400" />
-                  Updating team data...
+              <div className="flex flex-wrap gap-2">
+                <div className="inline-flex items-center gap-2 rounded-full bg-blue-50 border border-blue-100/60 px-3.5 py-1.5 text-xs font-bold text-blue-700">
+                  <CalendarRange className="h-3.5 w-3.5 text-blue-600" />
+                  {customRangePending
+                    ? "Select both dates to load performance"
+                    : `Showing performance for ${periodLabel}`}
                 </div>
-              ) : null}
-              <p className="text-sm text-slate-600">
+                {refreshing ? (
+                  <div className="inline-flex items-center gap-2 rounded-full bg-slate-100 border border-slate-200/50 px-3.5 py-1.5 text-xs font-bold text-slate-600 animate-pulse">
+                    <span className="h-2 w-2 rounded-full bg-slate-400 animate-ping" />
+                    Updating team data...
+                  </div>
+                ) : null}
+              </div>
+              <p className="text-sm text-slate-600 font-medium">
                 The performance and status indicators now follow the selected range.
               </p>
             </div>
-            <div className="flex flex-wrap items-end gap-4 w-full">
-              <label className="block flex-1 min-w-[220px] max-w-sm">
-                <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Range</span>
+            <div className="flex flex-wrap items-end gap-4 w-full lg:w-auto">
+              <label className="block flex-1 min-w-[220px] max-w-sm lg:w-[220px]">
+                <span className="mb-1.5 block text-[10px] font-extrabold uppercase tracking-[0.14em] text-slate-400">Range</span>
                 <div className="relative">
                   <select
                     value={period}
                     onChange={(event) => setPeriod(event.target.value)}
-                    className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-slate-50 pl-3 pr-9 text-sm text-slate-700 outline-none transition focus:border-blue-400 focus:bg-white"
+                    className="h-11 w-full appearance-none rounded-full border border-slate-200 bg-slate-50/50 pl-4 pr-10 text-sm text-slate-700 outline-none transition focus:border-blue-400 focus:bg-white cursor-pointer font-semibold"
                   >
                     <option value="current_month">Current Month</option>
                     <option value="previous_month">Previous Month</option>
@@ -620,28 +650,28 @@ export default function MyOperationTeam() {
                     <option value="previous_year">Previous Year</option>
                     <option value="custom">Custom Range</option>
                   </select>
-                  <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <ChevronDown className="pointer-events-none absolute right-4.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 </div>
               </label>
 
               {period === "custom" && (
                 <>
                   <label className="block flex-1 min-w-[160px] max-w-sm">
-                    <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Start Date</span>
+                    <span className="mb-1.5 block text-[10px] font-extrabold uppercase tracking-[0.14em] text-slate-400">Start Date</span>
                     <input
                       type="date"
                       value={customStartDate}
                       onChange={(event) => setCustomStartDate(event.target.value)}
-                      className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm text-slate-700 outline-none transition focus:border-blue-400 focus:bg-white"
+                      className="h-11 w-full rounded-full border border-slate-200 bg-slate-50/50 px-5 text-sm text-slate-750 outline-none transition focus:border-blue-400 focus:bg-white cursor-pointer font-semibold"
                     />
                   </label>
                   <label className="block flex-1 min-w-[160px] max-w-sm">
-                    <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">End Date</span>
+                    <span className="mb-1.5 block text-[10px] font-extrabold uppercase tracking-[0.14em] text-slate-400">End Date</span>
                     <input
                       type="date"
                       value={customEndDate}
                       onChange={(event) => setCustomEndDate(event.target.value)}
-                      className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm text-slate-700 outline-none transition focus:border-blue-400 focus:bg-white"
+                      className="h-11 w-full rounded-full border border-slate-200 bg-slate-50/50 px-5 text-sm text-slate-750 outline-none transition focus:border-blue-400 focus:bg-white cursor-pointer font-semibold"
                     />
                   </label>
                 </>
@@ -660,21 +690,29 @@ export default function MyOperationTeam() {
           </div>
 
           <div className="thin-scrollbar overflow-x-auto">
-            <table className="min-w-[1240px] w-full table-fixed">
+            <table className="min-w-[1140px] w-full table-fixed">
               <colgroup>
-                <col style={{ width: "260px" }} />
-                <col style={{ width: "260px" }} />
-                <col style={{ width: "170px" }} />
-                <col style={{ width: "170px" }} />
-                <col style={{ width: "280px" }} />
+                <col style={{ width: "200px" }} />
+                <col style={{ width: "210px" }} />
+                <col style={{ width: "120px" }} />
                 <col style={{ width: "130px" }} />
-                <col style={{ width: "160px" }} />
+                <col style={{ width: "240px" }} />
+                <col style={{ width: "110px" }} />
+                <col style={{ width: "130px" }} />
               </colgroup>
               <thead>
-                <tr className="border-b border-slate-200 bg-slate-50/70">
-                  {["Exec Name", "Contact", "Active Queries", "Overdue Quotes", "Performance", "Status", "Action"].map((header) => (
-                    <th key={header} className="px-5 py-3.5 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-[#35507a] whitespace-nowrap">
-                      {header}
+                <tr className="border-b border-slate-200 bg-slate-50/50">
+                  {[
+                    { label: "Exec Name", align: "text-left pl-6" },
+                    { label: "Contact", align: "text-left" },
+                    { label: "Active Queries", align: "text-center" },
+                    { label: "Overdue Quotes", align: "text-center" },
+                    { label: "Performance", align: "text-center" },
+                    { label: "Status", align: "text-center" },
+                    { label: "Action", align: "text-center" },
+                  ].map((col) => (
+                    <th key={col.label} className={`py-2.5 px-4 text-[10px] font-extrabold uppercase tracking-[0.15em] text-slate-500 whitespace-nowrap ${col.align}`}>
+                      {col.label}
                     </th>
                   ))}
                 </tr>
@@ -709,39 +747,53 @@ export default function MyOperationTeam() {
                     const rowTone = getRowTone(member.status);
                     return (
                       <tr key={member.id} className={`border-b border-slate-200/90 transition-colors ${rowTone}`}>
-                        <td className="px-5 py-4 align-middle">
+                        <td className={`pl-6 pr-4 py-2.5 align-middle border-l-[3.5px] transition-all duration-300 ${
+                          member.status === "At Risk" 
+                            ? "border-l-rose-500" 
+                            : member.status === "Active" 
+                              ? "border-l-emerald-500" 
+                              : "border-l-amber-500"
+                        }`}>
                           <div className="flex items-center gap-3">
-                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-50 text-xs font-semibold text-blue-600 ring-1 ring-blue-100">
+                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 via-indigo-500 to-indigo-600 text-xs font-bold text-white shadow-sm ring-2 ring-white/80">
                               {member.initials}
                             </div>
                             <div className="min-w-0">
-                              <p className="whitespace-nowrap text-[14px] font-medium text-slate-900">{member.name}</p>
-                              <div className="mt-1 flex items-center gap-1.5 text-[11px] text-slate-500">
+                              <p className="whitespace-nowrap text-[14px] font-bold text-slate-900 leading-tight">{member.name}</p>
+                              <div className="mt-1 flex items-center gap-1.5 text-[11px] font-medium text-slate-500">
                                 <Hash className="h-3.5 w-3.5 text-slate-400" />
                                 <span>{member.employeeId || "Employee ID pending"}</span>
                               </div>
                             </div>
                           </div>
                         </td>
-                        <td className="px-5 py-4 align-middle">
-                          <div className="space-y-2">
-                            <div className="flex items-center gap-2 text-[13px] text-slate-600">
-                              <Mail className="h-3.5 w-3.5 text-slate-400" />
-                              <span className="truncate">{member.email || "No email mapped"}</span>
+                        <td className="px-4 py-2.5 align-middle">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2 text-[12.5px] text-slate-600">
+                              <Mail className="h-3.5 w-3.5 text-blue-500/85 shrink-0" />
+                              <span className="truncate max-w-[210px]">{member.email || "No email mapped"}</span>
                             </div>
-                            <div className="flex items-center gap-2 text-[13px] text-slate-600">
-                              <Phone className="h-3.5 w-3.5 text-slate-400" />
+                            <div className="flex items-center gap-2 text-[12.5px] text-slate-600">
+                              <Phone className="h-3.5 w-3.5 text-emerald-500/85 shrink-0" />
                               <span>{member.phone || "No phone mapped"}</span>
                             </div>
                           </div>
                         </td>
-                        <td className="px-5 py-4 align-middle text-[14px] font-medium tabular-nums text-slate-900">{member.activeQueries}</td>
-                        <td className="px-5 py-4 align-middle">
-                          <span className={`text-[14px] font-medium tabular-nums ${member.overdueQuotes === 0 ? "text-emerald-600" : "text-red-500"}`}>
+                        <td className="px-4 py-2.5 align-middle text-center">
+                          <span className="inline-flex items-center justify-center px-2.5 py-1 rounded-full bg-slate-50 border border-slate-100 text-[13px] font-bold tabular-nums text-slate-800 shadow-sm min-w-[36px]">
+                            {member.activeQueries}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2.5 align-middle text-center">
+                          <span className={`inline-flex items-center justify-center px-2.5 py-1 rounded-full text-[13px] font-bold tabular-nums shadow-sm min-w-[36px] border ${
+                            member.overdueQuotes === 0 
+                              ? "bg-emerald-50/80 border-emerald-100 text-emerald-700" 
+                              : "bg-rose-50 border-rose-100 text-rose-600 animate-pulse"
+                          }`}>
                             {member.overdueQuotes}
                           </span>
                         </td>
-                        <td className="relative px-5 py-4 align-middle">
+                        <td className="relative px-3 py-2.5 align-middle">
                           <button
                             type="button"
                             onClick={() => {
@@ -752,16 +804,17 @@ export default function MyOperationTeam() {
 
                               openPerformanceCard(member.id);
                             }}
-                            className={`flex w-full min-w-0 cursor-pointer items-center gap-3 rounded-2xl border px-3 py-2.5 text-left transition ${hasScopedPerformance
+                            className={`flex w-full min-w-0 cursor-pointer items-center gap-3 rounded-2xl border px-3 py-1.5 text-left transition-all duration-300 hover:scale-[1.02] shadow-[0_2px_8px_rgba(15,23,42,0.02)] ${
+                              hasScopedPerformance
                                 ? compactTrend !== null && compactTrend < 0
-                                  ? "border-rose-200 bg-rose-50/80 hover:bg-white hover:border-rose-300"
-                                  : "border-emerald-200 bg-emerald-50/70 hover:bg-white hover:border-emerald-300"
-                                : "border-slate-200 bg-slate-50 hover:border-slate-300 hover:bg-white"
-                              }`}
+                                  ? "border-rose-200 bg-gradient-to-br from-rose-50/90 to-pink-50/30 hover:from-white hover:to-rose-50/20 hover:border-rose-300 hover:shadow-[0_4px_12px_rgba(244,63,94,0.05)]"
+                                  : "border-emerald-200 bg-gradient-to-br from-emerald-50/80 to-teal-50/30 hover:from-white hover:to-emerald-50/10 hover:border-emerald-300 hover:shadow-[0_4px_12px_rgba(16,185,129,0.05)]"
+                                : "border-slate-200 bg-gradient-to-br from-slate-50 to-slate-100/50 hover:from-white hover:to-slate-50 hover:border-slate-300"
+                            }`}
                           >
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center justify-between gap-2">
-                                <span className="whitespace-nowrap text-[13px] font-semibold tabular-nums text-slate-900">
+                                <span className="whitespace-nowrap text-[13px] font-bold tabular-nums text-slate-800">
                                   {formatPercentValue(compactPerformance)}
                                 </span>
                                 <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${trendMeta.badgeClass}`}>
@@ -773,7 +826,7 @@ export default function MyOperationTeam() {
                                   {trendMeta.shortLabel}
                                 </span>
                               </div>
-                              <div className={`mt-2 h-1.5 overflow-hidden rounded-full ${barTrackColor}`}>
+                              <div className={`mt-1.5 h-1.5 overflow-hidden rounded-full ${barTrackColor}`}>
                                 {hasScopedPerformance ? (
                                   <div
                                     className={`h-full rounded-full ${perfBarColor(compactPerformance)}`}
@@ -794,17 +847,23 @@ export default function MyOperationTeam() {
                             </div>
                           </button>
                         </td>
-                        <td className={`px-5 py-4 align-middle ${isExpanded ? "relative z-40" : ""}`}><StatusBadge status={member.status} /></td>
-                        <td className="px-5 py-4 align-middle">
+                        <td className={`px-4 py-2.5 align-middle text-center ${isExpanded ? "relative z-40" : ""}`}>
+                          <StatusBadge status={member.status} />
+                        </td>
+                        <td className="px-4 py-2.5 align-middle text-center">
                           <button
                             onClick={(event) => {
                               event.stopPropagation();
                               setReassignTarget(member);
                             }}
                             disabled={!member.canReassign || team.length < 2}
-                            className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-xl border border-blue-200 bg-blue-50 px-3.5 py-2 text-[12px] font-medium text-blue-600 transition hover:border-blue-300 hover:bg-blue-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-50 disabled:text-slate-300"
+                            className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-4.5 py-1.5 text-[11px] font-bold uppercase tracking-wider transition-all duration-300 ${
+                              !member.canReassign || team.length < 2
+                                ? "bg-gradient-to-r from-slate-100 to-slate-200 text-slate-400 cursor-not-allowed border border-slate-200/60"
+                                : "bg-gradient-to-r from-blue-500 via-indigo-500 to-indigo-600 hover:from-blue-600 hover:via-indigo-600 hover:to-indigo-700 text-white shadow-sm hover:shadow-[0_4px_12px_rgba(99,102,241,0.25)] hover:-translate-y-0.5 active:translate-y-0 active:scale-95"
+                            }`}
                           >
-                            <IconReassign />
+                            <IconReassign size={11} />
                             Re-assign
                           </button>
                         </td>
@@ -835,24 +894,24 @@ export default function MyOperationTeam() {
                 performanceCard.open ? "translate-y-0 scale-100 opacity-100" : "translate-y-6 scale-[0.96] opacity-0"
                 }`}
             >
-              <div className="relative overflow-y-auto thin-scrollbar pb-4">
+              <div className="relative overflow-y-auto thin-scrollbar pb-3.5">
                 {/* 1. Classic Clean Header */}
-                <div className="flex items-start justify-between border-b border-slate-100 bg-white px-5 pt-4 pb-3">
+                <div className="flex items-start justify-between border-b border-slate-100 bg-gradient-to-r from-slate-50/50 via-white to-slate-50/50 px-5 py-2.5">
                   <div className="flex items-center gap-3 min-w-0 pr-4">
                     {performanceMember.profileImage ? (
                       <img
                         src={performanceMember.profileImage}
                         alt={performanceMember.name}
-                        className="h-12 w-12 shrink-0 rounded-full object-cover ring-1 ring-slate-200"
+                        className="h-10 w-10 shrink-0 rounded-full object-cover ring-2 ring-white shadow-sm"
                       />
                     ) : (
-                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-blue-50 text-base font-bold text-blue-600 ring-1 ring-blue-100">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 via-indigo-500 to-indigo-600 text-sm font-bold text-white ring-2 ring-white shadow-sm">
                         {performanceMember.initials}
                       </div>
                     )}
                     <div className="min-w-0">
-                      <p className="truncate text-[16px] font-bold text-slate-900 leading-tight">{performanceMember.name}</p>
-                      <p className="mt-0.5 truncate text-[12px] font-medium text-slate-500">
+                      <p className="truncate text-[15px] font-bold text-slate-900 leading-tight">{performanceMember.name}</p>
+                      <p className="mt-0.5 truncate text-[11px] font-semibold text-slate-500">
                         {performanceMember.employeeId || "Ops Executive"}
                       </p>
                     </div>
@@ -860,45 +919,51 @@ export default function MyOperationTeam() {
                   <button
                     type="button"
                     onClick={closePerformanceCard}
-                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-50 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-50 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 active:scale-95 cursor-pointer"
                   >
-                    <span className="text-xl leading-none">&times;</span>
+                    <span className="text-lg leading-none">&times;</span>
                   </button>
                 </div>
 
                 {/* 2. Contact Details */}
-                <div className="px-5 pt-3">
-                  <div className="space-y-2 rounded-xl bg-slate-50 px-4 py-2.5">
-                    <div className="flex items-center gap-2 text-[12px] font-medium text-slate-600">
-                      <Mail className="h-3.5 w-3.5 text-slate-400" />
+                <div className="px-5 pt-2">
+                  <div className="space-y-1 rounded-xl bg-gradient-to-br from-slate-50/80 to-slate-100/40 border border-slate-200/50 px-4 py-1.5 shadow-[0_2px_8px_rgba(15,23,42,0.01)]">
+                    <div className="flex items-center gap-2 text-[11.5px] font-semibold text-slate-600">
+                      <Mail className="h-3 w-3 text-blue-500/85 shrink-0" />
                       <span className="truncate">{performanceMember.email || "No email mapped"}</span>
                     </div>
-                    <div className="flex items-center gap-2 text-[12px] font-medium text-slate-600">
-                      <Phone className="h-3.5 w-3.5 text-slate-400" />
+                    <div className="flex items-center gap-2 text-[11.5px] font-semibold text-slate-600">
+                      <Phone className="h-3 w-3 text-emerald-500/85 shrink-0" />
                       <span>{performanceMember.phone || "No phone mapped"}</span>
                     </div>
                   </div>
                 </div>
 
                 {/* 3. Efficiency Gauge */}
-                <div className="mt-4 px-5">
-                  <div className="mb-2 flex items-end justify-between gap-3">
+                <div className="mt-2.5 px-5">
+                  <div className="mb-1.5 flex items-end justify-between gap-3">
                     <div className="flex flex-col">
-                      <span className="text-[11px] font-bold uppercase tracking-widest text-slate-400">Overall Efficiency</span>
-                      <span className="text-[12px] font-medium text-slate-500 mt-0.5">
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Overall Efficiency</span>
+                      <span className="text-[11px] font-medium text-slate-500 mt-0.5">
                         {modalCustomRangePending ? "Select dates" : performanceMember.performanceScopeLabel || modalPeriodLabel}
                       </span>
                     </div>
-                    <span className={`text-2xl font-bold tracking-tight ${performanceMemberValueClass}`}>
+                    <span className={`text-xl font-black tracking-tight ${performanceMemberValueClass}`}>
                       {formatPercentValue(performanceMemberCurrent)}
                     </span>
                   </div>
-                  <div className={`h-2.5 overflow-hidden rounded-full shadow-inner ${performanceMemberBarTone.track}`}>
+                  <div className={`h-1.5 overflow-hidden rounded-full shadow-inner ${performanceMemberBarTone.track}`}>
                     {performanceMemberCurrent === null ? (
-                      <div className="h-full w-12 rounded-full bg-slate-200" />
+                      <div className="h-full w-12 rounded-full bg-slate-200 animate-pulse" />
                     ) : (
                       <div
-                        className={`h-full rounded-full ${performanceMemberBarTone.fill}`}
+                        className={`h-full rounded-full bg-gradient-to-r ${
+                          performanceMemberCurrent >= 90 
+                            ? "from-emerald-400 to-teal-500" 
+                            : performanceMemberCurrent >= 75 
+                              ? "from-amber-400 to-orange-500" 
+                              : "from-rose-400 to-pink-500"
+                        }`}
                         style={{ width: clampPercentWidth(performanceMemberCurrent) }}
                       />
                     )}
@@ -906,27 +971,27 @@ export default function MyOperationTeam() {
                 </div>
 
                 {/* 4. Classic Metrics Grid */}
-                <div className="mt-4 px-5">
+                <div className="mt-2.5 px-5">
                   <div className="grid grid-cols-2 gap-2">
-                    <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">
-                      <p className="text-[10px] font-semibold uppercase tracking-[0.05em] text-slate-500">Scoped Queries</p>
-                      <p className="mt-1 text-[18px] font-semibold text-slate-900">{modalCustomRangePending ? "--" : performanceMember.performanceMetrics?.scopedQueries ?? 0}</p>
+                    <div className="rounded-xl border border-slate-150 bg-gradient-to-br from-blue-50/30 via-white to-white px-3 py-1.5 shadow-[0_2px_8px_rgba(59,130,246,0.02)] border-b-[3px] border-b-blue-500/80 hover:scale-[1.02] transition-transform duration-200">
+                      <p className="text-[9px] font-bold uppercase tracking-[0.05em] text-slate-450">Scoped Queries</p>
+                      <p className="text-[17px] font-extrabold text-slate-900">{modalCustomRangePending ? "--" : performanceMember.performanceMetrics?.scopedQueries ?? 0}</p>
                     </div>
-                    <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">
-                      <p className="text-[10px] font-semibold uppercase tracking-[0.05em] text-slate-500">Quotes Sent</p>
-                      <p className="mt-1 text-[18px] font-semibold text-slate-900">{modalCustomRangePending ? "--" : performanceMember.performanceMetrics?.quoteSentCount ?? 0}</p>
+                    <div className="rounded-xl border border-slate-150 bg-gradient-to-br from-violet-50/30 via-white to-white px-3 py-1.5 shadow-[0_2px_8px_rgba(139,92,246,0.02)] border-b-[3px] border-b-violet-500/80 hover:scale-[1.02] transition-transform duration-200">
+                      <p className="text-[9px] font-bold uppercase tracking-[0.05em] text-slate-450">Quotes Sent</p>
+                      <p className="text-[17px] font-extrabold text-slate-900">{modalCustomRangePending ? "--" : performanceMember.performanceMetrics?.quoteSentCount ?? 0}</p>
                     </div>
-                    <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">
-                      <p className="text-[10px] font-semibold uppercase tracking-[0.05em] text-slate-500">On-Time Rate</p>
-                      <p className="mt-1 text-[18px] font-semibold text-slate-900">
+                    <div className="rounded-xl border border-slate-150 bg-gradient-to-br from-emerald-50/30 via-white to-white px-3 py-1.5 shadow-[0_2px_8px_rgba(16,185,129,0.02)] border-b-[3px] border-b-emerald-500/80 hover:scale-[1.02] transition-transform duration-200">
+                      <p className="text-[9px] font-bold uppercase tracking-[0.05em] text-slate-455">On-Time Rate</p>
+                      <p className="text-[17px] font-extrabold text-slate-900">
                         {modalCustomRangePending || performanceMember.performanceMetrics?.onTimeRate === null || performanceMember.performanceMetrics?.onTimeRate === undefined
                           ? "--"
                           : `${performanceMember.performanceMetrics.onTimeRate}%`}
                       </p>
                     </div>
-                    <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">
-                      <p className="text-[10px] font-semibold uppercase tracking-[0.05em] text-slate-500">Conversion</p>
-                      <p className="mt-1 text-[18px] font-semibold text-slate-900">
+                    <div className="rounded-xl border border-slate-150 bg-gradient-to-br from-amber-50/30 via-white to-white px-3 py-1.5 shadow-[0_2px_8px_rgba(245,158,11,0.02)] border-b-[3px] border-b-amber-500/80 hover:scale-[1.02] transition-transform duration-200">
+                      <p className="text-[9px] font-bold uppercase tracking-[0.05em] text-slate-455">Conversion</p>
+                      <p className="text-[17px] font-extrabold text-slate-900">
                         {modalCustomRangePending || performanceMember.performanceMetrics?.conversionRate === null || performanceMember.performanceMetrics?.conversionRate === undefined
                           ? "--"
                           : `${performanceMember.performanceMetrics.conversionRate}%`}
@@ -936,29 +1001,29 @@ export default function MyOperationTeam() {
                 </div>
 
                 {/* 5. Classic Filter Block */}
-                <div className="mt-4 px-5">
-                  <div className="rounded-xl border border-slate-100 bg-slate-50 p-2.5">
-                    <div className="mb-2 flex items-center justify-between gap-2">
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.05em] text-slate-500">Performance Range</p>
+                <div className="mt-2.5 px-5">
+                  <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 via-slate-100/50 to-slate-100/30 p-2.5 shadow-inner">
+                    <div className="mb-1.5 flex items-center justify-between gap-2">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-450">Performance Range</p>
                       <div className="flex items-center gap-2">
                         {modalRefreshing ? (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-1 text-[10px] font-semibold text-slate-500 ring-1 ring-slate-200">
-                            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-slate-400" />
+                          <span className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-0.5 text-[9px] font-bold text-slate-500 ring-1 ring-slate-200/50 animate-pulse">
+                            <span className="h-1 w-1 rounded-full bg-slate-400" />
                             Updating
                           </span>
                         ) : null}
-                        <span className="text-[11px] font-medium text-slate-500">
+                        <span className="text-[9px] font-bold text-slate-500 bg-white/80 border border-slate-200/60 rounded-full px-2 py-0.5">
                           {modalPeriod === "custom" ? "Custom" : modalPeriodLabel}
                         </span>
                       </div>
                     </div>
 
-                    <div className="grid gap-2">
+                    <div className="grid gap-1.5">
                       <div className="relative">
                         <select
                           value={modalPeriod}
                           onChange={(event) => setModalPeriod(event.target.value)}
-                          className="h-9 w-full appearance-none rounded-lg border border-slate-200 bg-white pl-3 pr-8 text-[12px] font-medium text-slate-700 outline-none transition focus:border-blue-400"
+                          className="h-8 w-full appearance-none rounded-full border border-slate-200 bg-white pl-4 pr-10 text-[11px] font-semibold text-slate-700 outline-none transition focus:border-blue-400 focus:bg-white cursor-pointer"
                         >
                           <option value="current_month">Current Month</option>
                           <option value="previous_month">Previous Month</option>
@@ -966,23 +1031,23 @@ export default function MyOperationTeam() {
                           <option value="previous_year">Previous Year</option>
                           <option value="custom">Custom Range</option>
                         </select>
-                        <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                        <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                       </div>
 
-                      <div className="grid grid-cols-2 gap-2">
+                      <div className="grid grid-cols-2 gap-1.5">
                         <input
                           type="date"
                           value={selectedRangeStartValue}
                           onChange={(event) => setModalCustomStartDate(event.target.value)}
                           disabled={modalPeriod !== "custom"}
-                          className="h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-[11px] font-medium text-slate-700 outline-none transition focus:border-blue-400 disabled:cursor-not-allowed disabled:opacity-50"
+                          className="h-8 w-full rounded-full border border-slate-200 bg-white px-4 text-[10px] font-semibold text-slate-700 outline-none transition focus:border-blue-400 disabled:cursor-not-allowed disabled:bg-slate-50/50 disabled:opacity-60 cursor-pointer"
                         />
                         <input
                           type="date"
                           value={selectedRangeEndValue}
                           onChange={(event) => setModalCustomEndDate(event.target.value)}
                           disabled={modalPeriod !== "custom"}
-                          className="h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-[11px] font-medium text-slate-700 outline-none transition focus:border-blue-400 disabled:cursor-not-allowed disabled:opacity-50"
+                          className="h-8 w-full rounded-full border border-slate-200 bg-white px-4 text-[10px] font-semibold text-slate-700 outline-none transition focus:border-blue-400 disabled:cursor-not-allowed disabled:bg-slate-50/50 disabled:opacity-60 cursor-pointer"
                         />
                       </div>
                     </div>

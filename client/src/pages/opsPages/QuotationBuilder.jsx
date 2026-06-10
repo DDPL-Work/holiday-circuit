@@ -12,7 +12,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { FaStar, FaWater } from "react-icons/fa";
 import { GiCityCar, GiModernCity, } from "react-icons/gi";
@@ -194,6 +194,27 @@ AUD: "AUD",
 const normalizeCurrencyCode = (currency = "INR") =>
 String(currency || "INR").trim().toUpperCase() || "INR";
 
+const DESTINATION_ALIAS_GROUPS = [
+["dharamshala", "dharamsala", "mcleod ganj", "mcleodganj", "mc leod ganj", "mcleodgunj"],
+];
+
+const expandDestinationAliases = (values = []) => {
+const normalizedValues = values
+.map((value) => String(value || "").trim())
+.filter(Boolean);
+const expanded = new Set(normalizedValues);
+
+normalizedValues.forEach((value) => {
+DESTINATION_ALIAS_GROUPS.forEach((group) => {
+if (group.includes(value)) {
+group.forEach((alias) => expanded.add(alias));
+}
+});
+});
+
+return Array.from(expanded);
+};
+
 const roundCurrencyAmount = (value) =>
 Math.round(Number(value || 0));
 
@@ -217,6 +238,15 @@ maximumFractionDigits: 4,
 
 const formatCurrencyValue = (value, currency = "INR") =>
 `${getCurrencyLabel(currency)} ${formatAmountValue(value)}`;
+
+const getCurrentUserRole = () => {
+try {
+const user = JSON.parse(sessionStorage.getItem("user") || "{}");
+return String(user?.role || "").trim();
+} catch {
+return "";
+}
+};
 
 const formatShareDate = (value) => {
 if (!value) return "-";
@@ -246,14 +276,18 @@ if (infants > 0) parts.push(`${infants} Infant${infants === 1 ? "" : "s"}`);
 return parts.join(", ") || "Traveler details pending";
 };
 
-const buildShareServiceQuantityLabel = (service = {}) => {
+const getQueryPassengerCount = (query = {}) =>
+Number(query?.numberOfAdults || 0) + Number(query?.numberOfChildren || 0);
+
+const buildShareServiceQuantityLabel = (service = {}, fallbackPax = 0) => {
 const normalizedType = normalizeServiceFilterType(service?.type);
 const details = [];
 
 if (normalizedType === "hotel") {
+const hotelPax = Number(fallbackPax || 0) || Number(service?.pax || 0);
 if (Number(service?.nights || 0) > 0) details.push(`${service.nights}N`);
 if (Number(service?.rooms || 0) > 0) details.push(`${service.rooms} Room${Number(service.rooms) > 1 ? "s" : ""}`);
-if (Number(service?.pax || 0) > 0) details.push(`${service.pax} Pax`);
+if (hotelPax > 0) details.push(`${hotelPax} Pax`);
 return details.join(" | ");
 }
 
@@ -354,6 +388,8 @@ const DEFAULT_WHATSAPP_TERMS = Object.freeze([
   "Hotel check-in, check-out, and supplier-specific policies will apply as per service rules.",
   "Please review and confirm within the validity period to avoid fare or rate changes.",
 ]);
+
+const SHOW_SELECTED_HISTORY_COMPARISON = false;
 
 const normalizeWhatsAppPhoneNumber = (value = "") => {
 const digits = String(value || "").replace(/\D/g, "");
@@ -1391,12 +1427,17 @@ const buildWhatsAppTermsSection = (items = []) => {
   TRANSPORT_USAGE_FIXED_PRICES[normalizeTransportUsageValue(usageType)] || 0;
 
   const getResolvedHotelBaseRate = (service = {}, fallbackRate = 0) => {
+  const explicitRate = Number(fallbackRate ?? service?.rate ?? service?.price ?? 0);
   if (normalizeServiceFilterType(service?.type) !== "hotel") {
-  return roundCurrencyAmount(Number(fallbackRate ?? service?.rate ?? service?.price ?? 0));
+  return roundCurrencyAmount(explicitRate);
   }
 
   if (service?.hotelRateMode === "service-total") {
-  return roundCurrencyAmount(Number(fallbackRate ?? service?.rate ?? service?.price ?? 0));
+  return roundCurrencyAmount(explicitRate);
+  }
+
+  if (explicitRate > 0) {
+  return roundCurrencyAmount(explicitRate);
   }
 
   const fixedRoomTypePrice = getFixedHotelRoomTypePrice(service?.roomType);
@@ -1404,7 +1445,7 @@ const buildWhatsAppTermsSection = (items = []) => {
   return roundCurrencyAmount(fixedRoomTypePrice);
   }
 
-  return roundCurrencyAmount(Number(fallbackRate ?? service?.rate ?? service?.price ?? 0));
+  return roundCurrencyAmount(explicitRate);
   };
 
   const getTransportUsageOptionDisplayPrice = (service = {}, usageType = "") => {
@@ -1482,6 +1523,7 @@ const buildWhatsAppTermsSection = (items = []) => {
   return {
   ...service,
   rate: adjustedRate,
+  quoteBaseRate: adjustedRate,
   currency: normalizeCurrencyCode(fallbackCurrency || service.currency || "INR"),
   };
   };
@@ -1537,6 +1579,112 @@ const buildWhatsAppTermsSection = (items = []) => {
   );
   };
 
+  const getHotelRoomTypeOptionRate = (hotelVariants = [], service = {}, roomType = "") => {
+  const bestVariant = getHotelVariantForOption(hotelVariants, service, "roomType", roomType);
+  const variantRate = Number(bestVariant?.rate ?? bestVariant?.price ?? 0);
+  const fixedPrice = getFixedHotelRoomTypePrice(roomType);
+
+  if (variantRate > 0) {
+  return {
+  amount: roundCurrencyAmount(variantRate),
+  currency: normalizeCurrencyCode(bestVariant?.currency || service.currency || "INR"),
+  variant: bestVariant,
+  };
+  }
+
+  if (fixedPrice > 0) {
+  return {
+  amount: roundCurrencyAmount(fixedPrice),
+  currency: "INR",
+  variant: bestVariant,
+  };
+  }
+
+  return {
+  amount: 0,
+  currency: normalizeCurrencyCode(service.currency || "INR"),
+  variant: bestVariant,
+  };
+  };
+
+  const getAdjustedHotelRoomTypeRate = (hotelVariants = [], service = {}, selectedRoomType = "") => {
+  const baseline = service.editBaseline || buildServiceEditBaseline(service);
+  const baselineRate = roundCurrencyAmount(
+  baseline.quoteBaseRate ||
+  baseline.originalTotal ||
+  baseline.total ||
+  service.quoteBaseRate ||
+  service.originalTotal ||
+  service.total ||
+  service.rate ||
+  baseline.rate ||
+  0,
+  );
+  const baselineRoomType = baseline.roomType || service.roomType || "";
+  const selectedMatchesBaseline =
+  normalizeHotelRoomTypeLookupKey(selectedRoomType) === normalizeHotelRoomTypeLookupKey(baselineRoomType);
+  const baselineOptionRate = Number(baseline.roomTypeOptionRate || 0);
+  const baselineOptionCurrency = normalizeCurrencyCode(
+  baseline.roomTypeOptionCurrency || service.currency || "INR",
+  );
+  const baselineOption = baselineOptionRate > 0
+  ? {
+  amount: roundCurrencyAmount(baselineOptionRate),
+  currency: baselineOptionCurrency,
+  variant: null,
+  }
+  : getHotelRoomTypeOptionRate(hotelVariants, service, baselineRoomType);
+  const selectedOption = getHotelRoomTypeOptionRate(hotelVariants, service, selectedRoomType);
+
+  if (selectedMatchesBaseline && baselineRate > 0) {
+  return {
+  amount: baselineRate,
+  currency: baselineOption.currency || normalizeCurrencyCode(service.currency || "INR"),
+  variant: selectedOption.variant,
+  };
+  }
+
+  if (baselineRate > 0 && baselineOption.amount > 0 && selectedOption.amount > 0) {
+  return {
+  amount: Math.max(
+  0,
+  roundCurrencyAmount(baselineRate + (selectedOption.amount - baselineOption.amount)),
+  ),
+  currency: selectedOption.currency,
+  variant: selectedOption.variant,
+  };
+  }
+
+  return {
+  amount: selectedOption.amount || baselineRate,
+  currency: selectedOption.currency,
+  variant: selectedOption.variant,
+  };
+  };
+
+  const getHotelBaseRateDisplayValue = (service = {}) => {
+  if (normalizeServiceFilterType(service?.type) !== "hotel") {
+  return roundCurrencyAmount(service?.rate || 0);
+  }
+
+  return roundCurrencyAmount(
+  !service?.manualRateOverride
+  ? service?.roomTypeOptionRate ||
+  service?.price ||
+  service?.rate ||
+  service?.quoteBaseRate ||
+  service?.originalTotal ||
+  service?.total ||
+  0
+  :
+  service?.quoteBaseRate ||
+  service?.originalTotal ||
+  service?.total ||
+  service?.rate ||
+  0,
+  );
+  };
+
   const getHotelVariantOptions = (services = [], service = {}) => {
   const hotelVariants = getHotelVariantServices(services, service);
   const roomCategories = buildSelectOptionsWithFallback(
@@ -1554,15 +1702,12 @@ const buildWhatsAppTermsSection = (items = []) => {
   HOTEL_ROOM_TYPE_OPTIONS,
   );
   const roomTypeOptions = roomTypes.map((value) => {
-  const bestVariant = getHotelVariantForOption(hotelVariants, service, "roomType", value);
-  const fixedPrice = getFixedHotelRoomTypePrice(value);
-  const rate = fixedPrice || Number(bestVariant?.rate ?? bestVariant?.price ?? 0);
-  const currency = fixedPrice ? "INR" : normalizeCurrencyCode(bestVariant?.currency || service.currency || "INR");
-  const hasPrice = rate > 0;
+  const optionRate = getHotelRoomTypeOptionRate(hotelVariants, service, value);
+  const hasPrice = optionRate.amount > 0;
 
   return {
   value,
-  label: hasPrice ? `${value} (${formatCurrencyValue(rate, currency)})` : value,
+  label: hasPrice ? `${value} (${formatCurrencyValue(optionRate.amount, optionRate.currency)})` : value,
   };
   });
   const bedTypes = Array.from(
@@ -1638,15 +1783,42 @@ const buildWhatsAppTermsSection = (items = []) => {
   );
 
   if (!bestVariant) {
+  if (changedField === "roomType") {
+  const adjustedRoomTypeRate = getAdjustedHotelRoomTypeRate(hotelVariants, nextService, value);
+  if (adjustedRoomTypeRate.amount > 0) {
+  return {
+  ...nextService,
+  useStoredPricing: false,
+  manualRateOverride: true,
+  originalTotal: 0,
+  totalInInr: 0,
+  priceInInr: 0,
+  hotelRateMode: "unit-rate",
+  rate: roundCurrencyAmount(adjustedRoomTypeRate.amount),
+  quoteBaseRate: roundCurrencyAmount(adjustedRoomTypeRate.amount),
+  currency: adjustedRoomTypeRate.currency,
+  };
+  }
+  }
+
   return applyFixedHotelOptionPricing(nextService, nextService.rate, nextService.currency);
   }
 
+  const adjustedRoomTypeRate =
+  changedField === "roomType"
+  ? getAdjustedHotelRoomTypeRate(hotelVariants, nextService, value)
+  : null;
   const matchedVariantRate = Number(bestVariant.rate ?? bestVariant.price ?? 0);
   const matchedVariantCurrency = normalizeCurrencyCode(
-  bestVariant.currency || nextService.currency || "INR",
+  adjustedRoomTypeRate?.currency || bestVariant.currency || nextService.currency || "INR",
   );
   const matchedVariantService = {
   ...nextService,
+  useStoredPricing: false,
+  manualRateOverride: true,
+  originalTotal: 0,
+  totalInInr: 0,
+  priceInInr: 0,
   serviceId: bestVariant.serviceId || bestVariant.id || nextService.serviceId,
   supplierId: bestVariant.supplierId || nextService.supplierId,
   supplierName: bestVariant.supplierName || nextService.supplierName,
@@ -1665,10 +1837,21 @@ const buildWhatsAppTermsSection = (items = []) => {
   cwoebRate: Number(bestVariant.cwoebRate || 0),
   };
 
+  if (adjustedRoomTypeRate?.amount > 0) {
+  return {
+  ...matchedVariantService,
+  hotelRateMode: "unit-rate",
+  rate: roundCurrencyAmount(adjustedRoomTypeRate.amount),
+  quoteBaseRate: roundCurrencyAmount(adjustedRoomTypeRate.amount),
+  currency: matchedVariantCurrency,
+  };
+  }
+
   if (matchedVariantRate > 0 && matchedVariantService.hotelRateMode !== "service-total") {
   return {
   ...matchedVariantService,
   rate: roundCurrencyAmount(matchedVariantRate),
+  quoteBaseRate: roundCurrencyAmount(matchedVariantRate),
   currency: matchedVariantCurrency,
   };
   }
@@ -1732,7 +1915,7 @@ const buildWhatsAppTermsSection = (items = []) => {
   .map((part) => normalizeDestinationMatchText(part))
   .filter((part) => part && part.length >= 3);
 
-  return Array.from(new Set([normalizedFull, ...normalizedParts].filter(Boolean)));
+  return expandDestinationAliases([normalizedFull, ...normalizedParts]);
   };
 
   const doesServiceMatchDestination = (service = {}, destination = "") => {
@@ -1918,9 +2101,18 @@ const buildWhatsAppTermsSection = (items = []) => {
   normalizedType === "hotel"
   ? normalizeBedTypeValue(service.bedType) || "double-bed"
   : normalizeBedTypeValue(service.bedType) || normalizeComparisonTextValue(service.bedType);
+  const isHotelServiceTotal =
+  normalizedType === "hotel" && service?.hotelRateMode === "service-total";
 
   return ({
-  rate: roundCurrencyAmount(service.price ?? service.rate ?? 0),
+  quoteBaseRate: roundCurrencyAmount(service.quoteBaseRate ?? service.originalTotal ?? service.total ?? service.rate ?? 0),
+  originalTotal: roundCurrencyAmount(service.originalTotal ?? service.total ?? 0),
+  total: roundCurrencyAmount(service.total ?? service.originalTotal ?? 0),
+  rate: roundCurrencyAmount(
+  isHotelServiceTotal
+  ? service.originalTotal ?? service.total ?? service.rate ?? service.price ?? 0
+  : service.price ?? service.rate ?? 0,
+  ),
   serviceDate: normalizeComparisonDateValue(service.serviceDate),
   nights: normalizeComparisonCountValue(service.nights),
   days: Number(service.days || 1),
@@ -1929,6 +2121,17 @@ const buildWhatsAppTermsSection = (items = []) => {
   usageType: normalizeTransportUsageValue(service.usageType),
   roomCategory: normalizeComparisonTextValue(normalizedRoomCategory),
   roomType: normalizeComparisonTextValue(resolvedRoomType),
+  roomTypeOptionRate: roundCurrencyAmount(
+  service.roomTypeOptionRate ??
+  service.baseRoomTypeRate ??
+  service.contractRoomTypeRate ??
+  service.price ??
+  (isHotelServiceTotal ? 0 : service.rate) ??
+  0,
+  ),
+  roomTypeOptionCurrency: normalizeCurrencyCode(
+  service.roomTypeOptionCurrency || service.currency || "INR",
+  ),
   bedType: normalizedBedType,
   extraAdult: Boolean(service.extraAdult),
   childWithBed: Boolean(service.childWithBed),
@@ -2199,7 +2402,7 @@ const buildWhatsAppTermsSection = (items = []) => {
     pkg.city,
     pkg.country,
     ]
-    .map((value) => normalizeLocationLabel(value))
+    .flatMap((value) => expandDestinationAliases([normalizeLocationLabel(value)]))
     .filter(Boolean);
 
     const getServiceLocationNames = (service = {}) =>
@@ -2207,7 +2410,7 @@ const buildWhatsAppTermsSection = (items = []) => {
     service.city,
     service.country,
     ]
-    .map((value) => normalizeLocationLabel(value))
+    .flatMap((value) => expandDestinationAliases([normalizeLocationLabel(value)]))
     .filter(Boolean);
 
     const doesServiceMatchPackageLocation = (service = {}, pkg = {}) => {
@@ -2298,8 +2501,17 @@ const buildWhatsAppTermsSection = (items = []) => {
 
     if (
     overlappingTokens.length === 1 &&
-    (packageTokens.length <= 2 || serviceTokens.length <=2) ) { bestScore=Math.max(bestScore, 58); } } } return
-      bestScore; }; const buildPackageServicePatch=(item={}, service={})=> {
+    (packageTokens.length <= 2 || serviceTokens.length <= 2)
+    ) {
+    bestScore = Math.max(bestScore, 58);
+    }
+    }
+    }
+
+    return bestScore;
+    };
+
+    const buildPackageServicePatch=(item={}, service={})=> {
       const quantity = getPackageServiceQuantity(
       item,
       service.type === "hotel"
@@ -2432,6 +2644,8 @@ const buildWhatsAppTermsSection = (items = []) => {
       const hasOrderContext = Boolean(order?._id);
       const orderQueryId = order?.queryId || "";
       const navigate = useNavigate();
+      const currentUserRole = useMemo(() => getCurrentUserRole(), []);
+      const showLatestSentQuotationCard = currentUserRole === "operations";
       const DEFAULT_GST_PERCENT = 5;
       const DEFAULT_TCS_PERCENT = 0;
       const DEFAULT_TOURISM_AMOUNT = 500;
@@ -2498,6 +2712,10 @@ const buildWhatsAppTermsSection = (items = []) => {
       const [services, setServices] = useState([]);
       const [servicesLoading, setServicesLoading] = useState(true);
       const [servicesLoadError, setServicesLoadError] = useState("");
+      const backgroundRatesRefreshRef = useRef({
+      inFlight: false,
+      lastStartedAt: 0,
+      });
       const [quotationId, setQuotationId] = useState("");
       const [loadedQuotationDraft, setLoadedQuotationDraft] = useState(null);
       const [baseServicesSnapshot, setBaseServicesSnapshot] = useState([]);
@@ -2512,7 +2730,10 @@ const buildWhatsAppTermsSection = (items = []) => {
       const [editingTargetQuotationId, setEditingTargetQuotationId] = useState(
       String(order?.editQuotationId || "").trim(),
       );
+      const [editingSourceQuotationSnapshot, setEditingSourceQuotationSnapshot] = useState(null);
+      const editingSourceQuotationSnapshotRef = useRef(null);
       const [isFreshDraftMode, setIsFreshDraftMode] = useState(false);
+      const [draftSourceReloadRequest, setDraftSourceReloadRequest] = useState(0);
       const [resolvedAgentPhone, setResolvedAgentPhone] = useState(
       String(order?.agent?.phone || "").trim(),
       );
@@ -2814,11 +3035,14 @@ const buildWhatsAppTermsSection = (items = []) => {
       quotationHistory.find((quotation) => quotation.id === selectedHistoryQuotationId) || null,
       [quotationHistory, selectedHistoryQuotationId],
       );
-
-      const activeHistoryQuotation = useMemo(
+      const latestSentQuotation = useMemo(
       () =>
-      quotationHistory.find((quotation) => quotation.id === editingTargetQuotationId) || null,
-      [quotationHistory, editingTargetQuotationId],
+      quotationHistory.find((quotation) =>
+      ["Quote Sent", "Quote Accepted", "Markup Applied", "Sent to Client", "Confirmed"].includes(
+      String(quotation?.status || "").trim(),
+      ),
+      ) || quotationHistory[0] || null,
+      [quotationHistory],
       );
 
       const resetBuilderWorkspace = () => {
@@ -2951,6 +3175,7 @@ const buildWhatsAppTermsSection = (items = []) => {
         ? {
         params: {
         sourceQuotationId: activeDraftSourceQuotationId,
+        ...(draftSourceReloadRequest ? { refreshFromSource: true } : {}),
         },
         }
         : undefined;
@@ -2970,13 +3195,16 @@ const buildWhatsAppTermsSection = (items = []) => {
       } catch (error) {
       console.error("Failed to load quotation draft", error);
       } finally {
+      if (draftSourceReloadRequest) {
+      setDraftSourceReloadRequest(0);
+      }
       setDraftHydrated(false);
       }
       };
 
       loadQuotationDraft();
       // eslint-disable-next-line react-hooks/exhaustive-deps
-      }, [order?._id, activeDraftSourceQuotationId, isFreshDraftMode, baseServicesSnapshot.length]);
+      }, [order?._id, activeDraftSourceQuotationId, isFreshDraftMode, draftSourceReloadRequest, baseServicesSnapshot.length]);
 
       const getTripDuration = (start, end) => {
       if (!start || !end) {
@@ -3045,6 +3273,9 @@ const buildWhatsAppTermsSection = (items = []) => {
       normalizeBedTypeValue(service.bedType) ||
       normalizeBedTypeValue(overrides.fallbackBedType) ||
       "double-bed";
+      const normalizedServiceType = normalizeServiceFilterType(service.type);
+      const overrideFullServiceAmount = roundCurrencyAmount(overrides.fullServiceAmount || 0);
+      const overrideBaseServiceAmount = roundCurrencyAmount(overrides.baseServiceAmount || 0);
       const resolvedRate = getResolvedHotelBaseRate(
       {
       ...service,
@@ -3054,6 +3285,25 @@ const buildWhatsAppTermsSection = (items = []) => {
       },
       Number(service.price ?? service.rate ?? 0),
       );
+      const hotelQuantity =
+      normalizedServiceType === "hotel"
+      ? Math.max(Number(service.nights || 1), 1) * Math.max(Number(service.rooms || 1), 1)
+      : 1;
+      const resolvedStoredTotal = roundCurrencyAmount(
+      overrideFullServiceAmount || service.total || service.originalTotal || service.totalInInr || 0,
+      );
+      const resolvedBaseRate = normalizedServiceType === "hotel"
+      ? roundCurrencyAmount(
+      overrideBaseServiceAmount ||
+      service.quoteBaseRate ||
+      service.price ||
+      service.rate ||
+      (resolvedStoredTotal > 0 ? resolvedStoredTotal / hotelQuantity : 0) ||
+      resolvedRate ||
+      0,
+      )
+      : resolvedRate;
+      const quoteBaseRate = resolvedBaseRate;
 
       return {
       id: overrides.id || service.serviceId || service._id,
@@ -3072,16 +3322,24 @@ const buildWhatsAppTermsSection = (items = []) => {
       usageType: service.usageType || "",
       passengerCapacity: service.passengerCapacity || 0,
       luggageCapacity: service.luggageCapacity || 0,
-      rate: resolvedRate,
+      rate: quoteBaseRate,
+      quoteBaseRate,
+      roomTypeOptionRate: roundCurrencyAmount(
+      service.roomTypeOptionRate ?? service.price ?? service.rate ?? resolvedRate ?? 0,
+      ),
+      roomTypeOptionCurrency: normalizeCurrencyCode(
+      service.roomTypeOptionCurrency || service.currency || "INR",
+      ),
       awebRate: Number(service.awebRate || 0),
       cwebRate: Number(service.cwebRate || 0),
       cwoebRate: Number(service.cwoebRate || 0),
       currency: normalizeCurrencyCode(service.currency || "INR"),
       exchangeRate: Number(service.exchangeRate || 1),
       priceInInr: Number(service.priceInInr || 0),
-      originalTotal: Number(service.total || 0),
+      originalTotal: resolvedStoredTotal,
       totalInInr: Number(service.totalInInr || 0),
       useStoredPricing: overrides.useStoredPricing ?? true,
+      manualRateOverride: Boolean(service.manualRateOverride || overrides.manualRateOverride),
       serviceDate: formatDateInput(service.serviceDate),
       nights: service.nights || "",
       days: service.days || 1,
@@ -3097,13 +3355,17 @@ const buildWhatsAppTermsSection = (items = []) => {
       extraAdult: Boolean(service.extraAdult),
       childWithBed: Boolean(service.childWithBed),
       childWithoutBed: Boolean(service.childWithoutBed),
-      hotelRateMode:
-      normalizeServiceFilterType(service.type) === "hotel"
-      ? "service-total"
-      : "unit-rate",
+      hotelRateMode: "unit-rate",
       checked: overrides.checked ?? true,
       custom: overrides.custom ?? !service.serviceId,
-      editBaseline: overrides.editBaseline || buildServiceEditBaseline(service),
+      editBaseline: overrides.editBaseline || buildServiceEditBaseline({
+      ...service,
+      hotelRateMode: "unit-rate",
+      quoteBaseRate,
+      originalTotal: resolvedStoredTotal,
+      roomTypeOptionRate: service.roomTypeOptionRate ?? service.price ?? service.rate ?? resolvedRate ?? 0,
+      roomTypeOptionCurrency: service.roomTypeOptionCurrency || service.currency || "INR",
+      }),
       icon: meta.icon,
       color: meta.color,
       };
@@ -3111,21 +3373,83 @@ const buildWhatsAppTermsSection = (items = []) => {
 
       const mergeDraftServicesIntoAvailableServices = (availableServices = [], quotation = null) => {
       const draftServices = Array.isArray(quotation?.services) ? quotation.services : [];
+      const sourceQuotationSnapshot =
+      editingSourceQuotationSnapshotRef.current || editingSourceQuotationSnapshot;
+      const sourceSnapshotServices = Array.isArray(sourceQuotationSnapshot?.services)
+      ? sourceQuotationSnapshot.services
+      : [];
 
       if (!draftServices.length) {
       return availableServices;
       }
 
       const usedDraftIndexes = new Set();
+      const normalizeDraftMatchValue = (value = "") =>
+      String(value || "").trim().toLowerCase();
+      const normalizeDraftServiceId = (value = "") => {
+      if (!value) return "";
+      if (typeof value === "object") {
+      return String(value?._id || value?.id || "").trim();
+      }
+      return String(value || "").trim();
+      };
+
+      const getServiceMatchKey = (service = {}) =>
+      [
+      normalizeServiceFilterType(service?.type),
+      normalizeDraftMatchValue(service?.title || service?.hotelName || service?.name),
+      normalizeDraftMatchValue(service?.city),
+      normalizeDraftMatchValue(service?.country),
+      normalizeDraftMatchValue(service?.roomType),
+      normalizeDraftMatchValue(service?.roomCategory),
+      normalizeDraftMatchValue(normalizeBedTypeValue(service?.bedType)),
+      ].join("|");
+
+      const getServiceSourceMatchKey = (service = {}) =>
+      [
+      normalizeServiceFilterType(service?.type),
+      normalizeDraftMatchValue(service?.title || service?.hotelName || service?.name),
+      normalizeDraftMatchValue(service?.city),
+      normalizeDraftMatchValue(service?.country),
+      normalizeDraftServiceId(service?.supplierId || service?.dmcId),
+      ].join("|");
+
+      const doServicesRepresentSameSource = (draftService = {}, currentService = {}) => {
+      const draftSourceId = normalizeDraftServiceId(draftService?.serviceId || draftService?.dbServiceId);
+      const draftDocumentId = normalizeDraftServiceId(draftService?._id || draftService?.draftServiceId);
+      const currentSourceId = normalizeDraftServiceId(currentService?.serviceId || currentService?.id);
+      const currentDraftId = normalizeDraftServiceId(currentService?.dbServiceId);
+
+      if (draftSourceId && currentSourceId && draftSourceId === currentSourceId) {
+      return true;
+      }
+
+      if (draftDocumentId && currentDraftId && draftDocumentId === currentDraftId) {
+      return true;
+      }
+
+      const draftKey = getServiceMatchKey(draftService);
+      const currentKey = getServiceMatchKey(currentService);
+
+      if (draftKey && currentKey && draftKey === currentKey) {
+      return true;
+      }
+
+      const draftSourceKey = getServiceSourceMatchKey(draftService);
+      const currentSourceKey = getServiceSourceMatchKey(currentService);
+
+      return Boolean(
+      draftSourceKey &&
+      currentSourceKey &&
+      draftSourceKey === currentSourceKey,
+      );
+      };
 
       const mergedBaseServices = availableServices.map((service) => {
       const matchIndex = draftServices.findIndex((draftService, index) => {
       if (usedDraftIndexes.has(index)) return false;
 
-      const draftSourceId = String(draftService?.serviceId || "").trim();
-      const currentSourceId = String(service?.serviceId || service?.id || "").trim();
-
-      return Boolean(draftSourceId && currentSourceId && draftSourceId === currentSourceId);
+      return doServicesRepresentSameSource(draftService, service);
       });
 
       if (matchIndex === -1) {
@@ -3134,41 +3458,310 @@ const buildWhatsAppTermsSection = (items = []) => {
 
       usedDraftIndexes.add(matchIndex);
       const draftService = draftServices[matchIndex];
-
-      return {
-      ...service,
-      ...mapDraftServiceToUi(draftService, {
+      const sourceSnapshotService =
+      sourceSnapshotServices.find((sourceService) =>
+      doServicesRepresentSameSource(sourceService, service) ||
+      doServicesRepresentSameSource(sourceService, draftService),
+      ) || null;
+      const normalizedDraftType = normalizeServiceFilterType(draftService.type || service.type);
+      const hotelQuantity = Math.max(Number(draftService.nights || service.nights || 1), 1) *
+      Math.max(Number(draftService.rooms || service.rooms || 1), 1);
+      const serviceQuantity =
+      normalizedDraftType === "hotel"
+      ? hotelQuantity
+      : normalizedDraftType === "transfer"
+      ? Math.max(Number(draftService.days || service.days || 1), 1)
+      : normalizedDraftType === "activity"
+      ? Math.max(Number(draftService.pax || service.pax || 1), 1)
+      : normalizedDraftType === "sightseeing"
+      ? Math.max(Number(draftService.pax || service.pax || 1), Number(draftService.days || service.days || 1), 1)
+      : 1;
+      const liveBaseServiceAmount = roundCurrencyAmount(
+      Number(service.roomTypeOptionRate || 0) ||
+      Number(service.price || 0) ||
+      Number(service.rate || 0) ||
+      Number(service.quoteBaseRate || 0) ||
+      0,
+      );
+      const storedBaseServiceAmount = roundCurrencyAmount(
+      Number(service.quoteBaseRate || 0) ||
+      Number(service.price || 0) ||
+      Number(service.rate || 0) ||
+      0,
+      );
+      const shouldRefreshLiveDraftRate =
+      liveBaseServiceAmount > 0 &&
+      !draftService.manualRateOverride;
+      const sourceBaseServiceAmount = roundCurrencyAmount(
+      shouldRefreshLiveDraftRate
+      ? liveBaseServiceAmount
+      :
+      Number(sourceSnapshotService?.quoteBaseRate || 0) ||
+      Number(sourceSnapshotService?.price || 0) ||
+      Number(sourceSnapshotService?.rate || 0) ||
+      Number(draftService.quoteBaseRate || 0) ||
+      Number(draftService.price || 0) ||
+      Number(draftService.rate || 0) ||
+      storedBaseServiceAmount ||
+      0,
+      );
+      const refreshedServiceTotal = roundCurrencyAmount(
+      (
+      sourceBaseServiceAmount +
+      (normalizedDraftType === "hotel" && draftService.extraAdult ? Number(service.awebRate || draftService.awebRate || 0) : 0) +
+      (normalizedDraftType === "hotel" && draftService.childWithBed ? Number(service.cwebRate || draftService.cwebRate || 0) : 0) +
+      (normalizedDraftType === "hotel" && draftService.childWithoutBed ? Number(service.cwoebRate || draftService.cwoebRate || 0) : 0)
+      ) * serviceQuantity,
+      );
+      const sourceStoredTotal = roundCurrencyAmount(
+      shouldRefreshLiveDraftRate
+      ? refreshedServiceTotal
+      :
+      Math.max(
+      Number(sourceSnapshotService?.total || 0),
+      Number(sourceSnapshotService?.originalTotal || 0),
+      Number(draftService.total || 0),
+      Number(draftService.originalTotal || 0),
+      Number(service.total || 0),
+      Number(service.originalTotal || 0),
+      sourceBaseServiceAmount * hotelQuantity,
+      0,
+      ),
+      );
+      const draftMappedService = mapDraftServiceToUi(draftService, {
       id: service.id,
       custom: false,
       useStoredPricing: true,
+      fullServiceAmount: sourceStoredTotal,
+      baseServiceAmount: sourceBaseServiceAmount,
       fallbackRoomType: service.roomType || "",
       fallbackRoomCategory: service.roomCategory || "Double",
       fallbackBedType: service.bedType || "",
       editBaseline: buildServiceEditBaseline({
-      ...draftService,
+      ...(sourceSnapshotService || draftService),
+      hotelRateMode: "unit-rate",
+      quoteBaseRate: sourceBaseServiceAmount,
+      originalTotal: sourceStoredTotal,
       roomType: inferHotelRoomTypeValue(draftService) || service.roomType || "",
       roomCategory: draftService.roomCategory || service.roomCategory || "Double",
       bedType: normalizeBedTypeValue(draftService.bedType) || service.bedType || "",
+      roomTypeOptionRate:
+      sourceSnapshotService?.roomTypeOptionRate ??
+      draftService.roomTypeOptionRate ??
+      service.rate ??
+      service.price ??
+      0,
+      roomTypeOptionCurrency:
+      sourceSnapshotService?.roomTypeOptionCurrency ||
+      draftService.roomTypeOptionCurrency ||
+      service.currency ||
+      draftService.currency ||
+      "INR",
       }),
-      }),
+      });
+
+      return {
+      ...service,
+      checked: draftMappedService.checked,
+      custom: false,
+      dbServiceId: draftMappedService.dbServiceId,
+      serviceDate: draftMappedService.serviceDate || service.serviceDate,
+      nights: draftMappedService.nights || service.nights,
+      days: draftMappedService.days || service.days,
+      pax: draftMappedService.pax || service.pax,
+      adults: draftMappedService.adults ?? service.adults,
+      children: draftMappedService.children ?? service.children,
+      infants: draftMappedService.infants ?? service.infants,
+      rooms: draftMappedService.rooms ?? service.rooms,
+      extraAdult: draftMappedService.extraAdult,
+      childWithBed: draftMappedService.childWithBed,
+      childWithoutBed: draftMappedService.childWithoutBed,
+      hotelRateMode: draftMappedService.hotelRateMode || service.hotelRateMode,
+      rate: shouldRefreshLiveDraftRate ? sourceBaseServiceAmount : draftMappedService.rate,
+      quoteBaseRate: sourceBaseServiceAmount || draftMappedService.quoteBaseRate || draftMappedService.rate,
+      currency: draftMappedService.currency,
+      roomTypeOptionRate: shouldRefreshLiveDraftRate
+      ? sourceBaseServiceAmount
+      : draftMappedService.roomTypeOptionRate || service.roomTypeOptionRate,
+      roomTypeOptionCurrency: draftMappedService.roomTypeOptionCurrency || service.roomTypeOptionCurrency,
+      awebRate: draftMappedService.awebRate,
+      cwebRate: draftMappedService.cwebRate,
+      cwoebRate: draftMappedService.cwoebRate,
+      roomType: draftMappedService.roomType || service.roomType,
+      roomCategory: draftMappedService.roomCategory || service.roomCategory,
+      bedType: draftMappedService.bedType || service.bedType,
+      useStoredPricing: true,
+      originalTotal: sourceStoredTotal || draftMappedService.originalTotal || draftMappedService.total || draftMappedService.rate,
+      totalInInr: shouldRefreshLiveDraftRate ? sourceStoredTotal : draftMappedService.totalInInr || 0,
+      priceInInr: shouldRefreshLiveDraftRate ? sourceBaseServiceAmount : draftMappedService.priceInInr || 0,
+      editBaseline: draftMappedService.editBaseline || buildServiceEditBaseline(draftMappedService),
       };
       });
 
       const customDraftServices = draftServices
-      .filter((_, index) => !usedDraftIndexes.has(index))
+      .filter((draftService, index) =>
+      !usedDraftIndexes.has(index) &&
+      !availableServices.some((service) => doServicesRepresentSameSource(draftService, service)),
+      )
       .map((draftService) => mapDraftServiceToUi(draftService, { custom: true, useStoredPricing: true }));
 
       return [...mergedBaseServices, ...customDraftServices];
       };
 
-      const buildDraftServicePayload = (service = {}) => ({
+      const syncLoadedDraftHotelPricing = (currentServices = [], quotation = null) => {
+      const draftServices = Array.isArray(quotation?.services) ? quotation.services : [];
+      if (!draftServices.length) return currentServices;
+
+      const normalizeMatchValue = (value = "") => String(value || "").trim().toLowerCase();
+      const normalizeMatchId = (value = "") => {
+      if (!value) return "";
+      if (typeof value === "object") {
+      return String(value?._id || value?.id || value?.toString?.() || "").trim();
+      }
+      return String(value || "").trim();
+      };
+      const getLooseKey = (service = {}) => [
+      normalizeServiceFilterType(service?.type),
+      normalizeMatchValue(service?.title || service?.hotelName || service?.name),
+      normalizeMatchValue(service?.city),
+      normalizeMatchValue(service?.country),
+      ].join("|");
+      const isSameDraftService = (draftService = {}, service = {}) => {
+      const draftId = normalizeMatchId(draftService.serviceId || draftService._id || draftService.dbServiceId);
+      const serviceId = normalizeMatchId(service.serviceId || service.id || service.dbServiceId);
+      if (draftId && serviceId && draftId === serviceId) return true;
+      return getLooseKey(draftService) === getLooseKey(service);
+      };
+
+      let changed = false;
+      const nextServices = currentServices.map((service) => {
+      if (normalizeServiceFilterType(service.type) !== "hotel" || !service.checked || service.manualRateOverride) {
+      return service;
+      }
+
+      const draftService = draftServices.find((item) => isSameDraftService(item, service));
+      if (!draftService) return service;
+
+      const hotelQuantity = Math.max(Number(draftService.nights || service.nights || 1), 1) *
+      Math.max(Number(draftService.rooms || service.rooms || 1), 1);
+      const storedDraftBaseRate = roundCurrencyAmount(
+      Number(draftService.quoteBaseRate || 0) ||
+      Number(draftService.price || 0) ||
+      Number(draftService.rate || 0) ||
+      (Number(draftService.total || draftService.originalTotal || 0) > 0
+      ? Number(draftService.total || draftService.originalTotal || 0) / hotelQuantity
+      : 0),
+      );
+      const liveBaseRate = roundCurrencyAmount(
+      Number(service.roomTypeOptionRate || 0) ||
+      Number(service.price || 0) ||
+      Number(service.rate || 0) ||
+      Number(service.quoteBaseRate || 0) ||
+      0,
+      );
+      const draftBaseRate = service.manualRateOverride
+      ? storedDraftBaseRate
+      : liveBaseRate || storedDraftBaseRate;
+      if (!draftBaseRate) return service;
+
+      const draftTotal = roundCurrencyAmount(
+      service.manualRateOverride
+      ? Number(draftService.total || 0) ||
+      Number(draftService.originalTotal || 0) ||
+      draftBaseRate * hotelQuantity
+      : (
+      draftBaseRate +
+      (draftService.extraAdult ? Number(service.awebRate || draftService.awebRate || 0) : 0) +
+      (draftService.childWithBed ? Number(service.cwebRate || draftService.cwebRate || 0) : 0) +
+      (draftService.childWithoutBed ? Number(service.cwoebRate || draftService.cwoebRate || 0) : 0)
+      ) * hotelQuantity,
+      );
+      const optionRate = roundCurrencyAmount(
+      (service.manualRateOverride ? 0 : draftBaseRate) ||
+      service.roomTypeOptionRate ||
+      draftService.roomTypeOptionRate ||
+      service.rate ||
+      service.price ||
+      0,
+      );
+
+      const nextService = {
+      ...service,
+      rate: draftBaseRate,
+      quoteBaseRate: draftBaseRate,
+      originalTotal: draftTotal,
+      totalInInr: Number(draftService.totalInInr || service.totalInInr || draftTotal),
+      priceInInr: Number(draftService.priceInInr || service.priceInInr || draftBaseRate),
+      useStoredPricing: true,
+      hotelRateMode: "unit-rate",
+      editBaseline: buildServiceEditBaseline({
+      ...service,
+      ...draftService,
+      rate: draftBaseRate,
+      quoteBaseRate: draftBaseRate,
+      originalTotal: draftTotal,
+      total: draftTotal,
+      hotelRateMode: "unit-rate",
+      roomTypeOptionRate: optionRate,
+      roomTypeOptionCurrency: service.roomTypeOptionCurrency || draftService.roomTypeOptionCurrency || service.currency || "INR",
+      }),
+      };
+
+      if (
+      roundCurrencyAmount(service.rate || 0) !== draftBaseRate ||
+      roundCurrencyAmount(service.quoteBaseRate || 0) !== draftBaseRate ||
+      roundCurrencyAmount(service.originalTotal || 0) !== draftTotal
+      ) {
+      changed = true;
+      }
+
+      return nextService;
+      });
+
+      return changed ? nextServices : currentServices;
+      };
+
+      const buildDraftServicePayload = (service = {}) => {
+      const serviceTotal = service.useStoredPricing && Number(service.originalTotal || 0) > 0
+      ? roundCurrencyAmount(service.originalTotal)
+      : calculateServiceOriginalTotal(service);
+      const serviceTotalInInr = service.useStoredPricing && Number(service.totalInInr || 0) > 0
+      ? roundCurrencyAmount(service.totalInInr)
+      : convertAmountToInr(
+      serviceTotal,
+      service.currency,
+      exchangeRates,
+      );
+
+      const normalizedServiceType = normalizeQuotationServiceType(service.type);
+      const servicePax = normalizedServiceType === "hotel"
+      ? getQueryPassengerCount(order) || Number(service.pax || 1)
+      : Number(service.pax || 1);
+      const serviceUnitDivisor = normalizedServiceType === "hotel"
+      ? Math.max(Number(service.nights || 1), 1) * Math.max(Number(service.rooms || 1), 1)
+      : 1;
+      const serviceUnitRate =
+      normalizedServiceType === "hotel"
+      ? roundCurrencyAmount(
+      service.manualRateOverride
+      ? service.quoteBaseRate || service.rate || (serviceTotal / serviceUnitDivisor) || 0
+      : service.roomTypeOptionRate ||
+      service.price ||
+      service.rate ||
+      service.quoteBaseRate ||
+      (serviceTotal / serviceUnitDivisor) ||
+      0,
+      )
+      : roundCurrencyAmount(service.rate || 0);
+
+      return ({
       draftServiceId: service.dbServiceId || "",
       serviceId: service.custom ? service.serviceId || "" : service.serviceId || service.id,
       dmcId: resolveDmcOwner(service).dmcId,
       dmcName: resolveDmcOwner(service).dmcName,
       supplierId: service.supplierId || "",
       supplierName: service.supplierName || "",
-      type: normalizeQuotationServiceType(service.type),
+      type: normalizedServiceType,
       title: service.title,
       city: service.city || "",
       country: service.country || "",
@@ -3188,46 +3781,139 @@ const buildWhatsAppTermsSection = (items = []) => {
       luggageCapacity: Number(service.luggageCapacity || 0),
       usageType: service.usageType || "",
       days: Number(service.days || 1),
-      pax: Number(service.pax || 1),
+      pax: servicePax,
       currency: normalizeCurrencyCode(service.currency || "INR"),
-      price: roundCurrencyAmount(service.rate || 0),
+      price: serviceUnitRate,
+      hotelRateMode: "unit-rate",
+      manualRateOverride: Boolean(service.manualRateOverride),
+      quoteBaseRate: normalizedServiceType === "hotel" ? serviceUnitRate : 0,
+      roomTypeOptionRate: normalizedServiceType === "hotel"
+      ? roundCurrencyAmount(service.roomTypeOptionRate || serviceUnitRate || 0)
+      : 0,
+      roomTypeOptionCurrency: normalizedServiceType === "hotel"
+      ? normalizeCurrencyCode(service.roomTypeOptionCurrency || service.currency || "INR")
+      : "",
       exchangeRate: Number(service.exchangeRate || getExchangeRateForCurrency(service.currency, exchangeRates)),
-      priceInInr: roundCurrencyAmount(service.priceInInr || 0),
+      priceInInr: roundCurrencyAmount(
+      convertAmountToInr(
+      serviceUnitRate,
+      service.currency,
+      exchangeRates,
+      ),
+      ),
       extraAdult: Boolean(service.extraAdult),
       childWithBed: Boolean(service.childWithBed),
       childWithoutBed: Boolean(service.childWithoutBed),
       awebRate: roundCurrencyAmount(service.awebRate || 0),
       cwebRate: roundCurrencyAmount(service.cwebRate || 0),
       cwoebRate: roundCurrencyAmount(service.cwoebRate || 0),
-      total: roundCurrencyAmount(service.originalTotal || calculateServiceOriginalTotal(service)),
-      totalInInr: roundCurrencyAmount(
-      service.totalInInr || convertAmountToInr(
-      calculateServiceOriginalTotal(service),
-      service.currency,
-      exchangeRates,
-      ),
-      ),
+      blackoutDates: Array.isArray(service.blackoutDates) ? service.blackoutDates : [],
+      blackout: service.blackout || { isBlackout: false },
+      blackoutOverride: service.blackoutOverride || (service.blackout?.isBlackout
+      ? {
+      approved: true,
+      source: "ops_manager_special_rate",
+      reason: service.blackout.label || service.blackout.reason || "Blackout date special pricing",
+      }
+      : undefined),
+      total: serviceTotal,
+      totalInInr: serviceTotalInInr,
+      });
+      };
+
+      const mergeRefreshedContractedServices = (previousServices = [], refreshedServices = []) => {
+      if (!previousServices.length) return refreshedServices;
+
+      const previousBySourceId = new Map(
+      previousServices.map((service) => [
+      String(service.serviceId || service.id || ""),
+      service,
+      ]),
+      );
+      const refreshedIds = new Set(
+      refreshedServices.map((service) => String(service.serviceId || service.id || "")),
+      );
+
+      const mergedServices = refreshedServices.map((service) => {
+      const previous = previousBySourceId.get(String(service.serviceId || service.id || ""));
+      if (!previous) return service;
+      const shouldPreservePricing = Boolean(
+      previous.checked ||
+      previous.useStoredPricing ||
+      previous.manualRateOverride ||
+      previous.blackoutOverride?.approved,
+      );
+
+      return {
+      ...service,
+      checked: previous.checked,
+      serviceDate: previous.serviceDate || service.serviceDate,
+      nights: previous.nights || service.nights,
+      days: previous.days || service.days,
+      pax: previous.pax || service.pax,
+      adults: previous.adults ?? service.adults,
+      children: previous.children ?? service.children,
+      infants: previous.infants ?? service.infants,
+      rooms: previous.rooms ?? service.rooms,
+      extraAdult: previous.extraAdult,
+      childWithBed: previous.childWithBed,
+      childWithoutBed: previous.childWithoutBed,
+      hotelRateMode: previous.hotelRateMode || service.hotelRateMode,
+      ...(shouldPreservePricing
+      ? {
+      rate: previous.rate,
+      quoteBaseRate: previous.quoteBaseRate,
+      roomTypeOptionRate: previous.roomTypeOptionRate,
+      roomTypeOptionCurrency: previous.roomTypeOptionCurrency,
+      currency: previous.currency,
+      exchangeRate: previous.exchangeRate,
+      useStoredPricing: previous.useStoredPricing,
+      manualRateOverride: previous.manualRateOverride,
+      originalTotal: previous.originalTotal,
+      totalInInr: previous.totalInInr,
+      priceInInr: previous.priceInInr,
+      awebRate: previous.awebRate,
+      cwebRate: previous.cwebRate,
+      cwoebRate: previous.cwoebRate,
+      editBaseline: previous.editBaseline || service.editBaseline,
+      blackout: previous.blackout || service.blackout,
+      blackoutOverride: previous.blackoutOverride || service.blackoutOverride,
+      }
+      : {}),
+      };
       });
 
-      useEffect(() => {
-      const loadServices = async () => {
-      setServicesLoading(true);
-      setServicesLoadError("");
-
-      try {
-      const res = await API.get("/ops/dmcAllGetServices", {
-      skipGlobalLoader: true,
+      const customServices = previousServices.filter((service) => {
+      const sourceId = String(service.serviceId || service.id || "");
+      return service.custom && !refreshedIds.has(sourceId);
       });
-      console.log("services", res.data.data);
-      const formatted = res.data.data.map((s) => {
+
+      return [...mergedServices, ...customServices];
+      };
+
+      const formatContractedServicesForUi = useCallback((rawServices = []) =>
+      rawServices.map((s) => {
       const meta = getServiceMeta(s.type);
       const owner = resolveDmcOwner(s);
+      const normalizedServiceType = normalizeServiceFilterType(s.type);
       const resolvedRoomType = inferHotelRoomTypeValue(s);
       const resolvedRoomCategory = s.roomCategory || "Double";
+      const defaultServicePax = normalizedServiceType === "hotel"
+      ? getQueryPassengerCount(order) || 1
+      : 1;
       const resolvedRate = getResolvedHotelBaseRate(
       { ...s, type: s.type, roomType: resolvedRoomType, roomCategory: resolvedRoomCategory },
       s.price || 0,
       );
+      const contractedFullServiceAmount = roundCurrencyAmount(
+      Number(s.quoteBaseRate || 0) ||
+      Number(s.originalTotal || 0) ||
+      Number(s.total || 0),
+      );
+      const useContractedServiceTotal =
+      normalizedServiceType === "hotel" &&
+      contractedFullServiceAmount > 0 &&
+      contractedFullServiceAmount !== resolvedRate;
       return {
       id: s.id,
       serviceId: s.id,
@@ -3244,7 +3930,10 @@ const buildWhatsAppTermsSection = (items = []) => {
       usageType: s.usageType || "",
       passengerCapacity: s.passengerCapacity || 0,
       luggageCapacity: s.luggageCapacity || 0,
-      rate: resolvedRate,
+      rate: useContractedServiceTotal ? contractedFullServiceAmount : resolvedRate,
+      quoteBaseRate: useContractedServiceTotal ? contractedFullServiceAmount : 0,
+      roomTypeOptionRate: roundCurrencyAmount(s.roomTypeOptionRate ?? s.price ?? resolvedRate ?? 0),
+      roomTypeOptionCurrency: normalizeCurrencyCode(s.roomTypeOptionCurrency || s.currency || "INR"),
       // 🔥 ADD THIS
       awebRate: s.awebRate || 0,
       cwebRate: s.cwebRate || 0,
@@ -3253,7 +3942,7 @@ const buildWhatsAppTermsSection = (items = []) => {
       serviceDate: s.serviceDate || "",
       nights: "",
       days: 1,
-      pax: 1,
+      pax: defaultServicePax,
       // ================== ADD THIS ==================
       roomCategory: resolvedRoomCategory,
       roomType: resolvedRoomType,
@@ -3266,13 +3955,22 @@ const buildWhatsAppTermsSection = (items = []) => {
       extraAdult: false,
       childWithBed: false,
       childWithoutBed: false,
-      hotelRateMode: normalizeServiceFilterType(s.type) === "hotel" ? "unit-rate" : "unit-rate",
+      hotelRateMode: useContractedServiceTotal ? "service-total" : "unit-rate",
+      originalTotal: useContractedServiceTotal ? contractedFullServiceAmount : 0,
+      blackoutDates: Array.isArray(s.blackoutDates) ? s.blackoutDates : [],
+      blackout: s.blackout || { isBlackout: false },
       editBaseline: buildServiceEditBaseline({
       ...s,
       price: s.price || 0,
+      quoteBaseRate: useContractedServiceTotal ? contractedFullServiceAmount : 0,
+      originalTotal: useContractedServiceTotal ? contractedFullServiceAmount : 0,
+      total: useContractedServiceTotal ? contractedFullServiceAmount : 0,
+      hotelRateMode: useContractedServiceTotal ? "service-total" : "unit-rate",
+      roomTypeOptionRate: s.roomTypeOptionRate ?? s.price ?? resolvedRate ?? 0,
+      roomTypeOptionCurrency: s.roomTypeOptionCurrency || s.currency || "INR",
       serviceDate: s.serviceDate || "",
       days: 1,
-      pax: 1,
+      pax: defaultServicePax,
       }),
       // ============================================
       checked: false,
@@ -3280,22 +3978,134 @@ const buildWhatsAppTermsSection = (items = []) => {
       icon: meta.icon,
       color: meta.color
       };
-      });
+      }), [order?.numberOfAdults, order?.numberOfChildren]);
 
-      setServices(formatted);
+      const loadServices = useCallback(async ({ preserveCurrent = false, showLoader = !preserveCurrent } = {}) => {
+      if (showLoader) {
+      setServicesLoading(true);
+      }
+      setServicesLoadError("");
+
+      try {
+      const res = await API.get("/ops/dmcAllGetServices", {
+      skipGlobalLoader: true,
+      params: { refreshedAt: Date.now(), queryId: order?._id || order?.id || order?.queryId || "" },
+      });
+      const formatted = formatContractedServicesForUi(res.data.data || []);
+
+      setServices((previous) =>
+      preserveCurrent ? mergeRefreshedContractedServices(previous, formatted) : formatted,
+      );
       setBaseServicesSnapshot(formatted.map((service) => ({ ...service })));
       } catch (err) {
       console.error(err);
+      if (!preserveCurrent) {
       setServices([]);
       setBaseServicesSnapshot([]);
       setServicesLoadError("Unable to load contracted rates right now.");
+      }
       } finally {
+      if (showLoader) {
       setServicesLoading(false);
+      }
+      }
+      }, [formatContractedServicesForUi, order?._id, order?.id, order?.queryId]);
+
+      useEffect(() => {
+      loadServices();
+      }, [loadServices]);
+
+      useEffect(() => {
+      const canOverrideBlackoutRate = (() => {
+      try {
+const values = [];
+for (let index = 0; index < window.localStorage.length; index += 1) {
+const key = window.localStorage.key(index);
+if (key) values.push(window.localStorage.getItem(key));
+}
+const pageRoleText = String(document?.body?.innerText || "").toLowerCase();
+if (pageRoleText.includes("ops manager") || pageRoleText.includes("operation manager")) {
+return true;
+}
+for (const value of values) {
+const parsed = JSON.parse(value || "null");
+const roleText = JSON.stringify(parsed || {}).toLowerCase();
+if (
+roleText.includes("operation_manager") ||
+roleText.includes("operations_manager") ||
+roleText.includes("ops_manager") ||
+roleText.includes("ops manager") ||
+roleText.includes("operation manager") ||
+roleText.includes("\"role\":\"admin\"")
+) {
+return true;
+}
+}
+      } catch {
+      return false;
+      }
+      return false;
+      })();
+      if (canOverrideBlackoutRate) return;
+
+      const hasCheckedBlackoutService = services.some(
+      (service) => service.blackout?.isBlackout && service.checked,
+      );
+      if (!hasCheckedBlackoutService) return;
+
+      setServices((prev) =>
+      prev.map((service) =>
+      service.blackout?.isBlackout && service.checked
+      ? { ...service, checked: false, nights: "", useStoredPricing: false }
+      : service,
+      ),
+      );
+      }, [services]);
+
+      useEffect(() => {
+      const refreshContractedRates = async ({ force = false } = {}) => {
+      const now = Date.now();
+
+      if (
+      backgroundRatesRefreshRef.current.inFlight ||
+      (!force && now - backgroundRatesRefreshRef.current.lastStartedAt < 30000)
+      ) {
+      return;
+      }
+
+      backgroundRatesRefreshRef.current = {
+      inFlight: true,
+      lastStartedAt: now,
+      };
+
+      try {
+      await loadServices({ preserveCurrent: true, showLoader: false });
+      } finally {
+      backgroundRatesRefreshRef.current.inFlight = false;
+      }
+      };
+      const handleStorage = (event) => {
+      if (event.key === "contractedRates:lastEditedAt") {
+      refreshContractedRates({ force: true });
+      }
+      };
+      const handleWindowFocus = () => refreshContractedRates();
+      const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+      refreshContractedRates();
       }
       };
 
-      loadServices();
-      }, []);
+      window.addEventListener("storage", handleStorage);
+      window.addEventListener("focus", handleWindowFocus);
+      document.addEventListener("visibilitychange", handleVisibilityChange);
+
+      return () => {
+      window.removeEventListener("storage", handleStorage);
+      window.removeEventListener("focus", handleWindowFocus);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      };
+      }, [loadServices]);
 
       useEffect(() => {
       if (!loadedQuotationDraft || !services.length || draftHydrated) {
@@ -3305,7 +4115,16 @@ const buildWhatsAppTermsSection = (items = []) => {
       setServices((prev) => mergeDraftServicesIntoAvailableServices(prev, loadedQuotationDraft));
       setDraftHydrated(true);
       // eslint-disable-next-line react-hooks/exhaustive-deps
-      }, [draftHydrated, loadedQuotationDraft, services.length]);
+      }, [draftHydrated, loadedQuotationDraft, services.length, editingSourceQuotationSnapshot]);
+
+      useEffect(() => {
+      if (!loadedQuotationDraft || !services.length) {
+      return;
+      }
+
+      setServices((prev) => syncLoadedDraftHotelPricing(prev, loadedQuotationDraft));
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      }, [loadedQuotationDraft, services.length]);
 
       useEffect(() => {
       if (!selectedPackageTemplate || !services.length) {
@@ -3316,6 +4135,7 @@ const buildWhatsAppTermsSection = (items = []) => {
       const next = buildPackageMatchedServices(prev, selectedPackageTemplate);
       return havePackageSelectionsChanged(prev, next) ? next : prev;
       });
+      // eslint-disable-next-line react-hooks/exhaustive-deps
       }, [selectedPackageTemplate, services.length]);
 
       const addCustomService = async (data) => {
@@ -3472,8 +4292,8 @@ const buildWhatsAppTermsSection = (items = []) => {
       };
 
       const selectedServicesWithPricing = useMemo(
-      () =>
-      services
+      () => {
+      return services
       .filter((service) => service.checked === true)
       .map((service) => {
       const currency = normalizeCurrencyCode(service.currency);
@@ -3482,7 +4302,7 @@ const buildWhatsAppTermsSection = (items = []) => {
       ? storedExchangeRate
       : getExchangeRateForCurrency(currency, exchangeRates);
       const originalTotal = service.useStoredPricing
-      ? roundCurrencyAmount(service.originalTotal || service.total || 0)
+      ? roundCurrencyAmount(service.originalTotal || service.quoteBaseRate || service.total || 0)
       : calculateServiceOriginalTotal(service);
       const priceInInr = service.useStoredPricing
       ? roundCurrencyAmount(
@@ -3520,7 +4340,8 @@ const buildWhatsAppTermsSection = (items = []) => {
       totalInInr,
       isForeignCurrency: currency !== "INR",
       };
-      }),
+      });
+      },
       [exchangeRates, services],
       );
 
@@ -3737,6 +4558,7 @@ const buildWhatsAppTermsSection = (items = []) => {
       const servicesSource = Array.isArray(quotation?.services) && quotation.services.length
       ? quotation.services
       : selectedServices;
+      const queryPax = getQueryPassengerCount(order);
 
       return {
       recipientName:
@@ -3801,6 +4623,9 @@ const buildWhatsAppTermsSection = (items = []) => {
       ],
       services: servicesSource.map((service) => {
       const normalizedType = normalizeQuotationServiceType(service?.type);
+      const servicePax = normalizedType === "hotel"
+      ? queryPax || Number(service?.pax || 0)
+      : Number(service?.pax || 0);
 
       return {
       title: service?.title || "Service",
@@ -3811,7 +4636,7 @@ const buildWhatsAppTermsSection = (items = []) => {
       country: service?.country || "",
       serviceDateLabel: formatShareDate(service?.serviceDate),
       serviceDate: service?.serviceDate || "",
-      quantityLabel: buildShareServiceQuantityLabel(service),
+      quantityLabel: buildShareServiceQuantityLabel(service, queryPax),
       description: String(service?.description || service?.desc || "").replace(/\s+/g, " ").trim(),
       nights: Number(service?.nights || 0),
       rooms: Number(service?.rooms || 0),
@@ -3821,7 +4646,7 @@ const buildWhatsAppTermsSection = (items = []) => {
       adults: Number(service?.adults || 0),
       children: Number(service?.children || 0),
       infants: Number(service?.infants || 0),
-      pax: Number(service?.pax || 0),
+      pax: servicePax,
       days: Number(service?.days || 0),
       usageType: service?.usageType || "",
       vehicleType: service?.vehicleType || "",
@@ -3975,59 +4800,7 @@ const buildWhatsAppTermsSection = (items = []) => {
       exclusions: sanitizeDynamicListItems(exclusions),
       additionalNotes: sanitizeDynamicListItems(additionalNotes),
       dayWiseItinerary: sanitizeDayWiseItineraryItems(itineraryEntries),
-      services: selectedServices.map(s => {
-      const normalizedType = normalizeQuotationServiceType(s.type);
-
-      return {
-      serviceId: s.serviceId || (!s.custom ? s.id : undefined),
-      dmcId: resolveDmcOwner(s).dmcId,
-      dmcName: resolveDmcOwner(s).dmcName,
-      supplierId: s.supplierId || "",
-      supplierName: s.supplierName || "",
-      type: normalizedType,
-      title: s.title,
-
-      city: s.city,
-      country: s.country,
-      description: s.desc,
-      serviceDate: s.serviceDate,
-      roomCategory: s.roomCategory || "",
-      roomType: s.roomType || "",
-      hotelCategory: s.hotelCategory || "",
-      rooms: Number(s.rooms || 1),
-      adults: Number(s.adults || 0),
-      children: Number(s.children || 0),
-      infants: Number(s.infants || 0),
-      bedType: normalizeBedTypeValue(s.bedType),
-      extraAdult: Boolean(s.extraAdult),
-      childWithBed: Boolean(s.childWithBed),
-      childWithoutBed: Boolean(s.childWithoutBed),
-      awebRate: roundCurrencyAmount(s.awebRate || 0),
-      cwebRate: roundCurrencyAmount(s.cwebRate || 0),
-      cwoebRate: roundCurrencyAmount(s.cwoebRate || 0),
-
-      // HOTEL
-      nights: Number(s.nights || 0),
-
-      // TRANSFER
-      vehicleType: s.vehicleType,
-      passengerCapacity: s.passengerCapacity,
-      luggageCapacity: s.luggageCapacity,
-      usageType: s.usageType,
-      days: s.days || 1,
-
-      // ACTIVITY / SIGHTSEEING
-      pax: s.pax || 1,
-
-      // PRICE
-      currency: s.currency,
-      exchangeRate: s.exchangeRate,
-      price: roundCurrencyAmount(s.rate || 0),
-      priceInInr: roundCurrencyAmount(s.priceInInr || 0),
-      total: roundCurrencyAmount(s.originalTotal || 0),
-      totalInInr: roundCurrencyAmount(s.totalInInr || 0),
-      };
-      }),
+      services: selectedServices.map((service) => buildDraftServicePayload(service)),
 
       pricing: {
       currency: "INR",
@@ -4060,7 +4833,6 @@ const buildWhatsAppTermsSection = (items = []) => {
       }
       };
 
-      console.log("🔥 FINAL PAYLOAD:", payload);
 
       // ✅ STEP 1: Create quotation
       const res = await API.post("/ops/quotations", payload);
@@ -4295,7 +5067,60 @@ const targetService = services.find((service) => service.id === id);
 const normalizedTargetType = normalizeServiceFilterType(targetService?.type);
 const nextChecked = !targetService?.checked;
 const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
+const canOverrideBlackoutRate = (() => {
+try {
+const values = [];
+for (let index = 0; index < window.localStorage.length; index += 1) {
+const key = window.localStorage.key(index);
+if (key) values.push(window.localStorage.getItem(key));
+}
+const pageRoleText = String(document?.body?.innerText || "").toLowerCase();
+if (pageRoleText.includes("ops manager") || pageRoleText.includes("operation manager")) {
+return true;
+}
+for (const value of values) {
+const parsed = JSON.parse(value || "null");
+const roleText = JSON.stringify(parsed || {}).toLowerCase();
+if (
+roleText.includes("operation_manager") ||
+roleText.includes("operations_manager") ||
+roleText.includes("ops_manager") ||
+roleText.includes("ops manager") ||
+roleText.includes("operation manager") ||
+roleText.includes("\"role\":\"admin\"")
+        ) {
+          return true;
+        }
+      }
+    } catch {
+      return false;
+    }
+    return false;
+  })();
 
+  if (!force && nextChecked && targetService?.blackout?.isBlackout) {
+    if (!canOverrideBlackoutRate) {
+      toast.error(
+        `Contract rate blocked for blackout date: ${targetService.blackout.label || targetService.blackout.reason || "Blackout date"}. Use manual/special pricing.`,
+        {
+          id: `blackout-rate-${id}`,
+        }
+      );
+      return;
+    } else {
+      toast(
+        `Contract rate override applied for blackout date: ${targetService.blackout.label || targetService.blackout.reason || "Blackout date"}. Confirm DMC special price, update the rate, then send.`,
+        {
+          id: `blackout-rate-${id}`,
+          icon: "⚠️",
+          style: {
+            border: "1px solid rgba(245, 158, 11, 0.25)",
+            boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.45), 0 8px 10px -6px rgba(0, 0, 0, 0.45), 0 0 15px rgba(245, 158, 11, 0.08), inset 0 1px 0 0 rgba(255, 255, 255, 0.1)",
+          }
+        }
+      );
+    }
+  }
       if (
       !force &&
       nextChecked &&
@@ -4352,6 +5177,16 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
       ...service,
       checked: true,
       useStoredPricing: service.useStoredPricing,
+      blackout: service.blackout?.isBlackout && canOverrideBlackoutRate
+      ? { ...service.blackout, isBlackout: false, wasBlackout: true, overrideApproved: true }
+      : service.blackout,
+      blackoutOverride: service.blackout?.isBlackout && canOverrideBlackoutRate
+      ? {
+      approved: true,
+      source: "ops_manager_special_rate",
+      reason: service.blackout.label || service.blackout.reason || "Blackout date special pricing",
+      }
+      : service.blackoutOverride,
       serviceDate:
       service.serviceDate || getHotelDefaultStartDate(prev, id),
       nights: "",
@@ -4382,6 +5217,22 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
 
       if (service.type === "hotel" && field === "serviceDate") {
       return { ...service, serviceDate: value, useStoredPricing: false };
+      }
+
+      if (field === "rate") {
+      const normalizedServiceType = normalizeServiceFilterType(service.type);
+      const nextRate = roundCurrencyAmount(value);
+      return {
+      ...service,
+      rate: nextRate,
+      quoteBaseRate: normalizedServiceType === "hotel" ? nextRate : service.quoteBaseRate,
+      hotelRateMode: normalizedServiceType === "hotel" ? "unit-rate" : service.hotelRateMode,
+      useStoredPricing: false,
+      manualRateOverride: true,
+      originalTotal: 0,
+      totalInInr: 0,
+      priceInInr: 0,
+      };
       }
 
       if (service.type === "hotel" && field === "rooms") {
@@ -5422,9 +6273,16 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                             </p>
                           </div>
                           <div className="rounded-xl border border-slate-800 bg-[#111827] px-3 py-2">
-                            <p className="text-[10px] uppercase tracking-[0.14em] text-slate-500">Valid Till</p>
-                            <p className="mt-1 text-xs font-semibold text-violet-300">
-                              {selectedHistoryQuotation.validTillLabel || "-"}
+                            <p className="text-[10px] uppercase tracking-[0.14em] text-slate-500">Services Total</p>
+                            <p className="mt-1 text-xs font-semibold text-sky-300">
+                              {formatCurrencyValue(
+                                Number(selectedHistoryQuotation.pricing?.subTotal || 0) ||
+                                (selectedHistoryQuotation.services || []).reduce(
+                                  (sum, service) => sum + Number(service?.totalInInr || service?.total || 0),
+                                  0,
+                                ),
+                                selectedHistoryQuotation.pricing?.currency || "INR",
+                              )}
                             </p>
                           </div>
                           <div className="rounded-xl border border-slate-800 bg-[#111827] px-3 py-2">
@@ -5471,6 +6329,10 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                               setIsFreshDraftMode(false);
                               setActiveDraftSourceQuotationId(selectedHistoryQuotation.id);
                               setEditingTargetQuotationId(selectedHistoryQuotation.id);
+                              editingSourceQuotationSnapshotRef.current = selectedHistoryQuotation;
+                              setEditingSourceQuotationSnapshot(selectedHistoryQuotation);
+                              setDraftHydrated(false);
+                              setDraftSourceReloadRequest((value) => value + 1);
                               setIsQuotationHistoryOpen(false);
                             }}
                             className={`rounded-xl px-3 py-2 text-xs font-semibold transition ${
@@ -5488,6 +6350,9 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                               setIsFreshDraftMode(true);
                               setActiveDraftSourceQuotationId("");
                               setEditingTargetQuotationId("");
+                              editingSourceQuotationSnapshotRef.current = null;
+                              setEditingSourceQuotationSnapshot(null);
+                              setDraftHydrated(false);
                               setSelectedHistoryQuotationId("");
                               setIsQuotationHistoryOpen(false);
                             }}
@@ -5529,7 +6394,52 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
             )}
           </div>
         </motion.div>
-        {false && selectedHistoryQuotation && (
+        {showLatestSentQuotationCard && latestSentQuotation && (
+          <motion.div
+            variants={sectionRevealVariants}
+            className="mb-5 rounded-2xl border border-sky-400/30 bg-sky-500/10 p-4 shadow-[0_14px_38px_rgba(14,165,233,0.10)]"
+          >
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-sky-300">
+                  Latest Quotation Sent To Agent
+                </p>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <span className="text-base font-semibold text-white">
+                    {latestSentQuotation.quotationNumber || "Quotation"}
+                  </span>
+                  <span className="rounded-full border border-sky-400/30 bg-sky-500/10 px-2.5 py-1 text-[11px] font-semibold text-sky-200">
+                    {latestSentQuotation.status || "Quote Sent"}
+                  </span>
+                  {latestSentQuotation.createdBy?.label && (
+                    <span className="rounded-full border border-yellow-400/30 bg-yellow-500/10 px-2.5 py-1 text-[11px] font-semibold text-yellow-200">
+                      Sent by {latestSentQuotation.createdBy.label}
+                    </span>
+                  )}
+                </div>
+                <p className="mt-2 text-xs leading-5 text-slate-300">
+                  This query already has a quotation shared with the agent.
+                  {latestSentQuotation.updatedAtLabel ? ` Last updated ${latestSentQuotation.updatedAtLabel}.` : ""}
+                </p>
+              </div>
+              <div className="grid min-w-[220px] grid-cols-2 gap-2">
+                <div className="rounded-xl border border-sky-400/20 bg-black/30 px-3 py-2">
+                  <p className="text-[10px] uppercase tracking-[0.16em] text-slate-500">Total</p>
+                  <p className="mt-1 text-sm font-semibold text-sky-200">
+                    {formatCurrencyValue(latestSentQuotation.displayAmount || 0, latestSentQuotation.pricing?.currency || "INR")}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-sky-400/20 bg-black/30 px-3 py-2">
+                  <p className="text-[10px] uppercase tracking-[0.16em] text-slate-500">Services</p>
+                  <p className="mt-1 text-sm font-semibold text-white">
+                    {latestSentQuotation.serviceCount || 0}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+        {SHOW_SELECTED_HISTORY_COMPARISON && selectedHistoryQuotation && (
           <motion.div
             variants={sectionRevealVariants}
             className="mb-6 rounded-3xl border border-slate-800 bg-[#0d1320] p-5 shadow-[0_16px_44px_rgba(0,0,0,0.24)]"
@@ -5936,6 +6846,7 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                         toggleService={toggleService}
                         updateField={updateField}
                         deleteService={deleteService}
+                        onStartServiceEdit={focusServiceEditor}
                         onOpenSelectedServices={openSelectedServicesModalForService}
                         tripNights={tripNights}
                         remainingHotelNights={getRemainingHotelNights(services, service.id)}
@@ -7224,6 +8135,7 @@ const Service = ({
   toggleService,
   updateField,
   deleteService,
+  onStartServiceEdit,
   onOpenSelectedServices,
   tripNights,
   remainingHotelNights,
@@ -7231,11 +8143,48 @@ const Service = ({
   tripStartDate,
   tripEndDate,
 }) => {
+  const isBlackoutService = Boolean(service?.blackout?.isBlackout);
+  const blackoutLabel = service?.blackout?.label || service?.blackout?.reason || "Blackout date";
+  const canOverrideBlackoutRate = (() => {
+    try {
+      const values = [];
+      for (let index = 0; index < window.localStorage.length; index += 1) {
+        const key = window.localStorage.key(index);
+        if (key) values.push(window.localStorage.getItem(key));
+      }
+      const pageRoleText = String(document?.body?.innerText || "").toLowerCase();
+      if (pageRoleText.includes("ops manager") || pageRoleText.includes("operation manager")) {
+        return true;
+      }
+      for (const value of values) {
+        const parsed = JSON.parse(value || "null");
+        const roleText = JSON.stringify(parsed || {}).toLowerCase();
+        if (
+          roleText.includes("operation_manager") ||
+          roleText.includes("operations_manager") ||
+          roleText.includes("ops_manager") ||
+          roleText.includes("ops manager") ||
+          roleText.includes("operation manager") ||
+          roleText.includes("\"role\":\"admin\"")
+        ) {
+          return true;
+        }
+      }
+    } catch {
+      return false;
+    }
+    return false;
+  })();
   const currencyCode = normalizeCurrencyCode(service.currency);
   const exchangeRate = getExchangeRateForCurrency(currencyCode, exchangeRates);
-  const total = calculateServiceOriginalTotal(service);
-  const totalInInr = convertAmountToInr(total, currencyCode, exchangeRates);
-  const baseRateInInr = convertAmountToInr(service.rate || 0, currencyCode, exchangeRates);
+  const baseRateDisplayValue = getHotelBaseRateDisplayValue(service);
+  const total = service.useStoredPricing && Number(service.originalTotal || 0) > 0
+    ? roundCurrencyAmount(service.originalTotal)
+    : calculateServiceOriginalTotal(service);
+  const totalInInr = service.useStoredPricing && Number(service.totalInInr || 0) > 0
+    ? roundCurrencyAmount(service.totalInInr)
+    : convertAmountToInr(total, currencyCode, exchangeRates);
+  const baseRateInInr = convertAmountToInr(baseRateDisplayValue, currencyCode, exchangeRates);
   const isForeignCurrency = currencyCode !== "INR";
   const hotelVariantOptions = useMemo(
     () => getHotelVariantOptions(allServices, service),
@@ -7367,98 +8316,104 @@ const Service = ({
       {/* ════════════════════════════════════════════
           SECTION 1 — HEADER  (identity + status)
       ════════════════════════════════════════════ */}
-      <div className="flex items-start gap-3 p-4 pb-3">
-        {/* checkbox */}
+      <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-3 p-4 pb-3">
         <input
           type="checkbox"
           checked={service.checked}
+          disabled={isBlackoutService && !canOverrideBlackoutRate}
           onChange={() => toggleService(service.id)}
           className="accent-yellow-400 mt-1 h-3.5 w-3.5 flex-shrink-0 cursor-pointer"
         />
 
-        {/* icon */}
-        <div className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl border text-lg
-          ${service.checked ? "border-yellow-500/20 bg-yellow-500/10" : "border-[#222] bg-[#161616]"}`}>
-          <span className={service.color || "text-gray-400"}>{service.icon || "🏨"}</span>
-        </div>
+        <div className="min-w-0">
+          <div className="grid grid-cols-[48px_minmax(0,1fr)] gap-x-4 gap-y-2">
+            <div className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl border text-lg
+              ${service.checked ? "border-yellow-500/20 bg-yellow-500/10" : "border-[#222] bg-[#161616]"}`}>
+              <span className={service.color || "text-gray-400"}>{service.icon || "Hotel"}</span>
+            </div>
 
-        {/* title + meta */}
-        <div className="flex-1 min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <p className="text-[13px] font-semibold text-white leading-tight">{service.title}</p>
+            <div className="min-w-0 space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-[13px] font-semibold leading-tight text-white">{service.title}</p>
 
-            {/* status badge */}
-            {service.checked ? (
-              <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-emerald-300">
-                ✓ Added to Quote
-              </span>
-            ) : (
-              <span className="rounded-full border border-slate-600/30 bg-slate-700/20 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-slate-400">
-                Not Selected
-              </span>
-            )}
+                {service.checked ? (
+                  <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-emerald-300">
+                    Added to Quote
+                  </span>
+                ) : (
+                  <span className="rounded-full border border-slate-600/30 bg-slate-700/20 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-slate-400">
+                    Not Selected
+                  </span>
+                )}
 
-            {isEditMode && service.checked && (
-              <span className="rounded-full border border-sky-500/30 bg-sky-500/10 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-sky-300">
-                ✎ Editing
-              </span>
-            )}
-            {service.custom && (
-              <span className="rounded-full bg-yellow-400 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-black">
-                Custom
-              </span>
-            )}
-            {service.checked && (
-              <button
-                type="button"
-                onClick={() => onOpenSelectedServices?.(service)}
-                className="cursor-pointer rounded-lg border border-sky-400/30 bg-sky-500/10 px-3 py-1 text-[10px] font-medium text-sky-200 transition hover:border-sky-300/50 hover:bg-sky-500/15"
-              >
-                Click to Edit
-              </button>
-            )}
-          </div>
+                {isEditMode && service.checked && (
+                  <span className="rounded-full border border-sky-500/30 bg-sky-500/10 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-sky-300">
+                    Editing
+                  </span>
+                )}
+                {service.custom && (
+                  <span className="rounded-full bg-yellow-400 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-black">
+                    Custom
+                  </span>
+                )}
+                {service.checked && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (isEditMode) {
+                        onOpenSelectedServices?.(service);
+                        return;
+                      }
 
-          {/* location + stars */}
-          <div className="mt-1.5 flex flex-wrap items-center gap-3">
-            <span className="flex items-center gap-1 text-[10px] text-slate-300">
-              <ImLocation2 className="text-emerald-400" />
-              {[service.city, service.country].filter(Boolean).join(", ")}
-            </span>
-            {service.hotelCategory && (
-              <span className="flex items-center gap-1 text-[10px] text-slate-400">
-                <span className="text-slate-200">Hotel</span>
-                <span className="flex items-center gap-0.5 ml-0.5">
-                  {Array.from({ length: getHotelStars(service.hotelCategory) }).map((_, i) => (
-                    <IoStarSharp key={i} className="text-yellow-400 text-[9px]" />
-                  ))}
+                      onStartServiceEdit?.(service);
+                    }}
+                    className="cursor-pointer rounded-lg border border-sky-400/30 bg-sky-500/10 px-3 py-1 text-[10px] font-medium text-sky-200 transition hover:border-sky-300/50 hover:bg-sky-500/15"
+                  >
+                    {isEditMode ? "Review & Save" : "Click to Edit"}
+                  </button>
+                )}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3 text-[10px] text-slate-300">
+                <span className="flex items-center gap-1">
+                  <ImLocation2 className="text-emerald-400" />
+                  {[service.city, service.country].filter(Boolean).join(", ")}
                 </span>
-              </span>
-            )}
-            {/* transport tags */}
-            {service.type === "transfer" && (
-              <>
-                {service.vehicleType && (
-                  <span className="flex items-center gap-1 text-[10px] text-slate-400">
-                    <FaCarSide className="text-yellow-400" />{service.vehicleType}
+                {service.hotelCategory && (
+                  <span className="flex items-center gap-1 text-slate-400">
+                    <span className="text-slate-200">Hotel</span>
+                    <span className="flex items-center gap-0.5 ml-0.5">
+                      {Array.from({ length: getHotelStars(service.hotelCategory) }).map((_, i) => (
+                        <IoStarSharp key={i} className="text-yellow-400 text-[9px]" />
+                      ))}
+                    </span>
                   </span>
                 )}
-                {service.usageType && (
-                  <span className="flex items-center gap-1 text-[10px] text-slate-400">
-                    <MdOutlineTravelExplore className="text-blue-400" />{formatUsage(service.usageType)}
-                  </span>
+                {service.type === "transfer" && (
+                  <>
+                    {service.vehicleType && (
+                      <span className="flex items-center gap-1 text-slate-400">
+                        <FaCarSide className="text-yellow-400" />{service.vehicleType}
+                      </span>
+                    )}
+                    {service.usageType && (
+                      <span className="flex items-center gap-1 text-slate-400">
+                        <MdOutlineTravelExplore className="text-blue-400" />{formatUsage(service.usageType)}
+                      </span>
+                    )}
+                    {service.passengerCapacity > 0 && (
+                      <span className="flex items-center gap-1 text-slate-400">
+                        <BsPeople className="text-emerald-400" />{service.passengerCapacity} pax
+                      </span>
+                    )}
+                  </>
                 )}
-                {service.passengerCapacity > 0 && (
-                  <span className="flex items-center gap-1 text-[10px] text-slate-400">
-                    <BsPeople className="text-emerald-400" />{service.passengerCapacity} pax
-                  </span>
-                )}
-              </>
-            )}
+              </div>
+            </div>
+
           </div>
         </div>
 
-        {/* right: total price (always visible when checked) */}
         {service.checked && (
           <div className="ml-2 flex flex-shrink-0 flex-col items-end text-right">
             <div>
@@ -7468,28 +8423,32 @@ const Service = ({
               </p>
               {isForeignCurrency && (
                 <p className="mt-1 text-[10px] text-sky-300">
-                  ₹ {formatAmountValue(totalInInr)}
+                  INR {formatAmountValue(totalInInr)}
                 </p>
               )}
             </div>
           </div>
         )}
-      </div>
 
-      {/* ════════════════════════════════════════════
-          SECTION 2 — AMENITY PILLS
-      ════════════════════════════════════════════ */}
-      {amenities.length > 0 && (
-        <div className="px-4 pb-3">
-          <div className="flex flex-wrap gap-1.5">
+        {amenities.length > 0 && (
+          <div className="col-start-2 col-span-2 flex w-full flex-wrap justify-start gap-x-1 gap-y-1.5">
             {amenities.map((item, i) => (
-              <span key={i} className="rounded-md border border-[#232323] bg-[#141414] px-2 py-0.5 text-[10px] text-slate-300">
+              <span key={i} className="whitespace-nowrap rounded-md border border-[#232323] bg-[#141414] px-1.5 py-0.5 text-[10px] text-slate-300">
                 {item}
               </span>
             ))}
           </div>
-        </div>
-      )}
+        )}
+
+        {isBlackoutService && (
+          <div className="col-start-2 col-span-2 w-full rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-[10px] font-semibold leading-5 text-red-200">
+            {canOverrideBlackoutRate
+              ? `Blackout date: ${blackoutLabel}. Confirm DMC special price, update the rate, then send.`
+              : `Contract rate blocked for ${blackoutLabel}. Use manual/special pricing.`}
+          </div>
+        )}
+      </div>
+
 
       {/* ════════════════════════════════════════════
           SECTION 3 — SERVICE CONTROLS
@@ -7517,9 +8476,19 @@ const Service = ({
           <div className="grid grid-cols-1 gap-2 lg:grid-cols-[minmax(0,1.15fr)_minmax(240px,0.85fr)]">
             <div className="rounded-xl border border-[#1f1f1f] bg-[#101010] px-3 py-2.5">
               <p className="text-[9px] font-semibold uppercase tracking-[0.18em] text-slate-500 mb-1">Base Rate</p>
-              <p className="text-[13px] font-semibold text-yellow-400">
-                {formatCurrencyValue(service.rate || 0, currencyCode)}
-              </p>
+              {isEditMode ? (
+                <input
+                  type="number"
+                  min="0"
+                  value={baseRateDisplayValue || ""}
+                  onChange={(event) => updateField(service.id, "rate", roundCurrencyAmount(event.target.value))}
+                  className="mt-1 w-full rounded-lg border border-yellow-500/30 bg-[#080808] px-2 py-1.5 text-[13px] font-semibold text-yellow-400 outline-none transition-colors focus:border-yellow-400"
+                />
+              ) : (
+                <p className="text-[13px] font-semibold text-yellow-400">
+                  {formatCurrencyValue(baseRateDisplayValue || 0, currencyCode)}
+                </p>
+              )}
               {isForeignCurrency && (
                 <>
                   <p className="text-[10px] text-sky-300 mt-0.5">

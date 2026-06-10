@@ -131,6 +131,26 @@ const internalInvoiceSchema = new mongoose.Schema(
       type: [internalInvoiceDocumentSchema],
       default: [],
     },
+    invoiceSource: {
+      type: String,
+      enum: ["system_template", "uploaded_invoice"],
+      default: "system_template",
+    },
+    uploadedInvoice: {
+      name: { type: String, trim: true, default: "" },
+      filePath: { type: String, trim: true, default: "" },
+      size: { type: String, trim: true, default: "" },
+      mimeType: { type: String, trim: true, default: "" },
+    },
+    claimedSummary: {
+      subtotal: { type: Number, default: 0 },
+      taxAmount: { type: Number, default: 0 },
+      grandTotal: { type: Number, default: 0 },
+    },
+    invoiceExtraction: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {},
+    },
     taxConfig: {
       gstRate: { type: Number, default: 0 },
       tcsRate: { type: Number, default: 0 },
@@ -238,5 +258,8 @@ const internalInvoiceSchema = new mongoose.Schema(
 );
 
 internalInvoiceSchema.index({ query: 1, dmc: 1 }, { unique: true });
+internalInvoiceSchema.index({ dmc: 1, submittedAt: -1 });
+internalInvoiceSchema.index({ status: 1, updatedAt: -1 });
+internalInvoiceSchema.index({ assignedTo: 1, updatedAt: -1 });
 
 export default mongoose.model("InternalInvoice", internalInvoiceSchema);

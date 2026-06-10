@@ -1483,22 +1483,29 @@ export const sendAgentClientQuotationMail = async (email, quoteDetails = {}) => 
 
 
 
-export const sendEmailVoucher = async (email, voucherDetails, branding = "with") => {
+export const sendEmailVoucher = async (
+  email,
+  voucherDetails,
+  branding = "with",
+  supportingAttachments = [],
+) => {
   const transporter = createTransporter();
   const html = buildVoucherTemplate(voucherDetails, branding);
   const pdfResult = await generateVoucherPdf(voucherDetails);
+  const attachments = [
+    {
+      filename: pdfResult.fileName,
+      path: pdfResult.absoluteFilePath,
+    },
+    ...supportingAttachments,
+  ];
 
   const info = await transporter.sendMail({
     from: MAIL_FROM_ADDRESS,
     to: email,
     subject: `Your Travel Voucher - ${voucherDetails.voucherNumber || voucherDetails.destination || "Holiday Circuit"}`,
     html,
-    attachments: [
-      {
-        filename: pdfResult.fileName,
-        path: pdfResult.absoluteFilePath,
-      },
-    ],
+    attachments,
   });
 
   console.log("VOUCHER EMAIL SENT:", info.response);

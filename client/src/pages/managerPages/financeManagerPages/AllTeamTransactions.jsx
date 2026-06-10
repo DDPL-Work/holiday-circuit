@@ -158,6 +158,49 @@ const statusStyles = {
   Rejected: "border border-rose-200 bg-rose-50 text-rose-600",
 };
 
+const cardConfigs = {
+  "Team Pending": {
+    bg: "bg-gradient-to-br from-[#fef3c7]/30 via-white to-white",
+    border: "border border-amber-200/80 border-b-4 border-b-amber-500 shadow-[0_4px_12px_rgba(245,158,11,0.02)]",
+    textTone: "text-amber-600",
+    icon: (
+      <svg className="h-4 w-4 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+    ),
+  },
+  "Awaiting Manager": {
+    bg: "bg-gradient-to-br from-[#dbeafe]/30 via-white to-white",
+    border: "border border-blue-200/80 border-b-4 border-b-blue-500 shadow-[0_4px_12px_rgba(59,130,246,0.02)]",
+    textTone: "text-blue-600",
+    icon: (
+      <svg className="h-4 w-4 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+      </svg>
+    ),
+  },
+  "Verified": {
+    bg: "bg-gradient-to-br from-[#d1fae5]/30 via-white to-white",
+    border: "border border-emerald-200/80 border-b-4 border-b-emerald-500 shadow-[0_4px_12px_rgba(16,185,129,0.02)]",
+    textTone: "text-emerald-600",
+    icon: (
+      <svg className="h-4 w-4 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+    ),
+  },
+  "Returned": {
+    bg: "bg-gradient-to-br from-[#ffe4e6]/30 via-white to-white",
+    border: "border border-rose-200/80 border-b-4 border-b-rose-500 shadow-[0_4px_12px_rgba(244,63,94,0.02)]",
+    textTone: "text-rose-600",
+    icon: (
+      <svg className="h-4 w-4 text-rose-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+    ),
+  },
+};
+
 const actionStyles = {
   Pending: {
     label: "Await Team Review",
@@ -1042,23 +1085,47 @@ export default function AllTeamTransactions() {
     <div className="min-h-screen overflow-x-hidden bg-[#f8fafc] font-sans">
       <FeedbackToast feedback={feedback} onClose={() => setFeedback(null)} />
 
-      <div className="sticky top-0 z-10 border-b border-slate-200 bg-white">
-        <div className="flex items-start justify-between px- py-2.5">
-          <div>
-            <p className="text-[15px] font-semibold text-slate-800">All Team Transactions</p>
-            <p className="mt-0.5 text-xs text-slate-500">Manager approval queue for finance team payment reviews</p>
+      <div className="border-b border-slate-200 bg-gradient-to-r from-white via-[#f8fafc] to-[#EFF5FC]">
+        <div className="flex items-center justify-between px-0 py-2">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-50 text-blue-600 border border-blue-100/80 shadow-sm">
+              <svg className="h-4 w-4 stroke-[2.2]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+              </svg>
+            </div>
+            <div>
+              <p className="text-[13px] font-bold text-slate-800 leading-none">All Team Transactions</p>
+              <p className="text-[9.5px] text-slate-400 mt-0.5 font-semibold">Manager approval queue for finance team payment reviews</p>
+            </div>
           </div>
           <div className="text-right">
-            <p className="text-[10px] text-slate-400">Logged in as</p>
-            <p className="text-sm font-semibold text-slate-800">{user?.name || "Finance Manager"}</p>
+            <p className="text-[9.5px] text-slate-400">Logged in as</p>
+            <p className="text-xs font-semibold text-slate-700">{user?.name || "Finance Manager"}</p>
           </div>
         </div>
       </div>
 
-      <div className="px- py- pt-6">
-        <div className="mb-6">
-          <h1 className="text-[20px] font-bold text-slate-900">Agent Transactions</h1>
-          <p className="mt-1 text-[13px] text-slate-500">Final approval queue for every finance executive under this manager</p>
+      <div className="px-0 pt-4">
+        <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex items-start gap-3">
+            <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-slate-800 to-slate-950 text-white shadow-md shadow-slate-900/10">
+              <svg className="h-5 w-5 stroke-[2.2]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+              </svg>
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h1 className="text-[18px] font-extrabold text-slate-900 tracking-tight leading-none">
+                  Agent Transactions
+                </h1>
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-100 px-2 py-0.5 text-[9.5px] font-bold text-emerald-700 tracking-wide uppercase">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  Approval Queue
+                </span>
+              </div>
+              <p className="mt-1 text-[13.5px] text-slate-500 font-medium">Final approval queue for every finance executive under this manager</p>
+            </div>
+          </div>
         </div>
 
         <div className="mb-5 rounded-2xl border border-sky-200 bg-[linear-gradient(135deg,_#eff6ff_0%,_#ffffff_52%,_#f0fdf4_100%)] px-5 py-4 shadow-sm">
@@ -1075,42 +1142,94 @@ export default function AllTeamTransactions() {
 
         <div className="mb-6 grid grid-cols-2 gap-4 xl:grid-cols-4">
           {[
-            { label: "Team Pending", value: summary.pending, tone: "text-amber-500" },
-            { label: "Awaiting Manager", value: summary.managerReview, tone: "text-blue-600" },
-            { label: "Verified", value: summary.verified, tone: "text-emerald-600" },
-            { label: "Returned", value: summary.rejected, tone: "text-rose-500" },
-          ].map((card) => (
-            <div key={card.label} className="rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
-              <p className="text-xs text-slate-500">{card.label}</p>
-              <p className={`mt-2 text-2xl font-bold ${card.tone}`}>{loading ? "..." : card.value}</p>
-            </div>
-          ))}
+            { label: "Team Pending", value: summary.pending },
+            { label: "Awaiting Manager", value: summary.managerReview },
+            { label: "Verified", value: summary.verified },
+            { label: "Returned", value: summary.rejected },
+          ].map((card) => {
+            const config = cardConfigs[card.label];
+            return (
+              <div key={card.label} className={`rounded-[12px] p-5 transition-all duration-300 ${config.bg} ${config.border}`}>
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">{card.label}</p>
+                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white shadow-sm ring-1 ring-slate-100">
+                    {config.icon}
+                  </span>
+                </div>
+                <div className="mt-3 min-h-[32px] flex items-baseline justify-between">
+                  <p className={`text-2xl font-extrabold ${config.textTone}`}>{loading ? "..." : card.value}</p>
+                  <span className="text-[10px] font-medium text-slate-400">Transactions</span>
+                </div>
+              </div>
+            );
+          })}
         </div>
 
-        <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm lg:flex-row lg:items-center lg:justify-between">
-          <input
-            type="text"
-            value={searchTerm}
-            onChange={(event) => setSearchTerm(event.target.value)}
-            placeholder="Search by transaction ID, booking ref, agent, or executive..."
-            className="w-full max-w-md rounded-xl border border-slate-200 px-4 py-2.5 text-xs text-slate-800 outline-none transition focus:border-blue-300"
-          />
-          <div className="flex flex-wrap gap-2">
+        <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm lg:flex-row lg:items-center lg:justify-between">
+          <div className="relative w-full max-w-[280px]">
+            <span className="absolute inset-y-0 left-3.5 flex items-center text-slate-400">
+              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+            </span>
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(event) => setSearchTerm(event.target.value)}
+              placeholder="Search by transaction ID, booking ref, agent..."
+              className="w-full rounded-xl border border-slate-200 bg-slate-50/50 pl-9 pr-4 py-2 text-xs text-slate-800 outline-none transition duration-200 focus:border-blue-400 focus:bg-white focus:ring-2 focus:ring-blue-100"
+            />
+          </div>
+          <div className="flex flex-row flex-wrap lg:flex-nowrap items-center gap-2 select-none">
             {[
-              { key: "All", label: `All (${summary.total})` },
-              { key: "Manager Review", label: `Awaiting Manager (${summary.managerReview})` },
-              { key: "Verified", label: `Verified (${summary.verified})` },
-              { key: "Rejected", label: `Returned (${summary.rejected})` },
-            ].map((filter) => (
-              <button
-                key={filter.key}
-                type="button"
-                onClick={() => setStatusFilter(filter.key)}
-                className={`rounded-full px-3 py-1.5 text-[9px] font-semibold transition-colors  ${statusFilter === filter.key ? "bg-slate-900 text-white" : "border border-slate-200 bg-white text-slate-500 hover:bg-slate-50"}`}
-              >
-                {filter.label}
-              </button>
-            ))}
+              {
+                key: "All",
+                label: "All",
+                count: summary.total,
+                activeClass: "bg-gradient-to-r from-slate-800 to-slate-950 text-white shadow-sm border-transparent",
+                inactiveClass: "bg-gradient-to-br from-slate-50 to-slate-100/80 border border-slate-200/80 text-slate-700 hover:from-slate-100 hover:to-slate-200/80 hover:text-slate-900 shadow-[0_1px_2px_rgba(0,0,0,0.02)]"
+              },
+              {
+                key: "Manager Review",
+                label: "Awaiting Manager",
+                count: summary.managerReview,
+                activeClass: "bg-gradient-to-r from-blue-600 via-indigo-600 to-indigo-700 text-white shadow-md shadow-blue-500/20 border-transparent",
+                inactiveClass: "bg-gradient-to-br from-blue-50/60 to-indigo-50/30 border border-blue-100/60 text-blue-700 hover:from-blue-100/80 hover:to-indigo-100/60 hover:text-blue-800 shadow-[0_1px_2px_rgba(59,130,246,0.02)]"
+              },
+              {
+                key: "Verified",
+                label: "Verified",
+                count: summary.verified,
+                activeClass: "bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 text-white shadow-md shadow-emerald-500/20 border-transparent",
+                inactiveClass: "bg-gradient-to-br from-emerald-50/60 to-teal-50/30 border border-emerald-100/60 text-emerald-700 hover:from-emerald-100/80 hover:to-teal-100/60 hover:text-emerald-800 shadow-[0_1px_2px_rgba(16,185,129,0.02)]"
+              },
+              {
+                key: "Rejected",
+                label: "Returned",
+                count: summary.rejected,
+                activeClass: "bg-gradient-to-r from-rose-500 via-red-500 to-red-600 text-white shadow-md shadow-rose-500/20 border-transparent",
+                inactiveClass: "bg-gradient-to-br from-rose-50/60 to-red-50/30 border border-rose-100/60 text-rose-700 hover:from-rose-100/80 hover:to-red-100/60 hover:text-rose-800 shadow-[0_1px_2px_rgba(244,63,94,0.02)]"
+              },
+            ].map((filter) => {
+              const isActive = statusFilter === filter.key;
+              return (
+                <button
+                  key={filter.key}
+                  type="button"
+                  onClick={() => setStatusFilter(filter.key)}
+                  className={`rounded-full px-3 py-1.5 text-[10.5px] font-bold transition-all duration-300 hover:scale-[1.02] flex items-center gap-1.5 ${
+                    isActive ? filter.activeClass : filter.inactiveClass
+                  }`}
+                >
+                  <span>{filter.label}</span>
+                  <span className={`inline-flex h-4 items-center justify-center rounded-full px-1.5 text-[9px] font-extrabold ${
+                    isActive ? "bg-white/20 text-white" : "bg-white/90 text-slate-600 border border-slate-100 shadow-sm"
+                  }`}>
+                    {filter.count}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -1123,19 +1242,41 @@ export default function AllTeamTransactions() {
           </div>
         ) : null}
 
-        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
-            <h2 className="text-[15px] font-bold text-slate-900">Payment Verification Queue</h2>
-            <span className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-medium text-slate-500">{filteredTransactions.length} transactions</span>
+        <div className="overflow-hidden rounded-[12px] border border-slate-200 bg-white shadow-sm">
+          <div className="flex items-center gap-3.5 border-b border-slate-200 px-5 py-4 bg-gradient-to-r from-slate-50/80 via-slate-50/30 to-white">
+            <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-blue-600 text-white shadow-[0_4px_12px_rgba(99,102,241,0.22)] transition-transform duration-300 hover:scale-105">
+              <div className="absolute inset-0 rounded-xl bg-white opacity-0 hover:opacity-10 transition-opacity" />
+              <svg className="h-5 w-5 drop-shadow-[0_1px_1px_rgba(0,0,0,0.15)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+              </svg>
+              <div className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-emerald-500 shadow-sm animate-pulse" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-[15px] font-extrabold text-slate-900 tracking-tight leading-none">
+                  Payment Verification <span className="bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">Queue</span>
+                </h2>
+                <span className="inline-flex items-center gap-1 rounded-full bg-blue-50/80 border border-blue-100 px-2 py-0.5 text-[9.5px] font-semibold text-blue-700 tracking-wide uppercase">
+                  <span className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse" />
+                  Active Queue
+                </span>
+              </div>
+              <p className="text-[10.5px] text-slate-500 mt-1 font-medium leading-relaxed">
+                Review executive recommended agent deposits and reconcile payouts
+              </p>
+            </div>
+            <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10.5px] font-bold text-slate-500 shrink-0">
+              {filteredTransactions.length} items
+            </span>
           </div>
 
           <div className="finance-transparent-scrollbar overflow-x-auto overflow-y-hidden pb-2">
-            <div className="min-w-305">
+            <div className="min-w-[950px]">
             <table className="w-full border-separate border-spacing-y-2 text-sm">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50">
                   {["Transaction ID", "Booking Ref", "Agent", "Amount", "Assigned To", "Status", "Date", "Action"].map((heading) => (
-                    <th key={heading} className="whitespace-nowrap px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                    <th key={heading} className="whitespace-nowrap px-4 py-2.5 text-left text-[9.5px] font-bold uppercase tracking-[0.16em] text-slate-400">
                       {heading}
                     </th>
                   ))}
@@ -1147,23 +1288,24 @@ export default function AllTeamTransactions() {
                 ) : paginatedTransactions.length ? (
                   paginatedTransactions.map((txn) => {
                     const workflowStatus = getWorkflowLabel(txn);
-                    const rowTone = selectedTxn?.id === txn.id
-                      ? "border-sky-200 bg-blue-50"
-                      : "border-slate-200 bg-white";
-                    const rowCellClass = `border-y ${rowTone} px-4 py-3.5`;
+                    const isSelected = selectedTxn?.id === txn.id;
+                    const rowTone = isSelected
+                      ? "border-indigo-200 bg-indigo-50/60"
+                      : "border-slate-200 bg-white hover:bg-slate-50/50";
+                    const rowCellClass = `border-y ${rowTone} px-4 py-2.5 transition-all duration-200`;
                     return (
                       <tr
                         key={txn.id}
                         onClick={() => setSelectedTxn(txn)}
                         className="cursor-pointer transition-transform duration-150 hover:-translate-y-[1px]"
                       >
-                        <td className={`${rowCellClass} rounded-l-xl border-l whitespace-nowrap text-[12px] font-bold text-slate-800`}>{txn.transactionId || txn.invoiceNumber}</td>
-                        <td className={`${rowCellClass} whitespace-nowrap text-[12px] text-slate-500`}>{txn.bookingReference}</td>
-                        <td className={`${rowCellClass} whitespace-nowrap text-[13px] font-medium text-slate-700`}>{txn.agentName}</td>
-                        <td className={`${rowCellClass} whitespace-nowrap text-[13px] font-semibold text-slate-900`}>{formatCurrency(txn.amount)}</td>
-                        <td className={`${rowCellClass} whitespace-nowrap text-[13px] text-slate-700`}>{txn.assignedFinanceName || "Unassigned"}</td>
+                        <td className={`${rowCellClass} rounded-l-xl border-l whitespace-nowrap text-[12px] font-bold text-slate-900`}>{txn.transactionId || txn.invoiceNumber}</td>
+                        <td className={`${rowCellClass} whitespace-nowrap text-[12px] font-medium text-slate-500 font-mono`}>{txn.bookingReference}</td>
+                        <td className={`${rowCellClass} whitespace-nowrap text-[12.5px] font-bold text-slate-800`}>{txn.agentName}</td>
+                        <td className={`${rowCellClass} whitespace-nowrap text-[13px] font-extrabold text-slate-900`}>{formatCurrency(txn.amount)}</td>
+                        <td className={`${rowCellClass} whitespace-nowrap text-[12.5px] font-medium text-slate-600`}>{txn.assignedFinanceName || "Unassigned"}</td>
                         <td className={`${rowCellClass} whitespace-nowrap`}><StatusBadge status={workflowStatus} /></td>
-                        <td className={`${rowCellClass} whitespace-nowrap text-[12px] text-slate-500`}>{txn.paymentDate || txn.date || txn.submittedAt || "04 Apr 2026"}</td>
+                        <td className={`${rowCellClass} whitespace-nowrap text-[11.5px] font-semibold text-slate-500`}><span className="whitespace-nowrap">{txn.paymentDate || txn.date || txn.submittedAt || "04 Apr 2026"}</span></td>
                         <td className={`${rowCellClass} rounded-r-xl border-r whitespace-nowrap`} onClick={(event) => event.stopPropagation()}>
                           <ActionButton txn={txn} onClick={setSelectedTxn} />
                         </td>

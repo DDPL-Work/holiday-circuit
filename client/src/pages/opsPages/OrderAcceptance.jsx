@@ -529,10 +529,6 @@ const ActivityStrip = ({ logs = [] }) => {
     return true;
   });
 
-  if (!uniqueLogs.length) {
-    return null;
-  }
-
   const syncNavigationState = () => {
     const viewport = viewportRef.current;
     if (!viewport) return;
@@ -558,6 +554,10 @@ const ActivityStrip = ({ logs = [] }) => {
       window.removeEventListener("resize", handleResize);
     };
   }, [uniqueLogs.length]);
+
+  if (!uniqueLogs.length) {
+    return null;
+  }
 
   const handleActivityScroll = (direction) => {
     const viewport = viewportRef.current;
@@ -937,6 +937,9 @@ const handleStartQuotation = async (order) => {
     : null;
   const orderStatusMeta = getOrderStatusMeta(order);
   const StatusBadgeIcon = orderStatusMeta.Icon;
+  const latestQuotation = order.latestQuotation || null;
+  const latestQuotationCreator = latestQuotation?.createdBy?.label || "";
+  const latestQuotationAmount = Number(latestQuotation?.totalAmount || 0);
   const latestCoordinationSenderRole = String(latestCoordinationEntry?.senderRole || "").trim();
   const isAwaitingAdminReview =
     isOperationManagerView &&
@@ -1047,6 +1050,40 @@ const handleStartQuotation = async (order) => {
                         {orderStatusMeta.noticeTitle}
                       </p>
                       <p className="mt-1 text-sm font-medium text-slate-900">{orderStatusMeta.noticeBody}</p>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              {latestQuotation ? (
+                <div className="mb-4 rounded-2xl border border-blue-200 bg-blue-50/80 p-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-blue-700">
+                        Latest Quotation Sent
+                      </p>
+                      <div className="mt-1 flex flex-wrap items-center gap-2">
+                        <span className="text-sm font-bold text-slate-900">
+                          {latestQuotation.quotationNumber || "Quotation"}
+                        </span>
+                        <span className="rounded-full border border-blue-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-blue-700">
+                          {latestQuotation.status || "Quote Sent"}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-xs text-slate-600">
+                        {latestQuotationCreator
+                          ? `Prepared and sent by ${latestQuotationCreator}.`
+                          : "Prepared and sent by operations."}
+                        {latestQuotation.updatedAtLabel ? ` Last updated ${latestQuotation.updatedAtLabel}.` : ""}
+                      </p>
+                    </div>
+                    <div className="rounded-xl border border-blue-100 bg-white px-3 py-2 text-right">
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+                        Quote Total
+                      </p>
+                      <p className="mt-1 text-sm font-bold text-blue-700">
+                        INR {latestQuotationAmount.toLocaleString("en-IN")}
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -1168,6 +1205,8 @@ const handleStartQuotation = async (order) => {
                       ? "Open Approved Booking"
                       : order.opsStatus === "Revision_Query"
                         ? "Open Builder for Revision"
+                        : String(order?.quotationStatus || "").trim() === "Sent_To_Agent"
+                          ? "Open Sent Quotation"
                         : "Confirm & Create Quotation"}
                 </motion.button>
                 <motion.button

@@ -110,14 +110,17 @@ const TEMPLATE_CONFIG = {
 const getTemplateConfig = (templateVariant = "") =>
   TEMPLATE_CONFIG[templateVariant] || TEMPLATE_CONFIG["aurora-ledger"];
 
-const drawInvoiceHeader = (doc, { config, queryCode }) => {
+const drawInvoiceHeader = (doc, { config, queryCode, invoiceMeta = {}, dmcName = "" }) => {
+  const resolvedDmcName = String(invoiceMeta.supplierName || dmcName || "DMC Partner").trim().toUpperCase();
+
   if (config.key === "classic-ledger") {
-    doc.font("Helvetica-Bold").fontSize(22).fillColor(config.headerText).text("Internal Invoice", 40, 44);
+    doc.font("Helvetica-Bold").fontSize(7.5).fillColor("#10b981").text(resolvedDmcName, 40, 36);
+    doc.font("Helvetica-Bold").fontSize(22).fillColor(config.headerText).text("Internal Invoice", 40, 48);
     doc
       .font("Helvetica")
       .fontSize(9)
       .fillColor(config.mutedText)
-      .text("Finance review copy for DMC settlement validation", 40, 72);
+      .text("Finance review copy for DMC settlement validation", 40, 76);
 
     drawRoundedCard(doc, 420, 42, 135, 50, "#ffffff", config.cardStroke, config.radius);
     doc.font("Helvetica-Bold").fontSize(8).fillColor(config.mutedText).text("BOOKING REF", 438, 54, {
@@ -128,18 +131,19 @@ const drawInvoiceHeader = (doc, { config, queryCode }) => {
       width: 100,
       align: "center",
     });
-    doc.moveTo(40, 104).lineTo(555, 104).strokeColor(config.cardStroke).stroke();
-    return 122;
+    doc.moveTo(40, 108).lineTo(555, 108).strokeColor(config.cardStroke).stroke();
+    return 124;
   }
 
   if (config.key === "compact-ledger") {
     drawRoundedCard(doc, 40, 34, 515, 58, config.headerFill, config.cardStroke, config.radius);
-    doc.font("Helvetica-Bold").fontSize(18).fillColor(config.headerText).text("Internal Invoice", 56, 48);
+    doc.font("Helvetica-Bold").fontSize(7.5).fillColor(config.accent).text(resolvedDmcName, 56, 43);
+    doc.font("Helvetica-Bold").fontSize(15).fillColor(config.headerText).text("Internal Invoice", 56, 54);
     doc
       .font("Helvetica")
       .fontSize(8)
       .fillColor(config.mutedText)
-      .text("Compact finance review copy", 56, 70);
+      .text("Compact finance review copy", 56, 72);
     doc.font("Helvetica-Bold").fontSize(8).fillColor(config.accent).text("BOOKING REF", 430, 49, {
       width: 92,
       align: "right",
@@ -154,12 +158,13 @@ const drawInvoiceHeader = (doc, { config, queryCode }) => {
   if (config.key === "finance-ledger") {
     drawRoundedCard(doc, 40, 40, 515, 92, config.headerFill, config.headerFill, config.radius);
     doc.rect(40, 40, 10, 92).fill("#10b981");
-    doc.font("Helvetica-Bold").fontSize(22).fillColor(config.headerText).text("Finance Ledger", 64, 58);
+    doc.font("Helvetica-Bold").fontSize(9).fillColor("#10b981").text(resolvedDmcName, 64, 52);
+    doc.font("Helvetica-Bold").fontSize(20).fillColor(config.headerText).text("Internal Invoice Details", 64, 66);
     doc
       .font("Helvetica")
-      .fontSize(10)
+      .fontSize(9)
       .fillColor("#d1fae5")
-      .text("Internal invoice payout validation copy", 64, 88);
+      .text("Internal invoice payout validation copy", 64, 92);
 
     drawRoundedCard(doc, 420, 58, 115, 52, "#065f46", "#10b981", config.radius);
     doc.font("Helvetica-Bold").fontSize(8).fillColor("#a7f3d0").text("BOOKING REF", 435, 72, {
@@ -174,12 +179,13 @@ const drawInvoiceHeader = (doc, { config, queryCode }) => {
   }
 
   drawRoundedCard(doc, 40, 40, 515, 92, config.headerFill, config.headerFill, config.radius);
-  doc.font("Helvetica-Bold").fontSize(22).fillColor(config.headerText).text("Internal Invoice", 58, 58);
+  doc.font("Helvetica-Bold").fontSize(9).fillColor("#10b981").text(resolvedDmcName, 58, 52);
+  doc.font("Helvetica-Bold").fontSize(20).fillColor(config.headerText).text("Internal Invoice", 58, 66);
   doc
     .font("Helvetica")
-    .fontSize(10)
+    .fontSize(8.5)
     .fillColor("#cbd5e1")
-    .text("Finance review copy for DMC settlement validation", 58, 88);
+    .text("Finance review copy for DMC settlement validation", 58, 92);
 
   drawRoundedCard(doc, 420, 58, 115, 52, config.accent, config.accent, config.radius);
   doc.font("Helvetica-Bold").fontSize(8).fillColor("#bfdbfe").text("BOOKING REF", 435, 72, {
@@ -282,12 +288,12 @@ const drawSnapshotSection = (doc, {
 
 const drawItemsTableHeader = (doc, y, config = TEMPLATE_CONFIG["aurora-ledger"]) => {
   const columns = [
-    { key: "service", label: "Service", x: 44, width: 170, align: "left" },
+    { key: "service", label: "Service", x: 52, width: 162, align: "left" },
     { key: "type", label: "Type", x: 220, width: 60, align: "left" },
     { key: "qty", label: "Qty", x: 286, width: 36, align: "right" },
-    { key: "rate", label: "Rate", x: 328, width: 78, align: "right" },
-    { key: "subtotal", label: "Subtotal", x: 412, width: 72, align: "right" },
-    { key: "tax", label: "Tax", x: 490, width: 58, align: "right" },
+    { key: "rate", label: "Rate", x: 328, width: 74, align: "right" },
+    { key: "subtotal", label: "Subtotal", x: 408, width: 72, align: "right" },
+    { key: "tax", label: "Tax", x: 486, width: 57, align: "right" },
   ];
 
   doc.save();
@@ -335,7 +341,7 @@ export const generateInternalInvoicePdf = async ({
   const stream = fs.createWriteStream(absoluteFilePath);
   doc.pipe(stream);
 
-  const snapshotY = drawInvoiceHeader(doc, { config, queryCode });
+  const snapshotY = drawInvoiceHeader(doc, { config, queryCode, invoiceMeta, dmcName });
   const itemizedHeadingY = drawSnapshotSection(doc, {
     config,
     y: snapshotY,

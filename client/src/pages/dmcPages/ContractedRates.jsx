@@ -1,9 +1,42 @@
-import {Download,Upload,Box,Truck,CheckCircle,AlertCircle,FileSpreadsheet,Calendar,Trash2,Eye,Edit,Save,X} from "lucide-react";
+import {Download,Upload,Box,Truck,CheckCircle,AlertCircle,FileSpreadsheet,Calendar,Trash2,Eye,Edit,Save,Search,X} from "lucide-react";
 import DmcBulkUploadModal from "../../modal/DmcBulkUploadModal";
 import Swal from "sweetalert2";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import API from "../../utils/Api.js"
 import { AnimatePresence, motion } from "framer-motion";
+
+const rateChangeReasonOptions = [
+  { value: "blackout", label: "Blackout / Event Date" },
+  { value: "dynamic_pricing", label: "Dynamic Pricing" },
+  { value: "availability", label: "Availability Constraint" },
+  { value: "supplier_revision", label: "Supplier Revision" },
+  { value: "other", label: "Other" },
+];
+
+const rateSensitiveFieldPatterns = [
+  /price/i,
+  /rate/i,
+  /currency/i,
+  /valid\s*from/i,
+  /valid\s*to/i,
+  /availability/i,
+  /blackout/i,
+  /inventory/i,
+  /allotment/i,
+  /stock/i,
+  /surcharge/i,
+];
+
+const isRateSensitiveHeader = (header = "") =>
+  rateSensitiveFieldPatterns.some((pattern) => pattern.test(String(header || "")));
+
+const getRateSensitiveChanges = (originalRow = {}, editedRow = {}) =>
+  Object.keys(editedRow || {}).filter((header) => {
+    if (!isRateSensitiveHeader(header)) return false;
+    const oldValue = String(originalRow?.[header] ?? "").trim();
+    const newValue = String(editedRow?.[header] ?? "").trim();
+    return oldValue !== newValue;
+  });
 
 export default function ContractedRates() {
 const [showBulkUploadModal, setShowBulkUploadModal] = useState(false);
@@ -15,6 +48,49 @@ const [selectedSheet, setSelectedSheet] = useState(null);
 const [editingRowIndex, setEditingRowIndex] = useState(null);
 const [editRowData, setEditRowData] = useState({});
 const [viewLoading, setViewLoading] = useState(false);
+const [sheetSearchQuery, setSheetSearchQuery] = useState("");
+const [rateChangeReasonType, setRateChangeReasonType] = useState("");
+const [rateChangeReasonNote, setRateChangeReasonNote] = useState("");
+const [sheetPage, setSheetPage] = useState(1);
+const sheetItemsPerPage = 30;
+
+useEffect(() => {
+  if (!selectedSheet) {
+    setSheetSearchQuery("");
+    setEditingRowIndex(null);
+    setEditRowData({});
+    setRateChangeReasonType("");
+    setRateChangeReasonNote("");
+    setSheetPage(1);
+  }
+}, [selectedSheet]);
+
+useEffect(() => {
+  setSheetPage(1);
+}, [sheetSearchQuery]);
+
+const filteredSheetRows = useMemo(() => {
+  if (!selectedSheet || !selectedSheet.rows) return [];
+  if (!sheetSearchQuery.trim()) return selectedSheet.rows;
+
+  const query = sheetSearchQuery.toLowerCase().trim();
+  return selectedSheet.rows
+    .map((row, index) => ({ ...row, originalIndex: index }))
+    .filter((row) => {
+      return selectedSheet.headers.some((header) => {
+        const val = row[header];
+        if (val === undefined || val === null) return false;
+        return String(val).toLowerCase().includes(query);
+      });
+    });
+}, [selectedSheet, sheetSearchQuery]);
+
+const paginatedSheetRows = useMemo(() => {
+  const start = (sheetPage - 1) * sheetItemsPerPage;
+  return filteredSheetRows.slice(start, start + sheetItemsPerPage);
+}, [filteredSheetRows, sheetPage, sheetItemsPerPage]);
+
+const totalSheetPages = Math.ceil(filteredSheetRows.length / sheetItemsPerPage);
 
 const handleViewData = async (id) => {
   try {
@@ -23,6 +99,8 @@ const handleViewData = async (id) => {
     if (res.data.success) {
       setSelectedSheet({ ...res.data, uploadId: id });
       setEditingRowIndex(null);
+      setRateChangeReasonType("");
+      setRateChangeReasonNote("");
     } else {
       Swal.fire({
         title: "Error",
@@ -59,6 +137,8 @@ const handleViewData = async (id) => {
 const startEditingRow = (index, row) => {
   setEditingRowIndex(index);
   setEditRowData({ ...row });
+  setRateChangeReasonType("");
+  setRateChangeReasonNote("");
 };
 
 const handleCellChange = (header, value) => {
@@ -70,33 +150,74 @@ const handleCellChange = (header, value) => {
 
 const saveEditedRow = async (index) => {
   if (!selectedSheet) return;
-  
+
   try {
     const row = editRowData;
     const uploadId = selectedSheet.uploadId;
-    
+    const originalRow = selectedSheet.rows?.[index] || {};
+    const rateSensitiveChanges = getRateSensitiveChanges(originalRow, row);
+
+    if (rateSensitiveChanges.length && !rateChangeReasonType) {
+      Swal.fire({
+        title: "Rate change reason required",
+        text: "Select blackout, dynamic pricing, availability, supplier revision, or other before saving this rate change.",
+        icon: "warning",
+        iconColor: "#f59e0b",
+        background: "#ffffff",
+        customClass: {
+          popup: "rounded-3xl border border-slate-100 shadow-2xl p-6 font-sans bg-white",
+          title: "text-lg font-bold text-amber-700 mb-1",
+          htmlContainer: "text-xs font-semibold text-slate-500 leading-relaxed"
+        }
+      });
+      return;
+    }
+
+    if (rateSensitiveChanges.length && rateChangeReasonNote.trim().length < 10) {
+      Swal.fire({
+        title: "Detailed reason required",
+        text: "Add at least 10 characters explaining why the rate changed.",
+        icon: "warning",
+        iconColor: "#f59e0b",
+        background: "#ffffff",
+        customClass: {
+          popup: "rounded-3xl border border-slate-100 shadow-2xl p-6 font-sans bg-white",
+          title: "text-lg font-bold text-amber-700 mb-1",
+          htmlContainer: "text-xs font-semibold text-slate-500 leading-relaxed"
+        }
+      });
+      return;
+    }
+
     // Call the database patch API to update the Excel file and trigger notifications
     const res = await API.patch(`/dmc/upload/edit-row/${uploadId}`, {
       rowIndex: index,
       updatedRow: row,
       category: selectedSheet.category,
-      fileName: selectedSheet.fileName
+      fileName: selectedSheet.fileName,
+      changeReasonType: rateSensitiveChanges.length ? rateChangeReasonType : "",
+      changeReasonNote: rateSensitiveChanges.length ? rateChangeReasonNote.trim() : "",
     });
 
     if (res.data.success) {
       const updatedRows = [...selectedSheet.rows];
       updatedRows[index] = { ...editRowData };
-      
+
       setSelectedSheet({
         ...selectedSheet,
         rows: updatedRows
       });
-      
+
       setEditingRowIndex(null);
-      
+      setRateChangeReasonType("");
+      setRateChangeReasonNote("");
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("contractedRates:lastEditedAt", String(Date.now()));
+      }
+
       Swal.fire({
         title: "Success",
-        text: "Spreadsheet updated and managers notified successfully!",
+        text: res.data.message || "Spreadsheet and live contracted rate updated successfully!",
         icon: "success",
         iconColor: "#107c41",
         timer: 2500,
@@ -142,6 +263,8 @@ const saveEditedRow = async (index) => {
 const cancelEditingRow = () => {
   setEditingRowIndex(null);
   setEditRowData({});
+  setRateChangeReasonType("");
+  setRateChangeReasonNote("");
 };
 
 
@@ -210,7 +333,7 @@ const handleDelete = async (id) => {
     });
 
   } catch (error) {
-    console.error(error); 
+    console.error(error);
     Swal.fire({
       title: "Error",
       text: error.response?.data?.message || "Something went wrong while deleting.",
@@ -256,6 +379,11 @@ const handleDownload = async (id, fileName) => {
 const totalPages = Math.ceil(uploads.length / itemsPerPage);
 const startIndex = (currentPage - 1) * itemsPerPage;
 const paginatedUploads = uploads.slice(startIndex, startIndex + itemsPerPage);
+const currentEditingOriginalRow =
+  editingRowIndex !== null && selectedSheet?.rows ? selectedSheet.rows[editingRowIndex] || {} : {};
+const currentRateSensitiveChanges =
+  editingRowIndex !== null ? getRateSensitiveChanges(currentEditingOriginalRow, editRowData) : [];
+const isRateChangeReasonRequired = currentRateSensitiveChanges.length > 0;
 
 
   return (
@@ -274,9 +402,9 @@ const paginatedUploads = uploads.slice(startIndex, startIndex + itemsPerPage);
   </div>
 
   <div className="flex gap-3">
-    <button className="flex items-center gap-2 border border-gray-300 px-3 py-2 rounded-lg text-sm bg-white cursor-pointer">
+    <button className="flex items-center gap-2 border border-gray-300 px-3 py-2 rounded-lg text-sm bg-white cursor-pointer font-semibold text-slate-700 hover:bg-slate-50 transition-colors">
       <Download size={16} />
-      Download Template   
+      Download Template
     </button>
 
     <button
@@ -292,45 +420,49 @@ const paginatedUploads = uploads.slice(startIndex, startIndex + itemsPerPage);
 
 {/*======================================= STATS Cards ===================================== */}
 
-      <div className="grid grid-cols-4 gap-2.5 mb-7 ">
+      <div className="grid grid-cols-4 gap-4 mb-7">
 
-        <div className="bg-white rounded-xl shadow-sm p-5 flex justify-between items-center border border-gray-200">
-          <div>
-            <p className="text-xs text-gray-500">Total Hotels</p>
-            <p className="text-xl font-semibold">1,248</p>
+        {/* Card 1: Total Hotels */}
+        <div className="group relative bg-gradient-to-br from-purple-50/60 to-white hover:from-purple-100/40 hover:to-purple-50/20 rounded-2xl p-5 flex justify-between items-center border border-purple-100/70 border-b-[3.5px] border-b-purple-500/80 hover:border-purple-300 hover:border-b-purple-600 hover:shadow-lg hover:shadow-purple-500/5 hover:-translate-y-0.5 transition-all duration-300">
+          <div className="space-y-1 min-w-0">
+            <p className="text-[8.5px] font-bold uppercase tracking-[0.08em] text-slate-400 whitespace-nowrap">Total Hotels</p>
+            <p className="text-2xl font-extrabold tracking-tight text-slate-800 group-hover:text-purple-900 transition-colors duration-300">1,248</p>
           </div>
-          <div className="bg-purple-100 p-3 rounded-lg">
-            <Box className="text-purple-600" size={20} />
+          <div className="bg-purple-50/80 border border-purple-100/50 p-2.5 rounded-xl text-purple-650 shadow-[0_2px_8px_rgba(147,51,234,0.05)] group-hover:scale-110 group-hover:rotate-3 transition-all duration-300 shrink-0">
+            <Box size={20} className="stroke-[2.2px] text-purple-650" />
           </div>
         </div>
 
-        <div className="bg-white rounded-xl shadow-sm p-5 flex justify-between items-center border border-gray-200">
-          <div>
-            <p className="text-xs text-gray-500">Transport Options</p>
-            <p className="text-xl font-semibold">456</p>
+        {/* Card 2: Transport Options */}
+        <div className="group relative bg-gradient-to-br from-blue-50/60 to-white hover:from-blue-100/40 hover:to-blue-50/20 rounded-2xl p-5 flex justify-between items-center border border-blue-100/70 border-b-[3.5px] border-b-blue-500/80 hover:border-blue-300 hover:border-b-blue-600 hover:shadow-lg hover:shadow-blue-500/5 hover:-translate-y-0.5 transition-all duration-300">
+          <div className="space-y-1 min-w-0">
+            <p className="text-[8.5px] font-bold uppercase tracking-[0.08em] text-slate-400 whitespace-nowrap">Transport Options</p>
+            <p className="text-2xl font-extrabold tracking-tight text-slate-800 group-hover:text-blue-900 transition-colors duration-300">456</p>
           </div>
-          <div className="bg-blue-100 p-3 rounded-lg">
-            <Truck className="text-blue-600" size={20} />
-          </div>
-        </div>
-
-        <div className="bg-white rounded-xl shadow-sm p-5 flex justify-between items-center border border-gray-200">
-          <div>
-            <p className="text-xs text-gray-500">Active Contracts</p>
-            <p className="text-xl font-semibold">892</p>
-          </div>
-          <div className="bg-green-100 p-3 rounded-lg">
-            <CheckCircle className="text-green-600" size={20} />
+          <div className="bg-blue-50/80 border border-blue-100/50 p-2.5 rounded-xl text-blue-650 shadow-[0_2px_8px_rgba(59,130,246,0.05)] group-hover:scale-110 group-hover:-rotate-3 transition-all duration-300 shrink-0">
+            <Truck size={20} className="stroke-[2.2px] text-blue-650" />
           </div>
         </div>
 
-        <div className="bg-white rounded-xl shadow-sm p-5 flex justify-between items-center border border-gray-200">
-          <div>
-            <p className="text-xs text-gray-500">Expiring Soon</p>
-            <p className="text-xl font-semibold">34</p>
+        {/* Card 3: Active Contracts */}
+        <div className="group relative bg-gradient-to-br from-emerald-50/60 to-white hover:from-emerald-100/40 hover:to-emerald-50/20 rounded-2xl p-5 flex justify-between items-center border border-emerald-100/70 border-b-[3.5px] border-b-emerald-500/80 hover:border-emerald-300 hover:border-b-emerald-600 hover:shadow-lg hover:shadow-emerald-500/5 hover:-translate-y-0.5 transition-all duration-300">
+          <div className="space-y-1 min-w-0">
+            <p className="text-[8.5px] font-bold uppercase tracking-[0.08em] text-slate-400 whitespace-nowrap">Active Contracts</p>
+            <p className="text-2xl font-extrabold tracking-tight text-slate-800 group-hover:text-emerald-900 transition-colors duration-300">892</p>
           </div>
-          <div className="bg-yellow-100 p-3 rounded-lg">
-            <AlertCircle className="text-yellow-600" size={20} />
+          <div className="bg-emerald-50/80 border border-emerald-100/50 p-2.5 rounded-xl text-emerald-650 shadow-[0_2px_8px_rgba(16,185,129,0.05)] group-hover:scale-110 group-hover:rotate-3 transition-all duration-300 shrink-0">
+            <CheckCircle size={20} className="stroke-[2.2px] text-emerald-650" />
+          </div>
+        </div>
+
+        {/* Card 4: Expiring Soon */}
+        <div className="group relative bg-gradient-to-br from-amber-50/60 to-white hover:from-amber-100/40 hover:to-amber-50/20 rounded-2xl p-5 flex justify-between items-center border border-amber-100/70 border-b-[3.5px] border-b-amber-500/80 hover:border-amber-300 hover:border-b-amber-600 hover:shadow-lg hover:shadow-amber-500/5 hover:-translate-y-0.5 transition-all duration-300">
+          <div className="space-y-1 min-w-0">
+            <p className="text-[8.5px] font-bold uppercase tracking-[0.08em] text-slate-400 whitespace-nowrap">Expiring Soon</p>
+            <p className="text-2xl font-extrabold tracking-tight text-slate-800 group-hover:text-amber-900 transition-colors duration-300">34</p>
+          </div>
+          <div className="bg-amber-50/80 border border-amber-100/50 p-2.5 rounded-xl text-amber-650 shadow-[0_2px_8px_rgba(245,158,11,0.05)] group-hover:scale-110 group-hover:-rotate-3 transition-all duration-300 shrink-0">
+            <AlertCircle size={20} className="stroke-[2.2px] text-amber-655" />
           </div>
         </div>
 
@@ -338,7 +470,7 @@ const paginatedUploads = uploads.slice(startIndex, startIndex + itemsPerPage);
 
 {/*===================================== RECENT UPLOADS SECTION START ======================================== */}
 
-<div className="bg-white rounded-xl p-4 border border-gray-200 shadow-sm">
+<div className="bg-white rounded-xl p-4 border border-gray-200 shadow-sm mb-7">
 
   <h3 className="text-lg font-semibold mb-4 text-gray-800">
     Recent Uploads
@@ -417,9 +549,9 @@ const paginatedUploads = uploads.slice(startIndex, startIndex + itemsPerPage);
               <div className="flex justify-end items-center gap-3">
                 <Eye
                   size={16}
-                  onClick={() => handleViewData(item._id)}
-                  className="cursor-pointer text-blue-500 hover:text-blue-600 transition-colors"
-                  title="Show Sheet Data"
+                  onClick={() => !viewLoading && handleViewData(item._id)}
+                  className={`${viewLoading ? "cursor-not-allowed text-blue-300" : "cursor-pointer text-blue-500 hover:text-blue-600"} transition-colors`}
+                  title={viewLoading ? "Loading sheet data" : "Show Sheet Data"}
                 />
                 <Download
                   size={16}
@@ -507,7 +639,8 @@ const paginatedUploads = uploads.slice(startIndex, startIndex + itemsPerPage);
  <DmcBulkUploadModal isOpen={showBulkUploadModal} onClose={() => setShowBulkUploadModal(false)}/>
 
 
-      {/* EXCEL SHEET VIEWER MODAL */}
+
+      {/* EXCEL SHEET VIEWER MODAL */}
       <AnimatePresence>
         {selectedSheet && (
           <motion.div
@@ -528,20 +661,46 @@ const paginatedUploads = uploads.slice(startIndex, startIndex + itemsPerPage);
             >
               {/* Excel Header Ribbon */}
               <div className="bg-gradient-to-r from-[#0b1e36] via-[#0e4e2c] to-[#107c41] text-white px-5 py-3.5 flex items-center justify-between shadow-md">
-                <div className="flex items-center gap-3">
-                  <FileSpreadsheet size={24} className="text-white shrink-0" />
+                <div className="flex items-center gap-3 shrink-0">
+                  <FileSpreadsheet size={24} className="text-white shrink-0 animate-bounce" />
                   <div>
-                    <h3 className="text-sm font-bold tracking-wide text-white drop-shadow-sm">
+                    <h3 className="text-sm font-bold tracking-wide text-white drop-shadow-sm max-w-[250px] truncate" title={selectedSheet.fileName}>
                       {selectedSheet.fileName}
                     </h3>
                     <p className="text-[10px] text-emerald-100 uppercase tracking-widest font-semibold mt-0.5">
-                      Category: {selectedSheet.category} | Excel Spreadsheet Preview
+                      Category: {selectedSheet.category} | Spreadsheet Preview
                     </p>
                   </div>
                 </div>
+
+                {/* Highly Professional Search Bar inside Green Header Ribbon */}
+                <div className="flex-1 max-w-md mx-6 relative">
+                  <div className="pointer-events-none absolute left-3.5 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center text-emerald-100/60">
+                    <Search size={13} />
+                  </div>
+                  <input
+                    type="text"
+                    value={sheetSearchQuery}
+                    onChange={(e) => setSheetSearchQuery(e.target.value)}
+                    placeholder="Search in this spreadsheet..."
+                    className="w-full rounded-xl border border-white/20 bg-white/10 py-1.5 pl-10 pr-9 text-xs text-white placeholder-emerald-100/40 shadow-sm outline-none transition-all duration-200 focus:border-white/40 focus:bg-white/15 focus:ring-4 focus:ring-white/5"
+                  />
+                  {sheetSearchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setSheetSearchQuery("")}
+                      className="absolute right-2.5 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white transition cursor-pointer"
+                      title="Clear Search"
+                    >
+                      <X size={10} />
+                    </button>
+                  )}
+                </div>
+
                 <button
+                  type="button"
                   onClick={() => setSelectedSheet(null)}
-                  className="p-1.5 rounded-lg bg-black/20 hover:bg-rose-600/90 text-white transition-all duration-200 active:scale-95 cursor-pointer"
+                  className="p-1.5 rounded-lg bg-black/20 hover:bg-rose-600/90 text-white transition-all duration-200 active:scale-95 cursor-pointer shrink-0"
                 >
                   <X size={18} />
                 </button>
@@ -549,13 +708,68 @@ const paginatedUploads = uploads.slice(startIndex, startIndex + itemsPerPage);
 
               {/* Spreadsheet Table Grid */}
               <div className="flex-1 overflow-auto p-4 bg-[#f3f2f1]">
+                {editingRowIndex !== null && (
+                  <div className={`mb-3 rounded-xl border p-3 shadow-sm ${
+                    isRateChangeReasonRequired
+                      ? "border-amber-200 bg-amber-50"
+                      : "border-slate-200 bg-white"
+                  }`}>
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                      <div className="min-w-0">
+                        <p className={`text-xs font-extrabold uppercase tracking-wide ${
+                          isRateChangeReasonRequired ? "text-amber-700" : "text-slate-700"
+                        }`}>
+                          Rate Change Validation
+                        </p>
+                        <p className="mt-1 text-[11px] font-semibold text-slate-500">
+                          {isRateChangeReasonRequired
+                            ? `Reason is mandatory because these fields changed: ${currentRateSensitiveChanges.join(", ")}.`
+                            : "No rate, currency, validity, blackout, or availability field has changed yet."}
+                        </p>
+                      </div>
+
+                      <div className="grid min-w-0 flex-1 grid-cols-1 gap-2 md:grid-cols-[220px_1fr]">
+                        <select
+                          value={rateChangeReasonType}
+                          onChange={(e) => setRateChangeReasonType(e.target.value)}
+                          disabled={!isRateChangeReasonRequired}
+                          className={`h-9 rounded-lg border px-3 text-xs font-semibold outline-none ${
+                            isRateChangeReasonRequired
+                              ? "border-amber-300 bg-white text-slate-800 focus:border-amber-500"
+                              : "border-slate-200 bg-slate-50 text-slate-400"
+                          }`}
+                        >
+                          <option value="">Select reason</option>
+                          {rateChangeReasonOptions.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+
+                        <input
+                          type="text"
+                          value={rateChangeReasonNote}
+                          onChange={(e) => setRateChangeReasonNote(e.target.value)}
+                          disabled={!isRateChangeReasonRequired}
+                          placeholder="Example: supplier blackout surcharge for event dates / limited inventory / dynamic market revision"
+                          className={`h-9 rounded-lg border px-3 text-xs font-semibold outline-none ${
+                            isRateChangeReasonRequired
+                              ? "border-amber-300 bg-white text-slate-800 placeholder-slate-400 focus:border-amber-500"
+                              : "border-slate-200 bg-slate-50 text-slate-400 placeholder-slate-300"
+                          }`}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
                 <div className="bg-white rounded-lg border border-slate-200 shadow-sm max-h-[calc(90vh-100px)] overflow-auto custom-scroll">
                   <table className="min-w-max border-collapse text-[11px] font-sans w-full">
                     <thead className="sticky top-0 z-10">
                       <tr className="bg-[#f3f2f1] border-b border-slate-300">
                         {/* Row Index Column Header */}
                         <th className="w-10 bg-[#e1dfdd] border-r border-slate-300 py-2.5 text-center text-slate-500 font-bold select-none whitespace-nowrap"></th>
-                        
+
                         {/* Dynamic Headers */}
                         {selectedSheet.headers.map((header) => {
                           const isDesc = String(header || "").toLowerCase().includes("desc");
@@ -570,7 +784,7 @@ const paginatedUploads = uploads.slice(startIndex, startIndex + itemsPerPage);
                             </th>
                           );
                         })}
-                        
+
                         {/* Actions Column Header */}
                         <th className="px-4 py-2.5 text-center text-slate-700 font-bold min-w-[120px] bg-[#f3f2f1] select-none whitespace-nowrap">
                           Actions
@@ -578,19 +792,20 @@ const paginatedUploads = uploads.slice(startIndex, startIndex + itemsPerPage);
                       </tr>
                     </thead>
                     <tbody>
-                      {selectedSheet.rows.length ? (
-                        selectedSheet.rows.map((row, index) => {
-                          const isEditing = editingRowIndex === index;
+                      {paginatedSheetRows.length ? (
+                        paginatedSheetRows.map((row, index) => {
+                          const originalIndex = row.originalIndex !== undefined ? row.originalIndex : index;
+                          const isEditing = editingRowIndex === originalIndex;
                           return (
                             <tr
-                              key={row._id || index}
+                              key={row._id || originalIndex}
                               className={`border-b border-slate-200 hover:bg-slate-50/50 transition-colors ${
                                 isEditing ? "bg-blue-50/30" : ""
                               }`}
                             >
                               {/* Row Index */}
-                              <td className="bg-[#f3f2f1] border-r border-slate-300 text-center text-slate-500 font-semibold select-none py-2">
-                                {index + 1}
+                              <td className="bg-[#f3f2f1] border-r border-slate-300 text-center text-slate-500 font-semibold select-none py-2 font-mono">
+                                {originalIndex + 1}
                               </td>
 
                               {/* Data Cells */}
@@ -600,8 +815,8 @@ const paginatedUploads = uploads.slice(startIndex, startIndex + itemsPerPage);
                                   <td
                                     key={header}
                                     className={`px-4 py-2 border-r border-slate-300 text-slate-800 font-medium ${
-                                      isDesc 
-                                        ? "min-w-[320px] max-w-[450px] whitespace-normal break-words py-3 leading-normal align-top text-left" 
+                                      isDesc
+                                        ? "min-w-[320px] max-w-[450px] whitespace-normal break-words py-3 leading-normal align-top text-left"
                                         : "whitespace-nowrap"
                                     }`}
                                   >
@@ -634,7 +849,7 @@ const paginatedUploads = uploads.slice(startIndex, startIndex + itemsPerPage);
                                    {isEditing ? (
                                      <>
                                        <button
-                                         onClick={() => saveEditedRow(index)}
+                                         onClick={() => saveEditedRow(originalIndex)}
                                          className="inline-flex items-center gap-1.5 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-700 hover:to-green-750 text-white shadow-[0_2px_4px_rgba(16,124,65,0.2)] hover:shadow-[0_4px_8px_rgba(16,124,65,0.3)] px-2.5 py-1 rounded-md transition-all font-bold text-[11px] active:scale-95 duration-150 cursor-pointer"
                                          title="Save Changes"
                                        >
@@ -650,9 +865,9 @@ const paginatedUploads = uploads.slice(startIndex, startIndex + itemsPerPage);
                                          Cancel
                                        </button>
                                      </>
-                                   ) : (
+                                    ) : (
                                      <button
-                                       onClick={() => startEditingRow(index, row)}
+                                       onClick={() => startEditingRow(originalIndex, row)}
                                        className="inline-flex items-center gap-1.5 bg-gradient-to-r from-[#0b1e36] to-[#107c41] hover:from-[#132d52] hover:to-[#16914d] text-white shadow-[0_2px_4px_rgba(11,30,54,0.2)] hover:shadow-[0_4px_8px_rgba(16,124,65,0.3)] px-3 py-1.5 rounded-md transition-all font-bold text-[11px] active:scale-95 duration-150 cursor-pointer"
                                        title="Edit Row"
                                      >
@@ -669,15 +884,43 @@ const paginatedUploads = uploads.slice(startIndex, startIndex + itemsPerPage);
                         <tr>
                           <td
                             colSpan={selectedSheet.headers.length + 2}
-                            className="px-4 py-12 text-center text-sm text-slate-400 font-medium"
+                            className="px-4 py-12 text-center text-sm text-slate-400 font-semibold"
                           >
-                            No spreadsheet rows found in this file.
+                            {sheetSearchQuery.trim() ? "No matching rows found in this sheet." : "No spreadsheet rows found in this file."}
                           </td>
                         </tr>
                       )}
                     </tbody>
                   </table>
                 </div>
+
+                {/* Spreadsheet Modal Pagination */}
+                {totalSheetPages > 1 && (
+                  <div className="mt-3 flex items-center justify-between bg-white px-4 py-2.5 rounded-lg border border-slate-200/80 shadow-sm">
+                    <span className="text-[11px] font-semibold text-slate-500">
+                      Showing {((sheetPage - 1) * sheetItemsPerPage) + 1} to {Math.min(sheetPage * sheetItemsPerPage, filteredSheetRows.length)} of {filteredSheetRows.length} rows
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => setSheetPage((prev) => Math.max(prev - 1, 1))}
+                        disabled={sheetPage === 1}
+                        className="h-7 px-2.5 rounded border border-slate-200 bg-white text-[11px] font-bold text-slate-600 hover:bg-slate-50 active:scale-95 transition disabled:opacity-40 disabled:pointer-events-none cursor-pointer"
+                      >
+                        Prev
+                      </button>
+                      <span className="text-[11px] font-bold text-slate-700 px-1">
+                        Page {sheetPage} of {totalSheetPages}
+                      </span>
+                      <button
+                        onClick={() => setSheetPage((prev) => Math.min(prev + 1, totalSheetPages))}
+                        disabled={sheetPage === totalSheetPages}
+                        className="h-7 px-2.5 rounded border border-slate-200 bg-white text-[11px] font-bold text-slate-600 hover:bg-slate-50 active:scale-95 transition disabled:opacity-40 disabled:pointer-events-none cursor-pointer"
+                      >
+                        Next
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </motion.div>
           </motion.div>

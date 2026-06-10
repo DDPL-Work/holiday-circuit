@@ -64,6 +64,7 @@ const menuConfig = {
   ],
   finance_manager: [
     { label: "Finance Manager", path: "/financeManager/financeManagerDashboard", icon: GrUserManager },
+    { label: "Advanced Analytics", path: "/financeManager/advancedAnalytics", icon: VscGraph },
     { label: "All Transactions", path: "/financeManager/allTeamTransaction", icon: RiTeamFill },
     { label: "Internal DMC Invoice", path: "/financeManager/internalDmcInvoice", icon: FaFileInvoice },
     { label: "My Finance Team", path: "/financeManager/myFinanceTeam", icon: BsMicrosoftTeams },

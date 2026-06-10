@@ -35,6 +35,11 @@ const agentSchema = new mongoose.Schema(
       }
     },
 
+    creditDays: {
+      type: [Number],
+      default: [7]
+    },
+
     employeeId: {
       type: String,
       unique: true,
@@ -218,6 +223,7 @@ agentSchema.pre("save", function () {
   if (!["agent", "dmc_partner", "finance_partner"].includes(this.role)) {
     this.companyName = undefined;
     this.gstNumber = undefined;
+    this.creditDays = undefined;
     this.documents = undefined;
     this.status = undefined;
     this.reviewedAt = undefined;
@@ -247,7 +253,9 @@ agentSchema.pre("save", function () {
   }
 });
 
+agentSchema.index({ role: 1, accountStatus: 1, createdAt: -1 });
+agentSchema.index({ manager: 1, role: 1, createdAt: -1 });
+agentSchema.index({ isDeleted: 1, role: 1, updatedAt: -1 });
 
 export default mongoose.model("Auth", agentSchema);
-
 

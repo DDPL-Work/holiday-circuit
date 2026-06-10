@@ -224,25 +224,51 @@ export default function MyFinanceTeam() {
   const addedThisWeek = summary?.addedThisWeek ?? 0;
 
   return (
-    <div className="min-h-0 w-full overflow-x-hidden bg-slate-50 font-sans">
-      <div className="flex items-center justify-between border-b border-gray-200 bg-white py-1.5 text-xs text-gray-500">
-        <div>
-          <span className="font-medium text-gray-700">My Team</span>
-          <span className="mx-2 text-gray-300">|</span>
-          {dateLabel || "Finance Team"}
+    <div className="min-h-screen overflow-x-hidden bg-[#f6f8fc] font-sans">
+      <div className="border-b border-slate-200 bg-gradient-to-r from-white via-[#f8fafc] to-[#EFF5FC]">
+        <div className="flex items-center justify-between px-0 py-2">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-50 text-blue-600 border border-blue-100/80 shadow-sm">
+              <svg className="h-4 w-4 stroke-[2.2]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+              </svg>
+            </div>
+            <div>
+              <p className="text-[13px] font-bold text-slate-800 leading-none">My Team</p>
+              <p className="text-[9.5px] text-slate-400 mt-0.5 font-semibold">{dateLabel || "Finance Team"}</p>
+            </div>
+          </div>
+          <div className="text-right">
+            <p className="text-[9.5px] text-slate-400">Logged in as</p>
+            <p className="text-xs font-semibold text-slate-700">{user?.name || "Finance Manager"}</p>
+          </div>
         </div>
-        <div>Logged in as <span className="font-medium text-gray-700">{user?.name || "Finance Manager"}</span></div>
       </div>
 
-      <div className="max-w-6xl py-8">
-        <div className="mb-7 flex items-start justify-between">
-          <div>
-            <h1 className="text-xl font-medium text-gray-900">My Finance Team</h1>
-            <p className="mt-1 text-sm text-gray-500">Finance executive roster and performance management</p>
+      <div className="px-0 pt-4">
+        <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex items-start gap-3">
+            <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-slate-800 to-slate-950 text-white shadow-md shadow-slate-900/10">
+              <svg className="h-5 w-5 stroke-[2.2]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+              </svg>
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h1 className="text-[18px] font-extrabold text-slate-900 tracking-tight leading-none">
+                  My Finance Team
+                </h1>
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-100 px-2 py-0.5 text-[9.5px] font-bold text-emerald-700 tracking-wide uppercase">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  Active Roster
+                </span>
+              </div>
+              <p className="mt-1 text-[13.5px] text-slate-500 font-medium">Finance executive roster and performance management</p>
+            </div>
           </div>
           <button
             onClick={() => setShowAdd(true)}
-            className="flex items-center gap-2 rounded-lg bg-gray-900 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-gray-700"
+            className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-[#0b1e36] via-[#1d3d63] to-[#107c41] px-4 py-2.5 text-[12.5px] font-semibold text-white shadow-md hover:shadow-lg transition-all duration-300 hover:opacity-95 self-start shrink-0"
           >
             <IconUserPlus />
             Add Finance Executive
@@ -263,62 +289,93 @@ export default function MyFinanceTeam() {
         ) : null}
 
         <div className="mb-6 grid grid-cols-3 gap-4">
-          <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
-            <p className="mb-2 text-xs text-slate-400">Total Finance Executives</p>
-            <p className="text-3xl font-bold text-slate-900">{totalExecutives}</p>
-            <p className="mt-2 flex items-center gap-1 text-xs text-emerald-600">
-              <IconTrendUp />
-              {addedThisWeek} added this week
-            </p>
+          <div className="rounded-[12px] bg-gradient-to-br from-[#dbeafe]/30 via-white to-white border border-blue-200/80 border-b-4 border-b-blue-500 shadow-[0_4px_12px_rgba(59,130,246,0.02)] p-4">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Total Finance Executives</p>
+              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white shadow-sm ring-1 ring-slate-100">
+                <svg className="h-4.5 w-4.5 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                </svg>
+              </span>
+            </div>
+            <div className="mt-2 flex items-baseline justify-between">
+              <p className="text-2xl font-extrabold text-blue-600">{totalExecutives}</p>
+              <span className="flex items-center gap-1 text-[10px] font-semibold text-emerald-600">
+                <IconTrendUp />
+                {addedThisWeek} new
+              </span>
+            </div>
           </div>
-          <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
-            <p className="mb-2 text-xs text-slate-400">At Risk Executives</p>
-            <p className="text-3xl font-bold text-red-500">{atRiskExecutives}</p>
-            <p className="mt-2 flex items-center gap-1 text-xs text-slate-400">
-              <IconAlertTriangle />
-              Need immediate attention
-            </p>
+
+          <div className="rounded-[12px] bg-gradient-to-br from-[#ffe4e6]/30 via-white to-white border border-rose-200/80 border-b-4 border-b-rose-500 shadow-[0_4px_12px_rgba(244,63,94,0.02)] p-4">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">At Risk Executives</p>
+              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white shadow-sm ring-1 ring-slate-100">
+                <svg className="h-4.5 w-4.5 text-rose-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </span>
+            </div>
+            <div className="mt-2 flex items-baseline justify-between">
+              <p className="text-2xl font-extrabold text-rose-600">{atRiskExecutives}</p>
+              <span className="text-[10px] font-semibold text-rose-500">
+                Action required
+              </span>
+            </div>
           </div>
-          <div className="rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
-            <p className="mb-2 text-xs text-slate-400">Avg. Team Accuracy</p>
-            <p className="text-3xl font-bold text-slate-900">{avgTeamAccuracy}%</p>
-            <p className="mt-2 flex items-center gap-1 text-xs text-slate-400">
-              <IconTrendUp />
-              Based on reviewed payment verifications
-            </p>
+
+          <div className="rounded-[12px] bg-gradient-to-br from-[#d1fae5]/30 via-white to-white border border-emerald-200/80 border-b-4 border-b-emerald-500 shadow-[0_4px_12px_rgba(16,185,129,0.02)] p-4">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Avg. Team Accuracy</p>
+              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white shadow-sm ring-1 ring-slate-100">
+                <svg className="h-4.5 w-4.5 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </span>
+            </div>
+            <div className="mt-2 flex items-baseline justify-between">
+              <p className="text-2xl font-extrabold text-emerald-600">{avgTeamAccuracy}%</p>
+              <span className="text-[10px] font-semibold text-slate-500">
+                Excellent rating
+              </span>
+            </div>
           </div>
         </div>
 
-        <div className="overflow-hidden rounded-[20px] border border-slate-200 bg-white shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
-          <div className="flex items-center gap-2 border-b border-slate-200 bg-slate-50/70 px-5 py-4">
-            <IconUsers />
-            <span className="text-[15px] font-semibold text-slate-900">Finance Executive Directory</span>
+        <div className="overflow-hidden rounded-[12px] border border-slate-200 bg-white shadow-sm">
+          <div className="flex items-center gap-3.5 border-b border-slate-200 px-5 py-4 bg-gradient-to-r from-slate-50/80 via-slate-50/30 to-white">
+            <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-blue-600 text-white shadow-[0_4px_12px_rgba(99,102,241,0.22)] transition-transform duration-300 hover:scale-105">
+              <div className="absolute inset-0 rounded-xl bg-white opacity-0 hover:opacity-10 transition-opacity" />
+              <IconUsers size={18} color="white" />
+              <div className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-emerald-500 shadow-sm animate-pulse" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-[15px] font-extrabold text-slate-900 tracking-tight leading-none">
+                  Finance Executive Directory
+                </h2>
+                <span className="inline-flex items-center gap-1 rounded-full bg-blue-50/80 border border-blue-100 px-2 py-0.5 text-[9.5px] font-semibold text-blue-700 tracking-wide uppercase">
+                  <span className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse" />
+                  Roster Management
+                </span>
+              </div>
+              <p className="text-[10.5px] text-slate-500 mt-1 font-medium leading-relaxed">
+                Monitor individual workloads, pending checks, accuracy ratings, and statuses
+              </p>
+            </div>
           </div>
 
-          <div className="custom-scroll overflow-x-auto">
-            <table className="min-w-[1080px] w-full table-fixed text-xs">
-              <colgroup>
-                <col style={{ width: "220px" }} />
-                <col style={{ width: "250px" }} />
-                <col style={{ width: "155px" }} />
-                <col style={{ width: "220px" }} />
-                <col style={{ width: "160px" }} />
-                <col style={{ width: "120px" }} />
-              </colgroup>
+          <div className="finance-transparent-scrollbar overflow-x-auto">
+            <div className="min-w-[950px]">
+            <table className="w-full text-[13px]">
               <thead>
-                <tr className="border-b border-slate-200 bg-white">
-                  <th className="px-5 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-700">Exec Name</th>
-                  <th className="px-4 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-700">Email</th>
-                  <th className="px-4 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-700">
-                    <span className="block">Verifications</span>
-                    <span className="mt-0.5 block">Pending</span>
-                  </th>
-                  <th className="px-4 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-700">
-                    Resolution Breakdown
-                    <span className="mt-1 block text-[11px] font-normal normal-case tracking-normal text-slate-400">Settled vs. Escalated</span>
-                  </th>
-                  <th className="px-4 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-700">Accuracy %</th>
-                  <th className="px-4 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-700">Status</th>
+                <tr className="border-b border-slate-200 bg-slate-50">
+                  <th className="whitespace-nowrap px-5 py-2.5 text-left text-[9.5px] font-bold uppercase tracking-[0.16em] text-slate-400">Exec Name</th>
+                  <th className="whitespace-nowrap px-4 py-2.5 text-left text-[9.5px] font-bold uppercase tracking-[0.16em] text-slate-400">Email</th>
+                  <th className="whitespace-nowrap px-4 py-2.5 text-center text-[9.5px] font-bold uppercase tracking-[0.16em] text-slate-400">Verifications Pending</th>
+                  <th className="whitespace-nowrap px-4 py-2.5 text-left text-[9.5px] font-bold uppercase tracking-[0.16em] text-slate-400">Resolution Breakdown</th>
+                  <th className="whitespace-nowrap px-4 py-2.5 text-left text-[9.5px] font-bold uppercase tracking-[0.16em] text-slate-400">Accuracy %</th>
+                  <th className="whitespace-nowrap px-4 py-2.5 text-left text-[9.5px] font-bold uppercase tracking-[0.16em] text-slate-400">Status</th>
                 </tr>
               </thead>
               <tbody>
@@ -330,31 +387,31 @@ export default function MyFinanceTeam() {
                   </tr>
                 ) : (
                   team.map((member) => (
-                    <tr key={member.id} className="border-b border-slate-200/80 transition-colors hover:bg-slate-50/50">
-                      <td className="px-5 py-4 align-middle">
+                    <tr key={member.id} className="border-b border-slate-100 transition-colors hover:bg-slate-50/50">
+                      <td className="px-5 py-2.5 align-middle">
                         <div className="flex items-center gap-3">
                           <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold ${member.avatarColor}`}>
                             {member.initials}
                           </div>
-                          <span className="whitespace-nowrap text-sm font-medium text-slate-900">{member.name}</span>
+                          <span className="whitespace-nowrap text-[13px] font-semibold text-slate-800">{member.name}</span>
                         </div>
                       </td>
-                      <td className="px-4 py-4 align-middle text-sm text-slate-700">{member.email}</td>
-                      <td className="px-4 py-4 align-middle">
-                        <span className={`inline-flex min-w-[20px] text-sm font-semibold tabular-nums ${member.pending > 10 ? "text-red-500" : member.pending > 0 ? "text-amber-500" : "text-emerald-600"}`}>
+                      <td className="px-4 py-2.5 align-middle text-[12.5px] font-semibold text-slate-500">{member.email}</td>
+                      <td className="px-4 py-2.5 align-middle text-center">
+                        <span className={`inline-flex justify-center items-center min-w-[20px] text-[13px] font-extrabold tabular-nums ${member.pending > 10 ? "text-rose-600" : member.pending > 0 ? "text-amber-500" : "text-emerald-600"}`}>
                           {member.pending}
                         </span>
                       </td>
-                      <td className="px-4 py-4 align-middle">
+                      <td className="px-4 py-2.5 align-middle">
                         <ResolutionBreakdown settled={member.settled} escalated={member.escalated} />
                       </td>
-                      <td className="px-4 py-4 align-middle">
+                      <td className="px-4 py-2.5 align-middle">
                         <div className="flex items-center gap-3">
                           <AnimatedAccuracyBar accuracy={member.accuracy} />
-                          <span className="text-sm font-semibold text-slate-700">{member.accuracy}%</span>
+                          <span className="text-[12.5px] font-extrabold text-slate-700">{member.accuracy}%</span>
                         </div>
                       </td>
-                      <td className="px-4 py-4 align-middle">
+                      <td className="px-4 py-2.5 align-middle">
                         <StatusBadge status={member.status} />
                       </td>
                     </tr>
@@ -362,6 +419,7 @@ export default function MyFinanceTeam() {
                 )}
               </tbody>
             </table>
+            </div>
           </div>
         </div>
       </div>

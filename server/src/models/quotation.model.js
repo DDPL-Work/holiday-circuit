@@ -131,6 +131,32 @@ const quotationSchema = new mongoose.Schema(
         required: true   // 🔥 IMPORTANT
       },
 
+      hotelRateMode: {
+        type: String,
+        enum: ["unit-rate", "service-total"],
+        default: "unit-rate"
+      },
+
+      manualRateOverride: {
+        type: Boolean,
+        default: false
+      },
+
+      quoteBaseRate: {
+        type: Number,
+        default: 0
+      },
+
+      roomTypeOptionRate: {
+        type: Number,
+        default: 0
+      },
+
+      roomTypeOptionCurrency: {
+        type: String,
+        default: "INR"
+      },
+
       exchangeRate: {
         type: Number,
         default: 1
@@ -316,5 +342,9 @@ const quotationSchema = new mongoose.Schema(
 },
 { timestamps: true }
 );
+
+quotationSchema.index({ queryId: 1, createdAt: -1 });
+quotationSchema.index({ queryId: 1, status: 1, createdAt: -1 });
+quotationSchema.index({ agent: 1, createdAt: -1 });
 
 export default mongoose.model("Quotation", quotationSchema);
