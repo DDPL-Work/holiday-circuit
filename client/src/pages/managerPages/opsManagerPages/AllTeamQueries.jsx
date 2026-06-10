@@ -7,10 +7,10 @@ import API from "../../../utils/Api";
 import CreateNewQueries from "../../../modal/CreateNewQueries.Modal";
 
 const statusStyles = {
-  "In Progress": "bg-amber-50 text-amber-700 border border-amber-200",
-  Quoted: "bg-green-50 text-green-700 border border-green-200",
-  Overdue: "bg-red-50 text-red-600 border border-red-200",
-  New: "bg-sky-50 text-sky-700 border border-sky-200",
+  "In Progress": "bg-amber-50 text-amber-750 border border-amber-150/70",
+  Quoted: "bg-emerald-50 text-emerald-750 border border-emerald-150/70",
+  Overdue: "bg-rose-50 text-rose-650 border border-rose-150/70 animate-pulse",
+  New: "bg-sky-50 text-sky-750 border border-sky-150/70",
 };
 
 const quotationStatusStyles = {
@@ -514,14 +514,19 @@ export default function AllTeamQueries() {
       <div className="max-w-6xl mx-auto px-[2px] mt-8">
         <div className="flex justify-between items-center mb-4">
           <div>
-            <h1 className="text-xl font-medium text-gray-900">All Team Queries</h1>
-            <p className="text-sm text-gray-500 mt-1">Filtered view of all queries assigned to your team</p>
+            <h1 className="text-[26px] font-black bg-gradient-to-r from-slate-900 via-blue-950 to-slate-900 bg-clip-text text-transparent tracking-tight leading-none">All Team Queries</h1>
+            <p className="text-sm text-gray-500 mt-1.5 flex items-center">
+              <span className="inline-block h-2 w-2 rounded-full bg-emerald-500 animate-pulse mr-2" />
+              Filtered view of all queries assigned to your team
+            </p>
           </div>
           <button
             onClick={handleSubmitReport}
             disabled={reportSubmitting}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition ${
-              submitted ? "bg-green-600 text-white cursor-default" : "bg-gray-900 text-white hover:bg-gray-700"
+            className={`flex items-center gap-2 px-6 py-2.5 rounded-full text-sm font-extrabold transition-all duration-300 transform active:scale-[0.98] shadow-md ${
+              submitted
+                ? "bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-emerald-500/20 cursor-default"
+                : "bg-gradient-to-r from-[#0f172a] via-[#1e3a8a] to-[#2563eb] hover:from-[#1e3a8a] hover:via-[#2563eb] hover:to-[#3b82f6] text-white hover:shadow-lg hover:shadow-blue-500/15"
             } ${reportSubmitting ? "opacity-70 cursor-wait" : ""}`}
           >
             <IconSend />
@@ -529,17 +534,26 @@ export default function AllTeamQueries() {
           </button>
         </div>
 
-        <div className="bg-white border border-gray-200 rounded-xl p-3 mt-3">
-          <div className="flex justify-between items-center mb-4">
-            <div className="flex items-center gap-2">
-              <IconInbox />
-              <span className="text-base font-medium text-gray-900">Query Tracker</span>
+        <div className="overflow-hidden rounded-[20px] border border-slate-200 bg-white mt-5">
+          <div className="border-b border-slate-100 bg-gradient-to-r from-slate-50/50 to-white px-6 py-5 flex justify-between items-center">
+            <div className="flex items-center gap-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-50 text-blue-600 border border-blue-100/80 shadow-sm">
+                <IconInbox size={18} />
+              </div>
+              <div>
+                <h2 className="text-[16px] font-black text-slate-900 tracking-tight flex items-center gap-2">
+                  Query Tracker
+                </h2>
+                <p className="text-[12px] text-slate-500 font-medium">Live operational queries and quotation tracker</p>
+              </div>
             </div>
-            <span className="text-xs text-gray-400">{filtered.length} total queries</span>
+            <span className="inline-flex items-center justify-center rounded-full bg-gradient-to-r from-black via-slate-900 to-blue-950 px-4 py-1 text-xs font-extrabold text-white shadow-sm border border-slate-800/30">
+              {filtered.length} total queries
+            </span>
           </div>
 
           {error && (
-            <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600 flex items-center justify-between gap-3">
+            <div className="m-6 mb-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600 flex items-center justify-between gap-3">
               <span>{error}</span>
               <button
                 onClick={loadQueries}
@@ -550,23 +564,23 @@ export default function AllTeamQueries() {
             </div>
           )}
 
-          <div className="flex gap-3 mb-4 flex-wrap">
-            <div className="flex items-center gap-2 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-500 flex-1 min-w-48">
+          <div className="px-6 pt-5 pb-4 flex gap-3 flex-wrap">
+            <div className="flex items-center gap-2.5 border border-slate-200 bg-slate-50/30 focus-within:border-blue-400 focus-within:bg-white focus-within:ring-2 focus-within:ring-blue-100 rounded-full px-5 py-1.5 transition duration-200 flex-1 min-w-[240px]">
               <IconSearch />
               <input
                 type="text"
                 placeholder="Search queries..."
                 value={search}
                 onChange={(event) => handleSearchChange(event.target.value)}
-                className="outline-none bg-transparent text-gray-700 placeholder-gray-400 w-full text-sm"
+                className="outline-none bg-transparent text-slate-700 placeholder-slate-400 w-full text-sm font-medium"
               />
             </div>
-            <div className="flex items-center gap-1.5 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-500">
+            <div className="flex items-center gap-2 border border-slate-200 bg-slate-50/30 focus-within:border-blue-400 focus-within:bg-white focus-within:ring-2 focus-within:ring-blue-100 rounded-full px-5 py-1.5 transition duration-200 cursor-pointer">
               <IconFilter />
               <select
                 value={statusFilter}
                 onChange={(event) => handleFilterChange(event.target.value)}
-                className="outline-none bg-transparent text-gray-600 text-sm cursor-pointer"
+                className="outline-none bg-transparent text-slate-700 text-sm font-semibold cursor-pointer py-0.5"
               >
                 {statuses.map((status) => (
                   <option key={status}>{status}</option>
@@ -578,28 +592,47 @@ export default function AllTeamQueries() {
           <div className="thin-scrollbar overflow-x-auto min-h-[200px]">
             <table className="min-w-[1050px] w-full table-fixed">
               <colgroup>
-                <col style={{ width: "120px" }} />
-                <col style={{ width: "160px" }} />
+                <col style={{ width: "115px" }} />
                 <col style={{ width: "140px" }} />
-                <col style={{ width: "160px" }} />
-                <col style={{ width: "120px" }} />
-                <col style={{ width: "110px" }} />
-                <col style={{ width: "120px" }} />
-                <col style={{ width: "160px" }} />
+                <col style={{ width: "130px" }} />
+                <col style={{ width: "150px" }} />
+                <col style={{ width: "125px" }} />
+                <col style={{ width: "140px" }} />
+                <col style={{ width: "140px" }} />
+                <col style={{ width: "170px" }} />
               </colgroup>
               <thead>
-                <tr className="border-b border-gray-200">
-                  {["Query ID", "Client", "Destination", "Assigned To", "Status", "Deadline", "Est. Amount", "Actions"].map((header) => (
-                    <th key={header} className="text-left text-xs font-medium text-gray-400 uppercase tracking-wide py-2.5 pr-3">
-                      {header}
-                    </th>
-                  ))}
+                <tr className="border-b border-slate-150 bg-slate-50/40">
+                  <th className="px-5 py-3.5 text-left text-[10px] font-extrabold uppercase tracking-[0.12em] text-[#35507a] whitespace-nowrap">
+                    Query ID
+                  </th>
+                  <th className="px-5 py-3.5 text-left text-[10px] font-extrabold uppercase tracking-[0.12em] text-[#35507a] whitespace-nowrap">
+                    Client
+                  </th>
+                  <th className="px-5 py-3.5 text-left text-[10px] font-extrabold uppercase tracking-[0.12em] text-[#35507a] whitespace-nowrap">
+                    Destination
+                  </th>
+                  <th className="px-5 py-3.5 text-left text-[10px] font-extrabold uppercase tracking-[0.12em] text-[#35507a] whitespace-nowrap">
+                    Assigned To
+                  </th>
+                  <th className="px-2 py-3.5 text-center text-[10px] font-extrabold uppercase tracking-[0.12em] text-[#35507a] whitespace-nowrap">
+                    Status
+                  </th>
+                  <th className="px-5 py-3.5 text-center text-[10px] font-extrabold uppercase tracking-[0.12em] text-[#35507a] whitespace-nowrap">
+                    Deadline
+                  </th>
+                  <th className="px-5 py-3.5 text-center text-[10px] font-extrabold uppercase tracking-[0.12em] text-[#35507a] whitespace-nowrap">
+                    Est. Amount
+                  </th>
+                  <th className="px-6 py-3.5 text-right text-[10px] font-extrabold uppercase tracking-[0.12em] text-[#35507a] whitespace-nowrap">
+                    Actions
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {pageRows.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="text-center text-sm text-gray-400 py-10">
+                    <td colSpan={8} className="text-center text-sm text-slate-400 py-10">
                       No queries match your search.
                     </td>
                   </tr>
@@ -607,11 +640,11 @@ export default function AllTeamQueries() {
                   pageRows.map((query) => (
                     <tr
                       key={query.queryObjectId || query.id}
-                      className="border-b border-gray-200 hover:bg-gray-50 transition-colors"
+                      className="border-b border-slate-100 hover:bg-gradient-to-r hover:from-blue-50/50 hover:via-indigo-50/30 hover:to-transparent transition-all duration-200"
                     >
-                      <td className="py-2.5 pr-3">
+                      <td className="px-5 py-3 text-left align-middle">
                         <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium text-gray-800">{query.id}</span>
+                          <span className="text-[13.5px] font-bold text-slate-800 font-mono tracking-tight whitespace-nowrap">{query.id}</span>
                           {query.hasReminder && (
                             <span className="flex h-2 w-2 rounded-full bg-blue-500" title="Reminder set" />
                           )}
@@ -620,33 +653,33 @@ export default function AllTeamQueries() {
                           )}
                         </div>
                       </td>
-                      <td className="py-2.5 pr-3">
-                        <span className="text-sm text-gray-700">{query.client}</span>
+                      <td className="px-5 py-3 text-left align-middle">
+                        <span className="text-[13.5px] text-slate-700 font-semibold">{query.client}</span>
                       </td>
-                      <td className="py-2.5 pr-3">
-                        <span className="text-sm text-gray-700">{query.destination}</span>
+                      <td className="px-5 py-3 text-left align-middle">
+                        <span className="text-[13.5px] text-slate-650 font-medium">{query.destination}</span>
                       </td>
-                      <td className="py-2.5 pr-3">
-                        <span className="text-sm text-gray-700 truncate">{query.assignedTo}</span>
+                      <td className="px-5 py-3 text-left align-middle">
+                        <span className="text-[13.5px] text-slate-700 font-semibold truncate block">{query.assignedTo}</span>
                       </td>
-                      <td className="py-2.5 pr-3">
-                        <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${statusStyles[query.status] || statusStyles["In Progress"]}`}>
+                      <td className="px-2 py-3 text-center align-middle">
+                        <span className={`inline-flex items-center justify-center text-[11px] font-extrabold px-2.5 py-0.5 rounded-full whitespace-nowrap ${statusStyles[query.status] || statusStyles["In Progress"]}`}>
                           {query.status}
                         </span>
                       </td>
-                      <td className="py-2.5 pr-3">
-                        <span className={`text-sm font-medium ${query.deadlineRed ? "text-red-500" : "text-gray-700"}`}>
+                      <td className="px-5 py-3 text-center align-middle">
+                        <span className={`inline-flex items-center justify-center text-[11.5px] font-extrabold tracking-tight px-2.5 py-0.5 rounded-lg whitespace-nowrap ${query.deadlineRed ? "text-rose-600 bg-rose-50 border border-rose-100 animate-pulse" : "text-slate-650 bg-slate-50 border border-slate-100"}`}>
                           {query.deadline}
                         </span>
                       </td>
-                      <td className="py-2.5 pr-3">
-                        <span className="text-sm font-medium text-gray-800">{query.amount}</span>
+                      <td className="px-5 py-3 text-center align-middle font-mono">
+                        <span className="text-[13.5px] font-bold text-slate-800 whitespace-nowrap">{query.amount}</span>
                       </td>
-                      <td className="py-2.5">
-                        <div className="flex items-center gap-2">
+                      <td className="px-6 py-3 text-right align-middle">
+                        <div className="flex items-center justify-end gap-2">
                           <button
                             onClick={() => setSelected(query)}
-                            className="flex items-center gap-1 text-[11px] px-2 py-1.5 rounded-lg border border-gray-200 text-gray-500 hover:text-blue-600 hover:border-blue-200 hover:bg-blue-50 transition font-medium"
+                            className="inline-flex items-center gap-1 text-[11px] px-3 py-1.5 rounded-xl bg-gradient-to-r from-slate-900 to-[#1e3a8a] hover:from-[#1e3a8a] hover:to-[#2563eb] text-white shadow-sm hover:shadow border border-slate-800/40 active:scale-[0.98] transition duration-150 font-extrabold cursor-pointer"
                             title="View quotation tracker"
                           >
                             <IconEye size={12} />
@@ -722,7 +755,7 @@ export default function AllTeamQueries() {
                                 setOpenEditModal(true);
                               }
                             }}
-                            className="flex items-center gap-1 text-[11px] px-2 py-1.5 rounded-lg border border-amber-200 text-amber-700 bg-amber-50 hover:bg-amber-100 hover:text-amber-800 transition font-medium"
+                            className="inline-flex items-center gap-1 text-[11px] px-3 py-1.5 rounded-xl bg-gradient-to-r from-slate-900 to-[#78350f] hover:from-[#78350f] hover:to-[#b45309] text-white shadow-sm hover:shadow border border-slate-800/40 active:scale-[0.98] transition duration-150 font-extrabold cursor-pointer"
                             title="Edit query details"
                           >
                             <svg
@@ -751,15 +784,15 @@ export default function AllTeamQueries() {
           </div>
 
           {totalPages > 1 && (
-            <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
-              <span className="text-xs text-gray-400">
-                Showing {pageStart + 1}-{Math.min(pageStart + PAGE_SIZE, filtered.length)} of {filtered.length}
+            <div className="flex items-center justify-between px-6 py-4.5 border-t border-slate-100 bg-slate-50/20">
+              <span className="text-xs text-slate-400 font-medium">
+                Showing {pageStart + 1}-{Math.min(pageStart + PAGE_SIZE, filtered.length)} of {filtered.length} queries
               </span>
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-1.5">
                 <button
                   onClick={() => setPage((value) => Math.max(1, value - 1))}
                   disabled={safePage <= 1}
-                  className="w-7 h-7 flex items-center justify-center rounded-md border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition"
+                  className="w-7 h-7 flex items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-700 disabled:opacity-30 disabled:cursor-not-allowed transition cursor-pointer"
                 >
                   <IconChevronLeft />
                 </button>
@@ -767,10 +800,10 @@ export default function AllTeamQueries() {
                   <button
                     key={pageNumber}
                     onClick={() => setPage(pageNumber)}
-                    className={`w-7 h-7 flex items-center justify-center rounded-md border text-xs font-medium transition ${
+                    className={`w-7 h-7 flex items-center justify-center rounded-lg border text-xs font-bold transition cursor-pointer ${
                       pageNumber === safePage
-                        ? "bg-gray-900 text-white border-gray-900"
-                        : "border-gray-200 text-gray-500 hover:bg-gray-50"
+                        ? "bg-slate-900 text-white border-slate-900 shadow-sm"
+                        : "border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-700"
                     }`}
                   >
                     {pageNumber}
@@ -779,7 +812,7 @@ export default function AllTeamQueries() {
                 <button
                   onClick={() => setPage((value) => Math.min(totalPages, value + 1))}
                   disabled={safePage >= totalPages}
-                  className="w-7 h-7 flex items-center justify-center rounded-md border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition"
+                  className="w-7 h-7 flex items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-700 disabled:opacity-30 disabled:cursor-not-allowed transition cursor-pointer"
                 >
                   <IconChevronRight />
                 </button>

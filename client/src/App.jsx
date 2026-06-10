@@ -5,13 +5,13 @@ import "./App.css";
 function App() {
   return (
     <>
-   <Toaster 
+      <Toaster
         position="top-right"
         reverseOrder={false}
         gutter={12}
         containerClassName="z-[999999]"
         toastOptions={{
-        duration: 2000,
+          duration: 2000,
 
           style: {
             background: "#111827", // dark slate
@@ -45,7 +45,7 @@ function App() {
           },
         }}
       />
-    <AppRouter />
+      <AppRouter />
     </>
   );
 }

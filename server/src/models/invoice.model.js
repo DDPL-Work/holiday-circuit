@@ -628,4 +628,11 @@ const invoiceSchema = new mongoose.Schema(
 { timestamps: true }
 );
 
+invoiceSchema.index({ "paymentSubmission.submittedAt": -1 });
+invoiceSchema.index({ "paymentVerification.status": 1, updatedAt: -1 });
+invoiceSchema.index({ paymentStatus: 1, updatedAt: -1 });
+invoiceSchema.index({ agent: 1, createdAt: -1 });
+invoiceSchema.index({ query: 1, createdAt: -1 });
+invoiceSchema.index({ quotation: 1, createdAt: -1 });
+
 export default mongoose.model("Invoice", invoiceSchema);

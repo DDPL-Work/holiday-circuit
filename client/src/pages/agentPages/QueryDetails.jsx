@@ -1272,7 +1272,15 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
       await onRefresh?.();
       onClose();
     } catch (err) {
-      toast.error(err.response?.data?.message || "Unable to update client approval");
+      if (["SUPPLIER_RATE_CHANGED", "OUTDATED_QUOTATION"].includes(err.response?.data?.code)) {
+        toast.error(
+          err.response?.data?.message ||
+          "Supplier rates have changed. Please review the quotation again.",
+          { duration: 7000 },
+        );
+      } else {
+        toast.error(err.response?.data?.message || "Unable to update client approval");
+      }
     } finally {
       setClientApprovalSubmitting(false);
     }
@@ -1513,11 +1521,13 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
             quotes.length > 0 &&
             quotes.map((quote, index) => {
               const normalizedQuoteStatus = String(quote?.status || "").trim();
+              const isLatestQuote = index === 0;
               const showApprovedSummaryCard = query.agentStatus === "Client Approved";
               const showAcceptActions =
-                normalizedQuoteStatus === "Quote Sent" ||
-                (!normalizedQuoteStatus && query.agentStatus === "Quote Sent");
-              const showMarkupActions = ["Quote Accepted", "Markup Applied"].includes(
+                isLatestQuote &&
+                (normalizedQuoteStatus === "Quote Sent" ||
+                  (!normalizedQuoteStatus && query.agentStatus === "Quote Sent"));
+              const showMarkupActions = isLatestQuote && ["Quote Accepted", "Markup Applied"].includes(
                 normalizedQuoteStatus,
               );
               const opsQuoteAmount = Number(
@@ -1529,7 +1539,6 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                 quote?.clientTotalAmount ?? opsQuoteAmount,
               );
               const quoteAttemptNumber = getQuoteAttemptNumber(index, quotes.length);
-              const isLatestQuote = index === 0;
               const isFirstQuote = index === quotes.length - 1;
               const isQuoteExpanded =
                 typeof expandedQuoteIds[quote._id] === "boolean"
@@ -1659,16 +1668,18 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                           </div>
                           <div className="flex flex-shrink-0 items-center gap-2">
                             <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-medium text-emerald-800">
-                              Quote Sent
+                              {isLatestQuote ? "Quote Sent" : "Previous Quote"}
                             </span>
-                            <button
-                              type="button"
-                              onClick={() => handleOpenSendModal(quote)}
-                              className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-black bg-black px-4 py-2 text-[11px] font-semibold text-white transition hover:bg-slate-900"
-                            >
-                              <Send size={13} className="text-white" />
-                              Share Again
-                            </button>
+                            {isLatestQuote && (
+                              <button
+                                type="button"
+                                onClick={() => handleOpenSendModal(quote)}
+                                className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-black bg-black px-4 py-2 text-[11px] font-semibold text-white transition hover:bg-slate-900"
+                              >
+                                <Send size={13} className="text-white" />
+                                Share Again
+                              </button>
+                            )}
                           </div>
                         </div>
 
@@ -1697,26 +1708,32 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                         </div>
 
                         {/* ✅ FIX: Action buttons — icons added */}
-                        <div className="flex flex-col gap-4 sm:flex-row sm:gap-6 justify-center items-center mt-2">
-                          <button
-                            onClick={() => openRevisionModal(quote._id)}
-                            className="w-full sm:w-48 flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-rose-500 to-red-600 hover:from-rose-600 hover:to-red-700 shadow-md hover:shadow-lg text-white text-xs font-semibold py-2.5 px-5 cursor-pointer transition-all duration-300 transform hover:-translate-y-0.5"
-                          >
-                            <RotateCcw size={13} />
-                            Request Revision
-                          </button>
-                          <button
-                            onClick={() => openClientApprovalModal(quote._id)}
-                            className="w-full sm:w-48 flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 shadow-md hover:shadow-lg text-white text-xs font-semibold py-2.5 px-5 cursor-pointer transition-all duration-300 transform hover:-translate-y-0.5"
-                          >
-                            <ThumbsUp size={13} />
-                            Client Approved
-                          </button>
-                        </div>
+                        {isLatestQuote ? (
+                          <div className="flex flex-col gap-4 sm:flex-row sm:gap-6 justify-center items-center mt-2">
+                            <button
+                              onClick={() => openRevisionModal(quote._id)}
+                              className="w-full sm:w-48 flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-rose-500 to-red-600 hover:from-rose-600 hover:to-red-700 shadow-md hover:shadow-lg text-white text-xs font-semibold py-2.5 px-5 cursor-pointer transition-all duration-300 transform hover:-translate-y-0.5"
+                            >
+                              <RotateCcw size={13} />
+                              Request Revision
+                            </button>
+                            <button
+                              onClick={() => openClientApprovalModal(quote._id)}
+                              className="w-full sm:w-48 flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 shadow-md hover:shadow-lg text-white text-xs font-semibold py-2.5 px-5 cursor-pointer transition-all duration-300 transform hover:-translate-y-0.5"
+                            >
+                              <ThumbsUp size={13} />
+                              Client Approved
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="mt-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-center text-xs font-medium text-slate-500">
+                            Previous quotation
+                          </div>
+                        )}
                       </div>
                     </div>
                   ) : (
-                      <div className="mb-4 rounded-2xl border border-blue-100 bg-white/90 p-4 shadow-sm">
+                      <div className="mb-4 rounded-2xl bg-white/90 p-1">
                         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                           <div>
                             <div className="flex flex-wrap items-center gap-2">
@@ -2083,27 +2100,64 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                 </div>
               </div>
             </motion.div>
+
           )}
 
           {/* REVISION REQUESTED UI */}
           {query.agentStatus === "Revision Requested" && (
             <motion.div
               variants={itemVariant}
-              className="rounded-2xl border border-red-300 bg-red-50 p-5 shadow-sm"
+              className="relative overflow-hidden rounded-[28px] border border-rose-200 bg-gradient-to-br from-white via-rose-50/40 to-orange-50/20 shadow-[0_12px_32px_rgba(244,63,94,0.06)]"
             >
-              <h3 className="mb-2 text-lg font-semibold text-red-600">
-                Revision Requested
-              </h3>
-              <p className="mb-4 text-sm text-slate-700">
-                The quotation change request has been sent to operations. This same query is back with the ops team and a revised quotation will appear here after they rebuild it.
-              </p>
-              <div className="rounded-2xl border border-red-200 bg-white/80 px-4 py-3">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-red-500">
-                  Revision Note
-                </p>
-                <p className="mt-2 text-sm text-slate-700">
-                  {query.rejectionNote || "Awaiting the revised quotation from operations."}
-                </p>
+              <div className="absolute right-0 top-0 h-28 w-28 rounded-full bg-rose-200/30 blur-2xl pointer-events-none" />
+              <div className="relative p-6">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <div className="inline-flex items-center gap-2 rounded-full border border-rose-200 bg-white/80 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-rose-700">
+                      <RotateCcw size={12} className="animate-spin" style={{ animationDuration: '4s' }} />
+                      Revision In Progress
+                    </div>
+                    <h3 className="mt-4 text-lg font-semibold text-slate-900">
+                      Quotation sent back to operations for revision
+                    </h3>
+                    <p className="mt-2 max-w-xl text-sm leading-relaxed text-slate-600">
+                      Operations team has received the change request. A revised version of the travel quotation will appear here immediately once they update it.
+                    </p>
+                  </div>
+                  <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-rose-500 to-red-600 text-white shadow-lg shadow-rose-200/70">
+                    <RotateCcw size={24} />
+                  </div>
+                </div>
+
+                <div className="mt-5 grid gap-4 md:grid-cols-[1.5fr_1.1fr]">
+                  <div className="rounded-2xl border border-rose-100/80 bg-white/80 p-4 shadow-sm backdrop-blur-sm">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-rose-600">
+                      Revision Instructions
+                    </p>
+                    <p className="mt-2 text-xs font-medium text-slate-700 leading-relaxed italic">
+                      "{query.rejectionNote || "Awaiting the revised quotation details from operations."}"
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-rose-100/80 bg-white/80 p-4 shadow-sm backdrop-blur-sm flex flex-col justify-center">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">
+                      Ops Action Status
+                    </p>
+                    <div className="mt-2.5 flex items-center gap-2">
+                      <span className="flex h-2 w-2 relative">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-450 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
+                      </span>
+                      <span className="text-xs font-semibold text-slate-700">Rebuilding Quotation...</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-4 flex items-start gap-2.5 rounded-2xl border border-rose-100/50 bg-rose-50/30 px-4 py-3 text-xs leading-relaxed text-slate-600">
+                  <ShieldAlert size={16} className="mt-0.5 text-rose-500 shrink-0" />
+                  <p>
+                    No immediate action is required from you. The operations team is working on this quotation, and it will be updated shortly.
+                  </p>
+                </div>
               </div>
             </motion.div>
           )}
@@ -2258,6 +2312,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
           </motion.div>
         </div>
 
+
         {/* RIGHT ACTIVITY LOG */}
         <motion.div
           variants={itemVariant}
@@ -2327,6 +2382,8 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
         </motion.div>
       </div>
 
+
+
       {/* ACCEPT MODAL */}
       <AnimatePresence>
         {isAcceptModalOpen && acceptQuoteId && (
@@ -2382,6 +2439,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
           </motion.div>
         )}
       </AnimatePresence>
+
 
 
 
@@ -2494,6 +2552,8 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
           </motion.div>
         )}
       </AnimatePresence>
+
+
 
       {/* SEND MODAL */}
       <AnimatePresence>
@@ -2916,6 +2976,9 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
         )}
       </AnimatePresence>
 
+
+
+
       {/*-------------------- SEND SUCCESS MODAL------------------------------ */}
       <AnimatePresence>
         {sendSuccessMeta && (
@@ -3028,6 +3091,9 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
           </motion.div>
         )}
       </AnimatePresence>
+
+
+
 
       {/* REVISION MODAL */}
       <AnimatePresence>

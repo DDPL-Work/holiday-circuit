@@ -132,7 +132,7 @@ export default function ProfileSettingsModal({ open, onClose, user }) {
 
   const coverStyle = {
     background:
-      "linear-gradient(120deg, #dbeafe 0%, #e0f2fe 26%, #1e293b 26%, #0f172a 58%, #7c2d12 82%, #f59e0b 100%)",
+      "linear-gradient(135deg, #1e1b4b 0%, #31108f 40%, #4f46e5 70%, #ec4899 100%)",
   };
 
   return (
@@ -153,7 +153,7 @@ export default function ProfileSettingsModal({ open, onClose, user }) {
           >
             <div className="custom-scroll max-h-[calc(100vh-64px)] overflow-y-auto">
               <div className="relative">
-                <div className="relative h-[118px] overflow-hidden sm:h-[126px]" style={coverStyle}>
+                <div className="relative h-[80px] overflow-hidden sm:h-[90px]" style={coverStyle}>
                   {form.profileImage ? (
                     <>
                       <img
@@ -188,7 +188,7 @@ export default function ProfileSettingsModal({ open, onClose, user }) {
                 </button>
 
                 <div className="absolute inset-x-0 bottom-0 px-4">
-                  <div className="translate-y-[44%] rounded-[20px] border border-white/80 bg-white/92 p-3 shadow-[0_14px_26px_rgba(15,23,42,0.08)] backdrop-blur">
+                  <div className="translate-y-[24px] rounded-[20px] border border-white/80 bg-white/92 p-3 shadow-[0_14px_26px_rgba(15,23,42,0.08)] backdrop-blur">
                     <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                       <div className="flex flex-1 flex-col gap-3 sm:flex-row sm:items-center">
                         <div className="relative shrink-0">
@@ -196,15 +196,15 @@ export default function ProfileSettingsModal({ open, onClose, user }) {
                             <img
                               src={form.profileImage}
                               alt="Profile"
-                              className="h-[72px] w-[72px] sm:h-[80px] sm:w-[80px] rounded-full border-[4px] border-white object-cover shadow-[0_14px_24px_rgba(15,23,42,0.18)]"
+                              className="h-[56px] w-[56px] sm:h-[64px] sm:w-[64px] rounded-full border-[3px] border-white object-cover shadow-[0_14px_24px_rgba(15,23,42,0.18)]"
                             />
                           ) : (
-                            <div className="flex h-[72px] w-[72px] sm:h-[80px] sm:w-[80px] items-center justify-center rounded-full border-[4px] border-white bg-gradient-to-br from-slate-900 via-slate-800 to-amber-700 text-2xl font-semibold text-white shadow-[0_14px_24px_rgba(15,23,42,0.18)]">
+                            <div className="flex h-[56px] w-[56px] sm:h-[64px] sm:w-[64px] items-center justify-center rounded-full border-[3px] border-white bg-gradient-to-br from-slate-900 via-slate-800 to-amber-700 text-xl font-semibold text-white shadow-[0_14px_24px_rgba(15,23,42,0.18)] ring-4 ring-indigo-500/10">
                               {buildInitials(identityLabel)}
                             </div>
                           )}
 
-                          <label className="absolute bottom-0 right-0 flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border-[3px] border-white bg-[#271a78] text-white shadow-lg transition hover:bg-[#1f1563]">
+                          <label className="absolute bottom-0 right-0 flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border-[3px] border-white bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white shadow-lg transition active:scale-95">
                             <Camera className="h-3 w-3" />
                             <input
                               ref={fileInputRef}
@@ -220,7 +220,7 @@ export default function ProfileSettingsModal({ open, onClose, user }) {
                           <p className="text-[9px] font-semibold uppercase tracking-[0.24em] text-slate-400">
                             Profile Canvas
                           </p>
-                          <h2 className="mt-1 text-[1.58rem] font-semibold tracking-tight text-slate-950 leading-[0.95] sm:text-[1.72rem] sm:whitespace-nowrap">
+                          <h2 className="mt-1 text-[1.32rem] font-semibold tracking-tight text-slate-950 leading-[0.95] sm:text-[1.42rem] sm:whitespace-nowrap">
                             {identityLabel}
                           </h2>
                           <p className="mt-0.5 text-[12px] text-slate-600">{roleLabel}</p>
@@ -232,9 +232,9 @@ export default function ProfileSettingsModal({ open, onClose, user }) {
                       </div>
 
                       <div className="grid gap-2 sm:grid-cols-2 lg:min-w-[280px]">
-                        <div className="flex min-h-[78px] flex-col justify-center rounded-[16px] border border-slate-200 bg-[#f7f4ff] px-3 py-2">
+                        <div className="flex min-h-[62px] sm:min-h-[66px] flex-col justify-center rounded-[16px] border border-indigo-100 bg-gradient-to-br from-indigo-50/50 to-purple-50/30 px-3 py-1.5">
                           <div className="flex items-center gap-2 text-xs text-slate-500">
-                            <BriefcaseBusiness className="h-3.5 w-3.5 text-slate-400" />
+                            <BriefcaseBusiness className="h-3.5 w-3.5 text-indigo-500" />
                             <span>Current role</span>
                           </div>
                           <div className="mt-1.5 inline-flex rounded-full bg-[#e8e2ff] px-3 py-1 text-[11px] font-semibold text-[#2d1e86]">
@@ -242,7 +242,7 @@ export default function ProfileSettingsModal({ open, onClose, user }) {
                           </div>
                         </div>
 
-                        <div className="flex min-h-[78px] flex-col justify-center rounded-[16px] border border-slate-200 bg-[#fff8ef] px-3 py-2">
+                        <div className="flex min-h-[62px] sm:min-h-[66px] flex-col justify-center rounded-[16px] border border-amber-100 bg-gradient-to-br from-amber-50/50 to-orange-50/30 px-3 py-1.5">
                           <div className="flex items-center gap-2 text-xs text-slate-500">
                             <ShieldCheck className="h-3.5 w-3.5 text-amber-500" />
                             <span>Permissions</span>
@@ -264,84 +264,97 @@ export default function ProfileSettingsModal({ open, onClose, user }) {
                 </div>
               </div>
 
-              <div className="px-4 pb-4 pt-14 sm:pt-[4.2rem]">
-                <div className="grid gap-3 lg:grid-cols-[1.05fr_0.95fr]">
-                  <div className="space-y-3">
-                    <div className="rounded-[20px] border border-slate-200 bg-white p-3.5 shadow-[0_10px_22px_rgba(15,23,42,0.04)]">
+              <div className="px-5.5 pb-5.5 pt-[34px] sm:pt-[38px]">
+                <div className="grid gap-5 lg:grid-cols-[1.15fr_0.85fr] items-stretch">
+                  
+                  {/* Left Column - Edit Profile */}
+                  <div className="rounded-[20px] border border-slate-200 bg-white p-4.5 shadow-[0_10px_22px_rgba(15,23,42,0.04)] flex flex-col justify-between">
+                    <div>
+                      {/* Header */}
                       <div className="flex items-start justify-between gap-4">
                         <div>
                           <p className="text-[15px] font-semibold text-slate-950">Edit Profile</p>
                           <p className="mt-1 text-xs text-slate-500">
-                            Update your personal card details while keeping the same profile modal flow.
+                            Update your personal card details.
                           </p>
                         </div>
-                        <div className="inline-flex shrink-0 self-start items-center gap-1.5 whitespace-nowrap rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
+                        <div className="inline-flex shrink-0 self-start items-center gap-1.5 whitespace-nowrap rounded-full bg-gradient-to-r from-emerald-500/10 to-teal-500/10 border border-emerald-500/20 px-3 py-1.5 text-[11px] font-semibold text-emerald-700">
                           <BadgeCheck className="h-3.5 w-3.5" />
                           Profile Active
                         </div>
                       </div>
 
-                      <div className="mt-3.5 grid gap-2.5 md:grid-cols-2">
-                        <label className="block">
-                          <span className="mb-2 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                            <User2 className="h-3 w-3" />
+                      {/* Inputs Grid */}
+                      <div className="mt-4 grid gap-4 md:grid-cols-2">
+                        <label className="block group">
+                          <span className="mb-1.5 flex items-center gap-2.5 text-[11px] font-bold uppercase tracking-[0.16em] text-slate-650 cursor-pointer">
+                            <div className="flex h-6.5 w-6.5 shrink-0 rotate-45 items-center justify-center rounded-[8px] bg-gradient-to-br from-indigo-50 to-indigo-100/60 border border-indigo-200/80 text-indigo-600 shadow-[0_2px_5px_rgba(79,70,229,0.06)] transition-all duration-300 group-hover:rotate-[135deg] group-hover:from-indigo-600 group-hover:to-indigo-500 group-hover:text-white group-hover:border-transparent">
+                              <User2 className="h-3 w-3 -rotate-45 transition-all duration-300 group-hover:-rotate-[135deg]" />
+                            </div>
                             Full Name
                           </span>
                           <input
                             value={form.name}
                             onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))}
-                            className="w-full rounded-[16px] border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm outline-none transition focus:border-[#271a78] focus:bg-white"
+                            className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm outline-none transition hover:border-slate-350 focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-500/10"
                             placeholder="Enter your name"
                           />
                         </label>
 
-                        <label className="block">
-                          <span className="mb-2 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                            <Building2 className="h-3 w-3" />
+                        <label className="block group">
+                          <span className="mb-1.5 flex items-center gap-2.5 text-[11px] font-bold uppercase tracking-[0.16em] text-slate-650 cursor-pointer">
+                            <div className="flex h-6.5 w-6.5 shrink-0 rotate-45 items-center justify-center rounded-[8px] bg-gradient-to-br from-sky-50 to-sky-100/60 border border-sky-200/80 text-sky-600 shadow-[0_2px_5px_rgba(14,165,233,0.06)] transition-all duration-300 group-hover:rotate-[135deg] group-hover:from-sky-600 group-hover:to-sky-500 group-hover:text-white group-hover:border-transparent">
+                              <Building2 className="h-3 w-3 -rotate-45 transition-all duration-300 group-hover:-rotate-[135deg]" />
+                            </div>
                             Company
                           </span>
                           <input
                             value={form.companyName}
                             onChange={(event) => setForm((prev) => ({ ...prev, companyName: event.target.value }))}
-                            className="w-full rounded-[16px] border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm outline-none transition focus:border-[#271a78] focus:bg-white"
+                            className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm outline-none transition hover:border-slate-350 focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-500/10"
                             placeholder="Enter company name"
                           />
                         </label>
 
-                        <label className="block">
-                          <span className="mb-2 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                            <Mail className="h-3 w-3" />
+                        <label className="block group">
+                          <span className="mb-1.5 flex items-center gap-2.5 text-[11px] font-bold uppercase tracking-[0.16em] text-slate-650 cursor-pointer">
+                            <div className="flex h-6.5 w-6.5 shrink-0 rotate-45 items-center justify-center rounded-[8px] bg-gradient-to-br from-emerald-50 to-emerald-100/60 border border-emerald-200/80 text-emerald-600 shadow-[0_2px_5px_rgba(16,185,129,0.06)] transition-all duration-300 group-hover:rotate-[135deg] group-hover:from-emerald-600 group-hover:to-emerald-500 group-hover:text-white group-hover:border-transparent">
+                              <Mail className="h-3 w-3 -rotate-45 transition-all duration-300 group-hover:-rotate-[135deg]" />
+                            </div>
                             Email
                           </span>
                           <input
                             value={form.email}
                             onChange={(event) => setForm((prev) => ({ ...prev, email: event.target.value }))}
-                            className="w-full rounded-[16px] border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm outline-none transition focus:border-[#271a78] focus:bg-white"
+                            className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm outline-none transition hover:border-slate-350 focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-500/10"
                             placeholder="Enter email address"
                           />
                         </label>
 
-                        <label className="block">
-                          <span className="mb-2 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-                            <Phone className="h-3 w-3" />
+                        <label className="block group">
+                          <span className="mb-1.5 flex items-center gap-2.5 text-[11px] font-bold uppercase tracking-[0.16em] text-slate-650 cursor-pointer">
+                            <div className="flex h-6.5 w-6.5 shrink-0 rotate-45 items-center justify-center rounded-[8px] bg-gradient-to-br from-amber-50 to-amber-100/60 border border-amber-200/80 text-amber-600 shadow-[0_2px_5px_rgba(245,158,11,0.06)] transition-all duration-300 group-hover:rotate-[135deg] group-hover:from-amber-600 group-hover:to-amber-500 group-hover:text-white group-hover:border-transparent">
+                              <Phone className="h-3 w-3 -rotate-45 transition-all duration-300 group-hover:-rotate-[135deg]" />
+                            </div>
                             Phone
                           </span>
                           <input
                             value={form.phone}
                             onChange={(event) => setForm((prev) => ({ ...prev, phone: event.target.value }))}
-                            className="w-full rounded-[16px] border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm outline-none transition focus:border-[#271a78] focus:bg-white"
+                            className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm outline-none transition hover:border-slate-350 focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-500/10"
                             placeholder="Enter phone number"
                           />
                         </label>
                       </div>
                     </div>
 
-                    <div className="flex flex-col gap-2 sm:flex-row">
+                    {/* Action buttons inside Edit Profile card */}
+                    <div className="flex items-center gap-4 mt-5">
                       <button
                         type="button"
                         onClick={handleSave}
                         disabled={isSaving}
-                        className="min-w-[140px] rounded-full bg-[#2c1b8f] px-5 py-2.5 text-sm font-medium text-white shadow-[0_14px_28px_rgba(44,27,143,0.22)] transition hover:bg-[#241672] disabled:cursor-not-allowed disabled:opacity-60"
+                        className="flex-1 rounded-2xl bg-gradient-to-r from-violet-600 via-indigo-600 to-blue-600 hover:from-violet-700 hover:to-blue-700 text-sm font-bold text-white shadow-[0_3px_10_rgba(79,70,229,0.2)] px-6 py-2 transition-all active:scale-98 disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer text-center"
                       >
                         {isSaving ? "Saving..." : "Save Profile"}
                       </button>
@@ -349,58 +362,84 @@ export default function ProfileSettingsModal({ open, onClose, user }) {
                         type="button"
                         onClick={onClose}
                         disabled={isSaving}
-                        className="min-w-[120px] rounded-full border border-slate-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-900 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                        className="rounded-2xl border border-slate-200 bg-slate-50/50 hover:bg-slate-100 text-sm font-bold text-slate-700 px-6 py-2 transition-all active:scale-98 disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer text-center"
                       >
                         Close
                       </button>
                     </div>
                   </div>
 
-                  <div className="space-y-3">
-                    <div className="rounded-[20px] border border-slate-200 bg-[#fcfcfd] p-3.5 shadow-[0_10px_22px_rgba(15,23,42,0.04)]">
-                      <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-                        <Settings2 className="h-4 w-4 text-slate-400" />
-                        Workspace Brief
+                  {/* Right Column - Workspace Brief */}
+                  <div className="rounded-[20px] border border-slate-200 bg-white p-4.5 shadow-[0_12px_28px_rgba(15,23,42,0.06)] flex flex-col justify-between">
+                    <div>
+                      {/* Header */}
+                      <div className="flex items-start justify-between gap-4">
+                        <div>
+                          <p className="text-[15px] font-semibold text-slate-950">Workspace Brief</p>
+                          <p className="mt-1 text-xs text-slate-500">
+                            View visibility and workspace settings.
+                          </p>
+                        </div>
+                        <div className="inline-flex shrink-0 self-start items-center gap-1.5 whitespace-nowrap rounded-full bg-indigo-50 border border-indigo-100 px-3 py-1.5 text-[11px] font-semibold text-indigo-700">
+                          <Settings2 className="h-3.5 w-3.5" />
+                          Active
+                        </div>
                       </div>
+
+                      {/* Content Info list */}
                       <div className="mt-4 space-y-3">
-                        <div className="rounded-[20px] border border-slate-200 bg-white px-4 py-3.5">
-                          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Profile Visibility</p>
-                          <p className="mt-2 text-sm font-semibold text-slate-900">{roleLabel}</p>
-                          <p className="mt-1 text-xs text-slate-500">
-                            Your name, role, and profile image are used across the sidebar, headers, and assigned workflow cards.
+                        <div className="rounded-2xl border border-slate-150 bg-slate-50/30 px-4 py-2.5">
+                          <span className="mb-1.5 flex items-center gap-2.5 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-550">
+                            <div className="flex h-5.5 w-5.5 shrink-0 rotate-45 items-center justify-center rounded-[6px] bg-gradient-to-br from-violet-50 to-violet-100/60 border border-violet-200/80 text-violet-600 shadow-sm">
+                              <BriefcaseBusiness className="h-2.5 w-2.5 -rotate-45" />
+                            </div>
+                            Profile Visibility
+                          </span>
+                          <p className="text-xs font-bold text-slate-800 ml-8">{roleLabel}</p>
+                          <p className="mt-0.5 text-[11px] text-slate-500 ml-8 leading-relaxed">
+                            Used in sidebar, headers, and workflow cards.
                           </p>
                         </div>
 
-                        <div className="rounded-[20px] border border-slate-200 bg-white px-4 py-3.5">
-                          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Active Workspace Identity</p>
-                          <p className="mt-2 text-sm font-semibold text-slate-900">{secondaryIdentity}</p>
-                          <p className="mt-1 text-xs text-slate-500">
-                            This identity appears anywhere your account is shown to teammates, managers, agents, or admins.
+                        <div className="rounded-2xl border border-slate-150 bg-slate-50/30 px-4 py-2.5">
+                          <span className="mb-1.5 flex items-center gap-2.5 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-550">
+                            <div className="flex h-5.5 w-5.5 shrink-0 rotate-45 items-center justify-center rounded-[6px] bg-gradient-to-br from-indigo-50 to-indigo-100/60 border border-indigo-200/80 text-indigo-600 shadow-sm">
+                              <User2 className="h-2.5 w-2.5 -rotate-45" />
+                            </div>
+                            Workspace Identity
+                          </span>
+                          <p className="text-xs font-bold text-slate-800 ml-8">{secondaryIdentity}</p>
+                          <p className="mt-0.5 text-[11px] text-slate-500 ml-8 leading-relaxed">
+                            Visible to all users in the workspace.
                           </p>
                         </div>
-
-                        {form.profileImage ? (
-                          <button
-                            type="button"
-                            onClick={handleRemoveImage}
-                            className="w-full rounded-[20px] border border-red-200 bg-red-50 px-4 py-3 text-xs font-semibold text-red-600 transition hover:bg-red-100"
-                          >
-                            Remove Current Photo
-                          </button>
-                        ) : (
-                          <div className="rounded-[20px] border border-dashed border-slate-300 bg-white px-4 py-4 text-xs text-slate-500">
-                            Add a profile photo to make your sidebar card and admin user rows feel more personal.
-                          </div>
-                        )}
                       </div>
                     </div>
+
+                    {/* Photo Action at the bottom */}
+                    <div className="mt-5">
+                      {form.profileImage ? (
+                        <button
+                          type="button"
+                          onClick={handleRemoveImage}
+                          className="w-full rounded-2xl bg-gradient-to-r from-rose-50 to-red-50 hover:from-rose-100 hover:to-red-100 border border-red-200 px-3.5 py-2 text-xs font-bold text-red-600 transition active:scale-98 cursor-pointer text-center"
+                        >
+                          Remove Photo
+                        </button>
+                      ) : (
+                        <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/30 px-4 py-2.5 text-[11px] text-slate-500 text-center leading-relaxed">
+                          Upload a photo to personalize your profile.
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
+
               </div>
             </div>
-          </motion.div>
+          </div>
         </motion.div>
-      )}
-    </AnimatePresence>
+      </motion.div>
+    )}
+  </AnimatePresence>
   );
 }

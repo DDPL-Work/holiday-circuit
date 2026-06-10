@@ -37,6 +37,7 @@ import toast from "react-hot-toast";
 import { AnimatePresence, motion } from "framer-motion";
 import API from "../../utils/Api.js";
 import InternalInvoice from "./InternalInvoice";
+import DmcPaymentLedger from "./DmcPaymentLedger";
 
 const createEmptyService = () => ({
   referenceServiceKey: "",
@@ -104,6 +105,26 @@ const getServiceTypeIcon = (type, className = "h-4 w-4") => {
   if (normalized === "flight") return <Plane className={className} />;
 
   return <Layers3 className={className} />;
+};
+
+const getServiceTypeGradient = (type) => {
+  const normalized = String(type || "").toLowerCase();
+  if (normalized === "hotel") {
+    return "bg-gradient-to-r from-blue-500 to-indigo-600 text-white shadow-[0_2px_8px_-3px_rgba(59,130,246,0.5)] font-semibold";
+  }
+  if (normalized === "transfer" || normalized === "transport" || normalized === "car") {
+    return "bg-gradient-to-r from-violet-500 to-fuchsia-600 text-white shadow-[0_2px_8px_-3px_rgba(139,92,246,0.5)] font-semibold";
+  }
+  if (normalized === "activity") {
+    return "bg-gradient-to-r from-pink-500 to-rose-600 text-white shadow-[0_2px_8px_-3px_rgba(236,72,153,0.5)] font-semibold";
+  }
+  if (normalized === "sightseeing") {
+    return "bg-gradient-to-r from-amber-500 to-orange-600 text-white shadow-[0_2px_8px_-3px_rgba(245,158,11,0.5)] font-semibold";
+  }
+  if (normalized === "flight") {
+    return "bg-gradient-to-r from-sky-500 to-blue-600 text-white shadow-[0_2px_8px_-3px_rgba(14,165,233,0.5)] font-semibold";
+  }
+  return "bg-gradient-to-r from-slate-500 to-slate-700 text-white shadow-sm font-semibold";
 };
 
 const formatServiceMoney = (currency, amount) => {
@@ -292,6 +313,7 @@ export default function FulfillmentConfirmation() {
     queryId: "",
     serviceCount: 0,
   });
+  const [isOpenDropdown, setIsOpenDropdown] = useState(false);
 
   const queryServices = useMemo(
     () => selectedQuery?.services || [],
@@ -691,7 +713,7 @@ export default function FulfillmentConfirmation() {
           </p>
         </div>
 
-        <div className="mb-5 bg-white border border-slate-200 rounded-3xl shadow-sm overflow-hidden">
+        <div className="mb-5 bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
           <div className="px-5 py-4 border-b border-slate-200 bg-gradient-to-r from-slate-900 via-slate-800 to-blue-900 text-white">
             <div className="flex items-start justify-between gap-4 flex-wrap">
               <div>
@@ -707,63 +729,158 @@ export default function FulfillmentConfirmation() {
                 </p>
               </div>
 
-              <div className="min-w-[260px]">
+              <div className="relative min-w-[260px]">
                 <label className="text-[11px] uppercase tracking-[0.18em] text-blue-100/80 block mb-2">
                   Confirmed Query
                 </label>
-                <select
-                  value={selectedQueryId}
-                  onChange={(e) => {
-                    const selected = confirmedQueries.find(
-                      (query) => query._id === e.target.value,
-                    );
-                    hydrateSelectedQuery(selected || null);
-                  }}
-                  className="w-full rounded-2xl border border-white/20 bg-white/10 px-4 py-2.5 text-sm text-white outline-none"
+                <button
+                  type="button"
+                  onClick={() => setIsOpenDropdown(!isOpenDropdown)}
+                  className="w-full flex items-center justify-between rounded-2xl border border-white/20 bg-white/10 px-4 py-2.5 text-sm text-white outline-none cursor-pointer hover:bg-white/15 transition-all duration-200"
                 >
-                  <option value="" className="text-slate-900">
-                    Select a confirmed query
-                  </option>
-                  {confirmedQueries.map((query) => (
-                    <option
-                      key={query._id}
-                      value={query._id}
-                      className="text-slate-900"
+                  <span className="truncate mr-2">
+                    {selectedQuery
+                      ? `${selectedQuery.queryId} - ${selectedQuery.destination}`
+                      : "Select a confirmed query"}
+                  </span>
+                  <ChevronDown
+                    size={16}
+                    className={`text-blue-100/80 transition-transform duration-300 flex-shrink-0 ${
+                      isOpenDropdown ? "rotate-180" : ""
+                    }`}
+                  />
+                </button>
+
+                {/* Click-away backdrop overlay */}
+                {isOpenDropdown && (
+                  <div
+                    className="fixed inset-0 z-40 bg-transparent"
+                    onClick={() => setIsOpenDropdown(false)}
+                  />
+                )}
+
+                {/* Dropdown Menu */}
+                <AnimatePresence>
+                  {isOpenDropdown && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -8, scale: 0.96 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: -8, scale: 0.96 }}
+                      transition={{ duration: 0.15, ease: "easeOut" }}
+                      className="absolute right-0 left-0 mt-2 max-h-[250px] overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-2xl z-50 py-1.5 hide-scrollbar"
                     >
-                      {query.queryId} - {query.destination}
-                    </option>
-                  ))}
-                </select>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          hydrateSelectedQuery(null);
+                          setIsOpenDropdown(false);
+                        }}
+                        className="w-full px-4 py-2.5 text-left text-sm flex items-center gap-3 transition-colors duration-150 hover:bg-slate-50 text-slate-500 font-medium cursor-pointer"
+                      >
+                        <div
+                          className={`h-4 w-4 rounded-md border flex items-center justify-center transition-all duration-200 flex-shrink-0 ${
+                            !selectedQueryId
+                              ? "bg-blue-600 border-blue-600 shadow-sm"
+                              : "border-slate-300 bg-white"
+                          }`}
+                        >
+                          {!selectedQueryId && (
+                            <svg
+                              className="w-3 h-3 text-white animate-scale-in"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="3"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                d="M4.5 12.75l6 6 9-13.5"
+                              />
+                            </svg>
+                          )}
+                        </div>
+                        <span className="truncate">Select a confirmed query</span>
+                      </button>
+
+                      {confirmedQueries.map((query) => {
+                        const isSelected = selectedQueryId === query._id;
+                        return (
+                          <button
+                            key={query._id}
+                            type="button"
+                            onClick={() => {
+                              hydrateSelectedQuery(query);
+                              setIsOpenDropdown(false);
+                            }}
+                            className={`w-full px-4 py-2.5 text-left text-sm flex items-center gap-3 transition-colors duration-150 border-t border-slate-100 cursor-pointer ${
+                              isSelected
+                                ? "bg-blue-50/70 text-blue-900 font-medium"
+                                : "hover:bg-slate-50 text-slate-700"
+                            }`}
+                          >
+                            <div
+                              className={`h-4 w-4 rounded-md border flex items-center justify-center transition-all duration-200 flex-shrink-0 ${
+                                isSelected
+                                  ? "bg-blue-600 border-blue-600 shadow-sm"
+                                  : "border-slate-300 bg-white"
+                              }`}
+                            >
+                              {isSelected && (
+                                <svg
+                                  className="w-3 h-3 text-white animate-scale-in"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="3"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    d="M4.5 12.75l6 6 9-13.5"
+                                  />
+                                </svg>
+                              )}
+                            </div>
+                            <span className="truncate">
+                              {query.queryId} - {query.destination}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
             </div>
           </div>
 
           <div className="p-5">
             <div className="grid lg:grid-cols-4 sm:grid-cols-2 gap-3">
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                <div className="flex items-center gap-2 text-slate-500 text-xs uppercase tracking-wide">
+              <div className="rounded-2xl border border-slate-200 border-b-4 border-b-blue-600 bg-gradient-to-br from-blue-50/90 via-blue-50/20 to-white px-4 py-3.5 shadow-sm transition-all duration-300 hover:shadow-md hover:scale-[1.002]">
+                <div className="flex items-center gap-2 text-blue-700 text-xs font-bold uppercase tracking-wide">
                   <Briefcase size={14} />
                   Agent
                 </div>
-                <p className="text-sm font-medium text-slate-800 mt-2">
+                <p className="text-sm font-semibold text-slate-800 mt-2">
                   {selectedQuery?.agentName || "-"}
                 </p>
               </div>
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                <div className="flex items-center gap-2 text-slate-500 text-xs uppercase tracking-wide">
+              <div className="rounded-2xl border border-slate-200 border-b-4 border-b-amber-600 bg-gradient-to-br from-amber-50/90 via-amber-50/20 to-white px-4 py-3.5 shadow-sm transition-all duration-300 hover:shadow-md hover:scale-[1.002]">
+                <div className="flex items-center gap-2 text-amber-700 text-xs font-bold uppercase tracking-wide">
                   <MapPin size={14} />
                   Destination
                 </div>
-                <p className="text-sm font-medium text-slate-800 mt-2">
+                <p className="text-sm font-semibold text-slate-800 mt-2">
                   {selectedQuery?.destination || "-"}
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => selectedQuery && setShowTravelerDocsModal(true)}
-                className={`group relative rounded-2xl border px-4 py-3 text-left overflow-hidden transition-all duration-300 ${selectedQuery
-                    ? "border-blue-200 bg-gradient-to-br from-blue-50 via-white to-indigo-50 hover:border-blue-400 hover:shadow-[0_0_0_3px_rgba(99,102,241,0.12),0_8px_24px_rgba(99,102,241,0.14)] cursor-pointer"
-                    : "border-slate-200 bg-slate-50 cursor-not-allowed opacity-60"
+                className={`group relative rounded-2xl border border-b-4 px-4 py-3 text-left overflow-hidden transition-all duration-300 shadow-sm hover:scale-[1.002] ${selectedQuery
+                    ? "border-slate-200 border-b-indigo-600 bg-gradient-to-br from-indigo-50/90 via-white to-indigo-50/40 hover:border-indigo-400 hover:shadow-[0_0_0_3px_rgba(99,102,241,0.12),0_8px_24px_rgba(99,102,241,0.14)] cursor-pointer"
+                    : "border-slate-200 border-b-slate-300 bg-slate-50 cursor-not-allowed opacity-60"
                   }`}
               >
                 {/* Animated shimmer on hover */}
@@ -773,41 +890,41 @@ export default function FulfillmentConfirmation() {
 
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2 text-slate-500 text-xs uppercase tracking-wide">
-                    <Users size={14} className={selectedQuery ? "text-blue-500" : ""} />
-                    Pax
+                    <Users size={14} className={selectedQuery ? "text-indigo-600" : ""} />
+                    <span className={`font-bold ${selectedQuery ? "text-indigo-700" : ""}`}>Pax</span>
                   </div>
                   {selectedQuery && (
-                    <span className="flex items-center gap-1 rounded-full border border-blue-200 bg-blue-100 px-2 py-0.5 text-[10px] font-semibold text-blue-700 transition-all duration-200 group-hover:bg-blue-600 group-hover:text-white group-hover:border-blue-600">
+                    <span className="flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-100 px-2 py-0.5 text-[10px] font-semibold text-indigo-700 transition-all duration-200 group-hover:bg-indigo-600 group-hover:text-white group-hover:border-indigo-600">
                       <ExternalLink size={9} />
                       View Docs
                     </span>
                   )}
                 </div>
 
-                <p className="text-sm font-semibold text-slate-800 mt-2">
+                <p className="text-sm font-bold text-slate-800 mt-2">
                   {selectedQuery?.passengers || 0} PAX
                 </p>
 
                 <div className="mt-2 flex items-center gap-1.5">
-                  <span className={`h-1.5 w-1.5 rounded-full animate-pulse ${selectedQuery ? "bg-blue-500" : "bg-slate-300"}`} />
-                  <p className="text-[9px] text-blue-600 font-medium group-hover:text-blue-800 transition-colors">
+                  <span className={`h-1.5 w-1.5 rounded-full animate-pulse ${selectedQuery ? "bg-indigo-500" : "bg-slate-300"}`} />
+                  <p className="text-[9px] text-indigo-600 font-medium group-hover:text-indigo-800 transition-colors">
                     {selectedQuery ? "Click to open traveler documents" : "Select a query first"}
                   </p>
                 </div>
               </button>
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                <div className="flex items-center gap-2 text-slate-500 text-xs uppercase tracking-wide">
+              <div className="rounded-2xl border border-slate-200 border-b-4 border-b-rose-600 bg-gradient-to-br from-rose-50/90 via-rose-50/20 to-white px-4 py-3.5 shadow-sm transition-all duration-300 hover:shadow-md hover:scale-[1.002]">
+                <div className="flex items-center gap-2 text-rose-700 text-xs font-bold uppercase tracking-wide">
                   <CalendarDays size={14} />
                   Duration
                 </div>
-                <p className="text-sm font-medium text-slate-800 mt-2">
+                <p className="text-sm font-semibold text-slate-800 mt-2">
                   {selectedQuery?.duration || "-"}
                 </p>
               </div>
             </div>
 
-            <div className="mt-5 rounded-3xl border border-blue-100 bg-gradient-to-br from-blue-50 via-white to-cyan-50 p-4">
-              <div className="mb-3 flex items-center gap-2">
+            <div className="mt-6">
+              <div className="mb-4 flex items-center gap-2">
                 <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-600 text-white">
                   <Layers3 size={16} />
                 </div>
@@ -827,14 +944,13 @@ export default function FulfillmentConfirmation() {
                   {referenceServices.map((service, index) => {
                     const isHotelService =
                       String(service.type || "").toLowerCase() === "hotel";
-                    const isServiceHidden = Boolean(
-                      hiddenReferenceServices[service.referenceServiceKey],
-                    );
+                    const isServiceHidden =
+                      hiddenReferenceServices[service.referenceServiceKey] ?? true;
 
                     return (
                       <div
                         key={service.referenceServiceKey || `${service.serviceName}-${index}`}
-                        className="rounded-xl border border-blue-100 bg-white/95 p-3.5 shadow-sm"
+                        className="rounded-2xl border border-blue-100 bg-gradient-to-br from-white via-blue-50/5 to-slate-50/10 p-4 shadow-sm border-l-4 border-l-blue-600/50 hover:shadow-md transition-all duration-500 ease-in-out"
                       >
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
@@ -859,7 +975,7 @@ export default function FulfillmentConfirmation() {
                             </p>
                           </div>
                           <div className="flex items-center gap-2">
-                            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[9px] uppercase tracking-wide text-slate-600">
+                            <span className={`rounded-full px-2.5 py-0.5 text-[8.5px] uppercase tracking-wide transition-all duration-500 ease-in-out ${getServiceTypeGradient(service.type)}`}>
                               {serviceTypeLabel(service.type)}
                             </span>
                             <button
@@ -868,10 +984,10 @@ export default function FulfillmentConfirmation() {
                                 setHiddenReferenceServices((prev) => ({
                                   ...prev,
                                   [service.referenceServiceKey]:
-                                    !prev[service.referenceServiceKey],
+                                    !(prev[service.referenceServiceKey] ?? true),
                                 }))
                               }
-                              className="flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition-colors hover:border-blue-200 hover:text-blue-600"
+                              className="flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition-all duration-500 ease-in-out hover:bg-gradient-to-r hover:from-slate-900 hover:to-blue-950 hover:text-white hover:border-transparent hover:shadow-md cursor-pointer"
                               aria-label={isServiceHidden ? "Show service details" : "Hide service details"}
                               title={isServiceHidden ? "Show details" : "Hide details"}
                             >
@@ -887,7 +1003,7 @@ export default function FulfillmentConfirmation() {
                               initial={{ height: 0, opacity: 0, y: -8 }}
                               animate={{ height: "auto", opacity: 1, y: 0 }}
                               exit={{ height: 0, opacity: 0, y: -8 }}
-                              transition={{ duration: 0.28, ease: "easeInOut" }}
+                              transition={{ duration: 0.18, ease: "easeOut" }}
                               className="overflow-hidden"
                             >
                               <div className="mt-3 flex flex-col gap-3 xl:flex-row xl:items-start">
@@ -896,7 +1012,7 @@ export default function FulfillmentConfirmation() {
                                     className={`grid gap-2 sm:grid-cols-2 ${isHotelService ? "xl:grid-cols-5" : "xl:grid-cols-4"
                                       }`}
                                   >
-                                    <div className="rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-2">
+                                    <div className="rounded-xl border border-slate-200 border-l-4 border-l-blue-500 bg-gradient-to-br from-blue-50/80 via-white to-blue-50/20 px-3 py-2.5 shadow-sm transition-all duration-500 ease-in-out hover:shadow-md hover:scale-[1.002]">
                                       <ServiceFieldLabel
                                         icon={<CalendarDays size={11} />}
                                         label="Service Start"
@@ -906,8 +1022,8 @@ export default function FulfillmentConfirmation() {
                                         {formatServiceDate(service.resolvedServiceDate)}
                                       </p>
                                     </div>
-
-                                    <div className="rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-2">
+ 
+                                    <div className="rounded-xl border border-slate-200 border-l-4 border-l-violet-500 bg-gradient-to-br from-violet-50/80 via-white to-violet-50/20 px-3 py-2.5 shadow-sm transition-all duration-500 ease-in-out hover:shadow-md hover:scale-[1.002]">
                                       <ServiceFieldLabel
                                         icon={<Package size={11} />}
                                         label={isHotelService ? "Booked Qty" : "Quantity"}
@@ -917,10 +1033,10 @@ export default function FulfillmentConfirmation() {
                                         {service.displayQuantityLabel || service.quantityLabel || "-"}
                                       </p>
                                     </div>
-
+ 
                                     {isHotelService ? (
                                       <>
-                                        <div className="rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-2">
+                                        <div className="rounded-xl border border-slate-200 border-l-4 border-l-indigo-500 bg-gradient-to-br from-indigo-50/80 via-white to-indigo-50/20 px-3 py-2.5 shadow-sm transition-all duration-500 ease-in-out hover:shadow-md hover:scale-[1.002]">
                                           <ServiceFieldLabel
                                             icon={<BedDouble size={11} />}
                                             label="Stay Duration"
@@ -930,8 +1046,8 @@ export default function FulfillmentConfirmation() {
                                             {service.stayLabel || "-"}
                                           </p>
                                         </div>
-
-                                        <div className="rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-2">
+ 
+                                        <div className="rounded-xl border border-slate-200 border-l-4 border-l-emerald-500 bg-gradient-to-br from-emerald-50/80 via-white to-emerald-50/20 px-3 py-2.5 shadow-sm transition-all duration-500 ease-in-out hover:shadow-md hover:scale-[1.002]">
                                           <ServiceFieldLabel
                                             icon={<LogIn size={11} />}
                                             label="Check-in"
@@ -945,8 +1061,8 @@ export default function FulfillmentConfirmation() {
                                             )}
                                           </p>
                                         </div>
-
-                                        <div className="rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-2">
+ 
+                                        <div className="rounded-xl border border-slate-200 border-l-4 border-l-rose-500 bg-gradient-to-br from-rose-50/80 via-white to-rose-50/20 px-3 py-2.5 shadow-sm transition-all duration-500 ease-in-out hover:shadow-md hover:scale-[1.002]">
                                           <ServiceFieldLabel
                                             icon={<LogOut size={11} />}
                                             label="Check-out"
@@ -962,7 +1078,7 @@ export default function FulfillmentConfirmation() {
                                         </div>
                                       </>
                                     ) : (
-                                      <div className="rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-2">
+                                      <div className="rounded-xl border border-slate-200 border-l-4 border-l-amber-500 bg-gradient-to-br from-amber-50/80 via-white to-amber-50/20 px-3 py-2.5 shadow-sm transition-all duration-500 ease-in-out hover:shadow-md hover:scale-[1.002]">
                                         <ServiceFieldLabel
                                           icon={<Clock3 size={11} />}
                                           label="Service End"
@@ -975,8 +1091,8 @@ export default function FulfillmentConfirmation() {
                                         </p>
                                       </div>
                                     )}
-
-                                    <div className="rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-2">
+ 
+                                    <div className="rounded-xl border border-slate-200 border-l-4 border-l-teal-500 bg-gradient-to-br from-teal-50/80 via-white to-teal-50/20 px-3 py-2.5 shadow-sm transition-all duration-500 ease-in-out hover:shadow-md hover:scale-[1.002]">
                                       <ServiceFieldLabel
                                         icon={<IndianRupee size={11} />}
                                         label="Unit Rate"
@@ -991,9 +1107,9 @@ export default function FulfillmentConfirmation() {
                                     </div>
                                   </div>
                                 </div>
-
+ 
                                 <div className="xl:w-[240px] xl:min-w-[240px]">
-                                  <div className="rounded-xl border border-blue-100 bg-blue-50 px-2.5 py-2.5">
+                                  <div className="rounded-xl border border-blue-150 border-l-4 border-l-sky-500 bg-gradient-to-br from-sky-50/90 via-white to-blue-50/30 px-3.5 py-3 shadow-sm transition-all duration-500 ease-in-out hover:shadow-md hover:scale-[1.002]">
                                     <div className="flex items-start justify-between gap-3 xl:flex-col xl:items-start">
                                       <div>
                                         <span className="inline-flex items-center gap-1.5 text-[9px] uppercase tracking-[0.16em] text-blue-700/70">
@@ -1059,7 +1175,7 @@ export default function FulfillmentConfirmation() {
                               initial={{ height: 0, opacity: 0, y: -8 }}
                               animate={{ height: "auto", opacity: 1, y: 0 }}
                               exit={{ height: 0, opacity: 0, y: -8 }}
-                              transition={{ duration: 0.24, ease: "easeInOut" }}
+                              transition={{ duration: 0.16, ease: "easeOut" }}
                               className="mt-3 overflow-hidden text-[11px] leading-4 text-slate-400"
                             >
                               Service details are hidden. Click the eye icon to show them again.
@@ -1083,18 +1199,19 @@ export default function FulfillmentConfirmation() {
           </div>
         </div>
 
-        <div className="relative mb-6 flex h-10 items-center overflow-hidden rounded-full bg-slate-200 p-3 text-xs">
+        <div className="relative mb-6 flex items-center overflow-hidden rounded-full bg-slate-200 p-1 text-xs">
           <button
             onClick={() => setActiveTab("confirmation")}
-            className={`relative z-10 flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-2xl py-1.5 transition-colors duration-200 ${activeTab === "confirmation"
-                ? "font-medium text-slate-900"
-                : "text-slate-600"
-              }`}
+            className={`relative z-10 flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-2xl py-2 transition-colors duration-300 ${
+              activeTab === "confirmation"
+                ? "font-bold text-white"
+                : "text-slate-600 hover:text-slate-800"
+            }`}
           >
             {activeTab === "confirmation" && (
               <motion.span
                 layoutId="fulfillment-tab-pill"
-                className="absolute inset-0 rounded-2xl bg-white shadow-sm"
+                className="absolute inset-0 rounded-2xl bg-gradient-to-r from-[#1e3a8a] via-[#111827] to-black shadow-md"
                 transition={{ type: "spring", stiffness: 380, damping: 32 }}
               />
             )}
@@ -1103,19 +1220,38 @@ export default function FulfillmentConfirmation() {
 
           <button
             onClick={() => setActiveTab("invoice")}
-            className={`relative z-10 flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-2xl py-1.5 transition-colors duration-200 ${activeTab === "invoice"
-                ? "font-medium text-slate-900"
-                : "text-slate-600"
-              }`}
+            className={`relative z-10 flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-2xl py-2 transition-colors duration-300 ${
+              activeTab === "invoice"
+                ? "font-bold text-white"
+                : "text-slate-600 hover:text-slate-800"
+            }`}
           >
             {activeTab === "invoice" && (
               <motion.span
                 layoutId="fulfillment-tab-pill"
-                className="absolute inset-0 rounded-2xl bg-white shadow-sm"
+                className="absolute inset-0 rounded-2xl bg-gradient-to-r from-[#1e3a8a] via-[#111827] to-black shadow-md"
                 transition={{ type: "spring", stiffness: 380, damping: 32 }}
               />
             )}
             <span className="relative z-10">$ Internal Invoice</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab("ledger")}
+            className={`relative z-10 flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-2xl py-2 transition-colors duration-300 ${
+              activeTab === "ledger"
+                ? "font-bold text-white"
+                : "text-slate-600 hover:text-slate-800"
+            }`}
+          >
+            {activeTab === "ledger" && (
+              <motion.span
+                layoutId="fulfillment-tab-pill"
+                className="absolute inset-0 rounded-2xl bg-gradient-to-r from-[#1e3a8a] via-[#111827] to-black shadow-md"
+                transition={{ type: "spring", stiffness: 380, damping: 32 }}
+              />
+            )}
+            <span className="relative z-10">Payment Ledger</span>
           </button>
         </div>
         <AnimatePresence mode="wait" initial={false}>
@@ -1128,24 +1264,32 @@ export default function FulfillmentConfirmation() {
               transition={{ duration: 0.22, ease: "easeOut" }}
               className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm"
             >
-              <div className="p-5 border-b border-slate-200 flex justify-between items-center flex-wrap gap-3">
-                <div>
-                  <h2 className="font-semibold text-slate-800 flex items-center gap-2">
-                    <FileText size={18} />
-                    Service Confirmation & Emergency Support Details
-                  </h2>
-                  <p className="text-xs text-slate-500 mt-1">
-                    Add service cards below as needed. Use the booking services
-                    panel above as reference.
-                  </p>
-                  {voucherGeneratedNote && (
-                    <div className="mt-3 flex max-w-3xl items-start gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-xs text-emerald-800">
-                      <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white text-emerald-600 shadow-sm">
-                        <CheckCircle size={12} />
-                      </span>
-                      <p className="leading-5">{voucherGeneratedNote}</p>
-                    </div>
-                  )}
+              <div className="p-5 border-b border-slate-200 flex justify-between items-center flex-wrap gap-4">
+                <div className="flex items-center gap-3.5 flex-1 min-w-0">
+                  <div className="relative flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-tr from-[#1e3a8a] via-[#111827] to-slate-900 text-white shadow-lg ring-4 ring-blue-50 shrink-0">
+                    <FileText size={22} className="animate-pulse" />
+                    <span className="absolute -bottom-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500 text-[9px] font-bold text-white ring-2 ring-white">
+                      ✓
+                    </span>
+                  </div>
+                  <div className="min-w-0">
+                    <h2 className="text-lg font-bold text-slate-800 tracking-tight">
+                      Service Confirmation & Emergency Support Details
+                    </h2>
+                    <p className="text-xs text-slate-500 mt-1 font-medium">
+                      Add service cards below as needed. Use the booking services
+                      panel above as reference.
+                    </p>
+
+                    {voucherGeneratedNote && (
+                      <div className="mt-3 flex max-w-3xl items-start gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-xs text-emerald-800">
+                        <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white text-emerald-600 shadow-sm">
+                          <CheckCircle size={12} />
+                        </span>
+                        <p className="leading-5">{voucherGeneratedNote}</p>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 <button
@@ -1521,17 +1665,20 @@ export default function FulfillmentConfirmation() {
 
                 <div className="flex gap-4">
                   <button
+                    type="button"
                     onClick={() => handleSubmit("draft")}
-                    className="border border-slate-300 px-4 py-2 rounded-xl text-sm bg-white cursor-pointer"
+                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-gradient-to-r from-white to-slate-50 px-5 py-2.5 text-sm font-semibold text-slate-700 hover:from-slate-50 hover:to-slate-100 hover:text-slate-900 hover:border-slate-400 transition-all duration-300 shadow-sm active:scale-[0.98] cursor-pointer"
                   >
+                    <FileText size={15} className="text-slate-500" />
                     Save as Draft
                   </button>
 
                   <button
+                    type="button"
                     onClick={() => handleSubmit("submitted")}
-                    className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-xl text-sm cursor-pointer"
+                    className="inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold text-white transition-all duration-500 ease-in-out bg-gradient-to-r from-blue-900 to-emerald-600 hover:from-blue-950 hover:to-emerald-700 hover:shadow-[0_4px_14px_rgba(16,185,129,0.35)] active:scale-[0.98] cursor-pointer"
                   >
-                    <CheckCircle size={16} />
+                    <CheckCircle size={15} />
                     Submit Confirmation
                   </button>
                 </div>
@@ -1552,6 +1699,18 @@ export default function FulfillmentConfirmation() {
                 selectedQuery={selectedQuery}
                 queryServices={referenceServices}
               />
+            </motion.div>
+          )}
+
+          {activeTab === "ledger" && (
+            <motion.div
+              key="ledger-tab-panel"
+              initial={{ opacity: 0, y: 10, scale: 0.995 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -8, scale: 0.995 }}
+              transition={{ duration: 0.22, ease: "easeOut" }}
+            >
+              <DmcPaymentLedger />
             </motion.div>
           )}
         </AnimatePresence>

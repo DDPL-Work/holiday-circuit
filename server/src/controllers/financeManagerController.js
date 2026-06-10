@@ -195,7 +195,7 @@ export const getFinanceManagerTeam = async (req, res, next) => {
     weekStart.setHours(0, 0, 0, 0);
     weekStart.setDate(weekStart.getDate() - ((weekStart.getDay() + 6) % 7));
 
-    const manager = await Auth.findById(req.user.id).select("name email employeeId _id");
+    const manager = await Auth.findById(req.user.id).select("name email employeeId _id").lean();
 
     if (!manager) {
       return next(new ApiError(404, "Manager profile not found"));
@@ -211,7 +211,9 @@ export const getFinanceManagerTeam = async (req, res, next) => {
           { "paymentVerification.status": { $in: ["Pending", "Verified", "Rejected"] } },
           { paymentStatus: { $in: ["Partially Paid", "Paid", "Unpaid"] } },
         ],
-      }).select("invoiceNumber paymentVerification paymentSubmission paymentStatus createdAt updatedAt")
+      })
+        .select("invoiceNumber paymentVerification paymentSubmission paymentStatus createdAt updatedAt")
+        .lean()
       : [];
 
     const teamScopedInvoices = decorateFinanceAssignment({
@@ -407,6 +409,151 @@ export const createFinanceTeamMember = async (req, res, next) => {
         id: createdUser._id,
         name: createdUser.name,
         email: createdUser.email,
+      },
+      credentialsEmailSent,
+      temporaryPassword: credentialsEmailSent ? "" : initialPassword,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const createDmcVendor = async (req, res, next) => {
+  try {
+    ensureFinanceManagerAccess(req);
+
+    const {
+      fullName,
+      name,
+      email,
+      phone,
+      gstNumber = "",
+      creditDays = [7],
+      passwordMode = "auto",
+      manualPassword = "",
+      accountStatus = "Active",
+      accessExpiry = "",
+      sendWelcome = true,
+    } = req.body || {};
+
+    const trimmedName = String(fullName || name || "").trim();
+    const normalizedEmail = String(email || "").trim().toLowerCase();
+    const normalizedPhone = String(phone || "").trim();
+    const normalizedGstNumber = String(gstNumber || "").trim().toUpperCase();
+    const allowedCreditDaysList = [0, 3, 5, 7, 10, 12, 15, 18, 20, 21, 25, 30];
+    const normalizedCreditDays = Array.isArray(creditDays)
+      ? creditDays.map(Number).filter((d) => allowedCreditDaysList.includes(d))
+      : allowedCreditDaysList.includes(Number(creditDays)) ? [Number(creditDays)] : [7];
+    const normalizedPasswordMode = String(passwordMode || "auto").trim().toLowerCase();
+    const normalizedAccountStatus = accountStatus === "Inactive" ? "Inactive" : "Active";
+    const normalizedAccessExpiry = normalizeAccessExpiry(accessExpiry);
+
+    if (!trimmedName || !normalizedEmail || !normalizedPhone) {
+      return next(new ApiError(400, "Name, email, and phone number are required"));
+    }
+
+    const emailValidationError = getEmailValidationError(normalizedEmail);
+    if (emailValidationError) {
+      return next(new ApiError(400, emailValidationError));
+    }
+
+    if (!normalizedCreditDays || normalizedCreditDays.length === 0) {
+      return next(new ApiError(400, "Please select at least one Credit Days option"));
+    }
+
+    if (!["auto", "manual"].includes(normalizedPasswordMode)) {
+      return next(new ApiError(400, "Invalid password mode"));
+    }
+
+    if (normalizedAccessExpiry && Number.isNaN(normalizedAccessExpiry.getTime())) {
+      return next(new ApiError(400, "Access expiry date is invalid"));
+    }
+
+    const initialPassword =
+      normalizedPasswordMode === "manual"
+        ? String(manualPassword || "")
+        : generateTemporaryPassword();
+
+    if (String(initialPassword).length < 8) {
+      return next(new ApiError(400, "Password must be at least 8 characters"));
+    }
+
+    const existingUser = await Auth.findOne({ email: normalizedEmail });
+    if (existingUser) {
+      return next(new ApiError(400, "A user with this email already exists"));
+    }
+
+    if (normalizedPhone) {
+      const existingPhone = await Auth.findOne({ phone: normalizedPhone });
+      if (existingPhone) {
+        return next(new ApiError(400, "A user with this phone number already exists"));
+      }
+    }
+
+    if (normalizedGstNumber) {
+      const existingGst = await Auth.findOne({ gstNumber: normalizedGstNumber });
+      if (existingGst) {
+        return next(new ApiError(400, "GST Number already exists"));
+      }
+    }
+
+    const hashedPassword = await bcrypt.hash(initialPassword, 10);
+
+    const createdUser = await Auth.create({
+      name: trimmedName,
+      email: normalizedEmail,
+      phone: normalizedPhone,
+      gstNumber: normalizedGstNumber || undefined,
+      creditDays: normalizedCreditDays,
+      password: hashedPassword,
+      role: "dmc_partner",
+      companyName: trimmedName,
+      manager: String(req.user?.id || ""),
+      department: "DMC Relations",
+      designation: "DMC Partner",
+      permissions: ["View", "Edit", "Export", "Submit Invoice"],
+      accountStatus: normalizedAccountStatus,
+      accessExpiry: normalizedAccessExpiry,
+      isApproved: true,
+    });
+
+    let credentialsEmailSent = false;
+
+    if (sendWelcome) {
+      try {
+        await sendTeamMemberCredentialsMail(normalizedEmail, {
+          name: trimmedName,
+          role: "DMC Partner",
+          loginEmail: normalizedEmail,
+          password: initialPassword,
+        });
+        credentialsEmailSent = true;
+      } catch (error) {
+        credentialsEmailSent = false;
+      }
+    }
+
+    await notifyTeamMemberCreationStakeholders({
+      createdUser,
+      actorUserId: req.user?.id || req.user?._id || "",
+      actorRole: req.user?.role || "finance_manager",
+      actorName: req.user?.name || "Finance Manager",
+      managerRef: String(req.user?.id || req.user?._id || ""),
+      expectedManagerRoles: ["finance_manager"],
+      includeAdminBroadcast: true,
+    });
+
+    res.status(201).json({
+      success: true,
+      message: credentialsEmailSent
+        ? "DMC Vendor added successfully and credentials were emailed"
+        : "DMC Vendor added successfully",
+      user: {
+        id: createdUser._id,
+        name: createdUser.name,
+        email: createdUser.email,
+        gstNumber: createdUser.gstNumber,
+        creditDays: createdUser.creditDays,
       },
       credentialsEmailSent,
       temporaryPassword: credentialsEmailSent ? "" : initialPassword,

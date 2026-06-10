@@ -1,9 +1,35 @@
 import { useEffect, useRef, useState } from "react";
-import { MapPin, ArrowLeft, CheckCircle2, Sparkles, X, AlertCircle } from "lucide-react";
+import { MapPin, ArrowLeft, CheckCircle2, Sparkles, X, AlertCircle, User } from "lucide-react";
 import API from "../utils/Api.js";
 import { motion, AnimatePresence } from "framer-motion";
 
 const childAgeOptions = Array.from({ length: 12 }, (_, index) => index + 1);
+
+const COMMON_DOMAIN_TYPOS = {
+  "mail.com": "gmail.com",
+  "email.com": "gmail.com",
+  "tmail.com": "gmail.com",
+  "fmail.com": "gmail.com",
+  "hmail.com": "gmail.com",
+  "vmail.com": "gmail.com",
+  "bmail.com": "gmail.com",
+  "rmail.com": "gmail.com",
+  "gmeil.com": "gmail.com",
+  "gmaile.com": "gmail.com",
+  "gamil.com": "gmail.com",
+  "gmial.com": "gmail.com",
+  "gnail.com": "gmail.com",
+  "gmail.co": "gmail.com",
+  "gmil.com": "gmail.com",
+  "gmal.com": "gmail.com",
+  "gmaill.com": "gmail.com",
+  "gmail.con": "gmail.com",
+  "yaho.com": "yahoo.com",
+  "yhoo.com": "yahoo.com",
+  "outlok.com": "outlook.com",
+  "hotmial.com": "hotmail.com",
+  "icloud.co": "icloud.com",
+};
 
 const createAdultTraveler = () => ({ fullName: "" });
 const createChildTraveler = () => ({ fullName: "", age: "" });
@@ -17,6 +43,13 @@ const getTodayDateString = () => {
   return new Date(today.getTime() - timezoneOffset).toISOString().slice(0, 10);
 };
 
+const formatDate = (dateStr) => {
+  if (!dateStr) return "-";
+  const date = new Date(dateStr);
+  if (isNaN(date.getTime())) return dateStr;
+  return date.toLocaleDateString("en-US", { day: "numeric", month: "short" });
+};
+
 const CreateNewQueries = ({ onClose, onCreated, queryToEdit = null, isOpsView = false }) => {
   const [step, setStep] = useState(1);
   const [isModalVisible, setIsModalVisible] = useState(true);
@@ -28,6 +61,9 @@ const CreateNewQueries = ({ onClose, onCreated, queryToEdit = null, isOpsView = 
     numberOfAdults: 1,
     numberOfChildren: 0,
     customerBudget: 0,
+    hotelCategory: "4 Star",
+    transportRequired: false,
+    sightseeingRequired: false,
     specialRequirements: "",
     adultTravelers: [createAdultTraveler()],
     childTravelers: [],
@@ -74,6 +110,9 @@ const CreateNewQueries = ({ onClose, onCreated, queryToEdit = null, isOpsView = 
         numberOfAdults: queryToEdit.numberOfAdults || adults.length || 1,
         numberOfChildren: queryToEdit.numberOfChildren || children.length || 0,
         customerBudget: queryToEdit.customerBudget || 0,
+        hotelCategory: queryToEdit.hotelCategory || "4 Star",
+        transportRequired: Boolean(queryToEdit.transportRequired),
+        sightseeingRequired: Boolean(queryToEdit.sightseeingRequired),
         specialRequirements: queryToEdit.specialRequirements || "",
         adultTravelers: adults.length > 0 ? adults : [createAdultTraveler()],
         childTravelers: children,
@@ -90,6 +129,9 @@ const CreateNewQueries = ({ onClose, onCreated, queryToEdit = null, isOpsView = 
       numberOfAdults: 1,
       numberOfChildren: 0,
       customerBudget: 0,
+      hotelCategory: "4 Star",
+      transportRequired: false,
+      sightseeingRequired: false,
       specialRequirements: "",
       adultTravelers: [createAdultTraveler()],
       childTravelers: [],
@@ -99,8 +141,16 @@ const CreateNewQueries = ({ onClose, onCreated, queryToEdit = null, isOpsView = 
   };
 
   const handleChange = (e) => {
-    const { name, value } = e.target;
+    const { name, value, type, checked } = e.target;
     if (formAlert) setFormAlert(null);
+
+    if (type === "checkbox") {
+      setFormData((prev) => ({
+        ...prev,
+        [name]: checked,
+      }));
+      return;
+    }
 
     if (name === "numberOfAdults") {
       const nextCount = Math.max(1, Number(value || 1));
@@ -227,10 +277,10 @@ const CreateNewQueries = ({ onClose, onCreated, queryToEdit = null, isOpsView = 
       return;
     }
 
-    if (formData.endDate < formData.startDate) {
+    if (formData.endDate <= formData.startDate) {
       setFormAlert({
         title: "Invalid End Date",
-        message: "End date cannot be earlier than start date.",
+        message: "End date must be later than start date.",
       });
       setStep(1);
       return;
@@ -243,7 +293,12 @@ const CreateNewQueries = ({ onClose, onCreated, queryToEdit = null, isOpsView = 
       };
 
       const response = queryToEdit
-        ? await API.put(`/agent/queries/${queryToEdit._id}`, payload)
+        ? await API.put(
+            isOpsView
+              ? `/ops/manager/queries/${queryToEdit._id}`
+              : `/agent/queries/${queryToEdit._id}`,
+            payload,
+          )
         : await API.post("/agent/queries", payload);
       onCreated?.(response?.data?.query);
       setShowSuccessPopup(true);
@@ -319,10 +374,10 @@ const CreateNewQueries = ({ onClose, onCreated, queryToEdit = null, isOpsView = 
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.985, y: 18 }}
               transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-              className={`relative z-10 flex max-h-[calc(100vh-20px)] w-full flex-col overflow-hidden rounded-2xl border border-[#BEDBFF] bg-[#f9fafb] p-2 shadow-sm sm:max-h-[calc(100vh-32px)] sm:p-3 ${isOpsView ? 'max-w-[460px]' : 'max-w-[520px]'}`}
+              className={`relative z-10 flex max-h-[calc(100vh-20px)] w-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl sm:max-h-[calc(100vh-32px)] sm:p-5 ${isOpsView ? 'max-w-[460px]' : 'max-w-[520px]'}`}
             >
           {isOpsView ? (
-            <div className="relative -mx-2 -mt-2 mb-4 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 px-5 py-4 text-white sm:-mx-3 sm:-mt-3 sm:mb-5">
+            <div className="relative -mx-4 -mt-4 mb-4 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 px-5 py-4 text-white sm:-mx-5 sm:-mt-5 sm:mb-5">
               <div className="flex items-center justify-between">
                 <button
                   type="button"
@@ -400,7 +455,7 @@ const CreateNewQueries = ({ onClose, onCreated, queryToEdit = null, isOpsView = 
                   initial="hidden"
                   animate="visible"
                   exit="exit"
-                  className={`mx-auto w-full rounded-2xl bg-white ${isOpsView ? 'min-h-0 max-w-[430px] p-4 shadow-sm' : 'min-h-[300px] max-w-[500px] p-6'}`}
+                  className="w-full bg-transparent shadow-none"
                 >
                 <div className={isOpsView ? "mb-3" : "mb-6"}>
                   <h2 className="mt-1 text-xl font-semibold">{queryToEdit ? "Edit Query" : "Create New Query"}</h2>
@@ -478,7 +533,7 @@ const CreateNewQueries = ({ onClose, onCreated, queryToEdit = null, isOpsView = 
                       name="startDate"
                       value={formData.startDate}
                       onChange={handleChange}
-                      min={todayDate}
+                      min={queryToEdit ? undefined : todayDate}
                       className="w-full rounded-xl border border-gray-300 px-4 py-2 focus:outline-none"
                     />
                   </div>
@@ -489,7 +544,7 @@ const CreateNewQueries = ({ onClose, onCreated, queryToEdit = null, isOpsView = 
                       name="endDate"
                       value={formData.endDate}
                       onChange={handleChange}
-                      min={formData.startDate || todayDate}
+                      min={formData.startDate || (queryToEdit ? undefined : todayDate)}
                       className="w-full rounded-xl border border-gray-300 px-4 py-2 focus:outline-none"
                     />
                   </div>
@@ -498,7 +553,7 @@ const CreateNewQueries = ({ onClose, onCreated, queryToEdit = null, isOpsView = 
                 <div className="mt-6 flex justify-end">
                   <button
                     onClick={() => {
-                      const normalizedClientEmail = String(formData.clientEmail || "").trim();
+                      const normalizedClientEmail = String(formData.clientEmail || "").trim().toLowerCase();
                       if (!normalizedClientEmail) {
                         setFormAlert({
                           title: "Client Email Required",
@@ -511,6 +566,40 @@ const CreateNewQueries = ({ onClose, onCreated, queryToEdit = null, isOpsView = 
                         setFormAlert({
                           title: "Invalid Client Email",
                           message: "Please enter a valid client email address.",
+                        });
+                        return;
+                      }
+
+                      const atIndex = normalizedClientEmail.lastIndexOf("@");
+                      const domain = normalizedClientEmail.slice(atIndex + 1);
+                      if (COMMON_DOMAIN_TYPOS[domain]) {
+                        setFormAlert({
+                          title: "Email Typo Detected",
+                          message: `Did you mean ${normalizedClientEmail.slice(0, atIndex)}@${COMMON_DOMAIN_TYPOS[domain]}? Please correct the email.`,
+                        });
+                        return;
+                      }
+
+                      if (!formData.startDate || !formData.endDate) {
+                        setFormAlert({
+                          title: "Travel Dates Required",
+                          message: "Please select both start date and end date before moving ahead.",
+                        });
+                        return;
+                      }
+
+                      if (!queryToEdit && formData.startDate < todayDate) {
+                        setFormAlert({
+                          title: "Invalid Start Date",
+                          message: "Start date can only be today or a future date.",
+                        });
+                        return;
+                      }
+
+                      if (formData.endDate <= formData.startDate) {
+                        setFormAlert({
+                          title: "Invalid End Date",
+                          message: "End date must be later than start date.",
                         });
                         return;
                       }
@@ -533,7 +622,7 @@ const CreateNewQueries = ({ onClose, onCreated, queryToEdit = null, isOpsView = 
                   initial="hidden"
                   animate="visible"
                   exit="exit"
-                  className={`mx-auto w-full rounded-2xl bg-white ${isOpsView ? 'min-h-0 max-w-[430px] p-4 shadow-sm' : 'min-h-[300px] max-w-[450px] p-6'}`}
+                  className="w-full bg-transparent shadow-none"
                 >
                 <h2 className="text-xl font-semibold">{queryToEdit ? "Edit Query" : "Create New Query"}</h2>
                 <p className={`${isOpsView ? 'mb-3' : 'mb-6'} text-sm text-gray-500`}>
@@ -564,12 +653,11 @@ const CreateNewQueries = ({ onClose, onCreated, queryToEdit = null, isOpsView = 
                     />
                   </div>
                 </div>
-
-                <div className="space-y-3">
+                <div className="space-y-2.5">
                   {Number(formData.numberOfAdults || 0) > 0 && (
-                    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3.5 py-2.5">
                       <p className="text-sm font-semibold text-slate-800">Client / Adult Traveler Names</p>
-                      <div className="mt-3 grid gap-3">
+                      <div className="mt-2.5 grid gap-2.5">
                         {formData.adultTravelers.map((traveler, index) => (
                           <input
                             key={`adult-${index}`}
@@ -593,9 +681,9 @@ const CreateNewQueries = ({ onClose, onCreated, queryToEdit = null, isOpsView = 
                         transition={{ duration: 0.24, ease: "easeOut" }}
                         className="overflow-hidden"
                       >
-                        <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3.5">
+                        <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3.5 py-2.5">
                           <p className="text-sm font-semibold text-slate-800">Child Traveler Details</p>
-                          <div className="mt-3 grid gap-3">
+                          <div className="mt-2.5 grid gap-2.5">
                             {formData.childTravelers.map((traveler, index) => (
                               <div
                                 key={`child-${index}`}
@@ -628,7 +716,7 @@ const CreateNewQueries = ({ onClose, onCreated, queryToEdit = null, isOpsView = 
                   </AnimatePresence>
                 </div>
 
-                <div className="mb-6 mt-3">
+                <div className="mb-3.5 mt-2.5">
                   <label className="mb-1 block text-sm font-medium">Budget per person (Optional)</label>
                   <input
                     type="number"
@@ -638,6 +726,42 @@ const CreateNewQueries = ({ onClose, onCreated, queryToEdit = null, isOpsView = 
                     onChange={handleChange}
                     className="w-full rounded-xl border border-gray-300 px-4 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
+                </div>
+
+                <div className="mb-4 rounded-2xl border border-slate-200 bg-slate-50 px-3.5 py-2.5">
+                  <label className="mb-1 block text-sm font-medium">Hotel Category</label>
+                  <select
+                    name="hotelCategory"
+                    value={formData.hotelCategory}
+                    onChange={handleChange}
+                    className="w-full rounded-xl border border-gray-300 bg-white px-4 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="3 Star">3 Star</option>
+                    <option value="4 Star">4 Star</option>
+                    <option value="5 Star">5 Star</option>
+                  </select>
+                  <div className="mt-2.5 grid gap-2 sm:grid-cols-2">
+                    <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700">
+                      <input
+                        type="checkbox"
+                        name="transportRequired"
+                        checked={formData.transportRequired}
+                        onChange={handleChange}
+                        className="h-4 w-4 rounded border-slate-300 accent-slate-900"
+                      />
+                      Transport Required
+                    </label>
+                    <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700">
+                      <input
+                        type="checkbox"
+                        name="sightseeingRequired"
+                        checked={formData.sightseeingRequired}
+                        onChange={handleChange}
+                        className="h-4 w-4 rounded border-slate-300 accent-slate-900"
+                      />
+                      Sightseeing Required
+                    </label>
+                  </div>
                 </div>
 
                 <div className="flex justify-between">
@@ -672,7 +796,7 @@ const CreateNewQueries = ({ onClose, onCreated, queryToEdit = null, isOpsView = 
                   initial="hidden"
                   animate="visible"
                   exit="exit"
-                  className={`mx-auto w-full rounded-2xl bg-white ${isOpsView ? 'min-h-0 max-w-[430px] p-4 shadow-sm' : 'min-h-[350px] max-w-[500px] p-6'}`}
+                  className="w-full bg-transparent shadow-none"
                 >
                 <h2 className="text-xl font-semibold">{queryToEdit ? "Edit Query" : "Create New Query"}</h2>
                 <p className={`${isOpsView ? 'mb-3' : 'mb-6'} text-sm text-gray-500`}>
@@ -733,27 +857,30 @@ const CreateNewQueries = ({ onClose, onCreated, queryToEdit = null, isOpsView = 
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.94, y: 18 }}
               transition={{ duration: 0.22 }}
-              className="w-full max-w-md overflow-hidden rounded-[28px] border border-emerald-200 bg-white shadow-2xl"
+              className="w-full max-w-md overflow-hidden rounded-[28px] border border-slate-100 bg-white shadow-2xl animate-scale-in"
             >
-              <div className="relative bg-gradient-to-br from-emerald-500 via-teal-500 to-cyan-600 px-6 py-7 text-white">
+              <div className="relative bg-gradient-to-r from-[#107c41] via-[#0e4e2c] to-[#0b1e36] px-6 py-5 text-white">
                 <button
                   onClick={handlePopupClose}
-                  className="absolute right-4 top-4 rounded-full bg-white/15 p-1.5 text-white transition hover:bg-white/25"
+                  className="absolute right-4 top-4 rounded-full bg-white/10 p-1.5 text-white transition hover:bg-white/20"
                 >
-                  <X size={16} />
+                  <X size={15} />
                 </button>
 
-                <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-white/20">
-                  <CheckCircle2 size={30} />
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/15 shadow-sm backdrop-blur-md">
+                    <CheckCircle2 size={22} className="text-emerald-100" />
+                  </div>
+                  <div>
+                    <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-emerald-100/80">
+                      {queryToEdit ? "Query Updated" : "Query Submitted"}
+                    </p>
+                    <h3 className="text-base font-bold leading-tight">
+                      {queryToEdit ? "Travel Query Updated" : "Travel Query Created Successfully"}
+                    </h3>
+                  </div>
                 </div>
-
-                <p className="text-[11px] uppercase tracking-[0.24em] text-emerald-50/90">
-                  {queryToEdit ? "Query Updated" : "Query Submitted"}
-                </p>
-                <h3 className="mt-2 text-2xl font-semibold leading-tight">
-                  {queryToEdit ? "Travel Query Updated Successfully" : "Travel Query Created Successfully"}
-                </h3>
-                <p className="mt-2 text-sm text-white/85">
+                <p className="mt-2 text-[11px] text-emerald-50/85 font-medium leading-relaxed">
                   {queryToEdit
                     ? "Your query details have been updated successfully and will be processed shortly."
                     : "Your request is now in the pipeline and will move into ops processing shortly."}
@@ -761,31 +888,67 @@ const CreateNewQueries = ({ onClose, onCreated, queryToEdit = null, isOpsView = 
               </div>
 
               <div className="px-6 py-5">
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                    <p className="text-[11px] uppercase tracking-wide text-slate-500">Destination</p>
-                    <p className="mt-1 text-sm font-semibold text-slate-900">
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="rounded-2xl border border-slate-200/80 bg-gradient-to-b from-slate-50 to-slate-100/50 px-2.5 py-2">
+                    <p className="text-[9px] font-bold uppercase tracking-wider text-slate-500">Destination</p>
+                    <p className="mt-1 text-xs font-bold text-slate-900 truncate" title={formData.destination}>
                       {formData.destination || "-"}
                     </p>
                   </div>
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                    <p className="text-[11px] uppercase tracking-wide text-slate-500">Travellers</p>
-                    <p className="mt-1 text-sm font-semibold text-slate-900">
+                  <div className="rounded-2xl border border-slate-200/80 bg-gradient-to-b from-slate-50 to-slate-100/50 px-2.5 py-2 text-center">
+                    <p className="text-[9px] font-bold uppercase tracking-wider text-slate-500">Dates</p>
+                    <p className="mt-1 text-xs font-bold text-slate-900 whitespace-nowrap">
+                      {formatDate(formData.startDate)} - {formatDate(formData.endDate)}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-slate-200/80 bg-gradient-to-b from-slate-50 to-slate-100/50 px-2.5 py-2 text-right">
+                    <p className="text-[9px] font-bold uppercase tracking-wider text-slate-500">Travellers</p>
+                    <p className="mt-1 text-xs font-bold text-slate-900">
                       {Number(formData.numberOfAdults || 0) + Number(formData.numberOfChildren || 0)} PAX
                     </p>
                   </div>
                 </div>
 
-                <div className="mt-4 rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3">
-                  <div className="flex items-start gap-3">
-                    <div className="mt-0.5 rounded-xl bg-emerald-100 p-2 text-emerald-700">
-                      <Sparkles size={16} />
+                {/* TRAVELERS LIST */}
+                <div className="mt-3 rounded-2xl border border-slate-200/80 bg-gradient-to-b from-white to-slate-50/40 p-3.5 shadow-[inset_0_1px_3px_rgba(0,0,0,0.02)]">
+                  <div className="flex items-center gap-1.5 mb-2 border-b border-slate-100 pb-1.5">
+                    <User size={13} className="text-slate-500" />
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Traveler Details & Names</p>
+                  </div>
+                  <div className="max-h-[85px] overflow-y-auto space-y-2 pr-1 custom-scroll">
+                    {formData.adultTravelers.map((t, idx) => (
+                      <div key={`idx-a-${idx}`} className="flex items-center justify-between text-xs">
+                        <span className="font-semibold text-slate-800 truncate max-w-[200px]" title={t.fullName}>
+                          {t.fullName || `Adult Traveler ${idx + 1}`}
+                        </span>
+                        <span className="shrink-0 rounded-full bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100/60 px-2 py-0.5 text-[9px] font-bold text-blue-700">
+                          {idx === 0 ? "Lead Client" : "Adult"}
+                        </span>
+                      </div>
+                    ))}
+                    {formData.childTravelers.map((t, idx) => (
+                      <div key={`idx-c-${idx}`} className="flex items-center justify-between text-xs">
+                        <span className="font-semibold text-slate-800 truncate max-w-[200px]" title={t.fullName}>
+                          {t.fullName || `Child Traveler ${idx + 1}`}
+                        </span>
+                        <span className="shrink-0 rounded-full bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-100/60 px-2 py-0.5 text-[9px] font-bold text-amber-700">
+                          Child ({t.age ? `${t.age} Yrs` : "N/A"})
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="mt-3 rounded-2xl border border-emerald-100 bg-gradient-to-br from-emerald-50/50 to-teal-50/30 px-3.5 py-2.5">
+                  <div className="flex items-start gap-2.5">
+                    <div className="mt-0.5 rounded-lg bg-gradient-to-tr from-emerald-100 to-teal-100 p-1.5 text-emerald-700 shadow-sm">
+                      <Sparkles size={13} />
                     </div>
                     <div>
-                      <p className="text-sm font-medium text-emerald-900">
+                      <p className="text-xs font-bold text-emerald-900 leading-tight">
                         {queryToEdit ? "Information" : "Next Step"}
                       </p>
-                      <p className="mt-1 text-xs leading-5 text-emerald-800/90">
+                      <p className="mt-1 text-[11px] leading-relaxed text-emerald-800/90">
                         {queryToEdit
                           ? "The operations team will be notified of the updates and adapt the itinerary/quotation if required."
                           : "Ops team will review availability, prepare pricing, and move this query forward for quotation."}
@@ -794,16 +957,16 @@ const CreateNewQueries = ({ onClose, onCreated, queryToEdit = null, isOpsView = 
                   </div>
                 </div>
 
-                <div className="mt-5 flex justify-end gap-3">
+                <div className="mt-4 flex justify-end gap-3 border-t border-slate-100 pt-3.5">
                   <button
                     onClick={handlePopupClose}
-                    className="rounded-2xl border border-slate-300 px-4 py-2 text-sm text-slate-700"
+                    className="rounded-xl border border-slate-300 bg-white hover:bg-slate-50 px-4.5 py-1.5 text-xs font-semibold text-slate-700 transition active:scale-95 duration-150 cursor-pointer"
                   >
                     Close
                   </button>
                   <button
                     onClick={handlePopupClose}
-                    className="rounded-2xl bg-slate-900 px-4 py-2 text-sm font-medium text-white"
+                    className="rounded-xl bg-gradient-to-r from-[#107c41] via-[#0e4e2c] to-[#0b1e36] px-5 py-2 text-xs font-bold text-white transition hover:opacity-95 shadow-[0_2px_8px_rgba(16,124,65,0.25)] active:scale-95 duration-150 cursor-pointer"
                   >
                     Done
                   </button>

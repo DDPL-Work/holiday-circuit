@@ -1,6 +1,6 @@
 import express from "express";
 import isAuthenticated from "../middlewares/auth.middleware.js";
-import { createHotel, getHotels, getHotelById, updateHotel, deleteHotel, createActivity, getActivities, createTransfer, getTransfers, createPackage, getPackages, createSightseeing, getSightseeing, deleteUpload, downloadUpload, createOrUpdateConfirmation, getConfirmedQueriesForDmc, getDmcDashboard, submitInternalInvoice, } from "../controllers/dmcController.js";
+import { createHotel, getHotels, getHotelById, updateHotel, deleteHotel, createActivity, getActivities, createTransfer, getTransfers, createPackage, getPackages, createSightseeing, getSightseeing, deleteUpload, downloadUpload, createOrUpdateConfirmation, getConfirmedQueriesForDmc, getDmcDashboard, submitInternalInvoice, getDmcPaymentLedger, submitDmcSettlementBatch, previewUploadedInvoiceExtraction, } from "../controllers/dmcController.js";
 import { bulkUpload, getBulkUploadHistory, viewUploadData, editSpreadsheetRowAndNotify } from "../controllers/bulkUploadController.js";
 import multer from "multer";
 
@@ -44,7 +44,10 @@ router.get("/upload/view/:id", isAuthenticated, viewUploadData)
 router.patch("/upload/edit-row/:id", isAuthenticated, editSpreadsheetRowAndNotify)
 router.get("/dashboard", isAuthenticated, getDmcDashboard);
 router.get("/confirmation/queries", isAuthenticated, getConfirmedQueriesForDmc);
-router.post("/internal-invoice", isAuthenticated, submitInternalInvoice);
+router.post("/internal-invoice/parse-upload", isAuthenticated, upload.single("uploadedInvoice"), previewUploadedInvoiceExtraction);
+router.post("/internal-invoice", isAuthenticated, upload.single("uploadedInvoice"), submitInternalInvoice);
+router.get("/payment-ledger", isAuthenticated, getDmcPaymentLedger);
+router.post("/settlement-batches", isAuthenticated, upload.single("uploadedInvoice"), submitDmcSettlementBatch);
 
 
 router.post("/confirmation", isAuthenticated,

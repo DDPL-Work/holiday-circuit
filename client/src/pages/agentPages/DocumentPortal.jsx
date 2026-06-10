@@ -190,39 +190,43 @@ const getAvatarColor = (name = "") => {
 const statCardConfig = {
   verified: {
     label: "Verified",
-    desc: "Bookings fully cleared by ops",
+    desc: "Bookings cleared by ops",
     icon: ShieldCheck,
-    topBorder: "border-t-2 border-t-emerald-500",
+    bottomBorder: "border-b-4 border-b-emerald-500",
     iconBg: "bg-emerald-100",
     iconColor: "text-emerald-600",
     numberColor: "text-emerald-700",
+    gradientClass: "bg-gradient-to-br from-emerald-50/50 via-slate-50/10 to-white",
   },
   reviewing: {
     label: "Under Review",
-    desc: "Submitted and waiting for ops",
+    desc: "Waiting for ops review",
     icon: Clock3,
-    topBorder: "border-t-2 border-t-blue-400",
+    bottomBorder: "border-b-4 border-b-blue-400",
     iconBg: "bg-blue-100",
     iconColor: "text-blue-600",
     numberColor: "text-blue-700",
+    gradientClass: "bg-gradient-to-br from-blue-50/50 via-slate-50/10 to-white",
   },
   actionRequired: {
     label: "Action Required",
-    desc: "Missing files or correction requests",
+    desc: "Correction requests pending",
     icon: ShieldAlert,
-    topBorder: "border-t-2 border-t-amber-400",
+    bottomBorder: "border-b-4 border-b-amber-400",
     iconBg: "bg-amber-100",
     iconColor: "text-amber-600",
     numberColor: "text-amber-700",
+    gradientClass: "bg-gradient-to-br from-amber-50/50 via-slate-50/10 to-white",
   },
   ready: {
     label: "Ready to Submit",
-    desc: "All files uploaded, pending agent submission",
+    desc: "Pending agent submission",
     icon: FileText,
-    topBorder: "border-t-2 border-t-slate-400",
+    bottomBorder: "border-b-4 border-b-slate-400",
     iconBg: "bg-slate-100",
     iconColor: "text-slate-500",
     numberColor: "text-slate-700",
+    gradientClass: "bg-gradient-to-br from-slate-100/50 via-slate-50/10 to-white",
   },
 };
 
@@ -341,15 +345,15 @@ const DocumentPortal = () => {
       </motion.header>
 
       {/* Summary Stat Cards */}
-      <motion.div variants={itemVariant} className="grid gap-4 md:grid-cols-4">
+      <motion.div variants={itemVariant} className="grid gap-4 sm:gap-5 md:grid-cols-4">
         {Object.entries(statCardConfig).map(([key, cfg]) => {
           const Icon = cfg.icon;
           return (
             <div
               key={key}
-              className={`flex flex-col justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm ${cfg.topBorder}`}
+              className={`flex flex-col rounded-2xl border border-slate-200 p-5 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md ${cfg.gradientClass} ${cfg.bottomBorder}`}
             >
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between mb-4">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                   {cfg.label}
                 </p>
@@ -357,10 +361,10 @@ const DocumentPortal = () => {
                   <Icon className={`h-4 w-4 ${cfg.iconColor}`} />
                 </div>
               </div>
-              <p className={`text-3xl font-semibold leading-none ${cfg.numberColor}`}>
+              <p className={`text-3xl font-bold leading-none ${cfg.numberColor} mb-2.5`}>
                 {summary[key]}
               </p>
-              <p className="text-xs text-slate-500">{cfg.desc}</p>
+              <p className="text-xs text-slate-500 leading-normal min-h-[32px]">{cfg.desc}</p>
             </div>
           );
         })}

@@ -17,6 +17,7 @@ import {
   IdCard,
   LoaderCircle,
   MapPin,
+  Trash2,
   Upload,
   Users,
   UserSquare2,
@@ -247,6 +248,33 @@ const resolveDocs = (traveler = {}) => {
       : { passport: legacy, governmentId };
   }
   return { passport, governmentId };
+};
+
+const getDocumentTypeMismatchMessage = (documentKey = "", document = {}) => {
+  const fileName = String(document?.fileName || "").trim().toLowerCase();
+  if (!fileName) return "";
+  const looksLikePan = /\bpan\b|pan[-_\s]?card|aadhaar|aadhar|government[-_\s]?id|govt[-_\s]?id/.test(fileName);
+  const looksLikePassport = /passport|pass[-_\s]?port/.test(fileName);
+  if (documentKey === "passport" && looksLikePan) {
+    return "This file looks like a PAN/Government ID. Remove it from Passport or upload the correct passport file.";
+  }
+  if (documentKey === "governmentId" && looksLikePassport) {
+    return "This file looks like a passport. Remove it from PAN Card or upload the correct PAN Card file.";
+  }
+  return "";
+};
+
+const getOpsPayableAmountFromInvoice = (invoice = {}) => {
+  const snapshot = invoice?.pricingSnapshot || {};
+  const computedOpsAmount = Math.round(
+    Number(snapshot.servicesTotal || 0) +
+    Number(snapshot.packageTemplateAmount || 0) +
+    Number(snapshot.opsMarkupAmount || 0) +
+    Number(snapshot.serviceCharge || 0) +
+    Number(snapshot.handlingFee || 0) +
+    Number(snapshot.totalTax || 0),
+  );
+  return computedOpsAmount > 0 ? computedOpsAmount : Math.round(Number(invoice?.totalAmount || 0));
 };
 
 // ─── Payment Tracker ────────────────────────────────────────────────────────
@@ -703,9 +731,11 @@ function DocCard({
   document,
   disabled,
   loadingKey,
+  removingKey,
   uploadError,
   onUpload,
   onView,
+  onRemove,
   isRequired,
   tripTypeLabel,
   issue,
@@ -717,19 +747,24 @@ function DocCard({
   const inputRef = useRef(null);
   const uploadKey = `${traveler?._id}-${option.key}`;
   const uploading = loadingKey === uploadKey;
+  const removing = removingKey === uploadKey;
   const uploaded = Boolean(document?.url);
   const hasIssue = Boolean(issue);
   const isVerified = Boolean(verified);
-  const slotStatus = hasIssue ? "REJECTED" : isVerified ? "VERIFIED" : uploaded ? "READY" : isRequired ? "REQUIRED" : "OPTIONAL";
+  const mismatchMessage = uploaded ? getDocumentTypeMismatchMessage(option.key, document) : "";
+  const hasMismatch = Boolean(mismatchMessage);
+  const slotStatus = hasMismatch ? "WRONG FILE" : hasIssue ? "REJECTED" : isVerified ? "VERIFIED" : uploaded ? "READY" : isRequired ? "REQUIRED" : "OPTIONAL";
   const slotStatusClassName = hasIssue
     ? "bg-red-100 text-red-700"
-    : isVerified
-      ? "bg-emerald-100 text-emerald-700"
-      : uploaded
+    : hasMismatch
+      ? "bg-red-100 text-red-700"
+      : isVerified
         ? "bg-emerald-100 text-emerald-700"
-        : isRequired
-          ? "bg-slate-900 text-white"
-          : "bg-slate-100 text-slate-600";
+        : uploaded
+          ? "bg-emerald-100 text-emerald-700"
+          : isRequired
+            ? "bg-slate-900 text-white"
+            : "bg-slate-100 text-slate-600";
   const theme = option.tone === "sky"
     ? {
       shell: "border-sky-200/80 bg-[linear-gradient(160deg,#f0f9ff_0%,#ffffff_48%,#eef6ff_100%)]",
@@ -782,6 +817,12 @@ function DocCard({
               </p>
             </div>
           ) : null}
+          {hasMismatch ? (
+            <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-red-700">
+              <p className="text-xs font-semibold">Wrong document slot</p>
+              <p className="mt-1 text-xs leading-5">{mismatchMessage}</p>
+            </div>
+          ) : null}
           {!hasIssue && isVerified ? (
             <div className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-emerald-800">
               <p className="text-xs font-semibold">Document verified by operations</p>
@@ -814,21 +855,27 @@ function DocCard({
 
           <div className="mt-4 flex flex-wrap gap-2">
             {uploaded ? <button type="button" onClick={() => onView(document)} className="rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50">View File</button> : null}
-            <button type="button" onClick={() => inputRef.current?.click()} disabled={disabled || uploading} className={`inline-flex items-center gap-2 rounded-full px-3.5 py-2 text-xs font-semibold text-white transition-colors disabled:bg-slate-300 ${theme.cta}`}>
+            <button type="button" onClick={() => inputRef.current?.click()} disabled={disabled || uploading || removing} className={`inline-flex items-center gap-2 rounded-full px-3.5 py-2 text-xs font-semibold text-white transition-colors disabled:bg-slate-300 ${theme.cta}`}>
               {uploading ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
               {uploaded ? "Replace Upload" : "Upload Now"}
             </button>
+            {uploaded && !isVerified ? (
+              <button type="button" onClick={() => onRemove(traveler, option)} disabled={disabled || uploading || removing} className="inline-flex items-center gap-2 rounded-full border border-red-200 bg-white px-3.5 py-2 text-xs font-semibold text-red-600 transition-colors hover:bg-red-50 disabled:opacity-60">
+                {removing ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                Remove
+              </button>
+            ) : null}
           </div>
           {uploadError ? (
             <div className="mt-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-red-700">
-              <p className="text-xs font-semibold">File size is too large</p>
+              <p className="text-xs font-semibold">Upload needs attention</p>
               <p className="mt-1 text-xs leading-5">{uploadError}</p>
             </div>
           ) : null}
           <input ref={inputRef} type="file" accept=".jpg,.jpeg,.png,.webp,.pdf" className="hidden" onChange={(e) => onUpload(e, traveler, option)} />
         </div>
       </div>
-      {uploading ? <div className="absolute inset-0 flex items-center justify-center bg-white/70"><div className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-4 py-2 text-xs font-semibold text-white"><LoaderCircle className="h-4 w-4 animate-spin" />Uploading...</div></div> : null}
+      {uploading || removing ? <div className="absolute inset-0 flex items-center justify-center bg-white/70"><div className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-4 py-2 text-xs font-semibold text-white"><LoaderCircle className="h-4 w-4 animate-spin" />{uploading ? "Uploading..." : "Removing..."}</div></div> : null}
     </div>
   );
 }
@@ -866,6 +913,7 @@ export default function ActiveBookingDetails({ onClose, booking, onBookingUpdate
   const [submittingPayment, setSubmittingPayment] = useState(false);
   const [preparingInvoice, setPreparingInvoice] = useState(false);
   const [uploadingKey, setUploadingKey] = useState("");
+  const [removingKey, setRemovingKey] = useState("");
   const [documentUploadErrors, setDocumentUploadErrors] = useState({});
   const [submittingDocs, setSubmittingDocs] = useState(false);
   const [isSubmitDocsConfirmOpen, setIsSubmitDocsConfirmOpen] = useState(false);
@@ -878,17 +926,17 @@ export default function ActiveBookingDetails({ onClose, booking, onBookingUpdate
   const [trackerIdCounter, setTrackerIdCounter] = useState(1);
 
   const approvedQuotationAmount = useMemo(
-    () =>
-      Math.round(
-        Number(
-          booking?.quotation?.clientTotalAmount ||
-          booking?.quotation?.pricingTotalAmount ||
-          booking?.invoice?.totalAmount ||
-          booking?.totalAmount ||
-          0,
-        ),
-      ),
+    () => {
+      const opsQuotationAmount = Math.round(Number(booking?.quotation?.pricingTotalAmount || 0));
+      if (opsQuotationAmount > 0) return opsQuotationAmount;
+
+      const invoiceOpsAmount = getOpsPayableAmountFromInvoice(booking?.invoice);
+      if (invoiceOpsAmount > 0) return invoiceOpsAmount;
+
+      return Math.round(Number(booking?.quotation?.clientTotalAmount || booking?.totalAmount || 0));
+    },
     [
+      booking?.invoice,
       booking?.invoice?.totalAmount,
       booking?.quotation?.clientTotalAmount,
       booking?.quotation?.pricingTotalAmount,
@@ -989,11 +1037,19 @@ export default function ActiveBookingDetails({ onClose, booking, onBookingUpdate
           return !hasIssue;
         }).length;
         const uploadedDocCount = docOptions.filter((option) => Boolean(traveler.docs?.[option.key]?.url)).length;
+        const mismatchedDocuments = docOptions
+          .map((option) => ({
+            key: option.key,
+            label: option.label,
+            message: getDocumentTypeMismatchMessage(option.key, traveler.docs?.[option.key]),
+          }))
+          .filter((item) => item.message);
         return {
           ...traveler,
           requiredReadyCount,
           uploadedDocCount,
-          isDocDeskComplete: requiredReadyCount === requiredDocKeys.length,
+          mismatchedDocuments,
+          isDocDeskComplete: requiredReadyCount === requiredDocKeys.length && mismatchedDocuments.length === 0,
         };
       }),
     [requiredDocKeys, travelers, documentIssues],
@@ -1004,6 +1060,18 @@ export default function ActiveBookingDetails({ onClose, booking, onBookingUpdate
   );
   const totalRequiredDocSlots = travelers.length * requiredDocKeys.length;
   const allDocsReady = travelers.length > 0 && travelersWithStatus.every((traveler) => traveler.isDocDeskComplete);
+  const documentMismatchRows = useMemo(
+    () =>
+      travelersWithStatus.flatMap((traveler) =>
+        (traveler.mismatchedDocuments || []).map((document) => ({
+          travelerName: traveler.fullName || "Traveler",
+          documentLabel: document.label,
+          message: document.message,
+        })),
+      ),
+    [travelersWithStatus],
+  );
+  const hasDocumentTypeMismatch = documentMismatchRows.length > 0;
   const docProgress = totalRequiredDocSlots ? Math.round((requiredDocCount / totalRequiredDocSlots) * 100) : 0;
 
   const travelerIssuesList = useMemo(() => {
@@ -1281,6 +1349,15 @@ export default function ActiveBookingDetails({ onClose, booking, onBookingUpdate
     e.target.value = "";
     if (!file) return;
     const key = `${traveler?._id}-${option.key}`;
+    const mismatchMessage = getDocumentTypeMismatchMessage(option.key, { fileName: file.name });
+    if (mismatchMessage) {
+      setDocumentUploadErrors((prev) => ({
+        ...prev,
+        [key]: mismatchMessage,
+      }));
+      notify("error", "Wrong Document Slot", mismatchMessage);
+      return;
+    }
     if (file.size > MAX_UPLOAD_SIZE_BYTES) {
       setDocumentUploadErrors((prev) => ({
         ...prev,
@@ -1309,12 +1386,43 @@ export default function ActiveBookingDetails({ onClose, booking, onBookingUpdate
     }
   };
 
+  const handleRemoveDoc = async (traveler, option) => {
+    const documentKey = option?.key;
+    const travelerId = traveler?._id;
+    if (!queryId || !travelerId || !documentKey) return;
+    const key = `${travelerId}-${documentKey}`;
+    try {
+      setRemovingKey(key);
+      const { data } = await API.delete(`/agent/queries/${queryId}/travelers/${travelerId}/document/${documentKey}`);
+      setDocumentUploadErrors((prev) => {
+        if (!prev[key]) return prev;
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+      onBookingUpdated?.({ type: "traveler-document", query: data?.query });
+      notify("success", "Document Removed", data?.message || `${option.label} removed successfully.`);
+    } catch (error) {
+      notify("error", "Remove Failed", error?.response?.data?.message || "Unable to remove traveler document right now.");
+    } finally {
+      setRemovingKey("");
+    }
+  };
+
   const handleSubmitDocs = async () => {
     if (isTravelerDocumentsVerifiedComplete) {
       notify(
         "info",
         "Already Verified",
         "All required traveler documents have already been verified and marked as correct by operations. No further submission is required."
+      );
+      return;
+    }
+    if (hasDocumentTypeMismatch) {
+      notify(
+        "error",
+        "Wrong Document Slot",
+        "Please remove or replace documents uploaded in the wrong slot before submitting.",
       );
       return;
     }
@@ -1346,6 +1454,14 @@ export default function ActiveBookingDetails({ onClose, booking, onBookingUpdate
         "info",
         "Already Verified",
         "All required traveler documents have already been verified and marked as correct by operations. No further submission is required."
+      );
+      return;
+    }
+    if (hasDocumentTypeMismatch) {
+      notify(
+        "error",
+        "Wrong Document Slot",
+        "Please remove or replace documents uploaded in the wrong slot before submitting.",
       );
       return;
     }
@@ -1998,7 +2114,12 @@ export default function ActiveBookingDetails({ onClose, booking, onBookingUpdate
 
         <div className="px-2 py-6">
           {!hasStructuredDocumentIssues && (documentPortalContext?.issueSummary || travelerVerification?.rejectionReason) ? <div className="rounded-[24px] border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-800"><p className="font-semibold">{travelerVerification?.rejectionReason || "Document corrections requested"}</p><p className="mt-1 leading-6">{documentPortalContext?.issueSummary || travelerVerification?.rejectionRemarks || "Please update the highlighted files and submit again."}</p></div> : null}
-          {!allDocsReady ? <div className="mt-5 rounded-[24px] border border-blue-200 bg-blue-50 px-5 py-4 text-sm text-blue-700">Upload all required traveler documents first. Payment update should be completed only after this desk is ready.</div> : null}
+          {hasDocumentTypeMismatch ? (
+            <div className="mt-5 rounded-[24px] border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">
+              <p className="font-semibold">Wrong document slot detected</p>
+              <p className="mt-1 leading-6">Remove or replace the highlighted file before submitting traveler documents.</p>
+            </div>
+          ) : !allDocsReady ? <div className="mt-5 rounded-[24px] border border-blue-200 bg-blue-50 px-5 py-4 text-sm text-blue-700">Upload all required traveler documents first. Payment update should be completed only after this desk is ready.</div> : null}
 
           <div className="mt-6 space-y-6">
             {travelersWithStatus.length > 0 ? travelersWithStatus.map((traveler) => (
@@ -2061,9 +2182,11 @@ export default function ActiveBookingDetails({ onClose, booking, onBookingUpdate
                           document={traveler.docs?.[option.key]}
                           disabled={!docsUnlocked}
                           loadingKey={uploadingKey}
+                          removingKey={removingKey}
                           uploadError={documentUploadErrors[`${traveler?._id}-${option.key}`] || ""}
                           onUpload={handleUploadDoc}
                           onView={handleView}
+                          onRemove={handleRemoveDoc}
                           isRequired={requiredDocKeys.includes(option.key)}
                           tripTypeLabel={tripTypeLabel}
                           issue={matchedIssue}
@@ -2092,7 +2215,7 @@ export default function ActiveBookingDetails({ onClose, booking, onBookingUpdate
             <button
               type="button"
               onClick={handleOpenSubmitDocsConfirm}
-              disabled={!docsUnlocked || !allDocsReady || submittingDocs || travelers.length === 0}
+              disabled={!docsUnlocked || !allDocsReady || hasDocumentTypeMismatch || submittingDocs || travelers.length === 0}
               className="group inline-flex cursor-pointer items-center justify-center gap-2 rounded-[25px] bg-gradient-to-r from-slate-900 to-slate-800 px-6 py-2.5 text-sm font-semibold text-white shadow-[0_8px_20px_rgba(15,23,42,0.2)] transition-all hover:-translate-y-0.5 hover:shadow-[0_14px_28px_rgba(15,23,42,0.28)] active:scale-[0.99] disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none disabled:hover:translate-y-0"
             >
               {submittingDocs ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4 transition-transform group-hover:-translate-y-0.5" />}

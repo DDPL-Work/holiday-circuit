@@ -20,6 +20,16 @@ const statusConfig = {
   "At Risk": "bg-rose-50 text-rose-700 border border-rose-200",
 };
 
+function StatusBadge({ status }) {
+  return (
+    <span
+      className={`inline-flex items-center justify-center rounded-[10px] px-3 py-1 text-[11px] font-medium whitespace-nowrap ${statusConfig[status] || statusConfig.Active}`}
+    >
+      {status}
+    </span>
+  );
+}
+
 const accuracyColor = (accuracy) => {
   if (accuracy >= 90) return "bg-emerald-500";
   if (accuracy >= 80) return "bg-amber-400";
@@ -408,201 +418,215 @@ export default function FinanceCommandCenter() {
   const mismatchNeedsReview = dashboardSummary.mismatchFlags > 0;
 
   return (
-    <div className="min-h-screen bg-gray-50 font-sans">
-      <div className="bg-white border-b border-gray-200 px-1 py-1 pb-2 flex items-start justify-between">
-        <div>
-          <h1 className="text-sm font-semibold text-gray-800">Finance Overview</h1>
-          <p className="text-xs text-gray-500 mt-0.5">{todayLabel}</p>
-        </div>
-        <div className="text-right">
-          <p className="text-xs text-gray-400">Logged in as</p>
-          <p className="text-sm font-semibold text-gray-800">
-            {user?.name || "Finance Manager"}
-          </p>
+    <div className="min-h-screen overflow-x-hidden bg-[#f6f8fc] font-sans">
+      <div className="border-b border-slate-200 bg-gradient-to-r from-white via-[#f8fafc] to-[#EFF5FC]">
+        <div className="flex items-center justify-between px-0 py-2">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-50 text-blue-600 border border-blue-100/80 shadow-sm">
+              <svg className="h-4 w-4 stroke-[2.2]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M12 16" />
+              </svg>
+            </div>
+            <div>
+              <p className="text-[13px] font-bold text-slate-800 leading-none">Finance Overview</p>
+              <p className="text-[9.5px] text-slate-400 mt-0.5 font-semibold">{todayLabel}</p>
+            </div>
+          </div>
+          <div className="text-right">
+            <p className="text-[9.5px] text-slate-400">Logged in as</p>
+            <p className="text-xs font-semibold text-slate-700">{user?.name || "Finance Manager"}</p>
+          </div>
         </div>
       </div>
 
-      <div className="px- py- pt-5 max-w-screen-xl mx-auto">
-        <div className="mb-6">
-          <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+      <div className="px-0 pt-4">
+        <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex items-start gap-3">
             <FinanceCommandArtwork />
-            Finance Command Center - Week {weekNumber}
-          </h2>
-          <p className="text-sm text-gray-500 mt-1">
-            Financial oversight and payout validation management
-          </p>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h1 className="text-[18px] font-extrabold text-slate-900 tracking-tight leading-none">
+                  Finance Command Center
+                </h1>
+                <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 border border-blue-100 px-2 py-0.5 text-[9.5px] font-bold text-blue-700 tracking-wide uppercase">
+                  <span className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse" />
+                  Week {weekNumber}
+                </span>
+              </div>
+              <p className="mt-1 text-[13.5px] text-slate-500 font-medium">Financial oversight and payout validation management</p>
+            </div>
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 mb-8">
-          <div className="bg-white rounded-2xl border border-gray-200 p-5 flex items-start justify-between">
-            <div>
-              <p className="text-xs text-gray-500 mb-2">Total Verifications</p>
-              <p className="text-3xl font-bold text-gray-900">
-                {teamLoading ? "..." : dashboardSummary.totalVerifications}
-              </p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+          <div className="rounded-[12px] bg-gradient-to-br from-[#dbeafe]/30 via-white to-white border border-blue-200/80 border-b-4 border-b-blue-500 shadow-[0_4px_12px_rgba(59,130,246,0.02)] p-4">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Total Verifications</p>
+              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white shadow-sm ring-1 ring-slate-100">
+                <CheckCircle size={14} className="text-blue-500" />
+              </span>
             </div>
-            <div className="w-10 h-10 rounded-full bg-sky-50 flex items-center justify-center text-sky-600">
-              <CheckCircle size={18} />
+            <div className="mt-2 flex items-baseline justify-between">
+              <p className="text-2xl font-extrabold text-blue-600">{teamLoading ? "..." : dashboardSummary.totalVerifications}</p>
+              <span className="text-[10px] font-semibold text-slate-400">
+                Checks allocated
+              </span>
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl border border-gray-200 p-5 flex items-start justify-between">
-            <div>
-              <p className="text-xs text-gray-500 mb-2">DMC Payouts Settled</p>
-              <p className="text-3xl font-bold text-gray-900">
+          <div className="rounded-[12px] bg-gradient-to-br from-[#d1fae5]/30 via-white to-white border border-emerald-200/80 border-b-4 border-b-emerald-500 shadow-[0_4px_12px_rgba(16,185,129,0.02)] p-4">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">DMC Payouts Settled</p>
+              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white shadow-sm ring-1 ring-slate-100">
+                <DollarSign size={14} className="text-emerald-500" />
+              </span>
+            </div>
+            <div className="mt-2 flex items-baseline justify-between flex-wrap gap-x-2">
+              <p className="text-2xl font-extrabold text-emerald-600">
                 {invoiceLoading ? "..." : formatCompactCurrency(dashboardSummary.settledAmount)}
               </p>
-              <span
-                className={`mt-2 inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full border ${
-                  showNegativeTrend
-                    ? "bg-rose-50 text-rose-700 border-rose-200"
-                    : "bg-emerald-50 text-emerald-700 border-emerald-200"
-                }`}
-              >
-                <TrendingUp size={11} />
+              <span className={`inline-flex items-center gap-0.5 text-[9.5px] font-bold px-1.5 py-0.5 rounded-full border ${
+                showNegativeTrend
+                  ? "bg-rose-50/80 text-rose-700 border-rose-200/60"
+                  : "bg-emerald-50/80 text-emerald-700 border-emerald-200/60"
+              }`}>
+                <TrendingUp size={9} />
                 {showNegativeTrend ? "-" : "+"}
-                {dashboardSummary.payoutTrend.percentage}% vs Last Week
+                {dashboardSummary.payoutTrend.percentage}% wk
               </span>
-            </div>
-            <div className="w-10 h-10 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-600">
-              <DollarSign size={18} />
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl border border-gray-200 p-5 flex items-start justify-between">
-            <div>
-              <p className="text-xs text-gray-500 mb-2">Rate Mismatch Flags</p>
-              <p className="text-3xl font-bold text-gray-900">
-                {invoiceLoading ? "..." : dashboardSummary.mismatchFlags}
-              </p>
-              <span
-                className={`mt-2 inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full border ${
-                  mismatchNeedsReview
-                    ? "bg-rose-50 text-rose-600 border-rose-200"
-                    : "bg-emerald-50 text-emerald-600 border-emerald-200"
-                }`}
-              >
-                <AlertTriangle size={11} />
-                {mismatchNeedsReview ? "Needs Review" : "No Issues"}
+          <div className="rounded-[12px] bg-gradient-to-br from-[#ffe4e6]/30 via-white to-white border border-rose-200/80 border-b-4 border-b-rose-500 shadow-[0_4px_12px_rgba(244,63,94,0.02)] p-4">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Rate Mismatch Flags</p>
+              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white shadow-sm ring-1 ring-slate-100">
+                <Flag size={14} className="text-rose-500" />
               </span>
             </div>
-            <div className="w-10 h-10 rounded-full bg-rose-50 flex items-center justify-center text-rose-500">
-              <Flag size={18} />
+            <div className="mt-2 flex items-baseline justify-between">
+              <p className="text-2xl font-extrabold text-rose-600">{invoiceLoading ? "..." : dashboardSummary.mismatchFlags}</p>
+              <span className={`inline-flex items-center gap-0.5 text-[9.5px] font-bold px-1.5 py-0.5 rounded-full border ${
+                mismatchNeedsReview
+                  ? "bg-rose-50/80 text-rose-700 border-rose-200/60 animate-pulse"
+                  : "bg-emerald-50/80 text-emerald-700 border-emerald-200/60"
+              }`}>
+                <AlertTriangle size={9} />
+                {mismatchNeedsReview ? "Needs Review" : "Healthy"}
+              </span>
             </div>
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
-          <div className="px-6 py-5 flex flex-wrap items-center justify-between gap-4 border-b border-gray-100">
-            <div>
-              <h3 className="text-base font-semibold text-gray-900 flex items-center gap-2">
-                <TrendingUp size={16} className="text-orange-500" />
-                Payout Validation - Team Overview
-              </h3>
-              <p className="text-xs text-gray-400 mt-0.5">
-                Executive performance on verification and settlement tasks
-              </p>
+        <div className="overflow-hidden rounded-[12px] border border-slate-200 bg-white shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 px-5 py-4 bg-gradient-to-r from-slate-50/80 via-slate-50/30 to-white">
+            <div className="flex items-center gap-3.5">
+              <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-orange-400 to-amber-500 text-white shadow-[0_4px_12px_rgba(245,158,11,0.22)] transition-transform duration-300 hover:scale-105">
+                <div className="absolute inset-0 rounded-xl bg-white opacity-0 hover:opacity-10 transition-opacity" />
+                <TrendingUp size={18} color="white" />
+                <div className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-emerald-500 shadow-sm animate-pulse" />
+              </div>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="text-[15px] font-extrabold text-slate-900 tracking-tight leading-none">
+                    Payout Validation &mdash; Team Overview
+                  </h3>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-orange-50 border border-orange-100 px-2 py-0.5 text-[9.5px] font-semibold text-orange-700 tracking-wide uppercase">
+                    <span className="h-1.5 w-1.5 rounded-full bg-orange-500 animate-pulse" />
+                    Performance
+                  </span>
+                </div>
+                <p className="text-[10.5px] text-slate-500 mt-1 font-medium leading-relaxed">
+                  Executive performance on verification and settlement tasks
+                </p>
+              </div>
             </div>
-            <div className="flex items-center gap-3 text-xs text-gray-500">
-              <Calendar size={14} className="text-gray-400" />
-              <label className="font-medium">From:</label>
+            <div className="flex items-center gap-3 text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 shadow-sm">
+              <Calendar size={13} className="text-slate-400" />
+              <span className="font-semibold text-slate-500 text-[10.5px] uppercase tracking-wider">From:</span>
               <input
                 type="date"
                 value={fromDate}
                 max={toDate}
                 onChange={(event) => setFromDate(event.target.value)}
-                className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-gray-50 text-gray-700 focus:outline-none focus:border-gray-400"
+                className="text-[11px] border border-slate-200 rounded-lg px-2 py-1 bg-white text-slate-700 font-bold focus:outline-none focus:border-blue-400"
               />
-              <label className="font-medium">To:</label>
+              <span className="font-semibold text-slate-500 text-[10.5px] uppercase tracking-wider">To:</span>
               <input
                 type="date"
                 value={toDate}
                 min={fromDate}
                 onChange={(event) => setToDate(event.target.value)}
-                className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-gray-50 text-gray-700 focus:outline-none focus:border-gray-400"
+                className="text-[11px] border border-slate-200 rounded-lg px-2 py-1 bg-white text-slate-700 font-bold focus:outline-none focus:border-blue-400"
               />
             </div>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full">
+          <div className="finance-transparent-scrollbar overflow-x-auto">
+            <div className="min-w-[950px]">
+            <table className="w-full text-[13px]">
               <thead>
-                <tr className="bg-gray-50 border-b border-gray-100">
-                  <th className="text-left text-[10px] font-semibold text-gray-400 uppercase tracking-wide px-6 py-3">
-                    Exec Name
-                  </th>
-                  <th className="text-left text-[10px] font-semibold text-gray-400 uppercase tracking-wide px-4 py-3">
-                    Verifications Pending
-                  </th>
-                  <th className="text-left text-[10px] font-semibold text-gray-400 uppercase tracking-wide px-4 py-3">
-                    Resolution Breakdown
-                    <div className="text-[10px] font-normal text-gray-400 normal-case tracking-normal mt-0.5">
-                      Invoices Settled vs. Escalated to Admin
-                    </div>
-                  </th>
-                  <th className="text-left text-[10px] font-semibold text-gray-400 uppercase tracking-wide px-4 py-3">
-                    Accuracy %
-                  </th>
-                  <th className="text-left text-[10px] font-semibold text-gray-400 uppercase tracking-wide px-4 py-3">
-                    Status
-                  </th>
+                <tr className="border-b border-slate-200 bg-slate-50">
+                  <th className="whitespace-nowrap px-6 py-2.5 text-left text-[9.5px] font-bold uppercase tracking-[0.16em] text-slate-400">Exec Name</th>
+                  <th className="whitespace-nowrap px-4 py-2.5 text-center text-[9.5px] font-bold uppercase tracking-[0.16em] text-slate-400">Verifications Pending</th>
+                  <th className="whitespace-nowrap px-4 py-2.5 text-left text-[9.5px] font-bold uppercase tracking-[0.16em] text-slate-400">Resolution Breakdown</th>
+                  <th className="whitespace-nowrap px-4 py-2.5 text-left text-[9.5px] font-bold uppercase tracking-[0.16em] text-slate-400">Accuracy %</th>
+                  <th className="whitespace-nowrap px-4 py-2.5 text-left text-[9.5px] font-bold uppercase tracking-[0.16em] text-slate-400">Status</th>
                 </tr>
               </thead>
               <tbody>
                 {teamLoading ? (
                   <tr>
-                    <td colSpan={5} className="px-6 py-8 text-sm text-center text-gray-400">
+                    <td colSpan={5} className="px-6 py-10 text-center text-sm text-slate-400">
                       Loading team overview...
                     </td>
                   </tr>
                 ) : dashboardState.team.length ? (
-                  dashboardState.team.map((exec, index) => {
+                  dashboardState.team.map((exec) => {
                     const total = Number(exec?.settled || 0) + Number(exec?.escalated || 0);
                     const settledPct = total > 0 ? (Number(exec?.settled || 0) / total) * 100 : 0;
                     const escalatedPct =
                       total > 0 ? (Number(exec?.escalated || 0) / total) * 100 : 0;
-
+ 
                     return (
                       <tr
                         key={exec.id}
-                        className={`border-b border-gray-100 hover:bg-gray-50 transition-colors ${
-                          index === dashboardState.team.length - 1 ? "border-b-0" : ""
-                        }`}
+                        className="border-b border-slate-100 hover:bg-slate-50/50 transition-colors"
                       >
-                        <td className="px-6 py-4">
+                        <td className="px-6 py-2.5">
                           <div className="flex items-center gap-3">
                             <div
-                              className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-semibold flex-shrink-0 ${
+                              className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${
                                 exec.avatarColor || "bg-slate-100 text-slate-600"
                               }`}
                             >
                               {exec.initials || "F"}
                             </div>
                             <div>
-                              <p className="text-sm font-medium text-gray-800">{exec.name}</p>
-                              <p className="text-[11px] text-gray-400">{exec.email || "-"}</p>
+                              <p className="text-[13px] font-semibold text-slate-800 leading-normal">{exec.name}</p>
+                              <p className="text-[11px] text-slate-400 font-medium leading-none mt-0.5">{exec.email || "-"}</p>
                             </div>
                           </div>
                         </td>
-
-                        <td className="px-4 py-4">
+ 
+                        <td className="px-4 py-2.5 text-center align-middle">
                           <span
-                            className={`text-base font-semibold ${pendingColor(
+                            className={`text-[13px] font-extrabold tabular-nums ${pendingColor(
                               Number(exec?.pending || 0),
                             )}`}
                           >
                             {Number(exec?.pending || 0)}
                           </span>
                         </td>
-
-                        <td className="px-4 py-4">
-                          <div className="flex flex-col gap-2">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px] font-medium px-2 py-0.5 rounded-full">
+ 
+                        <td className="px-4 py-2.5 align-middle">
+                          <div className="flex flex-col gap-1.5">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 border border-emerald-200/70 text-[11px] font-bold px-2 py-0.5 rounded-lg">
                                 <CheckCheck size={10} />
                                 Settled: {Number(exec?.settled || 0)}
                               </span>
-                              <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-700 border border-amber-200 text-[11px] font-medium px-2 py-0.5 rounded-full">
+                              <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-700 border border-amber-200/70 text-[11px] font-bold px-2 py-0.5 rounded-lg">
                                 <AlertTriangle size={10} />
                                 Escalated: {Number(exec?.escalated || 0)}
                               </span>
@@ -613,27 +637,21 @@ export default function FinanceCommandCenter() {
                             />
                           </div>
                         </td>
-
-                        <td className="px-4 py-4">
-                          <div className="flex items-center gap-2">
+ 
+                        <td className="px-4 py-2.5 align-middle">
+                          <div className="flex items-center gap-3">
                             <AnimatedAccuracyBar
                               accuracy={Number(exec?.accuracy || 0)}
                               barClassName={accuracyColor(Number(exec?.accuracy || 0))}
                             />
-                            <span className="text-sm font-medium text-gray-700">
+                            <span className="text-[12.5px] font-extrabold text-slate-700">
                               {Number(exec?.accuracy || 0)}%
                             </span>
                           </div>
                         </td>
-
-                        <td className="px-4 py-4">
-                          <span
-                            className={`text-xs font-medium px-3 py-1 rounded-full ${
-                              statusConfig[exec.status] || statusConfig.Active
-                            }`}
-                          >
-                            {exec.status || "Active"}
-                          </span>
+ 
+                        <td className="px-4 py-2.5 align-middle">
+                          <StatusBadge status={exec.status} />
                         </td>
                       </tr>
                     );
@@ -647,6 +665,7 @@ export default function FinanceCommandCenter() {
                 )}
               </tbody>
             </table>
+            </div>
           </div>
         </div>
       </div>

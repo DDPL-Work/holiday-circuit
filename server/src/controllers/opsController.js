@@ -16,9 +16,14 @@ import {
   createNotification,
   createNotifications,
 } from "../services/notificationDispatchService.js";
+import fs from "fs";
 import mongoose from "mongoose";
+import path from "path";
+import XLSX from "xlsx";
 import Voucher from "../models/voucher.model.js";
 import Auth from "../models/auth.model.js";
+import UploadHistory from "../models/uploadHistory.model.js";
+import { findBlackoutMatch, formatBlackoutLabel, normalizeDateOnly } from "../utils/blackoutDates.js";
 
 const OPS_DASHBOARD_PENDING_STATUSES = ["New_Query", "Pending_Accept", "Revision_Query"];
 const OPS_DASHBOARD_ACTIVE_BOOKING_STATUSES = ["Booking_Accepted", "Invoice_Requested", "Confirmed", "Vouchered", "Payment_Completed"];
@@ -70,6 +75,116 @@ const createOpsSideNotifications = (req, payloads, options = {}) =>
     sourceName: req.user?.name || req.user?.companyName || "Operations",
     ...options,
   });
+
+const joinNotificationParts = (items = []) => {
+  const parts = items.map((item) => String(item || "").trim()).filter(Boolean);
+  if (parts.length <= 1) return parts[0] || "";
+  if (parts.length === 2) return `${parts[0]} and ${parts[1]}`;
+  return `${parts.slice(0, -1).join(", ")}, and ${parts[parts.length - 1]}`;
+};
+
+const buildQuotationDeliveryNote = ({
+  channels = [],
+  agentEmail = "",
+  agentPhone = "",
+} = {}) => {
+  const normalizedChannels = new Set(
+    channels.map((channel) => String(channel || "").trim().toLowerCase()).filter(Boolean),
+  );
+  const parts = [];
+
+  if (normalizedChannels.has("dashboard")) {
+    parts.push("available in your dashboard");
+  }
+
+  if (normalizedChannels.has("email")) {
+    parts.push(`sent to your email${agentEmail ? ` (${agentEmail})` : ""}`);
+  }
+
+  if (normalizedChannels.has("whatsapp")) {
+    parts.push(`shared on WhatsApp${agentPhone ? ` (${agentPhone})` : ""}`);
+  }
+
+  const deliveryText = joinNotificationParts(parts);
+  return deliveryText ? ` It was ${deliveryText}.` : "";
+};
+
+const getAgentNotificationUserId = (query = {}) => query?.agent?._id || query?.agent || null;
+
+const createQuotationSentAgentNotification = async (
+  req,
+  {
+    query,
+    quotation = null,
+    totalAmount = 0,
+    deliveryChannels = [],
+  } = {},
+) => {
+  const agentUserId = getAgentNotificationUserId(query);
+
+  if (!agentUserId || !query?._id) {
+    return null;
+  }
+
+  const quotationNumber = String(quotation?.quotationNumber || "").trim();
+  const destination = query?.destination || "your trip";
+  const channelList = Array.isArray(deliveryChannels) ? deliveryChannels.filter(Boolean) : [];
+  const senderLabel =
+    req.user?.role === "operation_manager"
+      ? "Operations Manager"
+      : req.user?.role === "operations"
+        ? "Operations Team"
+        : (req.user?.name || req.user?.companyName || "Operations");
+
+  return createOpsSideNotification(req, {
+    user: agentUserId,
+    type: "success",
+    title: "Quotation Received",
+    message: quotationNumber
+      ? `${senderLabel} sent quotation ${quotationNumber} for ${destination}.${buildQuotationDeliveryNote({
+        channels: channelList,
+        agentEmail: query.agent?.email || "",
+        agentPhone: query.agent?.phone || "",
+      })}`
+      : `${senderLabel} sent a quotation for ${destination}.${buildQuotationDeliveryNote({
+        channels: channelList,
+        agentEmail: query.agent?.email || "",
+        agentPhone: query.agent?.phone || "",
+      })}`,
+    link: "/agent/queries",
+    meta: {
+      quotationId: quotation?._id || null,
+      queryId: query._id,
+      queryNumber: query.queryId,
+      quotationNumber,
+      destination,
+      totalAmount: Number(totalAmount || 0),
+      deliveryChannels: channelList,
+      senderLabel,
+      sentByRole: req.user?.role || "",
+      sentByUserId: req.user?.id || req.user?._id || null,
+      source: "quotation_sent",
+    },
+  });
+};
+
+const getVoucherDispatchNote = (dispatchChannel = "", { email = "", phone = "" } = {}) => {
+  const normalizedChannel = String(dispatchChannel || "").trim().toUpperCase();
+
+  if (normalizedChannel === "EMAIL") {
+    return ` It was sent to your email${email ? ` (${email})` : ""}.`;
+  }
+
+  if (normalizedChannel === "WHATSAPP") {
+    return ` It was shared on WhatsApp${phone ? ` (${phone})` : ""}.`;
+  }
+
+  if (normalizedChannel === "PDF") {
+    return " It was prepared as a downloadable PDF copy by operations.";
+  }
+
+  return "";
+};
 
 const OPERATIONAL_QUOTATION_STATUSES = [
   "Sent to Client",
@@ -417,14 +532,216 @@ const normalizeQuotationServiceType = (type) => {
   return normalizedType || type;
 };
 
+const getLiveServiceModelForPricing = (type) => {
+  const normalizedType = normalizeQuotationServiceType(type);
+  if (normalizedType === "hotel") return Hotel;
+  if (normalizedType === "activity") return Activity;
+  if (normalizedType === "transfer") return Transfer;
+  if (normalizedType === "sightseeing") return Sightseeing;
+  return null;
+};
+
+const getLiveServiceBasePrice = (service = {}, liveService = {}) => {
+  const normalizedType = normalizeQuotationServiceType(service?.type);
+  if (normalizedType === "activity") {
+    return Number(liveService?.adultPrice ?? liveService?.price ?? service?.price ?? 0);
+  }
+
+  return Number(liveService?.price ?? service?.price ?? 0);
+};
+
+const getRequestedServiceBasePrice = (service = {}) =>
+  Number(service?.price || service?.quoteBaseRate || service?.rate || 0);
+
+const hasManualRateIntent = ({ service = {}, livePrice = 0 }) => {
+  if (service?.manualRateOverride) return true;
+
+  const requestedPrice = getRequestedServiceBasePrice(service);
+  return requestedPrice > 0 && livePrice > 0 && Math.abs(requestedPrice - Number(livePrice || 0)) >= 0.5;
+};
+
 const normalizeComparableText = (value = "") =>
   String(value || "").trim().toLowerCase();
 
+const normalizeUploadCategoryForService = (type = "") => {
+  const normalizedType = normalizeQuotationServiceType(type);
+  return normalizedType === "transfer" ? "transport" : normalizedType;
+};
+
+const getServiceRateUpdateField = (type = "") =>
+  normalizeQuotationServiceType(type) === "activity" ? "adultPrice" : "price";
+
+const getUploadRowValue = (row = {}, labels = []) => {
+  const entries = Object.entries(row || {}).map(([key, value]) => [
+    normalizeComparableText(key),
+    value,
+  ]);
+
+  for (const label of labels) {
+    const normalizedLabel = normalizeComparableText(label);
+    const match = entries.find(([key]) => key === normalizedLabel);
+    if (match) return match[1];
+  }
+
+  return "";
+};
+
+const buildUploadRowObject = (headers = [], row = []) =>
+  headers.reduce((acc, header, index) => {
+    if (header) acc[String(header).trim()] = row[index] ?? "";
+    return acc;
+  }, {});
+
+const doesUploadRowMatchService = ({ row = {}, service = {}, liveService = null }) => {
+  const type = normalizeQuotationServiceType(service?.type);
+  const serviceTitle = normalizeComparableText(
+    service?.title ||
+    liveService?.hotelName ||
+    liveService?.name ||
+    liveService?.serviceName,
+  );
+  const description = normalizeComparableText(getUploadRowValue(row, ["Description", "Service Description"]));
+
+  if (type === "hotel") {
+    const hotelName = normalizeComparableText(getUploadRowValue(row, ["Hotel Name"]));
+    const roomType = normalizeComparableText(getUploadRowValue(row, ["Room Type"]));
+    const serviceRoomType = normalizeComparableText(service?.roomType || liveService?.roomType);
+    const hotelMatches =
+      (hotelName && serviceTitle && hotelName === serviceTitle) ||
+      (description && serviceTitle && description.includes(serviceTitle));
+    const roomMatches = !serviceRoomType || !roomType || roomType === serviceRoomType || description.includes(serviceRoomType);
+
+    return Boolean(hotelMatches && roomMatches);
+  }
+
+  const rowName = normalizeComparableText(
+    getUploadRowValue(row, ["Service Name", "Activity Name", "Sightseeing Name"]),
+  );
+
+  return Boolean(
+    serviceTitle &&
+    (rowName === serviceTitle || description.includes(serviceTitle)),
+  );
+};
+
+const syncManualRateToUploadPreview = async ({ service = {}, liveService = null, price = 0 }) => {
+  const category = normalizeUploadCategoryForService(service?.type);
+  if (!["hotel", "transport", "activity", "sightseeing"].includes(category)) {
+    return { matched: false, modified: false };
+  }
+
+  const ownerIds = [
+    service?.supplierId,
+    service?.dmcId,
+    liveService?.supplier,
+  ]
+    .filter(Boolean)
+    .map((value) => String(value));
+
+  if (!ownerIds.length) return { matched: false, modified: false };
+
+  const ownerUploads = await UploadHistory.find({
+    category,
+    uploadedAuth: { $in: ownerIds },
+    status: { $ne: "failed" },
+  }).sort({ updatedAt: -1, createdAt: -1 });
+
+  const fallbackUploads = await UploadHistory.find({
+    category,
+    status: { $ne: "failed" },
+  }).sort({ updatedAt: -1, createdAt: -1 });
+
+  const seenUploadIds = new Set();
+  const uploads = [...ownerUploads, ...fallbackUploads].filter((upload) => {
+    const key = String(upload?._id || "");
+    if (!key || seenUploadIds.has(key)) return false;
+    seenUploadIds.add(key);
+    return true;
+  });
+
+  for (const upload of uploads) {
+    const fullPath = path.resolve(upload.filePath || "");
+    if (!fs.existsSync(fullPath)) continue;
+
+    const workbook = XLSX.readFile(fullPath);
+    const sheetName = workbook.SheetNames[0];
+    const sheet = workbook.Sheets[sheetName];
+    const rawData = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
+    const headers = rawData[0] || [];
+    const priceColIndex = headers.findIndex((header) => normalizeComparableText(header) === "price");
+
+    if (priceColIndex === -1) continue;
+
+    for (let rowIndex = 1; rowIndex < rawData.length; rowIndex += 1) {
+      const row = buildUploadRowObject(headers, rawData[rowIndex] || []);
+      if (!doesUploadRowMatchService({ row, service, liveService })) continue;
+
+      rawData[rowIndex][priceColIndex] = Number(price || 0);
+      workbook.Sheets[sheetName] = XLSX.utils.aoa_to_sheet(rawData);
+      XLSX.writeFile(workbook, fullPath);
+
+      return {
+        matched: true,
+        modified: true,
+        uploadId: upload._id,
+        rowIndex,
+      };
+    }
+  }
+
+  return { matched: false, modified: false };
+};
+
+const syncManualRateOverrideToLiveService = async (service = {}) => {
+  if (!service?.manualRateOverride) return { matched: false, modified: false };
+
+  const Model = getLiveServiceModelForPricing(service?.type);
+  const serviceId = String(service?.serviceId || "").trim();
+  const nextPrice = Number(service?.price || service?.quoteBaseRate || service?.rate || 0);
+
+  if (!Model || !mongoose.Types.ObjectId.isValid(serviceId) || nextPrice <= 0) {
+    return { matched: false, modified: false };
+  }
+
+  const liveService = await Model.findById(serviceId).lean();
+  if (!liveService) return { matched: false, modified: false };
+
+  const priceField = getServiceRateUpdateField(service?.type);
+  const updatedLiveService = await Model.findByIdAndUpdate(
+    serviceId,
+    { $set: { [priceField]: nextPrice } },
+    { new: true, runValidators: true },
+  ).lean();
+
+  const uploadSync = await syncManualRateToUploadPreview({
+    service,
+    liveService: updatedLiveService || liveService,
+    price: nextPrice,
+  });
+
+  return {
+    matched: true,
+    modified: true,
+    id: serviceId,
+    priceField,
+    price: nextPrice,
+    uploadSync,
+  };
+};
+
+const syncManualRateOverridesToLiveServices = async (services = []) => {
+  const manualServices = services.filter((service) => service?.manualRateOverride);
+  if (!manualServices.length) return [];
+
+  return Promise.all(manualServices.map((service) => syncManualRateOverrideToLiveService(service)));
+};
+
 const calculateHotelServiceTotal = (service = {}) => {
+  const quoteBaseRate = Number(service?.quoteBaseRate || 0);
   const nights = Math.max(Number(service?.nights || 0), 0);
   const rooms = Math.max(Number(service?.rooms || 1), 1);
   const perRoomNightRate =
-    Number(service?.price || 0) +
+    Number(quoteBaseRate || service?.price || 0) +
     (service?.extraAdult ? Number(service?.awebRate || 0) : 0) +
     (service?.childWithBed ? Number(service?.cwebRate || 0) : 0) +
     (service?.childWithoutBed ? Number(service?.cwoebRate || 0) : 0);
@@ -491,6 +808,41 @@ const resolveDynamicHotelServicePricing = async (service = {}) => {
   const normalizedType = normalizeQuotationServiceType(service?.type);
 
   if (normalizedType !== "hotel") {
+    const Model = getLiveServiceModelForPricing(normalizedType);
+    const serviceId = String(service?.serviceId || "").trim();
+
+    if (Model && mongoose.Types.ObjectId.isValid(serviceId)) {
+      const liveService = await Model.findById(serviceId).lean();
+      if (liveService) {
+        const livePrice = getLiveServiceBasePrice(service, liveService);
+        const requestedPrice = getRequestedServiceBasePrice(service);
+        const manualRateOverride = hasManualRateIntent({ service, livePrice });
+        const resolvedPrice = manualRateOverride ? requestedPrice : livePrice;
+
+        return {
+          ...service,
+          type: normalizedType,
+          serviceId: liveService?._id?.toString?.() || service.serviceId,
+          supplierId: service?.supplierId || liveService?.supplier,
+          supplierName: service?.supplierName || liveService?.supplierName || "",
+          dmcId: service?.dmcId || liveService?.supplier,
+          dmcName: service?.dmcName || service?.supplierName || liveService?.supplierName || "",
+          title:
+            service?.title ||
+            liveService?.hotelName ||
+            liveService?.name ||
+            liveService?.serviceName ||
+            "",
+          city: service?.city || liveService?.city || "",
+          country: service?.country || liveService?.country || "",
+          description: service?.description || liveService?.description || service?.desc || "",
+          currency: normalizeCurrencyCode(service?.currency || liveService?.currency || "INR"),
+          price: resolvedPrice,
+          manualRateOverride,
+        };
+      }
+    }
+
     return {
       ...service,
       type: normalizedType,
@@ -550,6 +902,16 @@ const resolveDynamicHotelServicePricing = async (service = {}) => {
       }))
       .sort((left, right) => right.score - left.score)[0]?.candidate || hotelVariants[0];
 
+  const liveVariantPrice = Number(bestVariant?.price ?? 0);
+  const servicePrice = Number(
+    service?.price !== undefined && service?.price !== null && service?.price !== 0
+      ? service.price
+      : (bestVariant?.price ?? 0),
+  );
+  const manualRateOverride = hasManualRateIntent({ service, livePrice: liveVariantPrice });
+  const shouldUseLiveVariantPrice = !manualRateOverride && liveVariantPrice > 0;
+  const resolvedPrice = shouldUseLiveVariantPrice ? liveVariantPrice : servicePrice;
+
   return {
     ...service,
     serviceId: bestVariant?._id?.toString?.() || service?.serviceId,
@@ -566,16 +928,189 @@ const resolveDynamicHotelServicePricing = async (service = {}) => {
     city: service?.city || bestVariant?.city || "",
     country: service?.country || bestVariant?.country || "",
     description: service?.description || bestVariant?.description || service?.desc || "",
-    roomCategory: bestVariant?.roomCategory || service?.roomCategory || "",
-    roomType: bestVariant?.roomType || service?.roomType || "",
-    hotelCategory: bestVariant?.hotelCategory || service?.hotelCategory || "",
-    bedType: normalizeBedType(bestVariant?.bedType) || normalizeBedType(service?.bedType),
-    currency: normalizeCurrencyCode(bestVariant?.currency || service?.currency || "INR"),
-    price: Number(bestVariant?.price ?? service?.price ?? 0),
-    awebRate: Number(bestVariant?.awebRate || 0),
-    cwebRate: Number(bestVariant?.cwebRate || 0),
-    cwoebRate: Number(bestVariant?.cwoebRate || 0),
+    roomCategory: service?.roomCategory || bestVariant?.roomCategory || "",
+    roomType: service?.roomType || bestVariant?.roomType || "",
+    hotelCategory: service?.hotelCategory || bestVariant?.hotelCategory || "",
+    bedType: normalizeBedType(service?.bedType) || normalizeBedType(bestVariant?.bedType),
+    currency: normalizeCurrencyCode(service?.currency || bestVariant?.currency || "INR"),
+    price: resolvedPrice,
+    manualRateOverride,
+    hotelRateMode: String(service?.hotelRateMode || "").trim() === "service-total" ? "service-total" : "unit-rate",
+    quoteBaseRate: shouldUseLiveVariantPrice ? resolvedPrice : Number(service?.quoteBaseRate || 0),
+    roomTypeOptionRate: shouldUseLiveVariantPrice ? resolvedPrice : Number(service?.roomTypeOptionRate || 0),
+    roomTypeOptionCurrency: normalizeCurrencyCode(service?.roomTypeOptionCurrency || service?.currency || bestVariant?.currency || "INR"),
+    awebRate: Number(service?.awebRate !== undefined && service?.awebRate !== null ? service.awebRate : (bestVariant?.awebRate ?? 0)),
+    cwebRate: Number(service?.cwebRate !== undefined && service?.cwebRate !== null ? service.cwebRate : (bestVariant?.cwebRate ?? 0)),
+    cwoebRate: Number(service?.cwoebRate !== undefined && service?.cwoebRate !== null ? service.cwoebRate : (bestVariant?.cwoebRate ?? 0)),
+    blackoutDates: bestVariant?.blackoutDates || service?.blackoutDates || [],
   };
+};
+
+const addDays = (value, days = 0) => {
+  const date = normalizeDateOnly(value);
+  if (!date) return null;
+  const nextDate = new Date(date);
+  nextDate.setUTCDate(nextDate.getUTCDate() + Number(days || 0));
+  return nextDate;
+};
+
+const getServiceTravelRange = (query = {}, service = {}) => {
+  const serviceStart = normalizeDateOnly(service?.serviceDate);
+  if (serviceStart) {
+    const nights = Number(service?.nights || 1);
+    return {
+      start: serviceStart,
+      end: addDays(serviceStart, Math.max(nights - 1, 0)) || serviceStart,
+    };
+  }
+
+  return {
+    start: query?.startDate,
+    end: query?.endDate || query?.startDate,
+  };
+};
+
+const getBlackoutMatchForService = (query = {}, service = {}) => {
+  if (normalizeQuotationServiceType(service?.type) !== "hotel") return null;
+  if (!Array.isArray(service?.blackoutDates) || !service.blackoutDates.length) return null;
+
+  const travelRange = getServiceTravelRange(query, service);
+  return findBlackoutMatch({
+    blackoutDates: service.blackoutDates,
+    travelStart: travelRange.start,
+    travelEnd: travelRange.end,
+    country: service.country,
+    city: service.city,
+    destination: query.destination,
+  });
+};
+
+const notifyOpsForBlockedBlackoutRate = async ({ query, service, blackout }) => {
+  if (!query || !service || !blackout) return;
+
+  const alertKey = [
+    "blackout-rate-blocked",
+    query._id?.toString?.() || query.queryId,
+    service.serviceId || service.title || "hotel",
+    blackout.startDateKey || blackout.startDate || "",
+  ].join(":");
+
+  const alreadyExists = await Notification.exists({ "meta.blackoutAlertKey": alertKey });
+  if (alreadyExists) return;
+
+  const staffUsers = await Auth.find({
+    role: { $in: ["admin", "operation_manager", "operations"] },
+    isDeleted: { $ne: true },
+    accountStatus: { $ne: "Inactive" },
+  }).select("_id").lean();
+
+  if (!staffUsers.length) return;
+
+  const blackoutLabel = formatBlackoutLabel(blackout) || "blackout date";
+  await Notification.insertMany(
+    staffUsers.map((user) => ({
+      user: user._id,
+      type: "warning",
+      title: "Contract Rate Blocked: Blackout Date",
+      message: `Query ${query.queryId || query._id} includes ${service.title || "hotel service"} during ${blackoutLabel}. Contracted rate was blocked; use manual/special pricing.`,
+      link: "/operationManager/allTeamQueries",
+      meta: {
+        blackoutAlertKey: alertKey,
+        queryId: query._id,
+        queryNumber: query.queryId,
+        serviceId: service.serviceId,
+        serviceTitle: service.title,
+        blackout,
+      },
+    })),
+  );
+};
+
+const canUserOverrideBlackoutRate = (user = {}) => {
+  const role = String(user?.role || "").trim().toLowerCase();
+  return ["admin", "operation_manager", "operations_manager", "ops_manager"].includes(role);
+};
+
+const isBlackoutOverrideApproved = ({ user = {}, service = {} }) => {
+  if (!canUserOverrideBlackoutRate(user)) return false;
+  return Boolean(service?.blackoutOverride?.approved || service?.blackoutOverrideApproved);
+};
+
+const assertNoBlackoutContractRates = async ({ query, services = [], user = {} }) => {
+  const blockedServices = services
+    .map((service) => ({
+      service,
+      blackout: getBlackoutMatchForService(query, service),
+    }))
+    .filter((item) => item.blackout && !isBlackoutOverrideApproved({ user, service: item.service }));
+
+  if (!blockedServices.length) return;
+
+  await Promise.all(
+    blockedServices.map((item) =>
+      notifyOpsForBlockedBlackoutRate({
+        query,
+        service: item.service,
+        blackout: item.blackout,
+      }),
+    ),
+  );
+
+  const serviceList = blockedServices
+    .map(({ service, blackout }) => `${service.title || "Hotel"} (${formatBlackoutLabel(blackout)})`)
+    .join(", ");
+
+  throw new ApiError(
+    400,
+    `Blackout date matched. Contracted hotel rate cannot be used for: ${serviceList}. Use manual/special pricing instead.`,
+  );
+};
+
+const notifyAssignedOpsMemberForBlackoutOverride = async ({ query, services = [], user = {}, quotation = null }) => {
+  if (!query?.assignedTo || !canUserOverrideBlackoutRate(user)) return;
+  if (String(query.assignedTo) === String(user?.id || user?._id || "")) return;
+
+  const overrideServices = services
+    .map((service) => ({
+      service,
+      blackout: getBlackoutMatchForService(query, service),
+    }))
+    .filter((item) => item.blackout && isBlackoutOverrideApproved({ user, service: item.service }));
+
+  if (!overrideServices.length) return;
+
+  const alertKey = [
+    "blackout-override-quote",
+    quotation?._id?.toString?.() || quotation?.quotationNumber || query._id,
+    query.assignedTo?.toString?.() || query.assignedTo,
+  ].join(":");
+
+  const alreadyExists = await Notification.exists({ "meta.blackoutOverrideAlertKey": alertKey });
+  if (alreadyExists) return;
+
+  const serviceSummary = overrideServices
+    .map(({ service, blackout }) => `${service.title || "Hotel"} (${formatBlackoutLabel(blackout)})`)
+    .join(", ");
+
+  await Notification.create({
+    user: query.assignedTo,
+    type: "warning",
+    title: "Blackout Special Rate Quote Sent",
+    message: `${user?.companyName || user?.name || "Ops Manager"} updated blackout pricing and prepared quotation ${quotation?.quotationNumber || ""} for ${query.queryId || "query"}. Services: ${serviceSummary}.`,
+    link: "/ops/order-acceptance",
+    meta: {
+      blackoutOverrideAlertKey: alertKey,
+      queryId: query._id,
+      queryNumber: query.queryId,
+      quotationId: quotation?._id,
+      quotationNumber: quotation?.quotationNumber,
+      services: overrideServices.map(({ service, blackout }) => ({
+        serviceId: service.serviceId,
+        title: service.title,
+        blackout,
+      })),
+    },
+  });
 };
 
 
@@ -791,6 +1326,47 @@ const formatHistoryDateTimeLabel = (value) => {
   });
 };
 
+const getQuotationCreatorSummary = (quotation = {}) => {
+  const creator = quotation?.createdBy;
+  const role = String(creator?.role || "").trim();
+  const name = String(creator?.name || creator?.companyName || creator?.email || "").trim();
+  const label =
+    role === "operation_manager"
+      ? "Operations Manager"
+      : role === "operations"
+        ? "Ops Team"
+        : role === "admin"
+          ? "Admin"
+          : name || "Operations";
+
+  return {
+    id: String(creator?._id || creator || ""),
+    name,
+    role,
+    label,
+  };
+};
+
+const buildLatestQuotationSummary = (quotation = null) => {
+  if (!quotation) return null;
+
+  const creator = getQuotationCreatorSummary(quotation);
+  const totalAmount = Number(quotation?.pricing?.totalAmount || quotation?.clientTotalAmount || 0);
+
+  return {
+    id: String(quotation?._id || ""),
+    quotationNumber: quotation?.quotationNumber || "",
+    status: quotation?.status || "",
+    totalAmount,
+    validTill: quotation?.validTill || null,
+    createdAt: quotation?.createdAt || null,
+    updatedAt: quotation?.updatedAt || null,
+    createdAtLabel: formatHistoryDateTimeLabel(quotation?.createdAt),
+    updatedAtLabel: formatHistoryDateTimeLabel(quotation?.updatedAt),
+    createdBy: creator,
+  };
+};
+
 const mapQuotationHistoryRow = (quotation = {}, index = 0, total = 0, latestRevisionRemark = "") => {
   const opsTotalAmount = Number(quotation?.pricing?.totalAmount || 0);
   const clientTotalAmount =
@@ -798,6 +1374,7 @@ const mapQuotationHistoryRow = (quotation = {}, index = 0, total = 0, latestRevi
       ? null
       : Number(quotation.clientTotalAmount);
   const markupAmount = Number(quotation?.agentMarkup?.markupAmount || 0);
+  const creator = getQuotationCreatorSummary(quotation);
 
   return {
     id: String(quotation?._id || ""),
@@ -809,6 +1386,7 @@ const mapQuotationHistoryRow = (quotation = {}, index = 0, total = 0, latestRevi
     createdAtLabel: formatHistoryDateTimeLabel(quotation?.createdAt),
     updatedAt: quotation?.updatedAt || null,
     updatedAtLabel: formatHistoryDateTimeLabel(quotation?.updatedAt),
+    createdBy: creator,
     validTill: quotation?.validTill || null,
     validTillLabel: formatMailDateLabel(quotation?.validTill),
     opsTotalAmount,
@@ -874,6 +1452,9 @@ const buildTravelerSummary = (query = {}) => {
   return parts.join(", ") || "Traveler details pending";
 };
 
+const getQueryPassengerCount = (query = {}) =>
+  Number(query?.numberOfAdults || 0) + Number(query?.numberOfChildren || 0);
+
 const buildDurationLabel = (query = {}) => {
   const start = query?.startDate ? new Date(query.startDate) : null;
   const end = query?.endDate ? new Date(query.endDate) : null;
@@ -889,16 +1470,17 @@ const buildDurationLabel = (query = {}) => {
   return `${totalNights} Night${totalNights === 1 ? "" : "s"} / ${totalDays} Day${totalDays === 1 ? "" : "s"}`;
 };
 
-const buildServiceQuantityLabel = (service = {}) => {
+const buildServiceQuantityLabel = (service = {}, fallbackPax = 0) => {
   const normalizedType = String(service?.type || "")
     .trim()
     .toLowerCase();
   const details = [];
 
   if (normalizedType === "hotel") {
+    const hotelPax = Number(fallbackPax || 0) || Number(service?.pax || 0);
     if (Number(service?.nights || 0) > 0) details.push(`${service.nights}N`);
     if (Number(service?.rooms || 0) > 0) details.push(`${service.rooms} Room${Number(service.rooms) > 1 ? "s" : ""}`);
-    if (Number(service?.pax || 0) > 0) details.push(`${service.pax} Pax`);
+    if (hotelPax > 0) details.push(`${hotelPax} Pax`);
     return details.join(" | ");
   }
 
@@ -955,6 +1537,7 @@ const buildAgentQuotationEmailPayload = ({ quotation, query }) => {
   const totalServiceBase = Array.isArray(quotation?.services)
     ? quotation.services.reduce((sum, s) => sum + Number(s.total || 0), 0)
     : 0;
+  const queryPax = getQueryPassengerCount(query);
   const inclusions = Array.isArray(quotation?.inclusions)
     ? quotation.inclusions.map((item) => String(item || "").trim()).filter(Boolean)
     : [];
@@ -1002,7 +1585,7 @@ const buildAgentQuotationEmailPayload = ({ quotation, query }) => {
           typeLabel: MAIL_SERVICE_TYPE_LABELS[normalizedServiceType] || "Travel Service",
           location: buildServiceLocationLabel(service),
           serviceDateLabel: formatMailDateLabel(service?.serviceDate),
-          quantityLabel: buildServiceQuantityLabel(service),
+          quantityLabel: buildServiceQuantityLabel(service, queryPax),
           description: String(service?.description || "").replace(/\|/g, " | ").trim(),
           clientAmount,
         };
@@ -1808,6 +2391,11 @@ export const sendQuotation = async (req, res, next) => {
 
     await query.save();
 
+    await createQuotationSentAgentNotification(req, {
+      query,
+      deliveryChannels: ["dashboard"],
+    });
+
     res.json({ success: true });
 
   } catch (error) {
@@ -2026,6 +2614,37 @@ export const getOrderAcceptanceQueries = async (req, res, next) => {
       queries = sortOrderAcceptanceQueries(queries);
     }
 
+    const queryIdsForLatestQuotations = queries
+      .map((query) => query?._id)
+      .filter(Boolean);
+
+    if (queryIdsForLatestQuotations.length) {
+      const latestQuotations = await Quotation.find({
+        queryId: { $in: queryIdsForLatestQuotations },
+        status: { $ne: "Pending" },
+      })
+        .select("queryId quotationNumber status pricing clientTotalAmount validTill createdAt updatedAt createdBy")
+        .populate("createdBy", "name email companyName role")
+        .sort({ updatedAt: -1, createdAt: -1 })
+        .lean();
+
+      const latestQuotationByQuery = latestQuotations.reduce((acc, quotation) => {
+        const key = quotation?.queryId ? String(quotation.queryId) : "";
+        if (key && !acc[key]) {
+          acc[key] = buildLatestQuotationSummary(quotation);
+        }
+        return acc;
+      }, {});
+
+      queries = queries.map((query) => {
+        const queryObject = query?.toObject ? query.toObject() : query;
+        return {
+          ...queryObject,
+          latestQuotation: latestQuotationByQuery[String(queryObject?._id || "")] || null,
+        };
+      });
+    }
+
     // Pending orders count
     const pendingOrders = await TravelQuery.countDocuments({
       ...assignmentFilter,
@@ -2172,6 +2791,9 @@ export const createQuotation = async (req, res, next) => {
       return next(new ApiError(403, "Not authorized"));
     }
 
+    await assertNoBlackoutContractRates({ query, services: resolvedServices, user: req.user });
+    await syncManualRateOverridesToLiveServices(resolvedServices);
+
     let quotation = null;
 
     if (quotationId) {
@@ -2291,6 +2913,11 @@ export const createQuotation = async (req, res, next) => {
       // PRICE
       currency: s.currency || "INR",
       price: s.price || 0,
+      hotelRateMode: s.hotelRateMode === "service-total" ? "service-total" : "unit-rate",
+      manualRateOverride: Boolean(s.manualRateOverride),
+      quoteBaseRate: Number(s.quoteBaseRate || 0),
+      roomTypeOptionRate: Number(s.roomTypeOptionRate || 0),
+      roomTypeOptionCurrency: s.roomTypeOptionCurrency || s.currency || "INR",
       exchangeRate: Number(s.exchangeRate || 1),
       priceInInr: Number(s.priceInInr || 0),
       extraAdult: Boolean(s.extraAdult),
@@ -2361,6 +2988,14 @@ export const createQuotation = async (req, res, next) => {
           ? previousQuotationStatus
           : "Pending");
       await quotation.save();
+      if (typeof query !== "undefined" && typeof resolvedServices !== "undefined") {
+        await notifyAssignedOpsMemberForBlackoutOverride({
+          query,
+          services: resolvedServices,
+          user: req.user,
+          quotation,
+        });
+      }
 
       const quoteDetails = {
         name: query.agent?.name,
@@ -2385,6 +3020,7 @@ export const createQuotation = async (req, res, next) => {
       }
 
       const deliveryWarnings = [];
+      const successfulDeliveryChannels = [];
 
       if (shouldSendEmail) {
         try {
@@ -2392,6 +3028,7 @@ export const createQuotation = async (req, res, next) => {
             query.agent.email,
             buildAgentQuotationEmailPayload({ quotation, query }),
           );
+          successfulDeliveryChannels.push("email");
         } catch (emailError) {
           console.error("Quotation email send failed:", emailError);
           deliveryWarnings.push(
@@ -2403,6 +3040,7 @@ export const createQuotation = async (req, res, next) => {
       if (shouldSendWhatsApp) {
         try {
           await sendWhatsAppMessage(quoteDetails);
+          successfulDeliveryChannels.push("whatsapp");
         } catch (whatsappError) {
           console.error("Quotation WhatsApp send failed:", whatsappError);
           deliveryWarnings.push(getWhatsAppDeliveryErrorMessage(whatsappError));
@@ -2410,19 +3048,15 @@ export const createQuotation = async (req, res, next) => {
       }
 
       if (shouldSendDashboardNotification) {
-        await createOpsSideNotification(req, {
-          user: query.agent._id,
-          type: "success",
-          title: "Quotation Received",
-          message: `Quotation ${quotation.quotationNumber} has been sent for ${query.destination}.`,
-          link: "/agent/queries",
-          meta: {
-            quotationId: quotation._id,
-            queryId: query._id,
-            quotationNumber: quotation.quotationNumber,
-            destination: query.destination,
-            totalAmount,
-          },
+        successfulDeliveryChannels.unshift("dashboard");
+      }
+
+      if (shouldMarkAsSent) {
+        await createQuotationSentAgentNotification(req, {
+          query,
+          quotation,
+          totalAmount,
+          deliveryChannels: successfulDeliveryChannels,
         });
       }
 
@@ -2520,6 +3154,7 @@ export const createQuotation = async (req, res, next) => {
     }
     // 🔥 SEND EMAIL / WHATSAPP BASED ON USER SELECTION
     const deliveryWarnings = [];
+    const successfulDeliveryChannels = [];
 
     if (shouldSendEmail) {
       try {
@@ -2527,6 +3162,7 @@ export const createQuotation = async (req, res, next) => {
           query.agent.email,
           buildAgentQuotationEmailPayload({ quotation: createdQuotation, query }),
         );
+        successfulDeliveryChannels.push("email");
       } catch (emailError) {
         console.error("Quotation email send failed:", emailError);
         deliveryWarnings.push(
@@ -2538,6 +3174,7 @@ export const createQuotation = async (req, res, next) => {
     if (shouldSendWhatsApp) {
       try {
         await sendWhatsAppMessage(quoteDetails);
+        successfulDeliveryChannels.push("whatsapp");
       } catch (whatsappError) {
         console.error("Quotation WhatsApp send failed:", whatsappError);
         deliveryWarnings.push(getWhatsAppDeliveryErrorMessage(whatsappError));
@@ -2545,19 +3182,15 @@ export const createQuotation = async (req, res, next) => {
     }
 
     if (shouldSendDashboardNotification) {
-      await createOpsSideNotification(req, {
-        user: query.agent._id,
-        type: "success",
-        title: "Quotation Received",
-        message: `Quotation ${createdQuotation.quotationNumber} has been sent for ${query.destination}.`,
-        link: "/agent/queries",
-        meta: {
-          quotationId: createdQuotation._id,
-          queryId: query._id,
-          quotationNumber: createdQuotation.quotationNumber,
-          destination: query.destination,
-          totalAmount,
-        },
+      successfulDeliveryChannels.unshift("dashboard");
+    }
+
+    if (shouldMarkAsSent) {
+      await createQuotationSentAgentNotification(req, {
+        query,
+        quotation: createdQuotation,
+        totalAmount,
+        deliveryChannels: successfulDeliveryChannels,
       });
     }
 
@@ -2600,7 +3233,7 @@ export const addQuotationItem = async (req, res, next) => {
       return next(new ApiError(400, "Inclusions are required"));
     }
 
-    const { quotation } = await getAuthorizedQueryForQuotation(quotationId, req);
+    const { quotation, query } = await getAuthorizedQueryForQuotation(quotationId, req);
 
     //CASE 1: array
     if (Array.isArray(inclusions)) {
@@ -2612,6 +3245,16 @@ export const addQuotationItem = async (req, res, next) => {
     }
 
     await quotation.save();
+    if (typeof query !== "undefined" && typeof resolvedServices !== "undefined") {
+      if (typeof query !== "undefined" && typeof resolvedServices !== "undefined") {
+        await notifyAssignedOpsMemberForBlackoutOverride({
+          query,
+          services: resolvedServices,
+          user: req.user,
+          quotation,
+        });
+      }
+    }
 
     res.status(200).json({
       success: true,
@@ -3201,6 +3844,34 @@ const buildResolvedVoucherServices = ({
     };
   });
 
+const DMC_CONFIRMATION_DOCUMENTS = [
+  { key: "supplierConfirmation", filenamePrefix: "Supplier_Confirmation" },
+  { key: "voucherReference", filenamePrefix: "Voucher_Reference" },
+  { key: "termsConditions", filenamePrefix: "Terms_Conditions" },
+];
+
+const buildDmcConfirmationAttachments = (confirmation = null) =>
+  DMC_CONFIRMATION_DOCUMENTS.map(({ key, filenamePrefix }) => {
+    const storedPath = confirmation?.documents?.[key];
+    if (!storedPath) return null;
+
+    const normalizedPath = String(storedPath).replace(/\\/g, "/").replace(/^\/+/, "");
+    const absolutePath = path.isAbsolute(storedPath)
+      ? storedPath
+      : path.join(process.cwd(), normalizedPath);
+
+    if (!fs.existsSync(absolutePath)) return null;
+
+    const originalName = path.basename(normalizedPath);
+    const fileExtension = path.extname(originalName);
+    const readableName = originalName.replace(/^\d+-/, "") || `${filenamePrefix}${fileExtension}`;
+
+    return {
+      filename: `${filenamePrefix}_${readableName}`,
+      path: absolutePath,
+    };
+  }).filter(Boolean);
+
 const getConfirmationServicesForQuery = (confirmationMap, query) => {
   const candidates = [
     query?.queryId,
@@ -3348,6 +4019,7 @@ export const generateVoucher = async (req, res, next) => {
 export const sendVoucherToAgent = async (req, res, next) => {
   try {
     const { branding = "with", email, phone, dispatchChannel = "EMAIL" } = req.body;
+    const normalizedDispatchChannel = String(dispatchChannel || "EMAIL").trim().toUpperCase();
     const query = await TravelQuery.findById(req.params.id).populate("agent");
 
     if (!query) {
@@ -3428,8 +4100,10 @@ export const sendVoucherToAgent = async (req, res, next) => {
       });
     }
 
-    if (dispatchChannel === "EMAIL") {
+    if (normalizedDispatchChannel === "EMAIL") {
       try {
+        const dmcConfirmationAttachments = buildDmcConfirmationAttachments(confirmation);
+
         await sendEmailVoucher(
           email || query.agent?.email,
           {
@@ -3449,7 +4123,8 @@ export const sendVoucherToAgent = async (req, res, next) => {
               confirmation: service.confirmation,
             })),
           },
-          branding
+          branding,
+          dmcConfirmationAttachments
         );
       } catch (emailError) {
         console.error("Voucher email send failed:", emailError);
@@ -3497,7 +4172,13 @@ export const sendVoucherToAgent = async (req, res, next) => {
       user: query.agent._id,
       type: "success",
       title: "Voucher Sent",
-      message: `Your voucher ${voucher.voucherNumber} for ${voucher.destination || query.destination} is ready to view.`,
+      message: `Your voucher ${voucher.voucherNumber} for ${voucher.destination || query.destination} is ready to view.${getVoucherDispatchNote(
+        normalizedDispatchChannel,
+        {
+          email: email || query.agent?.email || "",
+          phone,
+        },
+      )}`,
       meta: {
         voucherId: voucher._id,
         voucherNumber: voucher.voucherNumber,
@@ -3505,6 +4186,9 @@ export const sendVoucherToAgent = async (req, res, next) => {
         queryNumber: query.queryId,
         destination: voucher.destination || query.destination,
         branding,
+        dispatchChannel: normalizedDispatchChannel,
+        recipientEmail: email || query.agent?.email || "",
+        recipientPhone: phone || "",
       },
     });
 
@@ -3524,6 +4208,8 @@ export const getOrCreateQuotationDraft = async (req, res, next) => {
   try {
     const query = await TravelQuery.findById(req.params.queryId).populate("agent");
     const requestedSourceQuotationId = String(req.query?.sourceQuotationId || "").trim();
+    const requestedSourceRefresh =
+      String(req.query?.refreshFromSource || "").trim().toLowerCase() === "true";
     const requestedFreshDraft =
       String(req.query?.freshDraft || "").trim().toLowerCase() === "true";
 
@@ -3643,6 +4329,10 @@ export const getOrCreateQuotationDraft = async (req, res, next) => {
           pax: Number(service.pax || 1),
           currency: service.currency || "INR",
           price: Number(service.price || 0),
+          hotelRateMode: service.hotelRateMode === "service-total" ? "service-total" : "unit-rate",
+          quoteBaseRate: Number(service.quoteBaseRate || 0),
+          roomTypeOptionRate: Number(service.roomTypeOptionRate || 0),
+          roomTypeOptionCurrency: service.roomTypeOptionCurrency || service.currency || "INR",
           exchangeRate: Number(service.exchangeRate || 1),
           priceInInr: Number(service.priceInInr || 0),
           extraAdult: Boolean(service.extraAdult),
@@ -3681,7 +4371,7 @@ export const getOrCreateQuotationDraft = async (req, res, next) => {
       const pendingSourceId = String(quotation.sourceQuotationId || "");
       if (
         sourceQuotation &&
-        pendingSourceId !== requestedSourceQuotationId
+        (pendingSourceId !== requestedSourceQuotationId || requestedSourceRefresh)
       ) {
         const draftPayload = buildDraftPayload(sourceQuotation);
         quotation.validTill = draftPayload.validTill;
@@ -3749,9 +4439,10 @@ export const getOpsQueryQuotations = async (req, res, next) => {
       status: { $ne: "Pending" },
     })
       .select(
-        "quotationNumber status pricing clientTotalAmount validTill services inclusions exclusions additionalNotes dayWiseItinerary agentMarkup agentRevisionRemark createdAt updatedAt",
+        "quotationNumber status pricing clientTotalAmount validTill services inclusions exclusions additionalNotes dayWiseItinerary agentMarkup agentRevisionRemark createdAt updatedAt createdBy",
       )
-      .sort({ createdAt: -1 })
+      .populate("createdBy", "name email companyName role")
+      .sort({ updatedAt: -1, createdAt: -1 })
       .lean();
 
     const rows = quotations.map((quotation, index, list) =>
@@ -3791,7 +4482,7 @@ export const saveQuotationDraft = async (req, res, next) => {
       dayWiseItinerary,
     } = req.body;
 
-    const { quotation } = await getAuthorizedQueryForQuotation(quotationId, req);
+    const { quotation, query } = await getAuthorizedQueryForQuotation(quotationId, req);
 
     const resolvedServices = await Promise.all(services.map(async (service) => {
       const hotelResolvedService = await resolveDynamicHotelServicePricing(service);
@@ -3819,6 +4510,10 @@ export const saveQuotationDraft = async (req, res, next) => {
     const servicesTotal = resolvedServices.reduce((sum, service) => (
       sum + Number(service.totalInInr || 0)
     ), 0);
+
+    await assertNoBlackoutContractRates({ query, services: resolvedServices, user: req.user });
+    await syncManualRateOverridesToLiveServices(resolvedServices);
+
     const packageTemplateAmount = Number(pricing?.packageTemplateAmount || 0);
     const opsMarkupBasisAmount = Number(servicesTotal + packageTemplateAmount);
     const ops = Number(opsPercent || 0);
@@ -3881,6 +4576,11 @@ export const saveQuotationDraft = async (req, res, next) => {
       pax: Number(service.pax || 1),
       currency: service.currency || "INR",
       price: Number(service.price || 0),
+      hotelRateMode: service.hotelRateMode === "service-total" ? "service-total" : "unit-rate",
+      manualRateOverride: Boolean(service.manualRateOverride),
+      quoteBaseRate: Number(service.quoteBaseRate || 0),
+      roomTypeOptionRate: Number(service.roomTypeOptionRate || 0),
+      roomTypeOptionCurrency: service.roomTypeOptionCurrency || service.currency || "INR",
       exchangeRate: Number(service.exchangeRate || 1),
       priceInInr: Number(service.priceInInr || 0),
       extraAdult: Boolean(service.extraAdult),

@@ -4,6 +4,8 @@ import TravelQuery from "../models/TravelQuery.model.js";
 import RateContract from "../models/rateContract.model.js"
 import Invoice from "../models/invoice.model.js"
 import InternalInvoice from "../models/internalInvoice.model.js";
+import DmcSettlementBatch from "../models/dmcSettlementBatch.model.js";
+import AdminOverrideCase from "../models/adminOverrideCase.model.js";
 import Notification from "../models/notification.model.js";
 import Quotation from "../models/quotation.model.js";
 import Voucher from "../models/voucher.model.js";
@@ -13,6 +15,7 @@ import { sendAgentPaymentReceiptMail, sendDmcPayoutReceiptMail, sendEmailFinalIn
 import { getEmailValidationError } from "../utils/emailValidation.js";
 import { normalizeAccessExpiry } from "../utils/accessExpiry.js";
 import { generateAgentPaymentReceiptPdf, generatePayoutReceiptPdf } from "../services/payoutReceiptPdfService.js";
+import { analyzeInvoiceFile } from "../services/invoiceExtractionService.js";
 import {
   decorateFinanceAssignment,
   filterRowsByFinanceAccess,
@@ -23,6 +26,8 @@ import {
 import { createNotification } from "../services/notificationDispatchService.js";
 import { notifyTeamMemberCreationStakeholders } from "../services/teamMemberNotificationService.js";
 import bcrypt from "bcrypt"
+import fs from "fs";
+import path from "path";
 
 const addQueryLogIfMissing = (query, action, performedBy) => {
   if (!query) return;
@@ -45,6 +50,30 @@ const createFinanceSideNotification = (req, payload) =>
     sourceUserId: req.user?.id || req.user?._id || null,
     sourceName: req.user?.name || req.user?.companyName || "Finance Team",
   });
+
+const buildEmailDeliveryNote = (email = "") =>
+  ` It was sent to your email${email ? ` (${email})` : ""}.`;
+
+const getFinanceDispatchNote = (
+  dispatchChannel = "",
+  { email = "", phone = "", documentLabel = "document" } = {},
+) => {
+  const normalizedChannel = String(dispatchChannel || "").trim().toUpperCase();
+
+  if (normalizedChannel === "EMAIL") {
+    return ` ${documentLabel} was sent by email${email ? ` (${email})` : ""}.`;
+  }
+
+  if (normalizedChannel === "WHATSAPP") {
+    return ` ${documentLabel} is ready to share on WhatsApp${phone ? ` (${phone})` : ""}.`;
+  }
+
+  if (normalizedChannel === "PDF") {
+    return ` ${documentLabel} PDF is ready to download.`;
+  }
+
+  return "";
+};
 
 const MANAGED_USER_ROLES = [
   "admin",
@@ -99,6 +128,7 @@ const formatManagedUser = (user) => ({
   roleLabel: BACKEND_ROLE_TO_FRONTEND[user.role] || user.role,
   createdAt: user.createdAt,
   updatedAt: user.updatedAt,
+  creditDays: Array.isArray(user.creditDays) ? user.creditDays : (user.creditDays !== undefined ? [user.creditDays] : [7]),
 });
 
 const AGENT_DOCUMENT_LABELS = ["GST Certificate", "Business License"];
@@ -145,12 +175,160 @@ const ensureAdminAccess = (req) => {
 const isPendingAdminReply = (query = {}) =>
   String(query?.adminCoordination?.status || "").trim() === "pending_admin_reply";
 
+const OVERRIDE_CASE_TARGET_LABELS = {
+  ops_query: "Ops Escalation",
+  agent_approval: "Agent Approval",
+  payment_verification: "Payment Verification",
+  internal_invoice: "Internal Invoice",
+};
+
+const OVERRIDE_STATUS_BY_DECISION = {
+  approve: "Overridden",
+  reject: "Rejected",
+  resolve: "Resolved",
+};
+
+const normalizeOverrideDecision = (decision = "") =>
+  String(decision || "").trim().toLowerCase();
+
+const formatAdminOverrideCase = (entry = {}) => ({
+  id: entry._id || `${entry.targetType}-${entry.targetId}`,
+  targetType: entry.targetType,
+  targetId: entry.targetId,
+  reference: entry.reference || "-",
+  sourceModule: entry.sourceModule || OVERRIDE_CASE_TARGET_LABELS[entry.targetType] || "System",
+  title: entry.title || "Admin override case",
+  description: entry.description || "",
+  status: entry.status || "Open",
+  requestedByName: entry.requestedByName || "",
+  requestedAt: entry.requestedAt || entry.createdAt || null,
+  requestedAtLabel: formatRelativeTime(entry.requestedAt || entry.createdAt || entry.updatedAt),
+  resolvedByName: entry.resolvedByName || "",
+  resolvedAt: entry.resolvedAt || null,
+  decision: entry.decision || "",
+  resolutionNote: entry.resolutionNote || "",
+});
+
+const buildDerivedOverrideCase = (payload = {}) =>
+  formatAdminOverrideCase({
+    status: "Open",
+    requestedAt: payload.requestedAt || new Date(),
+    ...payload,
+  });
+
+const syncAdminOverrideCase = async ({
+  targetType,
+  targetId,
+  reference,
+  sourceModule,
+  title,
+  description,
+  requestedByName = "",
+  decision,
+  resolutionNote,
+  actorId,
+  actorName,
+}) => {
+  const normalizedDecision = normalizeOverrideDecision(decision);
+  const status = OVERRIDE_STATUS_BY_DECISION[normalizedDecision] || "Resolved";
+  const now = new Date();
+
+  return AdminOverrideCase.findOneAndUpdate(
+    { targetType, targetId },
+    {
+      $set: {
+        targetType,
+        targetId,
+        reference,
+        sourceModule,
+        title,
+        description,
+        requestedByName,
+        status,
+        decision: normalizedDecision,
+        resolutionNote,
+        resolvedBy: actorId || null,
+        resolvedByName: actorName,
+        resolvedAt: now,
+      },
+      $setOnInsert: {
+        requestedAt: now,
+      },
+    },
+    { upsert: true, new: true, setDefaultsOnInsert: true },
+  );
+};
+
 const ensureFinanceApiAccess = async (req) => {
   if (!["finance_partner", "finance_manager", "admin"].includes(req.user?.role)) {
     throw new ApiError(403, "Not authorized");
   }
 
   return getFinanceAccessContext(req.user);
+};
+
+const parseFinanceJsonField = (value, fallback) => {
+  if (value === undefined || value === null || value === "") return fallback;
+  if (typeof value !== "string") return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return fallback;
+  }
+};
+
+const parseFinanceDateOrNull = (value) => {
+  if (!value) return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const addFinanceCreditDays = (value, daysToAdd = 0) => {
+  const parsed = parseFinanceDateOrNull(value);
+  if (!parsed) return null;
+  parsed.setDate(parsed.getDate() + Number(daysToAdd || 0));
+  return parsed;
+};
+
+const buildManualUploadedInvoiceDocument = (file) => {
+  if (!file?.path) return null;
+  const normalizedFilePath = String(file.path).replace(/\\/g, "/");
+  const absoluteFilePath = path.join(process.cwd(), normalizedFilePath);
+  const fileSizeKb =
+    fs.existsSync(absoluteFilePath)
+      ? Math.max(1, Math.round(fs.statSync(absoluteFilePath).size / 1024))
+      : null;
+
+  return {
+    name: file.originalname || path.basename(file.path),
+    filePath: `/${normalizedFilePath.replace(/^\/+/, "")}`,
+    size: fileSizeKb ? `${fileSizeKb} kB` : "",
+    mimeType: file.mimetype || "",
+    kind: "invoice",
+  };
+};
+
+export const previewManualInvoiceExtraction = async (req, res, next) => {
+  try {
+    if (!req.file) {
+      return next(new ApiError(400, "Upload an invoice file to parse"));
+    }
+
+    const claimedSummary = parseFinanceJsonField(req.body?.claimedSummary, {});
+    const extraction = await analyzeInvoiceFile(req.file, { claimedSummary });
+
+    await fs.promises.unlink(req.file.path).catch(() => null);
+
+    res.status(200).json({
+      success: true,
+      message: extraction.status === "parsed"
+        ? "Invoice parsed successfully"
+        : "Invoice uploaded, but automatic extraction needs manual review",
+      data: extraction,
+    });
+  } catch (error) {
+    next(error);
+  }
 };
 
 const MANAGED_USER_NOTIFICATION_LINKS = {
@@ -1071,6 +1249,298 @@ export const replyToOpsEscalation = async (req, res, next) => {
   }
 };
 
+export const resolveAdminOverrideCase = async (req, res, next) => {
+  try {
+    ensureAdminAccess(req);
+
+    const { targetType, id } = req.params;
+    const decision = normalizeOverrideDecision(req.body?.decision || "resolve");
+    const resolutionNote = String(req.body?.resolutionNote || req.body?.note || "").trim();
+
+    if (!Object.prototype.hasOwnProperty.call(OVERRIDE_CASE_TARGET_LABELS, targetType)) {
+      return next(new ApiError(400, "Invalid override case type"));
+    }
+
+    if (!["approve", "reject", "resolve"].includes(decision)) {
+      return next(new ApiError(400, "Invalid override decision"));
+    }
+
+    if (!resolutionNote) {
+      return next(new ApiError(400, "Resolution note is required"));
+    }
+
+    const actorName = req.user?.name || req.user?.email || "Super Admin";
+    const actorId = req.user?.id || req.user?._id || null;
+    const resolvedAt = new Date();
+    let casePayload = null;
+
+    if (targetType === "ops_query") {
+      const query = await TravelQuery.findById(id);
+      if (!query) return next(new ApiError(404, "Query not found"));
+
+      const currentAdminCoordination =
+        query.adminCoordination?.toObject?.() || query.adminCoordination || {};
+      const existingThread = Array.isArray(currentAdminCoordination.thread)
+        ? currentAdminCoordination.thread
+        : [];
+
+      query.activityLog = Array.isArray(query.activityLog) ? query.activityLog : [];
+      query.activityLog.push({
+        action: decision === "reject" ? "Admin Dispute Rejected" : "Admin Override Resolved",
+        performedBy: actorName,
+        timestamp: resolvedAt,
+      });
+      query.adminCoordination = {
+        ...currentAdminCoordination,
+        status: "replied",
+        lastAdminReply: resolutionNote,
+        lastAdminReplyAt: resolvedAt,
+        lastAdminReplyBy: actorId,
+        lastAdminReplyByName: actorName,
+        thread: [
+          ...existingThread,
+          {
+            senderRole: "admin",
+            senderId: actorId,
+            senderName: actorName,
+            message: `[${decision.toUpperCase()}] ${resolutionNote}`,
+            createdAt: resolvedAt,
+          },
+        ],
+      };
+      await query.save();
+
+      const opsRecipientId = query.adminCoordination?.lastOpsMessageBy || query.assignedTo || null;
+      if (opsRecipientId) {
+        await Notification.create({
+          user: opsRecipientId,
+          type: decision === "reject" ? "warning" : "success",
+          title: "Admin override resolved",
+          message: `${actorName} resolved ${query.queryId}: ${resolutionNote}`,
+          link: "/ops/order-acceptance",
+          meta: {
+            queryId: query._id,
+            queryNumber: query.queryId,
+            decision,
+            resolutionNote,
+          },
+        });
+      }
+
+      casePayload = {
+        targetType,
+        targetId: query._id,
+        reference: query.queryId || String(query._id),
+        sourceModule: "Operations",
+        title: "Ops escalation/dispute",
+        description: query.adminCoordination?.lastOpsMessage || query.destination || "",
+        requestedByName: query.adminCoordination?.lastOpsMessageByName || "Operations",
+      };
+    }
+
+    if (targetType === "agent_approval") {
+      const agent = await Auth.findById(id);
+      if (!agent || agent.role !== "agent") return next(new ApiError(404, "Agent not found"));
+      if (decision === "resolve") {
+        return next(new ApiError(400, "Choose approve or reject for agent approval override"));
+      }
+
+      if (decision === "approve") {
+        agent.isApproved = true;
+        agent.status = "approve";
+        agent.accountStatus = "Active";
+        agent.rejectionReason = "";
+        await sendAgentApprovalMail(agent.email, {
+          name: agent.name,
+          companyName: agent.companyName,
+        });
+      } else {
+        agent.isApproved = false;
+        agent.status = "rejected";
+        agent.accountStatus = "Inactive";
+        agent.rejectionReason = resolutionNote;
+        await sendAgentRejectionMail(agent.email, {
+          name: agent.name,
+          companyName: agent.companyName,
+          reason: resolutionNote,
+        });
+      }
+
+      agent.reviewedAt = resolvedAt;
+      agent.reviewedBy = actorName;
+      agent.reviewedById = String(actorId || "");
+      await agent.save();
+
+      casePayload = {
+        targetType,
+        targetId: agent._id,
+        reference: agent.companyName || agent.name || agent.email,
+        sourceModule: "Agent Registration",
+        title: "Agent approval override",
+        description: `${agent.companyName || agent.name || "Agent"} registration reviewed by Super Admin`,
+        requestedByName: agent.companyName || agent.name || "Agent",
+      };
+    }
+
+    if (targetType === "payment_verification") {
+      const invoice = await Invoice.findById(id)
+        .populate("query", "queryId destination")
+        .populate("agent", "name companyName email");
+      if (!invoice) return next(new ApiError(404, "Payment record not found"));
+      if (decision === "resolve") {
+        return next(new ApiError(400, "Choose approve or reject for payment verification override"));
+      }
+
+      const receivedAmount = Math.round(Number(invoice.paymentSubmission?.amount || 0));
+      const expectedAmount = getCouponVerificationContext(invoice)?.payableAmount >= 0
+        ? getCouponVerificationContext(invoice).payableAmount
+        : resolveOpsConfirmedInvoiceAmount(invoice);
+
+      if (decision === "approve" && receivedAmount <= 0) {
+        return next(new ApiError(400, "Payment amount is required before approval override"));
+      }
+
+      const verificationStatus = decision === "approve" ? "Verified" : "Rejected";
+      const isFullPayment = receivedAmount >= Math.round(Number(expectedAmount || invoice.totalAmount || 0));
+      invoice.paymentVerification = {
+        ...invoice.paymentVerification,
+        status: verificationStatus,
+        rejectionReason: decision === "reject" ? resolutionNote : "",
+        rejectionRemarks: decision === "reject" ? "Rejected by Super Admin override" : "",
+        reviewedBy: actorId,
+        reviewedByName: actorName,
+        reviewedAt: resolvedAt,
+        teamDecisionStatus: "",
+        teamDecisionReason: "",
+        teamDecisionRemarks: "",
+        teamDecisionBy: undefined,
+        teamDecisionByName: "",
+        teamDecisionAt: undefined,
+        sentToManagerAt: undefined,
+      };
+      invoice.paymentUpdatedBy = actorId;
+      invoice.paymentStatus = decision === "approve"
+        ? isFullPayment
+          ? "Paid"
+          : "Partially Paid"
+        : "Unpaid";
+      invoice.remarks = decision === "approve"
+        ? `Payment approved by Super Admin override: ${resolutionNote}`
+        : `Payment rejected by Super Admin override: ${resolutionNote}`;
+      invoice.paymentAuditTrail = Array.isArray(invoice.paymentAuditTrail) ? invoice.paymentAuditTrail : [];
+      invoice.paymentAuditTrail.push({
+        action: verificationStatus,
+        status: verificationStatus,
+        reason: decision === "reject" ? resolutionNote : "",
+        remarks: `Super Admin override: ${resolutionNote}`,
+        performedBy: actorId,
+        performedByName: actorName,
+        performedAt: resolvedAt,
+      });
+      await invoice.save();
+
+      if (invoice.query?._id) {
+        const query = await TravelQuery.findById(invoice.query._id);
+        if (query) {
+          if (decision === "approve" && isFullPayment) {
+            query.opsStatus = query.opsStatus === "Vouchered" ? "Payment_Completed" : "Confirmed";
+            query.agentStatus = "Confirmed";
+            addQueryLogIfMissing(query, "Payment Override Approved", actorName);
+          } else if (decision === "approve") {
+            if (!["Confirmed", "Vouchered", "Payment_Completed"].includes(query.opsStatus)) {
+              query.opsStatus = "Invoice_Requested";
+            }
+            addQueryLogIfMissing(query, "Partial Payment Override Approved", actorName);
+          } else {
+            addQueryLogIfMissing(query, "Payment Override Rejected", actorName);
+          }
+          await query.save();
+        }
+      }
+
+      await createNotification({
+        user: invoice.agent?._id || invoice.agent,
+        type: decision === "approve" ? "success" : "warning",
+        title: decision === "approve" ? "Payment Override Approved" : "Payment Override Rejected",
+        message: `${invoice.invoiceNumber} was ${decision === "approve" ? "approved" : "rejected"} by Super Admin override.`,
+        link: "/agent/invoices",
+        meta: {
+          invoiceId: invoice._id,
+          invoiceNumber: invoice.invoiceNumber,
+          queryId: invoice.query?.queryId || "",
+          decision,
+          resolutionNote,
+        },
+      });
+
+      casePayload = {
+        targetType,
+        targetId: invoice._id,
+        reference: invoice.invoiceNumber,
+        sourceModule: "Finance",
+        title: "Agent payment verification override",
+        description: `${invoice.agent?.companyName || invoice.agent?.name || "Agent"} - ${formatNotificationCurrency(receivedAmount)}`,
+        requestedByName: invoice.paymentVerification?.assignedToName || invoice.paymentVerification?.reviewedByName || "Finance Team",
+      };
+    }
+
+    if (targetType === "internal_invoice") {
+      const invoice = await InternalInvoice.findById(id).populate("dmc", "name companyName email");
+      if (!invoice) return next(new ApiError(404, "Internal invoice not found"));
+      if (decision === "approve") {
+        invoice.status = "Approved";
+      } else if (decision === "reject") {
+        invoice.status = "Rejected";
+      }
+      invoice.financeNotes = `Super Admin ${decision}: ${resolutionNote}`;
+      invoice.reviewedBy = actorId;
+      invoice.reviewedByName = actorName;
+      invoice.reviewedAt = resolvedAt;
+      await invoice.save();
+
+      await createNotification({
+        user: invoice.dmc?._id || invoice.dmc,
+        type: decision === "reject" ? "warning" : "success",
+        title: decision === "reject" ? "Invoice Override Rejected" : "Invoice Override Resolved",
+        message: `${invoice.invoiceNumber} was ${decision === "approve" ? "approved" : decision === "reject" ? "rejected" : "resolved"} by Super Admin.`,
+        link: "/dmc/confirmation",
+        meta: {
+          internalInvoiceId: invoice._id,
+          invoiceNumber: invoice.invoiceNumber,
+          decision,
+          resolutionNote,
+        },
+      });
+
+      casePayload = {
+        targetType,
+        targetId: invoice._id,
+        reference: invoice.invoiceNumber,
+        sourceModule: "DMC/Finance",
+        title: "Internal invoice dispute",
+        description: `${invoice.dmc?.companyName || invoice.dmc?.name || invoice.supplierName || "DMC"} - ${formatNotificationCurrency(invoice.summary?.grandTotal || 0)}`,
+        requestedByName: invoice.assignedToName || invoice.reviewedByName || "Finance Team",
+      };
+    }
+
+    const overrideCase = await syncAdminOverrideCase({
+      ...casePayload,
+      decision,
+      resolutionNote,
+      actorId,
+      actorName,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Super Admin override resolved successfully",
+      overrideCase: formatAdminOverrideCase(overrideCase.toObject()),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const getAdminDashboardData = async (req, res, next) => {
   try {
     if (req.user?.role !== "admin") {
@@ -1091,13 +1561,15 @@ export const getAdminDashboardData = async (req, res, next) => {
     const previousMonthEnd = new Date(currentMonthStart.getTime() - 1);
     const monthBuckets = getMonthlyBuckets(6);
 
-    const [queries, agents, managedUsers, vouchers, invoices, internalInvoices, confirmations] = await Promise.all([
+    const [queries, agents, managedUsers, vouchers, invoices, internalInvoices, confirmations, persistedOverrideCases] = await Promise.all([
       TravelQuery.find()
         .populate("agent", "name companyName email")
         .populate("assignedTo", "name email")
         .sort({ updatedAt: -1, createdAt: -1 })
         .lean(),
-      Auth.find({ role: "agent" }).select("name companyName").lean(),
+      Auth.find({ role: "agent" })
+        .select("name companyName email status isApproved accountStatus createdAt updatedAt")
+        .lean(),
       Auth.find({ role: { $in: MANAGED_USER_ROLES } })
         .select("name role accountStatus createdAt updatedAt")
         .lean(),
@@ -1108,11 +1580,15 @@ export const getAdminDashboardData = async (req, res, next) => {
         .lean(),
       Invoice.find()
         .populate("agent", "name companyName")
-        .populate("query", "queryId destination")
+        .populate("query", "queryId destination startDate endDate opsStatus agentStatus")
         .lean(),
       InternalInvoice.find().lean(),
       Confirmation.find()
         .populate("dmcId", "name companyName")
+        .lean(),
+      AdminOverrideCase.find()
+        .sort({ updatedAt: -1, createdAt: -1 })
+        .limit(30)
         .lean(),
     ]);
 
@@ -1440,13 +1916,89 @@ export const getAdminDashboardData = async (req, res, next) => {
         };
       });
 
+    const closedOverrideKeys = new Set(
+      persistedOverrideCases
+        .filter((entry) => entry.status && entry.status !== "Open")
+        .map((entry) => `${entry.targetType}:${String(entry.targetId || "")}`),
+    );
+    const overrideCaseMap = new Map();
+    const addOverrideCase = (entry) => {
+      if (!entry?.targetType || !entry?.targetId) return;
+      const key = `${entry.targetType}:${String(entry.targetId || "")}`;
+      if (closedOverrideKeys.has(key) && entry.status === "Open") return;
+      if (!overrideCaseMap.has(key)) overrideCaseMap.set(key, entry);
+    };
+
+    persistedOverrideCases.forEach((entry) => addOverrideCase(formatAdminOverrideCase(entry)));
+
+    escalationQueries.forEach((query) => addOverrideCase(buildDerivedOverrideCase({
+      targetType: "ops_query",
+      targetId: query._id,
+      reference: query.queryId || String(query._id),
+      sourceModule: "Operations",
+      title: "Ops escalation/dispute",
+      description: query.adminCoordination?.lastOpsMessage || query.destination || "",
+      requestedByName: query.adminCoordination?.lastOpsMessageByName || "Operations",
+      requestedAt: query.adminCoordination?.lastOpsMessageAt || query.updatedAt || query.createdAt,
+    })));
+
+    agents
+      .filter((agent) => agent.status === "pending")
+      .forEach((agent) => addOverrideCase(buildDerivedOverrideCase({
+        targetType: "agent_approval",
+        targetId: agent._id,
+        reference: agent.companyName || agent.name || agent.email,
+        sourceModule: "Agent Registration",
+        title: "Agent approval override",
+        description: `${agent.companyName || agent.name || "Agent"} is awaiting Super Admin review`,
+        requestedByName: agent.companyName || agent.name || "Agent",
+        requestedAt: agent.createdAt || agent.updatedAt,
+      })));
+
+    invoices
+      .filter((invoice) =>
+        invoice.paymentSubmission?.submittedAt &&
+        ["Pending", "Rejected"].includes(invoice.paymentVerification?.status || "Pending"),
+      )
+      .forEach((invoice) => addOverrideCase(buildDerivedOverrideCase({
+        targetType: "payment_verification",
+        targetId: invoice._id,
+        reference: invoice.invoiceNumber,
+        sourceModule: "Finance",
+        title: "Agent payment verification override",
+        description: `${invoice.agent?.companyName || invoice.agent?.name || "Agent"} - ${formatNotificationCurrency(invoice.paymentSubmission?.amount || invoice.totalAmount || 0)}`,
+        requestedByName: invoice.paymentVerification?.assignedToName || invoice.paymentVerification?.reviewedByName || "Finance Team",
+        requestedAt: invoice.paymentSubmission?.submittedAt || invoice.updatedAt || invoice.createdAt,
+      })));
+
+    internalInvoices
+      .filter((invoice) => ["Submitted", "In Review", "Rejected"].includes(invoice.status))
+      .forEach((invoice) => addOverrideCase(buildDerivedOverrideCase({
+        targetType: "internal_invoice",
+        targetId: invoice._id,
+        reference: invoice.invoiceNumber,
+        sourceModule: "DMC/Finance",
+        title: "Internal invoice dispute",
+        description: `${invoice.dmcName || invoice.supplierName || "DMC"} - ${formatNotificationCurrency(invoice.summary?.grandTotal || 0)}`,
+        requestedByName: invoice.assignedToName || invoice.reviewedByName || "Finance Team",
+        requestedAt: invoice.submittedAt || invoice.updatedAt || invoice.createdAt,
+      })));
+
+    const overrideCaseRows = Array.from(overrideCaseMap.values())
+      .sort(
+        (left, right) =>
+          (left.status === "Open" ? -1 : 1) - (right.status === "Open" ? -1 : 1) ||
+          new Date(right.requestedAt || right.resolvedAt || 0) - new Date(left.requestedAt || left.resolvedAt || 0),
+      )
+      .slice(0, 18);
+
     const monthRevenueBuckets = monthBuckets.map((bucket) => ({ ...bucket }));
     const monthQueryBuckets = monthBuckets.map((bucket) => ({ ...bucket }));
     const monthVoucherBuckets = monthBuckets.map((bucket) => ({ ...bucket }));
     const monthBookingBuckets = monthBuckets.map((bucket) => ({ ...bucket }));
 
     invoices.forEach((invoice) => {
-      const invoiceDate = new Date(invoice.createdAt);
+      const invoiceDate = getAnalyticsInvoiceDate(invoice);
       const bucket = monthRevenueBuckets.find((item) => isWithinRange(invoiceDate, item.start, item.end));
       if (bucket) {
         bucket.value += Number(invoice.totalAmount || invoice.pricingSnapshot?.grandTotal || 0);
@@ -1473,7 +2025,7 @@ export const getAdminDashboardData = async (req, res, next) => {
     });
 
     const revenueThisMonth = invoices
-      .filter((invoice) => isWithinRange(invoice.createdAt, currentMonthStart, now))
+      .filter((invoice) => isWithinRange(getAnalyticsInvoiceDate(invoice), currentMonthStart, now))
       .reduce((sum, invoice) => sum + Number(invoice.totalAmount || invoice.pricingSnapshot?.grandTotal || 0), 0);
 
     const monthlyQueries = queries.filter((query) => isWithinRange(query.createdAt, currentMonthStart, now));
@@ -1634,6 +2186,11 @@ export const getAdminDashboardData = async (req, res, next) => {
           { name: "DMC Partners", hours: Number(dmcFulfillmentHours.toFixed(1)) },
         ],
         masterBookings: masterBookingRows,
+        overrideCases: overrideCaseRows,
+        overrideSummary: {
+          open: overrideCaseRows.filter((entry) => entry.status === "Open").length,
+          resolved: overrideCaseRows.filter((entry) => entry.status !== "Open").length,
+        },
       },
       meta: {
         totalAgents: agents.length,
@@ -1681,19 +2238,25 @@ const formatDashboardDate = (value) => {
 const formatNotificationCurrency = (value, currency = "INR") =>
   `${currency} ${Math.round(Number(value || 0)).toLocaleString("en-IN")}`;
 
+const formatTruncatedCompactDecimal = (value) => {
+  const truncated = Math.trunc(Number(value || 0) * 100) / 100;
+  return truncated.toFixed(2).replace(/\.00$/, "").replace(/(\.\d)0$/, "$1");
+};
+
 const formatCompactCurrencyValue = (value) => {
   const amount = Number(value || 0);
   const absolute = Math.abs(amount);
+  const sign = amount < 0 ? "-" : "";
 
   if (absolute >= 10000000) {
-    return `₹${(amount / 10000000).toFixed(2).replace(/\.00$/, "")}Cr`;
+    return `${sign}\u20B9${formatTruncatedCompactDecimal(absolute / 10000000)}Cr`;
   }
 
   if (absolute >= 100000) {
-    return `₹${(amount / 100000).toFixed(2).replace(/\.00$/, "")}L`;
+    return `${sign}\u20B9${formatTruncatedCompactDecimal(absolute / 100000)}L`;
   }
 
-  return `₹${amount.toLocaleString("en-IN", {
+  return `${sign}\u20B9${absolute.toLocaleString("en-IN", {
     minimumFractionDigits: 0,
     maximumFractionDigits: 2,
   })}`;
@@ -1873,11 +2436,50 @@ const buildDmcPayoutWhatsappMessage = ({
     .filter(Boolean)
     .join("\n");
 
+const buildAgentPaymentReceiptWhatsappMessage = ({
+  agentName = "",
+  invoiceNumber = "",
+  queryCode = "",
+  amountPaid = 0,
+  cumulativePaid = 0,
+  remainingAmount = 0,
+  currency = "INR",
+  receiptUrl = "",
+  receiptTitle = "Payment Receipt",
+} = {}) =>
+  [
+    `Hello ${agentName || "Partner"},`,
+    "",
+    `Holiday Circuit has generated your ${receiptTitle.toLowerCase()} for invoice ${invoiceNumber || "-"}.`,
+    `Trip ID: ${queryCode || "-"}`,
+    `Amount Paid: ${formatNotificationCurrency(amountPaid || 0, currency)}`,
+    `Total Paid: ${formatNotificationCurrency(cumulativePaid || amountPaid || 0, currency)}`,
+    `Remaining: ${formatNotificationCurrency(remainingAmount || 0, currency)}`,
+    receiptUrl ? `Receipt PDF: ${receiptUrl}` : "",
+    "",
+    "Regards,",
+    "Holiday Circuit Finance Team",
+  ]
+    .filter(Boolean)
+    .join("\n");
+
 const formatInternalInvoiceRow = (invoice, quotation) => ({
   id: invoice._id,
   invoiceNumber: invoice.invoiceNumber,
-  queryId: invoice.query?.queryId || invoice.queryCode || "-",
-  destination: invoice.query?.destination || invoice.destination || "-",
+  settlementType: invoice.settlementType || (invoice.batchNumber ? "bulk" : "single"),
+  batchNumber: invoice.batchNumber || "",
+  queryId:
+    invoice.query?.queryId ||
+    invoice.queryCode ||
+    (Array.isArray(invoice.coveredQueries) && invoice.coveredQueries.length
+      ? `${invoice.coveredQueries.length} bookings`
+      : "-"),
+  destination:
+    invoice.query?.destination ||
+    invoice.destination ||
+    (Array.isArray(invoice.coveredQueries) && invoice.coveredQueries.length
+      ? "Bulk Settlement"
+      : "-"),
   dmcName:
     invoice.dmc?.companyName ||
     invoice.dmc?.name ||
@@ -1903,14 +2505,21 @@ const formatInternalInvoiceRow = (invoice, quotation) => ({
   amount: Number(invoice.summary?.grandTotal || 0),
   dmcServicesTotal: Number(invoice.summary?.subtotal || 0),
   tax: Number(invoice.summary?.totalTax || 0),
-  opsServicesTotal: getOpsServicesTotal(quotation),
+  opsServicesTotal: invoice.batchNumber
+    ? Number(invoice.summary?.subtotal || 0)
+    : getOpsServicesTotal(quotation),
   currency: invoice.items?.[0]?.currency || "INR",
   templateVariant: invoice.templateVariant || "aurora-ledger",
+  invoiceSource: invoice.invoiceSource || "system_template",
+  uploadedInvoice: invoice.uploadedInvoice || {},
+  claimedSummary: invoice.claimedSummary || {},
+  invoiceExtraction: invoice.invoiceExtraction || {},
   items: invoice.items || [],
   documents: invoice.documents || [],
   taxConfig: invoice.taxConfig || {},
   summary: invoice.summary || {},
   quotationNumber: quotation?.quotationNumber || "",
+  coveredQueries: invoice.coveredQueries || [],
   payoutReference: invoice.payoutReference || "",
   payoutDate: formatDashboardDate(invoice.payoutDate),
   payoutDateValue: invoice.payoutDate,
@@ -1961,6 +2570,132 @@ const formatInternalInvoiceRow = (invoice, quotation) => ({
   adults: Number(invoice.query?.numberOfAdults || 0),
   children: Number(invoice.query?.numberOfChildren || 0),
 });
+
+const roundInvoiceAmount = (value) => Math.round(Number(value || 0));
+
+const invoiceAmountsMatch = (left, right) =>
+  roundInvoiceAmount(left) === roundInvoiceAmount(right);
+
+const getInternalInvoiceItemSubtotal = (item = {}) => {
+  const subtotal = Number(item.subtotal);
+  if (Number.isFinite(subtotal)) return subtotal;
+  return Number(item.qty || 0) * Number(item.rate || 0);
+};
+
+const getInternalInvoiceTaxConfig = (invoice = {}) => {
+  const taxConfig = invoice.taxConfig || {};
+
+  return {
+    gstRate: Number(taxConfig.gstRate ?? invoice.gstRate ?? 0),
+    tcsRate: Number(taxConfig.tcsRate ?? invoice.tcsRate ?? 0),
+    otherTax: Number(
+      taxConfig.otherTax ??
+      taxConfig.otherTaxAmount ??
+      invoice.otherTax ??
+      invoice.otherTaxAmount ??
+      0,
+    ),
+  };
+};
+
+const getInternalInvoiceExpectedSummary = (invoice = {}) => {
+  const items = Array.isArray(invoice.items) ? invoice.items : [];
+  const taxConfig = getInternalInvoiceTaxConfig(invoice);
+  const fallbackSummary = invoice.summary || {};
+  const subtotal = items.length
+    ? items.reduce((sum, item) => sum + getInternalInvoiceItemSubtotal(item), 0)
+    : Number(fallbackSummary.subtotal || 0);
+  const gstRate = Number(taxConfig.gstRate || 0);
+  const tcsRate = Number(taxConfig.tcsRate || 0);
+  const itemTaxTotal = items.reduce((sum, item) => {
+    const itemTax = Number(item.tax);
+    const hasItemTax = item.tax !== undefined && item.tax !== null && item.tax !== "";
+    return hasItemTax && Number.isFinite(itemTax) ? sum + itemTax : sum;
+  }, 0);
+  const gstAmount = gstRate > 0
+    ? (subtotal * gstRate) / 100
+    : itemTaxTotal || Number(fallbackSummary.gstAmount || 0);
+  const tcsAmount = (subtotal * tcsRate) / 100;
+  const otherTaxAmount = Number(taxConfig.otherTax || 0);
+  const totalTax = gstAmount + tcsAmount + otherTaxAmount;
+
+  return {
+    subtotal,
+    totalTax,
+    grandTotal: subtotal + totalTax,
+  };
+};
+
+const getUploadedInvoiceAmountValidation = (invoice = {}) => {
+  if (String(invoice.invoiceSource || "") !== "uploaded_invoice") {
+    return { passed: true, message: "" };
+  }
+
+  const extraction = invoice.invoiceExtraction || {};
+  if (
+    extraction.status === "parsed" &&
+    extraction.verification &&
+    extraction.verification.claimedMatchesExtracted === false
+  ) {
+    return {
+      passed: false,
+      message:
+        extraction.verification.warnings?.join(" ") ||
+        "Uploaded invoice OCR/PDF parser total does not match the entered claimed amount.",
+    };
+  }
+
+  const items = Array.isArray(invoice.items) ? invoice.items : [];
+  if (!items.length) {
+    return { passed: true, message: "" };
+  }
+
+  const currency = invoice.items?.[0]?.currency || "INR";
+  const expected = getInternalInvoiceExpectedSummary(invoice);
+  const claimed = {
+    subtotal: Number(invoice.claimedSummary?.subtotal ?? invoice.summary?.subtotal ?? 0),
+    taxAmount: Number(
+      invoice.claimedSummary?.taxAmount ??
+      invoice.claimedSummary?.totalTax ??
+      invoice.summary?.totalTax ??
+      0,
+    ),
+    grandTotal: Number(invoice.claimedSummary?.grandTotal ?? invoice.summary?.grandTotal ?? 0),
+  };
+
+  const mismatchNotes = [];
+
+  if (!invoiceAmountsMatch(claimed.subtotal, expected.subtotal)) {
+    mismatchNotes.push(
+      `subtotal ${formatNotificationCurrency(claimed.subtotal, currency)} should be ${formatNotificationCurrency(expected.subtotal, currency)}`,
+    );
+  }
+
+  if (!invoiceAmountsMatch(claimed.taxAmount, expected.totalTax)) {
+    mismatchNotes.push(
+      `tax ${formatNotificationCurrency(claimed.taxAmount, currency)} should be ${formatNotificationCurrency(expected.totalTax, currency)}`,
+    );
+  }
+
+  if (!invoiceAmountsMatch(claimed.grandTotal, expected.grandTotal)) {
+    mismatchNotes.push(
+      `grand total ${formatNotificationCurrency(claimed.grandTotal, currency)} should be ${formatNotificationCurrency(expected.grandTotal, currency)}`,
+    );
+  }
+
+  if (!invoiceAmountsMatch(claimed.subtotal + claimed.taxAmount, claimed.grandTotal)) {
+    mismatchNotes.push(
+      `subtotal plus tax is ${formatNotificationCurrency(claimed.subtotal + claimed.taxAmount, currency)}, not ${formatNotificationCurrency(claimed.grandTotal, currency)}`,
+    );
+  }
+
+  return {
+    passed: mismatchNotes.length === 0,
+    message: mismatchNotes.length
+      ? `Uploaded invoice amount mismatch: ${mismatchNotes.join("; ")}.`
+      : "",
+  };
+};
 
 const getPaymentVerificationStatus = (invoice) => {
   if (invoice?.paymentVerification?.status) {
@@ -2279,6 +3014,24 @@ const decorateInternalInvoiceRows = (rows = [], accessContext = null) =>
     accessContext,
   });
 
+const decorateFinanceDashboardRows = (rows = [], accessContext = null) => {
+  if (!accessContext || accessContext.scope === "admin") {
+    return rows;
+  }
+
+  const decoratedRows = decorateFinanceAssignment({
+    rows,
+    teamMembers: accessContext.teamMembers || [],
+    getExplicitAssigneeIds: (row) => [row.assignedFinanceId, row.assignedTo, row.reviewedBy],
+    getFallbackSeed: (row) => row.id || row.invoiceNumber || row.queryId,
+  });
+
+  const teamMemberIds = new Set(accessContext.teamMemberIds || []);
+  return decoratedRows.filter((row) =>
+    teamMemberIds.has(normalizeEntityId(row.assignedFinanceId)),
+  );
+};
+
 const ensureFinanceRecordAccess = ({
   teamMembers = [],
   accessContext = null,
@@ -2331,6 +3084,62 @@ const getInternalInvoiceRelevantDate = (invoice) => {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 };
 
+const parseDashboardDateValue = (value) => {
+  if (!value) return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const getPaymentTrackerDates = (invoice = {}) => {
+  const trackerPayments = Array.isArray(invoice?.paymentSubmission?.trackerPayments)
+    ? invoice.paymentSubmission.trackerPayments
+    : [];
+
+  return trackerPayments
+    .map((entry) => parseDashboardDateValue(entry?.paymentDateValue || entry?.paymentDate || entry?.createdAt))
+    .filter(Boolean)
+    .sort((left, right) => right.getTime() - left.getTime());
+};
+
+const getAgentInvoiceDateCandidates = (invoice = {}) =>
+  [
+    ...getPaymentTrackerDates(invoice),
+    invoice?.paymentSubmission?.paymentDate,
+    invoice?.paymentSubmission?.submittedAt,
+    invoice?.paymentVerification?.reviewedAt,
+    invoice?.paymentVerification?.teamDecisionAt,
+    invoice?.paymentVerification?.sentToManagerAt,
+    invoice?.paymentVerification?.assignedAt,
+    invoice?.updatedAt,
+    invoice?.createdAt,
+  ]
+    .map(parseDashboardDateValue)
+    .filter(Boolean)
+    .sort((left, right) => right.getTime() - left.getTime());
+
+const getAgentInvoiceRelevantDate = (invoice, start = null, end = null) => {
+  const candidates = getAgentInvoiceDateCandidates(invoice);
+  if (!start || !end) return candidates[0] || null;
+
+  return candidates.find((date) => date >= start && date <= end) || null;
+};
+
+const buildAgentInvoiceWindowQuery = (start, end) => ({
+  $or: [
+    { createdAt: { $gte: start, $lte: end } },
+    { updatedAt: { $gte: start, $lte: end } },
+    { "paymentSubmission.paymentDate": { $gte: start, $lte: end } },
+    { "paymentSubmission.submittedAt": { $gte: start, $lte: end } },
+    { "paymentSubmission.trackerPayments.paymentDateValue": { $gte: start, $lte: end } },
+    { "paymentSubmission.trackerPayments.paymentDate": { $gte: start, $lte: end } },
+    { "paymentSubmission.trackerPayments.createdAt": { $gte: start, $lte: end } },
+    { "paymentVerification.reviewedAt": { $gte: start, $lte: end } },
+    { "paymentVerification.teamDecisionAt": { $gte: start, $lte: end } },
+    { "paymentVerification.sentToManagerAt": { $gte: start, $lte: end } },
+    { "paymentVerification.assignedAt": { $gte: start, $lte: end } },
+  ],
+});
+
 const isWithinWindow = (value, start, end) => {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return false;
@@ -2348,18 +3157,30 @@ const getRangeWindow = (range, startDate, endDate) => {
     return { start, end };
   }
 
-  if (range === "monthly") {
-    const start = new Date(today.getFullYear(), today.getMonth(), 1);
-    const end = new Date(today.getFullYear(), today.getMonth() + 1, 0, 23, 59, 59, 999);
+  if (range === "daily") {
+    const start = new Date(today);
+    const end = new Date(today);
+    end.setHours(23, 59, 59, 999);
     return { start, end };
   }
 
-  const day = today.getDay();
-  const diffToMonday = day === 0 ? -6 : 1 - day;
+  if (range === "monthly") {
+    const start = new Date(today);
+    start.setDate(today.getDate() - 29);
+    const end = new Date(today);
+    end.setHours(23, 59, 59, 999);
+    return { start, end };
+  }
+
+  if (range === "yearly") {
+    const start = new Date(today.getFullYear(), 0, 1);
+    const end = new Date(today.getFullYear(), 11, 31, 23, 59, 59, 999);
+    return { start, end };
+  }
+
   const start = new Date(today);
-  start.setDate(today.getDate() + diffToMonday);
-  const end = new Date(start);
-  end.setDate(start.getDate() + 6);
+  start.setDate(today.getDate() - 6);
+  const end = new Date(today);
   end.setHours(23, 59, 59, 999);
   return { start, end };
 };
@@ -2421,16 +3242,17 @@ const INDIAN_DESTINATION_KEYWORDS = [
 const formatCompactCurrency = (value) => {
   const amount = Number(value || 0);
   const absolute = Math.abs(amount);
+  const sign = amount < 0 ? "-" : "";
 
   if (absolute >= 10000000) {
-    return `₹${(amount / 10000000).toFixed(2).replace(/\.00$/, "")}Cr`;
+    return `${sign}\u20B9${formatTruncatedCompactDecimal(absolute / 10000000)}Cr`;
   }
 
   if (absolute >= 100000) {
-    return `₹${(amount / 100000).toFixed(2).replace(/\.00$/, "")}L`;
+    return `${sign}\u20B9${formatTruncatedCompactDecimal(absolute / 100000)}L`;
   }
 
-  return `₹${amount.toLocaleString("en-IN", {
+  return `${sign}\u20B9${absolute.toLocaleString("en-IN", {
     minimumFractionDigits: 0,
     maximumFractionDigits: 2,
   })}`;
@@ -2495,31 +3317,82 @@ const inferDomesticDestination = (destination = "") => {
   return INDIAN_DESTINATION_KEYWORDS.some((keyword) => normalized.includes(keyword));
 };
 
-const getAnalyticsInvoiceDate = (invoice) => {
-  const parsed = new Date(invoice?.createdAt);
+const parseAnalyticsDate = (value) => {
+  if (!value) return null;
+  const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const getAnalyticsInvoiceDate = (invoice) => {
+  const source =
+    invoice?.query?.startDate ||
+    invoice?.tripSnapshot?.startDate ||
+    invoice?.createdAt;
+
+  return parseAnalyticsDate(source);
+};
+
+const isVerifiedAnalyticsStatus = (value = "") =>
+  String(value || "").trim().toLowerCase() === "verified";
+
+const getInvoicePaymentRecognitionDate = (invoice = {}) => {
+  const trackerPayments = Array.isArray(invoice.paymentSubmission?.trackerPayments)
+    ? invoice.paymentSubmission.trackerPayments
+    : [];
+  const verifiedTrackerDates = trackerPayments
+    .filter((entry) => isVerifiedAnalyticsStatus(entry?.verificationStatus))
+    .map((entry) =>
+      parseAnalyticsDate(entry?.verifiedAt) ||
+      parseAnalyticsDate(entry?.paymentDate) ||
+      parseAnalyticsDate(entry?.createdAt),
+    )
+    .filter(Boolean)
+    .sort((left, right) => left.getTime() - right.getTime());
+
+  if (verifiedTrackerDates.length) return verifiedTrackerDates[0];
+
+  if (
+    isVerifiedAnalyticsStatus(invoice.paymentVerification?.status) ||
+    String(invoice.paymentStatus || "").trim() === "Paid"
+  ) {
+    return (
+      parseAnalyticsDate(invoice.paymentVerification?.reviewedAt) ||
+      parseAnalyticsDate(invoice.paymentSubmission?.paymentDate) ||
+      parseAnalyticsDate(invoice.paymentSubmission?.submittedAt) ||
+      parseAnalyticsDate(invoice.updatedAt) ||
+      parseAnalyticsDate(invoice.createdAt)
+    );
+  }
+
+  return null;
 };
 
 const getAnalyticsInternalInvoiceDate = (invoice) => {
   const source =
+    invoice?.query?.startDate ||
+    invoice?.tripSnapshot?.startDate ||
     invoice?.payoutDate ||
     invoice?.submittedAt ||
     invoice?.invoiceDate ||
     invoice?.createdAt;
 
-  const parsed = new Date(source);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
+  return parseAnalyticsDate(source);
 };
+
+const getAnalyticsQueryDate = (query = {}) => parseAnalyticsDate(query?.createdAt);
+
+const getAnalyticsConfirmationDate = (query = {}) =>
+  parseAnalyticsDate(query?.updatedAt || query?.createdAt);
 
 const startOfMonth = (date) => new Date(date.getFullYear(), date.getMonth(), 1);
 const addMonths = (date, months) => new Date(date.getFullYear(), date.getMonth() + months, 1);
 
 const createMonthlyBuckets = (referenceDate) => {
   const buckets = [];
-  const baseMonth = startOfMonth(referenceDate);
+  const yearStart = new Date(referenceDate.getFullYear(), 0, 1);
 
-  for (let index = 11; index >= 0; index -= 1) {
-    const bucketStart = addMonths(baseMonth, -index);
+  for (let index = 0; index < 12; index += 1) {
+    const bucketStart = addMonths(yearStart, index);
     const bucketEnd = new Date(bucketStart.getFullYear(), bucketStart.getMonth() + 1, 0, 23, 59, 59, 999);
 
     buckets.push({
@@ -2551,7 +3424,7 @@ const createYearlyBuckets = (referenceDate) => {
   return buckets;
 };
 
-const getAggregateWindowStart = (referenceDate) => addMonths(startOfMonth(referenceDate), -11);
+const getAggregateWindowStart = (referenceDate) => new Date(referenceDate.getFullYear(), 0, 1);
 
 const getPreviousAggregateWindow = (startDate, monthSpan = 12) => {
   const previousStart = addMonths(startDate, -monthSpan);
@@ -2563,15 +3436,849 @@ const sumInvoiceAmountsInWindow = (invoices, start, end) =>
   invoices.reduce((sum, invoice) => {
     const invoiceDate = getAnalyticsInvoiceDate(invoice);
     if (!invoiceDate || invoiceDate < start || invoiceDate > end) return sum;
-    return sum + Number(invoice.totalAmount || 0);
+    return sum + getInvoiceRevenueAmount(invoice);
   }, 0);
 
 const sumInternalInvoiceAmountsInWindow = (invoices, start, end) =>
-  invoices.reduce((sum, invoice) => {
-    const invoiceDate = getAnalyticsInternalInvoiceDate(invoice);
-    if (!invoiceDate || invoiceDate < start || invoiceDate > end) return sum;
-    return sum + Number(invoice.payoutAmount || invoice.summary?.grandTotal || 0);
+  sumInternalInvoiceCostEntriesInWindow(invoices, start, end);
+
+const CONFIRMED_QUERY_STATUSES = new Set(["Invoice_Requested", "Confirmed", "Vouchered", "Payment_Completed"]);
+const CONFIRMED_AGENT_STATUSES = new Set(["Client Approved", "Booking Confirmed", "Partially Paid", "Confirmed"]);
+const CONFIRMED_ACTIVITY_ACTIONS = new Set([
+  "Booking Confirmed",
+  "Partial Payment Verified",
+  "Partial Payment Override Approved",
+]);
+
+const isConfirmedAnalyticsQuery = (query = {}) => {
+  const hasBookingConfirmedLog = (query?.activityLog || []).some(
+    (entry) => CONFIRMED_ACTIVITY_ACTIONS.has(String(entry?.action || "")),
+  );
+
+  return (
+    CONFIRMED_QUERY_STATUSES.has(String(query?.opsStatus || "")) ||
+    CONFIRMED_AGENT_STATUSES.has(String(query?.agentStatus || "")) ||
+    hasBookingConfirmedLog
+  );
+};
+
+const isCancelledAnalyticsQuery = (query = {}) =>
+  String(query?.opsStatus || "") === "Rejected" ||
+  String(query?.agentStatus || "") === "Rejected";
+
+const normalizeAnalyticsDestination = (destination = "") =>
+  String(destination || "").trim() || "Unassigned";
+
+const getInvoiceSubmittedAmount = (invoice = {}) => {
+  const directSubmissionAmount = Number(invoice.paymentSubmission?.amount || 0);
+  const trackerTotal = Array.isArray(invoice.paymentSubmission?.trackerPayments)
+    ? invoice.paymentSubmission.trackerPayments.reduce((sum, entry) => sum + Number(entry?.amount || 0), 0)
+    : 0;
+
+  return Math.max(directSubmissionAmount, trackerTotal, 0);
+};
+
+const getInvoiceGrossRevenueAmount = (invoice = {}) =>
+  Math.max(
+    Number(invoice.totalAmount || 0),
+    Number(invoice.pricingSnapshot?.grandTotal || 0),
+    getInvoiceSubmittedAmount(invoice),
+  );
+
+const getInvoiceOfferContext = (invoice = {}) => {
+  const couponApplication =
+    invoice?.paymentSubmission?.couponApplication ||
+    invoice?.couponApplication ||
+    null;
+  const grossAmount = getInvoiceGrossRevenueAmount(invoice);
+  const rawDiscountAmount = Math.round(Number(couponApplication?.discountAmount || 0));
+  const rawPayableAmount = Math.round(Number(couponApplication?.payableAmount || 0));
+  const hasPayableReduction =
+    rawPayableAmount > 0 && grossAmount > 0 && rawPayableAmount < Math.round(grossAmount);
+
+  if (!couponApplication?.couponId && !couponApplication?.code && rawDiscountAmount <= 0 && !hasPayableReduction) {
+    return {
+      applied: false,
+      code: "",
+      discountAmount: 0,
+      payableAmount: grossAmount,
+      label: "",
+    };
+  }
+
+  const subtotalAmount = Math.round(Number(couponApplication?.subtotalAmount || grossAmount || 0));
+  const payableAmount = Math.max(
+    rawPayableAmount,
+    0,
+  );
+  const explicitDiscountAmount = rawDiscountAmount;
+  const inferredDiscountAmount =
+    payableAmount > 0 ? Math.max(0, subtotalAmount - payableAmount) : 0;
+  const discountAmount = explicitDiscountAmount > 0 ? explicitDiscountAmount : inferredDiscountAmount;
+  const resolvedPayableAmount =
+    payableAmount > 0 ? payableAmount : Math.max(0, subtotalAmount - discountAmount);
+  const code = String(couponApplication?.code || "").trim();
+  const discountLabel = String(couponApplication?.discountLabel || "").trim();
+
+  return {
+    applied: true,
+    code,
+    discountAmount,
+    payableAmount: resolvedPayableAmount,
+    label: [code, discountLabel].filter(Boolean).join(" - "),
+  };
+};
+
+const getInvoiceRevenueAmount = (invoice = {}) => {
+  const offerContext = getInvoiceOfferContext(invoice);
+  return offerContext.applied
+    ? Number(offerContext.payableAmount || 0)
+    : getInvoiceGrossRevenueAmount(invoice);
+};
+
+const PAYMENT_RECEIVED_INVOICE_STATUSES = new Set(["Paid", "Partially Paid", "Partially_Paid"]);
+
+const getInvoiceReceivedAmount = (invoice = {}) => {
+  const invoiceTotal = getInvoiceRevenueAmount(invoice);
+  if (String(invoice.paymentStatus || "").trim() === "Paid") return invoiceTotal;
+
+  const trackerPayments = Array.isArray(invoice.paymentSubmission?.trackerPayments)
+    ? invoice.paymentSubmission.trackerPayments
+    : [];
+  const verifiedTrackerTotal = trackerPayments.reduce((sum, entry) => {
+    if (!isVerifiedAnalyticsStatus(entry?.verificationStatus)) return sum;
+    return sum + Number(entry?.amount || 0);
   }, 0);
+  if (verifiedTrackerTotal > 0) return Math.min(invoiceTotal, verifiedTrackerTotal);
+
+  if (isVerifiedAnalyticsStatus(invoice.paymentVerification?.status)) {
+    return Math.min(invoiceTotal, Number(invoice.paymentSubmission?.amount || 0));
+  }
+
+  return 0;
+};
+
+const hasInvoicePaymentReceived = (invoice = {}) => {
+  const paymentStatus = String(invoice.paymentStatus || "").trim();
+  if (PAYMENT_RECEIVED_INVOICE_STATUSES.has(paymentStatus)) return true;
+
+  const trackerPayments = Array.isArray(invoice.paymentSubmission?.trackerPayments)
+    ? invoice.paymentSubmission.trackerPayments
+    : [];
+  const verifiedTrackerTotal = trackerPayments.reduce((sum, entry) => {
+    if (!isVerifiedAnalyticsStatus(entry?.verificationStatus)) return sum;
+    return sum + Number(entry?.amount || 0);
+  }, 0);
+  if (verifiedTrackerTotal > 0) return true;
+
+  return (
+    isVerifiedAnalyticsStatus(invoice.paymentVerification?.status) &&
+    Number(invoice.paymentSubmission?.amount || 0) > 0
+  );
+};
+
+const getInvoiceBookingKey = (invoice = {}) =>
+  invoice.query?.queryId ||
+  invoice.query?._id?.toString?.() ||
+  invoice.query?.toString?.() ||
+  invoice.invoiceNumber ||
+  invoice._id?.toString?.() ||
+  "";
+
+const getInternalInvoiceCostAmount = (invoice = {}) =>
+  Number(invoice.payoutAmount || invoice.summary?.grandTotal || 0);
+
+const getInternalInvoiceCostEntries = (invoice = {}) => {
+  const items = Array.isArray(invoice.items) ? invoice.items : [];
+  const isBatch = Boolean(invoice.batchNumber || invoice.settlementType === "bulk");
+
+  if (isBatch && !items.length) {
+    return [];
+  }
+
+  if (isBatch && items.length) {
+    const invoiceTotal = getInternalInvoiceCostAmount(invoice);
+    const itemSubtotalTotal = items.reduce((sum, item) => sum + Number(item.subtotal || 0), 0);
+
+    return items.map((item) => {
+      const itemSubtotal = Number(item.subtotal || 0);
+      const proportionalAmount = itemSubtotalTotal > 0
+        ? (invoiceTotal * itemSubtotal) / itemSubtotalTotal
+        : itemSubtotal + Number(item.tax || 0);
+      const date =
+        parseAnalyticsDate(item.serviceDate) ||
+        parseAnalyticsDate(item.creditStartDate) ||
+        parseAnalyticsDate(item.query?.startDate);
+
+      return {
+        date,
+        destination: normalizeAnalyticsDestination(
+          item.destination || item.query?.destination || invoice.destination,
+        ),
+        amount: Number(proportionalAmount || 0),
+      };
+    }).filter((entry) => entry.date && entry.amount > 0);
+  }
+
+  return [
+    {
+      date: getAnalyticsInternalInvoiceDate(invoice),
+      destination: normalizeAnalyticsDestination(invoice.query?.destination || invoice.destination),
+      amount: getInternalInvoiceCostAmount(invoice),
+    },
+  ].filter((entry) => entry.date && entry.amount > 0);
+};
+
+const sumInternalInvoiceCostEntriesInWindow = (invoices, start, end) =>
+  invoices.reduce(
+    (sum, invoice) =>
+      sum + getInternalInvoiceCostEntries(invoice).reduce((entrySum, entry) => {
+        if (!entry.date || entry.date < start || entry.date > end) return entrySum;
+        return entrySum + Number(entry.amount || 0);
+      }, 0),
+    0,
+  );
+
+const toReportCurrency = (value) => formatCompactCurrency(value);
+
+const createCustomBuckets = (start, end) => {
+  const buckets = [];
+  let current = new Date(start.getFullYear(), start.getMonth(), 1);
+  const limit = new Date(end.getFullYear(), end.getMonth(), 1);
+
+  while (current <= limit) {
+    const bucketStart = new Date(current.getFullYear(), current.getMonth(), 1);
+    const bucketEnd = new Date(current.getFullYear(), current.getMonth() + 1, 0, 23, 59, 59, 999);
+
+    const actualStart = bucketStart < start ? start : bucketStart;
+    const actualEnd = bucketEnd > end ? end : bucketEnd;
+
+    buckets.push({
+      label: bucketStart.toLocaleDateString("en-US", { month: "short", year: "2-digit" }),
+      start: actualStart,
+      end: actualEnd,
+      inward: 0,
+      outward: 0,
+    });
+
+    current.setMonth(current.getMonth() + 1);
+  }
+
+  if (buckets.length === 0) {
+    buckets.push({
+      label: "Custom Period",
+      start,
+      end,
+      inward: 0,
+      outward: 0,
+    });
+  }
+
+  return buckets;
+};
+
+const buildCustomAnalyticsPayload = ({
+  queries,
+  invoices,
+  internalInvoices,
+  start,
+  end,
+}) => {
+  const buckets = createCustomBuckets(start, end);
+
+  buckets.forEach((bucket) => {
+    invoices.forEach((invoice) => {
+      const invoiceDate = getAnalyticsInvoiceDate(invoice);
+      if (!invoiceDate || invoiceDate < bucket.start || invoiceDate > bucket.end) return;
+      bucket.inward += getInvoiceRevenueAmount(invoice);
+    });
+
+    internalInvoices.forEach((invoice) => {
+      const invoiceDate = getAnalyticsInternalInvoiceDate(invoice);
+      if (!invoiceDate || invoiceDate < bucket.start || invoiceDate > bucket.end) return;
+      bucket.outward += Number(invoice.payoutAmount || invoice.summary?.grandTotal || 0);
+    });
+  });
+
+  const inwardTotal = buckets.reduce((sum, bucket) => sum + bucket.inward, 0);
+  const outwardTotal = buckets.reduce((sum, bucket) => sum + bucket.outward, 0);
+
+  const durationMs = end.getTime() - start.getTime() + 1;
+  const prevStart = new Date(start.getTime() - durationMs);
+  const prevEnd = new Date(start.getTime() - 1);
+
+  const previousInwardTotal = sumInvoiceAmountsInWindow(invoices, prevStart, prevEnd);
+  const previousOutwardTotal = sumInternalInvoiceAmountsInWindow(internalInvoices, prevStart, prevEnd);
+
+  const chart = {
+    labels: buckets.map((b) => b.label),
+    inward: buckets.map((b) => Number(b.inward.toFixed(2))),
+    outward: buckets.map((b) => Number(b.outward.toFixed(2))),
+  };
+
+  const metrics = buildMetricPayload({
+    inwardTotal,
+    outwardTotal,
+    previousInwardTotal,
+    previousOutwardTotal,
+    comparisonLabel: "vs prev range",
+  });
+
+  const taxSummary = buildTaxSummary({
+    invoices,
+    internalInvoices,
+    referenceDate: start,
+    mode: "custom",
+    inwardTotal,
+    customStart: start,
+    customEnd: end,
+  });
+
+  return {
+    chart,
+    metrics,
+    taxSummary,
+  };
+};
+
+const createReportBuckets = (referenceDate, mode = "monthly") =>
+  (mode === "yearly" ? createYearlyBuckets(referenceDate) : createMonthlyBuckets(referenceDate));
+
+const getReportWindow = (referenceDate, mode = "monthly") =>
+  mode === "yearly" ? getTaxWindow(referenceDate, "yearly") : getTaxWindow(referenceDate, "monthly");
+
+const buildQueryAnalyticsReport = ({
+  queries = [],
+  referenceDate,
+  mode = "monthly",
+  customStart,
+  customEnd,
+}) => {
+  const activeWindow = customStart && customEnd
+    ? {
+        start: customStart,
+        end: customEnd,
+        label: `${customStart.toLocaleDateString("en-US", { month: "short", day: "numeric" })} - ${customEnd.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`,
+      }
+    : getReportWindow(referenceDate, mode);
+
+  const reportBuckets = customStart && customEnd
+    ? createCustomBuckets(customStart, customEnd).map((bucket) => ({
+        ...bucket,
+        queries: 0,
+        confirmed: 0,
+        cancelled: 0,
+        destinations: {},
+      }))
+    : createReportBuckets(referenceDate, mode).map((bucket) => ({
+        ...bucket,
+        queries: 0,
+        confirmed: 0,
+        cancelled: 0,
+        destinations: {},
+      }));
+
+  const activePeriodQueries = queries.filter((query) => {
+    const queryDate = getAnalyticsQueryDate(query);
+    return queryDate && queryDate >= activeWindow.start && queryDate <= activeWindow.end;
+  });
+  const confirmedQueries = activePeriodQueries.filter(isConfirmedAnalyticsQuery);
+  const cancelledQueries = activePeriodQueries.filter(isCancelledAnalyticsQuery);
+  const destinationMap = new Map();
+
+  queries.forEach((query) => {
+    const queryDate = getAnalyticsQueryDate(query);
+    if (!queryDate) return;
+
+    const queryBucket = reportBuckets.find((bucket) =>
+      queryDate >= bucket.start && queryDate <= bucket.end,
+    );
+    if (queryBucket) {
+      queryBucket.queries += 1;
+      if (isConfirmedAnalyticsQuery(query)) queryBucket.confirmed += 1;
+      if (isCancelledAnalyticsQuery(query)) queryBucket.cancelled += 1;
+      const destination = normalizeAnalyticsDestination(query.destination);
+      queryBucket.destinations[destination] = (queryBucket.destinations[destination] || 0) + 1;
+    }
+  });
+
+  activePeriodQueries.forEach((query) => {
+    const destination = normalizeAnalyticsDestination(query.destination);
+
+    if (!destinationMap.has(destination)) {
+      destinationMap.set(destination, {
+        destination,
+        queries: 0,
+        confirmed: 0,
+        cancelled: 0,
+      });
+    }
+
+    const destinationRow = destinationMap.get(destination);
+    destinationRow.queries += 1;
+    if (isConfirmedAnalyticsQuery(query)) destinationRow.confirmed += 1;
+    if (isCancelledAnalyticsQuery(query)) destinationRow.cancelled += 1;
+  });
+
+  const conversionPercent = activePeriodQueries.length ? (confirmedQueries.length / activePeriodQueries.length) * 100 : 0;
+  const periodPrefix = mode === "yearly" ? "Yearly" : "Monthly";
+
+  return {
+    summaryCards: [
+      {
+        label: `${periodPrefix} Queries`,
+        value: activePeriodQueries.length.toLocaleString("en-IN"),
+        sub: activeWindow.label,
+      },
+      {
+        label: "Confirmed Queries",
+        value: confirmedQueries.length.toLocaleString("en-IN"),
+        sub: activeWindow.label,
+      },
+      {
+        label: "Cancelled Queries",
+        value: cancelledQueries.length.toLocaleString("en-IN"),
+        sub: activeWindow.label,
+      },
+      {
+        label: "Conversion %",
+        value: formatPercentValue(conversionPercent),
+        sub: `${activeWindow.label} confirmed / queries`,
+      },
+    ],
+    monthlyQueries: reportBuckets.map((bucket) => ({
+      label: bucket.label,
+      queries: bucket.queries,
+      confirmed: bucket.confirmed,
+      cancelled: bucket.cancelled,
+      destinations: Object.entries(bucket.destinations || {})
+        .map(([name, count]) => ({ name, count }))
+        .sort((a, b) => b.count - a.count),
+    })),
+    destinationWiseQueries: Array.from(destinationMap.values())
+      .map((row) => ({
+        ...row,
+        conversionPercent: row.queries ? Number(((row.confirmed / row.queries) * 100).toFixed(1)) : 0,
+      }))
+      .sort((left, right) => right.queries - left.queries || right.confirmed - left.confirmed),
+    confirmationTrends: reportBuckets.map((bucket) => ({
+      label: bucket.label,
+      confirmed: bucket.confirmed,
+      cancelled: bucket.cancelled,
+      conversionPercent: bucket.queries ? Number(((bucket.confirmed / bucket.queries) * 100).toFixed(1)) : 0,
+    })),
+  };
+};
+
+const buildRevenueAnalyticsReport = ({
+  queries = [],
+  invoices = [],
+  quotations = [],
+  internalInvoices = [],
+  referenceDate,
+  mode = "monthly",
+  customStart,
+  customEnd,
+}) => {
+  const activeWindow = customStart && customEnd
+    ? {
+        start: customStart,
+        end: customEnd,
+        label: `${customStart.toLocaleDateString("en-US", { month: "short", day: "numeric" })} - ${customEnd.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`,
+      }
+    : getReportWindow(referenceDate, mode);
+
+  const reportBuckets = customStart && customEnd
+    ? createCustomBuckets(customStart, customEnd).map((bucket) => ({
+        ...bucket,
+        revenue: 0,
+        bookings: 0,
+        receivedPayment: 0,
+      }))
+    : createReportBuckets(referenceDate, mode).map((bucket) => ({
+        ...bucket,
+        revenue: 0,
+        bookings: 0,
+        receivedPayment: 0,
+      }));
+  const destinationMap = new Map();
+  const dailyRevenueMap = new Map();
+  const paidBookingKeys = new Set();
+  let currentPeriodPendingRevenue = 0;
+  const addQueryContextToMap = (map, query = {}) => {
+    const keys = [
+      query?._id?.toString?.(),
+      query?.id?.toString?.(),
+      query?.queryId,
+    ].filter(Boolean);
+
+    keys.forEach((key) => map.set(String(key), query));
+    return map;
+  };
+  const queryContextByKey = queries.reduce(addQueryContextToMap, new Map());
+  const addQueryKey = (set, value) => {
+    const normalized = normalizeEntityId(value);
+    if (normalized && normalized !== "-") set.add(String(normalized));
+  };
+  const getInvoiceAnalyticsQueryKeys = (invoice = {}) => {
+    const keys = new Set();
+    addQueryKey(keys, invoice.query);
+    addQueryKey(keys, invoice.query?._id);
+    addQueryKey(keys, invoice.query?.queryId);
+    addQueryKey(keys, invoice.tripSnapshot?.queryId);
+    return keys;
+  };
+  const getQuotationAnalyticsQueryKeys = (quotation = {}) => {
+    const keys = new Set();
+    addQueryKey(keys, quotation.queryId);
+    addQueryKey(keys, quotation.queryId?._id);
+    addQueryKey(keys, quotation.queryId?.queryId);
+    return keys;
+  };
+  const invoicedQueryKeys = invoices.reduce((set, invoice) => {
+    if (getInvoiceGrossRevenueAmount(invoice) <= 0) return set;
+    getInvoiceAnalyticsQueryKeys(invoice).forEach((key) => set.add(key));
+    return set;
+  }, new Set());
+  const getInvoiceQueryContext = (invoice = {}) => {
+    if (invoice.query && typeof invoice.query === "object" && (invoice.query.destination || invoice.query.startDate)) {
+      return invoice.query;
+    }
+
+    const candidates = [
+      invoice.query?._id?.toString?.(),
+      invoice.query?.queryId,
+      invoice.query?.toString?.(),
+      invoice.tripSnapshot?.queryId,
+    ].filter(Boolean);
+
+    return candidates.map((key) => queryContextByKey.get(String(key))).find(Boolean) || {};
+  };
+  const getQuotationQueryContext = (quotation = {}) => {
+    if (quotation.queryId && typeof quotation.queryId === "object" && (quotation.queryId.destination || quotation.queryId.startDate)) {
+      return quotation.queryId;
+    }
+
+    const candidates = [
+      quotation.queryId?._id?.toString?.(),
+      quotation.queryId?.queryId,
+      quotation.queryId?.toString?.(),
+    ].filter(Boolean);
+
+    return candidates.map((key) => queryContextByKey.get(String(key))).find(Boolean) || {};
+  };
+  const getInvoiceReportDate = (invoice = {}) => {
+    const queryContext = getInvoiceQueryContext(invoice);
+    return (
+      getInvoicePaymentRecognitionDate(invoice) ||
+      parseAnalyticsDate(queryContext.startDate) ||
+      getAnalyticsInvoiceDate(invoice)
+    );
+  };
+  const getInvoiceTravelReportDate = (invoice = {}) => {
+    const queryContext = getInvoiceQueryContext(invoice);
+    return (
+      parseAnalyticsDate(queryContext.startDate) ||
+      parseAnalyticsDate(invoice.tripSnapshot?.startDate)
+    );
+  };
+  const getQuotationReportDate = (quotation = {}) => {
+    const queryContext = getQuotationQueryContext(quotation);
+    return (
+      parseAnalyticsDate(queryContext.startDate) ||
+      parseAnalyticsDate(quotation.updatedAt || quotation.createdAt)
+    );
+  };
+  const getInvoiceReportDestination = (invoice = {}) => {
+    const queryContext = getInvoiceQueryContext(invoice);
+    return normalizeAnalyticsDestination(
+      queryContext.destination ||
+      invoice.query?.destination ||
+      invoice.tripSnapshot?.destination,
+    );
+  };
+  const getQuotationReportDestination = (quotation = {}) => {
+    const queryContext = getQuotationQueryContext(quotation);
+    return normalizeAnalyticsDestination(
+      queryContext.destination ||
+      quotation.queryId?.destination,
+    );
+  };
+  const getQuotationGrossRevenueAmount = (quotation = {}) => {
+    const servicesTotal = Array.isArray(quotation.services)
+      ? quotation.services.reduce((sum, service) => sum + Number(service?.totalInInr || service?.total || 0), 0)
+      : 0;
+
+    return Math.max(
+      Number(quotation.clientTotalAmount || 0),
+      Number(quotation.pricing?.totalAmount || 0),
+      Number(quotation.totalAmount || 0),
+      servicesTotal,
+    );
+  };
+  const formatDateKey = (date) =>
+    `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+  const addTravelDateRevenue = (date, totalAmount, receivedAmount = 0) => {
+    const dateKey = formatDateKey(date);
+    const existing = dailyRevenueMap.get(dateKey) || {
+      date: dateKey,
+      label: date.toLocaleDateString("en-US", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      }),
+      revenue: 0,
+      receivedPayment: 0,
+      bookings: 0,
+    };
+
+    existing.revenue += totalAmount;
+    existing.receivedPayment += receivedAmount;
+    existing.bookings += 1;
+    dailyRevenueMap.set(dateKey, existing);
+  };
+
+  invoices.forEach((invoice) => {
+    const travelDate = getInvoiceTravelReportDate(invoice);
+    const revenueReportDate = travelDate || getInvoiceReportDate(invoice);
+    if (!revenueReportDate) return;
+
+    const destination = getInvoiceReportDestination(invoice);
+    const grossAmount = getInvoiceGrossRevenueAmount(invoice);
+    const totalAmount = getInvoiceRevenueAmount(invoice);
+    const receivedAmount = getInvoiceReceivedAmount(invoice);
+    const offerContext = getInvoiceOfferContext(invoice);
+
+    const bucket = reportBuckets.find((item) =>
+      revenueReportDate >= item.start && revenueReportDate <= item.end,
+    );
+    if (bucket) {
+      bucket.revenue += totalAmount;
+      bucket.receivedPayment += receivedAmount;
+    }
+    if (revenueReportDate >= activeWindow.start && revenueReportDate <= activeWindow.end) {
+      addTravelDateRevenue(revenueReportDate, totalAmount, receivedAmount);
+      currentPeriodPendingRevenue += Math.max(0, totalAmount - receivedAmount);
+      if (hasInvoicePaymentReceived(invoice)) {
+        const bookingKey = getInvoiceBookingKey(invoice);
+        if (bookingKey) paidBookingKeys.add(String(bookingKey));
+      }
+    }
+
+    if (!travelDate || travelDate < activeWindow.start || travelDate > activeWindow.end) return;
+
+    if (!destinationMap.has(destination)) {
+      destinationMap.set(destination, {
+        destination,
+        grossRevenue: 0,
+        revenue: 0,
+        pendingRevenue: 0,
+        cost: 0,
+        bookings: 0,
+        offerDiscount: 0,
+        offerLabels: new Set(),
+      });
+    }
+
+    const destinationRow = destinationMap.get(destination);
+    destinationRow.grossRevenue += grossAmount;
+    destinationRow.revenue += receivedAmount;
+    destinationRow.pendingRevenue += Math.max(0, totalAmount - receivedAmount);
+    destinationRow.offerDiscount += Number(offerContext.discountAmount || 0);
+    if (offerContext.label) destinationRow.offerLabels.add(offerContext.label);
+  });
+
+  quotations.forEach((quotation) => {
+    if (String(quotation.status || "") !== "Confirmed") return;
+
+    const quotationQueryKeys = getQuotationAnalyticsQueryKeys(quotation);
+    if (Array.from(quotationQueryKeys).some((key) => invoicedQueryKeys.has(key))) return;
+
+    const travelDate = getQuotationReportDate(quotation);
+    if (!travelDate) return;
+
+    const grossAmount = getQuotationGrossRevenueAmount(quotation);
+    if (grossAmount <= 0) return;
+
+    const destination = getQuotationReportDestination(quotation);
+    if (travelDate < activeWindow.start || travelDate > activeWindow.end) return;
+
+    currentPeriodPendingRevenue += grossAmount;
+    const bucket = reportBuckets.find((item) =>
+      travelDate >= item.start && travelDate <= item.end,
+    );
+    if (bucket) {
+      bucket.revenue += grossAmount;
+    }
+
+    if (!destinationMap.has(destination)) {
+      destinationMap.set(destination, {
+        destination,
+        grossRevenue: 0,
+        revenue: 0,
+        pendingRevenue: 0,
+        cost: 0,
+        bookings: 0,
+        offerDiscount: 0,
+        offerLabels: new Set(),
+      });
+    }
+
+    const destinationRow = destinationMap.get(destination);
+    destinationRow.grossRevenue += grossAmount;
+    destinationRow.pendingRevenue += grossAmount;
+  });
+
+  queries.forEach((query) => {
+    if (!isConfirmedAnalyticsQuery(query)) return;
+
+    const travelDate = parseAnalyticsDate(query.startDate);
+    if (!travelDate) return;
+
+    const bucket = reportBuckets.find((item) =>
+      travelDate >= item.start && travelDate <= item.end,
+    );
+    if (bucket) bucket.bookings += 1;
+    if (travelDate < activeWindow.start || travelDate > activeWindow.end) return;
+
+    const destination = normalizeAnalyticsDestination(query.destination);
+    if (!destinationMap.has(destination)) {
+      destinationMap.set(destination, {
+        destination,
+        grossRevenue: 0,
+        revenue: 0,
+        pendingRevenue: 0,
+        cost: 0,
+        bookings: 0,
+        offerDiscount: 0,
+        offerLabels: new Set(),
+      });
+    }
+    destinationMap.get(destination).bookings += 1;
+  });
+
+  internalInvoices.forEach((invoice) => {
+    getInternalInvoiceCostEntries(invoice).forEach((entry) => {
+      if (!entry.date || entry.date < activeWindow.start || entry.date > activeWindow.end) return;
+
+      const destination = normalizeAnalyticsDestination(entry.destination);
+      if (!destinationMap.has(destination)) {
+        destinationMap.set(destination, {
+          destination,
+          grossRevenue: 0,
+          revenue: 0,
+          pendingRevenue: 0,
+          cost: 0,
+          bookings: 0,
+          offerDiscount: 0,
+          offerLabels: new Set(),
+        });
+      }
+
+      destinationMap.get(destination).cost += Number(entry.amount || 0);
+    });
+  });
+
+  const currentPeriodRevenue = reportBuckets
+    .filter((bucket) => bucket.start >= activeWindow.start && bucket.end <= activeWindow.end)
+    .reduce((sum, bucket) => sum + bucket.revenue, 0);
+  const currentPeriodReceivedPayment = reportBuckets
+    .filter((bucket) => bucket.start >= activeWindow.start && bucket.end <= activeWindow.end)
+    .reduce((sum, bucket) => sum + bucket.receivedPayment, 0);
+  const currentPeriodBookings = reportBuckets
+    .filter((bucket) => bucket.start >= activeWindow.start && bucket.end <= activeWindow.end)
+    .reduce((sum, bucket) => sum + bucket.bookings, 0);
+  const currentPeriodPaidBookings = paidBookingKeys.size;
+
+  const destinationProfitability = Array.from(destinationMap.values())
+    .map((row) => {
+      const profit = row.revenue - row.cost;
+      const marginBase = row.grossRevenue || row.revenue;
+      const margin = marginBase ? (profit / marginBase) * 100 : 0;
+
+      return {
+        destination: row.destination,
+        grossRevenue: Number(Number(row.grossRevenue || 0).toFixed(2)),
+        grossRevenueLabel: toReportCurrency(row.grossRevenue || 0),
+        revenue: Number(row.revenue.toFixed(2)),
+        revenueLabel: toReportCurrency(row.revenue),
+        pendingRevenue: Number(Number(row.pendingRevenue || 0).toFixed(2)),
+        pendingRevenueLabel: toReportCurrency(row.pendingRevenue || 0),
+        cost: Number(row.cost.toFixed(2)),
+        costLabel: toReportCurrency(row.cost),
+        offerDiscount: Number(Number(row.offerDiscount || 0).toFixed(2)),
+        offerDiscountLabel: toReportCurrency(row.offerDiscount || 0),
+        offerLabel: row.offerLabels?.size
+          ? Array.from(row.offerLabels).join(", ")
+          : "",
+        profit: Number(profit.toFixed(2)),
+        profitLabel: toReportCurrency(profit),
+        marginPercent: Number(margin.toFixed(1)),
+        bookings: row.bookings,
+      };
+    })
+    .filter((row) => row.grossRevenue > 0 || row.revenue > 0 || row.cost > 0)
+    .sort((left, right) => right.profit - left.profit || right.revenue - left.revenue)
+    .slice(0, 10);
+
+  return {
+    summaryCards: [
+      {
+        label: mode === "yearly" ? "Yearly Revenue" : "Monthly Revenue",
+        value: toReportCurrency(currentPeriodRevenue),
+        sub: `${activeWindow.label} total receivable`,
+      },
+      {
+        label: "Verified Payment Revenue",
+        value: toReportCurrency(currentPeriodReceivedPayment),
+        sub: "Received/verified payment for period",
+      },
+      {
+        label: mode === "yearly" ? "Yearly Bookings" : "Monthly Bookings",
+        value: currentPeriodBookings.toLocaleString("en-IN"),
+        sub: activeWindow.label,
+      },
+      {
+        label: "Pending Revenue",
+        value: toReportCurrency(currentPeriodPendingRevenue),
+        sub: "Total unpaid balance for month",
+      },
+      {
+        label: "Confirmed Bookings",
+        value: currentPeriodPaidBookings.toLocaleString("en-IN"),
+        sub: "Full/partial payment received",
+      },
+    ],
+    monthlyRevenue: reportBuckets.map((bucket) => ({
+      label: bucket.label,
+      revenue: Number(bucket.revenue.toFixed(2)),
+      revenueLabel: toReportCurrency(bucket.revenue),
+      bookings: bucket.bookings,
+    })),
+    monthlyBookings: reportBuckets.map((bucket) => ({
+      label: bucket.label,
+      bookings: bucket.bookings,
+    })),
+    travelDateRevenue: reportBuckets.map((bucket) => ({
+      label: bucket.label,
+      revenue: Number(bucket.revenue.toFixed(2)),
+      revenueLabel: toReportCurrency(bucket.revenue),
+      receivedPayment: Number(bucket.receivedPayment.toFixed(2)),
+      receivedPaymentLabel: toReportCurrency(bucket.receivedPayment),
+      bookings: bucket.bookings,
+    })),
+    travelDateEntries: Array.from(dailyRevenueMap.values())
+      .map((row) => ({
+        ...row,
+        revenue: Number(row.revenue.toFixed(2)),
+        revenueLabel: toReportCurrency(row.revenue),
+        receivedPayment: Number(Number(row.receivedPayment || 0).toFixed(2)),
+        receivedPaymentLabel: toReportCurrency(row.receivedPayment || 0),
+      }))
+      .sort((left, right) => new Date(left.date).getTime() - new Date(right.date).getTime()),
+    destinationProfitability,
+  };
+};
 
 const getCurrentYearWindow = (referenceDate) => ({
   start: new Date(referenceDate.getFullYear(), 0, 1),
@@ -2602,6 +4309,11 @@ const getTaxWindow = (referenceDate, mode) => {
   return { start, end, label };
 };
 
+const formatTaxMonthValue = (date) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+
+const formatTaxYearValue = (date) => String(date.getFullYear());
+
 const buildMetricPayload = ({
   inwardTotal,
   outwardTotal,
@@ -2619,7 +4331,7 @@ const buildMetricPayload = ({
   return {
     inward: {
       label: "Total Inward",
-      sub: "Money from Agents",
+      sub: "Total amount from Agents",
       val: formatCompactCurrency(inwardTotal),
       change: formatGrowthText(inwardTotal, previousInwardTotal, comparisonLabel),
       up: inwardTotal >= previousInwardTotal,
@@ -2658,14 +4370,20 @@ const buildTaxSummary = ({
   referenceDate,
   mode,
   inwardTotal,
+  customStart,
+  customEnd,
 }) => {
-  const { start, end, label } = getTaxWindow(referenceDate, mode);
+  const start = customStart || getTaxWindow(referenceDate, mode).start;
+  const end = customEnd || getTaxWindow(referenceDate, mode).end;
+  const label = customStart && customEnd
+    ? `${customStart.toLocaleDateString("en-US", { month: "short", day: "numeric" })} - ${customEnd.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`
+    : getTaxWindow(referenceDate, mode).label;
 
   let gstTotal = 0;
   let tcsDomestic = 0;
   let tcsInternational = 0;
-  let tdfTotal = 0;
-  let tdfTransactions = 0;
+  let tdsTotal = 0;
+  let tdsTransactions = 0;
 
   invoices.forEach((invoice) => {
     const invoiceDate = getAnalyticsInvoiceDate(invoice);
@@ -2673,7 +4391,7 @@ const buildTaxSummary = ({
 
     const gstAmount = Number(invoice.pricingSnapshot?.gstAmount || 0);
     const tcsAmount = Number(invoice.pricingSnapshot?.tcsAmount || 0);
-    const tourismAmount = Number(invoice.pricingSnapshot?.tourismAmount || 0);
+    const tdsAmount = Number(invoice.pricingSnapshot?.tdsAmount || invoice.pricingSnapshot?.tourismAmount || 0);
     const destination = invoice.query?.destination || invoice.tripSnapshot?.destination || "";
 
     gstTotal += gstAmount;
@@ -2683,9 +4401,9 @@ const buildTaxSummary = ({
       tcsInternational += tcsAmount;
     }
 
-    if (tourismAmount > 0) {
-      tdfTotal += tourismAmount;
-      tdfTransactions += 1;
+    if (tdsAmount > 0) {
+      tdsTotal += tdsAmount;
+      tdsTransactions += 1;
     }
   });
 
@@ -2695,7 +4413,7 @@ const buildTaxSummary = ({
 
     const gstAmount = Number(invoice.summary?.gstAmount || 0);
     const tcsAmount = Number(invoice.summary?.tcsAmount || 0);
-    const tourismAmount = Number(invoice.summary?.otherTaxAmount || 0);
+    const tdsAmount = Number(invoice.summary?.tdsAmount || invoice.summary?.otherTaxAmount || 0);
     const destination = invoice.query?.destination || invoice.destination || "";
 
     gstTotal += gstAmount;
@@ -2705,14 +4423,14 @@ const buildTaxSummary = ({
       tcsInternational += tcsAmount;
     }
 
-    if (tourismAmount > 0) {
-      tdfTotal += tourismAmount;
-      tdfTransactions += 1;
+    if (tdsAmount > 0) {
+      tdsTotal += tdsAmount;
+      tdsTransactions += 1;
     }
   });
 
   const tcsTotal = tcsDomestic + tcsInternational;
-  const totalTaxCollected = gstTotal + tcsTotal + tdfTotal;
+  const totalTaxCollected = gstTotal + tcsTotal + tdsTotal;
   const taxAsPercent = inwardTotal ? (totalTaxCollected / inwardTotal) * 100 : 0;
   const pendingTaxReview =
     invoices.filter((invoice) => {
@@ -2756,15 +4474,27 @@ const buildTaxSummary = ({
         { label: "International Tours", value: formatCompactCurrency(tcsInternational) },
       ],
     },
-    tdf: {
-      total: formatCompactCurrency(tdfTotal),
-      rateLabel: "Tax per hotel levy",
-      status: tdfTotal > 0 ? "Collected" : "No activity",
+    tds: {
+      total: formatCompactCurrency(tdsTotal),
+      rateLabel: "Tax deducted at source",
+      status: tdsTotal > 0 ? "Collected" : "No activity",
       breakdown: [
-        { label: "Total Transactions", value: tdfTransactions.toLocaleString("en-IN") },
+        { label: "Total Transactions", value: tdsTransactions.toLocaleString("en-IN") },
         {
           label: "Avg Per Invoice",
-          value: formatCompactCurrency(tdfTransactions ? tdfTotal / tdfTransactions : 0),
+          value: formatCompactCurrency(tdsTransactions ? tdsTotal / tdsTransactions : 0),
+        },
+      ],
+    },
+    tdf: {
+      total: formatCompactCurrency(tdsTotal),
+      rateLabel: "Tax deducted at source",
+      status: tdsTotal > 0 ? "Collected" : "No activity",
+      breakdown: [
+        { label: "Total Transactions", value: tdsTransactions.toLocaleString("en-IN") },
+        {
+          label: "Avg Per Invoice",
+          value: formatCompactCurrency(tdsTransactions ? tdsTotal / tdsTransactions : 0),
         },
       ],
     },
@@ -2782,8 +4512,138 @@ const buildTaxSummary = ({
   };
 };
 
-const buildAdvancedAnalyticsPayload = ({
+const buildMonthlyTaxPeriods = ({
+  queries,
   invoices,
+  quotations,
+  internalInvoices,
+  referenceDate,
+}) => {
+  const yearStart = new Date(referenceDate.getFullYear(), 0, 1);
+
+  return Array.from({ length: 12 }, (_, index) => {
+    const monthDate = addMonths(yearStart, index);
+    const { start, end } = getTaxWindow(monthDate, "monthly");
+    const previousMonthDate = addMonths(monthDate, -1);
+    const previousWindow = getTaxWindow(previousMonthDate, "monthly");
+    const inwardTotal = sumInvoiceAmountsInWindow(invoices, start, end);
+    const outwardTotal = sumInternalInvoiceAmountsInWindow(internalInvoices, start, end);
+    const previousInwardTotal = sumInvoiceAmountsInWindow(
+      invoices,
+      previousWindow.start,
+      previousWindow.end,
+    );
+    const previousOutwardTotal = sumInternalInvoiceAmountsInWindow(
+      internalInvoices,
+      previousWindow.start,
+      previousWindow.end,
+    );
+    const taxSummary = buildTaxSummary({
+      invoices,
+      internalInvoices,
+      referenceDate: monthDate,
+      mode: "monthly",
+      inwardTotal,
+    });
+
+    return {
+      value: formatTaxMonthValue(monthDate),
+      label: taxSummary.periodLabel,
+      metrics: buildMetricPayload({
+        inwardTotal,
+        outwardTotal,
+        previousInwardTotal,
+        previousOutwardTotal,
+        comparisonLabel: "vs last month",
+      }),
+      taxSummary,
+      reports: {
+        query: buildQueryAnalyticsReport({
+          queries,
+          referenceDate: monthDate,
+          mode: "monthly",
+        }),
+        revenue: buildRevenueAnalyticsReport({
+          queries,
+          invoices,
+          quotations,
+          internalInvoices,
+          referenceDate: monthDate,
+          mode: "monthly",
+        }),
+      },
+    };
+  });
+};
+
+const buildYearlyTaxPeriods = ({
+  queries,
+  invoices,
+  quotations,
+  internalInvoices,
+  referenceDate,
+}) => {
+  const currentYear = referenceDate.getFullYear();
+
+  return Array.from({ length: 6 }, (_, index) => {
+    const year = currentYear - 5 + index;
+    const yearDate = new Date(year, 0, 1);
+    const { start, end } = getTaxWindow(yearDate, "yearly");
+    const previousWindow = getPreviousYearWindow(yearDate);
+    const inwardTotal = sumInvoiceAmountsInWindow(invoices, start, end);
+    const outwardTotal = sumInternalInvoiceAmountsInWindow(internalInvoices, start, end);
+    const previousInwardTotal = sumInvoiceAmountsInWindow(
+      invoices,
+      previousWindow.start,
+      previousWindow.end,
+    );
+    const previousOutwardTotal = sumInternalInvoiceAmountsInWindow(
+      internalInvoices,
+      previousWindow.start,
+      previousWindow.end,
+    );
+    const taxSummary = buildTaxSummary({
+      invoices,
+      internalInvoices,
+      referenceDate: yearDate,
+      mode: "yearly",
+      inwardTotal,
+    });
+
+    return {
+      value: formatTaxYearValue(yearDate),
+      label: taxSummary.periodLabel,
+      metrics: buildMetricPayload({
+        inwardTotal,
+        outwardTotal,
+        previousInwardTotal,
+        previousOutwardTotal,
+        comparisonLabel: "vs last year",
+      }),
+      taxSummary,
+      reports: {
+        query: buildQueryAnalyticsReport({
+          queries,
+          referenceDate: yearDate,
+          mode: "yearly",
+        }),
+        revenue: buildRevenueAnalyticsReport({
+          queries,
+          invoices,
+          quotations,
+          internalInvoices,
+          referenceDate: yearDate,
+          mode: "yearly",
+        }),
+      },
+    };
+  });
+};
+
+const buildAdvancedAnalyticsPayload = ({
+  queries,
+  invoices,
+  quotations,
   internalInvoices,
   referenceDate,
   mode,
@@ -2796,13 +4656,14 @@ const buildAdvancedAnalyticsPayload = ({
     invoices.forEach((invoice) => {
       const invoiceDate = getAnalyticsInvoiceDate(invoice);
       if (!invoiceDate || invoiceDate < bucket.start || invoiceDate > bucket.end) return;
-      bucket.inward += Number(invoice.totalAmount || 0);
+      bucket.inward += getInvoiceRevenueAmount(invoice);
     });
 
     internalInvoices.forEach((invoice) => {
-      const invoiceDate = getAnalyticsInternalInvoiceDate(invoice);
-      if (!invoiceDate || invoiceDate < bucket.start || invoiceDate > bucket.end) return;
-      bucket.outward += Number(invoice.payoutAmount || invoice.summary?.grandTotal || 0);
+      bucket.outward += getInternalInvoiceCostEntries(invoice).reduce((sum, entry) => {
+        if (!entry.date || entry.date < bucket.start || entry.date > bucket.end) return sum;
+        return sum + Number(entry.amount || 0);
+      }, 0);
     });
   });
 
@@ -2814,6 +4675,13 @@ const buildAdvancedAnalyticsPayload = ({
   let comparisonLabel = "vs last period";
 
   if (mode === "yearly") {
+    const yearPeriods = buildYearlyTaxPeriods({
+      queries,
+      invoices,
+      quotations,
+      internalInvoices,
+      referenceDate,
+    });
     const currentYearWindow = getCurrentYearWindow(referenceDate);
     const previousYearWindow = getPreviousYearWindow(referenceDate);
 
@@ -2854,18 +4722,26 @@ const buildAdvancedAnalyticsPayload = ({
         previousOutwardTotal,
         comparisonLabel,
       }),
-      taxSummary: buildTaxSummary({
+      taxSummary: yearPeriods.find((period) => period.value === formatTaxYearValue(referenceDate))?.taxSummary || buildTaxSummary({
         invoices,
         internalInvoices,
         referenceDate,
         mode,
         inwardTotal: currentYearInward,
       }),
+      yearPeriods,
     };
   }
 
   const aggregateWindowStart = getAggregateWindowStart(referenceDate);
   const previousWindow = getPreviousAggregateWindow(aggregateWindowStart);
+  const taxPeriods = buildMonthlyTaxPeriods({
+    queries,
+    invoices,
+    quotations,
+    internalInvoices,
+    referenceDate,
+  });
 
   previousInwardTotal = sumInvoiceAmountsInWindow(
     invoices,
@@ -2891,13 +4767,14 @@ const buildAdvancedAnalyticsPayload = ({
       previousOutwardTotal,
       comparisonLabel,
     }),
-    taxSummary: buildTaxSummary({
+    taxSummary: taxPeriods.find((period) => period.value === formatTaxMonthValue(referenceDate))?.taxSummary || buildTaxSummary({
       invoices,
       internalInvoices,
       referenceDate,
       mode,
       inwardTotal,
     }),
+    taxPeriods,
   };
 };
 
@@ -2909,17 +4786,8 @@ export const getFinanceDashboard = async (req, res, next) => {
     const { start, end } = getRangeWindow(range, req.query.startDate, req.query.endDate);
     const previousWindow = getPreviousWindow({ start, end });
 
-    const [currentInvoices, previousInvoices, internalInvoices] = await Promise.all([
-      Invoice.find({
-        createdAt: { $gte: start, $lte: end },
-      })
-        .populate("agent", "name companyName")
-        .populate("generatedBy", "name companyName role")
-        .populate("query", "queryId")
-        .lean(),
-      Invoice.find({
-        createdAt: { $gte: previousWindow.start, $lte: previousWindow.end },
-      })
+    const [agentInvoices, internalInvoices] = await Promise.all([
+      Invoice.find(buildAgentInvoiceWindowQuery(previousWindow.start, end))
         .populate("agent", "name companyName")
         .populate("generatedBy", "name companyName role")
         .populate("query", "queryId")
@@ -2937,9 +4805,10 @@ export const getFinanceDashboard = async (req, res, next) => {
         .lean(),
     ]);
 
-    const normalizeInvoice = (invoice) => {
+    const normalizeInvoice = (invoice, windowStart, windowEnd) => {
       const status = mapInvoiceStatus(invoice.paymentStatus);
-      const createdAt = new Date(invoice.createdAt);
+      const relevantDate = getAgentInvoiceRelevantDate(invoice, windowStart, windowEnd);
+      if (!relevantDate) return null;
       const generatedByRole = invoice.generatedBy?.role || invoice.invoiceType;
       const isPayable = generatedByRole === "dmc_partner";
 
@@ -2958,8 +4827,8 @@ export const getFinanceDashboard = async (req, res, next) => {
           invoice.agent?.companyName ||
           invoice.agent?.name ||
           "-",
-        date: formatDashboardDate(invoice.createdAt),
-        dateValue: createdAt,
+        date: formatDashboardDate(relevantDate),
+        dateValue: relevantDate,
         amount: invoice.totalAmount,
         amountValue: Number(invoice.totalAmount || 0),
         status,
@@ -2971,12 +4840,16 @@ export const getFinanceDashboard = async (req, res, next) => {
         bucket: isPayable ? "payable" : "receivable",
         isOverdue:
           status === "Unpaid" &&
-          createdAt.getTime() < Date.now() - 7 * 24 * 60 * 60 * 1000,
+          relevantDate.getTime() < Date.now() - 7 * 24 * 60 * 60 * 1000,
       };
     };
 
-    const currentRows = currentInvoices.map(normalizeInvoice);
-    const previousRows = previousInvoices.map(normalizeInvoice);
+    const currentRows = agentInvoices
+      .map((invoice) => normalizeInvoice(invoice, start, end))
+      .filter(Boolean);
+    const previousRows = agentInvoices
+      .map((invoice) => normalizeInvoice(invoice, previousWindow.start, previousWindow.end))
+      .filter(Boolean);
 
     const normalizedPayables = internalInvoices
       .map((invoice) => {
@@ -3008,6 +4881,8 @@ export const getFinanceDashboard = async (req, res, next) => {
           amount: amountValue,
           amountValue,
           status,
+          assignedFinanceId: invoice?.assignedTo || null,
+          assignedTo: invoice?.assignedTo || null,
           reviewedBy: invoice?.reviewedBy || null,
           bucket: "payable",
           isOverdue:
@@ -3030,28 +4905,12 @@ export const getFinanceDashboard = async (req, res, next) => {
     const scopedCurrentRows =
       accessContext.scope === "admin"
         ? currentRows
-        : filterRowsByFinanceAccess({
-          rows: decorateFinanceAssignment({
-            rows: currentRows,
-            teamMembers: accessContext.teamMembers,
-            getExplicitAssigneeIds: (row) => [row.assignedFinanceId, row.reviewedBy],
-            getFallbackSeed: (row) => `${row.bucket}-${row.id}-${row.queryId}`,
-          }),
-          accessContext,
-        });
+        : decorateFinanceDashboardRows(currentRows, accessContext);
 
     const scopedPreviousRows =
       accessContext.scope === "admin"
         ? previousRows
-        : filterRowsByFinanceAccess({
-          rows: decorateFinanceAssignment({
-            rows: previousRows,
-            teamMembers: accessContext.teamMembers,
-            getExplicitAssigneeIds: (row) => [row.assignedFinanceId, row.reviewedBy],
-            getFallbackSeed: (row) => `${row.bucket}-${row.id}-${row.queryId}`,
-          }),
-          accessContext,
-        });
+        : decorateFinanceDashboardRows(previousRows, accessContext);
 
     const currentMetrics = buildFinanceMetrics(scopedCurrentRows);
     const previousMetrics = buildFinanceMetrics(scopedPreviousRows);
@@ -3123,22 +4982,91 @@ export const getFinanceDashboard = async (req, res, next) => {
   }
 };
 
+const formatFinanceParticipantOption = (user = {}) => {
+  const status = String(user.status || "").toLowerCase();
+  const accountStatus = String(user.accountStatus || "").toLowerCase();
+  const hasApprovalStatus = status ? status === "approve" : true;
+  const adminApproved = Boolean(user.isApproved) && hasApprovalStatus && accountStatus !== "inactive";
+
+  return {
+    id: user._id?.toString?.() || "",
+    name: user.name || "",
+    companyName: user.companyName || "",
+    email: user.email || "",
+    role: user.role || "",
+    status: user.status || "",
+    accountStatus: user.accountStatus || "",
+    isApproved: Boolean(user.isApproved),
+    adminApproved,
+  };
+};
+
 export const getAdvancedAnalytics = async (req, res, next) => {
   try {
     const accessContext = await ensureFinanceApiAccess(req);
 
-    const referenceDate = new Date();
+    let referenceDate = new Date();
+    if (req.query.startDate) {
+      const parsedStart = new Date(req.query.startDate);
+      if (!Number.isNaN(parsedStart.getTime())) {
+        referenceDate = parsedStart;
+      }
+    }
+    const isCustom = req.query.startDate && req.query.endDate;
+    let customStart = null;
+    let customEnd = null;
+    if (isCustom) {
+      customStart = new Date(req.query.startDate);
+      customStart.setHours(0, 0, 0, 0);
+      customEnd = new Date(req.query.endDate);
+      customEnd.setHours(23, 59, 59, 999);
+    }
+
     const earliestYearStart = new Date(referenceDate.getFullYear() - 5, 0, 1);
     const earliestMonthlyStart = addMonths(startOfMonth(referenceDate), -23);
-    const earliestDate = earliestYearStart < earliestMonthlyStart
+    let earliestDate = earliestYearStart < earliestMonthlyStart
       ? earliestYearStart
       : earliestMonthlyStart;
 
-    const [invoices, internalInvoices] = await Promise.all([
-      Invoice.find({
-        createdAt: { $gte: earliestDate },
+    if (customStart && customStart < earliestDate) {
+      earliestDate = customStart;
+    }
+
+    const [queries, invoices, quotations, internalInvoices, settlementBatches, agents, dmcPartners] = await Promise.all([
+      TravelQuery.find({
+        $or: [
+          { createdAt: { $gte: earliestDate } },
+          { updatedAt: { $gte: earliestDate } },
+          { startDate: { $gte: earliestDate } },
+        ],
       })
-        .populate("query", "queryId destination")
+        .select("queryId destination startDate endDate opsStatus agentStatus activityLog.action createdAt updatedAt")
+        .lean(),
+      Invoice.find({
+        $or: [
+          { createdAt: { $gte: earliestDate } },
+          { updatedAt: { $gte: earliestDate } },
+          { "tripSnapshot.startDate": { $gte: earliestDate } },
+          { "paymentSubmission.paymentDate": { $gte: earliestDate } },
+          { "paymentSubmission.submittedAt": { $gte: earliestDate } },
+          { "paymentSubmission.trackerPayments.paymentDateValue": { $gte: earliestDate } },
+          { "paymentSubmission.trackerPayments.paymentDate": { $gte: earliestDate } },
+          { "paymentSubmission.trackerPayments.verifiedAt": { $gte: earliestDate } },
+        ],
+      })
+        .populate("query", "queryId destination startDate endDate opsStatus agentStatus activityLog.action")
+        .populate("agent", "name companyName email phone")
+        .lean(),
+      Quotation.find({
+        status: "Confirmed",
+        $or: [
+          { createdAt: { $gte: earliestDate } },
+          { updatedAt: { $gte: earliestDate } },
+          { validTill: { $gte: earliestDate } },
+        ],
+      })
+        .select("queryId quotationNumber pricing.totalAmount clientTotalAmount services.total services.totalInInr totalAmount status createdAt updatedAt")
+        .populate("queryId", "queryId destination startDate endDate opsStatus agentStatus activityLog.action")
         .lean(),
       InternalInvoice.find({
         $or: [
@@ -3148,11 +5076,133 @@ export const getAdvancedAnalytics = async (req, res, next) => {
           { createdAt: { $gte: earliestDate } },
         ],
       })
-        .populate("query", "queryId destination")
+        .populate("query", "queryId destination startDate endDate opsStatus agentStatus activityLog.action")
+        .lean(),
+      DmcSettlementBatch.find({
+        $or: [
+          { payoutDate: { $gte: earliestDate } },
+          { submittedAt: { $gte: earliestDate } },
+          { invoiceDate: { $gte: earliestDate } },
+          { createdAt: { $gte: earliestDate } },
+          { "items.serviceDate": { $gte: earliestDate } },
+          { "items.creditStartDate": { $gte: earliestDate } },
+        ],
+      })
+        .populate("items.query", "queryId destination startDate endDate opsStatus agentStatus activityLog.action")
+        .populate("dmc", "name companyName email phone")
+        .populate("assignedTo", "name companyName email")
+        .lean(),
+      Auth.find({ role: "agent", isDeleted: { $ne: true } })
+        .select("name companyName email role status isApproved accountStatus")
+        .sort({ companyName: 1, name: 1, email: 1 })
+        .lean(),
+      Auth.find({ role: "dmc_partner", isDeleted: { $ne: true } })
+        .select("name companyName email role status isApproved accountStatus")
+        .sort({ companyName: 1, name: 1, email: 1 })
         .lean(),
     ]);
+    const allInternalInvoices = [
+      ...internalInvoices,
+      ...settlementBatches.map((batch) => ({
+        ...batch,
+        settlementType: "bulk",
+      })),
+    ];
 
-    const scopedInvoices =
+    const getAnalyticsRecordId = (record = {}) =>
+      record?._id?.toString?.() ||
+      record?.id?.toString?.() ||
+      record?.invoiceNumber ||
+      record?.batchNumber ||
+      JSON.stringify(record);
+    const addQueryKey = (set, value) => {
+      const normalized = normalizeEntityId(value);
+      if (normalized && normalized !== "-") set.add(normalized);
+    };
+    const getInvoiceQueryKeys = (invoice = {}) => {
+      const keys = new Set();
+      addQueryKey(keys, invoice.query);
+      addQueryKey(keys, invoice.query?._id);
+      addQueryKey(keys, invoice.query?.queryId);
+      addQueryKey(keys, invoice.tripSnapshot?.queryId);
+      return keys;
+    };
+    const getQuotationQueryKeys = (quotation = {}) => {
+      const keys = new Set();
+      addQueryKey(keys, quotation.queryId);
+      addQueryKey(keys, quotation.queryId?._id);
+      addQueryKey(keys, quotation.queryId?.queryId);
+      return keys;
+    };
+    const getInternalInvoiceQueryKeys = (invoice = {}) => {
+      const keys = new Set();
+      addQueryKey(keys, invoice.query);
+      addQueryKey(keys, invoice.query?._id);
+      addQueryKey(keys, invoice.query?.queryId);
+      addQueryKey(keys, invoice.queryCode);
+      (invoice.coveredQueries || []).forEach((covered) => {
+        addQueryKey(keys, covered.query);
+        addQueryKey(keys, covered.query?._id);
+        addQueryKey(keys, covered.query?.queryId);
+        addQueryKey(keys, covered.queryCode);
+      });
+      (invoice.items || []).forEach((item) => {
+        addQueryKey(keys, item.query);
+        addQueryKey(keys, item.query?._id);
+        addQueryKey(keys, item.query?.queryId);
+        addQueryKey(keys, item.queryCode);
+      });
+      return keys;
+    };
+    const recordMatchesKeys = (recordKeys = new Set(), allowedKeys = new Set()) =>
+      Array.from(recordKeys).some((key) => allowedKeys.has(key));
+    const mergeRecordsById = (...groups) => {
+      const map = new Map();
+      groups.flat().forEach((record) => {
+        map.set(getAnalyticsRecordId(record), record);
+      });
+      return Array.from(map.values());
+    };
+    const filterInternalInvoiceByQueryKeys = (invoice = {}, allowedKeys = new Set()) => {
+      if (!allowedKeys.size) return invoice;
+      if (!recordMatchesKeys(getInternalInvoiceQueryKeys(invoice), allowedKeys)) return null;
+
+      const hasQueryScopedItems = Array.isArray(invoice.items) && invoice.items.some((item) =>
+        Boolean(item?.query || item?.queryCode || item?.query?.queryId || item?.query?._id),
+      );
+      const filteredItems = hasQueryScopedItems
+        ? invoice.items.filter((item) => {
+          const itemKeys = new Set();
+          addQueryKey(itemKeys, item.query);
+          addQueryKey(itemKeys, item.query?._id);
+          addQueryKey(itemKeys, item.query?.queryId);
+          addQueryKey(itemKeys, item.queryCode);
+          return recordMatchesKeys(itemKeys, allowedKeys);
+        })
+        : [];
+      const filteredCoveredQueries = Array.isArray(invoice.coveredQueries)
+        ? invoice.coveredQueries.filter((covered) => {
+          const coveredKeys = new Set();
+          addQueryKey(coveredKeys, covered.query);
+          addQueryKey(coveredKeys, covered.query?._id);
+          addQueryKey(coveredKeys, covered.query?.queryId);
+          addQueryKey(coveredKeys, covered.queryCode);
+          return recordMatchesKeys(coveredKeys, allowedKeys);
+        })
+        : [];
+
+      if (hasQueryScopedItems && filteredItems.length === 0) {
+        return null;
+      }
+
+      return {
+        ...invoice,
+        items: hasQueryScopedItems ? filteredItems : invoice.items,
+        coveredQueries: Array.isArray(invoice.coveredQueries) ? filteredCoveredQueries : invoice.coveredQueries,
+      };
+    };
+
+    const baseScopedInvoices =
       accessContext.scope === "admin"
         ? invoices
         : invoices.filter((invoice) =>
@@ -3162,29 +5212,150 @@ export const getAdvancedAnalytics = async (req, res, next) => {
           ).length > 0,
         );
 
-    const scopedInternalInvoices =
+    const baseScopedInternalInvoices =
       accessContext.scope === "admin"
-        ? internalInvoices
-        : internalInvoices.filter((invoice) =>
+        ? allInternalInvoices
+        : allInternalInvoices.filter((invoice) =>
           decorateInternalInvoiceRows(
             [formatInternalInvoiceRow(invoice, null)],
             accessContext,
           ).length > 0,
         );
+    const scopedInvoiceQueryKeys = baseScopedInvoices.reduce((set, invoice) => {
+      getInvoiceQueryKeys(invoice).forEach((key) => set.add(key));
+      return set;
+    }, new Set());
+    const allAgentInvoiceQueryKeys = invoices.reduce((set, invoice) => {
+      getInvoiceQueryKeys(invoice).forEach((key) => set.add(key));
+      return set;
+    }, new Set());
+    const scopedInvoices = baseScopedInvoices;
+    const agentMatchedInternalInvoices =
+      accessContext.scope === "admin"
+        ? []
+        : allInternalInvoices.filter((invoice) =>
+          recordMatchesKeys(getInternalInvoiceQueryKeys(invoice), scopedInvoiceQueryKeys),
+        );
+    const candidateScopedInternalInvoices = mergeRecordsById(
+      baseScopedInternalInvoices,
+      agentMatchedInternalInvoices,
+    );
+    const scopedInternalInvoices =
+      accessContext.scope === "admin"
+        ? baseScopedInternalInvoices
+        : candidateScopedInternalInvoices
+          .filter((invoice) => {
+            const internalKeys = getInternalInvoiceQueryKeys(invoice);
+            const hasAgentInvoice = recordMatchesKeys(internalKeys, allAgentInvoiceQueryKeys);
+            return hasAgentInvoice
+              ? recordMatchesKeys(internalKeys, scopedInvoiceQueryKeys)
+              : true;
+          })
+          .map((invoice) => {
+            const internalKeys = getInternalInvoiceQueryKeys(invoice);
+            const hasAgentInvoice = recordMatchesKeys(internalKeys, allAgentInvoiceQueryKeys);
+            return hasAgentInvoice
+              ? filterInternalInvoiceByQueryKeys(invoice, scopedInvoiceQueryKeys)
+              : invoice;
+          })
+          .filter(Boolean);
+    const scopedInternalQueryKeys = scopedInternalInvoices.reduce((set, invoice) => {
+      getInternalInvoiceQueryKeys(invoice).forEach((key) => set.add(key));
+      return set;
+    }, new Set());
+    const scopedAnalyticsQueryKeys = new Set([
+      ...scopedInternalQueryKeys,
+      ...scopedInvoiceQueryKeys,
+    ]);
+    const isQuotationVisibleForFinanceAccess = (quotation = {}) => {
+      const quotationKeys = getQuotationQueryKeys(quotation);
+      if (recordMatchesKeys(quotationKeys, scopedAnalyticsQueryKeys)) return true;
+      if (recordMatchesKeys(quotationKeys, allAgentInvoiceQueryKeys)) return false;
+      if (String(quotation.queryId?.agentStatus || "").trim() !== "Client Approved") return false;
+
+      const assignedFinanceId = resolveFinanceAssigneeId({
+        teamMembers: accessContext.teamMembers || [],
+        explicitAssigneeIds: [],
+        fallbackSeed: quotation.quotationNumber || quotation.queryId?.queryId || quotation._id,
+      });
+
+      if (accessContext.scope === "manager") {
+        return new Set(accessContext.teamMemberIds || []).has(assignedFinanceId);
+      }
+
+      return assignedFinanceId === accessContext.currentUserId;
+    };
+    const scopedQuotations =
+      accessContext.scope === "admin"
+        ? quotations
+        : quotations.filter(isQuotationVisibleForFinanceAccess);
 
     const monthly = buildAdvancedAnalyticsPayload({
+      queries,
       invoices: scopedInvoices,
+      quotations: scopedQuotations,
       internalInvoices: scopedInternalInvoices,
       referenceDate,
       mode: "monthly",
     });
 
     const yearly = buildAdvancedAnalyticsPayload({
+      queries,
       invoices: scopedInvoices,
+      quotations: scopedQuotations,
       internalInvoices: scopedInternalInvoices,
       referenceDate,
       mode: "yearly",
     });
+    const reports = {
+      query: buildQueryAnalyticsReport({
+        queries,
+        referenceDate,
+        mode: "monthly",
+      }),
+      revenue: buildRevenueAnalyticsReport({
+        queries,
+        invoices: scopedInvoices,
+        quotations: scopedQuotations,
+        internalInvoices: scopedInternalInvoices,
+        referenceDate,
+        mode: "monthly",
+      }),
+      monthly: monthly.taxPeriods?.find((item) => item.value === formatTaxMonthValue(referenceDate))?.reports || {},
+      yearly: yearly.yearPeriods?.find((item) => item.value === formatTaxYearValue(referenceDate))?.reports || {},
+    };
+
+    let customPayload = null;
+    let customReports = null;
+    if (isCustom) {
+      customPayload = buildCustomAnalyticsPayload({
+        queries,
+        invoices: scopedInvoices,
+        internalInvoices: scopedInternalInvoices,
+        start: customStart,
+        end: customEnd,
+      });
+
+      customReports = {
+        query: buildQueryAnalyticsReport({
+          queries,
+          referenceDate,
+          mode: "monthly",
+          customStart,
+          customEnd,
+        }),
+        revenue: buildRevenueAnalyticsReport({
+          queries,
+          invoices: scopedInvoices,
+          quotations: scopedQuotations,
+          internalInvoices: scopedInternalInvoices,
+          referenceDate,
+          mode: "monthly",
+          customStart,
+          customEnd,
+        }),
+      };
+    }
 
     res.status(200).json({
       success: true,
@@ -3192,6 +5363,16 @@ export const getAdvancedAnalytics = async (req, res, next) => {
         generatedOn: referenceDate.toISOString(),
         monthly,
         yearly,
+        reports,
+        custom: customPayload,
+        customReports,
+        participants: {
+          agents: agents.map(formatFinanceParticipantOption),
+          dmcs: dmcPartners.map(formatFinanceParticipantOption),
+        },
+        invoices: scopedInvoices,
+        quotations: scopedQuotations,
+        internalInvoices: scopedInternalInvoices,
       },
     });
   } catch (error) {
@@ -3207,6 +5388,11 @@ export const getInternalInvoices = async (req, res, next) => {
       .populate("query", "queryId destination startDate endDate numberOfAdults numberOfChildren")
       .populate("dmc", "name companyName email phone")
       .populate("agent", "name companyName email phone")
+      .populate("assignedTo", "name companyName email")
+      .sort({ submittedAt: -1, createdAt: -1 })
+      .lean();
+    const settlementBatches = await DmcSettlementBatch.find()
+      .populate("dmc", "name companyName email phone")
       .populate("assignedTo", "name companyName email")
       .sort({ submittedAt: -1, createdAt: -1 })
       .lean();
@@ -3230,11 +5416,28 @@ export const getInternalInvoices = async (req, res, next) => {
       return acc;
     }, {});
 
-    const rows = invoices.map((invoice) =>
-      formatInternalInvoiceRow(
-        invoice,
-        quotationByQueryId[invoice.query?._id?.toString?.() || ""],
+    const rows = [
+      ...invoices.map((invoice) =>
+        formatInternalInvoiceRow(
+          invoice,
+          quotationByQueryId[invoice.query?._id?.toString?.() || ""],
+        ),
       ),
+      ...settlementBatches.map((batch) =>
+        formatInternalInvoiceRow(
+          {
+            ...batch,
+            settlementType: "bulk",
+            queryCode: `${batch.coveredQueries?.length || 0} bookings`,
+            destination: "Bulk Settlement",
+          },
+          null,
+        ),
+      ),
+    ].sort(
+      (left, right) =>
+        new Date(right.submittedAtValue || 0).getTime() -
+        new Date(left.submittedAtValue || 0).getTime(),
     );
 
     const scopedRows =
@@ -3266,6 +5469,186 @@ export const getInternalInvoices = async (req, res, next) => {
   }
 };
 
+export const getFinanceDmcVendors = async (req, res, next) => {
+  try {
+    await ensureFinanceApiAccess(req);
+
+    const vendors = await Auth.find({
+      role: "dmc_partner",
+      isDeleted: { $ne: true },
+      accountStatus: { $ne: "Inactive" },
+    })
+      .select("name companyName email phone gstNumber creditDays accountStatus createdAt")
+      .sort({ companyName: 1, name: 1 })
+      .lean();
+
+    res.status(200).json({
+      success: true,
+      data: vendors.map((vendor) => ({
+        id: vendor._id,
+        name: vendor.companyName || vendor.name || "DMC Vendor",
+        companyName: vendor.companyName || "",
+        email: vendor.email || "",
+        phone: vendor.phone || "",
+        gstNumber: vendor.gstNumber || "",
+        creditDays: Array.isArray(vendor.creditDays) && vendor.creditDays.length
+          ? vendor.creditDays
+          : [7, 15],
+        accountStatus: vendor.accountStatus || "Active",
+      })),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const uploadManualBulkInvoice = async (req, res, next) => {
+  try {
+    const accessContext = await ensureFinanceApiAccess(req);
+    const invoiceMeta = parseFinanceJsonField(req.body?.invoiceMeta, {});
+    const claimedSummary = parseFinanceJsonField(req.body?.claimedSummary, {});
+    const vendorId = String(req.body?.vendorId || invoiceMeta?.vendorId || "").trim();
+    const invoiceNumber = String(invoiceMeta?.invoiceNumber || req.body?.invoiceNumber || "").trim();
+    const invoiceDate = parseFinanceDateOrNull(invoiceMeta?.invoiceDate || req.body?.invoiceDate);
+    const creditPeriodDays = Number(invoiceMeta?.creditPeriodDays || req.body?.creditPeriodDays || 7);
+    const uploadedInvoiceDocument = buildManualUploadedInvoiceDocument(req.file);
+    const subtotal = Number(claimedSummary?.subtotal || req.body?.subtotal || 0);
+    const taxAmount = Number(claimedSummary?.taxAmount || req.body?.taxAmount || 0);
+    const grandTotal = Number(claimedSummary?.grandTotal || req.body?.grandTotal || 0);
+
+    if (!vendorId) {
+      return next(new ApiError(400, "Select a DMC vendor before uploading invoice"));
+    }
+
+    if (!invoiceNumber) {
+      return next(new ApiError(400, "Invoice number is required"));
+    }
+
+    if (!invoiceDate) {
+      return next(new ApiError(400, "Invoice date is required"));
+    }
+
+    if (![7, 15].includes(creditPeriodDays)) {
+      return next(new ApiError(400, "Credit period must be 7 or 15 days"));
+    }
+
+    if (!uploadedInvoiceDocument) {
+      return next(new ApiError(400, "Bulk invoice file is required"));
+    }
+
+    if (grandTotal <= 0) {
+      return next(new ApiError(400, "Grand total must be greater than zero"));
+    }
+
+    const vendor = await Auth.findOne({
+      _id: vendorId,
+      role: "dmc_partner",
+      isDeleted: { $ne: true },
+    }).select("name companyName email phone").lean();
+
+    if (!vendor) {
+      return next(new ApiError(404, "DMC vendor not found"));
+    }
+
+    const duplicate = await DmcSettlementBatch.findOne({
+      dmc: vendor._id,
+      invoiceNumber,
+    }).lean();
+
+    if (duplicate) {
+      return next(new ApiError(409, "This vendor invoice number is already uploaded"));
+    }
+
+    const dueDate = parseFinanceDateOrNull(invoiceMeta?.dueDate) ||
+      addFinanceCreditDays(invoiceDate, creditPeriodDays);
+    const reviewerName = req.user?.name || req.user?.companyName || "Finance Team";
+    const isFinanceMember = accessContext.scope === "member";
+    const summary = {
+      subtotal,
+      gstAmount: 0,
+      tcsAmount: 0,
+      otherTaxAmount: taxAmount,
+      totalTax: taxAmount,
+      grandTotal,
+    };
+    const invoiceExtraction = await analyzeInvoiceFile(req.file, {
+      claimedSummary: { subtotal, taxAmount, grandTotal },
+    });
+
+    const batch = await DmcSettlementBatch.create({
+      batchNumber: `MANUAL-BULK-${Date.now()}`,
+      invoiceNumber,
+      dmc: vendor._id,
+      dmcName: vendor.companyName || vendor.name || "DMC Vendor",
+      supplierName: vendor.companyName || vendor.name || "DMC Vendor",
+      coveredQueries: [],
+      invoiceDate,
+      dueDate,
+      creditPeriodDays,
+      items: [],
+      documents: [uploadedInvoiceDocument],
+      invoiceSource: "uploaded_invoice",
+      uploadedInvoice: {
+        name: uploadedInvoiceDocument.name,
+        filePath: uploadedInvoiceDocument.filePath,
+        size: uploadedInvoiceDocument.size,
+        mimeType: uploadedInvoiceDocument.mimeType,
+      },
+      claimedSummary: {
+        subtotal,
+        taxAmount,
+        grandTotal,
+      },
+      invoiceExtraction,
+      summary,
+      templateVariant: "",
+      status: "Submitted",
+      submittedBy: req.user.id,
+      submittedAt: new Date(),
+      assignedTo: isFinanceMember ? req.user.id : null,
+      assignedToName: isFinanceMember ? reviewerName : "",
+      assignedToEmail: isFinanceMember ? req.user?.email || "" : "",
+      assignedAt: isFinanceMember ? new Date() : null,
+      financeNotes: String(invoiceMeta?.notes || req.body?.notes || "").trim(),
+    });
+
+    await createFinanceSideNotification(req, {
+      user: vendor._id,
+      type: "info",
+      title: "Bulk vendor invoice uploaded",
+      message: `${reviewerName} uploaded ${invoiceNumber} for finance settlement review.`,
+      link: "/dmc/confirmation",
+      meta: {
+        settlementBatchId: batch._id,
+        settlementType: "bulk",
+        invoiceNumber,
+        status: "Submitted",
+      },
+    });
+
+    const populatedBatch = await DmcSettlementBatch.findById(batch._id)
+      .populate("dmc", "name companyName email phone")
+      .populate("assignedTo", "name companyName email")
+      .lean();
+
+    res.status(201).json({
+      success: true,
+      message: "Bulk invoice uploaded for finance settlement",
+      data: formatInternalInvoiceRow(
+        {
+          ...populatedBatch,
+          settlementType: "bulk",
+          queryCode: "Manual bulk invoice",
+          destination: "Bulk Settlement",
+        },
+        null,
+      ),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const getPaymentVerifications = async (req, res, next) => {
   try {
     const accessContext = await ensureFinanceApiAccess(req);
@@ -3282,6 +5665,9 @@ export const getPaymentVerifications = async (req, res, next) => {
       .populate("quotation", "pricing.totalAmount totalAmount")
       .populate("paymentVerification.assignedTo", "name companyName email")
       .populate("paymentVerification.reviewedBy", "name companyName")
+      .select(
+        "invoiceNumber query agent quotation paymentStatus totalAmount pricingSnapshot couponApplication paymentSubmission paymentVerification paymentAuditTrail finalInvoiceDispatch paymentReceiptDispatch remarks createdAt updatedAt",
+      )
       .sort({
         "paymentSubmission.submittedAt": -1,
         updatedAt: -1,
@@ -3714,7 +6100,7 @@ export const sendFinalInvoiceToAgent = async (req, res, next) => {
 
     const verificationStatus = getPaymentVerificationStatus(invoice);
     if (verificationStatus !== "Verified" || invoice.paymentStatus !== "Paid") {
-      return next(new ApiError(400, "Final invoice can be sent only after payment is verified by finance"));
+      return next(new ApiError(400, "Final invoice can be sent only after the full payment is verified by finance"));
     }
 
     const agentEmail = String(invoice.agent?.email || "").trim();
@@ -3762,7 +6148,7 @@ export const sendFinalInvoiceToAgent = async (req, res, next) => {
       user: invoice.agent?._id || invoice.agent,
       type: "success",
       title: "Final Invoice Sent",
-      message: `${invoice.invoiceNumber} final invoice has been shared by finance.`,
+      message: `${invoice.invoiceNumber} final invoice has been shared by finance.${buildEmailDeliveryNote(agentEmail)}`,
       link: "/agent/bookings",
       meta: {
         invoiceId: invoice._id,
@@ -3770,6 +6156,8 @@ export const sendFinalInvoiceToAgent = async (req, res, next) => {
         queryId: invoice.query?.queryId || "",
         sentBy: senderName,
         sentAt,
+        deliveryChannel: "EMAIL",
+        recipientEmail: agentEmail,
       },
     });
 
@@ -3803,6 +6191,8 @@ export const sendPaymentReceiptToAgent = async (req, res, next) => {
     const accessContext = await ensureFinanceApiAccess(req);
     const { id } = req.params;
     const normalizedRecipientEmail = String(req.body?.recipientEmail || "").trim().toLowerCase();
+    const normalizedDispatchChannel = String(req.body?.dispatchChannel || "EMAIL").trim().toUpperCase();
+    const normalizedRecipientPhone = String(req.body?.recipientPhone || "").trim();
     const requestedInstallmentIndex = Number(req.body?.installmentIndex);
 
     const invoice = await Invoice.findById(id)
@@ -3863,10 +6253,20 @@ export const sendPaymentReceiptToAgent = async (req, res, next) => {
       return next(new ApiError(400, "Verify this installment first before sending its receipt"));
     }
 
+    if (!["EMAIL", "WHATSAPP", "PDF"].includes(normalizedDispatchChannel)) {
+      return next(new ApiError(400, "Invalid receipt sharing channel"));
+    }
+
     const recipientEmail = normalizedRecipientEmail || String(invoice.agent?.email || "").trim().toLowerCase();
-    const emailValidationError = getEmailValidationError(recipientEmail);
-    if (!recipientEmail || emailValidationError) {
-      return next(new ApiError(400, emailValidationError || "A valid agent email is required"));
+    if (normalizedDispatchChannel === "EMAIL") {
+      const emailValidationError = getEmailValidationError(recipientEmail);
+      if (!recipientEmail || emailValidationError) {
+        return next(new ApiError(400, emailValidationError || "A valid agent email is required"));
+      }
+    }
+
+    if (normalizedDispatchChannel === "WHATSAPP" && !normalizePhoneForWhatsappShare(normalizedRecipientPhone)) {
+      return next(new ApiError(400, "A valid agent WhatsApp number is required"));
     }
 
     const receiptAmount = selectedInstallment
@@ -3919,21 +6319,61 @@ export const sendPaymentReceiptToAgent = async (req, res, next) => {
       ),
     });
 
-    await sendAgentPaymentReceiptMail(recipientEmail, {
-      agentName: invoice.agent?.companyName || invoice.agent?.name || "Agent",
-      clientName,
-      invoiceNumber: invoice.invoiceNumber,
-      queryCode: invoice.query?.queryId || "",
-      destination: invoice.query?.destination || invoice.tripSnapshot?.destination || "",
-      amountPaid: receiptAmount,
-      cumulativePaid,
-      remainingAmount,
-      paymentDate: receiptPaymentDate,
-      paymentReference: invoice.paymentSubmission?.utrNumber || "",
-      attachmentPath: receiptPdf.absoluteFilePath,
-      attachmentName: receiptPdf.fileName,
-      receiptTitle,
-    });
+    const serverBaseUrl = `${req.protocol}://${req.get("host")}`;
+    const receiptUrl = `${serverBaseUrl}${receiptPdf.publicFilePath}`;
+    let dispatchResult = {
+      channel: normalizedDispatchChannel,
+      status: "ready",
+      message: "Payment receipt PDF is ready to download.",
+      recipientEmail: "",
+      recipientPhone: "",
+      whatsappMessage: "",
+    };
+
+    if (normalizedDispatchChannel === "EMAIL") {
+      await sendAgentPaymentReceiptMail(recipientEmail, {
+        agentName: invoice.agent?.companyName || invoice.agent?.name || "Agent",
+        clientName,
+        invoiceNumber: invoice.invoiceNumber,
+        queryCode: invoice.query?.queryId || "",
+        destination: invoice.query?.destination || invoice.tripSnapshot?.destination || "",
+        amountPaid: receiptAmount,
+        cumulativePaid,
+        remainingAmount,
+        paymentDate: receiptPaymentDate,
+        paymentReference: invoice.paymentSubmission?.utrNumber || "",
+        attachmentPath: receiptPdf.absoluteFilePath,
+        attachmentName: receiptPdf.fileName,
+        receiptTitle,
+      });
+      dispatchResult = {
+        channel: "EMAIL",
+        status: "sent",
+        message: "Payment receipt emailed to the agent successfully.",
+        recipientEmail,
+        recipientPhone: "",
+        whatsappMessage: "",
+      };
+    } else if (normalizedDispatchChannel === "WHATSAPP") {
+      dispatchResult = {
+        channel: "WHATSAPP",
+        status: "ready",
+        message: "WhatsApp receipt is ready to share.",
+        recipientEmail: "",
+        recipientPhone: normalizePhoneForWhatsappShare(normalizedRecipientPhone),
+        whatsappMessage: buildAgentPaymentReceiptWhatsappMessage({
+          agentName: invoice.agent?.companyName || invoice.agent?.name || "Agent",
+          invoiceNumber: invoice.invoiceNumber,
+          queryCode: invoice.query?.queryId || "",
+          amountPaid: receiptAmount,
+          cumulativePaid,
+          remainingAmount,
+          currency: invoice.currency || invoice.pricingSnapshot?.currency || "INR",
+          receiptUrl,
+          receiptTitle,
+        }),
+      };
+    }
 
     if (selectedInstallment) {
       selectedInstallment.receiptStatus = "Sent";
@@ -3947,7 +6387,7 @@ export const sendPaymentReceiptToAgent = async (req, res, next) => {
       sentAt: new Date(),
       sentBy: req.user.id,
       sentByName: req.user?.name || req.user?.companyName || "Finance Team",
-      recipientEmail,
+      recipientEmail: normalizedDispatchChannel === "EMAIL" ? recipientEmail : "",
       templateVariant: "agent-payment-receipt",
     };
 
@@ -3957,23 +6397,36 @@ export const sendPaymentReceiptToAgent = async (req, res, next) => {
       user: invoice.agent?._id || invoice.agent,
       type: "success",
       title: "Payment Receipt Sent",
-      message: `${invoice.invoiceNumber} payment receipt has been shared by finance.`,
+      message: `${invoice.invoiceNumber} payment receipt has been shared by finance.${getFinanceDispatchNote(dispatchResult.channel, {
+        email: dispatchResult.recipientEmail,
+        phone: dispatchResult.recipientPhone,
+        documentLabel: "Payment receipt",
+      })}`,
       link: "/agent/bookings",
       meta: {
         invoiceId: invoice._id,
         invoiceNumber: invoice.invoiceNumber,
         queryId: invoice.query?.queryId || "",
-        recipientEmail,
+        recipientEmail: dispatchResult.recipientEmail,
+        recipientPhone: dispatchResult.recipientPhone,
+        deliveryChannel: dispatchResult.channel,
         sentAt: invoice.paymentReceiptDispatch.sentAt,
       },
     });
 
     res.status(200).json({
       success: true,
-      message: selectedInstallment
-        ? "Installment payment receipt sent to the agent successfully"
-        : "Payment receipt sent to the agent successfully",
+      message:
+        dispatchResult.message ||
+        (selectedInstallment
+          ? "Installment payment receipt shared with the agent successfully"
+          : "Payment receipt shared with the agent successfully"),
       data: formatPaymentVerificationRow(invoice.toObject()),
+      receiptDocument: {
+        name: receiptPdf.fileName,
+        filePath: receiptPdf.publicFilePath,
+      },
+      dispatch: dispatchResult,
     });
   } catch (error) {
     next(error);
@@ -4077,11 +6530,19 @@ export const updateInternalInvoiceStatus = async (req, res, next) => {
       return next(new ApiError(400, "Invalid internal invoice status"));
     }
 
-    const invoice = await InternalInvoice.findById(id)
+    let invoice = await InternalInvoice.findById(id)
       .populate("query", "queryId destination startDate endDate numberOfAdults numberOfChildren")
       .populate("dmc", "name companyName email phone")
       .populate("assignedTo", "name companyName email")
       .populate("agent", "name companyName email phone");
+    let isSettlementBatch = false;
+
+    if (!invoice) {
+      invoice = await DmcSettlementBatch.findById(id)
+        .populate("dmc", "name companyName email phone")
+        .populate("assignedTo", "name companyName email");
+      isSettlementBatch = Boolean(invoice);
+    }
 
     if (!invoice) {
       return next(new ApiError(404, "Internal invoice not found"));
@@ -4093,6 +6554,13 @@ export const updateInternalInvoiceStatus = async (req, res, next) => {
       explicitAssigneeIds: [invoice.assignedTo, invoice.reviewedBy],
       fallbackSeed: invoice.invoiceNumber || normalizeEntityId(invoice._id),
     });
+
+    if (["Approved", "Paid", "Partially Paid"].includes(status)) {
+      const amountValidation = getUploadedInvoiceAmountValidation(invoice);
+      if (!amountValidation.passed) {
+        return next(new ApiError(400, amountValidation.message));
+      }
+    }
 
     const reviewerName = req.user?.name || req.user?.companyName || "Finance Team";
     const reviewedAt = new Date();
@@ -4218,7 +6686,7 @@ export const updateInternalInvoiceStatus = async (req, res, next) => {
 
       const payoutReceipt = await generatePayoutReceiptPdf({
         invoiceNumber: invoice.invoiceNumber,
-        queryCode: invoice.query?.queryId || invoice.queryCode || "",
+        queryCode: invoice.query?.queryId || invoice.queryCode || invoice.batchNumber || "",
         payoutDate: currentInst ? currentInst.paymentDate : invoice.payoutDate,
         payoutReference: currentInst ? currentInst.utrNumber : invoice.payoutReference,
         payoutAmount: currentInst ? currentInst.amount : invoice.payoutAmount,
@@ -4227,7 +6695,7 @@ export const updateInternalInvoiceStatus = async (req, res, next) => {
         cumulativePaid: invoice.payoutAmount,
         remainingAmount: Math.max(0, totalExpected - invoice.payoutAmount),
         currency: invoice.items?.[0]?.currency || "INR",
-        destination: invoice.query?.destination || invoice.destination || "",
+        destination: invoice.query?.destination || invoice.destination || (isSettlementBatch ? "Bulk Settlement" : ""),
         dmcName:
           invoice.dmc?.companyName ||
           invoice.dmc?.name ||
@@ -4246,6 +6714,14 @@ export const updateInternalInvoiceStatus = async (req, res, next) => {
         name: payoutReceipt.fileName,
         filePath: payoutReceipt.publicFilePath,
       };
+      invoice.documents = Array.isArray(invoice.documents) ? invoice.documents : [];
+      invoice.documents.push({
+        name: payoutReceipt.fileName,
+        filePath: payoutReceipt.publicFilePath,
+        size: "",
+        kind: "payout_receipt",
+      });
+      await invoice.save();
 
       const serverBaseUrl = `${req.protocol}://${req.get("host")}`;
       const receiptUrl = `${serverBaseUrl}${payoutReceipt.publicFilePath}`;
@@ -4260,8 +6736,8 @@ export const updateInternalInvoiceStatus = async (req, res, next) => {
               invoice.supplierName ||
               "DMC Partner",
             invoiceNumber: invoice.invoiceNumber,
-            queryCode: invoice.query?.queryId || invoice.queryCode || "",
-            destination: invoice.query?.destination || invoice.destination || "",
+            queryCode: invoice.query?.queryId || invoice.queryCode || invoice.batchNumber || "",
+            destination: invoice.query?.destination || invoice.destination || (isSettlementBatch ? "Bulk Settlement" : ""),
             payoutAmount: currentInst ? currentInst.amount : invoice.payoutAmount,
             payoutDate: currentInst ? currentInst.paymentDate : invoice.payoutDate,
             payoutReference: currentInst ? currentInst.utrNumber : invoice.payoutReference,
@@ -4302,7 +6778,7 @@ export const updateInternalInvoiceStatus = async (req, res, next) => {
               invoice.supplierName ||
               "Partner",
             invoiceNumber: invoice.invoiceNumber,
-            queryCode: invoice.query?.queryId || invoice.queryCode || "",
+            queryCode: invoice.query?.queryId || invoice.queryCode || invoice.batchNumber || "",
             payoutAmount: invoice.payoutAmount || invoice.summary?.grandTotal || 0,
             currency: invoice.items?.[0]?.currency || "INR",
             receiptUrl,
@@ -4339,7 +6815,11 @@ export const updateInternalInvoiceStatus = async (req, res, next) => {
             message: `${invoice.invoiceNumber} has been paid by finance for ${formatNotificationCurrency(
               invoice.payoutAmount || invoice.summary?.grandTotal || 0,
               invoice.items?.[0]?.currency || "INR",
-            )}.`,
+            )}.${getFinanceDispatchNote(dispatchResult.channel, {
+              email: dispatchResult.recipientEmail,
+              phone: dispatchResult.recipientPhone,
+              documentLabel: "Payment receipt",
+            })}`,
           };
 
     await createFinanceSideNotification(req, {
@@ -4348,12 +6828,17 @@ export const updateInternalInvoiceStatus = async (req, res, next) => {
       link: "/dmc/confirmation",
       meta: {
         internalInvoiceId: invoice._id,
+        settlementType: isSettlementBatch ? "bulk" : "single",
         invoiceNumber: invoice.invoiceNumber,
-        queryId: invoice.query?.queryId || invoice.queryCode || "",
+        queryId: invoice.query?.queryId || invoice.queryCode || invoice.batchNumber || "",
         status,
         payoutAmount: invoice.payoutAmount || 0,
         payoutBank: invoice.payoutBank || "",
         payoutDate: invoice.payoutDate || null,
+        dispatchChannel: dispatchResult.channel || "",
+        dispatchStatus: dispatchResult.status || "",
+        recipientEmail: dispatchResult.recipientEmail || "",
+        recipientPhone: dispatchResult.recipientPhone || "",
       },
     });
 
@@ -4386,7 +6871,7 @@ export const updateInternalInvoiceStatus = async (req, res, next) => {
               internalInvoiceId: invoice._id,
               invoiceNumber: invoice.invoiceNumber,
               queryId: invoice.query?._id || invoice.query || null,
-              queryNumber: invoice.query?.queryId || invoice.queryCode || "",
+              queryNumber: invoice.query?.queryId || invoice.queryCode || invoice.batchNumber || "",
               mismatchReason: normalizedMismatchReason,
               adminMessage: normalizedAdminMessage,
               financeNotes: invoice.financeNotes || "",
@@ -4397,14 +6882,24 @@ export const updateInternalInvoiceStatus = async (req, res, next) => {
       }
     }
 
-    const quotation = await Quotation.findOne({ queryId: invoice.query?._id || invoice.query })
-      .sort({ createdAt: -1 })
-      .lean();
+    const quotation = invoice.query
+      ? await Quotation.findOne({ queryId: invoice.query?._id || invoice.query })
+        .sort({ createdAt: -1 })
+        .lean()
+      : null;
 
     res.status(200).json({
       success: true,
       message: `Internal invoice marked as ${status.toLowerCase()}`,
-      data: formatInternalInvoiceRow(invoice.toObject(), quotation),
+      data: formatInternalInvoiceRow(
+        {
+          ...invoice.toObject(),
+          settlementType: isSettlementBatch ? "bulk" : "single",
+          queryCode: isSettlementBatch ? `${invoice.coveredQueries?.length || 0} bookings` : invoice.queryCode,
+          destination: isSettlementBatch ? "Bulk Settlement" : invoice.destination,
+        },
+        quotation,
+      ),
       receiptDocument,
       dispatch: dispatchResult,
     });

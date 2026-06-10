@@ -20,7 +20,12 @@ export const sendQuotationController = async (req, res) => {
       normalizedChannels.includes("dashboard") ||
       normalizedChannels.includes("dashboard_notification")
     ) {
-      results.dashboard = await createDashboardNotification(queryId, quoteDetails);
+      results.dashboard = await createDashboardNotification(queryId, {
+        ...quoteDetails,
+        deliveryChannels: normalizedChannels,
+        recipientEmail: agent?.email || "",
+        recipientPhone: agent?.phone || "",
+      });
     }
 
     if (normalizedChannels.includes("email")) {

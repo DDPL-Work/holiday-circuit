@@ -106,26 +106,50 @@ function IconArrowDown({ size = 11 }) {
 function MetricCard({ label, value, badge, badgeType, icon, iconBg }) {
   const badgeStyle =
     badgeType === "up"
-      ? "border border-emerald-200 bg-emerald-50 text-emerald-700"
+      ? "border border-emerald-150 bg-emerald-50/80 text-emerald-700 shadow-sm"
       : badgeType === "down"
-        ? "border border-rose-200 bg-rose-50 text-rose-600"
-        : "border border-slate-200 bg-slate-50 text-slate-600";
+        ? "border border-rose-150 bg-rose-50/80 text-rose-600 shadow-sm"
+        : "border border-slate-150 bg-slate-50/80 text-slate-600 shadow-sm";
+
+  const themeStyles = (() => {
+    if (iconBg.includes("blue")) {
+      return {
+        card: "bg-gradient-to-br from-blue-50/90 via-white to-white hover:from-blue-100/40 hover:via-blue-50/10 hover:to-white border-blue-100/70 border-b-blue-600",
+        iconWrap: "bg-blue-50 border border-blue-100/60 text-blue-600 shadow-[0_4px_12px_rgba(59,130,246,0.08)] group-hover:scale-103 group-hover:rotate-1",
+        shadowColor: "hover:shadow-blue-500/10"
+      };
+    }
+    if (iconBg.includes("emerald") || iconBg.includes("green")) {
+      return {
+        card: "bg-gradient-to-br from-emerald-50/90 via-white to-white hover:from-emerald-100/40 hover:via-emerald-50/10 hover:to-white border-emerald-100/70 border-b-emerald-600",
+        iconWrap: "bg-emerald-50 border border-emerald-100/60 text-emerald-600 shadow-[0_4px_12px_rgba(16,185,129,0.08)] group-hover:scale-103 group-hover:-rotate-1",
+        shadowColor: "hover:shadow-emerald-500/10"
+      };
+    }
+    return {
+      card: "bg-gradient-to-br from-amber-50/90 via-white to-white hover:from-amber-100/40 hover:via-amber-50/10 hover:to-white border-amber-100/70 border-b-amber-600",
+      iconWrap: "bg-amber-50 border border-amber-100/60 text-amber-650 shadow-[0_4px_12px_rgba(245,158,11,0.08)] group-hover:scale-103 group-hover:rotate-1",
+      shadowColor: "hover:shadow-amber-500/10"
+    };
+  })();
 
   return (
-    <div className="flex min-h-[116px] items-start justify-between rounded-[20px] border border-slate-300 bg-white px-5 py-5">
-      <div className="flex min-h-[76px] flex-col">
-        <p className="mb-1 text-[13px] font-medium text-slate-700">{label}</p>
-        <p className="text-[22px] font-semibold leading-tight text-slate-950">{value}</p>
-        <div className="mt-3 min-h-[28px]">
+    <div className={`group relative flex min-h-[120px] items-start justify-between rounded-2xl border border-b-[4.5px] p-5 hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300 ${themeStyles.card} ${themeStyles.shadowColor}`}>
+      <div className="flex min-h-[80px] flex-col justify-between min-w-0">
+        <div className="space-y-1">
+          <p className="text-[10px] font-extrabold uppercase tracking-[0.15em] text-slate-400 whitespace-nowrap">{label}</p>
+          <p className="text-2xl font-black tracking-tight text-slate-800 leading-none transition-colors duration-300">{value}</p>
+        </div>
+        <div className="mt-3 min-h-[24px]">
           {badge ? (
-            <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium ${badgeStyle}`}>
+            <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-bold ${badgeStyle}`}>
               {badgeType === "up" ? <IconArrowUp /> : badgeType === "down" ? <IconArrowDown /> : null}
               {badge}
             </span>
           ) : null}
         </div>
       </div>
-      <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${iconBg}`}>
+      <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl transition-all duration-300 ${themeStyles.iconWrap}`}>
         {icon}
       </div>
     </div>
@@ -260,21 +284,24 @@ export default function OperationManagerDashboard() {
       </div>
 
       <div className="max-w-6xl mx-auto px-1 py-1 pt-6.5">
-        <div className="flex justify-between items-start mb-7">
+        <div className="flex justify-between items-center mb-7">
           <div>
             <div className="flex items-center gap-3">
               <OpsCommandArtwork />
-              <h1 className="text-xl font-bold text-gray-900">{headerTitle}</h1>
+              <h1 className="text-[26px] font-black bg-gradient-to-r from-slate-900 via-blue-950 to-slate-900 bg-clip-text text-transparent tracking-tight leading-none">{headerTitle}</h1>
             </div>
-            <p className="text-sm text-gray-500 mt-1">{headerSubtitle}</p>
+            <p className="text-sm text-gray-500 mt-1.5 flex items-center">
+              <span className="inline-block h-2 w-2 rounded-full bg-emerald-500 animate-pulse mr-2" />
+              {headerSubtitle}
+            </p>
           </div>
           <button
             onClick={handleSubmitReport}
             disabled={reportSubmitting}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition ${
+            className={`flex items-center gap-2 px-6 py-2.5 rounded-full text-sm font-extrabold transition-all duration-300 transform active:scale-[0.98] shadow-md ${
               submitted
-                ? "bg-green-600 text-white cursor-default"
-                : "bg-gray-900 text-white hover:bg-gray-700"
+                ? "bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-emerald-500/20 cursor-default"
+                : "bg-gradient-to-r from-[#0f172a] via-[#1e3a8a] to-[#2563eb] hover:from-[#1e3a8a] hover:via-[#2563eb] hover:to-[#3b82f6] text-white hover:shadow-lg hover:shadow-blue-500/15"
             } ${reportSubmitting ? "opacity-70 cursor-wait" : ""}`}
           >
             <IconSend size={14} />
@@ -320,38 +347,55 @@ export default function OperationManagerDashboard() {
           />
         </div>
 
-        <div className="overflow-hidden rounded-[20px] border border-slate-300 bg-white shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
-          <div className="border-b border-slate-300 px-5 py-5">
-            <div className="flex items-center gap-2">
-              <IconUsers />
-              <h2 className="text-[15px] font-semibold text-slate-900">Team Workload</h2>
+        <div className="overflow-hidden rounded-[20px] border border-slate-200 bg-white shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
+          <div className="border-b border-slate-100 bg-gradient-to-r from-slate-50/50 to-white px-6 py-5">
+            <div className="flex items-center gap-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-50 text-blue-600 border border-blue-100/80 shadow-sm">
+                <IconUsers size={18} />
+              </div>
+              <div>
+                <h2 className="text-[16px] font-bold text-slate-800 tracking-tight">Team Workload</h2>
+                <p className="text-[12px] text-slate-500">Live executive activity and performance overview</p>
+              </div>
             </div>
-            <p className="mt-1 text-[13px] text-slate-600">Live executive activity and performance overview</p>
           </div>
 
           <div className="thin-scrollbar overflow-x-auto">
             <table className="min-w-[980px] w-full table-fixed">
               <colgroup>
-                <col style={{ width: "210px" }} />
-                <col style={{ width: "170px" }} />
-                <col style={{ width: "190px" }} />
+                <col style={{ width: "220px" }} />
+                <col style={{ width: "160px" }} />
+                <col style={{ width: "180px" }} />
                 <col style={{ width: "200px" }} />
                 <col style={{ width: "150px" }} />
                 <col style={{ width: "170px" }} />
               </colgroup>
               <thead>
-                <tr className="border-b border-slate-300 bg-slate-50/70">
-                  {["Exec Name", "Active Queries", "Overdue Quotes", "Performance %", "Status", "Action"].map((header) => (
-                    <th key={header} className="px-5 py-3.5 text-center text-[10px] font-semibold uppercase tracking-[0.14em] text-[#35507a] whitespace-nowrap">
-                      {header}
-                    </th>
-                  ))}
+                <tr className="border-b border-slate-150 bg-slate-50/40">
+                  <th className="px-6 py-4 text-left text-[10px] font-extrabold uppercase tracking-[0.12em] text-[#35507a] whitespace-nowrap">
+                    Exec Name
+                  </th>
+                  <th className="px-5 py-4 text-center text-[10px] font-extrabold uppercase tracking-[0.12em] text-[#35507a] whitespace-nowrap">
+                    Active Queries
+                  </th>
+                  <th className="px-5 py-4 text-center text-[10px] font-extrabold uppercase tracking-[0.12em] text-[#35507a] whitespace-nowrap">
+                    Overdue Quotes
+                  </th>
+                  <th className="px-5 py-4 text-center text-[10px] font-extrabold uppercase tracking-[0.12em] text-[#35507a] whitespace-nowrap">
+                    Performance %
+                  </th>
+                  <th className="px-5 py-4 text-center text-[10px] font-extrabold uppercase tracking-[0.12em] text-[#35507a] whitespace-nowrap">
+                    Status
+                  </th>
+                  <th className="px-6 py-4 text-right text-[10px] font-extrabold uppercase tracking-[0.12em] text-[#35507a] whitespace-nowrap">
+                    Action
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {team.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-5 py-10 text-center text-sm text-slate-400">
+                    <td colSpan={6} className="px-6 py-10 text-center text-sm text-slate-400">
                       No operations executives are mapped to this manager yet.
                     </td>
                   </tr>
@@ -359,59 +403,67 @@ export default function OperationManagerDashboard() {
                   team.map((member) => (
                     <tr
                       key={member.id}
-                      className="border-b border-slate-300/90 transition-colors hover:bg-slate-50/40"
+                      className="border-b border-slate-100 hover:bg-slate-50/30 transition-colors duration-150"
                     >
-                      <td className="px-5 py-4 align-middle flex items-center justify-center ">
+                      <td className="px-6 py-4 text-left align-middle">
                         <div className="flex items-center gap-3">
                           {member.profileImage ? (
                             <img
                               src={member.profileImage}
                               alt={member.name}
-                              className="h-8 w-8 shrink-0 rounded-full object-cover ring-1 ring-blue-100"
+                              className="h-9 w-9 shrink-0 rounded-full object-cover ring-2 ring-slate-100"
                             />
                           ) : (
-                            <div className="flex h-6 w-7 shrink-0 items-center justify-center rounded-full bg-blue-50 text-xs font-semibold text-blue-600 ring-1 ring-blue-100">
+                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-blue-50 to-blue-100 text-xs font-bold text-blue-600 ring-2 ring-blue-50/80">
                               {member.initials}
                             </div>
                           )}
-                          <div className="min-w-0 ">
-                            <p className="truncate text-[14px] font-medium text-slate-900">{member.name}</p>
-                            <p className="truncate text-[12px] text-slate-500">{member.email}</p>
+                          <div className="min-w-0">
+                            <p className="truncate text-[13.5px] font-bold text-slate-800 leading-snug">{member.name}</p>
+                            <p className="truncate text-[11.5px] text-slate-400 font-medium leading-none mt-0.5">{member.email}</p>
                           </div>
                         </div>
                       </td>
 
-                      <td className="px-4 py-2 text-[14px] font-medium tabular-nums text-slate-900">
-                        <span className="flex items-center justify-center">{member.activeQueries}</span>
-                      </td>
-
-                      <td className="px-4 py-1 ">
-                        <span className={`text-[14px] flex items-center justify-center font-medium tabular-nums ${member.overdueQuotes === 0 ? "text-emerald-600" : "text-red-500"}`}>
-                          {member.overdueQuotes}
+                      <td className="px-5 py-4 text-center align-middle">
+                        <span className="inline-flex h-8 min-w-[32px] px-2.5 items-center justify-center rounded-lg bg-slate-50 text-[13.5px] font-bold text-slate-800 border border-slate-100 shadow-sm">
+                          {member.activeQueries}
                         </span>
                       </td>
 
-                      <td className="px-5 py-4 align-middle">
-                        <div className="flex items-center justify-center gap-3 whitespace-nowrap">
-                          <div className="h-1.5 w-20 overflow-hidden  rounded-full bg-slate-200">
-                            <div className={`h-full rounded-full ${perfBarColor(member.performance)}`} style={{ width: `${member.performance}%` }} />
+                      <td className="px-5 py-4 text-center align-middle">
+                        {member.overdueQuotes === 0 ? (
+                          <span className="inline-flex items-center justify-center rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-extrabold text-emerald-600 border border-emerald-100">
+                            0 Overdue
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center justify-center rounded-full bg-rose-50 px-2.5 py-0.5 text-[11px] font-extrabold text-rose-600 border border-rose-100 animate-pulse">
+                            {member.overdueQuotes} Overdue
+                          </span>
+                        )}
+                      </td>
+
+                      <td className="px-5 py-4 text-center align-middle">
+                        <div className="inline-flex items-center justify-center gap-3 whitespace-nowrap">
+                          <div className="h-2 w-20 overflow-hidden rounded-full bg-slate-100 border border-slate-200/50 shadow-inner">
+                            <div className={`h-full rounded-full transition-all duration-500 ${perfBarColor(member.performance)}`} style={{ width: `${member.performance}%` }} />
                           </div>
-                          <span className="text-[13px]  tabular-nums text-slate-700">{member.performance}%</span>
+                          <span className="text-[12.5px] font-bold tabular-nums text-slate-700">{member.performance}%</span>
                         </div>
                       </td>
 
-                      <td className="px-5 py-4 align-middle flex items-center justify-center">
+                      <td className="px-5 py-4 text-center align-middle">
                         <StatusBadge status={member.status} />
                       </td>
 
-                      <td className="px-5 py-4 align-middle">
+                      <td className="px-6 py-4 text-right align-middle">
                         <button
                           onClick={(event) => {
                             event.stopPropagation();
                             setReassignTarget(member);
                           }}
                           disabled={!member.canReassign || team.length < 2}
-                          className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-xl border border-blue-200 bg-blue-50 px-3.5 py-2 text-[12px] font-medium text-blue-600 transition hover:border-blue-300 hover:bg-blue-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-50 disabled:text-slate-300 cursor-pointer"
+                          className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-xl border border-blue-200 bg-blue-50/50 px-3.5 py-2 text-[12px] font-bold text-blue-600 transition hover:border-blue-600 hover:bg-blue-600 hover:text-white disabled:cursor-not-allowed disabled:border-slate-150 disabled:bg-slate-50 disabled:text-slate-350 cursor-pointer shadow-sm hover:shadow-md hover:shadow-blue-500/10 transform active:scale-[0.98]"
                         >
                           <IconReassign />
                           Re-assign

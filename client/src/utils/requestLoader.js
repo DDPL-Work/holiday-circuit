@@ -47,12 +47,7 @@ const shouldTrackRequest = (config = {}) => {
     return true;
   }
 
-  if (config?.showGlobalLoader === false) {
-    return false;
-  }
-
-  const method = String(config?.method || "get").trim().toLowerCase();
-  return method === "get";
+  return false;
 };
 
 export const beginTrackedRequest = (config = {}) => {

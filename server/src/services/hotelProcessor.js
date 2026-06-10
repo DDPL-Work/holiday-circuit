@@ -1,5 +1,6 @@
 import XLSX from "xlsx";
 import Hotel from "../models/hotelDmc.model.js";
+import { parseBlackoutDatesFromWorkbook } from "../utils/blackoutDates.js";
 
 const allowedMealPlans = new Set(["EP", "CP", "MAP", "AP", "AI"]);
 const allowedCurrencies = new Set(["USD", "INR", "AED", "EUR", "IDR", "THB", "SGD", "GBP", "MYR", "EGP"]);
@@ -35,6 +36,7 @@ export const processHotelExcel = async (filePath, ownerId) => {
   const workbook = XLSX.readFile(filePath);
   const sheet = workbook.Sheets[workbook.SheetNames[0]];
   const rows = XLSX.utils.sheet_to_json(sheet);
+  const blackoutDates = parseBlackoutDatesFromWorkbook(workbook);
 
   const normalizedRows = rows.map((row) => {
     const nextRow = {};
@@ -74,11 +76,15 @@ export const processHotelExcel = async (filePath, ownerId) => {
       description: row["Description"] || "",
       validFrom: new Date(row["Valid From"]),
       validTo: new Date(row["Valid To"]),
+      blackoutDates,
     }));
 
   if (hotels.length > 0) {
     await Hotel.insertMany(hotels);
   }
 
-  return hotels.length;
+  return {
+    records: hotels.length,
+    blackoutDates,
+  };
 };

@@ -34,6 +34,7 @@ import {
   getOperationManagerReassignmentDetails,
   reassignOperationManagerWorkload,
   submitOperationManagerReport,
+  updateOperationManagerQuery,
 } from "../controllers/opsManagerController.js";
 import { sendQuotationController } from "../controllers/quotationNotificationController.js";
 import { getAllServices } from "../controllers/dmcController.js";
@@ -70,6 +71,7 @@ router.patch("/vouchers/:id/send", isAuthenticated, sendVoucherToAgent);
 
 router.get("/manager/dashboard", isAuthenticated, getOperationManagerDashboard);
 router.get("/manager/queries", isAuthenticated, getOperationManagerQueries);
+router.put("/manager/queries/:queryId", isAuthenticated, updateOperationManagerQuery);
 router.get("/manager/queries/:queryId/quotations", isAuthenticated, getOperationManagerQueryQuotations);
 router.get("/manager/reassign-preview/:userId", isAuthenticated, getOperationManagerReassignPreview);
 router.get("/manager/reassignments/:userId", isAuthenticated, getOperationManagerReassignmentDetails);

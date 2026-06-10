@@ -3,6 +3,7 @@ import isAuthenticated from "../middlewares/auth.middleware.js";
 import {
   createFinanceTeamMember,
   getFinanceManagerTeam,
+  createDmcVendor,
 } from "../controllers/financeManagerController.js";
 import {
   getPaymentVerifications,
@@ -13,6 +14,7 @@ const router = express.Router();
 
 router.get("/team", isAuthenticated, getFinanceManagerTeam);
 router.post("/team", isAuthenticated, createFinanceTeamMember);
+router.post("/vendors", isAuthenticated, createDmcVendor);
 router.get("/team-transactions", isAuthenticated, getPaymentVerifications);
 router.patch("/team-transactions/:id/status", isAuthenticated, reviewPaymentVerification);
 

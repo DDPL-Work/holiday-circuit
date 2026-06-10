@@ -111,28 +111,28 @@ export default function OpsDashboardContent() {
         initial={{ opacity: 0, y: 40, scale: 0.96 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={{ duration: 0.6, ease: "easeOut" }}
-        className="mb-6 rounded-xl border border-gray-200 bg-white p-6 shadow-md transition"
+        className="group relative overflow-hidden mb-6 rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-50/30 to-white p-6 shadow-sm hover:shadow-md hover:border-blue-200 transition-all duration-300"
       >
         <div className="mb-4 flex items-start justify-between">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-100">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 border border-blue-100/50 text-blue-600 shadow-[0_2px_8px_rgba(59,130,246,0.05)] group-hover:scale-110 transition-all duration-300">
               <ShieldCheck className="h-5 w-5 text-blue-600" />
             </div>
 
             <div>
-              <h2 className="text-lg font-bold text-[#0F172A]">Your Access Level</h2>
+              <h2 className="text-lg font-extrabold tracking-tight text-[#0F172A]">Your Access Level</h2>
               <p className="text-sm text-gray-500">
                 Access to daily operational tasks and booking management
               </p>
             </div>
           </div>
 
-          <span className="rounded-full bg-blue-100 px-3 py-1 text-xs text-blue-600">
+          <span className="rounded-full bg-blue-100/80 border border-blue-200/50 px-3 py-1 text-xs font-semibold text-blue-700">
             Operations Team
           </span>
         </div>
 
-        <p className="mb-4 text-sm font-medium text-gray-500">PERMISSIONS</p>
+        <p className="mb-4 text-xs font-bold uppercase tracking-wider text-slate-400">PERMISSIONS</p>
 
         <motion.ul
           initial="hidden"
@@ -143,7 +143,7 @@ export default function OpsDashboardContent() {
               transition: { staggerChildren: 0.12 },
             },
           }}
-          className="mb-4 space-y-2 text-sm text-gray-700"
+          className="mb-5 space-y-2 text-sm text-slate-650"
         >
           {[
             "View booking management hub",
@@ -163,18 +163,21 @@ export default function OpsDashboardContent() {
                 },
               }}
               whileHover={{ x: 4 }}
-              className="flex items-center gap-2"
+              className="flex items-center gap-2 font-medium"
             >
-              <CheckCircle className="h-4 w-4 text-green-500" />
+              <CheckCircle className="h-4 w-4 text-green-500 shrink-0" />
               {item}
             </motion.li>
           ))}
         </motion.ul>
 
-        <div className="flex items-center gap-2 rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-sm text-orange-600">
-          <AlertCircle className="h-4 w-4" />
+        <div className="flex items-center gap-2 rounded-xl border border-amber-250 bg-amber-50/70 px-3.5 py-2.5 text-xs font-semibold text-amber-700">
+          <AlertCircle className="h-4 w-4 shrink-0 text-amber-600" />
           Some advanced permissions are restricted. Contact admin for access.
         </div>
+
+        {/* Bottom Gradient Line */}
+        <div className="absolute bottom-0 left-0 right-0 h-[4px] bg-gradient-to-r from-blue-500 via-indigo-500 to-cyan-500" />
       </motion.div>
 
       {error ? (
@@ -199,7 +202,8 @@ export default function OpsDashboardContent() {
           value={loading ? "..." : dashboard.stats.pendingQueries.value}
           change={loading ? "Loading..." : dashboard.stats.pendingQueries.text}
           trend={dashboard.stats.pendingQueries.trend}
-          icon={<Clock className="h-5 w-5 text-purple-500 " />}
+          icon={<Clock className="h-5 w-5 text-purple-650" />}
+          theme="purple"
         />
 
         <StatCard
@@ -207,7 +211,8 @@ export default function OpsDashboardContent() {
           value={loading ? "..." : dashboard.stats.activeBookings.value}
           change={loading ? "Loading..." : dashboard.stats.activeBookings.text}
           trend={dashboard.stats.activeBookings.trend}
-          icon={<CheckCircle className="h-5 w-5 text-blue-500" />}
+          icon={<CheckCircle className="h-5 w-5 text-blue-650" />}
+          theme="blue"
         />
 
         <StatCard
@@ -215,7 +220,8 @@ export default function OpsDashboardContent() {
           value={loading ? "..." : dashboard.stats.vouchersGenerated.value}
           change={loading ? "Loading..." : dashboard.stats.vouchersGenerated.text}
           trend={dashboard.stats.vouchersGenerated.trend}
-          icon={<FileText className="h-5 w-5 text-green-500 " />}
+          icon={<FileText className="h-5 w-5 text-emerald-650" />}
+          theme="emerald"
         />
 
         <StatCard
@@ -223,8 +229,9 @@ export default function OpsDashboardContent() {
           value={loading ? "..." : dashboard.stats.pendingActions.value}
           change={loading ? "Loading..." : dashboard.stats.pendingActions.text}
           trend={dashboard.stats.pendingActions.trend}
-          icon={<AlertCircle className="h-5 w-5 text-orange-500" />}
+          icon={<AlertCircle className="h-5 w-5 text-amber-650" />}
           danger
+          theme="amber"
         />
       </motion.div>
 
@@ -236,7 +243,35 @@ export default function OpsDashboardContent() {
   );
 }
 
-function StatCard({ title, value, change, trend, icon, danger }) {
+const themeStyles = {
+  purple: {
+    bg: "bg-gradient-to-br from-purple-50/45 to-white hover:from-purple-100/35 hover:to-purple-50/15",
+    border: "border-purple-100/80",
+    gradientBar: "bg-gradient-to-r from-purple-500 via-fuchsia-500 to-pink-500",
+    iconBg: "bg-purple-50/80 border border-purple-100/50 text-purple-650 shadow-[0_2px_8px_rgba(147,51,234,0.05)]",
+  },
+  blue: {
+    bg: "bg-gradient-to-br from-blue-50/45 to-white hover:from-blue-100/35 hover:to-blue-50/15",
+    border: "border-blue-100/80",
+    gradientBar: "bg-gradient-to-r from-blue-500 via-indigo-500 to-violet-500",
+    iconBg: "bg-blue-50/80 border border-blue-100/50 text-blue-650 shadow-[0_2px_8px_rgba(59,130,246,0.05)]",
+  },
+  emerald: {
+    bg: "bg-gradient-to-br from-emerald-50/45 to-white hover:from-emerald-100/35 hover:to-emerald-50/15",
+    border: "border-emerald-100/80",
+    gradientBar: "bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500",
+    iconBg: "bg-emerald-50/80 border border-emerald-100/50 text-emerald-650 shadow-[0_2px_8px_rgba(16,185,129,0.05)]",
+  },
+  amber: {
+    bg: "bg-gradient-to-br from-amber-50/45 to-white hover:from-amber-100/35 hover:to-amber-50/15",
+    border: "border-amber-100/80",
+    gradientBar: "bg-gradient-to-r from-amber-500 via-orange-500 to-red-500",
+    iconBg: "bg-amber-50/80 border border-amber-100/50 text-amber-650 shadow-[0_2px_8px_rgba(245,158,11,0.05)]",
+  },
+};
+
+function StatCard({ title, value, change, trend, icon, danger, theme = "blue" }) {
+  const styles = themeStyles[theme] || themeStyles.blue;
   return (
     <motion.div
       variants={{
@@ -249,17 +284,22 @@ function StatCard({ title, value, change, trend, icon, danger }) {
           transition: { type: "spring", stiffness: 120, damping: 12 },
         },
       }}
-      whileHover={{ y: -1, scale: 1.015 }}
-      className="rounded-xl border border-gray-200 bg-white p-4 shadow-md"
+      whileHover={{ y: -2, scale: 1.02 }}
+      className={`group relative overflow-hidden rounded-2xl border ${styles.border} ${styles.bg} p-5 shadow-sm hover:shadow-md transition-all duration-300`}
     >
-      <div className="mb-2 flex items-center justify-between">
-        <p className="text-sm font-medium text-gray-500">{title}</p>
-        <span>{icon}</span>
+      <div className="mb-3 flex items-center justify-between">
+        <p className="text-xs font-bold uppercase tracking-wider text-slate-400">{title}</p>
+        <div className={`p-2.5 rounded-xl flex items-center justify-center ${styles.iconBg} transition-transform duration-300 group-hover:scale-110`}>
+          {icon}
+        </div>
       </div>
 
-      <p className="text-xl font-bold text-[#0F172A]">{value}</p>
+      <p className="text-2xl font-extrabold tracking-tight text-slate-800">{value}</p>
 
-      <p className={`mt-1 text-xs ${getTrendColorClass(trend, danger)}`}>{change}</p>
+      <p className={`mt-2 text-xs font-semibold ${getTrendColorClass(trend, danger)}`}>{change}</p>
+
+      {/* Bottom Gradient Bar */}
+      <div className={`absolute bottom-0 left-0 right-0 h-[4px] ${styles.gradientBar}`} />
     </motion.div>
   );
 }

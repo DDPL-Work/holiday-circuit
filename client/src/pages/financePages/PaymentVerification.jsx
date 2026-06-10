@@ -21,11 +21,51 @@ import {
   User,
   Mail,
   History,
-  PieChart
+  PieChart,
+  IndianRupee
 } from "lucide-react";
 import API from "../../utils/Api";
 import { AnimatePresence, motion } from "framer-motion";
 import { useSelector } from "react-redux";
+
+const BANK_LOGOS = {
+  'HDFC Bank': (
+    <svg className="h-3.5 w-3.5 shrink-0 rounded-[2px] border border-blue-900/10 shadow-[0_1px_1px_rgba(0,0,0,0.05)]" viewBox="0 0 24 24" fill="none">
+      <rect width="24" height="24" fill="#004C8F" />
+      <rect x="3" y="3" width="5" height="5" fill="#E31E24" />
+      <rect x="16" y="3" width="5" height="5" fill="#E31E24" />
+      <rect x="3" y="16" width="5" height="5" fill="#E31E24" />
+      <rect x="16" y="16" width="5" height="5" fill="#E31E24" />
+      <rect x="10" y="10" width="4" height="4" fill="#FFFFFF" />
+    </svg>
+  ),
+  'ICICI Bank': (
+    <svg className="h-3.5 w-3.5 shrink-0 rounded-full border border-orange-500/10 shadow-[0_1px_1px_rgba(0,0,0,0.05)]" viewBox="0 0 24 24" fill="none">
+      <circle cx="12" cy="12" r="12" fill="#F58220" />
+      <path d="M12 3C7.03 3 3 7.03 3 12C3 16.97 7.03 21 12 21C16.97 21 21 16.97 21 12C21 7.03 16.97 3 12 3ZM10.5 7H13.5V9H10.5V7ZM10.5 10.5H13.5V17H10.5V10.5Z" fill="#7A1C1C" />
+    </svg>
+  ),
+  'State Bank of India': (
+    <svg className="h-3.5 w-3.5 shrink-0 rounded-full border border-sky-600/10 shadow-[0_1px_1px_rgba(0,0,0,0.05)]" viewBox="0 0 24 24" fill="none">
+      <circle cx="12" cy="12" r="12" fill="#00B3E3" />
+      <circle cx="12" cy="12" r="3.5" fill="#FFFFFF" />
+      <rect x="11" y="12" width="2" height="9" fill="#FFFFFF" />
+    </svg>
+  ),
+  'Axis Bank': (
+    <svg className="h-3.5 w-3.5 shrink-0 rounded-[2px] border border-red-950/10 shadow-[0_1px_1px_rgba(0,0,0,0.05)]" viewBox="0 0 24 24" fill="none">
+      <rect width="24" height="24" fill="#841A41" />
+      <path d="M12 4L4 18H8.5L12 11L15.5L18 18H22.5L12 4Z" fill="#FFFFFF" />
+      <path d="M12 14.5L10 18H14L12 14.5Z" fill="#841A41" />
+    </svg>
+  ),
+  'Kotak Bank': (
+    <svg className="h-3.5 w-3.5 shrink-0 rounded-full border border-red-600/10 shadow-[0_1px_1px_rgba(0,0,0,0.05)]" viewBox="0 0 24 24" fill="none">
+      <circle cx="12" cy="12" r="12" fill="#EE1C25" />
+      <path d="M8 7H10V11L14 7H16.5L12.5 11.5L17 17H14.5L11 12.8V17H8V7Z" fill="#FFFFFF" />
+    </svg>
+  ),
+};
 
 const rejectionReasons = [
   "Incorrect UTR Number",
@@ -61,6 +101,35 @@ const formatDateLabel = (value) => {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return String(value);
   return parsed.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+};
+
+const normalizeWhatsAppPhoneNumber = (value = "") => {
+  const digits = String(value || "").replace(/\D/g, "");
+  if (!digits) return "";
+  if (digits.length === 10) return `91${digits}`;
+  return digits;
+};
+
+const getApiOrigin = () => {
+  const baseUrl = API?.defaults?.baseURL || "";
+  try {
+    return new URL(baseUrl).origin;
+  } catch {
+    return "";
+  }
+};
+
+const triggerFileDownload = async (url, fileName = "Payment_Receipt.pdf") => {
+  const response = await fetch(url);
+  const blob = await response.blob();
+  const blobUrl = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = blobUrl;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(blobUrl);
 };
 
 const getPaymentComparisonMeta = (payment = {}) => {
@@ -1025,7 +1094,11 @@ const SendAgentReceiptModal = ({
   trackerEntry = null,
   installmentIndex = null,
   recipientEmail,
+  recipientPhone,
+  dispatchChannel,
   onRecipientEmailChange,
+  onRecipientPhoneChange,
+  onDispatchChannelChange,
   sending = false,
   onClose,
   onSend,
@@ -1056,7 +1129,7 @@ const SendAgentReceiptModal = ({
       exit={{ opacity: 0, y: 12, scale: 0.98 }}
       transition={{ duration: 0.22, ease: "easeOut" }}
       onClick={(event) => event.stopPropagation()}
-      className="flex w-full max-w-[410px] flex-col overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_28px_80px_rgba(15,23,42,0.24)]"
+      className="flex w-full max-w-[410px] min-h-[490px] max-h-[85vh] flex-col overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_28px_80px_rgba(15,23,42,0.24)]"
     >
       <div className="border-b border-slate-100 bg-[linear-gradient(135deg,#f8fafc_0%,#eef2ff_45%,#ecfeff_100%)] px-5 py-4">
         <div className="flex items-center justify-between gap-3">
@@ -1079,36 +1152,125 @@ const SendAgentReceiptModal = ({
         </div>
       </div>
 
-      <div className="space-y-4 px-5 py-4">
+      <div className="flex-1 overflow-y-auto custom-scroll space-y-4 px-5 py-4">
         <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
           <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">Receipt Summary</p>
-          <div className="mt-2 grid gap-2 text-sm text-slate-700">
-            <p><span className="font-semibold text-slate-900">Query:</span> {payment?.bookingReference || "-"}</p>
-            <p><span className="font-semibold text-slate-900">Invoice:</span> {payment?.invoiceNumber || "-"}</p>
-            {trackerEntry ? (
-              <p><span className="font-semibold text-slate-900">Instalment:</span> {`Instalment ${Number(installmentIndex) + 1}`}</p>
-            ) : null}
-            <p><span className="font-semibold text-slate-900">Receipt Amount:</span> {formatCurrency(installmentAmount || payment?.paymentTrackerPaidAmount || payment?.receivedAmount || 0)}</p>
-            <p><span className="font-semibold text-slate-900">Received So Far:</span> {formatCurrency(cumulativePaid)}</p>
-            <p><span className="font-semibold text-slate-900">Remaining:</span> {formatCurrency(remainingBalance)}</p>
+          <div className="mt-3 grid grid-cols-2 gap-x-4 text-slate-700">
+            {/* Left Column */}
+            <div className="space-y-2.5">
+              <div>
+                <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Query</p>
+                <p className="text-[11px] font-semibold text-slate-800 mt-0.5">{payment?.bookingReference || "-"}</p>
+              </div>
+              <div>
+                <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Invoice</p>
+                <p className="text-[11px] font-semibold text-slate-800 mt-0.5">{payment?.invoiceNumber || "-"}</p>
+              </div>
+              <div>
+                <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Instalment</p>
+                <p className="text-[11px] font-semibold text-slate-800 mt-0.5">
+                  {trackerEntry ? `Instalment ${Number(installmentIndex) + 1}` : "-"}
+                </p>
+              </div>
+            </div>
+
+            {/* Right Column */}
+            <div className="space-y-2.5 pl-4 border-l border-slate-200/80">
+              <div>
+                <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Receipt Amount</p>
+                <p className="text-[11px] font-bold text-slate-900 mt-0.5">
+                  {formatCurrency(installmentAmount || payment?.paymentTrackerPaidAmount || payment?.receivedAmount || 0)}
+                </p>
+              </div>
+              <div>
+                <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Received So Far</p>
+                <p className="text-[11px] font-bold text-slate-900 mt-0.5">
+                  {formatCurrency(cumulativePaid)}
+                </p>
+              </div>
+              <div>
+                <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Remaining</p>
+                <p className={`text-[11px] font-extrabold mt-0.5 ${remainingBalance > 0 ? "text-rose-600" : "text-emerald-600"}`}>
+                  {formatCurrency(remainingBalance)}
+                </p>
+              </div>
+            </div>
           </div>
         </div>
 
-        <div>
-          <label className="mb-1.5 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
-            <span className="flex h-6 w-6 items-center justify-center rounded-full border border-indigo-200 bg-gradient-to-br from-indigo-500 to-sky-500 text-white shadow-sm shadow-indigo-200/70">
-              <Mail className="h-3 w-3" />
-            </span>
-            <span>Agent Email</span>
-          </label>
-          <input
-            type="email"
-            value={recipientEmail}
-            onChange={(e) => onRecipientEmailChange(e.target.value)}
-            placeholder="Enter agent email"
-            className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:bg-white"
-          />
+        <div className="grid grid-cols-3 gap-2 rounded-2xl bg-slate-100 p-1">
+          {[
+            { key: "EMAIL", label: "Email", iconElement: <Mail className="h-3.5 w-3.5" /> },
+            { key: "WHATSAPP", label: "WhatsApp", iconElement: <Send className="h-3.5 w-3.5" /> },
+            { key: "PDF", label: "PDF", iconElement: <Download className="h-3.5 w-3.5" /> },
+          ].map(({ key, label, iconElement }) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => onDispatchChannelChange(key)}
+              className={`inline-flex items-center justify-center gap-1 rounded-xl px-2 py-2 text-xs font-semibold transition ${
+                dispatchChannel === key
+                  ? "bg-slate-900 text-white shadow"
+                  : "text-slate-500 hover:bg-white hover:text-slate-800"
+              }`}
+            >
+              {iconElement}
+              {label}
+            </button>
+          ))}
         </div>
+
+        <AnimatePresence mode="wait">
+          {dispatchChannel === "EMAIL" && (
+            <motion.div
+              key="email-field"
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.2, ease: "easeInOut" }}
+              className="overflow-hidden"
+            >
+              <label className="mb-1.5 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                <span className="flex h-6 w-6 items-center justify-center rounded-full border border-indigo-200 bg-gradient-to-br from-indigo-500 to-sky-500 text-white shadow-sm shadow-indigo-200/70">
+                  <Mail className="h-3 w-3" />
+                </span>
+                <span>Agent Email</span>
+              </label>
+              <input
+                type="email"
+                value={recipientEmail}
+                onChange={(e) => onRecipientEmailChange(e.target.value)}
+                placeholder="Enter agent email"
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:bg-white"
+              />
+            </motion.div>
+          )}
+
+          {dispatchChannel === "WHATSAPP" && (
+            <motion.div
+              key="whatsapp-field"
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.2, ease: "easeInOut" }}
+              className="overflow-hidden"
+            >
+              <label className="mb-1.5 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                <span className="flex h-6 w-6 items-center justify-center rounded-full border border-emerald-200 bg-emerald-500 text-white shadow-sm shadow-emerald-200/70">
+                  <Send className="h-3 w-3" />
+                </span>
+                <span>Agent WhatsApp Number</span>
+              </label>
+              <input
+                type="tel"
+                value={recipientPhone}
+                onChange={(e) => onRecipientPhoneChange(e.target.value)}
+                placeholder="Enter WhatsApp number"
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:bg-white"
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         <div className="rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5">
           <div className="flex items-start gap-2.5">
@@ -1118,7 +1280,11 @@ const SendAgentReceiptModal = ({
             <div>
               <p className="text-sm font-semibold text-slate-900">What will happen</p>
               <p className="mt-0.5 text-[11px] leading-4 text-slate-500">
-                A Holiday Circuit branded payment receipt PDF will be generated and sent to the agent on this email.
+                {dispatchChannel === "EMAIL"
+                  ? "A Holiday Circuit branded payment receipt PDF will be generated and sent to the agent on this email."
+                  : dispatchChannel === "WHATSAPP"
+                    ? "A branded receipt PDF will be generated and WhatsApp will open with a ready-to-share message."
+                    : "A branded receipt PDF will be generated and downloaded to your system."}
               </p>
             </div>
           </div>
@@ -1139,7 +1305,15 @@ const SendAgentReceiptModal = ({
           disabled={sending}
           className="cursor-pointer rounded-full bg-slate-900 px-5 py-1.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-70"
         >
-          {sending ? "Sending..." : trackerEntry ? "Send Instalment Receipt" : "Send Receipt"}
+          {sending
+            ? "Processing..."
+            : dispatchChannel === "PDF"
+              ? "Download Receipt"
+              : dispatchChannel === "WHATSAPP"
+                ? "Open WhatsApp"
+                : trackerEntry
+                  ? "Send Instalment Receipt"
+                  : "Send Receipt"}
         </button>
       </div>
     </motion.div>
@@ -1168,6 +1342,8 @@ const PaymentVerification = () => {
   const [sendingAgentReceipt, setSendingAgentReceipt] = useState(false);
   const [verifyingInstallmentIndex, setVerifyingInstallmentIndex] = useState(null);
   const [agentReceiptEmail, setAgentReceiptEmail] = useState("");
+  const [agentReceiptPhone, setAgentReceiptPhone] = useState("");
+  const [agentReceiptChannel, setAgentReceiptChannel] = useState("EMAIL");
   const [selectedReceiptInstallmentIndex, setSelectedReceiptInstallmentIndex] = useState(null);
   const [installmentToVerifyConfirmIndex, setInstallmentToVerifyConfirmIndex] = useState(null);
   const itemsPerPage = 8;
@@ -1190,14 +1366,16 @@ const PaymentVerification = () => {
   const isExcessPayment =
     selectedPaymentComparison.hasReceivedAmount &&
     selectedPaymentComparison.verificationVariance > 0;
-  const isPaymentFullyPaid = selectedPayment?.invoicePaymentStatus
-    ? selectedPayment.invoicePaymentStatus === "Paid"
-    : selectedPaymentComparison.isMatched;
+  const isPaymentFullyPaid = selectedPayment?.invoicePaymentStatus === "Paid";
   const canVerifySelectedPayment =
     canCurrentUserReview &&
     hasSelectedPaymentContext &&
     (selectedPaymentComparison.isMatched || isPartialPayment);
-  const canSendFinalInvoice = isFinalVerified && isPaymentFullyPaid && Boolean(String(selectedPayment?.agentEmail || "").trim());
+  const canSendFinalInvoice =
+    isFinalVerified &&
+    isPaymentFullyPaid &&
+    selectedPayment?.canSendFinalInvoice === true &&
+    Boolean(String(selectedPayment?.agentEmail || "").trim());
   const canSendPaymentReceipt =
     Math.round(Number(selectedPayment?.paymentTrackerPaidAmount || selectedPayment?.receivedAmount || 0)) > 0;
   const canVerifyInstallments =
@@ -1216,6 +1394,8 @@ const PaymentVerification = () => {
     setOpenPaymentTrackerModal(false);
     setOpenSendAgentReceiptModal(false);
     setAgentReceiptEmail(String(selectedPayment?.paymentReceiptRecipientEmail || selectedPayment?.agentEmail || "").trim());
+    setAgentReceiptPhone("");
+    setAgentReceiptChannel("EMAIL");
     setSelectedReceiptInstallmentIndex(null);
     setVerifyingInstallmentIndex(null);
     setInstallmentToVerifyConfirmIndex(null);
@@ -1247,12 +1427,72 @@ const PaymentVerification = () => {
 
   const statsData = useMemo(
     () => [
-      { title: "Total Payments", value: paymentData.summary.totalPayments, icon: FileText, color: "text-blue-500", bg: "bg-blue-50" },
-      { title: "Pending Review", value: paymentData.summary.pendingReview, icon: Clock, color: "text-amber-500", bg: "bg-amber-50" },
-      { title: "Awaiting Manager", value: paymentData.summary.sentToManager, icon: ShieldCheck, color: "text-indigo-500", bg: "bg-indigo-50" },
-      { title: "Verified", value: paymentData.summary.verified, icon: CheckCircle2, color: "text-green-500", bg: "bg-green-50" },
-      { title: "Rejected", value: paymentData.summary.rejected, icon: XCircle, color: "text-red-500", bg: "bg-red-50" },
-      { title: "Total Amount", value: formatCurrency(paymentData.summary.totalAmount), icon: DollarSign, color: "text-yellow-500", bg: "bg-yellow-50" },
+      {
+        title: "Total Payments",
+        value: paymentData.summary.totalPayments,
+        icon: FileText,
+        color: "text-blue-600",
+        accentColor: "border-b-blue-500",
+        cardBg: "from-blue-50/90 via-white to-blue-50/20",
+        borderColor: "border-blue-100 hover:border-blue-300",
+        iconBg: "bg-blue-100/80 text-blue-600",
+        shadowColor: "shadow-blue-500/5",
+      },
+      {
+        title: "Pending Review",
+        value: paymentData.summary.pendingReview,
+        icon: Clock,
+        color: "text-amber-600",
+        accentColor: "border-b-amber-500",
+        cardBg: "from-amber-50/90 via-white to-amber-50/20",
+        borderColor: "border-amber-100 hover:border-amber-300",
+        iconBg: "bg-amber-100/80 text-amber-600",
+        shadowColor: "shadow-amber-500/5",
+      },
+      {
+        title: "Awaiting Manager",
+        value: paymentData.summary.sentToManager,
+        icon: ShieldCheck,
+        color: "text-indigo-600",
+        accentColor: "border-b-indigo-500",
+        cardBg: "from-indigo-50/90 via-white to-indigo-50/20",
+        borderColor: "border-indigo-100 hover:border-indigo-300",
+        iconBg: "bg-indigo-100/80 text-indigo-600",
+        shadowColor: "shadow-indigo-500/5",
+      },
+      {
+        title: "Verified",
+        value: paymentData.summary.verified,
+        icon: CheckCircle2,
+        color: "text-emerald-600",
+        accentColor: "border-b-emerald-500",
+        cardBg: "from-emerald-50/90 via-white to-emerald-50/20",
+        borderColor: "border-emerald-100 hover:border-emerald-300",
+        iconBg: "bg-emerald-100/80 text-emerald-600",
+        shadowColor: "shadow-emerald-500/5",
+      },
+      {
+        title: "Rejected",
+        value: paymentData.summary.rejected,
+        icon: XCircle,
+        color: "text-rose-600",
+        accentColor: "border-b-rose-500",
+        cardBg: "from-rose-50/90 via-white to-rose-50/20",
+        borderColor: "border-rose-100 hover:border-rose-300",
+        iconBg: "bg-rose-100/80 text-rose-600",
+        shadowColor: "shadow-rose-500/5",
+      },
+      {
+        title: "Total Amount",
+        value: formatCurrency(paymentData.summary.totalAmount),
+        icon: IndianRupee,
+        color: "text-yellow-600",
+        accentColor: "border-b-yellow-500",
+        cardBg: "from-yellow-50/90 via-white to-yellow-50/20",
+        borderColor: "border-yellow-100 hover:border-yellow-300",
+        iconBg: "bg-yellow-100/80 text-yellow-600",
+        shadowColor: "shadow-yellow-500/5",
+      },
     ],
     [paymentData.summary],
   );
@@ -1417,6 +1657,14 @@ const PaymentVerification = () => {
 
   const handleSendFinalInvoice = async () => {
     if (!selectedPayment || sendingFinalInvoice) return;
+    if (!canSendFinalInvoice) {
+      setFeedback({
+        type: "warning",
+        title: "Final Invoice Locked",
+        message: "Final invoice dispatch unlocks only after the full remaining payment is verified.",
+      });
+      return;
+    }
     if (!selectedPayment.agentEmail) {
       setFeedback({ type: "warning", title: "Agent Email Missing", message: "This final invoice cannot be sent because the agent email is not available." });
       return;
@@ -1480,29 +1728,53 @@ const PaymentVerification = () => {
       Number.isInteger(installmentIndex) ? installmentIndex : null,
     );
     setAgentReceiptEmail(String(selectedPayment.paymentReceiptRecipientEmail || selectedPayment.agentEmail || "").trim());
+    setAgentReceiptPhone("");
+    setAgentReceiptChannel("EMAIL");
     setOpenSendAgentReceiptModal(true);
   };
 
   const handleSendAgentReceipt = async () => {
     if (!selectedPayment || sendingAgentReceipt) return;
-    if (!agentReceiptEmail.trim()) {
+    if (agentReceiptChannel === "EMAIL" && !agentReceiptEmail.trim()) {
       setFeedback({ type: "warning", title: "Agent Email Missing", message: "Please enter the agent email before sending the receipt." });
+      return;
+    }
+    if (agentReceiptChannel === "WHATSAPP" && !normalizeWhatsAppPhoneNumber(agentReceiptPhone)) {
+      setFeedback({ type: "warning", title: "WhatsApp Number Missing", message: "Please enter a valid agent WhatsApp number before sharing the receipt." });
       return;
     }
 
     try {
       setSendingAgentReceipt(true);
       const { data } = await API.post(`/admin/payment-verifications/${selectedPayment.id}/send-payment-receipt`, {
+        dispatchChannel: agentReceiptChannel,
         recipientEmail: agentReceiptEmail.trim(),
+        recipientPhone: agentReceiptPhone.trim(),
         ...(selectedReceiptInstallmentIndex !== null ? { installmentIndex: selectedReceiptInstallmentIndex } : {}),
       });
+
+      const receiptPath = data?.receiptDocument?.filePath || "";
+      const receiptUrl = receiptPath
+        ? `${getApiOrigin()}${receiptPath}`
+        : "";
+      if (agentReceiptChannel === "PDF" && receiptUrl) {
+        await triggerFileDownload(receiptUrl, data?.receiptDocument?.name || "Agent_Payment_Receipt.pdf");
+      }
+      if (agentReceiptChannel === "WHATSAPP") {
+        const normalizedPhone = normalizeWhatsAppPhoneNumber(agentReceiptPhone);
+        const message = data?.dispatch?.whatsappMessage || "";
+        if (normalizedPhone && message) {
+          window.open(`https://wa.me/${normalizedPhone}?text=${encodeURIComponent(message)}`, "_blank", "noopener,noreferrer");
+        }
+      }
+
       refreshPaymentRecord(data?.data);
       setOpenSendAgentReceiptModal(false);
       setSelectedReceiptInstallmentIndex(null);
       setFeedback({
         type: "success",
-        title: "Receipt Sent",
-        message: data?.message || "Holiday Circuit payment receipt has been emailed to the agent successfully.",
+        title: agentReceiptChannel === "PDF" ? "Receipt Downloaded" : agentReceiptChannel === "WHATSAPP" ? "WhatsApp Ready" : "Receipt Sent",
+        message: data?.message || "Holiday Circuit payment receipt has been shared successfully.",
       });
     } catch (actionError) {
       setFeedback({
@@ -1527,24 +1799,24 @@ const PaymentVerification = () => {
                 <h1 className="text-2xl font-bold text-slate-900">Payment Verification</h1>
                 <p className="mt-1 text-sm text-slate-500">Review and verify agent payment submissions before invoice workflow continues</p>
               </div>
-              <button className="flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-green-700">
+              <button className="flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-600 via-teal-650 to-emerald-500 hover:from-emerald-700 hover:via-teal-700 hover:to-emerald-600 active:scale-95 active:translate-y-0 hover:-translate-y-0.5 transition-all duration-300 ease-out text-white px-4.5 py-2.5 rounded-xl text-sm font-semibold shadow-sm hover:shadow-md shadow-emerald-500/10 hover:shadow-emerald-500/20">
                 <FileDown className="h-4 w-4" />
                 Export Finance Report
               </button>
             </div>
 
             {/* Stats Grid */}
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {statsData.map((stat) => {
+            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 shrink-0">
+              {statsData.map((stat, idx) => {
                 const Icon = stat.icon;
                 return (
-                  <div key={stat.title} className="flex min-h-[92px] items-start justify-between gap-4 rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+                  <div key={idx} className={`bg-gradient-to-br ${stat.cardBg} border ${stat.borderColor} border-b-4 ${stat.accentColor} rounded-xl p-3.5 shadow-sm hover:shadow-md ${stat.shadowColor} flex items-center justify-between hover:-translate-y-0.5 active:translate-y-0 transition-all duration-300 ease-out group`}>
                     <div className="flex min-w-0 flex-1 flex-col justify-center">
-                      <p className="mb-2 text-[11px] font-semibold leading-4 text-slate-500">{stat.title}</p>
-                      <p className={`text-sm font-bold leading-5 ${stat.color}`}>{loading ? "..." : stat.value}</p>
+                      <p className="mb-2 text-[10px] font-semibold leading-4 uppercase tracking-wider text-slate-500">{stat.title}</p>
+                      <p className={`text-lg font-extrabold tracking-tight leading-none ${stat.color}`}>{loading ? "..." : stat.value}</p>
                     </div>
-                    <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${stat.bg}`}>
-                      <Icon className={`h-4 w-4 ${stat.color}`} />
+                    <div className={`p-2 rounded-lg ${stat.iconBg} group-hover:scale-110 transition-transform duration-300 ease-out shadow-inner`}>
+                      <Icon className="w-4 h-4" />
                     </div>
                   </div>
                 );
@@ -1605,15 +1877,15 @@ const PaymentVerification = () => {
                   <table className="w-full min-w-[1240px] border-collapse text-left">
                     <thead>
                       <tr className="border-b border-gray-200 bg-slate-50">
-                        <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-wider text-slate-500">Booking Reference</th>
-                        <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-wider text-slate-500">Agent Name</th>
-                        <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-wider text-slate-500">Amount</th>
-                        <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-wider text-slate-500">Amount Check</th>
-                        <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-wider text-slate-500">UTR Number</th>
-                        <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-wider text-slate-500">Payment Date</th>
-                        <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-wider text-slate-500">Bank</th>
-                        <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-wider text-slate-500">Status</th>
-                        <th className="px-6 py-4 text-center text-[10px] font-bold uppercase tracking-wider text-slate-500">Actions</th>
+                        <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-wider text-slate-500 whitespace-nowrap">Booking Reference</th>
+                        <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-wider text-slate-500 whitespace-nowrap">Agent Name</th>
+                        <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-wider text-slate-500 whitespace-nowrap">Amount</th>
+                        <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-wider text-slate-500 whitespace-nowrap">Amount Check</th>
+                        <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-wider text-slate-500 whitespace-nowrap">UTR Number</th>
+                        <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-wider text-slate-500 whitespace-nowrap">Payment Date</th>
+                        <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-wider text-slate-500 whitespace-nowrap">Bank</th>
+                        <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-wider text-slate-500 whitespace-nowrap">Status</th>
+                        <th className="px-6 py-4 text-center text-[10px] font-bold uppercase tracking-wider text-slate-500 whitespace-nowrap">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
@@ -1639,13 +1911,39 @@ const PaymentVerification = () => {
                               </div>
                             </td>
                             <td className="whitespace-nowrap px-6 py-4"><AmountCheckBadge payment={payment} /></td>
-                            <td className="whitespace-nowrap px-6 py-4"><span className="rounded bg-slate-100 px-2 py-1 font-mono text-[10px] tracking-wide text-slate-500">{payment.utrNumber || "Pending"}</span></td>
+                            <td className="whitespace-nowrap px-6 py-4">
+                              {!payment.utrNumber || payment.utrNumber === "Pending" ? (
+                                <span className="inline-flex w-fit items-center rounded-lg border border-amber-200 bg-amber-50/70 px-2.5 py-0.5 text-[10px] font-mono font-medium text-amber-600 whitespace-nowrap">
+                                  Pending
+                                </span>
+                              ) : (
+                                <span className="inline-flex w-fit items-center rounded-lg border border-emerald-200 bg-emerald-50/70 px-2.5 py-0.5 text-[10px] font-mono font-semibold text-emerald-700 whitespace-nowrap" title={payment.utrNumber}>
+                                  {payment.utrNumber}
+                                </span>
+                              )}
+                            </td>
                             <td className="whitespace-nowrap px-6 py-4"><div className="flex items-center gap-1.5 text-xs text-slate-600"><Clock className="h-3.5 w-3.5 text-slate-400" />{payment.paymentDate}</div></td>
-                            <td className="whitespace-nowrap px-6 py-4 text-xs text-slate-600">{payment.bankName || "Pending"}</td>
+                            <td className="whitespace-nowrap px-6 py-4">
+                              {payment.bankName && payment.bankName !== "Pending" ? (
+                                <div className="flex items-center gap-1.5 min-w-0">
+                                  {BANK_LOGOS[payment.bankName] || (
+                                    <Building2 className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                                  )}
+                                  <span className="text-[11px] font-semibold text-slate-700 truncate min-w-0">{payment.bankName}</span>
+                                </div>
+                              ) : (
+                                <span className="inline-flex w-fit items-center rounded-lg border border-amber-200 bg-amber-50/70 px-2.5 py-0.5 text-[10px] font-mono font-medium text-amber-600 whitespace-nowrap">
+                                  Pending
+                                </span>
+                              )}
+                            </td>
                             <td className="whitespace-nowrap px-6 py-4"><StatusBadge status={payment.workflowStatus || payment.status} /></td>
                             <td className="whitespace-nowrap px-6 py-4 text-center">
-                              <button onClick={() => setSelectedPayment(payment)} className="inline-flex items-center gap-1.5 rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-slate-700">
-                                <Eye className="h-3.5 w-3.5" />
+                              <button
+                                onClick={() => setSelectedPayment(payment)}
+                                className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-slate-950 via-blue-950 to-slate-900 hover:from-blue-950 hover:via-slate-900 hover:to-slate-950 hover:-translate-y-0.5 active:translate-y-0 active:scale-95 transition-all duration-300 ease-out text-white px-3.5 py-1.5 text-xs font-semibold shadow-sm hover:shadow shadow-blue-950/10 cursor-pointer group"
+                              >
+                                <Eye className="h-3.5 w-3.5 group-hover:scale-110 transition-transform duration-300" />
                                 Review
                               </button>
                             </td>
@@ -2217,7 +2515,11 @@ const PaymentVerification = () => {
             trackerEntry={selectedReceiptTrackerEntry}
             installmentIndex={selectedReceiptInstallmentIndex}
             recipientEmail={agentReceiptEmail}
+            recipientPhone={agentReceiptPhone}
+            dispatchChannel={agentReceiptChannel}
             onRecipientEmailChange={setAgentReceiptEmail}
+            onRecipientPhoneChange={setAgentReceiptPhone}
+            onDispatchChannelChange={setAgentReceiptChannel}
             sending={sendingAgentReceipt}
             onClose={() => {
               setOpenSendAgentReceiptModal(false);

@@ -1,46 +1,60 @@
+import { createElement, lazy, Suspense } from "react";
 import { createBrowserRouter } from "react-router-dom";
 import ProtectedRoute from "./ProtectedRoute";
 import Layout from "../layout/Layout";
-import AgentDashboard from "../pages/agentPages/AgentDashboard";
-import Queries from "../pages/agentPages/Queries";
-import Finance from "../pages/agentPages/Finance";
-import ActiveBookings from "../pages/agentPages/ActiveBookings";
-import DocumentPortal from "../pages/agentPages/DocumentPortal";
-import AssetLibrary from "../pages/agentPages/AssetLibrary";
-import Login from "../auth/login/Login";
-import Register from "../auth/register/Register";
-import OpsDashboardContent from "../pages/opsPages/OpsDashboardContent";
-import BookingManagementHub from "../pages/opsPages/BookingManagementHub";
-import OrderAcceptance from "../pages/opsPages/OrderAcceptance";
-import QuotationBuilder from "../pages/opsPages/QuotationBuilder";
-import VoucherManagement from "../pages/opsPages/VoucherManagement";
-import DmcDashboard from "../pages/dmcPages/DmcDashboard"
-import ContractedRates from "../pages/dmcPages/ContractedRates";
-import FulfillmentConfirmation from "../pages/dmcPages/FulfillmentConfirmation";
-import FinanceDashboard from "../pages/financePages/FinanceDashboard";
-import PaymentVerification from "../pages/financePages/PaymentVerification";
-import InternalInvoice from "../pages/financePages/InternalInvoice";
-import AdvancedAnalytics from "../pages/financePages/AdvancedAnalytics";
-import Dashboard from "../pages/adminPages/Dashboard";
-import SuperAdminDashboard from "../pages/adminPages/SuperAdminDashboard";
-import Discount from "../pages/adminPages/Discount";
-import FinanceManagerDashboard from "../pages/managerPages/financeManagerPages/FinanceManagerDashboard";
-import AllTeamQueries from "../pages/managerPages/opsManagerPages/AllTeamQueries";
-import OperationManagerDashboard from "../pages/managerPages/opsManagerPages/OperationManagerDashboard";
-import MyOperationTeam from "../pages/managerPages/opsManagerPages/MyOperationTeam";
-import AllTeamTransactions from "../pages/managerPages/financeManagerPages/AllTeamTransactions";
-import InternalDMCInvoices from "../pages/managerPages/financeManagerPages/InternalDMCInvoices";
-import MyFinanceTeam from "../pages/managerPages/financeManagerPages/MyFinanceTeam";
-import UserManagement from "../pages/adminPages/UserManagement";
+
+const AgentDashboard = lazy(() => import("../pages/agentPages/AgentDashboard"));
+const Queries = lazy(() => import("../pages/agentPages/Queries"));
+const Finance = lazy(() => import("../pages/agentPages/Finance"));
+const ActiveBookings = lazy(() => import("../pages/agentPages/ActiveBookings"));
+const DocumentPortal = lazy(() => import("../pages/agentPages/DocumentPortal"));
+const AssetLibrary = lazy(() => import("../pages/agentPages/AssetLibrary"));
+const Login = lazy(() => import("../auth/login/Login"));
+const Register = lazy(() => import("../auth/register/Register"));
+const OpsDashboardContent = lazy(() => import("../pages/opsPages/OpsDashboardContent"));
+const BookingManagementHub = lazy(() => import("../pages/opsPages/BookingManagementHub"));
+const OrderAcceptance = lazy(() => import("../pages/opsPages/OrderAcceptance"));
+const QuotationBuilder = lazy(() => import("../pages/opsPages/QuotationBuilder"));
+const VoucherManagement = lazy(() => import("../pages/opsPages/VoucherManagement"));
+const DmcDashboard = lazy(() => import("../pages/dmcPages/DmcDashboard"));
+const ContractedRates = lazy(() => import("../pages/dmcPages/ContractedRates"));
+const FulfillmentConfirmation = lazy(() => import("../pages/dmcPages/FulfillmentConfirmation"));
+const FinanceDashboard = lazy(() => import("../pages/financePages/FinanceDashboard"));
+const PaymentVerification = lazy(() => import("../pages/financePages/PaymentVerification"));
+const InternalInvoice = lazy(() => import("../pages/financePages/InternalInvoice"));
+const AdvancedAnalytics = lazy(() => import("../pages/financePages/AdvancedAnalytics"));
+const Dashboard = lazy(() => import("../pages/adminPages/Dashboard"));
+const SuperAdminDashboard = lazy(() => import("../pages/adminPages/SuperAdminDashboard"));
+const Discount = lazy(() => import("../pages/adminPages/Discount"));
+const FinanceManagerDashboard = lazy(() => import("../pages/managerPages/financeManagerPages/FinanceManagerDashboard"));
+const AllTeamQueries = lazy(() => import("../pages/managerPages/opsManagerPages/AllTeamQueries"));
+const OperationManagerDashboard = lazy(() => import("../pages/managerPages/opsManagerPages/OperationManagerDashboard"));
+const MyOperationTeam = lazy(() => import("../pages/managerPages/opsManagerPages/MyOperationTeam"));
+const AllTeamTransactions = lazy(() => import("../pages/managerPages/financeManagerPages/AllTeamTransactions"));
+const InternalDMCInvoices = lazy(() => import("../pages/managerPages/financeManagerPages/InternalDMCInvoices"));
+const MyFinanceTeam = lazy(() => import("../pages/managerPages/financeManagerPages/MyFinanceTeam"));
+const UserManagement = lazy(() => import("../pages/adminPages/UserManagement"));
+
+const routeFallbackElement = (
+  <div className="flex min-h-[45vh] items-center justify-center text-sm font-semibold text-slate-500">
+    Loading page...
+  </div>
+);
+
+const lazyPage = (Component) => (
+  <Suspense fallback={routeFallbackElement}>
+    {createElement(Component)}
+  </Suspense>
+);
 
 export const appRouter = createBrowserRouter([
   {
     path: "/",
-    element :<Login/>
+    element: lazyPage(Login),
   },
    {
     path: "/register",
-     element: <Register />,
+     element: lazyPage(Register),
   },
 
   {
@@ -50,12 +64,12 @@ export const appRouter = createBrowserRouter([
         path: "/",
         element: <Layout/>,
         children: [
-          { path: "/agent/dashboard", element: <AgentDashboard/>},
-          { path: "/agent/queries", element: <Queries/>},
-          { path: "/agent/bookings", element: <ActiveBookings/>},
-          { path: "/agent/documents", element: <DocumentPortal/>},
-          { path: "/agent/finance", element: <Finance/>},
-          { path: "/agent/assets", element: <AssetLibrary/>},
+          { path: "/agent/dashboard", element: lazyPage(AgentDashboard)},
+          { path: "/agent/queries", element: lazyPage(Queries)},
+          { path: "/agent/bookings", element: lazyPage(ActiveBookings)},
+          { path: "/agent/documents", element: lazyPage(DocumentPortal)},
+          { path: "/agent/finance", element: lazyPage(Finance)},
+          { path: "/agent/assets", element: lazyPage(AssetLibrary)},
         ],
       },
     ],
@@ -68,11 +82,11 @@ export const appRouter = createBrowserRouter([
         path: "/",
         element: <Layout />,
         children: [
-          { path: "/admin/dashboard", element: <Dashboard/>},
-          { path: "/admin/superAdminDashboard", element: <SuperAdminDashboard/>},
-          { path: "/admin/discount", element: <Discount/>},
-          { path: "/admin/bookings-management", element:<BookingManagementHub/>},
-          { path: "/admin/user-management", element:<UserManagement/>},
+          { path: "/admin/dashboard", element: lazyPage(Dashboard)},
+          { path: "/admin/superAdminDashboard", element: lazyPage(SuperAdminDashboard)},
+          { path: "/admin/discount", element: lazyPage(Discount)},
+          { path: "/admin/bookings-management", element: lazyPage(BookingManagementHub)},
+          { path: "/admin/user-management", element: lazyPage(UserManagement)},
         ],
       },
     ],
@@ -84,11 +98,11 @@ export const appRouter = createBrowserRouter([
         path: "/",
         element: <Layout/>,
         children: [
-          { path: "/ops/dashboard", element:<OpsDashboardContent/>},
-          { path: "/ops/bookings-management", element:<BookingManagementHub/>},
-          { path: "/ops/order-acceptance", element:<OrderAcceptance/>},
-          {path: "/ops/quotation-builder", element: <QuotationBuilder />}, //:queryId dynamic 
-          {path: "/ops/voucher-management", element: <VoucherManagement/>}, 
+          { path: "/ops/dashboard", element: lazyPage(OpsDashboardContent)},
+          { path: "/ops/bookings-management", element: lazyPage(BookingManagementHub)},
+          { path: "/ops/order-acceptance", element: lazyPage(OrderAcceptance)},
+          {path: "/ops/quotation-builder", element: lazyPage(QuotationBuilder)}, //:queryId dynamic
+          {path: "/ops/voucher-management", element: lazyPage(VoucherManagement)},
           
         ],
       },
@@ -101,9 +115,9 @@ export const appRouter = createBrowserRouter([
         path: "/",
         element: <Layout/>,
         children: [
-          { path: "/dmc/dashboard", element:<DmcDashboard/>},
-          { path: "/dmc/contractedRates", element:<ContractedRates/>},
-          { path: "/dmc/confirmation", element:<FulfillmentConfirmation/>},
+          { path: "/dmc/dashboard", element: lazyPage(DmcDashboard)},
+          { path: "/dmc/contractedRates", element: lazyPage(ContractedRates)},
+          { path: "/dmc/confirmation", element: lazyPage(FulfillmentConfirmation)},
         ],
       },
     ],
@@ -114,10 +128,10 @@ export const appRouter = createBrowserRouter([
       { path: "/",
         element: <Layout/>,
         children: [
-          { path: "/finance/dashboard", element:<FinanceDashboard/>},
-          { path: "/finance/advancedAnalytics", element:<AdvancedAnalytics/>},
-          { path: "/finance/paymentVerification", element:<PaymentVerification/>},
-          { path: "/finance/internalInvoice", element:<InternalInvoice/>},
+          { path: "/finance/dashboard", element: lazyPage(FinanceDashboard)},
+          { path: "/finance/advancedAnalytics", element: lazyPage(AdvancedAnalytics)},
+          { path: "/finance/paymentVerification", element: lazyPage(PaymentVerification)},
+          { path: "/finance/internalInvoice", element: lazyPage(InternalInvoice)},
         ],
       },
     ],
@@ -127,9 +141,9 @@ export const appRouter = createBrowserRouter([
     children: [
       { path: "/", element: <Layout/>,
         children: [
-          { path: "/operationManager/operationManagerDashboard", element:<OperationManagerDashboard/>},
-          { path: "/operationManager/allTeamQueries", element:<AllTeamQueries/>},
-          { path: "/operationManager/myTeam", element:<MyOperationTeam/>},
+          { path: "/operationManager/operationManagerDashboard", element: lazyPage(OperationManagerDashboard)},
+          { path: "/operationManager/allTeamQueries", element: lazyPage(AllTeamQueries)},
+          { path: "/operationManager/myTeam", element: lazyPage(MyOperationTeam)},
         ],
       },
     ],
@@ -139,10 +153,11 @@ export const appRouter = createBrowserRouter([
     children: [
       { path: "/", element: <Layout/>,
         children: [
-          { path: "/financeManager/financeManagerDashboard", element:<FinanceManagerDashboard/>},
-          { path: "/financeManager/allTeamTransaction", element:<AllTeamTransactions/>},
-          { path: "/financeManager/internalDmcInvoice", element:<InternalDMCInvoices/>},
-          { path: "/financeManager/myFinanceTeam", element:<MyFinanceTeam/>},
+          { path: "/financeManager/financeManagerDashboard", element: lazyPage(FinanceManagerDashboard)},
+          { path: "/financeManager/advancedAnalytics", element: lazyPage(AdvancedAnalytics)},
+          { path: "/financeManager/allTeamTransaction", element: lazyPage(AllTeamTransactions)},
+          { path: "/financeManager/internalDmcInvoice", element: lazyPage(InternalDMCInvoices)},
+          { path: "/financeManager/myFinanceTeam", element: lazyPage(MyFinanceTeam)},
         ],
       },
     ],
