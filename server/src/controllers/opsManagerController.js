@@ -5,6 +5,7 @@ import Notification from "../models/notification.model.js";
 import TravelQuery from "../models/TravelQuery.model.js";
 import Quotation from "../models/quotation.model.js";
 import { createNotification } from "../services/notificationDispatchService.js";
+import { ensureDestinationName } from "../services/destinationNameService.js";
 
 import { sendTeamMemberCredentialsMail } from "../services/sendEmail.js";
 
@@ -67,6 +68,16 @@ const round = (value, digits = 0) => {
   const factor = 10 ** digits;
   return Math.round((Number(value || 0) + Number.EPSILON) * factor) / factor;
 };
+
+const normalizeHotelCategorySelection = (value = "") =>
+  Array.from(
+    new Set(
+      String(value || "")
+        .split(",")
+        .map((category) => category.trim())
+        .filter(Boolean),
+    ),
+  ).join(", ");
 
 const generateTemporaryPassword = () => {
   const random = Math.random().toString(36).slice(2, 8);
@@ -1398,8 +1409,8 @@ export const updateOperationManagerQuery = async (req, res, next) => {
     }
 
     const normalizedClientEmail = String(clientEmail || "").trim().toLowerCase();
-    if (!normalizedClientEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedClientEmail)) {
-      return next(new ApiError(400, "A valid client email address is required"));
+    if (normalizedClientEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedClientEmail)) {
+      return next(new ApiError(400, "Please enter a valid client email address"));
     }
 
     const parsedStartDate = new Date(startDate);
@@ -1420,9 +1431,8 @@ export const updateOperationManagerQuery = async (req, res, next) => {
       return next(new ApiError(400, "Children count cannot be negative"));
     }
 
-    const normalizedHotelCategory = ["3 Star", "4 Star", "5 Star"].includes(String(hotelCategory || "").trim())
-      ? String(hotelCategory).trim()
-      : "4 Star";
+    const normalizedDestination = String(destination || "").trim();
+    const normalizedHotelCategory = normalizeHotelCategorySelection(hotelCategory);
     const normalizedTravelerDetails = normalizeOpsManagerTravelerDetails(
       travelerDetails,
       normalizedAdults,
@@ -1430,10 +1440,16 @@ export const updateOperationManagerQuery = async (req, res, next) => {
       query.travelerDetails || [],
     );
 
+    await ensureDestinationName({
+      label: normalizedDestination,
+      source: "manual",
+      createdBy: req.user.id,
+    });
+
     const changes = [];
     const oldDestination = query.destination || "";
-    if (String(destination).trim() !== oldDestination) {
-      changes.push(`Destination: "${oldDestination}" -> "${String(destination).trim()}"`);
+    if (normalizedDestination !== oldDestination) {
+      changes.push(`Destination: "${oldDestination}" -> "${normalizedDestination}"`);
     }
     if (normalizedClientEmail !== String(query.clientEmail || "").trim().toLowerCase()) {
       changes.push(`Client Email: "${query.clientEmail || "-"}" -> "${normalizedClientEmail}"`);
@@ -1476,7 +1492,7 @@ export const updateOperationManagerQuery = async (req, res, next) => {
       changes.push("Traveler/client names updated");
     }
 
-    query.destination = String(destination).trim();
+    query.destination = normalizedDestination;
     query.clientEmail = normalizedClientEmail;
     query.startDate = parsedStartDate;
     query.endDate = parsedEndDate;

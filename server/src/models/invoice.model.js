@@ -75,6 +75,10 @@ const paymentTrackerEntrySchema = new mongoose.Schema(
       default: "",
       trim: true,
     },
+    receipt: {
+      type: paymentReceiptSchema,
+      default: () => ({}),
+    },
     receiptStatus: {
       type: String,
       enum: ["", "Sent"],
@@ -517,115 +521,115 @@ const invoiceTripSnapshotSchema = new mongoose.Schema(
 );
 
 const invoiceSchema = new mongoose.Schema(
-{
-  query: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "TravelQuery",
-    required: true
-  },
+  {
+    query: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "TravelQuery",
+      required: true
+    },
 
-  agent: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "Auth",
-    required: true
-  },
+    agent: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Auth",
+      required: true
+    },
 
-  generatedBy: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "Auth" // admin / operations
-  },
+    generatedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Auth" // admin / operations
+    },
 
-  invoiceNumber: {
-    type: String,
-    required: true,
-    unique: true
-  },
+    invoiceNumber: {
+      type: String,
+      required: true,
+      unique: true
+    },
 
-  invoiceType: {
-    type: String,
-    enum: ["agent","admin","operations"], // 👈 very important
-    required: true
-  },
+    invoiceType: {
+      type: String,
+      enum: ["agent", "admin", "operations"], // 👈 very important
+      required: true
+    },
 
-  totalAmount: {
-    type: Number,
-    required: true
-  },
+    totalAmount: {
+      type: Number,
+      required: true
+    },
 
-  paymentStatus: {
-    type: String,
-    enum: ["Pending", "Partially Paid", "Paid", "Unpaid"],
-    default: "Pending"
-  },
+    paymentStatus: {
+      type: String,
+      enum: ["Pending", "Partially Paid", "Paid", "Unpaid"],
+      default: "Pending"
+    },
 
-  paymentUpdatedBy: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref:"Auth"
-  },
+    paymentUpdatedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Auth"
+    },
 
-  remarks: {
-    type: String
-  },
+    remarks: {
+      type: String
+    },
 
-  quotation: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "Quotation",
-  },
+    quotation: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Quotation",
+    },
 
-  currency: {
-    type: String,
-    default: "INR",
-    trim: true,
-  },
+    currency: {
+      type: String,
+      default: "INR",
+      trim: true,
+    },
 
-  lineItems: {
-    type: [invoiceLineItemSchema],
-    default: [],
-  },
+    lineItems: {
+      type: [invoiceLineItemSchema],
+      default: [],
+    },
 
-  pricingSnapshot: {
-    type: invoicePricingSnapshotSchema,
-    default: () => ({}),
-  },
+    pricingSnapshot: {
+      type: invoicePricingSnapshotSchema,
+      default: () => ({}),
+    },
 
-  tripSnapshot: {
-    type: invoiceTripSnapshotSchema,
-    default: () => ({}),
-  },
+    tripSnapshot: {
+      type: invoiceTripSnapshotSchema,
+      default: () => ({}),
+    },
 
-  templateVariant: {
-    type: String,
-    default: "grand-ledger",
-    trim: true,
-  },
+    templateVariant: {
+      type: String,
+      default: "grand-ledger",
+      trim: true,
+    },
 
-  paymentSubmission: {
-    type: paymentSubmissionSchema,
-    default: () => ({}),
-  },
+    paymentSubmission: {
+      type: paymentSubmissionSchema,
+      default: () => ({}),
+    },
 
-  paymentVerification: {
-    type: paymentVerificationSchema,
-    default: () => ({ status: "Pending" }),
-  },
+    paymentVerification: {
+      type: paymentVerificationSchema,
+      default: () => ({ status: "Pending" }),
+    },
 
-  paymentAuditTrail: {
-    type: [paymentAuditEntrySchema],
-    default: [],
-  },
+    paymentAuditTrail: {
+      type: [paymentAuditEntrySchema],
+      default: [],
+    },
 
-  finalInvoiceDispatch: {
-    type: finalInvoiceDispatchSchema,
-    default: () => ({ status: "Not Sent" }),
-  },
+    finalInvoiceDispatch: {
+      type: finalInvoiceDispatchSchema,
+      default: () => ({ status: "Not Sent" }),
+    },
 
-  paymentReceiptDispatch: {
-    type: finalInvoiceDispatchSchema,
-    default: () => ({ status: "Not Sent", templateVariant: "agent-payment-receipt" }),
-  },
+    paymentReceiptDispatch: {
+      type: finalInvoiceDispatchSchema,
+      default: () => ({ status: "Not Sent", templateVariant: "agent-payment-receipt" }),
+    },
 
-},
-{ timestamps: true }
+  },
+  { timestamps: true }
 );
 
 invoiceSchema.index({ "paymentSubmission.submittedAt": -1 });

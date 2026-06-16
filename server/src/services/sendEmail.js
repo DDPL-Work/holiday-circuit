@@ -337,6 +337,229 @@ export const sendTeamMemberCredentialsMail = async (
   });
 };
 
+const formatQueryMailDate = (value = "") => {
+  if (!value) return "-";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "-";
+
+  return parsed.toLocaleDateString("en-IN", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+};
+
+const formatQueryMailAmount = (value = 0) => {
+  const amount = Number(value || 0);
+  if (!Number.isFinite(amount) || amount <= 0) return "Not shared";
+
+  return `INR ${Math.round(amount).toLocaleString("en-IN")}`;
+};
+
+const buildQueryInfoRow = (label, value) => `
+  <tr>
+    <td style="padding:10px 12px;border-bottom:1px solid #e2e8f0;color:#64748b;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;">${escapeHtml(label)}</td>
+    <td style="padding:10px 12px;border-bottom:1px solid #e2e8f0;color:#0f172a;font-size:14px;font-weight:700;text-align:right;">${escapeHtml(value || "-")}</td>
+  </tr>
+`;
+
+export const sendNewQueryAssignedMail = async (
+  email,
+  {
+    opsName = "Operations Team",
+    queryId = "",
+    destination = "",
+    startDate = "",
+    endDate = "",
+    numberOfAdults = 0,
+    numberOfChildren = 0,
+    customerBudget = 0,
+    hotelCategory = "",
+    transportRequired = false,
+    sightseeingRequired = false,
+    specialRequirements = "",
+    agentName = "Agent",
+    agentCompany = "",
+    agentEmail = "",
+    dashboardUrl = "",
+  } = {},
+) => {
+  const totalTravelers = Number(numberOfAdults || 0) + Number(numberOfChildren || 0);
+  const safeDashboardUrl = String(dashboardUrl || "").trim();
+  const safeNotes = String(specialRequirements || "").trim();
+  const inclusions = [
+    transportRequired ? "Transport required" : "Transport not requested",
+    sightseeingRequired ? "Sightseeing required" : "Sightseeing not requested",
+  ];
+
+  await transporter.sendMail({
+    from: MAIL_FROM_ADDRESS,
+    to: email,
+    replyTo: MAIL_REPLY_TO_ADDRESS,
+    subject: `New Query Assigned: ${queryId || destination || "Holiday Circuit"}`,
+    html: `
+      <div style="margin:0;padding:0;background:#f1f5f9;font-family:Arial,sans-serif;color:#0f172a;">
+        <div style="max-width:680px;margin:0 auto;padding:28px 16px;">
+          <div style="overflow:hidden;border-radius:22px;border:1px solid #dbeafe;background:#ffffff;box-shadow:0 18px 45px rgba(15,23,42,0.08);">
+            <div style="padding:24px 28px;background:linear-gradient(135deg,#020617 0%,#0f2a57 100%);color:#ffffff;">
+              <p style="margin:0 0 8px;font-size:11px;font-weight:800;letter-spacing:0.2em;text-transform:uppercase;color:#bfdbfe;">Holiday Circuit</p>
+              <h1 style="margin:0;font-size:26px;line-height:1.25;color:#ffffff;">New query assigned</h1>
+              <p style="margin:10px 0 0;font-size:14px;line-height:1.7;color:#cbd5e1;">Hello ${escapeHtml(opsName)}, a fresh travel query has been assigned to your queue for review and quotation planning.</p>
+            </div>
+
+            <div style="padding:24px 28px;">
+              <div style="display:block;margin-bottom:18px;padding:16px 18px;border-radius:18px;background:#eff6ff;border:1px solid #bfdbfe;">
+                <p style="margin:0 0 4px;font-size:11px;font-weight:800;letter-spacing:0.14em;text-transform:uppercase;color:#2563eb;">Query reference</p>
+                <p style="margin:0;font-size:24px;font-weight:800;color:#0f172a;">${escapeHtml(queryId || "-")}</p>
+                <p style="margin:6px 0 0;font-size:13px;color:#475569;">${escapeHtml(destination || "Destination pending")}</p>
+              </div>
+
+              <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border:1px solid #e2e8f0;border-radius:16px;overflow:hidden;margin-bottom:18px;">
+                ${buildQueryInfoRow("Travel dates", `${formatQueryMailDate(startDate)} - ${formatQueryMailDate(endDate)}`)}
+                ${buildQueryInfoRow("Travelers", `${totalTravelers || 0} PAX (${Number(numberOfAdults || 0)} Adult${Number(numberOfAdults || 0) === 1 ? "" : "s"}, ${Number(numberOfChildren || 0)} Child${Number(numberOfChildren || 0) === 1 ? "" : "ren"})`)}
+                ${buildQueryInfoRow("Budget / person", formatQueryMailAmount(customerBudget))}
+                ${buildQueryInfoRow("Hotel category", hotelCategory || "Not specified")}
+                ${buildQueryInfoRow("Services", inclusions.join(" | "))}
+                ${buildQueryInfoRow("Agent", `${agentCompany || agentName}${agentEmail ? ` (${agentEmail})` : ""}`)}
+              </table>
+
+              <div style="padding:16px 18px;border-radius:18px;background:#f8fafc;border:1px solid #e2e8f0;margin-bottom:18px;">
+                <p style="margin:0 0 8px;font-size:11px;font-weight:800;letter-spacing:0.14em;text-transform:uppercase;color:#64748b;">Special preferences / notes</p>
+                <p style="margin:0;font-size:14px;line-height:1.7;color:#334155;">${escapeHtml(safeNotes || "No special preferences shared by the agent.")}</p>
+              </div>
+
+              <div style="padding:16px 18px;border-radius:18px;background:#ecfdf5;border:1px solid #bbf7d0;">
+                <p style="margin:0 0 6px;font-size:14px;font-weight:800;color:#065f46;">Suggested next action</p>
+                <p style="margin:0;font-size:13px;line-height:1.7;color:#047857;">Review the query details, validate availability, and start preparing the quotation from the operations dashboard.</p>
+                ${
+                  safeDashboardUrl
+                    ? `<a href="${escapeHtml(safeDashboardUrl)}" style="display:inline-block;margin-top:12px;padding:11px 16px;border-radius:999px;background:#0f172a;color:#ffffff;text-decoration:none;font-size:13px;font-weight:800;">Open assigned queries</a>`
+                    : ""
+                }
+              </div>
+
+              <p style="margin:18px 0 0;font-size:12px;line-height:1.6;color:#64748b;">This is an automated assignment email from Holiday Circuit.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    `,
+    text: [
+      "New query assigned",
+      `Query: ${queryId || "-"}`,
+      `Destination: ${destination || "-"}`,
+      `Travel dates: ${formatQueryMailDate(startDate)} - ${formatQueryMailDate(endDate)}`,
+      `Travelers: ${totalTravelers || 0} PAX`,
+      `Budget per person: ${formatQueryMailAmount(customerBudget)}`,
+      `Hotel category: ${hotelCategory || "Not specified"}`,
+      `Services: ${inclusions.join(" | ")}`,
+      `Agent: ${agentCompany || agentName}${agentEmail ? ` (${agentEmail})` : ""}`,
+      `Notes: ${safeNotes || "No special preferences shared by the agent."}`,
+      safeDashboardUrl ? `Dashboard: ${safeDashboardUrl}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n"),
+  });
+};
+
+
+export const sendAgentQueryCreatedMail = async (
+  email,
+  {
+    agentName = "Agent",
+    queryId = "",
+    destination = "",
+    startDate = "",
+    endDate = "",
+    numberOfAdults = 0,
+    numberOfChildren = 0,
+    customerBudget = 0,
+    hotelCategory = "",
+    transportRequired = false,
+    sightseeingRequired = false,
+    specialRequirements = "",
+    assignedOpsName = "Operations Team",
+    dashboardUrl = "",
+  } = {},
+) => {
+  const totalTravelers = Number(numberOfAdults || 0) + Number(numberOfChildren || 0);
+  const safeDashboardUrl = String(dashboardUrl || "").trim();
+  const safeNotes = String(specialRequirements || "").trim();
+  const services = [
+    transportRequired ? "Transport required" : "Transport not requested",
+    sightseeingRequired ? "Sightseeing required" : "Sightseeing not requested",
+  ];
+
+  await transporter.sendMail({
+    from: MAIL_FROM_ADDRESS,
+    to: email,
+    replyTo: MAIL_REPLY_TO_ADDRESS,
+    subject: `Travel Query Created: ${queryId || destination || "Holiday Circuit"}`,
+    html: `
+      <div style="margin:0;padding:0;background:#f1f5f9;font-family:Arial,sans-serif;color:#0f172a;">
+        <div style="max-width:680px;margin:0 auto;padding:28px 16px;">
+          <div style="overflow:hidden;border-radius:22px;border:1px solid #bbf7d0;background:#ffffff;box-shadow:0 18px 45px rgba(15,23,42,0.08);">
+            <div style="padding:24px 28px;background:linear-gradient(135deg,#047857 0%,#0f2a57 100%);color:#ffffff;">
+              <p style="margin:0 0 8px;font-size:11px;font-weight:800;letter-spacing:0.2em;text-transform:uppercase;color:#bbf7d0;">Holiday Circuit</p>
+              <h1 style="margin:0;font-size:26px;line-height:1.25;color:#ffffff;">Travel query created</h1>
+              <p style="margin:10px 0 0;font-size:14px;line-height:1.7;color:#dcfce7;">Hello ${escapeHtml(agentName)}, your travel query has been received and assigned to our operations team.</p>
+            </div>
+
+            <div style="padding:24px 28px;">
+              <div style="display:block;margin-bottom:18px;padding:16px 18px;border-radius:18px;background:#ecfdf5;border:1px solid #bbf7d0;">
+                <p style="margin:0 0 4px;font-size:11px;font-weight:800;letter-spacing:0.14em;text-transform:uppercase;color:#047857;">Query reference</p>
+                <p style="margin:0;font-size:24px;font-weight:800;color:#0f172a;">${escapeHtml(queryId || "-")}</p>
+                <p style="margin:6px 0 0;font-size:13px;color:#475569;">${escapeHtml(destination || "Destination pending")}</p>
+              </div>
+
+              <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;border:1px solid #e2e8f0;border-radius:16px;overflow:hidden;margin-bottom:18px;">
+                ${buildQueryInfoRow("Travel dates", `${formatQueryMailDate(startDate)} - ${formatQueryMailDate(endDate)}`)}
+                ${buildQueryInfoRow("Travelers", `${totalTravelers || 0} PAX (${Number(numberOfAdults || 0)} Adult${Number(numberOfAdults || 0) === 1 ? "" : "s"}, ${Number(numberOfChildren || 0)} Child${Number(numberOfChildren || 0) === 1 ? "" : "ren"})`)}
+                ${buildQueryInfoRow("Budget / person", formatQueryMailAmount(customerBudget))}
+                ${buildQueryInfoRow("Hotel category", hotelCategory || "Not specified")}
+                ${buildQueryInfoRow("Services", services.join(" | "))}
+                ${buildQueryInfoRow("Assigned team", assignedOpsName || "Operations Team")}
+              </table>
+
+              <div style="padding:16px 18px;border-radius:18px;background:#f8fafc;border:1px solid #e2e8f0;margin-bottom:18px;">
+                <p style="margin:0 0 8px;font-size:11px;font-weight:800;letter-spacing:0.14em;text-transform:uppercase;color:#64748b;">Requirement note</p>
+                <p style="margin:0;font-size:14px;line-height:1.7;color:#334155;">${escapeHtml(safeNotes || "No requirement note shared.")}</p>
+              </div>
+
+              <div style="padding:16px 18px;border-radius:18px;background:#eff6ff;border:1px solid #bfdbfe;">
+                <p style="margin:0 0 6px;font-size:14px;font-weight:800;color:#1e3a8a;">What happens next</p>
+                <p style="margin:0;font-size:13px;line-height:1.7;color:#1d4ed8;">Operations will review availability and prepare the quotation. You can track the query from your agent dashboard.</p>
+                ${
+                  safeDashboardUrl
+                    ? `<a href="${escapeHtml(safeDashboardUrl)}" style="display:inline-block;margin-top:12px;padding:11px 16px;border-radius:999px;background:#0f172a;color:#ffffff;text-decoration:none;font-size:13px;font-weight:800;">Open my queries</a>`
+                    : ""
+                }
+              </div>
+
+              <p style="margin:18px 0 0;font-size:12px;line-height:1.6;color:#64748b;">This is an automated confirmation email from Holiday Circuit.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    `,
+    text: [
+      "Travel query created",
+      `Query: ${queryId || "-"}`,
+      `Destination: ${destination || "-"}`,
+      `Travel dates: ${formatQueryMailDate(startDate)} - ${formatQueryMailDate(endDate)}`,
+      `Travelers: ${totalTravelers || 0} PAX`,
+      `Budget per person: ${formatQueryMailAmount(customerBudget)}`,
+      `Hotel category: ${hotelCategory || "Not specified"}`,
+      `Services: ${services.join(" | ")}`,
+      `Assigned team: ${assignedOpsName || "Operations Team"}`,
+      `Notes: ${safeNotes || "No requirement note shared."}`,
+      safeDashboardUrl ? `Dashboard: ${safeDashboardUrl}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n"),
+  });
+};
+
 
 
 export const sendAccountDeletionMail = async (

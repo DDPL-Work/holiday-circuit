@@ -2840,6 +2840,15 @@ const formatPaymentVerificationRow = (invoice) => {
           verifiedAt: entry?.verifiedAt || null,
           verifiedAtLabel: formatDashboardDate(entry?.verifiedAt || null),
           verifiedByName: String(entry?.verifiedByName || "").trim(),
+          receipt: {
+            url: entry?.receipt?.url || (index === 0 ? invoice.paymentSubmission?.receipt?.url || "" : ""),
+            fileName: entry?.receipt?.fileName || (index === 0 ? invoice.paymentSubmission?.receipt?.fileName || "" : ""),
+            mimeType: entry?.receipt?.mimeType || (index === 0 ? invoice.paymentSubmission?.receipt?.mimeType || "" : ""),
+            size: Number(entry?.receipt?.size || (index === 0 ? invoice.paymentSubmission?.receipt?.size || 0 : 0)),
+          },
+          receiptStatus: String(entry?.receiptStatus || "").trim(),
+          receiptSentAt: entry?.receiptSentAt || null,
+          receiptSentByName: String(entry?.receiptSentByName || "").trim(),
         };
       })
       .filter(Boolean)
@@ -2864,6 +2873,15 @@ const formatPaymentVerificationRow = (invoice) => {
           verifiedAt: invoice.paymentVerification?.reviewedAt || null,
           verifiedAtLabel: formatDashboardDate(invoice.paymentVerification?.reviewedAt || null),
           verifiedByName: invoice.paymentVerification?.reviewedByName || "",
+          receipt: {
+            url: invoice.paymentSubmission?.receipt?.url || "",
+            fileName: invoice.paymentSubmission?.receipt?.fileName || "",
+            mimeType: invoice.paymentSubmission?.receipt?.mimeType || "",
+            size: Number(invoice.paymentSubmission?.receipt?.size || 0),
+          },
+          receiptStatus: "",
+          receiptSentAt: null,
+          receiptSentByName: "",
         },
       ]
       : [];
@@ -3756,27 +3774,27 @@ const buildQueryAnalyticsReport = ({
 }) => {
   const activeWindow = customStart && customEnd
     ? {
-        start: customStart,
-        end: customEnd,
-        label: `${customStart.toLocaleDateString("en-US", { month: "short", day: "numeric" })} - ${customEnd.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`,
-      }
+      start: customStart,
+      end: customEnd,
+      label: `${customStart.toLocaleDateString("en-US", { month: "short", day: "numeric" })} - ${customEnd.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`,
+    }
     : getReportWindow(referenceDate, mode);
 
   const reportBuckets = customStart && customEnd
     ? createCustomBuckets(customStart, customEnd).map((bucket) => ({
-        ...bucket,
-        queries: 0,
-        confirmed: 0,
-        cancelled: 0,
-        destinations: {},
-      }))
+      ...bucket,
+      queries: 0,
+      confirmed: 0,
+      cancelled: 0,
+      destinations: {},
+    }))
     : createReportBuckets(referenceDate, mode).map((bucket) => ({
-        ...bucket,
-        queries: 0,
-        confirmed: 0,
-        cancelled: 0,
-        destinations: {},
-      }));
+      ...bucket,
+      queries: 0,
+      confirmed: 0,
+      cancelled: 0,
+      destinations: {},
+    }));
 
   const activePeriodQueries = queries.filter((query) => {
     const queryDate = getAnalyticsQueryDate(query);
@@ -3882,25 +3900,25 @@ const buildRevenueAnalyticsReport = ({
 }) => {
   const activeWindow = customStart && customEnd
     ? {
-        start: customStart,
-        end: customEnd,
-        label: `${customStart.toLocaleDateString("en-US", { month: "short", day: "numeric" })} - ${customEnd.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`,
-      }
+      start: customStart,
+      end: customEnd,
+      label: `${customStart.toLocaleDateString("en-US", { month: "short", day: "numeric" })} - ${customEnd.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`,
+    }
     : getReportWindow(referenceDate, mode);
 
   const reportBuckets = customStart && customEnd
     ? createCustomBuckets(customStart, customEnd).map((bucket) => ({
-        ...bucket,
-        revenue: 0,
-        bookings: 0,
-        receivedPayment: 0,
-      }))
+      ...bucket,
+      revenue: 0,
+      bookings: 0,
+      receivedPayment: 0,
+    }))
     : createReportBuckets(referenceDate, mode).map((bucket) => ({
-        ...bucket,
-        revenue: 0,
-        bookings: 0,
-        receivedPayment: 0,
-      }));
+      ...bucket,
+      revenue: 0,
+      bookings: 0,
+      receivedPayment: 0,
+    }));
   const destinationMap = new Map();
   const dailyRevenueMap = new Map();
   const paidBookingKeys = new Set();
