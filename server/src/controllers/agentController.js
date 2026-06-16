@@ -11,19 +11,43 @@ import Hotel from "../models/hotelDmc.model.js";
 import Activity from "../models/activityDmc.model.js";
 import Transfer from "../models/transferDmc.model.js";
 import Sightseeing from "../models/sightseeingDmc.model.js";
+import DestinationName from "../models/destinationName.model.js";
 import bcrypt from "bcrypt";
 import crypto from "crypto";
 import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
-import { sendAgentRegistrationReceivedMail, sendPasswordResetOtpMail } from "../services/sendEmail.js";
+import {
+  sendAgentQueryCreatedMail,
+  sendAgentRegistrationReceivedMail,
+  sendNewQueryAssignedMail,
+  sendPasswordResetOtpMail,
+} from "../services/sendEmail.js";
 import { sendAgentClientQuotationMail } from "../services/emailService.js";
 import { getRoundRobinFinanceAssignee } from "../services/financeTeamScopeService.js";
 import { getEmailDeliveryErrorMessage } from "../services/resendMailer.js";
 import { createNotification } from "../services/notificationDispatchService.js";
 import { generatePDF } from "../services/pdfService.js";
+import { generateAgentPaymentReceiptPdf } from "../services/payoutReceiptPdfService.js";
 import { isAccessExpired } from "../utils/accessExpiry.js";
+import { ensureDestinationName, ensureDestinationNames } from "../services/destinationNameService.js";
 
 const getAuthenticatedUserId = (req) => req.user?.id || req.user?._id || null;
+const buildFrontendUrl = (path = "") => {
+  const baseUrl = String(
+    process.env.FRONTEND_APP_URL ||
+      process.env.FRONTEND_URL ||
+      process.env.CLIENT_URL ||
+      process.env.FRONTEND_LOGIN_URL ||
+      "",
+  ).trim();
+
+  if (!baseUrl) return "";
+
+  const normalizedBase = baseUrl.replace(/\/+$/, "").replace(/\/login$/i, "");
+  const normalizedPath = String(path || "").startsWith("/") ? path : `/${path}`;
+
+  return `${normalizedBase}${normalizedPath}`;
+};
 const BCRYPT_HASH_PATTERN = /^\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}$/;
 const AGENT_VISIBLE_QUOTATION_STATUSES = [
   "Quote Sent",
@@ -64,6 +88,206 @@ const formatInvoiceLocation = (service = {}) =>
   [service?.city, service?.country].filter(Boolean).join(", ");
 
 const roundCurrencyAmount = (value) => Number(Number(value || 0).toFixed(2));
+
+const normalizeHotelCategorySelection = (value = "") =>
+  Array.from(
+    new Set(
+      String(value || "")
+        .split(",")
+        .map((category) => category.trim())
+        .filter(Boolean),
+    ),
+  ).join(", ");
+
+export const getHotelRateDestinations = async (req, res, next) => {
+  try {
+    const hotelDestinations = await Hotel.aggregate([
+      {
+        $match: {
+          status: "active",
+          city: { $type: "string", $ne: "" },
+          country: { $type: "string", $ne: "" },
+        },
+      },
+      {
+        $project: {
+          city: { $trim: { input: "$city" } },
+          country: { $trim: { input: "$country" } },
+          hotelName: { $ifNull: ["$hotelName", ""] },
+        },
+      },
+      {
+        $match: {
+          city: { $ne: "" },
+          country: { $ne: "" },
+        },
+      },
+      {
+        $group: {
+          _id: {
+            city: { $toLower: "$city" },
+            country: { $toLower: "$country" },
+          },
+          city: { $first: "$city" },
+          country: { $first: "$country" },
+          hotelCount: { $sum: 1 },
+        },
+      },
+      { $sort: { country: 1, city: 1 } },
+      {
+        $project: {
+          _id: { $concat: ["$_id.city", "::", "$_id.country"] },
+          city: 1,
+          country: 1,
+          hotelCount: 1,
+          label: { $concat: ["$city", ", ", "$country"] },
+        },
+      },
+    ]);
+
+    const hotelCategories = await Hotel.aggregate([
+      {
+        $match: {
+          status: "active",
+          hotelCategory: { $type: "string", $ne: "" },
+        },
+      },
+      {
+        $project: {
+          hotelCategory: { $trim: { input: "$hotelCategory" } },
+        },
+      },
+      {
+        $match: {
+          hotelCategory: { $ne: "" },
+        },
+      },
+      {
+        $group: {
+          _id: { $toLower: "$hotelCategory" },
+          label: { $first: "$hotelCategory" },
+          hotelCount: { $sum: 1 },
+        },
+      },
+    ]);
+
+    const savedQueryDestinations = await TravelQuery.aggregate([
+      {
+        $match: {
+          destination: { $type: "string", $ne: "" },
+        },
+      },
+      {
+        $project: {
+          label: { $trim: { input: "$destination" } },
+        },
+      },
+      {
+        $match: {
+          label: { $ne: "" },
+        },
+      },
+      {
+        $group: {
+          _id: { $toLower: "$label" },
+          label: { $first: "$label" },
+          queryCount: { $sum: 1 },
+        },
+      },
+      { $sort: { label: 1 } },
+      {
+        $project: {
+          _id: { $concat: ["query::", "$_id"] },
+          label: 1,
+          city: "$label",
+          country: "",
+          queryCount: 1,
+          source: "query",
+        },
+      },
+    ]);
+
+    await ensureDestinationNames([
+      ...hotelDestinations.map((destination) => ({
+        label: destination?.label,
+        city: destination?.city,
+        country: destination?.country,
+        source: "hotel",
+      })),
+      ...savedQueryDestinations.map((destination) => ({
+        label: destination?.label,
+        city: destination?.city,
+        country: destination?.country,
+        source: "query",
+      })),
+    ]);
+
+    const savedDestinationEntries = await DestinationName.find({})
+      .select("label city country source")
+      .sort({ label: 1 })
+      .lean();
+    const savedDestinations = savedDestinationEntries.map((destination) => ({
+      _id: `destination::${destination._id}`,
+      label: destination.label,
+      city: destination.city || destination.label,
+      country: destination.country || "",
+      source: destination.source || "manual",
+    }));
+
+    const hotelLabelSet = new Set(
+      hotelDestinations.map((destination) => String(destination?.label || "").trim().toLowerCase()),
+    );
+    const hotelCitySet = new Set(
+      hotelDestinations.map((destination) => String(destination?.city || "").trim().toLowerCase()),
+    );
+
+    const destinationMap = new Map();
+    hotelDestinations.forEach((destination) => {
+      const label = String(destination?.label || "").trim();
+      if (!label) return;
+
+      const key = label.toLowerCase();
+      if (!destinationMap.has(key)) {
+        destinationMap.set(key, destination);
+      }
+    });
+
+    savedDestinations.forEach((destination) => {
+      const label = String(destination?.label || "").trim();
+      if (!label) return;
+
+      const key = label.toLowerCase();
+      if (hotelLabelSet.has(key) || hotelCitySet.has(key) || destinationMap.has(key)) return;
+
+      destinationMap.set(key, destination);
+    });
+
+    const destinations = Array.from(destinationMap.values()).sort((left, right) =>
+      String(left.label || "").localeCompare(String(right.label || "")),
+    );
+    const categoryPriority = ["3 Star", "4 Star", "5 Star", "Luxury"];
+    const categories = hotelCategories
+      .map((category) => String(category?.label || "").trim())
+      .filter(Boolean)
+      .sort((left, right) => {
+        const leftPriority = categoryPriority.indexOf(left);
+        const rightPriority = categoryPriority.indexOf(right);
+        if (leftPriority !== -1 || rightPriority !== -1) {
+          return (leftPriority === -1 ? 999 : leftPriority) - (rightPriority === -1 ? 999 : rightPriority);
+        }
+        return left.localeCompare(right);
+      });
+
+    res.status(200).json({
+      success: true,
+      count: destinations.length,
+      destinations,
+      hotelCategories: categories,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
 
 const normalizeCurrencyCode = (value) =>
   String(value || "INR").trim().toUpperCase() || "INR";
@@ -1804,6 +2028,54 @@ export const getAgentDashboard = async (req, res) => {
       .sort((left, right) => new Date(right.date).getTime() - new Date(left.date).getTime())
       .slice(0, 6);
 
+    // Calculate 12-month query trend data
+    const startOfTrend = new Date();
+    startOfTrend.setDate(1);
+    startOfTrend.setMonth(startOfTrend.getMonth() - 11);
+    startOfTrend.setHours(0, 0, 0, 0);
+
+    const queriesForTrend = await TravelQuery.find({
+      agent: agentId,
+      createdAt: { $gte: startOfTrend },
+    })
+      .select("createdAt opsStatus agentStatus")
+      .lean();
+
+    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const trendMap = {};
+
+    for (let i = 11; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(1);
+      d.setMonth(d.getMonth() - i);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      trendMap[key] = {
+        key,
+        month: monthNames[d.getMonth()],
+        year: d.getFullYear(),
+        queries: 0,
+        bookings: 0,
+      };
+    }
+
+    queriesForTrend.forEach((query) => {
+      const qDate = new Date(query.createdAt);
+      const key = `${qDate.getFullYear()}-${String(qDate.getMonth() + 1).padStart(2, "0")}`;
+      if (trendMap[key]) {
+        trendMap[key].queries += 1;
+        const isConfirmed =
+          query.agentStatus === "Confirmed" ||
+          ["Confirmed", "Vouchered", "Payment_Completed"].includes(query.opsStatus);
+        if (isConfirmed) {
+          trendMap[key].bookings += 1;
+        }
+      }
+    });
+
+    const queryTrendData = Object.keys(trendMap)
+      .sort()
+      .map((key) => trendMap[key]);
+
     res.json({
       summary: {
         totalQueries,
@@ -1848,6 +2120,7 @@ export const getAgentDashboard = async (req, res) => {
         },
       ],
       recentActivity,
+      queryTrendData,
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -1882,13 +2155,15 @@ export const createQuery = async (req, res, next) => {
     } = req.body;
 
     // ✅ Basic validation
-    if (!destination || !startDate || !endDate || !numberOfAdults) {
-      return next(new ApiError(400, "Required fields are missing"));
+    const normalizedDestination = String(destination || "").trim();
+
+    if (!normalizedDestination || !startDate || !endDate || !numberOfAdults || !String(specialRequirements || "").trim()) {
+      return next(new ApiError(400, "Detailed Requirement is required"));
     }
 
     const normalizedClientEmail = String(clientEmail || "").trim().toLowerCase();
-    if (!normalizedClientEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedClientEmail)) {
-      return next(new ApiError(400, "A valid client email address is required"));
+    if (normalizedClientEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedClientEmail)) {
+      return next(new ApiError(400, "Please enter a valid client email address"));
     }
 
     const normalizedAdults = Number(numberOfAdults || 0);
@@ -1898,9 +2173,13 @@ export const createQuery = async (req, res, next) => {
       normalizedAdults,
       normalizedChildren,
     );
-    const normalizedHotelCategory = ["3 Star", "4 Star", "5 Star"].includes(String(hotelCategory || "").trim())
-      ? String(hotelCategory).trim()
-      : "4 Star";
+    const normalizedHotelCategory = normalizeHotelCategorySelection(hotelCategory);
+
+    await ensureDestinationName({
+      label: normalizedDestination,
+      source: "manual",
+      createdBy: req.user.id,
+    });
 
     /* ================= QUERY NUMBER ================= */
 
@@ -1957,7 +2236,7 @@ export const createQuery = async (req, res, next) => {
       agent: req.user.id,
       assignedTo: assignedOps._id,   // KEY LINE
       queryId,
-      destination,
+      destination: normalizedDestination,
       clientEmail: normalizedClientEmail,
       startDate,
       endDate,
@@ -2011,6 +2290,64 @@ export const createQuery = async (req, res, next) => {
       sourceName: req.user?.name || req.user?.companyName || "Agent",
     },
   );
+
+  try {
+    if (assignedOps?.email) {
+      await sendNewQueryAssignedMail(assignedOps.email, {
+        opsName: assignedOps.name || "Operations Team",
+        queryId: query.queryId,
+        destination: query.destination,
+        startDate: query.startDate,
+        endDate: query.endDate,
+        numberOfAdults: query.numberOfAdults,
+        numberOfChildren: query.numberOfChildren,
+        customerBudget: query.customerBudget,
+        hotelCategory: query.hotelCategory,
+        transportRequired: query.transportRequired,
+        sightseeingRequired: query.sightseeingRequired,
+        specialRequirements: query.specialRequirements,
+        agentName: req.user?.name || "Agent",
+        agentCompany: req.user?.companyName || "",
+        agentEmail: req.user?.email || "",
+        dashboardUrl: buildFrontendUrl("/ops/bookings-management"),
+      });
+    }
+  } catch (mailError) {
+    console.error("Unable to send new query assignment email", {
+      queryId: query.queryId,
+      assignedTo: assignedOps?._id,
+      recipient: assignedOps?.email,
+      error: mailError?.message || mailError,
+    });
+  }
+
+  try {
+    if (req.user?.email) {
+      await sendAgentQueryCreatedMail(req.user.email, {
+        agentName: req.user?.name || req.user?.companyName || "Agent",
+        queryId: query.queryId,
+        destination: query.destination,
+        startDate: query.startDate,
+        endDate: query.endDate,
+        numberOfAdults: query.numberOfAdults,
+        numberOfChildren: query.numberOfChildren,
+        customerBudget: query.customerBudget,
+        hotelCategory: query.hotelCategory,
+        transportRequired: query.transportRequired,
+        sightseeingRequired: query.sightseeingRequired,
+        specialRequirements: query.specialRequirements,
+        assignedOpsName: assignedOps?.name || "Operations Team",
+        dashboardUrl: buildFrontendUrl("/agent/queries"),
+      });
+    }
+  } catch (mailError) {
+    console.error("Unable to send query creation confirmation email", {
+      queryId: query.queryId,
+      agent: req.user?.id || req.user?._id,
+      recipient: req.user?.email,
+      error: mailError?.message || mailError,
+    });
+  }
 
     return res.status(201).json({
       success: true,
@@ -3344,6 +3681,21 @@ export const updatePaymentStatus = async (req, res) => {
         verifiedAt: entry?.verifiedAt ? new Date(entry.verifiedAt) : null,
         verifiedBy: entry?.verifiedBy || undefined,
         verifiedByName: String(entry?.verifiedByName || "").trim(),
+        receipt: {
+          url: String(entry?.receipt?.url || "").trim(),
+          fileName: String(entry?.receipt?.fileName || "").trim(),
+          mimeType: String(entry?.receipt?.mimeType || "").trim(),
+          size: Number(entry?.receipt?.size || 0),
+        },
+        financeReceipt: {
+          url: String(entry?.financeReceipt?.url || "").trim(),
+          fileName: String(entry?.financeReceipt?.fileName || "").trim(),
+          mimeType: String(entry?.financeReceipt?.mimeType || "").trim(),
+          size: Number(entry?.financeReceipt?.size || 0),
+        },
+        receiptStatus: String(entry?.receiptStatus || "").trim() === "Sent" ? "Sent" : "",
+        receiptSentAt: entry?.receiptSentAt ? new Date(entry.receiptSentAt) : null,
+        receiptSentByName: String(entry?.receiptSentByName || "").trim(),
       };
     };
 
@@ -3359,11 +3711,19 @@ export const updatePaymentStatus = async (req, res) => {
       .filter(Boolean);
 
     const normalizedExistingTrackerPayments = existingTrackerPayments
-      .map((entry) => {
+      .map((entry, index) => {
         const sanitized = sanitizeTrackerEntry(entry);
         if (sanitized) {
           sanitized.bankName = String(entry?.bankName || "").trim();
           sanitized.utrNumber = String(entry?.utrNumber || "").trim();
+          if (!sanitized.receipt?.url && index === 0 && existingReceipt?.url) {
+            sanitized.receipt = {
+              url: existingReceipt.url || "",
+              fileName: existingReceipt.fileName || "",
+              mimeType: existingReceipt.mimeType || "",
+              size: Number(existingReceipt.size || 0),
+            };
+          }
         }
         return sanitized;
       })
@@ -3455,9 +3815,9 @@ export const updatePaymentStatus = async (req, res) => {
         });
       }
 
-      if (!trimmedUtr || !trimmedBankName || !paymentDate) {
+      if (!trimmedUtr || !paymentDate) {
         return res.status(400).json({
-          message: "UTR number, bank name, and payment date are required",
+          message: "UTR number and payment date are required",
         });
       }
 
@@ -3478,17 +3838,38 @@ export const updatePaymentStatus = async (req, res) => {
         return res.status(400).json({ message: "Payment receipt is required" });
       }
 
+      const latestTrackerEntry = mergedTrackerPayments[mergedTrackerPayments.length - 1] || null;
+      if (mergedTrackerPayments.length > 1 && !latestTrackerEntry?.receipt?.url && !req.file) {
+        return res.status(400).json({ message: "Payment receipt is required for this installment" });
+      }
+
       const previousReceiptName = String(existingReceipt?.fileName || "").trim();
       const currentReceiptName = String(
         req.file?.originalname || existingReceipt?.fileName || "",
       ).trim();
+      const submittedReceipt = {
+        url: req.file?.path || existingReceipt?.url || "",
+        fileName: req.file?.originalname || existingReceipt?.fileName || "",
+        mimeType: req.file?.mimetype || existingReceipt?.mimeType || "",
+        size: Number(req.file?.size || existingReceipt?.size || 0),
+      };
+      if (submittedReceipt.url && mergedTrackerPayments.length) {
+        const receiptTargetIndex = req.file
+          ? Math.max(0, mergedTrackerPayments.length - 1)
+          : Math.max(0, mergedTrackerPayments.findIndex((entry) => !entry?.receipt?.url));
+        const normalizedReceiptTargetIndex = receiptTargetIndex >= 0 ? receiptTargetIndex : 0;
+        mergedTrackerPayments[normalizedReceiptTargetIndex] = {
+          ...mergedTrackerPayments[normalizedReceiptTargetIndex],
+          receipt: submittedReceipt,
+        };
+      }
       const receiptAuditMessage = req.file
         ? previousReceiptName && previousReceiptName !== currentReceiptName
           ? `Payment receipt replaced: ${currentReceiptName}`
           : `Payment receipt uploaded: ${currentReceiptName}`
         : currentReceiptName
           ? `Payment receipt retained: ${currentReceiptName}`
-          : "Payment receipt attached";
+          : "";
 
       const submissionTimestamp = new Date();
       const assignedFinanceMember = await getRoundRobinFinanceAssignee({
@@ -3502,14 +3883,7 @@ export const updatePaymentStatus = async (req, res) => {
         utrNumber: trimmedUtr,
         bankName: trimmedBankName,
         paymentDate: parsedPaymentDate,
-        receipt: {
-          url: req.file?.path || existingReceipt?.url || "",
-          fileName:
-            req.file?.originalname || existingReceipt?.fileName || "",
-          mimeType:
-            req.file?.mimetype || existingReceipt?.mimeType || "",
-          size: Number(req.file?.size || existingReceipt?.size || 0),
-        },
+        receipt: submittedReceipt,
         submittedAt: submissionTimestamp,
         submittedBy: agentId,
         trackerPayments: mergedTrackerPayments,
@@ -3596,6 +3970,145 @@ export const updatePaymentStatus = async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
+  }
+};
+
+const resolveReceiptClientName = (query = {}) => {
+  const travelers = Array.isArray(query?.travelerDetails) ? query.travelerDetails : [];
+  const adultTraveler = travelers.find(
+    (traveler) =>
+      String(traveler?.travelerType || "").trim().toLowerCase() === "adult" &&
+      String(traveler?.fullName || "").trim(),
+  );
+  const firstTraveler = travelers.find((traveler) => String(traveler?.fullName || "").trim());
+
+  return (
+    String(adultTraveler?.fullName || "").trim() ||
+    String(firstTraveler?.fullName || "").trim() ||
+    "Guest"
+  );
+};
+
+const resolveAgentReceiptExpectedAmount = (invoice = {}) => {
+  const couponApplication = invoice?.paymentSubmission?.couponApplication || null;
+  const couponPayableAmount = Math.round(Number(couponApplication?.payableAmount || 0));
+
+  if (couponPayableAmount > 0) {
+    return couponPayableAmount;
+  }
+
+  return Math.round(Number(invoice?.totalAmount || invoice?.pricingSnapshot?.grandTotal || 0));
+};
+
+export const generateAgentFinancePaymentReceipt = async (req, res) => {
+  try {
+    const agentId = getAuthenticatedUserId(req);
+    const { id, installmentIndex } = req.params;
+    const normalizedInstallmentIndex = Number(installmentIndex);
+
+    if (!agentId) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    if (!Number.isInteger(normalizedInstallmentIndex) || normalizedInstallmentIndex < 0) {
+      return res.status(400).json({ message: "Invalid installment index" });
+    }
+
+    const invoice = await Invoice.findOne({ _id: id, agent: agentId })
+      .populate("query", "queryId destination startDate endDate numberOfAdults numberOfChildren travelerDetails")
+      .populate("agent", "name companyName email");
+
+    if (!invoice) {
+      return res.status(404).json({ message: "Invoice not found" });
+    }
+
+    const trackerPayments = Array.isArray(invoice.paymentSubmission?.trackerPayments)
+      ? invoice.paymentSubmission.trackerPayments.filter((entry) => Number(entry?.amount || 0) > 0)
+      : [];
+
+    if (!trackerPayments.length || !trackerPayments[normalizedInstallmentIndex]) {
+      return res.status(404).json({ message: "Selected installment was not found" });
+    }
+
+    const selectedInstallment = trackerPayments[normalizedInstallmentIndex];
+    if (String(selectedInstallment?.verificationStatus || "").trim() !== "Verified") {
+      return res.status(400).json({ message: "Finance receipt is available only after this installment is verified" });
+    }
+
+    if (selectedInstallment.financeReceipt?.url) {
+      return res.status(200).json({
+        success: true,
+        message: "Finance receipt is ready",
+        receipt: selectedInstallment.financeReceipt,
+      });
+    }
+
+    const expectedAmount = resolveAgentReceiptExpectedAmount(invoice);
+    const receiptAmount = Math.round(Number(selectedInstallment?.amount || 0));
+    const cumulativePaid = trackerPayments
+      .slice(0, normalizedInstallmentIndex + 1)
+      .reduce((sum, entry) => sum + Math.round(Number(entry?.amount || 0)), 0);
+    const remainingAmount = Math.max(0, expectedAmount - cumulativePaid);
+    const clientName = resolveReceiptClientName(invoice.query);
+    const travelerSummary = [
+      clientName,
+      Number(invoice.query?.numberOfAdults || 0) > 0 ? `${Math.round(Number(invoice.query?.numberOfAdults || 0))} Adults` : "",
+      Number(invoice.query?.numberOfChildren || 0) > 0 ? `${Math.round(Number(invoice.query?.numberOfChildren || 0))} Children` : "",
+    ].filter(Boolean).join(" - ");
+    const paidBy = [
+      invoice.agent?.companyName || invoice.agent?.name || "Agent",
+      invoice.query?.queryId ? `Trip ID: ${invoice.query.queryId}` : "",
+    ].filter(Boolean).join(" - ");
+
+    const receiptPdf = await generateAgentPaymentReceiptPdf({
+      invoiceNumber: invoice.invoiceNumber,
+      queryCode: invoice.query?.queryId || "",
+      paymentDate:
+        selectedInstallment?.paymentDate ||
+        selectedInstallment?.createdAt ||
+        invoice.paymentSubmission?.paymentDate ||
+        new Date(),
+      paymentReference:
+        selectedInstallment?.utrNumber ||
+        invoice.paymentSubmission?.utrNumber ||
+        "",
+      bankName:
+        selectedInstallment?.bankName ||
+        invoice.paymentSubmission?.bankName ||
+        "",
+      amountPaid: receiptAmount,
+      totalAmount: expectedAmount || cumulativePaid,
+      cumulativePaid,
+      remainingAmount,
+      paidBy,
+      destination: invoice.query?.destination || invoice.tripSnapshot?.destination || "",
+      guestDetails: travelerSummary || clientName,
+      startDate: invoice.query?.startDate || invoice.tripSnapshot?.startDate || null,
+      endDate: invoice.query?.endDate || invoice.tripSnapshot?.endDate || null,
+      generatedAt: new Date(),
+      receiptTitle: "Installment Payment Receipt",
+      trackerPayments: trackerPayments.filter(
+        (entry) => String(entry?.verificationStatus || "").trim() === "Verified",
+      ),
+    });
+
+    const serverBaseUrl = `${req.protocol}://${req.get("host")}`;
+    selectedInstallment.financeReceipt = {
+      url: `${serverBaseUrl}${receiptPdf.publicFilePath}`,
+      fileName: receiptPdf.fileName,
+      mimeType: "application/pdf",
+      size: 0,
+    };
+    invoice.markModified("paymentSubmission.trackerPayments");
+    await invoice.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Finance receipt generated successfully",
+      receipt: selectedInstallment.financeReceipt,
+    });
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
   }
 };
 
@@ -3703,13 +4216,15 @@ export const updateQueryByAgent = async (req, res, next) => {
     } = req.body;
 
     // ✅ Basic validation
-    if (!destination || !startDate || !endDate || !numberOfAdults) {
-      return next(new ApiError(400, "Required fields are missing"));
+    const normalizedDestination = String(destination || "").trim();
+
+    if (!normalizedDestination || !startDate || !endDate || !numberOfAdults || !String(specialRequirements || "").trim()) {
+      return next(new ApiError(400, "Detailed Requirement is required"));
     }
 
     const normalizedClientEmail = String(clientEmail || "").trim().toLowerCase();
-    if (!normalizedClientEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedClientEmail)) {
-      return next(new ApiError(400, "A valid client email address is required"));
+    if (normalizedClientEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedClientEmail)) {
+      return next(new ApiError(400, "Please enter a valid client email address"));
     }
 
     const normalizedAdults = Number(numberOfAdults || 0);
@@ -3719,14 +4234,18 @@ export const updateQueryByAgent = async (req, res, next) => {
       normalizedAdults,
       normalizedChildren,
     );
-    const normalizedHotelCategory = ["3 Star", "4 Star", "5 Star"].includes(String(hotelCategory || "").trim())
-      ? String(hotelCategory).trim()
-      : "4 Star";
+    const normalizedHotelCategory = normalizeHotelCategorySelection(hotelCategory);
+
+    await ensureDestinationName({
+      label: normalizedDestination,
+      source: "manual",
+      createdBy: req.user.id,
+    });
 
     // Update query fields
     const changes = [];
-    if (destination !== query.destination) {
-      changes.push(`Destination: "${query.destination}" ➔ "${destination}"`);
+    if (normalizedDestination !== query.destination) {
+      changes.push(`Destination: "${query.destination}" ➔ "${normalizedDestination}"`);
     }
     if (normalizedClientEmail !== query.clientEmail) {
       changes.push(`Client Email: "${query.clientEmail}" ➔ "${normalizedClientEmail}"`);
@@ -3777,7 +4296,7 @@ export const updateQueryByAgent = async (req, res, next) => {
       changes.push("Traveler Details updated");
     }
 
-    query.destination = destination;
+    query.destination = normalizedDestination;
     query.clientEmail = normalizedClientEmail;
     query.startDate = startDate;
     query.endDate = endDate;

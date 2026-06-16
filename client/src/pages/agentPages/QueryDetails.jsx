@@ -1279,7 +1279,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
           { duration: 7000 },
         );
       } else {
-        toast.error(err.response?.data?.message || "Unable to update client approval");
+        toast.error(err.response?.data?.message || "Unable to process booking");
       }
     } finally {
       setClientApprovalSubmitting(false);
@@ -1348,8 +1348,13 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
       .reverse()
       .find((log) => log?.action === "Booking Confirmed")?.timestamp || null;
 
+  const isQueryRejected =
+    query.agentStatus === "Rejected" || query.opsStatus === "Rejected";
+  const rejectionReason = String(query.rejectionNote || "").trim();
+
   const getDisplayAction = (action) => {
     if (action === "Query Received") return "Query Created";
+    if (action === "Client Approved") return "Booking Processed";
     return action;
   };
 
@@ -1392,7 +1397,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
         badge: "bg-blue-100 text-blue-700",
         Icon: FileCheck2,
       },
-      "Client Approved": {
+      "Booking Processed": {
         dot: "bg-indigo-600",
         line: "bg-indigo-100",
         surface: "border-indigo-200 bg-indigo-50/80",
@@ -1493,7 +1498,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
         )}
         {query.agentStatus === "Client Approved" && (
           <span className="w-fit bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full text-xs">
-            Client Approved
+            Booking Processed
           </span>
         )}
         {query.agentStatus === "Pending" && (
@@ -1506,6 +1511,11 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
             Revision Requested
           </span>
         )}
+        {isQueryRejected && (
+          <span className="w-fit rounded-full border border-rose-200 bg-rose-100 px-3 py-1 text-xs text-rose-700">
+            Rejected
+          </span>
+        )}
         {query.agentStatus === "Confirmed" && (
           <span className="w-fit bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs">
             Booking Confirmed
@@ -1516,6 +1526,43 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
       <div className="grid gap-4 p-2 sm:p-1 xl:grid-cols-3">
         {/* LEFT MAIN SECTION */}
         <div className="space-y-4 xl:col-span-2">
+          {/* REJECTED UI */}
+          {isQueryRejected && (
+            <motion.div
+              variants={itemVariant}
+              className="relative overflow-hidden rounded-[28px] border border-rose-200 bg-gradient-to-br from-white via-rose-50/60 to-red-50 shadow-[0_12px_32px_rgba(244,63,94,0.08)]"
+            >
+              <div className="relative p-6">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <div className="inline-flex items-center gap-2 rounded-full border border-rose-200 bg-white/85 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-rose-700">
+                      <ShieldAlert size={12} />
+                      Rejected by Operations
+                    </div>
+                    <h3 className="mt-4 text-lg font-semibold text-slate-900">
+                      This query has been rejected by the operations team.
+                    </h3>
+                    <p className="mt-2 max-w-xl text-sm leading-relaxed text-slate-600">
+                      Please review the rejection reason below before creating a new query or discussing changes with operations.
+                    </p>
+                  </div>
+                  <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-rose-600 text-white shadow-lg shadow-rose-200/70">
+                    <X size={24} />
+                  </div>
+                </div>
+
+                <div className="mt-5 rounded-2xl border border-rose-100 bg-white/85 p-4 shadow-sm">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-rose-600">
+                    Rejection Reason
+                  </p>
+                  <p className="mt-2 text-sm font-medium leading-relaxed text-slate-700">
+                    {rejectionReason || "No rejection reason shared by operations."}
+                  </p>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
           {/* QUOTE SENT UI */}
           {["Quote Sent", "Client Approved"].includes(query.agentStatus) &&
             quotes.length > 0 &&
@@ -1584,13 +1631,13 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                             </div>
                             <div>
                               <div className="inline-flex items-center rounded-full bg-white/80 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-indigo-600 ring-1 ring-indigo-100">
-                                Client Approved
+                                Booking Processed
                               </div>
                               <h3 className="mt-3 text-lg font-semibold leading-tight text-slate-900">
-                                Client approval received. Amount and documents are next.
+                                Booking processed. Amount and documents are next.
                               </h3>
                               <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-                                Your quotation is approved. Please complete the payment amount and upload traveler documents to move this booking ahead smoothly.
+                                The quotation is approved. Please complete the payment amount and upload traveler documents to move this booking ahead smoothly.
                               </p>
                             </div>
                           </div>
@@ -1722,7 +1769,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                               className="w-full sm:w-48 flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 shadow-md hover:shadow-lg text-white text-xs font-semibold py-2.5 px-5 cursor-pointer transition-all duration-300 transform hover:-translate-y-0.5"
                             >
                               <ThumbsUp size={13} />
-                              Client Approved
+                              Booking Processed
                             </button>
                           </div>
                         ) : (
@@ -2475,10 +2522,10 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                       </div>
                       <div>
                         <p className="text-[10px] font-bold uppercase tracking-[0.2em] bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 bg-clip-text text-transparent">
-                          Client Approved
+                          Booking Processed
                         </p>
                         <h3 className="mt-1 text-base font-bold text-slate-900 leading-tight">
-                          Confirm client approval?
+                          Confirm booking processed?
                         </h3>
                         <p className="mt-1.5 text-xs leading-relaxed text-slate-500">
                           Operations will be notified to transition this booking to the next stage.
@@ -2542,7 +2589,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                         disabled={clientApprovalSubmitting}
                         className="rounded-full bg-gradient-to-r from-[#10b981] to-[#059669] hover:from-[#059669] hover:to-[#047857] text-white px-5 py-2 text-xs font-bold shadow-sm hover:shadow-lg transition-all duration-300 transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"
                       >
-                        {clientApprovalSubmitting ? "Sending..." : "Yes, Client Approved"}
+                        {clientApprovalSubmitting ? "Sending..." : "Yes, Booking Processed"}
                       </button>
                     </div>
                   </>

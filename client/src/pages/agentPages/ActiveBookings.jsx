@@ -33,9 +33,33 @@ const formatDateRange = (startDate, endDate) => {
   return `${format(start)} - ${format(end)}`;
 };
 
+const getPaymentProgress = (invoice = {}) => {
+  const trackerPayments = Array.isArray(invoice?.paymentSubmission?.trackerPayments)
+    ? invoice.paymentSubmission.trackerPayments
+    : [];
+  const paidAmount = trackerPayments.length
+    ? trackerPayments.reduce((sum, entry) => sum + Math.round(Number(entry?.amount || 0)), 0)
+    : Math.round(Number(invoice?.paymentSubmission?.amount || 0));
+  const expectedAmount = Math.round(
+    Number(
+      invoice?.paymentSubmission?.couponApplication?.payableAmount ||
+      invoice?.totalAmount ||
+      invoice?.pricingSnapshot?.grandTotal ||
+      0,
+    ),
+  );
+
+  return {
+    paidAmount,
+    expectedAmount,
+    hasPaidAmount: paidAmount > 0,
+    isFullPayment: expectedAmount > 0 && paidAmount >= expectedAmount,
+  };
+};
+
 const getDisplayStatus = (query, invoice) => {
   if (query?.opsStatus === "Payment_Completed") {
-    return { label: "Payment Completed", className: "bg-emerald-100 text-emerald-700" };
+    return { label: "Full Payment Complete", className: "bg-emerald-100 text-emerald-700" };
   }
 
   if (query?.opsStatus === "Vouchered") {
@@ -44,8 +68,15 @@ const getDisplayStatus = (query, invoice) => {
 
   const verificationStatus = invoice?.paymentVerification?.status || "Pending";
   const submitted = Boolean(invoice?.paymentSubmission?.submittedAt);
-  const isPaymentVerified = verificationStatus === "Verified" || invoice?.paymentStatus === "Paid";
-  const isBookingConfirmed = invoice ? isPaymentVerified : query?.opsStatus === "Confirmed";
+  const paymentProgress = getPaymentProgress(invoice);
+  const isFullPaymentVerified =
+    invoice?.paymentStatus === "Paid" ||
+    (verificationStatus === "Verified" && paymentProgress.isFullPayment);
+  const isPartialPaymentVerified =
+    !isFullPaymentVerified &&
+    verificationStatus === "Verified" &&
+    paymentProgress.hasPaidAmount;
+  const isBookingConfirmed = invoice ? false : query?.opsStatus === "Confirmed";
 
   if (isBookingConfirmed) {
     return { label: "Booking Confirmed", className: "bg-green-100 text-green-700" };
@@ -59,8 +90,19 @@ const getDisplayStatus = (query, invoice) => {
     return { label: "Payment Rejected", className: "bg-red-100 text-red-700" };
   }
 
+  if (isFullPaymentVerified) {
+    return { label: "Full Payment Complete", className: "bg-emerald-100 text-emerald-700" };
+  }
+
+  if (isPartialPaymentVerified) {
+    return { label: "Partial Payment Verified", className: "bg-green-100 text-green-700" };
+  }
+
   if (submitted) {
-    return { label: "Under Review", className: "bg-blue-100 text-blue-700" };
+    return {
+      label: paymentProgress.isFullPayment ? "Full Payment Submitted" : "Partial Payment Submitted",
+      className: "bg-blue-100 text-blue-700",
+    };
   }
 
   return { label: "Amount/Docs Pending", className: "bg-amber-100 text-amber-700" };
@@ -372,7 +414,7 @@ const ActiveBookings = () => {
                   <td className="px-6 py-4">{booking.dates}</td>
                   <td className="px-6 py-4">{booking.travelers}</td>
                   <td className="px-6 py-4">
-                    <span className={`inline-flex w-[140px] items-center justify-center whitespace-nowrap rounded-full px-2.5 py-2 text-[11px] font-medium leading-none ${booking.displayStatus.className}`}>
+                    <span className={`inline-flex w-[180px] items-center justify-center whitespace-nowrap rounded-full px-2.5 py-2 text-[11px] font-medium leading-none ${booking.displayStatus.className}`}>
                       {booking.displayStatus.label}
                     </span>
                   </td>

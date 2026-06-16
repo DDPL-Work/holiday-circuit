@@ -403,7 +403,7 @@ const travelQuerySchema = new mongoose.Schema(
 
   hotelCategory: {
     type: String,
-    enum: ["3 Star", "4 Star", "5 Star"]
+    default: ""
   },
 
   transportRequired: {

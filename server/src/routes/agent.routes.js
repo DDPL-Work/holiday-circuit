@@ -14,8 +14,10 @@ import {
   confirmQuotation,
   requestQuotationRevision,
   getMyInvoices,
+  getHotelRateDestinations,
   applyCouponToInvoice,
   updatePaymentStatus,
+  generateAgentFinancePaymentReceipt,
   getQuotationsByQuery,
   acceptQuotationByAgent,
   generateClientQuotationPdf,
@@ -44,6 +46,7 @@ routers.patch("/coupons/read", isAuthenticated, markAgentCouponNotificationsRead
 /* 🔹 TRAVEL QUERIES */
 routers.post("/queries", isAuthenticated, createQuery);
 routers.put("/queries/:queryId", isAuthenticated, updateQueryByAgent);
+routers.get("/hotel-rate-destinations", isAuthenticated, getHotelRateDestinations);
 routers.get("/getAllQueries",isAuthenticated, getMyQueries);
 routers.get("/active-bookings", isAuthenticated, getMyActiveBookings);
 routers.post("/quotations/:id/ensure-invoice", isAuthenticated, ensureActiveBookingInvoice);
@@ -63,6 +66,7 @@ routers.put("/quotations/:id/confirm", isAuthenticated, confirmQuotation);
 /* 🔹 INVOICES & PAYMENTS */
 routers.get("/invoices", isAuthenticated, getMyInvoices);
 routers.post("/invoices/:id/apply-coupon", isAuthenticated, applyCouponToInvoice);
+routers.post("/invoices/:id/payment-receipts/:installmentIndex/generate", isAuthenticated, generateAgentFinancePaymentReceipt);
 routers.put("/invoices/:id/payment-status", isAuthenticated, upload.single("paymentReceipt"), updatePaymentStatus);
 
 export default routers;

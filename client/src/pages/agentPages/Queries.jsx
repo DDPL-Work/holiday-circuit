@@ -83,6 +83,13 @@ const Queries = () => {
       };
     }
 
+    if (status === "Rejected") {
+      return {
+        className: "bg-rose-100 text-rose-700 border border-rose-200",
+        label: "Rejected",
+      };
+    }
+
     if (status === "In Progress") {
       return {
         className: "bg-sky-300 text-white",
@@ -93,7 +100,7 @@ const Queries = () => {
     if (status === "Client Approved") {
       return {
         className: "bg-indigo-100 text-indigo-700",
-        label: "Client Approved",
+        label: "Booking Processed",
       };
     }
 

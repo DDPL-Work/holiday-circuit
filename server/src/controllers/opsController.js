@@ -2044,6 +2044,7 @@ export const getVouchers = async (req, res, next) => {
 export const rejectQueryByOps = async (req, res, next) => {
   try {
     const { reason } = req.body;
+    const rejectionReason = String(reason || "").trim();
     const query = await TravelQuery.findById(req.params.id);
 
     if (!query) {
@@ -2055,13 +2056,13 @@ export const rejectQueryByOps = async (req, res, next) => {
       return next(new ApiError(403, "Unauthorized"));
     }
 
-    if (query.opsStatus === "Pending_Accept") {
-      return res.json({ success: true, query });
+    if (!rejectionReason) {
+      return next(new ApiError(400, "Rejection reason is required"));
     }
 
-    query.opsStatus = "Pending_Accept";
-    query.agentStatus = "Revision Requested";
-    query.rejectionNote = reason;
+    query.opsStatus = "Rejected";
+    query.agentStatus = "Rejected";
+    query.rejectionNote = rejectionReason;
 
     query.activityLog.push({ action: "Query Rejected", performedBy: req.user.name || "Operations", timestamp: new Date() });
 
@@ -2069,11 +2070,11 @@ export const rejectQueryByOps = async (req, res, next) => {
       user: query.agent,
       type: "warning",
       title: "Query Rejected",
-      message: `Your query ${query.queryId} has been rejected by operations.`,
+      message: `Your query ${query.queryId} has been rejected by operations. Reason: ${rejectionReason}`,
       meta: {
         queryId: query._id,
         queryNumber: query.queryId,
-        reason: reason || "",
+        reason: rejectionReason,
       },
     });
 
@@ -2081,7 +2082,7 @@ export const rejectQueryByOps = async (req, res, next) => {
 
     res.json({
       success: true,
-      message: "Query rejected",
+      message: "Query rejected by operations",
       query
     });
 

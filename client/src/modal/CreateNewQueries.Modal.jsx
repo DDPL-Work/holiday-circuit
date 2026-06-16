@@ -1,41 +1,124 @@
 import { useEffect, useRef, useState } from "react";
-import { MapPin, ArrowLeft, CheckCircle2, Sparkles, X, AlertCircle, User } from "lucide-react";
+import { createPortal } from "react-dom";
+import { MapPin, ArrowLeft, CheckCircle2, Sparkles, X, AlertCircle, User, ChevronDown, Compass, Globe } from "lucide-react";
 import API from "../utils/Api.js";
 import { motion, AnimatePresence } from "framer-motion";
 
 const childAgeOptions = Array.from({ length: 12 }, (_, index) => index + 1);
-
-const COMMON_DOMAIN_TYPOS = {
-  "mail.com": "gmail.com",
-  "email.com": "gmail.com",
-  "tmail.com": "gmail.com",
-  "fmail.com": "gmail.com",
-  "hmail.com": "gmail.com",
-  "vmail.com": "gmail.com",
-  "bmail.com": "gmail.com",
-  "rmail.com": "gmail.com",
-  "gmeil.com": "gmail.com",
-  "gmaile.com": "gmail.com",
-  "gamil.com": "gmail.com",
-  "gmial.com": "gmail.com",
-  "gnail.com": "gmail.com",
-  "gmail.co": "gmail.com",
-  "gmil.com": "gmail.com",
-  "gmal.com": "gmail.com",
-  "gmaill.com": "gmail.com",
-  "gmail.con": "gmail.com",
-  "yaho.com": "yahoo.com",
-  "yhoo.com": "yahoo.com",
-  "outlok.com": "outlook.com",
-  "hotmial.com": "hotmail.com",
-  "icloud.co": "icloud.com",
-};
 
 const createAdultTraveler = () => ({ fullName: "" });
 const createChildTraveler = () => ({ fullName: "", age: "" });
 
 const resizeTravelerList = (count, currentList, builder) =>
   Array.from({ length: count }, (_, index) => currentList[index] || builder());
+
+const normalizeCountryName = (value = "") =>
+  String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/&/g, "and")
+    .replace(/[^a-z0-9]+/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+
+const countryAliasCodes = {
+  america: "US",
+  "britain": "GB",
+  "czech republic": "CZ",
+  "england": "GB",
+  "holland": "NL",
+  "korea": "KR",
+  "laos": "LA",
+  "maldives": "MV",
+  "russia": "RU",
+  "scotland": "GB",
+  "south korea": "KR",
+  "taiwan": "TW",
+  "tanzania": "TZ",
+  "uae": "AE",
+  "u a e": "AE",
+  "uk": "GB",
+  "u k": "GB",
+  "united kingdom": "GB",
+  "united states": "US",
+  "united states of america": "US",
+  "usa": "US",
+  "u s a": "US",
+  "vietnam": "VN",
+};
+
+const buildCountryCodeLookup = () => {
+  const lookup = new Map(
+    Object.entries(countryAliasCodes).map(([name, code]) => [normalizeCountryName(name), code]),
+  );
+  const regionCodes = [
+    "AD", "AE", "AF", "AG", "AI", "AL", "AM", "AO", "AQ", "AR", "AS", "AT", "AU", "AW", "AX", "AZ",
+    "BA", "BB", "BD", "BE", "BF", "BG", "BH", "BI", "BJ", "BL", "BM", "BN", "BO", "BQ", "BR", "BS",
+    "BT", "BV", "BW", "BY", "BZ", "CA", "CC", "CD", "CF", "CG", "CH", "CI", "CK", "CL", "CM", "CN",
+    "CO", "CR", "CU", "CV", "CW", "CX", "CY", "CZ", "DE", "DJ", "DK", "DM", "DO", "DZ", "EC", "EE",
+    "EG", "EH", "ER", "ES", "ET", "FI", "FJ", "FK", "FM", "FO", "FR", "GA", "GB", "GD", "GE", "GF",
+    "GG", "GH", "GI", "GL", "GM", "GN", "GP", "GQ", "GR", "GS", "GT", "GU", "GW", "GY", "HK", "HM",
+    "HN", "HR", "HT", "HU", "ID", "IE", "IL", "IM", "IN", "IO", "IQ", "IR", "IS", "IT", "JE", "JM",
+    "JO", "JP", "KE", "KG", "KH", "KI", "KM", "KN", "KP", "KR", "KW", "KY", "KZ", "LA", "LB", "LC",
+    "LI", "LK", "LR", "LS", "LT", "LU", "LV", "LY", "MA", "MC", "MD", "ME", "MF", "MG", "MH", "MK",
+    "ML", "MM", "MN", "MO", "MP", "MQ", "MR", "MS", "MT", "MU", "MV", "MW", "MX", "MY", "MZ", "NA",
+    "NC", "NE", "NF", "NG", "NI", "NL", "NO", "NP", "NR", "NU", "NZ", "OM", "PA", "PE", "PF", "PG",
+    "PH", "PK", "PL", "PM", "PN", "PR", "PS", "PT", "PW", "PY", "QA", "RE", "RO", "RS", "RU", "RW",
+    "SA", "SB", "SC", "SD", "SE", "SG", "SH", "SI", "SJ", "SK", "SL", "SM", "SN", "SO", "SR", "SS",
+    "ST", "SV", "SX", "SY", "SZ", "TC", "TD", "TF", "TG", "TH", "TJ", "TK", "TL", "TM", "TN", "TO",
+    "TR", "TT", "TV", "TW", "TZ", "UA", "UG", "UM", "US", "UY", "UZ", "VA", "VC", "VE", "VG", "VI",
+    "VN", "VU", "WF", "WS", "YE", "YT", "ZA", "ZM", "ZW",
+  ];
+  const locales = ["en", "en-IN", "en-GB"];
+
+  locales.forEach((locale) => {
+    try {
+      const displayNames = new Intl.DisplayNames([locale], { type: "region" });
+      regionCodes.forEach((code) => {
+        const name = displayNames.of(code);
+        const normalizedName = normalizeCountryName(name);
+        if (normalizedName && !lookup.has(normalizedName)) {
+          lookup.set(normalizedName, code);
+        }
+      });
+    } catch (_error) {
+      // Older browsers may not support Intl.DisplayNames; fallback aliases still cover common DMC countries.
+    }
+  });
+
+  return lookup;
+};
+
+const countryCodeLookup = buildCountryCodeLookup();
+
+const getFlagImageUrlFromCountryCode = (countryCode = "") => {
+  const normalizedCode = String(countryCode || "").trim().toUpperCase();
+  if (!/^[A-Z]{2}$/.test(normalizedCode)) return "";
+
+  return `https://flagcdn.com/w40/${normalizedCode.toLowerCase()}.png`;
+};
+
+const parseCountryFromDestinationLabel = (label = "") => {
+  const parts = String(label || "")
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  return parts.length > 1 ? parts[parts.length - 1] : "";
+};
+
+const getDestinationCountry = (option = {}) =>
+  String(option?.country || "").trim() || parseCountryFromDestinationLabel(option?.label);
+
+const getCountryCode = (country = "") => {
+  const normalizedCountry = normalizeCountryName(country);
+  if (!normalizedCountry) return "";
+
+  return countryCodeLookup.get(normalizedCountry) || "";
+};
+
+const getCountryFlagUrl = (country = "") => getFlagImageUrlFromCountryCode(getCountryCode(country));
 
 const getTodayDateString = () => {
   const today = new Date();
@@ -61,7 +144,7 @@ const CreateNewQueries = ({ onClose, onCreated, queryToEdit = null, isOpsView = 
     numberOfAdults: 1,
     numberOfChildren: 0,
     customerBudget: 0,
-    hotelCategory: "4 Star",
+    hotelCategory: "",
     transportRequired: false,
     sightseeingRequired: false,
     specialRequirements: "",
@@ -70,7 +153,18 @@ const CreateNewQueries = ({ onClose, onCreated, queryToEdit = null, isOpsView = 
   });
   const [showSuccessPopup, setShowSuccessPopup] = useState(false);
   const [formAlert, setFormAlert] = useState(null);
+  const [destinationOptions, setDestinationOptions] = useState([]);
+  const [destinationsLoading, setDestinationsLoading] = useState(false);
+  const [destinationLoadError, setDestinationLoadError] = useState("");
+  const [destinationDropdownOpen, setDestinationDropdownOpen] = useState(false);
+  const [destinationSearch, setDestinationSearch] = useState("");
+  const [selectedDestinationOptionId, setSelectedDestinationOptionId] = useState("");
+  const [destinationDropdownPosition, setDestinationDropdownPosition] = useState(null);
+  const [hotelCategoryOptions, setHotelCategoryOptions] = useState([]);
+  const [hotelRequired, setHotelRequired] = useState(false);
   const closeTimeoutRef = useRef(null);
+  const destinationDropdownRef = useRef(null);
+  const destinationMenuRef = useRef(null);
   const todayDate = getTodayDateString();
 
   useEffect(() => {
@@ -110,15 +204,96 @@ const CreateNewQueries = ({ onClose, onCreated, queryToEdit = null, isOpsView = 
         numberOfAdults: queryToEdit.numberOfAdults || adults.length || 1,
         numberOfChildren: queryToEdit.numberOfChildren || children.length || 0,
         customerBudget: queryToEdit.customerBudget || 0,
-        hotelCategory: queryToEdit.hotelCategory || "4 Star",
+        hotelCategory: queryToEdit.hotelCategory || "",
         transportRequired: Boolean(queryToEdit.transportRequired),
         sightseeingRequired: Boolean(queryToEdit.sightseeingRequired),
         specialRequirements: queryToEdit.specialRequirements || "",
         adultTravelers: adults.length > 0 ? adults : [createAdultTraveler()],
         childTravelers: children,
       });
+      setHotelRequired(Boolean(queryToEdit.hotelCategory));
+      setSelectedDestinationOptionId("");
     }
   }, [queryToEdit]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadHotelRateDestinations = async () => {
+      setDestinationsLoading(true);
+      setDestinationLoadError("");
+
+      try {
+        const response = await API.get("/agent/hotel-rate-destinations");
+        if (!isMounted) return;
+
+        setDestinationOptions(Array.isArray(response?.data?.destinations) ? response.data.destinations : []);
+        setHotelCategoryOptions(
+          Array.isArray(response?.data?.hotelCategories) ? response.data.hotelCategories : [],
+        );
+      } catch (error) {
+        console.error("Unable to load hotel rate destinations", error?.response?.data || error.message);
+        if (isMounted) {
+          setDestinationLoadError("Unable to load destinations");
+          setDestinationOptions([]);
+          setHotelCategoryOptions([]);
+        }
+      } finally {
+        if (isMounted) {
+          setDestinationsLoading(false);
+        }
+      }
+    };
+
+    loadHotelRateDestinations();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!destinationDropdownOpen) return undefined;
+
+    const handleOutsideClick = (event) => {
+      const clickedControl = destinationDropdownRef.current?.contains(event.target);
+      const clickedMenu = destinationMenuRef.current?.contains(event.target);
+
+      if (!clickedControl && !clickedMenu) {
+        setDestinationDropdownOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleOutsideClick);
+    return () => document.removeEventListener("mousedown", handleOutsideClick);
+  }, [destinationDropdownOpen]);
+
+  useEffect(() => {
+    if (!destinationDropdownOpen) {
+      setDestinationDropdownPosition(null);
+      return undefined;
+    }
+
+    const updateDropdownPosition = () => {
+      const rect = destinationDropdownRef.current?.getBoundingClientRect();
+      if (!rect) return;
+
+      setDestinationDropdownPosition({
+        left: rect.left,
+        top: rect.bottom + 6,
+        width: rect.width,
+      });
+    };
+
+    updateDropdownPosition();
+    window.addEventListener("resize", updateDropdownPosition);
+    window.addEventListener("scroll", updateDropdownPosition, true);
+
+    return () => {
+      window.removeEventListener("resize", updateDropdownPosition);
+      window.removeEventListener("scroll", updateDropdownPosition, true);
+    };
+  }, [destinationDropdownOpen]);
 
   const resetForm = () => {
     setFormData({
@@ -129,14 +304,16 @@ const CreateNewQueries = ({ onClose, onCreated, queryToEdit = null, isOpsView = 
       numberOfAdults: 1,
       numberOfChildren: 0,
       customerBudget: 0,
-      hotelCategory: "4 Star",
+      hotelCategory: "",
       transportRequired: false,
       sightseeingRequired: false,
       specialRequirements: "",
       adultTravelers: [createAdultTraveler()],
       childTravelers: [],
     });
+    setHotelRequired(false);
     setFormAlert(null);
+    setSelectedDestinationOptionId("");
     setStep(1);
   };
 
@@ -187,6 +364,24 @@ const CreateNewQueries = ({ onClose, onCreated, queryToEdit = null, isOpsView = 
     }));
   };
 
+  const handleHotelCategoryChange = (category, checked) => {
+    if (formAlert) setFormAlert(null);
+    setFormData((prev) => {
+      let categories = prev.hotelCategory ? prev.hotelCategory.split(",").map((c) => c.trim()) : [];
+      if (checked) {
+        if (!categories.includes(category)) {
+          categories.push(category);
+        }
+      } else {
+        categories = categories.filter((c) => c !== category);
+      }
+      return {
+        ...prev,
+        hotelCategory: categories.join(", "),
+      };
+    });
+  };
+
   const handleTravelerChange = (travelerType, index, field, value) => {
     if (formAlert) setFormAlert(null);
     setFormData((prev) => {
@@ -205,38 +400,14 @@ const CreateNewQueries = ({ onClose, onCreated, queryToEdit = null, isOpsView = 
   };
 
   const validateTravelerStep = () => {
-    const missingAdultIndex = formData.adultTravelers.findIndex(
-      (traveler) => !String(traveler.fullName || "").trim(),
-    );
-
-    if (missingAdultIndex !== -1) {
-      setFormAlert({
-        title: "Traveler Name Missing",
-        message:
-          missingAdultIndex === 0
-            ? "Please add the lead client name to continue."
-            : `Please enter the name for Adult Traveler ${missingAdultIndex + 1}.`,
-      });
-      return false;
-    }
-
     const missingChildIndex = formData.childTravelers.findIndex(
-      (traveler) => !String(traveler.fullName || "").trim() || !Number(traveler.age),
+      (traveler) => !Number(traveler.age),
     );
 
     if (missingChildIndex !== -1) {
-      const missingChild = formData.childTravelers[missingChildIndex];
-      const childNameMissing = !String(missingChild?.fullName || "").trim();
-      const childAgeMissing = !Number(missingChild?.age);
-
       setFormAlert({
-        title: "Child Details Incomplete",
-        message:
-          childNameMissing && childAgeMissing
-            ? `Please enter the name and age for Child Traveler ${missingChildIndex + 1}.`
-            : childNameMissing
-              ? `Please enter the name for Child Traveler ${missingChildIndex + 1}.`
-              : `Please select the age for Child Traveler ${missingChildIndex + 1}.`,
+        title: "Child Age Required",
+        message: `Please select the age for Child ${missingChildIndex + 1}.`,
       });
       return false;
     }
@@ -245,13 +416,15 @@ const CreateNewQueries = ({ onClose, onCreated, queryToEdit = null, isOpsView = 
   };
 
   const buildTravelerPayload = () => [
-    ...formData.adultTravelers.map((traveler) => ({
-      fullName: traveler.fullName.trim(),
+    ...Array.from({ length: Number(formData.numberOfAdults || 0) }, (_, index) => ({
+      fullName:
+        String(formData.adultTravelers[index]?.fullName || "").trim() ||
+        `Adult Traveler ${index + 1}`,
       travelerType: "Adult",
       documentType: "Passport",
     })),
-    ...formData.childTravelers.map((traveler) => ({
-      fullName: traveler.fullName.trim(),
+    ...formData.childTravelers.map((traveler, index) => ({
+      fullName: String(traveler.fullName || "").trim() || `Child ${index + 1}`,
       travelerType: "Child",
       childAge: Number(traveler.age),
       documentType: "Passport",
@@ -259,6 +432,15 @@ const CreateNewQueries = ({ onClose, onCreated, queryToEdit = null, isOpsView = 
   ];
 
   const handleSubmit = async () => {
+    if (!String(formData.destination || "").trim()) {
+      setFormAlert({
+        title: "Destination Required",
+        message: "Please select a destination before submitting the query.",
+      });
+      setStep(1);
+      return;
+    }
+
     if (!formData.startDate || !formData.endDate) {
       setFormAlert({
         title: "Travel Dates Required",
@@ -283,6 +465,15 @@ const CreateNewQueries = ({ onClose, onCreated, queryToEdit = null, isOpsView = 
         message: "End date must be later than start date.",
       });
       setStep(1);
+      return;
+    }
+
+    if (!String(formData.specialRequirements || "").trim()) {
+      setFormAlert({
+        title: "Requirement Required",
+        message: "Please enter your detailed requirement before submitting the query.",
+      });
+      setStep(3);
       return;
     }
 
@@ -348,6 +539,257 @@ const CreateNewQueries = ({ onClose, onCreated, queryToEdit = null, isOpsView = 
     closeModal();
   };
 
+  const destinationValueSet = new Set(
+    destinationOptions.map((option) => String(option?.label || `${option?.city || ""}, ${option?.country || ""}`).trim()),
+  );
+  const destinationPlaceholder = destinationsLoading
+    ? "Loading destinations..."
+    : destinationLoadError || "Select destination";
+  const normalizedDestinationSearch = destinationSearch.trim().toLowerCase();
+  const destinationItems = [
+    ...(formData.destination && !destinationValueSet.has(String(formData.destination).trim())
+      ? [
+          {
+            label: formData.destination,
+            city: String(formData.destination || "").split(",")[0]?.trim() || formData.destination,
+            country: parseCountryFromDestinationLabel(formData.destination),
+          },
+        ]
+      : []),
+    ...destinationOptions,
+  ]
+    .map((option) => {
+      const label = String(option?.label || `${option?.city || ""}, ${option?.country || ""}`).trim();
+      const country = getDestinationCountry({ ...option, label });
+
+      return {
+        ...option,
+        label,
+        country,
+        flagUrl: getCountryFlagUrl(country),
+      };
+    })
+    .filter((option) => option.label)
+    .map((option, index) => ({
+      ...option,
+      optionKey: String(option?._id || `fallback-${index}-${option.label}`),
+    }));
+  const visibleDestinationItems = destinationItems
+    .map((option, index) => {
+      const city = String(option?.city || "").toLowerCase();
+      const country = String(option?.country || "").toLowerCase();
+      const label = String(option?.label || "").toLowerCase();
+      let rank = 0;
+
+      if (normalizedDestinationSearch) {
+        if (city.startsWith(normalizedDestinationSearch) || country.startsWith(normalizedDestinationSearch)) {
+          rank = 1;
+        } else if (label.includes(normalizedDestinationSearch)) {
+          rank = 2;
+        } else {
+          rank = -1;
+        }
+      }
+
+      return { ...option, index, rank };
+    })
+    .filter((option) => option.rank >= 0)
+    .sort((left, right) => {
+      if (!normalizedDestinationSearch) return left.index - right.index;
+      if (left.rank !== right.rank) return left.rank - right.rank;
+      return left.label.localeCompare(right.label);
+    });
+  const selectedDestinationItem = destinationItems.find(
+    (option) => String(option?.label || "").trim().toLowerCase() === String(formData.destination || "").trim().toLowerCase(),
+  );
+  const selectedDestinationFlagUrl = getCountryFlagUrl(
+    getDestinationCountry(selectedDestinationItem || { label: formData.destination }),
+  );
+  const selectedHotelCategories = formData.hotelCategory
+    ? formData.hotelCategory.split(",").map((category) => category.trim()).filter(Boolean)
+    : [];
+  const hotelCategoryItems = Array.from(
+    new Set([
+      ...selectedHotelCategories,
+      ...hotelCategoryOptions.map((category) => String(category || "").trim()).filter(Boolean),
+    ]),
+  );
+  const adultCount = Number(formData.numberOfAdults || 0);
+  const childCount = Number(formData.numberOfChildren || 0);
+  const childAgeLabel = formData.childTravelers
+    .map((traveler, index) => {
+      const age = Number(traveler.age || 0);
+      return age > 0 ? `Child ${index + 1}: ${age} yrs` : "";
+    })
+    .filter(Boolean)
+    .join(", ");
+  const passengerMixLabel =
+    [
+      adultCount > 0 ? `${adultCount} Adult${adultCount === 1 ? "" : "s"}` : "",
+      childCount > 0 ? `${childCount} ${childCount === 1 ? "Child" : "Children"}` : "",
+    ]
+      .filter(Boolean)
+      .join(", ") || "Traveler count pending";
+  const requestedServices = [
+    hotelRequired ? "Hotel" : "",
+    formData.transportRequired ? "Transport" : "",
+    formData.sightseeingRequired ? "Sightseeing" : "",
+  ].filter(Boolean);
+  const budgetPerPerson = Number(formData.customerBudget || 0);
+  const stayPreferenceLabel = hotelRequired
+    ? selectedHotelCategories.length
+      ? selectedHotelCategories.join(", ")
+      : "Hotel required, category open"
+    : "Hotel not requested";
+  const serviceFocusLabel = requestedServices.length
+    ? requestedServices.join(" + ")
+    : "Requirement note based plan";
+  const travelProfileRows = [
+    {
+      label: "Passenger Mix",
+      value: childAgeLabel ? `${passengerMixLabel} | ${childAgeLabel}` : passengerMixLabel,
+      badge: "PAX",
+      badgeClass: "border-blue-100/70 bg-blue-50 text-blue-700",
+    },
+    {
+      label: "Stay & Services",
+      value: `${stayPreferenceLabel} | ${serviceFocusLabel}`,
+      badge: "Plan",
+      badgeClass: "border-emerald-100/70 bg-emerald-50 text-emerald-700",
+    },
+    {
+      label: "Budget & Notes",
+      value:
+        budgetPerPerson > 0
+          ? `INR ${Math.round(budgetPerPerson).toLocaleString("en-IN")} / person`
+          : "Budget not shared",
+      badge: String(formData.specialRequirements || "").trim() ? "Notes" : "Open",
+      badgeClass: "border-slate-200 bg-slate-50 text-slate-600",
+    },
+  ];
+
+  const handleDestinationSelect = (option) => {
+    if (formAlert) setFormAlert(null);
+    setFormData((prev) => ({
+      ...prev,
+      destination: option.label,
+    }));
+    setSelectedDestinationOptionId(option.optionKey);
+    setDestinationSearch("");
+    setDestinationDropdownOpen(false);
+  };
+
+  const renderDestinationSelect = ({ compact = false } = {}) => (
+    <div ref={destinationDropdownRef} className="relative z-30">
+      {selectedDestinationFlagUrl ? (
+        <span className={`absolute left-3 top-1/2 z-10 flex h-5 w-5 -translate-y-1/2 items-center justify-center ${compact ? "" : "sm:left-4"}`}>
+          <img
+            src={selectedDestinationFlagUrl}
+            alt=""
+            className="h-[12px] w-[18px] rounded-[2px] object-cover shadow-sm ring-1 ring-slate-200"
+            loading="lazy"
+            referrerPolicy="no-referrer"
+          />
+        </span>
+      ) : (
+        <MapPin
+          size={16}
+          className={`absolute left-3 top-1/2 z-10 -translate-y-1/2 text-gray-400 ${compact ? "" : "sm:left-4"}`}
+        />
+      )}
+      <input
+        name="destination"
+        value={formData.destination}
+        placeholder={destinationPlaceholder}
+        autoComplete="off"
+        onFocus={() => {
+          setDestinationDropdownOpen(true);
+          setDestinationSearch("");
+        }}
+        onChange={(event) => {
+          if (formAlert) setFormAlert(null);
+          setSelectedDestinationOptionId("");
+          setDestinationSearch(event.target.value);
+          setDestinationDropdownOpen(true);
+          setFormData((prev) => ({
+            ...prev,
+            destination: event.target.value,
+          }));
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            setDestinationDropdownOpen(false);
+          }
+          if (event.key === "Enter") {
+            event.preventDefault();
+            setDestinationDropdownOpen(false);
+          }
+        }}
+        className={`w-full rounded-full border border-gray-300 bg-white pl-9 pr-9 text-left focus:outline-none focus:border-gray-400 transition duration-150 ${
+          compact ? "py-1.5 text-sm" : "py-1.5 sm:pl-10"
+        }`}
+      />
+      <ChevronDown
+        size={16}
+        onClick={() => {
+          setDestinationSearch("");
+          setDestinationDropdownOpen((prev) => !prev);
+        }}
+        className={`absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer text-gray-400 transition ${
+          destinationDropdownOpen ? "rotate-180" : ""
+        }`}
+      />
+      {destinationDropdownOpen && !destinationsLoading && destinationDropdownPosition && createPortal(
+        <div
+          ref={destinationMenuRef}
+          style={{
+            left: destinationDropdownPosition.left,
+            top: destinationDropdownPosition.top,
+            width: destinationDropdownPosition.width,
+          }}
+          className="fixed z-[80] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl shadow-slate-950/15"
+        >
+          <div className="modal-transparent-scroll max-h-60 overflow-y-auto py-1">
+          {visibleDestinationItems.length ? (
+            visibleDestinationItems.map((option) => (
+              <button
+                type="button"
+                key={option.optionKey}
+                onClick={() => handleDestinationSelect(option)}
+                className={`flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm transition hover:bg-slate-100 ${
+                  selectedDestinationOptionId === option.optionKey ? "bg-slate-900 text-white hover:bg-slate-900" : "text-slate-800"
+                }`}
+              >
+                <span className="flex h-[22px] w-[26px] shrink-0 items-center justify-center rounded-md bg-slate-50 shadow-sm ring-1 ring-slate-200/70">
+                  {option.flagUrl ? (
+                    <img
+                      src={option.flagUrl}
+                      alt=""
+                      className="h-[12px] w-[18px] rounded-[2px] object-cover"
+                      loading="lazy"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    <MapPin size={14} className="text-slate-400" />
+                  )}
+                </span>
+                <span className="min-w-0 flex-1 truncate" title={option.label}>
+                  {option.label}
+                </span>
+              </button>
+            ))
+          ) : (
+            <div className="px-4 py-3 text-sm text-slate-500">
+              No destinations found
+            </div>
+          )}
+          </div>
+        </div>,
+        document.body,
+      )}
+    </div>
+  );
+
   return (
     <>
       <AnimatePresence mode="wait">
@@ -374,79 +816,63 @@ const CreateNewQueries = ({ onClose, onCreated, queryToEdit = null, isOpsView = 
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.985, y: 18 }}
               transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
-              className={`relative z-10 flex max-h-[calc(100vh-20px)] w-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl sm:max-h-[calc(100vh-32px)] sm:p-5 ${isOpsView ? 'max-w-[460px]' : 'max-w-[520px]'}`}
+              className={`relative z-10 flex max-h-[calc(100vh-20px)] w-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-gradient-to-b from-white to-slate-50/95 p-4 shadow-2xl sm:max-h-[calc(100vh-32px)] sm:p-4.5 ${isOpsView ? 'max-w-[460px]' : 'max-w-[520px]'}`}
             >
-          {isOpsView ? (
-            <div className="relative -mx-4 -mt-4 mb-4 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 px-5 py-4 text-white sm:-mx-5 sm:-mt-5 sm:mb-5">
+            <div className="relative -mx-4 -mt-4 mb-4 bg-gradient-to-r from-black via-[#000814] to-[#001f54] px-5 py-4 text-white sm:-mx-5 sm:-mt-5 sm:mb-5 shadow-md">
               <div className="flex items-center justify-between">
                 <button
                   type="button"
                   onClick={handleClose}
-                  className="flex items-center gap-1.5 text-slate-300 hover:text-white transition bg-transparent border-none outline-none p-0 cursor-pointer"
+                  className="flex items-center gap-1.5 text-slate-300 hover:text-white transition bg-transparent border-none outline-none p-0 cursor-pointer font-medium"
                 >
-                  <ArrowLeft className="h-5 w-5 stroke-[1.8]" />
+                  <ArrowLeft className="h-5 w-5 stroke-[2]" />
                   <span className="text-sm font-semibold">Back</span>
                 </button>
                 <div className="text-right">
-                  <h3 className="text-sm font-bold tracking-wide uppercase text-indigo-200">
+                  <h3 className="text-sm font-bold tracking-wide uppercase text-slate-300">
                     {queryToEdit ? "Edit Query" : "New Query"}
                   </h3>
                   <p className="text-[11px] text-slate-400 mt-0.5">Step {step} of 3</p>
                 </div>
               </div>
             </div>
-          ) : (
-            <header className="mb-2 flex items-center justify-between">
-              <div
-                onClick={handleClose}
-                className="flex cursor-pointer items-center gap-1 rounded-xl p-1 hover:bg-gray-100"
-              >
-                <ArrowLeft className="h-5 w-5 stroke-[1.8] text-gray-800" />
-                <h2 className="text-md font-semibold">Back</h2>
-              </div>
-
-              <div>
-                <p className="text-sm text-gray-500">Step {step} of 3</p>
-              </div>
-            </header>
-          )}
 
           <AnimatePresence>
             {formAlert && (
               <motion.div
-                initial={{ opacity: 0, y: -10, scale: 0.98 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: -10, scale: 0.98 }}
-                transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-                className="pointer-events-none absolute left-3 right-3 top-14 z-20"
+                initial={{ opacity: 0, y: -10, x: 20 }}
+                animate={{ opacity: 1, y: 0, x: 0 }}
+                exit={{ opacity: 0, y: -10, x: 20 }}
+                transition={{ duration: 0.22, ease: "easeOut" }}
+                className="pointer-events-none fixed top-4 right-4 z-[100] w-full max-w-[340px] px-4 sm:px-0"
               >
-                <div className="pointer-events-auto rounded-2xl border border-amber-200 bg-[linear-gradient(135deg,rgba(255,251,235,0.98)_0%,rgba(254,243,199,0.96)_100%)] px-4 py-3 shadow-[0_16px_40px_rgba(120,53,15,0.18)]">
-                  <div className="flex items-start gap-3">
-                  <div className="mt-0.5 rounded-xl bg-amber-100 p-2 text-amber-700">
-                    <AlertCircle className="h-4 w-4" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-amber-700">
-                      {formAlert.title}
-                    </p>
-                    <p className="mt-1 text-sm leading-5 text-amber-900">
-                      {formAlert.message}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setFormAlert(null)}
-                    className="rounded-full p-1 text-amber-500 transition hover:bg-white/60 hover:text-amber-700"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
+                <div className="pointer-events-auto rounded-2xl border border-amber-200 bg-[linear-gradient(135deg,rgba(255,251,235,0.98)_0%,rgba(254,243,199,0.96)_100%)] px-3.5 py-2.5 shadow-[0_16px_40px_rgba(120,53,15,0.18)]">
+                  <div className="flex items-start gap-2.5">
+                    <div className="h-7 w-7 rounded-xl bg-amber-100 text-amber-700 shrink-0 flex items-center justify-center animate-pulse">
+                      <AlertCircle className="h-4 w-4" />
+                    </div>
+                    <div className="min-w-0 flex-1 pt-1">
+                      <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-amber-700">
+                        {formAlert.title}
+                      </p>
+                      <p className="mt-0.5 text-xs leading-relaxed text-amber-900/95">
+                        {formAlert.message}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setFormAlert(null)}
+                      className="h-6 w-6 rounded-full text-amber-500 transition hover:bg-white/60 hover:text-amber-700 shrink-0 flex items-center justify-center"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
                   </div>
                 </div>
               </motion.div>
             )}
           </AnimatePresence>
 
-          <div className="custom-scroll flex-1 overflow-y-auto pr-1">
+          <div className="custom-scroll flex-1 overflow-y-auto pr-1 flex flex-col">
             <AnimatePresence mode="wait">
               {step === 1 && (
                 <motion.div
@@ -455,75 +881,24 @@ const CreateNewQueries = ({ onClose, onCreated, queryToEdit = null, isOpsView = 
                   initial="hidden"
                   animate="visible"
                   exit="exit"
-                  className="w-full bg-transparent shadow-none"
+                  className="w-full bg-transparent shadow-none flex-1 flex flex-col"
                 >
-                <div className={isOpsView ? "mb-3" : "mb-6"}>
-                  <h2 className="mt-1 text-xl font-semibold">{queryToEdit ? "Edit Query" : "Create New Query"}</h2>
-                  <p className="mt-1 text-sm text-gray-500">
-                    Tell us about the travel requirements.
-                  </p>
+                <div className="mb-4 flex items-center gap-3">
+                  <div className="rounded-xl bg-gradient-to-br from-indigo-50 to-purple-50 p-2 text-indigo-600 shadow-sm border border-indigo-100">
+                    {queryToEdit ? <Compass className="h-5 w-5 animate-[spin_8s_linear_infinite]" /> : <Globe className="h-5 w-5 text-indigo-500 animate-[spin_12s_linear_infinite]" />}
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold text-slate-800">{queryToEdit ? "Edit Query" : "Create New Query"}</h2>
+                    <p className="mt-0.5 text-sm text-gray-500">
+                      Tell us about the travel requirements.
+                    </p>
+                  </div>
                 </div>
 
-                {isOpsView ? (
-                  <div className="grid grid-cols-2 gap-4 mb-3">
-                    <div>
-                      <label className="mb-1 block text-sm font-medium">Destination</label>
-                      <div className="relative">
-                        <MapPin
-                          size={16}
-                          className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-                        />
-                        <input
-                          name="destination"
-                          placeholder="maldives, paris"
-                          value={formData.destination}
-                          onChange={handleChange}
-                          className="w-full rounded-xl border border-gray-300 py-1.5 pl-9 pr-4 focus:outline-none text-sm"
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <label className="mb-1 block text-sm font-medium">Client Email</label>
-                      <input
-                        type="email"
-                        name="clientEmail"
-                        placeholder="client@example.com"
-                        value={formData.clientEmail}
-                        onChange={handleChange}
-                        className="w-full rounded-xl border border-gray-300 px-4 py-1.5 focus:outline-none text-sm"
-                      />
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    <div className="relative mb-3">
-                      <label className="mb-1 block text-sm font-medium">Destination</label>
-                      <MapPin
-                        size={16}
-                        className="absolute left-5 top-11 -translate-y-1/2 text-gray-400"
-                      />
-                      <input
-                        name="destination"
-                        placeholder="maldives, paris"
-                        value={formData.destination}
-                        onChange={handleChange}
-                        className="w-full rounded-xl border border-gray-300 py-1.5 pl-10 pr-4 focus:outline-none"
-                      />
-                    </div>
-
-                    <div className="mb-3">
-                      <label className="mb-1 block text-sm font-medium">Client Email</label>
-                      <input
-                        type="email"
-                        name="clientEmail"
-                        placeholder="client@example.com"
-                        value={formData.clientEmail}
-                        onChange={handleChange}
-                        className="w-full rounded-xl border border-gray-300 px-4 py-2 focus:outline-none"
-                      />
-                    </div>
-                  </>
-                )}
+                <div className={`${isOpsView ? "" : "relative"} mb-3`}>
+                  <label className="mb-1 block text-sm font-medium">Destination</label>
+                  {renderDestinationSelect({ compact: isOpsView })}
+                </div>
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -534,7 +909,7 @@ const CreateNewQueries = ({ onClose, onCreated, queryToEdit = null, isOpsView = 
                       value={formData.startDate}
                       onChange={handleChange}
                       min={queryToEdit ? undefined : todayDate}
-                      className="w-full rounded-xl border border-gray-300 px-4 py-2 focus:outline-none"
+                      className="w-full rounded-full border border-gray-300 px-4.5 py-1.5 focus:outline-none focus:border-gray-400"
                     />
                   </div>
                   <div>
@@ -545,37 +920,18 @@ const CreateNewQueries = ({ onClose, onCreated, queryToEdit = null, isOpsView = 
                       value={formData.endDate}
                       onChange={handleChange}
                       min={formData.startDate || (queryToEdit ? undefined : todayDate)}
-                      className="w-full rounded-xl border border-gray-300 px-4 py-2 focus:outline-none"
+                      className="w-full rounded-full border border-gray-300 px-4.5 py-1.5 focus:outline-none focus:border-gray-400"
                     />
                   </div>
                 </div>
 
-                <div className="mt-6 flex justify-end">
+                <div className="mt-4 flex justify-end">
                   <button
                     onClick={() => {
-                      const normalizedClientEmail = String(formData.clientEmail || "").trim().toLowerCase();
-                      if (!normalizedClientEmail) {
+                      if (!String(formData.destination || "").trim()) {
                         setFormAlert({
-                          title: "Client Email Required",
-                          message: "Please enter the client email address before moving ahead.",
-                        });
-                        return;
-                      }
-
-                      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedClientEmail)) {
-                        setFormAlert({
-                          title: "Invalid Client Email",
-                          message: "Please enter a valid client email address.",
-                        });
-                        return;
-                      }
-
-                      const atIndex = normalizedClientEmail.lastIndexOf("@");
-                      const domain = normalizedClientEmail.slice(atIndex + 1);
-                      if (COMMON_DOMAIN_TYPOS[domain]) {
-                        setFormAlert({
-                          title: "Email Typo Detected",
-                          message: `Did you mean ${normalizedClientEmail.slice(0, atIndex)}@${COMMON_DOMAIN_TYPOS[domain]}? Please correct the email.`,
+                          title: "Destination Required",
+                          message: "Please select a destination before moving ahead.",
                         });
                         return;
                       }
@@ -607,7 +963,7 @@ const CreateNewQueries = ({ onClose, onCreated, queryToEdit = null, isOpsView = 
                       setFormAlert(null);
                       setStep(2);
                     }}
-                    className="flex cursor-pointer items-center gap-1 rounded-xl bg-slate-900 px-6 py-2 text-sm text-white"
+                    className="flex cursor-pointer items-center gap-1 rounded-full bg-gradient-to-r from-black to-[#001d3d] hover:from-[#000814] hover:to-[#003566] px-6 py-1.5 text-sm font-semibold text-white shadow-md hover:shadow-lg transition-all active:scale-[0.98] duration-150"
                   >
                     Next →
                   </button>
@@ -622,14 +978,21 @@ const CreateNewQueries = ({ onClose, onCreated, queryToEdit = null, isOpsView = 
                   initial="hidden"
                   animate="visible"
                   exit="exit"
-                  className="w-full bg-transparent shadow-none"
+                  className="w-full bg-transparent shadow-none flex-1 flex flex-col"
                 >
-                <h2 className="text-xl font-semibold">{queryToEdit ? "Edit Query" : "Create New Query"}</h2>
-                <p className={`${isOpsView ? 'mb-3' : 'mb-6'} text-sm text-gray-500`}>
-                  Tell us about the travel requirements.
-                </p>
+                <div className="mb-4 flex items-center gap-3">
+                  <div className="rounded-xl bg-gradient-to-br from-indigo-50 to-purple-50 p-2 text-indigo-600 shadow-sm border border-indigo-100">
+                    {queryToEdit ? <Compass className="h-5 w-5 animate-[spin_8s_linear_infinite]" /> : <Globe className="h-5 w-5 text-indigo-500 animate-[spin_12s_linear_infinite]" />}
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold text-slate-800">{queryToEdit ? "Edit Query" : "Create New Query"}</h2>
+                    <p className="mt-0.5 text-sm text-gray-500">
+                      Tell us about the travel requirements.
+                    </p>
+                  </div>
+                </div>
 
-                <div className="mb-4 grid grid-cols-2 gap-4">
+                <div className="mb-3 grid grid-cols-2 gap-3">
                   <div>
                     <label className="mb-1 block text-sm font-medium">Adults</label>
                     <input
@@ -638,7 +1001,7 @@ const CreateNewQueries = ({ onClose, onCreated, queryToEdit = null, isOpsView = 
                       name="numberOfAdults"
                       value={formData.numberOfAdults}
                       onChange={handleChange}
-                      className="w-full rounded-xl border border-gray-300 px-4 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full rounded-full border border-gray-300 px-4 py-1.5 focus:outline-none focus:border-gray-400 text-sm"
                     />
                   </div>
                   <div>
@@ -649,28 +1012,11 @@ const CreateNewQueries = ({ onClose, onCreated, queryToEdit = null, isOpsView = 
                       name="numberOfChildren"
                       value={formData.numberOfChildren}
                       onChange={handleChange}
-                      className="w-full rounded-xl border border-gray-300 px-4 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full rounded-full border border-gray-300 px-4 py-1.5 focus:outline-none focus:border-gray-400 text-sm"
                     />
                   </div>
                 </div>
                 <div className="space-y-2.5">
-                  {Number(formData.numberOfAdults || 0) > 0 && (
-                    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3.5 py-2.5">
-                      <p className="text-sm font-semibold text-slate-800">Client / Adult Traveler Names</p>
-                      <div className="mt-2.5 grid gap-2.5">
-                        {formData.adultTravelers.map((traveler, index) => (
-                          <input
-                            key={`adult-${index}`}
-                            value={traveler.fullName}
-                            onChange={(e) => handleTravelerChange("adult", index, "fullName", e.target.value)}
-                            placeholder={index === 0 ? "Lead Client Name" : `Adult Traveler ${index + 1} Name`}
-                            className="w-full rounded-xl border border-gray-300 px-4 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
                   <AnimatePresence initial={false}>
                     {Number(formData.numberOfChildren || 0) > 0 && (
                       <motion.div
@@ -683,24 +1029,21 @@ const CreateNewQueries = ({ onClose, onCreated, queryToEdit = null, isOpsView = 
                       >
                         <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3.5 py-2.5">
                           <p className="text-sm font-semibold text-slate-800">Child Traveler Details</p>
-                          <div className="mt-2.5 grid gap-2.5">
+                          <div className="mt-2.5 grid gap-2">
                             {formData.childTravelers.map((traveler, index) => (
                               <div
                                 key={`child-${index}`}
-                                className="grid gap-3 md:grid-cols-[1.6fr_1fr]"
+                                className="flex items-center justify-between gap-3 rounded-xl border border-slate-200/60 bg-white px-3.5 py-1.5 shadow-sm"
                               >
-                                <input
-                                  value={traveler.fullName}
-                                  onChange={(e) => handleTravelerChange("child", index, "fullName", e.target.value)}
-                                  placeholder={`Child Traveler ${index + 1} Name`}
-                                  className="w-full rounded-xl border border-gray-300 px-4 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                />
+                                <span className="text-sm font-medium text-slate-700">
+                                  Child {index + 1} Age
+                                </span>
                                 <select
                                   value={traveler.age}
                                   onChange={(e) => handleTravelerChange("child", index, "age", e.target.value)}
-                                  className="w-full rounded-xl border border-gray-300 px-4 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                  className="rounded-full border border-gray-300 px-4 py-1 text-sm focus:outline-none focus:border-gray-400 bg-white text-slate-800 cursor-pointer min-w-[120px]"
                                 >
-                                  <option value="">Age</option>
+                                  <option value="">Select Age</option>
                                   {childAgeOptions.map((age) => (
                                     <option key={age} value={age}>
                                       {age} Years
@@ -716,7 +1059,7 @@ const CreateNewQueries = ({ onClose, onCreated, queryToEdit = null, isOpsView = 
                   </AnimatePresence>
                 </div>
 
-                <div className="mb-3.5 mt-2.5">
+                <div className="mb-3 mt-1.5">
                   <label className="mb-1 block text-sm font-medium">Budget per person (Optional)</label>
                   <input
                     type="number"
@@ -724,24 +1067,72 @@ const CreateNewQueries = ({ onClose, onCreated, queryToEdit = null, isOpsView = 
                     placeholder="e.g. 50000"
                     value={formData.customerBudget}
                     onChange={handleChange}
-                    className="w-full rounded-xl border border-gray-300 px-4 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full rounded-full border border-gray-300 px-4 py-1.5 focus:outline-none focus:border-gray-400 text-sm"
                   />
                 </div>
 
-                <div className="mb-4 rounded-2xl border border-slate-200 bg-slate-50 px-3.5 py-2.5">
-                  <label className="mb-1 block text-sm font-medium">Hotel Category</label>
-                  <select
-                    name="hotelCategory"
-                    value={formData.hotelCategory}
-                    onChange={handleChange}
-                    className="w-full rounded-xl border border-gray-300 bg-white px-4 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="3 Star">3 Star</option>
-                    <option value="4 Star">4 Star</option>
-                    <option value="5 Star">5 Star</option>
-                  </select>
-                  <div className="mt-2.5 grid gap-2 sm:grid-cols-2">
-                    <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700">
+                <div className="mb-3 rounded-2xl border border-slate-200 bg-slate-50 p-3 space-y-2.5">
+                  <label className="flex cursor-pointer items-center gap-2.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-semibold text-slate-700 shadow-sm">
+                    <input
+                      type="checkbox"
+                      name="hotelRequired"
+                      checked={hotelRequired}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setHotelRequired(checked);
+                        setFormData((prev) => ({ ...prev, hotelCategory: "" }));
+                      }}
+                      className="h-4 w-4 rounded border-slate-300 accent-slate-900"
+                    />
+                    Hotel Required
+                  </label>
+
+                  <AnimatePresence initial={false}>
+                    {hotelRequired && (
+                      <motion.div
+                        key="hotel-category-select"
+                        initial={{ opacity: 0, height: 0, marginTop: 0 }}
+                        animate={{ opacity: 1, height: "auto", marginTop: 8 }}
+                        exit={{ opacity: 0, height: 0, marginTop: 0 }}
+                        transition={{ duration: 0.22, ease: "easeOut" }}
+                        className="overflow-hidden"
+                      >
+                        <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-[inset_0_1px_2px_rgba(0,0,0,0.01)]">
+                          <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-400">
+                            Hotel Category
+                          </label>
+                          {hotelCategoryItems.length ? (
+                          <div className="flex flex-wrap gap-4">
+                            {hotelCategoryItems.map((category) => {
+                              const isSelected = selectedHotelCategories.includes(category);
+                              return (
+                                <label
+                                  key={category}
+                                  className="flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-700 hover:text-slate-900 transition"
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    onChange={(e) => handleHotelCategoryChange(category, e.target.checked)}
+                                    className="h-4 w-4 rounded border-slate-300 accent-slate-900"
+                                  />
+                                  {category}
+                                </label>
+                              );
+                            })}
+                          </div>
+                          ) : (
+                            <p className="text-sm text-slate-500">
+                              No hotel categories found from the DMC hotel list.
+                            </p>
+                          )}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  <div className="grid gap-3 sm:grid-cols-2 pt-1">
+                    <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm">
                       <input
                         type="checkbox"
                         name="transportRequired"
@@ -751,7 +1142,7 @@ const CreateNewQueries = ({ onClose, onCreated, queryToEdit = null, isOpsView = 
                       />
                       Transport Required
                     </label>
-                    <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700">
+                    <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm">
                       <input
                         type="checkbox"
                         name="sightseeingRequired"
@@ -764,13 +1155,13 @@ const CreateNewQueries = ({ onClose, onCreated, queryToEdit = null, isOpsView = 
                   </div>
                 </div>
 
-                <div className="flex justify-between">
+                <div className="mt-4 flex justify-between">
                   <button
                     onClick={() => {
                       setFormAlert(null);
                       setStep(1);
                     }}
-                    className="cursor-pointer rounded-xl border border-gray-300 px-5 py-2 text-sm"
+                    className="cursor-pointer rounded-full border border-gray-300 bg-white hover:bg-slate-50 px-5 py-2 text-sm font-semibold text-slate-700 transition active:scale-[0.98] duration-150"
                   >
                     Previous
                   </button>
@@ -781,7 +1172,7 @@ const CreateNewQueries = ({ onClose, onCreated, queryToEdit = null, isOpsView = 
                       setFormAlert(null);
                       setStep(3);
                     }}
-                    className="flex cursor-pointer items-center gap-1 rounded-xl bg-slate-900 px-6 py-2 text-sm text-white"
+                    className="flex cursor-pointer items-center gap-1 rounded-full bg-gradient-to-r from-black to-[#001d3d] hover:from-[#000814] hover:to-[#003566] px-6 py-1.5 text-sm font-semibold text-white shadow-md hover:shadow-lg transition-all active:scale-[0.98] duration-150"
                   >
                     Next →
                   </button>
@@ -796,41 +1187,48 @@ const CreateNewQueries = ({ onClose, onCreated, queryToEdit = null, isOpsView = 
                   initial="hidden"
                   animate="visible"
                   exit="exit"
-                  className="w-full bg-transparent shadow-none"
+                  className="w-full bg-transparent shadow-none flex-1 flex flex-col"
                 >
-                <h2 className="text-xl font-semibold">{queryToEdit ? "Edit Query" : "Create New Query"}</h2>
-                <p className={`${isOpsView ? 'mb-3' : 'mb-6'} text-sm text-gray-500`}>
-                  Tell us about the travel requirements.
-                </p>
+                <div className="mb-4 flex items-center gap-3">
+                  <div className="rounded-xl bg-gradient-to-br from-indigo-50 to-purple-50 p-2 text-indigo-600 shadow-sm border border-indigo-100">
+                    {queryToEdit ? <Compass className="h-5 w-5 animate-[spin_8s_linear_infinite]" /> : <Globe className="h-5 w-5 text-indigo-500 animate-[spin_12s_linear_infinite]" />}
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold text-slate-800">{queryToEdit ? "Edit Query" : "Create New Query"}</h2>
+                    <p className="mt-0.5 text-sm text-gray-500">
+                      Tell us about the travel requirements.
+                    </p>
+                  </div>
+                </div>
 
-                <div className={isOpsView ? "mb-3" : "mb-6"}>
+                <div className="mb-4">
                   <label className="mb-1 block text-sm font-medium">
-                    Special Preferences / Notes
+                    Detailed Requirement <span className="text-red-500">*</span>
                   </label>
                   <textarea
                     name="specialRequirements"
-                    placeholder="e.g. Vegan food, Honeymoon inclusions, 5-star hotels only..."
+                    placeholder="e.g. Detailed itinerary, preferred hotel chain, specific sightseeing spots, flight details, meal requests..."
                     value={formData.specialRequirements}
                     onChange={handleChange}
                     rows={5}
-                    className="w-full rounded-xl border border-gray-300 px-2 py-2 text-sm focus:outline-none"
+                    className="w-full rounded-2xl border border-gray-300 px-4 py-2.5 text-sm focus:outline-none focus:border-gray-400"
                   />
                 </div>
 
-                <div className="flex justify-between">
+                <div className="mt-4 flex justify-between">
                   <button
                     onClick={() => {
                       setFormAlert(null);
                       setStep(2);
                     }}
-                    className="cursor-pointer rounded-xl border border-gray-300 px-5 py-2 text-sm"
+                    className="cursor-pointer rounded-full border border-gray-300 bg-white hover:bg-slate-50 px-5 py-2 text-sm font-semibold text-slate-700 transition active:scale-[0.98] duration-150"
                   >
                     Previous
                   </button>
 
                   <button
                     onClick={handleSubmit}
-                    className="cursor-pointer rounded-xl bg-slate-900 px-6 py-2 text-sm text-white"
+                    className="cursor-pointer rounded-full bg-gradient-to-r from-black to-[#001d3d] hover:from-[#000814] hover:to-[#003566] px-6 py-2 text-sm font-bold text-white shadow-md hover:shadow-lg transition-all active:scale-[0.98] duration-150"
                   >
                     {queryToEdit ? "Save Changes →" : "Submit Query →"}
                   </button>
@@ -909,30 +1307,25 @@ const CreateNewQueries = ({ onClose, onCreated, queryToEdit = null, isOpsView = 
                   </div>
                 </div>
 
-                {/* TRAVELERS LIST */}
-                <div className="mt-3 rounded-2xl border border-slate-200/80 bg-gradient-to-b from-white to-slate-50/40 p-3.5 shadow-[inset_0_1px_3px_rgba(0,0,0,0.02)]">
-                  <div className="flex items-center gap-1.5 mb-2 border-b border-slate-100 pb-1.5">
+                {/* TRIP PROFILE SUMMARY */}
+                <div className="mt-3 rounded-2xl border border-slate-200/80 bg-gradient-to-b from-white to-slate-50/40 p-3 shadow-[inset_0_1px_3px_rgba(0,0,0,0.02)]">
+                  <div className="mb-1.5 flex items-center gap-1.5 border-b border-slate-100 pb-1.5">
                     <User size={13} className="text-slate-500" />
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Traveler Details & Names</p>
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Travel Profile Summary</p>
                   </div>
-                  <div className="max-h-[85px] overflow-y-auto space-y-2 pr-1 custom-scroll">
-                    {formData.adultTravelers.map((t, idx) => (
-                      <div key={`idx-a-${idx}`} className="flex items-center justify-between text-xs">
-                        <span className="font-semibold text-slate-800 truncate max-w-[200px]" title={t.fullName}>
-                          {t.fullName || `Adult Traveler ${idx + 1}`}
+                  <div className="space-y-1.5">
+                    {travelProfileRows.map((item) => (
+                      <div key={item.label} className="flex min-h-[32px] items-center justify-between gap-3 rounded-xl px-1.5 text-xs">
+                        <span className="min-w-0">
+                          <span className="block text-[8.5px] font-bold uppercase tracking-wider text-slate-400">
+                            {item.label}
+                          </span>
+                          <span className="block max-w-[360px] truncate font-semibold leading-5 text-slate-800" title={item.value}>
+                            {item.value}
+                          </span>
                         </span>
-                        <span className="shrink-0 rounded-full bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100/60 px-2 py-0.5 text-[9px] font-bold text-blue-700">
-                          {idx === 0 ? "Lead Client" : "Adult"}
-                        </span>
-                      </div>
-                    ))}
-                    {formData.childTravelers.map((t, idx) => (
-                      <div key={`idx-c-${idx}`} className="flex items-center justify-between text-xs">
-                        <span className="font-semibold text-slate-800 truncate max-w-[200px]" title={t.fullName}>
-                          {t.fullName || `Child Traveler ${idx + 1}`}
-                        </span>
-                        <span className="shrink-0 rounded-full bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-100/60 px-2 py-0.5 text-[9px] font-bold text-amber-700">
-                          Child ({t.age ? `${t.age} Yrs` : "N/A"})
+                        <span className={`shrink-0 rounded-full border px-2.5 py-0.5 text-[9px] font-bold ${item.badgeClass}`}>
+                          {item.badge}
                         </span>
                       </div>
                     ))}

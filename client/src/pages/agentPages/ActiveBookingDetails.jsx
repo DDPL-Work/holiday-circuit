@@ -10,10 +10,9 @@ import {
   Check,
   CreditCard,
   Download,
-  Eye,
-  EyeOff,
   FileBadge2,
   FileText,
+  Fingerprint,
   IdCard,
   LoaderCircle,
   MapPin,
@@ -22,93 +21,13 @@ import {
   Users,
   UserSquare2,
   Wallet,
+  Coins,
 } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import API from "../../utils/Api";
 import CouponBillingModal from "../../modal/CouponBillingModal";
 
-const bankOptions = ["HDFC Bank", "ICICI Bank", "State Bank of India", "Axis Bank", "Kotak Bank"];
 const MAX_UPLOAD_SIZE_BYTES = 5 * 1024 * 1024;
-const BankLogo = ({ bank, className = "h-8 w-8" }) => {
-  const frameClass = `${className} shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm`;
-
-  if (bank === "HDFC Bank") {
-    return (
-      <div className={frameClass}>
-        <svg viewBox="0 0 64 64" className="h-full w-full" aria-hidden="true">
-          <rect width="64" height="64" rx="14" fill="#E21C2A" />
-          <rect x="10" y="10" width="44" height="44" rx="10" fill="#FFFFFF" />
-          <rect x="18" y="18" width="28" height="28" rx="6" fill="#0F3B87" />
-          <rect x="29" y="18" width="6" height="28" fill="#FFFFFF" />
-          <rect x="18" y="29" width="28" height="6" fill="#FFFFFF" />
-          <rect x="26" y="26" width="12" height="12" rx="2" fill="#E21C2A" />
-        </svg>
-      </div>
-    );
-  }
-
-  if (bank === "ICICI Bank") {
-    return (
-      <div className={frameClass}>
-        <svg viewBox="0 0 64 64" className="h-full w-full" aria-hidden="true">
-          <rect width="64" height="64" rx="14" fill="#FFFFFF" />
-          <path d="M18 10C36 12 49 23 54 32C49 41 36 52 18 54C26 46 30 39 30 32C30 25 26 18 18 10Z" fill="#8E1537" />
-          <path d="M27 8C41 11 53 22 58 32C53 42 41 53 27 56C34 48 38 40 38 32C38 24 34 16 27 8Z" fill="#F58220" />
-          <ellipse cx="33" cy="32" rx="7" ry="18" fill="#FFFFFF" />
-          <ellipse cx="33" cy="32" rx="2.6" ry="12" fill="#F3D7B6" />
-        </svg>
-      </div>
-    );
-  }
-
-  if (bank === "State Bank of India") {
-    return (
-      <div className={frameClass}>
-        <svg viewBox="0 0 64 64" className="h-full w-full" aria-hidden="true">
-          <rect width="64" height="64" rx="14" fill="#FFFFFF" />
-          <circle cx="32" cy="32" r="24" fill="#1F6BD6" />
-          <circle cx="32" cy="25" r="6.5" fill="#FFFFFF" />
-          <rect x="29" y="30" width="6" height="18" rx="3" fill="#FFFFFF" />
-          <rect x="22" y="46" width="20" height="4" rx="2" fill="#FFFFFF" />
-        </svg>
-      </div>
-    );
-  }
-
-  if (bank === "Axis Bank") {
-    return (
-      <div className={frameClass}>
-        <svg viewBox="0 0 64 64" className="h-full w-full" aria-hidden="true">
-          <rect width="64" height="64" rx="14" fill="#FFFFFF" />
-          <path d="M33 10L49 52H38.5L34.2 41.8H27.8L23.5 52H14L31 10H33Z" fill="#97144D" />
-          <path d="M31.1 20L26.6 33.2H35.4L31.1 20Z" fill="#FFFFFF" />
-          <path d="M40.5 20.5H50V30H40.5L44.7 25.2L40.5 20.5Z" fill="#97144D" />
-        </svg>
-      </div>
-    );
-  }
-
-  if (bank === "Kotak Bank") {
-    return (
-      <div className={frameClass}>
-        <svg viewBox="0 0 64 64" className="h-full w-full" aria-hidden="true">
-          <rect width="64" height="64" rx="14" fill="#FFFFFF" />
-          <circle cx="32" cy="32" r="22" fill="#1658D3" />
-          <path d="M19 24.5C22.5 20.8 27 19 32 19C37 19 41.5 20.8 45 24.5" fill="none" stroke="#E11D48" strokeWidth="4.5" strokeLinecap="round" />
-          <path d="M19 39.5C22.5 43.2 27 45 32 45C37 45 41.5 43.2 45 39.5" fill="none" stroke="#E11D48" strokeWidth="4.5" strokeLinecap="round" />
-          <circle cx="32" cy="32" r="7" fill="#FFFFFF" />
-          <path d="M29.5 28.5L35.5 35.5M35.5 28.5L29.5 35.5" stroke="#1658D3" strokeWidth="2.4" strokeLinecap="round" />
-        </svg>
-      </div>
-    );
-  }
-
-  return (
-    <div className={`${frameClass} flex items-center justify-center bg-slate-100 text-[10px] font-bold text-slate-600`}>
-      {getBankShortCode(bank)}
-    </div>
-  );
-};
 const docOptions = [
   { key: "passport", label: "Passport", icon: FileBadge2, tone: "sky" },
   { key: "governmentId", label: "PAN Card", icon: IdCard, tone: "violet" },
@@ -123,17 +42,17 @@ const INDIAN_DESTINATION_KEYWORDS = [
 ];
 
 const normalizeDoc = (d = {}) => ({ url: String(d?.url || ""), fileName: String(d?.fileName || "") });
+const normalizeReceipt = (d = {}) => ({
+  url: String(d?.url || ""),
+  fileName: String(d?.fileName || ""),
+  mimeType: String(d?.mimeType || ""),
+  size: Number(d?.size || 0),
+});
 const formatCurrency = (v, c = "INR") => `${c} ${Math.round(Number(v || 0)).toLocaleString("en-IN")}`;
 const normalizeAmountDigits = (v = "") => String(v || "").replace(/\D/g, "").replace(/^0+(?=\d)/, "");
 const formatAmountInput = (v = "") => {
   const digits = normalizeAmountDigits(v);
   return digits ? Number(digits).toLocaleString("en-IN") : "";
-};
-const parseAmountInput = (v = "") => Number(normalizeAmountDigits(v) || 0);
-const getFileExtension = (value = "") => {
-  const normalized = String(value || "").trim().toLowerCase();
-  const extension = normalized.split(".").pop();
-  return extension && extension !== normalized ? extension : "";
 };
 const formatDate = (v) => {
   if (!v) return "Pending";
@@ -162,6 +81,8 @@ const buildTrackerPaymentsFromSubmission = (paymentSubmission = {}) => {
         if (!Number.isFinite(amount) || amount <= 0) return null;
 
         const normalizedDate = formatInputDate(entry?.paymentDate || entry?.createdAt || "");
+        const receipt = normalizeReceipt(entry?.receipt?.url ? entry.receipt : index === 0 ? paymentSubmission?.receipt : {});
+        const financeReceipt = normalizeReceipt(entry?.financeReceipt);
         return {
           id: `${paymentSubmission?.submittedAt || "tracker"}-${index}`,
           amount,
@@ -183,6 +104,8 @@ const buildTrackerPaymentsFromSubmission = (paymentSubmission = {}) => {
               : "Pending",
           verifiedAt: entry?.verifiedAt || null,
           verifiedByName: String(entry?.verifiedByName || "").trim(),
+          receipt,
+          financeReceipt,
           receiptStatus: String(entry?.receiptStatus || "").trim(),
           receiptSentAt: entry?.receiptSentAt || null,
           receiptSentByName: String(entry?.receiptSentByName || "").trim(),
@@ -218,19 +141,14 @@ const buildTrackerPaymentsFromSubmission = (paymentSubmission = {}) => {
           : "Pending",
       verifiedAt: paymentSubmission?.reviewedAt || null,
       verifiedByName: String(paymentSubmission?.reviewedByName || "").trim(),
+      receipt: normalizeReceipt(paymentSubmission?.receipt),
+      financeReceipt: normalizeReceipt(),
       receiptStatus: "",
       receiptSentAt: null,
       receiptSentByName: "",
     },
   ];
 };
-const getBankShortCode = (value = "") =>
-  String(value || "")
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((part) => part[0]?.toUpperCase() || "")
-    .join("")
-    .slice(0, 3) || "BNK";
 const statusTone = (s) => s === "Verified"
   ? "border-emerald-200 bg-emerald-50 text-emerald-700"
   : s === "Pending"
@@ -279,7 +197,7 @@ const getOpsPayableAmountFromInvoice = (invoice = {}) => {
 
 // ─── Payment Tracker ────────────────────────────────────────────────────────
 
-function PaymentTracker({ totalAmount, payments, onAddPayment, onUpdatePayment }) {
+function PaymentTracker({ totalAmount, payments, onAddPayment, onUpdatePayment, onDownloadReceipt }) {
   const [inputAmt, setInputAmt] = useState("");
   const [inputNote, setInputNote] = useState("");
   const [inputDate, setInputDate] = useState(() => new Date().toISOString().slice(0, 10));
@@ -362,7 +280,8 @@ function PaymentTracker({ totalAmount, payments, onAddPayment, onUpdatePayment }
         amount: amt,
         date: dateLabel,
         rawDate: inputDate || new Date().toISOString().slice(0, 10),
-        note: inputNote.trim()
+        note: inputNote.trim(),
+        receipt: normalizeReceipt(),
       });
     }
 
@@ -378,23 +297,23 @@ function PaymentTracker({ totalAmount, payments, onAddPayment, onUpdatePayment }
 
       {/* Summary strip */}
       <div className="grid grid-cols-3 gap-3">
-        <div className="rounded-xl bg-slate-50 px-4 py-3 border border-slate-100 border-l-4 border-l-slate-400 shadow-sm">
+        <div className="rounded-xl bg-gradient-to-br from-slate-50 to-slate-100/60 px-4 py-3 border border-slate-200 border-l-4 border-l-slate-500 shadow-xs hover:shadow-sm transition-all duration-300">
           <p className="flex items-center gap-1.5 text-[11px] text-slate-500 font-bold uppercase tracking-wider">
-            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>
+            <svg className="h-3.5 w-3.5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>
             Total
           </p>
           <p className="mt-1 text-[14px] font-bold text-slate-800">₹{totalAmount.toLocaleString("en-IN")}</p>
         </div>
-        <div className="rounded-xl bg-teal-50 px-4 py-3 border border-teal-100 border-l-4 border-l-teal-500 shadow-sm">
+        <div className="rounded-xl bg-gradient-to-br from-teal-50 to-emerald-50/45 px-4 py-3 border border-teal-100/80 border-l-4 border-l-teal-500 shadow-xs hover:shadow-sm transition-all duration-300">
           <p className="flex items-center gap-1.5 text-[11px] text-teal-600 font-bold uppercase tracking-wider">
-            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+            <svg className="h-3.5 w-3.5 text-teal-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
             Paid
           </p>
           <p className="mt-1 text-[14px] font-bold text-teal-800">₹{paid.toLocaleString("en-IN")}</p>
         </div>
-        <div className="rounded-xl bg-amber-50 px-4 py-3 border border-amber-100 border-l-4 border-l-amber-500 shadow-sm">
+        <div className="rounded-xl bg-gradient-to-br from-amber-50/80 to-orange-50/45 px-4 py-3 border border-amber-100/80 border-l-4 border-l-amber-500 shadow-xs hover:shadow-sm transition-all duration-300">
           <p className="flex items-center gap-1.5 text-[11px] text-amber-600 font-bold uppercase tracking-wider">
-            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+            <svg className="h-3.5 w-3.5 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
             Remaining
           </p>
           <p className="mt-1 text-[14px] font-bold text-amber-800">₹{remaining.toLocaleString("en-IN")}</p>
@@ -411,7 +330,7 @@ function PaymentTracker({ totalAmount, payments, onAddPayment, onUpdatePayment }
             <span className="text-slate-700">₹{totalAmount.toLocaleString("en-IN")}</span>
           </span>
         </div>
-        <div className="relative h-2.5 overflow-visible rounded-full bg-slate-200">
+        <div className="relative h-1.5 overflow-visible rounded-full bg-slate-200">
           <motion.div
             className="h-full rounded-full bg-gradient-to-r from-teal-600 to-emerald-400"
             initial={{ width: 0 }}
@@ -424,42 +343,44 @@ function PaymentTracker({ totalAmount, payments, onAddPayment, onUpdatePayment }
             animate={{ left: `calc(${Math.max(2, pct)}% - 8px)`, opacity: 1 }}
             transition={{ duration: 0.8, ease: "easeOut" }}
           >
-            <div className={`pointer-events-none absolute bottom-full mb-2 whitespace-nowrap rounded-xl border border-slate-700 bg-slate-900 px-3.5 py-2.5 opacity-0 shadow-xl transition-all duration-200 group-hover:-translate-y-1 group-hover:opacity-100 z-20 ${pct > 85 ? "right-[-10px]" : pct < 15 ? "left-[-10px]" : "left-1/2 -translate-x-1/2"}`}>
-              <div className="flex flex-col items-start gap-1.5 text-left text-xs font-semibold text-white">
-                <div className="flex items-center gap-1.5">
-                  {pct === 100 ? (
-                    <span className="flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500 text-white shadow-md">
-                      <svg className="h-2.5 w-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                      </svg>
-                    </span>
-                  ) : (
-                    <span className="h-2 w-2 rounded-full bg-teal-400 animate-pulse" />
-                  )}
-                  <span className="font-bold text-white tracking-wide">
-                    {pct === 100 ? "All Payments Done ✓" : `${pct}% Paid`}
+            <div className={`pointer-events-none absolute bottom-full mb-2.5 whitespace-nowrap rounded-xl border border-slate-800/90 bg-slate-950/95 backdrop-blur-md px-3.5 py-2 opacity-0 shadow-2xl transition-all duration-200 group-hover:-translate-y-1.5 group-hover:opacity-100 z-20 ${pct > 85 ? "right-[-10px]" : pct < 15 ? "left-[-10px]" : "left-1/2 -translate-x-1/2"}`}>
+              <div className="flex flex-col gap-1 text-left text-[11px] text-slate-300">
+                <div className="flex items-center justify-between gap-4">
+                  <span className="flex items-center gap-1.5 font-bold text-white tracking-wide">
+                    {pct === 100 ? (
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                    ) : (
+                      <span className="h-1.5 w-1.5 rounded-full bg-teal-400 animate-pulse" />
+                    )}
+                    {pct === 100 ? "Fully Paid" : "Progress"}
+                  </span>
+                  <span className="font-extrabold text-teal-400 bg-teal-950/40 px-1.5 py-0.5 rounded-md border border-teal-800/40">
+                    {pct}%
                   </span>
                 </div>
-                <div className="h-px w-full bg-slate-700 my-0.5" />
-                <p className="text-[10.5px] text-slate-300">
-                  <span className="text-slate-400 font-bold">Total Paid: </span>
-                  ₹{paid.toLocaleString("en-IN")} / ₹{totalAmount.toLocaleString("en-IN")}
-                  {currentOrLastPaymentAmount > 0 && ` (₹${currentOrLastPaymentAmount.toLocaleString("en-IN")})`}
-                </p>
-                <p className="text-[10.5px] text-slate-300">
-                  <span className="text-slate-400 font-bold">Date: </span>
-                  {(() => {
-                    if (inputDate) {
-                      const d = new Date(inputDate);
-                      if (!isNaN(d.getTime())) {
-                        return d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+                <div className="h-px bg-slate-800/80 my-1" />
+                <div>
+                  <span className="text-slate-400 font-medium">Total Paid: </span>
+                  <span className="font-bold text-white">₹{paid.toLocaleString("en-IN")}</span>
+                  <span className="text-slate-500 mx-1">/</span>
+                  <span className="text-slate-400 font-semibold">₹{totalAmount.toLocaleString("en-IN")}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 font-medium">As of: </span>
+                  <span className="font-medium text-slate-300">
+                    {(() => {
+                      if (inputDate) {
+                        const d = new Date(inputDate);
+                        if (!isNaN(d.getTime())) {
+                          return d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+                        }
                       }
-                    }
-                    return new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
-                  })()}
-                </p>
+                      return new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+                    })()}
+                  </span>
+                </div>
               </div>
-              <div className={`absolute -bottom-1.5 h-3 w-3 rotate-45 border-b border-r border-slate-700 bg-slate-900 ${pct > 85 ? "right-[14px]" : pct < 15 ? "left-[14px]" : "left-1/2 -translate-x-1/2"}`}></div>
+              <div className={`absolute -bottom-1 h-2 w-2 rotate-45 border-b border-r border-slate-800 bg-slate-950/95 ${pct > 85 ? "right-[14px]" : pct < 15 ? "left-[14px]" : "left-1/2 -translate-x-1/2"}`}></div>
             </div>
           </motion.div>
         </div>
@@ -480,97 +401,122 @@ function PaymentTracker({ totalAmount, payments, onAddPayment, onUpdatePayment }
           <div className="space-y-3">
             {payments.map((p, i) => {
               const isInstallmentVerified = p?.verificationStatus === "Verified";
+              const downloadableReceipt = isInstallmentVerified ? p?.financeReceipt : p?.receipt;
+              const hasReceipt = isInstallmentVerified || Boolean(downloadableReceipt?.url);
 
               return (
-              <div key={p.id} className="group flex items-start gap-3">
-                {/* Check dot */}
-                <div className={`relative z-10 flex h-[32px] w-[32px] flex-shrink-0 items-center justify-center rounded-full border-[3px] border-white shadow-sm transition-transform group-hover:scale-110 ${
-                  isInstallmentVerified ? "bg-teal-500" : "bg-amber-400"
-                }`}>
-                  {isInstallmentVerified ? (
-                    <svg className="h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                    </svg>
-                  ) : (
-                    <svg className="h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3" />
-                      <circle cx="12" cy="12" r="9" />
-                    </svg>
-                  )}
-                </div>
-                {/* Card */}
-                <div className="flex-1 overflow-hidden rounded-xl border border-slate-100 bg-white shadow-sm transition-all group-hover:shadow-md">
-                  <div className="px-3 py-2.5">
-                    <div className="mb-1.5 flex items-center justify-between gap-2">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Instalment {i + 1}</span>
-                      <div className="flex items-center gap-1.5">
-                        {p.receiptStatus === "Sent" && (
-                          <span className="inline-flex items-center gap-1 rounded-full border border-indigo-100 bg-indigo-50/85 px-2 py-0.5 text-[10px] font-semibold text-indigo-700 shadow-sm">
-                            <svg className="h-2.5 w-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.8}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                            </svg>
-                            Receipt Shared
-                          </span>
-                        )}
-                        <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold shadow-sm ${
-                          isInstallmentVerified
-                            ? "border border-teal-100 bg-teal-50/80 text-teal-700"
-                            : "border border-amber-100 bg-amber-50 text-amber-700"
-                        }`}>
-                          <CheckCircle2 className={`h-3 w-3 ${isInstallmentVerified ? "text-teal-500" : "text-amber-500"}`} />
-                          {isInstallmentVerified ? "Verified" : "Pending"}
-                        </span>
-                        {!isInstallmentVerified && (
-                          <button
-                            type="button"
-                            onClick={() => handleStartEdit(p)}
-                            className="inline-flex cursor-pointer items-center gap-1 rounded-full border border-transparent bg-slate-900 hover:bg-blue-900 px-2.5 py-0.5 text-[10px] font-semibold text-white transition shadow-xs active:scale-95"
-                          >
-                            <svg className="h-3 w-3 text-slate-200" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                            </svg>
-                            Edit
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex items-end justify-between">
-                      <span className="text-[14px] font-bold text-slate-800">₹{p.amount.toLocaleString("en-IN")}</span>
-                      <span className="text-[10px] font-medium text-slate-400">{p.date}</span>
-                    </div>
-                    {p?.verifiedAt || p?.verifiedByName ? (
-                      <p className="mt-2 text-[10px] text-slate-500">
-                        Verified {p?.verifiedAt ? `on ${formatDateTime(p.verifiedAt)}` : ""}{p?.verifiedByName ? ` by ${p.verifiedByName}` : ""}
-                      </p>
-                    ) : null}
-                    {p.note && (
-                      <div className="mt-2 rounded-lg bg-slate-50 px-2.5 py-1.5 border border-slate-100 text-[10px] text-slate-500">
-                        {p.note}
-                      </div>
+                <div key={p.id} className="group flex items-start gap-3">
+                  {/* Check dot */}
+                  <div className={`relative z-10 flex h-[32px] w-[32px] flex-shrink-0 items-center justify-center rounded-full border-[3px] border-white shadow-sm transition-transform group-hover:scale-110 ${isInstallmentVerified ? "bg-teal-500 text-white" : "bg-amber-400 text-white"
+                    }`}>
+                    {isInstallmentVerified ? (
+                      <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                      </svg>
+                    ) : (
+                      <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3" />
+                        <circle cx="12" cy="12" r="9" />
+                      </svg>
                     )}
                   </div>
+                  {/* Card */}
+                  <div className={`flex-1 overflow-hidden rounded-xl border shadow-sm transition-all group-hover:shadow-md ${isInstallmentVerified
+                      ? "border-emerald-100/70 bg-gradient-to-br from-white via-slate-50/10 to-emerald-50/20"
+                      : "border-amber-100/70 bg-gradient-to-br from-white via-slate-50/10 to-amber-50/25"
+                    }`}>
+                    <div className="px-3 py-2.5">
+                      <div className="mb-1.5 flex items-center justify-between gap-2">
+                        <span className={`text-[10px] font-bold uppercase tracking-wider ${isInstallmentVerified ? "text-teal-600/90" : "text-amber-600/90"
+                          }`}>
+                          Instalment {i + 1}
+                        </span>
+                        <div className="flex items-center gap-1.5">
+                          {p.receiptStatus === "Sent" && (
+                            <span className="inline-flex items-center gap-1 rounded-full border border-indigo-100 bg-indigo-50/85 px-2 py-0.5 text-[10px] font-semibold text-indigo-700 shadow-sm">
+                              <svg className="h-2.5 w-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.8}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                              </svg>
+                              Receipt Shared
+                            </span>
+                          )}
+                          <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold shadow-sm ${isInstallmentVerified
+                            ? "border border-teal-100 bg-teal-50/80 text-teal-700"
+                            : "border border-amber-100 bg-amber-50 text-amber-700"
+                            }`}>
+                            <CheckCircle2 className={`h-3 w-3 ${isInstallmentVerified ? "text-teal-500" : "text-amber-500"}`} />
+                            {isInstallmentVerified ? "Verified" : "Pending"}
+                          </span>
+                          {hasReceipt ? (
+                            <button
+                              type="button"
+                              onClick={() => onDownloadReceipt?.(downloadableReceipt, i, { isInstallmentVerified })}
+                              className="inline-flex h-6 w-6 cursor-pointer items-center justify-center rounded-full border border-sky-100 bg-sky-50 text-sky-700 shadow-sm transition hover:bg-sky-100 active:scale-95"
+                              title={`Download instalment ${i + 1} ${isInstallmentVerified ? "finance receipt" : "payment proof"}`}
+                              aria-label={`Download instalment ${i + 1} ${isInstallmentVerified ? "finance receipt" : "payment proof"}`}
+                            >
+                              <Download className="h-3.5 w-3.5" />
+                            </button>
+                          ) : null}
+                          {!isInstallmentVerified && (
+                            <button
+                              type="button"
+                              onClick={() => handleStartEdit(p)}
+                              className="inline-flex cursor-pointer items-center gap-1 rounded-full border border-transparent bg-slate-900 hover:bg-blue-900 px-2.5 py-0.5 text-[10px] font-semibold text-white transition shadow-xs active:scale-95"
+                            >
+                              <svg className="h-3 w-3 text-slate-200" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
+                              Edit
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-end justify-between">
+                        <span className="text-[14px] font-bold text-slate-800">₹{p.amount.toLocaleString("en-IN")}</span>
+                        <span className="text-[10px] font-medium text-slate-400">{p.date}</span>
+                      </div>
+                      {p?.verifiedAt || p?.verifiedByName ? (
+                        <p className="mt-2 text-[10px] text-teal-700/95 font-medium flex items-center gap-1 bg-teal-50/60 w-fit px-2 py-0.5 rounded-md border border-teal-100/40">
+                          <svg className="h-3 w-3 shrink-0 text-teal-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                          </svg>
+                          Verified {p?.verifiedAt ? `on ${formatDateTime(p.verifiedAt)}` : ""}{p?.verifiedByName ? ` by ${p.verifiedByName}` : ""}
+                        </p>
+                      ) : null}
+                      {p.note && (
+                        <div className={`mt-2 rounded-lg px-2.5 py-1.5 border text-[10px] text-slate-600 ${isInstallmentVerified
+                            ? "bg-teal-50/20 border-teal-100/30"
+                            : "bg-amber-50/20 border-amber-100/30"
+                          }`}>
+                          <span className="font-semibold text-slate-400 mr-1">Note:</span>
+                          {p.note}
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
-              </div>
               );
             })}
 
             {/* Pending / Complete node */}
-            <div className="flex items-start gap-3">
-              <div className={`relative z-10 flex h-[32px] w-[32px] flex-shrink-0 items-center justify-center rounded-full border-[3px] border-white ${isComplete ? "bg-emerald-500 shadow-sm" : "bg-slate-100"
+            <div className="group flex items-start gap-3">
+              <div className={`relative z-10 flex h-[32px] w-[32px] flex-shrink-0 items-center justify-center rounded-full border-[3px] border-white shadow-sm transition-transform group-hover:scale-110 ${isComplete ? "bg-emerald-500 text-white" : "bg-indigo-50 border border-indigo-200 text-indigo-500"
                 }`}>
                 {isComplete ? (
-                  <svg className="h-3.5 w-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
                   </svg>
                 ) : (
-                  <svg className="h-3.5 w-3.5 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3" />
+                    <circle cx="12" cy="12" r="9" />
                   </svg>
                 )}
               </div>
-              <div className={`flex-1 rounded-xl px-3 py-2.5 transition-all ${isComplete
-                  ? "bg-gradient-to-r from-teal-500 to-emerald-500 text-white shadow-md shadow-emerald-500/20"
-                  : "border border-dashed border-slate-200 bg-slate-50"
+              <div className={`flex-1 rounded-xl px-3 py-2.5 transition-all shadow-sm group-hover:shadow-md ${isComplete
+                ? "bg-gradient-to-r from-teal-500 to-emerald-500 text-white shadow-md shadow-emerald-500/20"
+                : "border border-indigo-100/70 bg-gradient-to-br from-indigo-50/20 via-white to-blue-50/30"
                 }`}>
                 {isComplete ? (
                   <>
@@ -579,10 +525,10 @@ function PaymentTracker({ totalAmount, payments, onAddPayment, onUpdatePayment }
                   </>
                 ) : (
                   <>
-                    <p className="text-[11px] font-semibold text-slate-500">Remaining balance</p>
+                    <p className="text-[11px] font-semibold text-indigo-700/85">Remaining balance</p>
                     <div className="mt-0.5 flex items-baseline justify-between">
-                      <span className="text-[13px] font-bold text-slate-700">₹{remaining.toLocaleString("en-IN")}</span>
-                      <span className="text-[10px] font-medium text-slate-400">Pending payment</span>
+                      <span className="text-[14px] font-extrabold text-slate-800">₹{remaining.toLocaleString("en-IN")}</span>
+                      <span className="text-[10px] font-semibold text-indigo-600/85 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-100/50">Pending payment</span>
                     </div>
                   </>
                 )}
@@ -602,38 +548,42 @@ function PaymentTracker({ totalAmount, payments, onAddPayment, onUpdatePayment }
             transition={{ duration: 0.24, ease: "easeInOut" }}
             className="overflow-hidden"
           >
-            <div className={`pt-3 transition-all duration-300 ${editingId ? "border border-teal-400 bg-teal-50/20 rounded-2xl p-3" : "border-t border-slate-100"}`}>
-              <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.1em] text-slate-400">
-                {editingId ? "Edit Payment" : "Add Payment"}
+            <div className={`transition-all duration-300 rounded-2xl p-3.5 border ${editingId
+                ? "border-teal-300 bg-gradient-to-br from-teal-50/20 to-emerald-50/5 shadow-xs"
+                : "border-slate-200/60 bg-gradient-to-br from-slate-50/30 via-white to-slate-100/10 shadow-xs"
+              }`}>
+              <p className={`mb-2.5 text-[10px] font-bold uppercase tracking-[0.12em] ${editingId ? "text-teal-600" : "text-slate-400"
+                }`}>
+                {editingId ? "Edit Payment Entry" : "Add Payment Entry"}
               </p>
               <div className="flex flex-wrap gap-2">
                 <div className="relative min-w-[110px] flex-1">
-                  <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[12px] font-semibold text-slate-400">₹</span>
+                  <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[12px] font-bold text-slate-400">₹</span>
                   <input
                     ref={amountInputRef}
                     value={inputAmt}
                     onChange={(e) => setInputAmt(formatAmountInput(e.target.value))}
                     inputMode="numeric"
                     placeholder="Amount"
-                    className="h-9 w-full rounded-xl border border-slate-300 bg-white pl-6 pr-3 text-[12px] font-semibold text-slate-700 outline-none transition focus:border-teal-300 focus:ring-2 focus:ring-teal-100"
+                    className="h-9 w-full rounded-full border border-slate-300 bg-gradient-to-br from-slate-50 to-white pl-7 pr-4 text-[12px] font-semibold text-slate-700 outline-none transition focus:border-teal-400 focus:ring-2 focus:ring-teal-100/50"
                   />
                 </div>
                 <input
                   type="date"
                   value={inputDate}
                   onChange={(e) => setInputDate(e.target.value)}
-                  className="h-9 w-32 rounded-xl border border-slate-300 bg-white px-2 text-[12px] text-slate-600 outline-none transition focus:border-teal-300 focus:ring-2 focus:ring-teal-100"
+                  className="h-9 w-32 rounded-full border border-slate-300 bg-gradient-to-br from-slate-50 to-white px-3.5 text-[12px] text-slate-600 outline-none transition focus:border-teal-400 focus:ring-2 focus:ring-teal-100/50 cursor-pointer"
                 />
                 <input
                   value={inputNote}
                   onChange={(e) => setInputNote(e.target.value)}
                   placeholder="Note (optional)"
-                  className="h-9 min-w-[80px] flex-1 rounded-xl border border-slate-300 bg-white px-3 text-[12px] text-slate-600 outline-none transition focus:border-teal-300 focus:ring-2 focus:ring-teal-100"
+                  className="h-9 min-w-[80px] flex-1 rounded-full border border-slate-300 bg-gradient-to-br from-slate-50 to-white px-4 text-[12px] text-slate-600 outline-none transition focus:border-teal-400 focus:ring-2 focus:ring-teal-100/50"
                 />
                 <button
                   type="button"
                   onClick={handleAddOrUpdate}
-                  className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-xl bg-teal-500 px-3 text-[12px] font-semibold text-white transition hover:bg-teal-600 active:scale-95"
+                  className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-full bg-gradient-to-r from-teal-500 via-emerald-500 to-teal-600 hover:from-teal-600 hover:via-emerald-600 hover:to-teal-700 shadow-sm hover:shadow-md text-[12px] font-bold text-white transition active:scale-95 px-4.5"
                 >
                   {editingId ? (
                     <>
@@ -655,7 +605,7 @@ function PaymentTracker({ totalAmount, payments, onAddPayment, onUpdatePayment }
                   <button
                     type="button"
                     onClick={handleCancelEdit}
-                    className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 px-3 text-[12px] font-semibold text-slate-600 transition active:scale-95"
+                    className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-full border border-slate-300 bg-white hover:bg-slate-50 px-4.5 text-[12px] font-semibold text-slate-600 transition active:scale-95"
                   >
                     Cancel
                   </button>
@@ -885,7 +835,7 @@ function DocCard({
 export default function ActiveBookingDetails({ onClose, booking, onBookingUpdated, documentPortalContext }) {
   const container = { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { staggerChildren: 0.08 } } };
   const item = { hidden: { opacity: 0, y: 10 }, visible: { opacity: 1, y: 0, transition: { duration: 0.3, ease: "easeOut" } } };
-  const paymentSubmission = booking?.paymentSubmission || {};
+  const paymentSubmission = useMemo(() => booking?.paymentSubmission || {}, [booking?.paymentSubmission]);
   const paymentVerification = booking?.paymentVerification || {};
   const travelerVerification = booking?.travelerDocumentVerification || { status: "Draft" };
   const invoiceId = booking?.invoiceId || booking?.invoice?._id || "";
@@ -894,22 +844,17 @@ export default function ActiveBookingDetails({ onClose, booking, onBookingUpdate
   const paymentStatus = paymentVerification?.status || (paymentSubmission?.submittedAt ? "Pending" : "Draft");
   const isRejectedPayment = paymentStatus === "Rejected";
   const isPaymentVerified = paymentStatus === "Verified" || booking?.paymentStatus === "Paid";
-  const hasSubmittedPayment = Boolean(paymentSubmission?.submittedAt);
   const currentReceipt = isRejectedPayment ? {} : paymentSubmission?.receipt || {};
   const docsUnlocked = true;
   const bookingConfirmationReady = isPaymentVerified;
 
   const [feedback, setFeedback] = useState(null);
-  const [bankName, setBankName] = useState(isRejectedPayment ? "" : paymentSubmission?.bankName || "");
-  const [bankMenuOpen, setBankMenuOpen] = useState(false);
   const [utrNumber, setUtrNumber] = useState(isRejectedPayment ? "" : paymentSubmission?.utrNumber || "");
   const [quotationAmount, setQuotationAmount] = useState("");
   const [couponModalOpen, setCouponModalOpen] = useState(false);
   const [paymentDate, setPaymentDate] = useState(isRejectedPayment ? "" : formatInputDate(paymentSubmission?.paymentDate));
   const [remarks, setRemarks] = useState(isRejectedPayment ? "" : booking?.remarks || "");
   const [receiptFile, setReceiptFile] = useState(null);
-  const [receiptPreviewUrl, setReceiptPreviewUrl] = useState("");
-  const [isReceiptPreviewOpen, setIsReceiptPreviewOpen] = useState(false);
   const [submittingPayment, setSubmittingPayment] = useState(false);
   const [preparingInvoice, setPreparingInvoice] = useState(false);
   const [uploadingKey, setUploadingKey] = useState("");
@@ -919,7 +864,6 @@ export default function ActiveBookingDetails({ onClose, booking, onBookingUpdate
   const [isSubmitDocsConfirmOpen, setIsSubmitDocsConfirmOpen] = useState(false);
   const [isPaymentUpdateOpen, setIsPaymentUpdateOpen] = useState(false);
   const [payableQuotationAmount, setPayableQuotationAmount] = useState(0);
-  const bankDropdownRef = useRef(null);
 
   // ── Payment tracker state ──
   const [trackerPayments, setTrackerPayments] = useState([]);
@@ -937,7 +881,6 @@ export default function ActiveBookingDetails({ onClose, booking, onBookingUpdate
     },
     [
       booking?.invoice,
-      booking?.invoice?.totalAmount,
       booking?.quotation?.clientTotalAmount,
       booking?.quotation?.pricingTotalAmount,
       booking?.totalAmount,
@@ -971,16 +914,8 @@ export default function ActiveBookingDetails({ onClose, booking, onBookingUpdate
       ),
     [trackerPayments],
   );
-  const resolvedQuotationAmount = expectedPaymentAmount;
   const hasExactPaymentMismatch = false;
   const paymentAmountWarningMessage = "";
-
-  const activeReceiptMimeType = receiptFile?.type || currentReceipt?.mimeType || "";
-  const activeReceiptFileName = receiptFile?.name || currentReceipt?.fileName || "";
-  const activeReceiptExtension = getFileExtension(activeReceiptFileName);
-  const isPdfReceiptPreview = activeReceiptMimeType === "application/pdf" || activeReceiptExtension === "pdf";
-  const isImageReceiptPreview = String(activeReceiptMimeType || "").startsWith("image/") || ["jpg", "jpeg", "png", "webp"].includes(activeReceiptExtension);
-  const canInlinePreviewReceipt = Boolean(receiptPreviewUrl) && (isPdfReceiptPreview || isImageReceiptPreview);
 
   const isInternationalTrip = useMemo(() => {
     const explicitQuoteCategory = String(
@@ -1137,6 +1072,7 @@ export default function ActiveBookingDetails({ onClose, booking, onBookingUpdate
   );
   const notify = (type, title, message) => setFeedback({ type, title, message });
   const latestTrackerPayment = trackerPayments.length ? trackerPayments[trackerPayments.length - 1] : null;
+  const latestInstallmentNeedsReceipt = trackerPayments.length > 1 && !latestTrackerPayment?.receipt?.url;
   const effectivePaymentDate =
     latestTrackerPayment?.rawDate ||
     paymentDate ||
@@ -1145,7 +1081,6 @@ export default function ActiveBookingDetails({ onClose, booking, onBookingUpdate
     remarks.trim() ||
     latestTrackerPayment?.note ||
     (!isRejectedPayment ? booking?.remarks || "" : "");
-  const snapshotBank = bankName || (!isRejectedPayment ? paymentSubmission?.bankName || "" : "");
   const snapshotUtr = utrNumber || (!isRejectedPayment ? paymentSubmission?.utrNumber || "" : "");
   const snapshotPaymentAmount = Math.round(
     Number(
@@ -1156,6 +1091,11 @@ export default function ActiveBookingDetails({ onClose, booking, onBookingUpdate
   );
   const snapshotPaymentDate = effectivePaymentDate;
   const snapshotReceiptName = receiptFile?.name || currentReceipt?.fileName || "";
+  const receiptRequiredMessage = latestInstallmentNeedsReceipt
+    ? "Please upload a receipt for this installment before submitting."
+    : isRejectedPayment
+      ? "Please upload the corrected payment receipt before resubmitting."
+      : "Please upload the payment receipt before submitting.";
   const canSubmitPayment =
     Boolean(invoiceId) &&
     !preparingInvoice &&
@@ -1174,7 +1114,7 @@ export default function ActiveBookingDetails({ onClose, booking, onBookingUpdate
     : paymentStatus === "Verified"
       ? { tone: "border-emerald-200 bg-emerald-50 text-emerald-700", title: "Payment verified by finance", msg: "Payment is cleared. Traveler document uploads are unlocked now." }
       : paymentSubmission?.submittedAt
-        ? { tone: "border-blue-200 bg-blue-50 text-blue-700", title: "Finance review in progress", msg: "Finance will verify your bank, UTR, receipt, and payment date." }
+        ? { tone: "border-blue-200 bg-blue-50 text-blue-700", title: "Finance review in progress", msg: "Finance will verify your UTR and payment date." }
         : null;
 
   const trackerTotalAmount = payableQuotationAmount || initialQuotationAmount || 0;
@@ -1188,8 +1128,6 @@ export default function ActiveBookingDetails({ onClose, booking, onBookingUpdate
   }, []);
 
   useEffect(() => {
-    setBankName(isRejectedPayment ? "" : paymentSubmission?.bankName || "");
-    setBankMenuOpen(false);
     setUtrNumber(isRejectedPayment ? "" : paymentSubmission?.utrNumber || "");
     setPayableQuotationAmount(initialQuotationAmount);
     setPaymentDate(isRejectedPayment ? "" : formatInputDate(paymentSubmission?.paymentDate));
@@ -1198,38 +1136,20 @@ export default function ActiveBookingDetails({ onClose, booking, onBookingUpdate
     setTrackerPayments(hydratedTrackerPayments);
     setTrackerIdCounter(hydratedTrackerPayments.length + 1);
     setReceiptFile(null);
-    setReceiptPreviewUrl("");
-    setIsReceiptPreviewOpen(false);
   }, [
     booking?.invoiceId,
     initialQuotationAmount,
     booking?.remarks,
     isRejectedPayment,
     paymentSubmission?.amount,
-    paymentSubmission?.bankName,
     paymentSubmission?.paymentDate,
     paymentSubmission?.receipt?.fileName,
     paymentSubmission?.receipt?.url,
     paymentSubmission?.submittedAt,
     paymentSubmission?.trackerPayments,
     paymentSubmission?.utrNumber,
+    paymentSubmission,
   ]);
-
-  useEffect(() => {
-    if (receiptFile) {
-      const objectUrl = URL.createObjectURL(receiptFile);
-      setReceiptPreviewUrl(objectUrl);
-      return () => URL.revokeObjectURL(objectUrl);
-    }
-    setReceiptPreviewUrl(currentReceipt?.url || "");
-    return undefined;
-  }, [currentReceipt?.url, receiptFile]);
-
-  useEffect(() => {
-    if (!canInlinePreviewReceipt && isReceiptPreviewOpen) {
-      setIsReceiptPreviewOpen(false);
-    }
-  }, [canInlinePreviewReceipt, isReceiptPreviewOpen]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1274,25 +1194,36 @@ export default function ActiveBookingDetails({ onClose, booking, onBookingUpdate
     setIsPaymentUpdateOpen(isTravelerDocumentsVerifiedComplete);
   }, [isTravelerDocumentsVerifiedComplete]);
 
-  useEffect(() => {
-    const handlePointerDown = (event) => {
-      if (!bankDropdownRef.current?.contains(event.target)) {
-        setBankMenuOpen(false);
-      }
-    };
-    const handleEscape = (event) => {
-      if (event.key === "Escape") setBankMenuOpen(false);
-    };
-    document.addEventListener("mousedown", handlePointerDown);
-    document.addEventListener("keydown", handleEscape);
-    return () => {
-      document.removeEventListener("mousedown", handlePointerDown);
-      document.removeEventListener("keydown", handleEscape);
-    };
-  }, []);
-
   const handleView = (doc) => doc?.url && window.open(doc.url, "_blank", "noopener,noreferrer");
-  const handleDownloadReceipt = () => currentReceipt?.url && window.open(currentReceipt.url, "_blank", "noopener,noreferrer");
+  const handleDownloadInstallmentReceipt = async (receipt, installmentIndex, options = {}) => {
+    if (receipt?.url) {
+      window.open(receipt.url, "_blank", "noopener,noreferrer");
+      return;
+    }
+
+    if (!options?.isInstallmentVerified || !invoiceId) return;
+
+    try {
+      const { data } = await API.post(`/agent/invoices/${invoiceId}/payment-receipts/${installmentIndex}/generate`);
+      const financeReceipt = normalizeReceipt(data?.receipt);
+
+      if (!financeReceipt.url) {
+        notify("warning", "Receipt Missing", "Finance receipt is not available for this installment yet.");
+        return;
+      }
+
+      setTrackerPayments((prev) =>
+        prev.map((entry, index) => (
+          index === installmentIndex
+            ? { ...entry, financeReceipt }
+            : entry
+        )),
+      );
+      window.open(financeReceipt.url, "_blank", "noopener,noreferrer");
+    } catch (error) {
+      notify("error", "Download Failed", error?.response?.data?.message || "Unable to download finance receipt right now.");
+    }
+  };
 
   const handleAddTrackerPayment = (p) => {
     setTrackerPayments((prev) => [...prev, { id: trackerIdCounter, ...p }]);
@@ -1318,12 +1249,11 @@ export default function ActiveBookingDetails({ onClose, booking, onBookingUpdate
         "Payment submit tabhi unlock hoga jab operations sabhi required traveler documents verify kar dein aur kisi document me koi issue pending na ho.",
       );
     }
-    if (!bankName.trim() || !utrNumber.trim() || !effectivePaymentDate || !expectedPaymentAmount) return notify("error", "Missing Fields", "Bank name, UTR, payment date, and payable amount are required.");
-    if (!receiptFile && !currentReceipt?.url) return notify("error", "Receipt Missing", isRejectedPayment ? "Please upload the corrected payment receipt before resubmitting." : "Please upload the payment receipt before submitting.");
+    if (!utrNumber.trim() || !effectivePaymentDate || !expectedPaymentAmount) return notify("error", "Missing Fields", "UTR, payment date, and payable amount are required.");
+    if (!receiptFile && (!currentReceipt?.url || latestInstallmentNeedsReceipt)) return notify("error", "Receipt Missing", receiptRequiredMessage);
     try {
       setSubmittingPayment(true);
       const fd = new FormData();
-      fd.append("bankName", bankName.trim());
       fd.append("utrNumber", utrNumber.trim().toUpperCase());
       fd.append("paymentDate", effectivePaymentDate);
       fd.append("remarks", effectiveRemarks);
@@ -1334,7 +1264,6 @@ export default function ActiveBookingDetails({ onClose, booking, onBookingUpdate
       const { data } = await API.put(`/agent/invoices/${invoiceId}/payment-status`, fd, { headers: { "Content-Type": "multipart/form-data" } });
       onBookingUpdated?.({ type: "payment", invoice: data?.invoice });
       setReceiptFile(null);
-      setBankMenuOpen(false);
       setIsPaymentUpdateOpen(false);
       notify("success", "Payment Submitted", data?.message || "Payment submitted for verification.");
     } catch (error) {
@@ -1632,264 +1561,158 @@ export default function ActiveBookingDetails({ onClose, booking, onBookingUpdate
 
                   <form onSubmit={handlePaymentSubmit} className="space-y-4">
                     <div className={!invoiceId ? "pointer-events-none opacity-60" : ""}>
-                    {/* Row 1: Bank | UTR | Amount */}
-                    <div className="grid gap-3 xl:grid-cols-3">
+                      {/* Row 1: UTR | Amount */}
+                      <div className="grid gap-3 xl:grid-cols-2">
 
-                      {/* Bank Name */}
-                      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs ring-1 ring-slate-100/60">
-                        <div className="mb-2.5 flex items-center gap-2">
-                          <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
-                            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M3 21h18M3 10h18M3 7l9-4 9 4M4 10v11M20 10v11M8 10v11M16 10v11M12 10v11" />
-                            </svg>
-                          </div>
-                          <span className="text-[11px] font-semibold uppercase tracking-[0.13em] text-slate-500">Bank Name</span>
-                        </div>
-                        <div
-                          ref={bankDropdownRef}
-                          className={`relative rounded-[14px] border bg-gradient-to-br from-slate-50 via-white to-emerald-50/40 p-2 transition-all duration-200 ${bankMenuOpen ? "border-emerald-300 shadow-[0_0_0_3px_rgba(16,185,129,0.08)]" : "border-slate-300 focus-within:border-emerald-300"}`}
-                        >
-                          <button
-                            type="button"
-                            onClick={() => setBankMenuOpen((prev) => !prev)}
-                            className={`group flex h-10 w-full items-center gap-2.5 rounded-xl border bg-white pl-3 pr-2.5 text-left transition-all duration-200 ${bankMenuOpen ? "border-emerald-200 shadow-sm" : "border-slate-300 hover:border-slate-400"}`}
-                            aria-haspopup="listbox"
-                            aria-expanded={bankMenuOpen}
-                          >
-                            {bankName ? (
-                              <BankLogo bank={bankName} className="h-7 w-7" />
-                            ) : (
-                              <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600">
-                                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2}>
-                                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 21h18M3 10h18M3 7l9-4 9 4M4 10v11M20 10v11M8 10v11M16 10v11M12 10v11" />
-                                </svg>
-                              </div>
-                            )}
-                            <p className={`flex-1 truncate text-[13px] font-medium ${bankName ? "text-slate-800" : "text-slate-400"}`}>{bankName || "Choose your bank"}</p>
-                            <div className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full transition-all duration-200 ${bankMenuOpen ? "bg-emerald-100 text-emerald-700 rotate-180" : "bg-slate-100 text-slate-400"}`}>
-                              <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" d="M6 9l6 6 6-6" /></svg>
-                            </div>
-                          </button>
-                          {bankMenuOpen ? (
+                        {/* UTR */}
+                        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs ring-1 ring-slate-100/60">
+                          <div className="mb-2.5 flex items-center gap-2">
                             <motion.div
-                              initial={{ opacity: 0, y: 8, scale: 0.97 }}
-                              animate={{ opacity: 1, y: 0, scale: 1 }}
-                              transition={{ duration: 0.16, ease: "easeOut" }}
-                              className="absolute left-0 right-0 top-[calc(100%+6px)] z-30 overflow-hidden rounded-2xl border border-emerald-100/80 bg-white/96 p-2 shadow-[0_24px_56px_rgba(15,23,42,0.16)] backdrop-blur"
-                              role="listbox"
-                              aria-label="Bank Name"
+                              animate={{ scale: [1, 1.08, 1] }}
+                              transition={{ repeat: Infinity, duration: 2.5, ease: "easeInOut" }}
+                              className="flex h-6 w-6 items-center justify-center rounded-lg bg-violet-50 text-violet-600"
                             >
-                              <div className="rounded-[14px] bg-gradient-to-b from-slate-50 to-white p-1">
-                                {bankOptions.map((bank) => {
-                                  const isSelected = bankName === bank;
-                                  return (
-                                    <button
-                                      key={bank}
-                                      type="button"
-                                      onClick={() => { setBankName(bank); setBankMenuOpen(false); }}
-                                      className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-all duration-150 ${isSelected ? "bg-emerald-50 ring-1 ring-emerald-200" : "hover:bg-slate-50"}`}
-                                      role="option"
-                                      aria-selected={isSelected}
-                                    >
-                                      <BankLogo bank={bank} className="h-8 w-8" />
-                                      <div className="min-w-0 flex-1">
-                                        <p className={`truncate text-[13px] font-semibold ${isSelected ? "text-emerald-900" : "text-slate-700"}`}>{bank}</p>
-                                      </div>
-                                      {isSelected && <svg className="h-3.5 w-3.5 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" d="M5 13l4 4L19 7" /></svg>}
-                                    </button>
-                                  );
-                                })}
-                              </div>
+                              <Fingerprint className="h-3.5 w-3.5" />
                             </motion.div>
-                          ) : null}
-                        </div>
-                        <p className="mt-2 px-0.5 text-[11px] leading-4 text-emerald-700">Select the bank from which the payment was transferred.</p>
-                      </div>
-
-                      {/* UTR */}
-                      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs ring-1 ring-slate-100/60">
-                        <div className="mb-2.5 flex items-center gap-2">
-                          <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-violet-50 text-violet-600">
-                            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2}>
-                              <path strokeLinecap="round" d="M4 9h16M4 15h16M10 3l-2 18M16 3l-2 18" />
-                            </svg>
+                            <span className="text-[11px] font-semibold uppercase tracking-[0.13em] text-slate-500">UTR / Transaction ID</span>
                           </div>
-                          <span className="text-[11px] font-semibold uppercase tracking-[0.13em] text-slate-500">UTR / Transaction ID</span>
+                          <div className="relative [&>span]:hidden">
+                            <Fingerprint className="pointer-events-none absolute left-3 top-3 h-3.5 w-3.5 text-slate-400" />
+                            <input
+                              value={utrNumber}
+                              onChange={(e) => setUtrNumber(e.target.value.toUpperCase())}
+                              placeholder="SBINR52012345678"
+                              className="h-10 w-full rounded-xl border border-slate-300 bg-slate-50 pl-9 pr-4 text-[13px] font-mono text-slate-700 outline-none transition-all focus:border-violet-300 focus:bg-white focus:ring-2 focus:ring-violet-100"
+                            />
+                          </div>
+                          <p className="mt-2 px-0.5 text-[11px] leading-4 text-amber-700">e.g. 312345678901, HDFC1234567890</p>
                         </div>
-                        <div className="relative [&>span]:hidden">
-                          <svg className="pointer-events-none absolute left-3 top-3 h-3.5 w-3.5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" d="M4 9h16M4 15h16M10 3l-2 18M16 3l-2 18" />
-                          </svg>
-                          <input
-                            value={utrNumber}
-                            onChange={(e) => setUtrNumber(e.target.value.toUpperCase())}
-                            placeholder="SBINR52012345678"
-                            className="h-10 w-full rounded-xl border border-slate-300 bg-slate-50 pl-9 pr-4 text-[13px] font-mono text-slate-700 outline-none transition-all focus:border-violet-300 focus:bg-white focus:ring-2 focus:ring-violet-100"
-                          />
-                        </div>
-                        <p className="mt-2 px-0.5 text-[11px] leading-4 text-amber-700">e.g. 312345678901, HDFC1234567890</p>
-                      </div>
 
-                      {/* ── Quotation Amount + Payment Tracker ── */}
-                      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm ring-1 ring-slate-100/60 xl:col-span-3">
-                        {/* Card header */}
-                        <div className="mb-2.5 flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-2">
-                            <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-amber-50 text-amber-600">
-                              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2}>
-                                <circle cx="12" cy="12" r="9" />
-                                <path strokeLinecap="round" d="M9 8h6M9 11h6M9 8a3 3 0 010 6H9l4 5" />
-                              </svg>
+                        {/* ── Quotation Amount + Payment Tracker ── */}
+                        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm ring-1 ring-slate-100/60 xl:col-span-2">
+                          {/* Card header */}
+                          <div className="mb-2.5 flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <motion.div
+                                animate={{ rotate: [0, 10, -10, 0], scale: [1, 1.05, 0.95, 1] }}
+                                transition={{ repeat: Infinity, duration: 3, ease: "easeInOut" }}
+                                className="flex h-6 w-6 items-center justify-center rounded-lg bg-amber-50 text-amber-600"
+                              >
+                                <Coins className="h-3.5 w-3.5" />
+                              </motion.div>
+                              <span className="text-[11px] font-semibold uppercase tracking-[0.13em] text-slate-500">Payable Quotation Amount</span>
                             </div>
-                            <span className="text-[11px] font-semibold uppercase tracking-[0.13em] text-slate-500">Payable Quotation Amount</span>
+                            <button
+                              type="button"
+                              onClick={() => setCouponModalOpen(true)}
+                              className="inline-flex cursor-pointer items-center gap-1 rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[10px] font-semibold text-violet-700 transition hover:bg-violet-100"
+                            >
+                              <svg className="h-2.5 w-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M7 7h.01M3 11.586V6a1 1 0 011-1h5.586a1 1 0 01.707.293l8.414 8.414a2 2 0 010 2.829l-4.172 4.171a2 2 0 01-2.828 0L3.707 12.293A1 1 0 013 11.586z" />
+                              </svg>
+                              Apply Coupon
+                            </button>
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => setCouponModalOpen(true)}
-                            className="inline-flex cursor-pointer items-center gap-1 rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[10px] font-semibold text-violet-700 transition hover:bg-violet-100"
-                          >
-                            <svg className="h-2.5 w-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M7 7h.01M3 11.586V6a1 1 0 011-1h5.586a1 1 0 01.707.293l8.414 8.414a2 2 0 010 2.829l-4.172 4.171a2 2 0 01-2.828 0L3.707 12.293A1 1 0 013 11.586z" />
-                            </svg>
-                            Apply Coupon
-                          </button>
-                        </div>
 
-                        {/* Amount input */}
-                        <div className="hidden">
-                          <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[13px] font-semibold text-slate-400">₹</span>
-                          <input
-                            value={quotationAmount}
-                            onChange={(e) => setQuotationAmount(formatAmountInput(e.target.value))}
-                            inputMode="numeric"
-                            placeholder="Enter amount"
-                            className={`h-10 w-full rounded-xl border bg-slate-50 px-4 text-[13px] font-semibold text-slate-700 outline-none transition-all focus:bg-white focus:ring-2 ${hasExactPaymentMismatch
+                          {/* Amount input */}
+                          <div className="hidden">
+                            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[13px] font-semibold text-slate-400">₹</span>
+                            <input
+                              value={quotationAmount}
+                              onChange={(e) => setQuotationAmount(formatAmountInput(e.target.value))}
+                              inputMode="numeric"
+                              placeholder="Enter amount"
+                              className={`h-10 w-full rounded-xl border bg-slate-50 px-4 text-[13px] font-semibold text-slate-700 outline-none transition-all focus:bg-white focus:ring-2 ${hasExactPaymentMismatch
                                 ? "border-rose-300 focus:border-rose-300 focus:ring-rose-100"
                                 : "border-slate-300 focus:border-amber-300 focus:ring-amber-100"
-                              }`}
-                          />
-                        </div>
-                        {hasExactPaymentMismatch && (
-                          <div className="mt-2 rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] font-medium leading-5 text-rose-700">
-                            {paymentAmountWarningMessage}
-                          </div>
-                        )}
-
-                        {/* ── Payment Tracker sits here ── */}
-                        {trackerTotalAmount > 0 && (
-                          <>
-                            <div className="mt-4 mb-1 flex items-center gap-2">
-                              <div className="h-px flex-1 bg-slate-100" />
-                              <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">Payment Tracker</span>
-                              <div className="h-px flex-1 bg-slate-100" />
-                            </div>
-                            <PaymentTracker
-                              totalAmount={trackerTotalAmount}
-                              payments={trackerPayments}
-                              onAddPayment={handleAddTrackerPayment}
-                              onUpdatePayment={handleEditTrackerPayment}
+                                }`}
                             />
-                          </>
-                        )}
-                      </div>
-
-                    </div>
-
-                    {/* Receipt Upload */}
-                    <div>
-                      <div className="mb-2.5 flex items-center gap-2">
-                        <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-teal-50 text-teal-600">
-                          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2}>
-                            <path strokeLinecap="round" d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66L9.41 17.41a2 2 0 01-2.83-2.83l8.49-8.49" />
-                          </svg>
-                        </div>
-                        <span className="text-[11px] font-semibold uppercase tracking-[0.13em] text-slate-500">Payment Receipt</span>
-                      </div>
-
-                      <div className="group overflow-hidden rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 via-teal-50/40 to-white p-5">
-                        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                          <div className="flex items-start gap-3.5">
-                            <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-400 to-teal-500 shadow-[0_6px_16px_rgba(16,185,129,0.3)]">
-                              <svg className="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.96 11.96 0 003 12c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-2.056-.503-3.996-1.398-5.709A11.96 11.96 0 0112 2.964z" />
-                              </svg>
+                          </div>
+                          {hasExactPaymentMismatch && (
+                            <div className="mt-2 rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] font-medium leading-5 text-rose-700">
+                              {paymentAmountWarningMessage}
                             </div>
-                            <div>
-                              <div className="flex flex-wrap items-center gap-2">
-                                <p className="text-[13px] font-semibold text-slate-900">
-                                  {receiptFile?.name || currentReceipt?.fileName || "Receipt ready for upload"}
+                          )}
+
+                          {/* ── Payment Tracker sits here ── */}
+                          {trackerTotalAmount > 0 && (
+                            <>
+                              <div className="mt-4 mb-2 flex items-center gap-2">
+                                <div className="h-px flex-1 bg-indigo-200/80" />
+                                <span className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-indigo-950 bg-gradient-to-r from-indigo-50 via-purple-50/50 to-pink-50/30 border border-indigo-200/60 rounded-full px-4.5 py-1.5 shadow-sm">
+                                  Payment Tracker
+                                </span>
+                                <div className="h-px flex-1 bg-indigo-200/80" />
+                              </div>
+                              <PaymentTracker
+                                totalAmount={trackerTotalAmount}
+                                payments={trackerPayments}
+                                onAddPayment={handleAddTrackerPayment}
+                                onUpdatePayment={handleEditTrackerPayment}
+                                onDownloadReceipt={handleDownloadInstallmentReceipt}
+                              />
+                            </>
+                          )}
+                        </div>
+
+                      </div>
+
+                      {/* Receipt Upload */}
+                      <div>
+                        <div className="mb-2.5 flex items-center gap-2">
+                          <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-teal-50 text-teal-600">
+                            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2}>
+                              <path strokeLinecap="round" d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66L9.41 17.41a2 2 0 01-2.83-2.83l8.49-8.49" />
+                            </svg>
+                          </div>
+                          <span className="text-[11px] font-semibold uppercase tracking-[0.13em] text-slate-500">Payment Receipt</span>
+                        </div>
+
+                        <div className="group overflow-hidden rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 via-teal-50/40 to-white p-5">
+                          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                            <div className="flex items-start gap-3.5">
+                              <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-400 to-teal-500 shadow-[0_6px_16px_rgba(16,185,129,0.3)]">
+                                <svg className="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.96 11.96 0 003 12c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-2.056-.503-3.996-1.398-5.709A11.96 11.96 0 0112 2.964z" />
+                                </svg>
+                              </div>
+                              <div>
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <p className="text-[13px] font-semibold text-slate-900">
+                                    {receiptFile?.name || "Receipt ready for upload"}
+                                  </p>
+                                  {receiptFile?.name ? (
+                                    <span className="rounded-full bg-emerald-500 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white shadow-sm">Attached</span>
+                                  ) : null}
+                                </div>
+                                <p className="mt-1 text-[12px] leading-5 text-slate-500">
+                                  {receiptFile?.name
+                                    ? "New receipt selected. Submit now to send it for finance review."
+                                    : latestInstallmentNeedsReceipt
+                                      ? "Upload the payment proof for this installment. Previous receipts are available in Payment History."
+                                      : isRejectedPayment
+                                        ? "Previous receipt was reset for correction. Upload the updated proof again."
+                                        : paymentSubmission?.submittedAt
+                                          ? "Submitted receipt has moved to Payment History. Upload a new proof only for the next payment."
+                                          : "Upload your payment proof here. JPG, PNG, WEBP and PDF supported."}
                                 </p>
-                                {(receiptFile?.name || currentReceipt?.url) ? (
-                                  <span className="rounded-full bg-emerald-500 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white shadow-sm">Attached</span>
+                                {latestInstallmentNeedsReceipt && !receiptFile ? (
+                                  <p className="mt-1 text-[11px] font-semibold text-rose-600">
+                                    Receipt is mandatory for this installment.
+                                  </p>
                                 ) : null}
                               </div>
-                              <p className="mt-1 text-[12px] leading-5 text-slate-500">
-                                {receiptFile?.name
-                                  ? "New receipt selected. Submit now to send it for finance review."
-                                  : currentReceipt?.url
-                                    ? "Receipt file is attached and highlighted for quick review."
-                                    : isRejectedPayment
-                                      ? "Previous receipt was reset for correction. Upload the updated proof again."
-                                      : "Upload your payment proof here. JPG, PNG, WEBP and PDF supported."}
-                              </p>
+                            </div>
+                            <div className="flex w-full flex-col gap-2 sm:w-auto sm:min-w-[200px]">
+                              <label className="inline-flex h-9 w-full cursor-pointer items-center justify-center gap-2 rounded-full bg-slate-900 px-4 text-[12px] font-semibold text-white shadow-sm transition hover:bg-slate-700 active:scale-[0.98]">
+                                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6h.1a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>
+                                {receiptFile?.name ? "Change receipt" : "Upload receipt"}
+                                <input type="file" accept=".jpg,.jpeg,.png,.webp,.pdf" className="hidden" onChange={(e) => setReceiptFile(e.target.files?.[0] || null)} />
+                              </label>
                             </div>
                           </div>
-                          <div className="flex w-full flex-col gap-2 sm:w-auto sm:min-w-[200px]">
-                            {canInlinePreviewReceipt ? (
-                              <button
-                                type="button"
-                                onClick={() => setIsReceiptPreviewOpen((prev) => !prev)}
-                                className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-full border border-sky-200 bg-white px-4 text-[12px] font-semibold text-sky-700 shadow-sm transition hover:bg-sky-50 sm:opacity-0 sm:translate-y-1 sm:group-hover:translate-y-0 sm:group-hover:opacity-100 sm:group-focus-within:translate-y-0 sm:group-focus-within:opacity-100"
-                              >
-                                {isReceiptPreviewOpen ? <><EyeOff className="h-3.5 w-3.5" />Hide preview</> : <><Eye className="h-3.5 w-3.5" />Preview receipt</>}
-                              </button>
-                            ) : null}
-                            {currentReceipt?.url ? (
-                              <button type="button" onClick={handleDownloadReceipt} className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-full border border-emerald-200 bg-white px-4 text-[12px] font-semibold text-emerald-700 shadow-sm transition hover:bg-emerald-50">
-                                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 11l5 5 5-5M12 4v12" /></svg>
-                                Download current receipt
-                              </button>
-                            ) : null}
-                            <label className="inline-flex h-9 w-full cursor-pointer items-center justify-center gap-2 rounded-full bg-slate-900 px-4 text-[12px] font-semibold text-white shadow-sm transition hover:bg-slate-700 active:scale-[0.98]">
-                              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6h.1a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>
-                              {currentReceipt?.url ? "Replace receipt" : "Upload receipt"}
-                              <input type="file" accept=".jpg,.jpeg,.png,.webp,.pdf" className="hidden" onChange={(e) => setReceiptFile(e.target.files?.[0] || null)} />
-                            </label>
-                          </div>
                         </div>
-
-                        <AnimatePresence initial={false}>
-                          {canInlinePreviewReceipt && isReceiptPreviewOpen ? (
-                            <motion.div
-                              initial={{ opacity: 0, height: 0, marginTop: 0 }}
-                              animate={{ opacity: 1, height: "auto", marginTop: 16 }}
-                              exit={{ opacity: 0, height: 0, marginTop: 0 }}
-                              transition={{ duration: 0.25, ease: "easeInOut" }}
-                              className="overflow-hidden"
-                            >
-                              <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-                                <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
-                                  <div className="min-w-0">
-                                    <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Receipt Preview</p>
-                                    <p className="truncate text-sm font-medium text-slate-800">{activeReceiptFileName || "Payment receipt"}</p>
-                                  </div>
-                                  <button type="button" onClick={() => setIsReceiptPreviewOpen(false)} className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-100">
-                                    <EyeOff className="h-3.5 w-3.5" />Close
-                                  </button>
-                                </div>
-                                {isPdfReceiptPreview ? (
-                                  <iframe src={receiptPreviewUrl} title="Payment receipt preview" className="h-[460px] w-full bg-white" />
-                                ) : (
-                                  <div className="bg-slate-50 p-4">
-                                    <img src={receiptPreviewUrl} alt={activeReceiptFileName || "Payment receipt preview"} className="max-h-[460px] w-full rounded-xl border border-slate-200 bg-white object-contain" />
-                                  </div>
-                                )}
-                              </div>
-                            </motion.div>
-                          ) : null}
-                        </AnimatePresence>
                       </div>
-                    </div>
                     </div>
 
                     {/* Submit */}
@@ -1936,7 +1759,6 @@ export default function ActiveBookingDetails({ onClose, booking, onBookingUpdate
                     <div className="px-5 py-1.5">
                       {[
                         { icon: <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><circle cx="12" cy="12" r="9" /><path strokeLinecap="round" d="M9 8h6M9 11h6M9 8a3 3 0 010 6H9l4 5" /></svg>, label: "Payment Amount", value: formatCurrency(snapshotPaymentAmount, currency), ok: snapshotPaymentAmount > 0, color: "text-amber-500" },
-                        { icon: <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" d="M3 21h18M3 10h18M3 7l9-4 9 4M4 10v11M20 10v11M8 10v11M16 10v11M12 10v11" /></svg>, label: "Bank", value: snapshotBank, ok: Boolean(snapshotBank), color: "text-blue-500" },
                         { icon: <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" d="M4 9h16M4 15h16M10 3l-2 18M16 3l-2 18" /></svg>, label: "UTR", value: snapshotUtr, ok: Boolean(snapshotUtr), color: "text-violet-500" },
                         { icon: <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><rect x="3" y="4" width="18" height="17" rx="2" /><path strokeLinecap="round" d="M16 2v4M8 2v4M3 10h18M9 16l2 2 4-4" /></svg>, label: "Payment Date", value: formatDate(snapshotPaymentDate), ok: Boolean(snapshotPaymentDate), color: "text-sky-500" },
                         { icon: <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66L9.41 17.41a2 2 0 01-2.83-2.83l8.49-8.49" /></svg>, label: "Receipt", value: snapshotReceiptName, ok: Boolean(snapshotReceiptName), color: "text-teal-500" },
