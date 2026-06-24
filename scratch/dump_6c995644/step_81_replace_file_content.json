@@ -1,0 +1,12 @@
+{
+  "AllowMultiple": "false",
+  "Description": "\"Insert the warning note below the transport dropdowns in QuotationBuilder.jsx, depending on whether Full Day or Half Day is selected.\"",
+  "EndLine": "8889",
+  "Instruction": "\"Insert conditional warning note about extra km/hours under the transport usage select dropdown.\"",
+  "ReplacementContent": "\"                  </select>\\n                </div>\\n              </div>\\n\\n              {(() => {\\n                const selectedUsage = service.transportUsageOptionKey || getTransportUsageOptionKey(service);\\n                if (selectedUsage === \\\"full-day\\\") {\\n                  return (\\n                    <p className=\\\"text-[10px] text-amber-400 italic mt-2 leading-normal\\\">\\n                      \u26a0\ufe0f Note: Full Day includes 80 km / 8 hours. Usage exceeding this limit will attract extra charges.\\n                    </p>\\n                  );\\n                } else if (selectedUsage === \\\"half-day\\\") {\\n                  return (\\n                    <p className=\\\"text-[10px] text-amber-400 italic mt-2 leading-normal\\\">\\n                      \u26a0\ufe0f Note: Half Day includes 40 km / 4 hours. Usage exceeding this limit will attract extra charges.\\n                    </p>\\n                  );\\n                }\\n                return null;\\n              })()}\\n            </div>\\n          )}\"",
+  "StartLine": "8883",
+  "TargetContent": "\"                  </select>\\n                </div>\\n              </div>\\n            </div>\\n          )}\"",
+  "TargetFile": "\"c:\\\\Users\\\\DELL\\\\OneDrive\\\\Desktop\\\\Holiday circuit\\\\holiday-circuit\\\\client\\\\src\\\\pages\\\\opsPages\\\\QuotationBuilder.jsx\"",
+  "toolAction": "\"Insert warning note in QuotationBuilder.jsx\"",
+  "toolSummary": "\"Edit QuotationBuilder.jsx to insert note\""
+}

@@ -1331,6 +1331,112 @@ const buildDurationLabel = (query = {}) => {
   return `${totalNights} Night${totalNights === 1 ? "" : "s"} / ${totalDays} Day${totalDays === 1 ? "" : "s"}`;
 };
 
+const TRANSPORT_USAGE_LABELS = Object.freeze({
+  "one-way-airport-transfer": "One Way / Airport Transfer",
+  "inter-hotel-transfer": "Inter Hotel Transfer",
+  "full-day": "Full Day",
+  "half-day": "Half Day",
+  "point-to-point": "One Way / Airport Transfer",
+  "round-trip": "Two Way",
+});
+
+const TRANSPORT_USAGE_LIMIT_LABELS = Object.freeze({
+  "full-day": "80 km / 8 hours",
+  "full-day-80-km": "80 km / 8 hours",
+  "full-day-8-hours": "80 km / 8 hours",
+  "half-day": "40 km / 4 hours",
+  "half-day-40-km": "40 km / 4 hours",
+  "half-day-4-hours": "40 km / 4 hours",
+});
+
+const normalizeTransportUsageOptionKeyForQuote = (value = "") => {
+  const normalizedValue = String(value || "").trim().toLowerCase();
+  if (!normalizedValue) return "";
+  if (normalizedValue.includes("inter hotel") || normalizedValue.includes("inter-hotel")) return "inter-hotel-transfer";
+  if (normalizedValue.includes("airport") || normalizedValue.includes("one way") || normalizedValue.includes("one-way")) return "one-way-airport-transfer";
+  if (normalizedValue.includes("full")) return "full-day";
+  if (normalizedValue.includes("half")) return "half-day";
+  if (normalizedValue.includes("round") || normalizedValue.includes("two way")) return "round-trip";
+  if (normalizedValue.includes("point")) return "point-to-point";
+  return normalizedValue;
+};
+
+const getTransportUsageDisplayLabelForQuote = (service = {}) => {
+  const key = normalizeTransportUsageOptionKeyForQuote(
+    service?.transportUsageOptionKey ||
+    service?.transportUsageLabel ||
+    service?.usageType,
+  );
+
+  return (
+    service?.transportUsageLabel ||
+    TRANSPORT_USAGE_LABELS[key] ||
+    String(service?.usageType || "")
+      .replace(/-/g, " ")
+      .replace(/\b\w/g, (char) => char.toUpperCase())
+  );
+};
+
+const getTransportLimitLabelForQuote = (service = {}) => {
+  const optionKey = normalizeTransportUsageOptionKeyForQuote(
+    service?.transportUsageOptionKey ||
+    service?.transportUsageLabel ||
+    service?.usageType,
+  );
+  const limitKeys = String(service?.transportUsageLimitOptionKey || "")
+    .split(",")
+    .map((key) => normalizeTransportUsageOptionKeyForQuote(key))
+    .filter(Boolean);
+  const explicitLimitLabel = limitKeys
+    .map((key) => TRANSPORT_USAGE_LIMIT_LABELS[key])
+    .filter(Boolean)[0];
+
+  return explicitLimitLabel || TRANSPORT_USAGE_LIMIT_LABELS[optionKey] || "";
+};
+
+const getTransportExtraKmRateForQuote = (service = {}) => {
+  const optionKey = normalizeTransportUsageOptionKeyForQuote(
+    service?.transportUsageOptionKey ||
+    service?.transportUsageLabel ||
+    service?.usageType,
+  );
+
+  if (optionKey === "full-day") {
+    return Number(service?.fullDayExtraPerKmRate || service?.extraPerKmRate || 0);
+  }
+
+  if (optionKey === "half-day") {
+    return Number(service?.halfDayExtraPerKmRate || service?.extraPerKmRate || 0);
+  }
+
+  return 0;
+};
+
+const buildTransportQuotationNotes = (service = {}) => {
+  const optionKey = normalizeTransportUsageOptionKeyForQuote(
+    service?.transportUsageOptionKey ||
+    service?.transportUsageLabel ||
+    service?.usageType,
+  );
+
+  if (!["full-day", "half-day"].includes(optionKey)) return [];
+
+  const usageLabel = getTransportUsageDisplayLabelForQuote(service);
+  const limitLabel = getTransportLimitLabelForQuote(service);
+  const extraKmRate = getTransportExtraKmRateForQuote(service);
+  const notes = [];
+
+  if (extraKmRate > 0) {
+    notes.push(`Extra km rate: \u20B9 ${extraKmRate.toLocaleString("en-IN")}/km.`);
+  }
+
+  if (limitLabel) {
+    notes.push(`Note: ${usageLabel} limit selected as ${limitLabel}. Extra km will attract extra charges where applicable.`);
+  }
+
+  return notes;
+};
+
 const buildServiceQuantityLabel = (service = {}, fallbackPax = 0) => {
   const normalizedType = String(service?.type || "")
     .trim()
@@ -1345,8 +1451,11 @@ const buildServiceQuantityLabel = (service = {}, fallbackPax = 0) => {
     return details.join(" | ");
   }
 
-  if (normalizedType === "transfer" || normalizedType === "car") {
-    if (service?.usageType) details.push(String(service.usageType).replace(/-/g, " "));
+  if (normalizedType === "transfer" || normalizedType === "car" || normalizedType === "transport") {
+    const usageLabel = getTransportUsageDisplayLabelForQuote(service);
+    const limitLabel = getTransportLimitLabelForQuote(service);
+    if (usageLabel) details.push(usageLabel);
+    if (limitLabel) details.push(limitLabel);
     if (Number(service?.passengerCapacity || 0) > 0) {
       details.push(`${service.passengerCapacity} Pax`);
     } else if (Number(service?.pax || 0) > 0) {
@@ -1417,13 +1526,19 @@ const buildQuotationClientEmailPayload = ({ quotation, query, agent }) => {
       ? quotation.services.map((service) => {
           const ratio = totalServiceBase > 0 ? Number(service.total || 0) / totalServiceBase : 0;
           const clientAmount = totalServiceBase > 0 ? Math.round(totalAmount * ratio) : 0;
+          const normalizedServiceType = String(service?.type || "").trim().toLowerCase();
+          const serviceDescription = String(service?.description || "").replace(/\|/g, " | ").trim();
+          const transportNotes = ["transfer", "car", "transport"].includes(normalizedServiceType)
+            ? buildTransportQuotationNotes(service)
+            : [];
+          const description = [serviceDescription, ...transportNotes].filter(Boolean).join("\n");
           return {
             title: service?.title || "Service",
             typeLabel: service?.type ? String(service.type).replace(/_/g, " ") : "Travel Service",
             location: buildServiceLocationLabel(service),
             serviceDateLabel: formatMailDateLabel(service?.serviceDate),
             quantityLabel: buildServiceQuantityLabel(service, queryPax),
-            description: String(service?.description || "").replace(/\|/g, " | ").trim(),
+            description,
             clientAmount,
           };
         })

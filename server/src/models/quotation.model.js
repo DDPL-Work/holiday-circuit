@@ -114,6 +114,36 @@ const quotationSchema = new mongoose.Schema(
         default: "point-to-point"
       },
 
+      transportUsageOptionKey: {
+        type: String,
+        default: ""
+      },
+
+      transportUsageLabel: {
+        type: String,
+        default: ""
+      },
+
+      transportUsageLimitOptionKey: {
+        type: String,
+        default: ""
+      },
+
+      extraPerKmRate: {
+        type: Number,
+        default: 0
+      },
+
+      fullDayExtraPerKmRate: {
+        type: Number,
+        default: 0
+      },
+
+      halfDayExtraPerKmRate: {
+        type: Number,
+        default: 0
+      },
+
       days: { type: Number, default: 1 },
 
       // ================= ACTIVITY / SIGHTSEEING =================

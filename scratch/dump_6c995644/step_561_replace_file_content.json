@@ -1,0 +1,12 @@
+{
+  "AllowMultiple": "false",
+  "Description": "\"Add transportUsageOptionKey field handler to updateField function to apply contracted rate pricing\"",
+  "EndLine": "5441",
+  "Instruction": "\"Add support for transportUsageOptionKey updates in updateField function\"",
+  "ReplacementContent": "\"      if ((service.type === \\\"transfer\\\" || service.type === \\\"car\\\") && field === \\\"transportUsageOptionKey\\\") {\\n        return applyContractedTransportUsageOptionPricing(\\n          service,\\n          value,\\n          prev,\\n          service.rate,\\n          service.currency,\\n        );\\n      }\\n\\n      if ((service.type === \\\"transfer\\\" || service.type === \\\"car\\\") && field === \\\"usageType\\\") {\\n        return applyFixedTransportUsagePricing(\\n          { ...service, usageType: normalizeTransportUsageValue(value), useStoredPricing: false },\\n          service.rate,\\n          service.currency,\\n        );\\n      }\"",
+  "StartLine": "5435",
+  "TargetContent": "\"      if ((service.type === \\\"transfer\\\" || service.type === \\\"car\\\") && field === \\\"usageType\\\") {\\n      return applyFixedTransportUsagePricing(\\n      { ...service, usageType: normalizeTransportUsageValue(value), useStoredPricing: false },\\n      service.rate,\\n      service.currency,\\n      );\\n      }\"",
+  "TargetFile": "\"c:\\\\Users\\\\DELL\\\\OneDrive\\\\Desktop\\\\Holiday circuit\\\\holiday-circuit\\\\client\\\\src\\\\pages\\\\opsPages\\\\QuotationBuilder.jsx\"",
+  "toolAction": "\"Add transportUsageOptionKey handler\"",
+  "toolSummary": "\"Modify updateField logic\""
+}

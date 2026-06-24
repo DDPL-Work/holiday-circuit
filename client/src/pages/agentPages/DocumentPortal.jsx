@@ -351,20 +351,20 @@ const DocumentPortal = () => {
           return (
             <div
               key={key}
-              className={`flex flex-col rounded-2xl border border-slate-200 p-5 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md ${cfg.gradientClass} ${cfg.bottomBorder}`}
+              className={`flex flex-col rounded-2xl border border-slate-200 px-4 py-3 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-md ${cfg.gradientClass} ${cfg.bottomBorder}`}
             >
-              <div className="flex items-center justify-between mb-4">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                   {cfg.label}
                 </p>
-                <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${cfg.iconBg}`}>
-                  <Icon className={`h-4 w-4 ${cfg.iconColor}`} />
+                <div className={`flex h-7 w-7 items-center justify-center rounded-lg ${cfg.iconBg}`}>
+                  <Icon className={`h-3.5 w-3.5 ${cfg.iconColor}`} />
                 </div>
               </div>
-              <p className={`text-3xl font-bold leading-none ${cfg.numberColor} mb-2.5`}>
+              <p className={`text-2xl font-bold leading-none ${cfg.numberColor} mb-1.5`}>
                 {summary[key]}
               </p>
-              <p className="text-xs text-slate-500 leading-normal min-h-[32px]">{cfg.desc}</p>
+              <p className="text-[11px] text-slate-500 leading-normal min-h-[24px]">{cfg.desc}</p>
             </div>
           );
         })}
@@ -404,13 +404,13 @@ const DocumentPortal = () => {
 
             <thead className="border-b border-b-slate-200 bg-slate-50 text-slate-500">
               <tr>
-                <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide whitespace-nowrap">Lead Client</th>
-                <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide whitespace-nowrap">Booking Ref</th>
-                <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide whitespace-nowrap">Trip</th>
-                <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide whitespace-nowrap">Travelers</th>
-                <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide whitespace-nowrap">Document Status</th>
-                <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide whitespace-nowrap">Issue Summary</th>
-                <th className="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-wide whitespace-nowrap">Action</th>
+                <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide whitespace-nowrap">Lead Client</th>
+                <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide whitespace-nowrap">Booking Ref</th>
+                <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide whitespace-nowrap">Trip</th>
+                <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide whitespace-nowrap">Travelers</th>
+                <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide whitespace-nowrap">Document Status</th>
+                <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide whitespace-nowrap">Issue Summary</th>
+                <th className="px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wide whitespace-nowrap">Action</th>
               </tr>
             </thead>
 
@@ -431,7 +431,7 @@ const DocumentPortal = () => {
                   return (
                     <tr key={row._id} className="hover:bg-slate-50/60 transition-colors">
                       {/* Lead Client — avatar + name + destination */}
-                      <td className="px-4 py-4 align-middle">
+                      <td className="px-4 py-2.5 align-middle">
                         <div className="flex items-center gap-2.5">
                           <div
                             className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-[11px] font-semibold ${avatarColor.bg} ${avatarColor.text}`}
@@ -449,19 +449,19 @@ const DocumentPortal = () => {
                       </td>
 
                       {/* Booking Ref */}
-                      <td className="px-4 py-4 align-middle">
+                      <td className="px-4 py-2.5 align-middle">
                         <span className="inline-flex max-w-full rounded-xl border border-gray-300 px-2.5 py-1 text-xs leading-4 break-all">
                           {row.bookingReference}
                         </span>
                       </td>
 
                       {/* Trip Dates */}
-                      <td className="px-4 py-4 align-middle text-slate-500">
+                      <td className="px-4 py-2.5 align-middle text-slate-500">
                         <p className="whitespace-nowrap leading-5">{row.travelDates}</p>
                       </td>
 
                       {/* Travelers */}
-                      <td className="px-2 py-4 align-middle">
+                      <td className="px-2 py-2.5 align-middle">
                         <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-3 py-1 text-slate-700 leading-4">
                           <Users className="h-3.5 w-3.5" />
                           {row.travelersCount} Travelers
@@ -469,7 +469,7 @@ const DocumentPortal = () => {
                       </td>
 
                       {/* Document Status */}
-                      <td className="px-2 py-4 align-middle">
+                      <td className="px-2 py-2.5 align-middle">
                         <span className={`inline-flex w-fit max-w-full items-center gap-1 rounded-full px-3 py-1 text-xs font-medium leading-4 ${status.className}`}>
                           <StatusIcon className="h-3.5 w-3.5" />
                           {status.label}
@@ -477,7 +477,7 @@ const DocumentPortal = () => {
                       </td>
 
                       {/* Issue Summary */}
-                      <td className="px-1 py-2 align-middle">
+                      <td className="px-1 py-2.5 align-middle">
                         <p className="text-xs leading-4 text-slate-500 break-words">
                           {row.reviewStatus === "Rejected" || row.hasMissingDocuments
                             ? row.issueSummary
@@ -490,7 +490,7 @@ const DocumentPortal = () => {
                       </td>
 
                       {/* Action */}
-                      <td className="px-4 py-4 align-middle text-right">
+                      <td className="px-4 py-2.5 align-middle text-right">
                         <motion.button
                           whileHover={{ scale: 1.02 }}
                           whileTap={{ scale: 0.97 }}
@@ -504,7 +504,7 @@ const DocumentPortal = () => {
                               },
                             })
                           }
-                          className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm transition hover:bg-green-600 hover:border-green-300 hover:text-white cursor-pointer"
+                          className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 px-3.5 py-1.5 text-xs font-medium text-white shadow-sm transition-all duration-200 cursor-pointer"
                         >
                           <Eye className="h-3.5 w-3.5" />
                           View

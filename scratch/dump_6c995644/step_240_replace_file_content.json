@@ -1,0 +1,12 @@
+{
+  "AllowMultiple": "false",
+  "Description": "\"Change the default return statement of the transport setup IIFE from null to a general note about Full Day and Half Day limits.\"",
+  "EndLine": "8859",
+  "Instruction": "\"Replace return null with a fallback warning note.\"",
+  "ReplacementContent": "\"                return (\\n                  <p className=\\\"text-[10px] text-slate-400 italic mt-1 leading-normal\\\">\\n                    \u26a0\ufe0f Note: Full Day includes 80 km / 8 hours and Half Day includes 40 km / 4 hours. Usage exceeding these limits will attract extra charges.\\n                  </p>\\n                );\"",
+  "StartLine": "8859",
+  "TargetContent": "\"                return null;\"",
+  "TargetFile": "\"c:\\\\Users\\\\DELL\\\\OneDrive\\\\Desktop\\\\Holiday circuit\\\\holiday-circuit\\\\client\\\\src\\\\pages\\\\opsPages\\\\QuotationBuilder.jsx\"",
+  "toolAction": "\"Replace return null with default note\"",
+  "toolSummary": "\"Edit QuotationBuilder.jsx block\""
+}

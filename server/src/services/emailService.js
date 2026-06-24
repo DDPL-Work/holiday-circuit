@@ -142,6 +142,61 @@ const normalizeServiceTypeLabel = (value = "") => {
   return normalizedValue.replace(/\b\w/g, (character) => character.toUpperCase());
 };
 
+const buildServiceDescriptionLines = (description = "") => {
+  const normalizedDescription = String(description || "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\s*\n\s*/g, "\n")
+    .trim();
+
+  if (!normalizedDescription) return [];
+
+  return normalizedDescription
+    .split("\n")
+    .flatMap((line) =>
+      line
+        .replace(/\s+(?=Extra km rate:|Note:)/gi, "\n")
+        .split("\n")
+        .map((item) => item.replace(/\s+/g, " ").trim())
+        .filter(Boolean),
+    )
+    .map((line) => ({
+      text: line,
+      highlighted: /^(Extra km rate:|Note:)/i.test(line),
+    }));
+};
+
+const escapeEmailText = (value = "") =>
+  escapeHtml(value).replace(/\u20B9/g, "&#8377;");
+
+const buildServiceDescriptionHtml = (description = "") => {
+  const lines = buildServiceDescriptionLines(description);
+
+  if (!lines.length) return "";
+
+  return `
+    <div style="margin-top:6px;font-size:11px;line-height:1.6;">
+      ${lines
+        .map(
+          (line) => {
+            if (line.highlighted) {
+              return `
+                <div style="margin:6px 0;padding:6px 10px;border-left:3px solid #f97316;background-color:#fff7ed;color:#c2410c;font-weight:700;border-radius:4px;display:block;">
+                  ${escapeEmailText(line.text)}
+                </div>
+              `;
+            }
+            return `
+              <div style="margin:0;color:#334155;font-weight:400;">
+                ${escapeEmailText(line.text)}
+              </div>
+            `;
+          }
+        )
+        .join("")}
+    </div>
+  `;
+};
+
 const buildAgentClientQuotationText = (quoteDetails = {}) => {
   const servicesText = (quoteDetails.services || [])
     .map((service, index) => {
@@ -320,25 +375,23 @@ const buildAgentClientQuotationTemplate = (quoteDetails = {}) => {
     .map((service, index) => {
       const normalizedTypeLabel = normalizeServiceTypeLabel(service.typeLabel);
       const badge = getTypeBadgeColors(normalizedTypeLabel);
-      const descriptionHtml = service.description
-        ? `<div style="margin-top:6px;font-size:11px;line-height:1.6;color:#334155;">${escapeHtml(service.description)}</div>`
-        : "";
+      const descriptionHtml = buildServiceDescriptionHtml(service.description);
 
       return `
         <tr style="background:${index % 2 === 0 ? "#ffffff" : "#f8fafc"};">
-          <td style="padding:12px 8px;border:1px solid #cbd5e1;text-align:center;font-size:12px;font-weight:700;color:#10213a;">${index + 1}</td>
-          <td style="padding:12px 10px;border:1px solid #cbd5e1;">
+          <td width="7%" style="padding:12px 8px;border:1px solid #cbd5e1;text-align:center;font-size:12px;font-weight:700;color:#10213a;">${index + 1}</td>
+          <td width="32%" style="padding:12px 10px;border:1px solid #cbd5e1;">
             <div style="font-size:13px;font-weight:700;color:#10213a;">${escapeHtml(service.title || "Service")}</div>
             ${descriptionHtml}
           </td>
-          <td style="padding:12px 8px;border:1px solid #cbd5e1;text-align:center;">
+          <td width="16%" style="padding:12px 8px;border:1px solid #cbd5e1;text-align:center;">
             <span style="display:inline-block;padding:5px 10px;border-radius:999px;background:${badge.background};border:1px solid ${badge.border};color:${badge.text};font-size:11px;font-weight:700;">
               ${escapeHtml(normalizedTypeLabel)}
             </span>
           </td>
-          <td style="padding:12px 8px;border:1px solid #cbd5e1;text-align:center;font-size:12px;color:#334155;">${escapeHtml(service.serviceDateLabel || "-")}</td>
-          <td style="padding:12px 10px;border:1px solid #cbd5e1;font-size:12px;color:#334155;">${escapeHtml(service.location || "-")}</td>
-          <td style="padding:12px 8px;border:1px solid #cbd5e1;text-align:center;font-size:12px;color:#334155;">${escapeHtml(service.quantityLabel || "-")}</td>
+          <td width="15%" style="padding:12px 8px;border:1px solid #cbd5e1;text-align:center;font-size:12px;color:#334155;">${escapeHtml(service.serviceDateLabel || "-")}</td>
+          <td width="17%" style="padding:12px 10px;border:1px solid #cbd5e1;font-size:12px;color:#334155;">${escapeHtml(service.location || "-")}</td>
+          <td width="13%" style="padding:12px 8px;border:1px solid #cbd5e1;text-align:center;font-size:12px;color:#334155;">${escapeHtml(service.quantityLabel || "-")}</td>
         </tr>
       `;
     })
@@ -428,11 +481,11 @@ const buildAgentClientQuotationTemplate = (quoteDetails = {}) => {
           <table width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;margin-bottom:18px;">
             <tr style="background:#f0fdfa;">
               <td width="7%" style="padding:10px 8px;border:1px solid #7dd3c7;text-align:center;font-size:11px;font-weight:700;color:#10213a;">S.NO.</td>
-              <td width="33%" style="padding:10px 8px;border:1px solid #7dd3c7;font-size:11px;font-weight:700;color:#10213a;">PARTICULARS</td>
-              <td width="17%" style="padding:10px 8px;border:1px solid #7dd3c7;text-align:center;font-size:11px;font-weight:700;color:#10213a;">CATEGORY</td>
-              <td width="16%" style="padding:10px 8px;border:1px solid #7dd3c7;text-align:center;font-size:11px;font-weight:700;color:#10213a;">SERVICE DATE</td>
+              <td width="32%" style="padding:10px 8px;border:1px solid #7dd3c7;font-size:11px;font-weight:700;color:#10213a;">PARTICULARS</td>
+              <td width="16%" style="padding:10px 8px;border:1px solid #7dd3c7;text-align:center;font-size:11px;font-weight:700;color:#10213a;">CATEGORY</td>
+              <td width="15%" style="padding:10px 8px;border:1px solid #7dd3c7;text-align:center;font-size:11px;font-weight:700;color:#10213a;">SERVICE DATE</td>
               <td width="17%" style="padding:10px 8px;border:1px solid #7dd3c7;font-size:11px;font-weight:700;color:#10213a;">LOCATION</td>
-              <td width="10%" style="padding:10px 8px;border:1px solid #7dd3c7;text-align:center;font-size:11px;font-weight:700;color:#10213a;">QTY</td>
+              <td width="13%" style="padding:10px 8px;border:1px solid #7dd3c7;text-align:center;font-size:11px;font-weight:700;color:#10213a;">QTY</td>
             </tr>
             ${servicesHtml || fallbackServiceHtml}
           </table>

@@ -497,7 +497,6 @@ const buildClientWhatsAppQuotationMessage = ({ query, quote }) => {
           String(service.description).trim().toLowerCase() !== String(service.title || "").trim().toLowerCase()
             ? ` - ${String(service.description).trim()}`
             : "";
-
         lines.push(`* ${service?.title || "Service"}${description}${quantityLabel ? ` (${quantityLabel})` : ""}`);
       });
 

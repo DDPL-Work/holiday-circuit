@@ -282,7 +282,7 @@ const Sidebar = ({ user, mobileOpen = false, onMobileClose = () => {} }) => {
           isMobileViewport
             ? "fixed inset-y-0 left-0 z-50 h-screen border-r border-gray-800"
             : "relative h-full border-r border-gray-800"
-        } grid grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden border-t border-gray-800 bg-gray-900`}
+        } grid grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden border-t border-gray-800 bg-gradient-to-b from-black via-slate-950 to-blue-950`}
         variants={sidebarVariants}
         animate={
           isMobileViewport
@@ -359,7 +359,7 @@ const Sidebar = ({ user, mobileOpen = false, onMobileClose = () => {} }) => {
 
         {/* PROFILE SECTION */}
         <motion.div
-          className="border-t border-gray-800/90 bg-[#0f1729] p-3"
+          className="border-t border-gray-800/90 bg-transparent p-3"
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3 }}

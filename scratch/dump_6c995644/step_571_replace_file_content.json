@@ -1,0 +1,12 @@
+{
+  "AllowMultiple": "false",
+  "Description": "\"Display specific transport usage label instead of generic usageType on transfer service tag\"",
+  "EndLine": "8606",
+  "Instruction": "\"Update MdOutlineTravelExplore label to use service.transportUsageLabel || service.usageType\"",
+  "ReplacementContent": "\"                    {(service.transportUsageLabel || service.usageType) && (\\n                      <span className=\\\"flex items-center gap-1 text-slate-400\\\">\\n                        <MdOutlineTravelExplore className=\\\"text-blue-400\\\" />{formatUsage(service.transportUsageLabel || service.usageType)}\\n                      </span>\\n                    )}\"",
+  "StartLine": "8602",
+  "TargetContent": "\"                    {service.usageType && (\\n                      <span className=\\\"flex items-center gap-1 text-slate-400\\\">\\n                        <MdOutlineTravelExplore className=\\\"text-blue-400\\\" />{formatUsage(service.usageType)}\\n                      </span>\\n                    )}\"",
+  "TargetFile": "\"c:\\\\Users\\\\DELL\\\\OneDrive\\\\Desktop\\\\Holiday circuit\\\\holiday-circuit\\\\client\\\\src\\\\pages\\\\opsPages\\\\QuotationBuilder.jsx\"",
+  "toolAction": "\"Update transport details badge label\"",
+  "toolSummary": "\"Modify detail tag label\""
+}

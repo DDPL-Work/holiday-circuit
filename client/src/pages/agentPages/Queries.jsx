@@ -176,12 +176,12 @@ const Queries = () => {
           </div>
 
           <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
             onClick={() => setOpenModal(true)}
-            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 py-2 text-sm text-white cursor-pointer sm:w-auto"
+            className="flex w-full items-center justify-center gap-2 rounded-full bg-gradient-to-r from-slate-950 via-slate-900 to-blue-900 hover:from-black hover:to-blue-800 px-3.5 py-1.5 text-xs font-semibold text-white shadow-sm transition-all duration-200 cursor-pointer sm:w-auto"
           >
-            <Plus size={16} />
+            <Plus size={14} />
             Create Query
           </motion.button>
         </motion.header>

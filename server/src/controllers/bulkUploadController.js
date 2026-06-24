@@ -78,6 +78,205 @@ const compactObject = (value = {}) =>
     Object.entries(value).filter(([, item]) => item !== undefined && item !== null && item !== ""),
   );
 
+const normalizeHeaderText = (value = "") => String(value || "").trim().toLowerCase();
+
+const findHeaderIndex = (headers = [], labels = []) => {
+  const normalizedLabels = labels.map(normalizeHeaderText);
+  return headers.findIndex((header) => normalizedLabels.includes(normalizeHeaderText(header)));
+};
+
+const getMatrixValue = (row = [], index = -1) => (index >= 0 ? row[index] ?? "" : "");
+
+const buildTransportGroupedPreview = (rawData = [], upload = {}) => {
+  const topHeaders = rawData[0] || [];
+  const serviceNameIndex = findHeaderIndex(topHeaders, ["Service Name"]);
+  const supplierNameIndex = findHeaderIndex(topHeaders, ["Supplier Name"]);
+  const vehicleTypeIndex = findHeaderIndex(topHeaders, ["Vehicle Type"]);
+  const usageTypeIndex = findHeaderIndex(topHeaders, ["Usage Type"]);
+  const priceIndex = findHeaderIndex(topHeaders, ["Price"]);
+  const currencyIndex = findHeaderIndex(topHeaders, ["Currency"]);
+  const countryIndex = findHeaderIndex(topHeaders, ["Country"]);
+  const cityIndex = findHeaderIndex(topHeaders, ["City"]);
+  const typeIndex = findHeaderIndex(topHeaders, ["Type"]);
+  const validFromIndex = findHeaderIndex(topHeaders, ["Valid From"]);
+  const validToIndex = findHeaderIndex(topHeaders, ["Valid To"]);
+  const descriptionIndex = findHeaderIndex(topHeaders, ["Description"]);
+  const passengerCapacityIndex = findHeaderIndex(topHeaders, ["Passenger Capacity"]);
+  const luggageCapacityIndex = findHeaderIndex(topHeaders, ["Luggage Capacity"]);
+
+  if (serviceNameIndex === -1 || usageTypeIndex === -1 || priceIndex === -1 || currencyIndex === -1) {
+    return null;
+  }
+
+  const hasGroupedTransportBlocks = rawData.slice(1).some((row, rowOffset) => {
+    const rowIndex = rowOffset + 1;
+    if (!getMatrixValue(row, serviceNameIndex)) return false;
+
+    const detailRow = rawData[rowIndex + 1] || [];
+    const priceRow = rawData[rowIndex + 2] || [];
+    const nextServiceBlank = !getMatrixValue(detailRow, serviceNameIndex);
+    const detailUsagePresent = [0, 1, 2, 3].some((offset) =>
+      Boolean(getMatrixValue(detailRow, usageTypeIndex + offset))
+    );
+    const detailPricePresent = [0, 1, 2, 3].some((offset) =>
+      Boolean(getMatrixValue(priceRow, priceIndex + offset))
+    );
+
+    return nextServiceBlank && (detailUsagePresent || detailPricePresent);
+  });
+
+  if (!hasGroupedTransportBlocks) {
+    return null;
+  }
+
+  const columns = [
+    { key: "serviceName", label: "Service Name" },
+    { key: "supplierName", label: "Supplier Name" },
+    { key: "vehicleType", label: "Vehicle Type" },
+    { key: "usagePointOneWay", label: "One Way / Airport Transfer" },
+    { key: "usagePointInterHotel", label: "Inter Hotel Transfer" },
+    { key: "usageHourlyFullDay", label: "Full Day - 80 km / 8 hours" },
+    { key: "usageHourlyHalfDay", label: "Half Day - 40 km / 4 hours" },
+    { key: "pricePointOneWay", label: "One Way / Airport Transfer", numeric: true },
+    { key: "pricePointInterHotel", label: "Inter Hotel Transfer", numeric: true },
+    { key: "priceHourlyFullDay", label: "Full Day - 80 km / 8 hours", numeric: true },
+    { key: "priceHourlyFullDayExtraKm", label: "Full Day Extra Per KM", numeric: true },
+    { key: "priceHourlyHalfDay", label: "Half Day - 40 km / 4 hours", numeric: true },
+    { key: "priceHourlyHalfDayExtraKm", label: "Half Day Extra Per KM", numeric: true },
+    { key: "currency", label: "Currency" },
+    { key: "country", label: "Country" },
+    { key: "city", label: "City" },
+    { key: "type", label: "Type" },
+    { key: "validFrom", label: "Valid From" },
+    { key: "validTo", label: "Valid To" },
+    { key: "description", label: "Description", isDesc: true },
+    { key: "passengerCapacity", label: "Passenger Capacity", numeric: true },
+    { key: "luggageCapacity", label: "Luggage Capacity", numeric: true },
+  ];
+
+  const headerRows = [
+    [
+      { label: "Service Name", rowSpan: 3 },
+      { label: "Supplier Name", rowSpan: 3 },
+      { label: "Vehicle Type", rowSpan: 3 },
+      { label: "Usage Type", colSpan: 4 },
+      { label: "Price", colSpan: 6 },
+      { label: "Currency", rowSpan: 3 },
+      { label: "Country", rowSpan: 3 },
+      { label: "City", rowSpan: 3 },
+      { label: "Type", rowSpan: 3 },
+      { label: "Valid From", rowSpan: 3 },
+      { label: "Valid To", rowSpan: 3 },
+      { label: "Description", rowSpan: 3 },
+      { label: "Passenger Capacity", rowSpan: 3 },
+      { label: "Luggage Capacity", rowSpan: 3 },
+    ],
+    [
+      { label: "Point To Point", colSpan: 2 },
+      { label: "Hourly", colSpan: 2 },
+      { label: "Point To Point", colSpan: 2 },
+      { label: "Hourly", colSpan: 4 },
+    ],
+    [
+      { label: "One Way / Airport Transfer" },
+      { label: "Inter Hotel Transfer" },
+      { label: "Full Day - 80 km / 8 hours" },
+      { label: "Half Day - 40 km / 4 hours" },
+      { label: "One Way Price" },
+      { label: "Inter Hotel Price" },
+      { label: "Full Day Price" },
+      { label: "Full Day Extra / KM" },
+      { label: "Half Day Price" },
+      { label: "Half Day Extra / KM" },
+    ],
+  ];
+
+  const inferFlatPriceTarget = (baseRow = [], detailRow = []) => {
+    const text = [
+      getMatrixValue(baseRow, serviceNameIndex),
+      getMatrixValue(baseRow, descriptionIndex),
+      getMatrixValue(baseRow, usageTypeIndex),
+      getMatrixValue(detailRow, usageTypeIndex),
+      getMatrixValue(detailRow, usageTypeIndex + 1),
+      getMatrixValue(detailRow, usageTypeIndex + 2),
+      getMatrixValue(detailRow, usageTypeIndex + 3),
+    ].join(" ").toLowerCase();
+
+    if (text.includes("half") || text.includes("4 hour") || text.includes("40 km")) return "priceHourlyHalfDay";
+    if (text.includes("full") || text.includes("8 hour") || text.includes("80 km")) return "priceHourlyFullDay";
+    if (text.includes("inter hotel")) return "pricePointInterHotel";
+    return "pricePointOneWay";
+  };
+
+  const groupedPriceColumnCount = Math.max(1, currencyIndex - priceIndex);
+  const rows = [];
+
+  for (let rowIndex = 1; rowIndex < rawData.length; rowIndex += 1) {
+    const baseRow = rawData[rowIndex] || [];
+    if (!getMatrixValue(baseRow, serviceNameIndex)) continue;
+
+    const detailRow = rawData[rowIndex + 1] || [];
+    const priceRow = rawData[rowIndex + 2] || [];
+    const rowData = {
+      _id: `${upload._id}_transport_${rows.length}`,
+      rowIndex,
+      serviceName: getMatrixValue(baseRow, serviceNameIndex),
+      supplierName: getMatrixValue(baseRow, supplierNameIndex),
+      vehicleType: getMatrixValue(baseRow, vehicleTypeIndex),
+      usagePointOneWay: getMatrixValue(detailRow, usageTypeIndex) || "One Way / Airport Transfer",
+      usagePointInterHotel: getMatrixValue(detailRow, usageTypeIndex + 1) || "Inter Hotel Transfer",
+      usageHourlyFullDay: getMatrixValue(detailRow, usageTypeIndex + 2) || "Full Day - 80 km / 8 hours",
+      usageHourlyHalfDay: getMatrixValue(detailRow, usageTypeIndex + 3) || "Half Day - 40 km / 4 hours",
+      pricePointOneWay: "",
+      pricePointInterHotel: "",
+      priceHourlyFullDay: "",
+      priceHourlyFullDayExtraKm: "",
+      priceHourlyHalfDay: "",
+      priceHourlyHalfDayExtraKm: "",
+      currency: getMatrixValue(baseRow, currencyIndex),
+      country: getMatrixValue(baseRow, countryIndex),
+      city: getMatrixValue(baseRow, cityIndex),
+      type: getMatrixValue(baseRow, typeIndex),
+      validFrom: getMatrixValue(baseRow, validFromIndex),
+      validTo: getMatrixValue(baseRow, validToIndex),
+      description: getMatrixValue(baseRow, descriptionIndex),
+      passengerCapacity: getMatrixValue(baseRow, passengerCapacityIndex),
+      luggageCapacity: getMatrixValue(baseRow, luggageCapacityIndex),
+    };
+
+    if (groupedPriceColumnCount >= 6) {
+      rowData.pricePointOneWay = getMatrixValue(priceRow, priceIndex) || getMatrixValue(baseRow, priceIndex);
+      rowData.pricePointInterHotel = getMatrixValue(priceRow, priceIndex + 1) || getMatrixValue(baseRow, priceIndex + 1);
+      rowData.priceHourlyFullDay = getMatrixValue(priceRow, priceIndex + 2) || getMatrixValue(baseRow, priceIndex + 2);
+      rowData.priceHourlyFullDayExtraKm = getMatrixValue(priceRow, priceIndex + 3) || getMatrixValue(baseRow, priceIndex + 3);
+      rowData.priceHourlyHalfDay = getMatrixValue(priceRow, priceIndex + 4) || getMatrixValue(baseRow, priceIndex + 4);
+      rowData.priceHourlyHalfDayExtraKm = getMatrixValue(priceRow, priceIndex + 5) || getMatrixValue(baseRow, priceIndex + 5);
+    } else if (groupedPriceColumnCount >= 4) {
+      rowData.pricePointOneWay = getMatrixValue(priceRow, priceIndex) || getMatrixValue(baseRow, priceIndex);
+      rowData.pricePointInterHotel = getMatrixValue(priceRow, priceIndex + 1) || getMatrixValue(baseRow, priceIndex + 1);
+      rowData.priceHourlyFullDay = getMatrixValue(priceRow, priceIndex + 2) || getMatrixValue(baseRow, priceIndex + 2);
+      rowData.priceHourlyHalfDay = getMatrixValue(priceRow, priceIndex + 3) || getMatrixValue(baseRow, priceIndex + 3);
+    } else {
+      rowData[inferFlatPriceTarget(baseRow, detailRow)] = getMatrixValue(baseRow, priceIndex);
+    }
+
+    rows.push(rowData);
+  }
+
+  if (!rows.length) return null;
+
+  return {
+    success: true,
+    category: upload.category,
+    fileName: upload.fileName,
+    headers: columns.map((column) => column.key),
+    columns,
+    headerRows,
+    rows,
+    readOnlyPreview: true,
+  };
+};
+
 const rateChangeReasonOptions = {
   blackout: "Blackout / Event Date",
   dynamic_pricing: "Dynamic Pricing",
@@ -412,6 +611,13 @@ export const viewUploadData = async (req, res) => {
     
     // Parse sheet to JSON array
     const rawData = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
+    if (String(upload.category || "").toLowerCase() === "transport") {
+      const groupedTransportPreview = buildTransportGroupedPreview(rawData, upload);
+      if (groupedTransportPreview) {
+        return res.status(200).json(groupedTransportPreview);
+      }
+    }
+
     const headers = rawData[0] || [];
     const rows = rawData.slice(1).map((row, rowIndex) => {
       const rowData = {};

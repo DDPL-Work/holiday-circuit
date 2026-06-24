@@ -292,7 +292,13 @@ return details.join(" | ");
 }
 
 if (normalizedType === "transfer") {
-if (service?.usageType) details.push(String(service.usageType).replace(/-/g, " "));
+const usageLabel = service?.transportUsageLabel || getSelectedTransportUsageOptionLabels(service)[0];
+const limitLabel = getSelectedTransportUsageLimitLabels(
+service,
+getTransportUsageLimitOptionsForKeys(getSelectedTransportUsageOptionKeys(service)),
+)[0];
+if (usageLabel || service?.usageType) details.push(usageLabel || String(service.usageType).replace(/-/g, " "));
+if (limitLabel) details.push(limitLabel);
 if (Number(service?.passengerCapacity || 0) > 0) {
 details.push(`${service.passengerCapacity} Pax`);
 } else if (Number(service?.pax || 0) > 0) {
@@ -1221,15 +1227,38 @@ const buildWhatsAppTermsSection = (items = []) => {
   });
 
   const TRANSPORT_USAGE_OPTIONS = Object.freeze([
-  { value: "point-to-point", label: "One Way", price: 2500 },
-  { value: "round-trip", label: "Two Way", price: 4500 },
-  { value: "full-day", label: "Full Day", price: 7000 },
-  { value: "half-day", label: "Half Day", price: 4000 },
+  { value: "one-way-airport-transfer", usageType: "point-to-point", label: "One Way / Airport Transfer", price: 2500 },
+  { value: "inter-hotel-transfer", usageType: "point-to-point", label: "Inter Hotel Transfer", price: 2200 },
+  { value: "full-day", usageType: "full-day", label: "Full Day", price: 7000 },
+  { value: "half-day", usageType: "half-day", label: "Half Day", price: 4000 },
   ]);
+
+
+  const TRANSPORT_USAGE_LIMIT_OPTIONS = Object.freeze({
+  "full-day": [
+  { value: "full-day-80-km", label: "80 km" },
+  { value: "full-day-8-hours", label: "8 hours" },
+  ],
+  "half-day": [
+  { value: "half-day-40-km", label: "40 km" },
+  { value: "half-day-4-hours", label: "4 hours" },
+  ],
+  });
+  
 
   const TRANSPORT_USAGE_FIXED_PRICES = Object.freeze(
   TRANSPORT_USAGE_OPTIONS.reduce((accumulator, option) => {
   accumulator[option.value] = option.price;
+  if (!accumulator[option.usageType]) {
+  accumulator[option.usageType] = option.price;
+  }
+  return accumulator;
+  }, {}),
+  );
+
+  const TRANSPORT_USAGE_OPTION_LABELS = Object.freeze(
+  TRANSPORT_USAGE_OPTIONS.reduce((accumulator, option) => {
+  accumulator[option.value] = option.label;
   return accumulator;
   }, {}),
   );
@@ -1372,6 +1401,12 @@ const buildWhatsAppTermsSection = (items = []) => {
   if (normalizedValue.includes("round") || normalizedValue.includes("two way")) {
   return "round-trip";
   }
+  if (normalizedValue.includes("one-way") || normalizedValue.includes("one way") || normalizedValue.includes("airport")) {
+  return "point-to-point";
+  }
+  if (normalizedValue.includes("inter hotel") || normalizedValue.includes("inter-hotel")) {
+  return "point-to-point";
+  }
   if (normalizedValue.includes("full")) {
   return "full-day";
   }
@@ -1383,6 +1418,100 @@ const buildWhatsAppTermsSection = (items = []) => {
   }
 
   return normalizedValue;
+  };
+
+  const normalizeTransportUsageOptionKey = (value = "") => {
+  const normalizedValue = String(value || "").trim().toLowerCase();
+  if (!normalizedValue) return "";
+  if (normalizedValue.includes("one way") || normalizedValue.includes("airport") || normalizedValue.includes("one-way")) {
+  return "one-way-airport-transfer";
+  }
+  if (normalizedValue.includes("inter hotel") || normalizedValue.includes("inter-hotel")) {
+  return "inter-hotel-transfer";
+  }
+  if (normalizedValue.includes("full day") || normalizedValue.includes("full-day") || normalizedValue === "full-day") {
+  return "full-day";
+  }
+  if (normalizedValue.includes("half day") || normalizedValue.includes("half-day") || normalizedValue === "half-day") {
+  return "half-day";
+  }
+  if (normalizedValue.includes("point") || normalizedValue === "point-to-point") {
+  return "one-way-airport-transfer";
+  }
+  return "";
+  };
+
+  const getTransportUsageOptionMeta = (value = "") => {
+  const normalizedKey = normalizeTransportUsageOptionKey(value) || "one-way-airport-transfer";
+  return TRANSPORT_USAGE_OPTIONS.find((option) => option.value === normalizedKey) || TRANSPORT_USAGE_OPTIONS[0];
+  };
+
+  const getTransportUsageOptionKey = (service = {}) => {
+  const explicitKey = normalizeTransportUsageOptionKey(service?.transportUsageOptionKey);
+  if (explicitKey) return explicitKey;
+
+  const text = [
+  service?.transportUsageLabel,
+  service?.title,
+  service?.serviceName,
+  service?.description,
+  service?.desc,
+  ].filter(Boolean).join(" ");
+
+  return (
+  normalizeTransportUsageOptionKey(text) ||
+  normalizeTransportUsageOptionKey(service?.usageType) ||
+  "one-way-airport-transfer"
+  );
+  };
+
+  const getSelectedTransportUsageOptionKeys = (service = {}) => [getTransportUsageOptionKey(service)].filter(Boolean);
+
+  const getSelectedTransportUsageOptionLabels = (service = {}) =>
+  getSelectedTransportUsageOptionKeys(service)
+  .map((key) => TRANSPORT_USAGE_OPTION_LABELS[key] || getTransportUsageOptionMeta(key).label)
+  .filter(Boolean);
+
+  const getTransportUsageLimitOptionsForKeys = (usageKeys = []) =>
+  usageKeys.flatMap((key) => TRANSPORT_USAGE_LIMIT_OPTIONS[key] || []);
+
+  const getDefaultTransportUsageLimitKeyValue = () =>
+  "";
+
+  const getSelectedTransportUsageLimitLabels = (...args) => {
+  const availableLimitOptions = Array.isArray(args[1])
+  ? args[1]
+  : Array.isArray(args[0])
+  ? args[0]
+  : [];
+  if (!availableLimitOptions.length) return [];
+  return [availableLimitOptions.map((option) => option.label).filter(Boolean).join(" / ")].filter(Boolean);
+  };
+
+  const getTransportUsageLimitText = (usageKey = "", separator = " / ") =>
+  getTransportUsageLimitOptionsForKeys([usageKey])
+  .map((option) => option.label)
+  .join(separator);
+
+  const stripTransportUsageSuffix = (title = "") => {
+  let nextTitle = String(title || "").trim();
+  const suffixes = TRANSPORT_USAGE_OPTIONS.flatMap((option) => {
+  const limitText = getTransportUsageLimitText(option.value);
+  return [
+  option.label,
+  limitText ? `${option.label} - ${limitText}` : "",
+  limitText ? `${option.label} ${limitText}` : "",
+  ].filter(Boolean);
+  });
+
+  suffixes
+  .sort((left, right) => right.length - left.length)
+  .forEach((suffix) => {
+  const escapedSuffix = suffix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  nextTitle = nextTitle.replace(new RegExp(`\\s*-\\s*${escapedSuffix}\\s*$`, "i"), "").trim();
+  });
+
+  return nextTitle || String(title || "").trim();
   };
 
   const getFixedHotelRoomTypePrice = (roomType = "") =>
@@ -1449,16 +1578,22 @@ const buildWhatsAppTermsSection = (items = []) => {
   };
 
   const getTransportUsageOptionDisplayPrice = (service = {}, usageType = "") => {
-  const normalizedUsageType = normalizeTransportUsageValue(usageType);
+  const selectedOption = getTransportUsageOptionMeta(usageType);
+  const selectedPriceFromService = Number(service?.transportUsagePrices?.[selectedOption.value] || 0);
+
+  if (selectedPriceFromService > 0) {
+  return roundCurrencyAmount(selectedPriceFromService);
+  }
+
   const baseline = service.editBaseline || buildServiceEditBaseline(service);
-  const baselineUsageType = normalizeTransportUsageValue(baseline.usageType);
+  const baselineOption = getTransportUsageOptionMeta(
+  baseline.transportUsageOptionKey || baseline.transportUsageLabel || baseline.usageType,
+  );
   const baselineRate = roundCurrencyAmount(baseline.rate ?? service.rate ?? 0);
-  const baselineFixedPrice = getFixedTransportUsagePrice(baselineUsageType);
-  const selectedFixedPrice = getFixedTransportUsagePrice(normalizedUsageType);
+  const baselineFixedPrice = baselineOption?.price || getFixedTransportUsagePrice(baseline.usageType);
+  const selectedFixedPrice = selectedOption?.price || getFixedTransportUsagePrice(selectedOption?.usageType);
 
   if (
-  normalizedUsageType &&
-  baselineUsageType &&
   baselineRate > 0 &&
   baselineFixedPrice > 0 &&
   selectedFixedPrice > 0
@@ -1542,6 +1677,29 @@ const buildWhatsAppTermsSection = (items = []) => {
   usageType: normalizeTransportUsageValue(service.usageType),
   rate: Math.max(0, roundCurrencyAmount(baselineRate + usageDelta)),
   currency: normalizeCurrencyCode(fallbackCurrency || service.currency || "INR"),
+  };
+  };
+
+  const applyTransportUsageOptionPricing = (service = {}, optionKey = "", fallbackRate = 0, fallbackCurrency = "INR") => {
+  const option = getTransportUsageOptionMeta(optionKey);
+  const availableLimitOptions = getTransportUsageLimitOptionsForKeys([option.value]);
+  const validLimitKeySet = new Set(availableLimitOptions.map((item) => item.value));
+  const transportUsageLimitOptionKey = String(service.transportUsageLimitOptionKey || "")
+  .split(",")
+  .map((key) => key.trim())
+  .filter((key) => key && validLimitKeySet.has(key))
+  .slice(0, 1)
+  .join("");
+
+  return {
+  ...service,
+  usageType: option.usageType,
+  transportUsageOptionKey: option.value,
+  transportUsageLabel: option.label,
+  transportUsageLimitOptionKey,
+  rate: getTransportUsageOptionDisplayPrice(service, option.value) || option.price || fallbackRate,
+  currency: normalizeCurrencyCode(fallbackCurrency || service.currency || "INR"),
+  useStoredPricing: false,
   };
   };
 
@@ -2119,6 +2277,8 @@ const buildWhatsAppTermsSection = (items = []) => {
   pax: Number(service.pax || 1),
   rooms: Number(service.rooms || 1),
   usageType: normalizeTransportUsageValue(service.usageType),
+  transportUsageOptionKey: getTransportUsageOptionKey(service),
+  transportUsageLimitOptionKey: String(service.transportUsageLimitOptionKey || ""),
   roomCategory: normalizeComparisonTextValue(normalizedRoomCategory),
   roomType: normalizeComparisonTextValue(resolvedRoomType),
   roomTypeOptionRate: roundCurrencyAmount(
@@ -2207,11 +2367,21 @@ const buildWhatsAppTermsSection = (items = []) => {
   pushEdit(
   "usageType",
   "Usage",
+  getSelectedTransportUsageOptionLabels(service)[0] ||
   String(service.usageType || "")
   .replace(/-/g, " ")
-  .replace(/\b\w/g, (char) => char.toUpperCase()) || "Updated",
+  .replace(/\b\w/g, (char) => char.toUpperCase()) ||
+  "Updated",
   "info",
   );
+  }
+
+  const activeLimitOptions = getTransportUsageLimitOptionsForKeys(getSelectedTransportUsageOptionKeys(service));
+  const activeLimitLabel = getSelectedTransportUsageLimitLabels(service, activeLimitOptions)[0];
+  const baselineLimitLabel = getSelectedTransportUsageLimitLabels(baseline, activeLimitOptions)[0];
+
+  if (activeLimitLabel && activeLimitLabel !== baselineLimitLabel) {
+  pushEdit("transportUsageLimitOptionKey", "Limit", activeLimitLabel, "info");
   }
   }
 
@@ -2675,8 +2845,8 @@ const buildWhatsAppTermsSection = (items = []) => {
       const [tourismChecked, setTourismChecked] = useState(false);
 
       // manual override
-      const [gstAmount, setGstAmount] = useState("");
-      const [tcsAmount, setTcsAmount] = useState("");
+      const [, setGstAmount] = useState("");
+      const [, setTcsAmount] = useState("");
       const [tourismAmount, setTourismAmount] = useState("");
 
       // quotation
@@ -2715,6 +2885,10 @@ const buildWhatsAppTermsSection = (items = []) => {
       const backgroundRatesRefreshRef = useRef({
       inFlight: false,
       lastStartedAt: 0,
+      });
+      const draftServicesAutosaveRef = useRef({
+      ready: false,
+      signature: "",
       });
       const [quotationId, setQuotationId] = useState("");
       const [loadedQuotationDraft, setLoadedQuotationDraft] = useState(null);
@@ -3127,9 +3301,14 @@ const buildWhatsAppTermsSection = (items = []) => {
       const nextTcsAmount = roundCurrencyAmount(quotation?.pricing?.tax?.tcs?.amount || 0);
       const nextTourismAmount = roundCurrencyAmount(quotation?.pricing?.tax?.tourismFee?.amount || 0);
       const nextTotalTax = roundCurrencyAmount(quotation?.pricing?.tax?.totalTax || 0);
-      const hasGst = nextGstAmount > 0 || nextGstPercent > 0;
-      const hasTcs = nextTcsAmount > 0 || nextTcsPercent > 0;
-      const hasTourism = nextTourismAmount > 0;
+      const draftTaxableQuoteValue = roundCurrencyAmount(
+      Number(quotation?.pricing?.subTotal || 0) +
+      Number(quotation?.pricing?.packageTemplateAmount || 0),
+      );
+      const hasTaxableQuoteValue = draftTaxableQuoteValue > 0;
+      const hasGst = hasTaxableQuoteValue && (nextGstAmount > 0 || nextGstPercent > 0);
+      const hasTcs = hasTaxableQuoteValue && (nextTcsAmount > 0 || nextTcsPercent > 0);
+      const hasTourism = hasTaxableQuoteValue && nextTourismAmount > 0;
 
       setGstChecked(hasGst);
       setTcsChecked(hasTcs);
@@ -3320,6 +3499,12 @@ const buildWhatsAppTermsSection = (items = []) => {
       country: service.country || "",
       vehicleType: service.vehicleType || "",
       usageType: service.usageType || "",
+      transportUsageOptionKey: service.transportUsageOptionKey || "",
+      transportUsageLabel: service.transportUsageLabel || "",
+      transportUsageLimitOptionKey: service.transportUsageLimitOptionKey || "",
+      extraPerKmRate: Number(service.extraPerKmRate || 0),
+      fullDayExtraPerKmRate: Number(service.fullDayExtraPerKmRate || 0),
+      halfDayExtraPerKmRate: Number(service.halfDayExtraPerKmRate || 0),
       passengerCapacity: service.passengerCapacity || 0,
       luggageCapacity: service.luggageCapacity || 0,
       rate: quoteBaseRate,
@@ -3415,6 +3600,21 @@ const buildWhatsAppTermsSection = (items = []) => {
       ].join("|");
 
       const doServicesRepresentSameSource = (draftService = {}, currentService = {}) => {
+      const draftType = normalizeServiceFilterType(draftService?.type);
+      const currentType = normalizeServiceFilterType(currentService?.type);
+      const draftUsageOptionKey = normalizeTransportUsageOptionKey(draftService?.transportUsageOptionKey || draftService?.transportUsageLabel);
+      const currentUsageOptionKey = normalizeTransportUsageOptionKey(currentService?.transportUsageOptionKey || currentService?.transportUsageLabel);
+
+      if (
+      draftType === "transfer" &&
+      currentType === "transfer" &&
+      draftUsageOptionKey &&
+      currentUsageOptionKey &&
+      draftUsageOptionKey !== currentUsageOptionKey
+      ) {
+      return false;
+      }
+
       const draftSourceId = normalizeDraftServiceId(draftService?.serviceId || draftService?.dbServiceId);
       const draftDocumentId = normalizeDraftServiceId(draftService?._id || draftService?.draftServiceId);
       const currentSourceId = normalizeDraftServiceId(currentService?.serviceId || currentService?.id);
@@ -3756,7 +3956,9 @@ const buildWhatsAppTermsSection = (items = []) => {
 
       return ({
       draftServiceId: service.dbServiceId || "",
-      serviceId: service.custom ? service.serviceId || "" : service.serviceId || service.id,
+      serviceId: service.custom
+      ? service.serviceId || ""
+      : service.transportUsageServiceIds?.[getTransportUsageOptionKey(service)] || service.serviceId || service.id,
       dmcId: resolveDmcOwner(service).dmcId,
       dmcName: resolveDmcOwner(service).dmcName,
       supplierId: service.supplierId || "",
@@ -3780,6 +3982,12 @@ const buildWhatsAppTermsSection = (items = []) => {
       passengerCapacity: Number(service.passengerCapacity || 0),
       luggageCapacity: Number(service.luggageCapacity || 0),
       usageType: service.usageType || "",
+      transportUsageOptionKey: service.transportUsageOptionKey || getTransportUsageOptionKey(service),
+      transportUsageLabel: service.transportUsageLabel || getSelectedTransportUsageOptionLabels(service)[0] || "",
+      transportUsageLimitOptionKey: service.transportUsageLimitOptionKey || "",
+      extraPerKmRate: Number(service.extraPerKmRate || 0),
+      fullDayExtraPerKmRate: Number(service.fullDayExtraPerKmRate || 0),
+      halfDayExtraPerKmRate: Number(service.halfDayExtraPerKmRate || 0),
       days: Number(service.days || 1),
       pax: servicePax,
       currency: normalizeCurrencyCode(service.currency || "INR"),
@@ -3851,6 +4059,10 @@ const buildWhatsAppTermsSection = (items = []) => {
       nights: previous.nights || service.nights,
       days: previous.days || service.days,
       pax: previous.pax || service.pax,
+      usageType: previous.usageType || service.usageType,
+      transportUsageOptionKey: previous.transportUsageOptionKey || service.transportUsageOptionKey,
+      transportUsageLabel: previous.transportUsageLabel || service.transportUsageLabel,
+      transportUsageLimitOptionKey: previous.transportUsageLimitOptionKey || service.transportUsageLimitOptionKey,
       adults: previous.adults ?? service.adults,
       children: previous.children ?? service.children,
       infants: previous.infants ?? service.infants,
@@ -3928,6 +4140,12 @@ const buildWhatsAppTermsSection = (items = []) => {
       country: s.country || "",
       vehicleType: s.vehicleType || "",
       usageType: s.usageType || "",
+      transportUsageOptionKey: s.transportUsageOptionKey || "",
+      transportUsageLabel: s.transportUsageLabel || "",
+      transportUsageLimitOptionKey: s.transportUsageLimitOptionKey || "",
+      extraPerKmRate: Number(s.extraPerKmRate || 0),
+      fullDayExtraPerKmRate: Number(s.fullDayExtraPerKmRate || 0),
+      halfDayExtraPerKmRate: Number(s.halfDayExtraPerKmRate || 0),
       passengerCapacity: s.passengerCapacity || 0,
       luggageCapacity: s.luggageCapacity || 0,
       rate: useContractedServiceTotal ? contractedFullServiceAmount : resolvedRate,
@@ -3978,7 +4196,106 @@ const buildWhatsAppTermsSection = (items = []) => {
       icon: meta.icon,
       color: meta.color
       };
-      }), [order?.numberOfAdults, order?.numberOfChildren]);
+      }).reduce((accumulator, service) => {
+      const normalizedType = normalizeServiceFilterType(service.type);
+
+      if (normalizedType !== "transfer") {
+      accumulator.push(service);
+      return accumulator;
+      }
+
+      const optionKey = getTransportUsageOptionKey(service);
+      const option = getTransportUsageOptionMeta(optionKey);
+      const baseTitle = stripTransportUsageSuffix(service.title);
+      const groupKey = [
+      normalizeComparisonTextValue(baseTitle),
+      normalizeComparisonTextValue(service.city),
+      normalizeComparisonTextValue(service.country),
+      normalizeComparisonTextValue(service.vehicleType),
+      Number(service.passengerCapacity || 0),
+      normalizeComparisonTextValue(service.supplierId || service.dmcId || service.supplierName || service.dmcName),
+      ].join("|");
+      const price = roundCurrencyAmount(service.rate || service.price || 0);
+      const existingIndex = accumulator.findIndex(
+      (item) => item.__transportGroupKey === groupKey,
+      );
+
+      if (existingIndex === -1) {
+      const transportUsagePrices = price > 0 ? { [option.value]: price } : {};
+      const transportUsageServiceIds = { [option.value]: service.serviceId || service.id };
+      const normalizedService = {
+      ...service,
+      __transportGroupKey: groupKey,
+      title: baseTitle,
+      desc: String(service.desc || "")
+      .split("|")
+      .map((item) => item.trim())
+      .filter((item) => item && !normalizeTransportUsageOptionKey(item))
+      .join(" | "),
+      usageType: option.usageType,
+      transportUsageOptionKey: option.value,
+      transportUsageLabel: option.label,
+      transportUsageLimitOptionKey:
+      service.transportUsageLimitOptionKey || getDefaultTransportUsageLimitKeyValue(option.value),
+      transportUsagePrices,
+      transportUsageServiceIds,
+      rate: price || service.rate,
+      };
+
+      normalizedService.editBaseline = buildServiceEditBaseline({
+      ...normalizedService,
+      price: normalizedService.rate,
+      rate: normalizedService.rate,
+      });
+      accumulator.push(normalizedService);
+      return accumulator;
+      }
+
+      const existingService = accumulator[existingIndex];
+      const nextTransportUsagePrices = {
+      ...(existingService.transportUsagePrices || {}),
+      ...(price > 0 ? { [option.value]: price } : {}),
+      };
+      const nextTransportUsageServiceIds = {
+      ...(existingService.transportUsageServiceIds || {}),
+      [option.value]: service.serviceId || service.id,
+      };
+      const shouldPreferPointToPoint =
+      existingService.transportUsageOptionKey !== "one-way-airport-transfer" &&
+      option.value === "one-way-airport-transfer";
+      const selectedOption = shouldPreferPointToPoint
+      ? option
+      : getTransportUsageOptionMeta(existingService.transportUsageOptionKey);
+      const selectedRate = shouldPreferPointToPoint
+      ? price || existingService.rate
+      : existingService.rate;
+
+      accumulator[existingIndex] = {
+      ...existingService,
+      usageType: selectedOption.usageType,
+      transportUsageOptionKey: selectedOption.value,
+      transportUsageLabel: selectedOption.label,
+      transportUsageLimitOptionKey: shouldPreferPointToPoint
+      ? getDefaultTransportUsageLimitKeyValue(selectedOption.value)
+      : existingService.transportUsageLimitOptionKey,
+      transportUsagePrices: nextTransportUsagePrices,
+      transportUsageServiceIds: nextTransportUsageServiceIds,
+      rate: selectedRate,
+      extraPerKmRate: Number(existingService.extraPerKmRate || service.extraPerKmRate || 0),
+      fullDayExtraPerKmRate: Number(existingService.fullDayExtraPerKmRate || service.fullDayExtraPerKmRate || 0),
+      halfDayExtraPerKmRate: Number(existingService.halfDayExtraPerKmRate || service.halfDayExtraPerKmRate || 0),
+      editBaseline: buildServiceEditBaseline({
+      ...existingService,
+      usageType: selectedOption.usageType,
+      transportUsageOptionKey: selectedOption.value,
+      transportUsageLabel: selectedOption.label,
+      rate: selectedRate,
+      price: selectedRate,
+      }),
+      };
+
+      return accumulator;
+      }, []), [order?.numberOfAdults, order?.numberOfChildren]);
 
       const loadServices = useCallback(async ({ preserveCurrent = false, showLoader = !preserveCurrent } = {}) => {
       if (showLoader) {
@@ -4163,6 +4480,12 @@ return true;
       pax: data.pax || 1,
       vehicleType: data.vehicleType || "",
       usageType: data.usageType || "point-to-point",
+      transportUsageOptionKey: data.transportUsageOptionKey || getTransportUsageOptionKey(data),
+      transportUsageLabel: data.transportUsageLabel || getSelectedTransportUsageOptionLabels(data)[0] || "",
+      transportUsageLimitOptionKey: data.transportUsageLimitOptionKey || "",
+      extraPerKmRate: Number(data.extraPerKmRate || 0),
+      fullDayExtraPerKmRate: Number(data.fullDayExtraPerKmRate || 0),
+      halfDayExtraPerKmRate: Number(data.halfDayExtraPerKmRate || 0),
       passengerCapacity: data.passengerCapacity || 0,
       luggageCapacity: data.luggageCapacity || 0,
       price: data.rate,
@@ -4213,6 +4536,12 @@ return true;
       country: s.country || "",
       vehicleType: s.vehicleType || "",
       usageType: s.usageType || "",
+      transportUsageOptionKey: s.transportUsageOptionKey || "",
+      transportUsageLabel: s.transportUsageLabel || "",
+      transportUsageLimitOptionKey: s.transportUsageLimitOptionKey || "",
+      extraPerKmRate: Number(s.extraPerKmRate || 0),
+      fullDayExtraPerKmRate: Number(s.fullDayExtraPerKmRate || 0),
+      halfDayExtraPerKmRate: Number(s.halfDayExtraPerKmRate || 0),
       passengerCapacity: s.passengerCapacity || 0,
       luggageCapacity: s.luggageCapacity || 0,
       rate: resolvedRate,
@@ -4443,6 +4772,7 @@ return true;
       const packageTemplateAmount = roundCurrencyAmount(selectedPackageTemplate?.price || 0);
 
       const opsMarkupBasisAmount = servicesTotal + packageTemplateAmount;
+      const hasTaxableQuoteValue = roundCurrencyAmount(opsMarkupBasisAmount) > 0;
 
       // OPS markup
       let opsMarkup = 0;
@@ -4453,8 +4783,9 @@ return true;
       opsMarkup = roundCurrencyAmount(fixedMargin || 0);
       }
 
-      const taxableAmountForTaxes =
-      opsMarkupBasisAmount + opsMarkup + serviceFeeAmount + handlingFeeAmount;
+      const taxableAmountForTaxes = hasTaxableQuoteValue
+      ? opsMarkupBasisAmount + opsMarkup + serviceFeeAmount + handlingFeeAmount
+      : 0;
       const draftGstFinal = draftGstChecked
       ? roundCurrencyAmount((taxableAmountForTaxes * Number(draftGstPercent || 0)) / 100)
       : 0;
@@ -4463,7 +4794,7 @@ return true;
       ? roundCurrencyAmount((taxableAmountForTaxes * Number(draftTcsPercent || 0)) / 100)
       : 0;
 
-      const draftTourismFinal = draftTourismChecked
+      const draftTourismFinal = draftTourismChecked && taxableAmountForTaxes > 0
       ? roundCurrencyAmount(draftTourismAmount || DEFAULT_TOURISM_AMOUNT)
       : 0;
 
@@ -4471,23 +4802,38 @@ return true;
       draftGstFinal + draftTcsFinal + draftTourismFinal,
       );
 
-      useEffect(() => {
-      const nextAppliedTaxTotal =
-      (gstChecked ? Number(gstAmount || 0) : 0) +
-      (tcsChecked ? Number(tcsAmount || 0) : 0) +
-      (tourismChecked ? Number(tourismAmount || 0) : 0);
+      const appliedGstFinal = gstChecked
+      ? roundCurrencyAmount((taxableAmountForTaxes * Number(gstPercent || 0)) / 100)
+      : 0;
 
-      setAppliedTaxTotal(roundCurrencyAmount(nextAppliedTaxTotal));
-      }, [gstAmount, gstChecked, tcsAmount, tcsChecked, tourismAmount, tourismChecked]);
+      const appliedTcsFinal = tcsChecked
+      ? roundCurrencyAmount((taxableAmountForTaxes * Number(tcsPercent || 0)) / 100)
+      : 0;
+
+      const appliedTourismFinal = tourismChecked && taxableAmountForTaxes > 0
+      ? roundCurrencyAmount(tourismAmount || DEFAULT_TOURISM_AMOUNT)
+      : 0;
+
+      const currentAppliedTaxTotal = roundCurrencyAmount(
+      appliedGstFinal + appliedTcsFinal + appliedTourismFinal,
+      );
+
+      useEffect(() => {
+      setAppliedTaxTotal(currentAppliedTaxTotal);
+      }, [currentAppliedTaxTotal]);
 
       // OPS charges
       const opsChargesTotal = roundCurrencyAmount(serviceFeeAmount + handlingFeeAmount);
       // markup amount (OPS charges + markup + tax)
-      const markupAmount = roundCurrencyAmount(opsChargesTotal + opsMarkup + appliedTaxTotal);
+      const markupAmount = roundCurrencyAmount(opsChargesTotal + opsMarkup + currentAppliedTaxTotal);
 
       // total amount
       const totalAmount = roundCurrencyAmount(opsMarkupBasisAmount + markupAmount);
       const selectedServices = selectedServicesWithPricing;
+      const selectedServicesDraftSignature = useMemo(
+      () => JSON.stringify(selectedServices.map((service) => buildDraftServicePayload(service))),
+      [selectedServices],
+      );
       const visibleSelectedServices = useMemo(() => {
       if (selectedServicesModalScope === "single" && selectedServicesModalTargetId) {
       return selectedServices.filter((service) => service.id === selectedServicesModalTargetId);
@@ -4526,13 +4872,11 @@ return true;
       serviceCharge: roundCurrencyAmount(serviceCharge || 0),
       handlingFee: roundCurrencyAmount(handlingFee || 0),
       tax: {
-      gstAmount: gstChecked ? roundCurrencyAmount(gstAmount || draftGstFinal || 0) : 0,
+      gstAmount: appliedGstFinal,
       gstPercent: gstChecked ? Number(gstPercent || 0) : 0,
-      tcsAmount: tcsChecked ? roundCurrencyAmount(tcsAmount || draftTcsFinal || 0) : 0,
+      tcsAmount: appliedTcsFinal,
       tcsPercent: tcsChecked ? Number(tcsPercent || 0) : 0,
-      tourismAmount: tourismChecked
-      ? roundCurrencyAmount(tourismAmount || draftTourismFinal || 0)
-      : 0,
+      tourismAmount: appliedTourismFinal,
       },
       };
 
@@ -4543,6 +4887,45 @@ return true;
 
       return data?.quotation || null;
       };
+
+      useEffect(() => {
+      if (!quotationId || !draftHydrated || servicesLoading || isInvoiceRequestedStage) {
+      draftServicesAutosaveRef.current = { ready: false, signature: "" };
+      return undefined;
+      }
+
+      if (!draftServicesAutosaveRef.current.ready) {
+      draftServicesAutosaveRef.current = {
+      ready: true,
+      signature: selectedServicesDraftSignature,
+      };
+      return undefined;
+      }
+
+      if (draftServicesAutosaveRef.current.signature === selectedServicesDraftSignature) {
+      return undefined;
+      }
+
+      const timer = window.setTimeout(async () => {
+      try {
+      await persistQuotationDraft();
+      draftServicesAutosaveRef.current.signature = selectedServicesDraftSignature;
+      } catch (error) {
+      console.error("Failed to auto-save quotation services", error);
+      }
+      }, 300);
+
+      return () => window.clearTimeout(timer);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      }, [
+      currentAppliedTaxTotal,
+      draftHydrated,
+      isInvoiceRequestedStage,
+      quotationId,
+      selectedServicesDraftSignature,
+      servicesLoading,
+      totalAmount,
+      ]);
 
       const resolveQuotationQueryId = (quotation) => {
       const quotationQueryId = quotation?.queryId;
@@ -4825,11 +5208,11 @@ return true;
       serviceCharge: roundCurrencyAmount(serviceCharge || 0),
       handlingFee: roundCurrencyAmount(handlingFee || 0),
       tax: {
-      gstAmount: gstChecked ? roundCurrencyAmount(gstAmount || draftGstFinal || 0) : 0,
+      gstAmount: appliedGstFinal,
       gstPercent: gstChecked ? Number(gstPercent || 0) : 0,
-      tcsAmount: tcsChecked ? roundCurrencyAmount(tcsAmount || draftTcsFinal || 0) : 0,
+      tcsAmount: appliedTcsFinal,
       tcsPercent: tcsChecked ? Number(tcsPercent || 0) : 0,
-      tourismAmount: roundCurrencyAmount(tourismAmount || draftTourismFinal || 0)
+      tourismAmount: appliedTourismFinal
       }
       };
 
@@ -5265,6 +5648,26 @@ roleText.includes("\"role\":\"admin\"")
       return resolveHotelVariantSelection(prev, service, field, value);
       }
 
+      if ((service.type === "transfer" || service.type === "car") && field === "transportUsageOptionKey") {
+      return applyTransportUsageOptionPricing(
+      service,
+      value,
+      service.rate,
+      service.currency,
+      );
+      }
+
+      if ((service.type === "transfer" || service.type === "car") && field === "transportUsageLimitOptionKey") {
+      const availableLimitKeys = getTransportUsageLimitOptionsForKeys(getSelectedTransportUsageOptionKeys(service))
+      .map((option) => option.value);
+      const currentValue = String(service.transportUsageLimitOptionKey || "")
+      .split(",")
+      .map((key) => key.trim())
+      .find((key) => availableLimitKeys.includes(key)) || "";
+      const nextValue = currentValue === value ? "" : availableLimitKeys.includes(value) ? value : "";
+      return { ...service, transportUsageLimitOptionKey: nextValue, useStoredPricing: false };
+      }
+
       if ((service.type === "transfer" || service.type === "car") && field === "usageType") {
       return applyFixedTransportUsagePricing(
       { ...service, usageType: normalizeTransportUsageValue(value), useStoredPricing: false },
@@ -5395,6 +5798,17 @@ roleText.includes("\"role\":\"admin\"")
         ? "mx-auto max-w-2xl" : "" }`}>
         {servicesToRender.map((service) => {
         const serviceEdits = getSelectedServiceQuotationEdits(service);
+        const selectedTransportUsageLabels =
+        normalizeServiceFilterType(service.type) === "transfer"
+        ? getSelectedTransportUsageOptionLabels(service)
+        : [];
+        const selectedTransportUsageLimitLabels =
+        normalizeServiceFilterType(service.type) === "transfer"
+        ? getSelectedTransportUsageLimitLabels(
+        service,
+        getTransportUsageLimitOptionsForKeys(getSelectedTransportUsageOptionKeys(service)),
+        )
+        : [];
         const serviceIncludedItems = getSelectedServiceIncludedItems(service);
         const isSingleServiceModalView =
         selectedServicesModalScope === "single" && servicesToRender.length === 1;
@@ -5531,6 +5945,41 @@ roleText.includes("\"role\":\"admin\"")
                       iconColor="text-amber-400"
                       />
                       )}
+
+                      {selectedTransportUsageLabels.map((label) => (
+                      <Chip
+                        key={`${service.id}-usage-${label}`}
+                        icon={( <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                          strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M10 17h4V5H2v12h3" />
+                          <path d="M20 17h2v-5l-3-4h-5v9h1" />
+                          <circle cx="7.5" cy="17.5" r="2.5" />
+                          <circle cx="17.5" cy="17.5" r="2.5" />
+                          </svg>
+                          )}
+                        value={label}
+                        accent="text-violet-200"
+                        iconColor="text-violet-400"
+                        />
+                        ))}
+
+                      {selectedTransportUsageLimitLabels.map((label) => (
+                      <Chip
+                        key={`${service.id}-limit-${label}`}
+                        icon={( <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                          strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M4 19.5V4.5" />
+                          <path d="M8 19.5V4.5" />
+                          <path d="M12 19.5V4.5" />
+                          <path d="M16 19.5V4.5" />
+                          <path d="M20 19.5V4.5" />
+                          </svg>
+                          )}
+                        value={label}
+                        accent="text-amber-200"
+                        iconColor="text-amber-400"
+                        />
+                        ))}
 
                       {(service.type === "transfer" || service.type === "car") && Number(service.days || 0) > 0 && (
                       <Chip icon={( <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -6816,6 +7265,8 @@ roleText.includes("\"role\":\"admin\"")
                       </div>
                     </div>
                   </div>
+
+                  
                   {/* Service Card */}
                   {servicesLoading ? (
                     <div className="rounded-2xl border border-dashed border-[#2a2a2a] bg-[#0b0b0b] px-4 py-8 text-center">
@@ -6955,6 +7406,17 @@ roleText.includes("\"role\":\"admin\"")
                   */}
                   {selectedServices.map((service) => {
   const serviceEdits = getSelectedServiceQuotationEdits(service);
+  const selectedTransportUsageLabels =
+    normalizeServiceFilterType(service.type) === "transfer"
+      ? getSelectedTransportUsageOptionLabels(service)
+      : [];
+  const selectedTransportUsageLimitLabels =
+    normalizeServiceFilterType(service.type) === "transfer"
+      ? getSelectedTransportUsageLimitLabels(
+        service,
+        getTransportUsageLimitOptionsForKeys(getSelectedTransportUsageOptionKeys(service)),
+      )
+      : [];
 
   // ── Chip factory — every chip gets identical height + padding ──────────
   const Chip = ({ icon, label, value, accent = "text-slate-300", iconColor = "text-slate-500" }) => (
@@ -7081,6 +7543,36 @@ roleText.includes("\"role\":\"admin\"")
               iconColor="text-amber-400"
             />
           )}
+
+          {/* Transfer: selected usage */}
+          {selectedTransportUsageLabels.map((label) => (
+            <Chip
+              key={`${service.id}-usage-${label}`}
+              icon={
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M10 17h4V5H2v12h3"/><path d="M20 17h2v-5l-3-4h-5v9h1"/><circle cx="7.5" cy="17.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/>
+                </svg>
+              }
+              value={label}
+              accent="text-violet-200"
+              iconColor="text-violet-400"
+            />
+          ))}
+
+          {/* Transfer: selected limit */}
+          {selectedTransportUsageLimitLabels.map((label) => (
+            <Chip
+              key={`${service.id}-limit-${label}`}
+              icon={
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M4 19.5V4.5"/><path d="M8 19.5V4.5"/><path d="M12 19.5V4.5"/><path d="M16 19.5V4.5"/><path d="M20 19.5V4.5"/>
+                </svg>
+              }
+              value={label}
+              accent="text-amber-200"
+              iconColor="text-amber-400"
+            />
+          ))}
 
           {/* Transfer: days */}
           {(service.type === "transfer" || service.type === "car") && Number(service.days || 0) > 0 && (
@@ -8186,6 +8678,7 @@ const Service = ({
     : convertAmountToInr(total, currencyCode, exchangeRates);
   const baseRateInInr = convertAmountToInr(baseRateDisplayValue, currencyCode, exchangeRates);
   const isForeignCurrency = currencyCode !== "INR";
+
   const hotelVariantOptions = useMemo(
     () => getHotelVariantOptions(allServices, service),
     [allServices, service],
@@ -8208,10 +8701,38 @@ const Service = ({
     return val.replace("-", " ").replace(/\b\w/g, (c) => c.toUpperCase());
   };
 
-  const amenities = (service.desc || "")
+  const rawAmenities = (service.desc || "")
     .split(/,|\||\n/)
     .map((s) => s.trim())
     .filter(Boolean);
+  const isTransportService = normalizeServiceFilterType(service.type) === "transfer";
+  const selectedTransportUsageKeys = getSelectedTransportUsageOptionKeys(service);
+  const selectedTransportUsageLabels = isTransportService ? getSelectedTransportUsageOptionLabels(service) : [];
+  const selectedTransportUsageLimitOptions = getTransportUsageLimitOptionsForKeys(selectedTransportUsageKeys);
+  const selectedTransportUsageLimitLabels = isTransportService
+    ? getSelectedTransportUsageLimitLabels(service, selectedTransportUsageLimitOptions)
+    : [];
+  const selectedTransportUsageKey = selectedTransportUsageKeys[0] || "one-way-airport-transfer";
+  const selectedTransportLimitSummary = selectedTransportUsageLimitLabels[0] || "";
+  const selectedTransportExtraKmRate =
+    selectedTransportUsageKey === "full-day"
+      ? Number(service.fullDayExtraPerKmRate || service.extraPerKmRate || 0)
+      : selectedTransportUsageKey === "half-day"
+        ? Number(service.halfDayExtraPerKmRate || service.extraPerKmRate || 0)
+        : 0;
+  const selectedTransportLimitNoteLabel =
+    selectedTransportUsageKey === "full-day"
+      ? "Full Day"
+      : selectedTransportUsageKey === "half-day"
+        ? "Half Day"
+        : "";
+  const amenities = isTransportService
+    ? [
+      ...rawAmenities.filter((item) => !normalizeTransportUsageOptionKey(item)),
+      ...selectedTransportUsageLabels,
+      ...selectedTransportUsageLimitLabels,
+    ]
+    : rawAmenities;
 
   /* ── shared micro-styles ── */
   const selectCls =
@@ -8301,7 +8822,7 @@ const Service = ({
       initial="hidden"
       animate="visible"
       variants={serviceCardVariants}
-      className={`scroll-mt-28 mb-3 rounded-2xl border transition-all duration-200 overflow-hidden
+      className={`scroll-mt-28 mb-3 rounded-2xl border transition-all duration-200
         ${isEditorFocused ? "ring-2 ring-sky-400/60 ring-offset-2 ring-offset-black" : ""}
         ${service.checked
           ? "border-yellow-500/50 bg-[#0d0b00]"
@@ -8334,17 +8855,36 @@ const Service = ({
 
             <div className="min-w-0 space-y-2">
               <div className="flex flex-wrap items-center gap-2">
-                <p className="text-[13px] font-semibold leading-tight text-white">{service.title}</p>
+                <p className="min-w-0 text-[13px] font-semibold leading-tight text-white">{service.title}</p>
 
-                {service.checked ? (
-                  <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-emerald-300">
-                    Added to Quote
-                  </span>
-                ) : (
-                  <span className="rounded-full border border-slate-600/30 bg-slate-700/20 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-slate-400">
-                    Not Selected
-                  </span>
-                )}
+                <div className="inline-flex flex-shrink-0 items-center gap-2">
+                  {service.checked ? (
+                    <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-emerald-300">
+                      Added to Quote
+                    </span>
+                  ) : (
+                    <span className="rounded-full border border-slate-600/30 bg-slate-700/20 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-slate-400">
+                      Not Selected
+                    </span>
+                  )}
+
+                  {service.checked && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (isEditMode) {
+                          onOpenSelectedServices?.(service);
+                          return;
+                        }
+
+                        onStartServiceEdit?.(service);
+                      }}
+                      className="inline-flex h-[22px] cursor-pointer items-center rounded-lg border border-sky-400/30 bg-sky-500/10 px-3 text-[10px] font-medium text-sky-200 transition hover:border-sky-300/50 hover:bg-sky-500/15"
+                    >
+                      {isEditMode ? "Review & Save" : "Click to Edit"}
+                    </button>
+                  )}
+                </div>
 
                 {isEditMode && service.checked && (
                   <span className="rounded-full border border-sky-500/30 bg-sky-500/10 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-sky-300">
@@ -8355,22 +8895,6 @@ const Service = ({
                   <span className="rounded-full bg-yellow-400 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-black">
                     Custom
                   </span>
-                )}
-                {service.checked && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (isEditMode) {
-                        onOpenSelectedServices?.(service);
-                        return;
-                      }
-
-                      onStartServiceEdit?.(service);
-                    }}
-                    className="cursor-pointer rounded-lg border border-sky-400/30 bg-sky-500/10 px-3 py-1 text-[10px] font-medium text-sky-200 transition hover:border-sky-300/50 hover:bg-sky-500/15"
-                  >
-                    {isEditMode ? "Review & Save" : "Click to Edit"}
-                  </button>
                 )}
               </div>
 
@@ -8396,9 +8920,9 @@ const Service = ({
                         <FaCarSide className="text-yellow-400" />{service.vehicleType}
                       </span>
                     )}
-                    {service.usageType && (
+                    {(selectedTransportUsageLabels[0] || service.usageType) && (
                       <span className="flex items-center gap-1 text-slate-400">
-                        <MdOutlineTravelExplore className="text-blue-400" />{formatUsage(service.usageType)}
+                        <MdOutlineTravelExplore className="text-blue-400" />{selectedTransportUsageLabels[0] || formatUsage(service.usageType)}
                       </span>
                     )}
                     {service.passengerCapacity > 0 && (
@@ -8455,7 +8979,7 @@ const Service = ({
           (only shown when service is checked)
       ════════════════════════════════════════════ */}
       {service.checked && (
-        <div className="space-y-3 border-t border-[#1a1a1a] bg-[#080800] px-4 py-4">
+        <div className="space-y-3 border-t border-[#1a1a1a] bg-[#080800] px-4 py-4 rounded-b-2xl">
 
           {/* ── label row ── */}
           <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -8633,42 +9157,79 @@ const Service = ({
                 </div>
               )}
 
-              <div className="flex flex-wrap items-center gap-3">
+              <div className={`grid grid-cols-1 gap-3 ${selectedTransportUsageLimitOptions.length > 0 ? "lg:grid-cols-3" : "lg:grid-cols-2"}`}>
                 <div>
                   <p className="text-[9px] text-slate-500 mb-1">Usage</p>
-                  <select
-                    value={normalizeTransportUsageValue(service.usageType) || "point-to-point"}
-                    onChange={(e) => updateField(service.id, "usageType", e.target.value)}
-                    className={selectCls}
-                  >
-                    {TRANSPORT_USAGE_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {`${option.label} (${formatCurrencyValue(
-                          getTransportUsageOptionDisplayPrice(service, option.value),
-                          currencyCode,
-                        )})`}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="relative">
+                    <select
+                      value={selectedTransportUsageKey}
+                      onChange={(e) => updateField(service.id, "transportUsageOptionKey", e.target.value)}
+                      className={`${selectCls.replace('rounded-lg', 'rounded-full')} h-8 w-full pl-4 pr-8 appearance-none`}
+                    >
+                      {TRANSPORT_USAGE_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {`${option.label} (${formatCurrencyValue(
+                            getTransportUsageOptionDisplayPrice(service, option.value),
+                            currencyCode,
+                          )})`}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400" />
+                  </div>
                 </div>
+                {selectedTransportUsageLimitOptions.length > 0 && (
+                  <div>
+                    <p className="text-[9px] text-slate-500 mb-1">Limit</p>
+                    <div
+                      className="flex h-8 w-full items-center rounded-full border border-yellow-500/45 bg-[#0a0a0a] px-4 text-[11px] font-semibold text-white"
+                    >
+                      {selectedTransportLimitSummary}
+                    </div>
+                  </div>
+                )}
                 <div>
                   <p className="text-[9px] text-slate-500 mb-1">Days</p>
-                  <select
-                    value={selectedTransportDays}
-                    onChange={(e) => updateField(service.id, "days", Number(e.target.value))}
-                    className={selectCls}
-                  >
-                    {[...Array(maxTransportDays)].map((_, i) => (
-                      <option key={i} value={i + 1}>
-                        {i + 1} Day{i > 0 ? "s" : ""}
-                        {transportStartDate
-                          ? ` (${formatDisplayDate(transportStartDate)}${i > 0 ? ` → ${formatDisplayDate(addDaysToServiceDate(transportStartDate, i))}` : ""})`
-                          : ""}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="relative">
+                    <select
+                      value={selectedTransportDays}
+                      onChange={(e) => updateField(service.id, "days", Number(e.target.value))}
+                      className={`${selectCls.replace('rounded-lg', 'rounded-full')} h-8 w-full pl-4 pr-8 appearance-none`}
+                    >
+                      {[...Array(maxTransportDays)].map((_, i) => (
+                        <option key={i} value={i + 1}>
+                          {i + 1} Day{i > 0 ? "s" : ""}
+                          {transportStartDate
+                            ? ` (${formatDisplayDate(transportStartDate)}${i > 0 ? ` → ${formatDisplayDate(addDaysToServiceDate(transportStartDate, i))}` : ""})`
+                            : ""}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400" />
+                  </div>
                 </div>
               </div>
+
+              <AnimatePresence>
+              {selectedTransportLimitNoteLabel && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0, y: -4 }}
+                  animate={{ opacity: 1, height: "auto", y: 0 }}
+                  exit={{ opacity: 0, height: 0, y: -4 }}
+                  transition={{ duration: 0.18, ease: "easeOut" }}
+                  className="overflow-hidden"
+                >
+                <div className="space-y-0.5 text-[11px] italic text-yellow-300">
+                  {selectedTransportExtraKmRate > 0 && (
+                    <p>Extra km rate: {formatCurrencyValue(selectedTransportExtraKmRate, currencyCode)}/km.</p>
+                  )}
+                  <p>
+                    Note: {selectedTransportLimitNoteLabel} limit selected as {selectedTransportLimitSummary}. Extra km will attract extra charges where applicable.
+                  </p>
+                </div>
+                </motion.div>
+              )}
+              </AnimatePresence>
             </div>
           )}
 

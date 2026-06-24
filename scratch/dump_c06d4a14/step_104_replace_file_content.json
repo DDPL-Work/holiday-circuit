@@ -1,0 +1,12 @@
+{
+  "AllowMultiple": "false",
+  "Description": "\"Change the fallback warning note text color from text-slate-400 to text-amber-400 to match the amber warning styling of other conditional notes.\"",
+  "EndLine": "8993",
+  "Instruction": "\"Change fallback warning note text color to text-amber-400.\"",
+  "ReplacementContent": "\"                return (\\n                  <p className=\\\"text-[10px] text-amber-400 italic mt-1.5 leading-normal\\\">\\n                    \u26a0\ufe0f Note: Full Day includes 80 km / 8 hours and Half Day includes 40 km / 4 hours. Usage exceeding these limits will attract extra charges.\\n                  </p>\\n                );\"",
+  "StartLine": "8988",
+  "TargetContent": "\"                return (\\n                  <p className=\\\"text-[10px] text-slate-400 italic mt-1.5 leading-normal\\\">\\n                    \u26a0\ufe0f Note: Full Day includes 80 km / 8 hours and Half Day includes 40 km / 4 hours. Usage exceeding these limits will attract extra charges.\\n                  </p>\\n                );\"",
+  "TargetFile": "\"c:\\\\Users\\\\DELL\\\\OneDrive\\\\Desktop\\\\Holiday circuit\\\\holiday-circuit\\\\client\\\\src\\\\pages\\\\opsPages\\\\QuotationBuilder.jsx\"",
+  "toolAction": "\"Changing warning note color to amber\"",
+  "toolSummary": "\"Modify QuotationBuilder.jsx\""
+}
