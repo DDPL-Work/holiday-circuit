@@ -3,3 +3,5 @@ dist
 .env
 MOM_IMPLEMENTATION_STATUS_README.md
 MOM_Implementation_Status_Report.md
+README.md
+.gitignore

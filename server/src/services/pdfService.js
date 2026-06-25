@@ -573,11 +573,11 @@ const drawServiceTypePill = (doc, x, y, width, label) => {
 const drawServicesTableHeader = (doc, y) => {
   const columns = [
     { label: "S.NO.", x: PAGE.contentX, width: 38, align: "center" },
-    { label: "PARTICULARS", x: PAGE.contentX + 38, width: 175, align: "left" },
-    { label: "CATEGORY", x: PAGE.contentX + 213, width: 78, align: "center" },
-    { label: "SERVICE DATE", x: PAGE.contentX + 291, width: 80, align: "center" },
-    { label: "LOCATION", x: PAGE.contentX + 371, width: 86, align: "left" },
-    { label: "QTY", x: PAGE.contentX + 457, width: 50, align: "center" },
+    { label: "PARTICULARS", x: PAGE.contentX + 38, width: 165, align: "left" },
+    { label: "CATEGORY", x: PAGE.contentX + 203, width: 74, align: "center" },
+    { label: "SERVICE DATE", x: PAGE.contentX + 277, width: 76, align: "center" },
+    { label: "LOCATION", x: PAGE.contentX + 353, width: 82, align: "left" },
+    { label: "QTY", x: PAGE.contentX + 435, width: 72, align: "center" },
   ];
 
   drawRoundedBox(doc, PAGE.contentX, y, PAGE.contentWidth, 24, "#f0fdfa", COLORS.accentBorder, 4);
@@ -608,8 +608,102 @@ const drawServicesTableHeader = (doc, y) => {
   return columns;
 };
 
+const buildServiceDescriptionLines = (description = "") => {
+  const normalizedDescription = String(description || "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\s*\n\s*/g, "\n")
+    .trim();
+
+  if (!normalizedDescription) return [];
+
+  return normalizedDescription
+    .split("\n")
+    .flatMap((line) =>
+      line
+        .replace(/\s+(?=Extra km rate:|Note:)/gi, "\n")
+        .split("\n")
+        .map((item) => item.replace(/\s+/g, " ").trim())
+        .filter(Boolean),
+    )
+    .map((line) => {
+      const isHighlighted = /^(Extra km rate:|Note:)/i.test(line);
+      return {
+        text: isHighlighted ? line : `Notes: ${line}`,
+        highlighted: isHighlighted,
+      };
+    });
+};
+
+const getServiceDescriptionLinesHeight = (doc, lines = [], width = 0) => {
+  if (!lines.length) return 0;
+
+  return lines.reduce((height, line, index) => {
+    const lineHeight = doc.heightOfString(line.text, { width });
+    return height + lineHeight + (index > 0 ? 2 : 0);
+  }, 0);
+};
+
+const drawTextWithRupeeSymbol = (doc, text, x, y, options = {}) => {
+  const value = String(text || "");
+  const width = Number(options.width || 0);
+  const color = options.color || COLORS.text;
+  const fontSize = Number(options.fontSize || 8.3);
+  const fontName = options.font || doc.fontRegular || "Helvetica";
+
+  if (!value.includes(INR_SYMBOL)) {
+    doc
+      .font(fontName)
+      .fontSize(fontSize)
+      .fillColor(color)
+      .text(value, x, y, { width });
+    return doc.y;
+  }
+
+  const [before, ...afterParts] = value.split(INR_SYMBOL);
+  const after = afterParts.join(INR_SYMBOL);
+
+  doc.font(fontName).fontSize(fontSize).fillColor(color);
+  const beforeWidth = doc.widthOfString(before);
+  const symbolX = x + beforeWidth + 1;
+  const symbolSize = Math.max(6.4, fontSize - 0.4);
+  const afterX = symbolX + symbolSize + 3;
+
+  doc.text(before, x, y, { lineBreak: false });
+  drawRupeeSymbol(doc, symbolX, y + 1.2, {
+    size: symbolSize,
+    color,
+    strokeWidth: Math.max(0.8, symbolSize * 0.12),
+  });
+  doc
+    .font(fontName)
+    .fontSize(fontSize)
+    .fillColor(color)
+    .text(after.trimStart(), afterX, y, {
+      width: Math.max(12, width - (afterX - x)),
+    });
+
+  return Math.max(doc.y, y + fontSize + 2);
+};
+
+const drawServiceDescriptionLines = (doc, lines = [], x, y, width) => {
+  let cursorY = y;
+
+  lines.forEach((line, index) => {
+    if (index > 0) cursorY += 2;
+
+    cursorY = drawTextWithRupeeSymbol(doc, line.text, x, cursorY, {
+      width,
+      color: line.highlighted ? "#c2410c" : COLORS.text,
+      font: line.highlighted ? (doc.fontBold || "Helvetica-Bold") : (doc.fontRegular || "Helvetica"),
+      fontSize: 8.3,
+    });
+  });
+
+  return cursorY;
+};
+
 const drawServiceRow = (doc, columns, y, service = {}, index = 0) => {
-  const notesText = service?.description ? `Notes: ${service.description}` : "";
+  const descriptionLines = buildServiceDescriptionLines(service?.description);
   const quantityText = service?.quantityLabel || "-";
   const locationText = service?.location || "-";
   const dateText = service?.serviceDateLabel || "-";
@@ -620,7 +714,7 @@ const drawServiceRow = (doc, columns, y, service = {}, index = 0) => {
   const titleHeight = doc.heightOfString(titleText, { width: columns[1].width - 16 });
 
   doc.font(doc.fontRegular || "Helvetica").fontSize(8.3);
-  const notesHeight = notesText ? doc.heightOfString(notesText, { width: columns[1].width - 16 }) : 0;
+  const notesHeight = getServiceDescriptionLinesHeight(doc, descriptionLines, columns[1].width - 16);
   const locationHeight = doc.heightOfString(locationText, { width: columns[4].width - 16 });
   const quantityHeight = doc.heightOfString(quantityText, { width: columns[5].width - 16, align: "center" });
   const dateHeight = doc.heightOfString(dateText, { width: columns[3].width - 16, align: "center" });
@@ -674,14 +768,14 @@ const drawServiceRow = (doc, columns, y, service = {}, index = 0) => {
       width: columns[1].width - 16,
     });
 
-  if (notesText) {
-    doc
-      .font(doc.fontRegular || "Helvetica")
-      .fontSize(8.3)
-      .fillColor(COLORS.text)
-      .text(notesText, columns[1].x + 8, y + 8 + titleHeight + 4, {
-        width: columns[1].width - 16,
-      });
+  if (descriptionLines.length) {
+    drawServiceDescriptionLines(
+      doc,
+      descriptionLines,
+      columns[1].x + 8,
+      y + 8 + titleHeight + 4,
+      columns[1].width - 16,
+    );
   }
 
   drawServiceTypePill(doc, columns[2].x, y + Math.max(10, rowHeight / 2 - 8), columns[2].width, typeText);
@@ -1292,14 +1386,26 @@ export const generatePDF = async (quoteDetails = {}) => {
   } else {
     services.forEach((service, index) => {
       doc.font(doc.fontBold || "Helvetica-Bold").fontSize(10);
-      const titleHeight = doc.heightOfString(service?.title || "Service", { width: 159 });
+      const titleHeight = doc.heightOfString(service?.title || "Service", {
+        width: columns[1].width - 16,
+      });
       doc.font(doc.fontRegular || "Helvetica").fontSize(8.3);
-      const notesHeight = service?.description
-        ? doc.heightOfString(`Notes: ${service.description}`, { width: 159 })
-        : 0;
-      const locationHeight = doc.heightOfString(service?.location || "-", { width: 70 });
-      const quantityHeight = doc.heightOfString(service?.quantityLabel || "-", { width: 38, align: "center" });
-      const dateHeight = doc.heightOfString(service?.serviceDateLabel || "-", { width: 68, align: "center" });
+      const notesHeight = getServiceDescriptionLinesHeight(
+        doc,
+        buildServiceDescriptionLines(service?.description),
+        columns[1].width - 16,
+      );
+      const locationHeight = doc.heightOfString(service?.location || "-", {
+        width: columns[4].width - 16,
+      });
+      const quantityHeight = doc.heightOfString(service?.quantityLabel || "-", {
+        width: columns[5].width - 16,
+        align: "center",
+      });
+      const dateHeight = doc.heightOfString(service?.serviceDateLabel || "-", {
+        width: columns[3].width - 16,
+        align: "center",
+      });
 
       const estimatedRowHeight = Math.max(
         44,

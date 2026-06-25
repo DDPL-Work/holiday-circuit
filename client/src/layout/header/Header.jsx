@@ -725,7 +725,7 @@ const Header = ({ onMenuToggle }) => {
           100% { transform: scale(1); }
         }
       `}</style>
-      <header className="h-16 border-b border-slate-800 bg-gray-900 pl-3 pr-3 sm:pr-5 md:pl-0 lg:pr-8">
+      <header className="h-16 border-b border-slate-800 bg-gradient-to-r from-black via-slate-950 to-blue-950 pl-3 pr-3 sm:pr-5 md:pl-0 lg:pr-8">
         <div className="flex h-full items-center justify-between gap-3">
           <div className="flex h-full items-center gap-3 md:gap-0">
             <button

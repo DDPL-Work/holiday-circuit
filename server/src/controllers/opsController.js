@@ -1470,6 +1470,112 @@ const buildDurationLabel = (query = {}) => {
   return `${totalNights} Night${totalNights === 1 ? "" : "s"} / ${totalDays} Day${totalDays === 1 ? "" : "s"}`;
 };
 
+const TRANSPORT_USAGE_LABELS = Object.freeze({
+  "one-way-airport-transfer": "One Way / Airport Transfer",
+  "inter-hotel-transfer": "Inter Hotel Transfer",
+  "full-day": "Full Day",
+  "half-day": "Half Day",
+  "point-to-point": "One Way / Airport Transfer",
+  "round-trip": "Two Way",
+});
+
+const TRANSPORT_USAGE_LIMIT_LABELS = Object.freeze({
+  "full-day": "80 km / 8 hours",
+  "full-day-80-km": "80 km / 8 hours",
+  "full-day-8-hours": "80 km / 8 hours",
+  "half-day": "40 km / 4 hours",
+  "half-day-40-km": "40 km / 4 hours",
+  "half-day-4-hours": "40 km / 4 hours",
+});
+
+const normalizeTransportUsageOptionKeyForQuote = (value = "") => {
+  const normalizedValue = String(value || "").trim().toLowerCase();
+  if (!normalizedValue) return "";
+  if (normalizedValue.includes("inter hotel") || normalizedValue.includes("inter-hotel")) return "inter-hotel-transfer";
+  if (normalizedValue.includes("airport") || normalizedValue.includes("one way") || normalizedValue.includes("one-way")) return "one-way-airport-transfer";
+  if (normalizedValue.includes("full")) return "full-day";
+  if (normalizedValue.includes("half")) return "half-day";
+  if (normalizedValue.includes("round") || normalizedValue.includes("two way")) return "round-trip";
+  if (normalizedValue.includes("point")) return "point-to-point";
+  return normalizedValue;
+};
+
+const getTransportUsageDisplayLabelForQuote = (service = {}) => {
+  const key = normalizeTransportUsageOptionKeyForQuote(
+    service?.transportUsageOptionKey ||
+    service?.transportUsageLabel ||
+    service?.usageType,
+  );
+
+  return (
+    service?.transportUsageLabel ||
+    TRANSPORT_USAGE_LABELS[key] ||
+    String(service?.usageType || "")
+      .replace(/-/g, " ")
+      .replace(/\b\w/g, (char) => char.toUpperCase())
+  );
+};
+
+const getTransportLimitLabelForQuote = (service = {}) => {
+  const optionKey = normalizeTransportUsageOptionKeyForQuote(
+    service?.transportUsageOptionKey ||
+    service?.transportUsageLabel ||
+    service?.usageType,
+  );
+  const limitKeys = String(service?.transportUsageLimitOptionKey || "")
+    .split(",")
+    .map((key) => normalizeTransportUsageOptionKeyForQuote(key))
+    .filter(Boolean);
+  const explicitLimitLabel = limitKeys
+    .map((key) => TRANSPORT_USAGE_LIMIT_LABELS[key])
+    .filter(Boolean)[0];
+
+  return explicitLimitLabel || TRANSPORT_USAGE_LIMIT_LABELS[optionKey] || "";
+};
+
+const getTransportExtraKmRateForQuote = (service = {}) => {
+  const optionKey = normalizeTransportUsageOptionKeyForQuote(
+    service?.transportUsageOptionKey ||
+    service?.transportUsageLabel ||
+    service?.usageType,
+  );
+
+  if (optionKey === "full-day") {
+    return Number(service?.fullDayExtraPerKmRate || service?.extraPerKmRate || 0);
+  }
+
+  if (optionKey === "half-day") {
+    return Number(service?.halfDayExtraPerKmRate || service?.extraPerKmRate || 0);
+  }
+
+  return 0;
+};
+
+const buildTransportQuotationNotes = (service = {}) => {
+  const optionKey = normalizeTransportUsageOptionKeyForQuote(
+    service?.transportUsageOptionKey ||
+    service?.transportUsageLabel ||
+    service?.usageType,
+  );
+
+  if (!["full-day", "half-day"].includes(optionKey)) return [];
+
+  const usageLabel = getTransportUsageDisplayLabelForQuote(service);
+  const limitLabel = getTransportLimitLabelForQuote(service);
+  const extraKmRate = getTransportExtraKmRateForQuote(service);
+  const notes = [];
+
+  if (extraKmRate > 0) {
+    notes.push(`Extra km rate: \u20B9 ${extraKmRate.toLocaleString("en-IN")}/km.`);
+  }
+
+  if (limitLabel) {
+    notes.push(`Note: ${usageLabel} limit selected as ${limitLabel}. Extra km will attract extra charges where applicable.`);
+  }
+
+  return notes;
+};
+
 const buildServiceQuantityLabel = (service = {}, fallbackPax = 0) => {
   const normalizedType = String(service?.type || "")
     .trim()
@@ -1484,8 +1590,11 @@ const buildServiceQuantityLabel = (service = {}, fallbackPax = 0) => {
     return details.join(" | ");
   }
 
-  if (normalizedType === "transfer" || normalizedType === "car") {
-    if (service?.usageType) details.push(String(service.usageType).replace(/-/g, " "));
+  if (normalizedType === "transfer" || normalizedType === "car" || normalizedType === "transport") {
+    const usageLabel = getTransportUsageDisplayLabelForQuote(service);
+    const limitLabel = getTransportLimitLabelForQuote(service);
+    if (usageLabel) details.push(usageLabel);
+    if (limitLabel) details.push(limitLabel);
     if (Number(service?.passengerCapacity || 0) > 0) {
       details.push(`${service.passengerCapacity} Pax`);
     } else if (Number(service?.pax || 0) > 0) {
@@ -1580,13 +1689,18 @@ const buildAgentQuotationEmailPayload = ({ quotation, query }) => {
         const normalizedServiceType = normalizeQuotationServiceType(service?.type);
         const ratio = totalServiceBase > 0 ? Number(service.total || 0) / totalServiceBase : 0;
         const clientAmount = totalServiceBase > 0 ? Math.round(totalAmount * ratio) : 0;
+        const serviceDescription = String(service?.description || "").replace(/\|/g, " | ").trim();
+        const transportNotes = normalizedServiceType === "transfer"
+          ? buildTransportQuotationNotes(service)
+          : [];
+        const description = [serviceDescription, ...transportNotes].filter(Boolean).join("\n");
         return {
           title: service?.title || "Service",
           typeLabel: MAIL_SERVICE_TYPE_LABELS[normalizedServiceType] || "Travel Service",
           location: buildServiceLocationLabel(service),
           serviceDateLabel: formatMailDateLabel(service?.serviceDate),
           quantityLabel: buildServiceQuantityLabel(service, queryPax),
-          description: String(service?.description || "").replace(/\|/g, " | ").trim(),
+          description,
           clientAmount,
         };
       })
@@ -2824,11 +2938,12 @@ export const createQuotation = async (req, res, next) => {
 
     const baseAmount = pricing?.baseAmount;
     const packageTemplateAmount = Number(pricing?.packageTemplateAmount || 0);
-    const taxPayload = req.body.tax || {};
-    const tourismAmount = Number(taxPayload?.tourismAmount ?? 0);
     const servicesTotal = resolvedServices.reduce((sum, s) => { return sum + Number(s.totalInInr || 0) }, 0);
     const serviceCurrencyBreakdown = buildServiceCurrencyBreakdown(resolvedServices);
     const opsMarkupBasisAmount = Number(servicesTotal + packageTemplateAmount);
+    const hasTaxableQuoteValue = roundCurrencyAmount(opsMarkupBasisAmount) > 0;
+    const taxPayload = req.body.tax || {};
+    const tourismAmount = hasTaxableQuoteValue ? Number(taxPayload?.tourismAmount ?? 0) : 0;
 
     const base = Number(baseAmount || 0);
     console.log("🔥 BASE:", base);
@@ -2849,15 +2964,14 @@ export const createQuotation = async (req, res, next) => {
 
     const service = Number(serviceCharge || 0);
     const handling = Number(handlingFee || 0);
-    const tourismAmt = Number(tourismAmount);
     const subTotal = Number(
       servicesTotal + packageTemplateAmount + finalOpsAmount + service + handling
     );
 
-    const gstPercent = Number(taxPayload?.gstPercent || 0);
-    const tcsPercent = Number(taxPayload?.tcsPercent || 0);
-    const finalGstAmount = Number(taxPayload?.gstAmount || 0);
-    const finalTcsAmount = Number(taxPayload?.tcsAmount || 0);
+    const gstPercent = hasTaxableQuoteValue ? Number(taxPayload?.gstPercent || 0) : 0;
+    const tcsPercent = hasTaxableQuoteValue ? Number(taxPayload?.tcsPercent || 0) : 0;
+    const finalGstAmount = hasTaxableQuoteValue ? Number(taxPayload?.gstAmount || 0) : 0;
+    const finalTcsAmount = hasTaxableQuoteValue ? Number(taxPayload?.tcsAmount || 0) : 0;
 
     const taxTotal = Number(finalGstAmount + finalTcsAmount + tourismAmount);
     // const subTotal = base + opsAmt + service + handling;
@@ -2906,6 +3020,12 @@ export const createQuotation = async (req, res, next) => {
       vehicleType: s.vehicleType,
       passengerCapacity: s.passengerCapacity,
       luggageCapacity: s.luggageCapacity,
+      transportUsageOptionKey: s.transportUsageOptionKey || "",
+      transportUsageLabel: s.transportUsageLabel || "",
+      transportUsageLimitOptionKey: s.transportUsageLimitOptionKey || "",
+      extraPerKmRate: Number(s.extraPerKmRate || 0),
+      fullDayExtraPerKmRate: Number(s.fullDayExtraPerKmRate || 0),
+      halfDayExtraPerKmRate: Number(s.halfDayExtraPerKmRate || 0),
       days: s.days || 1,
 
       // ACTIVITY
@@ -4326,6 +4446,12 @@ export const getOrCreateQuotationDraft = async (req, res, next) => {
           passengerCapacity: Number(service.passengerCapacity || 0),
           luggageCapacity: Number(service.luggageCapacity || 0),
           usageType: service.usageType || "point-to-point",
+          transportUsageOptionKey: service.transportUsageOptionKey || "",
+          transportUsageLabel: service.transportUsageLabel || "",
+          transportUsageLimitOptionKey: service.transportUsageLimitOptionKey || "",
+          extraPerKmRate: Number(service.extraPerKmRate || 0),
+          fullDayExtraPerKmRate: Number(service.fullDayExtraPerKmRate || 0),
+          halfDayExtraPerKmRate: Number(service.halfDayExtraPerKmRate || 0),
           days: Number(service.days || 1),
           pax: Number(service.pax || 1),
           currency: service.currency || "INR",
@@ -4408,6 +4534,35 @@ export const getOrCreateQuotationDraft = async (req, res, next) => {
         sourceQuotationId: draftPayload.sourceQuotationId,
         status: draftPayload.status,
       });
+    }
+
+    const draftTaxableQuoteValue = roundCurrencyAmount(
+      Number(quotation?.pricing?.subTotal || 0) +
+      Number(quotation?.pricing?.packageTemplateAmount || 0),
+    );
+    const hasDraftTaxValues =
+      Number(quotation?.pricing?.tax?.gst?.percent || 0) > 0 ||
+      Number(quotation?.pricing?.tax?.gst?.amount || 0) > 0 ||
+      Number(quotation?.pricing?.tax?.tcs?.percent || 0) > 0 ||
+      Number(quotation?.pricing?.tax?.tcs?.amount || 0) > 0 ||
+      Number(quotation?.pricing?.tax?.tourismFee?.amount || 0) > 0 ||
+      Number(quotation?.pricing?.tax?.totalTax || 0) > 0;
+
+    if (quotation && draftTaxableQuoteValue <= 0 && hasDraftTaxValues) {
+      quotation.pricing.tax = {
+        gst: { percent: 0, amount: 0 },
+        tcs: { percent: 0, amount: 0 },
+        tourismFee: { amount: 0 },
+        totalTax: 0,
+      };
+      quotation.pricing.totalAmount = Number(
+        Number(quotation.pricing.subTotal || 0) +
+        Number(quotation.pricing.packageTemplateAmount || 0) +
+        Number(quotation.pricing.opsMarkup?.amount || 0) +
+        Number(quotation.pricing.opsCharges?.serviceCharge || 0) +
+        Number(quotation.pricing.opsCharges?.handlingFee || 0),
+      );
+      await quotation.save();
     }
 
     res.status(200).json({
@@ -4517,17 +4672,18 @@ export const saveQuotationDraft = async (req, res, next) => {
 
     const packageTemplateAmount = Number(pricing?.packageTemplateAmount || 0);
     const opsMarkupBasisAmount = Number(servicesTotal + packageTemplateAmount);
+    const hasTaxableQuoteValue = roundCurrencyAmount(opsMarkupBasisAmount) > 0;
     const ops = Number(opsPercent || 0);
     const opsAmt = Number(opsAmount || 0);
     const finalOpsAmount = opsAmt > 0 ? opsAmt : (opsMarkupBasisAmount * ops) / 100;
     const serviceChargeAmount = Number(serviceCharge || 0);
     const handlingFeeAmount = Number(handlingFee || 0);
     const taxPayload = req.body.tax || {};
-    const gstPercent = Number(taxPayload?.gstPercent || 0);
-    const tcsPercent = Number(taxPayload?.tcsPercent || 0);
-    const gstAmount = Number(taxPayload?.gstAmount || 0);
-    const tcsAmount = Number(taxPayload?.tcsAmount || 0);
-    const tourismAmount = Number(taxPayload?.tourismAmount || 0);
+    const gstPercent = hasTaxableQuoteValue ? Number(taxPayload?.gstPercent || 0) : 0;
+    const tcsPercent = hasTaxableQuoteValue ? Number(taxPayload?.tcsPercent || 0) : 0;
+    const gstAmount = hasTaxableQuoteValue ? Number(taxPayload?.gstAmount || 0) : 0;
+    const tcsAmount = hasTaxableQuoteValue ? Number(taxPayload?.tcsAmount || 0) : 0;
+    const tourismAmount = hasTaxableQuoteValue ? Number(taxPayload?.tourismAmount || 0) : 0;
     const totalTax = Number(gstAmount + tcsAmount + tourismAmount);
     const totalAmount = Number(
       servicesTotal +
@@ -4573,6 +4729,12 @@ export const saveQuotationDraft = async (req, res, next) => {
       passengerCapacity: Number(service.passengerCapacity || 0),
       luggageCapacity: Number(service.luggageCapacity || 0),
       usageType: normalizeUsageType(service.usageType),
+      transportUsageOptionKey: service.transportUsageOptionKey || "",
+      transportUsageLabel: service.transportUsageLabel || "",
+      transportUsageLimitOptionKey: service.transportUsageLimitOptionKey || "",
+      extraPerKmRate: Number(service.extraPerKmRate || 0),
+      fullDayExtraPerKmRate: Number(service.fullDayExtraPerKmRate || 0),
+      halfDayExtraPerKmRate: Number(service.halfDayExtraPerKmRate || 0),
       days: Number(service.days || 1),
       pax: Number(service.pax || 1),
       currency: service.currency || "INR",

@@ -74,10 +74,14 @@ const filteredSheetRows = useMemo(() => {
   if (!sheetSearchQuery.trim()) return selectedSheet.rows;
 
   const query = sheetSearchQuery.toLowerCase().trim();
+  const searchableHeaders = selectedSheet.columns?.length
+    ? selectedSheet.columns.map((column) => column.key)
+    : selectedSheet.headers || [];
+
   return selectedSheet.rows
     .map((row, index) => ({ ...row, originalIndex: index }))
     .filter((row) => {
-      return selectedSheet.headers.some((header) => {
+      return searchableHeaders.some((header) => {
         const val = row[header];
         if (val === undefined || val === null) return false;
         return String(val).toLowerCase().includes(query);
@@ -384,6 +388,12 @@ const currentEditingOriginalRow =
 const currentRateSensitiveChanges =
   editingRowIndex !== null ? getRateSensitiveChanges(currentEditingOriginalRow, editRowData) : [];
 const isRateChangeReasonRequired = currentRateSensitiveChanges.length > 0;
+const sheetColumns = selectedSheet?.columns?.length
+  ? selectedSheet.columns
+  : (selectedSheet?.headers || []).map((header) => ({ key: header, label: header }));
+const hasGroupedHeaders = Array.isArray(selectedSheet?.headerRows) && selectedSheet.headerRows.length > 0;
+const isReadOnlyPreview = Boolean(selectedSheet?.readOnlyPreview);
+const showSheetActions = selectedSheet && !isReadOnlyPreview;
 
 
   return (
@@ -766,30 +776,65 @@ const isRateChangeReasonRequired = currentRateSensitiveChanges.length > 0;
                 <div className="bg-white rounded-lg border border-slate-200 shadow-sm max-h-[calc(90vh-100px)] overflow-auto custom-scroll">
                   <table className="min-w-max border-collapse text-[11px] font-sans w-full">
                     <thead className="sticky top-0 z-10">
-                      <tr className="bg-[#f3f2f1] border-b border-slate-300">
-                        {/* Row Index Column Header */}
-                        <th className="w-10 bg-[#e1dfdd] border-r border-slate-300 py-2.5 text-center text-slate-500 font-bold select-none whitespace-nowrap"></th>
+                      {hasGroupedHeaders ? (
+                        selectedSheet.headerRows.map((headerRow, headerRowIndex) => (
+                          <tr key={`header-row-${headerRowIndex}`} className="bg-[#f3f2f1] border-b border-slate-300">
+                            {headerRowIndex === 0 && (
+                              <th
+                                rowSpan={selectedSheet.headerRows.length}
+                                className="w-10 bg-[#e1dfdd] border-r border-slate-300 py-2.5 text-center text-slate-500 font-bold select-none whitespace-nowrap"
+                              ></th>
+                            )}
+                            {headerRow.map((headerCell, cellIndex) => (
+                              <th
+                                key={`${headerRowIndex}-${cellIndex}-${headerCell.label}`}
+                                colSpan={headerCell.colSpan || 1}
+                                rowSpan={headerCell.rowSpan || 1}
+                                className={`px-4 py-2.5 text-center text-slate-700 font-bold border-r border-slate-300 uppercase tracking-wider bg-[#f3f2f1] select-none whitespace-nowrap ${
+                                  headerCell.rowSpan ? "align-middle" : ""
+                                }`}
+                              >
+                                {headerCell.label}
+                              </th>
+                            ))}
+                            {headerRowIndex === 0 && showSheetActions && (
+                              <th
+                                rowSpan={selectedSheet.headerRows.length}
+                                className="px-4 py-2.5 text-center text-slate-700 font-bold min-w-[120px] bg-[#f3f2f1] select-none whitespace-nowrap"
+                              >
+                                Actions
+                              </th>
+                            )}
+                          </tr>
+                        ))
+                      ) : (
+                        <tr className="bg-[#f3f2f1] border-b border-slate-300">
+                          {/* Row Index Column Header */}
+                          <th className="w-10 bg-[#e1dfdd] border-r border-slate-300 py-2.5 text-center text-slate-500 font-bold select-none whitespace-nowrap"></th>
 
-                        {/* Dynamic Headers */}
-                        {selectedSheet.headers.map((header) => {
-                          const isDesc = String(header || "").toLowerCase().includes("desc");
-                          return (
-                            <th
-                              key={header}
-                              className={`px-4 py-2.5 text-left text-slate-700 font-bold border-r border-slate-300 uppercase tracking-wider bg-[#f3f2f1] select-none whitespace-nowrap ${
-                                isDesc ? "min-w-[320px] max-w-[450px]" : "min-w-[130px]"
-                              }`}
-                            >
-                              {header}
+                          {/* Dynamic Headers */}
+                          {sheetColumns.map((column) => {
+                            const isDesc = column.isDesc || String(column.label || column.key || "").toLowerCase().includes("desc");
+                            return (
+                              <th
+                                key={column.key}
+                                className={`px-4 py-2.5 text-left text-slate-700 font-bold border-r border-slate-300 uppercase tracking-wider bg-[#f3f2f1] select-none whitespace-nowrap ${
+                                  isDesc ? "min-w-[320px] max-w-[450px]" : "min-w-[130px]"
+                                }`}
+                              >
+                                {column.label || column.key}
+                              </th>
+                            );
+                          })}
+
+                          {/* Actions Column Header */}
+                          {showSheetActions && (
+                            <th className="px-4 py-2.5 text-center text-slate-700 font-bold min-w-[120px] bg-[#f3f2f1] select-none whitespace-nowrap">
+                              Actions
                             </th>
-                          );
-                        })}
-
-                        {/* Actions Column Header */}
-                        <th className="px-4 py-2.5 text-center text-slate-700 font-bold min-w-[120px] bg-[#f3f2f1] select-none whitespace-nowrap">
-                          Actions
-                        </th>
-                      </tr>
+                          )}
+                        </tr>
+                      )}
                     </thead>
                     <tbody>
                       {paginatedSheetRows.length ? (
@@ -809,15 +854,16 @@ const isRateChangeReasonRequired = currentRateSensitiveChanges.length > 0;
                               </td>
 
                               {/* Data Cells */}
-                              {selectedSheet.headers.map((header) => {
-                                const isDesc = String(header || "").toLowerCase().includes("desc");
+                              {sheetColumns.map((column) => {
+                                const header = column.key;
+                                const isDesc = column.isDesc || String(column.label || header || "").toLowerCase().includes("desc");
                                 return (
                                   <td
                                     key={header}
-                                    className={`px-4 py-2 border-r border-slate-300 text-slate-800 font-medium ${
+                                    className={`px-4 py-2 border-r border-slate-300 font-medium ${
                                       isDesc
                                         ? "min-w-[320px] max-w-[450px] whitespace-normal break-words py-3 leading-normal align-top text-left"
-                                        : "whitespace-nowrap"
+                                        : "whitespace-nowrap text-slate-800"
                                     }`}
                                   >
                                     {isEditing ? (
@@ -837,53 +883,57 @@ const isRateChangeReasonRequired = currentRateSensitiveChanges.length > 0;
                                         />
                                       )
                                     ) : (
-                                      String(row[header] !== undefined ? row[header] : "")
+                                      <span className={column.numeric ? "font-mono text-slate-900" : ""}>
+                                        {String(row[header] !== undefined ? row[header] : "")}
+                                      </span>
                                     )}
                                   </td>
                                 );
                               })}
 
                                {/* Actions Cell */}
-                               <td className="px-4 py-2 text-center">
-                                 <div className="flex items-center justify-center gap-2">
-                                   {isEditing ? (
-                                     <>
+                               {showSheetActions && (
+                                 <td className="px-4 py-2 text-center">
+                                   <div className="flex items-center justify-center gap-2">
+                                     {isEditing ? (
+                                       <>
+                                         <button
+                                           onClick={() => saveEditedRow(originalIndex)}
+                                           className="inline-flex items-center gap-1.5 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-700 hover:to-green-750 text-white shadow-[0_2px_4px_rgba(16,124,65,0.2)] hover:shadow-[0_4px_8px_rgba(16,124,65,0.3)] px-2.5 py-1 rounded-md transition-all font-bold text-[11px] active:scale-95 duration-150 cursor-pointer"
+                                           title="Save Changes"
+                                         >
+                                           <Save size={12} />
+                                           Save
+                                         </button>
+                                         <button
+                                           onClick={cancelEditingRow}
+                                           className="inline-flex items-center gap-1.5 bg-gradient-to-r from-rose-500 to-red-600 hover:from-rose-600 hover:to-red-700 text-white shadow-[0_2px_4px_rgba(244,63,94,0.2)] hover:shadow-[0_4px_8px_rgba(244,63,94,0.3)] px-2.5 py-1 rounded-md transition-all font-bold text-[11px] active:scale-95 duration-150 cursor-pointer"
+                                           title="Cancel"
+                                         >
+                                           <X size={12} />
+                                           Cancel
+                                         </button>
+                                       </>
+                                      ) : (
                                        <button
-                                         onClick={() => saveEditedRow(originalIndex)}
-                                         className="inline-flex items-center gap-1.5 bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-700 hover:to-green-750 text-white shadow-[0_2px_4px_rgba(16,124,65,0.2)] hover:shadow-[0_4px_8px_rgba(16,124,65,0.3)] px-2.5 py-1 rounded-md transition-all font-bold text-[11px] active:scale-95 duration-150 cursor-pointer"
-                                         title="Save Changes"
+                                         onClick={() => startEditingRow(originalIndex, row)}
+                                         className="inline-flex items-center gap-1.5 bg-gradient-to-r from-[#0b1e36] to-[#107c41] hover:from-[#132d52] hover:to-[#16914d] text-white shadow-[0_2px_4px_rgba(11,30,54,0.2)] hover:shadow-[0_4px_8px_rgba(16,124,65,0.3)] px-3 py-1.5 rounded-md transition-all font-bold text-[11px] active:scale-95 duration-150 cursor-pointer"
+                                         title="Edit Row"
                                        >
-                                         <Save size={12} />
-                                         Save
+                                         <Edit size={12} />
+                                         Edit
                                        </button>
-                                       <button
-                                         onClick={cancelEditingRow}
-                                         className="inline-flex items-center gap-1.5 bg-gradient-to-r from-rose-500 to-red-600 hover:from-rose-600 hover:to-red-700 text-white shadow-[0_2px_4px_rgba(244,63,94,0.2)] hover:shadow-[0_4px_8px_rgba(244,63,94,0.3)] px-2.5 py-1 rounded-md transition-all font-bold text-[11px] active:scale-95 duration-150 cursor-pointer"
-                                         title="Cancel"
-                                       >
-                                         <X size={12} />
-                                         Cancel
-                                       </button>
-                                     </>
-                                    ) : (
-                                     <button
-                                       onClick={() => startEditingRow(originalIndex, row)}
-                                       className="inline-flex items-center gap-1.5 bg-gradient-to-r from-[#0b1e36] to-[#107c41] hover:from-[#132d52] hover:to-[#16914d] text-white shadow-[0_2px_4px_rgba(11,30,54,0.2)] hover:shadow-[0_4px_8px_rgba(16,124,65,0.3)] px-3 py-1.5 rounded-md transition-all font-bold text-[11px] active:scale-95 duration-150 cursor-pointer"
-                                       title="Edit Row"
-                                     >
-                                       <Edit size={12} />
-                                       Edit
-                                     </button>
-                                   )}
-                                 </div>
-                               </td>
+                                     )}
+                                   </div>
+                                 </td>
+                               )}
                             </tr>
                           );
                         })
                       ) : (
                         <tr>
                           <td
-                            colSpan={selectedSheet.headers.length + 2}
+                            colSpan={sheetColumns.length + (showSheetActions ? 2 : 1)}
                             className="px-4 py-12 text-center text-sm text-slate-400 font-semibold"
                           >
                             {sheetSearchQuery.trim() ? "No matching rows found in this sheet." : "No spreadsheet rows found in this file."}

@@ -1133,17 +1133,47 @@ const getFallbackBlackoutDatesForSupplier = async (supplierId = "") => {
   return blackoutDates;
 };
 
+const escapeRegexValue = (value = "") =>
+  String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const buildServiceLocationFilter = (destination = "") => {
+  const rawDestination = String(destination || "").trim();
+  if (!rawDestination) return {};
+
+  const terms = [
+    rawDestination,
+    ...rawDestination.split(/[,/|&+>-]+/),
+  ]
+    .map((item) => item.trim())
+    .filter((item) => item.length >= 2);
+
+  const uniqueTerms = [...new Set(terms)];
+  if (!uniqueTerms.length) return {};
+
+  const regexes = uniqueTerms.map((term) => new RegExp(escapeRegexValue(term), "i"));
+
+  return {
+    $or: [
+      { city: { $in: regexes } },
+      { country: { $in: regexes } },
+    ],
+  };
+};
+
 export const getAllServices = async (req, res, next) => {
   try {
     const queryContext = await getTravelQueryForBlackoutCheck(
       req.query?.queryId || req.query?.query || "",
     );
+    const serviceLocationFilter = buildServiceLocationFilter(
+      req.query?.destination || queryContext?.destination || "",
+    );
 
     const [hotels, activities, transfers, sightseeing] = await Promise.all([
-      Hotel.find(),
-      Activity.find().sort({ updatedAt: -1, createdAt: -1 }),
-      Transfer.find(),
-      Sightseeing.find()
+      Hotel.find(serviceLocationFilter).lean(),
+      Activity.find(serviceLocationFilter).sort({ updatedAt: -1, createdAt: -1 }).lean(),
+      Transfer.find(serviceLocationFilter).lean(),
+      Sightseeing.find(serviceLocationFilter).lean()
     ]);
 
     const dedupedActivities = Array.from(
@@ -1307,6 +1337,9 @@ export const getAllServices = async (req, res, next) => {
       usageType: t.usageType,
       // 🔹 PRICE
       price: t.price,
+      extraPerKmRate: Number(t.extraPerKmRate || 0),
+      fullDayExtraPerKmRate: Number(t.fullDayExtraPerKmRate || 0),
+      halfDayExtraPerKmRate: Number(t.halfDayExtraPerKmRate || 0),
       currency: t.currency,
       // 🔹 UI HELPER
       subtitle: `${t.vehicleType} | ${t.usageType}`
@@ -3088,7 +3121,34 @@ const buildDmcRecentActivity = (queries = []) =>
     .sort((left, right) => new Date(right.timestamp) - new Date(left.timestamp))
     .slice(0, 5);
 
-const buildDmcDashboardPayload = (queries = []) => {
+const getMonthRange = (offset = 0) => {
+  const now = new Date();
+  return {
+    start: new Date(now.getFullYear(), now.getMonth() + offset, 1),
+    end: new Date(now.getFullYear(), now.getMonth() + offset + 1, 1),
+  };
+};
+
+const calculateTrendPercentage = (current = 0, previous = 0) => {
+  const normalizedCurrent = Number(current || 0);
+  const normalizedPrevious = Number(previous || 0);
+
+  if (normalizedPrevious <= 0) {
+    return normalizedCurrent > 0 ? 100 : 0;
+  }
+
+  return Math.round(((normalizedCurrent - normalizedPrevious) / normalizedPrevious) * 100);
+};
+
+const buildDashboardTrend = (current = 0, previous = 0) => {
+  const change = calculateTrendPercentage(current, previous);
+  return {
+    change,
+    direction: change > 0 ? "up" : change < 0 ? "down" : "flat",
+  };
+};
+
+const buildDmcDashboardPayload = async (queries = [], currentDmcId = null) => {
   const currentWeekStart = getWindowStart(7);
   const previousWeekStart = getWindowStart(14);
   const now = new Date();
@@ -3180,6 +3240,118 @@ const buildDmcDashboardPayload = (queries = []) => {
     ? Math.round(recentVoucherTimestamps.length / Math.max(voucherActiveDays, 1))
     : 0;
 
+  // Calculate 12-month upload trend data
+  const startOfTrend = new Date();
+  startOfTrend.setDate(1);
+  startOfTrend.setMonth(startOfTrend.getMonth() - 11);
+  startOfTrend.setHours(0, 0, 0, 0);
+
+  const uploadsForTrend = currentDmcId
+    ? await UploadHistory.find({
+        uploadedAuth: currentDmcId,
+        status: "success",
+        createdAt: { $gte: startOfTrend },
+      })
+        .select("createdAt records category")
+        .lean()
+    : [];
+
+  const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const trendMap = {};
+
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(1);
+    d.setMonth(d.getMonth() - i);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    trendMap[key] = {
+      key,
+      month: monthNames[d.getMonth()],
+      year: d.getFullYear(),
+      uploads: 0,
+      records: 0,
+      hotels: 0,
+      transports: 0,
+      activities: 0,
+      sightseeings: 0,
+      packages: 0,
+    };
+  }
+
+  uploadsForTrend.forEach((upload) => {
+    const uDate = new Date(upload.createdAt);
+    const key = `${uDate.getFullYear()}-${String(uDate.getMonth() + 1).padStart(2, "0")}`;
+    if (trendMap[key]) {
+      trendMap[key].uploads += 1;
+      const count = Number(upload.records || 0);
+      trendMap[key].records += count;
+
+      const cat = String(upload.category || "").toLowerCase().trim();
+      if (cat === "hotel") {
+        trendMap[key].hotels += count;
+      } else if (cat === "transport" || cat === "vehicle") {
+        trendMap[key].transports += count;
+      } else if (cat === "activity") {
+        trendMap[key].activities += count;
+      } else if (cat === "sightseeing") {
+        trendMap[key].sightseeings += count;
+      } else if (cat === "package") {
+        trendMap[key].packages += count;
+      }
+    }
+  });
+
+  const uploadTrendData = Object.keys(trendMap)
+    .sort()
+    .map((key) => trendMap[key]);
+
+  // Monthly trends for stats
+  const currentMonth = getMonthRange(0);
+  const previousMonth = getMonthRange(-1);
+
+  let currentRecordsCount = 0;
+  let previousRecordsCount = 0;
+
+  if (currentDmcId) {
+    const [recordsThisMonth, recordsLastMonth] = await Promise.all([
+      UploadHistory.aggregate([
+        {
+          $match: {
+            uploadedAuth: new mongoose.Types.ObjectId(currentDmcId),
+            status: "success",
+            createdAt: { $gte: currentMonth.start, $lt: currentMonth.end },
+          },
+        },
+        {
+          $group: {
+            _id: null,
+            total: { $sum: "$records" },
+          },
+        },
+      ]),
+      UploadHistory.aggregate([
+        {
+          $match: {
+            uploadedAuth: new mongoose.Types.ObjectId(currentDmcId),
+            status: "success",
+            createdAt: { $gte: previousMonth.start, $lt: previousMonth.end },
+          },
+        },
+        {
+          $group: {
+            _id: null,
+            total: { $sum: "$records" },
+          },
+        },
+      ]),
+    ]);
+
+    currentRecordsCount = recordsThisMonth[0]?.total || 0;
+    previousRecordsCount = recordsLastMonth[0]?.total || 0;
+  }
+
+  const recordsTrend = buildDashboardTrend(currentRecordsCount, previousRecordsCount);
+
   return {
     dateLabel: formatDashboardDate(),
     summary: {
@@ -3218,6 +3390,10 @@ const buildDmcDashboardPayload = (queries = []) => {
         color: "bg-purple-600",
       },
     },
+    uploadTrendData,
+    trends: {
+      records: recordsTrend,
+    },
   };
 };
 
@@ -3237,10 +3413,13 @@ export const getConfirmedQueriesForDmc = async (req, res, next) => {
 export const getDmcDashboard = async (req, res, next) => {
   try {
     const queries = await getDmcVisibleQueriesData(req);
+    const currentDmcId = req.user.id?.toString();
+
+    const dashboardData = await buildDmcDashboardPayload(queries, currentDmcId);
 
     res.status(200).json({
       success: true,
-      data: buildDmcDashboardPayload(queries),
+      data: dashboardData,
     });
   } catch (error) {
     next(error);

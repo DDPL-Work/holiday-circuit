@@ -96,7 +96,7 @@ const getFlagImageUrlFromCountryCode = (countryCode = "") => {
   const normalizedCode = String(countryCode || "").trim().toUpperCase();
   if (!/^[A-Z]{2}$/.test(normalizedCode)) return "";
 
-  return `https://flagcdn.com/w40/${normalizedCode.toLowerCase()}.png`;
+  return `https://animated-country-flags.malith.dev/webp/${normalizedCode}.webp`;
 };
 
 const parseCountryFromDestinationLabel = (label = "") => {
@@ -686,7 +686,7 @@ const CreateNewQueries = ({ onClose, onCreated, queryToEdit = null, isOpsView = 
           <img
             src={selectedDestinationFlagUrl}
             alt=""
-            className="h-[12px] w-[18px] rounded-[2px] object-cover shadow-sm ring-1 ring-slate-200"
+            className="h-[13px] w-[20px] object-contain"
             loading="lazy"
             referrerPolicy="no-referrer"
           />
@@ -760,12 +760,12 @@ const CreateNewQueries = ({ onClose, onCreated, queryToEdit = null, isOpsView = 
                   selectedDestinationOptionId === option.optionKey ? "bg-slate-900 text-white hover:bg-slate-900" : "text-slate-800"
                 }`}
               >
-                <span className="flex h-[22px] w-[26px] shrink-0 items-center justify-center rounded-md bg-slate-50 shadow-sm ring-1 ring-slate-200/70">
+                <span className="flex h-5 w-6 shrink-0 items-center justify-center">
                   {option.flagUrl ? (
                     <img
                       src={option.flagUrl}
                       alt=""
-                      className="h-[12px] w-[18px] rounded-[2px] object-cover"
+                      className="h-[13px] w-[20px] object-contain"
                       loading="lazy"
                       referrerPolicy="no-referrer"
                     />
@@ -798,16 +798,16 @@ const CreateNewQueries = ({ onClose, onCreated, queryToEdit = null, isOpsView = 
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.22, ease: "easeOut" }}
+            transition={{ duration: 0.25, ease: "easeOut" }}
             className="fixed inset-0 z-50 flex items-center justify-center px-3 py-4 sm:px-4 sm:py-6"
           >
             <motion.div
               onClick={() => closeModal()}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.22, ease: "easeOut" }}
-              className="absolute inset-0 bg-black/30 backdrop-blur-sm"
+              initial={{ opacity: 0, backdropFilter: "blur(0px)", WebkitBackdropFilter: "blur(0px)" }}
+              animate={{ opacity: 1, backdropFilter: "blur(4px)", WebkitBackdropFilter: "blur(4px)" }}
+              exit={{ opacity: 0, backdropFilter: "blur(0px)", WebkitBackdropFilter: "blur(0px)" }}
+              transition={{ duration: 0.25, ease: "easeOut" }}
+              className="absolute inset-0 bg-black/30"
             />
 
             <motion.section
@@ -844,7 +844,7 @@ const CreateNewQueries = ({ onClose, onCreated, queryToEdit = null, isOpsView = 
                 animate={{ opacity: 1, y: 0, x: 0 }}
                 exit={{ opacity: 0, y: -10, x: 20 }}
                 transition={{ duration: 0.22, ease: "easeOut" }}
-                className="pointer-events-none fixed top-4 right-4 z-[100] w-full max-w-[340px] px-4 sm:px-0"
+                className="pointer-events-none fixed top-4 right-4 z-[100] w-auto max-w-max px-4 sm:px-0"
               >
                 <div className="pointer-events-auto rounded-2xl border border-amber-200 bg-[linear-gradient(135deg,rgba(255,251,235,0.98)_0%,rgba(254,243,199,0.96)_100%)] px-3.5 py-2.5 shadow-[0_16px_40px_rgba(120,53,15,0.18)]">
                   <div className="flex items-start gap-2.5">
@@ -852,10 +852,10 @@ const CreateNewQueries = ({ onClose, onCreated, queryToEdit = null, isOpsView = 
                       <AlertCircle className="h-4 w-4" />
                     </div>
                     <div className="min-w-0 flex-1 pt-1">
-                      <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-amber-700">
+                      <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-amber-700 whitespace-nowrap">
                         {formAlert.title}
                       </p>
-                      <p className="mt-0.5 text-xs leading-relaxed text-amber-900/95">
+                      <p className="mt-0.5 text-xs leading-relaxed text-amber-900/95 whitespace-nowrap">
                         {formAlert.message}
                       </p>
                     </div>

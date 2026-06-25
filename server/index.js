@@ -52,11 +52,14 @@ app.use((err, req, res, next) => {
       message: `Request payload is too large. Max allowed size is ${REQUEST_BODY_LIMIT}.`,
     });
   }
+  
 
   console.error(err.stack);
   res.status(err.status || 500).json({success: false, message: err.message || "Internal Server Error",
   });
 });
+
+
 
 // ====================== SERVER START ======================
 app.listen(PORT, () => {

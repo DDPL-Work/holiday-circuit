@@ -48,6 +48,21 @@ const transferSchema = new mongoose.Schema(
     default: 0
   },
 
+  extraPerKmRate: {
+    type: Number,
+    default: 0
+  },
+
+  fullDayExtraPerKmRate: {
+    type: Number,
+    default: 0
+  },
+
+  halfDayExtraPerKmRate: {
+    type: Number,
+    default: 0
+  },
+
   currency: {
     type: String,
     enum: ["USD", "INR", "AED", "EUR", "THB", "GBP", "IDR", "SGD", "MYR", "EGP"],
