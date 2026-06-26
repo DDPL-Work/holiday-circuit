@@ -244,26 +244,30 @@ function FeedbackToast({ feedback, onClose }) {
   return (
     <div className="fixed right-4 top-4 z-[70] w-full max-w-sm sm:right-6 sm:top-6">
       <div className={`rounded-2xl border px-4 py-3 shadow-xl ${styles[feedback.type] || styles.success}`}>
-        <div className="flex items-start gap-3">
-          <div className="min-w-0 flex-1">
-            <p className="text-[10px] font-bold uppercase tracking-[0.16em]">{feedback.title}</p>
-            <p className="mt-1 text-sm leading-5">{feedback.message}</p>
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-[10px] font-bold uppercase tracking-[0.16em] leading-none">{feedback.title}</p>
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-full p-1 text-current/60 transition-colors hover:bg-white/60 hover:text-current flex items-center justify-center shrink-0"
+            >
+              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24">
+                <path
+                  d="M6 6l12 12M18 6L6 18"
+                  stroke="currentColor"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                />
+              </svg>
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-full p-1 text-current/60 transition-colors hover:bg-white/60 hover:text-current"
-          >
-            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24">
-              <path
-                d="M6 6l12 12M18 6L6 18"
-                stroke="currentColor"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-              />
-            </svg>
-          </button>
+          {feedback.message && (
+            <div>
+              <p className="text-[12px] leading-relaxed font-medium">{feedback.message}</p>
+            </div>
+          )}
         </div>
       </div>
     </div>

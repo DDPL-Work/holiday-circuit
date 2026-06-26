@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Wallet, Clock, TrendingUp, Download, FileText, Eye, EyeOff } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import API from "../../utils/Api";
@@ -181,6 +182,7 @@ const Finance = () => {
     [expandedRows],
   );
 
+
   const toggleRow = (id) =>
     setExpandedRows((prev) => ({ ...prev, [id]: !prev[id] }));
 
@@ -239,6 +241,15 @@ const Finance = () => {
   const [error, setError] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 8;
+
+  const activeTxnWithQuotes = useMemo(() => {
+    return overview.transactions.find((txn) => expandedRows[`${txn.id}-quotations`]);
+  }, [overview.transactions, expandedRows]);
+
+  const activeQuotationDetails = useMemo(() => {
+    if (!activeTxnWithQuotes) return [];
+    return getQuotationDetails(activeTxnWithQuotes);
+  }, [activeTxnWithQuotes]);
 
   useEffect(() => {
     const fetchFinanceOverview = async () => {
@@ -331,32 +342,44 @@ const Finance = () => {
       </motion.header>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-        <motion.article variants={item} whileHover={{ y: -4 }} className="bg-gradient-to-r from-slate-900 to-slate-800 text-white p-6 rounded-xl shadow-sm">
+        <motion.article 
+          variants={item} 
+          whileHover={{ y: -4, boxShadow: "0 12px 30px -10px rgba(79, 70, 229, 0.3)" }} 
+          className="bg-gradient-to-br from-slate-900 via-indigo-950 to-blue-950 text-white p-6 rounded-xl border border-indigo-500/20 shadow-md transition-all duration-200"
+        >
           <div className="flex justify-between items-center">
-            <p className="text-sm text-slate-300">Current Balance</p>
-            <Wallet size={20} />
+            <p className="text-sm text-indigo-200">Current Balance</p>
+            <Wallet size={20} className="text-indigo-400" />
           </div>
-          <h2 className="text-2xl font-semibold mt-3">
+          <h2 className="text-2xl font-bold mt-3 text-white">
             {loading ? "Loading..." : formatCurrency(overview.summary.currentBalance, overview.currency)}
           </h2>
         </motion.article>
 
-        <motion.article variants={item} whileHover={{ y: -4 }} className="bg-white shadow-sm p-6 rounded-xl">
+        <motion.article 
+          variants={item} 
+          whileHover={{ y: -4, boxShadow: "0 12px 20px -8px rgba(249, 115, 22, 0.15)" }} 
+          className="bg-gradient-to-br from-white to-orange-50/40 border border-slate-100 border-b-4 border-b-orange-500 shadow-sm p-6 rounded-xl transition-all duration-200"
+        >
           <div className="flex justify-between items-center">
             <p className="text-sm text-gray-500">Pending Commissions</p>
             <Clock className="text-orange-500" size={20} />
           </div>
-          <h2 className="text-2xl font-semibold text-orange-600 mt-3">
+          <h2 className="text-2xl font-bold text-orange-600 mt-3">
             {loading ? "Loading..." : formatCurrency(overview.summary.pendingCommissions, overview.currency)}
           </h2>
         </motion.article>
 
-        <motion.article variants={item} whileHover={{ y: -4 }} className="bg-white shadow-sm p-6 rounded-xl">
+        <motion.article 
+          variants={item} 
+          whileHover={{ y: -4, boxShadow: "0 12px 20px -8px rgba(16, 185, 129, 0.15)" }} 
+          className="bg-gradient-to-br from-white to-emerald-50/40 border border-slate-100 border-b-4 border-b-emerald-500 shadow-sm p-6 rounded-xl transition-all duration-200"
+        >
           <div className="flex justify-between items-center">
             <p className="text-sm text-gray-500">Total Earnings</p>
-            <TrendingUp className="text-green-600" size={20} />
+            <TrendingUp className="text-emerald-600" size={20} />
           </div>
-          <h2 className="text-2xl font-semibold text-green-600 mt-3">
+          <h2 className="text-2xl font-bold text-emerald-600 mt-3">
             {loading ? "Loading..." : formatCurrency(overview.summary.totalEarnings, overview.currency)}
           </h2>
         </motion.article>
@@ -367,17 +390,6 @@ const Finance = () => {
         variants={item}
         className="relative bg-white shadow-sm rounded-xl p-6"
       >
-        <AnimatePresence>
-          {isQuotationHistoryOpen && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.2, ease: "easeOut" }}
-              className="pointer-events-none absolute inset-0 z-30 rounded-xl bg-white/18 backdrop-blur-[4px]"
-            />
-          )}
-        </AnimatePresence>
         <h2 className="text-lg font-semibold mb-4">Transaction History</h2>
         <table className="w-full text-xs table-auto">
             <colgroup>
@@ -501,274 +513,7 @@ const Finance = () => {
                               </button>
                             </div>
 
-                            <AnimatePresence>
-                              {isOpen && (
-                                <motion.div
-                                  initial={{ opacity: 0, y: -8, scale: 0.985 }}
-                                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                                  exit={{ opacity: 0, y: -8, scale: 0.985 }}
-                                  transition={{ duration: 0.22, ease: "easeOut" }}
-                                  style={{
-                                    position: "absolute",
-                                    top: quotationPopupPlacement.top ?? 120,
-                                    left: quotationPopupPlacement.left ?? "50%",
-                                    zIndex: 80,
-                                    width: "min(760px, 90vw)",
-                                  }}
-                                  className="relative -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-[20px] border border-gray-200 bg-white text-left shadow-[0_24px_60px_rgba(15,23,42,0.16)]"
-                                >
-                                  <div className="rounded-t-[20px] border-b border-gray-100 bg-slate-50 px-4 py-3">
-                                    <div className="flex items-center gap-2">
-                                      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-100 text-blue-600">
-                                        <FileText size={12} strokeWidth={2.2} />
-                                      </span>
-                                      <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-600">
-                                        Quotation History
-                                      </p>
-                                    </div>
-                                    <p className="mt-1 text-xs text-slate-600">
-                                      Only confirmed and rejected quotations are shown here. Open any quotation below to view its price, agent remark, and services.
-                                    </p>
-                                  </div>
 
-                                  <div className="custom-scroll max-h-[420px] overflow-y-auto px-4 py-4">
-                                    <div className="space-y-3">
-                                      {quotationDetails.map((quote, quoteIndex) => {
-                                        const quoteKey = `${txn.id}-quote-${quote.id || quoteIndex}`;
-                                        const quoteOpen = !!expandedRows[quoteKey];
-
-                                        return (
-                                          <motion.div
-                                            key={quoteKey}
-                                            layout
-                                            transition={{ duration: 0.22, ease: "easeOut" }}
-                                            className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50/80"
-                                          >
-                                            <button
-                                              onClick={() => toggleRow(quoteKey)}
-                                              className="flex w-full items-start justify-between gap-3 px-3 py-3 text-left"
-                                            >
-                                              <div className="min-w-0 flex-1">
-                                                <div className="flex items-center gap-2">
-                                                  <span className="text-sm font-semibold text-slate-900">
-                                                    {`Quotation ${quoteIndex + 1}`}
-                                                  </span>
-                                                  {quote.quotationNumber && (
-                                                    <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-600">
-                                                      {quote.quotationNumber}
-                                                    </span>
-                                                  )}
-                                                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${getQuoteStatusColor(quote.status)}`}>
-                                                    {quote.status || "Pending"}
-                                                  </span>
-                                                </div>
-                                                <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-500">
-                                                  <span>{formatDateTime(quote.createdAt)}</span>
-                                                  <span>{formatCurrency(quote.clientTotalAmount || quote.opsTotalAmount || 0, quote.currency || overview.currency)}</span>
-                                                  <span>{(quote.services || []).length} services</span>
-                                                </div>
-                                              </div>
-
-                                              <div className="flex items-center gap-2">
-                                                <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold ${
-                                                  quoteOpen
-                                                    ? "bg-rose-50 text-rose-600 ring-1 ring-rose-200"
-                                                    : "bg-sky-50 text-sky-700 ring-1 ring-sky-200"
-                                                }`}>
-                                                  {quoteOpen ? <EyeOff size={13} strokeWidth={2.2} /> : <Eye size={13} strokeWidth={2.2} />}
-                                                  {quoteOpen ? "Hide" : "View"}
-                                                </span>
-                                                <span className={`flex h-6 w-6 items-center justify-center rounded-full ${
-                                                  quoteOpen ? "bg-rose-100 text-rose-600" : "bg-sky-100 text-sky-700"
-                                                }`}>
-                                                  <SpringChevron open={quoteOpen} className="w-3 h-3" />
-                                                </span>
-                                              </div>
-                                            </button>
-
-                                            <AnimatePresence initial={false}>
-                                              {quoteOpen && (
-                                                <motion.div
-                                                  initial={{ height: 0, opacity: 0 }}
-                                                  animate={{ height: "auto", opacity: 1 }}
-                                                  exit={{ height: 0, opacity: 0 }}
-                                                  transition={{ duration: 0.24, ease: "easeInOut" }}
-                                                  className="overflow-hidden"
-                                                >
-                                                  <div className="border-t border-slate-200 bg-white px-3 py-3">
-                                                    <div className="grid grid-cols-2 gap-2 text-[11px] sm:grid-cols-3">
-                                                      <div className="rounded-lg bg-slate-50 px-2.5 py-2">
-                                                        <p className="text-slate-400">Quote Price</p>
-                                                        <p className="mt-0.5 font-semibold text-slate-800">
-                                                          {formatCurrency(quote.clientTotalAmount || quote.opsTotalAmount || 0, quote.currency || overview.currency)}
-                                                        </p>
-                                                      </div>
-                                                      <div className="rounded-lg bg-slate-50 px-2.5 py-2">
-                                                        <p className="text-slate-400">Valid Till</p>
-                                                        <p className="mt-0.5 font-semibold text-slate-800">
-                                                          {formatDate(quote.validTill)}
-                                                        </p>
-                                                      </div>
-                                                      <div className="rounded-lg bg-slate-50 px-2.5 py-2">
-                                                        <p className="text-slate-400">Services</p>
-                                                        <p className="mt-0.5 font-semibold text-slate-800">
-                                                          {(quote.services || []).length}
-                                                        </p>
-                                                      </div>
-                                                    </div>
-
-                                                    {quote.revisionRemark && (
-                                                      <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5">
-                                                        <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-amber-700">
-                                                          Agent Remark
-                                                        </p>
-                                                        <p className="mt-1 text-[11px] leading-5 text-amber-900">
-                                                          {quote.revisionRemark}
-                                                        </p>
-                                                      </div>
-                                                    )}
-
-                                                    {quote.status === "Revision Requested" && !quote.revisionRemark && (
-                                                      <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5">
-                                                        <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-amber-700">
-                                                          Agent Remark
-                                                        </p>
-                                                        <p className="mt-1 text-[11px] leading-5 text-amber-900">
-                                                          No rejection remark was shared for this quotation.
-                                                        </p>
-                                                      </div>
-                                                    )}
-
-                                                    <div className="mt-3">
-                                                      <div className="mb-2 flex items-center gap-2">
-                                                        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-sky-100 text-sky-700">
-                                                          <svg
-                                                            width="12"
-                                                            height="12"
-                                                            viewBox="0 0 24 24"
-                                                            fill="none"
-                                                            stroke="currentColor"
-                                                            strokeWidth="2"
-                                                            strokeLinecap="round"
-                                                            strokeLinejoin="round"
-                                                          >
-                                                            <path d="M3 7h18" />
-                                                            <path d="M6 12h12" />
-                                                            <path d="M10 17h4" />
-                                                          </svg>
-                                                        </span>
-                                                        <p className="text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-sky-700">
-                                                          Services
-                                                        </p>
-                                                      </div>
-                                                      <div className="space-y-2">
-                                                        {(quote.services || []).length > 0 ? (
-                                                          quote.services.map((service, serviceIndex) => {
-                                                            const serviceKey = `${quoteKey}-service-card-${serviceIndex}`;
-                                                            const serviceOpen = !!expandedRows[serviceKey];
-                                                            const serviceMeta = [
-                                                              formatServiceTypeLabel(service.type),
-                                                              [service.city, service.country].filter(Boolean).join(", "),
-                                                              formatDate(service.serviceDate),
-                                                            ].filter((value) => value && value !== "-");
-
-                                                            const serviceHighlights = [
-                                                              Number(service.nights || 0) > 0 ? `${service.nights}N` : "",
-                                                              Number(service.days || 0) > 0 ? `${service.days}D` : "",
-                                                              Number(service.rooms || 0) > 0 ? `${service.rooms} Room` : "",
-                                                              Number(service.adults || 0) > 0 ? `${service.adults} Adult` : "",
-                                                              Number(service.children || 0) > 0 ? `${service.children} Child` : "",
-                                                              Number(service.pax || 0) > 0 ? `${service.pax} Pax` : "",
-                                                              service.vehicleType || "",
-                                                              service.roomType || "",
-                                                            ].filter(Boolean);
-
-                                                            return (
-                                                              <motion.div
-                                                                key={`${quoteKey}-service-${serviceIndex}`}
-                                                                layout
-                                                                transition={{ duration: 0.2, ease: "easeOut" }}
-                                                                className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-left"
-                                                              >
-                                                                <div className="flex items-center justify-between gap-3">
-                                                                  <div className="min-w-0">
-                                                                    <p className="text-[11px] font-semibold text-slate-800">
-                                                                      {service.title || `Service ${serviceIndex + 1}`}
-                                                                    </p>
-                                                                    <p className="mt-0.5 text-[10px] text-slate-500">
-                                                                      {serviceMeta.join(" | ") || "Service details available"}
-                                                                    </p>
-                                                                  </div>
-                                                                  <div className="flex items-center self-center gap-2">
-                                                                    <span className="whitespace-nowrap text-[11px] font-semibold text-slate-700">
-                                                                      {formatCurrency(service.total || 0, service.currency || quote.currency || overview.currency)}
-                                                                    </span>
-                                                                    <button
-                                                                      type="button"
-                                                                      onClick={() => toggleRow(serviceKey)}
-                                                                      className={`inline-flex h-7 w-10 items-center justify-center rounded-lg transition-colors ${
-                                                                        serviceOpen
-                                                                          ? "bg-rose-50 text-rose-600 ring-1 ring-rose-200"
-                                                                          : "bg-sky-50 text-sky-700 ring-1 ring-sky-200"
-                                                                      }`}
-                                                                    >
-                                                                      {serviceOpen ? <EyeOff size={14} strokeWidth={2.2} /> : <Eye size={14} strokeWidth={2.2} />}
-                                                                    </button>
-                                                                  </div>
-                                                                </div>
-
-                                                                <AnimatePresence initial={false}>
-                                                                  {serviceOpen && (
-                                                                    <motion.div
-                                                                      initial={{ height: 0, opacity: 0 }}
-                                                                      animate={{ height: "auto", opacity: 1 }}
-                                                                      exit={{ height: 0, opacity: 0 }}
-                                                                      transition={{ duration: 0.22, ease: "easeInOut" }}
-                                                                      className="overflow-hidden"
-                                                                    >
-                                                                      {serviceHighlights.length > 0 && (
-                                                                        <div className="mt-2 flex flex-wrap gap-1.5">
-                                                                          {serviceHighlights.map((highlight, highlightIndex) => (
-                                                                            <span
-                                                                              key={`${quoteKey}-service-highlight-${highlightIndex}`}
-                                                                              className="rounded-md bg-white px-2 py-0.5 text-[10px] text-slate-600 ring-1 ring-slate-200"
-                                                                            >
-                                                                              {highlight}
-                                                                            </span>
-                                                                          ))}
-                                                                        </div>
-                                                                      )}
-
-                                                                      {service.description && (
-                                                                        <p className="mt-2 text-[10px] leading-4 text-slate-500">
-                                                                          {service.description}
-                                                                        </p>
-                                                                      )}
-                                                                    </motion.div>
-                                                                  )}
-                                                                </AnimatePresence>
-                                                              </motion.div>
-                                                            );
-                                                          })
-                                                        ) : (
-                                                          <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 py-3 text-[11px] text-slate-400">
-                                                            No services available for this quotation.
-                                                          </div>
-                                                        )}
-                                                      </div>
-                                                    </div>
-                                                  </div>
-                                                </motion.div>
-                                              )}
-                                            </AnimatePresence>
-                                          </motion.div>
-                                        );
-                                      })}
-                                    </div>
-                                  </div>
-                                </motion.div>
-                              )}
-                            </AnimatePresence>
                           </div>
                         );
                       })()}
@@ -845,6 +590,294 @@ const Finance = () => {
           </div>
         )}
       </motion.div>
+
+      {createPortal(
+        <AnimatePresence>
+          {activeTxnWithQuotes && (
+            <div className="fixed inset-0 z-[99999] flex items-center justify-center py-10 px-4" data-txn-dropdown>
+              {/* Backdrop blur overlay */}
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="absolute inset-0 bg-slate-950/45 backdrop-blur-[8px]"
+                onClick={() => setExpandedRows({})}
+              />
+              
+              {/* Centered Modal content card */}
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                transition={{ duration: 0.22, ease: "easeOut" }}
+                className="relative z-10 w-full max-w-[760px] max-h-[72vh] flex flex-col overflow-hidden rounded-[24px] border border-slate-200 bg-white text-left shadow-[0_24px_60px_rgba(15,23,42,0.18)]"
+              >
+                <div className="flex-shrink-0 rounded-t-[24px] border-b border-slate-100 bg-slate-50 px-6 py-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-100 text-blue-600">
+                        <FileText size={14} strokeWidth={2.2} />
+                      </span>
+                      <p className="text-[12px] font-bold uppercase tracking-[0.12em] text-slate-700">
+                        Quotation History
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setExpandedRows({})}
+                      className="rounded-full p-1.5 hover:bg-slate-200/80 transition-colors text-slate-450 hover:text-slate-600 cursor-pointer"
+                    >
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                      </svg>
+                    </button>
+                  </div>
+                  <p className="mt-0.5 text-xs text-slate-650">
+                    Only confirmed and rejected quotations are shown here. Open any quotation below to view its price, agent remark, and services.
+                  </p>
+                </div>
+
+                <div className="modal-transparent-scroll flex-grow max-h-[320px] overflow-y-auto px-6 py-3.5">
+                  <div className="space-y-3">
+                    {activeQuotationDetails.map((quote, quoteIndex) => {
+                      const quoteKey = `${activeTxnWithQuotes.id}-quote-${quote.id || quoteIndex}`;
+                      const quoteOpen = !!expandedRows[quoteKey];
+
+                      return (
+                        <motion.div
+                          key={quoteKey}
+                          layout
+                          transition={{ duration: 0.22, ease: "easeOut" }}
+                          className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50/80"
+                        >
+                          <button
+                            onClick={() => toggleRow(quoteKey)}
+                            className="flex w-full items-start justify-between gap-3 px-4 py-3 text-left"
+                          >
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm font-semibold text-slate-900">
+                                  {`Quotation ${quoteIndex + 1}`}
+                                </span>
+                                {quote.quotationNumber && (
+                                  <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-600">
+                                    {quote.quotationNumber}
+                                  </span>
+                                )}
+                                <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${getQuoteStatusColor(quote.status)}`}>
+                                  {quote.status || "Pending"}
+                                </span>
+                              </div>
+                              <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-500">
+                                <span>{formatDateTime(quote.createdAt)}</span>
+                                <span>{formatCurrency(quote.clientTotalAmount || quote.opsTotalAmount || 0, quote.currency || overview.currency)}</span>
+                                <span>{(quote.services || []).length} services</span>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                              <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-semibold ${
+                                quoteOpen
+                                  ? "bg-rose-50 text-rose-600 ring-1 ring-rose-200"
+                                  : "bg-sky-50 text-sky-700 ring-1 ring-sky-200"
+                              }`}>
+                                {quoteOpen ? <EyeOff size={13} strokeWidth={2.2} /> : <Eye size={13} strokeWidth={2.2} />}
+                                {quoteOpen ? "Hide" : "View"}
+                              </span>
+                              <span className={`flex h-6 w-6 items-center justify-center rounded-full ${
+                                quoteOpen ? "bg-rose-100 text-rose-600" : "bg-sky-100 text-sky-700"
+                              }`}>
+                                <SpringChevron open={quoteOpen} className="w-3 h-3" />
+                              </span>
+                            </div>
+                          </button>
+
+                          <AnimatePresence initial={false}>
+                            {quoteOpen && (
+                              <motion.div
+                                initial={{ height: 0, opacity: 0 }}
+                                animate={{ height: "auto", opacity: 1 }}
+                                exit={{ height: 0, opacity: 0 }}
+                                transition={{ duration: 0.24, ease: "easeInOut" }}
+                                className="overflow-hidden"
+                              >
+                                <div className="border-t border-slate-200 bg-white px-4 py-3">
+                                  <div className="grid grid-cols-2 gap-2.5 text-[11px] sm:grid-cols-3">
+                                    <div className="rounded-lg bg-slate-50 px-3 py-2">
+                                      <p className="text-slate-400 font-medium">Quote Price</p>
+                                      <p className="mt-0.5 font-semibold text-slate-800">
+                                        {formatCurrency(quote.clientTotalAmount || quote.opsTotalAmount || 0, quote.currency || overview.currency)}
+                                      </p>
+                                    </div>
+                                    <div className="rounded-lg bg-slate-50 px-3 py-2">
+                                      <p className="text-slate-400 font-medium">Valid Till</p>
+                                      <p className="mt-0.5 font-semibold text-slate-800">
+                                        {formatDate(quote.validTill)}
+                                      </p>
+                                    </div>
+                                    <div className="rounded-lg bg-slate-50 px-3 py-2">
+                                      <p className="text-slate-400 font-medium">Services</p>
+                                      <p className="mt-0.5 font-semibold text-slate-800">
+                                        {(quote.services || []).length}
+                                      </p>
+                                    </div>
+                                  </div>
+
+                                  {quote.revisionRemark && (
+                                    <div className="mt-2.5 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2">
+                                      <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-amber-700">
+                                        Agent Remark
+                                      </p>
+                                      <p className="mt-0.5 text-[11px] leading-5 text-amber-900">
+                                        {quote.revisionRemark}
+                                      </p>
+                                    </div>
+                                  )}
+
+                                  {quote.status === "Revision Requested" && !quote.revisionRemark && (
+                                    <div className="mt-2.5 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2">
+                                      <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-amber-700">
+                                        Agent Remark
+                                      </p>
+                                      <p className="mt-0.5 text-[11px] leading-5 text-amber-900">
+                                        No rejection remark was shared for this quotation.
+                                      </p>
+                                    </div>
+                                  )}
+
+                                  <div className="mt-3.5">
+                                    <div className="mb-1.5 flex items-center gap-2">
+                                      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-sky-100 text-sky-700">
+                                        <svg
+                                          width="12"
+                                          height="12"
+                                          viewBox="0 0 24 24"
+                                          fill="none"
+                                          stroke="currentColor"
+                                          strokeWidth="2"
+                                          strokeLinecap="round"
+                                          strokeLinejoin="round"
+                                        >
+                                          <path d="M3 7h18" />
+                                          <path d="M6 12h12" />
+                                          <path d="M10 17h4" />
+                                        </svg>
+                                      </span>
+                                      <p className="text-left text-[10px] font-semibold uppercase tracking-[0.12em] text-sky-700">
+                                        Services
+                                      </p>
+                                    </div>
+                                    <div className="space-y-2">
+                                      {(quote.services || []).length > 0 ? (
+                                        quote.services.map((service, serviceIndex) => {
+                                          const serviceKey = `${quoteKey}-service-card-${serviceIndex}`;
+                                          const serviceOpen = !!expandedRows[serviceKey];
+                                          const serviceMeta = [
+                                            formatServiceTypeLabel(service.type),
+                                            [service.city, service.country].filter(Boolean).join(", "),
+                                            formatDate(service.serviceDate),
+                                          ].filter((value) => value && value !== "-");
+
+                                          const serviceHighlights = [
+                                            Number(service.nights || 0) > 0 ? `${service.nights}N` : "",
+                                            Number(service.days || 0) > 0 ? `${service.days}D` : "",
+                                            Number(service.rooms || 0) > 0 ? `${service.rooms} Room` : "",
+                                            Number(service.adults || 0) > 0 ? `${service.adults} Adult` : "",
+                                            Number(service.children || 0) > 0 ? `${service.children} Child` : "",
+                                            Number(service.pax || 0) > 0 ? `${service.pax} Pax` : "",
+                                            service.vehicleType || "",
+                                            service.roomType || "",
+                                          ].filter(Boolean);
+
+                                          return (
+                                            <motion.div
+                                              key={`${quoteKey}-service-${serviceIndex}`}
+                                              layout
+                                              transition={{ duration: 0.2, ease: "easeOut" }}
+                                              className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-left"
+                                            >
+                                              <div className="flex items-center justify-between gap-3">
+                                                <div className="min-w-0">
+                                                  <p className="text-[11px] font-semibold text-slate-800">
+                                                    {service.title || `Service ${serviceIndex + 1}`}
+                                                  </p>
+                                                  <p className="mt-0.5 text-[10px] text-slate-500">
+                                                    {serviceMeta.join(" | ") || "Service details available"}
+                                                  </p>
+                                                </div>
+                                                <div className="flex items-center self-center gap-2">
+                                                  <span className="whitespace-nowrap text-[11px] font-semibold text-slate-700">
+                                                    {formatCurrency(service.total || 0, service.currency || quote.currency || overview.currency)}
+                                                  </span>
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => toggleRow(serviceKey)}
+                                                    className={`inline-flex h-7 w-10 items-center justify-center rounded-lg transition-colors ${
+                                                      serviceOpen
+                                                        ? "bg-rose-50 text-rose-600 ring-1 ring-rose-200"
+                                                        : "bg-sky-50 text-sky-700 ring-1 ring-sky-200"
+                                                    }`}
+                                                  >
+                                                    {serviceOpen ? <EyeOff size={14} strokeWidth={2.2} /> : <Eye size={14} strokeWidth={2.2} />}
+                                                  </button>
+                                                </div>
+                                              </div>
+
+                                              <AnimatePresence initial={false}>
+                                                {serviceOpen && (
+                                                  <motion.div
+                                                    initial={{ height: 0, opacity: 0 }}
+                                                    animate={{ height: "auto", opacity: 1 }}
+                                                    exit={{ height: 0, opacity: 0 }}
+                                                    transition={{ duration: 0.22, ease: "easeInOut" }}
+                                                    className="overflow-hidden"
+                                                  >
+                                                    {serviceHighlights.length > 0 && (
+                                                      <div className="mt-2 flex flex-wrap gap-1.5">
+                                                        {serviceHighlights.map((highlight, highlightIndex) => (
+                                                          <span
+                                                            key={`${quoteKey}-service-highlight-${highlightIndex}`}
+                                                            className="rounded-md bg-white px-2 py-0.5 text-[10px] text-slate-600 ring-1 ring-slate-200"
+                                                          >
+                                                            {highlight}
+                                                          </span>
+                                                        ))}
+                                                      </div>
+                                                    )}
+
+                                                    {service.description && (
+                                                      <p className="mt-2 text-[10px] leading-4 text-slate-500">
+                                                        {service.description}
+                                                      </p>
+                                                    )}
+                                                  </motion.div>
+                                                )}
+                                              </AnimatePresence>
+                                            </motion.div>
+                                          );
+                                        })
+                                      ) : (
+                                        <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 py-3 text-[11px] text-slate-400">
+                                          No services available for this quotation.
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
+                        </motion.div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
     </motion.section>
   );
 };

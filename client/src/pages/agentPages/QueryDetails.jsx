@@ -17,6 +17,7 @@ import {
   EyeOff,
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { useDispatch, useSelector } from "react-redux";
 import API from "../../utils/Api.js";
 import toast from "react-hot-toast";
@@ -1003,6 +1004,8 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
   const currentUser = useSelector((state) => state.auth.user);
   const [quotes, setQuotes] = useState([]);
   const [expandedQuoteIds, setExpandedQuoteIds] = useState({});
+  const [showQuoteHistory, setShowQuoteHistory] = useState(false);
+  const [selectedQuoteId, setSelectedQuoteId] = useState(null);
   const [markupType, setMarkupType] = useState("PERCENT");
   const [markupValue, setMarkupValue] = useState("");
   const [isMarkupModalOpen, setIsMarkupModalOpen] = useState(false);
@@ -1341,6 +1344,10 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
       ),
     ) || quotes[0] || null;
 
+  const activeQuote = selectedQuoteId
+    ? quotes.find((q) => q._id === selectedQuoteId) || latestQuote
+    : latestQuote;
+
   const bookingConfirmedAt =
     query.activityLog
       ?.slice()
@@ -1490,36 +1497,154 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
         </div>
 
         {/* Status badges */}
-        {query.agentStatus === "Quote Sent" && quotes.length > 0 && (
-          <span className="w-fit bg-green-200 text-green-700 px-3 py-2 rounded-full text-xs">
-            Quote Received
-          </span>
-        )}
-        {query.agentStatus === "Client Approved" && (
-          <span className="w-fit bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full text-xs">
-            Booking Processed
-          </span>
-        )}
-        {query.agentStatus === "Pending" && (
-          <span className="w-fit bg-yellow-100 text-yellow-700 px-3 py-1 rounded-full text-xs">
-            Pending
-          </span>
-        )}
-        {query.agentStatus === "Revision Requested" && (
-          <span className="w-fit bg-red-400 text-white px-3 py-1 rounded-full text-xs">
-            Revision Requested
-          </span>
-        )}
-        {isQueryRejected && (
-          <span className="w-fit rounded-full border border-rose-200 bg-rose-100 px-3 py-1 text-xs text-rose-700">
-            Rejected
-          </span>
-        )}
-        {query.agentStatus === "Confirmed" && (
-          <span className="w-fit bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs">
-            Booking Confirmed
-          </span>
-        )}
+        <div className="flex flex-wrap items-center gap-2 relative">
+          {query.agentStatus === "Quote Sent" && quotes.length > 0 && (
+            <span className="w-fit bg-green-200 text-green-700 px-3 py-2 rounded-full text-xs font-semibold">
+              Quote Received
+            </span>
+          )}
+          {query.agentStatus === "Client Approved" && (
+            <span className="w-fit bg-indigo-100 text-indigo-700 px-3 py-1.5 rounded-full text-xs font-semibold">
+              Booking Processed
+            </span>
+          )}
+          {query.agentStatus === "Pending" && (
+            <span className="w-fit bg-yellow-100 text-yellow-700 px-3 py-1.5 rounded-full text-xs font-semibold">
+              Pending
+            </span>
+          )}
+          {query.agentStatus === "Revision Requested" && (
+            <span className="w-fit bg-red-400 text-white px-3 py-1.5 rounded-full text-xs font-semibold">
+              Revision Requested
+            </span>
+          )}
+          {isQueryRejected && (
+            <span className="w-fit rounded-full border border-rose-200 bg-rose-100 px-3 py-1.5 text-xs font-semibold text-rose-700">
+              Rejected
+            </span>
+          )}
+          {query.agentStatus === "Confirmed" && (
+            <span className="w-fit bg-green-100 text-green-700 px-3 py-1.5 rounded-full text-xs font-semibold">
+              Booking Confirmed
+            </span>
+          )}
+
+{/* History Toggle Trigger next to status badges */}
+          {quotes.length > 0 && (
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setShowQuoteHistory(!showQuoteHistory)}
+                className={`flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border transition-all duration-200 shadow-sm hover:shadow-md ${
+                  showQuoteHistory
+                    ? "bg-gradient-to-r from-emerald-500 to-teal-600 border-transparent text-white"
+                    : "bg-gradient-to-r from-sky-400 to-blue-500 hover:from-sky-500 hover:to-blue-600 border-transparent text-white"
+                }`}
+                title="Quotation History"
+              >
+                <Clock3 size={14} />
+              </button>
+
+              {/* Floating popover/dropdown history list */}
+              <AnimatePresence>
+                {showQuoteHistory && (
+                  <>
+                    {/* Invisible overlay backdrop to close dropdown when clicked outside */}
+                    <div 
+                      className="fixed inset-0 z-[998]"
+                      onClick={() => setShowQuoteHistory(false)}
+                    />
+                    <motion.div
+                      initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                      transition={{ duration: 0.15 }}
+                      className="absolute right-0 mt-2 w-80 rounded-[24px] border border-sky-300/80 bg-gradient-to-b from-[#e0f2fe]/45 via-[#f0f9ff]/30 to-white/20 backdrop-blur-2xl p-4 shadow-[0_20px_50px_rgba(14,165,233,0.18)] z-[999] origin-top-right text-sky-950"
+                    >
+                      <div className="mb-3 pb-2 border-b border-sky-300/40 flex items-center justify-between">
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-sky-900/80">
+                          Quotation History
+                        </span>
+                        {selectedQuoteId && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedQuoteId(null);
+                              setShowQuoteHistory(false);
+                            }}
+                            className="px-2.5 py-1 rounded-full bg-sky-600/10 hover:bg-sky-600/25 border border-sky-400/30 text-sky-800 text-[9px] font-bold tracking-wider transition-all duration-200 cursor-pointer shadow-sm active:scale-95"
+                          >
+                            Reset to Latest
+                          </button>
+                        )}
+                      </div>
+                      <div className="max-h-72 overflow-y-auto space-y-2 pr-0.5 no-scrollbar">
+                        <style>{`
+                          .no-scrollbar::-webkit-scrollbar {
+                            display: none !important;
+                            width: 0 !important;
+                            height: 0 !important;
+                            background: transparent !important;
+                          }
+                          .no-scrollbar {
+                            -ms-overflow-style: none !important;
+                            scrollbar-width: none !important;
+                          }
+                        `}</style>
+                        {quotes.map((q, idx) => {
+                          const qAttempt = quotes.length - idx;
+                          const isCurrentActive = q._id === activeQuote._id;
+                          return (
+                            <button
+                              key={q._id}
+                              type="button"
+                              onClick={() => {
+                                setSelectedQuoteId(q._id);
+                                setShowQuoteHistory(false);
+                              }}
+                              className={`w-full text-left p-3 rounded-2xl border transition-all duration-200 flex items-start gap-3 cursor-pointer ${
+                                isCurrentActive
+                                  ? "bg-emerald-500/12 hover:bg-emerald-500/18 border-emerald-400/40 text-emerald-950 font-semibold shadow-sm backdrop-blur-md"
+                                  : "bg-white/45 hover:bg-white/70 border-white/40 hover:border-white/60 text-sky-950 shadow-sm hover:shadow backdrop-blur-sm"
+                              }`}
+                            >
+                              <span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold transition-colors ${
+                                isCurrentActive
+                                  ? "bg-emerald-200/60 text-emerald-800 border border-emerald-300/30"
+                                  : "bg-sky-100/60 text-sky-800 border border-sky-200/30"
+                              }`}>
+                                {qAttempt}
+                              </span>
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <p className="text-[12px] font-bold text-sky-950">
+                                    {q.quotationNumber || `QT-${1000 + qAttempt}`}
+                                  </p>
+                                  {idx === 0 && (
+                                    <span className="rounded-full bg-emerald-200/60 border border-emerald-300/25 px-1.5 py-0.5 text-[8px] font-bold uppercase text-emerald-800 tracking-wider">
+                                      Latest
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-[10px] text-sky-900/70 mt-0.5 leading-normal">
+                                  {idx === 0
+                                    ? "Most recent quotation"
+                                    : idx === quotes.length - 1
+                                      ? "Initial quotation"
+                                      : `Revision Attempt ${qAttempt}`}
+                                </p>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </motion.div>
+                  </>
+                )}
+              </AnimatePresence>
+            </div>
+          )}
+        </div>
       </motion.div>
 
       <div className="grid gap-4 p-2 sm:p-1 xl:grid-cols-3">
@@ -1564,8 +1689,12 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
 
           {/* QUOTE SENT UI */}
           {["Quote Sent", "Client Approved"].includes(query.agentStatus) &&
-            quotes.length > 0 &&
-            quotes.map((quote, index) => {
+            quotes.length > 0 && (() => {
+              const activeIndex = selectedQuoteId
+                ? quotes.findIndex((q) => q._id === selectedQuoteId)
+                : 0;
+              const index = activeIndex !== -1 ? activeIndex : 0;
+              const quote = activeQuote;
               const normalizedQuoteStatus = String(quote?.status || "").trim();
               const isLatestQuote = index === 0;
               const showApprovedSummaryCard = query.agentStatus === "Client Approved";
@@ -1605,19 +1734,28 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                   : `${formatMoney(markupValueAmount)} fixed markup`
                 : "No markup added yet";
 
-              if (showApprovedSummaryCard && !isLatestQuote) {
-                return null;
-              }
-
               return (
                 <motion.div
-                  key={quote._id}
+                  key="quotation-panel-wrapper"
                   variants={itemVariant}
                   initial="hidden"
                   animate="visible"
-                  transition={{ delay: index * 0.05 }}
-                  className="rounded-2xl p-4 bg-[#F6F9FD] shadow-sm border border-[#BEDBFF]"
+                  className="rounded-[24px] p-5 bg-gradient-to-br from-white/12 via-white/5 to-sky-500/8 backdrop-blur-xl border border-white/20 shadow-md"
                 >
+                  {selectedQuoteId && (
+                    <div className="mb-4 flex items-center justify-between rounded-xl bg-sky-50/90 border border-sky-200/80 px-4 py-2.5 shadow-sm">
+                      <span className="text-xs font-medium text-sky-900">
+                        Viewing quotation revision: <span className="font-bold text-sky-950">{quote.quotationNumber || `Attempt ${quotes.length - index}`}</span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedQuoteId(null)}
+                        className="rounded-full bg-sky-600 hover:bg-sky-700 text-white text-[10px] font-bold uppercase tracking-wider px-3.5 py-1.5 shadow-sm transition hover:shadow-md cursor-pointer"
+                      >
+                        Reset to Latest
+                      </button>
+                    </div>
+                  )}
                   {showApprovedSummaryCard ? (
                     isLatestQuote ? (
                     <div className="overflow-hidden rounded-[24px] border border-indigo-200 bg-[linear-gradient(135deg,#eef2ff_0%,#f8faff_48%,#ffffff_100%)] shadow-[0_18px_45px_rgba(79,70,229,0.12)]">
@@ -1692,7 +1830,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                       </p>
                     </div>
                   ) : quote.status === "Sent to Client" ? (
-                    <div className="overflow-hidden rounded-2xl border border-emerald-200 bg-white">
+                    <div className="overflow-hidden rounded-2xl border border-emerald-200 border-b-[5px] border-b-emerald-300/80 bg-white shadow-[0_15px_30px_-5px_rgba(0,0,0,0.18),_0_10px_20px_-10px_rgba(0,0,0,0.12)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_20px_35px_-10px_rgba(0,0,0,0.22)]">
                       {/* Green accent top bar */}
                       <div className="h-[3px] w-full bg-gradient-to-r from-emerald-400 to-emerald-600" />
 
@@ -1973,56 +2111,71 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                     {/* MARKUP MODAL */}
                     {isMarkupModalOpen &&
                       activeQuoteId === quote._id &&
-                      showMarkupActions && (
+                      showMarkupActions &&
+                      createPortal(
                         <motion.div
-                          initial={{ opacity: 0, scale: 0.95 }}
-                          animate={{ opacity: 1, scale: 1 }}
-                          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80"
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                          className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-slate-950/45 backdrop-blur-[6px]"
                         >
-                          <div className="bg-white w-full max-w-md rounded-2xl shadow-xl p-6 relative">
+                          <motion.div
+                            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                            transition={{ duration: 0.2, ease: "easeOut" }}
+                            className="bg-white w-full max-w-md rounded-2xl shadow-xl p-6 relative border border-slate-200"
+                          >
+                            <button
+                              onClick={closeMarkupModal}
+                              className="absolute top-4 right-4 rounded-full p-1.5 hover:bg-slate-100 transition-colors text-slate-400 hover:text-slate-600 cursor-pointer"
+                            >
+                              <X size={16} strokeWidth={2.5} />
+                            </button>
+
                             <div className="mb-4">
                               <div className="flex items-center gap-2">
                                 <span className="flex h-9 w-9 items-center justify-center rounded-2xl bg-sky-50 text-sky-600">
                                   <Sparkles size={18} />
                                 </span>
-                                <h2 className="text-lg font-semibold">
+                                <h2 className="text-lg font-semibold text-slate-900">
                                   Apply Agent Markup
                                 </h2>
                               </div>
-                              <p className="text-xs text-gray-500">
+                              <p className="text-xs text-slate-500 mt-1">
                                 Agent markup is optional. If you prefer, you can also send the ops quote directly to the client.
                               </p>
                             </div>
 
                             <div className="space-y-3">
-                              <div className="grid gap-3 sm:grid-cols-3">
-                                <div className="flex min-h-[70px] flex-col rounded-2xl border border-slate-200 border-l-4 border-l-slate-400 bg-slate-50 px-4 py-2.5">
-                                  <p className="whitespace-nowrap text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                              <div className="grid gap-3 grid-cols-3">
+                                <div className="flex min-h-[70px] flex-col rounded-2xl border border-slate-200 border-l-4 border-l-slate-400 bg-slate-50 px-3 py-2.5">
+                                  <p className="whitespace-nowrap text-[9px] font-semibold uppercase tracking-[0.1em] text-slate-500">
                                     Ops Amount
                                   </p>
-                                  <p className="mt-1 text-base font-semibold text-slate-900">
+                                  <p className="mt-1 text-sm font-semibold text-slate-900">
                                     {formatMoney(opsQuoteAmount)}
                                   </p>
                                 </div>
-                                <div className="flex min-h-[70px] flex-col rounded-2xl border border-sky-200 border-l-4 border-l-sky-500 bg-sky-50 px-4 py-2.5">
-                                  <p className="whitespace-nowrap text-[10px] font-semibold uppercase tracking-[0.12em] text-sky-600">
+                                <div className="flex min-h-[70px] flex-col rounded-2xl border border-sky-200 border-l-4 border-l-sky-500 bg-sky-50 px-3 py-2.5">
+                                  <p className="whitespace-nowrap text-[9px] font-semibold uppercase tracking-[0.1em] text-sky-600">
                                     Markup Added
                                   </p>
-                                  <p className="mt-1 text-base font-semibold text-sky-900">
+                                  <p className="mt-1 text-sm font-semibold text-sky-900">
                                     {formatMoney(liveMarkupPreview.markupAmount)}
                                   </p>
                                 </div>
-                                <div className="flex min-h-[70px] flex-col rounded-2xl border border-emerald-200 border-l-4 border-l-emerald-500 bg-emerald-50 px-4 py-2.5">
-                                  <p className="whitespace-nowrap text-[10px] font-semibold uppercase tracking-[0.12em] text-emerald-600">
+                                <div className="flex min-h-[70px] flex-col rounded-2xl border border-emerald-200 border-l-4 border-l-emerald-500 bg-emerald-50 px-3 py-2.5">
+                                  <p className="whitespace-nowrap text-[9px] font-semibold uppercase tracking-[0.1em] text-emerald-600">
                                     Final Amount
                                   </p>
-                                  <p className="mt-1 text-base font-semibold text-emerald-900">
+                                  <p className="mt-1 text-sm font-semibold text-emerald-900">
                                     {formatMoney(liveMarkupPreview.finalAmount)}
                                   </p>
                                 </div>
                               </div>
                               <div>
-                                <label className="text-xs font-medium text-gray-600">
+                                <label className="text-xs font-medium text-slate-700">
                                   Markup Type
                                 </label>
                                 <select
@@ -2031,7 +2184,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                                     setMarkupType(e.target.value);
                                     setMarkupValue("");
                                   }}
-                                  className="w-full mt-1 border rounded-lg px-3 py-2 text-sm"
+                                  className="w-full mt-1 border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent"
                                 >
                                   <option value="PERCENT">Percentage (%)</option>
                                   <option value="AMOUNT">Fixed Amount (INR)</option>
@@ -2039,7 +2192,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                               </div>
 
                               <div>
-                                <label className="text-xs font-medium text-gray-600">
+                                <label className="text-xs font-medium text-slate-700">
                                   Markup Value
                                 </label>
                                 <input
@@ -2053,12 +2206,12 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                                       ? "Enter markup percentage"
                                       : "Enter fixed markup amount"
                                   }
-                                  className="w-full mt-1 border rounded-lg px-3 py-2 text-sm"
+                                  className="w-full mt-1 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent"
                                 />
                               </div>
 
-                              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-600">
-                                This will add {formatMoney(liveMarkupPreview.markupAmount)} and
+                              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-600 leading-relaxed">
+                                This will add <span className="font-semibold text-slate-900">{formatMoney(liveMarkupPreview.markupAmount)}</span> and
                                 update the client-facing amount to{" "}
                                 <span className="font-semibold text-slate-900">
                                   {formatMoney(liveMarkupPreview.finalAmount)}
@@ -2072,7 +2225,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                                 type="button"
                                 onClick={closeMarkupModal}
                                 disabled={markupSubmittingId === quote._id}
-                                className="rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                                className="rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer"
                               >
                                 Cancel
                               </button>
@@ -2080,17 +2233,19 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                                 type="button"
                                 onClick={() => handleApplyMarkup(quote)}
                                 disabled={markupSubmittingId === quote._id}
-                                className="rounded-full bg-gradient-to-r from-sky-500 to-indigo-600 px-5 py-2 text-xs font-semibold text-white shadow-md transition hover:from-sky-600 hover:to-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
+                                className="rounded-full bg-gradient-to-r from-sky-500 to-indigo-600 px-5 py-2 text-xs font-semibold text-white shadow-md transition hover:from-sky-600 hover:to-indigo-700 disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer"
                               >
                                 {markupSubmittingId === quote._id ? "Applying..." : "Apply Markup"}
                               </button>
                             </div>
-                          </div>
-                        </motion.div>
+                          </motion.div>
+                        </motion.div>,
+                        document.body
                       )}
+
                 </motion.div>
               );
-            })}
+            })()}
 
           {/* PENDING UI */}
           {query.agentStatus === "Pending" && (

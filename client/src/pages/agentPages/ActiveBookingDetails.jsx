@@ -22,6 +22,7 @@ import {
   UserSquare2,
   Wallet,
   Coins,
+  X,
 } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import API from "../../utils/Api";
@@ -69,6 +70,13 @@ const formatInputDate = (v) => {
   const d = new Date(v);
   return Number.isNaN(d.getTime()) ? "" : d.toISOString().slice(0, 10);
 };
+const getTodayInputDate = () => {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, "0");
+  const day = String(today.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
 const buildTrackerPaymentsFromSubmission = (paymentSubmission = {}) => {
   const trackerEntries = Array.isArray(paymentSubmission?.trackerPayments)
     ? paymentSubmission.trackerPayments
@@ -85,6 +93,7 @@ const buildTrackerPaymentsFromSubmission = (paymentSubmission = {}) => {
         const financeReceipt = normalizeReceipt(entry?.financeReceipt);
         return {
           id: `${paymentSubmission?.submittedAt || "tracker"}-${index}`,
+          persisted: true,
           amount,
           date:
             String(entry?.displayDate || "").trim() ||
@@ -124,6 +133,7 @@ const buildTrackerPaymentsFromSubmission = (paymentSubmission = {}) => {
   return [
     {
       id: `${paymentSubmission?.submittedAt || "tracker"}-fallback`,
+      persisted: true,
       amount: fallbackAmount,
       date: fallbackDate
         ? new Date(fallbackDate).toLocaleDateString("en-IN", {
@@ -195,12 +205,20 @@ const getOpsPayableAmountFromInvoice = (invoice = {}) => {
   return computedOpsAmount > 0 ? computedOpsAmount : Math.round(Number(invoice?.totalAmount || 0));
 };
 
+
 // ─── Payment Tracker ────────────────────────────────────────────────────────
 
-function PaymentTracker({ totalAmount, payments, onAddPayment, onUpdatePayment, onDownloadReceipt }) {
+const isValidPaymentTrackerEntry = (payment = {}) => {
+  const amount = Math.round(Number(payment?.amount || 0));
+  const rawDate = String(payment?.rawDate || payment?.paymentDate || "").trim();
+  const parsedDate = rawDate ? new Date(rawDate) : null;
+  return Number.isFinite(amount) && amount > 0 && parsedDate && !Number.isNaN(parsedDate.getTime());
+};
+
+function PaymentTracker({ totalAmount, payments, onAddPayment, onUpdatePayment, onDownloadReceipt, onValidationError }) {
   const [inputAmt, setInputAmt] = useState("");
   const [inputNote, setInputNote] = useState("");
-  const [inputDate, setInputDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [inputDate, setInputDate] = useState("");
   const [error, setError] = useState("");
   const [editingId, setEditingId] = useState(null);
   const amountInputRef = useRef(null);
@@ -224,7 +242,7 @@ function PaymentTracker({ totalAmount, payments, onAddPayment, onUpdatePayment, 
   function handleStartEdit(p) {
     setEditingId(p.id);
     setInputAmt(p.amount.toLocaleString("en-IN"));
-    setInputDate(p.rawDate || new Date().toISOString().slice(0, 10));
+    setInputDate(p.rawDate || "");
     setInputNote(p.note || "");
     setError("");
     setTimeout(() => {
@@ -237,13 +255,20 @@ function PaymentTracker({ totalAmount, payments, onAddPayment, onUpdatePayment, 
     setEditingId(null);
     setInputAmt("");
     setInputNote("");
-    setInputDate(new Date().toISOString().slice(0, 10));
+    setInputDate("");
     setError("");
   }
 
   function handleAddOrUpdate() {
     const amt = parseInt(inputAmt.replace(/,/g, ""), 10);
     if (!amt || amt < 1) { setError("Please enter a valid amount."); return; }
+    if (!inputDate) { setError("Please select a payment date."); return; }
+    if (inputDate > getTodayInputDate()) {
+      const message = "Future payment date is not allowed. Please select today or a past date.";
+      setError(message);
+      onValidationError?.(message);
+      return;
+    }
 
     const originalPayment = payments.find(x => x.id === editingId);
     const originalAmt = originalPayment ? originalPayment.amount : 0;
@@ -262,16 +287,14 @@ function PaymentTracker({ totalAmount, payments, onAddPayment, onUpdatePayment, 
     }
 
     setError("");
-    const dateLabel = inputDate
-      ? new Date(inputDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
-      : new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+    const dateLabel = new Date(inputDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
 
     if (editingId) {
       onUpdatePayment({
         id: editingId,
         amount: amt,
         date: dateLabel,
-        rawDate: inputDate || new Date().toISOString().slice(0, 10),
+        rawDate: inputDate,
         note: inputNote.trim()
       });
       setEditingId(null);
@@ -279,15 +302,16 @@ function PaymentTracker({ totalAmount, payments, onAddPayment, onUpdatePayment, 
       onAddPayment({
         amount: amt,
         date: dateLabel,
-        rawDate: inputDate || new Date().toISOString().slice(0, 10),
+        rawDate: inputDate,
         note: inputNote.trim(),
+        createdAt: new Date().toISOString(),
         receipt: normalizeReceipt(),
       });
     }
 
     setInputAmt("");
     setInputNote("");
-    setInputDate(new Date().toISOString().slice(0, 10));
+    setInputDate("");
   }
 
   if (totalAmount <= 0) return null;
@@ -571,7 +595,18 @@ function PaymentTracker({ totalAmount, payments, onAddPayment, onUpdatePayment, 
                 <input
                   type="date"
                   value={inputDate}
-                  onChange={(e) => setInputDate(e.target.value)}
+                  max={getTodayInputDate()}
+                  onChange={(e) => {
+                    const nextDate = e.target.value;
+                    if (nextDate && nextDate > getTodayInputDate()) {
+                      const message = "Future payment date is not allowed. Please select today or a past date.";
+                      setInputDate("");
+                      setError(message);
+                      onValidationError?.(message);
+                      return;
+                    }
+                    setInputDate(nextDate);
+                  }}
                   className="h-9 w-32 rounded-full border border-slate-300 bg-gradient-to-br from-slate-50 to-white px-3.5 text-[12px] text-slate-600 outline-none transition focus:border-teal-400 focus:ring-2 focus:ring-teal-100/50 cursor-pointer"
                 />
                 <input
@@ -624,26 +659,43 @@ function PaymentTracker({ totalAmount, payments, onAddPayment, onUpdatePayment, 
   );
 }
 
-// ─── Toast / Label / SnapshotRow / helpers (unchanged) ──────────────────────
+// ───================================= Toast / Label / SnapshotRow / helpers (unchanged)============ ──────────────────────
 
 const Toast = ({ feedback, onClose }) => {
   if (!feedback) return null;
   const tone = feedback.type === "error" ? "border-red-200 bg-red-50 text-red-700" : feedback.type === "warning" ? "border-amber-200 bg-amber-50 text-amber-700" : "border-emerald-200 bg-emerald-50 text-emerald-700";
+  const Icon = feedback.type === "error" || feedback.type === "warning" ? AlertCircle : CheckCircle2;
   return (
     <div className="fixed right-4 top-4 z-[70] w-full max-w-sm">
       <div className={`rounded-2xl border px-4 py-3 shadow-xl ${tone}`}>
-        <div className="flex items-start gap-3">
-          <AlertCircle className="mt-0.5 h-4 w-4" />
-          <div className="min-w-0 flex-1">
-            <p className="text-[10px] font-bold uppercase tracking-[0.16em]">{feedback.title}</p>
-            <p className="mt-1 text-sm leading-5">{feedback.message}</p>
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="rounded-full bg-white/80 p-1.5 flex items-center justify-center shrink-0 shadow-sm">
+                <Icon className="h-4 w-4" />
+              </div>
+              <p className="text-[10px] font-bold uppercase tracking-[0.16em] leading-none">{feedback.title}</p>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-full p-1 text-current/60 transition-colors hover:bg-white/60 hover:text-current flex items-center justify-center shrink-0"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
           </div>
-          <button type="button" onClick={onClose} className="text-current/70">×</button>
+          {feedback.message && (
+            <div className="pl-10">
+              <p className="text-[10px] leading-normal font-medium">{feedback.message}</p>
+            </div>
+          )}
         </div>
       </div>
     </div>
   );
 };
+
+
 
 const Label = ({ label }) => <div className="mb-2 px-1 text-[13px] font-medium text-slate-700">{label}</div>;
 
@@ -803,16 +855,34 @@ function DocCard({
             </div>
           </div>
 
-          <div className="mt-4 flex flex-wrap gap-2">
-            {uploaded ? <button type="button" onClick={() => onView(document)} className="rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50">View File</button> : null}
-            <button type="button" onClick={() => inputRef.current?.click()} disabled={disabled || uploading || removing} className={`inline-flex items-center gap-2 rounded-full px-3.5 py-2 text-xs font-semibold text-white transition-colors disabled:bg-slate-300 ${theme.cta}`}>
-              {uploading ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
-              {uploaded ? "Replace Upload" : "Upload Now"}
+          <div className="mt-4 flex flex-nowrap items-center gap-1.5 sm:gap-2">
+            {uploaded ? (
+              <button
+                type="button"
+                onClick={() => onView(document)}
+                className="flex-1 min-w-0 justify-center text-center rounded-full border border-slate-200 bg-white px-2 py-2 text-[11px] font-semibold text-slate-700 transition-colors hover:bg-slate-50 truncate"
+              >
+                View File
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => inputRef.current?.click()}
+              disabled={disabled || uploading || removing}
+              className={`flex-[1.2] min-w-0 inline-flex items-center justify-center gap-1 rounded-full px-2 py-2 text-[11px] font-semibold text-white transition-colors disabled:bg-slate-300 ${theme.cta}`}
+            >
+              {uploading ? <LoaderCircle className="h-3.5 w-3.5 animate-spin shrink-0" /> : <Upload className="h-3.5 w-3.5 shrink-0" />}
+              <span className="truncate">{uploaded ? "Replace Upload" : "Upload Now"}</span>
             </button>
             {uploaded && !isVerified ? (
-              <button type="button" onClick={() => onRemove(traveler, option)} disabled={disabled || uploading || removing} className="inline-flex items-center gap-2 rounded-full border border-red-200 bg-white px-3.5 py-2 text-xs font-semibold text-red-600 transition-colors hover:bg-red-50 disabled:opacity-60">
-                {removing ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-                Remove
+              <button
+                type="button"
+                onClick={() => onRemove(traveler, option)}
+                disabled={disabled || uploading || removing}
+                className="flex-1 min-w-0 inline-flex items-center justify-center gap-1 rounded-full border border-red-200 bg-white px-2 py-2 text-[11px] font-semibold text-red-600 transition-colors hover:bg-red-50 disabled:opacity-60"
+              >
+                {removing ? <LoaderCircle className="h-3.5 w-3.5 animate-spin shrink-0" /> : <Trash2 className="h-3.5 w-3.5 shrink-0" />}
+                <span className="truncate">Remove</span>
               </button>
             ) : null}
           </div>
@@ -844,7 +914,7 @@ export default function ActiveBookingDetails({ onClose, booking, onBookingUpdate
   const paymentStatus = paymentVerification?.status || (paymentSubmission?.submittedAt ? "Pending" : "Draft");
   const isRejectedPayment = paymentStatus === "Rejected";
   const isPaymentVerified = paymentStatus === "Verified" || booking?.paymentStatus === "Paid";
-  const currentReceipt = isRejectedPayment ? {} : paymentSubmission?.receipt || {};
+  const currentReceipt = isRejectedPayment || paymentSubmission?.submittedAt ? {} : paymentSubmission?.receipt || {};
   const docsUnlocked = true;
   const bookingConfirmationReady = isPaymentVerified;
 
@@ -852,7 +922,6 @@ export default function ActiveBookingDetails({ onClose, booking, onBookingUpdate
   const [utrNumber, setUtrNumber] = useState(isRejectedPayment ? "" : paymentSubmission?.utrNumber || "");
   const [quotationAmount, setQuotationAmount] = useState("");
   const [couponModalOpen, setCouponModalOpen] = useState(false);
-  const [paymentDate, setPaymentDate] = useState(isRejectedPayment ? "" : formatInputDate(paymentSubmission?.paymentDate));
   const [remarks, setRemarks] = useState(isRejectedPayment ? "" : booking?.remarks || "");
   const [receiptFile, setReceiptFile] = useState(null);
   const [submittingPayment, setSubmittingPayment] = useState(false);
@@ -906,13 +975,13 @@ export default function ActiveBookingDetails({ onClose, booking, onBookingUpdate
     () => Math.round(Number(payableQuotationAmount || initialQuotationAmount || 0)),
     [initialQuotationAmount, payableQuotationAmount],
   );
-  const trackerPaidAmount = useMemo(
-    () =>
-      trackerPayments.reduce(
-        (sum, payment) => sum + Math.round(Number(payment?.amount || 0)),
-        0,
-      ),
+  const validTrackerPayments = useMemo(
+    () => trackerPayments.filter((payment) => isValidPaymentTrackerEntry(payment)),
     [trackerPayments],
+  );
+  const newTrackerPayments = useMemo(
+    () => validTrackerPayments.filter((payment) => !payment?.persisted),
+    [validTrackerPayments],
   );
   const hasExactPaymentMismatch = false;
   const paymentAmountWarningMessage = "";
@@ -1071,26 +1140,23 @@ export default function ActiveBookingDetails({ onClose, booking, onBookingUpdate
     hasVerifiedAllRequiredDocuments
   );
   const notify = (type, title, message) => setFeedback({ type, title, message });
-  const latestTrackerPayment = trackerPayments.length ? trackerPayments[trackerPayments.length - 1] : null;
-  const latestInstallmentNeedsReceipt = trackerPayments.length > 1 && !latestTrackerPayment?.receipt?.url;
-  const effectivePaymentDate =
-    latestTrackerPayment?.rawDate ||
-    paymentDate ||
-    (!isRejectedPayment ? formatInputDate(paymentSubmission?.paymentDate) : "");
+  const currentSubmissionPayments = isRejectedPayment ? validTrackerPayments : newTrackerPayments;
+  const latestCurrentSubmissionPayment = currentSubmissionPayments.length ? currentSubmissionPayments[currentSubmissionPayments.length - 1] : null;
+  const latestInstallmentNeedsReceipt = Boolean(latestCurrentSubmissionPayment) && !receiptFile;
+  const effectivePaymentDate = latestCurrentSubmissionPayment?.rawDate || "";
   const effectiveRemarks =
     remarks.trim() ||
-    latestTrackerPayment?.note ||
-    (!isRejectedPayment ? booking?.remarks || "" : "");
-  const snapshotUtr = utrNumber || (!isRejectedPayment ? paymentSubmission?.utrNumber || "" : "");
+    latestCurrentSubmissionPayment?.note ||
+    "";
+  const snapshotUtr = utrNumber;
   const snapshotPaymentAmount = Math.round(
     Number(
-      latestTrackerPayment?.amount ||
-      paymentSubmission?.amount ||
+      latestCurrentSubmissionPayment?.amount ||
       0,
     ),
   );
   const snapshotPaymentDate = effectivePaymentDate;
-  const snapshotReceiptName = receiptFile?.name || currentReceipt?.fileName || "";
+  const snapshotReceiptName = receiptFile?.name || "";
   const receiptRequiredMessage = latestInstallmentNeedsReceipt
     ? "Please upload a receipt for this installment before submitting."
     : isRejectedPayment
@@ -1128,10 +1194,9 @@ export default function ActiveBookingDetails({ onClose, booking, onBookingUpdate
   }, []);
 
   useEffect(() => {
-    setUtrNumber(isRejectedPayment ? "" : paymentSubmission?.utrNumber || "");
+    setUtrNumber(isRejectedPayment ? paymentSubmission?.utrNumber || "" : "");
     setPayableQuotationAmount(initialQuotationAmount);
-    setPaymentDate(isRejectedPayment ? "" : formatInputDate(paymentSubmission?.paymentDate));
-    setRemarks(isRejectedPayment ? "" : booking?.remarks || "");
+    setRemarks(isRejectedPayment ? booking?.remarks || "" : "");
     const hydratedTrackerPayments = buildTrackerPaymentsFromSubmission(paymentSubmission);
     setTrackerPayments(hydratedTrackerPayments);
     setTrackerIdCounter(hydratedTrackerPayments.length + 1);
@@ -1226,7 +1291,7 @@ export default function ActiveBookingDetails({ onClose, booking, onBookingUpdate
   };
 
   const handleAddTrackerPayment = (p) => {
-    setTrackerPayments((prev) => [...prev, { id: trackerIdCounter, ...p }]);
+    setTrackerPayments((prev) => [...prev, { id: trackerIdCounter, persisted: false, ...p }]);
     setTrackerIdCounter((c) => c + 1);
   };
 
@@ -1239,14 +1304,23 @@ export default function ActiveBookingDetails({ onClose, booking, onBookingUpdate
   const handlePaymentSubmit = async (e) => {
     e.preventDefault();
     if (!invoiceId) return notify("error", "Invoice Missing", "This booking does not have an invoice ready for payment submission.");
-    if (!trackerPayments.length || trackerPaidAmount <= 0) {
-      return notify("warning", "Add Payment First", "Please add the payment amount in the payment tracker before submitting.");
+    const submissionTrackerPayments = isRejectedPayment ? validTrackerPayments : newTrackerPayments;
+    const submissionPaidAmount = submissionTrackerPayments.reduce(
+      (sum, payment) => sum + Math.round(Number(payment?.amount || 0)),
+      0,
+    );
+    if (!submissionTrackerPayments.length || submissionPaidAmount <= 0) {
+      return notify(
+        "warning",
+        "Add Payment First",
+        "Please enter amount and payment date, then click Add so the new instalment appears in Payment History before submitting.",
+      );
     }
     if (!isTravelerDocumentsVerifiedComplete) {
       return notify(
         "warning",
         "Traveler Documents Pending",
-        "Payment submit tabhi unlock hoga jab operations sabhi required traveler documents verify kar dein aur kisi document me koi issue pending na ho.",
+        "The Payment Submit option will be enabled only after the Operations team has verified all required traveler documents and no document has any pending issues.",
       );
     }
     if (!utrNumber.trim() || !effectivePaymentDate || !expectedPaymentAmount) return notify("error", "Missing Fields", "UTR, payment date, and payable amount are required.");
@@ -1257,8 +1331,8 @@ export default function ActiveBookingDetails({ onClose, booking, onBookingUpdate
       fd.append("utrNumber", utrNumber.trim().toUpperCase());
       fd.append("paymentDate", effectivePaymentDate);
       fd.append("remarks", effectiveRemarks);
-      fd.append("paymentAmount", String(trackerPaidAmount));
-      fd.append("trackerPayments", JSON.stringify(trackerPayments));
+      fd.append("paymentAmount", String(submissionPaidAmount));
+      fd.append("trackerPayments", JSON.stringify(submissionTrackerPayments));
       fd.append("onBehalfOf", booking?.invoiceNumber || booking?.bookingReference || "Booking Payment");
       if (receiptFile) fd.append("paymentReceipt", receiptFile);
       const { data } = await API.put(`/agent/invoices/${invoiceId}/payment-status`, fd, { headers: { "Content-Type": "multipart/form-data" } });
@@ -1650,6 +1724,7 @@ export default function ActiveBookingDetails({ onClose, booking, onBookingUpdate
                                 onAddPayment={handleAddTrackerPayment}
                                 onUpdatePayment={handleEditTrackerPayment}
                                 onDownloadReceipt={handleDownloadInstallmentReceipt}
+                                onValidationError={(message) => notify("warning", "Invalid Payment Date", message)}
                               />
                             </>
                           )}
@@ -1679,7 +1754,7 @@ export default function ActiveBookingDetails({ onClose, booking, onBookingUpdate
                               <div>
                                 <div className="flex flex-wrap items-center gap-2">
                                   <p className="text-[13px] font-semibold text-slate-900">
-                                    {receiptFile?.name || "Receipt ready for upload"}
+                                    {receiptFile?.name || "Upload receipt for this payment"}
                                   </p>
                                   {receiptFile?.name ? (
                                     <span className="rounded-full bg-emerald-500 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white shadow-sm">Attached</span>
@@ -1693,7 +1768,7 @@ export default function ActiveBookingDetails({ onClose, booking, onBookingUpdate
                                       : isRejectedPayment
                                         ? "Previous receipt was reset for correction. Upload the updated proof again."
                                         : paymentSubmission?.submittedAt
-                                          ? "Submitted receipt has moved to Payment History. Upload a new proof only for the next payment."
+                                          ? "Previous receipt is in Payment History. Add a new installment and upload its proof before submitting again."
                                           : "Upload your payment proof here. JPG, PNG, WEBP and PDF supported."}
                                 </p>
                                 {latestInstallmentNeedsReceipt && !receiptFile ? (
@@ -1737,8 +1812,8 @@ export default function ActiveBookingDetails({ onClose, booking, onBookingUpdate
                     {!invoiceId ? (
                       <p className="text-center text-[12px] text-slate-500">
                         {preparingInvoice
-                          ? "Payment submit ke liye booking amount prepare kiya ja raha hai."
-                          : "Booking amount ready hote hi verification submit unlock ho jayega."}
+                        ? "The booking amount is being prepared for payment submission."
+                        : "Once the booking amount is ready, verification submission will be unlocked."}
                       </p>
                     ) : null}
                   </form>
