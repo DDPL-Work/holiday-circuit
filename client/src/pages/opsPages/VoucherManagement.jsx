@@ -129,16 +129,16 @@ export default function VoucherManagement() {
             </p>
           </div>
 
-          <button className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium">
+          <button className="flex items-center gap-2 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 hover:shadow-md hover:shadow-emerald-500/10 transition-all duration-300 text-white px-4 py-2 rounded-full text-sm font-semibold">
             <Download size={16} />
             Bulk Download
           </button>
         </div>
 
         <div className="grid grid-cols-3 gap-4 mb-6">
-          <StatCard title="Ready to Generate" count={stats.ready} color="bg-orange-100 text-orange-600" />
-          <StatCard title="Generated" count={stats.generated} color="bg-blue-100 text-blue-600" />
-          <StatCard title="Sent to Agents" count={stats.sent} color="bg-green-100 text-green-600" />
+          <StatCard title="Ready to Generate" count={stats.ready} type="ready" />
+          <StatCard title="Generated" count={stats.generated} type="generated" />
+          <StatCard title="Sent to Agents" count={stats.sent} type="sent" />
         </div>
 
         <div className="relative mb-6 border border-gray-200 rounded-2xl shadow-sm p-4">
@@ -154,7 +154,7 @@ export default function VoucherManagement() {
         {loading ? (
           <div className="text-sm text-gray-500">Loading vouchers...</div>
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-6">
             {filteredVouchers.map((voucher) => (
               <VoucherCard
                 key={voucher.id}
@@ -203,14 +203,32 @@ export default function VoucherManagement() {
   );
 }
 
-function StatCard({ title, count, color }) {
+function StatCard({ title, count, type }) {
+  const theme = {
+    ready: {
+      card: "bg-gradient-to-br from-orange-50/80 via-white to-white hover:from-orange-100/40 hover:via-orange-50/10 hover:to-white border-orange-100 border-b-orange-500 shadow-sm shadow-orange-500/5",
+      iconWrap: "bg-orange-100 text-orange-600 border border-orange-200/50",
+    },
+    generated: {
+      card: "bg-gradient-to-br from-blue-50/80 via-white to-white hover:from-blue-100/40 hover:via-blue-50/10 hover:to-white border-blue-100 border-b-blue-500 shadow-sm shadow-blue-500/5",
+      iconWrap: "bg-blue-100 text-blue-600 border border-blue-200/50",
+    },
+    sent: {
+      card: "bg-gradient-to-br from-green-50/80 via-white to-white hover:from-green-100/40 hover:via-green-50/10 hover:to-white border-green-100 border-b-green-500 shadow-sm shadow-green-500/5",
+      iconWrap: "bg-green-100 text-green-600 border border-green-200/50",
+    },
+  }[type] || {
+    card: "bg-white border-gray-200 border-b-gray-400",
+    iconWrap: "bg-gray-100 text-gray-600",
+  };
+
   return (
-    <div className="bg-white border border-gray-200 shadow-sm rounded-xl p-4 flex justify-between items-center">
+    <div className={`border border-b-4 rounded-xl p-4 flex justify-between items-center hover:shadow-md hover:-translate-y-0.5 active:translate-y-0 transition-all duration-300 ease-out ${theme.card}`}>
       <div>
-        <p className="text-sm text-gray-500">{title}</p>
-        <h2 className="text-2xl font-semibold">{count}</h2>
+        <p className="text-sm font-medium text-gray-500">{title}</p>
+        <h2 className="text-2xl font-bold text-gray-800 mt-1">{count}</h2>
       </div>
-      <div className={`p-3 rounded-lg ${color}`}>
+      <div className={`p-3 rounded-lg ${theme.iconWrap}`}>
         <FileText size={18} />
       </div>
     </div>
@@ -245,18 +263,21 @@ function VoucherCard({
   const statusMap = {
     ready: {
       label: "Ready to Generate",
-      badge: "bg-orange-100 text-orange-600",
+      badge: "bg-orange-50 text-orange-650 border border-orange-100",
       icon: <FileText size={12} />,
+      cardBg: "bg-gradient-to-br from-orange-50/20 via-white to-white border-orange-100/80 hover:border-orange-200/90 shadow-orange-500/5",
     },
     generated: {
       label: "Generated",
-      badge: "bg-blue-100 text-blue-600",
+      badge: "bg-blue-50 text-blue-650 border border-blue-100",
       icon: <FileText size={12} />,
+      cardBg: "bg-gradient-to-br from-blue-50/20 via-white to-white border-blue-100/80 hover:border-blue-200/90 shadow-blue-500/5",
     },
     sent: {
       label: "Sent to Agent",
-      badge: "bg-green-100 text-green-600",
+      badge: "bg-green-50 text-green-655 border border-green-100",
       icon: <CheckCircle size={12} />,
+      cardBg: "bg-gradient-to-br from-emerald-50/20 via-white to-white border-emerald-100/80 hover:border-emerald-200/90 shadow-emerald-500/5",
     },
   };
 
@@ -285,37 +306,46 @@ function VoucherCard({
   const canSendFinalVoucher = Boolean(canSendVoucher);
 
   return (
-    <div className="bg-white border border-gray-200 shadow-sm rounded-3xl p-6 flex flex-col gap-1">
-      <div className="flex gap-3 items-start">
-        <h3 className="font-semibold text-gray-900">{query}</h3>
-        <span className={`flex items-center gap-1 text-xs px-2 py-1 rounded-full ${statusMap[status].badge}`}>
-          {statusMap[status].icon}
-          {statusMap[status].label}
-        </span>
+    <div className={`border shadow-sm rounded-2xl p-5 md:p-6 flex flex-col gap-4 hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 ease-out ${statusMap[status].cardBg}`}>
+      <div className="flex justify-between items-start flex-wrap gap-2">
+        <div className="flex gap-3 items-center">
+          <h3 className="font-bold text-gray-900 text-lg tracking-tight">{query}</h3>
+          <span className={`flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full ${statusMap[status].badge}`}>
+            {statusMap[status].icon}
+            {statusMap[status].label}
+          </span>
+        </div>
+        
+        {status === "sent" && (
+          <div className="flex items-center gap-1.5 text-xs font-semibold text-green-655 bg-green-50/80 border border-green-100 px-2.5 py-1 rounded-full shadow-sm">
+            <CheckCircle size={12} />
+            Synced to Agent Portal
+          </div>
+        )}
       </div>
 
-      <div className="mt-2 flex flex-wrap gap-4 text-sm text-gray-500">
-        <div className="flex items-center gap-1">
-          <User size={14} />
-          {name}
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-gray-650">
+        <div className="flex items-center gap-1.5">
+          <User size={14} className="text-gray-400" />
+          <span className="font-medium text-gray-800">{name}</span>
         </div>
-        <div className="flex items-center gap-1">
-          <MapPin size={14} />
-          {destination}
+        <div className="flex items-center gap-1.5">
+          <MapPin size={14} className="text-gray-400" />
+          <span className="text-gray-700">{destination}</span>
         </div>
-        <div className="flex items-center gap-1">
-          <Calendar size={14} />
-          {formatDisplayDate(date)}
+        <div className="flex items-center gap-1.5">
+          <Calendar size={14} className="text-gray-400" />
+          <span className="text-gray-750 font-medium">{formatDisplayDate(date)}</span>
         </div>
       </div>
 
-      <div className="mt-3 flex items-center gap-2">
-        <p className="text-sm text-gray-500 mb-1">Services:</p>
-        <div className="flex flex-wrap gap-2">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-2 border-t border-gray-100/60 pt-3">
+        <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider whitespace-nowrap">Services:</span>
+        <div className="flex flex-wrap gap-1.5">
           {(services || []).map((s, i) => (
             <span
               key={i}
-              className="border border-gray-300 bg-gray-200 text-gray-700 text-xs px-2 py-1 rounded-2xl"
+              className="bg-gray-50 border border-gray-200 text-gray-750 text-xs px-2.5 py-1 rounded-full font-medium"
             >
               {typeof s === "string" ? s : s.title || s.name || "Service missing"}
             </span>
@@ -323,11 +353,11 @@ function VoucherCard({
         </div>
       </div>
 
-      <div className="mt-4 flex gap-2">
+      <div className="mt-2 flex flex-wrap gap-2.5 border-t border-gray-100/60 pt-4">
         {status === "ready" && (
           <button
             onClick={() => onGenerate(id)}
-            className="bg-gray-900 text-white px-4 py-2 rounded-xl text-sm flex items-center gap-1"
+            className="bg-gradient-to-r from-slate-900 via-blue-950 to-slate-900 hover:from-blue-950 hover:via-slate-900 hover:to-slate-950 text-white px-5 py-2 rounded-full text-sm font-semibold flex items-center gap-1.5 hover:shadow-md transition-all duration-300 ease-out"
           >
             <FileText size={15} />
             Generate Voucher
@@ -338,7 +368,7 @@ function VoucherCard({
           <>
             <button
               onClick={() => onPreview(voucherPayload, "preview")}
-              className="flex items-center gap-1 border border-gray-300 px-4 py-2 rounded-xl text-sm"
+              className="flex items-center gap-1.5 border border-gray-300 hover:bg-gray-50 text-gray-750 px-5 py-2 rounded-full text-sm font-semibold shadow-sm transition-all duration-300 ease-out"
             >
               <Eye size={14} />
               Preview
@@ -348,10 +378,10 @@ function VoucherCard({
               onClick={() => onPreview(voucherPayload, "send")}
               disabled={!canSendFinalVoucher}
               title={canSendFinalVoucher ? "Send voucher to agent" : "Payment must be verified before sending the voucher"}
-              className={`flex items-center gap-1 px-4 py-2 rounded-xl text-sm ${
+              className={`flex items-center gap-1.5 px-5 py-2 rounded-full text-sm font-semibold transition-all duration-300 shadow-sm ${
                 canSendFinalVoucher
-                  ? "bg-green-600 text-white"
-                  : "cursor-not-allowed bg-gray-200 text-gray-500"
+                  ? "bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white hover:shadow-md"
+                  : "cursor-not-allowed bg-gray-100 text-gray-400 border border-gray-200"
               }`}
             >
               <Send size={14} />
@@ -364,14 +394,14 @@ function VoucherCard({
           <>
             <button
               onClick={() => onPreview(voucherPayload, "view")}
-              className="flex items-center gap-1 border border-gray-300 px-4 py-2 rounded-xl text-sm"
+              className="flex items-center gap-1.5 border border-gray-300 hover:bg-gray-50 text-gray-750 px-5 py-2 rounded-full text-sm font-semibold shadow-sm transition-all duration-300 ease-out"
             >
               <Eye size={14} />
               View
             </button>
             <button
               onClick={() => onPreview(voucherPayload, "view")}
-              className="flex items-center gap-1 border border-gray-300 px-4 py-2 rounded-xl text-sm"
+              className="flex items-center gap-1.5 border border-gray-300 hover:bg-gray-50 text-gray-750 px-5 py-2 rounded-full text-sm font-semibold shadow-sm transition-all duration-300 ease-out"
             >
               <Download size={14} />
               Download
@@ -379,13 +409,6 @@ function VoucherCard({
           </>
         )}
       </div>
-
-      {status === "sent" && (
-        <div className="mt-3 flex items-center gap-1 text-sm text-green-600">
-          <CheckCircle size={14} />
-          Synced to Agent Portal
-        </div>
-      )}
     </div>
   );
 }

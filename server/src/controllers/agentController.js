@@ -30,6 +30,7 @@ import { generatePDF } from "../services/pdfService.js";
 import { generateAgentPaymentReceiptPdf } from "../services/payoutReceiptPdfService.js";
 import { isAccessExpired } from "../utils/accessExpiry.js";
 import { ensureDestinationName, ensureDestinationNames } from "../services/destinationNameService.js";
+import { analyzeInvoiceFile } from "../services/invoiceExtractionService.js";
 
 const getAuthenticatedUserId = (req) => req.user?.id || req.user?._id || null;
 const buildFrontendUrl = (path = "") => {
@@ -1122,7 +1123,7 @@ const buildAgentFinanceOverviewPayload = async (agentId, { includeTransactions =
         queryId: { $in: queryIds },
         status: { $in: AGENT_VISIBLE_QUOTATION_STATUSES },
       })
-      .select("queryId quotationNumber pricing.totalAmount agentMarkup clientTotalAmount createdAt updatedAt")
+      .select("queryId quotationNumber status services pricing.totalAmount pricing.currency agentMarkup clientTotalAmount agentRevisionRemark validTill createdAt updatedAt")
       .sort({ updatedAt: -1, createdAt: -1 })
     : [];
 
@@ -1197,6 +1198,42 @@ const buildAgentFinanceOverviewPayload = async (agentId, { includeTransactions =
         ? "Rejected"
         : "Pending";
 
+    const matchedQuotes = quotations
+      .filter((q) => q?.queryId && String(q.queryId) === queryKey)
+      .map((q) => ({
+        id: q._id,
+        quotationNumber: q.quotationNumber,
+        status: q.status,
+        createdAt: q.createdAt,
+        clientTotalAmount: q.clientTotalAmount,
+        opsTotalAmount: q.pricing?.totalAmount,
+        currency: q.pricing?.currency || "INR",
+        validTill: q.validTill,
+        revisionRemark: q.agentRevisionRemark || "",
+        services: (q.services || []).map((s) => ({
+          title: s.title,
+          type: s.type,
+          city: s.city,
+          country: s.country,
+          serviceDate: s.serviceDate,
+          total: s.total,
+          currency: s.currency,
+          nights: s.nights,
+          days: s.days,
+          rooms: s.rooms,
+          adults: s.adults,
+          children: s.children,
+          pax: s.pax,
+          vehicleType: s.vehicleType,
+          roomType: s.roomCategory || s.roomType || "",
+          description: s.description || "",
+        })),
+      }));
+
+    const quotationStats = {
+      totalCount: matchedQuotes.length,
+    };
+
     if (commissionAmount > 0) {
       totalEarnings += commissionAmount;
       if (financeVerified) {
@@ -1222,6 +1259,8 @@ const buildAgentFinanceOverviewPayload = async (agentId, { includeTransactions =
             couponDiscountAmount,
             subtotalAmount,
             payableAmount,
+            quotationDetails: matchedQuotes,
+            quotationStats,
           },
         });
       }
@@ -1243,6 +1282,8 @@ const buildAgentFinanceOverviewPayload = async (agentId, { includeTransactions =
           payableAmount,
           couponCode: String(couponApplication?.code || "").trim(),
           couponLabel: String(couponApplication?.discountLabel || "").trim(),
+          quotationDetails: matchedQuotes,
+          quotationStats,
         },
       });
     }
@@ -1598,7 +1639,7 @@ const markQuotationSharedWithClient = async ({ quotation, query, performedBy = "
 };
 
 
-// ========================== Register Agent ==========================
+// ========================== Register Agent Controller ==========================
 
 export const registerAgent = async (req, res, next) => {
   try {
@@ -1695,6 +1736,8 @@ export const registerAgent = async (req, res, next) => {
   }
 };
 
+// ======================== Generate Client Quotation PDF Controller ==========================
+
 export const generateClientQuotationPdf = async (req, res, next) => {
   try {
     const agentId = getAuthenticatedUserId(req);
@@ -1752,13 +1795,13 @@ export const generateClientQuotationPdf = async (req, res, next) => {
 };
 
 
-// ========================== Login Agent ==========================
+// ========================== Login Agent Controller ==========================
 
 export const login = async (req, res, next) => {
   try {
     const { email, password } = req.body;
     const normalizedEmail = String(email || "").trim().toLowerCase();
-    const normalizedPassword = String(password ?? "");
+    const normalizedPassword = String(password || "").trim().replace(/^"|"$/g, "");
 
     const user = await Auth.findOne({ email: normalizedEmail });
 
@@ -1849,6 +1892,8 @@ export const login = async (req, res, next) => {
   }
 };
 
+// ========================= Update Profile Controller ==========================
+
 export const updateProfile = async (req, res, next) => {
   try {
     const userId = getAuthenticatedUserId(req);
@@ -1923,6 +1968,8 @@ export const updateProfile = async (req, res, next) => {
   }
 };
 
+// ======================== Forgot Password OTP Controller ==========================
+
 export const sendForgotPasswordOtp = async (req, res, next) => {
   try {
     const email = String(req.body?.email || "").trim().toLowerCase();
@@ -1959,6 +2006,8 @@ export const sendForgotPasswordOtp = async (req, res, next) => {
     next(error);
   }
 };
+
+// ======================== Verify Forgot Password OTP Controller ==========================
 
 export const verifyForgotPasswordOtp = async (req, res, next) => {
   try {
@@ -1998,6 +2047,8 @@ export const verifyForgotPasswordOtp = async (req, res, next) => {
     next(error);
   }
 };
+
+// ========================= Reset Password with OTP Controller ==========================
 
 export const resetPasswordWithOtp = async (req, res, next) => {
   try {
@@ -2054,7 +2105,7 @@ export const resetPasswordWithOtp = async (req, res, next) => {
 };
 
 
-/* ========================= AGENT DASHBOARD DATA ========================= */
+/* ========================= AGENT DASHBOARD DATA CONTROLLER ========================= */
 
 export const getAgentDashboard = async (req, res) => {
   try {
@@ -2243,7 +2294,7 @@ export const getAgentDashboard = async (req, res) => {
 };
 
 
-/* ========================= CREATE TRAVEL QUERY ========================= */
+/* ========================= CREATE TRAVEL QUERY CONTROLLER ========================= */
 
 export const createQuery = async (req, res, next) => {
   try {
@@ -2476,7 +2527,7 @@ export const createQuery = async (req, res, next) => {
 };
 
 
-/* ========================= VIEW OWN QUERIES ========================= */
+/* ========================= VIEW OWN QUERIES CONTROLLER ========================= */
 
 export const getMyQueries = async (req, res, next) => {
   try {
@@ -2493,7 +2544,9 @@ export const getMyQueries = async (req, res, next) => {
   }
 };
 
-/* ========================= VIEW ACTIVE BOOKINGS ========================= */
+
+
+/* ========================= VIEW ACTIVE BOOKINGS CONTROLLER ========================= */
 
 export const getMyActiveBookings = async (req, res) => {
   try {
@@ -2646,6 +2699,10 @@ export const getMyActiveBookings = async (req, res) => {
   }
 };
 
+
+
+//================= Upload traveler document (passport or government ID) for a specific traveler in a travel query ============ 
+
 export const uploadTravelerDocument = async (req, res, next) => {
   try {
     const agentId = getAuthenticatedUserId(req);
@@ -2765,6 +2822,9 @@ export const uploadTravelerDocument = async (req, res, next) => {
   }
 };
 
+
+// ===================== Remove traveler document (passport or government ID) for a specific traveler in a travel query =========================
+
 export const removeTravelerDocument = async (req, res, next) => {
   try {
     const agentId = getAuthenticatedUserId(req);
@@ -2859,6 +2919,10 @@ export const removeTravelerDocument = async (req, res, next) => {
     next(error);
   }
 };
+
+
+
+// ==================== Submit traveler documents for ops verification Controller =========================
 
 export const submitTravelerDocumentsForVerification = async (req, res, next) => {
   try {
@@ -2966,7 +3030,8 @@ export const submitTravelerDocumentsForVerification = async (req, res, next) => 
   }
 };
 
-/* ========================= VIEW QUOTATION ========================= */
+/* ========================= VIEW QUOTATION CONTROLLER ========================= */
+
 // Get quotations for a specific TravelQuery
 export const getQuotationsByQuery = async (req, res, next) => {
   try {
@@ -3007,7 +3072,8 @@ export const getQuotationsByQuery = async (req, res, next) => {
   }
 };
 
-//================ Accept Quotation by Agent ======================
+
+//================ Accept Quotation by Agent Controller ======================
 
 export const acceptQuotationByAgent = async (req, res, next) => {
   try {
@@ -3220,7 +3286,7 @@ export const acceptQuotationByAgent = async (req, res, next) => {
 
 
 
-/* ========================= REQUEST QUOTATION REVISION ========================= */
+/* ========================= REQUEST QUOTATION REVISION CONTROLLER ========================= */
 
 export const requestQuotationRevision = async (req, res) => {
   try {
@@ -3308,7 +3374,9 @@ export const requestQuotationRevision = async (req, res) => {
   }
 };
 
-/* ========================= CONFIRM QUOTATION ========================= */
+
+
+/* ========================= CONFIRM QUOTATION CONTROLLER ========================= */
 
 export const confirmQuotation = async (req, res) => {
   try {
@@ -3435,6 +3503,9 @@ export const confirmQuotation = async (req, res) => {
   }
 };
 
+
+// ======================== ENSURE ACTIVE BOOKING INVOICE CONTROLLER =========================
+
 export const ensureActiveBookingInvoice = async (req, res) => {
   try {
     const agentId = getAuthenticatedUserId(req);
@@ -3484,6 +3555,9 @@ export const ensureActiveBookingInvoice = async (req, res) => {
   }
 };
 
+
+// ======================== APPLY COUPON TO INVOICE CONTROLLER =========================
+
 export const getAgentFinanceOverview = async (req, res) => {
   try {
     const agentId = getAuthenticatedUserId(req);
@@ -3502,7 +3576,8 @@ export const getAgentFinanceOverview = async (req, res) => {
   }
 };
 
-/* ========================= VIEW INVOICES ========================= */
+
+/* ========================= VIEW INVOICES CONTROLLER ========================= */
 
 export const getMyInvoices = async (req, res) => {
   try {
@@ -3523,6 +3598,10 @@ export const getMyInvoices = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
+
+
+
+// ======================== APPLY COUPON TO INVOICE CONTROLLER =========================
 
 export const applyCouponToInvoice = async (req, res) => {
   try {
@@ -3705,6 +3784,7 @@ export const applyCouponToInvoice = async (req, res) => {
   }
 };
 
+
 /* ========================= UPDATE PAYMENT STATUS (OFFLINE) ========================= */
 
 export const updatePaymentStatus = async (req, res) => {
@@ -3738,7 +3818,8 @@ export const updatePaymentStatus = async (req, res) => {
       : null;
 
     const trimmedUtr = String(utrNumber || "").trim();
-    const trimmedBankName = String(bankName || "").trim();
+    let trimmedBankName = String(bankName || "").trim();
+    const hasBankNameInput = Boolean(trimmedBankName);
     const trimmedRemarks = String(remarks || "").trim();
     const trimmedPaymentOnBehalfOf = String(paymentOnBehalfOf || onBehalfOf || "").trim();
     const normalizedPaymentAmount = String(paymentAmount || "").replace(/,/g, "").trim();
@@ -3814,6 +3895,37 @@ export const updatePaymentStatus = async (req, res) => {
       };
     };
 
+    if (!trimmedBankName && req.file) {
+      try {
+        const extraction = await analyzeInvoiceFile(req.file);
+        const textToScan = (extraction?.rawTextSample || "").toLowerCase();
+        const fileNameToScan = String(req.file.originalname || "").toLowerCase();
+
+        if (textToScan.includes("hdfc") || fileNameToScan.includes("hdfc")) {
+          trimmedBankName = "HDFC Bank";
+        } else if (textToScan.includes("icici") || fileNameToScan.includes("icici")) {
+          trimmedBankName = "ICICI Bank";
+        } else if (textToScan.includes("axis") || fileNameToScan.includes("axis")) {
+          trimmedBankName = "Axis Bank";
+        } else if (textToScan.includes("kotak") || fileNameToScan.includes("kotak")) {
+          trimmedBankName = "Kotak Bank";
+        } else if (
+          textToScan.includes("state bank") ||
+          textToScan.includes("sbi") ||
+          textToScan.includes("state bank of india") ||
+          fileNameToScan.includes("state bank") ||
+          fileNameToScan.includes("sbi") ||
+          fileNameToScan.includes("state bank of india")
+        ) {
+          trimmedBankName = "State Bank of India";
+        }
+      } catch (err) {
+        console.error("OCR Bank Name extraction failed:", err);
+      }
+    }
+
+      if (!trimmedBankName) { trimmedBankName = null; }
+
     const sanitizedTrackerPayments = parsedTrackerPayments
       .map((entry) => {
         const sanitized = sanitizeTrackerEntry(entry);
@@ -3852,6 +3964,11 @@ export const updatePaymentStatus = async (req, res) => {
       if (key) {
         existingMap.set(key, entry);
       }
+    });
+
+    const hasNewTrackerSubmission = sanitizedTrackerPayments.some((sentEntry) => {
+      const key = sentEntry?.createdAt ? new Date(sentEntry.createdAt).toISOString() : "";
+      return !key || !existingMap.has(key);
     });
 
     sanitizedTrackerPayments.forEach((sentEntry) => {
@@ -3906,11 +4023,11 @@ export const updatePaymentStatus = async (req, res) => {
     const hasSubmissionFields =
       Boolean(
         trimmedUtr ||
-        trimmedBankName ||
+        hasBankNameInput ||
         paymentDate ||
         req.file ||
         hasPaymentAmountInput ||
-        trimmedPaymentOnBehalfOf,
+        sanitizedTrackerPayments.length,
       );
 
     if (hasSubmissionFields) {
@@ -3936,9 +4053,41 @@ export const updatePaymentStatus = async (req, res) => {
         });
       }
 
+      if (!sanitizedTrackerPayments.length) {
+        return res.status(400).json({
+          message: "Add at least one payment instalment with amount and date before submitting for verification",
+        });
+      }
+
+      if (!isRejectedResubmission && !hasNewTrackerSubmission) {
+        return res.status(400).json({
+          message: "Add a new payment instalment before submitting for verification",
+        });
+      }
+
+      const hasTrackerEntryWithoutDate = sanitizedTrackerPayments.some((entry) => !entry?.paymentDate);
+      if (hasTrackerEntryWithoutDate) {
+        return res.status(400).json({
+          message: "Every payment instalment must include a valid payment date",
+        });
+      }
+
       const parsedPaymentDate = new Date(paymentDate);
       if (Number.isNaN(parsedPaymentDate.getTime())) {
         return res.status(400).json({ message: "Invalid payment date" });
+      }
+
+      const endOfToday = new Date();
+      endOfToday.setHours(23, 59, 59, 999);
+      if (parsedPaymentDate.getTime() > endOfToday.getTime()) {
+        return res.status(400).json({ message: "Future payment date is not allowed" });
+      }
+
+      const hasFutureTrackerDate = sanitizedTrackerPayments.some(
+        (entry) => entry?.paymentDate && entry.paymentDate.getTime() > endOfToday.getTime(),
+      );
+      if (hasFutureTrackerDate) {
+        return res.status(400).json({ message: "Payment instalment date cannot be in the future" });
       }
 
       if (hasPaymentAmountInput && !/^\d+$/.test(normalizedPaymentAmount)) {
@@ -3949,7 +4098,7 @@ export const updatePaymentStatus = async (req, res) => {
         return res.status(400).json({ message: "Valid invoice amount is required" });
       }
 
-      if (!req.file && !existingReceipt?.url) {
+      if (!req.file && (!existingReceipt?.url || hasNewTrackerSubmission)) {
         return res.status(400).json({ message: "Payment receipt is required" });
       }
 
@@ -4115,6 +4264,10 @@ const resolveAgentReceiptExpectedAmount = (invoice = {}) => {
   return Math.round(Number(invoice?.totalAmount || invoice?.pricingSnapshot?.grandTotal || 0));
 };
 
+
+
+// ======================== GENERATE FINANCE RECEIPT =========================
+
 export const generateAgentFinancePaymentReceipt = async (req, res) => {
   try {
     const agentId = getAuthenticatedUserId(req);
@@ -4228,8 +4381,6 @@ export const generateAgentFinancePaymentReceipt = async (req, res) => {
 };
 
 
-
-
 //=============================== Notification Controller ============================
 
 export const getMyNotifications = async (req, res) => {
@@ -4249,6 +4400,7 @@ export const getMyNotifications = async (req, res) => {
   }
 };
 
+//==================== Mark all notifications as read ===================================
 
 export const markAllNotificationsRead = async (req, res) => {
   try {
@@ -4266,6 +4418,7 @@ export const markAllNotificationsRead = async (req, res) => {
   }
 };
 
+// ==================== Delete a specific notification ===================================
 
 export const deleteNotification = async (req, res) => {
   try {
@@ -4286,6 +4439,11 @@ export const deleteNotification = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
+
+
+
+
+// ======================== UPDATE TRAVEL QUERY BY AGENT =========================
 
 export const updateQueryByAgent = async (req, res, next) => {
   try {
@@ -4512,6 +4670,9 @@ export const updateQueryByAgent = async (req, res, next) => {
     next(error);
   }
 };
+
+
+// ======================= UPDATE QUOTATION BRANDING BY AGENT =========================
 
 export const updateQuotationBranding = async (req, res, next) => {
   try {

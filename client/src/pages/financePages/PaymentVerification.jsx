@@ -823,15 +823,26 @@ const PaymentTrackerModal = ({
   return (
     <div className="fixed right-4 top-4 z-[200] w-full max-w-sm sm:right-6 sm:top-6">
       <div className={`rounded-2xl border px-4 py-3 shadow-xl ${styles[feedback.type] || styles.success}`}>
-        <div className="flex items-start gap-3">
-          <div className="rounded-full bg-white/80 p-1.5"><Icon className="h-4 w-4" /></div>
-          <div className="min-w-0 flex-1">
-            <p className="text-[10px] font-bold uppercase tracking-[0.16em]">{feedback.title}</p>
-            <p className="mt-1 text-sm leading-5">{feedback.message}</p>
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="rounded-full bg-white/80 p-1.5 flex items-center justify-center shrink-0 shadow-sm">
+                <Icon className="h-4 w-4" />
+              </div>
+              <p className="text-[10px] font-bold uppercase tracking-[0.16em] leading-none">{feedback.title}</p>
+            </div>
+            <button
+              onClick={onClose}
+              className="rounded-full p-1 text-current/60 transition-colors hover:bg-white/60 hover:text-current flex items-center justify-center shrink-0"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
           </div>
-          <button onClick={onClose} className="rounded-full p-1 text-current/60 transition-colors hover:bg-white/60 hover:text-current">
-            <X className="h-3.5 w-3.5" />
-          </button>
+          {feedback.message && (
+            <div className="pl-10">
+              <p className="text-[12px] leading-relaxed font-medium">{feedback.message}</p>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -2002,7 +2013,7 @@ const PaymentVerification = () => {
                   <button
                     type="button"
                     onClick={() => setOpenPaymentTrackerModal(true)}
-                    className="inline-flex items-center gap-2 rounded-2xl border border-b-[4px] border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700 transition-all hover:bg-emerald-100 hover:border-b-[4px] hover:border-emerald-300 active:translate-y-[2px] active:border-b-[2px]"
+                    className="inline-flex items-center gap-2 rounded-2xl border border-b-[4px] border-emerald-200 bg-gradient-to-r from-emerald-50 to-green-100/70 px-4 py-2 text-sm font-semibold text-emerald-700 transition-all hover:from-emerald-100/90 hover:to-green-200/70 hover:border-emerald-300 active:translate-y-[2px] active:border-b-[2px]"
                   >
                     <Clock className="h-4 w-4" />
                     Payment Tracker
@@ -2288,7 +2299,7 @@ const PaymentVerification = () => {
                         <button
                           onClick={() => setOpenVerifyModal(true)}
                           disabled={submittingAction || !canVerifySelectedPayment}
-                          className={`inline-flex flex-1 items-center justify-center gap-2 rounded-2xl py-2 text-[12px] font-medium text-white transition-colors ${(submittingAction || !canVerifySelectedPayment) ? "cursor-not-allowed bg-green-300" : "bg-green-500 hover:bg-green-600"}`}
+                          className={`inline-flex flex-1 items-center justify-center gap-2 rounded-full py-2 text-[12px] font-semibold text-white transition-all shadow-sm ${(submittingAction || !canVerifySelectedPayment) ? "cursor-not-allowed bg-gradient-to-r from-green-300/80 to-emerald-300/80 text-white/80 opacity-80" : "bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 hover:shadow-md active:scale-[0.98]"}`}
                         >
                           <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white/15">
                             <CheckCircle2 className="h-4.5 w-4.5 shrink-0 stroke-[2.4]" />
@@ -2298,7 +2309,7 @@ const PaymentVerification = () => {
                         <button
                           onClick={() => setOpenRejectModal(true)}
                           disabled={submittingAction || !canCurrentUserReview}
-                          className={`inline-flex flex-1 items-center justify-center gap-2.5 rounded-2xl py-3 text-[12px] font-medium text-white transition-colors ${(submittingAction || !canCurrentUserReview) ? "cursor-not-allowed bg-red-300" : "bg-red-500 hover:bg-red-600"}`}
+                          className={`inline-flex flex-1 items-center justify-center gap-2.5 rounded-full py-2 text-[12px] font-semibold text-white transition-all shadow-sm ${(submittingAction || !canCurrentUserReview) ? "cursor-not-allowed bg-gradient-to-r from-red-300/80 to-rose-300/80 text-white/80 opacity-80" : "bg-gradient-to-r from-red-500 to-rose-600 hover:from-red-600 hover:to-rose-700 hover:shadow-md active:scale-[0.98]"}`}
                         >
                           <span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white/15">
                             <AlertCircle className="h-4.5 w-4.5 shrink-0 stroke-[2.4]" />

@@ -55,7 +55,7 @@ app.use((err, req, res, next) => {
   
 
   console.error(err.stack);
-  res.status(err.status || 500).json({success: false, message: err.message || "Internal Server Error",
+  res.status(err.statusCode || err.status || 500).json({success: false, message: err.message || "Internal Server Error",
   });
 });
 
@@ -65,4 +65,3 @@ app.use((err, req, res, next) => {
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
-

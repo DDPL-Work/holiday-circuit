@@ -215,6 +215,12 @@ const agentSchema = new mongoose.Schema(
 
 //======= THIS IS THE KEY PART =============
 
+agentSchema.pre("validate", function () {
+  if (this.role === "agent" && this.status === "active") {
+    this.status = "approve";
+  }
+});
+
 agentSchema.pre("save", function () {
   if (this.isDeleted) {
     this.accountStatus = "Inactive";
@@ -258,4 +264,3 @@ agentSchema.index({ manager: 1, role: 1, createdAt: -1 });
 agentSchema.index({ isDeleted: 1, role: 1, updatedAt: -1 });
 
 export default mongoose.model("Auth", agentSchema);
-
