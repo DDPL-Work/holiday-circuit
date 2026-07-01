@@ -1136,21 +1136,46 @@ const getFallbackBlackoutDatesForSupplier = async (supplierId = "") => {
 const escapeRegexValue = (value = "") =>
   String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
+const DESTINATION_ALIAS_GROUPS = [
+  ["dharamshala", "dharamsala", "mcleod ganj", "mcleodganj", "mc leod ganj", "mcleodgunj"],
+];
+
+const expandDestinationLocationTerms = (terms = []) => {
+  const normalizedTerms = terms.map((term) => String(term || "").trim()).filter(Boolean);
+  const expanded = new Set(normalizedTerms);
+
+  normalizedTerms.forEach((term) => {
+    DESTINATION_ALIAS_GROUPS.forEach((group) => {
+      if (group.includes(term.toLowerCase())) {
+        group.forEach((alias) => expanded.add(alias));
+      }
+    });
+  });
+
+  return Array.from(expanded);
+};
+
 const buildServiceLocationFilter = (destination = "") => {
   const rawDestination = String(destination || "").trim();
   if (!rawDestination) return {};
 
-  const terms = [
-    rawDestination,
-    ...rawDestination.split(/[,/|&+>-]+/),
-  ]
+  const normalizedParts = rawDestination
+    .split(/[,/|&+>-]+/)
     .map((item) => item.trim())
     .filter((item) => item.length >= 2);
 
-  const uniqueTerms = [...new Set(terms)];
+  const cityTerms = normalizedParts.length > 1 ? normalizedParts.slice(0, -1) : [];
+  const fallbackTerms = normalizedParts.length ? normalizedParts : [rawDestination];
+  const targetTerms = cityTerms.length ? cityTerms : fallbackTerms;
+  const uniqueTerms = expandDestinationLocationTerms([...new Set(targetTerms)]);
+
   if (!uniqueTerms.length) return {};
 
   const regexes = uniqueTerms.map((term) => new RegExp(escapeRegexValue(term), "i"));
+
+  if (cityTerms.length) {
+    return { city: { $in: regexes } };
+  }
 
   return {
     $or: [

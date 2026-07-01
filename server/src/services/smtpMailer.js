@@ -17,6 +17,11 @@ const normalizePort = (value, fallback = 587) => {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 };
 
+const normalizeTimeout = (value, fallback) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+};
+
 const buildTransportConfig = () => {
   const service =
     String(process.env.SMTP_SERVICE || "").trim() ||
@@ -39,8 +44,14 @@ const buildTransportConfig = () => {
     String(process.env.SMTP_PASS || "").trim() ||
     String(process.env.EMAIL_PASS || "").trim();
 
+  const sendTimeout = normalizeTimeout(process.env.MAIL_SEND_TIMEOUT_MS, 15000);
+  const socketTimeout = normalizeTimeout(process.env.MAIL_SOCKET_TIMEOUT_MS, 20000);
+
   const config = {
     auth: user || pass ? { user, pass } : undefined,
+    connectionTimeout: sendTimeout,
+    greetingTimeout: sendTimeout,
+    socketTimeout,
   };
 
   if (service) {

@@ -306,3 +306,12 @@ html::-webkit-scrollbar-thumb, body::-webkit-scrollbar-thumb {
 html::-webkit-scrollbar-thumb:hover, body::-webkit-scrollbar-thumb:hover {
   background: rgba(148, 163, 184, 0.5);
 }
+
+/* React Hot Toast Alignment Overrides */
+div[role="status"] {
+  justify-content: flex-start !important;
+  text-align: left !important;
+  line-height: 1.45 !important;
+  display: block !important;
+  margin: 4px 4px 4px 10px !important;
+}

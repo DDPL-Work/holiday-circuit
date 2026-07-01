@@ -103,27 +103,31 @@ export default function CircuitLoader({ onFinished }) {
   return (
     <div
       ref={containerRef}
-      className="fixed inset-0 w-screen h-screen bg-[#070f22] flex flex-col items-center justify-center overflow-hidden z-[999999] pointer-events-auto select-none"
+      className="fixed inset-0 w-screen h-screen bg-[#2563eb] flex flex-col items-center justify-center overflow-hidden z-[999999] pointer-events-auto select-none"
     >
-      {/* Lighting radial overlay */}
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(59,130,246,0.18)_0%,rgba(13,27,56,0.75)_55%,#070f22_95%)] pointer-events-none z-0" />
+      {/* Circular/radial gradient: light-blue/white center fading into vibrant blue at the outer edges */}
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,#f0f9ff_0%,#93c5fd_45%,#2563eb_100%)] pointer-events-none z-0" />
 
       {/* Brand logo & texts */}
       <div className="relative z-10 flex flex-col items-center justify-center max-w-md w-[90%] mx-auto text-center">
         {/* Animated Brand Logo */}
         <div ref={logoRef} className="mb-0 relative flex items-center justify-center">
-          <div className="absolute w-48 h-48 bg-blue-500/20 blur-3xl rounded-full animate-pulse" />
+          {/* Subtle ambient pulse background glow spread widely */}
+          <div className="absolute w-80 h-80 bg-white/40 blur-[96px] rounded-full animate-pulse pointer-events-none" />
           <img
             src={logo}
             alt="Holiday Circuit Logo"
-            className="h-36 w-auto object-contain relative z-10 filter drop-shadow-[0_8px_20px_rgba(59,130,246,0.4)]"
+            className="h-36 w-auto object-contain relative z-10"
+            style={{
+              filter: "drop-shadow(0 10px 25px rgba(15, 23, 42, 0.08))"
+            }}
           />
         </div>
 
-        {/* Animated Brand Name */}
+        {/* Animated Brand Name - styled dark slate for high contrast and luxury feel */}
         <h1
           ref={titleRef}
-          className="text-4xl mt-0 mb-1 text-white drop-shadow-[0_4px_15px_rgba(0,0,0,0.7)] whitespace-nowrap"
+          className="text-4xl mt-0 mb-1 text-slate-900 drop-shadow-[0_1px_4px_rgba(255,255,255,0.4)] whitespace-nowrap"
           style={{
             fontFamily: "'Bodoni Moda', 'Playfair Display', serif",
             fontStyle: "italic",
@@ -134,28 +138,28 @@ export default function CircuitLoader({ onFinished }) {
           Holiday Circuit
         </h1>
 
-        {/* Animated Tagline */}
+        {/* Animated Tagline - dark blue for visibility */}
         <p
           ref={taglineRef}
-          className="text-blue-400 text-[10px] tracking-[0.45em] mb-4 font-semibold uppercase opacity-95"
+          className="text-blue-800 text-[10px] tracking-[0.45em] mb-4 font-semibold uppercase opacity-95"
           style={{ fontFamily: "'Montserrat', sans-serif" }}
         >
           Exploring The World
         </p>
 
-        {/* Progress Bar container */}
-        <div className="progress-container w-64 relative h-1.5 bg-white/10 rounded-full mb-3.5 overflow-hidden">
+        {/* Progress Bar container - updated track color for light theme */}
+        <div className="progress-container w-64 relative h-1.5 bg-slate-200/80 rounded-full mb-3.5 overflow-hidden border border-slate-300/20">
           <div
             ref={progressFillRef}
-            className="absolute top-0 left-0 h-full bg-gradient-to-r from-blue-600 via-blue-400 to-zinc-900 rounded-full"
+            className="absolute top-0 left-0 h-full bg-gradient-to-r from-blue-700 via-blue-500 to-sky-400 rounded-full"
             style={{ width: "0%" }}
           />
         </div>
 
-        {/* Progress Value */}
-        <div className="progress-container flex items-center justify-between w-64 text-white/50 text-[10px] font-bold tracking-widest">
+        {/* Progress Value - text styled to be visible on light theme */}
+        <div className="progress-container flex items-center justify-between w-64 text-slate-500 text-[10px] font-bold tracking-widest">
           <span>INITIALIZING</span>
-          <span className="text-blue-400">{progress}%</span>
+          <span className="text-blue-800">{progress}%</span>
         </div>
       </div>
     </div>

@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 
-const quotationSchema = new mongoose.Schema(
+export const quotationSchema = new mongoose.Schema(
 {
   queryId: {
     type: mongoose.Schema.Types.ObjectId,
