@@ -153,6 +153,13 @@ export default function OpsTeamLoginModal({ open, onClose }) {
         return;
       }
 
+      if (form.role && user.role !== form.role) {
+        toast.error("Selected role does not match your account role.");
+        dispatch(logout());
+        dispatch(resetAuthState());
+        return;
+      }
+
       const redirectConfig = roleRedirectMap[user.role];
 
       if (redirectConfig) {
@@ -165,7 +172,7 @@ export default function OpsTeamLoginModal({ open, onClose }) {
       onClose?.();
       dispatch(resetAuthState());
     }
-  }, [token, justLoggedIn, user, navigate, dispatch, onClose, open]);
+  }, [token, justLoggedIn, user, navigate, dispatch, onClose, open, form.role]);
 
   const handleRoleSelect = (roleValue) => {
     handleFieldChange("role", roleValue);

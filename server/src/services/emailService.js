@@ -142,6 +142,25 @@ const normalizeServiceTypeLabel = (value = "") => {
   return normalizedValue.replace(/\b\w/g, (character) => character.toUpperCase());
 };
 
+const getTypeBadgeColors = (typeLabel = "") => {
+  const normalizedType = String(typeLabel || "").trim().toLowerCase();
+
+  if (normalizedType.includes("hotel")) {
+    return { background: "#dbeafe", border: "#93c5fd", text: "#1d4ed8" };
+  }
+  if (normalizedType.includes("transport")) {
+    return { background: "#dcfce7", border: "#86efac", text: "#15803d" };
+  }
+  if (normalizedType.includes("activity")) {
+    return { background: "#fef3c7", border: "#fcd34d", text: "#b45309" };
+  }
+  if (normalizedType.includes("sightseeing")) {
+    return { background: "#ede9fe", border: "#c4b5fd", text: "#6d28d9" };
+  }
+
+  return { background: "#e2e8f0", border: "#cbd5e1", text: "#10213a" };
+};
+
 const buildServiceDescriptionLines = (description = "") => {
   const normalizedDescription = String(description || "")
     .replace(/\r\n/g, "\n")
@@ -336,24 +355,7 @@ const buildAgentClientQuotationTemplate = (quoteDetails = {}) => {
     "Please review and confirm within the validity period to avoid fare or rate changes.",
   ];
 
-  const getTypeBadgeColors = (typeLabel = "") => {
-    const normalizedType = String(typeLabel || "").trim().toLowerCase();
 
-    if (normalizedType.includes("hotel")) {
-      return { background: "#dbeafe", border: "#93c5fd", text: "#1d4ed8" };
-    }
-    if (normalizedType.includes("transport")) {
-      return { background: "#dcfce7", border: "#86efac", text: "#15803d" };
-    }
-    if (normalizedType.includes("activity")) {
-      return { background: "#fef3c7", border: "#fcd34d", text: "#b45309" };
-    }
-    if (normalizedType.includes("sightseeing")) {
-      return { background: "#ede9fe", border: "#c4b5fd", text: "#6d28d9" };
-    }
-
-    return { background: "#e2e8f0", border: "#cbd5e1", text: "#10213a" };
-  };
 
   const snapshotHtml = snapshotItems
     .map((item) => `
@@ -1081,6 +1083,127 @@ const buildInvoiceDayLabel = (dateValue, index) => {
   return `Day ${index + 1} - ${weekday} ${day} ${month}`;
 };
 
+const TRANSPORT_USAGE_LABELS = Object.freeze({
+  "one-way-airport-transfer": "One Way / Airport Transfer",
+  "inter-hotel-transfer": "Inter Hotel Transfer",
+  "full-day": "Full Day",
+  "half-day": "Half Day",
+  "point-to-point": "One Way / Airport Transfer",
+  "round-trip": "Two Way",
+});
+
+const TRANSPORT_USAGE_LIMIT_LABELS = Object.freeze({
+  "full-day": "80 km / 8 hours",
+  "full-day-80-km": "80 km / 8 hours",
+  "full-day-8-hours": "80 km / 8 hours",
+  "half-day": "40 km / 4 hours",
+  "half-day-40-km": "40 km / 4 hours",
+  "half-day-4-hours": "40 km / 4 hours",
+});
+
+const normalizeTransportUsageOptionKeyForQuote = (value = "") => {
+  const normalizedValue = String(value || "").trim().toLowerCase();
+  if (!normalizedValue) return "";
+  if (normalizedValue.includes("inter hotel") || normalizedValue.includes("inter-hotel")) return "inter-hotel-transfer";
+  if (normalizedValue.includes("airport") || normalizedValue.includes("one way") || normalizedValue.includes("one-way")) return "one-way-airport-transfer";
+  if (normalizedValue.includes("full")) return "full-day";
+  if (normalizedValue.includes("half")) return "half-day";
+  if (normalizedValue.includes("round") || normalizedValue.includes("two way")) return "round-trip";
+  if (normalizedValue.includes("point")) return "point-to-point";
+  return normalizedValue;
+};
+
+const getTransportUsageDisplayLabelForQuote = (service = {}) => {
+  const key = normalizeTransportUsageOptionKeyForQuote(
+    service?.transportUsageOptionKey ||
+    service?.transportUsageLabel ||
+    service?.usageType,
+  );
+
+  return (
+    service?.transportUsageLabel ||
+    TRANSPORT_USAGE_LABELS[key] ||
+    String(service?.usageType || "")
+      .replace(/-/g, " ")
+      .replace(/\b\w/g, (char) => char.toUpperCase())
+  );
+};
+
+const getTransportLimitLabelForQuote = (service = {}) => {
+  const optionKey = normalizeTransportUsageOptionKeyForQuote(
+    service?.transportUsageOptionKey ||
+    service?.transportUsageLabel ||
+    service?.usageType,
+  );
+  const limitKeys = String(service?.transportUsageLimitOptionKey || "")
+    .split(",")
+    .map((k) => k.trim())
+    .filter(Boolean);
+  const explicitLimitLabel = limitKeys
+    .map((key) => TRANSPORT_USAGE_LIMIT_LABELS[key])
+    .filter(Boolean)[0];
+
+  return explicitLimitLabel || TRANSPORT_USAGE_LIMIT_LABELS[optionKey] || "";
+};
+
+const buildServiceQuantityLabel = (service = {}, fallbackPax = 0) => {
+  const normalizedType = String(service?.type || "").trim().toLowerCase();
+  const details = [];
+
+  if (normalizedType === "hotel") {
+    const hotelPax = Number(fallbackPax || 0) || Number(service?.pax || 0);
+    if (Number(service?.nights || 0) > 0) details.push(`${service.nights}N`);
+    if (Number(service?.rooms || 0) > 0) details.push(`${service.rooms} Room${Number(service.rooms) > 1 ? "s" : ""}`);
+    if (hotelPax > 0) details.push(`${hotelPax} Pax`);
+    return details.join(" | ");
+  }
+
+  if (normalizedType === "transfer" || normalizedType === "car" || normalizedType === "transport") {
+    const usageLabel = getTransportUsageDisplayLabelForQuote(service);
+    const limitLabel = getTransportLimitLabelForQuote(service);
+    if (usageLabel) details.push(usageLabel);
+    if (limitLabel) details.push(limitLabel);
+    if (Number(service?.passengerCapacity || 0) > 0) {
+      details.push(`${service.passengerCapacity} Pax`);
+    } else if (Number(service?.pax || 0) > 0) {
+      details.push(`${service.pax} Pax`);
+    }
+    if (service?.vehicleType) details.push(service.vehicleType);
+    return details.join(" | ");
+  }
+
+  if (Number(service?.days || 0) > 0) details.push(`${service.days}D`);
+  if (Number(service?.pax || 0) > 0) details.push(`${service.pax} Pax`);
+  if (service?.vehicleType) details.push(service.vehicleType);
+
+  return details.join(" | ");
+};
+
+const buildTransportQuotationNotes = (service = {}) => {
+  const optionKey = normalizeTransportUsageOptionKeyForQuote(
+    service?.transportUsageOptionKey ||
+    service?.transportUsageLabel ||
+    service?.usageType,
+  );
+
+  if (!["full-day", "half-day"].includes(optionKey)) return [];
+
+  const usageLabel = getTransportUsageDisplayLabelForQuote(service);
+  const limitLabel = getTransportLimitLabelForQuote(service);
+  const extraKmRate = Number(service?.fullDayExtraPerKmRate || service?.halfDayExtraPerKmRate || service?.extraPerKmRate || 0);
+  const notes = [];
+
+  if (extraKmRate > 0) {
+    notes.push(`Extra km rate: \u20B9 ${extraKmRate.toLocaleString("en-IN")}/km.`);
+  }
+
+  if (limitLabel) {
+    notes.push(`Note: ${usageLabel} limit selected as ${limitLabel}. Extra km will attract extra charges where applicable.`);
+  }
+
+  return notes;
+};
+
 export const buildFinalInvoiceTemplate = (invoiceDetails = {}) => {
   const currency = invoiceDetails.currency || "INR";
   const trip = invoiceDetails.tripSnapshot || {};
@@ -1103,6 +1226,7 @@ export const buildFinalInvoiceTemplate = (invoiceDetails = {}) => {
   const handlingFeeAmount = Number(pricing.handlingFee || 0);
   const gstAmount = Number(pricing.gstAmount || 0);
   const gstPercent = Number(pricing.gstPercent || 0);
+  const fallbackPax = Number(trip.numberOfAdults || 0) + Number(trip.numberOfChildren || 0);
 
   const sectionHeading = (label, colspan = 1) => `
     <tr>
@@ -1128,21 +1252,77 @@ export const buildFinalInvoiceTemplate = (invoiceDetails = {}) => {
       )
       .join("");
 
-  const accommodationItems = lineItems.filter((item) => normalizeInvoiceServiceType(item?.serviceType) === "hotel");
-  const specialInclusionItems = lineItems.filter((item) => {
+  const getServiceInfo = (item, index) => {
+    const quoteService = invoiceDetails.quotation?.services?.[index] || 
+                         invoiceDetails.quotation?.services?.find(s => s.title === item.title && s.serviceDate && new Date(s.serviceDate).getTime() === new Date(item.serviceDate).getTime());
+
+    if (quoteService) {
+      return {
+        title: quoteService.title || item.title || "Service",
+        description: quoteService.description || "",
+        quantityLabel: quoteService.quantityLabel || buildServiceQuantityLabel(quoteService, fallbackPax) || "-",
+        serviceDate: quoteService.serviceDate || item.serviceDate,
+        location: quoteService.location || item.location || "-",
+        typeLabel: normalizeServiceTypeLabel(quoteService.typeLabel || quoteService.type || item.serviceType)
+      };
+    }
+
+    const notesParts = String(item.notes || "").split(" | ");
+    let qtyVal = "-";
+    const descParts = [];
+    const extraNotes = [];
+
+    notesParts.forEach((part) => {
+      const trimmed = part.trim();
+      if (trimmed.startsWith("QTY:")) {
+        qtyVal = trimmed.replace(/^QTY:\s*/i, "");
+      } else if (/^(Extra km rate:|Note:)/i.test(trimmed)) {
+        extraNotes.push(trimmed);
+      } else {
+        descParts.push(trimmed);
+      }
+    });
+
+    if (qtyVal === "-" && normalizeInvoiceServiceType(item.serviceType) === "hotel") {
+      const parts = [];
+      if (item.nights) parts.push(`${item.nights}N`);
+      if (item.rooms) parts.push(`${item.rooms} Room${item.rooms > 1 ? "s" : ""}`);
+      if (item.pax) parts.push(`${item.pax} Pax`);
+      qtyVal = parts.join(" | ") || "-";
+    }
+
+    const fullDesc = [descParts.join(" | "), ...extraNotes].filter(Boolean).join("\n");
+
+    return {
+      title: item.title || "Service",
+      description: fullDesc,
+      quantityLabel: qtyVal,
+      serviceDate: item.serviceDate,
+      location: item.location || "-",
+      typeLabel: normalizeServiceTypeLabel(item.serviceType)
+    };
+  };
+
+  const mappedAccommodation = [];
+  const mappedSpecial = [];
+  const mappedTransport = [];
+
+  lineItems.forEach((item, index) => {
+    const info = getServiceInfo(item, index);
     const type = normalizeInvoiceServiceType(item?.serviceType);
-    const title = String(item?.title || "").toLowerCase();
-    return title.includes("visa") || title.includes("insurance") || type.includes("visa") || type.includes("insurance");
-  });
-  const transportActivityItems = lineItems.filter((item) => {
-    const type = normalizeInvoiceServiceType(item?.serviceType);
-    const title = String(item?.title || "").toLowerCase();
-    if (title.includes("visa") || title.includes("insurance") || type.includes("visa") || type.includes("insurance")) return false;
-    return type !== "hotel";
+    const titleLower = String(item?.title || "").toLowerCase();
+
+    if (type === "hotel") {
+      mappedAccommodation.push({ ...item.toObject ? item.toObject() : item, ...info });
+    } else if (titleLower.includes("visa") || titleLower.includes("insurance") || type.includes("visa") || type.includes("insurance")) {
+      mappedSpecial.push(info);
+    } else {
+      mappedTransport.push(info);
+    }
   });
 
-  const accommodationRows = accommodationItems.length
-    ? accommodationItems.map((item) => `
+  const accommodationRows = mappedAccommodation.length
+    ? mappedAccommodation.map((item) => `
         <tr>
           <td style="border:1px solid #d1d5db;padding:9px 10px;vertical-align:top;font-size:10pt;">${escapeHtml(`${Number(item?.nights || 0) || "-"} Night${Number(item?.nights || 0) === 1 ? "" : "s"}`)}</td>
           <td style="border:1px solid #d1d5db;padding:9px 10px;vertical-align:top;font-size:10pt;font-weight:700;">${escapeHtml(item?.location || "-")}</td>
@@ -1157,24 +1337,30 @@ export const buildFinalInvoiceTemplate = (invoiceDetails = {}) => {
       </tr>
     `;
 
-  const transportRows = transportActivityItems.length
-    ? transportActivityItems.map((item, index) => `
-        <tr>
-          <td style="border:1px solid #d1d5db;padding:9px 10px;vertical-align:top;font-size:10pt;">${escapeHtml(buildInvoiceDayLabel(item?.serviceDate, index))}</td>
-          <td style="border:1px solid #d1d5db;padding:9px 10px;vertical-align:top;font-size:10pt;">${escapeHtml(item?.title || "-")}</td>
-          <td style="border:1px solid #d1d5db;padding:9px 10px;vertical-align:top;font-size:10pt;">${escapeHtml(item?.notes || item?.serviceType || "Included service")}</td>
-        </tr>
-      `).join("")
+  const transportRows = mappedTransport.length
+    ? mappedTransport.map((item, idx) => {
+        const descriptionHtml = buildServiceDescriptionHtml(item.description);
+        return `
+          <tr>
+            <td style="border:1px solid #d1d5db;padding:9px 10px;vertical-align:top;font-size:10pt;width:15%;">${escapeHtml(buildInvoiceDayLabel(item?.serviceDate, idx))}</td>
+            <td style="border:1px solid #d1d5db;padding:9px 10px;vertical-align:top;font-size:10pt;width:55%;">
+              <div style="font-weight:700;color:#10213a;">${escapeHtml(item.title)}</div>
+              ${descriptionHtml}
+            </td>
+            <td style="border:1px solid #d1d5db;padding:9px 10px;vertical-align:top;font-size:10pt;width:30%;font-weight:600;">${escapeHtml(item.quantityLabel)}</td>
+          </tr>
+        `;
+      }).join("")
     : `
       <tr>
         <td colspan="3" style="border:1px solid #d1d5db;padding:10px;text-align:center;font-size:10pt;color:#6b7280;">Transportation and activity details will appear here.</td>
       </tr>
     `;
 
-  const specialRows = specialInclusionItems.length
-    ? specialInclusionItems.map((item, index) => `
+  const specialRows = mappedSpecial.length
+    ? mappedSpecial.map((item, idx) => `
         <tr>
-          <td style="border:1px solid #d1d5db;padding:9px 10px;vertical-align:top;font-size:10pt;">${escapeHtml(buildInvoiceDayLabel(item?.serviceDate, index))}</td>
+          <td style="border:1px solid #d1d5db;padding:9px 10px;vertical-align:top;font-size:10pt;">${escapeHtml(buildInvoiceDayLabel(item?.serviceDate, idx))}</td>
           <td style="border:1px solid #d1d5db;padding:9px 10px;vertical-align:top;font-size:10pt;"><strong>${escapeHtml(item?.title || "-")}</strong></td>
         </tr>
       `).join("")
@@ -1225,22 +1411,30 @@ export const buildFinalInvoiceTemplate = (invoiceDetails = {}) => {
   `;
 
   const finalTotal = escapeHtml(formatCurrency(totalAmount, pricing.currency || currency));
-  const inclusionsList = buildListItems([
-    "Stay as mentioned or similar category hotels.",
-    "Meals as mentioned in the itinerary.",
-    "Airport or point-to-point transfers as confirmed.",
-    "Sightseeing and entrance tickets as per confirmed services.",
-    "Applicable taxes calculated on the date of issue.",
-    "Visa and insurance only if specifically mentioned above.",
-  ]);
-  const exclusionsList = buildListItems([
-    "International or domestic airfare unless specified.",
-    "Early check-in, late check-out, and hotel deposits.",
-    "Personal expenses such as laundry, room service, and tips.",
-    "Any increase in tax, surcharge, or rate of exchange.",
-    "Travel insurance where not explicitly included.",
-    "Any service not listed in the invoice inclusions.",
-  ]);
+  const rawInclusions = Array.isArray(invoiceDetails.inclusions) && invoiceDetails.inclusions.length > 0
+    ? invoiceDetails.inclusions
+    : [
+        "Stay as mentioned or similar category hotels.",
+        "Meals as mentioned in the itinerary.",
+        "Airport or point-to-point transfers as confirmed.",
+        "Sightseeing and entrance tickets as per confirmed services.",
+        "Applicable taxes calculated on the date of issue.",
+        "Visa and insurance only if specifically mentioned above.",
+      ];
+
+  const rawExclusions = Array.isArray(invoiceDetails.exclusions) && invoiceDetails.exclusions.length > 0
+    ? invoiceDetails.exclusions
+    : [
+        "International or domestic airfare unless specified.",
+        "Early check-in, late check-out, and hotel deposits.",
+        "Personal expenses such as laundry, room service, and tips.",
+        "Any increase in tax, surcharge, or rate of exchange.",
+        "Travel insurance where not explicitly included.",
+        "Any service not listed in the invoice inclusions.",
+      ];
+
+  const inclusionsList = buildListItems(rawInclusions);
+  const exclusionsList = buildListItems(rawExclusions);
   const termsList = buildListItems([
     "A non-refundable deposit is required to confirm the booking.",
     "Full payment must be cleared before departure as per booking deadline.",
@@ -1326,9 +1520,9 @@ export const buildFinalInvoiceTemplate = (invoiceDetails = {}) => {
         <thead>
           ${sectionHeading("TRANSPORTATION & ACTIVITIES", 3)}
           <tr style="background:#e8eef9;">
-            <th style="border:1px solid #d1d5db;padding:8px 10px;text-align:left;font-size:10pt;">DAY</th>
-            <th style="border:1px solid #d1d5db;padding:8px 10px;text-align:left;font-size:10pt;">SERVICE</th>
-            <th style="border:1px solid #d1d5db;padding:8px 10px;text-align:left;font-size:10pt;">TYPE</th>
+            <th style="border:1px solid #d1d5db;padding:8px 10px;text-align:left;font-size:10pt;width:15%;">DAY</th>
+            <th style="border:1px solid #d1d5db;padding:8px 10px;text-align:left;font-size:10pt;width:55%;">SERVICE</th>
+            <th style="border:1px solid #d1d5db;padding:8px 10px;text-align:left;font-size:10pt;width:30%;">QTY</th>
           </tr>
         </thead>
         <tbody>${transportRows}</tbody>

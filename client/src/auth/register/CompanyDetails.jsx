@@ -49,7 +49,7 @@ export default function CompanyDetails({ form, setForm, next, back, isActive = f
 
   return (
     <div className="w-full h-screen min-h-screen flex items-center justify-center px-4 ">
-      <div className="w-full max-w-xl bg-white rounded-2xl p-8">
+      <div className="w-full max-w-xl rounded-2xl p-8">
         <RegisterStepper currentStep={2} isActive={isActive} />
 
         <h2 className="text-2xl font-semibold mb-1">Company Details</h2>
@@ -125,7 +125,7 @@ export default function CompanyDetails({ form, setForm, next, back, isActive = f
 
             <button
               type="submit"
-              className="cursor-pointer rounded-xl bg-blue-900 px-4 py-2 text-white transition hover:bg-blue-800"
+              className="cursor-pointer rounded-xl bg-gradient-to-r from-[#0f2d5a] to-[#0a0f1d] px-4 py-2 text-white hover:from-[#153e7a] hover:to-[#020617] hover:shadow-[0_4px_10px_rgba(15,45,90,0.25)] transition-all duration-300"
             >
               Continue
             </button>

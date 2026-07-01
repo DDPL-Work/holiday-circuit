@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import API from '../utils/Api';
 import { AnimatePresence, motion } from 'framer-motion';
+import toast from 'react-hot-toast';
 
 const rejectionReasons = [
   'Rate Mismatch with System',
@@ -139,9 +140,22 @@ const getInvoiceTaxConfig = (invoice = {}) => {
 };
 
 const getExpectedInvoiceSummary = (invoice = {}) => {
+  const fallbackSummary = invoice.summary || {};
+  if (invoice.invoiceSource === "uploaded_invoice") {
+    const totalTax = Number(fallbackSummary.totalTax ?? 0);
+    const subtotal = Number(fallbackSummary.subtotal ?? 0);
+    return {
+      subtotal,
+      gstAmount: Number(fallbackSummary.gstAmount ?? 0),
+      tcsAmount: Number(fallbackSummary.tcsAmount ?? 0),
+      otherTaxAmount: Number(fallbackSummary.otherTaxAmount ?? totalTax ?? 0),
+      totalTax,
+      grandTotal: Number(fallbackSummary.grandTotal ?? subtotal + totalTax ?? 0),
+    };
+  }
+
   const items = Array.isArray(invoice.items) ? invoice.items : [];
   const taxConfig = getInvoiceTaxConfig(invoice);
-  const fallbackSummary = invoice.summary || {};
   const fallbackSubtotal = Number(
     fallbackSummary.subtotal ?? invoice.dmcInvoiceAmountValue ?? invoice.agreedRateValue ?? 0,
   );
@@ -173,7 +187,16 @@ const getExpectedInvoiceSummary = (invoice = {}) => {
 };
 
 const getUploadedInvoiceSummary = (invoice = {}) => {
+  const isUploaded = invoice.invoiceSource === "uploaded_invoice";
   const claimedSummary = invoice.claimedSummary || {};
+
+  if (!isUploaded) {
+    return {
+      subtotal: Number(invoice.summary?.subtotal ?? invoice.dmcInvoiceAmountValue ?? 0),
+      taxAmount: Number(invoice.summary?.totalTax ?? invoice.taxValue ?? 0),
+      grandTotal: Number(invoice.summary?.grandTotal ?? invoice.amountValue ?? 0),
+    };
+  }
 
   return {
     subtotal: Number(
@@ -718,6 +741,7 @@ const InvoiceDocumentModal = ({ invoice, onClose, onInvoiceUpdated, sidePanelOpe
   );
   const roundedTaxAmount = formatRoundedAmount(invoice.taxValue ?? invoice.tax ?? taxAmount);
   const isUploadedInvoice = invoice.invoiceSource === "uploaded_invoice";
+  const showManualChecks = isUploadedInvoice || (invoice.documents && invoice.documents.length > 0);
   const invoiceExtraction = invoice.invoiceExtraction || {};
   const extractionFields = invoiceExtraction.fields || {};
   const extractionWarnings = invoiceExtraction.verification?.warnings || [];
@@ -800,7 +824,7 @@ const InvoiceDocumentModal = ({ invoice, onClose, onInvoiceUpdated, sidePanelOpe
     invoice.dmcInvoiceAmountValue ?? getNumericAmount(invoicedAmount),
   );
   
-  const allChecksPassed = !isUploadedInvoice || (
+  const allChecksPassed = !showManualChecks || (
     manualChecks.subtotal === 'pass' &&
     manualChecks.tax === 'pass' &&
     manualChecks.grandTotal === 'pass' &&
@@ -833,6 +857,24 @@ const InvoiceDocumentModal = ({ invoice, onClose, onInvoiceUpdated, sidePanelOpe
     invoice.invoiceSource === "uploaded_invoice"
       ? "Uploaded by DMC"
       : "Company Template";
+
+  const handleVerifyPass = (key, value, expectedValue, label) => {
+    if (manualChecks[key] === 'pass') {
+      setManualChecks(prev => ({
+        ...prev,
+        [key]: 'pending'
+      }));
+    } else {
+      if (Number(value || 0) === 0 || Number(expectedValue || 0) === 0) {
+        toast.error(`Cannot verify ${label} as Pass because either DMC or System price is 0.`);
+        return;
+      }
+      setManualChecks(prev => ({
+        ...prev,
+        [key]: 'pass'
+      }));
+    }
+  };
 
   const handleClose = () => {
     setIsOpen(false);
@@ -1185,7 +1227,7 @@ const InvoiceDocumentModal = ({ invoice, onClose, onInvoiceUpdated, sidePanelOpe
                   </div>
                 </div>
 
-                {isUploadedInvoice && (
+                {showManualChecks && (
                   <div className="mt-2 rounded-lg border border-white/70 bg-white/85 px-2.5 py-2">
                     {invoiceExtraction.status ? (
                       <div className={`mb-2 rounded-lg border px-2 py-1.5 ${
@@ -1311,10 +1353,7 @@ const InvoiceDocumentModal = ({ invoice, onClose, onInvoiceUpdated, sidePanelOpe
                           <div className="flex items-center gap-1.5 shrink-0">
                             <button
                               type="button"
-                              onClick={() => setManualChecks(prev => ({
-                                ...prev,
-                                [row.key]: prev[row.key] === 'pass' ? 'pending' : 'pass'
-                              }))}
+                              onClick={() => handleVerifyPass(row.key, row.uploaded, row.expected, row.label)}
                               className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border transition-all duration-200 ease-out transform active:scale-75 cursor-pointer ${
                                 manualChecks[row.key] === 'pass'
                                   ? 'border-emerald-500 bg-emerald-500 text-white shadow-[0_2px_4px_rgba(16,185,129,0.2)] scale-105 font-bold'
@@ -1356,10 +1395,7 @@ const InvoiceDocumentModal = ({ invoice, onClose, onInvoiceUpdated, sidePanelOpe
                         <div className="flex items-center gap-1.5 shrink-0">
                           <button
                             type="button"
-                            onClick={() => setManualChecks(prev => ({
-                              ...prev,
-                              totalCheck: prev.totalCheck === 'pass' ? 'pending' : 'pass'
-                            }))}
+                            onClick={() => handleVerifyPass('totalCheck', uploadedSummary.subtotal + uploadedSummary.taxAmount, expectedSummary.subtotal + expectedSummary.totalTax, 'Total Check')}
                             className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border transition-all duration-200 ease-out transform active:scale-75 cursor-pointer ${
                               manualChecks.totalCheck === 'pass'
                                 ? 'border-emerald-500 bg-emerald-500 text-white shadow-[0_2px_4px_rgba(16,185,129,0.2)] scale-105 font-bold'
@@ -1674,7 +1710,7 @@ const InvoiceDocumentModal = ({ invoice, onClose, onInvoiceUpdated, sidePanelOpe
                             )}
                           </span>
                         </div>
-                        {isUploadedInvoice && (
+                        {showManualChecks && (
                           <div className={`flex items-center justify-between text-[8px] ${allChecksPassed ? "text-emerald-700" : "text-rose-600"}`}>
                             <span>Manual Uploaded Amount checks verified</span>
                             <span className={`inline-flex items-center gap-1 font-bold ${allChecksPassed ? "text-emerald-600" : "text-rose-500"}`}>

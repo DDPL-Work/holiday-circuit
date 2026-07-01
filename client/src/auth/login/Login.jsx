@@ -320,11 +320,11 @@ const Login = () => {
           </div>
         </div>
 
-        <div className="relative flex h-full w-full items-center justify-center overflow-hidden bg-white px-6 lg:w-1/2">
+        <div className="relative flex h-full w-full items-center justify-center overflow-hidden bg-gradient-to-br from-blue-100/85 via-blue-50/60 via-60% to-slate-200/50 px-6 lg:w-1/2">
           <div className="absolute right-6 top-6 z-10">
             <button
               onClick={() => setOpenOpsModal(true)}
-              className="inline-flex items-center rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition-colors duration-200 hover:border-slate-900 hover:bg-slate-900 hover:text-white"
+              className="inline-flex items-center rounded-full bg-gradient-to-r from-[#0f2d5a] to-[#0a0f1d] text-white px-4 py-2 text-sm font-medium border border-white/5 transition-all duration-300 hover:from-[#153e7a] hover:to-[#020617] hover:shadow-[0_4px_10px_rgba(15,45,90,0.25)]"
             >
               Team Workspace
             </button>
@@ -357,7 +357,7 @@ const Login = () => {
                       className="h-25 w-25 object-contain select-none absolute top-5 left-0.5"
                     />
                   </motion.div>
-                  <h2 className="text-3xl font-bold text-gray-800">Welcome back</h2>
+                  <h2 className="text-3xl font-extrabold text-slate-900">Welcome back</h2>
                   <p className="mb-6 mt-2 text-gray-500">
                     Enter your agent credentials to access your dashboard
                   </p>
@@ -433,7 +433,7 @@ const Login = () => {
                     <button
                       type="submit"
                       disabled={loading}
-                      className="w-full flex items-center justify-center gap-2 bg-slate-900 text-white py-2.5 rounded-xl disabled:cursor-not-allowed disabled:bg-slate-500"
+                      className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-[#0f2d5a] to-[#0a0f1d] text-white py-2.5 rounded-xl disabled:cursor-not-allowed disabled:bg-slate-500 hover:from-[#153e7a] hover:to-[#020617] hover:shadow-[0_4px_12px_rgba(15,45,90,0.3)] transition-all duration-300"
                     >
                       {loading ? "Signing in..." : "Sign in"}
                       <ArrowRight className="w-5 h-5 stroke-[1.8]" />
@@ -460,19 +460,19 @@ const Login = () => {
                     <button
                       type="button"
                       onClick={() => resetForgotFlow(recovery.email || form.email)}
-                      className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-2 text-xs font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-900"
+                      className="inline-flex items-center gap-2 rounded-full border border-white/10 px-3 py-2 text-xs font-medium text-slate-300 transition hover:border-white/20 hover:text-white hover:bg-white/5"
                     >
                       <ChevronLeft size={14} />
                       Back to sign in
                     </button>
-                    <div className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-amber-700">
+                    <div className="inline-flex items-center gap-2 rounded-full border border-amber-500/20 bg-amber-500/10 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-amber-400">
                       <KeyRound size={13} />
                       Recovery Flow
                     </div>
                   </div>
 
-                  <h2 className="text-3xl font-bold text-gray-800">Forgot password</h2>
-                  <p className="mb-6 mt-2 text-gray-500">
+                  <h2 className="text-3xl font-bold text-white">Forgot password</h2>
+                  <p className="mb-6 mt-2 text-slate-400">
                     Recover your account in three quick steps without leaving the login screen.
                   </p>
 
@@ -488,7 +488,7 @@ const Login = () => {
                     <div className="space-y-5">
                       <div>
                         <div className="mb-2 flex items-center justify-between gap-3">
-                          <label className="text-md font-semibold">Work Email</label>
+                          <label className="text-md font-semibold text-white/90">Work Email</label>
                           <ValidationPill message={recoveryErrors.email} />
                         </div>
                         <input
@@ -497,8 +497,10 @@ const Login = () => {
                           onChange={(e) => handleRecoveryChange("email", e.target.value)}
                           onBlur={() => handleRecoveryBlur("email")}
                           placeholder="client@gmail.com"
-                          className={`w-full rounded-2xl border px-4 py-2.5 focus:outline-none ${
-                            recoveryErrors.email ? "border-rose-300 bg-rose-50/40" : "border-gray-300"
+                          className={`w-full rounded-2xl border px-4 py-2.5 focus:outline-none transition-all ${
+                            recoveryErrors.email
+                              ? "border-rose-500/50 bg-rose-950/20 text-rose-200"
+                              : "border-white/10 bg-white/5 text-white placeholder:text-slate-500 focus:border-blue-500/30 focus:ring-1 focus:ring-blue-500/20"
                           }`}
                         />
                       </div>
@@ -506,7 +508,7 @@ const Login = () => {
                         type="button"
                         onClick={handleSendOtp}
                         disabled={recoveryLoading}
-                        className="w-full flex items-center justify-center gap-2 rounded-xl bg-slate-900 py-2.5 text-white disabled:cursor-not-allowed disabled:bg-slate-500"
+                        className="w-full flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#0f2d5a] to-[#0a0f1d] py-2.5 text-white disabled:cursor-not-allowed disabled:bg-slate-500 hover:from-[#153e7a] hover:to-[#020617] hover:shadow-[0_4px_12px_rgba(15,45,90,0.3)] transition-all duration-300"
                       >
                         {recoveryLoading ? "Sending code..." : "Send verification code"}
                         {!recoveryLoading ? <ArrowRight className="w-5 h-5 stroke-[1.8]" /> : null}
