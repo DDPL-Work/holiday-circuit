@@ -1241,7 +1241,7 @@ const buildServiceCurrencyBreakdown = (services = []) => {
   }));
 };
 
-const buildInvoiceLineItems = (quotation) =>
+export const buildInvoiceLineItems = (quotation) =>
   (quotation?.services || []).map((service) => {
     const inrPricing = buildInrPricingForService(service);
     const originalCurrency = normalizeCurrencyCode(service?.currency);
@@ -1249,6 +1249,22 @@ const buildInvoiceLineItems = (quotation) =>
       originalCurrency !== "INR"
         ? `Original ${originalCurrency} ${Number(service?.total || 0).toLocaleString("en-IN")} @ ${inrPricing.exchangeRate} INR`
         : "";
+
+    const normalizedType = String(service?.type || "").trim().toLowerCase();
+    const isTransport = ["transfer", "car", "transport"].includes(normalizedType);
+
+    const fallbackPax =
+      Number(quotation?.numberOfAdults || quotation?.queryId?.numberOfAdults || 0) +
+      Number(quotation?.numberOfChildren || quotation?.queryId?.numberOfChildren || 0);
+    const quantityLabel = isTransport ? buildServiceQuantityLabel(service, fallbackPax) : "";
+    const transportNotes = isTransport ? buildTransportQuotationNotes(service) : [];
+
+    const combinedNotesList = [
+      service.description || "",
+      quantityLabel ? `QTY: ${quantityLabel}` : "",
+      ...transportNotes,
+      pricingNote
+    ].filter(Boolean);
 
     return {
       serviceType: service.type || "",
@@ -1264,7 +1280,7 @@ const buildInvoiceLineItems = (quotation) =>
       currency: "INR",
       unitPrice: Number(inrPricing.priceInInr || 0),
       total: Number(inrPricing.totalInInr || 0),
-      notes: [service.description || "", pricingNote].filter(Boolean).join(" | "),
+      notes: combinedNotesList.join(" | "),
     };
   });
 

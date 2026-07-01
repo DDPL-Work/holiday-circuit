@@ -1,8 +1,15 @@
+import { useState } from "react";
 import AppRouter from "./routes";
 import { Toaster } from "react-hot-toast";
+import CircuitLoader from "./components/CircuitLoader";
 import "./App.css";
 
 function App() {
+  const [loading, setLoading] = useState(() => {
+    const path = window.location.pathname.replace(/\/$/, "");
+    return path === "" || path === "/register";
+  });
+
   return (
     <>
       <Toaster
@@ -11,7 +18,7 @@ function App() {
         gutter={12}
         containerClassName="z-[999999]"
         containerStyle={{
-          top: 80,
+          top: 24,
           right: 24,
         }}
         toastOptions={{
@@ -67,8 +74,10 @@ function App() {
         }}
       />
       <AppRouter />
+      {loading && <CircuitLoader onFinished={() => setLoading(false)} />}
     </>
   );
 }
 
 export default App;
+

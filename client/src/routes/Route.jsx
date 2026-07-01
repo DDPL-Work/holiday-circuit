@@ -36,8 +36,15 @@ const MyFinanceTeam = lazy(() => import("../pages/managerPages/financeManagerPag
 const UserManagement = lazy(() => import("../pages/adminPages/UserManagement"));
 
 const routeFallbackElement = (
-  <div className="flex min-h-[45vh] items-center justify-center text-sm font-semibold text-slate-500">
-    Loading page...
+  <div className="absolute inset-0 bg-black/25 backdrop-blur-[5px] flex items-center justify-center z-50 select-none pointer-events-none w-full h-full min-h-[30vh]">
+    <div className="relative flex items-center justify-center">
+      {/* Outer glowing pulse */}
+      <div className="absolute w-12 h-12 rounded-full border border-blue-500/30 animate-ping opacity-60"></div>
+      {/* Middle rotating ring */}
+      <div className="w-8 h-8 rounded-full border-2 border-t-transparent border-b-transparent border-l-blue-600 border-r-zinc-900 animate-spin"></div>
+      {/* Center glowing dot */}
+      <div className="absolute w-2 h-2 rounded-full bg-gradient-to-r from-blue-600 to-zinc-950 shadow-[0_0_8px_rgba(37,99,235,0.85)]"></div>
+    </div>
   </div>
 );
 

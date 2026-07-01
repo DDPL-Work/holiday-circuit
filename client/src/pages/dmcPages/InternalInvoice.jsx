@@ -21,12 +21,13 @@ import {
   Info,
   XCircle,
 } from "lucide-react";
-import { createElement, useEffect, useMemo, useState } from "react";
+import { createElement, useEffect, useMemo, useState, useRef } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { RotatingLines } from "react-loader-spinner";
 import toast from "react-hot-toast";
 import API from "../../utils/Api";
 import { useSelector } from "react-redux";
+import { gsap } from "gsap";
 
 const formatDateInput = (value) => {
   if (!value) return "";
@@ -420,10 +421,32 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
   });
   const [isGenerating, setIsGenerating] = useState(false);
   const [actionPopup, setActionPopup] = useState(null);
+  const [showReuploadConfirm, setShowReuploadConfirm] = useState(false);
+  const laserRef = useRef(null);
 
   useEffect(() => {
     setItems(initialItems);
   }, [initialItems]);
+
+  useEffect(() => {
+    let anim;
+    if (isFileUploading && laserRef.current) {
+      anim = gsap.fromTo(
+        laserRef.current,
+        { top: "0%" },
+        {
+          top: "100%",
+          duration: 1.5,
+          repeat: -1,
+          yoyo: true,
+          ease: "power1.inOut",
+        }
+      );
+    }
+    return () => {
+      if (anim) anim.kill();
+    };
+  }, [isFileUploading]);
 
   const showActionPopup = (title, message) => {
     setActionPopup({ title, message });
@@ -613,7 +636,7 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
     }
   };
 
-  const handleGenerateInvoice = async () => {
+  const handleGenerateInvoice = async (bypassConfirm = false) => {
     if (isGenerating) return;
 
     if (isFinanceVerified) {
@@ -650,6 +673,15 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
         toast.error("Please enter claimed invoice total");
         return;
       }
+
+      const subtotalMismatch = Math.round(Number(claimedSummary.subtotal || 0)) !== Math.round(Number(summary.subtotal || 0));
+      const taxMismatch = Math.round(Number(claimedSummary.taxAmount || 0)) !== Math.round(Number(summary.totalTax || 0));
+      const totalMismatch = Math.round(Number(claimedSummary.grandTotal || 0)) !== Math.round(Number(summary.grandTotal || 0));
+
+      if (subtotalMismatch || taxMismatch || totalMismatch) {
+        toast.error("Amount Mismatch: Uploaded amounts do not match system reference.");
+        return;
+      }
     }
 
     const hasInvalidItem = items.some(
@@ -658,6 +690,11 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
 
     if (hasInvalidItem) {
       toast.error("Please complete all line items before generating invoice");
+      return;
+    }
+
+    if (existingInvoice?.status && !bypassConfirm) {
+      setShowReuploadConfirm(true);
       return;
     }
 
@@ -720,7 +757,7 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
   };
 
   return (
-    <div className="mt-6 rounded-2xl border border-slate-250 bg-white shadow-md hover:shadow-lg transition-all duration-300 overflow-hidden">
+    <div className="mt-6 rounded-xl  bg-white transition-all duration-300 overflow-hidden">
       <div className="border-b border-slate-200 bg-gradient-to-br from-slate-50 via-white to-slate-50/50 p-6">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div className="flex items-center gap-3.5">
@@ -983,16 +1020,29 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
 
               <div className="shrink-0 w-full lg:w-72">
                 {isFileUploading ? (
-                  <div className="flex min-h-[96px] flex-col items-center justify-center rounded-2xl border border-dashed border-blue-300 bg-white/90 p-4 text-center shadow-inner">
-                    <RotatingLines
-                      width="26"
-                      strokeColor="#2563eb"
-                      strokeWidth="4"
-                      animationDuration="0.75"
-                    />
-                    <span className="mt-2 text-xs font-semibold text-blue-600 animate-pulse">
-                      Uploading & Scanning...
-                    </span>
+                  <div className="flex min-h-[96px] items-center justify-center rounded-2xl border border-dashed border-blue-300 bg-gradient-to-br from-white via-blue-50/20 to-cyan-50/15 p-4 text-center shadow-inner relative w-full lg:w-72 overflow-hidden">
+                    <div className="relative w-12 h-16 bg-white border border-slate-200 rounded-lg shadow-sm flex flex-col justify-around p-2 overflow-hidden shrink-0">
+                      <div className="h-1 w-8 bg-sky-200 rounded" />
+                      <div className="h-1 w-9 bg-sky-100 rounded" />
+                      <div className="h-1 w-6 bg-emerald-500 rounded" />
+                      <div className="h-1 w-8 bg-sky-200 rounded" />
+                      <div className="h-1.5 w-7 bg-emerald-100 rounded" />
+                      
+                      {/* Laser Bar */}
+                      <div 
+                        ref={laserRef}
+                        className="absolute left-0 right-0 h-0.5 bg-cyan-500 shadow-[0_0_8px_#06b6d4,0_0_12px_#06b6d4] z-10" 
+                      />
+                    </div>
+                    
+                    <div className="flex flex-col items-start ml-4 text-left">
+                      <span className="text-xs font-bold text-slate-800 animate-pulse">
+                        Scanning Invoice...
+                      </span>
+                      <span className="text-[10px] text-slate-400 mt-0.5 font-medium leading-tight">
+                        Reading text & verifying totals
+                      </span>
+                    </div>
                   </div>
                 ) : uploadedInvoiceFile ? (
                   <div className="relative flex min-h-[96px] flex-col items-center justify-center rounded-2xl border border-emerald-200 bg-emerald-50/80 p-4 text-center shadow-sm group hover:border-emerald-300 transition-all duration-300">
@@ -1009,6 +1059,8 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
                     >
                       <X size={12} />
                     </button>
+
+
                     <CheckCircle2 size={24} className="mb-1.5 text-emerald-600 animate-scale-in" />
                     <span className="max-w-[200px] truncate text-xs font-bold text-slate-800">
                       {uploadedInvoiceFile.name}
@@ -1016,6 +1068,8 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
                     <span className="mt-0.5 text-[10px] text-emerald-600 font-semibold">
                       Successfully processed
                     </span>
+
+
                   </div>
                 ) : (
                   <label className="flex min-h-[96px] cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-blue-200 bg-white px-4 py-3 text-center text-sm font-semibold text-slate-700 shadow-sm transition hover:border-blue-400 hover:bg-blue-50/30 group">
@@ -1087,97 +1141,109 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
                    getFieldCheckDetails("Total", "grandTotal", summary.grandTotal, true),
                  ];
                  return (
-               <div className={`mt-4 overflow-hidden rounded-2xl border text-xs shadow-sm ${
-                 extractionPassed
-                   ? "border-emerald-200 bg-emerald-50/70 text-emerald-900"
-                   : extractionFailed
-                     ? "border-rose-200 bg-rose-50/80 text-rose-900"
-                   : "border-amber-200 bg-amber-50/80 text-amber-900"
-               }`}>
-                 <button
-                   type="button"
-                   onClick={() => setIsExtractionOpen((prev) => !prev)}
-                   className="flex w-full flex-wrap items-center justify-between gap-2 px-4 py-3 text-left transition-colors hover:bg-white/30"
-                   aria-expanded={isExtractionOpen}
-                 >
-                   <p className="font-bold uppercase tracking-[0.16em]">
-                     Parser / OCR Check
-                   </p>
-                   <span className="inline-flex items-center gap-2 rounded-full bg-white/80 px-2.5 py-1 font-semibold">
-                     {(invoiceExtraction.source || "parser").replace(/_/g, " ")} · {invoiceExtraction.confidence || 0}% confidence
-                     <ChevronDown
-                       size={14}
-                       className={`transition-transform duration-300 ${isExtractionOpen ? "rotate-180" : ""}`}
-                     />
-                   </span>
-                 </button>
-                 <AnimatePresence initial={false}>
-                   {isExtractionOpen ? (
-                     <motion.div
-                       initial={{ height: 0, opacity: 0 }}
-                       animate={{ height: "auto", opacity: 1 }}
-                       exit={{ height: 0, opacity: 0 }}
-                       transition={{ duration: 0.24, ease: "easeInOut" }}
-                       className="overflow-hidden"
-                     >
-                 <div className="border-t border-white/70 px-4 pb-4 pt-4">
-                   <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
-                     {fieldChecks.map((field) => (
-                       <div
-                         key={field.label}
-                         className={`flex flex-col justify-between p-3 rounded-2xl border shadow-sm transition-all duration-200 hover:shadow-md cursor-default ${
-                           field.matched 
-                             ? "bg-emerald-500/10 border-emerald-250/60 text-emerald-950" 
-                             : "bg-rose-500/10 border-rose-250/60 text-rose-950"
-                         }`}
-                       >
-                         <div className="flex items-center justify-between gap-2 mb-2">
-                           <span className="text-[10px] font-extrabold uppercase tracking-wider opacity-60">
-                             {field.label}
-                           </span>
-                           {field.matched ? (
-                             <CheckCircle2 size={14} className="text-emerald-600 shrink-0" />
-                           ) : (
-                             <XCircle size={14} className="text-rose-600 shrink-0" />
-                           )}
-                         </div>
-                         <span className="font-extrabold text-[12.5px] leading-tight">
-                           {field.primaryValue}
-                         </span>
-                         {field.secondaryValue && (
-                           <span className="mt-1 text-[10px] font-medium text-slate-500/80 leading-normal">
-                             {field.secondaryValue}
-                           </span>
-                         )}
-                       </div>
-                     ))}
-                   </div>
 
-                  {invoiceExtraction.verification?.warnings?.length ? (
-                    <div className="mt-3.5 flex items-start gap-2.5 rounded-2xl bg-rose-500/10 border border-rose-200/50 p-3.5 text-xs leading-relaxed text-rose-950 shadow-sm">
-                      <AlertCircle size={16} className="mt-0.5 shrink-0 text-rose-600" />
-                      <span>{invoiceExtraction.verification.warnings.join(" ")}</span>
-                    </div>
-                  ) : null}
+             <div
+  className={`mt-4 overflow-hidden rounded-xl border text-xs shadow-sm transition-colors ${
+    extractionPassed
+      ? "border-emerald-200 bg-emerald-50/70 text-emerald-900"
+      : extractionFailed
+        ? "border-rose-200 bg-rose-50/80 text-rose-900"
+        : "border-amber-200 bg-amber-50/80 text-amber-900"
+  }`}
+>
+  <button
+    type="button"
+    onClick={() => setIsExtractionOpen((prev) => !prev)}
+    className="flex w-full flex-wrap items-center justify-between gap-2 px-4 py-3.5 text-left transition-colors hover:bg-white/40"
+    aria-expanded={isExtractionOpen}
+  >
+    <p className="flex items-center gap-2 font-bold uppercase tracking-[0.16em]">
+      {extractionPassed ? (
+        <CheckCircle2 size={14} className="text-emerald-600" />
+      ) : extractionFailed ? (
+        <XCircle size={14} className="text-rose-600" />
+      ) : (
+        <AlertCircle size={14} className="text-amber-600" />
+      )}
+      Parser / OCR Check
+    </p>
+    <span className="inline-flex items-center gap-2 rounded-full bg-white/90 px-3 py-1 font-semibold shadow-sm">
+      {(invoiceExtraction.source || "parser").replace(/_/g, " ")} · {invoiceExtraction.confidence || 0}% confidence
+      <ChevronDown
+        size={14}
+        className={`transition-transform duration-300 ${isExtractionOpen ? "rotate-180" : ""}`}
+      />
+    </span>
+  </button>
 
-                  {invoiceExtraction.verification?.notes?.length ? (
-                    <div className="mt-3.5 flex items-start gap-2.5 rounded-2xl bg-blue-500/10 border border-blue-200/50 p-3.5 text-xs leading-relaxed text-blue-950 shadow-sm">
-                      <Info size={16} className="mt-0.5 shrink-0 text-blue-600" />
-                      <span>{invoiceExtraction.verification.notes.join(" ")}</span>
-                    </div>
-                  ) : null}
-
-                  {invoiceExtraction.error ? (
-                    <div className="mt-3.5 flex items-start gap-2.5 rounded-2xl bg-rose-500/10 border border-rose-200/50 p-3.5 text-xs leading-relaxed text-rose-950 shadow-sm">
-                      <AlertCircle size={16} className="mt-0.5 shrink-0 text-rose-700" />
-                      <span>{invoiceExtraction.error}</span>
-                    </div>
-                  ) : null}
+  <AnimatePresence initial={false}>
+    {isExtractionOpen ? (
+      <motion.div
+        initial={{ height: 0, opacity: 0 }}
+        animate={{ height: "auto", opacity: 1 }}
+        exit={{ height: 0, opacity: 0 }}
+        transition={{ duration: 0.24, ease: "easeInOut" }}
+        className="overflow-hidden"
+      >
+        <div className="border-t border-white/70 px-4 pb-4 pt-4">
+          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-5">
+            {fieldChecks.map((field) => (
+              <div
+                key={field.label}
+                className={`flex flex-col justify-between rounded-xl border p-3 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${
+                  field.matched
+                    ? "border-emerald-200/70 bg-emerald-500/10 text-emerald-950"
+                    : "border-rose-200/70 bg-rose-500/10 text-rose-950"
+                }`}
+              >
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <span className="text-[10px] font-extrabold uppercase tracking-wider opacity-60">
+                    {field.label}
+                  </span>
+                  {field.matched ? (
+                    <CheckCircle2 size={14} className="shrink-0 text-emerald-600" />
+                  ) : (
+                    <XCircle size={14} className="shrink-0 text-rose-600" />
+                  )}
                 </div>
-                    </motion.div>
-                  ) : null}
-                </AnimatePresence>
+                <span className="text-[12.5px] font-extrabold leading-tight">
+                  {field.primaryValue}
+                </span>
+                {field.secondaryValue && (
+                  <span className="mt-1 text-[10px] font-medium leading-normal text-slate-500/80">
+                    {field.secondaryValue}
+                  </span>
+                )}
               </div>
+            ))}
+          </div>
+
+          {invoiceExtraction.verification?.warnings?.length ? (
+            <div className="mt-3.5 flex items-start gap-2.5 rounded-xl border border-rose-200/50 bg-rose-500/10 p-3.5 text-xs leading-relaxed text-rose-950 shadow-sm">
+              <AlertCircle size={16} className="mt-0.5 shrink-0 text-rose-600" />
+              <span>{invoiceExtraction.verification.warnings.join(" ")}</span>
+            </div>
+          ) : null}
+
+          {invoiceExtraction.verification?.notes?.length ? (
+            <div className="mt-3.5 flex items-start gap-2.5 rounded-xl border border-blue-200/50 bg-blue-500/10 p-3.5 text-xs leading-relaxed text-blue-950 shadow-sm">
+              <Info size={16} className="mt-0.5 shrink-0 text-blue-600" />
+              <span>{invoiceExtraction.verification.notes.join(" ")}</span>
+            </div>
+          ) : null}
+
+          {invoiceExtraction.error ? (
+            <div className="mt-3.5 flex items-start gap-2.5 rounded-xl border border-rose-200/50 bg-rose-500/10 p-3.5 text-xs leading-relaxed text-rose-950 shadow-sm">
+              <AlertCircle size={16} className="mt-0.5 shrink-0 text-rose-700" />
+              <span>{invoiceExtraction.error}</span>
+            </div>
+          ) : null}
+        </div>
+      </motion.div>
+    ) : null}
+  </AnimatePresence>
+</div>
+
                 );
               })()
             ) : null}
@@ -1546,6 +1612,68 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
               </div>
             </div>
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showReuploadConfirm && (
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+              onClick={() => setShowReuploadConfirm(false)}
+            />
+
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 16 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 16 }}
+              transition={{ duration: 0.25, ease: "easeOut" }}
+              className="relative w-full max-w-md overflow-hidden rounded-[24px] border border-slate-200 bg-white p-6 shadow-2xl z-10"
+            >
+              <div className="absolute inset-x-0 top-0 h-1.5 bg-amber-500" />
+              
+              <div className="mt-2 flex items-start gap-4">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-amber-50 border border-amber-100 text-amber-600 shadow-sm">
+                  <AlertCircle size={22} />
+                </div>
+
+                <div className="min-w-0 flex-1">
+                  <h3 className="text-base font-bold text-slate-900">
+                    Invoice Already Submitted
+                  </h3>
+                  <p className="mt-2 text-xs leading-relaxed text-slate-500">
+                    A version of this internal invoice was already submitted to the Finance team. Resubmitting will overwrite the existing file and state in their workflow.
+                  </p>
+                  <p className="mt-2.5 text-xs font-semibold text-slate-700">
+                    Are you sure you want to proceed and send it again?
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-6 flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowReuploadConfirm(false)}
+                  className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 hover:border-slate-300 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowReuploadConfirm(false);
+                    handleGenerateInvoice(true);
+                  }}
+                  className="rounded-xl bg-gradient-to-r from-blue-900 to-emerald-600 hover:from-[#0f2d5a] hover:to-[#0a0f1d] px-4 py-2 text-xs font-semibold text-white transition hover:shadow-lg cursor-pointer"
+                >
+                  Confirm & Resend
+                </button>
+              </div>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
     </div>

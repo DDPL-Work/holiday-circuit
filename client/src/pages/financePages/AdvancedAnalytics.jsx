@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import * as XLSX from 'xlsx';
 import API from '../../utils/Api';
 import { motion, AnimatePresence } from 'framer-motion';
-import { TrendingUp, TrendingDown, DollarSign, Download, FileText, FileSpreadsheet, CheckCircle2, Calendar, AlertCircle, Receipt, Coins, Percent, ChevronDown, ChevronLeft, ChevronRight, X, SlidersHorizontal, IndianRupee, Star, Sparkles, MapPin, Flag, User } from 'lucide-react';
+import { TrendingUp, TrendingDown, DollarSign, Download, FileText, FileSpreadsheet, CheckCircle2, Calendar, AlertCircle, Receipt, ReceiptIndianRupee, Coins, Percent, ChevronDown, ChevronLeft, ChevronRight, X, SlidersHorizontal, IndianRupee, Star, Sparkles, MapPin, Flag, User } from 'lucide-react';
 
 const MONTH_SEQUENCE = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const CONFIRMED_STATS_PAYMENT_STATUSES = new Set(['Partially Paid', 'Partially_Paid', 'Paid']);
@@ -2382,7 +2382,7 @@ const TaxCard = ({
   totalColor = 'from-blue-600 to-indigo-600',
   gradientClass = 'from-blue-50/60 via-white to-blue-50/10',
   borderClass = 'border-blue-100/70 hover:border-blue-300/80 hover:shadow-blue-500/5',
-  icon = DollarSign,
+  icon = IndianRupee,
   iconBg = 'bg-blue-50',
   iconColor = 'text-blue-500',
   rateLabel,
@@ -3868,7 +3868,7 @@ const AdvancedAnalytics = () => {
   const metricCards = [
     { key: 'inward', icon: TrendingUp },
     { key: 'outward', icon: TrendingDown },
-    { key: 'profit', icon: DollarSign },
+    { key: 'profit', icon: IndianRupee },
     { key: 'margin', icon: TrendingUp },
   ];
 
@@ -4848,7 +4848,7 @@ const AdvancedAnalytics = () => {
             totalColor="from-blue-600 to-indigo-600"
             gradientClass="from-blue-50/60 via-white to-blue-50/10"
             borderClass="border-blue-100/70 hover:border-blue-300/80 hover:shadow-blue-500/5"
-            icon={Receipt}
+            icon={ReceiptIndianRupee}
             iconBg="bg-blue-50 text-blue-500 border border-blue-100/30"
             iconColor="text-blue-500"
             rateLabel={activeTaxSummary.gst.rateLabel}

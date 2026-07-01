@@ -107,7 +107,7 @@ export default function Register() {
         </div>
       </div>
 
-      <div className="flex w-full items-start justify-center bg-white px-10 py-10 lg:w-1/2 lg:items-center lg:py-0">
+      <div className="flex w-full items-start justify-center bg-gradient-to-br from-blue-100/85 via-blue-50/60 via-60% to-slate-200/50 px-10 py-10 lg:w-1/2 lg:items-center lg:py-0">
         <div className="flex w-full justify-center overflow-hidden">
           <div className="w-full max-w-md px-4 sm:max-w-lg sm:px-0 lg:max-w-xl">
             {showVerificationScreen ? (
@@ -130,7 +130,7 @@ export default function Register() {
                       />
                     </div>
 
-                    <div className="rounded-2xl bg-white p-3 sm:p-7">
+                    <div className="rounded-2xl p-3 sm:p-7">
                       <RegisterStepper currentStep={1} isActive={step === 1} />
 
                       <h2 className="text-3xl font-bold text-gray-800">
@@ -215,7 +215,7 @@ export default function Register() {
 
                         <button
                           type="submit"
-                          className="mt-4 flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-slate-900 py-2 text-white transition hover:bg-slate-800"
+                          className="mt-4 flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#0f2d5a] to-[#0a0f1d] py-2 text-white hover:from-[#153e7a] hover:to-[#020617] hover:shadow-[0_4px_12px_rgba(15,45,90,0.3)] transition-all duration-300"
                         >
                           Create Account
                           <ArrowRight />

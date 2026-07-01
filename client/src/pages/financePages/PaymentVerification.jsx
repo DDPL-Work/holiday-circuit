@@ -1384,7 +1384,7 @@ const PaymentVerification = () => {
     (selectedPaymentComparison.isMatched || isPartialPayment);
   const canSendFinalInvoice =
     isFinalVerified &&
-    isPaymentFullyPaid &&
+    ["Partially Paid", "Paid"].includes(selectedPayment?.invoicePaymentStatus) &&
     selectedPayment?.canSendFinalInvoice === true &&
     Boolean(String(selectedPayment?.agentEmail || "").trim());
   const canSendPaymentReceipt =
@@ -2024,11 +2024,11 @@ const PaymentVerification = () => {
 
               {/* Status Cards Row */}
               <div className="mb-6 grid grid-cols-1 gap-4 lg:grid-cols-3">
-                <div className={`rounded-xl border px-4 py-3 ${isFinalVerified ? "border-emerald-200 bg-emerald-50" : isFinalRejected ? "border-red-200 bg-red-50" : isAwaitingManager ? "border-blue-200 bg-blue-50" : "border-amber-200 bg-amber-50"}`}>
+                <div className={`rounded-xl border px-4 py-3 border-b-4 ${isFinalVerified ? "border-emerald-200 bg-emerald-50 border-b-emerald-500" : isFinalRejected ? "border-red-200 bg-red-50 border-b-red-500" : isAwaitingManager ? "border-blue-200 bg-blue-50 border-b-blue-500" : "border-amber-200 bg-amber-50 border-b-amber-500"}`}>
                   <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">Verification Status</p>
                   <div className="mt-2"><StatusBadge status={selectedWorkflowStatus} /></div>
                 </div>
-                <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <div className="rounded-xl border border-slate-200/80 bg-gradient-to-br from-indigo-50/40 via-slate-50/50 to-blue-50/30 border-b-4 border-b-indigo-500 px-4 py-3">
                   <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">
                     {isAwaitingManager ? "Recommended By" : selectedPayment.status === "Pending" ? "Assigned To" : "Reviewed By"}
                   </p>
@@ -2041,7 +2041,7 @@ const PaymentVerification = () => {
                   </p>
                   {selectedPayment.assignedFinanceEmail && <p className="mt-1 text-xs text-slate-400">{selectedPayment.assignedFinanceEmail}</p>}
                 </div>
-                <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <div className="rounded-xl border border-slate-200/80 bg-gradient-to-br from-sky-50/40 via-slate-50/50 to-teal-50/30 border-b-4 border-b-sky-500 px-4 py-3">
                   <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">
                     {isAwaitingManager ? "Sent To Manager On" : selectedPayment.status === "Pending" ? "Assigned On" : "Reviewed On"}
                   </p>
@@ -2238,7 +2238,7 @@ const PaymentVerification = () => {
                     <div className={`mt-4 rounded-xl border px-4 py-3 ${!hasSelectedPaymentContext || isExcessPayment ? "border-amber-200 bg-amber-50" : "border-slate-200 bg-slate-50"}`}>
                       <p className={`text-[10px] font-bold uppercase tracking-[0.14em] ${!hasSelectedPaymentContext || isExcessPayment ? "text-amber-700" : "text-slate-500"}`}>Finance Review Note</p>
                       {!hasSelectedPaymentContext && <p className="mt-2 text-xs leading-5 text-amber-800">Agent has not shared who this payment is for. Verification should wait until the behalf detail is submitted.</p>}
-                      {hasSelectedPaymentContext && isPartialPayment && <p className="mt-2 text-xs leading-5 text-slate-700">This is a partial payment. Verifying it will keep the invoice partially paid and unlock provisional voucher generation for service confirmations.</p>}
+                      {hasSelectedPaymentContext && isPartialPayment && <p className="mt-2 text-xs leading-5 text-slate-700">This is a partial payment. Verifying it will keep the invoice partially paid and unlock voucher generation and final invoice dispatch.</p>}
                       {hasSelectedPaymentContext && isExcessPayment && <p className="mt-2 text-xs leading-5 text-amber-800">The declared amount is higher than the expected invoice total. Use rejection or ask for corrected resubmission.</p>}
                       {selectedPayment.remarks && <p className="mt-2 text-xs leading-5 text-slate-700"><span className="font-semibold">Agent note:</span> {selectedPayment.remarks}</p>}
                       {selectedPayment.couponApplied && <p className="mt-2 text-xs leading-5 text-slate-700"><span className="font-semibold">Coupon context:</span> {selectedPayment.couponSummary || `${selectedPayment.couponCode} reduced the payable amount for this invoice.`}</p>}
@@ -2409,14 +2409,14 @@ const PaymentVerification = () => {
                     <div>
                       <p className="text-sm font-semibold text-amber-800">Partial payment verified</p>
                       <p className="mt-1 text-xs leading-5 text-amber-700">
-                        Voucher generation is available for service confirmations. Final invoice dispatch and final voucher send will unlock after the remaining payment is verified.
+                        Voucher generation and final invoice dispatch are available.
                       </p>
                     </div>
                   </div>
                 </div>
               )}
 
-              {isFinalVerified && isPaymentFullyPaid && (
+              {isFinalVerified && (
                 <div className="mt-6 overflow-hidden rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 via-white to-teal-50/60">
                   {/* Top status strip */}
                   <div className="flex items-center gap-2 border-b border-emerald-100 bg-emerald-50/80 px-6 py-3">
@@ -2459,15 +2459,34 @@ const PaymentVerification = () => {
                       type="button"
                       onClick={handleSendFinalInvoice}
                       disabled={sendingFinalInvoice || !canSendFinalInvoice}
-                      className={`inline-flex shrink-0 items-center gap-2 rounded-xl px-6 py-3 text-sm font-semibold text-white shadow-sm cursor-pointer transition-all ${
-                        sendingFinalInvoice || !canSendFinalInvoice
-                          ? "cursor-not-allowed bg-slate-300"
-                          : selectedPayment.finalInvoiceStatus === "Sent"
-                            ? "bg-blue-500 hover:bg-blue-600 hover:shadow-md"
-                            : "bg-emerald-600 hover:bg-emerald-700 hover:shadow-md"
+                      className={`inline-flex shrink-0 items-center gap-2.5 rounded-full px-6 py-3 text-sm font-semibold text-white shadow-md transition-all duration-300 transform active:scale-95 ${
+                        !canSendFinalInvoice
+                          ? "cursor-not-allowed bg-slate-200 border border-slate-300 text-slate-400 shadow-none"
+                          : sendingFinalInvoice
+                            ? selectedPayment.finalInvoiceStatus === "Sent"
+                              ? "bg-gradient-to-r from-blue-500 via-indigo-500 to-violet-600 cursor-not-allowed opacity-75 text-white"
+                              : "bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-600 cursor-not-allowed opacity-75 text-white"
+                            : selectedPayment.finalInvoiceStatus === "Sent"
+                              ? "bg-gradient-to-r from-blue-500 via-indigo-500 to-violet-600 hover:from-blue-600 hover:via-indigo-650 hover:to-violet-700 hover:shadow-lg hover:shadow-indigo-500/25"
+                              : "bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-600 hover:from-emerald-600 hover:via-teal-650 hover:to-cyan-750 hover:shadow-lg hover:shadow-emerald-500/25"
                       }`}
                     >
-                      <Send className="h-4 w-4 shrink-0" />
+                      {sendingFinalInvoice ? (
+                        <div className="relative flex h-4 w-4 items-center justify-center shrink-0">
+                          <svg className="animate-spin h-4 w-4 text-white" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" fill="none" />
+                            <circle className="opacity-80" cx="12" cy="12" r="10" stroke="url(#spinner-gradient)" strokeWidth="3" strokeDasharray="30 15" strokeLinecap="round" fill="none" />
+                            <defs>
+                              <linearGradient id="spinner-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                                <stop offset="0%" stopColor="#ffffff" />
+                                <stop offset="100%" stopColor="transparent" />
+                              </linearGradient>
+                            </defs>
+                          </svg>
+                        </div>
+                      ) : (
+                        <Send className="h-4 w-4 shrink-0" />
+                      )}
                       <span className="whitespace-nowrap">
                         {sendingFinalInvoice
                           ? "Sending..."

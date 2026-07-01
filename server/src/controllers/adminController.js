@@ -16,6 +16,7 @@ import { getEmailValidationError } from "../utils/emailValidation.js";
 import { normalizeAccessExpiry } from "../utils/accessExpiry.js";
 import { generateAgentPaymentReceiptPdf, generatePayoutReceiptPdf } from "../services/payoutReceiptPdfService.js";
 import { analyzeInvoiceFile } from "../services/invoiceExtractionService.js";
+import { buildInvoiceLineItems } from "./opsController.js";
 import {
   decorateFinanceAssignment,
   filterRowsByFinanceAccess,
@@ -2983,7 +2984,7 @@ const formatPaymentVerificationRow = (invoice) => {
       "",
     canSendFinalInvoice:
       verificationStatus === "Verified" &&
-      invoice.paymentStatus === "Paid" &&
+      ["Partially Paid", "Paid"].includes(invoice.paymentStatus) &&
       Boolean(invoice.agent?.email),
     paymentReceiptStatus: invoice.paymentReceiptDispatch?.status || "Not Sent",
     paymentReceiptSentAt: formatDashboardDate(invoice.paymentReceiptDispatch?.sentAt),
@@ -6100,10 +6101,22 @@ export const sendFinalInvoiceToAgent = async (req, res, next) => {
       .populate("query", "queryId destination startDate endDate numberOfAdults numberOfChildren")
       .populate("agent", "name companyName email")
       .populate("paymentVerification.assignedTo", "name companyName email")
-      .populate("paymentVerification.reviewedBy", "name companyName email");
+      .populate("paymentVerification.reviewedBy", "name companyName email")
+      .populate("quotation", "services inclusions exclusions");
 
     if (!invoice) {
       return next(new ApiError(404, "Invoice not found"));
+    }
+
+    if (invoice.quotation) {
+      if (!invoice.quotation.queryId && invoice.query) {
+        invoice.quotation.queryId = invoice.query;
+      }
+      const updatedLineItems = buildInvoiceLineItems(invoice.quotation);
+      if (updatedLineItems && updatedLineItems.length > 0) {
+        invoice.lineItems = updatedLineItems;
+        await invoice.save();
+      }
     }
 
     ensureFinanceRecordAccess({
@@ -6117,8 +6130,8 @@ export const sendFinalInvoiceToAgent = async (req, res, next) => {
     });
 
     const verificationStatus = getPaymentVerificationStatus(invoice);
-    if (verificationStatus !== "Verified" || invoice.paymentStatus !== "Paid") {
-      return next(new ApiError(400, "Final invoice can be sent only after the full payment is verified by finance"));
+    if (verificationStatus !== "Verified" || !["Partially Paid", "Paid"].includes(invoice.paymentStatus)) {
+      return next(new ApiError(400, "Final invoice can be sent only after the partial or full payment is verified by finance"));
     }
 
     const agentEmail = String(invoice.agent?.email || "").trim();
@@ -6138,6 +6151,9 @@ export const sendFinalInvoiceToAgent = async (req, res, next) => {
       currency: invoice.currency || invoice.pricingSnapshot?.currency || "INR",
       totalAmount: invoice.totalAmount || invoice.pricingSnapshot?.grandTotal || 0,
       lineItems: Array.isArray(invoice.lineItems) ? invoice.lineItems : [],
+      inclusions: Array.isArray(invoice.quotation?.inclusions) ? invoice.quotation.inclusions : [],
+      exclusions: Array.isArray(invoice.quotation?.exclusions) ? invoice.quotation.exclusions : [],
+      quotation: invoice.quotation,
       pricingSnapshot: invoice.pricingSnapshot || {},
       tripSnapshot: {
         queryId: invoice.query?.queryId || invoice.tripSnapshot?.queryId || "",

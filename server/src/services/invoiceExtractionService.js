@@ -536,6 +536,7 @@ export const extractInvoiceFieldsFromText = (text = "") => {
   ];
   const grandTotalLabels = [
     "grand\\s*total",
+    "(?<!line\\s+)(?<!sub\\s*)total",
     "total\\s*due",
     "payment\\s*status",
     "total\\s*amount\\s*paid",
@@ -561,8 +562,20 @@ export const extractInvoiceFieldsFromText = (text = "") => {
     "tcs",
   ]);
   const taxAmount = explicitTax || componentTax || looseAmounts.taxAmount;
-  const grandTotal =
+  let grandTotal =
     grandTotalToken.amount || findAmountAfterLabels(normalized, grandTotalLabels) || inferGrandTotal(normalized) || looseAmounts.grandTotal;
+
+  // Math Fallback: If OCR missed the "Total" label but scanned the correct total sum, reconstruct it.
+  if (subtotal > 0 && taxAmount > 0 && Math.round(grandTotal) !== Math.round(subtotal + taxAmount)) {
+    const expectedTotal = subtotal + taxAmount;
+    const allAmounts = [...normalized.matchAll(/[0-9][0-9,]*(?:\.\d{1,2})?/g)]
+      .map((m) => normalizeAmount(m[0]))
+      .filter((amt) => amt > 0);
+    const matchingAmount = allAmounts.find((amt) => Math.round(amt) === Math.round(expectedTotal));
+    if (matchingAmount) {
+      grandTotal = matchingAmount;
+    }
+  }
   const currency = inferInvoiceCurrency(normalized, [
     subtotalToken,
     taxToken,
@@ -934,12 +947,15 @@ export const analyzeInvoiceFile = async (
 
   const extractedFields = extractInvoiceFieldsFromText(text);
   const fields = await convertFieldsToExpectedCurrency(extractedFields, expectedSummary);
-  const confidence = calculateConfidence(fields, text.length);
   const verification = buildInvoiceExtractionVerification({
     extracted: fields,
     claimedSummary,
     expectedSummary,
   });
+  let confidence = calculateConfidence(fields, text.length);
+  if (!verification.passed) {
+    confidence = Math.min(60, Math.max(20, confidence - 40));
+  }
 
   return {
     source,

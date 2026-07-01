@@ -52,7 +52,7 @@ export default function KycVerification({ back, submit, isActive = false }) {
 
   return (
     <div className="flex w-full items-center justify-center px-3">
-      <div className="w-full rounded-2xl bg-white p-6">
+      <div className="w-full rounded-2xl p-6">
         <RegisterStepper currentStep={3} isActive={isActive} />
 
         <h2 className="text-lg font-bold text-gray-800">KYC Verification</h2>
@@ -128,7 +128,7 @@ export default function KycVerification({ back, submit, isActive = false }) {
           <button
             type="button"
             onClick={back}
-            className="cursor-pointer rounded-2xl px-2 py-1.5 text-sm text-black hover:bg-gray-100"
+            className="cursor-pointer rounded-2xl px-2 py-1.5 text-sm text-slate-800 hover:bg-black/5"
           >
             ← Back
           </button>
@@ -137,7 +137,7 @@ export default function KycVerification({ back, submit, isActive = false }) {
             type="button"
             onClick={handleSubmit}
             disabled={uploading.gstCert || uploading.businessLicense}
-            className="cursor-pointer rounded-xl bg-black px-5 py-2 text-sm text-white transition hover:bg-gray-900 disabled:cursor-not-allowed disabled:opacity-60"
+            className="cursor-pointer rounded-xl bg-gradient-to-r from-[#0f2d5a] to-[#0a0f1d] px-5 py-2 text-sm text-white transition hover:from-[#153e7a] hover:to-[#020617] hover:shadow-[0_4px_10px_rgba(15,45,90,0.25)] disabled:cursor-not-allowed disabled:opacity-60"
           >
             {uploading.gstCert || uploading.businessLicense
               ? "Uploading..."

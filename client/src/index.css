@@ -1,5 +1,6 @@
 @import "tailwindcss";
 
+@import url('https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@700&family=Playfair+Display:ital,wght@0,400;0,700;1,400;1,700&family=Bodoni+Moda:ital,wght@0,400;0,700;1,400;1,700&family=Prata&display=swap');
 
 @keyframes softBounce {
   0%, 100% {
@@ -13,7 +14,6 @@
 .animate-softBounce {
   animation: softBounce 1.6s ease-in-out infinite;
 }
-
 
 @keyframes slideDown {
   0% {

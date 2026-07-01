@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 export default function VerificationInProgress() {
   return (
     <div className="w-full min-h-screen flex items-center justify-center px-4">
-      <div className="w-full max-w-md bg-white rounded-2xl p-8 text-center border border-gray-200">
+      <div className="w-full max-w-md rounded-2xl p-8 text-center">
         <div className="mb-6 flex justify-start">
           <Link
             to="/"

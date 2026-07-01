@@ -702,7 +702,7 @@ export default function FulfillmentConfirmation() {
 
   return (
     <>
-      <div className="p- bg-[#F5F7FB] min-h-screen">
+      <div className="bg-[#F5F7FB] min-h-screen">
         <div className="mb-5">
           <h1 className="text-xl font-semibold text-slate-900">
             Fulfillment & Confirmation Entry
@@ -713,7 +713,7 @@ export default function FulfillmentConfirmation() {
           </p>
         </div>
 
-        <div className="mb-5 bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+        <div className="mb-5 bg-white  border-slate-200 rounded-[0.40rem] overflow-hidden">
           <div className="px-5 py-4 border-b border-slate-200 bg-gradient-to-r from-slate-900 via-slate-800 to-blue-900 text-white">
             <div className="flex items-start justify-between gap-4 flex-wrap">
               <div>

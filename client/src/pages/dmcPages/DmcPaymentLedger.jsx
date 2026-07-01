@@ -140,8 +140,12 @@ const readStoredUser = () => {
   }
 };
 
-const createInvoiceNumber = () =>
-  `BULK-INV-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}`;
+const createInvoiceNumber = () => {
+  const now = new Date();
+  const dateStr = now.toISOString().slice(0, 10).replace(/-/g, "");
+  const timeStr = now.toTimeString().slice(0, 8).replace(/:/g, "");
+  return `BULK-INV-${dateStr}-${timeStr}`;
+};
 
 const SERVICES_PER_PAGE = 6;
 
@@ -1193,7 +1197,23 @@ export default function DmcPaymentLedger() {
               Loading finance uploaded invoices...
             </div>
           ) : financeUploadedInvoices.length ? (
-            <div className="overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <div className="overflow-x-auto pb-3 thin-scrollbar">
+              <style>{`
+                .thin-scrollbar::-webkit-scrollbar {
+                  height: 5px;
+                }
+                .thin-scrollbar::-webkit-scrollbar-track {
+                  background: #f8fafc;
+                  border-radius: 9px;
+                }
+                .thin-scrollbar::-webkit-scrollbar-thumb {
+                  background: #cbd5e1;
+                  border-radius: 9px;
+                }
+                .thin-scrollbar::-webkit-scrollbar-thumb:hover {
+                  background: #94a3b8;
+                }
+              `}</style>
               <table className="min-w-[980px] w-full text-left text-xs">
                 <thead className="border-b border-slate-100 bg-white text-[10px] uppercase tracking-[0.12em] text-slate-400">
                   <tr>
@@ -1214,8 +1234,8 @@ export default function DmcPaymentLedger() {
                     return (
                       <tr key={invoice.id || invoice.invoiceNumber} className="bg-white align-top">
                         <td className="px-3 py-3">
-                          <p className="font-bold text-slate-900">{invoice.invoiceNumber}</p>
-                          <p className="mt-0.5 text-[10px] text-slate-400">
+                          <p className="font-bold text-slate-900 whitespace-nowrap">{invoice.invoiceNumber}</p>
+                          <p className="mt-0.5 text-[10px] text-slate-400 whitespace-nowrap">
                             Uploaded by {invoice.uploadedByName || "Finance Team"}
                           </p>
                         </td>
@@ -1234,7 +1254,7 @@ export default function DmcPaymentLedger() {
                           )}
                         </td>
                         <td className="px-3 py-3">
-                          <span className="rounded-full bg-slate-100 px-2.5 py-1 font-semibold text-slate-700">
+                          <span className="rounded-full bg-slate-100 px-2.5 py-1 font-semibold text-slate-700 whitespace-nowrap">
                             {invoice.creditPeriodDays}-day credit
                           </span>
                         </td>
@@ -1245,15 +1265,15 @@ export default function DmcPaymentLedger() {
                           </span>
                         </td>
                         <td className="px-3 py-3 text-right">
-                          <p className="font-bold text-slate-900">{formatMoney(invoice.amount, invoice.currency)}</p>
+                          <p className="font-bold text-slate-900 whitespace-nowrap">{formatMoney(invoice.amount, invoice.currency)}</p>
                           {Number(invoice.remainingAmount || 0) > 0 ? (
-                            <p className="mt-0.5 text-[10px] font-semibold text-amber-600">
+                            <p className="mt-0.5 text-[10px] font-semibold text-amber-600 whitespace-nowrap">
                               Remaining {formatMoney(invoice.remainingAmount, invoice.currency)}
                             </p>
                           ) : null}
                         </td>
                         <td className="px-3 py-3">
-                          <span className={`inline-flex rounded-full border px-2.5 py-1 font-bold ${statusBadgeClass(invoice.status)}`}>
+                          <span className={`inline-flex rounded-full border px-2.5 py-1 font-bold whitespace-nowrap ${statusBadgeClass(invoice.status)}`}>
                             {invoice.status || "Submitted"}
                           </span>
                         </td>
@@ -1261,13 +1281,15 @@ export default function DmcPaymentLedger() {
                           {invoice.payoutInstallments?.length ? (
                             <div className="space-y-1.5">
                               {invoice.payoutInstallments.map((payment, index) => (
-                                <div key={`${payment.utrNumber}-${index}`} className="rounded-lg border border-emerald-100 bg-emerald-50/50 px-2 py-1.5">
-                                  <p className="font-bold text-emerald-700">
+                                <div key={`${payment.utrNumber}-${index}`} className="rounded-lg border border-emerald-100 bg-emerald-50/50 px-2.5 py-1.5 min-w-[185px]">
+                                  <p className="font-bold text-emerald-700 whitespace-nowrap">
                                     {formatMoney(payment.amount, invoice.currency)} paid
                                   </p>
-                                  <p className="text-[10px] text-slate-500">
-                                    UTR: {payment.utrNumber || "-"} | {payment.bankName || "-"} | {formatDate(payment.paymentDate)}
-                                  </p>
+                                  <div className="text-[10px] text-slate-500 space-y-0.5 mt-0.5 whitespace-nowrap">
+                                    <p>UTR: {payment.utrNumber || "-"}</p>
+                                    <p>Bank: {payment.bankName || "-"}</p>
+                                    <p>Date: {formatDate(payment.paymentDate)}</p>
+                                  </div>
                                 </div>
                               ))}
                             </div>
