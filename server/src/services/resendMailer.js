@@ -1,6 +1,7 @@
 import "dotenv/config";
 
 const RESEND_API_URL = "https://api.resend.com/emails";
+const DEFAULT_SEND_TIMEOUT_MS = 15000;
 const TEST_SENDER_ADDRESS = "Holiday Circuit <onboarding@resend.dev>";
 const PERSONAL_SENDER_DOMAINS = new Set([
   "gmail.com",
@@ -52,7 +53,16 @@ export const getEmailDeliveryErrorMessage = (error) => {
     return "Email delivery failed because the recipient email address is invalid or rejected.";
   }
 
+  if (normalized.includes("aborted") || normalized.includes("timeout") || normalized.includes("timed out")) {
+    return "Email delivery failed because the mail provider did not respond in time.";
+  }
+
   return rawMessage || "Email delivery failed due to a Resend configuration issue.";
+};
+
+const normalizeTimeout = (value, fallback = DEFAULT_SEND_TIMEOUT_MS) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 };
 
 const extractEmailAddress = (value = "") => {
@@ -152,16 +162,27 @@ const sendMail = async (mailOptions = {}) => {
   }
 
   const payload = buildResendPayload(mailOptions);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(
+    () => controller.abort(new Error("Resend email request timed out")),
+    normalizeTimeout(process.env.MAIL_SEND_TIMEOUT_MS),
+  );
 
-  const response = await fetch(RESEND_API_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-      "User-Agent": "holiday-circuit-mailer/1.0",
-    },
-    body: JSON.stringify(payload),
-  });
+  let response;
+  try {
+    response = await fetch(RESEND_API_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "User-Agent": "holiday-circuit-mailer/1.0",
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
 
   const data = await response.json().catch(() => ({}));
 

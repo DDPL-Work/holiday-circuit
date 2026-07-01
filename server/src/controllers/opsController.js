@@ -1,6 +1,7 @@
 import ApiError from "../utils/ApiError.js";
 import TravelQuery from "../models/TravelQuery.model.js";
 import Quotation from "../models/quotation.model.js";
+import QuotationDraft from "../models/quotationDraft.model.js";
 import Invoice from "../models/invoice.model.js";
 import Counter from "../models/counter.model.js"
 import Hotel from "../models/hotelDmc.model.js";
@@ -1889,6 +1890,27 @@ const getAuthorizedQueryForQuotation = async (quotationId, req) => {
   return { quotation, query };
 };
 
+const getAuthorizedQueryForQuotationDraft = async (quotationId, req) => {
+  const quotation = await QuotationDraft.findById(quotationId);
+
+  if (!quotation) {
+    throw new ApiError(404, "Quotation draft not found");
+  }
+
+  const query = await TravelQuery.findById(quotation.queryId);
+
+  if (!query) {
+    throw new ApiError(404, "Related query not found");
+  }
+
+  const isAllowed = await canManageAssignedQuery(req, query);
+  if (!isAllowed) {
+    throw new ApiError(403, "Not authorized");
+  }
+
+  return { quotation, query };
+};
+
 
 /* =========================GET ALL QUERIES (OPS) ========================= */
 
@@ -2926,26 +2948,36 @@ export const createQuotation = async (req, res, next) => {
     await syncManualRateOverridesToLiveServices(resolvedServices);
 
     let quotation = null;
+    let sourceDraft = null;
 
     if (quotationId) {
-      const requestedQuotation = await Quotation.findById(quotationId);
-      if (
-        requestedQuotation &&
-        String(requestedQuotation.queryId) === String(query._id) &&
-        (requestedQuotation.status === "Pending" || Boolean(editExistingQuotation))
-      ) {
-        quotation = requestedQuotation;
+      if (!editExistingQuotation) {
+        const requestedDraft = await QuotationDraft.findById(quotationId);
+        if (requestedDraft && String(requestedDraft.queryId) === String(query._id)) {
+          sourceDraft = requestedDraft;
+        }
+      }
+
+      if (!sourceDraft) {
+        const requestedQuotation = await Quotation.findById(quotationId);
+        if (requestedQuotation && String(requestedQuotation.queryId) === String(query._id)) {
+          if (Boolean(editExistingQuotation) || requestedQuotation.status !== "Pending") {
+            quotation = requestedQuotation;
+          } else {
+            sourceDraft = requestedQuotation;
+          }
+        }
       }
     }
 
-    if (!quotation) {
-      quotation = await Quotation.findOne({
-        queryId: query._id,
-        status: "Pending",
-      }).sort({ createdAt: -1 });
-    }
+    let quotationNumber = quotation?.quotationNumber || sourceDraft?.quotationNumber || "";
 
-    let quotationNumber = quotation?.quotationNumber || "";
+    if (sourceDraft && quotationNumber) {
+      const existingQuotationWithNumber = await Quotation.findOne({ quotationNumber }).select("_id");
+      if (existingQuotationWithNumber && String(existingQuotationWithNumber._id) !== String(quotation?._id || "")) {
+        quotationNumber = "";
+      }
+    }
 
     if (!quotationNumber) {
       quotationNumber = await generateUniqueQuotationNumber();
@@ -3208,6 +3240,13 @@ export const createQuotation = async (req, res, next) => {
         await query.save();
       }
 
+      if (sourceDraft?.constructor?.modelName === "QuotationDraft") {
+        sourceDraft.draftStatus = "converted";
+        sourceDraft.convertedQuotationId = quotation._id;
+        sourceDraft.convertedAt = new Date();
+        await sourceDraft.save();
+      }
+
       return res.status(201).json({
         success: true,
         message: shouldMarkAsSent
@@ -3344,6 +3383,13 @@ export const createQuotation = async (req, res, next) => {
       await query.save();
     }
 
+    if (sourceDraft?.constructor?.modelName === "QuotationDraft") {
+      sourceDraft.draftStatus = "converted";
+      sourceDraft.convertedQuotationId = createdQuotation._id;
+      sourceDraft.convertedAt = new Date();
+      await sourceDraft.save();
+    }
+
     res.status(201).json({
       success: true,
       message: shouldMarkAsSent
@@ -3370,7 +3416,7 @@ export const addQuotationItem = async (req, res, next) => {
       return next(new ApiError(400, "Inclusions are required"));
     }
 
-    const { quotation, query } = await getAuthorizedQueryForQuotation(quotationId, req);
+    const { quotation, query } = await getAuthorizedQueryForQuotationDraft(quotationId, req);
 
     //CASE 1: array
     if (Array.isArray(inclusions)) {
@@ -4492,12 +4538,21 @@ export const getOrCreateQuotationDraft = async (req, res, next) => {
       status: "Pending",
     });
 
-    let quotation = await Quotation.findOne({
+    const activeDraftFilter = {
       queryId: query._id,
+      draftStatus: "active",
       status: "Pending",
-    }).sort({ createdAt: -1 });
+    };
 
-    if (quotation && shouldStartBlankRevisionDraft) {
+    if (requestedSourceQuotationId) {
+      activeDraftFilter.sourceQuotationId = requestedSourceQuotationId;
+    }
+
+    let quotation = requestedFreshDraft || requestedSourceRefresh
+      ? null
+      : await QuotationDraft.findOne(activeDraftFilter).sort({ updatedAt: -1, createdAt: -1 });
+
+    if (quotation && requestedFreshDraft) {
       const draftPayload = buildDraftPayload(null);
       quotation.validTill = draftPayload.validTill;
       quotation.pricing = draftPayload.pricing;
@@ -4535,7 +4590,7 @@ export const getOrCreateQuotationDraft = async (req, res, next) => {
       const quotationNumber = await generateUniqueQuotationNumber();
       const draftPayload = buildDraftPayload(sourceQuotation);
 
-      quotation = await Quotation.create({
+      quotation = await QuotationDraft.create({
         quotationNumber,
         queryId: query._id,
         agent: query.agent?._id || query.agent,
@@ -4549,6 +4604,7 @@ export const getOrCreateQuotationDraft = async (req, res, next) => {
         services: draftPayload.services,
         sourceQuotationId: draftPayload.sourceQuotationId,
         status: draftPayload.status,
+        draftStatus: "active",
       });
     }
 
@@ -4654,7 +4710,7 @@ export const saveQuotationDraft = async (req, res, next) => {
       dayWiseItinerary,
     } = req.body;
 
-    const { quotation, query } = await getAuthorizedQueryForQuotation(quotationId, req);
+    const { quotation, query } = await getAuthorizedQueryForQuotationDraft(quotationId, req);
 
     const resolvedServices = await Promise.all(services.map(async (service) => {
       const hotelResolvedService = await resolveDynamicHotelServicePricing(service);
@@ -4832,7 +4888,7 @@ export const saveQuotationDraft = async (req, res, next) => {
 
 export const addQuotationService = async (req, res, next) => {
   try {
-    const { quotation } = await getAuthorizedQueryForQuotation(req.params.quotationId, req);
+    const { quotation } = await getAuthorizedQueryForQuotationDraft(req.params.quotationId, req);
 
     const {
       type,
@@ -4982,7 +5038,7 @@ export const addQuotationService = async (req, res, next) => {
 
 export const deleteQuotationService = async (req, res, next) => {
   try {
-    const { quotation } = await getAuthorizedQueryForQuotation(req.params.quotationId, req);
+    const { quotation } = await getAuthorizedQueryForQuotationDraft(req.params.quotationId, req);
 
     const service = quotation.services.id(req.params.serviceId);
 

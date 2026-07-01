@@ -20,8 +20,52 @@ import { loginUser, logout, resetAuthState } from "../../redux/slices/authSlice.
 import OpsTeamLoginModal from "../../modal/OpsTeamLoginModal.jsx";
 import API from "../../utils/Api.js";
 
-const validateEmail = (email) =>
-  /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || "").trim());
+const getEmailValidationError = (email) => {
+  const emailStr = String(email || "").trim().toLowerCase();
+  if (!emailStr) return "Email required";
+
+  // Standard strict regex for email pattern validation
+  const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+  if (!emailRegex.test(emailStr)) return "Invalid email format";
+
+  // Split domain
+  const parts = emailStr.split("@");
+  if (parts.length !== 2) return "Invalid email format";
+  const domain = parts[1];
+
+  // Split domain name and TLD
+  const domainParts = domain.split(".");
+  const domainName = domainParts[0];
+  const tld = domainParts.slice(1).join(".");
+
+  // 1. Check spelling of "gmail"
+  const gmailTypos = ["gmil", "gamil", "gmaill", "gmeil", "gmal", "gimail", "gmial"];
+  if (gmailTypos.includes(domainName)) {
+    return "Typo: Did you mean 'gmail'?";
+  }
+
+  // 2. Check spelling of ".com"
+  const comTypos = ["ocm", "con", "cmo", "c0m", "cm", "coo"];
+  if (comTypos.includes(tld)) {
+    return `Typo: Did you mean '.com' instead of '.${tld}'?`;
+  }
+
+  // 3. Block other exact typos
+  const commonTypos = [
+    "gamil.com", "gamil.co", "gamil.in", "gamil.net",
+    "gmil.com", "gmil.co", "gmil.in", "gmil.net",
+    "gmail.co", "gmail.con",
+    "gmaill.com", "gmeil.com",
+    "yaho.com", "yhoo.com", "hotmal.com"
+  ];
+  if (commonTypos.includes(domain)) {
+    return "Invalid email domain spelling";
+  }
+
+  return null;
+};
+
+const validateEmail = (email) => getEmailValidationError(email) === null;
 
 const createRecoveryState = (email = "") => ({
   email,
@@ -111,8 +155,8 @@ const Login = () => {
 
   const validateLoginForm = (values) => {
     const nextErrors = {};
-    if (!values.email.trim()) nextErrors.email = "Email required";
-    else if (!validateEmail(values.email)) nextErrors.email = "Invalid email";
+    const emailError = getEmailValidationError(values.email);
+    if (emailError) nextErrors.email = emailError;
     if (!values.password) nextErrors.password = "Password required";
     else if (values.password.length < 5) nextErrors.password = "Min 5 characters";
     return nextErrors;
@@ -120,8 +164,8 @@ const Login = () => {
 
   const validateRecoveryStep = (step, values) => {
     const nextErrors = {};
-    if (!values.email.trim()) nextErrors.email = "Work email required";
-    else if (!validateEmail(values.email)) nextErrors.email = "Enter a valid email";
+    const emailError = getEmailValidationError(values.email);
+    if (emailError) nextErrors.email = emailError;
 
     if (step === "verify") {
       const otp = String(values.otp || "").replace(/\D/g, "");
@@ -184,7 +228,11 @@ const Login = () => {
     const nextErrors = validateLoginForm(form);
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) {
-      toast.error("Please fix the highlighted fields.");
+      if (nextErrors.email) {
+        toast.error(nextErrors.email);
+      } else {
+        toast.error("Please fix the highlighted fields.");
+      }
       return;
     }
     dispatch(loginUser(form));
@@ -194,7 +242,11 @@ const Login = () => {
     const nextErrors = validateRecoveryStep("request", recovery);
     setRecoveryErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) {
-      toast.error("Enter a valid work email to continue.");
+      if (nextErrors.email) {
+        toast.error(nextErrors.email);
+      } else {
+        toast.error("Enter a valid work email to continue.");
+      }
       return;
     }
     try {
@@ -460,19 +512,19 @@ const Login = () => {
                     <button
                       type="button"
                       onClick={() => resetForgotFlow(recovery.email || form.email)}
-                      className="inline-flex items-center gap-2 rounded-full border border-white/10 px-3 py-2 text-xs font-medium text-slate-300 transition hover:border-white/20 hover:text-white hover:bg-white/5"
+                      className="inline-flex items-center gap-2 rounded-full border border-slate-200 px-3 py-2 text-xs font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-900 hover:bg-slate-50"
                     >
                       <ChevronLeft size={14} />
                       Back to sign in
                     </button>
-                    <div className="inline-flex items-center gap-2 rounded-full border border-amber-500/20 bg-amber-500/10 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-amber-400">
+                    <div className="inline-flex items-center gap-2 rounded-full border border-amber-500/20 bg-amber-500/10 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-amber-600">
                       <KeyRound size={13} />
                       Recovery Flow
                     </div>
                   </div>
 
-                  <h2 className="text-3xl font-bold text-white">Forgot password</h2>
-                  <p className="mb-6 mt-2 text-slate-400">
+                  <h2 className="text-3xl font-extrabold text-slate-900">Forgot password</h2>
+                  <p className="mb-6 mt-2 text-gray-500">
                     Recover your account in three quick steps without leaving the login screen.
                   </p>
 
@@ -488,7 +540,7 @@ const Login = () => {
                     <div className="space-y-5">
                       <div>
                         <div className="mb-2 flex items-center justify-between gap-3">
-                          <label className="text-md font-semibold text-white/90">Work Email</label>
+                          <label className="text-md font-semibold text-slate-800">Work Email</label>
                           <ValidationPill message={recoveryErrors.email} />
                         </div>
                         <input
@@ -499,8 +551,8 @@ const Login = () => {
                           placeholder="client@gmail.com"
                           className={`w-full rounded-2xl border px-4 py-2.5 focus:outline-none transition-all ${
                             recoveryErrors.email
-                              ? "border-rose-500/50 bg-rose-950/20 text-rose-200"
-                              : "border-white/10 bg-white/5 text-white placeholder:text-slate-500 focus:border-blue-500/30 focus:ring-1 focus:ring-blue-500/20"
+                              ? "border-rose-300 bg-rose-50/40 text-slate-900 placeholder:text-rose-300"
+                              : "border-gray-300 bg-white text-slate-900 placeholder:text-slate-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                           }`}
                         />
                       </div>
@@ -517,10 +569,10 @@ const Login = () => {
                   ) : null}
 
                   {forgotStep === "verify" ? (
-                    <div className="space-y-5">
+                    <div className="space-y-4">
                       <div>
-                        <div className="mb-2 flex items-center justify-between gap-3">
-                          <label className="text-md font-semibold">6-Digit OTP</label>
+                        <div className="mb-1 flex items-center justify-between gap-3">
+                          <label className="text-md font-semibold text-slate-800">6-Digit OTP</label>
                           <ValidationPill message={recoveryErrors.otp} />
                         </div>
                         <input
@@ -530,13 +582,15 @@ const Login = () => {
                           onChange={(e) => handleRecoveryChange("otp", e.target.value)}
                           onBlur={() => handleRecoveryBlur("otp")}
                           placeholder="000000"
-                          className={`w-full rounded-2xl border px-4 py-3 text-center text-2xl font-semibold tracking-[0.35em] focus:outline-none ${
-                            recoveryErrors.otp ? "border-rose-300 bg-rose-50/40" : "border-gray-300"
+                          className={`w-full rounded-2xl border px-4 py-2 text-center text-xl font-semibold tracking-[0.35em] focus:outline-none transition-all ${
+                            recoveryErrors.otp
+                              ? "border-rose-300 bg-rose-50/40 text-rose-900 placeholder:text-rose-300"
+                              : "border-gray-300 bg-white text-slate-900 placeholder:text-slate-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                           }`}
                         />
                       </div>
 
-                      <div className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 px-4 py-3 text-xs text-slate-500">
+                      <div className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white/70 px-4 py-2 text-xs text-slate-500">
                         <span>Didn&apos;t receive the code?</span>
                         <button
                           type="button"
@@ -553,7 +607,7 @@ const Login = () => {
                         type="button"
                         onClick={handleVerifyOtp}
                         disabled={recoveryLoading}
-                        className="w-full flex items-center justify-center gap-2 rounded-xl bg-slate-900 py-2.5 text-white disabled:cursor-not-allowed disabled:bg-slate-500"
+                        className="w-full flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#0f2d5a] to-[#0a0f1d] py-2.5 text-white disabled:cursor-not-allowed disabled:bg-slate-500 hover:from-[#153e7a] hover:to-[#020617] hover:shadow-[0_4px_12px_rgba(15,45,90,0.3)] transition-all duration-300"
                       >
                         {recoveryLoading ? "Verifying..." : "Verify OTP"}
                         {!recoveryLoading ? <ArrowRight className="w-5 h-5 stroke-[1.8]" /> : null}
@@ -565,7 +619,7 @@ const Login = () => {
                     <div className="space-y-5">
                       <div className="relative">
                         <div className="mb-2 flex items-center justify-between gap-3">
-                          <label className="text-md font-semibold">New Password</label>
+                          <label className="text-md font-semibold text-slate-800">New Password</label>
                           <ValidationPill message={recoveryErrors.newPassword} />
                         </div>
                         <input
@@ -574,14 +628,16 @@ const Login = () => {
                           onChange={(e) => handleRecoveryChange("newPassword", e.target.value)}
                           onBlur={() => handleRecoveryBlur("newPassword")}
                           placeholder="Create new password"
-                          className={`w-full rounded-2xl border px-4 py-2.5 focus:outline-none ${
-                            recoveryErrors.newPassword ? "border-rose-300 bg-rose-50/40" : "border-gray-300"
+                          className={`w-full rounded-2xl border px-4 py-2.5 focus:outline-none transition-all ${
+                            recoveryErrors.newPassword
+                              ? "border-rose-300 bg-rose-50/40 text-rose-900 placeholder:text-rose-300"
+                              : "border-gray-300 bg-white text-slate-900 placeholder:text-slate-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                           }`}
                         />
                         <button
                           type="button"
                           onClick={() => setShowNewPassword((prev) => !prev)}
-                          className="absolute right-4 top-[45px] text-gray-400"
+                          className="absolute right-4 top-[45px] text-gray-400 hover:text-gray-600 transition"
                         >
                           {showNewPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                         </button>
@@ -589,7 +645,7 @@ const Login = () => {
 
                       <div className="relative">
                         <div className="mb-2 flex items-center justify-between gap-3">
-                          <label className="text-md font-semibold">Confirm Password</label>
+                          <label className="text-md font-semibold text-slate-800">Confirm Password</label>
                           <ValidationPill message={recoveryErrors.confirmPassword} />
                         </div>
                         <input
@@ -598,14 +654,16 @@ const Login = () => {
                           onChange={(e) => handleRecoveryChange("confirmPassword", e.target.value)}
                           onBlur={() => handleRecoveryBlur("confirmPassword")}
                           placeholder="Confirm new password"
-                          className={`w-full rounded-2xl border px-4 py-2.5 focus:outline-none ${
-                            recoveryErrors.confirmPassword ? "border-rose-300 bg-rose-50/40" : "border-gray-300"
+                          className={`w-full rounded-2xl border px-4 py-2.5 focus:outline-none transition-all ${
+                            recoveryErrors.confirmPassword
+                              ? "border-rose-300 bg-rose-50/40 text-rose-900 placeholder:text-rose-300"
+                              : "border-gray-300 bg-white text-slate-900 placeholder:text-slate-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                           }`}
                         />
                         <button
                           type="button"
                           onClick={() => setShowConfirmPassword((prev) => !prev)}
-                          className="absolute right-4 top-[45px] text-gray-400"
+                          className="absolute right-4 top-[45px] text-gray-400 hover:text-gray-600 transition"
                         >
                           {showConfirmPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                         </button>
@@ -615,7 +673,7 @@ const Login = () => {
                         type="button"
                         onClick={handleResetPassword}
                         disabled={recoveryLoading}
-                        className="w-full flex items-center justify-center gap-2 rounded-xl bg-slate-900 py-2.5 text-white disabled:cursor-not-allowed disabled:bg-slate-500"
+                        className="w-full flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#0f2d5a] to-[#0a0f1d] py-2.5 text-white disabled:cursor-not-allowed disabled:bg-slate-500 hover:from-[#153e7a] hover:to-[#020617] hover:shadow-[0_4px_12px_rgba(15,45,90,0.3)] transition-all duration-300"
                       >
                         {recoveryLoading ? "Updating password..." : "Update password"}
                         {!recoveryLoading ? <ArrowRight className="w-5 h-5 stroke-[1.8]" /> : null}
@@ -640,7 +698,7 @@ const Login = () => {
                       <button
                         type="button"
                         onClick={() => resetForgotFlow(recovery.email)}
-                        className="mt-6 w-full flex items-center justify-center gap-2 rounded-xl bg-slate-900 py-2.5 text-white"
+                        className="mt-6 w-full flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#0f2d5a] to-[#0a0f1d] py-2.5 text-white hover:from-[#153e7a] hover:to-[#020617] hover:shadow-[0_4px_12px_rgba(15,45,90,0.3)] transition-all duration-300"
                       >
                         Return to sign in
                         <ArrowRight className="w-5 h-5 stroke-[1.8]" />

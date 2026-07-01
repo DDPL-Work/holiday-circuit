@@ -12,6 +12,7 @@ import Voucher from "../models/voucher.model.js";
 import Confirmation from "../models/dmcConfirmation.js";
 import { sendAccountDeletionMail, sendAgentApprovalMail, sendAgentRejectionMail, sendTeamMemberCredentialsMail } from "../services/sendEmail.js";
 import { sendAgentPaymentReceiptMail, sendDmcPayoutReceiptMail, sendEmailFinalInvoice } from "../services/emailService.js";
+import { getEmailDeliveryErrorMessage } from "../services/mailer.js";
 import { getEmailValidationError } from "../utils/emailValidation.js";
 import { normalizeAccessExpiry } from "../utils/accessExpiry.js";
 import { generateAgentPaymentReceiptPdf, generatePayoutReceiptPdf } from "../services/payoutReceiptPdfService.js";
@@ -6365,21 +6366,30 @@ export const sendPaymentReceiptToAgent = async (req, res, next) => {
     };
 
     if (normalizedDispatchChannel === "EMAIL") {
-      await sendAgentPaymentReceiptMail(recipientEmail, {
-        agentName: invoice.agent?.companyName || invoice.agent?.name || "Agent",
-        clientName,
-        invoiceNumber: invoice.invoiceNumber,
-        queryCode: invoice.query?.queryId || "",
-        destination: invoice.query?.destination || invoice.tripSnapshot?.destination || "",
-        amountPaid: receiptAmount,
-        cumulativePaid,
-        remainingAmount,
-        paymentDate: receiptPaymentDate,
-        paymentReference: invoice.paymentSubmission?.utrNumber || "",
-        attachmentPath: receiptPdf.absoluteFilePath,
-        attachmentName: receiptPdf.fileName,
-        receiptTitle,
-      });
+      try {
+        await sendAgentPaymentReceiptMail(recipientEmail, {
+          agentName: invoice.agent?.companyName || invoice.agent?.name || "Agent",
+          clientName,
+          invoiceNumber: invoice.invoiceNumber,
+          queryCode: invoice.query?.queryId || "",
+          destination: invoice.query?.destination || invoice.tripSnapshot?.destination || "",
+          amountPaid: receiptAmount,
+          cumulativePaid,
+          remainingAmount,
+          paymentDate: receiptPaymentDate,
+          paymentReference: invoice.paymentSubmission?.utrNumber || "",
+          attachmentPath: receiptPdf.absoluteFilePath,
+          attachmentName: receiptPdf.fileName,
+          receiptTitle,
+        });
+      } catch (mailError) {
+        return next(
+          new ApiError(
+            502,
+            `Receipt PDF was generated, but email delivery failed. ${getEmailDeliveryErrorMessage(mailError)}`,
+          ),
+        );
+      }
       dispatchResult = {
         channel: "EMAIL",
         status: "sent",

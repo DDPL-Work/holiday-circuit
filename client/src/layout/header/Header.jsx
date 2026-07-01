@@ -847,7 +847,7 @@ const Header = ({ onMenuToggle }) => {
 
                 {openNotifications ? (
                   <div
-                    className={`absolute right-0 top-12 z-50 w-[min(92vw,22.5rem)] overflow-hidden rounded-3xl border shadow-2xl ${
+                    className={`absolute right-0 top-12 z-50 w-[min(92vw,22.5rem)] overflow-hidden rounded-2xl border shadow-2xl ${
                       isQuotationBuilder ? "" : "border-slate-200 bg-white"
                     }`}
                     style={
@@ -899,7 +899,7 @@ const Header = ({ onMenuToggle }) => {
                       <button
                         type="button"
                         onClick={() => setOpenNotifications(false)}
-                        className={`flex h-9 w-9 cursor-pointer items-center justify-center rounded-2xl border transition ${
+                        className={`flex h-9 w-9 cursor-pointer items-center justify-center rounded-xl border transition ${
                           isQuotationBuilder
                             ? "text-slate-200 hover:text-white"
                             : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
@@ -962,7 +962,7 @@ const Header = ({ onMenuToggle }) => {
                         </div>
                       ) : canUseManagerFilter ? (
                         <div
-                          className="flex items-center gap-1 rounded-2xl p-1"
+                          className="flex items-center gap-1 rounded-xl p-1"
                           style={
                             isQuotationBuilder
                               ? { background: "rgba(255,255,255,0.08)" }
@@ -1075,7 +1075,7 @@ const Header = ({ onMenuToggle }) => {
                                 type="button"
                                 key={notification._id}
                                 onClick={() => openNotification(notification)}
-                                className={`w-full cursor-pointer rounded-2xl border px-3 py-2.5 text-left transition ${
+                                className={`w-full cursor-pointer rounded-xl border px-3 py-2.5 text-left transition ${
                                   isQuotationBuilder
                                     ? ""
                                     : notification?.isRead
@@ -1097,7 +1097,7 @@ const Header = ({ onMenuToggle }) => {
                               >
                                 <div className="flex items-start gap-2.5">
                                   <div
-                                    className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl shadow-sm ${
+                                    className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl shadow-sm ${
                                       isQuotationBuilder ? "" : "bg-white"
                                     }`}
                                     style={
@@ -1133,7 +1133,7 @@ const Header = ({ onMenuToggle }) => {
                                           <>
                                             {(rateReasonLabel || rateReasonNote) ? (
                                               <p
-                                                className={`mt-1.5 rounded-xl px-2.5 py-2 text-xs leading-5 font-semibold ${
+                                                className={`mt-1.5 rounded-lg px-2.5 py-2 text-xs leading-5 font-semibold ${
                                                   isQuotationBuilder
                                                     ? "bg-amber-300/10 text-amber-100"
                                                     : "bg-amber-50 text-amber-800"
@@ -1144,7 +1144,7 @@ const Header = ({ onMenuToggle }) => {
                                             ) : null}
                                             {notification?.meta?.revisionReason ? (
                                               <p
-                                                className={`mt-1.5 rounded-xl px-2.5 py-2 text-xs leading-5 font-semibold ${
+                                                className={`mt-1.5 rounded-lg px-2.5 py-2 text-xs leading-5 font-semibold ${
                                                   isQuotationBuilder
                                                     ? "bg-rose-300/10 text-rose-200"
                                                     : "bg-rose-50 text-rose-800"

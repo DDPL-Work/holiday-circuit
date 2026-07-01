@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import toast from "react-hot-toast";
 import API from "../utils/Api";
 
@@ -58,6 +58,14 @@ function IconCheck() {
   );
 }
 
+function IconChevronDown({ size = 16, className = "" }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <path d="m6 9 6 6 6-6" />
+    </svg>
+  );
+}
+
 function MemberStatusBadge({ status }) {
   const dotColor =
     status === "Active"
@@ -102,13 +110,13 @@ function WorkloadBar({ value = 0 }) {
   const clamped = Math.min(100, Math.max(0, value));
   const barTone = 
     clamped >= 80 
-      ? "from-rose-450 to-pink-550" 
+      ? "from-rose-500 to-pink-500" 
       : clamped >= 50 
         ? "from-amber-400 to-orange-500" 
         : "from-emerald-400 to-teal-500";
   return (
     <div className="mt-3.5">
-      <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100 shadow-inner">
+      <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100 border border-slate-200/50 shadow-inner">
         <div className={`h-full rounded-full bg-gradient-to-r transition-all duration-500 ease-out ${barTone}`} style={{ width: `${clamped}%` }} />
       </div>
       <div className="mt-1.5 flex items-center justify-between text-[11px] font-medium text-slate-500">
@@ -213,8 +221,8 @@ function QueryRow({ query, checked, onToggle }) {
       onClick={onToggle}
       className={`flex cursor-pointer items-start gap-3 border-b border-slate-100 px-4 py-3 transition last:border-b-0 border-l-[3.5px] border-transparent ${
         checked 
-          ? "bg-gradient-to-r from-blue-50/50 via-indigo-50/10 to-white border-l-blue-500" 
-          : "hover:bg-gradient-to-r hover:from-slate-50/80 hover:to-white bg-white"
+          ? "bg-gradient-to-r from-[#ebf3ff] via-[#f7faff]/30 to-white border-l-blue-500" 
+          : "hover:bg-gradient-to-r hover:from-[#ebf3ff]/40 hover:to-white bg-white"
       }`}
     >
       <div className="mt-1">
@@ -254,9 +262,9 @@ function QueryRow({ query, checked, onToggle }) {
 
 // ─── Section wrapper ──────────────────────────────────────────────────────────
 
-function Section({ children }) {
+function Section({ children, className = "overflow-hidden" }) {
   return (
-    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_4px_20px_rgba(15,23,42,0.02)] transition-shadow hover:shadow-[0_6px_25px_rgba(15,23,42,0.04)]">
+    <div className={`rounded-2xl border border-slate-200 bg-white shadow-[0_4px_20px_rgba(15,23,42,0.02)] transition-shadow hover:shadow-[0_6px_25px_rgba(15,23,42,0.04)] ${className}`}>
       {children}
     </div>
   );
@@ -264,7 +272,7 @@ function Section({ children }) {
 
 function SectionHeader({ title, subtitle, action }) {
   return (
-    <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-gradient-to-r from-slate-50 to-white px-4 py-2.5">
+    <div className="flex items-center justify-between gap-3 border-b border-blue-100/70 bg-gradient-to-r from-[#ebf3ff] via-[#ebf3ff] via-60% to-white px-4 py-2.5 rounded-t-2xl">
       <div>
         <p className="text-[12.5px] font-bold text-slate-800 tracking-tight">{title}</p>
         {subtitle && <p className="mt-0.5 text-[10.5px] font-medium text-slate-500">{subtitle}</p>}
@@ -282,6 +290,29 @@ export function OpsManagerReassignModal({ exec, onClose, onSuccess }) {
   const [submitting, setSubmitting] = useState(false);
   const [selectedTargetId, setSelectedTargetId] = useState("");
   const [selectedQueryIds, setSelectedQueryIds] = useState([]);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const dropdownRef = useRef(null);
+  const [active, setActive] = useState(false);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setActive(true), 10);
+    return () => clearTimeout(timer);
+  }, []);
+
+  const triggerClose = () => {
+    setActive(false);
+    setTimeout(onClose, 200);
+  };
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   useEffect(() => {
     let ignore = false;
@@ -294,9 +325,9 @@ export function OpsManagerReassignModal({ exec, onClose, onSuccess }) {
         const payload = data?.data || null;
         setPreview(payload);
         setSelectedTargetId("");
-        setSelectedQueryIds((payload?.queries || []).map((q) => q.id));
+        setSelectedQueryIds([]);
       } catch (err) {
-        if (!ignore) { toast.error(err?.response?.data?.message || "Failed to load reassign details"); onClose(); }
+        if (!ignore) { toast.error(err?.response?.data?.message || "Failed to load reassign details"); triggerClose(); }
       } finally {
         if (!ignore) setPreviewLoading(false);
       }
@@ -305,17 +336,38 @@ export function OpsManagerReassignModal({ exec, onClose, onSuccess }) {
     return () => { ignore = true; };
   }, [exec?.id]);
 
+  const [queryFilter, setQueryFilter] = useState("all");
   const queries = preview?.queries || [];
   const recipients = preview?.recipients || [];
   const selectedQueries = useMemo(() => queries.filter((q) => selectedQueryIds.includes(q.id)), [queries, selectedQueryIds]);
   const selectedSummary = useMemo(() => summarizeSelectedQueries(selectedQueries), [selectedQueries]);
-  const allSelected = queries.length > 0 && selectedQueryIds.length === queries.length;
+
+  const filteredQueries = useMemo(() => {
+    if (queryFilter === "all") return queries;
+    return queries.filter((q) => q.categoryKey === queryFilter);
+  }, [queries, queryFilter]);
+
+  const allFilteredSelected = useMemo(() => {
+    if (filteredQueries.length === 0) return false;
+    return filteredQueries.every((q) => selectedQueryIds.includes(q.id));
+  }, [filteredQueries, selectedQueryIds]);
 
   const toggleQuery = (id) =>
     setSelectedQueryIds((cur) => cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]);
 
-  const toggleAllQueries = () =>
-    setSelectedQueryIds(allSelected ? [] : queries.map((q) => q.id));
+  const toggleAllFilteredQueries = () => {
+    if (allFilteredSelected) {
+      setSelectedQueryIds((cur) => cur.filter((id) => !filteredQueries.some((fq) => fq.id === id)));
+    } else {
+      setSelectedQueryIds((cur) => {
+        const next = [...cur];
+        filteredQueries.forEach((fq) => {
+          if (!next.includes(fq.id)) next.push(fq.id);
+        });
+        return next;
+      });
+    }
+  };
 
   const handleConfirm = async () => {
     if (!exec?.id || !selectedTargetId || !selectedQueryIds.length) return;
@@ -328,7 +380,7 @@ export function OpsManagerReassignModal({ exec, onClose, onSuccess }) {
       });
       toast.success(data?.message || "Queries reassigned successfully");
       onSuccess?.(data?.data || data || null);
-      onClose();
+      triggerClose();
     } catch (err) {
       toast.error(err?.response?.data?.message || "Failed to reassign queries");
     } finally {
@@ -343,22 +395,22 @@ export function OpsManagerReassignModal({ exec, onClose, onSuccess }) {
   );
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 px-4 py-6 backdrop-blur-[2px]">
-      <div className="flex max-h-[88vh] w-full max-w-[920px] flex-col overflow-hidden rounded-[24px] bg-white shadow-[0_32px_80px_rgba(15,23,42,0.22)] border border-slate-200/80">
+    <div className={`fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 px-4 py-6 backdrop-blur-[2px] transition-all duration-200 ease-out ${active ? "opacity-100" : "opacity-0"}`}>
+      <div className={`flex max-h-[88vh] w-full max-w-[1080px] flex-col overflow-hidden rounded-[24px] bg-gradient-to-br from-[#f8fafc] via-[#f1f5f9] to-[#e2e8f0]/70 shadow-[0_32px_80px_rgba(15,23,42,0.22)] border border-slate-200/80 transition-all duration-200 ease-out ${active ? "opacity-100 scale-100" : "opacity-0 scale-95"}`}>
 
         {/* Header */}
-        <div className="flex items-start justify-between border-b border-slate-200 bg-gradient-to-r from-slate-50/50 via-white to-slate-50/50 px-6 py-4">
+        <div className="flex items-start justify-between border-b border-slate-250/15 bg-gradient-to-r from-[#0f2d5a] via-[#16386c] to-[#0a152d] px-6 py-4">
           <div>
-            <h3 className="text-[17px] font-extrabold text-slate-900 tracking-tight">Re-assign queries</h3>
-            <p className="mt-0.5 text-[12px] font-medium text-slate-500">
+            <h3 className="text-[17.5px] font-extrabold text-white tracking-tight">Re-assign queries</h3>
+            <p className="mt-0.5 text-[12px] font-medium text-slate-200">
               Queries moving from{" "}
-              <span className="font-semibold text-slate-750">{exec?.name}</span>
+              <span className="font-bold text-indigo-200">{exec?.name}</span>
             </p>
           </div>
           <button
             type="button"
-            onClick={onClose}
-            className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-50 text-slate-400 transition hover:bg-slate-100 hover:text-slate-655 active:scale-95 cursor-pointer shadow-sm border border-slate-200/60"
+            onClick={triggerClose}
+            className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-white/80 transition hover:bg-white/20 hover:text-white active:scale-95 cursor-pointer shadow-sm border border-white/10"
           >
             <IconClose />
           </button>
@@ -373,7 +425,7 @@ export function OpsManagerReassignModal({ exec, onClose, onSuccess }) {
             <div className="h-48 rounded-2xl bg-slate-100" />
           </div>
         ) : (
-          <div className="flex-1 overflow-y-auto px-6 py-5 [scrollbar-width:thin] thin-scrollbar space-y-5">
+          <div className="flex-1 overflow-y-auto px-6 py-5 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] space-y-5">
             
             {/* 1. Source Overview */}
             <div>
@@ -410,22 +462,95 @@ export function OpsManagerReassignModal({ exec, onClose, onSuccess }) {
             <div>
               <p className="text-[10px] font-extrabold uppercase tracking-widest text-slate-450 px-1 mb-1.5 pt-1">2. Assign Target</p>
               {/* Assign To */}
-              <Section>
+              <Section className="overflow-visible">
                 <SectionHeader title="Assign Target" subtitle="Team workload snapshot before reassignment" />
                 {recipients.length === 0 ? (
                   <p className="px-4 py-6 text-center text-[12px] text-slate-400">
                     No other team member is available right now.
                   </p>
                 ) : (
-                  <div className="max-h-[200px] overflow-y-auto [scrollbar-width:thin] thin-scrollbar">
-                    {recipients.map((member) => (
-                      <RecipientRow
-                        key={member.id}
-                        member={member}
-                        selected={selectedTargetId === member.id}
-                        onSelect={() => setSelectedTargetId(member.id)}
-                      />
-                    ))}
+                  <div className="px-4 pt-4 pb-5">
+                    <div className="relative" ref={dropdownRef}>
+                      <button
+                        type="button"
+                        onClick={() => setDropdownOpen((prev) => !prev)}
+                        className="flex w-full items-center justify-between gap-3 rounded-xl border border-blue-200/80 bg-gradient-to-br from-[#ebf3ff] via-[#f7faff] to-[#e1efff] px-4 py-3 text-left transition-all duration-250 hover:border-blue-300/85 hover:from-[#e3efff] hover:to-[#dbedff] focus:outline-none cursor-pointer shadow-sm hover:shadow-[0_2px_8px_rgba(37,99,235,0.06)]"
+                      >
+                        {selectedTargetId ? (
+                          (() => {
+                            const selectedMember = recipients.find((r) => r.id === selectedTargetId);
+                            if (!selectedMember) return <span className="text-[13px] font-semibold text-slate-500">Select target team member...</span>;
+                            return (
+                              <span className="flex items-center gap-3">
+                                <Avatar initials={selectedMember.initials} bg={selectedMember.avatar?.bg} text={selectedMember.avatar?.text} />
+                                <span>
+                                  <span className="block text-[13px] font-bold text-slate-800 leading-none">{selectedMember.name}</span>
+                                  <span className="mt-1 block text-[11px] font-semibold text-indigo-650 leading-none">{selectedMember.currentWorkloadLabel}</span>
+                                </span>
+                              </span>
+                            );
+                          })()
+                        ) : (
+                          <span className="flex items-center gap-3 text-slate-400">
+                            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-slate-400">
+                              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
+                                <circle cx="12" cy="7" r="4" />
+                              </svg>
+                            </span>
+                            <span className="text-[13px] font-semibold text-slate-500">Select target team member...</span>
+                          </span>
+                        )}
+                        <IconChevronDown className={`text-slate-400 transition-transform duration-250 ${dropdownOpen ? "rotate-180" : ""}`} />
+                      </button>
+
+                      {dropdownOpen && (
+                        <div className="absolute left-0 right-0 z-20 mt-2 max-h-[380px] overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-xl [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+                          {recipients.map((member) => (
+                            <div
+                              key={member.id}
+                             onClick={() => {
+                                if (selectedTargetId === member.id) {
+                                  setSelectedTargetId("");
+                                } else {
+                                  setSelectedTargetId(member.id);
+                                }
+                              }}
+                              className={`flex cursor-pointer items-start gap-3 border-b border-slate-100 px-4 py-3 transition last:border-b-0 border-l-[3.5px] border-transparent ${
+                                selectedTargetId === member.id
+                                  ? "bg-gradient-to-r from-blue-50/80 via-indigo-50/15 to-white border-l-indigo-500"
+                                  : "hover:bg-gradient-to-r hover:from-slate-50/80 hover:to-white bg-white"
+                              }`}
+                            >
+                              <div className="mt-1">
+                                <CustomCheckbox checked={selectedTargetId === member.id} />
+                              </div>
+                              <Avatar initials={member.initials} bg={member.avatar?.bg} text={member.avatar?.text} />
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="min-w-0">
+                                    <p className="truncate text-[13px] font-bold text-slate-800 leading-tight">{member.name}</p>
+                                    <p className="mt-0.5 text-[11px] font-medium text-slate-500">{member.currentWorkloadLabel}</p>
+                                  </div>
+                                  <MemberStatusBadge status={member.status} />
+                                </div>
+                                <div className="mt-2 flex flex-wrap gap-1.5">
+                                  <span className="rounded-full border border-sky-100 bg-sky-50 px-2 py-0.5 text-[10px] font-semibold text-sky-700">
+                                    {member.newQueries || 0} new
+                                  </span>
+                                  <span className="rounded-full border border-amber-100 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+                                    {member.requotePendingQueries || 0} re-quote
+                                  </span>
+                                  <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
+                                    {member.reassignedCurrentQueries || 0} reassigned
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
               </Section>
@@ -433,7 +558,7 @@ export function OpsManagerReassignModal({ exec, onClose, onSuccess }) {
 
             {/* 3. Selection Preview */}
             {queries.length > 0 && (
-              <div>
+              <div className={`transition-all duration-300 ${dropdownOpen ? "filter blur-[2.5px] opacity-40 pointer-events-none" : ""}`}>
                 <p className="text-[10px] font-extrabold uppercase tracking-widest text-slate-450 px-1 mb-1.5 pt-1">3. Selection Preview</p>
                 <div className="rounded-2xl border border-slate-200 bg-slate-50/50 p-3.5 shadow-inner">
                   <div className="grid grid-cols-4 gap-3">
@@ -447,7 +572,7 @@ export function OpsManagerReassignModal({ exec, onClose, onSuccess }) {
             )}
 
             {/* 4. Select Queries to Move */}
-            <div>
+            <div className={`transition-all duration-300 ${dropdownOpen ? "filter blur-[2.5px] opacity-40 pointer-events-none" : ""}`}>
               <p className="text-[10px] font-extrabold uppercase tracking-widest text-slate-450 px-1 mb-1.5 pt-1">4. Select Queries to Move</p>
               {/* Queries */}
               <Section>
@@ -456,23 +581,36 @@ export function OpsManagerReassignModal({ exec, onClose, onSuccess }) {
                   subtitle="Check which queries should be reassigned"
                   action={
                     queries.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={toggleAllQueries}
-                        className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 transition hover:underline cursor-pointer bg-indigo-50 px-2.5 py-0.5 rounded-md"
-                      >
-                        {allSelected ? "Clear all" : "Select all"}
-                      </button>
+                      <div className="flex items-center gap-2.5">
+                        <select
+                          value={queryFilter}
+                          onChange={(e) => setQueryFilter(e.target.value)}
+                          className="cursor-pointer rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 outline-none transition hover:border-slate-350 shadow-sm"
+                        >
+                          <option value="all">All Queries ({queries.length})</option>
+                          <option value="new">New ({queries.filter(q => q.categoryKey === "new").length})</option>
+                          <option value="requote_pending">Re-quote ({queries.filter(q => q.categoryKey === "requote_pending").length})</option>
+                          <option value="at_risk">At Risk ({queries.filter(q => q.categoryKey === "at_risk").length})</option>
+                          <option value="active">Active ({queries.filter(q => q.categoryKey === "active").length})</option>
+                        </select>
+                        <button
+                          type="button"
+                          onClick={toggleAllFilteredQueries}
+                          className="text-[11px] font-bold text-indigo-650 hover:text-indigo-800 transition hover:underline cursor-pointer bg-indigo-50 px-2.5 py-1 rounded-lg border border-indigo-100/50 shadow-sm whitespace-nowrap"
+                        >
+                          {allFilteredSelected ? "Clear all" : "Select all"}
+                        </button>
+                      </div>
                     )
                   }
                 />
-                {queries.length === 0 ? (
+                {filteredQueries.length === 0 ? (
                   <p className="px-4 py-8 text-center text-[12px] text-slate-400">
-                    No eligible queries available for reassignment.
+                    No eligible queries found for this filter.
                   </p>
                 ) : (
-                  <div className="max-h-[240px] overflow-y-auto [scrollbar-width:thin] thin-scrollbar">
-                    {queries.map((query) => (
+                  <div className="max-h-[240px] overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+                    {filteredQueries.map((query) => (
                       <QueryRow
                         key={query.id}
                         query={query}
@@ -489,7 +627,7 @@ export function OpsManagerReassignModal({ exec, onClose, onSuccess }) {
         )}
 
         {/* Footer */}
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-slate-50/60 px-6 py-3.5">
+        <div className={`flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-slate-50/60 px-6 py-3.5 transition-all duration-300 ${dropdownOpen ? "filter blur-[2.5px] opacity-40 pointer-events-none" : ""}`}>
           <p className="text-[12.5px] font-bold text-slate-455">
             <span className="font-extrabold text-indigo-650 bg-indigo-50 border border-indigo-100 rounded-full px-2.5 py-0.5 shadow-sm">{selectedQueryIds.length}</span>{" "}
             {selectedQueryIds.length === 1 ? "query" : "queries"} selected to transfer
@@ -497,7 +635,7 @@ export function OpsManagerReassignModal({ exec, onClose, onSuccess }) {
           <div className="flex gap-2.5">
             <button
               type="button"
-              onClick={onClose}
+              onClick={triggerClose}
               className="rounded-full border border-slate-200 px-5 py-2 text-[12px] font-bold uppercase tracking-wider text-slate-600 bg-white transition-all hover:bg-slate-50 active:scale-95 cursor-pointer"
             >
               Cancel

@@ -2065,30 +2065,37 @@ const buildWhatsAppTermsSection = (items = []) => {
 
   const getDestinationMatchTerms = (destination = "") => {
   const rawDestination = String(destination || "").trim();
-  if (!rawDestination) return [];
+  if (!rawDestination) return { cityTerms: [], fallbackTerms: [] };
 
-  const normalizedFull = normalizeDestinationMatchText(rawDestination);
   const normalizedParts = rawDestination
   .split(/[,/|&+>-]+/)
   .map((part) => normalizeDestinationMatchText(part))
   .filter((part) => part && part.length >= 3);
 
-  return expandDestinationAliases([normalizedFull, ...normalizedParts]);
+  const cityTerms = normalizedParts.length > 1 ? normalizedParts.slice(0, -1) : [];
+  const fallbackTerms = normalizedParts.length
+  ? normalizedParts
+  : [normalizeDestinationMatchText(rawDestination)].filter(Boolean);
+
+  return {
+  cityTerms: expandDestinationAliases(cityTerms),
+  fallbackTerms: expandDestinationAliases(fallbackTerms),
+  };
   };
 
   const doesServiceMatchDestination = (service = {}, destination = "") => {
-  const destinationTerms = getDestinationMatchTerms(destination);
+  const { cityTerms, fallbackTerms } = getDestinationMatchTerms(destination);
+  const destinationTerms = cityTerms.length ? cityTerms : fallbackTerms;
   if (!destinationTerms.length) return true;
 
-  const serviceLocationText = normalizeDestinationMatchText([
-    service.city,
-    service.country,
-    service.title,
-    service.serviceName,
-    service.hotelName,
-    service.desc,
-    service.description,
-  ].join(" "));
+  const serviceCityText = normalizeDestinationMatchText(service.city);
+  const serviceCountryText = normalizeDestinationMatchText(service.country);
+
+  if (cityTerms.length) {
+    return cityTerms.some((term) => serviceCityText.includes(term));
+  }
+
+  const serviceLocationText = [serviceCityText, serviceCountryText].filter(Boolean).join(" ");
 
   if (!serviceLocationText) {
     return false;
@@ -2096,7 +2103,6 @@ const buildWhatsAppTermsSection = (items = []) => {
 
   return destinationTerms.some((term) => serviceLocationText.includes(term));
   };
-
   const getServiceTypeLabel = (type = "") =>
   SERVICE_TYPE_LABELS[String(type || "").toLowerCase()] || "Service";
 
@@ -9480,6 +9486,3 @@ const AddonRow = ({
 );
 
 export default QuotationBuilder;
-
-
-
