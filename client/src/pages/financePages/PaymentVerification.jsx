@@ -1405,7 +1405,7 @@ const PaymentVerification = () => {
     setOpenPaymentTrackerModal(false);
     setOpenSendAgentReceiptModal(false);
     setAgentReceiptEmail(String(selectedPayment?.paymentReceiptRecipientEmail || selectedPayment?.agentEmail || "").trim());
-    setAgentReceiptPhone("");
+    setAgentReceiptPhone(String(selectedPayment?.agentPhone || "").trim());
     setAgentReceiptChannel("EMAIL");
     setSelectedReceiptInstallmentIndex(null);
     setVerifyingInstallmentIndex(null);
@@ -1739,7 +1739,7 @@ const PaymentVerification = () => {
       Number.isInteger(installmentIndex) ? installmentIndex : null,
     );
     setAgentReceiptEmail(String(selectedPayment.paymentReceiptRecipientEmail || selectedPayment.agentEmail || "").trim());
-    setAgentReceiptPhone("");
+    setAgentReceiptPhone(String(selectedPayment?.agentPhone || "").trim());
     setAgentReceiptChannel("EMAIL");
     setOpenSendAgentReceiptModal(true);
   };
@@ -1753,6 +1753,12 @@ const PaymentVerification = () => {
     if (agentReceiptChannel === "WHATSAPP" && !normalizeWhatsAppPhoneNumber(agentReceiptPhone)) {
       setFeedback({ type: "warning", title: "WhatsApp Number Missing", message: "Please enter a valid agent WhatsApp number before sharing the receipt." });
       return;
+    }
+
+    let whatsappWindow = null;
+    if (agentReceiptChannel === "WHATSAPP" && typeof window !== "undefined") {
+      whatsappWindow = window.open("about:blank", "_blank");
+      if (whatsappWindow) whatsappWindow.opener = null;
     }
 
     try {
@@ -1775,7 +1781,14 @@ const PaymentVerification = () => {
         const normalizedPhone = normalizeWhatsAppPhoneNumber(agentReceiptPhone);
         const message = data?.dispatch?.whatsappMessage || "";
         if (normalizedPhone && message) {
-          window.open(`https://wa.me/${normalizedPhone}?text=${encodeURIComponent(message)}`, "_blank", "noopener,noreferrer");
+          const whatsappUrl = `https://wa.me/${normalizedPhone}?text=${encodeURIComponent(message)}`;
+          if (whatsappWindow && !whatsappWindow.closed) {
+            whatsappWindow.location.href = whatsappUrl;
+          } else {
+            window.open(whatsappUrl, "_blank", "noopener,noreferrer");
+          }
+        } else if (whatsappWindow && !whatsappWindow.closed) {
+          whatsappWindow.close();
         }
       }
 
@@ -1788,6 +1801,9 @@ const PaymentVerification = () => {
         message: data?.message || "Holiday Circuit payment receipt has been shared successfully.",
       });
     } catch (actionError) {
+      if (whatsappWindow && !whatsappWindow.closed) {
+        whatsappWindow.close();
+      }
       setFeedback({
         type: "error",
         title: "Send Failed",

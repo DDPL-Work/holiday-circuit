@@ -1,4 +1,6 @@
 import "dotenv/config";
+import dns from "dns";
+import net from "net";
 import nodemailer from "nodemailer";
 
 const DEFAULT_FROM_ADDRESS = "Holiday Circuit <support@holidaycircuit.com>";
@@ -61,6 +63,13 @@ const buildTransportConfig = () => {
     family: ipFamily,
   };
 
+  if (host) {
+    config.host = host;
+    config.port = port;
+    config.secure = secure;
+    return config;
+  }
+
   if (service) {
     config.service = service;
     config.secure = secure;
@@ -71,6 +80,27 @@ const buildTransportConfig = () => {
   config.port = port;
   config.secure = secure;
   return config;
+};
+
+const resolveTransportConfig = async () => {
+  const config = buildTransportConfig();
+  const host = String(config.host || "").trim();
+
+  if (config.family !== 4 || !host || net.isIP(host)) {
+    return config;
+  }
+
+  const addresses = await dns.promises.resolve4(host);
+  const ipv4Address = addresses.find(Boolean);
+  if (!ipv4Address) {
+    return config;
+  }
+
+  return {
+    ...config,
+    host: ipv4Address,
+    servername: config.servername || host,
+  };
 };
 
 const getMailConfigError = () => {
@@ -166,7 +196,7 @@ export const createTransporter = () => ({
       throw configError;
     }
 
-    const transport = nodemailer.createTransport(buildTransportConfig());
+    const transport = nodemailer.createTransport(await resolveTransportConfig());
     return transport.sendMail(mailOptions);
   },
 });

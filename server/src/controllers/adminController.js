@@ -15,7 +15,7 @@ import { sendAgentPaymentReceiptMail, sendDmcPayoutReceiptMail, sendEmailFinalIn
 import { getEmailDeliveryErrorMessage } from "../services/mailer.js";
 import { getEmailValidationError } from "../utils/emailValidation.js";
 import { normalizeAccessExpiry } from "../utils/accessExpiry.js";
-import { generateAgentPaymentReceiptPdf, generatePayoutReceiptPdf } from "../services/payoutReceiptPdfService.js";
+import { generateAgentPaymentReceiptPdf, generatePayoutReceiptPdf, numberToWords } from "../services/payoutReceiptPdfService.js";
 import { analyzeInvoiceFile } from "../services/invoiceExtractionService.js";
 import { buildInvoiceLineItems } from "./opsController.js";
 import {
@@ -1387,7 +1387,7 @@ export const resolveAdminOverrideCase = async (req, res, next) => {
     if (targetType === "payment_verification") {
       const invoice = await Invoice.findById(id)
         .populate("query", "queryId destination")
-        .populate("agent", "name companyName email");
+        .populate("agent", "name companyName email phone");
       if (!invoice) return next(new ApiError(404, "Payment record not found"));
       if (decision === "resolve") {
         return next(new ApiError(400, "Choose approve or reject for payment verification override"));
@@ -2415,28 +2415,130 @@ const normalizePhoneForWhatsappShare = (value = "") => {
   if (digits.length === 10) return `91${digits}`;
   return digits;
 };
-
 const buildDmcPayoutWhatsappMessage = ({
   dmcName = "",
   invoiceNumber = "",
   queryCode = "",
   payoutAmount = 0,
+  cumulativePaid = 0,
+  remainingAmount = 0,
   currency = "INR",
   receiptUrl = "",
-} = {}) =>
-  [
-    `Hello ${dmcName || "Partner"},`,
+  payoutInstallments = [],
+  currentInstallment = null,
+  destination = "",
+  guestDetails = "",
+  startDate = null,
+  endDate = null,
+  bankName = "",
+  referenceId = "",
+} = {}) => {
+  const parts = [
+    `*HOLIDAY CIRCUIT PAYOUT*`,
+    `_DMC Payout Receipt_`,
     "",
-    `Holiday Circuit has completed the payout for internal invoice ${invoiceNumber || "-"}.`,
-    `Trip ID: ${queryCode || "-"}`,
-    `Amount Paid: ${formatNotificationCurrency(payoutAmount || 0, currency)}`,
-    receiptUrl ? `Payment Receipt: ${receiptUrl}` : "",
+    `Hello *${dmcName || "Partner"}*,`,
     "",
-    "Regards,",
-    "Holiday Circuit Finance Team",
-  ]
-    .filter(Boolean)
-    .join("\n");
+    `Holiday Circuit has completed the payout for internal invoice *${invoiceNumber || "-"}*.`,
+    "",
+    `*TRIP DETAILS:*`,
+    `Trip ID/Ref: ${queryCode || "-"}`,
+  ];
+
+  if (destination) {
+    parts.push(`Destination: ${destination}`);
+  }
+  if (guestDetails) {
+    parts.push(`Guest Details: ${guestDetails}`);
+  }
+
+  let travelDateLabel = "";
+  if (startDate && endDate) {
+    const sDate = formatDashboardDate(startDate);
+    const eDate = formatDashboardDate(endDate);
+    if (sDate && eDate) {
+      travelDateLabel = `From ${sDate} to ${eDate}`;
+    } else if (sDate) {
+      travelDateLabel = sDate;
+    }
+  } else if (startDate) {
+    travelDateLabel = formatDashboardDate(startDate);
+  }
+  if (travelDateLabel) {
+    parts.push(`Travel Date: ${travelDateLabel}`);
+  }
+
+  parts.push(`Invoice: ${invoiceNumber || "-"}`);
+  parts.push("");
+
+  const amountInWords = numberToWords(payoutAmount);
+
+  parts.push(`*PAYOUT SUMMARY:*`);
+  parts.push(`Current Paid: ${formatNotificationCurrency(payoutAmount || 0, currency)}`);
+  if (amountInWords) {
+    parts.push(`Amount in Words: ${currency}: ${amountInWords}`);
+  }
+  if (bankName) {
+    parts.push(`Bank Name: ${bankName}`);
+  }
+  if (referenceId) {
+    parts.push(`Reference/UTR: ${referenceId}`);
+  }
+  parts.push(`Total Paid: ${formatNotificationCurrency(cumulativePaid || payoutAmount || 0, currency)}`);
+  parts.push(`Remaining: ${formatNotificationCurrency(remainingAmount || 0, currency)}`);
+
+  const paymentStatusLabel =
+    Math.max(0, remainingAmount || 0) > 0
+      ? `${formatNotificationCurrency(cumulativePaid || payoutAmount, currency)} / ${formatNotificationCurrency((cumulativePaid || payoutAmount) + remainingAmount, currency)} (Partial Payout Clear)`
+      : `${formatNotificationCurrency(cumulativePaid || payoutAmount, currency)} / ${formatNotificationCurrency(cumulativePaid || payoutAmount, currency)} (Payout Clear)`;
+  parts.push(`Payment Status: ${paymentStatusLabel}`);
+
+  if (Array.isArray(payoutInstallments) && payoutInstallments.length > 0) {
+    parts.push("");
+    parts.push(`*PAYOUT BREAKDOWN:*`);
+
+    payoutInstallments.forEach((entry, idx) => {
+      const entryAmt = Math.round(Number(entry?.amount || 0));
+      const entryDateVal = entry?.paymentDate || entry?.createdAt || "";
+      const entryDateLabel = entry?.displayDate || formatDashboardDate(entryDateVal) || "-";
+      const entryBankName = String(entry?.bankName || "-").trim();
+      const entryReference = String(entry?.utrNumber || "-").trim();
+
+      const entryTime = entryDateVal ? new Date(entryDateVal).getTime() : 0;
+      const currentInstTime = (currentInstallment?.paymentDate || currentInstallment?.createdAt)
+        ? new Date(currentInstallment.paymentDate || currentInstallment.createdAt).getTime()
+        : 0;
+
+      const isCurrent =
+        currentInstallment &&
+        entryAmt === Math.round(Number(currentInstallment?.amount || 0)) &&
+        entryReference === String(currentInstallment?.utrNumber || "-").trim() &&
+        entryTime === currentInstTime;
+
+      parts.push("");
+      parts.push(`Payout Installment ${idx + 1} ${isCurrent ? "*(Current)*" : ""}`);
+      parts.push(`Date: ${entryDateLabel}`);
+      if (entryBankName && entryBankName !== "-") {
+        parts.push(`Bank: ${entryBankName}`);
+      }
+      if (entryReference && entryReference !== "-") {
+        parts.push(`Reference: ${entryReference}`);
+      }
+      parts.push(`Amount: ${formatNotificationCurrency(entryAmt, currency)}`);
+    });
+  }
+
+  if (receiptUrl) {
+    parts.push("");
+    parts.push(`Download Payout Receipt: ${receiptUrl}`);
+  }
+
+  parts.push("");
+  parts.push("Regards,");
+  parts.push("Holiday Circuit Finance Team");
+
+  return parts.filter((p) => typeof p === "string").join("\n");
+};
 
 const buildAgentPaymentReceiptWhatsappMessage = ({
   agentName = "",
@@ -2448,22 +2550,125 @@ const buildAgentPaymentReceiptWhatsappMessage = ({
   currency = "INR",
   receiptUrl = "",
   receiptTitle = "Payment Receipt",
-} = {}) =>
-  [
-    `Hello ${agentName || "Partner"},`,
+  trackerPayments = [],
+  selectedInstallment = null,
+  destination = "",
+  guestDetails = "",
+  startDate = null,
+  endDate = null,
+  creditAccount = "Leela Travels",
+  bankName = "",
+  referenceId = "",
+} = {}) => {
+  const parts = [
+    `*HOLIDAY CIRCUIT RECEIPT*`,
+    `_${receiptTitle}_`,
     "",
-    `Holiday Circuit has generated your ${receiptTitle.toLowerCase()} for invoice ${invoiceNumber || "-"}.`,
+    `Hello *${agentName || "Partner"}*,`,
+    "",
+    `Holiday Circuit has generated your ${receiptTitle.toLowerCase()} for invoice *${invoiceNumber || "-"}*.`,
+    "",
+    `*TRIP DETAILS:*`,
     `Trip ID: ${queryCode || "-"}`,
-    `Amount Paid: ${formatNotificationCurrency(amountPaid || 0, currency)}`,
-    `Total Paid: ${formatNotificationCurrency(cumulativePaid || amountPaid || 0, currency)}`,
-    `Remaining: ${formatNotificationCurrency(remainingAmount || 0, currency)}`,
-    receiptUrl ? `Receipt PDF: ${receiptUrl}` : "",
-    "",
-    "Regards,",
-    "Holiday Circuit Finance Team",
-  ]
-    .filter(Boolean)
-    .join("\n");
+  ];
+
+  if (destination) {
+    parts.push(`Destination: ${destination}`);
+  }
+  if (guestDetails) {
+    parts.push(`Guest Details: ${guestDetails}`);
+  }
+
+  let travelDateLabel = "";
+  if (startDate && endDate) {
+    const sDate = formatDashboardDate(startDate);
+    const eDate = formatDashboardDate(endDate);
+    if (sDate && eDate) {
+      travelDateLabel = `From ${sDate} to ${eDate}`;
+    } else if (sDate) {
+      travelDateLabel = sDate;
+    }
+  } else if (startDate) {
+    travelDateLabel = formatDashboardDate(startDate);
+  }
+  if (travelDateLabel) {
+    parts.push(`Travel Date: ${travelDateLabel}`);
+  }
+
+  parts.push(`Invoice: ${invoiceNumber || "-"}`);
+  parts.push("");
+
+  const amountInWords = numberToWords(amountPaid);
+
+  parts.push(`*PAYMENT SUMMARY:*`);
+  parts.push(`Current Paid: ${formatNotificationCurrency(amountPaid || 0, currency)}`);
+  if (amountInWords) {
+    parts.push(`Amount in Words: ${currency}: ${amountInWords}`);
+  }
+  if (bankName) {
+    parts.push(`Bank Name: ${bankName}`);
+  }
+  if (referenceId) {
+    parts.push(`Reference/UTR: ${referenceId}`);
+  }
+  if (creditAccount) {
+    parts.push(`Credit Account: ${creditAccount}`);
+  }
+  parts.push(`Total Paid: ${formatNotificationCurrency(cumulativePaid || amountPaid || 0, currency)}`);
+  parts.push(`Remaining: ${formatNotificationCurrency(remainingAmount || 0, currency)}`);
+
+  const paymentStatusLabel =
+    Math.max(0, remainingAmount || 0) > 0
+      ? `${formatNotificationCurrency(cumulativePaid || amountPaid, currency)} / ${formatNotificationCurrency((cumulativePaid || amountPaid) + remainingAmount, currency)} (Partial Payment Clear)`
+      : `${formatNotificationCurrency(cumulativePaid || amountPaid, currency)} / ${formatNotificationCurrency(cumulativePaid || amountPaid, currency)} (Payment Clear)`;
+  parts.push(`Payment Status: ${paymentStatusLabel}`);
+
+  if (Array.isArray(trackerPayments) && trackerPayments.length > 0) {
+    parts.push("");
+    parts.push(`*INSTALLMENT BREAKDOWN:*`);
+
+    trackerPayments.forEach((entry, idx) => {
+      const entryAmt = Math.round(Number(entry?.amount || 0));
+      const entryDateVal = entry?.paymentDate || entry?.createdAt || "";
+      const entryDateLabel = entry?.displayDate || formatDashboardDate(entryDateVal) || "-";
+      const entryBankName = String(entry?.bankName || "-").trim();
+      const entryReference = String(entry?.utrNumber || "-").trim();
+
+      const entryTime = entryDateVal ? new Date(entryDateVal).getTime() : 0;
+      const selectedTime = (selectedInstallment?.paymentDate || selectedInstallment?.createdAt)
+        ? new Date(selectedInstallment.paymentDate || selectedInstallment.createdAt).getTime()
+        : 0;
+
+      const isCurrent =
+        selectedInstallment &&
+        entryAmt === Math.round(Number(selectedInstallment?.amount || 0)) &&
+        entryReference === String(selectedInstallment?.utrNumber || "-").trim() &&
+        entryTime === selectedTime;
+
+      parts.push("");
+      parts.push(`Installment ${idx + 1} ${isCurrent ? "*(Current)*" : ""}`);
+      parts.push(`Date: ${entryDateLabel}`);
+      if (entryBankName && entryBankName !== "-") {
+        parts.push(`Bank: ${entryBankName}`);
+      }
+      if (entryReference && entryReference !== "-") {
+        parts.push(`Reference: ${entryReference}`);
+      }
+      parts.push(`Amount: ${formatNotificationCurrency(entryAmt, currency)}`);
+    });
+  }
+
+  if (receiptUrl) {
+    parts.push("");
+    parts.push(`Download Receipt PDF: ${receiptUrl}`);
+  }
+
+  parts.push("");
+  parts.push("Regards,");
+  parts.push("Holiday Circuit Finance Team");
+
+  return parts.filter((p) => typeof p === "string").join("\n");
+};
 
 const formatInternalInvoiceRow = (invoice, quotation) => ({
   id: invoice._id,
@@ -2902,6 +3107,7 @@ const formatPaymentVerificationRow = (invoice) => {
       invoice.agent?.name ||
       "-",
     agentEmail: invoice.agent?.email || "",
+    agentPhone: invoice.agent?.phone || "",
     amount: expectedAmount,
     opsInvoiceAmount,
     expectedAmount,
@@ -6232,7 +6438,7 @@ export const sendPaymentReceiptToAgent = async (req, res, next) => {
 
     const invoice = await Invoice.findById(id)
       .populate("query", "queryId destination startDate endDate numberOfAdults numberOfChildren travelerDetails clientEmail")
-      .populate("agent", "name companyName email");
+      .populate("agent", "name companyName email phone");
 
     if (!invoice) {
       return next(new ApiError(404, "Invoice not found"));
@@ -6354,7 +6560,10 @@ export const sendPaymentReceiptToAgent = async (req, res, next) => {
       ),
     });
 
-    const serverBaseUrl = `${req.protocol}://${req.get("host")}`;
+    let serverBaseUrl = process.env.BACKEND_URL || `${req.protocol}://${req.get("host")}`;
+    if (serverBaseUrl.includes("localhost")) {
+      serverBaseUrl = serverBaseUrl.replace("localhost", "127.0.0.1");
+    }
     const receiptUrl = `${serverBaseUrl}${receiptPdf.publicFilePath}`;
     let dispatchResult = {
       channel: normalizedDispatchChannel,
@@ -6415,6 +6624,17 @@ export const sendPaymentReceiptToAgent = async (req, res, next) => {
           currency: invoice.currency || invoice.pricingSnapshot?.currency || "INR",
           receiptUrl,
           receiptTitle,
+          trackerPayments: trackerPayments.filter(
+            (entry) => String(entry?.verificationStatus || "").trim() === "Verified"
+          ),
+          selectedInstallment,
+          destination: invoice.query?.destination || invoice.tripSnapshot?.destination || "",
+          guestDetails: travelerSummary || clientName,
+          startDate: invoice.query?.startDate || invoice.tripSnapshot?.startDate || null,
+          endDate: invoice.query?.endDate || invoice.tripSnapshot?.endDate || null,
+          creditAccount: "Leela Travels",
+          bankName: selectedInstallment?.bankName || invoice.paymentSubmission?.bankName || "",
+          referenceId: selectedInstallment?.utrNumber || invoice.paymentSubmission?.utrNumber || "",
         }),
       };
     }
@@ -6489,7 +6709,7 @@ export const verifyPaymentTrackerInstallment = async (req, res, next) => {
 
     const invoice = await Invoice.findById(id)
       .populate("query", "queryId destination startDate endDate numberOfAdults numberOfChildren travelerDetails clientEmail")
-      .populate("agent", "name companyName email");
+      .populate("agent", "name companyName email phone");
 
     if (!invoice) {
       return next(new ApiError(404, "Invoice not found"));
@@ -6767,7 +6987,10 @@ export const updateInternalInvoiceStatus = async (req, res, next) => {
       });
       await invoice.save();
 
-      const serverBaseUrl = `${req.protocol}://${req.get("host")}`;
+      let serverBaseUrl = process.env.BACKEND_URL || `${req.protocol}://${req.get("host")}`;
+      if (serverBaseUrl.includes("localhost")) {
+        serverBaseUrl = serverBaseUrl.replace("localhost", "127.0.0.1");
+      }
       const receiptUrl = `${serverBaseUrl}${payoutReceipt.publicFilePath}`;
 
       if (normalizedDispatchChannel === "EMAIL") {
@@ -6823,9 +7046,22 @@ export const updateInternalInvoiceStatus = async (req, res, next) => {
               "Partner",
             invoiceNumber: invoice.invoiceNumber,
             queryCode: invoice.query?.queryId || invoice.queryCode || invoice.batchNumber || "",
-            payoutAmount: invoice.payoutAmount || invoice.summary?.grandTotal || 0,
+            payoutAmount: currentInst ? currentInst.amount : invoice.payoutAmount,
+            cumulativePaid: invoice.payoutAmount,
+            remainingAmount: Math.max(0, totalExpected - invoice.payoutAmount),
             currency: invoice.items?.[0]?.currency || "INR",
             receiptUrl,
+            payoutInstallments: invoice.payoutInstallments,
+            currentInstallment: currentInst,
+            destination: invoice.query?.destination || invoice.destination || (isSettlementBatch ? "Bulk Settlement" : ""),
+            guestDetails: [
+              Number(invoice.query?.numberOfAdults || 0) > 0 ? `${invoice.query.numberOfAdults} Adults` : "",
+              Number(invoice.query?.numberOfChildren || 0) > 0 ? `${invoice.query.numberOfChildren} Children` : "",
+            ].filter(Boolean).join(" - "),
+            startDate: invoice.query?.startDate || null,
+            endDate: invoice.query?.endDate || null,
+            bankName: currentInst ? currentInst.bankName : invoice.payoutBank || "",
+            referenceId: currentInst ? currentInst.utrNumber : invoice.payoutReference || "",
           }),
         };
       } else if (normalizedDispatchChannel === "PDF") {

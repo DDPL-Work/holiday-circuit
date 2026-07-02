@@ -36,10 +36,10 @@ const ensureDir = (dirPath) => {
   return dirPath;
 };
 
-const ensureUploadsDir = () => ensureDir(path.join(process.cwd(), "uploads", "payout-receipts"));
+const ensureUploadsDir = () => ensureDir(path.join(process.cwd(), "uploads", "payoutreceipts"));
 
 const ensureAgentReceiptUploadsDir = () =>
-  ensureDir(path.join(process.cwd(), "uploads", "agent-payment-receipts"));
+  ensureDir(path.join(process.cwd(), "uploads", "agentreceipts"));
 
 const formatDateLabel = (value) => {
   if (!value) return "-";
@@ -58,7 +58,7 @@ const formatCurrency = (value, currency = "INR") =>
     maximumFractionDigits: 2,
   })}`;
 
-const numberToWords = (num) => {
+export const numberToWords = (num) => {
   if (!num || Number.isNaN(Number(num))) return "";
   const ones = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"];
   const tens = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
@@ -287,10 +287,10 @@ export const generatePayoutReceiptPdf = async ({
   totalAmount = 0,
 }) => {
   const dirPath = ensureUploadsDir();
-  const sanitizedInvoiceNumber = String(invoiceNumber || queryCode || "receipt").replace(/[^a-zA-Z0-9-_]/g, "");
-  const fileName = `DMC_Payout_Receipt_${sanitizedInvoiceNumber}.pdf`;
+  const sanitizedInvoiceNumber = String(invoiceNumber || queryCode || "receipt").replace(/[^a-zA-Z0-9]/g, "");
+  const fileName = `DmcPayoutReceipt${sanitizedInvoiceNumber}.pdf`;
   const absoluteFilePath = path.join(dirPath, fileName);
-  const publicFilePath = `/uploads/payout-receipts/${fileName}`;
+  const publicFilePath = `/uploads/payoutreceipts/${fileName}`;
 
   const doc = new PDFDocument({ margin: 34, size: "A4" });
   const stream = fs.createWriteStream(absoluteFilePath);
@@ -451,11 +451,11 @@ export const generateAgentPaymentReceiptPdf = async ({
   trackerPayments = [],
 }) => {
   const dirPath = ensureAgentReceiptUploadsDir();
-  const sanitizedInvoiceNumber = String(invoiceNumber || queryCode || "receipt").replace(/[^a-zA-Z0-9-_]/g, "");
-  const uniqueSuffix = new Date(generatedAt || new Date()).toISOString().replace(/[:.]/g, "-");
-  const fileName = `Agent_Payment_Receipt_${sanitizedInvoiceNumber}_${uniqueSuffix}.pdf`;
+  const sanitizedInvoiceNumber = String(invoiceNumber || queryCode || "receipt").replace(/[^a-zA-Z0-9]/g, "");
+  const uniqueSuffix = new Date(generatedAt || new Date()).getTime();
+  const fileName = `AgentPaymentReceipt${sanitizedInvoiceNumber}${uniqueSuffix}.pdf`;
   const absoluteFilePath = path.join(dirPath, fileName);
-  const publicFilePath = `/uploads/agent-payment-receipts/${fileName}`;
+  const publicFilePath = `/uploads/agentreceipts/${fileName}`;
 
   const doc = new PDFDocument({ margin: 34, size: "A4" });
   const stream = fs.createWriteStream(absoluteFilePath);
