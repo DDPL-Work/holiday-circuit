@@ -90,17 +90,22 @@ const resolveTransportConfig = async () => {
     return config;
   }
 
-  const addresses = await dns.promises.resolve4(host);
-  const ipv4Address = addresses.find(Boolean);
-  if (!ipv4Address) {
+  try {
+    const addresses = await dns.promises.resolve4(host);
+    const ipv4Address = addresses.find(Boolean);
+    if (!ipv4Address) {
+      return config;
+    }
+
+    return {
+      ...config,
+      host: ipv4Address,
+      servername: config.servername || host,
+    };
+  } catch (dnsError) {
+    console.warn("SMTP DNS resolution failed, falling back to hostname:", dnsError);
     return config;
   }
-
-  return {
-    ...config,
-    host: ipv4Address,
-    servername: config.servername || host,
-  };
 };
 
 const getMailConfigError = () => {
