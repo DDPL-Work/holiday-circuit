@@ -377,8 +377,6 @@ const StatusBadge = ({ status }) => {
   );
 };
 
-
-
 const PaymentTrackerModal = ({
   payment,
   onClose,
@@ -414,7 +412,7 @@ const PaymentTrackerModal = ({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/60 px-4 py-5 backdrop-blur-sm"
+      className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/70 px-4 py-5 backdrop-blur-sm"
       onClick={onClose}
     >
       <motion.div
@@ -423,9 +421,9 @@ const PaymentTrackerModal = ({
         exit={{ scale: 0.96, opacity: 0, y: 12 }}
         transition={{ duration: 0.2, ease: "easeOut" }}
         onClick={(event) => event.stopPropagation()}
-        className="flex max-h-[94vh] w-full max-w-[78rem] flex-col overflow-hidden rounded-[19px] bg-white shadow-[0_40px_100px_rgba(15,23,42,0.28)]"
+        className="flex max-h-[94vh] w-full max-w-[78rem] flex-col overflow-hidden rounded-[19px] bg-white border border-slate-100 shadow-[0_24px_70px_rgba(15,23,42,0.3)]"
       >
-        <div className="flex items-start justify-between bg-gradient-to-r from-slate-900 via-[#163B72] to-[#1e3a8a] px-6 py-4">
+        <div className="flex items-start justify-between bg-gradient-to-r from-[#0d1b2a] via-[#1b263b] to-[#415a77] px-6 py-5 border-b border-white/10">
           <div className="min-w-0">
             <span className="inline-block rounded-full bg-white/16 px-3 py-1 text-[9px] font-bold uppercase tracking-[0.18em] text-white">
               Payment Tracker
@@ -469,11 +467,10 @@ const PaymentTrackerModal = ({
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div className="group relative overflow-hidden rounded-2xl border border-slate-200 bg-white px-4 py-3 text-center shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
               <div className="mb-1.5 flex items-center justify-center gap-1.5 text-slate-400">
-                <DollarSign className="h-3.5 w-3.5" />
+                <IndianRupee className="h-3.5 w-3.5" />
                 <p className="text-[10px] font-bold uppercase tracking-[0.18em]">Total</p>
               </div>
               <p className="text-[1.08rem] font-semibold leading-none text-slate-800">{formatCurrency(totalAmount)}</p>
-              <div className="absolute bottom-0 left-0 h-[3px] w-0 rounded-full bg-slate-700 transition-all duration-300 group-hover:w-full" />
             </div>
             <div className="group relative overflow-hidden rounded-2xl border border-emerald-100 bg-white px-4 py-3 text-center shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
               <div className="mb-1.5 flex items-center justify-center gap-1.5 text-emerald-500">
@@ -481,7 +478,6 @@ const PaymentTrackerModal = ({
                 <p className="text-[10px] font-bold uppercase tracking-[0.18em]">Paid</p>
               </div>
               <p className="text-[1.08rem] font-semibold leading-none text-emerald-600">{formatCurrency(paidAmount)}</p>
-              <div className="absolute bottom-0 left-0 h-[3px] w-0 rounded-full bg-emerald-500 transition-all duration-300 group-hover:w-full" />
             </div>
             <div className="group relative overflow-hidden rounded-2xl border border-amber-100 bg-white px-4 py-3 text-center shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
               <div className="mb-1.5 flex items-center justify-center gap-1.5 text-amber-500">
@@ -489,7 +485,6 @@ const PaymentTrackerModal = ({
                 <p className="text-[10px] font-bold uppercase tracking-[0.18em]">Remaining</p>
               </div>
               <p className="text-[1.08rem] font-semibold leading-none text-amber-600">{formatCurrency(remainingAmount)}</p>
-              <div className="absolute bottom-0 left-0 h-[3px] w-0 rounded-full bg-amber-500 transition-all duration-300 group-hover:w-full" />
             </div>
           </div>
         </div>
@@ -525,7 +520,11 @@ const PaymentTrackerModal = ({
                               <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                             </svg>
                           </div>
-                          <div className="rounded-2xl border border-slate-100 bg-white px-4 py-3 shadow-sm">
+                          <div className={`rounded-2xl border px-4 py-3 shadow-sm transition-all duration-300 ${
+                            isInstallmentVerified
+                              ? "border-emerald-100 bg-gradient-to-br from-emerald-50/30 via-white to-emerald-50/10"
+                              : "border-amber-100 bg-gradient-to-br from-amber-50/30 via-white to-amber-50/10"
+                          }`}>
                             <div className="flex items-center justify-between gap-3">
                               <div className="flex items-center gap-2">
                                 <p className="text-[14px] font-semibold text-slate-700">Instalment {index + 1}</p>
@@ -555,7 +554,7 @@ const PaymentTrackerModal = ({
                                     className={`inline-flex cursor-pointer items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-semibold transition disabled:cursor-not-allowed ${
                                       isVerifyingThisInstallment || !canVerifyInstallments
                                         ? "cursor-not-allowed bg-slate-100 text-slate-400"
-                                        : "bg-emerald-600 text-white shadow-[0_8px_18px_rgba(5,150,105,0.22)] hover:bg-emerald-700"
+                                        : "bg-gradient-to-r from-emerald-500 to-teal-650 text-white shadow-[0_8px_18px_rgba(16,185,129,0.22)] hover:from-emerald-600 hover:to-teal-700"
                                     }`}
                                   >
                                     <CheckCircle2 className="h-3.5 w-3.5" />
@@ -570,8 +569,8 @@ const PaymentTrackerModal = ({
                                     sendingAgentReceipt
                                       ? "cursor-not-allowed bg-slate-100 text-slate-400"
                                       : isInstallmentVerified
-                                        ? "bg-indigo-600 text-white shadow-[0_8px_18px_rgba(79,70,229,0.24)] hover:bg-indigo-700"
-                                        : "bg-amber-100 text-amber-700 hover:bg-amber-200"
+                                        ? "bg-gradient-to-r from-indigo-500 to-violet-600 text-white shadow-[0_8px_18px_rgba(79,70,229,0.24)] hover:from-indigo-600 hover:to-violet-700"
+                                        : "bg-gradient-to-r from-amber-100 to-orange-100/90 text-amber-800 shadow-[0_4px_10px_rgba(245,158,11,0.12)] hover:from-amber-200 hover:to-orange-200/90"
                                   }`}
                                 >
                                   <Send className="h-3 w-3" />
@@ -616,10 +615,10 @@ const PaymentTrackerModal = ({
                         )}
                       </div>
                       <div
-                        className={`ml-3 rounded-2xl border px-4 py-3 ${
+                        className={`ml-3 rounded-2xl border px-4 py-3 transition-all duration-300 ${
                           isComplete
-                            ? "border-emerald-100 bg-emerald-50"
-                            : "border-dashed border-amber-200 bg-amber-50"
+                            ? "border-emerald-200 bg-gradient-to-br from-emerald-50 to-teal-50/60"
+                            : "border-dashed border-amber-300 bg-gradient-to-br from-amber-50 via-white to-orange-50/60"
                         }`}
                       >
                         <div className="flex items-center justify-between gap-3">
@@ -638,7 +637,7 @@ const PaymentTrackerModal = ({
                         <div className="absolute left-[-34.5px] top-20 flex h-5 w-5 items-center justify-center rounded-full bg-[#5b5ff8] shadow-sm">
                           <Send className="h-2.5 w-2.5 translate-x-[1px] translate-y-[0.5px] text-white" />
                         </div>
-                        <div className="group relative ml-3 overflow-hidden rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50 to-white px-4 py-3 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
+                        <div className="group relative ml-3 overflow-hidden rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50/80 via-white to-indigo-50/30 px-4 py-3.5 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
                           <div className="flex items-start justify-between gap-3">
                             <div>
                               <p className="text-[14px] font-semibold text-indigo-700">Send latest payment receipt</p>
@@ -658,8 +657,8 @@ const PaymentTrackerModal = ({
                               sendingAgentReceipt
                                 ? "cursor-not-allowed border border-slate-200 bg-slate-100 text-slate-400"
                                 : canSendAgentReceipt
-                                  ? "border border-indigo-200 bg-indigo-600 text-white shadow-[0_10px_24px_rgba(79,70,229,0.28)] hover:bg-indigo-700 hover:shadow-[0_12px_28px_rgba(79,70,229,0.35)]"
-                                  : "border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100"
+                                  ? "bg-gradient-to-r from-indigo-500 via-indigo-650 to-violet-600 text-white shadow-[0_8px_22px_rgba(79,70,229,0.32)] hover:from-indigo-600 hover:via-indigo-700 hover:to-violet-700"
+                                  : "border border-amber-200 bg-gradient-to-r from-amber-50 to-orange-50/80 text-amber-700 hover:from-amber-100 hover:to-orange-100/80 shadow-sm"
                             }`}
                           >
                             <Send className={`h-3.5 w-3.5 ${sendingAgentReceipt ? "animate-pulse" : ""}`} />
@@ -672,7 +671,6 @@ const PaymentTrackerModal = ({
                            Once the latest installment is verified, the receipt modal will open automatically. You can add the agent’s email in the email modal.
                             </p>
                           ) : null}
-                          <div className="absolute bottom-0 left-0 h-[3px] w-0 rounded-full bg-indigo-500 transition-all duration-300 group-hover:w-full" />
                         </div>
                       </div>
                     ) : null}
@@ -680,8 +678,6 @@ const PaymentTrackerModal = ({
                 </div>
               )}
             </div>
-
-
 
             <div>
               <div className="rounded-[24px] border border-slate-200 bg-gradient-to-br from-slate-50 via-white to-cyan-50/50 px-4 py-4 shadow-sm">
@@ -718,7 +714,7 @@ const PaymentTrackerModal = ({
                       />
                     </svg>
                     <div className="absolute inset-0 flex flex-col items-center justify-center text-center transition-all duration-300 group-hover:scale-95 group-hover:opacity-0">
-                      <p className="text-[1.1rem] font-semibold leading-none text-slate-900">{formatCurrency(totalAmount)}</p>
+                      <p className="text-[1.25rem] font-bold leading-none text-slate-900">{formatCurrency(totalAmount)}</p>
                       <p className="mt-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                         Total amount
                       </p>
@@ -739,32 +735,33 @@ const PaymentTrackerModal = ({
                       {/* Total paid */}
                       <div className="relative">
                         <div className="absolute left-[-21px] top-1/2 -translate-y-1/2 h-2.5 w-2.5 rounded-full bg-[#5b5ff8] ring-[3px] ring-slate-50" />
-                        <div className="group relative overflow-hidden rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
+                        <div className="group relative overflow-hidden rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50/50 via-white to-indigo-50/10 px-4 py-3 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
                           <p className="text-[12px] font-semibold text-slate-500">Total paid</p>
                           <p className="mt-0.5 text-[1.05rem] font-semibold text-slate-900">{formatCurrency(paidAmount)}</p>
-                          <div className="absolute bottom-0 left-0 h-[3px] w-0 rounded-full bg-[#5b5ff8] transition-all duration-300 group-hover:w-full" />
                         </div>
                       </div>
 
                       {/* Remaining */}
                       <div className="relative">
                         <div className="absolute left-[-21px] top-1/2 -translate-y-1/2 h-2.5 w-2.5 rounded-full bg-slate-300 ring-[3px] ring-slate-50" />
-                        <div className="group relative overflow-hidden rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
+                        <div className="group relative overflow-hidden rounded-2xl border border-amber-100 bg-gradient-to-br from-amber-50/30 via-white to-amber-50/10 px-4 py-3 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
                           <p className="text-[12px] font-semibold text-slate-500">Remaining</p>
                           <p className="mt-0.5 text-[1.05rem] font-semibold text-slate-900">{formatCurrency(remainingAmount)}</p>
-                          <div className="absolute bottom-0 left-0 h-[3px] w-0 rounded-full bg-slate-400 transition-all duration-300 group-hover:w-full" />
                         </div>
                       </div>
 
                       {/* Status */}
                       <div className="relative">
                         <div className={`absolute left-[-21px] top-1/2 -translate-y-1/2 h-2.5 w-2.5 rounded-full ring-[3px] ring-slate-50 ${isComplete ? "bg-emerald-500" : "bg-amber-400"}`} />
-                        <div className="group relative overflow-hidden rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
+                        <div className={`group relative overflow-hidden rounded-2xl border px-4 py-3 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${
+                          isComplete
+                            ? "border-emerald-100 bg-gradient-to-br from-emerald-50/30 via-white to-emerald-50/10"
+                            : "border-amber-100 bg-gradient-to-br from-amber-50/30 via-white to-amber-50/10"
+                        }`}>
                           <p className="text-[12px] font-semibold text-slate-500">Status</p>
                           <p className={`mt-0.5 text-[1.05rem] font-semibold ${isComplete ? "text-emerald-600" : "text-amber-600"}`}>
                             {isComplete ? "Fully Paid" : "Partially Paid"}
                           </p>
-                          <div className={`absolute bottom-0 left-0 h-[3px] w-0 rounded-full transition-all duration-300 group-hover:w-full ${isComplete ? "bg-emerald-500" : "bg-amber-400"}`} />
                         </div>
                       </div>
 
