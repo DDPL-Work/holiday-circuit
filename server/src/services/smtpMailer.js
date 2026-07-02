@@ -90,17 +90,22 @@ const resolveTransportConfig = async () => {
     return config;
   }
 
-  const addresses = await dns.promises.resolve4(host);
-  const ipv4Address = addresses.find(Boolean);
-  if (!ipv4Address) {
+  try {
+    const addresses = await dns.promises.resolve4(host);
+    const ipv4Address = addresses.find(Boolean);
+    if (!ipv4Address) {
+      return config;
+    }
+
+    return {
+      ...config,
+      host: ipv4Address,
+      servername: config.servername || host,
+    };
+  } catch (dnsError) {
+    console.warn("SMTP DNS resolution failed, falling back to hostname:", dnsError);
     return config;
   }
-
-  return {
-    ...config,
-    host: ipv4Address,
-    servername: config.servername || host,
-  };
 };
 
 const getMailConfigError = () => {
@@ -189,15 +194,47 @@ export const getEmailDeliveryErrorMessage = (error) => {
   return rawMessage || "Email delivery failed due to an SMTP configuration issue.";
 };
 
+
 export const createTransporter = () => ({
   sendMail: async (mailOptions = {}) => {
-    const configError = getMailConfigError();
-    if (configError) {
-      throw configError;
-    }
+  console.log("sendMail() called");
+    try {
+      const configError = getMailConfigError();
 
-    const transport = nodemailer.createTransport(await resolveTransportConfig());
-    return transport.sendMail(mailOptions);
+      if (configError) {
+        throw configError;
+      }
+
+      const config = await resolveTransportConfig();
+
+      console.log("===== SMTP CONFIG =====");
+      console.log({
+        host: config.host,
+        port: config.port,
+        secure: config.secure,
+        service: config.service,
+        user: config.auth?.user,
+      });
+
+      const transport = nodemailer.createTransport(config);
+
+      const info = await transport.sendMail(mailOptions);
+
+      console.log("Mail Sent Successfully");
+      console.log(info);
+
+      return info;
+    } catch (error) {
+      console.error("========= SMTP ERROR =========");
+      console.error("Message:", error.message);
+      console.error("Code:", error.code);
+      console.error("Command:", error.command);
+      console.error("Response:", error.response);
+      console.error("Stack:", error.stack);
+      console.error("==============================");
+
+      throw error;
+    }
   },
 });
 
