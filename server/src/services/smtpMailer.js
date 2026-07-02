@@ -22,6 +22,11 @@ const normalizeTimeout = (value, fallback) => {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 };
 
+const normalizeIpFamily = (value, fallback = 4) => {
+  const parsed = Number(value);
+  return parsed === 4 || parsed === 6 ? parsed : fallback;
+};
+
 const buildTransportConfig = () => {
   const service =
     String(process.env.SMTP_SERVICE || "").trim() ||
@@ -46,12 +51,14 @@ const buildTransportConfig = () => {
 
   const sendTimeout = normalizeTimeout(process.env.MAIL_SEND_TIMEOUT_MS, 15000);
   const socketTimeout = normalizeTimeout(process.env.MAIL_SOCKET_TIMEOUT_MS, 20000);
+  const ipFamily = normalizeIpFamily(process.env.SMTP_FAMILY || process.env.EMAIL_FAMILY, 4);
 
   const config = {
     auth: user || pass ? { user, pass } : undefined,
     connectionTimeout: sendTimeout,
     greetingTimeout: sendTimeout,
     socketTimeout,
+    family: ipFamily,
   };
 
   if (service) {
@@ -118,6 +125,7 @@ export const getEmailDeliveryErrorMessage = (error) => {
   if (
     normalized.includes("enotfound") ||
     normalized.includes("eai_again") ||
+    normalized.includes("enetunreach") ||
     normalized.includes("connection timeout") ||
     normalized.includes("timed out")
   ) {
