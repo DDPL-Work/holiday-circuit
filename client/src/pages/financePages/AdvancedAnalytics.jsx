@@ -336,6 +336,64 @@ const getChecklistQueryKey = (record = {}) =>
     '',
   ).trim();
 
+const normalizeStatsQueryKey = (value) => {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'object') {
+    return normalizeStatsQueryKey(value._id || value.id || value.queryId || value.queryCode || '');
+  }
+
+  const key = String(value).trim();
+  return key && key !== '[object Object]' ? key : '';
+};
+
+const addStatsQueryKey = (set, value) => {
+  const key = normalizeStatsQueryKey(value);
+  if (key) set.add(key);
+};
+
+const addStatsItemQueryKeys = (set, item = {}) => {
+  addStatsQueryKey(set, item.query);
+  addStatsQueryKey(set, item.query?._id);
+  addStatsQueryKey(set, item.query?.queryId);
+  addStatsQueryKey(set, item.queryCode);
+  addStatsQueryKey(set, item.queryId);
+};
+
+const getStatsRecordQueryKeys = (record = {}) => {
+  const keys = new Set();
+
+  addStatsQueryKey(keys, record.query);
+  addStatsQueryKey(keys, record.query?._id);
+  addStatsQueryKey(keys, record.query?.queryId);
+  addStatsQueryKey(keys, record.queryCode);
+  addStatsQueryKey(keys, record.queryId);
+  addStatsQueryKey(keys, record.queryId?._id);
+  addStatsQueryKey(keys, record.queryId?.queryId);
+  addStatsQueryKey(keys, record.tripSnapshot?.queryId);
+
+  (record.coveredQueries || []).forEach((covered) => addStatsItemQueryKeys(keys, covered));
+  (record.items || []).forEach((item) => addStatsItemQueryKeys(keys, item));
+
+  return keys;
+};
+
+const getStatsBulkChildQueryKeys = (invoice = {}) => {
+  const keys = new Set();
+  (invoice.coveredQueries || []).forEach((covered) => addStatsItemQueryKeys(keys, covered));
+  (invoice.items || []).forEach((item) => addStatsItemQueryKeys(keys, item));
+
+  if (!keys.size) {
+    getStatsRecordQueryKeys(invoice).forEach((key) => keys.add(key));
+  }
+
+  return keys;
+};
+
+const statsRecordMatchesQueryKeys = (record = {}, allowedKeys = new Set()) => {
+  if (!allowedKeys.size) return false;
+  return Array.from(getStatsRecordQueryKeys(record)).some((key) => allowedKeys.has(key));
+};
+
 const isClientApprovedChecklistRecord = (record = {}) => {
   const query = record.query || record.queryId || {};
   return (
@@ -2013,6 +2071,9 @@ const defaultAnalytics = {
   invoices: [],
   quotations: [],
   internalInvoices: [],
+  profitAgentInvoices: [],
+  profitInternalInvoices: [],
+  bulkProfitSummaries: [],
 };
 
 const getParticipantDisplayName = (participant = {}) =>
@@ -3142,6 +3203,27 @@ const AdvancedAnalytics = () => {
     );
   }, [statsModalMonth, analyticsData.invoices, isStatsYearlyView, statsModalYear, getYearMonthFromLabel]);
 
+  const statsProfitTravelInvoices = useMemo(() => {
+    const profitInvoices = Array.isArray(analyticsData.profitAgentInvoices)
+      ? analyticsData.profitAgentInvoices
+      : [];
+    const merged = new Map();
+
+    [...(analyticsData.invoices || []), ...profitInvoices].forEach((invoice) => {
+      const key = invoice._id || invoice.invoiceNumber || invoice.query?.queryId || JSON.stringify(invoice);
+      merged.set(key, invoice);
+    });
+
+    const invoices = Array.from(merged.values());
+    if (!statsModalMonth) return [];
+    if (isStatsYearlyView) {
+      return invoices.filter((invoice) => hasTravelInYear(invoice, statsModalYear));
+    }
+
+    const targetYearMonth = getYearMonthFromLabel(statsModalMonth);
+    return invoices.filter((invoice) => hasTravelInMonth(invoice, targetYearMonth));
+  }, [statsModalMonth, analyticsData.invoices, analyticsData.profitAgentInvoices, isStatsYearlyView, statsModalYear, getYearMonthFromLabel]);
+
   const statsTravelInternalInvoices = useMemo(() => {
     if (!statsModalMonth || !analyticsData.internalInvoices) return [];
     if (isStatsYearlyView) {
@@ -3154,6 +3236,21 @@ const AdvancedAnalytics = () => {
       hasTravelInMonth(invoice, targetYearMonth)
     );
   }, [statsModalMonth, analyticsData.internalInvoices, isStatsYearlyView, statsModalYear, getYearMonthFromLabel]);
+
+  const statsProfitTravelInternalInvoices = useMemo(() => {
+    const profitInternalInvoices = Array.isArray(analyticsData.profitInternalInvoices)
+      ? analyticsData.profitInternalInvoices
+      : [];
+    const source = profitInternalInvoices.length ? profitInternalInvoices : (analyticsData.internalInvoices || []);
+
+    if (!statsModalMonth) return [];
+    if (isStatsYearlyView) {
+      return source.filter((invoice) => hasTravelInYear(invoice, statsModalYear));
+    }
+
+    const targetYearMonth = getYearMonthFromLabel(statsModalMonth);
+    return source.filter((invoice) => hasTravelInMonth(invoice, targetYearMonth));
+  }, [statsModalMonth, analyticsData.internalInvoices, analyticsData.profitInternalInvoices, isStatsYearlyView, statsModalYear, getYearMonthFromLabel]);
 
   const availableAgents = useMemo(() => {
     const participants = analyticsData.participants?.agents || [];
@@ -3328,13 +3425,48 @@ const AdvancedAnalytics = () => {
           return { total, paid, pending, rate };
         }
       } else {
-        const invoice = filteredTravelStatsInternalInvoices.find(inv => (inv.query?.queryId || inv.queryCode || inv._id) === activeId);
-        if (invoice) {
-          const total = Number(invoice.payoutAmount || invoice.summary?.grandTotal || 0);
-          const paid = getDmcPaidAmount(invoice);
+        // Check if the activeId is a bulk invoice ID
+        const selectedBulkInvoice = filteredTravelStatsInternalInvoices.find(
+          inv => inv._id === activeId && (inv.settlementType === "bulk" || (inv.coveredQueries && inv.coveredQueries.length > 0))
+        );
+
+        if (selectedBulkInvoice) {
+          const total = Number(selectedBulkInvoice.summary?.grandTotal || selectedBulkInvoice.claimedSummary?.grandTotal || selectedBulkInvoice.payoutAmount || 0);
+          const paid = getDmcPaidAmount(selectedBulkInvoice);
           const pending = Math.max(0, total - paid);
           const rate = total ? (paid / total) * 100 : 0;
           return { total, paid, pending, rate };
+        } else {
+          const invoice = filteredTravelStatsInternalInvoices.find(inv => (inv.query?.queryId || inv.queryCode || inv._id) === activeId);
+          if (invoice) {
+            if (invoice.settlementType === "bulk" || (invoice.coveredQueries && invoice.coveredQueries.length > 0)) {
+              const queryItems = (invoice.items || []).filter(item =>
+                (item.query?.queryId || item.queryCode || item.query) === activeId || String(item.query) === String(activeId)
+              );
+              const sub = queryItems.reduce((s, item) => s + Number(item.subtotal || 0), 0);
+              const tax = queryItems.reduce((s, item) => s + Number(item.tax || 0), 0);
+              const rawItemTotal = sub + tax;
+
+              const totalExpected = Number(invoice.summary?.grandTotal || invoice.claimedSummary?.grandTotal || invoice.payoutAmount || 0);
+              const itemsTotal = (invoice.items || []).reduce((s, it) => s + Number(it.subtotal || 0) + Number(it.tax || 0), 0);
+              
+              let total = rawItemTotal;
+              if (itemsTotal > 0) {
+                total = rawItemTotal * (totalExpected / itemsTotal);
+              }
+              const dmcPaid = getDmcPaidAmount(invoice);
+              const paid = totalExpected > 0 ? total * (dmcPaid / totalExpected) : 0;
+              const pending = Math.max(0, total - paid);
+              const rate = total ? (paid / total) * 100 : 0;
+              return { total, paid, pending, rate };
+            } else {
+              const total = Number(invoice.summary?.grandTotal || invoice.claimedSummary?.grandTotal || invoice.payoutAmount || 0);
+              const paid = getDmcPaidAmount(invoice);
+              const pending = Math.max(0, total - paid);
+              const rate = total ? (paid / total) * 100 : 0;
+              return { total, paid, pending, rate };
+            }
+          }
         }
       }
 
@@ -3350,15 +3482,45 @@ const AdvancedAnalytics = () => {
       });
     } else {
       filteredTravelStatsInternalInvoices.forEach(inv => {
-        total += Number(inv.payoutAmount || inv.summary?.grandTotal || 0);
-        paid += getDmcPaidAmount(inv);
+        if (inv.settlementType === "bulk" || (inv.coveredQueries && inv.coveredQueries.length > 0)) {
+          const queryItems = (inv.items || []).filter(item => {
+            const itemTravelDate = parseValidDate(item.query?.startDate || item.serviceDate || item.creditStartDate);
+            if (!itemTravelDate) return false;
+            if (isStatsYearlyView) {
+              return isDateInYear(itemTravelDate, statsModalYear);
+            } else {
+              const targetYearMonth = getYearMonthFromLabel(statsModalMonth);
+              return isDateInYearMonth(itemTravelDate, targetYearMonth);
+            }
+          });
+          const sub = queryItems.reduce((s, item) => s + Number(item.subtotal || 0), 0);
+          const tax = queryItems.reduce((s, item) => s + Number(item.tax || 0), 0);
+          const rawItemTotal = sub + tax;
+
+          const totalExpected = Number(inv.summary?.grandTotal || inv.claimedSummary?.grandTotal || inv.payoutAmount || 0);
+          const itemsTotal = (inv.items || []).reduce((s, it) => s + Number(it.subtotal || 0) + Number(it.tax || 0), 0);
+          
+          let rawTotal = rawItemTotal;
+          if (itemsTotal > 0) {
+            rawTotal = rawItemTotal * (totalExpected / itemsTotal);
+          }
+          const dmcPaid = getDmcPaidAmount(inv);
+          const rawPaid = totalExpected > 0 ? rawTotal * (dmcPaid / totalExpected) : 0;
+
+
+          total += rawTotal;
+          paid += rawPaid;
+        } else {
+          total += Number(inv.summary?.grandTotal || inv.claimedSummary?.grandTotal || inv.payoutAmount || 0);
+          paid += getDmcPaidAmount(inv);
+        }
       });
     }
     const pending = Math.max(0, total - paid);
     const rate = total ? (paid / total) * 100 : 0;
     const finalRate = rate > 100 ? 100 : rate;
     return { total, paid, pending, rate: finalRate };
-  }, [statsModalMode, statsSelectedQueries, filteredTravelStatsInvoices, filteredTravelStatsInternalInvoices]);
+  }, [statsModalMode, statsSelectedQueries, filteredTravelStatsInvoices, filteredTravelStatsInternalInvoices, isStatsYearlyView, statsModalYear, statsModalMonth, getYearMonthFromLabel]);
 
   const statsProfitSummary = useMemo(() => {
     const activeId = statsSelectedQueries.length > 0 ? statsSelectedQueries[0] : null;
@@ -3366,48 +3528,116 @@ const AdvancedAnalytics = () => {
     let revenueVal = 0;
     let costVal = 0;
 
-    if (activeId) {
-      const agentInvoice = filteredTravelStatsInvoices.find(inv => (inv.query?.queryId || inv._id) === activeId);
-      if (agentInvoice) {
-        revenueVal = getInvoiceTotalAmount(agentInvoice);
-      }
+    const agentProfitQueryKeys = filteredTravelStatsInvoices.reduce((keys, invoice) => {
+      getStatsRecordQueryKeys(invoice).forEach((key) => keys.add(key));
+      return keys;
+    }, new Set());
 
-      const dmcInvoices = filteredTravelStatsInternalInvoices.filter(inv => {
-        const isSingleMatch = (inv.query?.queryId || inv.queryCode || inv._id) === activeId;
-        const isBulkMatch = (inv.coveredQueries || []).some(q =>
-          (q.query?.queryId || q.queryCode || q.query) === activeId || String(q.query) === String(activeId)
-        );
-        return isSingleMatch || isBulkMatch;
-      });
+    const profitInternalInvoicesForCalc = statsModalMode === 'dmc'
+      ? statsSelectedDmc === 'all'
+        ? statsProfitTravelInternalInvoices
+        : statsProfitTravelInternalInvoices.filter((invoice) => {
+          const dmcName = invoice.dmc?.companyName || invoice.dmc?.name || invoice.dmcName;
+          return dmcName === statsSelectedDmc;
+        })
+      : filteredTravelStatsInternalInvoices.filter((invoice) =>
+        statsRecordMatchesQueryKeys(invoice, agentProfitQueryKeys)
+      );
 
-      dmcInvoices.forEach(inv => {
-        if (inv.settlementType === "bulk" || (inv.coveredQueries && inv.coveredQueries.length > 0)) {
-          const queryItems = (inv.items || []).filter(item =>
-            (item.query?.queryId || item.queryCode || item.query) === activeId || String(item.query) === String(activeId)
-          );
-          const sub = queryItems.reduce((s, item) => s + Number(item.subtotal || 0), 0);
-          const tax = queryItems.reduce((s, item) => s + Number(item.tax || 0), 0);
-          costVal += (sub + tax);
-        } else {
-          costVal += Number(
-            inv.summary?.grandTotal ||
-            inv.claimedSummary?.grandTotal ||
-            inv.payoutAmount ||
-            0
-          );
+    const bulkProfitSummaries = Array.isArray(analyticsData.bulkProfitSummaries)
+      ? analyticsData.bulkProfitSummaries
+      : [];
+
+    const getBulkProfitSummary = (invoice = {}) => bulkProfitSummaries.find((summary) => (
+      summary.id === invoice._id ||
+      summary.id === invoice.id ||
+      summary.batchNumber === invoice.batchNumber ||
+      summary.invoiceNumber === invoice.invoiceNumber
+    ));
+
+    const getBulkInvoiceCost = (invoice = {}, queryKey = null) => {
+      const totalExpected = Number(invoice.summary?.grandTotal || invoice.claimedSummary?.grandTotal || invoice.payoutAmount || 0);
+      const items = Array.isArray(invoice.items) ? invoice.items : [];
+      if (!queryKey || !items.length) return totalExpected;
+
+      const queryKeys = queryKey instanceof Set ? queryKey : new Set([queryKey]);
+      if (!queryKeys.size) return totalExpected;
+
+      const queryItems = items.filter((item) => statsRecordMatchesQueryKeys(item, queryKeys));
+      const rawItemTotal = queryItems.reduce((sum, item) => sum + Number(item.subtotal || 0) + Number(item.tax || 0), 0);
+      const itemsTotal = items.reduce((sum, item) => sum + Number(item.subtotal || 0) + Number(item.tax || 0), 0);
+
+      return itemsTotal > 0 ? rawItemTotal * (totalExpected / itemsTotal) : rawItemTotal;
+    };
+
+    const addAgentRevenueForKeys = (queryKeys = new Set()) => {
+      statsProfitTravelInvoices.forEach((invoice) => {
+        if (statsRecordMatchesQueryKeys(invoice, queryKeys)) {
+          revenueVal += getInvoiceTotalAmount(invoice);
         }
       });
-    } else {
-      filteredTravelStatsInvoices.forEach(inv => {
-        revenueVal += getInvoiceTotalAmount(inv);
+    };
+
+    if (activeId) {
+      const activeKeySet = new Set([activeId]);
+      const selectedBulkInvoice = profitInternalInvoicesForCalc.find(
+        (invoice) => invoice._id === activeId && (invoice.settlementType === "bulk" || (invoice.coveredQueries && invoice.coveredQueries.length > 0))
+      );
+
+      if (selectedBulkInvoice) {
+        const directSummary = getBulkProfitSummary(selectedBulkInvoice);
+        if (directSummary) {
+          revenueVal = Number(directSummary.agentRevenue || 0);
+          costVal = Number(directSummary.dmcCost || 0);
+        } else {
+          const bulkQueryKeys = getStatsBulkChildQueryKeys(selectedBulkInvoice);
+          addAgentRevenueForKeys(bulkQueryKeys);
+          costVal = getBulkInvoiceCost(selectedBulkInvoice);
+        }
+      } else {
+        const agentInvoice = statsProfitTravelInvoices.find((invoice) => statsRecordMatchesQueryKeys(invoice, activeKeySet));
+        if (agentInvoice) {
+          revenueVal = getInvoiceTotalAmount(agentInvoice);
+        }
+
+        const dmcInvoices = profitInternalInvoicesForCalc.filter((invoice) => statsRecordMatchesQueryKeys(invoice, activeKeySet));
+        dmcInvoices.forEach((invoice) => {
+          const isBulk = invoice.settlementType === "bulk" || (invoice.coveredQueries && invoice.coveredQueries.length > 0);
+          costVal += isBulk
+            ? getBulkInvoiceCost(invoice, activeId)
+            : Number(invoice.summary?.grandTotal || invoice.claimedSummary?.grandTotal || invoice.payoutAmount || 0);
+        });
+      }
+    } else if (statsModalMode === 'dmc') {
+      const revenueQueryKeys = new Set();
+
+      profitInternalInvoicesForCalc.forEach((invoice) => {
+        const isBulk = invoice.settlementType === "bulk" || (invoice.coveredQueries && invoice.coveredQueries.length > 0);
+        const directSummary = isBulk ? getBulkProfitSummary(invoice) : null;
+
+        if (directSummary) {
+          revenueVal += Number(directSummary.agentRevenue || 0);
+          costVal += Number(directSummary.dmcCost || 0);
+          return;
+        }
+
+        getStatsRecordQueryKeys(invoice).forEach((key) => revenueQueryKeys.add(key));
+        costVal += isBulk
+          ? getBulkInvoiceCost(invoice)
+          : Number(invoice.summary?.grandTotal || invoice.claimedSummary?.grandTotal || invoice.payoutAmount || 0);
       });
-      filteredTravelStatsInternalInvoices.forEach(inv => {
-        costVal += Number(
-          inv.summary?.grandTotal ||
-          inv.claimedSummary?.grandTotal ||
-          inv.payoutAmount ||
-          0
-        );
+
+      addAgentRevenueForKeys(revenueQueryKeys);
+    } else {
+      filteredTravelStatsInvoices.forEach((invoice) => {
+        revenueVal += getInvoiceTotalAmount(invoice);
+      });
+
+      profitInternalInvoicesForCalc.forEach((invoice) => {
+        const isBulk = invoice.settlementType === "bulk" || (invoice.coveredQueries && invoice.coveredQueries.length > 0);
+        costVal += isBulk
+          ? getBulkInvoiceCost(invoice, agentProfitQueryKeys)
+          : Number(invoice.summary?.grandTotal || invoice.claimedSummary?.grandTotal || invoice.payoutAmount || 0);
       });
     }
 
@@ -3420,8 +3650,7 @@ const AdvancedAnalytics = () => {
       profit: profitVal,
       margin: marginPercent
     };
-  }, [statsSelectedQueries, filteredTravelStatsInvoices, filteredTravelStatsInternalInvoices]);
-
+  }, [analyticsData.bulkProfitSummaries, statsSelectedQueries, statsModalMode, statsSelectedDmc, statsProfitTravelInvoices, statsProfitTravelInternalInvoices, filteredTravelStatsInvoices, filteredTravelStatsInternalInvoices]);
 
 
   const statsDailyChart = useMemo(() => {
@@ -3564,11 +3793,34 @@ const AdvancedAnalytics = () => {
           );
           if (!isSingleMatch && !isBulkMatch) return;
 
+          const isBulk = invoice.settlementType === "bulk" || (invoice.coveredQueries && invoice.coveredQueries.length > 0);
+          
+          let proportion = 1;
+          if (isBulk && !isSingleMatch) {
+            const queryItems = (invoice.items || []).filter(item =>
+              (item.query?.queryId || item.queryCode || item.query) === activeId || String(item.query) === String(activeId)
+            );
+            const sub = queryItems.reduce((s, item) => s + Number(item.subtotal || 0), 0);
+            const tax = queryItems.reduce((s, item) => s + Number(item.tax || 0), 0);
+            const rawItemTotal = sub + tax;
+
+            const totalExpected = Number(invoice.summary?.grandTotal || invoice.claimedSummary?.grandTotal || invoice.payoutAmount || 0);
+            const itemsTotal = (invoice.items || []).reduce((s, it) => s + Number(it.subtotal || 0) + Number(it.tax || 0), 0);
+            
+            let queryTotal = rawItemTotal;
+            if (itemsTotal > 0) {
+              queryTotal = rawItemTotal * (totalExpected / itemsTotal);
+            }
+            if (totalExpected > 0) {
+              proportion = queryTotal / totalExpected;
+            }
+          }
+
           getDmcPaymentEntries(invoice).forEach((entry) => {
             addSelectedPoint(
               selectedBuckets,
               entry.date || parseInternalInvoiceDate(invoice),
-              entry.amount,
+              entry.amount * proportion,
               buildPaymentDetail(invoice, entry.status)
             );
           });
@@ -3613,10 +3865,40 @@ const AdvancedAnalytics = () => {
       filteredTravelStatsInternalInvoices.forEach(invoice => {
         if (activeId && (invoice.query?.queryId || invoice.queryCode || invoice._id) !== activeId) return;
 
+        const isBulk = invoice.settlementType === "bulk" || (invoice.coveredQueries && invoice.coveredQueries.length > 0);
+
         getDmcPaymentEntries(invoice).forEach((entry) => {
+          let amount = entry.amount;
+          if (isBulk) {
+            const queryItems = (invoice.items || []).filter(item => {
+              const itemTravelDate = parseValidDate(item.query?.startDate || item.serviceDate || item.creditStartDate);
+              if (!itemTravelDate) return false;
+              if (isStatsYearlyView) {
+                return isDateInYear(itemTravelDate, statsModalYear);
+              } else {
+                const targetYearMonth = getYearMonthFromLabel(statsModalMonth);
+                return isDateInYearMonth(itemTravelDate, targetYearMonth);
+              }
+            });
+            const sub = queryItems.reduce((s, item) => s + Number(item.subtotal || 0), 0);
+            const tax = queryItems.reduce((s, item) => s + Number(item.tax || 0), 0);
+            const rawItemTotal = sub + tax;
+
+            const totalExpected = Number(invoice.summary?.grandTotal || invoice.claimedSummary?.grandTotal || invoice.payoutAmount || 0);
+            const itemsTotal = (invoice.items || []).reduce((s, it) => s + Number(it.subtotal || 0) + Number(it.tax || 0), 0);
+            
+            let queryTotal = rawItemTotal;
+            if (itemsTotal > 0) {
+              queryTotal = rawItemTotal * (totalExpected / itemsTotal);
+            }
+            if (totalExpected > 0) {
+              amount = entry.amount * (queryTotal / totalExpected);
+            }
+          }
+
           addDailyPoint(
             entry.date || parseInternalInvoiceDate(invoice),
-            entry.amount,
+            amount,
             buildPaymentDetail(invoice, entry.status)
           );
         });
@@ -3688,15 +3970,19 @@ const AdvancedAnalytics = () => {
     filteredTravelStatsInternalInvoices.forEach(inv => {
       if (!internalInvoiceMatchesQuery(inv)) return;
       if (inv.settlementType === "bulk" || (inv.coveredQueries && inv.coveredQueries.length > 0)) {
-        const queryItems = (inv.items || []).filter(item => {
-          if (!activeId) return true;
-          return (item.query?.queryId || item.queryCode || item.query) === activeId || String(item.query) === String(activeId);
+        const totalExpected = Number(inv.summary?.grandTotal || inv.claimedSummary?.grandTotal || inv.payoutAmount || 0);
+        const itemsTotal = (inv.items || []).reduce((s, it) => s + Number(it.subtotal || 0) + Number(it.tax || 0), 0);
+
+        (inv.items || []).forEach(item => {
+          if (activeId) {
+            const isMatch = (item.query?.queryId || item.queryCode || item.query) === activeId || String(item.query) === String(activeId);
+            if (!isMatch) return;
+          }
+          const amt = Number(item.subtotal || 0) + Number(item.tax || 0);
+          const scaledAmt = itemsTotal > 0 ? amt * (totalExpected / itemsTotal) : amt;
+          const date = parseValidDate(item.query?.startDate || item.serviceDate || item.creditStartDate);
+          addTrendPoint(date, dailyDmcCosts, scaledAmt);
         });
-        const sub = queryItems.reduce((s, item) => s + Number(item.subtotal || 0), 0);
-        const tax = queryItems.reduce((s, item) => s + Number(item.tax || 0), 0);
-        const amount = sub + tax;
-        const date = getPrimaryTravelDate({ items: queryItems });
-        addTrendPoint(date, dailyDmcCosts, amount);
       } else {
         const amt = Number(inv.summary?.grandTotal || inv.claimedSummary?.grandTotal || inv.payoutAmount || 0);
         const date = getPrimaryTravelDate(inv);
@@ -5409,11 +5695,15 @@ const AdvancedAnalytics = () => {
                             const queryId = invoice.query?.queryId || invoice.queryCode || invoice._id;
                             const isChecked = statsSelectedQueries.includes(queryId);
                             const paymentEntries = getDmcPaymentEntries(invoice);
-                            const amount = (
+                            const totalAmount = Number(invoice.summary?.grandTotal || invoice.claimedSummary?.grandTotal || invoice.payoutAmount || 0);
+                            const periodPaidAmount = (
                               isStatsYearlyView
                                 ? getPaymentAmountInYear(paymentEntries, statsModalYear)
                                 : getPaymentAmountInMonth(paymentEntries, statsPaymentYearMonth)
-                            ) || Number(invoice.payoutAmount || invoice.summary?.grandTotal || 0);
+                            );
+                            const paidAmount = Math.min(totalAmount, getDmcPaidAmount(invoice) || periodPaidAmount);
+                            const showPartialAmount = paidAmount > 0 && paidAmount < totalAmount;
+                            const amount = showPartialAmount ? paidAmount : (periodPaidAmount || totalAmount);
                             const destination = invoice.query?.destination || invoice.destination || "Bulk Settlement";
                             const travelDateLabel = getTravelDateLabel(invoice);
                             const status = invoice.status || "Submitted";
@@ -5459,11 +5749,19 @@ const AdvancedAnalytics = () => {
                                     )}
                                   </div>
                                   <div className="text-right shrink-0">
-                                    <p className="text-[11px] font-black text-slate-850 leading-tight">
-                                      ₹{formatPlainNumber(amount)}
-                                    </p>
+                                    {showPartialAmount ? (
+                                      <p className="text-[10px] font-black leading-tight whitespace-nowrap">
+                                        <span className="text-emerald-700">₹{formatPlainNumber(amount)}</span>
+                                        <span className="mx-0.5 text-slate-350">/</span>
+                                        <span className="text-slate-850">₹{formatPlainNumber(totalAmount)}</span>
+                                      </p>
+                                    ) : (
+                                      <p className="text-[11px] font-black text-slate-850 leading-tight">
+                                        ₹{formatPlainNumber(amount)}
+                                      </p>
+                                    )}
                                     <span className={`inline-block text-[8px] font-bold px-1.5 py-0.2 rounded border leading-none mt-0.5 ${statusBadge}`}>
-                                      {status}
+                                      {status.replace('_', ' ')}
                                     </span>
                                   </div>
                                 </div>

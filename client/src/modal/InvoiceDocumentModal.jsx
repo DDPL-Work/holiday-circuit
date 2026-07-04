@@ -14,6 +14,8 @@ import {
   Check,
   AlertCircle,
   Info,
+  Search,
+  Coins,
 } from 'lucide-react';
 import API from '../utils/Api';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -708,20 +710,36 @@ const InvoiceDocumentModal = ({ invoice, onClose, onInvoiceUpdated, sidePanelOpe
   const [feedback, setFeedback] = useState(null);
   const [isBankDropdownOpen, setIsBankDropdownOpen] = useState(false);
 
-  const [manualChecks, setManualChecks] = useState({
-    subtotal: 'pending',
-    tax: 'pending',
-    grandTotal: 'pending',
-    totalCheck: 'pending',
-  });
+  const getInitialCheckState = () => {
+    const isAlreadyVerified = 
+      invoice?.status === 'Partially Paid' || 
+      invoice?.status === 'Paid' || 
+      invoice?.status === 'Settled' ||
+      cumulativePaid > 0;
+      
+    return {
+      subtotal: isAlreadyVerified ? 'pass' : 'pending',
+      tax: isAlreadyVerified ? 'pass' : 'pending',
+      grandTotal: isAlreadyVerified ? 'pass' : 'pending',
+      totalCheck: isAlreadyVerified ? 'pass' : 'pending',
+    };
+  };
+
+  const [manualChecks, setManualChecks] = useState(() => getInitialCheckState());
 
   useEffect(() => {
-    setManualChecks({
-      subtotal: 'pending',
-      tax: 'pending',
-      grandTotal: 'pending',
-      totalCheck: 'pending',
-    });
+    setManualChecks(getInitialCheckState());
+  }, [invoice?._id, invoice?.status]);
+
+  const [showHelpPanel, setShowHelpPanel] = useState(false);
+
+  useEffect(() => {
+    setShowHelpPanel(false);
+    if (!invoice?._id) return;
+    const timer = setTimeout(() => {
+      setShowHelpPanel(true);
+    }, 1200);
+    return () => clearTimeout(timer);
   }, [invoice?._id]);
 
   const agreedRate =
@@ -1139,8 +1157,9 @@ const InvoiceDocumentModal = ({ invoice, onClose, onInvoiceUpdated, sidePanelOpe
               </div>
             </div>
           )}
-          <motion.div
-            initial={{ opacity: 0, y: 18 }}
+          <div className="relative my-auto">
+            <motion.div
+              initial={{ opacity: 0, y: 18 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 14 }}
             transition={{ duration: 0.24, ease: 'easeOut' }}
@@ -1165,12 +1184,23 @@ const InvoiceDocumentModal = ({ invoice, onClose, onInvoiceUpdated, sidePanelOpe
                   Invoice Source: {invoiceSourceLabel}
                 </span>
               </div>
-              <button
-                onClick={handleClose}
-                className="rounded-full p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
+              <div className="flex items-center gap-1 shrink-0">
+                <button
+                  onClick={() => setShowHelpPanel(!showHelpPanel)}
+                  className={`rounded-full p-1 transition-colors ${
+                    showHelpPanel ? "bg-blue-50 text-blue-600 hover:bg-blue-100" : "text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                  }`}
+                  title="Toggle Process Guidelines"
+                >
+                  <Info className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  onClick={handleClose}
+                  className="rounded-full p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
             </div>
 
             <div className="hide-scrollbar flex-1 space-y-3 overflow-y-auto px-3 py-3">
@@ -1810,6 +1840,71 @@ const InvoiceDocumentModal = ({ invoice, onClose, onInvoiceUpdated, sidePanelOpe
               </div>
             )}
           </motion.div>
+
+          {/* Floating Guide Help Card - placed outside the main card inside the relative wrapper sibling */}
+          <AnimatePresence>
+            {showHelpPanel && !(showDispatchModal || showRejectModal) && (
+              <motion.div
+                initial={{ opacity: 0, x: 25, scale: 0.95 }}
+                animate={{ opacity: 1, x: 0, scale: 1 }}
+                exit={{ opacity: 0, x: 25, scale: 0.95 }}
+                transition={{ duration: 0.25, ease: 'easeOut' }}
+                className="absolute top-12 bottom-4 w-[92%] max-w-[340px] left-1/2 -translate-x-1/2 z-[1000] flex flex-col rounded-[18px] border border-slate-200 bg-gradient-to-br from-blue-50/95 via-white/95 to-slate-50/95 backdrop-blur-sm p-4 shadow-xl select-none overflow-y-auto custom-scroll md:top-[85px] md:bottom-auto md:h-auto md:w-[280px] md:left-[calc(100%-65px)] md:translate-x-0 lg:left-[calc(100%-60px)]"
+              >
+                <div className="flex items-center justify-between border-b border-slate-100 pb-1.5 mb-2.5">
+                  <div className="flex items-center gap-1.5 text-blue-700">
+                    <Info size={13} className="animate-pulse" />
+                    <span className="text-[10px] font-bold uppercase tracking-wider">Desk Process Guide</span>
+                  </div>
+                  <button
+                    onClick={() => setShowHelpPanel(false)}
+                    className="rounded-full p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors"
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+
+                <div className="flex-1 space-y-3.5 text-[10px] leading-relaxed text-slate-600">
+                  <div>
+                    <h4 className="font-bold text-slate-800 mb-1 flex items-center gap-1.5">
+                      <Search size={11} className="text-blue-600 shrink-0" />
+                      <span>Rate Validation</span>
+                    </h4>
+                    <p>
+                      We match the <strong>Ops agreed rate</strong> against the <strong>DMC invoiced amount</strong>. 
+                      A green match indicates perfect pricing alignment. Verify any variance before settlement.
+                    </p>
+                  </div>
+
+                  <div>
+                    <h4 className="font-bold text-slate-800 mb-1 flex items-center gap-1.5">
+                      <FileText size={11} className="text-blue-600 shrink-0" />
+                      <span>Uploaded Amount Check</span>
+                    </h4>
+                    <p>
+                      Verify that the subtotal, taxes, and grand totals of the uploaded invoice match system records. 
+                      Ticking all checkbox checks is required before confirming payout.
+                    </p>
+                  </div>
+
+                  <div>
+                    <h4 className="font-bold text-slate-800 mb-1 flex items-center gap-1.5">
+                      <Coins size={11} className="text-blue-600 shrink-0" />
+                      <span>Installment/Chunk Payouts</span>
+                    </h4>
+                    <p>
+                      Payments can be paid in installments. You can modify the <strong>"Transfer Amount"</strong> field to pay in custom chunks. The remaining balance will update automatically.
+                    </p>
+                  </div>
+
+                  <div className="rounded-lg bg-blue-50/50 border border-blue-100 p-2 text-[9px] text-blue-700">
+                    <strong>Note:</strong> Check for specific discount values or other taxes applied by the DMC at the bottom of the invoice view.
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
 
           <AnimatePresence>
             {showRejectModal && (

@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import API from "../../utils/Api";
 import { AnimatePresence, motion } from "framer-motion";
+import FinanceOverdueAlertModal from "../../modal/FinanceOverdueAlertModal.jsx";
 
 const permissions = [
   "Verify agent payments",
@@ -153,6 +154,48 @@ const FinanceDashboard = () => {
   const [error, setError] = useState("");
   const [dashboardRangeError, setDashboardRangeError] = useState("");
   const [summaryRangeError, setSummaryRangeError] = useState("");
+  const [internalInvoices, setInternalInvoices] = useState([]);
+  const [showOverdueModal, setShowOverdueModal] = useState(false);
+
+  useEffect(() => {
+    const fetchInternalInvoicesForAlert = async () => {
+      const seen = sessionStorage.getItem("finance_popup_seen");
+      if (seen) return;
+
+      try {
+        const { data } = await API.get("/admin/internal-invoices");
+        const invoices = data?.data?.invoices || [];
+        setInternalInvoices(invoices);
+
+        const hasOverdueOrDueSoon = invoices.some((invoice) => {
+          const status = invoice.status;
+          if (status === "Paid" || status === "Settled" || status === "Rejected") return false;
+
+          const dueDateValue = invoice.dueDateValue || invoice.invoiceDateValue;
+          if (!dueDateValue) return false;
+
+          const targetDate = new Date(dueDateValue);
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          targetDate.setHours(0, 0, 0, 0);
+
+          const diffTime = targetDate - today;
+          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+          const creditPeriod = Number(invoice.creditPeriodDays || 7);
+
+          return diffDays < 0 || (diffDays >= 0 && diffDays <= creditPeriod);
+        });
+
+        if (hasOverdueOrDueSoon) {
+          setShowOverdueModal(true);
+        }
+      } catch (err) {
+        console.error("Failed to fetch internal invoices for alert popup:", err);
+      }
+    };
+
+    fetchInternalInvoicesForAlert();
+  }, []);
 
   useEffect(() => {
     const fetchDashboard = async () => {
@@ -632,6 +675,18 @@ const FinanceDashboard = () => {
           </div>
         </div>
       </div>
+      
+      <AnimatePresence>
+        {showOverdueModal && (
+          <FinanceOverdueAlertModal
+            onClose={() => {
+              setShowOverdueModal(false);
+              sessionStorage.setItem("finance_popup_seen", "true");
+            }}
+            invoices={internalInvoices}
+          />
+        )}
+      </AnimatePresence>
     </div>
   </div>
   );

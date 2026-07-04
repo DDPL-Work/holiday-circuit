@@ -4,6 +4,8 @@ import Sidebar from "./sidebar/Sidebar";
 import { Outlet, useLocation } from "react-router-dom";
 import { useSelector } from "react-redux";
 import GlobalDatabaseLoader from "../components/GlobalDatabaseLoader";
+import FinanceOverdueReminderWidget from "../components/FinanceOverdueReminderWidget";
+import OpsOverdueReminderWidget from "../components/OpsOverdueReminderWidget";
 import {
   getRequestLoaderSnapshot,
   subscribeToRequestLoader,
@@ -111,6 +113,8 @@ const Layout = () => {
           <Outlet />
         </main>
       </div>
+      {user?.role === "finance_partner" && <FinanceOverdueReminderWidget />}
+      {user?.role === "operations" && <OpsOverdueReminderWidget />}
     </div>
   );
 };

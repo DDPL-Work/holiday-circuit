@@ -55,6 +55,80 @@ const getTravelerDocumentReviewMeta = (query = {}) => {
   };
 };
 
+const getRowBgColor = (row) => {
+  const q = row._raw;
+  if (!q) return "";
+
+  const TERMINAL_OPS_STATUSES = new Set(["Rejected", "Vouchered", "Payment_Completed"]);
+  const TERMINAL_AGENT_STATUSES = new Set(["Rejected"]);
+
+  const opsStatus = q.opsStatus || "";
+  const agentStatus = q.agentStatus || "";
+  if (TERMINAL_OPS_STATUSES.has(opsStatus) || TERMINAL_AGENT_STATUSES.has(agentStatus)) {
+    return "";
+  }
+
+  const isQuoteSent =
+    q.quotationStatus === "Sent_To_Agent" ||
+    (Array.isArray(q.activityLog) &&
+      q.activityLog.some((log) => String(log?.action).trim() === "Quote Sent"));
+
+  if (isQuoteSent) {
+    return "";
+  }
+
+  if (!q.createdAt) return "";
+  const createdAt = new Date(q.createdAt);
+  if (Number.isNaN(createdAt.getTime())) return "";
+
+  const hoursElapsed = (Date.now() - createdAt.getTime()) / (1000 * 60 * 60);
+
+  if (hoursElapsed > 48) {
+    return "bg-red-50/70 hover:bg-red-100/60";
+  } else if (hoursElapsed >= 24) {
+    return "bg-amber-50/70 hover:bg-amber-100/60";
+  }
+
+  return "";
+};
+
+const getRowDot = (row) => {
+  const q = row._raw;
+  if (!q) return null;
+
+  const TERMINAL_OPS_STATUSES = new Set(["Rejected", "Vouchered", "Payment_Completed"]);
+  const TERMINAL_AGENT_STATUSES = new Set(["Rejected"]);
+
+  const opsStatus = q.opsStatus || "";
+  const agentStatus = q.agentStatus || "";
+  if (TERMINAL_OPS_STATUSES.has(opsStatus) || TERMINAL_AGENT_STATUSES.has(agentStatus)) {
+    return null;
+  }
+
+  const isQuoteSent =
+    q.quotationStatus === "Sent_To_Agent" ||
+    (Array.isArray(q.activityLog) &&
+      q.activityLog.some((log) => String(log?.action).trim() === "Quote Sent"));
+
+  if (isQuoteSent) {
+    return null;
+  }
+
+  if (!q.createdAt) return null;
+  const createdAt = new Date(q.createdAt);
+  if (Number.isNaN(createdAt.getTime())) return null;
+
+  const hoursElapsed = (Date.now() - createdAt.getTime()) / (1000 * 60 * 60);
+
+  if (hoursElapsed > 48) {
+    return <span className="inline-block h-2 w-2 rounded-full bg-red-500 animate-pulse shrink-0" title="Exceeded 48h deadline" />;
+  } else if (hoursElapsed >= 24) {
+    return <span className="inline-block h-2 w-2 rounded-full bg-amber-500 animate-pulse shrink-0" title="Exceeded 24h warning" />;
+  }
+
+  return null;
+};
+
 export default function BookingManagementHub() {
   const currentUser = useSelector((state) => state.auth.user);
   const currentUserId = String(currentUser?.id || currentUser?._id || "");
@@ -314,10 +388,14 @@ export default function BookingManagementHub() {
                             },
                           },
                         }}
-                        whileHover={{ x: 1 }} className="border-t border-gray-300 align-middle hover:bg-gray-100"
+                        whileHover={{ x: 1 }}
+                        className={`border-t border-gray-300 align-middle transition-colors ${getRowBgColor(row) || "hover:bg-gray-100"}`}
                       >
                         <td className="whitespace-nowrap px-4 py-4 align-middle font-semibold text-slate-800 text-left">
-                          {row.id}
+                          <div className="flex items-center gap-1.5">
+                            <span>{row.id}</span>
+                            {getRowDot(row)}
+                          </div>
                         </td>
 
                         <td className="px-4 py-4 align-middle text-left">

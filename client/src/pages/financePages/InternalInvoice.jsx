@@ -139,7 +139,7 @@ const statsCardConfig = [
 const StatusBadge = ({ status, method }) => {
   const styles = {
     Pending: "bg-amber-50 text-amber-600 border-amber-200",
-    Overdue: "bg-red-50 text-red-600 border-red-200",
+    Overdue: "bg-red-50 text-red-600 border-red-200 animate-pulse",
     Paid: "bg-emerald-50 text-emerald-600 border-emerald-200",
     Submitted: "bg-amber-50 text-amber-600 border-amber-200",
     "In Review": "bg-blue-50 text-blue-600 border-blue-200",
