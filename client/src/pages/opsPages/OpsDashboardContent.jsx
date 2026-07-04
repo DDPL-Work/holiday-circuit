@@ -7,8 +7,9 @@ import {
   Users,
   ShieldCheck,
 } from "lucide-react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import API from "../../utils/Api.js";
+import OpsOverdueAlertModal from "../../modal/OpsOverdueAlertModal.jsx";
 
 const emptyDashboard = {
   headerTitle: "OPS-DASHBOARD",
@@ -66,6 +67,8 @@ export default function OpsDashboardContent() {
   const [dashboard, setDashboard] = useState(emptyDashboard);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [showOverdueModal, setShowOverdueModal] = useState(false);
+  const [overdueQueriesList, setOverdueQueriesList] = useState([]);
   const recentActivity = useMemo(
     () =>
       [...(Array.isArray(dashboard?.recentActivity) ? dashboard.recentActivity : [])].sort(
@@ -92,6 +95,60 @@ export default function OpsDashboardContent() {
     };
 
     fetchDashboard();
+  }, []);
+
+  useEffect(() => {
+    const checkOverdueAlert = async () => {
+      const seen = sessionStorage.getItem("ops_popup_seen");
+      if (seen) return;
+
+      try {
+        const res = await API.get("/ops/queries");
+        const queries = Array.isArray(res.data)
+          ? res.data
+          : Array.isArray(res.data?.data)
+            ? res.data.data
+            : Array.isArray(res.data?.queries)
+              ? res.data.queries
+              : [];
+
+        const TERMINAL_OPS_STATUSES = new Set(["Rejected", "Vouchered", "Payment_Completed"]);
+        const TERMINAL_AGENT_STATUSES = new Set(["Rejected"]);
+
+        const overdue = queries.filter((query) => {
+          const opsStatus = query?.opsStatus || "";
+          const agentStatus = query?.agentStatus || "";
+          if (TERMINAL_OPS_STATUSES.has(opsStatus) || TERMINAL_AGENT_STATUSES.has(agentStatus)) {
+            return false;
+          }
+
+          const isQuoteSent =
+            query?.quotationStatus === "Sent_To_Agent" ||
+            (Array.isArray(query?.activityLog) &&
+              query.activityLog.some((log) => String(log?.action).trim() === "Quote Sent"));
+
+          if (isQuoteSent) {
+            return false;
+          }
+
+          if (!query?.createdAt) return false;
+          const createdAt = new Date(query.createdAt);
+          if (Number.isNaN(createdAt.getTime())) return false;
+
+          const hoursElapsed = (Date.now() - createdAt.getTime()) / (1000 * 60 * 60);
+          return hoursElapsed > 48;
+        });
+
+        if (overdue.length > 0) {
+          setOverdueQueriesList(queries);
+          setShowOverdueModal(true);
+        }
+      } catch (err) {
+        console.error("Failed to check overdue queries for dashboard alert modal:", err);
+      }
+    };
+
+    checkOverdueAlert();
   }, []);
 
   return (
@@ -239,6 +296,18 @@ export default function OpsDashboardContent() {
         <RecentActivity items={recentActivity} loading={loading} />
         <TeamPerformance performance={dashboard.performance} loading={loading} />
       </div>
+
+      <AnimatePresence>
+        {showOverdueModal && (
+          <OpsOverdueAlertModal
+            onClose={() => {
+              setShowOverdueModal(false);
+              sessionStorage.setItem("ops_popup_seen", "true");
+            }}
+            queries={overdueQueriesList}
+          />
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }

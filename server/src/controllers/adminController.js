@@ -5350,6 +5350,7 @@ export const getAdvancedAnalytics = async (req, res, next) => {
       addQueryKey(keys, invoice.query);
       addQueryKey(keys, invoice.query?._id);
       addQueryKey(keys, invoice.query?.queryId);
+      addQueryKey(keys, invoice.queryCode);
       addQueryKey(keys, invoice.tripSnapshot?.queryId);
       return keys;
     };
@@ -5371,14 +5372,34 @@ export const getAdvancedAnalytics = async (req, res, next) => {
         addQueryKey(keys, covered.query?._id);
         addQueryKey(keys, covered.query?.queryId);
         addQueryKey(keys, covered.queryCode);
+        addQueryKey(keys, covered.queryId);
       });
       (invoice.items || []).forEach((item) => {
         addQueryKey(keys, item.query);
         addQueryKey(keys, item.query?._id);
         addQueryKey(keys, item.query?.queryId);
         addQueryKey(keys, item.queryCode);
+        addQueryKey(keys, item.queryId);
       });
       return keys;
+    };
+    const getInternalInvoiceChildQueryKeys = (invoice = {}) => {
+      const keys = new Set();
+      (invoice.coveredQueries || []).forEach((covered) => {
+        addQueryKey(keys, covered.query);
+        addQueryKey(keys, covered.query?._id);
+        addQueryKey(keys, covered.query?.queryId);
+        addQueryKey(keys, covered.queryCode);
+        addQueryKey(keys, covered.queryId);
+      });
+      (invoice.items || []).forEach((item) => {
+        addQueryKey(keys, item.query);
+        addQueryKey(keys, item.query?._id);
+        addQueryKey(keys, item.query?.queryId);
+        addQueryKey(keys, item.queryCode);
+        addQueryKey(keys, item.queryId);
+      });
+      return keys.size ? keys : getInternalInvoiceQueryKeys(invoice);
     };
     const recordMatchesKeys = (recordKeys = new Set(), allowedKeys = new Set()) =>
       Array.from(recordKeys).some((key) => allowedKeys.has(key));
@@ -5489,6 +5510,56 @@ export const getAdvancedAnalytics = async (req, res, next) => {
       getInternalInvoiceQueryKeys(invoice).forEach((key) => set.add(key));
       return set;
     }, new Set());
+    const profitInternalInvoices = accessContext.scope === "admin"
+      ? scopedInternalInvoices
+      : mergeRecordsById(scopedInternalInvoices, baseScopedInternalInvoices);
+    const profitInternalQueryKeys = profitInternalInvoices.reduce((set, invoice) => {
+      getInternalInvoiceQueryKeys(invoice).forEach((key) => set.add(key));
+      return set;
+    }, new Set());
+    const profitQueryKeys = Array.from(profitInternalQueryKeys);
+    const profitQueryObjectIds = profitQueryKeys.filter((key) => /^[a-f\d]{24}$/i.test(key));
+    const profitQueryCodes = profitQueryKeys.filter((key) => !/^[a-f\d]{24}$/i.test(key));
+    const profitAgentInvoiceFilters = [
+      profitQueryObjectIds.length ? { query: { $in: profitQueryObjectIds } } : null,
+      profitQueryCodes.length ? { "tripSnapshot.queryId": { $in: profitQueryCodes } } : null,
+    ].filter(Boolean);
+    const directlyMatchedProfitAgentInvoices = profitAgentInvoiceFilters.length
+      ? await Invoice.find({ $or: profitAgentInvoiceFilters })
+        .populate("query", "queryId destination startDate endDate opsStatus agentStatus activityLog.action")
+        .populate("agent", "name companyName email phone")
+        .lean()
+      : [];
+    const profitAgentInvoices = mergeRecordsById(
+      profitInternalQueryKeys.size
+        ? invoices.filter((invoice) => recordMatchesKeys(getInvoiceQueryKeys(invoice), profitInternalQueryKeys))
+        : [],
+      directlyMatchedProfitAgentInvoices,
+    );
+    const bulkProfitSummaries = profitInternalInvoices
+      .filter((invoice) => invoice.settlementType === "bulk" || (invoice.coveredQueries && invoice.coveredQueries.length > 0))
+      .map((invoice) => {
+        const queryKeys = getInternalInvoiceChildQueryKeys(invoice);
+        const agentRevenue = profitAgentInvoices.reduce((sum, agentInvoice) => (
+          recordMatchesKeys(getInvoiceQueryKeys(agentInvoice), queryKeys)
+            ? sum + getInvoiceGrossRevenueAmount(agentInvoice)
+            : sum
+        ), 0);
+        const dmcCost = Number(invoice.summary?.grandTotal || invoice.claimedSummary?.grandTotal || invoice.payoutAmount || 0);
+        const profit = agentRevenue - dmcCost;
+
+        return {
+          id: getAnalyticsRecordId(invoice),
+          batchNumber: invoice.batchNumber || "",
+          invoiceNumber: invoice.invoiceNumber || "",
+          dmcName: invoice.dmc?.companyName || invoice.dmc?.name || invoice.dmcName || "",
+          queryKeys: Array.from(queryKeys),
+          agentRevenue,
+          dmcCost,
+          profit,
+          margin: agentRevenue > 0 ? (profit / agentRevenue) * 100 : 0,
+        };
+      });
     const scopedAnalyticsQueryKeys = new Set([
       ...scopedInternalQueryKeys,
       ...scopedInvoiceQueryKeys,
@@ -5599,6 +5670,9 @@ export const getAdvancedAnalytics = async (req, res, next) => {
         invoices: scopedInvoices,
         quotations: scopedQuotations,
         internalInvoices: scopedInternalInvoices,
+        profitAgentInvoices,
+        profitInternalInvoices,
+        bulkProfitSummaries,
       },
     });
   } catch (error) {
