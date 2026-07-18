@@ -1721,6 +1721,23 @@ export const submitInternalInvoice = async (req, res, next) => {
       );
     }
 
+    const existingBulkBatch = await DmcSettlementBatch.findOne({
+      dmc: req.user.id,
+      status: { $ne: "Rejected" },
+      "coveredQueries.query": query._id,
+    })
+      .select("batchNumber invoiceNumber")
+      .lean();
+
+    if (existingBulkBatch) {
+      return next(
+        new ApiError(
+          409,
+          `This booking has already been submitted to finance in bulk settlement batch ${existingBulkBatch.invoiceNumber || existingBulkBatch.batchNumber}. A single invoice cannot be sent.`,
+        ),
+      );
+    }
+
     const dmc = await Auth.findById(req.user.id)
       .select("name companyName")
       .lean();
@@ -2011,18 +2028,19 @@ const buildPayableLedgerRows = async (req, creditPeriodDays = 7) => {
   const normalizedCreditPeriodDays = normalizeCreditPeriodDays(creditPeriodDays);
   const queries = await getDmcVisibleQueriesData(req);
   const currentDmcId = req.user.id;
+  const isAdminAccess = req.user?.role === "admin";
 
   const activeBatches = await DmcSettlementBatch.find({
-    dmc: currentDmcId,
+    ...(isAdminAccess ? {} : { dmc: currentDmcId }),
     status: { $ne: "Rejected" },
   })
     .select("batchNumber invoiceNumber status items.serviceRef")
     .lean();
 
   const financeUploadedBatches = await DmcSettlementBatch.find({
-    dmc: currentDmcId,
+    ...(isAdminAccess ? {} : { dmc: currentDmcId }),
     invoiceSource: "uploaded_invoice",
-    submittedBy: { $ne: currentDmcId },
+    ...(isAdminAccess ? {} : { submittedBy: { $ne: currentDmcId } }),
   })
     .select(
       "batchNumber invoiceNumber invoiceDate dueDate creditPeriodDays status uploadedInvoice claimedSummary summary documents payoutReference payoutDate payoutBank payoutAmount payoutInstallments financeNotes submittedAt createdAt submittedBy items.currency",
@@ -2751,6 +2769,23 @@ const getDmcVisibleQueriesData = async (req) => {
     internalInvoices.map((invoice) => [invoice.query?.toString(), invoice]),
   );
 
+  const activeBulkBatches = await DmcSettlementBatch.find({
+    ...(isAdminAccess ? {} : { dmc: currentDmcId }),
+    status: { $ne: "Rejected" },
+    "coveredQueries.query": { $in: queries.map((query) => query._id) },
+  })
+    .select("batchNumber invoiceNumber coveredQueries.query")
+    .lean();
+
+  const bulkSettledQueryMap = new Map();
+  activeBulkBatches.forEach((batch) => {
+    (batch.coveredQueries || []).forEach((cq) => {
+      if (cq.query) {
+        bulkSettledQueryMap.set(cq.query.toString(), batch.invoiceNumber || batch.batchNumber);
+      }
+    });
+  });
+
   const queryObjectIds = queries.map((query) => query._id);
   const queryObjectIdStrings = queryObjectIds.map((queryId) => queryId?.toString()).filter(Boolean);
   const queryCodes = queries.map((query) => String(query.queryId || "").trim()).filter(Boolean);
@@ -2964,6 +2999,8 @@ const getDmcVisibleQueriesData = async (req) => {
           : null,
         services: visibleServices,
         existingConfirmation: confirmation || null,
+        isBulkSettled: bulkSettledQueryMap.has(query._id.toString()),
+        bulkBatchNumber: bulkSettledQueryMap.get(query._id.toString()) || "",
       };
     }),
   );

@@ -10,6 +10,7 @@ import {
   Coins,
   Compass,
   DollarSign,
+  IndianRupee,
   FileText,
   Hash,
   Landmark,
@@ -294,6 +295,10 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
   const isFinanceVerified = ["Approved", "Paid"].includes(
     String(existingInvoice?.status || "").trim(),
   );
+  const isBulkSettled = selectedQuery?.isBulkSettled || false;
+  const bulkBatchNumber = selectedQuery?.bulkBatchNumber || "";
+  const isLocked = isFinanceVerified;
+  console.log("INTERNAL INVOICE DEBUG: selectedQuery ID =", selectedQuery?._id, "isBulkSettled =", isBulkSettled, "bulkBatchNumber =", bulkBatchNumber);
   const mappedQueryItems = queryServices.length
     ? queryServices.map(createItemFromService)
     : [];
@@ -422,11 +427,22 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [actionPopup, setActionPopup] = useState(null);
   const [showReuploadConfirm, setShowReuploadConfirm] = useState(false);
+  const [showTopWarning, setShowTopWarning] = useState(false);
+  const [showBulkLockModal, setShowBulkLockModal] = useState(false);
   const laserRef = useRef(null);
 
   useEffect(() => {
     setItems(initialItems);
   }, [initialItems]);
+
+  useEffect(() => {
+    if (isBulkSettled) {
+      setShowTopWarning(true);
+    } else {
+      setShowTopWarning(false);
+      setShowBulkLockModal(false);
+    }
+  }, [isBulkSettled, selectedQuery?.queryId]);
 
   useEffect(() => {
     let anim;
@@ -615,6 +631,11 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
   const handleSaveDraft = ({ silent = false } = {}) => {
     if (typeof window === "undefined") return;
 
+    if (isBulkSettled) {
+      setShowBulkLockModal(true);
+      return;
+    }
+
     const payload = {
       invoiceMeta,
       invoiceSource,
@@ -643,6 +664,11 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
       toast.error(
         "Finance has already verified this internal invoice. It cannot be sent again.",
       );
+      return;
+    }
+
+    if (isBulkSettled) {
+      setShowBulkLockModal(true);
       return;
     }
 
@@ -757,7 +783,35 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
   };
 
   return (
-    <div className="mt-6 rounded-xl  bg-white transition-all duration-300 overflow-hidden">
+    <div className="mt-6 rounded-xl  bg-white transition-all duration-300 overflow-hidden relative">
+      <AnimatePresence>
+        {showTopWarning && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.3, ease: "easeInOut" }}
+            className="w-full overflow-hidden"
+          >
+            <div className="w-full bg-rose-50 border-b border-rose-200 text-rose-900 px-5 py-2.5 text-[11px] sm:text-xs flex items-center justify-between gap-4">
+              <div className="flex items-center gap-2">
+                <AlertCircle size={14} className="text-rose-600 shrink-0" />
+                <span className="leading-relaxed">
+                  <strong>Bulk Settlement Lock:</strong> This booking has already been submitted to the finance team in bulk settlement batch <span className="font-mono font-bold text-rose-700 bg-rose-100/60 px-1.5 py-0.5 rounded">{bulkBatchNumber}</span>. A single invoice cannot be sent.
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowTopWarning(false)}
+                className="text-rose-400 hover:text-rose-800 transition p-1 hover:bg-rose-100/50 rounded-lg shrink-0 cursor-pointer"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <div className="border-b border-slate-200 bg-gradient-to-br from-slate-50 via-white to-slate-50/50 p-6">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div className="flex items-center gap-3.5">
@@ -1432,7 +1486,7 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
               <div className="flex items-center gap-3">
                 <label className="w-28 text-xs font-semibold text-slate-600">GST Rate (%)</label>
 
-                <FieldShell icon={DollarSign} iconWrapClassName="bg-gradient-to-tr from-blue-50 to-indigo-50 border border-blue-100 text-blue-600 shadow-sm">
+                <FieldShell icon={IndianRupee} iconWrapClassName="bg-gradient-to-tr from-blue-50 to-indigo-50 border border-blue-100 text-blue-600 shadow-sm">
                   <input
                     className="w-24 rounded-xl border border-gray-300 bg-blue-50/20 py-2 pl-11 pr-2 text-sm text-slate-800 shadow-sm focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none transition-all"
                     value={taxConfig.gstRate}
@@ -1464,7 +1518,7 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
               <div className="flex items-center gap-3">
                 <label className="w-28 text-xs font-semibold text-slate-600">Other Tax</label>
 
-                <FieldShell icon={DollarSign} iconWrapClassName="bg-gradient-to-tr from-amber-50 to-orange-50 border border-amber-100 text-amber-600 shadow-sm">
+                <FieldShell icon={IndianRupee} iconWrapClassName="bg-gradient-to-tr from-amber-50 to-orange-50 border border-amber-100 text-amber-600 shadow-sm">
                   <input
                     className="w-24 rounded-xl border border-gray-300 bg-amber-50/20 py-2 pl-11 pr-2 text-sm text-slate-800 shadow-sm focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none transition-all"
                     value={taxConfig.otherTax}
@@ -1526,18 +1580,23 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
         <button
           type="button"
           onClick={handleSaveDraft}
-          className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-gradient-to-r from-white to-slate-50 px-5 py-2.5 text-sm font-semibold text-slate-700 hover:from-slate-50 hover:to-slate-100 hover:text-slate-900 hover:border-slate-400 transition-all duration-300 shadow-sm active:scale-[0.98] cursor-pointer"
+          disabled={isLocked}
+          className={`inline-flex items-center justify-center gap-2 rounded-xl border px-5 py-2.5 text-sm font-semibold transition-all duration-300 shadow-sm active:scale-[0.98] ${
+            isLocked
+              ? "cursor-not-allowed bg-slate-100 text-slate-400 opacity-60 border-slate-200"
+              : "cursor-pointer bg-gradient-to-r from-white to-slate-50 text-slate-700 hover:from-slate-50 hover:to-slate-100 hover:text-slate-900 hover:border-slate-400"
+          }`}
         >
-          <FileText size={15} className="text-slate-500" />
+          <FileText size={15} className={isLocked ? "text-slate-400" : "text-slate-500"} />
           Save as Draft
         </button>
 
         <button
           type="button"
           onClick={handleGenerateInvoice}
-          disabled={isGenerating || isFinanceVerified}
+          disabled={isGenerating || isLocked}
           className={`inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold text-white transition-all duration-500 ease-in-out ${
-            isGenerating || isFinanceVerified
+            isGenerating || isLocked
               ? "cursor-not-allowed bg-slate-400 shadow-none opacity-60"
               : "cursor-pointer bg-gradient-to-r from-blue-900 to-emerald-600 hover:from-blue-950 hover:to-emerald-700 hover:shadow-[0_4px_14px_rgba(16,185,129,0.35)] active:scale-[0.98]"
           }`}
@@ -1552,15 +1611,17 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
           )}
           {isFinanceVerified
             ? "Verified by Finance"
-            : isGenerating
-              ? "Sending..."
-              : existingInvoice?.status === "Rejected" || existingInvoice?.status === "Submitted" || existingInvoice?.status === "In Review"
-                ? invoiceSource === "uploaded_invoice"
-                  ? "Update Uploaded Invoice & Send"
-                  : "Update & Resend to Finance"
-                : invoiceSource === "uploaded_invoice"
-                  ? "Upload & Send to Finance"
-                  : "Generate & Send to Finance"}
+            : isBulkSettled
+              ? "Submitted in Bulk Settlement (Locked)"
+              : isGenerating
+                ? "Sending..."
+                : existingInvoice?.status === "Rejected" || existingInvoice?.status === "Submitted" || existingInvoice?.status === "In Review"
+                  ? invoiceSource === "uploaded_invoice"
+                    ? "Update Uploaded Invoice & Send"
+                    : "Update & Resend to Finance"
+                  : invoiceSource === "uploaded_invoice"
+                    ? "Upload & Send to Finance"
+                    : "Generate & Send to Finance"}
         </button>
       </div>
 
@@ -1670,6 +1731,68 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
                   className="rounded-xl bg-gradient-to-r from-blue-900 to-emerald-600 hover:from-[#0f2d5a] hover:to-[#0a0f1d] px-4 py-2 text-xs font-semibold text-white transition hover:shadow-lg cursor-pointer"
                 >
                   Confirm & Resend
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showBulkLockModal && (
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-slate-900/60 backdrop-blur-[2px]"
+              onClick={() => setShowBulkLockModal(false)}
+            />
+
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 16 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 16 }}
+              transition={{ duration: 0.25, ease: "easeOut" }}
+              className="relative w-full max-w-md overflow-hidden rounded-[24px] border border-slate-200 bg-white p-6 shadow-2xl z-10"
+            >
+              <div className="flex flex-col items-start">
+                {/* Amber Circle Icon */}
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-50 text-amber-600 border border-amber-100 shadow-sm">
+                  <AlertCircle size={22} className="stroke-[2.5]" />
+                </div>
+
+                {/* Title */}
+                <h3 className="mt-4 text-base font-bold text-slate-900">
+                  Bulk Settlement Locked
+                </h3>
+
+                {/* Body Text */}
+                <div className="mt-2 text-xs leading-relaxed text-slate-500">
+                  <p>
+                    This booking has already been submitted to the finance team in bulk settlement batch <span className="font-semibold text-slate-700">{bulkBatchNumber}</span>.
+                  </p>
+                  <p className="mt-2">
+                    A single invoice cannot be sent because this booking's services are already claimed and locked in a bulk settlement.
+                  </p>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="mt-6 flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowBulkLockModal(false)}
+                  className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition cursor-pointer"
+                >
+                  Close
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowBulkLockModal(false)}
+                  className="rounded-xl bg-red-600 hover:bg-red-700 px-4 py-2 text-xs font-semibold text-white transition hover:shadow-lg cursor-pointer"
+                >
+                  Ok, Understood
                 </button>
               </div>
             </motion.div>

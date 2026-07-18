@@ -1407,6 +1407,7 @@ export const resolveAdminOverrideCase = async (req, res, next) => {
       invoice.paymentVerification = {
         ...invoice.paymentVerification,
         status: verificationStatus,
+        escalatedToAdmin: false,
         rejectionReason: decision === "reject" ? resolutionNote : "",
         rejectionRemarks: decision === "reject" ? "Rejected by Super Admin override" : "",
         reviewedBy: actorId,
@@ -1498,6 +1499,7 @@ export const resolveAdminOverrideCase = async (req, res, next) => {
       invoice.reviewedBy = actorId;
       invoice.reviewedByName = actorName;
       invoice.reviewedAt = resolvedAt;
+      invoice.escalatedToAdmin = false;
       await invoice.save();
 
       await createNotification({
@@ -1746,7 +1748,7 @@ export const getAdminDashboardData = async (req, res, next) => {
       .sort((left, right) => right.revenue - left.revenue)
       .slice(0, 5);
 
-    const masterBookingRows = activeBookings.slice(0, 8).map((query) => {
+    const masterBookingRows = activeBookings.map((query) => {
       const latestInvoice = invoiceByQueryId[String(query._id || "").trim()];
       const confirmation =
         confirmationLookup.get(String(query.queryId || "").trim()) ||
@@ -1960,7 +1962,8 @@ export const getAdminDashboardData = async (req, res, next) => {
     invoices
       .filter((invoice) =>
         invoice.paymentSubmission?.submittedAt &&
-        ["Pending", "Rejected"].includes(invoice.paymentVerification?.status || "Pending"),
+        invoice.paymentVerification?.status === "Pending" &&
+        invoice.paymentVerification?.escalatedToAdmin === true,
       )
       .forEach((invoice) => addOverrideCase(buildDerivedOverrideCase({
         targetType: "payment_verification",
@@ -1974,7 +1977,7 @@ export const getAdminDashboardData = async (req, res, next) => {
       })));
 
     internalInvoices
-      .filter((invoice) => ["Submitted", "In Review", "Rejected"].includes(invoice.status))
+      .filter((invoice) => invoice.escalatedToAdmin === true)
       .forEach((invoice) => addOverrideCase(buildDerivedOverrideCase({
         targetType: "internal_invoice",
         targetId: invoice._id,
@@ -2247,7 +2250,7 @@ const formatTruncatedCompactDecimal = (value) => {
 
 const formatCompactCurrencyValue = (value) => {
   const amount = Number(value || 0);
-  const absolute = Math.abs(amount);
+  const absolute = Math.floor(Math.abs(amount));
   const sign = amount < 0 ? "-" : "";
 
   if (absolute >= 10000000) {
@@ -2260,7 +2263,7 @@ const formatCompactCurrencyValue = (value) => {
 
   return `${sign}\u20B9${absolute.toLocaleString("en-IN", {
     minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
+    maximumFractionDigits: 0,
   })}`;
 };
 
@@ -3467,7 +3470,7 @@ const INDIAN_DESTINATION_KEYWORDS = [
 
 const formatCompactCurrency = (value) => {
   const amount = Number(value || 0);
-  const absolute = Math.abs(amount);
+  const absolute = Math.floor(Math.abs(amount));
   const sign = amount < 0 ? "-" : "";
 
   if (absolute >= 10000000) {
@@ -3480,7 +3483,7 @@ const formatCompactCurrency = (value) => {
 
   return `${sign}\u20B9${absolute.toLocaleString("en-IN", {
     minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
+    maximumFractionDigits: 0,
   })}`;
 };
 
@@ -3665,8 +3668,8 @@ const sumInvoiceAmountsInWindow = (invoices, start, end) =>
     return sum + getInvoiceRevenueAmount(invoice);
   }, 0);
 
-const sumInternalInvoiceAmountsInWindow = (invoices, start, end) =>
-  sumInternalInvoiceCostEntriesInWindow(invoices, start, end);
+const sumInternalInvoiceAmountsInWindow = (invoices, start, end, allowedKeys = null) =>
+  sumInternalInvoiceCostEntriesInWindow(invoices, start, end, allowedKeys);
 
 const CONFIRMED_QUERY_STATUSES = new Set(["Invoice_Requested", "Confirmed", "Vouchered", "Payment_Completed"]);
 const CONFIRMED_AGENT_STATUSES = new Set(["Client Approved", "Booking Confirmed", "Partially Paid", "Confirmed"]);
@@ -3811,10 +3814,15 @@ const getInvoiceBookingKey = (invoice = {}) =>
   invoice._id?.toString?.() ||
   "";
 
-const getInternalInvoiceCostAmount = (invoice = {}) =>
-  Number(invoice.payoutAmount || invoice.summary?.grandTotal || 0);
+const getInternalInvoiceCostAmount = (invoice = {}) => {
+  const isBatch = Boolean(invoice.batchNumber || invoice.settlementType === "bulk");
+  if (isBatch) {
+    return Number(invoice.summary?.grandTotal || invoice.claimedSummary?.grandTotal || invoice.payoutAmount || 0);
+  }
+  return Number(invoice.payoutAmount || invoice.summary?.grandTotal || invoice.claimedSummary?.grandTotal || 0);
+};
 
-const getInternalInvoiceCostEntries = (invoice = {}) => {
+const getInternalInvoiceCostEntries = (invoice = {}, allowedKeys = null) => {
   const items = Array.isArray(invoice.items) ? invoice.items : [];
   const isBatch = Boolean(invoice.batchNumber || invoice.settlementType === "bulk");
 
@@ -3836,14 +3844,28 @@ const getInternalInvoiceCostEntries = (invoice = {}) => {
         parseAnalyticsDate(item.creditStartDate) ||
         parseAnalyticsDate(item.query?.startDate);
 
+      const itemKeys = [
+        item.query?._id ? String(item.query?._id) : null,
+        item.query?.queryId ? String(item.query?.queryId) : null,
+        item.queryCode ? String(item.queryCode) : null,
+        item.queryId ? String(item.queryId) : null,
+      ].filter(Boolean);
+
       return {
         date,
         destination: normalizeAnalyticsDestination(
           item.destination || item.query?.destination || invoice.destination,
         ),
         amount: Number(proportionalAmount || 0),
+        itemKeys,
       };
-    }).filter((entry) => entry.date && entry.amount > 0);
+    }).filter((entry) => {
+      if (!entry.date || entry.amount <= 0) return false;
+      if (allowedKeys && allowedKeys.size > 0) {
+        return entry.itemKeys.some((k) => allowedKeys.has(k));
+      }
+      return true;
+    });
   }
 
   return [
@@ -3855,10 +3877,43 @@ const getInternalInvoiceCostEntries = (invoice = {}) => {
   ].filter((entry) => entry.date && entry.amount > 0);
 };
 
-const sumInternalInvoiceCostEntriesInWindow = (invoices, start, end) =>
+const sumInternalInvoiceCostEntriesInWindow = (invoices, start, end, allowedKeys = null) =>
   invoices.reduce(
     (sum, invoice) =>
-      sum + getInternalInvoiceCostEntries(invoice).reduce((entrySum, entry) => {
+      sum + getInternalInvoiceCostEntries(invoice, allowedKeys).reduce((entrySum, entry) => {
+        if (!entry.date || entry.date < start || entry.date > end) return entrySum;
+        return entrySum + Number(entry.amount || 0);
+      }, 0),
+    0,
+  );
+
+const getInternalInvoicePayoutEntries = (invoice = {}) => {
+  const installments = Array.isArray(invoice.payoutInstallments) ? invoice.payoutInstallments : [];
+  if (installments.length > 0) {
+    return installments.map((inst) => {
+      const date = parseAnalyticsDate(inst.paymentDate || inst.createdAt);
+      return {
+        date,
+        amount: Number(inst.amount || 0),
+      };
+    }).filter((entry) => entry.date && entry.amount > 0);
+  }
+
+  const amount = Number(invoice.payoutAmount || 0);
+  if (amount > 0) {
+    const date = parseAnalyticsDate(invoice.payoutDate || invoice.submittedAt || invoice.createdAt);
+    if (date) {
+      return [{ date, amount }];
+    }
+  }
+
+  return [];
+};
+
+const sumInternalInvoicePayoutsInWindow = (invoices, start, end) =>
+  invoices.reduce(
+    (sum, invoice) =>
+      sum + getInternalInvoicePayoutEntries(invoice).reduce((entrySum, entry) => {
         if (!entry.date || entry.date < start || entry.date > end) return entrySum;
         return entrySum + Number(entry.amount || 0);
       }, 0),
@@ -3909,6 +3964,7 @@ const buildCustomAnalyticsPayload = ({
   internalInvoices,
   start,
   end,
+  allowedKeys = null,
 }) => {
   const buckets = createCustomBuckets(start, end);
 
@@ -3920,21 +3976,24 @@ const buildCustomAnalyticsPayload = ({
     });
 
     internalInvoices.forEach((invoice) => {
-      const invoiceDate = getAnalyticsInternalInvoiceDate(invoice);
-      if (!invoiceDate || invoiceDate < bucket.start || invoiceDate > bucket.end) return;
-      bucket.outward += Number(invoice.payoutAmount || invoice.summary?.grandTotal || 0);
+      bucket.outward += getInternalInvoiceCostEntries(invoice, allowedKeys).reduce((sum, entry) => {
+        if (!entry.date || entry.date < bucket.start || entry.date > bucket.end) return sum;
+        return sum + Number(entry.amount || 0);
+      }, 0);
     });
   });
 
   const inwardTotal = buckets.reduce((sum, bucket) => sum + bucket.inward, 0);
   const outwardTotal = buckets.reduce((sum, bucket) => sum + bucket.outward, 0);
+  const payoutTotal = sumInternalInvoicePayoutsInWindow(internalInvoices, start, end);
 
   const durationMs = end.getTime() - start.getTime() + 1;
   const prevStart = new Date(start.getTime() - durationMs);
   const prevEnd = new Date(start.getTime() - 1);
 
   const previousInwardTotal = sumInvoiceAmountsInWindow(invoices, prevStart, prevEnd);
-  const previousOutwardTotal = sumInternalInvoiceAmountsInWindow(internalInvoices, prevStart, prevEnd);
+  const previousOutwardTotal = sumInternalInvoiceAmountsInWindow(internalInvoices, prevStart, prevEnd, allowedKeys);
+  const previousPayoutTotal = sumInternalInvoicePayoutsInWindow(internalInvoices, prevStart, prevEnd);
 
   const chart = {
     labels: buckets.map((b) => b.label),
@@ -3945,8 +4004,10 @@ const buildCustomAnalyticsPayload = ({
   const metrics = buildMetricPayload({
     inwardTotal,
     outwardTotal,
+    payoutTotal,
     previousInwardTotal,
     previousOutwardTotal,
+    previousPayoutTotal,
     comparisonLabel: "vs prev range",
   });
 
@@ -4105,6 +4166,7 @@ const buildRevenueAnalyticsReport = ({
   mode = "monthly",
   customStart,
   customEnd,
+  allowedKeys = null,
 }) => {
   const activeWindow = customStart && customEnd
     ? {
@@ -4384,7 +4446,7 @@ const buildRevenueAnalyticsReport = ({
   });
 
   internalInvoices.forEach((invoice) => {
-    getInternalInvoiceCostEntries(invoice).forEach((entry) => {
+    getInternalInvoiceCostEntries(invoice, allowedKeys).forEach((entry) => {
       if (!entry.date || entry.date < activeWindow.start || entry.date > activeWindow.end) return;
 
       const destination = normalizeAnalyticsDestination(entry.destination);
@@ -4543,8 +4605,10 @@ const formatTaxYearValue = (date) => String(date.getFullYear());
 const buildMetricPayload = ({
   inwardTotal,
   outwardTotal,
+  payoutTotal = 0,
   previousInwardTotal,
   previousOutwardTotal,
+  previousPayoutTotal = 0,
   comparisonLabel,
 }) => {
   const profitTotal = inwardTotal - outwardTotal;
@@ -4567,7 +4631,9 @@ const buildMetricPayload = ({
       label: "Total Outward",
       sub: "Money to DMCs",
       val: formatCompactCurrency(outwardTotal),
+      payoutVal: formatCompactCurrency(payoutTotal),
       change: formatGrowthText(outwardTotal, previousOutwardTotal, comparisonLabel),
+      payoutChange: formatGrowthText(payoutTotal, previousPayoutTotal, comparisonLabel),
       up: outwardTotal >= previousOutwardTotal,
       ...getMetricAppearance("outward"),
     },
@@ -4744,6 +4810,7 @@ const buildMonthlyTaxPeriods = ({
   quotations,
   internalInvoices,
   referenceDate,
+  allowedKeys = null,
 }) => {
   const yearStart = new Date(referenceDate.getFullYear(), 0, 1);
 
@@ -4753,13 +4820,20 @@ const buildMonthlyTaxPeriods = ({
     const previousMonthDate = addMonths(monthDate, -1);
     const previousWindow = getTaxWindow(previousMonthDate, "monthly");
     const inwardTotal = sumInvoiceAmountsInWindow(invoices, start, end);
-    const outwardTotal = sumInternalInvoiceAmountsInWindow(internalInvoices, start, end);
+    const outwardTotal = sumInternalInvoiceAmountsInWindow(internalInvoices, start, end, allowedKeys);
+    const payoutTotal = sumInternalInvoicePayoutsInWindow(internalInvoices, start, end);
     const previousInwardTotal = sumInvoiceAmountsInWindow(
       invoices,
       previousWindow.start,
       previousWindow.end,
     );
     const previousOutwardTotal = sumInternalInvoiceAmountsInWindow(
+      internalInvoices,
+      previousWindow.start,
+      previousWindow.end,
+      allowedKeys,
+    );
+    const previousPayoutTotal = sumInternalInvoicePayoutsInWindow(
       internalInvoices,
       previousWindow.start,
       previousWindow.end,
@@ -4778,8 +4852,10 @@ const buildMonthlyTaxPeriods = ({
       metrics: buildMetricPayload({
         inwardTotal,
         outwardTotal,
+        payoutTotal,
         previousInwardTotal,
         previousOutwardTotal,
+        previousPayoutTotal,
         comparisonLabel: "vs last month",
       }),
       taxSummary,
@@ -4873,6 +4949,7 @@ const buildAdvancedAnalyticsPayload = ({
   internalInvoices,
   referenceDate,
   mode,
+  allowedKeys = null,
 }) => {
   const buckets = mode === "yearly"
     ? createYearlyBuckets(referenceDate)
@@ -4886,7 +4963,7 @@ const buildAdvancedAnalyticsPayload = ({
     });
 
     internalInvoices.forEach((invoice) => {
-      bucket.outward += getInternalInvoiceCostEntries(invoice).reduce((sum, entry) => {
+      bucket.outward += getInternalInvoiceCostEntries(invoice, allowedKeys).reduce((sum, entry) => {
         if (!entry.date || entry.date < bucket.start || entry.date > bucket.end) return sum;
         return sum + Number(entry.amount || 0);
       }, 0);
@@ -4920,6 +4997,12 @@ const buildAdvancedAnalyticsPayload = ({
       internalInvoices,
       previousYearWindow.start,
       previousYearWindow.end,
+      allowedKeys,
+    );
+    const previousPayoutTotal = sumInternalInvoicePayoutsInWindow(
+      internalInvoices,
+      previousYearWindow.start,
+      previousYearWindow.end,
     );
 
     const currentYearInward = sumInvoiceAmountsInWindow(
@@ -4928,6 +5011,12 @@ const buildAdvancedAnalyticsPayload = ({
       currentYearWindow.end,
     );
     const currentYearOutward = sumInternalInvoiceAmountsInWindow(
+      internalInvoices,
+      currentYearWindow.start,
+      currentYearWindow.end,
+      allowedKeys,
+    );
+    const currentYearPayout = sumInternalInvoicePayoutsInWindow(
       internalInvoices,
       currentYearWindow.start,
       currentYearWindow.end,
@@ -4944,8 +5033,10 @@ const buildAdvancedAnalyticsPayload = ({
       metrics: buildMetricPayload({
         inwardTotal: currentYearInward,
         outwardTotal: currentYearOutward,
+        payoutTotal: currentYearPayout,
         previousInwardTotal,
         previousOutwardTotal,
+        previousPayoutTotal,
         comparisonLabel,
       }),
       taxSummary: yearPeriods.find((period) => period.value === formatTaxYearValue(referenceDate))?.taxSummary || buildTaxSummary({
@@ -4967,6 +5058,7 @@ const buildAdvancedAnalyticsPayload = ({
     quotations,
     internalInvoices,
     referenceDate,
+    allowedKeys,
   });
 
   previousInwardTotal = sumInvoiceAmountsInWindow(
@@ -4978,6 +5070,17 @@ const buildAdvancedAnalyticsPayload = ({
     internalInvoices,
     previousWindow.start,
     previousWindow.end,
+    allowedKeys,
+  );
+  const previousPayoutTotal = sumInternalInvoicePayoutsInWindow(
+    internalInvoices,
+    previousWindow.start,
+    previousWindow.end,
+  );
+  const currentPeriodPayout = sumInternalInvoicePayoutsInWindow(
+    internalInvoices,
+    aggregateWindowStart,
+    referenceDate,
   );
 
   return {
@@ -4989,8 +5092,10 @@ const buildAdvancedAnalyticsPayload = ({
     metrics: buildMetricPayload({
       inwardTotal,
       outwardTotal,
+      payoutTotal: currentPeriodPayout,
       previousInwardTotal,
       previousOutwardTotal,
+      previousPayoutTotal,
       comparisonLabel,
     }),
     taxSummary: taxPeriods.find((period) => period.value === formatTaxMonthValue(referenceDate))?.taxSummary || buildTaxSummary({
@@ -5411,6 +5516,10 @@ export const getAdvancedAnalytics = async (req, res, next) => {
       return Array.from(map.values());
     };
     const filterInternalInvoiceByQueryKeys = (invoice = {}, allowedKeys = new Set()) => {
+      const isBatch = Boolean(invoice.batchNumber || invoice.settlementType === "bulk");
+      if (isBatch) {
+        return invoice;
+      }
       if (!allowedKeys.size) return invoice;
       if (!recordMatchesKeys(getInternalInvoiceQueryKeys(invoice), allowedKeys)) return null;
 
@@ -5492,6 +5601,15 @@ export const getAdvancedAnalytics = async (req, res, next) => {
         ? baseScopedInternalInvoices
         : candidateScopedInternalInvoices
           .filter((invoice) => {
+            if (invoice.batchNumber || invoice.settlementType === "bulk") {
+              const assignedTo = invoice.assignedTo || invoice.reviewedBy || null;
+              const assignedFinanceId = assignedTo ? String(assignedTo?._id || assignedTo) : null;
+              if (accessContext.scope === "manager") {
+                const teamMemberIds = new Set(accessContext.teamMemberIds || []);
+                return teamMemberIds.has(assignedFinanceId);
+              }
+              return assignedFinanceId === accessContext.currentUserId;
+            }
             const internalKeys = getInternalInvoiceQueryKeys(invoice);
             const hasAgentInvoice = recordMatchesKeys(internalKeys, allAgentInvoiceQueryKeys);
             return hasAgentInvoice
@@ -5512,7 +5630,22 @@ export const getAdvancedAnalytics = async (req, res, next) => {
     }, new Set());
     const profitInternalInvoices = accessContext.scope === "admin"
       ? scopedInternalInvoices
-      : mergeRecordsById(scopedInternalInvoices, baseScopedInternalInvoices);
+      : candidateScopedInternalInvoices
+        .filter((invoice) => {
+          const internalKeys = getInternalInvoiceQueryKeys(invoice);
+          const hasAgentInvoice = recordMatchesKeys(internalKeys, allAgentInvoiceQueryKeys);
+          return hasAgentInvoice
+            ? recordMatchesKeys(internalKeys, scopedInvoiceQueryKeys)
+            : true;
+        })
+        .map((invoice) => {
+          const internalKeys = getInternalInvoiceQueryKeys(invoice);
+          const hasAgentInvoice = recordMatchesKeys(internalKeys, allAgentInvoiceQueryKeys);
+          return hasAgentInvoice
+            ? filterInternalInvoiceByQueryKeys(invoice, scopedInvoiceQueryKeys)
+            : invoice;
+        })
+        .filter(Boolean);
     const profitInternalQueryKeys = profitInternalInvoices.reduce((set, invoice) => {
       getInternalInvoiceQueryKeys(invoice).forEach((key) => set.add(key));
       return set;
@@ -5587,6 +5720,8 @@ export const getAdvancedAnalytics = async (req, res, next) => {
         ? quotations
         : quotations.filter(isQuotationVisibleForFinanceAccess);
 
+    const calculationAllowedKeys = accessContext.scope === "admin" ? null : scopedInvoiceQueryKeys;
+
     const monthly = buildAdvancedAnalyticsPayload({
       queries,
       invoices: scopedInvoices,
@@ -5594,6 +5729,7 @@ export const getAdvancedAnalytics = async (req, res, next) => {
       internalInvoices: scopedInternalInvoices,
       referenceDate,
       mode: "monthly",
+      allowedKeys: calculationAllowedKeys,
     });
 
     const yearly = buildAdvancedAnalyticsPayload({
@@ -5603,6 +5739,7 @@ export const getAdvancedAnalytics = async (req, res, next) => {
       internalInvoices: scopedInternalInvoices,
       referenceDate,
       mode: "yearly",
+      allowedKeys: calculationAllowedKeys,
     });
     const reports = {
       query: buildQueryAnalyticsReport({
@@ -5614,9 +5751,10 @@ export const getAdvancedAnalytics = async (req, res, next) => {
         queries,
         invoices: scopedInvoices,
         quotations: scopedQuotations,
-        internalInvoices: scopedInternalInvoices,
+        internalInvoices: profitInternalInvoices,
         referenceDate,
         mode: "monthly",
+        allowedKeys: calculationAllowedKeys,
       }),
       monthly: monthly.taxPeriods?.find((item) => item.value === formatTaxMonthValue(referenceDate))?.reports || {},
       yearly: yearly.yearPeriods?.find((item) => item.value === formatTaxYearValue(referenceDate))?.reports || {},
@@ -5631,6 +5769,7 @@ export const getAdvancedAnalytics = async (req, res, next) => {
         internalInvoices: scopedInternalInvoices,
         start: customStart,
         end: customEnd,
+        allowedKeys: calculationAllowedKeys,
       });
 
       customReports = {
@@ -5645,11 +5784,12 @@ export const getAdvancedAnalytics = async (req, res, next) => {
           queries,
           invoices: scopedInvoices,
           quotations: scopedQuotations,
-          internalInvoices: scopedInternalInvoices,
+          internalInvoices: profitInternalInvoices,
           referenceDate,
           mode: "monthly",
           customStart,
           customEnd,
+          allowedKeys: calculationAllowedKeys,
         }),
       };
     }
@@ -6138,6 +6278,10 @@ export const reviewPaymentVerification = async (req, res, next) => {
         (status === "Rejected" && !shouldReturnRejectedPaymentToAgent)
       );
 
+    const shouldSendManagerReviewToAdmin =
+      accessContext.scope === "manager" &&
+      (normalizedReviewTarget === "admin" || normalizedRejectionTarget === "admin");
+
     if (shouldSendMemberReviewToManager) {
       invoice.paymentVerification = {
         ...invoice.paymentVerification,
@@ -6212,6 +6356,71 @@ export const reviewPaymentVerification = async (req, res, next) => {
       return res.status(200).json({
         success: true,
         message: "Review submitted to finance manager successfully",
+        data: formatPaymentVerificationRow(invoice.toObject()),
+      });
+    } else if (shouldSendManagerReviewToAdmin) {
+      invoice.paymentVerification = {
+        ...invoice.paymentVerification,
+        status: "Pending",
+        escalatedToAdmin: true,
+        assignedTo: assignedFinanceId,
+        assignedToName: assignedFinanceName,
+        assignedToEmail: assignedFinanceEmail,
+        assignedAt: invoice.paymentVerification?.assignedAt || reviewedAt,
+        rejectionReason: "",
+        rejectionRemarks: "",
+        reviewedBy: undefined,
+        reviewedByName: "",
+        reviewedAt: undefined,
+        teamDecisionStatus: status,
+        teamDecisionReason: status === "Rejected" ? String(rejectionReason).trim() : "",
+        teamDecisionRemarks: String(reviewRemarks || rejectionRemarks || "").trim(),
+        teamDecisionBy: req.user.id,
+        teamDecisionByName: reviewerName,
+        teamDecisionAt: reviewedAt,
+        sentToManagerAt: invoice.paymentVerification?.sentToManagerAt || reviewedAt,
+      };
+      invoice.paymentUpdatedBy = req.user.id;
+      invoice.remarks = `Escalated to Super Admin by finance manager: ${status === "Rejected" ? String(rejectionReason).trim() : "Recommended for verification"}`;
+      invoice.paymentAuditTrail.push({
+        action: status,
+        status: "Pending",
+        reason: status === "Rejected" ? String(rejectionReason).trim() : "",
+        remarks: `Escalated to Super Admin by finance manager: ${String(reviewRemarks || rejectionRemarks || "").trim()}`,
+        performedBy: req.user.id,
+        performedByName: reviewerName,
+        performedAt: reviewedAt,
+      });
+
+      await invoice.save();
+
+      const adminUsers = await Auth.find({
+        role: "admin",
+        isDeleted: { $ne: true },
+        accountStatus: { $ne: "Inactive" },
+      }).select("_id");
+      if (adminUsers.length) {
+        await Promise.all(
+          adminUsers.map((admin) =>
+            createFinanceSideNotification(req, {
+              user: admin._id,
+              type: "warning",
+              title: "Payment verification escalated",
+              message: `${invoice.invoiceNumber} was escalated to Admin by ${reviewerName}.`,
+              link: "/admin/dashboard",
+              meta: {
+                invoiceId: invoice._id,
+                invoiceNumber: invoice.invoiceNumber,
+                queryId: invoice.query?._id || null,
+              },
+            })
+          )
+        );
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: "Review escalated to Super Admin successfully",
         data: formatPaymentVerificationRow(invoice.toObject()),
       });
     }
@@ -7198,6 +7407,9 @@ export const updateInternalInvoiceStatus = async (req, res, next) => {
 
     const shouldNotifyAdmin = status === "Rejected" && Boolean(notifyAdmin);
     if (shouldNotifyAdmin) {
+      invoice.escalatedToAdmin = true;
+      await invoice.save();
+
       const adminUsers = await Auth.find({
         role: "admin",
         isDeleted: { $ne: true },

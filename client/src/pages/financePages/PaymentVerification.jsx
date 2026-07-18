@@ -439,7 +439,7 @@ const PaymentTrackerModal = ({
           </div>
           <div className="flex items-center gap-3 shrink-0">
             <div className="flex gap-2">
-              <div className="rounded-xl bg-white/12 px-3 py-1.5">
+              <div className="rounded-xl bg-gradient-to-br from-blue-500/20 to-indigo-500/10 border border-white/10 px-3 py-1.5 shadow-sm">
                 <p className="text-[9px] font-bold uppercase tracking-[0.16em] text-white/70">
                   Installments
                 </p>
@@ -447,7 +447,11 @@ const PaymentTrackerModal = ({
                   {installmentCount || 0} recorded
                 </p>
               </div>
-              <div className="rounded-xl bg-white/12 px-3 py-1.5">
+              <div className={`rounded-xl border border-white/10 px-3 py-1.5 shadow-sm bg-gradient-to-br ${
+                isComplete
+                  ? "from-emerald-500/20 to-teal-500/10"
+                  : "from-amber-500/20 to-orange-500/10"
+              }`}>
                 <p className="text-[9px] font-bold uppercase tracking-[0.16em] text-white/70">
                   Status
                 </p>
@@ -467,24 +471,24 @@ const PaymentTrackerModal = ({
 
         <div className="border-b border-slate-100 bg-slate-50/80 px-5 py-3.5">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <div className="group relative overflow-hidden rounded-xl border border-slate-200/80 border-b-4 border-b-indigo-500 bg-gradient-to-br from-indigo-50/40 via-white to-blue-50/30 px-3 py-2.5 text-center shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
-              <div className="mb-1.5 flex items-center justify-center gap-1.5 text-indigo-500">
+            <div className="group relative overflow-hidden rounded-xl border border-indigo-200 border-b-4 border-b-indigo-500 bg-gradient-to-br from-indigo-100 to-indigo-50/50 px-3 py-2.5 text-center shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
+              <div className="mb-1.5 flex items-center justify-center gap-1.5 text-indigo-650">
                 <IndianRupee className="h-3.5 w-3.5" />
                 <p className="text-[9px] font-bold uppercase tracking-[0.14em]">Total</p>
               </div>
               <p className="text-[1.08rem] font-bold leading-none text-indigo-950">{formatCurrency(totalAmount)}</p>
             </div>
-            <div className="group relative overflow-hidden rounded-xl border border-emerald-200/80 border-b-4 border-b-emerald-500 bg-gradient-to-br from-emerald-50/40 via-white to-teal-50/30 px-3 py-2.5 text-center shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
-              <div className="mb-1.5 flex items-center justify-center gap-1.5 text-emerald-600">
+            <div className="group relative overflow-hidden rounded-xl border border-emerald-200 border-b-4 border-b-emerald-500 bg-gradient-to-br from-emerald-100 to-emerald-50/50 px-3 py-2.5 text-center shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
+              <div className="mb-1.5 flex items-center justify-center gap-1.5 text-emerald-700">
                 <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
                 <p className="text-[9px] font-bold uppercase tracking-[0.14em]">Paid</p>
               </div>
-              <p className="text-[1.08rem] font-bold leading-none text-emerald-700">{formatCurrency(paidAmount)}</p>
+              <p className="text-[1.08rem] font-bold leading-none text-emerald-800">{formatCurrency(paidAmount)}</p>
             </div>
             <div className={`group relative overflow-hidden rounded-xl border px-3 py-2.5 text-center shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${
               isComplete
-                ? "border-slate-200/80 border-b-4 border-b-slate-400 bg-gradient-to-br from-slate-50 via-white to-slate-100/30"
-                : "border-amber-200/80 border-b-4 border-b-amber-500 bg-gradient-to-br from-amber-50/40 via-white to-orange-50/30"
+                ? "border-slate-300 border-b-4 border-b-slate-400 bg-gradient-to-br from-slate-100 to-slate-50/50"
+                : "border-amber-200 border-b-4 border-b-amber-500 bg-gradient-to-br from-amber-100 to-amber-50/50"
             }`}>
               <div className={`mb-1.5 flex items-center justify-center gap-1.5 ${isComplete ? "text-slate-500" : "text-amber-600"}`}>
                 <Clock className="h-3.5 w-3.5" />
@@ -528,26 +532,28 @@ const PaymentTrackerModal = ({
                           </div>
                           <div className={`rounded-xl border px-3.5 py-2.5 shadow-sm transition-all duration-300 ${
                             isInstallmentVerified
-                              ? "border-emerald-100 bg-gradient-to-br from-emerald-50/30 via-white to-emerald-50/10"
-                              : "border-amber-100 bg-gradient-to-br from-amber-50/30 via-white to-amber-50/10"
+                              ? "border-emerald-200 bg-gradient-to-br from-emerald-100/70 to-emerald-50/30"
+                              : "border-amber-200 bg-gradient-to-br from-amber-100/70 to-amber-50/30"
                           }`}>
                             <div className="flex items-center justify-between gap-2.5">
-                              <div className="flex flex-wrap items-center gap-1.5">
-                                <p className="text-[12.5px] font-semibold text-slate-700">Instalment {index + 1}</p>
-                                <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-50 px-1.5 py-0.5 text-[9px] font-bold text-emerald-600">
-                                  <Check className="h-2.5 w-2.5" /> Paid
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="text-[13px] font-semibold text-slate-700">Instalment {index + 1}</p>
+                                <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50/70 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 shadow-sm">
+                                  <Check className="h-3 w-3 text-emerald-500" /> Paid
                                 </span>
-                                <span className={`inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-bold ${
+                                <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold shadow-sm ${
                                   isInstallmentVerified
-                                    ? "bg-teal-50 text-teal-700"
-                                    : "bg-amber-50 text-amber-700"
+                                    ? "border-teal-200 bg-teal-50/70 text-teal-700"
+                                    : "border-amber-200 bg-amber-50/70 text-amber-700"
                                 }`}>
                                   {isInstallmentVerified ? (
                                     <>
-                                      <Check className="h-2.5 w-2.5" /> Verified
+                                      <CheckCircle2 className="h-3 w-3 text-teal-500" /> Verified
                                     </>
                                   ) : (
-                                    "Pending verification"
+                                    <>
+                                      <Clock className="h-3 w-3 text-amber-500" /> Pending verification
+                                    </>
                                   )}
                                 </span>
                               </div>
@@ -560,7 +566,7 @@ const PaymentTrackerModal = ({
                                     className={`inline-flex cursor-pointer items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-semibold transition disabled:cursor-not-allowed ${
                                       isVerifyingThisInstallment || !canVerifyInstallments
                                         ? "cursor-not-allowed bg-slate-100 text-slate-400"
-                                        : "bg-gradient-to-r from-emerald-500 to-teal-650 text-white shadow-[0_4px_10px_rgba(16,185,129,0.15)] hover:from-emerald-600 hover:to-teal-700"
+                                        : "bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-[0_4px_10px_rgba(16,185,129,0.15)] hover:from-emerald-600 hover:to-teal-700"
                                     }`}
                                   >
                                     <CheckCircle2 className="h-3 w-3" />
@@ -575,7 +581,7 @@ const PaymentTrackerModal = ({
                                     sendingAgentReceipt
                                       ? "cursor-not-allowed bg-slate-100 text-slate-400"
                                       : isInstallmentVerified
-                                        ? "bg-gradient-to-r from-indigo-500 to-violet-600 text-white shadow-[0_4px_10px_rgba(79,70,229,0.15)] hover:from-indigo-600 hover:to-violet-750"
+                                        ? "bg-gradient-to-r from-indigo-500 to-violet-600 text-white shadow-[0_4px_10px_rgba(79,70,229,0.15)] hover:from-indigo-600 hover:to-violet-700"
                                         : "bg-gradient-to-r from-amber-100 to-orange-100/90 text-amber-800 shadow-[0_2px_8px_rgba(245,158,11,0.08)] hover:from-amber-200 hover:to-orange-200/90"
                                   }`}
                                 >
@@ -663,7 +669,7 @@ const PaymentTrackerModal = ({
                               sendingAgentReceipt
                                 ? "cursor-not-allowed border border-slate-200 bg-slate-100 text-slate-400"
                                 : canSendAgentReceipt
-                                  ? "bg-gradient-to-r from-indigo-500 via-indigo-650 to-violet-600 text-white shadow-[0_6px_15px_rgba(79,70,229,0.22)] hover:from-indigo-600 hover:via-indigo-700 hover:to-violet-700"
+                                  ? "bg-gradient-to-r from-indigo-500 via-indigo-600 to-violet-600 text-white shadow-[0_6px_15px_rgba(79,70,229,0.22)] hover:from-indigo-600 hover:via-indigo-700 hover:to-violet-700"
                                   : "border border-amber-200 bg-gradient-to-r from-amber-50 to-orange-50/80 text-amber-700 hover:from-amber-100 hover:to-orange-100/80 shadow-sm"
                             }`}
                           >
@@ -686,7 +692,7 @@ const PaymentTrackerModal = ({
             </div>
 
             <div>
-              <div className="rounded-[24px] border border-slate-200 bg-gradient-to-br from-slate-50 via-white to-cyan-50/50 px-4 py-4 shadow-sm">
+              <div className="rounded-[24px] border border-slate-200 bg-gradient-to-br from-slate-100/80 via-indigo-50/40 to-blue-50/80 px-4 py-4 shadow-sm">
                 <div className="mb-3 flex items-center justify-between gap-3">
                   <p className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">
                     <PieChart className="h-3.5 w-3.5 text-emerald-500" /> Payment Progress
@@ -741,7 +747,7 @@ const PaymentTrackerModal = ({
                       {/* Total paid */}
                       <div className="relative">
                         <div className="absolute left-[-21px] top-1/2 -translate-y-1/2 h-2 w-2 rounded-full bg-[#5b5ff8] ring-[2.5px] ring-slate-50" />
-                        <div className="group relative overflow-hidden rounded-xl border border-indigo-100 bg-gradient-to-br from-indigo-50/50 via-white to-indigo-50/10 px-3.5 py-2 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
+                        <div className="group relative overflow-hidden rounded-xl border border-indigo-200 bg-gradient-to-br from-indigo-100 to-indigo-50/50 px-3.5 py-2 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
                           <p className="text-[11px] font-semibold text-slate-500">Total paid</p>
                           <p className="mt-0.5 text-[0.95rem] font-semibold text-slate-900">{formatCurrency(paidAmount)}</p>
                         </div>
@@ -750,7 +756,7 @@ const PaymentTrackerModal = ({
                       {/* Remaining */}
                       <div className="relative">
                         <div className="absolute left-[-21px] top-1/2 -translate-y-1/2 h-2 w-2 rounded-full bg-slate-300 ring-[2.5px] ring-slate-50" />
-                        <div className="group relative overflow-hidden rounded-xl border border-amber-100 bg-gradient-to-br from-amber-50/30 via-white to-amber-50/10 px-3.5 py-2 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
+                        <div className="group relative overflow-hidden rounded-xl border border-amber-200 bg-gradient-to-br from-amber-100 to-amber-50/50 px-3.5 py-2 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
                           <p className="text-[11px] font-semibold text-slate-500">Remaining</p>
                           <p className="mt-0.5 text-[0.95rem] font-semibold text-slate-900">{formatCurrency(remainingAmount)}</p>
                         </div>
@@ -761,11 +767,11 @@ const PaymentTrackerModal = ({
                         <div className={`absolute left-[-21px] top-1/2 -translate-y-1/2 h-2 w-2 rounded-full ring-[2.5px] ring-slate-50 ${isComplete ? "bg-emerald-500" : "bg-amber-400"}`} />
                         <div className={`group relative overflow-hidden rounded-xl border px-3.5 py-2 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${
                           isComplete
-                            ? "border-emerald-100 bg-gradient-to-br from-emerald-50/30 via-white to-emerald-50/10"
-                            : "border-amber-100 bg-gradient-to-br from-amber-50/30 via-white to-amber-50/10"
+                            ? "border-emerald-200 bg-gradient-to-br from-emerald-100 to-emerald-50/50"
+                            : "border-amber-200 bg-gradient-to-br from-amber-100 to-amber-50/50"
                         }`}>
                           <p className="text-[11px] font-semibold text-slate-500">Status</p>
-                          <p className={`mt-0.5 text-[0.95rem] font-semibold ${isComplete ? "text-emerald-600" : "text-amber-600"}`}>
+                          <p className={`mt-0.5 text-[0.95rem] font-semibold ${isComplete ? "text-emerald-700" : "text-amber-700"}`}>
                             {isComplete ? "Fully Paid" : "Partially Paid"}
                           </p>
                         </div>
@@ -858,16 +864,26 @@ const ReviewActionModal = ({ mode, payment, submitting, userRole, onClose, onCon
   const [remarks, setRemarks] = useState("");
   const [reviewTarget, setReviewTarget] = useState("agent");
   const [submitted, setSubmitted] = useState(false);
-  const showTargetOptions = userRole === "finance_partner";
+  const showTargetOptions = ["finance_partner", "finance_manager"].includes(userRole);
   const targetOptions = isVerifyMode
-    ? [
-        { value: "agent", title: "Agent", description: "Complete the verification at team level and notify the agent directly." },
-        { value: "manager", title: "Manager", description: "Escalate this verified payment to the finance manager for final approval." },
-      ]
-    : [
-        { value: "agent", title: "Agent", description: "Agent will correct payment details and resubmit directly." },
-        { value: "manager", title: "Manager", description: "This payment will move to finance manager for final review." },
-      ];
+    ? (userRole === "finance_manager"
+      ? [
+          { value: "agent", title: "Agent", description: "Complete the verification and notify the agent directly." },
+          { value: "admin", title: "Admin", description: "Escalate this payment verification to the Super Admin for overriding decision." },
+        ]
+      : [
+          { value: "agent", title: "Agent", description: "Complete the verification at team level and notify the agent directly." },
+          { value: "manager", title: "Manager", description: "Escalate this verified payment to the finance manager for final approval." },
+        ])
+    : (userRole === "finance_manager"
+      ? [
+          { value: "agent", title: "Agent", description: "Agent will correct payment details and resubmit directly." },
+          { value: "admin", title: "Admin", description: "This payment dispute will move to the Super Admin for override review." },
+        ]
+      : [
+          { value: "agent", title: "Agent", description: "Agent will correct payment details and resubmit directly." },
+          { value: "manager", title: "Manager", description: "This payment will move to finance manager for final review." },
+        ]);
 
   const handleSubmit = () => {
     if (!isVerifyMode && !reason) { setSubmitted(true); return; }
@@ -1829,7 +1845,7 @@ const PaymentVerification = () => {
                 <h1 className="text-2xl font-bold text-slate-900">Payment Verification</h1>
                 <p className="mt-1 text-sm text-slate-500">Review and verify agent payment submissions before invoice workflow continues</p>
               </div>
-              <button className="flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-600 via-teal-650 to-emerald-500 hover:from-emerald-700 hover:via-teal-700 hover:to-emerald-600 active:scale-95 active:translate-y-0 hover:-translate-y-0.5 transition-all duration-300 ease-out text-white px-4.5 py-2.5 rounded-xl text-sm font-semibold shadow-sm hover:shadow-md shadow-emerald-500/10 hover:shadow-emerald-500/20">
+              <button className="flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 hover:from-emerald-700 hover:via-teal-700 hover:to-emerald-600 active:scale-95 active:translate-y-0 hover:-translate-y-0.5 transition-all duration-300 ease-out text-white px-4.5 py-2.5 rounded-xl text-sm font-semibold shadow-sm hover:shadow-md shadow-emerald-500/10 hover:shadow-emerald-500/20">
                 <FileDown className="h-4 w-4" />
                 Export Finance Report
               </button>
@@ -2486,8 +2502,8 @@ const PaymentVerification = () => {
                               ? "bg-gradient-to-r from-blue-500 via-indigo-500 to-violet-600 cursor-not-allowed opacity-75 text-white"
                               : "bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-600 cursor-not-allowed opacity-75 text-white"
                             : selectedPayment.finalInvoiceStatus === "Sent"
-                              ? "bg-gradient-to-r from-blue-500 via-indigo-500 to-violet-600 hover:from-blue-600 hover:via-indigo-650 hover:to-violet-700 hover:shadow-lg hover:shadow-indigo-500/25"
-                              : "bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-600 hover:from-emerald-600 hover:via-teal-650 hover:to-cyan-750 hover:shadow-lg hover:shadow-emerald-500/25"
+                              ? "bg-gradient-to-r from-blue-500 via-indigo-500 to-violet-600 hover:from-blue-600 hover:via-indigo-600 hover:to-violet-700 hover:shadow-lg hover:shadow-indigo-500/25"
+                              : "bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-600 hover:from-emerald-600 hover:via-teal-600 hover:to-cyan-700 hover:shadow-lg hover:shadow-emerald-500/25"
                       }`}
                     >
                       {sendingFinalInvoice ? (

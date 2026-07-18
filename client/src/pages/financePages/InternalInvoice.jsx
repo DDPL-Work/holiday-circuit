@@ -456,7 +456,7 @@ const InternalInvoices = () => {
             <Upload className="w-4 h-4" />
             Upload Bulk Invoice
           </button>
-          <button className="flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-600 via-teal-650 to-emerald-500 hover:from-emerald-700 hover:via-teal-700 hover:to-emerald-600 active:scale-95 active:translate-y-0 hover:-translate-y-0.5 transition-all duration-300 ease-out text-white px-4.5 py-2 rounded-xl text-sm font-semibold shadow-sm hover:shadow-md shadow-emerald-500/10 hover:shadow-emerald-500/20">
+          <button className="flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 hover:from-emerald-700 hover:via-teal-700 hover:to-emerald-600 active:scale-95 active:translate-y-0 hover:-translate-y-0.5 transition-all duration-300 ease-out text-white px-4.5 py-2 rounded-xl text-sm font-semibold shadow-sm hover:shadow-md shadow-emerald-500/10 hover:shadow-emerald-500/20">
             <FileDown className="w-4 h-4" />
             Export Finance Report
           </button>
