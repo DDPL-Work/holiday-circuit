@@ -253,6 +253,10 @@ const internalInvoiceSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    escalatedToAdmin: {
+      type: Boolean,
+      default: false,
+    },
   },
   { timestamps: true },
 );

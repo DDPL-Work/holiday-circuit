@@ -2605,7 +2605,7 @@ export const passToAdmin = async (req, res, next) => {
 
     query.adminCoordination = {
       ...currentAdminCoordination,
-      status: "pending_admin_reply",
+      status: isOperationManagerActor ? "pending_admin_reply" : "pending_manager_reply",
       lastOpsMessage: note,
       lastOpsMessageAt: createdAt,
       lastOpsMessageBy: req.user?.id || null,

@@ -446,18 +446,18 @@ const AgentDashboard = () => {
                   <CartesianGrid
                     strokeDasharray="3 3"
                     vertical={false}
-                    stroke="rgba(226, 232, 240, 0.5)"
+                    stroke="rgba(148, 163, 184, 0.4)"
                   />
                   <XAxis
                     dataKey="month"
                     tickLine={false}
-                    axisLine={false}
+                    axisLine={{ stroke: "rgba(148, 163, 184, 0.4)", strokeWidth: 1 }}
                     dy={8}
                     tick={{ fontSize: 9, fontWeight: 600, fill: "#94a3b8" }}
                   />
                   <YAxis
                     tickLine={false}
-                    axisLine={false}
+                    axisLine={{ stroke: "rgba(148, 163, 184, 0.4)", strokeWidth: 1 }}
                     dx={-5}
                     allowDecimals={false}
                     tick={{ fontSize: 9, fontWeight: 500, fill: "#94a3b8" }}

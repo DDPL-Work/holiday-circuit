@@ -23,7 +23,15 @@ const managerFilterRoles = new Set([
   "operations",
 ]);
 
-const clearAllRoles = new Set(["finance_partner", "dmc_partner"]);
+const clearAllRoles = new Set([
+  "admin",
+  "operation_manager",
+  "finance_manager",
+  "operations",
+  "finance_partner",
+  "dmc_partner",
+  "agent",
+]);
 
 const isCouponNotification = (notification) =>
   notification?.meta?.kind === "coupon" ||

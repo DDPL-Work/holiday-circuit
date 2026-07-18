@@ -265,6 +265,10 @@ const paymentVerificationSchema = new mongoose.Schema(
     teamDecisionAt: {
       type: Date,
     },
+    escalatedToAdmin: {
+      type: Boolean,
+      default: false,
+    },
     sentToManagerAt: {
       type: Date,
     },

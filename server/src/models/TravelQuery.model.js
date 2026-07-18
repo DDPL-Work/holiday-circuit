@@ -260,7 +260,7 @@ const adminCoordinationSchema = new mongoose.Schema(
   {
     status: {
       type: String,
-      enum: ["idle", "pending_admin_reply", "replied"],
+      enum: ["idle", "pending_manager_reply", "pending_admin_reply", "replied"],
       default: "idle",
     },
     lastOpsMessage: {

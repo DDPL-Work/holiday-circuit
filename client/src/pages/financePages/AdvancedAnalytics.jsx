@@ -2,7 +2,9 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import * as XLSX from 'xlsx';
 import API from '../../utils/Api';
 import { motion, AnimatePresence } from 'framer-motion';
-import { TrendingUp, TrendingDown, DollarSign, Download, FileText, FileSpreadsheet, CheckCircle2, Calendar, AlertCircle, Receipt, ReceiptIndianRupee, Coins, Percent, ChevronDown, ChevronLeft, ChevronRight, X, SlidersHorizontal, IndianRupee, Star, Sparkles, MapPin, Flag, User } from 'lucide-react';
+import { useSelector } from 'react-redux';
+import gsap from 'gsap';
+import { TrendingUp, TrendingDown, DollarSign, Download, FileText, FileSpreadsheet, CheckCircle2, Calendar, AlertCircle, Receipt, ReceiptIndianRupee, Coins, Percent, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, X, SlidersHorizontal, IndianRupee, Star, Sparkles, MapPin, Flag, User, Info } from 'lucide-react';
 
 const MONTH_SEQUENCE = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const CONFIRMED_STATS_PAYMENT_STATUSES = new Set(['Partially Paid', 'Partially_Paid', 'Paid']);
@@ -33,6 +35,11 @@ const getPrimaryTravelDate = (record = {}) =>
   parseValidDate((record.items || []).find((item) => item.query?.startDate)?.query?.startDate);
 
 const hasTravelInMonth = (record = {}, targetYearMonth = '') => {
+  if (record.batchNumber || record.settlementType === 'bulk') {
+    const batchDate = parseValidDate(record.invoiceDate || record.submittedAt || record.createdAt);
+    return isDateInYearMonth(batchDate, targetYearMonth);
+  }
+
   const directTravelDate = getPrimaryTravelDate(record);
   if (isDateInYearMonth(directTravelDate, targetYearMonth)) return true;
 
@@ -43,6 +50,31 @@ const hasTravelInMonth = (record = {}, targetYearMonth = '') => {
 };
 
 const hasTravelInYear = (record = {}, targetYear = '') => {
+  if (record.batchNumber || record.settlementType === 'bulk') {
+    const batchDate = parseValidDate(record.invoiceDate || record.submittedAt || record.createdAt);
+    return isDateInYear(batchDate, targetYear);
+  }
+
+  const directTravelDate = getPrimaryTravelDate(record);
+  if (isDateInYear(directTravelDate, targetYear)) return true;
+
+  return (record.items || []).some((item) => {
+    const itemTravelDate = parseValidDate(item.query?.startDate || item.serviceDate || item.creditStartDate);
+    return isDateInYear(itemTravelDate, targetYear);
+  });
+};
+
+const hasTravelInMonthForProfit = (record = {}, targetYearMonth = '') => {
+  const directTravelDate = getPrimaryTravelDate(record);
+  if (isDateInYearMonth(directTravelDate, targetYearMonth)) return true;
+
+  return (record.items || []).some((item) => {
+    const itemTravelDate = parseValidDate(item.query?.startDate || item.serviceDate || item.creditStartDate);
+    return isDateInYearMonth(itemTravelDate, targetYearMonth);
+  });
+};
+
+const hasTravelInYearForProfit = (record = {}, targetYear = '') => {
   const directTravelDate = getPrimaryTravelDate(record);
   if (isDateInYear(directTravelDate, targetYear)) return true;
 
@@ -291,6 +323,30 @@ const getInvoicePaidAmount = (invoice) => {
   }
   if (isVerifiedPaymentEntry(invoice.paymentVerification) && submittedAmount > 0) return submittedAmount;
   return 0;
+};
+
+const getInvoiceMonthVerifiedPayment = (invoice = {}, targetYearMonth = '') => {
+  const entries = getAgentPaymentEntries(invoice);
+  if (entries.length > 0) {
+    return entries.reduce((sum, entry) => (
+      isVerifiedPaymentEntry(entry) && isDateInYearMonth(entry.date, targetYearMonth)
+        ? sum + Number(entry.amount || 0)
+        : sum
+    ), 0);
+  }
+  return 0;
+};
+
+const getInvoiceMonthVerifiedPaymentDate = (invoice = {}, targetYearMonth = '') => {
+  const entries = getAgentPaymentEntries(invoice);
+  const verifiedInMonth = entries.filter(
+    (entry) => isVerifiedPaymentEntry(entry) && isDateInYearMonth(entry.date, targetYearMonth)
+  );
+  if (verifiedInMonth.length > 0) {
+    const sorted = [...verifiedInMonth].sort((left, right) => (left.date?.getTime?.() || 0) - (right.date?.getTime?.() || 0));
+    return sorted[0]?.date || null;
+  }
+  return null;
 };
 
 const getInvoicePreTravelPaidAmount = (invoice = {}) => {
@@ -658,7 +714,7 @@ const formatTruncatedCompactDecimal = (value) => {
 
 const formatCompactCurrency = (value) => {
   const amount = Number(value || 0);
-  const absolute = Math.abs(amount);
+  const absolute = Math.floor(Math.abs(amount));
   const sign = amount < 0 ? '-' : '';
 
   if (absolute >= 10000000) {
@@ -671,7 +727,7 @@ const formatCompactCurrency = (value) => {
 
   return `${sign}\u20B9${absolute.toLocaleString('en-IN', {
     minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
+    maximumFractionDigits: 0,
   })}`;
 };
 
@@ -769,10 +825,15 @@ const RevenueAnalyticsChart = ({
   const canvasRef = useRef(null);
   const chartRef = useRef(null);
   const [hoveredSegment, setHoveredSegment] = useState(null);
+  const [hoveredDonutSegment, setHoveredDonutSegment] = useState(null);
+  const pastCircleRef = useRef(null);
+  const currentCircleRef = useRef(null);
+  const upcomingCircleRef = useRef(null);
 
-  const pastTotal = useMemo(() => (groups?.past || []).reduce((sum, inv) => sum + getInvoiceTotalAmount(inv), 0), [groups]);
-  const currentTotal = useMemo(() => (groups?.current || []).reduce((sum, inv) => sum + getInvoiceTotalAmount(inv), 0), [groups]);
-  const upcomingTotal = useMemo(() => (groups?.upcoming || []).reduce((sum, inv) => sum + getInvoiceTotalAmount(inv), 0), [groups]);
+
+  const pastTotal = useMemo(() => (groups?.past || []).reduce((sum, inv) => sum + getInvoiceMonthVerifiedPayment(inv, effectiveSelectedTaxMonth), 0), [groups, effectiveSelectedTaxMonth]);
+  const currentTotal = useMemo(() => (groups?.current || []).reduce((sum, inv) => sum + getInvoiceMonthVerifiedPayment(inv, effectiveSelectedTaxMonth), 0), [groups, effectiveSelectedTaxMonth]);
+  const upcomingTotal = useMemo(() => (groups?.upcoming || []).reduce((sum, inv) => sum + getInvoiceMonthVerifiedPayment(inv, effectiveSelectedTaxMonth), 0), [groups, effectiveSelectedTaxMonth]);
   const totalSum = pastTotal + currentTotal + upcomingTotal;
   const comparisonPreviousTotal = Number(previousMonthRevenueTotal || 0);
 
@@ -848,6 +909,91 @@ const RevenueAnalyticsChart = ({
       upcomingOffset,
     };
   }, [pastTotal, currentTotal, upcomingTotal, totalSum]);
+
+  const [displayValue, setDisplayValue] = useState(0);
+
+  const currentTargetVal = useMemo(() => {
+    return hoveredSegment === 'past'
+      ? pastTotal
+      : hoveredSegment === 'current'
+        ? currentTotal
+        : hoveredSegment === 'upcoming'
+          ? upcomingTotal
+          : totalSum;
+  }, [hoveredSegment, pastTotal, currentTotal, upcomingTotal, totalSum]);
+
+  // Smooth number count-up animation
+  useEffect(() => {
+    const obj = { val: displayValue };
+    const tween = gsap.to(obj, {
+      val: currentTargetVal,
+      duration: 0.65,
+      ease: 'power2.out',
+      onUpdate: () => {
+        setDisplayValue(Math.round(obj.val));
+      }
+    });
+    return () => tween.kill();
+  }, [currentTargetVal]);
+
+  // Entry / Data Change Animation
+  useEffect(() => {
+    if (totalSum <= 0) return;
+
+    if (pastCircleRef.current) {
+      gsap.to(pastCircleRef.current, {
+        strokeDashoffset: donutData.pastOffset,
+        duration: 1.25,
+        ease: 'power3.out',
+      });
+    }
+
+    if (currentCircleRef.current) {
+      gsap.to(currentCircleRef.current, {
+        strokeDashoffset: donutData.currentOffset,
+        duration: 1.25,
+        ease: 'power3.out',
+      });
+    }
+
+    if (upcomingCircleRef.current) {
+      gsap.to(upcomingCircleRef.current, {
+        strokeDashoffset: donutData.upcomingOffset,
+        duration: 1.25,
+        ease: 'power3.out',
+      });
+    }
+  }, [pastTotal, currentTotal, upcomingTotal, totalSum, donutData]);
+
+  // Hover animations using GSAP
+  useEffect(() => {
+    if (pastCircleRef.current) {
+      gsap.to(pastCircleRef.current, {
+        strokeWidth: hoveredSegment === 'past' ? 9.5 : 6.5,
+        scale: hoveredSegment === 'past' ? 1.04 : 1,
+        duration: 0.35,
+        ease: 'power2.out',
+      });
+    }
+
+    if (currentCircleRef.current) {
+      gsap.to(currentCircleRef.current, {
+        strokeWidth: hoveredSegment === 'current' ? 11.5 : 8.5,
+        scale: hoveredSegment === 'current' ? 1.04 : 1,
+        duration: 0.35,
+        ease: 'power2.out',
+      });
+    }
+
+    if (upcomingCircleRef.current) {
+      gsap.to(upcomingCircleRef.current, {
+        strokeWidth: hoveredSegment === 'upcoming' ? 8 : 5,
+        scale: hoveredSegment === 'upcoming' ? 1.04 : 1,
+        duration: 0.35,
+        ease: 'power2.out',
+      });
+    }
+  }, [hoveredSegment]);
 
   const chartDataCombined = useMemo(() => {
     let labels = [];
@@ -1413,7 +1559,7 @@ const RevenueAnalyticsChart = ({
                             fill={isActive ? '#0f172a' : '#64748b'}
                             className="text-[6.4px] font-black"
                           >
-                          {month.label}
+                            {month.label}
                           </text>
                           <text
                             x={month.outerLabelPoint.x}
@@ -1566,6 +1712,11 @@ const RevenueAnalyticsChart = ({
                   </linearGradient>
                 </defs>
 
+                {/* blueprint technical concentric circular background guides */}
+                <circle cx="50" cy="50" r="46" stroke="rgba(148, 163, 184, 0.05)" strokeWidth="0.5" fill="transparent" strokeDasharray="1, 3" />
+                <circle cx="50" cy="50" r="40" stroke="rgba(148, 163, 184, 0.05)" strokeWidth="0.5" fill="transparent" strokeDasharray="1, 3" />
+                <circle cx="50" cy="50" r="34" stroke="rgba(148, 163, 184, 0.05)" strokeWidth="0.5" fill="transparent" strokeDasharray="1, 3" />
+
                 {/* Inactive backings/tracks for all active radii */}
                 {totalSum > 0 ? (
                   <>
@@ -1580,85 +1731,147 @@ const RevenueAnalyticsChart = ({
                 {totalSum > 0 && (
                   <>
                     {pastTotal > 0 && (
-                      <motion.circle
+                      <circle
+                        ref={pastCircleRef}
                         cx="50"
                         cy="50"
                         r={donutData.rPast}
                         stroke="url(#past-gradient)"
-                        strokeWidth={hoveredSegment === 'past' ? 9.5 : 6.5}
+                        strokeWidth="6.5"
                         fill="transparent"
                         strokeDasharray={donutData.pastDashArray}
-                        initial={{ strokeDashoffset: donutData.cPast }}
-                        animate={{
-                          strokeDashoffset: donutData.pastOffset,
-                          strokeWidth: hoveredSegment === 'past' ? 9.5 : 6.5
-                        }}
-                        transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1] }}
+                        strokeDashoffset={donutData.cPast}
                         strokeLinecap="round"
                         filter="url(#donut-shadow)"
-                        style={{ transformOrigin: 'center', cursor: 'pointer' }}
-                        onMouseEnter={() => setHoveredSegment('past')}
-                        onMouseLeave={() => setHoveredSegment(null)}
+                        style={{ transformOrigin: '50px 50px', cursor: 'pointer' }}
+                        onMouseEnter={() => {
+                          setHoveredSegment('past');
+                          setHoveredDonutSegment('past');
+                        }}
+                        onMouseLeave={() => {
+                          setHoveredSegment(null);
+                          setHoveredDonutSegment(null);
+                        }}
                       />
                     )}
                     {currentTotal > 0 && (
-                      <motion.circle
+                      <circle
+                        ref={currentCircleRef}
                         cx="50"
                         cy="50"
                         r={donutData.rCurrent}
                         stroke="url(#current-gradient)"
-                        strokeWidth={hoveredSegment === 'current' ? 11.5 : 8.5}
+                        strokeWidth="8.5"
                         fill="transparent"
                         strokeDasharray={donutData.currentDashArray}
-                        initial={{ strokeDashoffset: donutData.cCurrent }}
-                        animate={{
-                          strokeDashoffset: donutData.currentOffset,
-                          strokeWidth: hoveredSegment === 'current' ? 11.5 : 8.5
-                        }}
-                        transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1] }}
+                        strokeDashoffset={donutData.cCurrent}
                         strokeLinecap="round"
                         filter="url(#donut-shadow)"
-                        style={{ transformOrigin: 'center', cursor: 'pointer' }}
-                        onMouseEnter={() => setHoveredSegment('current')}
-                        onMouseLeave={() => setHoveredSegment(null)}
+                        style={{ transformOrigin: '50px 50px', cursor: 'pointer' }}
+                        onMouseEnter={() => {
+                          setHoveredSegment('current');
+                          setHoveredDonutSegment('current');
+                        }}
+                        onMouseLeave={() => {
+                          setHoveredSegment(null);
+                          setHoveredDonutSegment(null);
+                        }}
                       />
                     )}
                     {upcomingTotal > 0 && (
-                      <motion.circle
+                      <circle
+                        ref={upcomingCircleRef}
                         cx="50"
                         cy="50"
                         r={donutData.rUpcoming}
                         stroke="url(#upcoming-gradient)"
-                        strokeWidth={hoveredSegment === 'upcoming' ? 8 : 5}
+                        strokeWidth="5"
                         fill="transparent"
                         strokeDasharray={donutData.upcomingDashArray}
-                        initial={{ strokeDashoffset: donutData.cUpcoming }}
-                        animate={{
-                          strokeDashoffset: donutData.upcomingOffset,
-                          strokeWidth: hoveredSegment === 'upcoming' ? 8 : 5
-                        }}
-                        transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1] }}
+                        strokeDashoffset={donutData.cUpcoming}
                         strokeLinecap="round"
                         filter="url(#donut-shadow)"
-                        style={{ transformOrigin: 'center', cursor: 'pointer' }}
-                        onMouseEnter={() => setHoveredSegment('upcoming')}
-                        onMouseLeave={() => setHoveredSegment(null)}
+                        style={{ transformOrigin: '50px 50px', cursor: 'pointer' }}
+                        onMouseEnter={() => {
+                          setHoveredSegment('upcoming');
+                          setHoveredDonutSegment('upcoming');
+                        }}
+                        onMouseLeave={() => {
+                          setHoveredSegment(null);
+                          setHoveredDonutSegment(null);
+                        }}
                       />
                     )}
                   </>
                 )}
               </svg>
 
-              <div className="absolute flex flex-col items-center justify-center text-center pointer-events-none">
-                <span className="text-[13px] font-black tracking-tight text-slate-850 leading-none">{formatCompactCurrency(totalSum)}</span>
-                <span className="mt-0.5 text-[6.5px] font-black uppercase tracking-widest text-slate-400">Total Amount</span>
+              {/* Glassmorphic dynamic center core circle */}
+              <div className="absolute flex flex-col items-center justify-center text-center pointer-events-none w-[64px] h-[64px] rounded-full bg-white/70 backdrop-blur-md border border-white/50 shadow-[0_8px_32px_rgba(148,163,184,0.18),inset_0_2px_8px_rgba(255,255,255,0.85)]">
+                <span className="text-[11px] font-black tracking-tight text-slate-850 leading-none">
+                  {formatCompactCurrency(displayValue)}
+                </span>
+                <span className="mt-1.5 text-[5px] font-extrabold uppercase tracking-widest text-slate-400">
+                  {hoveredSegment === 'past'
+                    ? 'Past Month'
+                    : hoveredSegment === 'current'
+                      ? 'Current Month'
+                      : hoveredSegment === 'upcoming'
+                        ? 'Upcoming Month'
+                        : 'Total Amount'}
+                </span>
               </div>
+
+              <AnimatePresence>
+                {hoveredDonutSegment && groups[hoveredDonutSegment]?.length > 0 && (
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.9, y: 10 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.9, y: 10 }}
+                    transition={{ duration: 0.15 }}
+                    className="absolute z-20 bottom-[125px] left-1/2 -translate-x-1/2 w-[220px] bg-slate-900/95 backdrop-blur-md border border-slate-700/60 rounded-xl p-2.5 shadow-2xl text-white select-none pointer-events-none"
+                    style={{ transformOrigin: 'center bottom' }}
+                  >
+                    <div className="absolute bottom-[-5px] left-1/2 -translate-x-1/2 w-2.5 h-2.5 bg-slate-900 border-r border-b border-slate-700/60 rotate-45" />
+
+                    <div className="flex items-center gap-1.5 border-b border-slate-800 pb-1.5 mb-1.5">
+                      <span className={`h-2.5 w-2.5 rounded-full shadow-[0_0_6px_rgba(255,255,255,0.25)] ${hoveredDonutSegment === 'past' ? 'bg-purple-500 shadow-[0_0_6px_rgba(168,85,247,0.4)]' :
+                        hoveredDonutSegment === 'current' ? 'bg-sky-500 shadow-[0_0_6px_rgba(14,165,233,0.4)]' :
+                          'bg-orange-500 shadow-[0_0_6px_rgba(249,115,22,0.4)]'
+                        }`} />
+                      <span className="text-[10px] font-black uppercase tracking-wider">
+                        {hoveredDonutSegment === 'past' ? 'Past Month Payments' :
+                          hoveredDonutSegment === 'current' ? 'Current Month Payments' : 'Upcoming Month Payments'}
+                      </span>
+                    </div>
+                    <div className="max-h-[140px] overflow-y-auto pr-0.5 space-y-1.5 [scrollbar-width:thin] text-[9.5px]">
+                      {groups[hoveredDonutSegment].map((inv, index) => {
+                        const destination = inv.tripSnapshot?.destination || inv.query?.destination || "Unknown Destination";
+                        const paymentAmt = getInvoiceMonthVerifiedPayment(inv, effectiveSelectedTaxMonth);
+                        return (
+                          <div key={inv._id || index} className="flex justify-between items-center gap-1 bg-white/5 p-1.5 rounded-lg border border-white/5">
+                            <div className="min-w-0 flex-1">
+                              <p className="font-extrabold text-[9.5px] text-white truncate leading-tight">
+                                {inv.query?.queryId || inv.invoiceNumber || "Draft Query"}
+                              </p>
+                              <p className="text-[8.5px] text-slate-400 font-bold truncate leading-none mt-0.5">
+                                {destination}
+                              </p>
+                            </div>
+                            <span className="font-black text-emerald-400 shrink-0 font-mono text-[9.5px] pl-1.5">
+                              {formatCompactCurrency(paymentAmt)}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
 
             <div className="mt-4 flex w-full flex-col gap-1.5 border-t border-slate-200/60 pt-3">
               <div
-                onMouseEnter={() => setHoveredSegment('past')}
-                onMouseLeave={() => setHoveredSegment(null)}
                 className={`flex items-center justify-between text-[9px] font-bold p-1 rounded-lg transition-all duration-200 cursor-pointer ${hoveredSegment === 'past' ? 'bg-slate-100/70' : ''}`}
               >
                 <div className="flex items-center gap-1.5 text-slate-500">
@@ -1668,8 +1881,6 @@ const RevenueAnalyticsChart = ({
                 <span className={`font-extrabold text-slate-700 font-mono ${hoveredSegment === 'past' ? 'text-purple-650' : ''}`}>{formatCompactCurrency(pastTotal)}</span>
               </div>
               <div
-                onMouseEnter={() => setHoveredSegment('current')}
-                onMouseLeave={() => setHoveredSegment(null)}
                 className={`flex items-center justify-between text-[9px] font-bold p-1 rounded-lg transition-all duration-200 cursor-pointer ${hoveredSegment === 'current' ? 'bg-slate-100/70' : ''}`}
               >
                 <div className="flex items-center gap-1.5 text-slate-500">
@@ -1679,8 +1890,6 @@ const RevenueAnalyticsChart = ({
                 <span className={`font-extrabold text-slate-700 font-mono ${hoveredSegment === 'current' ? 'text-sky-650' : ''}`}>{formatCompactCurrency(currentTotal)}</span>
               </div>
               <div
-                onMouseEnter={() => setHoveredSegment('upcoming')}
-                onMouseLeave={() => setHoveredSegment(null)}
                 className={`flex items-center justify-between text-[9px] font-bold p-1 rounded-lg transition-all duration-200 cursor-pointer ${hoveredSegment === 'upcoming' ? 'bg-slate-100/70' : ''}`}
               >
                 <div className="flex items-center gap-1.5 text-slate-500">
@@ -1824,7 +2033,7 @@ const RevenueChecklistTable = ({
                 ) : (
                   list.map((invoice, idx) => {
                     const destination = invoice.tripSnapshot?.destination || invoice.query?.destination || "Unknown Destination";
-                    const preTravelPaidAmount = getInvoicePreTravelPaidAmount(invoice);
+                    const preTravelPaidAmount = getInvoiceMonthVerifiedPayment(invoice, effectiveSelectedTaxMonth);
                     const isClientApprovedWithoutPayment = preTravelPaidAmount <= 0 && isClientApprovedChecklistRecord(invoice);
                     const statusLabel = isClientApprovedWithoutPayment ? 'Client Approved' : invoice.paymentStatus;
 
@@ -1877,7 +2086,7 @@ const RevenueChecklistTable = ({
 
                         {/* Payment Date Column */}
                         <div className="w-[13%] text-slate-600 font-medium truncate">
-                          {formatShortDate(getInvoicePreTravelPaymentDate(invoice)) || '-'}
+                          {formatShortDate(getInvoiceMonthVerifiedPaymentDate(invoice, effectiveSelectedTaxMonth)) || '-'}
                         </div>
 
                         {/* Partially Paid Column */}
@@ -2243,7 +2452,314 @@ const cardStyles = {
   },
 };
 
-const MetricCard = ({ data, icon, loading }) => {
+const formatCurrency = (val, currency = 'INR') => {
+  const number = Number(val || 0);
+  return new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: currency,
+    maximumFractionDigits: 0,
+  }).format(number);
+};
+
+const PayoutBreakdownDropdown = React.forwardRef(({ isOpen, onClose, contributingPayouts, periodLabel, loading }, ref) => {
+  const [expandedInvoiceId, setExpandedInvoiceId] = useState(null);
+
+  if (!isOpen) return null;
+
+  return (
+    <motion.div
+      ref={ref}
+      initial={{ opacity: 0, scale: 0.95, y: -10 }}
+      animate={{ opacity: 1, scale: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.95, y: -10 }}
+      transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+      className="absolute left-0 right-0 top-full -mt-28 z-40 bg-gradient-to-br from-white via-sky-50/50 to-sky-100/25 backdrop-blur-md border border-sky-100/60 rounded-2xl p-0 overflow-hidden shadow-[0_25px_60px_-15px_rgba(0,0,0,0.15)] flex flex-col max-h-[88vh]"
+    >
+      <style dangerouslySetInnerHTML={{
+        __html: `
+        .payout-scroll-container {
+          scrollbar-width: none !important;
+          -ms-overflow-style: none !important;
+        }
+        .payout-scroll-container::-webkit-scrollbar {
+          display: none !important;
+          width: 0 !important;
+          height: 0 !important;
+          background: transparent !important;
+        }
+      `}} />
+      <div className="flex items-center justify-between px-5 py-4 bg-gradient-to-r from-blue-950/20 via-sky-200/50 to-white border-b border-sky-200/60 shrink-0">
+        <div>
+          <h4 className="text-sm font-black text-slate-800 flex items-center gap-2">
+            <Coins className="w-4 h-4 text-rose-500 animate-pulse" />
+            Actual Payout Breakdown ({periodLabel})
+          </h4>
+          <p className="text-[11px] font-semibold text-slate-400 mt-0.5">
+            Detailed list of payments made to DMCs in the selected period.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-650 transition cursor-pointer"
+        >
+          <X size={16} />
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="py-8 text-center text-xs font-semibold text-slate-400 shrink-0 px-5">Loading payout details...</div>
+      ) : contributingPayouts.length === 0 ? (
+        <div className="py-8 text-center text-xs font-semibold text-slate-400 flex flex-col items-center gap-2 shrink-0 px-5">
+          <AlertCircle className="w-8 h-8 text-slate-300" />
+          <span>No actual payouts recorded in this period.</span>
+        </div>
+      ) : (
+        <div className="flex-1 min-h-0 overflow-y-auto px-5 pb-5 pt-3 space-y-4 payout-scroll-container">
+          {contributingPayouts.map(({ invoice, payoutAmount, entries, isBulk, queryGroups, summary }) => {
+            const invoiceId = invoice._id || invoice.id;
+            const isExpanded = expandedInvoiceId === invoiceId;
+            const dmcName = invoice.dmc?.companyName || invoice.dmc?.name || invoice.dmcName || invoice.supplierName || 'Unknown DMC';
+            const numBookings = queryGroups.length;
+            const numUnbookings = queryGroups.filter(g => g.isCoveredOnly).length;
+            const totalServices = queryGroups.reduce((sum, g) => sum + g.services.length, 0);
+
+            return (
+              <div
+                key={invoiceId}
+                className="border border-slate-100 rounded-xl overflow-hidden shadow-sm bg-white"
+              >
+                {/* Header Row */}
+                <div
+                  onClick={() => setExpandedInvoiceId(isExpanded ? null : invoiceId)}
+                  className="flex flex-col sm:flex-row sm:items-center justify-between p-4 gap-3 cursor-pointer hover:bg-slate-50/60 transition-colors select-none"
+                >
+                  <div className="flex items-start gap-3">
+                    <span className={`mt-0.5 px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider ${isBulk
+                      ? 'bg-indigo-50 text-indigo-650 border border-indigo-100'
+                      : 'bg-emerald-50 text-emerald-650 border border-emerald-100'
+                      }`}>
+                      {isBulk ? 'Bulk Upload' : 'Single Payout'}
+                    </span>
+                    <div>
+                      <h5 className="text-xs font-bold text-slate-800">
+                        {dmcName}
+                      </h5>
+                      <p className="text-[10px] text-slate-400 font-semibold mt-0.5">
+                        Invoice/Batch: <span className="text-slate-650 font-extrabold">{invoice.batchNumber || invoice.invoiceNumber || 'N/A'}</span>
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between sm:justify-end gap-4">
+                    <div className="text-right">
+                      <p className="text-xs font-black text-rose-600 bg-rose-50/80 border border-rose-100/50 px-2 py-0.5 rounded-full inline-block">
+                        Paid: {formatCurrency(payoutAmount)}
+                      </p>
+                      <p className="text-[9px] text-slate-400 font-bold uppercase mt-0.5 tracking-wider">
+                        {entries.length} Installment{entries.length > 1 ? 's' : ''}
+                      </p>
+                    </div>
+                    {isExpanded ? <ChevronUp size={16} className="text-slate-400" /> : <ChevronDown size={16} className="text-slate-400" />}
+                  </div>
+                </div>
+
+                {/* Expanded Details */}
+                <AnimatePresence>
+                  {isExpanded && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="border-t border-slate-100 bg-white p-4"
+                    >
+                      {/* Payout Details Grid */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mb-4 bg-slate-50/50 p-3 rounded-lg border border-slate-100">
+                        <div>
+                          <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider block">Installment Details</span>
+                          {entries.map((entry, idx) => (
+                            <div key={idx} className="text-[11px] font-semibold text-slate-700 mt-1 flex justify-between">
+                              <span>{entry.date ? new Date(entry.date).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' }) : 'N/A'}:</span>
+                              <span className="text-rose-600 font-extrabold ml-2">{formatCurrency(entry.amount)}</span>
+                            </div>
+                          ))}
+                        </div>
+                        <div>
+                          <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider block">Bank & Ref (UTR)</span>
+                          <span className="text-[11px] font-bold text-slate-700 block mt-1">
+                            Bank: <span className="text-slate-650">{invoice.payoutBank || invoice.bankName || 'N/A'}</span>
+                          </span>
+                          <span className="text-[11px] font-bold text-slate-700 block mt-0.5">
+                            UTR: <span className="text-slate-650 font-semibold">{invoice.payoutReference || 'N/A'}</span>
+                          </span>
+                        </div>
+                        {invoice.financeNotes && (
+                          <div>
+                            <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider block">Finance Notes</span>
+                            <p className="text-[11px] font-medium text-slate-600 mt-1 italic">
+                              "{invoice.financeNotes}"
+                            </p>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Invoice Financial Summary */}
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-4 mb-4 bg-rose-50/10 p-3 rounded-lg border border-rose-100/30 text-xs">
+                        <div>
+                          <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider block">Invoice Subtotal</span>
+                          <span className="font-extrabold text-slate-700 block mt-1">{formatCurrency(summary.subtotal)}</span>
+                        </div>
+                        <div>
+                          <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider block">GST Amount</span>
+                          <span className="font-bold text-slate-650 block mt-1">{formatCurrency(summary.gstAmount)}</span>
+                        </div>
+                        <div>
+                          <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider block">TCS Amount</span>
+                          <span className="font-bold text-slate-650 block mt-1">{formatCurrency(summary.tcsAmount)}</span>
+                        </div>
+                        <div>
+                          <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider block">Other Taxes / TDS</span>
+                          <span className="font-bold text-slate-650 block mt-1">{formatCurrency(summary.otherTaxAmount)}</span>
+                        </div>
+                        <div>
+                          <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider block">Total Tax</span>
+                          <span className="font-extrabold text-rose-600 block mt-1">{formatCurrency(summary.totalTax)}</span>
+                        </div>
+                        <div>
+                          <span className="text-[9px] font-extrabold text-rose-500 uppercase tracking-wider block font-black">Grand Total</span>
+                          <span className="font-black text-rose-600 block mt-1 bg-rose-50/80 px-1.5 py-0.5 rounded border border-rose-100/50 w-fit">{formatCurrency(summary.grandTotal)}</span>
+                        </div>
+                      </div>
+
+                      {/* Bulk / Single Statistics */}
+                      <div className="flex items-center gap-4 mb-3 border-b border-slate-100 pb-2">
+                        <span className="text-[10px] font-extrabold text-slate-700 uppercase tracking-wider">
+                          Covered Bookings Breakdown:
+                        </span>
+                        <div className="flex gap-2">
+                          <span className="text-[10px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full font-bold">
+                            Bookings: {numBookings - numUnbookings}
+                          </span>
+                          {isBulk && (
+                            <span className="text-[10px] bg-rose-50 text-rose-700 px-2 py-0.5 rounded-full font-bold">
+                              Unbookings: {numUnbookings}
+                            </span>
+                          )}
+                          <span className="text-[10px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full font-bold">
+                            Services: {totalServices}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Queries and Services details */}
+                      <div className="space-y-3">
+                        {queryGroups.map((group) => {
+                          const isUnbooking = group.isCoveredOnly || group.services.length === 0;
+
+                          return (
+                            <div
+                              key={group.queryCode}
+                              className={`border rounded-lg p-3 ${isUnbooking
+                                ? 'bg-rose-50/20 border-rose-100/50'
+                                : 'bg-slate-50/20 border-slate-100'
+                                }`}
+                            >
+                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 pb-2 border-b border-slate-100/60 mb-2">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-[11px] font-extrabold text-slate-700">
+                                    Booking: {group.queryCode}
+                                  </span>
+                                  {group.destination && (
+                                    <span className="text-[10px] text-slate-500 font-bold bg-slate-100 px-1.5 py-0.5 rounded flex items-center gap-1">
+                                      <MapPin size={10} />
+                                      {group.destination}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  {isUnbooking ? (
+                                    <span className="text-[9px] font-black text-rose-600 bg-rose-50 border border-rose-100 px-1.5 py-0.5 rounded-md uppercase tracking-wider">
+                                      Unbooking / Canceled
+                                    </span>
+                                  ) : (
+                                    <div className="flex flex-col items-end">
+                                      <span className="text-[11px] font-extrabold text-slate-800 bg-slate-100/80 px-2 py-0.5 rounded">
+                                        Query Total: {formatCurrency(group.totalCostWithTaxes || group.totalCost)}
+                                      </span>
+                                      {((group.gstShare || 0) > 0 || (group.tcsShare || 0) > 0 || (group.otherTaxShare || 0) > 0) && (
+                                        <span className="text-[9px] text-slate-450 font-semibold mt-0.5">
+                                          Base: {formatCurrency(group.baseSubtotal)}
+                                          {group.gstShare > 0 && ` + GST: ${formatCurrency(group.gstShare)}`}
+                                          {group.tcsShare > 0 && ` + TCS: ${formatCurrency(group.tcsShare)}`}
+                                          {group.otherTaxShare > 0 && ` + Other: ${formatCurrency(group.otherTaxShare)}`}
+                                        </span>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+
+                              {isUnbooking ? (
+                                <p className="text-[11px] text-slate-400 italic">
+                                  This booking is covered under the bulk upload/settlement batch but does not contain active services billed (unbooking).
+                                </p>
+                              ) : (
+                                <div className="overflow-x-auto">
+                                  <table className="w-full text-left border-collapse">
+                                    <thead>
+                                      <tr className="border-b border-slate-100">
+                                        <th className="py-1.5 text-[9px] font-black text-slate-400 uppercase tracking-wider">Service</th>
+                                        <th className="py-1.5 text-[9px] font-black text-slate-400 uppercase tracking-wider">Type</th>
+                                        <th className="py-1.5 text-[9px] font-black text-slate-400 uppercase tracking-wider text-center">Qty</th>
+                                        <th className="py-1.5 text-[9px] font-black text-slate-400 uppercase tracking-wider text-right">Rate</th>
+                                        <th className="py-1.5 text-[9px] font-black text-slate-400 uppercase tracking-wider text-right">Tax</th>
+                                        <th className="py-1.5 text-[9px] font-black text-slate-400 uppercase tracking-wider text-right">DMC Cost</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-50">
+                                      {group.services.map((svc, sIdx) => {
+                                        const totalDmcCost = Number(svc.subtotal || 0) + Number(svc.tax || 0);
+                                        return (
+                                          <tr key={sIdx} className="text-[11px] text-slate-700">
+                                            <td className="py-1.5 font-bold text-slate-800">{svc.service}</td>
+                                            <td className="py-1.5 font-semibold text-slate-500">{svc.type}</td>
+                                            <td className="py-1.5 text-center font-bold text-slate-700">{svc.qty}</td>
+                                            <td className="py-1.5 text-right font-extrabold text-slate-800">{formatCurrency(svc.rate)}</td>
+                                            <td className="py-1.5 text-right font-semibold text-slate-500">{formatCurrency(svc.tax)}</td>
+                                            <td className="py-1.5 text-right font-black text-slate-800">{formatCurrency(totalDmcCost)}</td>
+                                          </tr>
+                                        );
+                                      })}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Professional Written Summary */}
+                      <div className="mt-4 pt-4 border-t border-slate-100 bg-slate-50/50 p-4 rounded-xl border border-slate-200/50">
+                        <span className="text-[10px] font-black text-rose-600 uppercase tracking-wider block mb-1">Audit Log & Payout Overview</span>
+                        <p className="text-[11px] font-semibold text-slate-600 leading-relaxed">
+                          This payment installment of <span className="font-extrabold text-rose-600">{formatCurrency(payoutAmount)}</span> was processed on <span className="font-bold text-slate-800">{entries.map(e => e.date ? new Date(e.date).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' }) : 'N/A').join(', ')}</span> via <span className="font-bold text-slate-800">{invoice.payoutBank || invoice.bankName || 'N/A'}</span> (UTR/Ref No: <span className="font-mono font-bold text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded">{(invoice.payoutInstallments || []).map(inst => inst.utrNumber).filter(Boolean).join(', ') || invoice.payoutReference || 'N/A'}</span>) to settle invoice/batch <span className="font-bold text-slate-800">{invoice.batchNumber || invoice.invoiceNumber || 'N/A'}</span> from <span className="font-bold text-slate-800">{dmcName}</span>. The total invoice volume equals <span className="font-bold text-slate-800">{formatCurrency(summary.grandTotal)}</span>, comprising a base cost of <span className="font-bold text-slate-800">{formatCurrency(summary.subtotal)}</span> and <span className="font-bold text-slate-800">{formatCurrency(summary.totalTax)}</span> total tax ({summary.gstAmount > 0 && `GST: ${formatCurrency(summary.gstAmount)}`}{summary.tcsAmount > 0 && `, TCS: ${formatCurrency(summary.tcsAmount)}`}{summary.otherTaxAmount > 0 && `, Other: ${formatCurrency(summary.otherTaxAmount)}`}). This settlement applies to <span className="font-bold text-slate-855">{numBookings - numUnbookings} active booking{numBookings - numUnbookings !== 1 ? 's' : ''}</span> covering <span className="font-bold text-slate-855">{totalServices} service{totalServices !== 1 ? 's' : ''}</span>{numUnbookings > 0 && `, and accounts for ${numUnbookings} unbooked/canceled query/queries`}.
+                        </p>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </motion.div>
+  );
+});
+
+const MetricCard = ({ data, icon, loading, onPayoutClick, showPayoutAction = true }) => {
   const style = cardStyles[data.label] || {
     cardBg: 'from-slate-50/90 via-white to-slate-50/20',
     borderColor: 'border-slate-100 hover:border-slate-300',
@@ -2259,9 +2775,9 @@ const MetricCard = ({ data, icon, loading }) => {
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, margin: "-40px" }}
       transition={{ duration: 0.4, ease: 'easeOut' }}
-      className={`bg-gradient-to-br ${style.cardBg} border ${style.borderColor} ${style.accentColor} rounded-2xl p-4 shadow-sm hover:shadow-md ${style.shadowColor} flex justify-between items-start hover:-translate-y-0.5 active:translate-y-0 transition-all duration-300 ease-out group`}
+      className={`bg-gradient-to-br ${style.cardBg} border ${style.borderColor} ${style.accentColor} rounded-2xl p-4 shadow-sm hover:shadow-md ${style.shadowColor} flex justify-between items-start hover:-translate-y-0.5 active:translate-y-0 transition-all duration-300 ease-out group relative`}
     >
-      <div>
+      <div className="flex-1 pr-10">
         <p className="text-sm font-bold text-slate-800">{data.label}</p>
         <p className="text-xs text-slate-400 mb-3">{data.sub}</p>
         <p className={`text-2xl font-extrabold tracking-tight ${style.valueColor}`}>
@@ -2270,8 +2786,27 @@ const MetricCard = ({ data, icon, loading }) => {
         <p className={`text-xs font-semibold mt-2 ${data.changeTone === 'negative' ? 'text-rose-600' : 'text-emerald-600'}`}>
           {data.up ? '↑' : '↓'} {loading ? 'Loading...' : data.change}
         </p>
+        {showPayoutAction && data.payoutVal && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onPayoutClick?.();
+            }}
+            className="mt-2 pt-2 border-t border-slate-100/80 w-full flex items-center justify-between gap-2 hover:bg-slate-50/80 active:bg-slate-100/50 p-1 -mx-1 rounded-lg transition-colors cursor-pointer text-left focus:outline-none group/payout"
+          >
+            <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider whitespace-nowrap flex items-center gap-1 group-hover/payout:text-slate-800 transition-colors">
+              Actual Payout
+              <Info size={11} className="text-slate-400 group-hover/payout:text-slate-600" />
+            </span>
+            <span className="text-xs font-extrabold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-100/50 transition-colors flex items-center gap-1 shrink-0 group-hover/payout:bg-rose-100">
+              {loading ? '...' : data.payoutVal}
+              <ChevronDown size={11} className="text-rose-400 group-hover/payout:translate-y-0.5 transition-transform duration-200" />
+            </span>
+          </button>
+        )}
       </div>
-      <div className={`p-2 rounded-lg ${style.iconBg} group-hover:scale-110 transition-transform duration-300 ease-out shadow-inner`}>
+      <div className={`absolute top-4 right-4 p-2 rounded-lg ${style.iconBg} group-hover:scale-110 transition-transform duration-300 ease-out shadow-inner`}>
         {React.createElement(icon, { className: 'w-5 h-5' })}
       </div>
     </motion.div>
@@ -2927,6 +3462,10 @@ const AdvancedAnalytics = () => {
   const [statsSelectedQueries, setStatsSelectedQueries] = useState([]);
   const [statsSelectedAgent, setStatsSelectedAgent] = useState('all');
   const [statsSelectedDmc, setStatsSelectedDmc] = useState('all');
+  const [showPayoutDropdown, setShowPayoutDropdown] = useState(false);
+  const payoutDropdownRef = useRef(null);
+
+  const { user } = useSelector((state) => state.auth || {});
 
   const dropdownRef = useRef(null);
 
@@ -2942,6 +3481,20 @@ const AdvancedAnalytics = () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, []);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (showPayoutDropdown && payoutDropdownRef.current && !payoutDropdownRef.current.contains(event.target)) {
+        if (!event.target.closest('.group\\/payout')) {
+          setShowPayoutDropdown(false);
+        }
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showPayoutDropdown]);
 
   // Custom global date range state variables
   const [customStartDate, setCustomStartDate] = useState('');
@@ -3014,12 +3567,17 @@ const AdvancedAnalytics = () => {
       const travelYrMn = formatYearMonthFromDate(travelDate);
       const preTravelPaidAmount = getInvoicePreTravelPaidAmount(invoice);
 
-      if (travelYrMn === currentMonthStr) {
+      const paymentEntries = getAgentPaymentEntries(invoice);
+      const hasVerifiedInstallmentInCurrentMonth = paymentEntries.some(
+        (entry) => isVerifiedPaymentEntry(entry) && isDateInYearMonth(entry.date, currentMonthStr)
+      );
+
+      if (travelYrMn === pastMonthStr && hasVerifiedInstallmentInCurrentMonth) {
+        groups.past.push(invoice);
+      } else if (travelYrMn === currentMonthStr) {
         if (preTravelPaidAmount <= 0 && !isClientApprovedChecklistRecord(invoice)) return;
 
-        if (createYrMn === pastMonthStr) {
-          groups.past.push(invoice);
-        } else if (createYrMn === currentMonthStr) {
+        if (createYrMn === currentMonthStr) {
           groups.current.push(invoice);
         }
       } else if (
@@ -3245,11 +3803,11 @@ const AdvancedAnalytics = () => {
 
     if (!statsModalMonth) return [];
     if (isStatsYearlyView) {
-      return source.filter((invoice) => hasTravelInYear(invoice, statsModalYear));
+      return source.filter((invoice) => hasTravelInYearForProfit(invoice, statsModalYear));
     }
 
     const targetYearMonth = getYearMonthFromLabel(statsModalMonth);
-    return source.filter((invoice) => hasTravelInMonth(invoice, targetYearMonth));
+    return source.filter((invoice) => hasTravelInMonthForProfit(invoice, targetYearMonth));
   }, [statsModalMonth, analyticsData.internalInvoices, analyticsData.profitInternalInvoices, isStatsYearlyView, statsModalYear, getYearMonthFromLabel]);
 
   const availableAgents = useMemo(() => {
@@ -3449,7 +4007,7 @@ const AdvancedAnalytics = () => {
 
               const totalExpected = Number(invoice.summary?.grandTotal || invoice.claimedSummary?.grandTotal || invoice.payoutAmount || 0);
               const itemsTotal = (invoice.items || []).reduce((s, it) => s + Number(it.subtotal || 0) + Number(it.tax || 0), 0);
-              
+
               let total = rawItemTotal;
               if (itemsTotal > 0) {
                 total = rawItemTotal * (totalExpected / itemsTotal);
@@ -3482,38 +4040,8 @@ const AdvancedAnalytics = () => {
       });
     } else {
       filteredTravelStatsInternalInvoices.forEach(inv => {
-        if (inv.settlementType === "bulk" || (inv.coveredQueries && inv.coveredQueries.length > 0)) {
-          const queryItems = (inv.items || []).filter(item => {
-            const itemTravelDate = parseValidDate(item.query?.startDate || item.serviceDate || item.creditStartDate);
-            if (!itemTravelDate) return false;
-            if (isStatsYearlyView) {
-              return isDateInYear(itemTravelDate, statsModalYear);
-            } else {
-              const targetYearMonth = getYearMonthFromLabel(statsModalMonth);
-              return isDateInYearMonth(itemTravelDate, targetYearMonth);
-            }
-          });
-          const sub = queryItems.reduce((s, item) => s + Number(item.subtotal || 0), 0);
-          const tax = queryItems.reduce((s, item) => s + Number(item.tax || 0), 0);
-          const rawItemTotal = sub + tax;
-
-          const totalExpected = Number(inv.summary?.grandTotal || inv.claimedSummary?.grandTotal || inv.payoutAmount || 0);
-          const itemsTotal = (inv.items || []).reduce((s, it) => s + Number(it.subtotal || 0) + Number(it.tax || 0), 0);
-          
-          let rawTotal = rawItemTotal;
-          if (itemsTotal > 0) {
-            rawTotal = rawItemTotal * (totalExpected / itemsTotal);
-          }
-          const dmcPaid = getDmcPaidAmount(inv);
-          const rawPaid = totalExpected > 0 ? rawTotal * (dmcPaid / totalExpected) : 0;
-
-
-          total += rawTotal;
-          paid += rawPaid;
-        } else {
-          total += Number(inv.summary?.grandTotal || inv.claimedSummary?.grandTotal || inv.payoutAmount || 0);
-          paid += getDmcPaidAmount(inv);
-        }
+        total += Number(inv.summary?.grandTotal || inv.claimedSummary?.grandTotal || inv.payoutAmount || 0);
+        paid += getDmcPaidAmount(inv);
       });
     }
     const pending = Math.max(0, total - paid);
@@ -3540,7 +4068,7 @@ const AdvancedAnalytics = () => {
           const dmcName = invoice.dmc?.companyName || invoice.dmc?.name || invoice.dmcName;
           return dmcName === statsSelectedDmc;
         })
-      : filteredTravelStatsInternalInvoices.filter((invoice) =>
+      : statsProfitTravelInternalInvoices.filter((invoice) =>
         statsRecordMatchesQueryKeys(invoice, agentProfitQueryKeys)
       );
 
@@ -3794,7 +4322,7 @@ const AdvancedAnalytics = () => {
           if (!isSingleMatch && !isBulkMatch) return;
 
           const isBulk = invoice.settlementType === "bulk" || (invoice.coveredQueries && invoice.coveredQueries.length > 0);
-          
+
           let proportion = 1;
           if (isBulk && !isSingleMatch) {
             const queryItems = (invoice.items || []).filter(item =>
@@ -3806,7 +4334,7 @@ const AdvancedAnalytics = () => {
 
             const totalExpected = Number(invoice.summary?.grandTotal || invoice.claimedSummary?.grandTotal || invoice.payoutAmount || 0);
             const itemsTotal = (invoice.items || []).reduce((s, it) => s + Number(it.subtotal || 0) + Number(it.tax || 0), 0);
-            
+
             let queryTotal = rawItemTotal;
             if (itemsTotal > 0) {
               queryTotal = rawItemTotal * (totalExpected / itemsTotal);
@@ -3886,7 +4414,7 @@ const AdvancedAnalytics = () => {
 
             const totalExpected = Number(invoice.summary?.grandTotal || invoice.claimedSummary?.grandTotal || invoice.payoutAmount || 0);
             const itemsTotal = (invoice.items || []).reduce((s, it) => s + Number(it.subtotal || 0) + Number(it.tax || 0), 0);
-            
+
             let queryTotal = rawItemTotal;
             if (itemsTotal > 0) {
               queryTotal = rawItemTotal * (totalExpected / itemsTotal);
@@ -4080,7 +4608,175 @@ const AdvancedAnalytics = () => {
       return analyticsData.custom.metrics;
     }
     return activePeriodOption?.metrics || periodData.metrics || defaultAnalytics[period].metrics;
-  }, [period, effectiveSelectedTaxMonth, effectiveSelectedTaxYear, taxPeriodOptions, analyticsData, selectedTaxDate, selectedTaxMonth, selectedTaxYear, activePeriodOption, periodData.metrics]);
+  }, [period, effectiveSelectedTaxMonth, effectiveSelectedTaxYear, taxPeriodOptions, analyticsData, selectedTaxDate, selectedTaxMonth, selectedTaxYear, activePeriodOption, periodData.metrics]); const isDmcEntryInSelectedPeriod = useCallback((date) => {
+    if (!date) return false;
+    const d = new Date(date);
+    if (isNaN(d.getTime())) return false;
+
+    if (selectedTaxDate) {
+      const targetDate = new Date(selectedTaxDate);
+      return d.getFullYear() === targetDate.getFullYear() &&
+        d.getMonth() === targetDate.getMonth() &&
+        d.getDate() === targetDate.getDate();
+    }
+
+    if (period === 'monthly') {
+      if (!effectiveSelectedTaxMonth) return false;
+      const [yr, mn] = effectiveSelectedTaxMonth.split('-').map(Number);
+      return d.getFullYear() === yr && (d.getMonth() + 1) === mn;
+    }
+
+    if (period === 'yearly') {
+      if (!effectiveSelectedTaxYear) return false;
+      const yr = Number(effectiveSelectedTaxYear);
+      return d.getFullYear() === yr;
+    }
+
+    if (period === 'custom') {
+      if (!appliedCustomRange.start || !appliedCustomRange.end) return false;
+      const start = new Date(appliedCustomRange.start);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(appliedCustomRange.end);
+      end.setHours(23, 59, 59, 999);
+      return d >= start && d <= end;
+    }
+
+    return false;
+  }, [period, selectedTaxDate, effectiveSelectedTaxMonth, effectiveSelectedTaxYear, appliedCustomRange]);
+
+  const contributingPayouts = useMemo(() => {
+    const list = [];
+    const invoices = Array.isArray(analyticsData.internalInvoices) ? analyticsData.internalInvoices : [];
+
+    // Filter invoices by user relationship for finance members
+    const filteredInvoices = invoices.filter((inv) => {
+      if (!user || !(user._id || user.id)) return false;
+      const roles = Array.isArray(user.role) ? user.role : (user.role ? [user.role] : []);
+
+      // Admin, Finance Manager, and Finance Partner can see all payouts
+      if (roles.includes("admin") || roles.includes("finance_manager") || roles.includes("super_admin") || roles.includes("finance_partner")) {
+        return true;
+      }
+
+      // Bulk settlement batches are already filtered by the backend to only return the current user's assigned batches
+      const isBulk = inv.settlementType === 'bulk' || (inv.coveredQueries && inv.coveredQueries.length > 0);
+      if (isBulk) return true;
+
+      // For single invoices, check if this user paid any installment by matching the name
+      const userName = user.name || user.companyName || "";
+      const installments = Array.isArray(inv.payoutInstallments) ? inv.payoutInstallments : [];
+      if (userName && installments.some((inst) => inst.paidByName === userName)) return true;
+
+      return false;
+    });
+
+    filteredInvoices.forEach((inv) => {
+      const entries = getDmcPaymentEntries(inv);
+      let periodPayout = 0;
+      const matchingEntries = [];
+
+      entries.forEach((entry) => {
+        if (isDmcEntryInSelectedPeriod(entry.date)) {
+          periodPayout += entry.amount;
+          matchingEntries.push(entry);
+        }
+      });
+
+      if (periodPayout > 0) {
+        // Group services inside the invoice
+        const items = Array.isArray(inv.items) ? inv.items : [];
+        const cqList = Array.isArray(inv.coveredQueries) ? inv.coveredQueries : [];
+
+        const groups = {};
+        let totalBaseSubtotal = 0;
+        let totalItemsTax = 0;
+
+        items.forEach((item) => {
+          const qCode = item.queryCode || item.query?.queryId || inv.queryCode || inv.query?.queryId || 'General';
+          if (!groups[qCode]) {
+            groups[qCode] = {
+              queryCode: qCode,
+              query: item.query || null,
+              destination: item.destination || item.query?.destination || '',
+              services: [],
+              baseSubtotal: 0,
+              itemTax: 0,
+              totalCost: 0,
+            };
+          }
+          const subtotal = Number(item.subtotal || 0);
+          const tax = Number(item.tax || 0);
+          const cost = subtotal + tax;
+
+          groups[qCode].services.push({
+            ...item,
+            cost,
+          });
+          groups[qCode].baseSubtotal += subtotal;
+          groups[qCode].itemTax += tax;
+          groups[qCode].totalCost += cost;
+          totalBaseSubtotal += subtotal;
+          totalItemsTax += tax;
+        });
+
+        cqList.forEach((cq) => {
+          const qCode = cq.queryCode || cq.query?.queryId || cq.queryCode;
+          if (qCode && !groups[qCode]) {
+            groups[qCode] = {
+              queryCode: qCode,
+              query: cq.query || null,
+              destination: cq.destination || '',
+              services: [],
+              baseSubtotal: 0,
+              itemTax: 0,
+              totalCost: 0,
+              isCoveredOnly: true,
+            };
+          }
+        });
+
+        // Retrieve batch/invoice level taxes
+        const gstAmount = Number(inv.summary?.gstAmount || inv.claimedSummary?.taxAmount || 0);
+        const tcsAmount = Number(inv.summary?.tcsAmount || 0);
+        const otherTaxAmount = Number(inv.summary?.otherTaxAmount || 0);
+
+        const hasItemTaxes = totalItemsTax > 0;
+        const gstToAllocate = hasItemTaxes ? 0 : gstAmount;
+
+        const divisor = totalBaseSubtotal || inv.summary?.subtotal || 1;
+
+        Object.keys(groups).forEach((qCode) => {
+          const group = groups[qCode];
+          const ratio = group.baseSubtotal / divisor;
+
+          group.gstShare = hasItemTaxes ? group.itemTax : (gstToAllocate * ratio);
+          group.tcsShare = tcsAmount * ratio;
+          group.otherTaxShare = otherTaxAmount * ratio;
+          group.totalCostWithTaxes = group.baseSubtotal + group.gstShare + group.tcsShare + group.otherTaxShare;
+        });
+
+        list.push({
+          invoice: inv,
+          payoutAmount: periodPayout,
+          entries: matchingEntries,
+          isBulk: inv.settlementType === 'bulk' || cqList.length > 0,
+          queryGroups: Object.values(groups),
+          summary: {
+            subtotal: inv.summary?.subtotal || totalBaseSubtotal,
+            gstAmount: hasItemTaxes ? totalItemsTax : gstAmount,
+            tcsAmount,
+            otherTaxAmount,
+            totalTax: (hasItemTaxes ? totalItemsTax : gstAmount) + tcsAmount + otherTaxAmount,
+            grandTotal: inv.summary?.grandTotal || inv.claimedSummary?.grandTotal || (totalBaseSubtotal + (hasItemTaxes ? totalItemsTax : gstAmount) + tcsAmount + otherTaxAmount),
+          }
+        });
+      }
+    });
+
+    return list.sort((a, b) => b.payoutAmount - a.payoutAmount);
+  }, [analyticsData.internalInvoices, isDmcEntryInSelectedPeriod, user]);
+
+  const showPayoutAction = contributingPayouts.length > 0;
 
   const activeReports = useMemo(() => {
     if (analyticsData.customReports && (period === 'custom' || selectedTaxDate || (period === 'monthly' && selectedTaxMonth) || (period === 'yearly' && selectedTaxYear))) {
@@ -5012,15 +5708,43 @@ const AdvancedAnalytics = () => {
         </div>
       )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 ">
-        {metricCards.map(({ key, icon }) => (
-          <MetricCard
-            key={key}
-            data={activeMetrics[key]}
-            icon={icon}
-            loading={loading}
-          />
-        ))}
+      <div className="relative">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 ">
+          {metricCards.map(({ key, icon }) => (
+            <MetricCard
+              key={key}
+              data={activeMetrics[key]}
+              icon={icon}
+              loading={loading}
+              onPayoutClick={key === 'outward' ? () => setShowPayoutDropdown(!showPayoutDropdown) : undefined}
+              showPayoutAction={showPayoutAction}
+            />
+          ))}
+        </div>
+
+        <AnimatePresence>
+          {showPayoutAction && showPayoutDropdown && (
+            <>
+              {/* Blurred Backdrop overlay */}
+              <motion.div
+                key="payout-backdrop"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 z-30 bg-slate-900/15 backdrop-blur-xs pointer-events-none"
+              />
+              <PayoutBreakdownDropdown
+                ref={payoutDropdownRef}
+                key="payout-dropdown"
+                isOpen={showPayoutDropdown}
+                onClose={() => setShowPayoutDropdown(false)}
+                contributingPayouts={contributingPayouts}
+                periodLabel={selectedMonthLabel || selectedYearLabel || periodLabel}
+                loading={loading}
+              />
+            </>
+          )}
+        </AnimatePresence>
       </div>
 
       <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 rounded-2xl p-5 shadow-md border border-slate-800">
