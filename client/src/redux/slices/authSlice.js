@@ -18,11 +18,38 @@ export const loginUser = createAsyncThunk(
   }
 );
 
+// 🔹 FETCH CURRENT USER THUNK
+export const fetchCurrentUser = createAsyncThunk(
+  "auth/fetchCurrentUser",
+  async (_, { rejectWithValue }) => {
+    try {
+      const res = await API.get("/auth/me");
+      return res.data?.user;
+    } catch (error) {
+      return rejectWithValue(
+        error.response?.data?.message || "Failed to fetch user profile"
+      );
+    }
+  }
+);
+
+const getInitialUser = () => {
+  try {
+    const sessionUser = sessionStorage.getItem("user");
+    if (sessionUser) return JSON.parse(sessionUser);
+    const localUser = localStorage.getItem("user");
+    if (localUser) return JSON.parse(localUser);
+  } catch (e) {
+    console.error("Failed to parse stored user", e);
+  }
+  return null;
+};
+
 const authSlice = createSlice({
   name: "auth",
   initialState: {
-    user: JSON.parse(sessionStorage.getItem("user")) || null,
-    token: sessionStorage.getItem("token") || null,
+    user: getInitialUser(),
+    token: sessionStorage.getItem("token") || localStorage.getItem("token") || null,
     loading: false,
     error: null,
     justLoggedIn: false,
@@ -34,6 +61,8 @@ const authSlice = createSlice({
     state.token = null;
     state.justLoggedIn = false;
     sessionStorage.clear();
+    localStorage.removeItem("user");
+    localStorage.removeItem("token");
   },
 
   updateUserProfileLocal: (state, action) => {
@@ -41,7 +70,12 @@ const authSlice = createSlice({
       ...(state.user || {}),
       ...(action.payload || {}),
     };
-    sessionStorage.setItem("user", JSON.stringify(state.user));
+    try {
+      sessionStorage.setItem("user", JSON.stringify(state.user));
+      localStorage.setItem("user", JSON.stringify(state.user));
+    } catch (e) {
+      console.error("Error setting user in storage", e);
+    }
   },
 
   resetAuthState: (state) => {
@@ -63,16 +97,31 @@ const authSlice = createSlice({
         state.user = action.payload.user;
         state.justLoggedIn = true;
 
-        sessionStorage.setItem("token", action.payload.token);
-        sessionStorage.setItem(
-          "user",
-          JSON.stringify(action.payload.user)
-        );
+        try {
+          sessionStorage.setItem("token", action.payload.token);
+          sessionStorage.setItem("user", JSON.stringify(action.payload.user));
+          localStorage.setItem("token", action.payload.token);
+          localStorage.setItem("user", JSON.stringify(action.payload.user));
+        } catch (e) {
+          console.error("Error storing auth in storage", e);
+        }
       })
 
       .addCase(loginUser.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload;
+      })
+
+      .addCase(fetchCurrentUser.fulfilled, (state, action) => {
+        if (action.payload) {
+          state.user = action.payload;
+          try {
+            sessionStorage.setItem("user", JSON.stringify(action.payload));
+            localStorage.setItem("user", JSON.stringify(action.payload));
+          } catch (e) {
+            console.error("Error updating stored user on fetch", e);
+          }
+        }
       });
   },
 });

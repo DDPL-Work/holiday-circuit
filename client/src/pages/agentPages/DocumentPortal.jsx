@@ -7,11 +7,13 @@ import {
   AlertCircle,
   Users,
   MapPin,
+  ArrowLeft,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import API from "../../utils/Api";
+import ActiveBookingDetails from "./ActiveBookingDetails.jsx";
 
 const containerVariant = {
   hidden: { opacity: 0 },
@@ -232,10 +234,15 @@ const statCardConfig = {
 
 const DocumentPortal = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
+  const [openActiveBookingDetails, setOpenActiveBookingDetails] = useState(false);
+  const [selectedActiveBooking, setSelectedActiveBooking] = useState(null);
+  const [documentPortalContext, setDocumentPortalContext] = useState(null);
+  const autoOpenedBookingRef = useRef("");
   const itemsPerPage = 8;
 
   useEffect(() => {
@@ -288,6 +295,7 @@ const DocumentPortal = () => {
             reviewStatus,
             issueSummary,
             issues: verification?.issues || [],
+            rawBooking: booking,
           };
         });
 
@@ -303,9 +311,93 @@ const DocumentPortal = () => {
     fetchRows();
   }, []);
 
+  const fetchRowsData = async () => {
+    try {
+      const { data } = await API.get("/agent/active-bookings");
+      const bookings = Array.isArray(data) ? data : [];
+      const mappedRows = bookings.map((booking) => {
+        const travelers = Array.isArray(booking?.travelerDetails) ? booking.travelerDetails : [];
+        const internationalTrip = getIsInternationalTrip(booking);
+        const travelerRows = travelers.map((traveler) => {
+          const documents = resolveTravelerDocuments(traveler);
+          const documentSlots = travelerDocumentOptions.map((option) => ({
+            ...option,
+            uploaded: Boolean(documents[option.key]?.url),
+          }));
+          const uploadedCount = documentSlots.filter((document) => document.uploaded).length;
+          return {
+            travelerId: traveler?._id || "",
+            travelerName: traveler?.fullName || "Traveler",
+            isComplete: internationalTrip ? uploadedCount === documentSlots.length : Boolean(documents.governmentId?.url),
+          };
+        });
+
+        const verification = booking?.travelerDocumentVerification || { status: "Draft" };
+        const hasMissingDocuments = travelerRows.some((traveler) => !traveler.isComplete);
+        const reviewStatus = verification?.status || "Draft";
+        const missingTravelerNames = travelerRows
+          .filter((traveler) => !traveler.isComplete)
+          .map((traveler) => traveler.travelerName);
+        const requiredDocsLabel = internationalTrip ? "Passport and PAN Card" : "PAN Card";
+        const issueSummary =
+          reviewStatus === "Rejected"
+            ? getIssueSummary(verification?.issues, verification?.rejectionReason)
+            : hasMissingDocuments
+              ? `${missingTravelerNames.join(", ") || "One or more travelers"} still have missing required ${requiredDocsLabel} uploads.`
+              : "";
+
+        return {
+          _id: booking?._id,
+          leadClientName: getLeadTravelerName(travelers),
+          bookingReference: booking?.queryId || booking?.bookingReference || "Booking Pending",
+          destination: booking?.destination || "Destination Pending",
+          travelDates: formatTravelDates(booking?.startDate, booking?.endDate),
+          travelersCount: travelers.length || Number(booking?.numberOfAdults || 0) + Number(booking?.numberOfChildren || 0),
+          hasMissingDocuments,
+          reviewStatus,
+          issueSummary,
+          issues: verification?.issues || [],
+          rawBooking: booking,
+        };
+      });
+      setRows(mappedRows);
+    } catch (err) {
+      console.error("Error refreshing rows:", err);
+    }
+  };
+
   useEffect(() => {
     setCurrentPage(1);
   }, [rows.length]);
+
+  useEffect(() => {
+    const requestedBookingId = location.state?.openBookingId;
+
+    if (!requestedBookingId || loading || !rows.length) return;
+    if (autoOpenedBookingRef.current === requestedBookingId) return;
+
+    const matchedRow = rows.find(
+      (row) =>
+        row._id === requestedBookingId ||
+        row.rawBooking?._id === requestedBookingId ||
+        row.bookingReference === requestedBookingId ||
+        row.rawBooking?.queryId === requestedBookingId ||
+        row.rawBooking?.invoice?._id === requestedBookingId,
+    );
+
+    if (!matchedRow) return;
+
+    autoOpenedBookingRef.current = requestedBookingId;
+    setDocumentPortalContext({
+      issues: matchedRow.issues,
+      issueSummary: matchedRow.issueSummary,
+      reviewStatus: matchedRow.reviewStatus,
+      documentsOnly: true,
+    });
+    setSelectedActiveBooking(matchedRow.rawBooking || matchedRow);
+    setOpenActiveBookingDetails(true);
+    navigate(location.pathname, { replace: true, state: null });
+  }, [loading, location.pathname, location.state, navigate, rows]);
 
   const summary = useMemo(() => {
     return rows.reduce(
@@ -324,6 +416,23 @@ const DocumentPortal = () => {
   const startIndex = (currentPage - 1) * itemsPerPage;
   const paginatedRows = rows.slice(startIndex, startIndex + itemsPerPage);
 
+  if (openActiveBookingDetails && selectedActiveBooking) {
+    return (
+      <ActiveBookingDetails
+        onClose={() => {
+          setOpenActiveBookingDetails(false);
+          setSelectedActiveBooking(null);
+        }}
+        booking={selectedActiveBooking}
+        initialTab="documents"
+        documentPortalContext={documentPortalContext}
+        onBookingUpdated={() => {
+          fetchRowsData();
+        }}
+      />
+    );
+  }
+
   return (
     <motion.section
       variants={containerVariant}
@@ -334,14 +443,38 @@ const DocumentPortal = () => {
       {/* Header */}
       <motion.header
         variants={itemVariant}
-        className="relative z-10 flex items-start justify-between gap-4 rounded-2xl border border-slate-200 bg-white px-1 py-1 shadow-sm"
+        className="relative z-10 flex items-start justify-between gap-4 rounded-2xl border border-slate-200 bg-white px-3 py-2 sm:px-4 sm:py-3 shadow-sm"
       >
-        <div className="space-y-1 p-2">
-          <h1 className="text-2xl font-bold">Document Portal</h1>
-          <p className="text-sm text-gray-500">
+        <div className="space-y-1">
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-900">Document Portal</h1>
+          <p className="text-xs sm:text-sm text-slate-500">
             Track traveler document readiness booking-wise and jump straight to the upload screen when corrections are needed.
           </p>
         </div>
+        <button
+          type="button"
+          onClick={() => {
+            const targetQueryId =
+              location.state?.openBookingId ||
+              location.state?.returnQueryId ||
+              location.state?.queryId ||
+              rows[0]?.rawBooking?._id ||
+              rows[0]?.rawBooking?.queryId ||
+              rows[0]?._id;
+
+            if (targetQueryId) {
+              navigate(`/agent/queries?id=${targetQueryId}&tab=docs`, {
+                state: { openQueryId: targetQueryId, initialTab: "docs" },
+              });
+            } else {
+              navigate("/agent/queries?status=Confirmed&tab=docs");
+            }
+          }}
+          className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 hover:border-slate-300 px-3 py-2 text-xs font-bold text-slate-700 hover:text-slate-900 shadow-2xs transition-all cursor-pointer shrink-0 mt-0.5"
+        >
+          <ArrowLeft size={14} className="text-slate-600 shrink-0" />
+          <span>Back to Documents & Shareable Assets</span>
+        </button>
       </motion.header>
 
       {/* Summary Stat Cards */}
@@ -485,7 +618,7 @@ const DocumentPortal = () => {
                               ? "Operations is currently reviewing the uploaded traveler documents."
                               : row.reviewStatus === "Verified"
                                 ? "All traveler documents have been approved by operations."
-                                : "Files are uploaded. Submit them from Active Bookings when ready."}
+                                : "Files are uploaded. Submit them from Booking Payments when ready."}
                         </p>
                       </td>
 
@@ -494,16 +627,16 @@ const DocumentPortal = () => {
                         <motion.button
                           whileHover={{ scale: 1.02 }}
                           whileTap={{ scale: 0.97 }}
-                          onClick={() =>
-                            navigate("/agent/bookings", {
-                              state: {
-                                openBookingId: row._id,
-                                documentIssues: row.issues,
-                                issueSummary: row.issueSummary,
-                                reviewStatus: row.reviewStatus,
-                              },
-                            })
-                          }
+                          onClick={() => {
+                            setDocumentPortalContext({
+                              issues: row.issues,
+                              issueSummary: row.issueSummary,
+                              reviewStatus: row.reviewStatus,
+                              documentsOnly: true,
+                            });
+                            setSelectedActiveBooking(row.rawBooking || row);
+                            setOpenActiveBookingDetails(true);
+                          }}
                           className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 px-3.5 py-1.5 text-xs font-medium text-white shadow-sm transition-all duration-200 cursor-pointer"
                         >
                           <Eye className="h-3.5 w-3.5" />
@@ -589,8 +722,7 @@ const DocumentPortal = () => {
       >
         <ShieldCheck size={18} className="flex-shrink-0 mt-0.5" />
         <p>
-          <strong>Portal Note:</strong> Upload actions are handled only from <strong>Active Bookings</strong> now.
-          This page is for booking-wise tracking, verification status, and quick navigation to the correct correction screen.
+          <strong>Portal Note:</strong> Manage traveler document uploads and verification directly from this desk. For payment updates and UTR submissions, use <strong>Booking Payments</strong>.
         </p>
       </motion.div>
     </motion.section>

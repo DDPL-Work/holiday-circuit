@@ -103,35 +103,16 @@ const buildTransportGroupedPreview = (rawData = [], upload = {}) => {
   const descriptionIndex = findHeaderIndex(topHeaders, ["Description"]);
   const passengerCapacityIndex = findHeaderIndex(topHeaders, ["Passenger Capacity"]);
   const luggageCapacityIndex = findHeaderIndex(topHeaders, ["Luggage Capacity"]);
+  const fullDayNoteIndex = findHeaderIndex(topHeaders, ["Full Day Note"]);
+  const halfDayNoteIndex = findHeaderIndex(topHeaders, ["Half Day Note"]);
 
-  if (serviceNameIndex === -1 || usageTypeIndex === -1 || priceIndex === -1 || currencyIndex === -1) {
-    return null;
-  }
-
-  const hasGroupedTransportBlocks = rawData.slice(1).some((row, rowOffset) => {
-    const rowIndex = rowOffset + 1;
-    if (!getMatrixValue(row, serviceNameIndex)) return false;
-
-    const detailRow = rawData[rowIndex + 1] || [];
-    const priceRow = rawData[rowIndex + 2] || [];
-    const nextServiceBlank = !getMatrixValue(detailRow, serviceNameIndex);
-    const detailUsagePresent = [0, 1, 2, 3].some((offset) =>
-      Boolean(getMatrixValue(detailRow, usageTypeIndex + offset))
-    );
-    const detailPricePresent = [0, 1, 2, 3].some((offset) =>
-      Boolean(getMatrixValue(priceRow, priceIndex + offset))
-    );
-
-    return nextServiceBlank && (detailUsagePresent || detailPricePresent);
-  });
-
-  if (!hasGroupedTransportBlocks) {
+  if (serviceNameIndex === -1 && usageTypeIndex === -1 && priceIndex === -1) {
     return null;
   }
 
   const columns = [
-    { key: "serviceName", label: "Service Name" },
-    { key: "supplierName", label: "Supplier Name" },
+    { key: "serviceName", label: "Service Name", isGroupedMerged: true },
+    { key: "supplierName", label: "Supplier Name", isGroupedMerged: true },
     { key: "vehicleType", label: "Vehicle Type" },
     { key: "usagePointOneWay", label: "One Way / Airport Transfer" },
     { key: "usagePointInterHotel", label: "Inter Hotel Transfer" },
@@ -140,18 +121,20 @@ const buildTransportGroupedPreview = (rawData = [], upload = {}) => {
     { key: "pricePointOneWay", label: "One Way / Airport Transfer", numeric: true },
     { key: "pricePointInterHotel", label: "Inter Hotel Transfer", numeric: true },
     { key: "priceHourlyFullDay", label: "Full Day - 80 km / 8 hours", numeric: true },
-    { key: "priceHourlyFullDayExtraKm", label: "Full Day Extra Per KM", numeric: true },
+    { key: "priceHourlyFullDayExtraKm", label: "Extra per km rate", numeric: true },
     { key: "priceHourlyHalfDay", label: "Half Day - 40 km / 4 hours", numeric: true },
-    { key: "priceHourlyHalfDayExtraKm", label: "Half Day Extra Per KM", numeric: true },
-    { key: "currency", label: "Currency" },
-    { key: "country", label: "Country" },
-    { key: "city", label: "City" },
-    { key: "type", label: "Type" },
-    { key: "validFrom", label: "Valid From" },
-    { key: "validTo", label: "Valid To" },
+    { key: "priceHourlyHalfDayExtraKm", label: "Extra per km rate", numeric: true },
+    { key: "currency", label: "Currency", isGroupedMerged: true },
+    { key: "country", label: "Country", isGroupedMerged: true },
+    { key: "city", label: "City", isGroupedMerged: true },
+    { key: "type", label: "Type", isGroupedMerged: true },
+    { key: "validFrom", label: "Valid From", isGroupedMerged: true },
+    { key: "validTo", label: "Valid To", isGroupedMerged: true },
     { key: "description", label: "Description", isDesc: true },
     { key: "passengerCapacity", label: "Passenger Capacity", numeric: true },
     { key: "luggageCapacity", label: "Luggage Capacity", numeric: true },
+    { key: "fullDayNote", label: "Full Day Note", isDesc: true, isGroupedMerged: true },
+    { key: "halfDayNote", label: "Half Day Note", isDesc: true, isGroupedMerged: true },
   ];
 
   const headerRows = [
@@ -170,6 +153,8 @@ const buildTransportGroupedPreview = (rawData = [], upload = {}) => {
       { label: "Description", rowSpan: 3 },
       { label: "Passenger Capacity", rowSpan: 3 },
       { label: "Luggage Capacity", rowSpan: 3 },
+      { label: "Full Day Note", rowSpan: 3 },
+      { label: "Half Day Note", rowSpan: 3 },
     ],
     [
       { label: "Point To Point", colSpan: 2 },
@@ -182,83 +167,88 @@ const buildTransportGroupedPreview = (rawData = [], upload = {}) => {
       { label: "Inter Hotel Transfer" },
       { label: "Full Day - 80 km / 8 hours" },
       { label: "Half Day - 40 km / 4 hours" },
-      { label: "One Way Price" },
-      { label: "Inter Hotel Price" },
-      { label: "Full Day Price" },
-      { label: "Full Day Extra / KM" },
-      { label: "Half Day Price" },
-      { label: "Half Day Extra / KM" },
+      { label: "One Way / Airport Transfer" },
+      { label: "Inter Hotel Transfer" },
+      { label: "Full Day - 80 km / 8 hours" },
+      { label: "Extra per km rate" },
+      { label: "Half Day - 40 km / 4 hours" },
+      { label: "Extra per km rate" },
     ],
   ];
 
-  const inferFlatPriceTarget = (baseRow = [], detailRow = []) => {
-    const text = [
-      getMatrixValue(baseRow, serviceNameIndex),
-      getMatrixValue(baseRow, descriptionIndex),
-      getMatrixValue(baseRow, usageTypeIndex),
-      getMatrixValue(detailRow, usageTypeIndex),
-      getMatrixValue(detailRow, usageTypeIndex + 1),
-      getMatrixValue(detailRow, usageTypeIndex + 2),
-      getMatrixValue(detailRow, usageTypeIndex + 3),
-    ].join(" ").toLowerCase();
+  // Determine starting row for data (after 3 header rows if present)
+  let startRowIndex = 3;
+  if (rawData.length <= 3) startRowIndex = 1;
 
-    if (text.includes("half") || text.includes("4 hour") || text.includes("40 km")) return "priceHourlyHalfDay";
-    if (text.includes("full") || text.includes("8 hour") || text.includes("80 km")) return "priceHourlyFullDay";
-    if (text.includes("inter hotel")) return "pricePointInterHotel";
-    return "pricePointOneWay";
-  };
-
-  const groupedPriceColumnCount = Math.max(1, currencyIndex - priceIndex);
   const rows = [];
+  let currService = "";
+  let currSupplier = "";
+  let currCurrency = "";
+  let currCountry = "";
+  let currCity = "";
+  let currType = "";
+  let currValidFrom = "";
+  let currValidTo = "";
+  let currFullDayNote = "";
+  let currHalfDayNote = "";
 
-  for (let rowIndex = 1; rowIndex < rawData.length; rowIndex += 1) {
-    const baseRow = rawData[rowIndex] || [];
-    if (!getMatrixValue(baseRow, serviceNameIndex)) continue;
+  for (let rowIndex = startRowIndex; rowIndex < rawData.length; rowIndex += 1) {
+    const row = rawData[rowIndex] || [];
 
-    const detailRow = rawData[rowIndex + 1] || [];
-    const priceRow = rawData[rowIndex + 2] || [];
+    if (serviceNameIndex !== -1 && getMatrixValue(row, serviceNameIndex)) {
+      currService = String(getMatrixValue(row, serviceNameIndex)).trim();
+    }
+    if (supplierNameIndex !== -1 && getMatrixValue(row, supplierNameIndex)) {
+      currSupplier = String(getMatrixValue(row, supplierNameIndex)).trim();
+    }
+    if (currencyIndex !== -1 && getMatrixValue(row, currencyIndex)) currCurrency = String(getMatrixValue(row, currencyIndex)).trim();
+    if (countryIndex !== -1 && getMatrixValue(row, countryIndex)) currCountry = String(getMatrixValue(row, countryIndex)).trim();
+    if (cityIndex !== -1 && getMatrixValue(row, cityIndex)) currCity = String(getMatrixValue(row, cityIndex)).trim();
+    if (typeIndex !== -1 && getMatrixValue(row, typeIndex)) currType = String(getMatrixValue(row, typeIndex)).trim();
+    if (validFromIndex !== -1 && getMatrixValue(row, validFromIndex)) currValidFrom = String(getMatrixValue(row, validFromIndex)).trim();
+    if (validToIndex !== -1 && getMatrixValue(row, validToIndex)) currValidTo = String(getMatrixValue(row, validToIndex)).trim();
+    if (fullDayNoteIndex !== -1 && getMatrixValue(row, fullDayNoteIndex)) currFullDayNote = String(getMatrixValue(row, fullDayNoteIndex)).trim();
+    if (halfDayNoteIndex !== -1 && getMatrixValue(row, halfDayNoteIndex)) currHalfDayNote = String(getMatrixValue(row, halfDayNoteIndex)).trim();
+
+    // Clean any emoji/icon from vehicleType (e.g. 🚗 Sedan -> Sedan)
+    const rawVehicleType = String(getMatrixValue(row, vehicleTypeIndex) || "");
+    const vehicleType = rawVehicleType.replace(/[^\x20-\x7E]/g, "").trim();
+
+    // Skip row if completely empty
+    if (!vehicleType && !currService && !currSupplier && !row[priceIndex]) continue;
+
+    const groupRowIndex = (rowIndex - startRowIndex) % 5;
+
     const rowData = {
       _id: `${upload._id}_transport_${rows.length}`,
       rowIndex,
-      serviceName: getMatrixValue(baseRow, serviceNameIndex),
-      supplierName: getMatrixValue(baseRow, supplierNameIndex),
-      vehicleType: getMatrixValue(baseRow, vehicleTypeIndex),
-      usagePointOneWay: getMatrixValue(detailRow, usageTypeIndex) || "One Way / Airport Transfer",
-      usagePointInterHotel: getMatrixValue(detailRow, usageTypeIndex + 1) || "Inter Hotel Transfer",
-      usageHourlyFullDay: getMatrixValue(detailRow, usageTypeIndex + 2) || "Full Day - 80 km / 8 hours",
-      usageHourlyHalfDay: getMatrixValue(detailRow, usageTypeIndex + 3) || "Half Day - 40 km / 4 hours",
-      pricePointOneWay: "",
-      pricePointInterHotel: "",
-      priceHourlyFullDay: "",
-      priceHourlyFullDayExtraKm: "",
-      priceHourlyHalfDay: "",
-      priceHourlyHalfDayExtraKm: "",
-      currency: getMatrixValue(baseRow, currencyIndex),
-      country: getMatrixValue(baseRow, countryIndex),
-      city: getMatrixValue(baseRow, cityIndex),
-      type: getMatrixValue(baseRow, typeIndex),
-      validFrom: getMatrixValue(baseRow, validFromIndex),
-      validTo: getMatrixValue(baseRow, validToIndex),
-      description: getMatrixValue(baseRow, descriptionIndex),
-      passengerCapacity: getMatrixValue(baseRow, passengerCapacityIndex),
-      luggageCapacity: getMatrixValue(baseRow, luggageCapacityIndex),
+      groupRowIndex,
+      groupRowSpan: 5,
+      serviceName: currService,
+      supplierName: currSupplier,
+      vehicleType: vehicleType,
+      usagePointOneWay: row[usageTypeIndex] || "One Way / Airport Transfer",
+      usagePointInterHotel: row[usageTypeIndex + 1] || "Inter Hotel Transfer",
+      usageHourlyFullDay: row[usageTypeIndex + 2] || "Full Day - 80 km / 8 hours",
+      usageHourlyHalfDay: row[usageTypeIndex + 3] || "Half Day - 40 km / 4 hours",
+      pricePointOneWay: row[priceIndex] !== undefined ? row[priceIndex] : "",
+      pricePointInterHotel: row[priceIndex + 1] !== undefined ? row[priceIndex + 1] : "",
+      priceHourlyFullDay: row[priceIndex + 2] !== undefined ? row[priceIndex + 2] : "",
+      priceHourlyFullDayExtraKm: row[priceIndex + 3] !== undefined ? row[priceIndex + 3] : "",
+      priceHourlyHalfDay: row[priceIndex + 4] !== undefined ? row[priceIndex + 4] : "",
+      priceHourlyHalfDayExtraKm: row[priceIndex + 5] !== undefined ? row[priceIndex + 5] : "",
+      currency: currCurrency,
+      country: currCountry,
+      city: currCity,
+      type: currType,
+      validFrom: currValidFrom,
+      validTo: currValidTo,
+      description: (descriptionIndex !== -1 ? row[descriptionIndex] : "") || "",
+      passengerCapacity: passengerCapacityIndex !== -1 ? row[passengerCapacityIndex] : "",
+      luggageCapacity: luggageCapacityIndex !== -1 ? row[luggageCapacityIndex] : "",
+      fullDayNote: currFullDayNote,
+      halfDayNote: currHalfDayNote,
     };
-
-    if (groupedPriceColumnCount >= 6) {
-      rowData.pricePointOneWay = getMatrixValue(priceRow, priceIndex) || getMatrixValue(baseRow, priceIndex);
-      rowData.pricePointInterHotel = getMatrixValue(priceRow, priceIndex + 1) || getMatrixValue(baseRow, priceIndex + 1);
-      rowData.priceHourlyFullDay = getMatrixValue(priceRow, priceIndex + 2) || getMatrixValue(baseRow, priceIndex + 2);
-      rowData.priceHourlyFullDayExtraKm = getMatrixValue(priceRow, priceIndex + 3) || getMatrixValue(baseRow, priceIndex + 3);
-      rowData.priceHourlyHalfDay = getMatrixValue(priceRow, priceIndex + 4) || getMatrixValue(baseRow, priceIndex + 4);
-      rowData.priceHourlyHalfDayExtraKm = getMatrixValue(priceRow, priceIndex + 5) || getMatrixValue(baseRow, priceIndex + 5);
-    } else if (groupedPriceColumnCount >= 4) {
-      rowData.pricePointOneWay = getMatrixValue(priceRow, priceIndex) || getMatrixValue(baseRow, priceIndex);
-      rowData.pricePointInterHotel = getMatrixValue(priceRow, priceIndex + 1) || getMatrixValue(baseRow, priceIndex + 1);
-      rowData.priceHourlyFullDay = getMatrixValue(priceRow, priceIndex + 2) || getMatrixValue(baseRow, priceIndex + 2);
-      rowData.priceHourlyHalfDay = getMatrixValue(priceRow, priceIndex + 3) || getMatrixValue(baseRow, priceIndex + 3);
-    } else {
-      rowData[inferFlatPriceTarget(baseRow, detailRow)] = getMatrixValue(baseRow, priceIndex);
-    }
 
     rows.push(rowData);
   }
@@ -411,22 +401,17 @@ const buildCategorySyncConfig = (category = "") => {
     return {
       Model: Activity,
       buildIdentity: (row) => compactObject({
-        name: getCleanString(row, ["Service Name", "Activity Name"]),
+        serviceName: getCleanString(row, ["Service Name", "Activity Name"]),
       }),
       buildLooseIdentity: (row) => compactObject({
-        name: getCleanString(row, ["Service Name", "Activity Name"]),
+        serviceName: getCleanString(row, ["Service Name", "Activity Name"]),
       }),
       buildUpdate: (row) => compactObject({
-        serviceName: getCleanString(row, ["Service Name"]),
+        serviceName: getCleanString(row, ["Service Name", "Activity Name"]),
         supplierName: getCleanString(row, ["Supplier Name"]),
-        name: getCleanString(row, ["Service Name", "Activity Name"]),
         country: getCleanString(row, ["Country"]),
         city: getCleanString(row, ["City"]),
-        description: getCleanString(row, ["Description", "Service Description", "Activity Description"]),
-        adultPrice: getCleanNumber(row, ["Adult Price", "Price"]),
-        childPrice: getCleanNumber(row, ["Child Price"]),
-        infantPrice: getCleanNumber(row, ["Infant Price"]),
-        currency: normalizeCurrency(getCleanString(row, ["Currency"]), "AED"),
+        currency: normalizeCurrency(getCleanString(row, ["Currency"]), "INR"),
         validFrom: parseExcelDate(getCellValue(row, ["Valid From"])),
         validTo: parseExcelDate(getCellValue(row, ["Valid To"])),
       }),
@@ -437,20 +422,17 @@ const buildCategorySyncConfig = (category = "") => {
     return {
       Model: Sightseeing,
       buildIdentity: (row) => compactObject({
-        name: getCleanString(row, ["Sightseeing Name", "Service Name"]),
+        serviceName: getCleanString(row, ["Sightseeing Name", "Service Name"]),
       }),
       buildLooseIdentity: (row) => compactObject({
-        name: getCleanString(row, ["Sightseeing Name", "Service Name"]),
+        serviceName: getCleanString(row, ["Sightseeing Name", "Service Name"]),
       }),
       buildUpdate: (row) => compactObject({
-        serviceName: getCleanString(row, ["Service Name"]),
+        serviceName: getCleanString(row, ["Sightseeing Name", "Service Name"]),
         supplierName: getCleanString(row, ["Supplier Name"]),
-        name: getCleanString(row, ["Sightseeing Name", "Service Name"]),
         country: getCleanString(row, ["Country"]),
         city: getCleanString(row, ["City"]),
-        price: getCleanNumber(row, ["Price"]),
-        currency: normalizeCurrency(getCleanString(row, ["Currency"]), "USD"),
-        description: getCleanString(row, ["Description"]),
+        currency: normalizeCurrency(getCleanString(row, ["Currency"]), "INR"),
         validFrom: parseExcelDate(getCellValue(row, ["Valid From"])),
         validTo: parseExcelDate(getCellValue(row, ["Valid To"])),
       }),
@@ -488,50 +470,105 @@ const syncEditedRowToServiceCollection = async ({ category, ownerId, originalRow
 
   return { matched: false, modified: false };
 };
-
+const sanitizeCount = (val) => {
+  if (typeof val === "number" && !isNaN(val)) return Math.max(0, Math.round(val));
+  if (typeof val === "string") {
+    const parsed = parseInt(val, 10);
+    return isNaN(parsed) ? 0 : Math.max(0, parsed);
+  }
+  if (val && typeof val === "object") {
+    if (typeof val.records === "number" && !isNaN(val.records)) return Math.max(0, Math.round(val.records));
+    if (typeof val.count === "number" && !isNaN(val.count)) return Math.max(0, Math.round(val.count));
+    if (typeof val.length === "number" && !isNaN(val.length)) return Math.max(0, Math.round(val.length));
+  }
+  return 0;
+};
 
 export const bulkUpload = async (req, res) => {
   try {
-    const category = req.body.category
-    const fileName = req.file.originalname
+    let category = String(req.body.category || "hotel").toLowerCase().trim();
+    const fileName = req.file.originalname;
 
     // 🔥 IMPORTANT FIX
-    const filePath =`uploads/${req.file.filename}`
-    console.log("FILE OBJECT:", req.file)
+    const filePath = `uploads/${req.file.filename}`;
+    console.log("FILE OBJECT:", req.file);
 
-    const uploadedBy = req.user?.name || req.user?.email || req.user?.id
-    const ext = path.extname(fileName).toLowerCase()
+    const uploadedBy = req.user?.name || req.user?.email || req.user?.id;
+    const ext = path.extname(fileName).toLowerCase();
 
-    let records = 0
-    let blackoutDates = []
+    let records = 0;
+    let blackoutDates = [];
 
     if ([".xlsx", ".xls", ".csv"].includes(ext)) {
+      // Auto-detect category from sheets or filename if mismatched
+      try {
+        const wb = XLSX.readFile(req.file.path, { sheetRows: 5 });
+        const sheetNames = (wb.SheetNames || []).map((s) => s.toLowerCase());
+        const lowerName = fileName.toLowerCase();
+
+        if (
+          sheetNames.some((s) => s.includes("transport") || s.includes("transfer") || s.includes("vehicle")) ||
+          lowerName.includes("transport") ||
+          lowerName.includes("transfer")
+        ) {
+          category = "transport";
+        } else if (
+          sheetNames.some((s) => s.includes("hotel") || s.includes("room")) ||
+          lowerName.includes("hotel")
+        ) {
+          category = "hotel";
+        } else if (
+          sheetNames.some((s) => s.includes("activity") || s.includes("excursion")) ||
+          lowerName.includes("activity")
+        ) {
+          category = "activity";
+        } else if (
+          sheetNames.some((s) => s.includes("sightseeing") || s.includes("tour")) ||
+          lowerName.includes("sightseeing")
+        ) {
+          category = "sightseeing";
+        } else if (sheetNames.some((s) => s.includes("package")) || lowerName.includes("package")) {
+          category = "package";
+        }
+      } catch (detectErr) {
+        console.log("Category detection fallback:", detectErr.message);
+      }
+
       switch (category) {
-        case "hotel":
-          {
-            const result = await processHotelExcel(req.file.path, req.user.id)
-            records = Number(result?.records || result || 0)
-            blackoutDates = Array.isArray(result?.blackoutDates) ? result.blackoutDates : []
-          }
-          break
-        case "transport":
-          records = await processTransportExcel(req.file.path, req.user.id)
-          break
-        case "activity":
-          records = await processActivityExcel(req.file.path, req.user.id)
-          break
-        case "package":
-          records = await processPackageExcel(req.file.path)
-          break
-        case "sightseeing":
-          records = await processSightseeingExcel(req.file.path, req.user.id)
-          break
+        case "hotel": {
+          const result = await processHotelExcel(req.file.path, req.user.id);
+          records = sanitizeCount(result);
+          blackoutDates = Array.isArray(result?.blackoutDates) ? result.blackoutDates : [];
+          break;
+        }
+        case "transport": {
+          const result = await processTransportExcel(req.file.path, req.user.id);
+          records = sanitizeCount(result);
+          break;
+        }
+        case "activity": {
+          const result = await processActivityExcel(req.file.path, req.user.id);
+          records = sanitizeCount(result);
+          break;
+        }
+        case "package": {
+          const result = await processPackageExcel(req.file.path, req.user.id);
+          records = sanitizeCount(result);
+          break;
+        }
+        case "sightseeing": {
+          const result = await processSightseeingExcel(req.file.path, req.user.id);
+          records = sanitizeCount(result);
+          break;
+        }
         default:
-          return res.status(400).json({ message: "Invalid category" })
+          return res.status(400).json({ message: "Invalid category" });
       }
     } else {
-      return res.status(400).json({ message: "Only Excel or CSV files are allowed" })
+      return res.status(400).json({ message: "Only Excel or CSV files are allowed" });
     }
+
+    records = sanitizeCount(records);
 
     // ✅ SAVE HISTORY
     await UploadHistory.create({
@@ -542,8 +579,8 @@ export const bulkUpload = async (req, res) => {
       uploadedBy,
       records,
       blackoutDates,
-      status: "success"
-    })
+      status: "success",
+    });
 
     res.json({
       message: blackoutDates.length
@@ -552,23 +589,22 @@ export const bulkUpload = async (req, res) => {
       records,
       blackoutDatesImported: blackoutDates.length,
       uploadedBy,
-    })
-
+    });
   } catch (error) {
-    console.log("ACTUAL ERROR:", error)
+    console.log("ACTUAL ERROR:", error);
 
     await UploadHistory.create({
-      fileName: req.file?.originalname,
+      fileName: req.file?.originalname || "unknown",
       filePath: req.file?.filename ? `uploads/${req.file.filename}` : "",
-      category: req.body.category,
+      category: req.body?.category || "general",
       uploadedAuth: req.user?.id,
       uploadedBy: req.user?.name || "Unknown",
       records: 0,
-      status: "failed"
-    })
-    res.status(500).json({ message: error.message, error: error.message })
+      status: "failed",
+    });
+    res.status(500).json({ message: error.message, error: error.message });
   }
-}
+};
 
 
 export const getBulkUploadHistory = async (req, res) => {
@@ -580,16 +616,410 @@ export const getBulkUploadHistory = async (req, res) => {
       filter.uploadedAuth = req.user.id;
     }
     // 👉 category filter
-    if (category) {filter.category = category;}
+    if (category) { filter.category = category; }
     const uploads = await UploadHistory.find(filter)
-    .sort({ createdAt: -1 }) // latest first
-    .lean();
+      .sort({ createdAt: -1 }) // latest first
+      .lean();
 
-    res.status(200).json({success: true,count: uploads.length,uploads});
+    res.status(200).json({ success: true, count: uploads.length, uploads });
 
   } catch (error) {
-    res.status(500).json({success: false,message: error.message});
+    res.status(500).json({ success: false, message: error.message });
   }
+};
+
+const buildDynamicHotelSheetData = async (upload) => {
+  const hotelDocs = await Hotel.find({ status: { $ne: "inactive" } })
+    .sort({ createdAt: 1, _id: 1 })
+    .lean();
+
+  if (!hotelDocs || hotelDocs.length === 0) return null;
+
+  const hotelHeaders = [
+    "Service Name",
+    "Supplier Name",
+    "Hotel Name",
+    "Country",
+    "City",
+    "Hotel Category",
+    "Room Category",
+    "Bed Type",
+    "Extra Bed Type",
+    "Max Adults",
+    "Max Children",
+    "Child Age Limit",
+    "Room Type",
+    "Meal Plan",
+    "A.W.E.B Rate",
+    "C.W.E.B Rate",
+    "C.Wo.E.B Rate",
+    "Currency",
+    "Valid From",
+    "Valid To",
+    "Description",
+    "Price",
+  ];
+
+  const hotelColumns = hotelHeaders.map((header) => {
+    const lower = header.toLowerCase();
+    const numeric = /rate|price|amount|pax|capacity|count|id|#|no/i.test(lower);
+    const isDesc = /desc|detail|note|remark/i.test(lower);
+    return {
+      key: header,
+      label: header,
+      numeric,
+      isDesc,
+    };
+  });
+
+  const hotelRows = [];
+  const blackoutDatesMap = new Map();
+
+  hotelDocs.forEach((doc) => {
+    const validFromStr = doc.validFrom ? new Date(doc.validFrom).toISOString().split("T")[0] : "";
+    const validToStr = doc.validTo ? new Date(doc.validTo).toISOString().split("T")[0] : "";
+
+    (doc.hotels || []).forEach((hotel, hIdx) => {
+      (hotel.rooms || []).forEach((room, rIdx) => {
+        const isFirstServiceRow = hIdx === 0 && rIdx === 0;
+        const isFirstHotelRow = rIdx === 0;
+
+        hotelRows.push({
+          _id: `${doc._id}_${hIdx}_${rIdx}`,
+          rowIndex: hotelRows.length,
+          _serviceName: doc.serviceName || "",
+          _city: doc.city || "",
+          _country: doc.country || "",
+          _hotelName: hotel.hotelName || "",
+          _supplierName: hotel.supplierName || doc.supplierName || "",
+          "Service Name": isFirstServiceRow ? (doc.serviceName || "") : "",
+          "Supplier Name": isFirstHotelRow ? (hotel.supplierName || doc.supplierName || "") : "",
+          "Hotel Name": isFirstHotelRow ? (hotel.hotelName || "") : "",
+          "Country": isFirstServiceRow ? (doc.country || "") : "",
+          "City": isFirstServiceRow ? (doc.city || "") : "",
+          "Hotel Category": isFirstHotelRow ? (hotel.hotelCategory || "5 Star") : "",
+          "Room Category": room.roomCategory || "Double",
+          "Bed Type": room.bedType || "King",
+          "Extra Bed Type": room.extraBedType || "None",
+          "Max Adults": room.maxAdults !== undefined ? room.maxAdults : 2,
+          "Max Children": room.maxChildren !== undefined ? room.maxChildren : 1,
+          "Child Age Limit": room.childAgeLimit || "As per hotel policy",
+          "Room Type": room.roomType || "Standard Room",
+          "Meal Plan": room.mealPlan || "EP",
+          "A.W.E.B Rate": room.awebRate || 0,
+          "C.W.E.B Rate": room.cwebRate || 0,
+          "C.Wo.E.B Rate": room.cwoebRate || 0,
+          "Currency": isFirstServiceRow ? (doc.currency || "INR") : "",
+          "Valid From": isFirstServiceRow ? validFromStr : "",
+          "Valid To": isFirstServiceRow ? validToStr : "",
+          "Description": room.description || "",
+          "Price": room.price || 0,
+        });
+      });
+    });
+
+    (doc.blackoutDates || []).forEach((bo) => {
+      const key = (bo.rawPeriod || bo.startDateKey || "") + "_" + (bo.occasion || "");
+      if (key && !blackoutDatesMap.has(key)) {
+        blackoutDatesMap.set(key, bo);
+      }
+    });
+  });
+
+  const daysOfWeek = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  const blackoutHeaders = ["#", "Date / Period", "Day(s)", "Occasion", "Category", "Applicable Region"];
+  const blackoutColumns = blackoutHeaders.map((header) => ({
+    key: header,
+    label: header,
+    numeric: header === "#",
+  }));
+
+  const blackoutRows = [];
+  let boIdx = 1;
+  blackoutDatesMap.forEach((bo) => {
+    let dayName = "";
+    if (bo.startDate) {
+      const d = new Date(bo.startDate);
+      if (!isNaN(d.getTime())) {
+        dayName = daysOfWeek[d.getDay()];
+      }
+    }
+    blackoutRows.push({
+      _id: `bo_${boIdx}`,
+      rowIndex: boIdx - 1,
+      "#": boIdx,
+      "Date / Period": bo.rawPeriod || bo.startDateKey || "",
+      "Day(s)": dayName || "All Days",
+      "Occasion": bo.occasion || "Blackout Event",
+      "Category": bo.category || "General",
+      "Applicable Region": bo.applicableRegion || "All India & International",
+    });
+    boIdx++;
+  });
+
+  const sheets = {
+    "Hotel Data": {
+      sheetName: "Hotel Data",
+      headers: hotelHeaders,
+      columns: hotelColumns,
+      rows: hotelRows,
+    },
+  };
+
+  if (blackoutRows.length > 0) {
+    sheets["Blackout Dates"] = {
+      sheetName: "Blackout Dates",
+      bannerTitle: "🚫  BLACKOUT DATES — Hotel Rates Sheet (2026)",
+      bannerSubtitle: "Rates on these dates are NOT applicable. Special pricing / supplements will apply.",
+      headers: blackoutHeaders,
+      columns: blackoutColumns,
+      rows: blackoutRows,
+    };
+  }
+
+  const sheetNames = Object.keys(sheets);
+  const defaultSheet = sheets["Hotel Data"];
+
+  return {
+    success: true,
+    category: "hotel",
+    fileName: upload?.fileName || "Hotel_Rates_Sheet.xlsx",
+    sheetNames,
+    sheets,
+    headers: defaultSheet.headers,
+    columns: defaultSheet.columns,
+    rows: defaultSheet.rows,
+  };
+};
+
+const buildDynamicActivitySheetData = async (upload) => {
+  const filter = { status: { $ne: "inactive" } };
+  if (upload?.uploadedAuth) {
+    filter.supplier = upload.uploadedAuth;
+  }
+  let activityDocs = await Activity.find(filter)
+    .sort({ createdAt: 1, _id: 1 })
+    .lean();
+
+  if (!activityDocs || activityDocs.length === 0) {
+    activityDocs = await Activity.find({ status: { $ne: "inactive" } })
+      .sort({ createdAt: 1, _id: 1 })
+      .lean();
+  }
+
+  if (!activityDocs || activityDocs.length === 0) return null;
+
+  const activityHeaders = [
+    "Service Name",
+    "Supplier Name",
+    "City",
+    "Country",
+    "Type",
+    "Tour Type",
+    "Price",
+    "Pricing Basis",
+    "Max Pax",
+    "Currency",
+    "Description",
+    "Valid From",
+    "Valid To",
+  ];
+
+  const activityColumns = activityHeaders.map((header) => {
+    const lower = header.toLowerCase();
+    const numeric = /rate|price|amount|capacity|count|id|#|no/i.test(lower) && !/max\s*pax/i.test(lower);
+    const isDesc = /desc|detail|note|remark/i.test(lower);
+    const isGroupedMerged = ["Service Name", "Supplier Name", "City", "Country", "Type", "Currency", "Valid From", "Valid To"].includes(header);
+    return {
+      key: header,
+      label: header,
+      numeric,
+      isDesc,
+      isGroupedMerged,
+    };
+  });
+
+  const activityRows = [];
+
+  activityDocs.forEach((doc) => {
+    const validFromStr = doc.validFrom ? new Date(doc.validFrom).toISOString().split("T")[0] : "";
+    const validToStr = doc.validTo ? new Date(doc.validTo).toISOString().split("T")[0] : "";
+    const tourTypesList = Array.isArray(doc.tourTypes) && doc.tourTypes.length > 0
+      ? doc.tourTypes
+      : [
+          {
+            tourType: "Group Tour",
+            price: doc.adultPrice || doc.price || 0,
+            pricingBasis: "Per Pax",
+            maxPax: "N/A (Shared Group)",
+            description: doc.description || "",
+          },
+        ];
+
+    tourTypesList.forEach((tour, tIdx) => {
+      const isFirstRow = tIdx === 0;
+
+      activityRows.push({
+        _id: `${doc._id}_${tIdx}`,
+        rowIndex: activityRows.length,
+        _serviceName: doc.serviceName || doc.name || "",
+        _city: doc.city || "",
+        _country: doc.country || "",
+        _supplierName: doc.supplierName || "",
+        "Service Name": isFirstRow ? (doc.serviceName || doc.name || "") : "",
+        "Supplier Name": isFirstRow ? (doc.supplierName || "") : "",
+        "City": isFirstRow ? (doc.city || "") : "",
+        "Country": isFirstRow ? (doc.country || "") : "",
+        "Type": isFirstRow ? "Activity" : "",
+        "Tour Type": tour.tourType || "Group Tour",
+        "Price": tour.price !== undefined ? tour.price : 0,
+        "Pricing Basis": tour.pricingBasis || "Per Pax",
+        "Max Pax": tour.maxPax || (tour.tourType?.toLowerCase().includes("group") && !tour.tourType?.toLowerCase().includes("per group") ? "N/A (Shared Group)" : "Up to 4 Pax"),
+        "Currency": isFirstRow ? (doc.currency || "INR") : "",
+        "Description": tour.description || doc.description || "",
+        "Valid From": isFirstRow ? validFromStr : "",
+        "Valid To": isFirstRow ? validToStr : "",
+      });
+    });
+  });
+
+  const sheets = {
+    "Activity Rates": {
+      sheetName: "Activity Rates",
+      headers: activityHeaders,
+      columns: activityColumns,
+      rows: activityRows,
+    },
+  };
+
+  const sheetNames = Object.keys(sheets);
+  const defaultSheet = sheets["Activity Rates"];
+
+  return {
+    success: true,
+    category: "activity",
+    fileName: upload?.fileName || "Activity_Rates_Sheet.xlsx",
+    sheetNames,
+    sheets,
+    headers: defaultSheet.headers,
+    columns: defaultSheet.columns,
+    rows: defaultSheet.rows,
+  };
+};
+
+const buildDynamicSightseeingSheetData = async (upload) => {
+  const filter = { status: { $ne: "inactive" } };
+  if (upload?.uploadedAuth) {
+    filter.supplier = upload.uploadedAuth;
+  }
+  let sightseeingDocs = await Sightseeing.find(filter)
+    .sort({ createdAt: 1, _id: 1 })
+    .lean();
+
+  if (!sightseeingDocs || sightseeingDocs.length === 0) {
+    sightseeingDocs = await Sightseeing.find({ status: { $ne: "inactive" } })
+      .sort({ createdAt: 1, _id: 1 })
+      .lean();
+  }
+
+  if (!sightseeingDocs || sightseeingDocs.length === 0) return null;
+
+  const sightseeingHeaders = [
+    "Service Name",
+    "Supplier Name",
+    "City",
+    "Country",
+    "Type",
+    "Tour Type",
+    "Price",
+    "Pricing Basis",
+    "Max Pax",
+    "Currency",
+    "Description",
+    "Valid From",
+    "Valid To",
+  ];
+
+  const sightseeingColumns = sightseeingHeaders.map((header) => {
+    const lower = header.toLowerCase();
+    const numeric = /rate|price|amount|capacity|count|id|#|no/i.test(lower) && !/max\s*pax/i.test(lower);
+    const isDesc = /desc|detail|note|remark/i.test(lower);
+    const isGroupedMerged = ["Service Name", "Supplier Name", "City", "Country", "Type", "Currency", "Valid From", "Valid To"].includes(header);
+    return {
+      key: header,
+      label: header,
+      numeric,
+      isDesc,
+      isGroupedMerged,
+    };
+  });
+
+  const sightseeingRows = [];
+
+  sightseeingDocs.forEach((doc) => {
+    const validFromStr = doc.validFrom ? new Date(doc.validFrom).toISOString().split("T")[0] : "";
+    const validToStr = doc.validTo ? new Date(doc.validTo).toISOString().split("T")[0] : "";
+    const tourTypesList = Array.isArray(doc.tourTypes) && doc.tourTypes.length > 0
+      ? doc.tourTypes
+      : [
+          {
+            tourType: "Group Tour",
+            price: doc.price || 0,
+            pricingBasis: "Per Pax",
+            maxPax: "N/A (Shared Group)",
+            description: doc.description || "",
+          },
+        ];
+
+    tourTypesList.forEach((tour, tIdx) => {
+      const isFirstRow = tIdx === 0;
+
+      sightseeingRows.push({
+        _id: `${doc._id}_${tIdx}`,
+        rowIndex: sightseeingRows.length,
+        _serviceName: doc.serviceName || doc.name || "",
+        _city: doc.city || "",
+        _country: doc.country || "",
+        _supplierName: doc.supplierName || "",
+        "Service Name": isFirstRow ? (doc.serviceName || doc.name || "") : "",
+        "Supplier Name": isFirstRow ? (doc.supplierName || "") : "",
+        "City": isFirstRow ? (doc.city || "") : "",
+        "Country": isFirstRow ? (doc.country || "") : "",
+        "Type": isFirstRow ? "Sightseeing" : "",
+        "Tour Type": tour.tourType || "Group Tour",
+        "Price": tour.price !== undefined ? tour.price : 0,
+        "Pricing Basis": tour.pricingBasis || "Per Pax",
+        "Max Pax": tour.maxPax || (tour.tourType?.toLowerCase().includes("group") && !tour.tourType?.toLowerCase().includes("per group") ? "N/A (Shared Group)" : "Up to 4 Pax"),
+        "Currency": isFirstRow ? (doc.currency || "INR") : "",
+        "Description": tour.description || doc.description || "",
+        "Valid From": isFirstRow ? validFromStr : "",
+        "Valid To": isFirstRow ? validToStr : "",
+      });
+    });
+  });
+
+  const sheets = {
+    "Sightseeing Rates": {
+      sheetName: "Sightseeing Rates",
+      headers: sightseeingHeaders,
+      columns: sightseeingColumns,
+      rows: sightseeingRows,
+    },
+  };
+
+  const sheetNames = Object.keys(sheets);
+  const defaultSheet = sheets["Sightseeing Rates"];
+
+  return {
+    success: true,
+    category: "sightseeing",
+    fileName: upload?.fileName || "Sightseeing_Rates_Sheet.xlsx",
+    sheetNames,
+    sheets,
+    headers: defaultSheet.headers,
+    columns: defaultSheet.columns,
+    rows: defaultSheet.rows,
+  };
 };
 
 export const viewUploadData = async (req, res) => {
@@ -600,45 +1030,175 @@ export const viewUploadData = async (req, res) => {
       return res.status(404).json({ success: false, message: "Upload history not found" });
     }
 
+    const category = String(upload.category || "").toLowerCase().trim();
+
+    // 🏨 Dynamic MongoDB Data for Hotels
+    if (category === "hotel") {
+      const dynamicHotelData = await buildDynamicHotelSheetData(upload);
+      if (dynamicHotelData && dynamicHotelData.rows.length > 0) {
+        return res.status(200).json(dynamicHotelData);
+      }
+    }
+
+    // 🏄 Dynamic MongoDB Data for Activities
+    if (category === "activity") {
+      const dynamicActivityData = await buildDynamicActivitySheetData(upload);
+      if (dynamicActivityData && dynamicActivityData.rows.length > 0) {
+        return res.status(200).json(dynamicActivityData);
+      }
+    }
+
+    // 🏛️ Dynamic MongoDB Data for Sightseeing
+    if (category === "sightseeing") {
+      const dynamicSightseeingData = await buildDynamicSightseeingSheetData(upload);
+      if (dynamicSightseeingData && dynamicSightseeingData.rows.length > 0) {
+        return res.status(200).json(dynamicSightseeingData);
+      }
+    }
+
     const fullPath = path.resolve(upload.filePath);
     if (!fs.existsSync(fullPath)) {
       return res.status(404).json({ success: false, message: "Excel file not found on server" });
     }
 
     const workbook = XLSX.readFile(fullPath);
-    const sheetName = workbook.SheetNames[0];
-    const sheet = workbook.Sheets[sheetName];
-    
-    // Parse sheet to JSON array
-    const rawData = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
-    if (String(upload.category || "").toLowerCase() === "transport") {
-      const groupedTransportPreview = buildTransportGroupedPreview(rawData, upload);
+    const sheetNames = workbook.SheetNames || [];
+    const sheets = {};
+
+    if (category === "transport") {
+      const firstSheetRaw = XLSX.utils.sheet_to_json(workbook.Sheets[sheetNames[0]], { header: 1, defval: "" });
+      const groupedTransportPreview = buildTransportGroupedPreview(firstSheetRaw, upload);
       if (groupedTransportPreview) {
-        return res.status(200).json(groupedTransportPreview);
+        sheets[sheetNames[0] || "Transport Rates"] = groupedTransportPreview;
+        return res.status(200).json({
+          ...groupedTransportPreview,
+          sheetNames: sheetNames.length ? sheetNames : ["Transport Rates"],
+          sheets: {
+            [sheetNames[0] || "Transport Rates"]: groupedTransportPreview,
+          },
+        });
       }
     }
 
-    const headers = rawData[0] || [];
-    const rows = rawData.slice(1).map((row, rowIndex) => {
-      const rowData = {};
-      headers.forEach((header, index) => {
-        if (header) {
-          rowData[header] = row[index] !== undefined ? row[index] : "";
+    sheetNames.forEach((sName) => {
+      const ws = workbook.Sheets[sName];
+      if (!ws) return;
+      const rawData = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+      if (!rawData || !rawData.length) {
+        sheets[sName] = { sheetName: sName, headers: [], columns: [], rows: [] };
+        return;
+      }
+
+      // Check for title/banner rows (e.g. Blackout dates title)
+      let headerRowIndex = 0;
+      let bannerTitle = "";
+      let bannerSubtitle = "";
+
+      if (rawData.length > 2) {
+        const r0NonEmpty = (rawData[0] || []).filter((c) => String(c ?? "").trim() !== "").length;
+        const r1NonEmpty = (rawData[1] || []).filter((c) => String(c ?? "").trim() !== "").length;
+        const r2NonEmpty = (rawData[2] || []).filter((c) => String(c ?? "").trim() !== "").length;
+        if (r0NonEmpty <= 2 && r2NonEmpty > r0NonEmpty) {
+          bannerTitle = (rawData[0] || []).find((c) => String(c ?? "").trim() !== "") || "";
+          bannerSubtitle = (rawData[1] || []).find((c) => String(c ?? "").trim() !== "") || "";
+          headerRowIndex = 2;
         }
+      }
+
+      const headers = (rawData[headerRowIndex] || []).map((h) => String(h ?? "").trim()).filter(Boolean);
+      const rawRowsSlice = rawData.slice(headerRowIndex + 1);
+      const rows = [];
+
+      const findHeader = (names) =>
+        headers.find((h) =>
+          names.some(
+            (n) => h.toLowerCase() === n.toLowerCase() || h.toLowerCase().includes(n.toLowerCase())
+          )
+        );
+
+      const sNameHeader = findHeader(["Service Name"]);
+      const supHeader = findHeader(["Supplier Name"]);
+      const hNameHeader = findHeader(["Hotel Name"]);
+      const countryHeader = findHeader(["Country"]);
+      const cityHeader = findHeader(["City"]);
+
+      let currService = "";
+      let currCountry = "";
+      let currCity = "";
+      let currHotel = "";
+      let currSupplier = "";
+
+      for (let rowIndex = 0; rowIndex < rawRowsSlice.length; rowIndex += 1) {
+        const row = rawRowsSlice[rowIndex] || [];
+
+        const hasAnyContent = row.some(
+          (cell) => cell !== undefined && cell !== null && String(cell).trim() !== ""
+        );
+        if (!hasAnyContent) continue;
+
+        if (sNameHeader && row[headers.indexOf(sNameHeader)]) currService = String(row[headers.indexOf(sNameHeader)]).trim();
+        if (countryHeader && row[headers.indexOf(countryHeader)]) currCountry = String(row[headers.indexOf(countryHeader)]).trim();
+        if (cityHeader && row[headers.indexOf(cityHeader)]) currCity = String(row[headers.indexOf(cityHeader)]).trim();
+        if (hNameHeader && row[headers.indexOf(hNameHeader)]) currHotel = String(row[headers.indexOf(hNameHeader)]).trim();
+        if (supHeader && row[headers.indexOf(supHeader)]) currSupplier = String(row[headers.indexOf(supHeader)]).trim();
+
+        const rowData = {};
+        headers.forEach((header, index) => {
+          if (header) {
+            let val = row[index] !== undefined && row[index] !== null ? row[index] : "";
+            if (val instanceof Date) {
+              val = val.toISOString().split("T")[0];
+            }
+            rowData[header] = val;
+          }
+        });
+
+        rows.push({
+          _id: `${upload._id}_${sName}_row_${rowIndex}`,
+          rowIndex,
+          _serviceName: currService,
+          _country: currCountry,
+          _city: currCity,
+          _hotelName: currHotel,
+          _supplierName: currSupplier,
+          ...rowData,
+        });
+      }
+
+      const columns = headers.map((header) => {
+        const lower = header.toLowerCase();
+        const numeric = /rate|price|amount|pax|capacity|count|id|#|no/i.test(lower);
+        const isDesc = /desc|detail|note|remark/i.test(lower);
+        return {
+          key: header,
+          label: header,
+          numeric,
+          isDesc,
+        };
       });
-      return {
-        _id: `${upload._id}_row_${rowIndex}`,
-        rowIndex,
-        ...rowData
+
+      sheets[sName] = {
+        sheetName: sName,
+        bannerTitle,
+        bannerSubtitle,
+        headers,
+        columns,
+        rows,
       };
     });
+
+    const primarySheetName = sheetNames[0] || "Sheet1";
+    const defaultSheet = sheets[primarySheetName] || { headers: [], columns: [], rows: [] };
 
     res.status(200).json({
       success: true,
       category: upload.category,
       fileName: upload.fileName,
-      headers: headers.filter(Boolean),
-      rows
+      sheetNames,
+      sheets,
+      headers: defaultSheet.headers,
+      columns: defaultSheet.columns,
+      rows: defaultSheet.rows,
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -652,10 +1212,11 @@ export const editSpreadsheetRowAndNotify = async (req, res, next) => {
       rowIndex,
       updatedRow = {},
       category,
+      sheetName,
       changeReasonType = "",
       changeReasonNote = "",
     } = req.body || {};
-    
+
     const upload = await UploadHistory.findById(id);
     if (!upload) {
       return res.status(404).json({ success: false, message: "Upload history not found" });
@@ -668,13 +1229,13 @@ export const editSpreadsheetRowAndNotify = async (req, res, next) => {
 
     // 1. Read existing file
     const workbook = XLSX.readFile(fullPath);
-    const sheetName = workbook.SheetNames[0];
-    const sheet = workbook.Sheets[sheetName];
-    
+    const targetSheetName = sheetName && workbook.Sheets[sheetName] ? sheetName : workbook.SheetNames[0];
+    const sheet = workbook.Sheets[targetSheetName];
+
     // 2. Parse to raw array of arrays
     const rawData = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
     const headers = rawData[0] || [];
-    
+
     // 3. Update specific row
     const rawRowIndex = Number(rowIndex) + 1;
     const changes = [];
@@ -683,7 +1244,7 @@ export const editSpreadsheetRowAndNotify = async (req, res, next) => {
     if (!rawData[rawRowIndex]) {
       return res.status(400).json({ success: false, message: "Selected spreadsheet row was not found" });
     }
-    
+
     if (rawData[rawRowIndex]) {
       const originalRow = [...rawData[rawRowIndex]];
       originalRowData = headers.reduce((accumulator, header, colIndex) => {
@@ -696,7 +1257,7 @@ export const editSpreadsheetRowAndNotify = async (req, res, next) => {
         if (header && updatedRow[header] !== undefined) {
           const originalVal = String(originalRow[colIndex] !== undefined ? originalRow[colIndex] : "").trim();
           const newVal = String(updatedRow[header]).trim();
-          
+
           if (originalVal !== newVal) {
             changes.push({
               field: String(header || "").trim(),
@@ -732,7 +1293,7 @@ export const editSpreadsheetRowAndNotify = async (req, res, next) => {
 
     // 4. Write back to Excel file
     const newSheet = XLSX.utils.aoa_to_sheet(rawData);
-    workbook.Sheets[sheetName] = newSheet;
+    workbook.Sheets[targetSheetName] = newSheet;
     XLSX.writeFile(workbook, fullPath);
 
     const serviceSync = await syncEditedRowToServiceCollection({

@@ -8,6 +8,9 @@ import {
   AlertTriangle,
   CheckCheck,
   Calendar,
+  Download,
+  FileText,
+  FileSpreadsheet,
 } from "lucide-react";
 import API from "../../../utils/Api";
 
@@ -349,6 +352,87 @@ export default function FinanceCommandCenter() {
     };
   }, [fromDate, toDate]);
 
+  const [reportsHistory, setReportsHistory] = useState([]);
+
+  const loadReportsHistory = () => {
+    try {
+      const stored = JSON.parse(localStorage.getItem("finance_reports_history") || "[]");
+      setReportsHistory(stored);
+    } catch (e) {
+      console.warn("Could not load reports history:", e);
+    }
+  };
+
+  useEffect(() => {
+    loadReportsHistory();
+
+    const handleReportEvent = () => loadReportsHistory();
+    window.addEventListener("finance-report-submitted", handleReportEvent);
+    window.addEventListener("storage", handleReportEvent);
+
+    return () => {
+      window.removeEventListener("finance-report-submitted", handleReportEvent);
+      window.removeEventListener("storage", handleReportEvent);
+    };
+  }, []);
+
+  const downloadReportCSV = (report) => {
+    if (!report || !report.items) return;
+
+    let csvContent = "";
+    if (report.type === "Payment Verification") {
+      const headers = [
+        "Booking ID",
+        "Agent / Customer Name",
+        "Amount (INR)",
+        "Payment Method",
+        "Transaction ID / UTR",
+        "Verification Status",
+        "Submitted Date",
+      ];
+      const rows = report.items.map((i) => [
+        `"${i.bookingId || ""}"`,
+        `"${i.agentName || ""}"`,
+        `"${i.amount || 0}"`,
+        `"${i.paymentMethod || ""}"`,
+        `"${i.transactionId || ""}"`,
+        `"${i.status || ""}"`,
+        `"${i.date || ""}"`,
+      ]);
+      csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+    } else {
+      const headers = [
+        "Invoice Number",
+        "DMC Name",
+        "Amount (INR)",
+        "Status",
+        "Due Date",
+        "UTR / Ref",
+        "Bank Name",
+      ];
+      const rows = report.items.map((i) => [
+        `"${i.invoiceNumber || ""}"`,
+        `"${i.dmcName || ""}"`,
+        `"${i.amount || 0}"`,
+        `"${i.status || ""}"`,
+        `"${i.dueDate || ""}"`,
+        `"${i.utr || ""}"`,
+        `"${i.bank || ""}"`,
+      ]);
+      csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+    }
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `${(report.title || "Finance-Report").replace(/\s+/g, "-")}-${Date.now()}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    setTimeout(() => {
+      if (document.body.contains(link)) document.body.removeChild(link);
+    }, 3000);
+  };
+
   useEffect(() => {
     let isMounted = true;
 
@@ -666,6 +750,80 @@ export default function FinanceCommandCenter() {
               </tbody>
             </table>
             </div>
+          </div>
+        </div>
+
+        {/* Submitted Finance Reports Hub */}
+        <div className="mt-6 overflow-hidden rounded-[12px] border border-slate-200 bg-white shadow-sm mb-8">
+          <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 px-5 py-4 bg-gradient-to-r from-emerald-50/70 via-teal-50/30 to-white">
+            <div className="flex items-center gap-3.5">
+              <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-600 to-teal-700 text-white shadow-[0_4px_12px_rgba(16,185,129,0.22)] transition-transform duration-300 hover:scale-105">
+                <FileSpreadsheet size={19} color="white" />
+              </div>
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="text-[15px] font-extrabold text-slate-900 tracking-tight leading-none">
+                    Exported Finance Reports
+                  </h3>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-100 px-2 py-0.5 text-[9.5px] font-bold text-emerald-700 tracking-wide uppercase">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    Manager Hub
+                  </span>
+                </div>
+                <p className="text-[10.5px] text-slate-500 mt-1 font-medium leading-relaxed">
+                  Real-time submitted reports from DMC Invoices &amp; Payment Verification pages
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="divide-y divide-slate-100">
+            {reportsHistory.length > 0 ? (
+              reportsHistory.map((report) => (
+                <div
+                  key={report.id}
+                  className="flex flex-col sm:flex-row sm:items-center justify-between p-4 gap-3 hover:bg-slate-50/80 transition-colors"
+                >
+                  <div className="flex items-start gap-3 min-w-0">
+                    <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-teal-50 text-teal-700 border border-teal-100/80 shadow-2xs">
+                      <FileText size={15} />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h4 className="text-[13px] font-bold text-slate-800 leading-none">
+                          {report.title}
+                        </h4>
+                        <span
+                          className={`inline-flex items-center rounded-full px-2 py-0.5 text-[9.5px] font-bold uppercase ${
+                            report.type === "Payment Verification"
+                              ? "bg-purple-50 text-purple-700 border border-purple-200"
+                              : "bg-blue-50 text-blue-700 border border-blue-200"
+                          }`}
+                        >
+                          {report.type}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-400 mt-1 font-medium">
+                        Generated on: <span className="text-slate-600 font-semibold">{report.generatedAt}</span> &bull; Source: <span className="text-slate-600 font-semibold">{report.source}</span> &bull; Records: <span className="text-emerald-700 font-bold">{report.totalItems || report.items?.length || 0}</span>
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => downloadReportCSV(report)}
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow-xs hover:shadow-md transition-all duration-200 cursor-pointer active:scale-95 shrink-0 self-start sm:self-center"
+                  >
+                    <Download size={13} />
+                    <span>Download CSV</span>
+                  </button>
+                </div>
+              ))
+            ) : (
+              <div className="p-8 text-center text-xs font-medium text-slate-400">
+                No exported finance reports found yet. When reports are exported from Internal Invoices or Payment Verification pages, they will appear here for download.
+              </div>
+            )}
           </div>
         </div>
       </div>

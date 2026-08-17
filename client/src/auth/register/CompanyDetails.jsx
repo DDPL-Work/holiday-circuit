@@ -48,12 +48,12 @@ export default function CompanyDetails({ form, setForm, next, back, isActive = f
   };
 
   return (
-    <div className="w-full h-screen min-h-screen flex items-center justify-center px-4 ">
-      <div className="w-full max-w-xl rounded-2xl p-8">
+    <div className="w-full">
+      <div className="w-full rounded-2xl p-2 sm:p-7">
         <RegisterStepper currentStep={2} isActive={isActive} />
 
-        <h2 className="text-2xl font-semibold mb-1">Company Details</h2>
-        <p className="text-gray-500 mb-6 text-sm">
+        <h2 className="text-xl sm:text-2xl font-extrabold mb-1 text-slate-900">Company Details</h2>
+        <p className="text-slate-500 mb-5 text-xs sm:text-sm">
           Tell us about your travel agency
         </p>
 
@@ -68,7 +68,7 @@ export default function CompanyDetails({ form, setForm, next, back, isActive = f
               value={form.companyName || ""}
               onChange={(e) => setForm({ ...form, companyName: e.target.value })}
               placeholder="Travel World Pvt Ltd"
-              className="w-full text-sm mt-1 px-3 py-2 border border-gray-300 rounded-2xl focus:outline-none"
+              className="w-full text-xs sm:text-sm mt-1 px-3 py-1.5 sm:py-2 border border-gray-300 rounded-2xl focus:outline-none"
               required
             />
           </div>
@@ -86,7 +86,7 @@ export default function CompanyDetails({ form, setForm, next, back, isActive = f
                 })
               }
               placeholder="22AAAAA0000A1Z5"
-              className="w-full text-sm mt-1 px-3 py-2 border border-gray-300 rounded-2xl focus:outline-none"
+              className="w-full text-xs sm:text-sm mt-1 px-3 py-1.5 sm:py-2 border border-gray-300 rounded-2xl focus:outline-none"
               maxLength={15}
               required
             />
@@ -107,7 +107,7 @@ export default function CompanyDetails({ form, setForm, next, back, isActive = f
                 })
               }
               placeholder="+91 98765-43210"
-              className="w-full text-sm mt-1 px-3 py-2 border border-gray-300 rounded-2xl focus:outline-none"
+              className="w-full text-xs sm:text-sm mt-1 px-3 py-1.5 sm:py-2 border border-gray-300 rounded-2xl focus:outline-none"
               inputMode="numeric"
               maxLength={16}
               required

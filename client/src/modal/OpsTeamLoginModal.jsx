@@ -253,7 +253,7 @@ export default function OpsTeamLoginModal({ open, onClose }) {
       setRecoveryLoading(true);
       await API.post("/auth/forgot-password/send-otp", { email: recovery.email.trim() });
       setForgotStep("verify");
-      setResendCooldown(45);
+      setResendCooldown(60);
       toast.success("A 6-digit verification code has been sent to your email.");
     } catch (requestError) {
       toast.error(
@@ -508,7 +508,7 @@ export default function OpsTeamLoginModal({ open, onClose }) {
           >
             <motion.div
               variants={modalVariant}
-              className="relative w-full max-w-md min-h-[540px] sm:min-h-[550px] flex flex-col rounded-[25px] border border-white/70 bg-gradient-to-br from-blue-100/90 via-blue-50/80 via-60% to-slate-200/90 p-6 sm:p-7 shadow-[0_32px_90px_rgba(15,23,42,0.25)] max-h-[95vh] overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] backdrop-blur-md"
+              className="relative w-full max-w-[360px] sm:max-w-md min-h-0 sm:min-h-[550px] flex flex-col rounded-[25px] border border-white/70 bg-gradient-to-br from-blue-100/90 via-blue-50/80 via-60% to-slate-200/90 p-5 sm:p-7 shadow-[0_32px_90px_rgba(15,23,42,0.25)] max-h-[90vh] overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] backdrop-blur-md"
             >
               <button
                 onClick={onClose}
@@ -835,16 +835,18 @@ export default function OpsTeamLoginModal({ open, onClose }) {
                           />
                         </div>
 
-                        <div className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white/60 px-4 py-1.5 text-[11px] text-slate-500">
-                          <span>Didn&apos;t receive the code?</span>
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-2xl border border-slate-200 bg-white/60 px-4 py-2 text-[11px] text-slate-500">
+                          <span className="text-center sm:text-left">Didn&apos;t receive the code?</span>
                           <button
                             type="button"
                             onClick={handleSendOtp}
                             disabled={resendCooldown > 0 || recoveryLoading}
-                            className="inline-flex items-center gap-1.5 font-semibold text-blue-600 disabled:cursor-not-allowed disabled:text-slate-400"
+                            className="inline-flex items-center justify-center gap-1.5 font-semibold text-blue-600 disabled:cursor-not-allowed disabled:text-slate-400 w-full sm:w-auto"
                           >
-                            <RefreshCw size={11} className={recoveryLoading ? "animate-spin" : ""} />
-                            {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : "Resend OTP"}
+                            <RefreshCw size={11} className={resendCooldown > 0 ? "animate-spin" : ""} />
+                            <span className="whitespace-nowrap">
+                              {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : "Resend OTP"}
+                            </span>
                           </button>
                         </div>
 

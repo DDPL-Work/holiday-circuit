@@ -87,7 +87,7 @@ export default function Register() {
   };
 
   return (
-    <div className="max-h-screen flex flex-col overflow-hidden lg:flex-row">
+    <div className="min-h-screen overflow-y-auto lg:h-screen lg:overflow-hidden flex flex-col lg:flex-row">
       <div className="relative hidden lg:block lg:w-1/2">
         <img
           src={image}
@@ -107,9 +107,9 @@ export default function Register() {
         </div>
       </div>
 
-      <div className="flex w-full items-start justify-center bg-gradient-to-br from-blue-100/85 via-blue-50/60 via-60% to-slate-200/50 px-10 py-10 lg:w-1/2 lg:items-center lg:py-0">
-        <div className="flex w-full justify-center overflow-hidden">
-          <div className="w-full max-w-md px-4 sm:max-w-lg sm:px-0 lg:max-w-xl">
+      <div className="relative flex min-h-screen w-full items-center justify-center bg-gradient-to-br from-blue-100/85 via-blue-50/60 via-60% to-slate-200/50 px-6 py-12 lg:w-1/2 lg:min-h-0 lg:h-full lg:py-0">
+        <div className="flex w-full justify-center">
+          <div className="w-full max-w-md px-0 sm:px-0 lg:max-w-xl overflow-hidden">
             {showVerificationScreen ? (
               <VerificationOnline />
             ) : (
@@ -120,23 +120,23 @@ export default function Register() {
                   transform: `translateX(-${((step - 1) * 100) / TOTAL_STEPS}%)`,
                 }}
               >
-                <div className="flex w-1/3 shrink-0 justify-center px-2 sm:px-0">
+                <div className="flex w-1/3 shrink-0 items-center justify-center px-0">
                   <div className="w-full">
-                    <div className="mb-21 flex justify-center">
+                    <div className="mb-6 flex justify-center">
                       <img
                         src={logo}
                         alt="Logo"
-                        className="absolute top-5 left-3 h-25 w-25 object-contain"
+                        className="h-20 w-20 object-contain select-none"
                       />
                     </div>
 
-                    <div className="rounded-2xl p-3 sm:p-7">
+                    <div className="rounded-2xl p-2 sm:p-7">
                       <RegisterStepper currentStep={1} isActive={step === 1} />
 
-                      <h2 className="text-3xl font-bold text-gray-800">
+                      <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900">
                         Create an account
                       </h2>
-                      <p className="mt-1 mb-4 text-gray-500">
+                      <p className="mt-1.5 mb-4 text-xs sm:text-sm text-gray-500">
                         Join our network of elite travel agents today
                       </p>
 
@@ -152,7 +152,7 @@ export default function Register() {
                         }}
                       >
                         <div>
-                          <label className="text-md font-semibold">
+                          <label className="text-sm sm:text-md font-semibold text-slate-800">
                             Full Name <span className="text-red-700">*</span>
                           </label>
                           <div className="relative mt-1">
@@ -164,13 +164,13 @@ export default function Register() {
                               onChange={(e) =>
                                 setForm({ ...form, name: e.target.value })
                               }
-                              className="w-full rounded-2xl border border-gray-300 py-2 pr-4 pl-11 focus:outline-none"
+                              className="w-full rounded-2xl border border-gray-300 py-1.5 sm:py-2 pr-4 pl-11 text-sm sm:text-base focus:outline-none"
                             />
                           </div>
                         </div>
 
                         <div>
-                          <label className="text-md font-semibold">
+                          <label className="text-sm sm:text-md font-semibold text-slate-800">
                             Email <span className="text-red-700">*</span>
                           </label>
                           <div className="relative mt-1">
@@ -182,13 +182,13 @@ export default function Register() {
                               onChange={(e) =>
                                 setForm({ ...form, email: e.target.value })
                               }
-                              className="w-full rounded-2xl border border-gray-300 py-2 pr-4 pl-11 focus:outline-none"
+                              className="w-full rounded-2xl border border-gray-300 py-1.5 sm:py-2 pr-4 pl-11 text-sm sm:text-base focus:outline-none"
                             />
                           </div>
                         </div>
 
                         <div className="relative">
-                          <label className="text-md font-semibold">
+                          <label className="text-sm sm:text-md font-semibold text-slate-800">
                             Password <span className="text-red-700">*</span>
                           </label>
                           <Lock className="pointer-events-none absolute top-[calc(50%+14px)] left-4 h-4 w-4 -translate-y-1/2 text-gray-400" />
@@ -199,7 +199,7 @@ export default function Register() {
                             onChange={(e) =>
                               setForm({ ...form, password: e.target.value })
                             }
-                            className="mt-1 w-full rounded-2xl border border-gray-300 py-2 pr-11 pl-11 focus:outline-none"
+                            className="mt-1 w-full rounded-2xl border border-gray-300 py-1.5 sm:py-2 pr-11 pl-11 text-sm sm:text-base focus:outline-none"
                           />
                           <span
                             className="absolute top-9 right-5 cursor-pointer"
@@ -232,7 +232,7 @@ export default function Register() {
                   </div>
                 </div>
 
-                <div className="flex w-1/3 shrink-0 justify-center px-2 sm:px-0">
+                <div className="flex w-1/3 shrink-0 items-center justify-center px-0">
                   <CompanyDetails
                     form={form}
                     setForm={setForm}
@@ -242,7 +242,7 @@ export default function Register() {
                   />
                 </div>
 
-                <div className="flex w-1/3 shrink-0 justify-center px-2 sm:px-0">
+                <div className="flex w-1/3 shrink-0 items-center justify-center px-0">
                   <KycVerification
                     back={() => setStep(2)}
                     submit={formSubmit}

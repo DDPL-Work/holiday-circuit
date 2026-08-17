@@ -282,7 +282,11 @@ const VoucherPreviewModal = ({
       return;
     }
 
-    const html = buildVoucherHtml(data, branding);
+    const agentBranding = {
+      name: data?.agentBrandingName || data?.agentName || "",
+      logo: data?.agentLogo || "",
+    };
+    const html = buildVoucherHtml(data, branding, agentBranding);
     const blob = new Blob([html], { type: "text/html;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -359,7 +363,7 @@ const VoucherPreviewModal = ({
 
           <div className="custom-scroll flex-1 overflow-y-auto px-4 py-3">
             <div className="rounded-[18px] bg-gradient-to-r from-blue-600 to-blue-800 py-4 text-center text-white">
-              <h1 className="text-base font-semibold">{branding === "with" ? "Holiday Circuit" : "Travel Voucher"}</h1>
+              <h1 className="text-base font-semibold">{branding === "with" ? (data?.agentBrandingName || data?.agentName || "Holiday Circuit") : "Travel Voucher"}</h1>
               <p className="mt-1 text-[10px]">{branding === "with" ? "Travel Voucher" : "Clean Voucher Copy"}</p>
 
               <div className="mt-2 inline-block rounded-xl bg-white/20 px-6 py-1.5">

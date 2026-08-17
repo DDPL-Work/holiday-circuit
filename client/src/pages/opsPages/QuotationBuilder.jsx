@@ -388,11 +388,21 @@ const WHATSAPP_QUOTATION_BRAND = "Holiday Circuit";
 const WHATSAPP_SECTION_DIVIDER = "----------";
 const WHATSAPP_SUBSECTION_DIVIDER = "-------";
 const DEFAULT_WHATSAPP_TERMS = Object.freeze([
-  "Rates are subject to availability and confirmation at the time of booking.",
-  "Only the services listed in this quotation are included in the shared amount.",
-  "Any amendment after confirmation may affect availability and final pricing.",
-  "Hotel check-in, check-out, and supplier-specific policies will apply as per service rules.",
-  "Please review and confirm within the validity period to avoid fare or rate changes.",
+  "Welcome to Leela Travels. These Terms & Conditions govern your travel booking and services.",
+  "Services include travel planning, packages, transfers (Private & Shared - wait up to 30 mins), hotels & visa assistance.",
+  "Booking & Payment: 25% non-refundable advance to confirm. Full payment required 30 days before departure.",
+  "Cancellations: 25% (30 days before), 50% (29-16 days), 75% (15-8 days), 100% (within 7 days). Refunds in 15 days.",
+  "Changes & Modifications: Administrative/service fees apply for client-requested itinerary changes.",
+  "Travel Documents: Passport, visa & health documentation compliance is the client's sole responsibility.",
+  "Health & Safety: Medical conditions must be declared in advance; compliance with safety rules is mandatory.",
+  "Liability: Leela Travels acts as an intermediary for airlines, hotels & transporters.",
+  "Accommodation Policies: Standard check-in 14:00-15:00 Hrs, check-out 11:00-12:00 Hrs.",
+  "Travel Insurance: Highly recommended for medical, cancellation & personal loss coverage.",
+  "Intellectual Property & Privacy: Personal data is protected and used solely for booking purposes.",
+  "Governing Law: All disputes subject to New Delhi Jurisdiction only.",
+  "Force Majeure: Not liable for delays/cancellations due to natural disasters, weather, or emergencies.",
+  "Contact: Leela Travels, KG 3/101, Vikas Puri, New Delhi | ops@leelatravels.com | +91 8851346665.",
+  "By booking with DDLC Company, you acknowledge that you have read, understood, and agreed to these Terms and Conditions.",
 ]);
 
 const SHOW_SELECTED_HISTORY_COMPARISON = false;
@@ -1577,13 +1587,206 @@ const buildWhatsAppTermsSection = (items = []) => {
   return roundCurrencyAmount(explicitRate);
   };
 
-  const getTransportUsageOptionDisplayPrice = (service = {}, usageType = "") => {
-  const selectedOption = getTransportUsageOptionMeta(usageType);
-  const selectedPriceFromService = Number(service?.transportUsagePrices?.[selectedOption.value] || 0);
 
-  if (selectedPriceFromService > 0) {
-  return roundCurrencyAmount(selectedPriceFromService);
+const getTransportVehicleUsagePrices = (vehicle = {}, service = {}) => {
+  const pointToPoint = vehicle?.usageTypes?.pointToPoint || [];
+  const hourly = vehicle?.usageTypes?.hourly || [];
+
+  const oneWay =
+    pointToPoint.find((p) =>
+      String(p.name || p.usageType || "").toLowerCase().includes("one way") ||
+      String(p.name || "").toLowerCase().includes("airport")
+    ) || pointToPoint[0];
+
+  const interHotel =
+    pointToPoint.find((p) =>
+      String(p.name || p.usageType || "").toLowerCase().includes("inter hotel") ||
+      String(p.name || "").toLowerCase().includes("inter-hotel")
+    ) || pointToPoint[1];
+
+  const fullDay =
+    hourly.find((h) =>
+      String(h.name || h.usageType || "").toLowerCase().includes("full")
+    ) || hourly[0];
+
+  const halfDay =
+    hourly.find((h) =>
+      String(h.name || h.usageType || "").toLowerCase().includes("half")
+    ) || hourly[1];
+
+  const defaultPrice = Number(service?.price || service?.rate || 0);
+
+  const oneWayPrice = Number(oneWay?.price !== undefined ? oneWay.price : defaultPrice);
+  const interHotelPrice = Number(interHotel?.price !== undefined ? interHotel.price : defaultPrice);
+  const fullDayPrice = Number(fullDay?.price !== undefined ? fullDay.price : defaultPrice);
+  const halfDayPrice = Number(halfDay?.price !== undefined ? halfDay.price : defaultPrice);
+
+  const fullDayExtraPerKmRate = Number(
+    fullDay?.extraPerKmRate !== undefined
+      ? fullDay.extraPerKmRate
+      : service?.fullDayExtraPerKmRate || 0
+  );
+  const halfDayExtraPerKmRate = Number(
+    halfDay?.extraPerKmRate !== undefined
+      ? halfDay.extraPerKmRate
+      : service?.halfDayExtraPerKmRate || 0
+  );
+
+  return {
+    "one-way-airport-transfer": oneWayPrice,
+    "inter-hotel-transfer": interHotelPrice,
+    "full-day": fullDayPrice,
+    "half-day": halfDayPrice,
+    fullDayExtraPerKmRate,
+    halfDayExtraPerKmRate,
+  };
+};
+
+const getTransportVehicleOptions = (services = [], service = {}) => {
+  if (Array.isArray(service.vehicles) && service.vehicles.length > 0) {
+    return service.vehicles.map((v) => ({
+      value: v.vehicleType,
+      label: v.vehicleType,
+      passengerCapacity: v.passengerCapacity,
+      luggageCapacity: v.luggageCapacity,
+      description: v.description,
+    }));
   }
+
+  const matchingTransfers = (Array.isArray(services) ? services : []).filter(
+    (s) =>
+      normalizeServiceFilterType(s.type) === "transfer" &&
+      (normalizeComparisonTextValue(s.serviceName || s.title) ===
+        normalizeComparisonTextValue(service.serviceName || service.title) ||
+        normalizeComparisonTextValue(s.city) === normalizeComparisonTextValue(service.city))
+  );
+
+  const vehicleTypes = new Set();
+  matchingTransfers.forEach((s) => {
+    if (Array.isArray(s.vehicles)) {
+      s.vehicles.forEach((v) => v.vehicleType && vehicleTypes.add(v.vehicleType));
+    }
+    if (s.vehicleType) {
+      vehicleTypes.add(s.vehicleType);
+    }
+  });
+
+  if (vehicleTypes.size > 0) {
+    return Array.from(vehicleTypes).map((vt) => ({
+      value: vt,
+      label: vt,
+    }));
+  }
+
+  return [
+    { value: service.vehicleType || "Sedan", label: service.vehicleType || "Sedan" },
+    { value: "SUV", label: "SUV" },
+    { value: "Innova Crysta", label: "Innova Crysta" },
+    { value: "Tempo Traveller", label: "Tempo Traveller" },
+  ];
+};
+
+const resolveTransportVehicleSelection = (services = [], service = {}, nextVehicleType = "") => {
+  const vehiclesList = Array.isArray(service.vehicles) && service.vehicles.length > 0 ? service.vehicles : [];
+  let matchedVehicle =
+    vehiclesList.find(
+      (v) =>
+        normalizeComparisonTextValue(v.vehicleType) === normalizeComparisonTextValue(nextVehicleType)
+    ) ||
+    vehiclesList.find((v) =>
+      String(v.vehicleType || "").toLowerCase().includes(String(nextVehicleType || "").toLowerCase())
+    );
+
+  if (!matchedVehicle && Array.isArray(services)) {
+    const siblingTransfer = services.find(
+      (s) =>
+        normalizeServiceFilterType(s.type) === "transfer" &&
+        (normalizeComparisonTextValue(s.serviceName || s.title) ===
+          normalizeComparisonTextValue(service.serviceName || service.title) ||
+          normalizeComparisonTextValue(s.city) === normalizeComparisonTextValue(service.city)) &&
+        Array.isArray(s.vehicles) &&
+        s.vehicles.some(
+          (v) =>
+            normalizeComparisonTextValue(v.vehicleType) ===
+            normalizeComparisonTextValue(nextVehicleType)
+        )
+    );
+    if (siblingTransfer) {
+      matchedVehicle = siblingTransfer.vehicles.find(
+        (v) =>
+          normalizeComparisonTextValue(v.vehicleType) ===
+          normalizeComparisonTextValue(nextVehicleType)
+      );
+    }
+  }
+
+  const usagePrices = getTransportVehicleUsagePrices(matchedVehicle || {}, service);
+  const currentUsageKey = getTransportUsageOptionKey(service) || "one-way-airport-transfer";
+  const nextPrice =
+    usagePrices[currentUsageKey] !== undefined
+      ? Number(usagePrices[currentUsageKey])
+      : Number(service.price || service.rate || 0);
+
+  const nextPassengerCapacity =
+    matchedVehicle?.passengerCapacity !== undefined
+      ? Number(matchedVehicle.passengerCapacity)
+      : service.passengerCapacity || 4;
+
+  const nextLuggageCapacity =
+    matchedVehicle?.luggageCapacity !== undefined
+      ? Number(matchedVehicle.luggageCapacity)
+      : service.luggageCapacity || 2;
+
+  const nextDescription = matchedVehicle?.description || service.description || "";
+
+  return {
+    ...service,
+    vehicleType: matchedVehicle?.vehicleType || nextVehicleType || service.vehicleType,
+    passengerCapacity: nextPassengerCapacity,
+    luggageCapacity: nextLuggageCapacity,
+    description: nextDescription,
+    transportUsagePrices: usagePrices,
+    fullDayExtraPerKmRate: usagePrices.fullDayExtraPerKmRate,
+    halfDayExtraPerKmRate: usagePrices.halfDayExtraPerKmRate,
+    extraPerKmRate:
+      currentUsageKey === "full-day"
+        ? usagePrices.fullDayExtraPerKmRate
+        : currentUsageKey === "half-day"
+        ? usagePrices.halfDayExtraPerKmRate
+        : 0,
+    rate: nextPrice,
+    price: nextPrice,
+    quoteBaseRate: nextPrice,
+    useStoredPricing: false,
+    manualRateOverride: true,
+    originalTotal: 0,
+    totalInInr: 0,
+    priceInInr: 0,
+  };
+};
+
+  const getTransportUsageOptionDisplayPrice = (service = {}, usageType = "") => {
+    const selectedOption = getTransportUsageOptionMeta(usageType);
+    const selectedPriceFromService = Number(service?.transportUsagePrices?.[selectedOption.value]);
+
+    if (selectedPriceFromService !== undefined && !isNaN(selectedPriceFromService) && selectedPriceFromService > 0) {
+      return roundCurrencyAmount(selectedPriceFromService);
+    }
+
+    if (Array.isArray(service?.vehicles) && service.vehicles.length > 0) {
+      const currentVehicle =
+        service.vehicles.find(
+          (v) =>
+            normalizeComparisonTextValue(v.vehicleType) ===
+            normalizeComparisonTextValue(service.vehicleType)
+        ) || service.vehicles[0];
+      if (currentVehicle) {
+        const vehiclePrices = getTransportVehicleUsagePrices(currentVehicle, service);
+        if (vehiclePrices[selectedOption.value] > 0) {
+          return roundCurrencyAmount(vehiclePrices[selectedOption.value]);
+        }
+      }
+    }
 
   const baseline = service.editBaseline || buildServiceEditBaseline(service);
   const baselineOption = getTransportUsageOptionMeta(
@@ -1691,15 +1894,30 @@ const buildWhatsAppTermsSection = (items = []) => {
   .slice(0, 1)
   .join("");
 
+  const nextPrice = getTransportUsageOptionDisplayPrice(service, option.value) || option.price || fallbackRate;
+  const extraKmRate =
+    option.value === "full-day"
+      ? Number(service.fullDayExtraPerKmRate || service.extraPerKmRate || 0)
+      : option.value === "half-day"
+      ? Number(service.halfDayExtraPerKmRate || service.extraPerKmRate || 0)
+      : 0;
+
   return {
   ...service,
   usageType: option.usageType,
   transportUsageOptionKey: option.value,
   transportUsageLabel: option.label,
   transportUsageLimitOptionKey,
-  rate: getTransportUsageOptionDisplayPrice(service, option.value) || option.price || fallbackRate,
+  rate: nextPrice,
+  price: nextPrice,
+  quoteBaseRate: nextPrice,
+  extraPerKmRate: extraKmRate,
   currency: normalizeCurrencyCode(fallbackCurrency || service.currency || "INR"),
   useStoredPricing: false,
+  manualRateOverride: true,
+  originalTotal: 0,
+  totalInInr: 0,
+  priceInInr: 0,
   };
   };
 
@@ -1795,102 +2013,226 @@ const buildWhatsAppTermsSection = (items = []) => {
   const selectedOption = getHotelRoomTypeOptionRate(hotelVariants, service, selectedRoomType);
 
   if (selectedMatchesBaseline && baselineRate > 0) {
-  return {
-  amount: baselineRate,
-  currency: baselineOption.currency || normalizeCurrencyCode(service.currency || "INR"),
-  variant: selectedOption.variant,
-  };
+    return {
+      amount: baselineRate,
+      currency: baselineOption.currency || normalizeCurrencyCode(service.currency || "INR"),
+      variant: selectedOption.variant,
+    };
   }
 
   if (baselineRate > 0 && baselineOption.amount > 0 && selectedOption.amount > 0) {
-  return {
-  amount: Math.max(
-  0,
-  roundCurrencyAmount(baselineRate + (selectedOption.amount - baselineOption.amount)),
-  ),
-  currency: selectedOption.currency,
-  variant: selectedOption.variant,
-  };
+    return {
+      amount: Math.max(
+        0,
+        roundCurrencyAmount(baselineRate + (selectedOption.amount - baselineOption.amount)),
+      ),
+      currency: selectedOption.currency,
+      variant: selectedOption.variant,
+    };
   }
 
   return {
-  amount: selectedOption.amount || baselineRate,
-  currency: selectedOption.currency,
-  variant: selectedOption.variant,
+    amount: selectedOption.amount || baselineRate,
+    currency: selectedOption.currency,
+    variant: selectedOption.variant,
   };
-  };
+};
 
-  const getHotelBaseRateDisplayValue = (service = {}) => {
+const getHotelBaseRateDisplayValue = (service = {}) => {
   if (normalizeServiceFilterType(service?.type) !== "hotel") {
-  return roundCurrencyAmount(service?.rate || 0);
+    return roundCurrencyAmount(service?.rate || 0);
   }
 
   return roundCurrencyAmount(
-  !service?.manualRateOverride
-  ? service?.roomTypeOptionRate ||
-  service?.price ||
-  service?.rate ||
-  service?.quoteBaseRate ||
-  service?.originalTotal ||
-  service?.total ||
-  0
-  :
-  service?.quoteBaseRate ||
-  service?.originalTotal ||
-  service?.total ||
-  service?.rate ||
-  0,
+    !service?.manualRateOverride
+      ? service?.roomTypeOptionRate ||
+        service?.price ||
+        service?.rate ||
+        service?.quoteBaseRate ||
+        service?.originalTotal ||
+        service?.total ||
+        0
+      : service?.quoteBaseRate ||
+        service?.originalTotal ||
+        service?.total ||
+        service?.rate ||
+        0,
   );
-  };
+};
 
-  const getHotelVariantOptions = (services = [], service = {}) => {
+const getInferredHotelMaxOccupancy = (room = {}, service = {}) => {
+  const roomCat = String(room.roomCategory || service.roomCategory || "").toLowerCase().trim();
+  const roomTyp = String(room.roomType || service.roomType || "").toLowerCase().trim();
+
+  let defaultAdults = 2;
+  let defaultChildren = 1;
+
+  if (roomCat.includes("single") || roomTyp.includes("single")) {
+    defaultAdults = 1;
+    defaultChildren = 0;
+  } else if (roomCat.includes("triple") || roomTyp.includes("triple")) {
+    defaultAdults = 3;
+    defaultChildren = 1;
+  } else if (
+    roomCat.includes("quad") ||
+    roomCat.includes("family") ||
+    roomTyp.includes("family") ||
+    roomTyp.includes("quad") ||
+    roomTyp.includes("suite")
+  ) {
+    defaultAdults = 4;
+    defaultChildren = 2;
+  }
+
+  const rawAdults = room.maxAdults !== undefined ? Number(room.maxAdults) : (service.maxAdults !== undefined ? Number(service.maxAdults) : undefined);
+  const rawChildren = room.maxChildren !== undefined ? Number(room.maxChildren) : (service.maxChildren !== undefined ? Number(service.maxChildren) : undefined);
+
+  const finalAdults =
+    rawAdults !== undefined && rawAdults > 0 && !(rawAdults === 2 && defaultAdults > 2)
+      ? rawAdults
+      : defaultAdults;
+
+  const finalChildren =
+    rawChildren !== undefined && rawChildren >= 0 && !(rawChildren === 1 && defaultChildren > 1)
+      ? rawChildren
+      : defaultChildren;
+
+  return {
+    maxAdults: finalAdults,
+    maxChildren: finalChildren,
+    childAgeLimit: room.childAgeLimit || service.childAgeLimit || "As per hotel policy",
+  };
+};
+
+const getHotelVariantOptions = (services = [], service = {}) => {
+  const selectedHotelObj = Array.isArray(service.hotels)
+    ? service.hotels.find((h) => h.hotelName === service.hotelName) || service.hotels[0]
+    : null;
+  const hotelDocRooms = selectedHotelObj?.rooms || [];
+
+  if (hotelDocRooms.length > 0) {
+    const uniqueRoomTypes = Array.from(
+      new Set(hotelDocRooms.map((r) => r.roomType).filter(Boolean)),
+    );
+    const roomTypeOptions = uniqueRoomTypes.map((rt) => {
+      const matchingRoom =
+        hotelDocRooms.find(
+          (r) =>
+            r.roomType === rt &&
+            normalizeComparisonTextValue(r.roomCategory) ===
+              normalizeComparisonTextValue(service.roomCategory),
+        ) ||
+        hotelDocRooms.find((r) => r.roomType === rt) ||
+        {};
+      const price = Number(matchingRoom.price || 0);
+      return {
+        value: rt,
+        label: price > 0 ? `${rt} (${formatCurrencyValue(price, service.currency || "INR")})` : rt,
+      };
+    });
+
+    const uniqueRoomCategories = Array.from(
+      new Set(hotelDocRooms.map((r) => r.roomCategory).filter(Boolean)),
+    );
+    const roomCategories =
+      uniqueRoomCategories.length > 0
+        ? uniqueRoomCategories
+        : buildSelectOptionsWithFallback([service.roomCategory], HOTEL_ROOM_CATEGORY_OPTIONS);
+
+    const uniqueBedTypes = Array.from(
+      new Set(hotelDocRooms.map((r) => normalizeBedTypeValue(r.bedType)).filter(Boolean)),
+    );
+    const finalBedTypes =
+      uniqueBedTypes.length > 0
+        ? uniqueBedTypes
+        : Array.from(
+            new Set(
+              [
+                ...HOTEL_BED_TYPE_OPTIONS.map((o) => o.value),
+                normalizeBedTypeValue(service.bedType),
+              ].filter(Boolean),
+            ),
+          );
+
+    const uniqueExtraBedTypes = Array.from(
+      new Set(
+        [
+          "None",
+          "Rollaway Bed",
+          "Sofa Bed",
+          "Mattress",
+          ...hotelDocRooms.map((r) => r.extraBedType).filter(Boolean),
+          service.extraBedType,
+        ].filter(Boolean),
+      ),
+    );
+
+    return {
+      roomCategories,
+      roomTypes: roomTypeOptions,
+      bedTypes: finalBedTypes.map((value) => ({
+        value,
+        label:
+          HOTEL_BED_TYPE_OPTIONS.find((option) => option.value === value)?.label ||
+          formatHotelOptionLabel(value),
+      })),
+      extraBedTypes: uniqueExtraBedTypes.map((value) => ({ value, label: value })),
+    };
+  }
+
   const hotelVariants = getHotelVariantServices(services, service);
   const roomCategories = buildSelectOptionsWithFallback(
-  [
-  ...hotelVariants.map((variant) => variant.roomCategory),
-  service.roomCategory,
-  ],
-  HOTEL_ROOM_CATEGORY_OPTIONS,
+    [
+      ...hotelVariants.map((variant) => variant.roomCategory),
+      service.roomCategory,
+    ],
+    HOTEL_ROOM_CATEGORY_OPTIONS,
   );
   const roomTypes = buildSelectOptionsWithFallback(
-  [
-  ...hotelVariants.map((variant) => variant.roomType),
-  service.roomType,
-  ],
-  HOTEL_ROOM_TYPE_OPTIONS,
+    [
+      ...hotelVariants.map((variant) => variant.roomType),
+      service.roomType,
+    ],
+    HOTEL_ROOM_TYPE_OPTIONS,
   );
   const roomTypeOptions = roomTypes.map((value) => {
-  const optionRate = getHotelRoomTypeOptionRate(hotelVariants, service, value);
-  const hasPrice = optionRate.amount > 0;
+    const optionRate = getHotelRoomTypeOptionRate(hotelVariants, service, value);
+    const hasPrice = optionRate.amount > 0;
 
-  return {
-  value,
-  label: hasPrice ? `${value} (${formatCurrencyValue(optionRate.amount, optionRate.currency)})` : value,
-  };
+    return {
+      value,
+      label: hasPrice ? `${value} (${formatCurrencyValue(optionRate.amount, optionRate.currency)})` : value,
+    };
   });
   const bedTypes = Array.from(
-  new Set(
-  [
-  ...HOTEL_BED_TYPE_OPTIONS.map((option) => option.value),
-  ...hotelVariants.map((variant) => normalizeBedTypeValue(variant.bedType)),
-  normalizeBedTypeValue(service.bedType),
-  ].filter(Boolean),
-  ),
+    new Set(
+      [
+        ...HOTEL_BED_TYPE_OPTIONS.map((option) => option.value),
+        ...hotelVariants.map((variant) => normalizeBedTypeValue(variant.bedType)),
+        normalizeBedTypeValue(service.bedType),
+      ].filter(Boolean),
+    ),
   );
 
   return {
-  roomCategories,
-  roomTypes: roomTypeOptions,
-  bedTypes: bedTypes.map((value) => ({
-  value,
-  label:
-  HOTEL_BED_TYPE_OPTIONS.find((option) => option.value === value)?.label ||
-  formatHotelOptionLabel(value),
-  })),
+    roomCategories,
+    roomTypes: roomTypeOptions,
+    bedTypes: bedTypes.map((value) => ({
+      value,
+      label:
+        HOTEL_BED_TYPE_OPTIONS.find((option) => option.value === value)?.label ||
+        formatHotelOptionLabel(value),
+    })),
+    extraBedTypes: [
+      { value: "None", label: "None" },
+      { value: "Rollaway Bed", label: "Rollaway Bed" },
+      { value: "Sofa Bed", label: "Sofa Bed" },
+      { value: "Mattress", label: "Mattress" },
+    ],
   };
-  };
+};
 
-  const scoreHotelVariantMatch = (variant = {}, nextService = {}, changedField = "") => {
+const scoreHotelVariantMatch = (variant = {}, nextService = {}, changedField = "") => {
   let score = 0;
 
   const roomCategory = normalizeComparisonTextValue(nextService.roomCategory);
@@ -1901,143 +2243,212 @@ const buildWhatsAppTermsSection = (items = []) => {
   const variantBedType = normalizeBedTypeValue(variant.bedType);
 
   if (roomCategory && variantRoomCategory === roomCategory) {
-  score += changedField === "roomCategory" ? 120 : 30;
+    score += changedField === "roomCategory" ? 120 : 30;
   }
 
   if (roomType && variantRoomType === roomType) {
-  score += changedField === "roomType" ? 120 : 30;
+    score += changedField === "roomType" ? 120 : 30;
   }
 
   if (bedType && variantBedType === bedType) {
-  score += changedField === "bedType" ? 120 : 30;
+    score += changedField === "bedType" ? 120 : 30;
   }
 
   if (
-  String(variant.serviceId || variant.id || "").trim() ===
-  String(nextService.serviceId || nextService.id || "").trim()
+    String(variant.serviceId || variant.id || "").trim() ===
+    String(nextService.serviceId || nextService.id || "").trim()
   ) {
-  score += 5;
-  }
+      score += 5;
+    }
 
-  return score;
+    return score;
   };
 
   const resolveHotelVariantSelection = (services = [], service = {}, changedField = "", value = "") => {
+  const selectedHotelObj = Array.isArray(service.hotels)
+    ? service.hotels.find((h) => h.hotelName === service.hotelName) || service.hotels[0]
+    : null;
+  const hotelDocRooms = selectedHotelObj?.rooms || [];
+
+  if (hotelDocRooms.length > 0) {
+    const targetRoomType = changedField === "roomType" ? value : (service.roomType || "");
+    const targetRoomCategory = changedField === "roomCategory" ? value : (service.roomCategory || "");
+    const targetBedType = changedField === "bedType" ? normalizeBedTypeValue(value) : normalizeBedTypeValue(service.bedType);
+
+    const matchedRoom =
+      hotelDocRooms.find((r) =>
+        normalizeComparisonTextValue(r.roomType) === normalizeComparisonTextValue(targetRoomType) &&
+        normalizeComparisonTextValue(r.roomCategory) === normalizeComparisonTextValue(targetRoomCategory) &&
+        normalizeBedTypeValue(r.bedType) === targetBedType
+      ) ||
+      hotelDocRooms.find((r) =>
+        normalizeComparisonTextValue(r.roomType) === normalizeComparisonTextValue(targetRoomType) &&
+        normalizeComparisonTextValue(r.roomCategory) === normalizeComparisonTextValue(targetRoomCategory)
+      ) ||
+      hotelDocRooms.find((r) =>
+        changedField === "roomType"
+          ? normalizeComparisonTextValue(r.roomType) === normalizeComparisonTextValue(targetRoomType)
+          : changedField === "roomCategory"
+          ? normalizeComparisonTextValue(r.roomCategory) === normalizeComparisonTextValue(targetRoomCategory)
+          : normalizeBedTypeValue(r.bedType) === targetBedType
+      ) ||
+      hotelDocRooms[0];
+
+    if (matchedRoom) {
+      const nextPrice = matchedRoom.price !== undefined ? Number(matchedRoom.price) : Number(service.price || service.rate || 0);
+      const occupancy = getInferredHotelMaxOccupancy(matchedRoom, {
+        ...service,
+        roomType: matchedRoom.roomType || targetRoomType || service.roomType,
+        roomCategory: matchedRoom.roomCategory || targetRoomCategory || service.roomCategory,
+      });
+      return {
+        ...service,
+        hotelName: selectedHotelObj.hotelName || service.hotelName,
+        hotelCategory: selectedHotelObj.hotelCategory || service.hotelCategory,
+        starCategory: selectedHotelObj.hotelCategory || service.hotelCategory,
+        supplierName: selectedHotelObj.supplierName || service.supplierName,
+        roomType: matchedRoom.roomType || targetRoomType || service.roomType,
+        roomCategory: matchedRoom.roomCategory || targetRoomCategory || service.roomCategory,
+        bedType: normalizeBedTypeValue(matchedRoom.bedType) || targetBedType || service.bedType,
+        extraBedType: matchedRoom.extraBedType || (changedField === "extraBedType" ? value : service.extraBedType) || "None",
+        maxAdults: occupancy.maxAdults,
+        maxChildren: occupancy.maxChildren,
+        childAgeLimit: occupancy.childAgeLimit,
+        mealPlan: matchedRoom.mealPlan || service.mealPlan || "EP",
+        desc:
+          matchedRoom.description ||
+          `${matchedRoom.roomType || ""} | ${matchedRoom.mealPlan || ""} | ${selectedHotelObj.hotelName}`,
+        rate: nextPrice,
+        price: nextPrice,
+        quoteBaseRate: nextPrice,
+        roomTypeOptionRate: nextPrice,
+        awebRate: Number(matchedRoom.awebRate || 0),
+        cwebRate: Number(matchedRoom.cwebRate || 0),
+        cwoebRate: Number(matchedRoom.cwoebRate || 0),
+        hotelRateMode: "unit-rate",
+        useStoredPricing: false,
+        manualRateOverride: true,
+        originalTotal: 0,
+        totalInInr: 0,
+        priceInInr: 0,
+      };
+    }
+  }
+
   const nextService = {
-  ...service,
-  [changedField]: changedField === "bedType" ? normalizeBedTypeValue(value) : value,
+    ...service,
+    [changedField]: changedField === "bedType" ? normalizeBedTypeValue(value) : value,
   };
   const hotelVariants = getHotelVariantServices(services, service);
 
-  if (!hotelVariants.length) {
-  return applyFixedHotelOptionPricing(nextService, nextService.rate, nextService.currency);
-  }
+    if (!hotelVariants.length) {
+      return applyFixedHotelOptionPricing(nextService, nextService.rate, nextService.currency);
+    }
 
-  const bestVariant = getHotelVariantForOption(
-  hotelVariants,
-  nextService,
-  changedField,
-  value,
-  );
+    const bestVariant = getHotelVariantForOption(
+      hotelVariants,
+      nextService,
+      changedField,
+      value,
+    );
 
-  if (!bestVariant) {
-  if (changedField === "roomType") {
-  const adjustedRoomTypeRate = getAdjustedHotelRoomTypeRate(hotelVariants, nextService, value);
-  if (adjustedRoomTypeRate.amount > 0) {
-  return {
-  ...nextService,
-  useStoredPricing: false,
-  manualRateOverride: true,
-  originalTotal: 0,
-  totalInInr: 0,
-  priceInInr: 0,
-  hotelRateMode: "unit-rate",
-  rate: roundCurrencyAmount(adjustedRoomTypeRate.amount),
-  quoteBaseRate: roundCurrencyAmount(adjustedRoomTypeRate.amount),
-  currency: adjustedRoomTypeRate.currency,
-  };
-  }
-  }
+    if (!bestVariant) {
+      if (changedField === "roomType") {
+        const adjustedRoomTypeRate = getAdjustedHotelRoomTypeRate(hotelVariants, nextService, value);
+        if (adjustedRoomTypeRate.amount > 0) {
+          return {
+            ...nextService,
+            useStoredPricing: false,
+            manualRateOverride: true,
+            originalTotal: 0,
+            totalInInr: 0,
+            priceInInr: 0,
+            hotelRateMode: "unit-rate",
+            rate: roundCurrencyAmount(adjustedRoomTypeRate.amount),
+            quoteBaseRate: roundCurrencyAmount(adjustedRoomTypeRate.amount),
+            currency: adjustedRoomTypeRate.currency,
+          };
+        }
+      }
 
-  return applyFixedHotelOptionPricing(nextService, nextService.rate, nextService.currency);
-  }
+      return applyFixedHotelOptionPricing(nextService, nextService.rate, nextService.currency);
+    }
 
-  const adjustedRoomTypeRate =
-  changedField === "roomType"
-  ? getAdjustedHotelRoomTypeRate(hotelVariants, nextService, value)
-  : null;
-  const matchedVariantRate = Number(bestVariant.rate ?? bestVariant.price ?? 0);
-  const matchedVariantCurrency = normalizeCurrencyCode(
-  adjustedRoomTypeRate?.currency || bestVariant.currency || nextService.currency || "INR",
-  );
-  const matchedVariantService = {
-  ...nextService,
-  useStoredPricing: false,
-  manualRateOverride: true,
-  originalTotal: 0,
-  totalInInr: 0,
-  priceInInr: 0,
-  serviceId: bestVariant.serviceId || bestVariant.id || nextService.serviceId,
-  supplierId: bestVariant.supplierId || nextService.supplierId,
-  supplierName: bestVariant.supplierName || nextService.supplierName,
-  title: bestVariant.title || nextService.title,
-  desc: bestVariant.description || bestVariant.desc || nextService.desc,
-  city: bestVariant.city || nextService.city,
-  country: bestVariant.country || nextService.country,
-  dmcId: bestVariant.dmcId || nextService.dmcId,
-  dmcName: bestVariant.dmcName || nextService.dmcName,
-  roomCategory: bestVariant.roomCategory || nextService.roomCategory,
-  roomType: bestVariant.roomType || nextService.roomType,
-  hotelCategory: bestVariant.hotelCategory || nextService.hotelCategory,
-  bedType: normalizeBedTypeValue(bestVariant.bedType) || nextService.bedType,
-  awebRate: Number(bestVariant.awebRate || 0),
-  cwebRate: Number(bestVariant.cwebRate || 0),
-  cwoebRate: Number(bestVariant.cwoebRate || 0),
-  };
+    const adjustedRoomTypeRate =
+      changedField === "roomType"
+        ? getAdjustedHotelRoomTypeRate(hotelVariants, nextService, value)
+        : null;
+    const matchedVariantRate = Number(bestVariant.rate ?? bestVariant.price ?? 0);
+    const matchedVariantCurrency = normalizeCurrencyCode(
+      adjustedRoomTypeRate?.currency || bestVariant.currency || nextService.currency || "INR",
+    );
+    const matchedVariantService = {
+      ...nextService,
+      useStoredPricing: false,
+      manualRateOverride: true,
+      originalTotal: 0,
+      totalInInr: 0,
+      priceInInr: 0,
+      serviceId: bestVariant.serviceId || bestVariant.id || nextService.serviceId,
+      supplierId: bestVariant.supplierId || nextService.supplierId,
+      supplierName: bestVariant.supplierName || nextService.supplierName,
+      title: bestVariant.title || nextService.title,
+      desc: bestVariant.description || bestVariant.desc || nextService.desc,
+      city: bestVariant.city || nextService.city,
+      country: bestVariant.country || nextService.country,
+      dmcId: bestVariant.dmcId || nextService.dmcId,
+      dmcName: bestVariant.dmcName || nextService.dmcName,
+      roomCategory: bestVariant.roomCategory || nextService.roomCategory,
+      roomType: bestVariant.roomType || nextService.roomType,
+      hotelCategory: bestVariant.hotelCategory || nextService.hotelCategory,
+      bedType: normalizeBedTypeValue(bestVariant.bedType) || nextService.bedType,
+      awebRate: Number(bestVariant.awebRate || 0),
+      cwebRate: Number(bestVariant.cwebRate || 0),
+      cwoebRate: Number(bestVariant.cwoebRate || 0),
+    };
 
-  if (adjustedRoomTypeRate?.amount > 0) {
-  return {
-  ...matchedVariantService,
-  hotelRateMode: "unit-rate",
-  rate: roundCurrencyAmount(adjustedRoomTypeRate.amount),
-  quoteBaseRate: roundCurrencyAmount(adjustedRoomTypeRate.amount),
-  currency: matchedVariantCurrency,
-  };
-  }
+    if (adjustedRoomTypeRate?.amount > 0) {
+      return {
+        ...matchedVariantService,
+        hotelRateMode: "unit-rate",
+        rate: roundCurrencyAmount(adjustedRoomTypeRate.amount),
+        quoteBaseRate: roundCurrencyAmount(adjustedRoomTypeRate.amount),
+        currency: matchedVariantCurrency,
+      };
+    }
 
-  if (matchedVariantRate > 0 && matchedVariantService.hotelRateMode !== "service-total") {
-  return {
-  ...matchedVariantService,
-  rate: roundCurrencyAmount(matchedVariantRate),
-  quoteBaseRate: roundCurrencyAmount(matchedVariantRate),
-  currency: matchedVariantCurrency,
-  };
-  }
+    if (matchedVariantRate > 0 && matchedVariantService.hotelRateMode !== "service-total") {
+      return {
+        ...matchedVariantService,
+        rate: roundCurrencyAmount(matchedVariantRate),
+        quoteBaseRate: roundCurrencyAmount(matchedVariantRate),
+        currency: matchedVariantCurrency,
+      };
+    }
 
-  return applyFixedHotelOptionPricing(
-  matchedVariantService,
-  nextService.rate ?? 0,
-  matchedVariantCurrency,
-  );
+    return applyFixedHotelOptionPricing(
+      matchedVariantService,
+      nextService.rate ?? 0,
+      matchedVariantCurrency,
+    );
   };
 
   const getServiceSearchAliases = (type = "") => {
-  switch (normalizeServiceFilterType(type)) {
-  case "hotel":
-  return "hotel stay room";
-  case "transfer":
-  return "transport transfer car cab vehicle";
-  case "activity":
-  return "activity experience";
-  case "sightseeing":
-  return "sightseeing sightsheeting tour";
-  default:
-  return "";
-  }
+    switch (normalizeServiceFilterType(type)) {
+      case "hotel":
+        return "hotel stay room";
+      case "transfer":
+        return "transport transfer car cab vehicle";
+      case "activity":
+        return "activity experience";
+      case "sightseeing":
+        return "sightseeing sightsheeting tour";
+      default:
+        return "";
+    }
   };
 
-  const getServiceSearchText = (service = {}) =>
-  [
+  const getServiceSearchText = (service = {}) => [
   service.title,
   service.serviceName,
   service.hotelName,
@@ -2190,47 +2601,46 @@ const buildWhatsAppTermsSection = (items = []) => {
   );
 
   const calculateServiceOriginalTotal = (service = {}) => {
-  const normalizedType = String(service?.type || "").toLowerCase();
+    const normalizedType = String(service?.type || "").toLowerCase();
 
-  if (normalizedType === "hotel") {
-  const nights = Math.max(Number(service?.nights || 0), 0);
-  const rooms = Math.max(Number(service?.rooms || 1), 1);
-  const hotelQuantity = (nights || 1) * rooms;
-  const hotelBaseAmount = Number(service?.rate || 0) * hotelQuantity;
-  const addonMultiplier = hotelQuantity;
-  let total = hotelBaseAmount;
+    if (normalizedType === "hotel") {
+      const nights = Math.max(Number(service?.nights || 0), 0);
+      const rooms = Math.max(Number(service?.rooms || 1), 1);
+      const hotelQuantity = (nights || 1) * rooms;
+      const hotelBaseAmount = Number(service?.rate || 0) * hotelQuantity;
+      const addonMultiplier = hotelQuantity;
+      let total = hotelBaseAmount;
 
-  if (service?.extraAdult) {
-  total += Number(service?.awebRate || 0) * addonMultiplier;
-  }
+      if (service?.extraAdult) {
+        total += Number(service?.awebRate || 0) * addonMultiplier;
+      }
 
-  if (service?.childWithBed) {
-  total += Number(service?.cwebRate || 0) * addonMultiplier;
-  }
+      if (service?.childWithBed) {
+        total += Number(service?.cwebRate || 0) * addonMultiplier;
+      }
 
-  if (service?.childWithoutBed) {
-  total += Number(service?.cwoebRate || 0) * addonMultiplier;
-  }
+      if (service?.childWithoutBed) {
+        total += Number(service?.cwoebRate || 0) * addonMultiplier;
+      }
 
-  return roundCurrencyAmount(total);
-  }
+      return roundCurrencyAmount(total);
+    }
 
-  if (normalizedType === "transfer" || normalizedType === "car") {
-  return roundCurrencyAmount(Number(service?.rate || 0) * Number(service?.days || 1));
-  }
+    if (normalizedType === "transfer" || normalizedType === "car") {
+      return roundCurrencyAmount(Number(service?.rate || 0) * Number(service?.days || 1));
+    }
 
-  if (normalizedType === "activity") {
-  return roundCurrencyAmount(Number(service?.rate || 0) * Number(service?.pax || 1));
-  }
+    if (normalizedType === "activity" || normalizedType === "sightseeing") {
+      const basis = String(service?.pricingBasis || "").toLowerCase();
+      const tourType = String(service?.tourType || "").toLowerCase();
+      const isPerGroup = (basis.includes("group") && !basis.includes("pax")) || /private|premium|vip/i.test(tourType);
+      if (isPerGroup) {
+        return roundCurrencyAmount(Number(service?.rate || service?.price || 0));
+      }
+      return roundCurrencyAmount(Number(service?.rate || service?.price || 0) * Math.max(Number(service?.pax || 1), 1));
+    }
 
-  if (normalizedType === "sightseeing") {
-  return roundCurrencyAmount(
-  Number(service?.rate || 0) *
-  Math.max(Number(service?.pax || 1), Number(service?.days || 1)),
-  );
-  }
-
-  return roundCurrencyAmount(Number(service?.rate || 0));
+    return roundCurrencyAmount(Number(service?.rate || 0));
   };
 
   const normalizeComparisonDateValue = (value) => {
@@ -2281,6 +2691,9 @@ const buildWhatsAppTermsSection = (items = []) => {
   nights: normalizeComparisonCountValue(service.nights),
   days: Number(service.days || 1),
   pax: Number(service.pax || 1),
+  tourType: String(service.tourType || ""),
+  pricingBasis: String(service.pricingBasis || ""),
+  maxPax: String(service.maxPax || ""),
   rooms: Number(service.rooms || 1),
   usageType: normalizeTransportUsageValue(service.usageType),
   transportUsageOptionKey: getTransportUsageOptionKey(service),
@@ -2392,18 +2805,12 @@ const buildWhatsAppTermsSection = (items = []) => {
   }
 
   if (serviceType === "activity" || serviceType === "sightseeing") {
+  if (service.tourType && baseline.tourType && service.tourType !== baseline.tourType) {
+  pushEdit("tourType", "Tour Type", service.tourType, "info");
+  }
   if (Number(service.pax || 1) !== Number(baseline.pax || 1)) {
   pushEdit("pax", "Pax", `${Number(service.pax || 0)} pax`, "info");
   }
-  }
-
-  if (serviceType === "sightseeing" && Number(service.days || 1) !== Number(baseline.days || 1)) {
-  pushEdit(
-  "days",
-  "Days",
-  `${Number(service.days || 0)} day${Number(service.days || 0) === 1 ? "" : "s"}`,
-  "info",
-  );
   }
 
   [
@@ -2453,34 +2860,34 @@ const buildWhatsAppTermsSection = (items = []) => {
   return edits;
   };
 
-  const QuotationBuilder = () => {
-  const resolveDmcOwner = (service = {}) => ({
-  dmcId: service.dmcId || service.supplierId || "",
-  dmcName: service.dmcName || "",
-  });
-
   const formatDateInput = (value) => {
-  if (!value) return "";
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return "";
-  return parsed.toISOString().slice(0, 10);
+    if (!value) return "";
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return "";
+    return parsed.toISOString().slice(0, 10);
   };
 
   const addDaysToDate = (value, daysToAdd = 0) => {
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return "";
-  parsed.setDate(parsed.getDate() + Number(daysToAdd || 0));
-  return parsed.toISOString().slice(0, 10);
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return "";
+    parsed.setDate(parsed.getDate() + Number(daysToAdd || 0));
+    return parsed.toISOString().slice(0, 10);
   };
 
-  const normalizeQuotationServiceType = (type) => {
-  const normalizedType = String(type || "").toLowerCase();
-  if (normalizedType === "car" || normalizedType === "transport") {
-  return "transfer";
-  }
+  const QuotationBuilder = () => {
+    const resolveDmcOwner = (service = {}) => ({
+      dmcId: service.dmcId || service.supplierId || "",
+      dmcName: service.dmcName || "",
+    });
 
-  return normalizedType || type;
-  };
+    const normalizeQuotationServiceType = (type) => {
+      const normalizedType = String(type || "").toLowerCase();
+      if (normalizedType === "car" || normalizedType === "transport") {
+        return "transfer";
+      }
+
+      return normalizedType || type;
+    };
 
   const parsePackageServiceDayNumber = (value) => {
   if (value === null || value === undefined || value === "") return null;
@@ -3229,14 +3636,12 @@ const buildWhatsAppTermsSection = (items = []) => {
       setQuotationId("");
       setLoadedQuotationDraft(null);
       setValidTill("");
-      setDraftValidTill("");
+setDraftValidTill("");
       setMarginType("percentage");
       setMarkup(0);
       setFixedMargin(0);
       setServiceCharge(0);
-      setHandlingFee(0);
-      setDraftServiceCharge(0);
-      setDraftHandlingFee(0);
+       setDraftHandlingFee(0);
       setGstChecked(false);
       setTcsChecked(false);
       setTourismChecked(false);
@@ -3257,20 +3662,20 @@ const buildWhatsAppTermsSection = (items = []) => {
       setAdditionalNotes([]);
       setSelectedPackageTemplate(null);
       setDayWiseItinerary(
-      reconcileDayWiseItineraryItems(
-      [],
-      getTripDuration(order?.startDate, order?.endDate).days,
-      formatDateInput(order?.startDate),
-      ),
+        reconcileDayWiseItineraryItems(
+          [],
+          getTripDuration(order?.startDate, order?.endDate).days,
+          formatDateInput(order?.startDate),
+        ),
       );
       setDraftHydrated(false);
 
       if (baseServicesSnapshot.length) {
-      setServices(baseServicesSnapshot.map((service) => ({ ...service })));
+        setServices(baseServicesSnapshot.map((service) => ({ ...service })));
       }
-      };
+    };
 
-      const applyQuotationDraftToBuilder = (quotation) => {
+    const applyQuotationDraftToBuilder = (quotation) => {
       if (!quotation) return;
 
       setQuotationId(quotation._id || quotation.id || "");
@@ -3281,119 +3686,112 @@ const buildWhatsAppTermsSection = (items = []) => {
       const draftOpsMarkupPercent = Number(quotation?.pricing?.opsMarkup?.percent || 0);
       const draftOpsMarkupAmount = roundCurrencyAmount(quotation?.pricing?.opsMarkup?.amount || 0);
       if (draftOpsMarkupPercent > 0) {
-      setMarginType("percentage");
-      setMarkup(draftOpsMarkupPercent);
-      setFixedMargin(0);
+        setMarginType("percentage");
+        setMarkup(draftOpsMarkupPercent);
+        setFixedMargin(0);
       } else if (draftOpsMarkupAmount > 0) {
-      setMarginType("fixed");
-      setFixedMargin(draftOpsMarkupAmount);
-      setMarkup(0);
+        setMarginType("fixed");
+        setFixedMargin(draftOpsMarkupAmount);
+        setMarkup(0);
       } else {
-      setMarginType("percentage");
-      setMarkup(0);
-      setFixedMargin(0);
+        setMarginType("percentage");
+        setMarkup(0);
+        setFixedMargin(0);
       }
 
-      const nextServiceCharge = roundCurrencyAmount(quotation?.pricing?.opsCharges?.serviceCharge || 0);
-      const nextHandlingFee = roundCurrencyAmount(quotation?.pricing?.opsCharges?.handlingFee || 0);
-      setServiceCharge(nextServiceCharge);
-      setHandlingFee(nextHandlingFee);
-      setDraftServiceCharge(nextServiceCharge);
-      setDraftHandlingFee(nextHandlingFee);
+      setServiceCharge(Number(quotation?.pricing?.serviceCharge || 0));
+      setDraftServiceCharge(Number(quotation?.pricing?.serviceCharge || 0));
+      setHandlingFee(Number(quotation?.pricing?.handlingFee || 0));
+      setDraftHandlingFee(Number(quotation?.pricing?.handlingFee || 0));
 
-      const nextGstPercent = Number(quotation?.pricing?.tax?.gst?.percent || DEFAULT_GST_PERCENT);
-      const nextTcsPercent = Number(quotation?.pricing?.tax?.tcs?.percent || DEFAULT_TCS_PERCENT);
-      const nextGstAmount = roundCurrencyAmount(quotation?.pricing?.tax?.gst?.amount || 0);
-      const nextTcsAmount = roundCurrencyAmount(quotation?.pricing?.tax?.tcs?.amount || 0);
-      const nextTourismAmount = roundCurrencyAmount(quotation?.pricing?.tax?.tourismFee?.amount || 0);
-      const nextTotalTax = roundCurrencyAmount(quotation?.pricing?.tax?.totalTax || 0);
-      const draftTaxableQuoteValue = roundCurrencyAmount(
-      Number(quotation?.pricing?.subTotal || 0) +
-      Number(quotation?.pricing?.packageTemplateAmount || 0),
-      );
-      const hasTaxableQuoteValue = draftTaxableQuoteValue > 0;
-      const hasGst = hasTaxableQuoteValue && (nextGstAmount > 0 || nextGstPercent > 0);
-      const hasTcs = hasTaxableQuoteValue && (nextTcsAmount > 0 || nextTcsPercent > 0);
-      const hasTourism = hasTaxableQuoteValue && nextTourismAmount > 0;
+      const nextGstChecked = Boolean(quotation?.pricing?.taxes?.gst?.applied);
+      const nextTcsChecked = Boolean(quotation?.pricing?.taxes?.tcs?.applied);
+      const nextTourismChecked = Boolean(quotation?.pricing?.taxes?.tourism?.applied);
+      const nextGstPercent = Number(quotation?.pricing?.taxes?.gst?.percent ?? DEFAULT_GST_PERCENT);
+      const nextTcsPercent = Number(quotation?.pricing?.taxes?.tcs?.percent ?? DEFAULT_TCS_PERCENT);
+      const nextGstAmount = Number(quotation?.pricing?.taxes?.gst?.amount || 0);
+      const nextTcsAmount = Number(quotation?.pricing?.taxes?.tcs?.amount || 0);
+      const nextTourismAmount = Number(quotation?.pricing?.taxes?.tourism?.amount || 0);
+      const nextTotalTax = Number(quotation?.pricing?.totalTax || 0);
 
-      setGstChecked(hasGst);
-      setTcsChecked(hasTcs);
-      setTourismChecked(hasTourism);
-      setDraftGstChecked(hasGst);
-      setDraftTcsChecked(hasTcs);
-      setDraftTourismChecked(hasTourism);
+      setGstChecked(nextGstChecked);
+      setTcsChecked(nextTcsChecked);
+      setTourismChecked(nextTourismChecked);
+      setDraftGstChecked(nextGstChecked);
+      setDraftTcsChecked(nextTcsChecked);
+      setDraftTourismChecked(nextTourismChecked);
       setGstPercent(nextGstPercent);
       setTcsPercent(nextTcsPercent);
       setDraftGstPercent(nextGstPercent);
       setDraftTcsPercent(nextTcsPercent);
-      setGstAmount(nextGstAmount);
-      setTcsAmount(nextTcsAmount);
-      setTourismAmount(nextTourismAmount);
+      setGstAmount(nextGstChecked && nextGstAmount > 0 ? String(nextGstAmount) : "");
+      setTcsAmount(nextTcsChecked && nextTcsAmount > 0 ? String(nextTcsAmount) : "");
+      setTourismAmount(nextTourismChecked && nextTourismAmount > 0 ? String(nextTourismAmount) : "");
       setDraftTourismAmount(nextTourismAmount);
       setAppliedTaxTotal(nextTotalTax);
       setInclusions(sanitizeDynamicListItems(quotation?.inclusions));
       setExclusions(sanitizeDynamicListItems(quotation?.exclusions));
       setAdditionalNotes(sanitizeDynamicListItems(quotation?.additionalNotes));
       setDayWiseItinerary(
-      reconcileDayWiseItineraryItems(
-      quotation?.dayWiseItinerary,
-      getTripDuration(order?.startDate, order?.endDate).days,
-      formatDateInput(order?.startDate),
-      ),
+        reconcileDayWiseItineraryItems(
+          quotation?.dayWiseItinerary,
+          getTripDuration(order?.startDate, order?.endDate).days,
+          formatDateInput(order?.startDate),
+        ),
       );
-      };
+    };
 
-      useEffect(() => {
+    useEffect(() => {
       const loadQuotationDraft = async () => {
-      try {
-      if (!order?._id) return;
+        try {
+          if (!order?._id) return;
 
-      resetBuilderWorkspace();
+          resetBuilderWorkspace();
 
-      const requestConfig = isFreshDraftMode
-      ? {
-      params: {
-      freshDraft: true,
-      },
-      }
-      : activeDraftSourceQuotationId
-        ? {
-        params: {
-        sourceQuotationId: activeDraftSourceQuotationId,
-        ...(draftSourceReloadRequest ? { refreshFromSource: true } : {}),
-        },
+          const requestConfig = isFreshDraftMode
+            ? {
+                params: {
+                  freshDraft: true,
+                },
+              }
+            : activeDraftSourceQuotationId
+              ? {
+                  params: {
+                    sourceQuotationId: activeDraftSourceQuotationId,
+                    ...(draftSourceReloadRequest ? { refreshFromSource: true } : {}),
+                  },
+                }
+              : undefined;
+
+          const { data } = await API.get(`/ops/queries/${order._id}/quotation-draft`, requestConfig);
+          const quotation = data?.quotation;
+          const latestAgentPhone = String(
+            data?.query?.agent?.phone || order?.agent?.phone || "",
+          ).trim();
+
+          if (latestAgentPhone) {
+            setResolvedAgentPhone(latestAgentPhone);
+          }
+
+          if (!quotation) return;
+          applyQuotationDraftToBuilder(quotation);
+        } catch (error) {
+          console.error("Failed to load quotation draft", error);
+        } finally {
+          if (draftSourceReloadRequest) {
+            setDraftSourceReloadRequest(0);
+          }
+          setDraftHydrated(false);
         }
-        : undefined;
-
-      const { data } = await API.get(`/ops/queries/${order._id}/quotation-draft`, requestConfig);
-      const quotation = data?.quotation;
-      const latestAgentPhone = String(
-      data?.query?.agent?.phone || order?.agent?.phone || "",
-      ).trim();
-
-      if (latestAgentPhone) {
-      setResolvedAgentPhone(latestAgentPhone);
-      }
-
-      if (!quotation) return;
-      applyQuotationDraftToBuilder(quotation);
-      } catch (error) {
-      console.error("Failed to load quotation draft", error);
-      } finally {
-      if (draftSourceReloadRequest) {
-      setDraftSourceReloadRequest(0);
-      }
-      setDraftHydrated(false);
-      }
       };
 
       loadQuotationDraft();
       // eslint-disable-next-line react-hooks/exhaustive-deps
-      }, [order?._id, activeDraftSourceQuotationId, isFreshDraftMode, draftSourceReloadRequest, baseServicesSnapshot.length]);
+    }, [order?._id, activeDraftSourceQuotationId, isFreshDraftMode, draftSourceReloadRequest, baseServicesSnapshot.length]);
 
-      const getTripDuration = (start, end) => {
+    const getTripDuration = (start, end) => {
       if (!start || !end) {
-      return { nights: 0, days: 0, label: "" };
+        return { nights: 0, days: 0, label: "" };
       }
 
       const startDate = new Date(start);
@@ -3403,252 +3801,257 @@ const buildWhatsAppTermsSection = (items = []) => {
       const nights = Math.max(0, days - 1);
 
       return {
-      nights,
-      days,
-      label: `${nights}N / ${days}D`,
+        nights,
+        days,
+        label: `${nights}N / ${days}D`,
       };
-      };
+    };
 
-      const getServiceMeta = (type) => {
+    const getServiceMeta = (type) => {
       switch (type) {
-      case "hotel":
-      return {
-      icon:
-      <LiaHotelSolid className="w-6 h-5 bg-blue-500 text-white rounded-md p-0.5" />,
-      color: "text-blue-400"
-      };
+        case "hotel":
+          return {
+            icon: <LiaHotelSolid className="w-6 h-5 bg-blue-500 text-white rounded-md p-0.5" />,
+            color: "text-blue-400",
+          };
 
-      case "activity":
-      return {
-      icon:
-      <FaWater className=" w-6 h-5 bg-[#00C950] text-white rounded-md p-0.5" />,
-      color: "text-green-400 text-[18px]"
-      };
+        case "activity":
+          return {
+            icon: <FaWater className=" w-6 h-5 bg-[#00C950] text-white rounded-md p-0.5" />,
+            color: "text-green-400 text-[18px]",
+          };
 
-      case "transfer":
-      case "car":
-      return {
-      icon:
-      <GiCityCar className=" w-6 h-5 bg-[#AD46FF] text-white rounded-md p-0.5" />,
-      color: "text-blue-400"
-      };
+        case "transfer":
+        case "car":
+          return {
+            icon: <GiCityCar className=" w-6 h-5 bg-[#AD46FF] text-white rounded-md p-0.5" />,
+            color: "text-blue-400",
+          };
 
-      case "sightseeing":
-      return {
-      icon:
-      <GiModernCity className=" w-6 h-5 bg-blue-500 text-white rounded-md p-0.5" />,
-      color: "text-purple-400"
-      };
+        case "sightseeing":
+          return {
+            icon: <GiModernCity className=" w-6 h-5 bg-blue-500 text-white rounded-md p-0.5" />,
+            color: "text-purple-400",
+          };
 
-      default:
-      return {
-      icon:
-      <GiModernCity />,
-      color: "text-gray-400"
-      };
+        default:
+          return {
+            icon: <GiModernCity className=" w-6 h-5 bg-blue-500 text-white rounded-md p-0.5" />,
+            color: "text-gray-400",
+          };
       }
-      };
+    };
 
-      const mapDraftServiceToUi = (service = {}, overrides = {}) => {
+    const mapDraftServiceToUi = (service = {}, overrides = {}) => {
       const meta = getServiceMeta(service.type);
       const owner = resolveDmcOwner(service);
       const resolvedRoomType = inferHotelRoomTypeValue(service) || overrides.fallbackRoomType || "";
       const resolvedRoomCategory = service.roomCategory || overrides.fallbackRoomCategory || "Double";
       const resolvedBedType =
-      normalizeBedTypeValue(service.bedType) ||
-      normalizeBedTypeValue(overrides.fallbackBedType) ||
-      "double-bed";
+        normalizeBedTypeValue(service.bedType) ||
+        normalizeBedTypeValue(overrides.fallbackBedType) ||
+        "double-bed";
       const normalizedServiceType = normalizeServiceFilterType(service.type);
       const overrideFullServiceAmount = roundCurrencyAmount(overrides.fullServiceAmount || 0);
       const overrideBaseServiceAmount = roundCurrencyAmount(overrides.baseServiceAmount || 0);
       const resolvedRate = getResolvedHotelBaseRate(
-      {
-      ...service,
-      roomType: resolvedRoomType,
-      roomCategory: resolvedRoomCategory,
-      bedType: resolvedBedType,
-      },
-      Number(service.price ?? service.rate ?? 0),
+        {
+          ...service,
+          roomType: resolvedRoomType,
+          roomCategory: resolvedRoomCategory,
+          bedType: resolvedBedType,
+        },
+        Number(service.price ?? service.rate ?? 0),
       );
       const hotelQuantity =
-      normalizedServiceType === "hotel"
-      ? Math.max(Number(service.nights || 1), 1) * Math.max(Number(service.rooms || 1), 1)
-      : 1;
+        normalizedServiceType === "hotel"
+          ? Math.max(Number(service.nights || 1), 1) * Math.max(Number(service.rooms || 1), 1)
+          : 1;
       const resolvedStoredTotal = roundCurrencyAmount(
-      overrideFullServiceAmount || service.total || service.originalTotal || service.totalInInr || 0,
+        overrideFullServiceAmount || service.total || service.originalTotal || service.totalInInr || 0,
       );
       const resolvedBaseRate = normalizedServiceType === "hotel"
-      ? roundCurrencyAmount(
-      overrideBaseServiceAmount ||
-      service.quoteBaseRate ||
-      service.price ||
-      service.rate ||
-      (resolvedStoredTotal > 0 ? resolvedStoredTotal / hotelQuantity : 0) ||
-      resolvedRate ||
-      0,
-      )
-      : resolvedRate;
+        ? roundCurrencyAmount(
+            overrideBaseServiceAmount ||
+            service.quoteBaseRate ||
+            service.price ||
+            service.rate ||
+            (resolvedStoredTotal > 0 ? resolvedStoredTotal / hotelQuantity : 0) ||
+            resolvedRate ||
+            0,
+          )
+        : resolvedRate;
       const quoteBaseRate = resolvedBaseRate;
 
       return {
-      id: overrides.id || service.serviceId || service._id,
-      serviceId: service.serviceId || "",
-      dbServiceId: service._id || service.dbServiceId || "",
-      dmcId: owner.dmcId,
-      dmcName: owner.dmcName,
-      supplierId: service.supplierId || "",
-      supplierName: service.supplierName || "",
-      type: service.type,
-      title: service.title,
-      desc: service.description || service.desc || "",
-      city: service.city || "",
-      country: service.country || "",
-      vehicleType: service.vehicleType || "",
-      usageType: service.usageType || "",
-      transportUsageOptionKey: service.transportUsageOptionKey || "",
-      transportUsageLabel: service.transportUsageLabel || "",
-      transportUsageLimitOptionKey: service.transportUsageLimitOptionKey || "",
-      extraPerKmRate: Number(service.extraPerKmRate || 0),
-      fullDayExtraPerKmRate: Number(service.fullDayExtraPerKmRate || 0),
-      halfDayExtraPerKmRate: Number(service.halfDayExtraPerKmRate || 0),
-      passengerCapacity: service.passengerCapacity || 0,
-      luggageCapacity: service.luggageCapacity || 0,
-      rate: quoteBaseRate,
-      quoteBaseRate,
-      roomTypeOptionRate: roundCurrencyAmount(
-      service.roomTypeOptionRate ?? service.price ?? service.rate ?? resolvedRate ?? 0,
-      ),
-      roomTypeOptionCurrency: normalizeCurrencyCode(
-      service.roomTypeOptionCurrency || service.currency || "INR",
-      ),
-      awebRate: Number(service.awebRate || 0),
-      cwebRate: Number(service.cwebRate || 0),
-      cwoebRate: Number(service.cwoebRate || 0),
-      currency: normalizeCurrencyCode(service.currency || "INR"),
-      exchangeRate: Number(service.exchangeRate || 1),
-      priceInInr: Number(service.priceInInr || 0),
-      originalTotal: resolvedStoredTotal,
-      totalInInr: Number(service.totalInInr || 0),
-      useStoredPricing: overrides.useStoredPricing ?? true,
-      manualRateOverride: Boolean(service.manualRateOverride || overrides.manualRateOverride),
-      serviceDate: formatDateInput(service.serviceDate),
-      nights: service.nights || "",
-      days: service.days || 1,
-      pax: service.pax || 1,
-      roomCategory: resolvedRoomCategory,
-      roomType: resolvedRoomType,
-      hotelCategory: service.hotelCategory || "",
-      bedType: resolvedBedType,
-      adults: service.adults || 2,
-      children: service.children || 0,
-      infants: service.infants || 0,
-      rooms: service.rooms || 1,
-      extraAdult: Boolean(service.extraAdult),
-      childWithBed: Boolean(service.childWithBed),
-      childWithoutBed: Boolean(service.childWithoutBed),
-      hotelRateMode: "unit-rate",
-      checked: overrides.checked ?? true,
-      custom: overrides.custom ?? !service.serviceId,
-      editBaseline: overrides.editBaseline || buildServiceEditBaseline({
-      ...service,
-      hotelRateMode: "unit-rate",
-      quoteBaseRate,
-      originalTotal: resolvedStoredTotal,
-      roomTypeOptionRate: service.roomTypeOptionRate ?? service.price ?? service.rate ?? resolvedRate ?? 0,
-      roomTypeOptionCurrency: service.roomTypeOptionCurrency || service.currency || "INR",
-      }),
-      icon: meta.icon,
-      color: meta.color,
+        id: overrides.id || service.serviceId || service._id,
+        serviceId: service.serviceId || "",
+        dbServiceId: service._id || service.dbServiceId || "",
+        dmcId: owner.dmcId,
+        dmcName: owner.dmcName,
+        supplierId: service.supplierId || "",
+        supplierName: service.supplierName || "",
+        type: service.type,
+        title: service.title,
+        hotelName: service.hotelName || "",
+        hotels: Array.isArray(service.hotels) ? service.hotels : [],
+        desc: service.description || service.desc || "",
+        city: service.city || "",
+        country: service.country || "",
+        vehicleType: service.vehicleType || "",
+        vehicles: Array.isArray(service.vehicles) ? service.vehicles : [],
+        fullDayNote: service.fullDayNote || "",
+        halfDayNote: service.halfDayNote || "",
+        transportUsagePrices: service.transportUsagePrices || {},
+        usageType: service.usageType || "",
+        transportUsageOptionKey: service.transportUsageOptionKey || "",
+        transportUsageLabel: service.transportUsageLabel || "",
+        transportUsageLimitOptionKey: service.transportUsageLimitOptionKey || "",
+        extraPerKmRate: Number(service.extraPerKmRate || 0),
+        fullDayExtraPerKmRate: Number(service.fullDayExtraPerKmRate || 0),
+        halfDayExtraPerKmRate: Number(service.halfDayExtraPerKmRate || 0),
+        passengerCapacity: service.passengerCapacity || 0,
+        luggageCapacity: service.luggageCapacity || 0,
+        rate: quoteBaseRate,
+        quoteBaseRate,
+        roomTypeOptionRate: roundCurrencyAmount(
+          service.roomTypeOptionRate ?? service.price ?? service.rate ?? resolvedRate ?? 0,
+        ),
+        roomTypeOptionCurrency: normalizeCurrencyCode(
+          service.roomTypeOptionCurrency || service.currency || "INR",
+        ),
+        awebRate: Number(service.awebRate || 0),
+        cwebRate: Number(service.cwebRate || 0),
+        cwoebRate: Number(service.cwoebRate || 0),
+        currency: normalizeCurrencyCode(service.currency || "INR"),
+        exchangeRate: Number(service.exchangeRate || 1),
+        priceInInr: Number(service.priceInInr || 0),
+        originalTotal: resolvedStoredTotal,
+        totalInInr: Number(service.totalInInr || 0),
+        useStoredPricing: overrides.useStoredPricing ?? true,
+        manualRateOverride: Boolean(service.manualRateOverride || overrides.manualRateOverride),
+        serviceDate: formatDateInput(service.serviceDate),
+        nights: service.nights || "",
+        days: service.days || 1,
+        pax: service.pax || 1,
+        tourType: service.tourType || service.tourTypes?.[0]?.tourType || "Group Tour",
+        tourTypes: Array.isArray(service.tourTypes) ? service.tourTypes : [],
+        pricingBasis: service.pricingBasis || service.tourTypes?.[0]?.pricingBasis || (String(service.tourType || "").toLowerCase().includes("group") && !String(service.tourType || "").toLowerCase().includes("per group") ? "Per Pax" : "Per Group"),
+        maxPax: service.maxPax || service.tourTypes?.[0]?.maxPax || (String(service.tourType || "").toLowerCase().includes("group") && !String(service.tourType || "").toLowerCase().includes("per group") ? "N/A (Shared Group)" : String(service.tourType || "").toLowerCase().includes("vip") ? "Up to 6 Pax" : "Up to 4 Pax"),
+        roomCategory: resolvedRoomCategory,
+        roomType: resolvedRoomType,
+        hotelCategory: service.hotelCategory || "",
+        bedType: resolvedBedType,
+        adults: service.adults || 2,
+        children: service.children || 0,
+        infants: service.infants || 0,
+        rooms: service.rooms || 1,
+        extraAdult: Boolean(service.extraAdult),
+        childWithBed: Boolean(service.childWithBed),
+        childWithoutBed: Boolean(service.childWithoutBed),
+        hotelRateMode: "unit-rate",
+        checked: overrides.checked ?? true,
+        custom: overrides.custom ?? !service.serviceId,
+        editBaseline: overrides.editBaseline || buildServiceEditBaseline({
+          ...service,
+          hotelRateMode: "unit-rate",
+          quoteBaseRate,
+          originalTotal: resolvedStoredTotal,
+          roomTypeOptionRate: service.roomTypeOptionRate ?? service.price ?? service.rate ?? resolvedRate ?? 0,
+          roomTypeOptionCurrency: service.roomTypeOptionCurrency || service.currency || "INR",
+        }),
+        icon: meta.icon,
+        color: meta.color,
       };
-      };
+    };
 
-      const mergeDraftServicesIntoAvailableServices = (availableServices = [], quotation = null) => {
+    const mergeDraftServicesIntoAvailableServices = (availableServices = [], quotation = null) => {
       const draftServices = Array.isArray(quotation?.services) ? quotation.services : [];
       const sourceQuotationSnapshot =
-      editingSourceQuotationSnapshotRef.current || editingSourceQuotationSnapshot;
+        editingSourceQuotationSnapshotRef.current || editingSourceQuotationSnapshot;
       const sourceSnapshotServices = Array.isArray(sourceQuotationSnapshot?.services)
-      ? sourceQuotationSnapshot.services
-      : [];
+        ? sourceQuotationSnapshot.services
+        : [];
 
       if (!draftServices.length) {
-      return availableServices;
+        return availableServices;
       }
 
       const usedDraftIndexes = new Set();
       const normalizeDraftMatchValue = (value = "") =>
-      String(value || "").trim().toLowerCase();
+        String(value || "").trim().toLowerCase();
       const normalizeDraftServiceId = (value = "") => {
-      if (!value) return "";
-      if (typeof value === "object") {
-      return String(value?._id || value?.id || "").trim();
-      }
-      return String(value || "").trim();
+        if (!value) return "";
+        if (typeof value === "object") {
+          return String(value?._id || value?.id || "").trim();
+        }
+        return String(value || "").trim();
       };
 
       const getServiceMatchKey = (service = {}) =>
-      [
-      normalizeServiceFilterType(service?.type),
-      normalizeDraftMatchValue(service?.title || service?.hotelName || service?.name),
-      normalizeDraftMatchValue(service?.city),
-      normalizeDraftMatchValue(service?.country),
-      normalizeDraftMatchValue(service?.roomType),
-      normalizeDraftMatchValue(service?.roomCategory),
-      normalizeDraftMatchValue(normalizeBedTypeValue(service?.bedType)),
-      ].join("|");
+        [
+          normalizeServiceFilterType(service?.type),
+          normalizeDraftMatchValue(service?.title || service?.hotelName || service?.name),
+          normalizeDraftMatchValue(service?.city),
+          normalizeDraftMatchValue(service?.country),
+          normalizeDraftMatchValue(service?.roomType),
+          normalizeDraftMatchValue(service?.roomCategory),
+          normalizeDraftMatchValue(normalizeBedTypeValue(service?.bedType)),
+        ].join("|");
 
       const getServiceSourceMatchKey = (service = {}) =>
-      [
-      normalizeServiceFilterType(service?.type),
-      normalizeDraftMatchValue(service?.title || service?.hotelName || service?.name),
-      normalizeDraftMatchValue(service?.city),
-      normalizeDraftMatchValue(service?.country),
-      normalizeDraftServiceId(service?.supplierId || service?.dmcId),
-      ].join("|");
+        [
+          normalizeServiceFilterType(service?.type),
+          normalizeDraftMatchValue(service?.title || service?.hotelName || service?.name),
+          normalizeDraftMatchValue(service?.city),
+          normalizeDraftMatchValue(service?.country),
+          normalizeDraftServiceId(service?.supplierId || service?.dmcId),
+        ].join("|");
 
       const doServicesRepresentSameSource = (draftService = {}, currentService = {}) => {
-      const draftType = normalizeServiceFilterType(draftService?.type);
-      const currentType = normalizeServiceFilterType(currentService?.type);
-      const draftUsageOptionKey = normalizeTransportUsageOptionKey(draftService?.transportUsageOptionKey || draftService?.transportUsageLabel);
-      const currentUsageOptionKey = normalizeTransportUsageOptionKey(currentService?.transportUsageOptionKey || currentService?.transportUsageLabel);
+        const draftType = normalizeServiceFilterType(draftService?.type);
+        const currentType = normalizeServiceFilterType(currentService?.type);
+        const draftUsageOptionKey = normalizeTransportUsageOptionKey(draftService?.transportUsageOptionKey || draftService?.transportUsageLabel);
+        const currentUsageOptionKey = normalizeTransportUsageOptionKey(currentService?.transportUsageOptionKey || currentService?.transportUsageLabel);
 
-      if (
-      draftType === "transfer" &&
-      currentType === "transfer" &&
-      draftUsageOptionKey &&
-      currentUsageOptionKey &&
-      draftUsageOptionKey !== currentUsageOptionKey
-      ) {
-      return false;
-      }
+        if (
+          draftType === "transfer" &&
+          currentType === "transfer" &&
+          draftUsageOptionKey &&
+          currentUsageOptionKey &&
+          draftUsageOptionKey !== currentUsageOptionKey
+        ) {
+          return false;
+        }
 
-      const draftSourceId = normalizeDraftServiceId(draftService?.serviceId || draftService?.dbServiceId);
-      const draftDocumentId = normalizeDraftServiceId(draftService?._id || draftService?.draftServiceId);
-      const currentSourceId = normalizeDraftServiceId(currentService?.serviceId || currentService?.id);
-      const currentDraftId = normalizeDraftServiceId(currentService?.dbServiceId);
+        const draftSourceId = normalizeDraftServiceId(draftService?.serviceId || draftService?.dbServiceId);
+        const draftDocumentId = normalizeDraftServiceId(draftService?._id || draftService?.draftServiceId);
+        const currentSourceId = normalizeDraftServiceId(currentService?.serviceId || currentService?.id);
+        const currentDraftId = normalizeDraftServiceId(currentService?.dbServiceId);
 
-      if (draftSourceId && currentSourceId && draftSourceId === currentSourceId) {
-      return true;
-      }
+        if (draftSourceId && currentSourceId && draftSourceId === currentSourceId) {
+          return true;
+        }
 
-      if (draftDocumentId && currentDraftId && draftDocumentId === currentDraftId) {
-      return true;
-      }
+        if (draftDocumentId && currentDraftId && draftDocumentId === currentDraftId) {
+          return true;
+        }
 
-      const draftKey = getServiceMatchKey(draftService);
-      const currentKey = getServiceMatchKey(currentService);
+        const draftKey = getServiceMatchKey(draftService);
+        const currentKey = getServiceMatchKey(currentService);
 
-      if (draftKey && currentKey && draftKey === currentKey) {
-      return true;
-      }
+        if (draftKey && currentKey && draftKey === currentKey) {
+          return true;
+        }
 
-      const draftSourceKey = getServiceSourceMatchKey(draftService);
-      const currentSourceKey = getServiceSourceMatchKey(currentService);
+        const draftSourceKey = getServiceSourceMatchKey(draftService);
+        const currentSourceKey = getServiceSourceMatchKey(currentService);
 
-      return Boolean(
-      draftSourceKey &&
-      currentSourceKey &&
-      draftSourceKey === currentSourceKey,
-      );
+        return Boolean(
+          draftSourceKey &&
+          currentSourceKey &&
+          draftSourceKey === currentSourceKey,
+        );
       };
 
       const mergedBaseServices = availableServices.map((service) => {
@@ -3672,16 +4075,24 @@ const buildWhatsAppTermsSection = (items = []) => {
       const normalizedDraftType = normalizeServiceFilterType(draftService.type || service.type);
       const hotelQuantity = Math.max(Number(draftService.nights || service.nights || 1), 1) *
       Math.max(Number(draftService.rooms || service.rooms || 1), 1);
+      const isSightseeingGroup =
+        normalizedDraftType === "sightseeing" &&
+        (/private|premium|vip/i.test(String(draftService.tourType || service.tourType || "")) ||
+          (String(draftService.pricingBasis || service.pricingBasis || "").toLowerCase().includes("group") &&
+            !String(draftService.pricingBasis || service.pricingBasis || "").toLowerCase().includes("pax")));
+
       const serviceQuantity =
-      normalizedDraftType === "hotel"
-      ? hotelQuantity
-      : normalizedDraftType === "transfer"
-      ? Math.max(Number(draftService.days || service.days || 1), 1)
-      : normalizedDraftType === "activity"
-      ? Math.max(Number(draftService.pax || service.pax || 1), 1)
-      : normalizedDraftType === "sightseeing"
-      ? Math.max(Number(draftService.pax || service.pax || 1), Number(draftService.days || service.days || 1), 1)
-      : 1;
+        normalizedDraftType === "hotel"
+          ? hotelQuantity
+          : normalizedDraftType === "transfer"
+          ? Math.max(Number(draftService.days || service.days || 1), 1)
+          : normalizedDraftType === "activity"
+          ? Math.max(Number(draftService.pax || service.pax || 1), 1)
+          : normalizedDraftType === "sightseeing"
+          ? isSightseeingGroup
+            ? 1
+            : Math.max(Number(draftService.pax || service.pax || 1), 1)
+          : 1;
       const liveBaseServiceAmount = roundCurrencyAmount(
       Number(service.roomTypeOptionRate || 0) ||
       Number(service.price || 0) ||
@@ -3996,6 +4407,10 @@ const buildWhatsAppTermsSection = (items = []) => {
       halfDayExtraPerKmRate: Number(service.halfDayExtraPerKmRate || 0),
       days: Number(service.days || 1),
       pax: servicePax,
+      tourType: service.tourType || "",
+      tourTypes: Array.isArray(service.tourTypes) ? service.tourTypes : [],
+      pricingBasis: service.pricingBasis || "",
+      maxPax: service.maxPax || "",
       currency: normalizeCurrencyCode(service.currency || "INR"),
       price: serviceUnitRate,
       hotelRateMode: "unit-rate",
@@ -4140,11 +4555,18 @@ const buildWhatsAppTermsSection = (items = []) => {
       supplierId: s.supplierId || "",
       supplierName: s.supplierName || "",
       type: s.type,
-      title: s.title,
+      title: s.serviceName || s.title || s.hotelName || "",
+      serviceName: s.serviceName || "",
+      hotelName: s.hotelName || "",
+      hotels: Array.isArray(s.hotels) ? s.hotels : [],
       desc: s.description || "",
       city: s.city || "",
       country: s.country || "",
       vehicleType: s.vehicleType || "",
+      vehicles: Array.isArray(s.vehicles) ? s.vehicles : [],
+      fullDayNote: s.fullDayNote || "",
+      halfDayNote: s.halfDayNote || "",
+      transportUsagePrices: s.transportUsagePrices || {},
       usageType: s.usageType || "",
       transportUsageOptionKey: s.transportUsageOptionKey || "",
       transportUsageLabel: s.transportUsageLabel || "",
@@ -4167,6 +4589,10 @@ const buildWhatsAppTermsSection = (items = []) => {
       nights: "",
       days: 1,
       pax: defaultServicePax,
+      tourType: s.tourType || s.tourTypes?.[0]?.tourType || "Group Tour",
+      tourTypes: Array.isArray(s.tourTypes) ? s.tourTypes : [],
+      pricingBasis: s.pricingBasis || s.tourTypes?.[0]?.pricingBasis || (String(s.tourType || "").toLowerCase().includes("group") && !String(s.tourType || "").toLowerCase().includes("per group") ? "Per Pax" : "Per Group"),
+      maxPax: s.maxPax || s.tourTypes?.[0]?.maxPax || (String(s.tourType || "").toLowerCase().includes("group") && !String(s.tourType || "").toLowerCase().includes("per group") ? "N/A (Shared Group)" : String(s.tourType || "").toLowerCase().includes("vip") ? "Up to 6 Pax" : "Up to 4 Pax"),
       // ================== ADD THIS ==================
       roomCategory: resolvedRoomCategory,
       roomType: resolvedRoomType,
@@ -4536,7 +4962,9 @@ return true;
       supplierId: s.supplierId || "",
       supplierName: s.supplierName || "",
       type: s.type,
-      title: s.title,
+      title: s.serviceName || s.title || s.hotelName || "",
+      serviceName: s.serviceName || "",
+      hotelName: s.hotelName || "",
       desc: s.description || "",
       city: s.city || "",
       country: s.country || "",
@@ -5005,7 +5433,7 @@ return true;
       }),
       sellerBankDetails: [
       { label: "Bank Name", value: "HDFC Bank" },
-      { label: "A/c Holder Name", value: "Leela Travels" },
+      { label: "A/c Holder Name", value: "Holiday Circuit" },
       { label: "A/c No.", value: "50200103968171" },
       { label: "IFSC", value: "HDFC0004413" },
       { label: "Branch", value: "RAMPHAL CHOWK SEC VII DWARKA" },
@@ -5169,6 +5597,25 @@ return true;
       .join(", ")}`,
       );
       return;
+      }
+
+      const invalidPaxSightseeings = selectedServices.filter((service) => {
+        if (service.type !== "sightseeing") return false;
+        const paxNum = Number(service.pax || 1);
+        const tourType = String(service.tourType || "").toLowerCase();
+        if (/private/i.test(tourType) && paxNum > 4) return true;
+        if (/premium|vip/i.test(tourType) && paxNum > 6) return true;
+        return false;
+      });
+
+      if (invalidPaxSightseeings.length) {
+        const firstInvalid = invalidPaxSightseeings[0];
+        const isPrivate = /private/i.test(firstInvalid.tourType || "");
+        const maxLimitMsg = isPrivate
+          ? "Maximum 4 Pax allowed for Private Tour."
+          : "Maximum 6 Pax allowed for Premium/VIP Tour.";
+        toast.error(`${firstInvalid.title}: ${maxLimitMsg}`);
+        return;
       }
 
       const loadingToast = toast.loading("Sending quotation...");
@@ -5647,11 +6094,94 @@ roleText.includes("\"role\":\"admin\"")
       };
       }
 
+      if (service.type === "hotel" && field === "hotelName") {
+        const hotelsList = Array.isArray(service.hotels) ? service.hotels : [];
+        const selectedHotel = hotelsList.find((h) => h.hotelName === value) || hotelsList[0];
+        if (selectedHotel) {
+          const roomsList = Array.isArray(selectedHotel.rooms) ? selectedHotel.rooms : [];
+          const matchedRoom =
+            roomsList.find((r) => r.roomType === service.roomType) ||
+            roomsList.find((r) => r.roomCategory === service.roomCategory) ||
+            roomsList[0] ||
+            {};
+          const nextHotelCategory = selectedHotel.hotelCategory || service.hotelCategory || "5 Star";
+          const nextSupplierName = selectedHotel.supplierName || service.supplierName || "";
+          const nextPrice = matchedRoom.price !== undefined ? Number(matchedRoom.price) : Number(service.price || 0);
+          const occupancy = getInferredHotelMaxOccupancy(matchedRoom, {
+            ...service,
+            roomType: matchedRoom.roomType || service.roomType || "Standard Room",
+            roomCategory: matchedRoom.roomCategory || service.roomCategory || "Double",
+          });
+          return {
+            ...service,
+            hotelName: selectedHotel.hotelName,
+            hotelCategory: nextHotelCategory,
+            starCategory: nextHotelCategory,
+            supplierName: nextSupplierName,
+            roomType: matchedRoom.roomType || service.roomType || "Standard Room",
+            roomCategory: matchedRoom.roomCategory || service.roomCategory || "Double",
+            bedType: normalizeBedTypeValue(matchedRoom.bedType) || service.bedType,
+            extraBedType: matchedRoom.extraBedType || service.extraBedType || "None",
+            maxAdults: occupancy.maxAdults,
+            maxChildren: occupancy.maxChildren,
+            childAgeLimit: occupancy.childAgeLimit,
+            mealPlan: matchedRoom.mealPlan || service.mealPlan || "EP",
+            desc:
+              matchedRoom.description ||
+              `${matchedRoom.roomType || ""} | ${matchedRoom.mealPlan || ""} | ${selectedHotel.hotelName}`,
+            rate: nextPrice,
+            price: nextPrice,
+            quoteBaseRate: nextPrice,
+            roomTypeOptionRate: nextPrice,
+            awebRate: Number(matchedRoom.awebRate || 0),
+            cwebRate: Number(matchedRoom.cwebRate || 0),
+            cwoebRate: Number(matchedRoom.cwoebRate || 0),
+            hotelRateMode: "unit-rate",
+            useStoredPricing: false,
+            manualRateOverride: true,
+            originalTotal: 0,
+            totalInInr: 0,
+            priceInInr: 0,
+          };
+        }
+      }
+
       if (
       service.type === "hotel" &&
-      ["roomCategory", "roomType", "bedType"].includes(field)
+      ["roomCategory", "roomType", "bedType", "extraBedType"].includes(field)
       ) {
       return resolveHotelVariantSelection(prev, service, field, value);
+      }
+
+      if ((service.type === "sightseeing" || service.type === "activity") && field === "tourType") {
+        const tourList = Array.isArray(service.tourTypes) ? service.tourTypes : [];
+        const matchedTour = tourList.find((t) => t.tourType === value) || {};
+        const nextPrice = matchedTour.price !== undefined ? Number(matchedTour.price) : Number(service.price || service.rate || 0);
+        const nextTourType = value;
+        const nextPricingBasis = matchedTour.pricingBasis || (String(value).toLowerCase().includes("group") && !String(value).toLowerCase().includes("per group") ? "Per Pax" : "Per Group");
+        const nextMaxPax = matchedTour.maxPax || (String(value).toLowerCase().includes("group") && !String(value).toLowerCase().includes("per group") ? "N/A (Shared Group)" : String(value).toLowerCase().includes("vip") ? "Up to 6 Pax" : "Up to 4 Pax");
+        const nextDesc = matchedTour.description || service.desc || service.description || "";
+
+        return {
+          ...service,
+          tourType: nextTourType,
+          rate: nextPrice,
+          price: nextPrice,
+          quoteBaseRate: nextPrice,
+          pricingBasis: nextPricingBasis,
+          maxPax: nextMaxPax,
+          desc: nextDesc,
+          description: nextDesc,
+          useStoredPricing: false,
+          manualRateOverride: true,
+          originalTotal: 0,
+          totalInInr: 0,
+          priceInInr: 0,
+        };
+      }
+
+      if ((service.type === "transfer" || service.type === "car") && field === "vehicleType") {
+        return resolveTransportVehicleSelection(prev, service, value);
       }
 
       if ((service.type === "transfer" || service.type === "car") && field === "transportUsageOptionKey") {
@@ -5789,13 +6319,17 @@ roleText.includes("\"role\":\"admin\"")
       };
 
       const applyPackageToServices = (pkg) => {
-      setSelectedPackageTemplate(pkg);
+        setSelectedPackageTemplate(pkg);
 
-      if (!pkg) {
-      return;
-      }
+        if (!pkg) {
+          return;
+        }
 
-      setServices((prev) => buildPackageMatchedServices(prev, pkg));
+        setServices((prev) => buildPackageMatchedServices(prev, pkg));
+
+        if (Array.isArray(pkg.dayWiseItinerary) && pkg.dayWiseItinerary.length > 0) {
+          setDayWiseItinerary(pkg.dayWiseItinerary);
+        }
       };
 
       const renderSelectedServicesList = (servicesToRender = selectedServices) => (
@@ -6000,23 +6534,87 @@ roleText.includes("\"role\":\"admin\"")
                         />
                         )}
 
-                        {service.type === "activity" && Number(service.pax || 0) > 0 && (
-                        <Chip icon={( <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                          strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-                          <circle cx="9" cy="7" r="4" />
-                          <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-                          <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-                          </svg>
-                          )}
-                          value={`${service.pax} pax`}
-                          accent="text-emerald-200"
-                          iconColor="text-emerald-400"
-                          />
-                          )}
+                        {service.type === "activity" && (
+                          <>
+                            {service.tourType && (
+                              <Chip
+                                icon={
+                                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                    <circle cx="12" cy="12" r="10" /><polygon points="12 8 8 12 12 16 16 12 12 8" />
+                                  </svg>
+                                }
+                                value={service.tourType}
+                                accent="text-emerald-200"
+                                iconColor="text-emerald-400"
+                              />
+                            )}
+                            {service.pricingBasis && (
+                              <Chip
+                                icon={
+                                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+                                  </svg>
+                                }
+                                value={service.pricingBasis}
+                                accent="text-emerald-200"
+                                iconColor="text-emerald-400"
+                              />
+                            )}
+                            {Number(service.pax || 0) > 0 && (
+                              <Chip
+                                icon={
+                                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                                    <circle cx="9" cy="7" r="4" />
+                                    <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                                    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                                  </svg>
+                                }
+                                value={`${service.pax} pax`}
+                                accent="text-emerald-200"
+                                iconColor="text-emerald-400"
+                              />
+                            )}
+                            {service.maxPax && (
+                              <Chip
+                                icon={
+                                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                                  </svg>
+                                }
+                                value={service.maxPax.includes("Max") ? service.maxPax : `Max: ${service.maxPax}`}
+                                accent="text-purple-200"
+                                iconColor="text-purple-400"
+                              />
+                            )}
+                          </>
+                        )}
 
                           {service.type === "sightseeing" && (
                           <>
+                            {service.tourType && (
+                            <Chip icon={( <svg width="10" height="10" viewBox="0 0 24 24" fill="none"
+                              stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                              <circle cx="12" cy="12" r="10" />
+                              <polygon points="12 8 8 12 12 16 16 12 12 8" />
+                              </svg>
+                              )}
+                              value={service.tourType}
+                              accent="text-sky-200"
+                              iconColor="text-sky-400"
+                              />
+                              )}
+                            {service.pricingBasis && (
+                            <Chip icon={( <svg width="10" height="10" viewBox="0 0 24 24" fill="none"
+                              stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+                              </svg>
+                              )}
+                              value={service.pricingBasis}
+                              accent="text-emerald-200"
+                              iconColor="text-emerald-400"
+                              />
+                              )}
                             {Number(service.pax || 0) > 0 && (
                             <Chip icon={( <svg width="10" height="10" viewBox="0 0 24 24" fill="none"
                               stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -6029,18 +6627,20 @@ roleText.includes("\"role\":\"admin\"")
                               iconColor="text-blue-400"
                               />
                               )}
-                              {Number(service.days || 0) > 0 && (
-                              <Chip icon={( <svg width="10" height="10" viewBox="0 0 24 24" fill="none"
-                                stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                <circle cx="12" cy="12" r="10" />
-                                <polyline points="12 6 12 12 16 14" />
-                                </svg>
-                                )}
-                                value={`${service.days} day${Number(service.days) > 1 ? "s" : ""}`}
-                                accent="text-blue-200"
-                                iconColor="text-blue-400"
-                                />
-                                )}
+                            {service.maxPax && (
+                            <Chip icon={( <svg width="10" height="10" viewBox="0 0 24 24" fill="none"
+                              stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                              <circle cx="9" cy="7" r="4" />
+                              <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+                              <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                              </svg>
+                              )}
+                              value={service.maxPax.includes("Max") ? service.maxPax : `Max: ${service.maxPax}`}
+                              accent="text-purple-200"
+                              iconColor="text-purple-400"
+                              />
+                              )}
                           </>
                           )}
             </div>
@@ -7594,23 +8194,87 @@ roleText.includes("\"role\":\"admin\"")
             />
           )}
 
-          {/* Activity: pax */}
-          {service.type === "activity" && Number(service.pax || 0) > 0 && (
-            <Chip
-              icon={
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-                </svg>
-              }
-              value={`${service.pax} pax`}
-              accent="text-emerald-200"
-              iconColor="text-emerald-400"
-            />
+          {/* Activity: tourType + pricingBasis + pax + maxPax */}
+          {service.type === "activity" && (
+            <>
+              {service.tourType && (
+                <Chip
+                  icon={
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="10"/><polygon points="12 8 8 12 12 16 16 12 12 8"/>
+                    </svg>
+                  }
+                  value={service.tourType}
+                  accent="text-emerald-200"
+                  iconColor="text-emerald-400"
+                />
+              )}
+              {service.pricingBasis && (
+                <Chip
+                  icon={
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+                    </svg>
+                  }
+                  value={service.pricingBasis}
+                  accent="text-emerald-200"
+                  iconColor="text-emerald-400"
+                />
+              )}
+              {Number(service.pax || 0) > 0 && (
+                <Chip
+                  icon={
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                    </svg>
+                  }
+                  value={`${service.pax} pax`}
+                  accent="text-emerald-200"
+                  iconColor="text-emerald-400"
+                />
+              )}
+              {service.maxPax && (
+                <Chip
+                  icon={
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+                    </svg>
+                  }
+                  value={service.maxPax.includes("Max") ? service.maxPax : `Max: ${service.maxPax}`}
+                  accent="text-purple-200"
+                  iconColor="text-purple-400"
+                />
+              )}
+            </>
           )}
 
-          {/* Sightseeing: pax + days */}
+          {/* Sightseeing: tourType + pricingBasis + pax + maxPax */}
           {service.type === "sightseeing" && (
             <>
+              {service.tourType && (
+                <Chip
+                  icon={
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="10"/><polygon points="12 8 8 12 12 16 16 12 12 8"/>
+                    </svg>
+                  }
+                  value={service.tourType}
+                  accent="text-sky-200"
+                  iconColor="text-sky-400"
+                />
+              )}
+              {service.pricingBasis && (
+                <Chip
+                  icon={
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+                    </svg>
+                  }
+                  value={service.pricingBasis}
+                  accent="text-emerald-200"
+                  iconColor="text-emerald-400"
+                />
+              )}
               {Number(service.pax || 0) > 0 && (
                 <Chip
                   icon={
@@ -7623,16 +8287,16 @@ roleText.includes("\"role\":\"admin\"")
                   iconColor="text-blue-400"
                 />
               )}
-              {Number(service.days || 0) > 0 && (
+              {service.maxPax && (
                 <Chip
                   icon={
                     <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+                      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
                     </svg>
                   }
-                  value={`${service.days} day${Number(service.days) > 1 ? "s" : ""}`}
-                  accent="text-blue-200"
-                  iconColor="text-blue-400"
+                  value={service.maxPax.includes("Max") ? service.maxPax : `Max: ${service.maxPax}`}
+                  accent="text-purple-200"
+                  iconColor="text-purple-400"
                 />
               )}
             </>
@@ -8690,6 +9354,16 @@ const Service = ({
     [allServices, service],
   );
 
+  const transportVehicleOptions = useMemo(
+    () => ((service.type === "transfer" || service.type === "car") ? getTransportVehicleOptions(allServices, service) : []),
+    [allServices, service],
+  );
+
+  const hotelOccupancy = useMemo(
+    () => (service.type === "hotel" ? getInferredHotelMaxOccupancy(service, service) : { maxAdults: 2, maxChildren: 1, childAgeLimit: "As per hotel policy" }),
+    [service],
+  );
+
   const getHotelStars = (category) => {
     if (!category) return 3;
     const value = category.toString().toLowerCase().trim();
@@ -8861,7 +9535,7 @@ const Service = ({
 
             <div className="min-w-0 space-y-2">
               <div className="flex flex-wrap items-center gap-2">
-                <p className="min-w-0 text-[13px] font-semibold leading-tight text-white">{service.title}</p>
+                <p className="min-w-0 text-[13px] font-semibold leading-tight text-white">{service.serviceName || service.title || service.hotelName}</p>
 
                 <div className="inline-flex flex-shrink-0 items-center gap-2">
                   {service.checked ? (
@@ -8909,6 +9583,38 @@ const Service = ({
                   <ImLocation2 className="text-emerald-400" />
                   {[service.city, service.country].filter(Boolean).join(", ")}
                 </span>
+                {service.type === "hotel" && (
+                  <span className="flex items-center gap-1.5 text-slate-300">
+                    <span className="text-slate-400 font-normal">Hotel:</span>
+                    {Array.isArray(service.hotels) && service.hotels.length > 1 ? (
+                      <div className="relative inline-flex items-center">
+                        <select
+                          value={service.hotelName || (service.hotels[0] && service.hotels[0].hotelName) || ""}
+                          onChange={(e) => {
+                            updateField(service.id, "hotelName", e.target.value);
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                          className="appearance-none bg-[#161616] hover:bg-[#202020] border border-slate-700/80 hover:border-yellow-500/60 text-slate-100 font-semibold text-[11px] rounded-lg pl-2 pr-6 py-0.5 outline-none cursor-pointer transition-all focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500/30"
+                        >
+                          {service.hotels.map((h, hIdx) => (
+                            <option key={h._id || hIdx} value={h.hotelName} className="bg-[#111] text-slate-100">
+                              {h.hotelName}
+                            </option>
+                          ))}
+                        </select>
+                        <ChevronDown className="absolute right-1.5 text-yellow-400 pointer-events-none" size={12} />
+                      </div>
+                    ) : (
+                      <span className="text-slate-100 font-semibold">{service.hotelName}</span>
+                    )}
+                  </span>
+                )}
+                {service.type !== "hotel" && service.hotelName && (
+                  <span className="flex items-center gap-1 text-slate-300">
+                    <span className="text-slate-400 font-normal">Hotel:</span>
+                    <span className="text-slate-100 font-semibold">{service.hotelName}</span>
+                  </span>
+                )}
                 {service.hotelCategory && (
                   <span className="flex items-center gap-1 text-slate-400">
                     <span className="text-slate-200">Hotel</span>
@@ -8931,9 +9637,14 @@ const Service = ({
                         <MdOutlineTravelExplore className="text-blue-400" />{selectedTransportUsageLabels[0] || formatUsage(service.usageType)}
                       </span>
                     )}
-                    {service.passengerCapacity > 0 && (
+                    {Number(service.passengerCapacity || 0) > 0 && (
                       <span className="flex items-center gap-1 text-slate-400">
-                        <BsPeople className="text-emerald-400" />{service.passengerCapacity} pax
+                        <BsPeople className="text-emerald-400" />{service.passengerCapacity} Pax
+                      </span>
+                    )}
+                    {Number(service.luggageCapacity || 0) > 0 && (
+                      <span className="flex items-center gap-1 text-slate-400">
+                        <HiOutlineBriefcase className="text-sky-400" />{service.luggageCapacity} Bags
                       </span>
                     )}
                   </>
@@ -9163,7 +9874,73 @@ const Service = ({
                 </div>
               )}
 
-              <div className={`grid grid-cols-1 gap-3 ${selectedTransportUsageLimitOptions.length > 0 ? "lg:grid-cols-3" : "lg:grid-cols-2"}`}>
+
+
+              {/* Vehicle Specifications & Notes (Shown above dropdowns) */}
+              <div className="flex flex-wrap items-center gap-2 pb-1">
+                {service.vehicleType && (
+                  <span className="flex items-center gap-1.5 rounded-lg border border-[#232323] bg-[#141414] px-2.5 py-1 text-[10px] text-slate-300">
+                    <FaCarSide className="text-yellow-400" />
+                    <span className="text-slate-500">Vehicle:</span> {service.vehicleType}
+                  </span>
+                )}
+                {Number(service.passengerCapacity || 0) > 0 && (
+                  <span className="flex items-center gap-1.5 rounded-lg border border-[#232323] bg-[#141414] px-2.5 py-1 text-[10px] text-slate-300">
+                    <BsPeople className="text-emerald-400" />
+                    <span className="text-slate-500">Capacity:</span> {service.passengerCapacity} Pax
+                  </span>
+                )}
+                {Number(service.luggageCapacity || 0) > 0 && (
+                  <span className="flex items-center gap-1.5 rounded-lg border border-[#232323] bg-[#141414] px-2.5 py-1 text-[10px] text-slate-300">
+                    <HiOutlineBriefcase className="text-blue-400" />
+                    <span className="text-slate-500">Luggage:</span> {service.luggageCapacity} Bags
+                  </span>
+                )}
+                {service.description && (
+                  <span className="flex items-center gap-1.5 rounded-lg border border-[#232323] bg-[#141414] px-2.5 py-1 text-[10px] text-slate-300">
+                    <span className="text-slate-500">Info:</span> {service.description}
+                  </span>
+                )}
+              </div>
+
+              <div className={`grid grid-cols-1 gap-3 ${selectedTransportUsageLimitOptions.length > 0 ? "lg:grid-cols-4 md:grid-cols-2" : "lg:grid-cols-3 md:grid-cols-2"}`}>
+                <div>
+                  <p className="text-[9px] text-slate-500 mb-1">Vehicle Type</p>
+                  <div className="relative">
+                    <select
+                      value={service.vehicleType || transportVehicleOptions[0]?.value || ""}
+                      onChange={(e) => updateField(service.id, "vehicleType", e.target.value)}
+                      className={`${selectCls.replace('rounded-lg', 'rounded-full')} h-8 w-full pl-4 pr-8 appearance-none`}
+                    >
+                      {transportVehicleOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400" />
+                  </div>
+                </div>
+                <div>
+                  <p className="text-[9px] text-slate-500 mb-1">Days</p>
+                  <div className="relative">
+                    <select
+                      value={selectedTransportDays}
+                      onChange={(e) => updateField(service.id, "days", Number(e.target.value))}
+                      className={`${selectCls.replace('rounded-lg', 'rounded-full')} h-8 w-full pl-4 pr-8 appearance-none`}
+                    >
+                      {[...Array(maxTransportDays)].map((_, i) => (
+                        <option key={i} value={i + 1}>
+                          {i + 1} Day{i > 0 ? "s" : ""}
+                          {transportStartDate
+                            ? ` (${formatDisplayDate(transportStartDate)}${i > 0 ? ` → ${formatDisplayDate(addDaysToServiceDate(transportStartDate, i))}` : ""})`
+                            : ""}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400" />
+                  </div>
+                </div>
                 <div>
                   <p className="text-[9px] text-slate-500 mb-1">Usage</p>
                   <div className="relative">
@@ -9194,30 +9971,10 @@ const Service = ({
                     </div>
                   </div>
                 )}
-                <div>
-                  <p className="text-[9px] text-slate-500 mb-1">Days</p>
-                  <div className="relative">
-                    <select
-                      value={selectedTransportDays}
-                      onChange={(e) => updateField(service.id, "days", Number(e.target.value))}
-                      className={`${selectCls.replace('rounded-lg', 'rounded-full')} h-8 w-full pl-4 pr-8 appearance-none`}
-                    >
-                      {[...Array(maxTransportDays)].map((_, i) => (
-                        <option key={i} value={i + 1}>
-                          {i + 1} Day{i > 0 ? "s" : ""}
-                          {transportStartDate
-                            ? ` (${formatDisplayDate(transportStartDate)}${i > 0 ? ` → ${formatDisplayDate(addDaysToServiceDate(transportStartDate, i))}` : ""})`
-                            : ""}
-                        </option>
-                      ))}
-                    </select>
-                    <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400" />
-                  </div>
-                </div>
               </div>
 
               <AnimatePresence>
-              {selectedTransportLimitNoteLabel && (
+              {(selectedTransportLimitNoteLabel || service.fullDayNote || service.halfDayNote) && (
                 <motion.div
                   initial={{ opacity: 0, height: 0, y: -4 }}
                   animate={{ opacity: 1, height: "auto", y: 0 }}
@@ -9225,13 +9982,21 @@ const Service = ({
                   transition={{ duration: 0.18, ease: "easeOut" }}
                   className="overflow-hidden"
                 >
-                <div className="space-y-0.5 text-[11px] italic text-yellow-300">
+                <div className="space-y-1 text-[11px] italic text-yellow-300">
                   {selectedTransportExtraKmRate > 0 && (
                     <p>Extra km rate: {formatCurrencyValue(selectedTransportExtraKmRate, currencyCode)}/km.</p>
                   )}
-                  <p>
-                    Note: {selectedTransportLimitNoteLabel} limit selected as {selectedTransportLimitSummary}. Extra km will attract extra charges where applicable.
-                  </p>
+                  {selectedTransportUsageKey === "full-day" && service.fullDayNote && (
+                    <p>Note (Full Day): {service.fullDayNote}</p>
+                  )}
+                  {selectedTransportUsageKey === "half-day" && service.halfDayNote && (
+                    <p>Note (Half Day): {service.halfDayNote}</p>
+                  )}
+                  {selectedTransportLimitNoteLabel && !service.fullDayNote && !service.halfDayNote && (
+                    <p>
+                      Note: {selectedTransportLimitNoteLabel} limit selected as {selectedTransportLimitSummary}. Extra km will attract extra charges where applicable.
+                    </p>
+                  )}
                 </div>
                 </motion.div>
               )}
@@ -9239,45 +10004,291 @@ const Service = ({
             </div>
           )}
 
-          {/* ── ACTIVITY: PAX ── */}
-          {service.type === "activity" && (
-            <div className="rounded-xl border border-[#1f1f1f] bg-[#101010] px-3 py-3 flex items-center gap-4">
-              <p className="text-[9px] font-semibold uppercase tracking-[0.18em] text-slate-500">PAX</p>
-              <input
-                type="number"
-                value={service.pax}
-                onChange={(e) => updateField(service.id, "pax", Number(e.target.value))}
-                className={inputCls}
-              />
-            </div>
-          )}
+          {/* ── ACTIVITY: TOUR TYPE + BASE RATE + PRICING BASIS + DATE + PAX + MAX PAX + TOTAL ── */}
+          {service.type === "activity" && (() => {
+            const tourTypesList = Array.isArray(service.tourTypes) && service.tourTypes.length > 0
+              ? service.tourTypes
+              : [
+                  { tourType: "Group Tour", price: service.price || service.rate || 0, pricingBasis: "Per Pax", maxPax: service.maxPax || "N/A (Shared Group)" },
+                  { tourType: "Private Tour", price: service.price || service.rate || 0, pricingBasis: "Per Group", maxPax: service.maxPax || "Up to 4 Pax" },
+                  { tourType: "Premium/VIP Tour", price: service.price || service.rate || 0, pricingBasis: "Per Group", maxPax: service.maxPax || "Up to 6 Pax" }
+                ];
+            const currentTourType = service.tourType || tourTypesList[0]?.tourType || "Group Tour";
+            const currentTourObj = tourTypesList.find(t => t.tourType === currentTourType) || tourTypesList[0] || {};
+            const pricingBasis = service.pricingBasis || currentTourObj.pricingBasis || (currentTourType.toLowerCase().includes("group") && !currentTourType.toLowerCase().includes("per group") ? "Per Pax" : "Per Group");
+            const maxPax = service.maxPax || currentTourObj.maxPax || "";
+            
+            const paxNum = Number(service.pax || 1);
+            
+            // Validate Max Pax if provided in data
+            let hasPaxValidationError = false;
+            let validationErrorMessage = "";
+            if (maxPax) {
+              const match = String(maxPax).match(/\d+/);
+              if (match) {
+                const maxLimit = Number(match[0]);
+                if (maxLimit > 0 && paxNum > maxLimit) {
+                  hasPaxValidationError = true;
+                  validationErrorMessage = `Maximum ${maxLimit} Pax allowed for ${currentTourType}.`;
+                }
+              }
+            }
 
-          {/* ── SIGHTSEEING: PAX + DAYS ── */}
-          {service.type === "sightseeing" && (
-            <div className="rounded-xl border border-[#1f1f1f] bg-[#101010] px-3 py-3 flex flex-wrap items-center gap-4">
-              <div>
-                <p className="text-[9px] text-slate-500 mb-1">PAX</p>
-                <input
-                  type="number"
-                  value={service.pax}
-                  onChange={(e) => updateField(service.id, "pax", Number(e.target.value))}
-                  className={inputCls}
-                />
+            return (
+              <div className="rounded-xl border border-[#1f1f1f] bg-[#101010] p-3.5 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#1c1c1c] pb-2.5">
+                  <div className="flex items-center gap-2">
+                    <span className="inline-block w-2 h-2 rounded-full bg-emerald-500"></span>
+                    <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-300">
+                      Activity Configuration
+                    </p>
+                  </div>
+
+                  {/* Tour Type Selector */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-medium text-slate-400">Tour Type:</span>
+                    <div className="relative">
+                      <select
+                        value={currentTourType}
+                        onChange={(e) => updateField(service.id, "tourType", e.target.value)}
+                        className={`${selectCls.replace('rounded-lg', 'rounded-full')} h-7.5 pl-3 pr-8 text-[11px] font-bold appearance-none bg-[#161616] border border-[#2a2a2a] text-slate-100 hover:border-yellow-500/50 cursor-pointer`}
+                      >
+                        {tourTypesList.map((t, idx) => (
+                          <option key={t._id || idx} value={t.tourType} className="bg-[#111] text-slate-100 font-medium">
+                            {t.tourType} ({formatCurrencyValue(t.price ?? service.rate ?? 0, currencyCode)})
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-yellow-400" />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Configuration Grid: Base Rate | Pricing Basis | Service Date | Pax | Max Pax (if avail) | Total */}
+                <div className={`grid grid-cols-2 sm:grid-cols-3 ${maxPax ? "lg:grid-cols-6" : "lg:grid-cols-5"} gap-3 pt-0.5`}>
+                  {/* 1. Base Rate */}
+                  <div>
+                    <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Base Rate</p>
+                    {isEditMode ? (
+                      <input
+                        type="number"
+                        value={service.rate}
+                        onChange={(e) => updateField(service.id, "rate", Number(e.target.value))}
+                        className={`${inputCls} h-8 text-[11px] font-bold w-full`}
+                      />
+                    ) : (
+                      <div className="flex h-8 w-full items-center rounded-lg border border-[#232323] bg-[#141414] px-2.5 text-[11px] font-bold text-slate-100">
+                        {formatCurrencyValue(service.rate, currencyCode)}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 2. Pricing Basis (Read-Only) */}
+                  <div>
+                    <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Pricing Basis</p>
+                    <div className="flex h-8 w-full items-center justify-center rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-2 text-[10.5px] font-bold text-emerald-300 select-none shadow-2xs">
+                      {pricingBasis}
+                    </div>
+                  </div>
+
+                  {/* 3. Service Date */}
+                  <div>
+                    <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Service Date</p>
+                    <input
+                      type="date"
+                      value={formatDateInput(service.serviceDate)}
+                      onChange={(e) => updateField(service.id, "serviceDate", e.target.value)}
+                      className={`${inputCls} h-8 text-[11px] w-full`}
+                    />
+                  </div>
+
+                  {/* 4. Pax */}
+                  <div>
+                    <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Pax</p>
+                    <input
+                      type="number"
+                      min={1}
+                      value={service.pax || 1}
+                      onChange={(e) => updateField(service.id, "pax", Math.max(1, Number(e.target.value) || 1))}
+                      className={`${inputCls} h-8 text-[11px] font-bold w-full ${hasPaxValidationError ? "border-rose-500 focus:border-rose-500 ring-1 ring-rose-500" : ""}`}
+                    />
+                  </div>
+
+                  {/* 5. Max Pax (Read-Only, if available) */}
+                  {maxPax && (
+                    <div>
+                      <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Max Pax</p>
+                      <div className="flex h-8 w-full items-center justify-center rounded-lg border border-purple-500/30 bg-purple-500/10 px-1.5 text-[10px] font-semibold text-purple-300 whitespace-nowrap overflow-hidden text-ellipsis select-none shadow-2xs">
+                        {maxPax}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 6. Total (Calculated) */}
+                  <div>
+                    <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Total</p>
+                    <div className="flex h-8 w-full items-center rounded-lg border border-[#2c2c2c] bg-[#171717] px-2.5 text-[11.5px] font-extrabold text-white">
+                      {formatCurrencyValue(total, currencyCode)}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Description of the selected tour type if available */}
+                {(currentTourObj.description || service.description || service.desc) && (
+                  <p className="text-[10.5px] text-slate-400 font-normal italic">
+                    {currentTourObj.description || service.description || service.desc}
+                  </p>
+                )}
+
+                {/* Validation Error Banner */}
+                {hasPaxValidationError && (
+                  <div className="flex items-center gap-2 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs font-semibold text-rose-300 animate-fadeIn">
+                    <AlertCircle size={15} className="shrink-0 text-rose-400" />
+                    <span>{validationErrorMessage}</span>
+                  </div>
+                )}
               </div>
-              <div>
-                <p className="text-[9px] text-slate-500 mb-1">Days</p>
-                <select
-                  value={service.days}
-                  onChange={(e) => updateField(service.id, "days", Number(e.target.value))}
-                  className={selectCls}
-                >
-                  {[...Array(10)].map((_, i) => (
-                    <option key={i} value={i + 1}>{i + 1} Day{i > 0 ? "s" : ""}</option>
-                  ))}
-                </select>
+            );
+          })()}
+
+          {/* ── SIGHTSEEING: TOUR TYPE + BASE RATE + PRICING BASIS + DATE + PAX + MAX PAX + TOTAL ── */}
+          {service.type === "sightseeing" && (() => {
+            const tourTypesList = Array.isArray(service.tourTypes) && service.tourTypes.length > 0
+              ? service.tourTypes
+              : [
+                  { tourType: "Group Tour", price: service.price || service.rate || 0, pricingBasis: "Per Pax", maxPax: "N/A (Shared Group)" },
+                  { tourType: "Private Tour", price: service.price || service.rate || 0, pricingBasis: "Per Group", maxPax: "Up to 4 Pax" },
+                  { tourType: "Premium/VIP Tour", price: service.price || service.rate || 0, pricingBasis: "Per Group", maxPax: "Up to 6 Pax" }
+                ];
+            const currentTourType = service.tourType || tourTypesList[0]?.tourType || "Group Tour";
+            const currentTourObj = tourTypesList.find(t => t.tourType === currentTourType) || tourTypesList[0] || {};
+            const pricingBasis = service.pricingBasis || currentTourObj.pricingBasis || (currentTourType.toLowerCase().includes("group") && !currentTourType.toLowerCase().includes("per group") ? "Per Pax" : "Per Group");
+            const maxPax = service.maxPax || currentTourObj.maxPax || (currentTourType.toLowerCase().includes("group") && !currentTourType.toLowerCase().includes("per group") ? "N/A (Shared Group)" : currentTourType.toLowerCase().includes("vip") ? "Up to 6 Pax" : "Up to 4 Pax");
+            
+            const paxNum = Number(service.pax || 1);
+            const isPrivateTourInvalid = /private/i.test(currentTourType) && paxNum > 4;
+            const isVipTourInvalid = /premium|vip/i.test(currentTourType) && paxNum > 6;
+            const hasPaxValidationError = isPrivateTourInvalid || isVipTourInvalid;
+            const validationErrorMessage = isPrivateTourInvalid
+              ? "Maximum 4 Pax allowed for Private Tour."
+              : isVipTourInvalid
+              ? "Maximum 6 Pax allowed for Premium/VIP Tour."
+              : "";
+
+            return (
+              <div className="rounded-xl border border-[#1f1f1f] bg-[#101010] p-3.5 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#1c1c1c] pb-2.5">
+                  <div className="flex items-center gap-2">
+                    <span className="inline-block w-2 h-2 rounded-full bg-blue-500"></span>
+                    <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-300">
+                      Sightseeing Configuration
+                    </p>
+                  </div>
+
+                  {/* Tour Type Selector */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-medium text-slate-400">Tour Type:</span>
+                    <div className="relative">
+                      <select
+                        value={currentTourType}
+                        onChange={(e) => updateField(service.id, "tourType", e.target.value)}
+                        className={`${selectCls.replace('rounded-lg', 'rounded-full')} h-7.5 pl-3 pr-8 text-[11px] font-bold appearance-none bg-[#161616] border border-[#2a2a2a] text-slate-100 hover:border-yellow-500/50 cursor-pointer`}
+                      >
+                        {tourTypesList.map((t, idx) => (
+                          <option key={t._id || idx} value={t.tourType} className="bg-[#111] text-slate-100 font-medium">
+                            {t.tourType} ({formatCurrencyValue(t.price ?? service.rate ?? 0, currencyCode)})
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-yellow-400" />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Configuration Grid: Base Rate | Pricing Basis | Service Date | Pax | Max Pax | Total */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 pt-0.5">
+                  {/* 1. Base Rate */}
+                  <div>
+                    <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Base Rate</p>
+                    {isEditMode ? (
+                      <input
+                        type="number"
+                        value={service.rate}
+                        onChange={(e) => updateField(service.id, "rate", Number(e.target.value))}
+                        className={`${inputCls} h-8 text-[11px] font-bold w-full`}
+                      />
+                    ) : (
+                      <div className="flex h-8 w-full items-center rounded-lg border border-[#232323] bg-[#141414] px-2.5 text-[11px] font-bold text-slate-100">
+                        {formatCurrencyValue(service.rate, currencyCode)}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 2. Pricing Basis (Read-Only) */}
+                  <div>
+                    <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Pricing Basis</p>
+                    <div className="flex h-8 w-full items-center justify-center rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-2 text-[10.5px] font-bold text-emerald-300 select-none shadow-2xs">
+                      {pricingBasis}
+                    </div>
+                  </div>
+
+                  {/* 3. Service Date */}
+                  <div>
+                    <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Service Date</p>
+                    <input
+                      type="date"
+                      value={formatDateInput(service.serviceDate)}
+                      onChange={(e) => updateField(service.id, "serviceDate", e.target.value)}
+                      className={`${inputCls} h-8 text-[11px] w-full`}
+                    />
+                  </div>
+
+                  {/* 4. Pax */}
+                  <div>
+                    <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Pax</p>
+                    <input
+                      type="number"
+                      min={1}
+                      value={service.pax || 1}
+                      onChange={(e) => updateField(service.id, "pax", Math.max(1, Number(e.target.value) || 1))}
+                      className={`${inputCls} h-8 text-[11px] font-bold w-full ${hasPaxValidationError ? "border-rose-500 focus:border-rose-500 ring-1 ring-rose-500" : ""}`}
+                    />
+                  </div>
+
+                  {/* 5. Max Pax (Read-Only) */}
+                  <div>
+                    <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Max Pax</p>
+                    <div className="flex h-8 w-full items-center justify-center rounded-lg border border-purple-500/30 bg-purple-500/10 px-1.5 text-[10px] font-semibold text-purple-300 whitespace-nowrap overflow-hidden text-ellipsis select-none shadow-2xs">
+                      {maxPax}
+                    </div>
+                  </div>
+
+                  {/* 6. Total (Calculated) */}
+                  <div>
+                    <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Total</p>
+                    <div className="flex h-8 w-full items-center rounded-lg border border-[#2c2c2c] bg-[#171717] px-2.5 text-[11.5px] font-extrabold text-white">
+                      {formatCurrencyValue(total, currencyCode)}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Description of the selected tour type if available */}
+                {(currentTourObj.description || service.description || service.desc) && (
+                  <p className="text-[10.5px] text-slate-400 font-normal italic">
+                    {currentTourObj.description || service.description || service.desc}
+                  </p>
+                )}
+
+                {/* Validation Error Banner */}
+                {hasPaxValidationError && (
+                  <div className="flex items-center gap-2 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs font-semibold text-rose-300 animate-fadeIn">
+                    <AlertCircle size={15} className="shrink-0 text-rose-400" />
+                    <span>{validationErrorMessage}</span>
+                  </div>
+                )}
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* ── HOTEL: ROOM + BED INFO ── */}
           {service.type === "hotel" && (
@@ -9307,10 +10318,20 @@ const Service = ({
                     <span className="text-slate-500">Bed:</span> {getBedTypeOptionLabel(service.bedType)}
                   </span>
                 )}
+                {service.extraBedType && service.extraBedType !== "None" && (
+                  <span className="flex items-center gap-1.5 rounded-lg border border-[#232323] bg-[#141414] px-2.5 py-1 text-[10px] text-slate-300">
+                    <MdKingBed className="text-orange-400" />
+                    <span className="text-slate-500">Extra Bed:</span> {service.extraBedType}
+                  </span>
+                )}
+                <span className="flex items-center gap-1.5 rounded-lg border border-[#232323] bg-[#141414] px-2.5 py-1 text-[10px] text-slate-300">
+                    <BsPeople className="text-purple-400" />
+                    <span className="text-slate-500">Max:</span> {hotelOccupancy.maxAdults} Adults, {hotelOccupancy.maxChildren} Child{hotelOccupancy.maxChildren === 1 ? "" : "ren"}
+                  </span>
               </div>
 
               {isEditMode && (
-                <div className="grid grid-cols-1 gap-3 rounded-xl border border-[#1f1f1f] bg-[#101010] px-3 py-3 md:grid-cols-2">
+                <div className="grid grid-cols-1 gap-3 rounded-xl border border-[#1f1f1f] bg-[#101010] px-3 py-3 md:grid-cols-2 lg:grid-cols-3">
                   <div>
                     <label className="mb-1 block text-[9px] font-semibold uppercase tracking-[0.18em] text-slate-500">
                       Room Category
@@ -9380,6 +10401,39 @@ const Service = ({
                         </option>
                       ))}
                     </select>
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-[9px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                      Extra Bed Type
+                    </label>
+                    <select
+                      value={service.extraBedType || "None"}
+                      onChange={(e) => updateField(service.id, "extraBedType", e.target.value)}
+                      className={`${selectCls} w-full`}
+                    >
+                      {(hotelVariantOptions.extraBedTypes || [
+                        { value: "None", label: "None" },
+                        { value: "Rollaway Bed", label: "Rollaway Bed" },
+                        { value: "Sofa Bed", label: "Sofa Bed" },
+                        { value: "Mattress", label: "Mattress" },
+                      ]).map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-[9px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                      Max Occupancy
+                    </label>
+                    <div className="flex items-center justify-between h-[34px] px-2.5 rounded-lg border border-[#2a2a2a] bg-[#0a0a0a] text-[11px] text-slate-300">
+                      <span className="text-emerald-400 font-semibold">{hotelOccupancy.maxAdults} Adults</span>
+                      <span className="text-slate-600">|</span>
+                      <span className="text-sky-400 font-semibold">{hotelOccupancy.maxChildren} Child{hotelOccupancy.maxChildren === 1 ? "" : "ren"}</span>
+                    </div>
                   </div>
                 </div>
               )}

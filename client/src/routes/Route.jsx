@@ -16,9 +16,11 @@ const BookingManagementHub = lazy(() => import("../pages/opsPages/BookingManagem
 const OrderAcceptance = lazy(() => import("../pages/opsPages/OrderAcceptance"));
 const QuotationBuilder = lazy(() => import("../pages/opsPages/QuotationBuilder"));
 const VoucherManagement = lazy(() => import("../pages/opsPages/VoucherManagement"));
+const CreatePackage = lazy(() => import("../pages/opsPages/CreatePackage"));
 const DmcDashboard = lazy(() => import("../pages/dmcPages/DmcDashboard"));
 const ContractedRates = lazy(() => import("../pages/dmcPages/ContractedRates"));
 const FulfillmentConfirmation = lazy(() => import("../pages/dmcPages/FulfillmentConfirmation"));
+const SettlementCenter = lazy(() => import("../pages/dmcPages/SettlementCenter"));
 const FinanceDashboard = lazy(() => import("../pages/financePages/FinanceDashboard"));
 const PaymentVerification = lazy(() => import("../pages/financePages/PaymentVerification"));
 const InternalInvoice = lazy(() => import("../pages/financePages/InternalInvoice"));
@@ -109,6 +111,7 @@ export const appRouter = createBrowserRouter([
           { path: "/ops/bookings-management", element: lazyPage(BookingManagementHub)},
           { path: "/ops/order-acceptance", element: lazyPage(OrderAcceptance)},
           {path: "/ops/quotation-builder", element: lazyPage(QuotationBuilder)}, //:queryId dynamic
+          {path: "/ops/create-package", element: lazyPage(CreatePackage)},
           {path: "/ops/voucher-management", element: lazyPage(VoucherManagement)},
           
         ],
@@ -124,12 +127,14 @@ export const appRouter = createBrowserRouter([
         children: [
           { path: "/dmc/dashboard", element: lazyPage(DmcDashboard)},
           { path: "/dmc/contractedRates", element: lazyPage(ContractedRates)},
+          { path: "/dmc/bulk-upload", element: lazyPage(ContractedRates)},
           { path: "/dmc/confirmation", element: lazyPage(FulfillmentConfirmation)},
+          { path: "/dmc/settlement", element: lazyPage(SettlementCenter)},
         ],
       },
     ],
   },
-   {
+  {
     element:<ProtectedRoute allowedRoles={["finance_partner", "admin"]} />,
     children: [
       { path: "/",

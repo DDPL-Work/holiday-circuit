@@ -8,7 +8,7 @@ const PARTICLES = Array.from({ length: 18 }, (_, i) => ({
   id: i,
   x: Math.cos((i / 18) * Math.PI * 2) * (55 + Math.random() * 30),
   y: Math.sin((i / 18) * Math.PI * 2) * (55 + Math.random() * 30),
-  color: ["#6366f1", "#a855f7", "#22c55e", "#f59e0b", "#3b82f6", "#ec4899", "#14b8a6"][i % 7],
+  color: ["#2563eb", "#1d4ed8", "#16a34a", "#0284c7", "#059669", "#3b82f6", "#0ea5e9"][i % 7],
   size: 5 + Math.random() * 5,
   rotate: Math.random() * 360,
   shape: i % 3 === 0 ? "circle" : i % 3 === 1 ? "rect" : "star",
@@ -159,31 +159,22 @@ export default function ExclusiveOfferModal({ open = false, onClose }) {
               </div>
 
               <div
-                className="relative overflow-hidden rounded-3xl bg-white"
-                style={{
-                  border: "1px solid rgba(199,210,254,0.5)",
-                  boxShadow: "0 30px_80px rgba(99,102,241,0.22)",
-                }}
+                className="relative overflow-hidden rounded-2xl bg-white border border-slate-200/90 border-t-4 border-t-[#3252C3] shadow-2xl shadow-blue-950/15"
               >
-                {/*
-                  Gradient zone breakdown (px):
-                  pt=20 + icon=40 + mb=8 + title_row=26 = 94px → use 100px with small buffer
-                */}
+                {/* Header banner zone */}
                 <div
-                  className="absolute inset-x-0 top-0 rounded-t-3xl"
+                  className="absolute inset-x-0 top-0 rounded-t-2xl border-b border-blue-100/70"
                   style={{
                     height: "100px",
-                    background: "linear-gradient(135deg,#c7d2fe 0%,#ddd6fe 35%,#e0e7ff 60%,#bfdbfe 100%)",
-                    opacity: 0.85,
+                    background: "linear-gradient(135deg, #dbeafe 0%, #eff6ff 45%, #e0f2fe 100%)",
                   }}
                 />
 
-                {/* Close */}
+                {/* Close Button */}
                 <motion.button
                   type="button"
                   onClick={onClose}
-                  className="absolute top-3 right-3 z-20 flex h-7 w-7 items-center justify-center rounded-full text-slate-400 hover:text-slate-700 transition-all"
-                  style={{ background: "rgba(255,255,255,0.85)", border: "1px solid rgba(226,232,240,0.9)" }}
+                  className="absolute top-3.5 right-3.5 z-20 flex h-7 w-7 items-center justify-center rounded-lg text-slate-500 hover:text-slate-800 transition-all bg-white/90 border border-slate-200/90 shadow-xs"
                   initial={{ opacity: 0, rotate: -90 }}
                   animate={{ opacity: 1, rotate: 0 }}
                   transition={{ delay: 0.55, duration: 0.25 }}
@@ -195,8 +186,8 @@ export default function ExclusiveOfferModal({ open = false, onClose }) {
 
                   {/* Icon — 40×40px */}
                   <motion.div
-                    className="mb-2 flex h-10 w-10 items-center justify-center rounded-full shadow-md"
-                    style={{ background: "linear-gradient(135deg,#22c55e,#16a34a)" }}
+                    className="mb-2.5 flex h-10 w-10 items-center justify-center rounded-xl shadow-md shadow-emerald-600/20"
+                    style={{ background: "linear-gradient(135deg, #16a34a 0%, #059669 100%)" }}
                     initial={{ scale: 0, rotate: -30 }}
                     animate={{ scale: 1, rotate: 0 }}
                     transition={{ delay: 0.3, duration: 0.5, ease: [0.34, 1.7, 0.64, 1] }}
@@ -204,7 +195,7 @@ export default function ExclusiveOfferModal({ open = false, onClose }) {
                     <BadgePercent size={20} className="text-white" strokeWidth={2} />
                   </motion.div>
 
-                  {/* Title + badge — stays in gradient zone */}
+                  {/* Title + badge */}
                   <motion.div
                     className="mb-4 flex items-center gap-2"
                     initial={{ opacity: 0, x: -16 }}
@@ -213,20 +204,15 @@ export default function ExclusiveOfferModal({ open = false, onClose }) {
                   >
                     <h2 className="text-[17px] font-bold text-slate-900">{offerTitle}</h2>
                     <span
-                      className="rounded-full px-2.5 py-0.5 text-[12px] font-semibold text-slate-700"
-                      style={{ background: "#f1f5f9", border: "1px solid #e2e8f0" }}
+                      className="rounded-md px-2.5 py-0.5 text-[12px] font-semibold text-blue-700 bg-blue-50 border border-blue-200/80"
                     >
                       {offerBadge}
                     </span>
                   </motion.div>
 
-                  {/* Description — white zone, clearly separated from gradient */}
+                  {/* Description */}
                   <motion.div
-                    className="mb-3 rounded-xl px-3 py-2"
-                    style={{
-                      background: "rgba(99,102,241,0.06)",
-                      border: "1px solid rgba(99,102,241,0.13)",
-                    }}
+                    className="mb-3.5 rounded-xl px-3.5 py-2.5 bg-blue-50/70 border border-blue-100/80"
                     initial={{ opacity: 0, x: -12 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: 0.5, duration: 0.28, ease: "easeOut" }}
@@ -236,7 +222,7 @@ export default function ExclusiveOfferModal({ open = false, onClose }) {
                     ) : (
                       <p className="text-[12px] leading-[1.55] text-slate-600">
                         🎁{" "}
-                        <span className="font-semibold text-indigo-600">Exclusive for you</span>
+                        <span className="font-semibold text-blue-700">Exclusive for you</span>
                         {" — "}
                         {featuredCoupon?.description
                           ? featuredCoupon.description
@@ -247,15 +233,14 @@ export default function ExclusiveOfferModal({ open = false, onClose }) {
 
                   {/* Code row */}
                   <motion.div
-                    className="mb-3 flex items-center justify-between gap-3 rounded-2xl px-4 py-3"
-                    style={{ background: "#f8fafc", border: "1px solid #e2e8f0" }}
+                    className="mb-3.5 flex items-center justify-between gap-3 rounded-xl px-4 py-3 bg-slate-50 border border-slate-200/90"
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.56, duration: 0.28, ease: "easeOut" }}
                   >
-                    <p className="text-[14px] text-slate-500">
+                    <p className="text-[13.5px] text-slate-500">
                       Code:{" "}
-                      <span className="font-bold text-slate-900 tracking-wide">
+                      <span className="font-bold text-slate-900 tracking-wider font-mono text-[14.5px]">
                         {featuredCoupon?.code ? featuredCoupon.code : loading ? "Loading..." : "—"}
                       </span>
                     </p>
@@ -263,16 +248,16 @@ export default function ExclusiveOfferModal({ open = false, onClose }) {
                       type="button"
                       onClick={handleCopy}
                       disabled={!featuredCoupon?.code}
-                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition-all disabled:cursor-not-allowed disabled:opacity-40"
+                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-all disabled:cursor-not-allowed disabled:opacity-40"
                       style={{
-                        background: copied ? "#dcfce7" : "#f1f5f9",
+                        background: copied ? "#dcfce7" : "#ffffff",
                         border: `1px solid ${copied ? "#bbf7d0" : "#e2e8f0"}`,
                       }}
                     >
                       <AnimatePresence mode="wait">
                         {copied ? (
                           <motion.div key="check" initial={{ scale: 0, rotate: -30 }} animate={{ scale: 1, rotate: 0 }} exit={{ scale: 0 }} transition={{ duration: 0.2 }}>
-                            <Check size={13} className="text-green-600" />
+                            <Check size={13} className="text-emerald-600" />
                           </motion.div>
                         ) : (
                           <motion.div key="copy" initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }} transition={{ duration: 0.15 }}>
@@ -284,7 +269,7 @@ export default function ExclusiveOfferModal({ open = false, onClose }) {
                   </motion.div>
 
                   {/* Validity */}
-                  <div className="mb-4 flex flex-col gap-2">
+                  <div className="mb-4.5 flex flex-col gap-2">
                     {validityItems.map((item, index) => (
                       <motion.div
                         key={`${item}-${index}`}
@@ -293,10 +278,10 @@ export default function ExclusiveOfferModal({ open = false, onClose }) {
                         animate={{ opacity: 1, x: 0 }}
                         transition={{ delay: 0.62 + index * 0.08, duration: 0.25, ease: "easeOut" }}
                       >
-                        <div className="flex h-[18px] w-[18px] flex-shrink-0 items-center justify-center rounded-full bg-green-500">
+                        <div className="flex h-[18px] w-[18px] flex-shrink-0 items-center justify-center rounded-md bg-emerald-500 text-white shadow-xs">
                           <Check size={10} className="text-white" strokeWidth={3} />
                         </div>
-                        <span className="text-[13px] text-slate-600">{item}</span>
+                        <span className="text-[13px] text-slate-700 font-medium">{item}</span>
                       </motion.div>
                     ))}
                   </div>
@@ -306,16 +291,16 @@ export default function ExclusiveOfferModal({ open = false, onClose }) {
                     type="button"
                     onClick={handlePrimaryAction}
                     disabled={primaryDisabled}
-                    className="w-full rounded-2xl py-3 text-[14px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                    className="w-full rounded-xl py-3 text-[14px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60 transition-all"
                     style={{
-                      background: "linear-gradient(135deg,#6366f1 0%,#8b5cf6 50%,#a855f7 100%)",
-                      boxShadow: "0 6px 20px rgba(139,92,246,0.35)",
+                      background: "linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)",
+                      boxShadow: "0 4px 14px rgba(37,99,235,0.30)",
                     }}
                     initial={{ opacity: 0, y: 16, scale: 0.96 }}
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     transition={{ delay: 0.72, duration: 0.32, ease: [0.34, 1.3, 0.64, 1] }}
-                    whileHover={primaryDisabled ? undefined : { scale: 1.02, boxShadow: "0 8px 28px rgba(139,92,246,0.48)" }}
-                    whileTap={primaryDisabled ? undefined : { scale: 0.97 }}
+                    whileHover={primaryDisabled ? undefined : { scale: 1.015, boxShadow: "0 6px 20px rgba(37,99,235,0.42)" }}
+                    whileTap={primaryDisabled ? undefined : { scale: 0.98 }}
                   >
                     {primaryDisabled ? "Offer Not Available" : "All Coupon Inbox"}
                   </motion.button>

@@ -148,6 +148,18 @@ export const quotationSchema = new mongoose.Schema(
 
       // ================= ACTIVITY / SIGHTSEEING =================
       pax: { type: Number, default: 1 },
+      tourType: { type: String, default: "" },
+      tourTypes: [
+        {
+          tourType: String,
+          price: Number,
+          pricingBasis: String,
+          maxPax: String,
+          description: String
+        }
+      ],
+      pricingBasis: { type: String, default: "" },
+      maxPax: { type: String, default: "" },
 
       // ================= 🔥 PRICING =================
       currency: {

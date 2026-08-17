@@ -6,6 +6,8 @@ import {
   Mail,
   Pencil,
   Plus,
+  RefreshCw,
+  Search,
   Send,
   Trash2,
   Users,
@@ -73,6 +75,41 @@ const isExpired = (endDateValue = "") => {
   return parsed < new Date();
 };
 
+const getCouponStatus = (coupon) => {
+  if (coupon?.isExpired || isExpired(coupon?.endDateValue)) {
+    return {
+      label: "Expired",
+      badgeClass: "border-rose-200 bg-rose-50 text-rose-700",
+      dotClass: "bg-rose-500",
+    };
+  }
+
+  if (coupon?.startDateValue) {
+    const startParsed = new Date(`${coupon.startDateValue}T00:00:00`);
+    if (!Number.isNaN(startParsed.getTime()) && startParsed > new Date()) {
+      return {
+        label: "Scheduled",
+        badgeClass: "border-amber-200 bg-amber-50 text-amber-700",
+        dotClass: "bg-amber-500",
+      };
+    }
+  }
+
+  if (coupon?.status === "used" || coupon?.isRedeemed) {
+    return {
+      label: "Used",
+      badgeClass: "border-slate-200 bg-slate-100 text-slate-700",
+      dotClass: "bg-slate-500",
+    };
+  }
+
+  return {
+    label: "Active",
+    badgeClass: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    dotClass: "bg-emerald-500",
+  };
+};
+
 const mergeCoupon = (items, nextCoupon) => {
   const existingIndex = items.findIndex((coupon) => coupon.id === nextCoupon.id);
   if (existingIndex === -1) return [nextCoupon, ...items];
@@ -83,18 +120,25 @@ const mergeCoupon = (items, nextCoupon) => {
 const FeedbackToast = ({ feedback, onClose }) => {
   if (!feedback) return null;
 
+  const styles = {
+    error: "border-red-200 bg-red-50 text-red-700",
+    info: "border-blue-200 bg-blue-50 text-blue-700",
+    warning: "border-amber-200 bg-amber-50 text-amber-700",
+    success: "border-emerald-200 bg-emerald-50 text-emerald-700",
+  };
+
+  const styleClass = styles[feedback.type] || styles.success;
+
   return (
     <div className="fixed right-5 top-5 z-[80] w-full max-w-sm">
-      <div
-        className={`rounded-2xl border px-4 py-3 shadow-xl ${
-          feedback.type === "error"
-            ? "border-red-200 bg-red-50 text-red-700"
-            : "border-emerald-200 bg-emerald-50 text-emerald-700"
-        }`}
-      >
+      <div className={`rounded-2xl border px-4 py-3 shadow-xl ${styleClass}`}>
         <div className="flex items-start gap-3">
           <div className="mt-0.5 rounded-full bg-white/80 p-1.5">
-            {feedback.type === "error" ? <AlertCircle size={14} /> : <Check size={14} />}
+            {feedback.type === "error" || feedback.type === "info" || feedback.type === "warning" ? (
+              <AlertCircle size={14} />
+            ) : (
+              <Check size={14} />
+            )}
           </div>
           <div className="min-w-0 flex-1">
             <p className="text-[10px] font-bold uppercase tracking-[0.16em]">{feedback.title}</p>
@@ -103,7 +147,7 @@ const FeedbackToast = ({ feedback, onClose }) => {
           <button
             type="button"
             onClick={onClose}
-            className="rounded-full p-1 text-current/70 transition-colors hover:bg-white/60"
+            className="rounded-full p-1 text-current/70 transition-colors hover:bg-white/60 cursor-pointer"
           >
             <X size={14} />
           </button>
@@ -126,8 +170,11 @@ export default function CouponsDiscounts() {
   const [deleteId, setDeleteId] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const [sendingId, setSendingId] = useState("");
+  const [sentCouponIds, setSentCouponIds] = useState(new Set());
   const [generatingCode, setGeneratingCode] = useState(false);
   const [feedback, setFeedback] = useState(null);
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [searchTerm, setSearchTerm] = useState("");
 
   useEffect(() => {
     const fetchCoupons = async () => {
@@ -294,6 +341,17 @@ export default function CouponsDiscounts() {
   };
 
   const handleSendCoupon = async (coupon) => {
+    const isAlreadySent = Boolean(coupon.sentCount > 0 || coupon.lastSentAt || sentCouponIds.has(coupon.id));
+
+    if (isAlreadySent) {
+      setFeedback({
+        type: "info",
+        title: "Coupon Already Sent",
+        message: `Coupon ${coupon.code} has already been sent to ${coupon.email || "the agent"}.`,
+      });
+      return;
+    }
+
     try {
       setSendingId(coupon.id);
       const { data } = await API.post(`/admin/coupons/${coupon.id}/send`);
@@ -301,6 +359,7 @@ export default function CouponsDiscounts() {
       if (nextCoupon) {
         setCoupons((prev) => mergeCoupon(prev, nextCoupon));
       }
+      setSentCouponIds((prev) => new Set(prev).add(coupon.id));
 
       setFeedback({
         type: "success",
@@ -318,11 +377,29 @@ export default function CouponsDiscounts() {
     }
   };
 
+  const filteredCoupons = coupons.filter((coupon) => {
+    if (statusFilter !== "all") {
+      const statusInfo = getCouponStatus(coupon);
+      if (statusInfo.label.toLowerCase() !== statusFilter.toLowerCase()) return false;
+    }
+
+    if (searchTerm.trim()) {
+      const query = searchTerm.trim().toLowerCase();
+      const codeMatch = String(coupon.code || "").toLowerCase().includes(query);
+      const emailMatch = String(coupon.email || "").toLowerCase().includes(query);
+      const descMatch = String(coupon.description || "").toLowerCase().includes(query);
+      const discountMatch = String(coupon.discount || "").toLowerCase().includes(query);
+      return codeMatch || emailMatch || descMatch || discountMatch;
+    }
+
+    return true;
+  });
+
   return (
     <div className="min-h-screen py-1 font-sans">
       <FeedbackToast feedback={feedback} onClose={() => setFeedback(null)} />
 
-      <div className="mb-7 flex items-start justify-between">
+      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#1e3a8a] shadow-md shadow-blue-200">
             <Gift size={20} className="text-white" />
@@ -333,20 +410,72 @@ export default function CouponsDiscounts() {
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={openAdd}
-          className="flex items-center gap-2 rounded-xl bg-blue-500 px-5 py-2.5 text-sm font-semibold text-white shadow-md shadow-blue-200 transition-all hover:bg-[#1d4ed8] hover:shadow-blue-300 active:bg-[#1e40af]"
-        >
-          <Plus size={16} strokeWidth={2.5} />
-          Add Discount
-        </button>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-3">
+          <div className="relative w-full sm:w-64">
+            <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search code, email..."
+              className="w-full rounded-xl border border-slate-200 bg-white pl-9 pr-8 py-2 text-xs text-slate-900 placeholder:text-slate-400 outline-none transition-all focus:border-[#3252C3] focus:ring-2 focus:ring-[#3252C3]/20 shadow-xs"
+            />
+            {searchTerm ? (
+              <button
+                type="button"
+                onClick={() => setSearchTerm("")}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+              >
+                <X size={13} />
+              </button>
+            ) : null}
+          </div>
+
+          <button
+            type="button"
+            onClick={openAdd}
+            className="flex shrink-0 items-center justify-center gap-2 rounded-xl bg-blue-500 px-4.5 py-2 text-sm font-semibold text-white shadow-md shadow-blue-200 transition-all hover:bg-[#1d4ed8] hover:shadow-blue-300 active:bg-[#1e40af] cursor-pointer"
+          >
+            <Plus size={16} strokeWidth={2.5} />
+            Add Discount
+          </button>
+        </div>
+      </div>
+
+      {/* Status Filter Tabs */}
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        {[
+          { id: "all", label: "All Coupons", count: coupons.length },
+          { id: "active", label: "Active", count: coupons.filter((c) => getCouponStatus(c).label === "Active").length },
+          { id: "expired", label: "Expired", count: coupons.filter((c) => getCouponStatus(c).label === "Expired").length },
+          { id: "scheduled", label: "Scheduled", count: coupons.filter((c) => getCouponStatus(c).label === "Scheduled").length },
+        ].map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => setStatusFilter(tab.id)}
+            className={`inline-flex items-center gap-1.5 rounded-xl border px-3.5 py-1.5 text-xs font-semibold transition-all cursor-pointer ${
+              statusFilter === tab.id
+                ? "border-blue-600 bg-blue-50 text-blue-700 shadow-xs"
+                : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+            }`}
+          >
+            <span>{tab.label}</span>
+            <span
+              className={`rounded-full px-1.5 py-0.2 text-[10px] ${
+                statusFilter === tab.id ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-500"
+              }`}
+            >
+              {tab.count}
+            </span>
+          </button>
+        ))}
       </div>
 
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="grid grid-cols-[1.2fr_0.7fr_1.1fr_1.15fr_0.8fr_0.8fr] gap-6 border-b border-slate-200 bg-slate-50 px-5 py-4">
-          {["Code", "Discount", "Description", "Validity", "User Email", "Actions"].map((heading) => (
-            <p key={heading} className="text-xs font-semibold text-slate-700">
+        <div className="grid grid-cols-[1.1fr_0.6fr_0.85fr_1fr_1.15fr_0.9fr_0.8fr] gap-4 border-b border-slate-200 bg-slate-50 px-5 py-3.5">
+          {["Code", "Discount", "Status", "Description", "Validity", "User Email", "Actions"].map((heading) => (
+            <p key={heading} className="text-[13px] font-bold text-slate-800">
               {heading}
             </p>
           ))}
@@ -356,26 +485,40 @@ export default function CouponsDiscounts() {
           <div className="py-14 text-center text-sm text-slate-400">Loading coupons...</div>
         ) : pageError ? (
           <div className="py-14 text-center text-sm text-red-500">{pageError}</div>
-        ) : coupons.length === 0 ? (
+        ) : filteredCoupons.length === 0 ? (
           <div className="py-14 text-center text-sm text-slate-400">
-            No coupons yet. Click <span className="font-semibold text-blue-600">+ Add Discount</span> to create one.
+            {searchTerm
+              ? `No coupons found matching "${searchTerm}".`
+              : statusFilter === "all"
+              ? "No coupons yet. Click + Add Discount to create one."
+              : `No ${statusFilter} coupons found.`}
           </div>
         ) : (
-          coupons.map((coupon, index) => {
+          filteredCoupons.map((coupon, index) => {
             const expired = isExpired(coupon.endDateValue);
+            const statusInfo = getCouponStatus(coupon);
             const isSending = sendingId === coupon.id;
+            const isAlreadySent = Boolean(coupon.sentCount > 0 || coupon.lastSentAt || sentCouponIds.has(coupon.id));
 
             return (
               <div
                 key={coupon.id}
-                className={`grid grid-cols-[1.2fr_0.7fr_1.1fr_1.15fr_0.8fr_0.8fr] items-center gap-5 px-6 py-2.5 transition-colors hover:bg-slate-50 ${
-                  index !== coupons.length - 1 ? "border-b border-slate-200" : ""
+                className={`grid grid-cols-[1.1fr_0.6fr_0.85fr_1fr_1.15fr_0.9fr_0.8fr] items-center gap-4 px-5 py-3.5 transition-colors hover:bg-slate-50 ${
+                  index !== filteredCoupons.length - 1 ? "border-b border-slate-200" : ""
                 }`}
               >
-                <span className="truncate text-[13px] font-semibold text-slate-900">{coupon.code}</span>
-                <span className="text-sm font-semibold text-slate-700">{coupon.discount}</span>
+                <span className="truncate text-[14px] font-bold text-slate-900 font-mono tracking-wide">{coupon.code}</span>
+                <span className="text-[15px] font-bold text-slate-900">{coupon.discount}</span>
+
+                {/* Status Column */}
+                <div>
+                  <span className={`inline-flex items-center justify-center rounded-[10px] border px-3 py-0.5 text-[12px] font-semibold ${statusInfo.badgeClass}`}>
+                    {statusInfo.label}
+                  </span>
+                </div>
+
                 <span
-                  className="block truncate text-[12px] text-slate-600"
+                  className="block truncate text-[13px] font-medium text-slate-700"
                   title={coupon.description || "-"}
                   aria-label={coupon.description || "-"}
                 >
@@ -383,52 +526,75 @@ export default function CouponsDiscounts() {
                 </span>
 
                 <div className="flex flex-col gap-0.5">
-                  <span className="text-[11px] font-medium text-emerald-600">
+                  <span className="text-[12px] font-semibold text-emerald-600">
                     Start: {coupon.startDate || "Not set"}
                   </span>
                   <span
-                    className={`text-[11px] font-medium ${
-                      expired ? "text-red-500" : coupon.endDate === "Never" ? "text-slate-400" : "text-red-500"
+                    className={`text-[12px] font-semibold ${
+                      expired ? "text-red-500" : coupon.endDate === "Never" ? "text-slate-400" : "text-slate-600"
                     }`}
                   >
                     End: {coupon.endDate || "Never"}
                   </span>
                 </div>
 
-                <span
-                  className="block truncate text-sm text-slate-600"
-                  title={coupon.email || "contact@example.com"}
-                  aria-label={coupon.email || "contact@example.com"}
-                >
-                  {coupon.email || "contact@example.com"}
-                </span>
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <Mail size={14} className="text-slate-400 shrink-0" />
+                  <span
+                    className="truncate text-[13px] font-semibold text-slate-700"
+                    title={coupon.email || "contact@example.com"}
+                    aria-label={coupon.email || "contact@example.com"}
+                  >
+                    {coupon.email || "contact@example.com"}
+                  </span>
+                </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5">
                   <button
                     type="button"
                     onClick={() => handleSendCoupon(coupon)}
                     disabled={isSending}
-                    className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-blue-50 px-2.5 text-xs font-semibold text-blue-600 transition-all hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
-                    title="Send coupon to agent"
+                    className={`inline-flex h-7 items-center gap-1 rounded-lg px-2 text-[11px] font-semibold transition-all cursor-pointer disabled:cursor-not-allowed disabled:opacity-60 ${
+                      isSending
+                        ? "bg-blue-50 text-blue-500"
+                        : isAlreadySent
+                        ? "bg-emerald-50 text-emerald-700 border border-emerald-200/80 hover:bg-emerald-100"
+                        : "bg-blue-50 text-blue-600 hover:bg-blue-100"
+                    }`}
+                    title={isAlreadySent ? `Coupon ${coupon.code} has already been sent to ${coupon.email || "the agent"}.` : "Send coupon to agent"}
                   >
-                    <Send size={12} />
-                    {isSending ? "Sending..." : "Send"}
+                    {isSending ? (
+                      <>
+                        <RefreshCw size={11} className="animate-spin text-blue-500" />
+                        Sending...
+                      </>
+                    ) : isAlreadySent ? (
+                      <>
+                        <Check size={12} className="text-emerald-600" strokeWidth={2.5} />
+                        Sent
+                      </>
+                    ) : (
+                      <>
+                        <Send size={11} />
+                        Send
+                      </>
+                    )}
                   </button>
                   <button
                     type="button"
                     onClick={() => openEdit(coupon)}
-                    className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-all hover:bg-blue-50 hover:text-blue-600"
+                    className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 transition-all hover:bg-blue-50 hover:text-blue-600 cursor-pointer"
                     title="Edit"
                   >
-                    <Pencil size={14} />
+                    <Pencil size={13} />
                   </button>
                   <button
                     type="button"
                     onClick={() => setDeleteId(coupon.id)}
-                    className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-all hover:bg-red-50 hover:text-red-600"
+                    className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 transition-all hover:bg-red-50 hover:text-red-600 cursor-pointer"
                     title="Delete"
                   >
-                    <Trash2 size={14} />
+                    <Trash2 size={13} />
                   </button>
                 </div>
               </div>
@@ -487,7 +653,7 @@ export default function CouponsDiscounts() {
                         value={form.code}
                         readOnly
                         placeholder="Click generate"
-                        className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-mono font-semibold uppercase tracking-[0.12em] text-slate-900 outline-none transition-all focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                        className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-mono font-semibold uppercase tracking-[0.12em] text-slate-900 outline-none transition-all focus:border-[#3252C3] focus:ring-2 focus:ring-[#3252C3]/20"
                       />
                       <button
                         type="button"
@@ -510,7 +676,7 @@ export default function CouponsDiscounts() {
                       value={form.discount}
                       onChange={(e) => setForm((prev) => ({ ...prev, discount: e.target.value }))}
                       placeholder="e.g. 20% or Rs500"
-                      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 outline-none transition-all focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 outline-none transition-all focus:border-[#3252C3] focus:ring-2 focus:ring-[#3252C3]/20"
                     />
                   </div>
                 </div>
@@ -521,7 +687,7 @@ export default function CouponsDiscounts() {
                     value={form.description}
                     onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))}
                     placeholder="Short description"
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 outline-none transition-all focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 outline-none transition-all focus:border-[#3252C3] focus:ring-2 focus:ring-[#3252C3]/20"
                   />
                 </div>
 
@@ -532,7 +698,7 @@ export default function CouponsDiscounts() {
                       type="date"
                       value={form.startDate}
                       onChange={(e) => setForm((prev) => ({ ...prev, startDate: e.target.value }))}
-                      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 outline-none transition-all focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 outline-none transition-all focus:border-[#3252C3] focus:ring-2 focus:ring-[#3252C3]/20"
                     />
                   </div>
 
@@ -542,7 +708,7 @@ export default function CouponsDiscounts() {
                       type="date"
                       value={form.endDate}
                       onChange={(e) => setForm((prev) => ({ ...prev, endDate: e.target.value }))}
-                      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 outline-none transition-all focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 outline-none transition-all focus:border-[#3252C3] focus:ring-2 focus:ring-[#3252C3]/20"
                     />
                   </div>
                 </div>
@@ -557,7 +723,7 @@ export default function CouponsDiscounts() {
                       value={form.users}
                       onChange={(e) => setForm((prev) => ({ ...prev, users: e.target.value }))}
                       placeholder="Unlimited or number"
-                      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 outline-none transition-all focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 outline-none transition-all focus:border-[#3252C3] focus:ring-2 focus:ring-[#3252C3]/20"
                     />
                   </div>
 
@@ -571,7 +737,7 @@ export default function CouponsDiscounts() {
                       value={form.email}
                       onChange={(e) => handleEmailChange(e.target.value)}
                       placeholder="contact@example.com"
-                      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 outline-none transition-all focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 outline-none transition-all focus:border-[#3252C3] focus:ring-2 focus:ring-[#3252C3]/20"
                     />
                     <datalist id="coupon-agent-email-options">
                       {agents.map((agent) => (

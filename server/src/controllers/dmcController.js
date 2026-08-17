@@ -9,6 +9,7 @@ import InternalInvoice from "../models/internalInvoice.model.js";
 import DmcSettlementBatch from "../models/dmcSettlementBatch.model.js";
 import Auth from "../models/auth.model.js";
 import Notification from "../models/notification.model.js";
+import OpsActivityLog from "../models/opsActivityLog.model.js";
 import UploadHistory from "../models/uploadHistory.model.js"
 import TravelQuery from "../models/TravelQuery.model.js";
 import Quotation from "../models/quotation.model.js";
@@ -445,7 +446,7 @@ const getBestServiceDetailQuotation = async (queryId, currentQuotation = null) =
     getQuotationDetailScore(quotation) > getQuotationDetailScore(best)
       ? quotation
       : best,
-  candidates[0] || null);
+    candidates[0] || null);
 };
 
 const getBestServiceDetailQuotationFromList = (quotations = [], currentQuotation = null) => {
@@ -458,7 +459,7 @@ const getBestServiceDetailQuotationFromList = (quotations = [], currentQuotation
     getQuotationDetailScore(quotation) > getQuotationDetailScore(best)
       ? quotation
       : best,
-  candidates[0] || null);
+    candidates[0] || null);
 };
 
 const normalizeTravelerDocument = (document = {}) => ({
@@ -672,21 +673,20 @@ export const deleteHotel = async (req, res, next) => {
 //---------- CREATE ACTIVITY-------------
 export const createActivity = async (req, res, next) => {
   try {
-
     const {
+      serviceName,
       name,
       country,
       city,
-      adultPrice,
-      childPrice,
-      infantPrice,
       currency,
       validFrom,
       validTo
     } = req.body;
 
+    const resolvedServiceName = serviceName || name;
+
     // validation
-    if (!name || !country || !city || !validFrom || !validTo) {
+    if (!resolvedServiceName || !country || !city || !validFrom || !validTo) {
       const error = new Error("Required activity fields missing");
       error.statusCode = 400;
       return next(error);
@@ -694,7 +694,7 @@ export const createActivity = async (req, res, next) => {
 
     // duplicate check
     const existingActivity = await Activity.findOne({
-      name,
+      serviceName: resolvedServiceName,
       city,
       supplier: req.user.id
     });
@@ -705,14 +705,36 @@ export const createActivity = async (req, res, next) => {
       return next(error);
     }
 
-    const serviceName = name;
+    let tourTypes = Array.isArray(req.body.tourTypes) && req.body.tourTypes.length > 0
+      ? req.body.tourTypes.map(t => ({
+          tourType: t.tourType || "Group Tour",
+          price: Number(t.price ?? t.adultPrice ?? 0) || 0,
+          pricingBasis: t.pricingBasis || "Per Pax",
+          maxPax: t.maxPax || (t.tourType?.toLowerCase().includes("group") && !t.tourType?.toLowerCase().includes("per group") ? "N/A (Shared Group)" : "Up to 4 Pax"),
+          description: t.description || "",
+        }))
+      : [
+          {
+            tourType: req.body.tourType || "Group Tour",
+            price: Number(req.body.price ?? req.body.adultPrice ?? 0) || 0,
+            pricingBasis: req.body.pricingBasis || "Per Pax",
+            maxPax: req.body.maxPax || "N/A (Shared Group)",
+            description: req.body.description || "",
+          }
+        ];
 
     const activity = await Activity.create({
-      ...req.body,
+      serviceName: resolvedServiceName,
+      serviceCategory: "activity",
       supplier: req.user.id,
       supplierName: req.body.supplierName || "",
-      serviceName,
-      serviceCategory: "activity"
+      country,
+      city,
+      currency: currency || "INR",
+      validFrom,
+      validTo,
+      status: "active",
+      tourTypes,
     });
 
     res.status(201).json({
@@ -831,19 +853,20 @@ export const getTransfers = async (req, res, next) => {
 
 export const createSightseeing = async (req, res, next) => {
   try {
-
     const {
+      serviceName,
       name,
       country,
       city,
-      price,
       currency,
       validFrom,
       validTo
     } = req.body;
 
+    const resolvedServiceName = serviceName || name;
+
     // validation
-    if (!name || !country || !city || !price || !validFrom || !validTo) {
+    if (!resolvedServiceName || !country || !city || !validFrom || !validTo) {
       const error = new Error("Required sightseeing fields missing");
       error.statusCode = 400;
       return next(error);
@@ -851,7 +874,7 @@ export const createSightseeing = async (req, res, next) => {
 
     // duplicate check
     const existingSightseeing = await Sightseeing.findOne({
-      name,
+      serviceName: resolvedServiceName,
       city,
       supplier: req.user.id
     });
@@ -864,14 +887,36 @@ export const createSightseeing = async (req, res, next) => {
       return next(error);
     }
 
-    const serviceName = name;
+    let tourTypes = Array.isArray(req.body.tourTypes) && req.body.tourTypes.length > 0
+      ? req.body.tourTypes.map(t => ({
+          tourType: t.tourType || "Group Tour",
+          price: Number(t.price ?? t.adultPrice ?? 0) || 0,
+          pricingBasis: t.pricingBasis || "Per Pax",
+          maxPax: t.maxPax || (t.tourType?.toLowerCase().includes("group") && !t.tourType?.toLowerCase().includes("per group") ? "N/A (Shared Group)" : "Up to 4 Pax"),
+          description: t.description || "",
+        }))
+      : [
+          {
+            tourType: req.body.tourType || "Group Tour",
+            price: Number(req.body.price ?? 0) || 0,
+            pricingBasis: req.body.pricingBasis || "Per Pax",
+            maxPax: req.body.maxPax || "N/A (Shared Group)",
+            description: req.body.description || "",
+          }
+        ];
 
     const sightseeing = await Sightseeing.create({
-      ...req.body,
+      serviceName: resolvedServiceName,
+      serviceCategory: "sightseeing",
       supplier: req.user.id,
       supplierName: req.body.supplierName || "",
-      serviceName,
-      serviceCategory: "sightseeing"
+      country,
+      city,
+      currency: currency || "INR",
+      validFrom,
+      validTo,
+      status: "active",
+      tourTypes,
     });
 
     res.status(201).json({
@@ -909,39 +954,137 @@ export const getSightseeing = async (req, res, next) => {
 //------------- CREATE PACKAGE ----------------------
 export const createPackage = async (req, res, next) => {
   try {
-
     const {
       title,
       destination,
+      country,
+      duration,
       days,
+      description,
+      inclusions,
+      exclusions,
+      dayWiseItinerary,
+      termsAndConditions,
       hotels,
       activities,
       transfers,
       sightseeing,
+      basePrice,
+      tax,
       price
     } = req.body;
 
-    if (!title || !destination || !price) {
-      const error = new Error("Title, destination and price required");
+    const finalPrice = Number(price || basePrice || 0);
+
+    if (!title || !destination || finalPrice <= 0) {
+      const error = new Error("Title, destination and package price are required");
       error.statusCode = 400;
       return next(error);
     }
 
     const pkg = await Package.create({
-      title,
-      destination,
-      days,
-      hotels,
-      activities,
-      transfers,
-      sightseeing,
-      price,
-      supplier: req.user.id
+      title: String(title || "").trim(),
+      destination: String(destination || "").trim(),
+      country: String(country || "").trim(),
+      duration: String(duration || (days ? `${days} Days` : "")).trim(),
+      days: Number(days || 0),
+      description: String(description || "").trim(),
+      inclusions: String(inclusions || "").trim(),
+      exclusions: String(exclusions || "").trim(),
+      dayWiseItinerary: Array.isArray(dayWiseItinerary) ? dayWiseItinerary : (String(dayWiseItinerary || "").trim() || []),
+      termsAndConditions: String(termsAndConditions || "").trim(),
+      hotels: Array.isArray(hotels) ? hotels : [],
+      activities: Array.isArray(activities) ? activities : [],
+      transfers: Array.isArray(transfers) ? transfers : [],
+      sightseeing: Array.isArray(sightseeing) ? sightseeing : [],
+      basePrice: Number(basePrice || finalPrice),
+      tax: tax && typeof tax === "object" ? tax : {},
+      price: finalPrice,
+      supplier: req.user?.id || req.user?._id
     });
+
+    // Capture creator info and audit log
+    const createdByUserId = req.user?._id || req.user?.id;
+    const creatorName = req.user?.name || req.user?.fullName || "Operations Member";
+    const creatorEmail = req.user?.email || "";
+    const creatorRole = req.user?.role || "operations";
+    const creatorRoleLabel =
+      creatorRole === "operations"
+        ? "OPS Team Member"
+        : creatorRole === "operation_manager"
+        ? "OPS Manager"
+        : creatorRole === "admin"
+        ? "Admin"
+        : creatorRole;
+
+    try {
+      // Record permanent audit entry
+      await OpsActivityLog.create({
+        action: "PACKAGE_CREATED",
+        module: "Package Management",
+        description: `${creatorName} (${creatorRoleLabel}) created new package template "${pkg.title}" (${pkg.destination || "Destination"})`,
+        performedBy: {
+          userId: createdByUserId,
+          name: creatorName,
+          email: creatorEmail,
+          role: creatorRole,
+        },
+        targetItem: {
+          itemId: String(pkg._id),
+          itemType: "PackageTemplate",
+          itemName: pkg.title,
+          destination: pkg.destination,
+          details: {
+            country: pkg.country,
+            duration: pkg.duration,
+            days: pkg.days,
+            price: finalPrice,
+            hotelsCount: Array.isArray(pkg.hotels) ? pkg.hotels.length : 0,
+            activitiesCount: Array.isArray(pkg.activities) ? pkg.activities.length : 0,
+            transfersCount: Array.isArray(pkg.transfers) ? pkg.transfers.length : 0,
+            sightseeingCount: Array.isArray(pkg.sightseeing) ? pkg.sightseeing.length : 0,
+          },
+        },
+      });
+
+      // Dispatch real-time In-App Notification to Operations Managers and Admins
+      const targetManagers = await Auth.find({
+        role: { $in: ["operation_manager", "admin"] },
+        isDeleted: { $ne: true },
+        accountStatus: { $ne: "Inactive" },
+        _id: { $ne: createdByUserId },
+      }).select("_id role name email");
+
+      if (targetManagers.length > 0) {
+        const notifPayloads = targetManagers.map((manager) => ({
+          user: manager._id,
+          type: "info",
+          title: "New Package Template Created",
+          message: `${creatorName} (${creatorRoleLabel}) created package template "${pkg.title}" (${pkg.destination || "Destination"}).`,
+          link: "/ops/create-package",
+          meta: {
+            action: "PACKAGE_CREATED",
+            packageId: String(pkg._id),
+            packageTitle: pkg.title,
+            destination: pkg.destination,
+            price: finalPrice,
+            createdByUserId,
+            createdByName: creatorName,
+            createdByEmail: creatorEmail,
+            createdByRole: creatorRole,
+            createdAt: new Date(),
+          },
+        }));
+
+        await Notification.insertMany(notifPayloads);
+      }
+    } catch (logErr) {
+      console.error("OpsActivityLog / Notification error on package create:", logErr);
+    }
 
     res.status(201).json({
       success: true,
-      message: "Package created successfully",
+      message: "Package template created successfully",
       data: pkg
     });
 
@@ -969,6 +1112,120 @@ export const getPackages = async (req, res, next) => {
       data: packages
     });
 
+  } catch (error) {
+    next(error);
+  }
+};
+
+//----------- DELETE PACKAGE ---------------------------
+
+export const deletePackage = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const pkg = await Package.findById(id);
+    if (!pkg) {
+      return res.status(404).json({
+        success: false,
+        message: "Package template not found"
+      });
+    }
+
+    // Capture package snapshot before deletion
+    const packageTitle = pkg.title || "Package Template";
+    const destination = pkg.destination || "Destination";
+    const country = pkg.country || "";
+    const duration = pkg.duration || "";
+    const pkgPrice = Number(pkg.price || 0);
+    const hotelsCount = Array.isArray(pkg.hotels) ? pkg.hotels.length : 0;
+    const activitiesCount = Array.isArray(pkg.activities) ? pkg.activities.length : 0;
+    const transfersCount = Array.isArray(pkg.transfers) ? pkg.transfers.length : 0;
+    const sightseeingCount = Array.isArray(pkg.sightseeing) ? pkg.sightseeing.length : 0;
+
+    // Capture deleting user metadata
+    const deletedByUserId = req.user?._id || req.user?.id;
+    const memberName = req.user?.name || req.user?.fullName || "Operations Member";
+    const memberEmail = req.user?.email || "";
+    const memberRole = req.user?.role || "operations";
+    const roleLabel =
+      memberRole === "operations"
+        ? "OPS Team Member"
+        : memberRole === "operation_manager"
+        ? "OPS Manager"
+        : memberRole === "admin"
+        ? "Admin"
+        : memberRole;
+
+    // Delete package from database
+    await Package.findByIdAndDelete(id);
+
+    try {
+      // 1. Record in OpsActivityLog for persistent audit trail
+      await OpsActivityLog.create({
+        action: "PACKAGE_DELETED",
+        module: "Package Management",
+        description: `${memberName} (${roleLabel}) deleted package template "${packageTitle}" (${destination})`,
+        performedBy: {
+          userId: deletedByUserId,
+          name: memberName,
+          email: memberEmail,
+          role: memberRole,
+        },
+        targetItem: {
+          itemId: String(id),
+          itemType: "PackageTemplate",
+          itemName: packageTitle,
+          destination,
+          details: {
+            country,
+            duration,
+            price: pkgPrice,
+            hotelsCount,
+            activitiesCount,
+            transfersCount,
+            sightseeingCount,
+          },
+        },
+      });
+
+      // 2. Dispatch real-time In-App Notification to Operations Managers and Admins
+      const targetManagers = await Auth.find({
+        role: { $in: ["operation_manager", "admin"] },
+        isDeleted: { $ne: true },
+        accountStatus: { $ne: "Inactive" },
+      }).select("_id role name email");
+
+      if (targetManagers.length > 0) {
+        const notificationPayloads = targetManagers.map((manager) => ({
+          user: manager._id,
+          type: "warning",
+          title: "Package Template Deleted",
+          message: `${memberName} (${roleLabel}) deleted package template "${packageTitle}" (${destination}).`,
+          link: "/ops/create-package",
+          meta: {
+            action: "PACKAGE_DELETED",
+            packageId: String(id),
+            packageTitle,
+            destination,
+            country,
+            price: pkgPrice,
+            deletedByUserId,
+            deletedByName: memberName,
+            deletedByEmail: memberEmail,
+            deletedByRole: memberRole,
+            deletedAt: new Date(),
+          },
+        }));
+
+        await Notification.insertMany(notificationPayloads);
+      }
+    } catch (logErr) {
+      console.error("OpsActivityLog / Notification error on package delete:", logErr);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Package template deleted successfully"
+    });
   } catch (error) {
     next(error);
   }
@@ -1003,41 +1260,153 @@ export const deleteUpload = async (req, res) => {
 
 //========================= DOWNLOAD FILE DMC BULK ==============================================
 
-
 export const downloadUpload = async (req, res) => {
   try {
-    const { id } = req.params
+    const { id } = req.params;
 
-    const file = await UploadHistory.findById(id)
+    const file = await UploadHistory.findById(id);
 
-    if (!file || !file.filePath) {
-      return res.status(404).json({ message: "File not found in DB" })
+    if (!file) {
+      return res.status(404).json({ message: "File not found in DB" });
     }
 
-    // 🔥 ADD THESE LOGS HERE
-    console.log("CWD:", process.cwd())
-    console.log("FILE PATH FROM DB:", file.filePath)
+    const category = String(file.category || "").toLowerCase().trim();
 
-    const fullPath = path.join(process.cwd(), file.filePath)
+    if (category === "hotel") {
+      const hotelDocs = await Hotel.find({ status: { $ne: "inactive" } })
+        .sort({ createdAt: 1, _id: 1 })
+        .lean();
 
-    console.log("FINAL PATH:", fullPath)
+      if (hotelDocs && hotelDocs.length > 0) {
+        const hotelAoA = [
+          [
+            "Service Name",
+            "Supplier Name",
+            "Hotel Name",
+            "Country",
+            "City",
+            "Hotel Category",
+            "Room Category",
+            "Bed Type",
+            "Extra Bed Type",
+            "Max Adults",
+            "Max Children",
+            "Child Age Limit",
+            "Room Type",
+            "Meal Plan",
+            "A.W.E.B Rate",
+            "C.W.E.B Rate",
+            "C.Wo.E.B Rate",
+            "Currency",
+            "Valid From",
+            "Valid To",
+            "Description",
+            "Price",
+          ],
+        ];
 
+        const blackoutDatesMap = new Map();
+
+        hotelDocs.forEach((doc) => {
+          const validFromStr = doc.validFrom ? new Date(doc.validFrom).toISOString().split("T")[0] : "";
+          const validToStr = doc.validTo ? new Date(doc.validTo).toISOString().split("T")[0] : "";
+
+          (doc.hotels || []).forEach((hotel, hIdx) => {
+            (hotel.rooms || []).forEach((room, rIdx) => {
+              const isFirstServiceRow = hIdx === 0 && rIdx === 0;
+              const isFirstHotelRow = rIdx === 0;
+
+              hotelAoA.push([
+                isFirstServiceRow ? (doc.serviceName || "") : "",
+                isFirstHotelRow ? (hotel.supplierName || doc.supplierName || "") : "",
+                isFirstHotelRow ? (hotel.hotelName || "") : "",
+                isFirstServiceRow ? (doc.country || "") : "",
+                isFirstServiceRow ? (doc.city || "") : "",
+                isFirstHotelRow ? (hotel.hotelCategory || "5 Star") : "",
+                room.roomCategory || "Double",
+                room.bedType || "King",
+                room.extraBedType || "None",
+                room.maxAdults !== undefined ? room.maxAdults : 2,
+                room.maxChildren !== undefined ? room.maxChildren : 1,
+                room.childAgeLimit || "As per hotel policy",
+                room.roomType || "Standard Room",
+                room.mealPlan || "EP",
+                room.awebRate || 0,
+                room.cwebRate || 0,
+                room.cwoebRate || 0,
+                isFirstServiceRow ? (doc.currency || "INR") : "",
+                isFirstServiceRow ? validFromStr : "",
+                isFirstServiceRow ? validToStr : "",
+                room.description || "",
+                room.price || 0,
+              ]);
+            });
+          });
+
+          (doc.blackoutDates || []).forEach((bo) => {
+            const key = (bo.rawPeriod || bo.startDateKey || "") + "_" + (bo.occasion || "");
+            if (key && !blackoutDatesMap.has(key)) {
+              blackoutDatesMap.set(key, bo);
+            }
+          });
+        });
+
+        const wb = XLSX.utils.book_new();
+        const wsHotel = XLSX.utils.aoa_to_sheet(hotelAoA);
+        XLSX.utils.book_append_sheet(wb, wsHotel, "Hotel Data");
+
+        if (blackoutDatesMap.size > 0) {
+          const daysOfWeek = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+          const blackoutAoA = [
+            ["🚫  BLACKOUT DATES — Hotel Rates Sheet (2026)"],
+            ["Rates on these dates are NOT applicable. Special pricing / supplements will apply."],
+            ["#", "Date / Period", "Day(s)", "Occasion", "Category", "Applicable Region"],
+          ];
+          let boIdx = 1;
+          blackoutDatesMap.forEach((bo) => {
+            let dayName = "";
+            if (bo.startDate) {
+              const d = new Date(bo.startDate);
+              if (!isNaN(d.getTime())) {
+                dayName = daysOfWeek[d.getDay()];
+              }
+            }
+            blackoutAoA.push([
+              boIdx,
+              bo.rawPeriod || bo.startDateKey || "",
+              dayName || "All Days",
+              bo.occasion || "Blackout Event",
+              bo.category || "General",
+              bo.applicableRegion || "All India & International",
+            ]);
+            boIdx++;
+          });
+
+          const wsBlackout = XLSX.utils.aoa_to_sheet(blackoutAoA);
+          XLSX.utils.book_append_sheet(wb, wsBlackout, "Blackout Dates");
+        }
+
+        const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+        const downloadName = file.fileName || "Hotel_Rates_Sheet.xlsx";
+        res.setHeader("Content-Disposition", `attachment; filename="${downloadName}"`);
+        res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        return res.send(buf);
+      }
+    }
+
+    const fullPath = path.join(process.cwd(), file.filePath);
     if (!fs.existsSync(fullPath)) {
-      console.log("❌ FILE NOT FOUND")
-      return res.status(404).json({ message: "File missing on server" })
+      return res.status(404).json({ message: "File missing on server" });
     }
 
-    res.download(fullPath)
-
+    res.download(fullPath);
   } catch (error) {
-    console.log(error)
-    res.status(500).json({ error: error.message })
+    console.log(error);
+    res.status(500).json({ error: error.message });
   }
-}
-
+};
 
 // ======================= GET ALL SERVICES (QUOTATION BUILDER) =======================
-
 const getTravelQueryForBlackoutCheck = async (queryId = "") => {
   const normalizedQueryId = String(queryId || "").trim();
   if (!normalizedQueryId) return null;
@@ -1164,23 +1533,25 @@ const buildServiceLocationFilter = (destination = "") => {
     .map((item) => item.trim())
     .filter((item) => item.length >= 2);
 
-  const cityTerms = normalizedParts.length > 1 ? normalizedParts.slice(0, -1) : [];
   const fallbackTerms = normalizedParts.length ? normalizedParts : [rawDestination];
-  const targetTerms = cityTerms.length ? cityTerms : fallbackTerms;
-  const uniqueTerms = expandDestinationLocationTerms([...new Set(targetTerms)]);
+  const uniqueTerms = expandDestinationLocationTerms([...new Set(fallbackTerms)]);
 
   if (!uniqueTerms.length) return {};
 
   const regexes = uniqueTerms.map((term) => new RegExp(escapeRegexValue(term), "i"));
 
-  if (cityTerms.length) {
-    return { city: { $in: regexes } };
-  }
-
   return {
     $or: [
       { city: { $in: regexes } },
+      { destination: { $in: regexes } },
+      { destinationCity: { $in: regexes } },
+      { state: { $in: regexes } },
       { country: { $in: regexes } },
+      { hotelName: { $in: regexes } },
+      { name: { $in: regexes } },
+      { serviceName: { $in: regexes } },
+      { title: { $in: regexes } },
+      { address: { $in: regexes } },
     ],
   };
 };
@@ -1206,7 +1577,7 @@ export const getAllServices = async (req, res, next) => {
         activities.map((item) => [
           [
             item?.supplier?.toString?.() || "",
-            String(item?.name || "").trim().toLowerCase(),
+            String(item?.serviceName || item?.name || item?._id || "").trim().toLowerCase(),
             String(item?.city || "").trim().toLowerCase(),
             String(item?.country || "").trim().toLowerCase(),
           ].join("::"),
@@ -1267,26 +1638,40 @@ export const getAllServices = async (req, res, next) => {
         })
         : null;
 
+      const hotelsList = Array.isArray(h.hotels) && h.hotels.length > 0 ? h.hotels : [];
+      const defaultHotel = hotelsList[0] || {};
+      const defaultRoom = (defaultHotel.rooms && defaultHotel.rooms[0]) || {};
+
       return {
         id: h._id,
         supplierId: h.supplier,
-        supplierName: h.supplierName || "",
+        supplierName: defaultHotel.supplierName || h.supplierName || "",
         dmcId: h.supplier,
         dmcName: ownerMap.get(h.supplier?.toString()) || "",
         type: "hotel",
-        title: h.hotelName,
-        description: h.description || `${h.roomType || ""} | ${h.mealPlan || ""}`,
+        title: h.serviceName || defaultHotel.hotelName || h.hotelName || "",
+        serviceName: h.serviceName || "",
+        hotelName: defaultHotel.hotelName || h.hotelName || "",
+        name: h.serviceName || defaultHotel.hotelName || h.hotelName || "",
+        description: defaultRoom.description || h.description || `${h.roomType || ""} | ${h.mealPlan || ""}`,
         country: h.country,
         city: h.city,
-        price: h.price,
+        price: defaultRoom.price !== undefined ? defaultRoom.price : h.price,
         currency: h.currency,
-        hotelCategory: h.hotelCategory,
-        roomCategory: h.roomCategory || "Double",
-        bedType: h.bedType,
-        roomType: h.roomType,
-        awebRate: h.awebRate || 0,
-        cwebRate: h.cwebRate || 0,
-        cwoebRate: h.cwoebRate || 0,
+        hotelCategory: defaultHotel.hotelCategory || h.hotelCategory,
+        starCategory: defaultHotel.hotelCategory || h.hotelCategory || "4 Star",
+        roomCategory: defaultRoom.roomCategory || h.roomCategory || "Double",
+        bedType: defaultRoom.bedType || h.bedType,
+        extraBedType: defaultRoom.extraBedType || h.extraBedType,
+        roomType: defaultRoom.roomType || h.roomType,
+        mealPlan: defaultRoom.mealPlan || h.mealPlan || "CP",
+        maxAdults: defaultRoom.maxAdults !== undefined ? defaultRoom.maxAdults : 2,
+        maxChildren: defaultRoom.maxChildren !== undefined ? defaultRoom.maxChildren : 1,
+        childAgeLimit: defaultRoom.childAgeLimit || "As per hotel policy",
+        awebRate: defaultRoom.awebRate !== undefined ? defaultRoom.awebRate : (h.awebRate || 0),
+        cwebRate: defaultRoom.cwebRate !== undefined ? defaultRoom.cwebRate : (h.cwebRate || 0),
+        cwoebRate: defaultRoom.cwoebRate !== undefined ? defaultRoom.cwoebRate : (h.cwoebRate || 0),
+        hotels: hotelsList,
         blackoutDates: resolvedBlackoutDates,
         blackout: blackoutMatch
           ? {
@@ -1322,71 +1707,129 @@ export const getAllServices = async (req, res, next) => {
     }
 
     // 🔹 FORMAT ACTIVITIES
-    const activityData = dedupedActivities.map(a => ({
-      id: a._id,
-      supplierId: a.supplier,
-      supplierName: a.supplierName || "",
-      dmcId: a.supplier,
-      dmcName: ownerMap.get(a.supplier?.toString()) || "",
-      type: "activity",
-      title: a.name,
-      subtitle: `${a.city} | Activity`,
-      description: a.description || a.serviceName || "",
-      city: a.city || "",
-      country: a.country || "",
-      price: a.adultPrice || a.price,
-      currency: a.currency
-    }));
+    const activityData = dedupedActivities.map(a => {
+      const tourTypesList = Array.isArray(a.tourTypes) && a.tourTypes.length > 0 ? a.tourTypes : [];
+      const defaultTour = tourTypesList[0] || {};
+      const defaultPrice = defaultTour.price !== undefined ? defaultTour.price : (a.adultPrice || a.price || 0);
+      const defaultTourType = defaultTour.tourType || a.tourType || "Group Tour";
+      const defaultPricingBasis = defaultTour.pricingBasis || (defaultTourType.toLowerCase().includes("group") && !defaultTourType.toLowerCase().includes("per group") ? "Per Pax" : "Per Group");
+      const defaultMaxPax = defaultTour.maxPax || (defaultTourType.toLowerCase().includes("group") && !defaultTourType.toLowerCase().includes("per group") ? "N/A (Shared Group)" : defaultTourType.toLowerCase().includes("vip") ? "Up to 6 Pax" : "Up to 4 Pax");
+
+      return {
+        id: a._id,
+        supplierId: a.supplier,
+        supplierName: a.supplierName || "",
+        dmcId: a.supplier,
+        dmcName: ownerMap.get(a.supplier?.toString()) || "",
+        type: "activity",
+        title: a.serviceName || a.name,
+        serviceName: a.serviceName || a.name || "",
+        name: a.name || a.serviceName || "",
+        subtitle: `${a.city} | Activity`,
+        description: defaultTour.description || a.description || a.serviceName || "",
+        city: a.city || "",
+        country: a.country || "",
+        price: defaultPrice,
+        adultPrice: a.adultPrice || defaultPrice,
+        childPrice: a.childPrice || defaultTour.childPrice || 0,
+        infantPrice: a.infantPrice || defaultTour.infantPrice || 0,
+        currency: a.currency || "INR",
+        tourTypes: tourTypesList,
+        tourType: defaultTourType,
+        pricingBasis: defaultPricingBasis,
+        maxPax: defaultMaxPax,
+        validFrom: a.validFrom,
+        validTo: a.validTo,
+      };
+    });
 
 
     //======================== 🔹 FORMAT TRANSFERS =================================
-    const transferData = transfers.map(t => ({
-      id: t._id,
-      supplierId: t.supplier,
-      supplierName: t.supplierName || "",
-      dmcId: t.supplier,
-      dmcName: ownerMap.get(t.supplier?.toString()) || "",
-      type: "transfer",
-      // 🔹 MAIN INFO
-      title: t.serviceName,
-      description: t.description,
+    const transferData = transfers.map(t => {
+      const vehiclesList = Array.isArray(t.vehicles) && t.vehicles.length > 0 ? t.vehicles : [];
+      const defaultVehicle = vehiclesList[0] || {};
+      const pointToPoint = defaultVehicle.usageTypes?.pointToPoint || [];
+      const hourly = defaultVehicle.usageTypes?.hourly || [];
+      const defaultUsage = pointToPoint[0] || hourly[0] || {};
 
-      // 🔹 LOCATION
-      city: t.city,
-      country: t.country,
-      // 🔹 VEHICLE INFO
-      vehicleType: t.vehicleType,
-      passengerCapacity: t.passengerCapacity,
-      luggageCapacity: t.luggageCapacity,
-      // 🔹 USAGE
-      usageType: t.usageType,
-      // 🔹 PRICE
-      price: t.price,
-      extraPerKmRate: Number(t.extraPerKmRate || 0),
-      fullDayExtraPerKmRate: Number(t.fullDayExtraPerKmRate || 0),
-      halfDayExtraPerKmRate: Number(t.halfDayExtraPerKmRate || 0),
-      currency: t.currency,
-      // 🔹 UI HELPER
-      subtitle: `${t.vehicleType} | ${t.usageType}`
-    }));
+      const oneWayItem = pointToPoint.find(p => /one\s*way|airport/i.test(p.name || p.usageType || "")) || pointToPoint[0];
+      const interHotelItem = pointToPoint.find(p => /inter\s*hotel/i.test(p.name || p.usageType || "")) || pointToPoint[1];
+      const fullDayItem = hourly.find(h => /full/i.test(h.name || h.usageType || "")) || hourly[0];
+      const halfDayItem = hourly.find(h => /half/i.test(h.name || h.usageType || "")) || hourly[1];
+
+      return {
+        id: t._id,
+        supplierId: t.supplier,
+        supplierName: t.supplierName || "",
+        dmcId: t.supplier,
+        dmcName: ownerMap.get(t.supplier?.toString()) || "",
+        type: "transfer",
+        // 🔹 MAIN INFO
+        title: t.serviceName,
+        serviceName: t.serviceName || "",
+        name: t.serviceName || "",
+        description: defaultVehicle.description || t.description || "",
+        fullDayNote: t.fullDayNote || "",
+        halfDayNote: t.halfDayNote || "",
+
+        // 🔹 LOCATION
+        city: t.city,
+        country: t.country,
+        // 🔹 VEHICLE INFO
+        vehicleType: defaultVehicle.vehicleType || t.vehicleType || "Sedan",
+        passengerCapacity: defaultVehicle.passengerCapacity !== undefined ? defaultVehicle.passengerCapacity : (t.passengerCapacity || 4),
+        luggageCapacity: defaultVehicle.luggageCapacity !== undefined ? defaultVehicle.luggageCapacity : (t.luggageCapacity || 2),
+        // 🔹 USAGE
+        usageType: defaultUsage.name || t.usageType || "One Way / Airport Transfer",
+        // 🔹 PRICE & 4 USAGE OPTIONS
+        price: defaultUsage.price !== undefined ? defaultUsage.price : t.price,
+        oneWayPrice: Number(oneWayItem?.price !== undefined ? oneWayItem.price : (defaultUsage.price || t.price || 0)),
+        interHotelPrice: Number(interHotelItem?.price !== undefined ? interHotelItem.price : 0),
+        fullDayPrice: Number(fullDayItem?.price !== undefined ? fullDayItem.price : 0),
+        halfDayPrice: Number(halfDayItem?.price !== undefined ? halfDayItem.price : 0),
+        extraPerKmRate: Number(defaultUsage.extraPerKmRate || t.extraPerKmRate || 0),
+        fullDayExtraPerKmRate: Number(fullDayItem?.extraPerKmRate || t.fullDayExtraPerKmRate || 0),
+        halfDayExtraPerKmRate: Number(halfDayItem?.extraPerKmRate || t.halfDayExtraPerKmRate || 0),
+        currency: t.currency,
+        vehicles: vehiclesList,
+        // 🔹 UI HELPER
+        subtitle: `${defaultVehicle.vehicleType || t.vehicleType || "Vehicle"} | ${defaultUsage.name || t.usageType || ""}`
+      };
+    });
 
     // 🔹 FORMAT SIGHTSEEING
-    const sightseeingData = sightseeing.map(s => ({
-      id: s._id,
-      supplierId: s.supplier,
-      supplierName: s.supplierName || "",
-      dmcId: s.supplier,
-      dmcName: ownerMap.get(s.supplier?.toString()) || "",
-      type: "sightseeing",
-      title: s.name,
-      subtitle: `${s.city} | Sightseeing`,
-      price: s.price,
-      currency: s.currency,
-      description: s.description || `${s.roomType || ""} | ${s.mealPlan || ""}`,
-      city: s.city,
-      country: s.country || "",
-      price: s.price,
-    }));
+    const sightseeingData = sightseeing.map(s => {
+      const tourTypesList = Array.isArray(s.tourTypes) && s.tourTypes.length > 0 ? s.tourTypes : [];
+      const defaultTour = tourTypesList[0] || {};
+      const defaultPrice = defaultTour.price !== undefined ? defaultTour.price : (s.price || 0);
+      const defaultTourType = defaultTour.tourType || s.tourType || "Group Tour";
+      const defaultPricingBasis = defaultTour.pricingBasis || (defaultTourType.toLowerCase().includes("group") && !defaultTourType.toLowerCase().includes("per group") ? "Per Pax" : "Per Group");
+      const defaultMaxPax = defaultTour.maxPax || (defaultTourType.toLowerCase().includes("group") && !defaultTourType.toLowerCase().includes("per group") ? "N/A (Shared Group)" : defaultTourType.toLowerCase().includes("vip") ? "Up to 6 Pax" : "Up to 4 Pax");
+
+      return {
+        id: s._id,
+        supplierId: s.supplier,
+        supplierName: s.supplierName || "",
+        dmcId: s.supplier,
+        dmcName: ownerMap.get(s.supplier?.toString()) || "",
+        type: "sightseeing",
+        title: s.serviceName || s.name,
+        serviceName: s.serviceName || s.name || "",
+        name: s.name || s.serviceName || "",
+        subtitle: `${s.city} | Sightseeing`,
+        price: defaultPrice,
+        currency: s.currency || "INR",
+        description: defaultTour.description || s.description || "",
+        city: s.city,
+        country: s.country || "",
+        tourTypes: tourTypesList,
+        tourType: defaultTourType,
+        pricingBasis: defaultPricingBasis,
+        maxPax: defaultMaxPax,
+        validFrom: s.validFrom,
+        validTo: s.validTo,
+      };
+    });
 
     // 🔥 MERGE ALL
     const allServices = [
@@ -2694,6 +3137,10 @@ const getDmcVisibleQueriesData = async (req) => {
       stayLabel: breakdown.stayLabel || "",
       unitLabel: breakdown.unitLabel,
       calculationText: breakdown.calculationText,
+      hotelCategory: alignedService.hotelCategory || alignedService.category || alignedService.starRating || alignedService.stars || alignedService.rating || "",
+      starRating: alignedService.starRating || alignedService.stars || alignedService.rating || alignedService.hotelCategory || alignedService.category || "",
+      tag: alignedService.tag || alignedService.serviceTag || "",
+      comments: alignedService.comments || alignedService.remarks || alignedService.reconfirmedComments || "",
     };
   };
 
@@ -2749,7 +3196,7 @@ const getDmcVisibleQueriesData = async (req) => {
     opsStatus: { $in: DMC_VISIBLE_BOOKING_STATUSES },
   })
     .select(
-      "queryId destination opsStatus startDate endDate numberOfAdults numberOfChildren travelerDetails travelerDocumentVerification travelerDocumentAuditTrail voucherNumber voucherStatus voucherGeneratedAt voucherSentAt createdAt updatedAt agent",
+      "queryId destination hotelCategory opsStatus startDate endDate numberOfAdults numberOfChildren travelerDetails travelerDocumentVerification travelerDocumentAuditTrail voucherNumber voucherStatus voucherGeneratedAt voucherSentAt createdAt updatedAt agent",
     )
     .populate("agent", "name companyName email")
     .sort({ createdAt: -1 })
@@ -2761,7 +3208,7 @@ const getDmcVisibleQueriesData = async (req) => {
     query: { $in: queries.map((query) => query._id) },
   })
     .select(
-      "query supplierName invoiceNumber invoiceDate dueDate creditPeriodDays templateVariant items documents invoiceSource uploadedInvoice claimedSummary taxConfig summary status submittedAt updatedAt financeNotes payoutReference payoutDate payoutBank payoutAmount",
+      "query supplierName invoiceNumber invoiceDate dueDate creditPeriodDays templateVariant items documents invoiceSource uploadedInvoice claimedSummary taxConfig summary status submittedAt updatedAt financeNotes payoutReference payoutDate payoutBank payoutAmount payoutInstallments",
     )
     .lean();
 
@@ -2789,8 +3236,23 @@ const getDmcVisibleQueriesData = async (req) => {
   const queryObjectIds = queries.map((query) => query._id);
   const queryObjectIdStrings = queryObjectIds.map((queryId) => queryId?.toString()).filter(Boolean);
   const queryCodes = queries.map((query) => String(query.queryId || "").trim()).filter(Boolean);
+  const agentInvoices = await Invoice.find({
+    query: { $in: queryObjectIds },
+    invoiceType: "agent",
+  })
+    .select("query totalAmount paymentStatus currency pricingSnapshot lineItems paymentSubmission.trackerPayments tripSnapshot quotation createdAt updatedAt")
+    .sort({ createdAt: -1 })
+    .lean();
+  const agentInvoiceByQueryId = new Map();
+  agentInvoices.forEach((inv) => {
+    const key = inv.query?.toString();
+    if (key && !agentInvoiceByQueryId.has(key)) {
+      agentInvoiceByQueryId.set(key, inv);
+    }
+  });
+
   const allQuotations = await Quotation.find({ queryId: { $in: queryObjectIds } })
-    .select("queryId services pricing clientTotalAmount createdAt updatedAt status")
+    .select("queryId services pricing clientTotalAmount totalAmount grandTotal createdAt updatedAt status agentMarkup")
     .sort({ createdAt: -1 })
     .lean();
   const quotationsByQueryId = new Map();
@@ -2882,12 +3344,17 @@ const getDmcVisibleQueriesData = async (req) => {
         quotationServices,
         getQuotationFinanceServiceTotal(quotation),
       );
-      const quotationTaxableAmount =
-        Number(quotation?.pricing?.subTotal || 0) +
-        Number(quotation?.pricing?.packageTemplateAmount || 0) +
-        Number(quotation?.pricing?.opsMarkup?.amount || 0) +
-        Number(quotation?.pricing?.opsCharges?.serviceCharge || 0) +
-        Number(quotation?.pricing?.opsCharges?.handlingFee || 0);
+      const officialQuotationFinalAmount =
+        Number(quotation?.pricing?.grandTotal || 0) ||
+        Number(quotation?.pricing?.totalAmount || 0) ||
+        Number(quotation?.clientTotalAmount || 0) ||
+        Number(quotation?.grandTotal || 0) ||
+        Number(quotation?.totalAmount || 0) ||
+        (Number(quotation?.pricing?.subTotal || 0) +
+          Number(quotation?.pricing?.packageTemplateAmount || 0) +
+          Number(quotation?.pricing?.opsMarkup?.amount || 0) +
+          Number(quotation?.pricing?.opsCharges?.serviceCharge || 0) +
+          Number(quotation?.pricing?.opsCharges?.handlingFee || 0));
 
       const visibleServices = (
         await Promise.all(
@@ -2906,19 +3373,105 @@ const getDmcVisibleQueriesData = async (req) => {
         return null;
       }
 
+      const visibleServicesTotal = visibleServices.reduce((sum, s) => {
+        const val = Number(s.total || s.cost || s.price || 0);
+        return sum + val;
+      }, 0);
+
+      const resolvedPackagePrice = visibleServicesTotal > 0
+        ? visibleServicesTotal
+        : (officialQuotationFinalAmount || Number(quotation?.clientTotalAmount || 0));
+
+      const allocatedAt = confirmation?.createdAt || quotation?.createdAt || query.updatedAt || query.createdAt;
+
       const existingInternalInvoice = internalInvoiceByQueryId.get(
         query._id?.toString(),
       );
+
+      const internalInvoicePayout = Number(existingInternalInvoice?.payoutAmount || 0);
+      const rawPaidAmount = Math.max(
+        Number(query.paidAmount || query.amountPaid || query.payoutAmount || 0),
+        internalInvoicePayout
+      );
+
+      const hasActualServiceVoucher = visibleServices.some(
+        (s) => Boolean(s.voucherNumber || s.isVoucherGenerated)
+      );
+
+      let resolvedOpsStatus = String(query.opsStatus || "").trim();
+
+      // If DB status is Vouchered BUT payment is 0 and no individual service has a voucher:
+      if (resolvedOpsStatus === "Vouchered" && !hasActualServiceVoucher && rawPaidAmount === 0) {
+        if (existingInternalInvoice || bulkSettledQueryMap.has(queryKey)) {
+          resolvedOpsStatus = "Invoice_Requested";
+        } else {
+          resolvedOpsStatus = "Confirmed";
+        }
+      } else if (rawPaidAmount > 0 && !hasActualServiceVoucher) {
+        resolvedOpsStatus = "Payment_Completed";
+      }
+
+      const existingAgentInvoice = agentInvoiceByQueryId.get(queryKey) || null;
+
+      const quotationPricing = quotation?.pricing ? {
+        currency: quotation.pricing.currency || "INR",
+        baseAmount: Number(quotation.pricing.baseAmount || 0),
+        subTotal: Number(quotation.pricing.subTotal || 0),
+        packageTemplateAmount: Number(quotation.pricing.packageTemplateAmount || 0),
+        opsMarkup: {
+          percent: Number(quotation.pricing.opsMarkup?.percent || 0),
+          amount: Number(quotation.pricing.opsMarkup?.amount || 0),
+        },
+        opsCharges: {
+          serviceCharge: Number(quotation.pricing.opsCharges?.serviceCharge || 0),
+          handlingFee: Number(quotation.pricing.opsCharges?.handlingFee || 0),
+        },
+        tax: {
+          gst: {
+            percent: Number(quotation.pricing.tax?.gst?.percent || 0),
+            amount: Number(quotation.pricing.tax?.gst?.amount || 0),
+          },
+          tcs: {
+            percent: Number(quotation.pricing.tax?.tcs?.percent || 0),
+            amount: Number(quotation.pricing.tax?.tcs?.amount || 0),
+          },
+          tourismFee: {
+            amount: Number(quotation.pricing.tax?.tourismFee?.amount || 0),
+          },
+          totalTax: Number(quotation.pricing.tax?.totalTax || 0),
+        },
+        totalAmount: Number(quotation.pricing.totalAmount || 0),
+      } : null;
+
+      const agentMarkupData = quotation?.agentMarkup ? {
+        type: quotation.agentMarkup.type || "",
+        value: Number(quotation.agentMarkup.value || 0),
+        markupAmount: Number(quotation.agentMarkup.markupAmount || 0),
+      } : null;
+
+      const customerNameFromTravelers = (query.travelerDetails || []).find(
+        (t) => t.travelerType === "Adult"
+      )?.fullName || "";
+      const customerPhone = query.clientEmail || "";
+
+      const dmcCostTotal = Number(existingInternalInvoice?.summary?.grandTotal || 0)
+        || Number(existingInternalInvoice?.claimedSummary?.grandTotal || 0)
+        || Number(existingInternalInvoice?.payoutAmount || 0);
+
+      const agentRevenueTotal = Number(existingAgentInvoice?.totalAmount || 0)
+        || Number(existingAgentInvoice?.pricingSnapshot?.grandTotal || 0);
 
       return {
         _id: query._id,
         queryId: query.queryId,
         destination: query.destination,
-        opsStatus: query.opsStatus || "",
+        opsStatus: resolvedOpsStatus,
+        paidAmount: rawPaidAmount,
         createdAt: query.createdAt || null,
         updatedAt: query.updatedAt || null,
         quotationCreatedAt: quotation?.createdAt || null,
         quotationUpdatedAt: quotation?.updatedAt || null,
+        allocatedAt,
         startDate: query.startDate,
         endDate: query.endDate,
         numberOfAdults: Number(query.numberOfAdults || 0),
@@ -2927,15 +3480,38 @@ const getDmcVisibleQueriesData = async (req) => {
         voucherStatus: query.voucherStatus || "",
         voucherGeneratedAt: query.voucherGeneratedAt || null,
         voucherSentAt: query.voucherSentAt || null,
-        isVoucherGenerated:
-          Boolean(query.voucherNumber) ||
-          String(query.voucherStatus || "").toLowerCase() === "generated" ||
-          String(query.voucherStatus || "").toLowerCase() === "sent" ||
-          String(query.opsStatus || "").toLowerCase() === "vouchered",
-        quotationTaxableAmount,
+        isVoucherGenerated: hasActualServiceVoucher,
+        packagePrice: officialQuotationFinalAmount,
+        quotationTaxableAmount: officialQuotationFinalAmount,
+        services: visibleServices,
         passengers,
         duration: `${nights}N/${days}D`,
         agentName: query.agent?.companyName || query.agent?.name || "",
+        customerName: customerNameFromTravelers,
+        customerPhone,
+        clientEmail: query.clientEmail || "",
+        quotationPricing,
+        agentMarkup: agentMarkupData,
+        agentInvoice: existingAgentInvoice
+          ? {
+            id: existingAgentInvoice._id,
+            invoiceNumber: existingAgentInvoice.invoiceNumber || "",
+            totalAmount: Number(existingAgentInvoice.totalAmount || 0),
+            paymentStatus: existingAgentInvoice.paymentStatus || "Pending",
+            currency: existingAgentInvoice.currency || "INR",
+            pricingSnapshot: existingAgentInvoice.pricingSnapshot || {},
+            trackerPayments: Array.isArray(existingAgentInvoice.paymentSubmission?.trackerPayments)
+              ? existingAgentInvoice.paymentSubmission.trackerPayments
+              : [],
+            createdAt: existingAgentInvoice.createdAt || null,
+          }
+          : null,
+        dmcCostTotal,
+        agentRevenueTotal,
+        estimatedProfit: agentRevenueTotal > 0 ? agentRevenueTotal - dmcCostTotal : 0,
+        estimatedProfitPercent: agentRevenueTotal > 0
+          ? Math.round(((agentRevenueTotal - dmcCostTotal) / agentRevenueTotal) * 10000) / 100
+          : 0,
         travelerDetails: (query.travelerDetails || []).map((traveler, index) => ({
           id: traveler?._id?.toString?.() || `traveler-${index + 1}`,
           fullName: String(traveler?.fullName || "").trim(),
@@ -2995,6 +3571,9 @@ const getDmcVisibleQueriesData = async (req) => {
             payoutDate: existingInternalInvoice.payoutDate || null,
             payoutBank: existingInternalInvoice.payoutBank || "",
             payoutAmount: Number(existingInternalInvoice.payoutAmount || 0),
+            payoutInstallments: Array.isArray(existingInternalInvoice.payoutInstallments)
+              ? existingInternalInvoice.payoutInstallments
+              : [],
           }
           : null,
         services: visibleServices,
@@ -3310,12 +3889,12 @@ const buildDmcDashboardPayload = async (queries = [], currentDmcId = null) => {
 
   const uploadsForTrend = currentDmcId
     ? await UploadHistory.find({
-        uploadedAuth: currentDmcId,
-        status: "success",
-        createdAt: { $gte: startOfTrend },
-      })
-        .select("createdAt records category")
-        .lean()
+      uploadedAuth: currentDmcId,
+      status: "success",
+      createdAt: { $gte: startOfTrend },
+    })
+      .select("createdAt records category")
+      .lean()
     : [];
 
   const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -3414,6 +3993,32 @@ const buildDmcDashboardPayload = async (queries = [], currentDmcId = null) => {
 
   const recordsTrend = buildDashboardTrend(currentRecordsCount, previousRecordsCount);
 
+  // Compute DMC Financial Overview
+  let paymentReceived = 0;
+  let paymentPending = 0;
+
+  if (currentDmcId) {
+    const internalInvoices = await InternalInvoice.find({
+      dmc: currentDmcId,
+    }).lean();
+
+    internalInvoices.forEach((inv) => {
+      const invTotal = Number(inv?.summary?.grandTotal || inv?.claimedSummary?.grandTotal || 0);
+      const st = String(inv?.status || "").toLowerCase();
+      if (st === "paid") {
+        paymentReceived += invTotal;
+      } else if (["submitted", "in review", "approved", "partially paid"].includes(st)) {
+        paymentPending += invTotal;
+      }
+    });
+  }
+
+  const totalBookedValue = queries.reduce((sum, q) => {
+    return sum + Number(q?.quotationTaxableAmount || 0);
+  }, 0);
+
+  const remainingBalance = Math.max(0, totalBookedValue - paymentReceived - paymentPending);
+
   return {
     dateLabel: formatDashboardDate(),
     summary: {
@@ -3433,6 +4038,12 @@ const buildDmcDashboardPayload = async (queries = [], currentDmcId = null) => {
         value: pendingActions,
         ...buildChangeMeta(currentWeekPendingActions, previousWeekPendingActions),
       },
+    },
+    financials: {
+      totalExpectedAmount: Math.round(totalBookedValue),
+      paymentReceived: Math.round(paymentReceived),
+      paymentPending: Math.round(paymentPending),
+      remainingBalance: Math.round(remainingBalance),
     },
     recentActivity: buildDmcRecentActivity(queries),
     performance: {
@@ -3482,6 +4093,79 @@ export const getDmcDashboard = async (req, res, next) => {
     res.status(200).json({
       success: true,
       data: dashboardData,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const addOrUpdateSupplierPayment = async (req, res, next) => {
+  try {
+    const { queryId, serviceKey, serviceName, supplierName, totalCost, installment } = req.body;
+    const currentDmcId = req.user.id;
+
+    if (!queryId || !installment || !installment.amount) {
+      return res.status(400).json({
+        success: false,
+        message: "queryId and installment amount are required",
+      });
+    }
+
+    let confirmation = await Confirmation.findOne({
+      queryId,
+      dmcId: currentDmcId,
+    });
+
+    if (!confirmation) {
+      confirmation = new Confirmation({
+        dmcId: currentDmcId,
+        queryId,
+        services: [],
+        supplierPayments: [],
+      });
+    }
+
+    const keyToMatch = serviceKey || serviceName || "default";
+    let supplierPayObj = (confirmation.supplierPayments || []).find(
+      (sp) => sp.serviceKey === keyToMatch || sp.serviceName === serviceName
+    );
+
+    const installmentData = {
+      amount: Number(installment.amount || 0),
+      status: installment.status || "Paid",
+      dueDate: installment.dueDate ? new Date(installment.dueDate) : null,
+      paymentDate: installment.paymentDate ? new Date(installment.paymentDate) : new Date(),
+      comments: installment.comments || "",
+      verifiedBy: installment.verifiedBy || req.user?.name || req.user?.companyName || "DMC Admin",
+      utrNumber: installment.utrNumber || "",
+      bankName: installment.bankName || "",
+      createdByName: req.user?.name || req.user?.companyName || "DMC User",
+      createdBy: req.user.id,
+    };
+
+    if (!supplierPayObj) {
+      if (!confirmation.supplierPayments) confirmation.supplierPayments = [];
+      confirmation.supplierPayments.push({
+        serviceKey: keyToMatch,
+        serviceName: serviceName || "Service Payment",
+        supplierName: supplierName || "Supplier",
+        totalCost: Number(totalCost || 0),
+        currency: "INR",
+        installments: [installmentData],
+      });
+    } else {
+      if (totalCost !== undefined && totalCost !== null) {
+        supplierPayObj.totalCost = Number(totalCost);
+      }
+      supplierPayObj.installments.push(installmentData);
+    }
+
+    await confirmation.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Supplier payment saved successfully",
+      data: confirmation,
     });
   } catch (error) {
     next(error);

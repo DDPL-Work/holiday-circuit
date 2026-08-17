@@ -432,8 +432,8 @@ export default function DmcPaymentLedger() {
   };
 
   return (
-    <div className="mt-4 rounded-xl border border-slate-200 bg-white shadow">
-      <div className="border-b border-slate-200 p-5">
+    <div className="w-full">
+      <div className="pb-4">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-center gap-3.5 flex-1 min-w-0">
             <div className="relative flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-tr from-[#1e3a8a] via-[#111827] to-slate-900 text-white shadow-lg ring-4 ring-blue-50 shrink-0">
@@ -519,7 +519,7 @@ export default function DmcPaymentLedger() {
         </div>
       </div>
 
-      <div className="grid gap-4 p-4 xl:grid-cols-[1fr_360px]">
+      <div className="grid gap-4 py-4 xl:grid-cols-[1fr_360px]">
         <div className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3">
             <p className="text-sm font-semibold text-slate-800">Booked Services</p>

@@ -314,44 +314,44 @@ const Finance = () => {
     >
       <motion.header variants={item} className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Finance</h1>
-          <p className="text-sm text-gray-500">
+          <h1 className="text-lg font-bold tracking-tight text-slate-900">Finance</h1>
+          <p className="text-xs text-slate-500">
             Manage your wallet, payments, and commissions.
           </p>
         </div>
 
-        <div className="flex gap-3">
+        <div className="flex gap-2">
           <motion.button
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             onClick={handleDownloadStatement}
-            className="border border-gray-400 px-3 py-2 rounded-lg text-xs flex items-center gap-2 cursor-pointer"
+            className="border border-slate-200 bg-white px-4 py-2 rounded-full text-xs font-semibold text-slate-600 flex items-center gap-1.5 cursor-pointer transition hover:bg-slate-50"
           >
-            <Download size={16} />
+            <Download size={13} />
             Statement
           </motion.button>
 
           <motion.button
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
-            className="bg-slate-900 text-white px-3 py-2 rounded-lg text-xs cursor-pointer"
+            className="bg-slate-900 text-white px-4 py-2 rounded-full text-xs font-bold cursor-pointer shadow-sm"
           >
             + Add Funds
           </motion.button>
         </div>
       </motion.header>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <motion.article 
           variants={item} 
           whileHover={{ y: -4, boxShadow: "0 12px 30px -10px rgba(79, 70, 229, 0.3)" }} 
-          className="bg-gradient-to-br from-slate-900 via-indigo-950 to-blue-950 text-white p-6 rounded-xl border border-indigo-500/20 shadow-md transition-all duration-200"
+          className="bg-gradient-to-br from-slate-900 via-indigo-950 to-blue-950 text-white px-4 py-3.5 rounded-xl border border-indigo-500/20 shadow-md transition-all duration-200"
         >
           <div className="flex justify-between items-center">
-            <p className="text-sm text-indigo-200">Current Balance</p>
-            <Wallet size={20} className="text-indigo-400" />
+            <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-indigo-200">Current Balance</p>
+            <Wallet size={16} className="text-indigo-400" />
           </div>
-          <h2 className="text-2xl font-bold mt-3 text-white">
+          <h2 className="text-xl font-bold mt-1.5 text-white">
             {loading ? "Loading..." : formatCurrency(overview.summary.currentBalance, overview.currency)}
           </h2>
         </motion.article>
@@ -359,13 +359,13 @@ const Finance = () => {
         <motion.article 
           variants={item} 
           whileHover={{ y: -4, boxShadow: "0 12px 20px -8px rgba(249, 115, 22, 0.15)" }} 
-          className="bg-gradient-to-br from-white to-orange-50/40 border border-slate-100 border-b-4 border-b-orange-500 shadow-sm p-6 rounded-xl transition-all duration-200"
+          className="bg-gradient-to-br from-white to-orange-50/40 border border-slate-100 border-b-4 border-b-orange-500 shadow-sm px-4 py-3.5 rounded-xl transition-all duration-200"
         >
           <div className="flex justify-between items-center">
-            <p className="text-sm text-gray-500">Pending Commissions</p>
-            <Clock className="text-orange-500" size={20} />
+            <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500">Pending Commissions</p>
+            <Clock className="text-orange-500" size={16} />
           </div>
-          <h2 className="text-2xl font-bold text-orange-600 mt-3">
+          <h2 className="text-xl font-bold text-orange-600 mt-1.5">
             {loading ? "Loading..." : formatCurrency(overview.summary.pendingCommissions, overview.currency)}
           </h2>
         </motion.article>
@@ -373,13 +373,13 @@ const Finance = () => {
         <motion.article 
           variants={item} 
           whileHover={{ y: -4, boxShadow: "0 12px 20px -8px rgba(16, 185, 129, 0.15)" }} 
-          className="bg-gradient-to-br from-white to-emerald-50/40 border border-slate-100 border-b-4 border-b-emerald-500 shadow-sm p-6 rounded-xl transition-all duration-200"
+          className="bg-gradient-to-br from-white to-emerald-50/40 border border-slate-100 border-b-4 border-b-emerald-500 shadow-sm px-4 py-3.5 rounded-xl transition-all duration-200"
         >
           <div className="flex justify-between items-center">
-            <p className="text-sm text-gray-500">Total Earnings</p>
-            <TrendingUp className="text-emerald-600" size={20} />
+            <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500">Total Earnings</p>
+            <TrendingUp className="text-emerald-600" size={16} />
           </div>
-          <h2 className="text-2xl font-bold text-emerald-600 mt-3">
+          <h2 className="text-xl font-bold text-emerald-600 mt-1.5">
             {loading ? "Loading..." : formatCurrency(overview.summary.totalEarnings, overview.currency)}
           </h2>
         </motion.article>
@@ -388,10 +388,10 @@ const Finance = () => {
       <motion.div
         ref={transactionHistoryRef}
         variants={item}
-        className="relative bg-white shadow-sm rounded-xl p-6"
+        className="relative bg-white shadow-sm rounded-xl px-4 py-3.5"
       >
-        <h2 className="text-lg font-semibold mb-4">Transaction History</h2>
-        <table className="w-full text-xs table-auto">
+        <h2 className="text-sm font-semibold mb-3 text-slate-800">Transaction History</h2>
+        <table className="w-full text-[11px] table-auto">
             <colgroup>
               <col style={{ width: "190px" }} />
               <col style={{ width: "170px" }} />
@@ -400,18 +400,18 @@ const Finance = () => {
               <col style={{ width: "170px" }} />
               <col style={{ width: "130px" }} />
             </colgroup>
-            <thead className="text-gray-500 border-b border-b-gray-200">
+            <thead className="text-[10px] uppercase tracking-[0.12em] text-slate-400 border-b border-slate-100">
               <tr>
-                <th className="text-left py-3">Transaction ID</th>
-                <th className="text-left py-3">Date</th>
-                <th className="text-left py-3">Description</th>
-                <th className="py-3 text-center whitespace-nowrap">Reject Quotation</th>
-                <th className="text-right py-3 whitespace-nowrap">Amount</th>
-                <th className="text-right py-3">Status</th>
+                <th className="text-left py-2">Transaction ID</th>
+                <th className="text-left py-2">Date</th>
+                <th className="text-left py-2">Description</th>
+                <th className="py-2 text-center whitespace-nowrap">Reject Quotation</th>
+                <th className="text-right py-2 whitespace-nowrap">Amount</th>
+                <th className="text-right py-2">Status</th>
               </tr>
             </thead>
 
-            <tbody className="divide-y divide-gray-200">
+            <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
                   <td colSpan={6} className="py-10 text-center text-gray-400">
@@ -433,9 +433,9 @@ const Finance = () => {
               ) : (
                 paginatedTransactions.map((txn) => (
                   <tr key={`${txn.id}-${txn.description}`} className="transition-colors hover:bg-slate-50">
-                    <td className="py-4 text-blue-600 align-top">{txn.id}</td>
-                    <td className="py-4 align-top whitespace-nowrap">{formatDate(txn.date)}</td>
-                    <td className="py-4 pr-4 align-top">
+                    <td className="py-2 text-blue-600 align-top">{txn.id}</td>
+                    <td className="py-2 align-top whitespace-nowrap">{formatDate(txn.date)}</td>
+                    <td className="py-2 pr-4 align-top">
                       {(() => {
                         const metaItems = getTransactionMetaItems(txn, overview.currency);
                         const isOpen = !!expandedRows[txn.id];
@@ -488,7 +488,7 @@ const Finance = () => {
                       })()}
                     </td>
 
-                    <td className="py-4 pr-4 align-top text-center">
+                    <td className="py-2 pr-4 align-top text-center">
                       {(() => {
                         const quotationDetails = getQuotationDetails(txn);
                         const quotationCount = quotationDetails.length;
@@ -520,11 +520,11 @@ const Finance = () => {
                     </td>
 
                     {/* FIX: whitespace-nowrap + align-top so amount stays on one line and aligns with top of row */}
-                    <td className={`py-4 text-right align-top whitespace-nowrap font-medium ${getAmountColor(txn.direction, txn.status)}`}>
+                    <td className={`py-2 text-right align-top whitespace-nowrap font-medium ${getAmountColor(txn.direction, txn.status)}`}>
                       {getSignedAmount(txn.amount, txn.direction, overview.currency)}
                     </td>
 
-                    <td className="py-4 text-right align-top">
+                    <td className="py-2 text-right align-top">
                       <span className={`inline-block px-3 py-1 rounded-full text-xs whitespace-nowrap ${getStatusColor(txn.status)}`}>
                         {txn.status}
                       </span>
@@ -535,15 +535,15 @@ const Finance = () => {
             </tbody>
           </table>
         {totalPages > 1 && (
-          <div className="mt-4 flex flex-col items-center justify-between gap-4 border-t border-gray-100 bg-gray-50/50 px-2 pt-4 sm:flex-row">
-            <span className="text-xs font-medium text-gray-500">
+          <div className="mt-3 flex flex-col items-center justify-between gap-3 border-t border-slate-200 bg-white px-4 py-3 sm:flex-row">
+            <span className="text-xs text-slate-500">
               Showing {startIndex + 1} to {Math.min(startIndex + itemsPerPage, overview.transactions.length)} of {overview.transactions.length} entries
             </span>
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
                 disabled={currentPage === 1}
-                className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded-full border border-slate-200 bg-white px-4 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Previous
               </button>
@@ -556,10 +556,10 @@ const Finance = () => {
                     Math.abs(currentPage - 1 - index) > 1
                   ) {
                     if (index === 1 && currentPage > 3) {
-                      return <span key={index} className="px-1 text-gray-400">...</span>;
+                      return <span key={index} className="px-1 text-slate-400">...</span>;
                     }
                     if (index === totalPages - 2 && currentPage < totalPages - 2) {
-                      return <span key={index} className="px-1 text-gray-400">...</span>;
+                      return <span key={index} className="px-1 text-slate-400">...</span>;
                     }
                     return null;
                   }
@@ -568,10 +568,10 @@ const Finance = () => {
                     <button
                       key={index}
                       onClick={() => setCurrentPage(index + 1)}
-                      className={`flex h-7 w-7 items-center justify-center rounded-lg text-xs font-medium transition-colors ${
+                      className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-semibold transition-colors ${
                         currentPage === index + 1
                           ? "bg-slate-900 text-white"
-                          : "text-gray-500 hover:bg-gray-100 hover:text-gray-900"
+                          : "text-slate-500 hover:bg-slate-100 hover:text-slate-900"
                       }`}
                     >
                       {index + 1}
@@ -582,7 +582,7 @@ const Finance = () => {
               <button
                 onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
                 disabled={currentPage === totalPages}
-                className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded-full border border-slate-200 bg-white px-4 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Next
               </button>

@@ -1,5 +1,4 @@
-const VOUCHER_LOGO_URL =
-  "https://res.cloudinary.com/dszadvuz6/image/upload/e_trim/v1777932524/unzssx1sjkrigbgldg7h.png";
+const DEFAULT_FALLBACK_LOGO = "https://res.cloudinary.com/dszadvuz6/image/upload/e_trim/v1777932524/unzssx1sjkrigbgldg7h.png";
 
 export const formatServiceTypeLabel = (value = "") => {
   const normalized = String(value || "").trim().toLowerCase();
@@ -109,9 +108,25 @@ export const getVoucherStatusNote = (services = [], isAlreadySent = false) => {
   };
 };
 
-export const buildVoucherHtml = (data, branding) => {
+const getConfirmationStatusDisplay = (confirmation = "", status = "") => {
+  const conf = String(confirmation || "").trim().toLowerCase();
+  const stat = String(status || "").trim().toLowerCase();
+
+  if (!conf || conf === "pending") {
+    return { label: "Pending", cssClass: "status-pending" };
+  }
+  if (stat === "cancelled" || conf === "cancelled") {
+    return { label: "Cancelled", cssClass: "status-cancelled" };
+  }
+  return { label: "Confirmed", cssClass: "status-confirmed" };
+};
+
+export const buildVoucherHtml = (data, branding, agentBranding = {}) => {
   const showBranding = branding === "with";
-  const resolvedTravelDate = data.travelDate || data.date || null;
+  const resolvedTravelDate = data?.travelDate || data?.date || null;
+  const voucherFooterSrc = String(
+    data?.voucherFooterImage || data?.footerBanner || data?.pdfFooterImage || data?.agentFooterImage || ""
+  ).trim();
   const passengerBreakup = formatTravelerBreakup({
     adults: data.adults,
     children: data.children,
@@ -119,17 +134,22 @@ export const buildVoucherHtml = (data, branding) => {
     passengers: data.passengers,
   });
 
+  const agentLogoUrl = String(agentBranding?.logo || "").trim();
+  const agentCompanyName = String(agentBranding?.name || "").trim();
+  const hasAgentBranding = showBranding && (agentLogoUrl || agentCompanyName);
+
   const serviceRowsHtml = (data.services || [])
-    .map((service) => {
+    .map((service, idx) => {
       const confirmation = service.confirmation || "Pending";
-      const isConfirmed = confirmation && confirmation.toLowerCase() !== "pending";
-      const confClass = isConfirmed ? "conf-cell" : "conf-cell pending";
+      const statusDisplay = getConfirmationStatusDisplay(confirmation, service.status);
+      const confNumber = confirmation && confirmation.toLowerCase() !== "pending" ? confirmation : "-";
 
       return `
         <tr>
-          <td class="type-cell">${formatServiceTypeLabel(service.type)}</td>
-          <td class="name-cell">${service.title || service.name || "Service details missing"}</td>
-          <td class="${confClass}">${confirmation}${service.status ? `(${service.status})` : ""}</td>
+          <td class="svc-type">${formatServiceTypeLabel(service.type)}</td>
+          <td class="svc-name">${service.title || service.name || "Service details missing"}</td>
+          <td class="svc-status"><span class="${statusDisplay.cssClass}">${statusDisplay.label}</span></td>
+          <td class="svc-conf">${confNumber}</td>
         </tr>
       `;
     })
@@ -142,13 +162,14 @@ export const buildVoucherHtml = (data, branding) => {
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Travel Voucher - ${data.voucherNumber || data.query}</title>
-        <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
         <style>
+          * { box-sizing: border-box; }
           body {
             margin: 0;
-            background-color: #eef2f6;
+            background-color: #f0f4f8;
             padding: 40px 20px;
-            font-family: 'Plus Jakarta Sans', Arial, sans-serif;
+            font-family: 'Plus Jakarta Sans', 'Inter', Arial, sans-serif;
             color: #1e293b;
             -webkit-font-smoothing: antialiased;
           }
@@ -156,28 +177,31 @@ export const buildVoucherHtml = (data, branding) => {
             max-width: 800px;
             margin: 0 auto;
             background: #ffffff;
-            border: 1px solid #cfd6de;
+            border: 1px solid #e2e8f0;
             overflow: hidden;
+            border-radius: 2px;
           }
+
+          /* ── HEADER ── */
           .brand-header {
-            background-color: #151d31;
-            height: 102px;
+            background: linear-gradient(135deg, #0f1d32 0%, #1a3352 50%, #264a6e 100%);
+            height: 110px;
             position: relative;
             overflow: hidden;
             display: flex;
             align-items: center;
             justify-content: space-between;
-            padding: 0 34px 0 28px;
-            border-bottom: 3px solid #d95508;
+            padding: 0 36px 0 32px;
+            border-bottom: 3px solid #3d6a8e;
           }
           .brand-header::before {
             content: "";
             position: absolute;
             top: 0;
             left: 0;
-            width: 132px;
+            width: 140px;
             height: 100%;
-            background: #ff7a00;
+            background: linear-gradient(180deg, #264a6e 0%, #3d6a8e 100%);
             transform: skewX(-28deg);
             transform-origin: top left;
             z-index: 1;
@@ -187,26 +211,27 @@ export const buildVoucherHtml = (data, branding) => {
             position: absolute;
             top: 0;
             right: 0;
-            width: 68px;
+            width: 72px;
             height: 100%;
-            background: #ff7a00;
+            background: linear-gradient(180deg, #264a6e 0%, #3d6a8e 100%);
             transform: skewX(-28deg);
             transform-origin: top right;
             z-index: 1;
           }
           .brand-logo-box {
             background: #ffffff;
-            padding: 10px 16px;
+            padding: 12px 18px;
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            border: 2px solid #244a7a;
+            border: 2px solid #5a8aa8;
             z-index: 2;
             position: relative;
-            margin-left: 18px;
+            margin-left: 20px;
+            border-radius: 4px;
           }
           .brand-logo {
-            height: 46px;
+            height: 62px;
             width: auto;
             object-fit: contain;
           }
@@ -220,16 +245,16 @@ export const buildVoucherHtml = (data, branding) => {
           .brand-mark-letters {
             display: inline-flex;
             align-items: flex-end;
-            font-family: 'Outfit', sans-serif;
-            font-size: 32px;
+            font-family: 'Inter', sans-serif;
+            font-size: 36px;
             font-weight: 800;
             letter-spacing: -1px;
           }
           .brand-mark-t {
-            color: #151d31;
+            color: #0f1d32;
           }
           .brand-mark-v {
-            background: linear-gradient(180deg, #3f6ea5 0%, #1f3f67 55%, #101b31 100%);
+            background: linear-gradient(180deg, #5a8aa8 0%, #3d6a8e 55%, #1a3352 100%);
             -webkit-background-clip: text;
             background-clip: text;
             -webkit-text-fill-color: transparent;
@@ -237,49 +262,55 @@ export const buildVoucherHtml = (data, branding) => {
             margin-left: 1px;
           }
           .brand-mark-sub {
-            margin-top: 2px;
+            margin-top: 3px;
             font-family: 'Plus Jakarta Sans', Arial, sans-serif;
             font-size: 7px;
             font-weight: 700;
             letter-spacing: 0.18em;
-            color: #3b567b;
+            color: #7badc8;
             text-transform: uppercase;
           }
           .brand-name {
             color: #ffffff;
-            font-family: 'Outfit', sans-serif;
-            font-size: 30px;
+            font-family: 'Inter', sans-serif;
+            font-size: 32px;
             font-weight: 800;
-            letter-spacing: -0.4px;
+            letter-spacing: -0.5px;
             z-index: 2;
             position: relative;
           }
+
+          /* ── TITLE BAR ── */
           .title-bar {
-           background: linear-gradient(135deg, #020617, #0f172a, #d95508);
+            background: linear-gradient(135deg, #0f1d32 0%, #1a3352 50%, #264a6e 100%);
             color: #ffffff;
             text-align: center;
-            font-size: 18px;
+            font-size: 17px;
             font-weight: 700;
-            padding: 16px 20px;
-            letter-spacing: 3px;
+            padding: 15px 20px;
+            letter-spacing: 4px;
             text-transform: uppercase;
-            font-family: 'Outfit', sans-serif;
-            border-top: 2px solid #2f5b90;
-            border-bottom: 2px solid #101b31;
+            font-family: 'Inter', sans-serif;
+            border-top: 2px solid #5a8aa8;
+            border-bottom: 2px solid #0f1d32;
           }
+
+          /* ── BODY ── */
           .voucher-body {
             padding: 28px 30px 30px;
           }
+
+          /* ── METADATA CARDS ── */
           .metadata-card {
             width: 100%;
             border-collapse: collapse;
-            border: 1px solid #cfd6de;
+            border: 1px solid #e2e8f0;
             margin-bottom: 18px;
           }
           .metadata-card tr td {
-            border-bottom: 1px solid #d6dde7;
-            border-right: 1px solid #d6dde7;
-            padding: 12px 14px;
+            border-bottom: 1px solid #e2e8f0;
+            border-right: 1px solid #e2e8f0;
+            padding: 11px 14px;
             font-size: 13px;
             vertical-align: middle;
           }
@@ -290,101 +321,160 @@ export const buildVoucherHtml = (data, branding) => {
             border-right: none;
           }
           .metadata-card td.label-cell {
-            background-color: #f2f4f7;
+            background-color: #f1f5f9;
             font-weight: 700;
-            color: #1f2937;
+            color: #334155;
             width: 32%;
-            font-family: 'Outfit', sans-serif;
+            font-family: 'Inter', sans-serif;
+            font-size: 12px;
+            letter-spacing: 0.2px;
           }
           .metadata-card td.value-cell {
             background-color: #ffffff;
             color: #0f172a;
             font-weight: 600;
           }
+
+          /* ── SECTION HEADING ── */
           .section-heading {
             margin: 24px 0 12px;
-            font-size: 14px;
+            font-size: 13px;
             font-weight: 700;
             text-transform: uppercase;
-            letter-spacing: 1.8px;
+            letter-spacing: 2px;
             color: #ffffff;
-            background: linear-gradient(135deg, #020617, #0f172a, #d95508);
-            padding: 10px 14px;
-            font-family: 'Outfit', sans-serif;
-            border-top: 2px solid #2f5b90;
-            border-bottom: 2px solid #101b31;
+            background: linear-gradient(135deg, #0f1d32 0%, #1a3352 50%, #264a6e 100%);
+            padding: 11px 16px;
+            font-family: 'Inter', sans-serif;
+            border-top: 2px solid #5a8aa8;
+            border-bottom: 2px solid #0f1d32;
           }
-          .services-table-card {
+
+          /* ── SERVICES TABLE ── */
+          .services-table {
             width: 100%;
             border-collapse: collapse;
-            border: 1px solid #cfd6de;
+            border: 1px solid #d5e3ee;
+            font-size: 13px;
           }
-          .services-table-card th {
-            background-color: #f2f4f7;
-            border-bottom: 1px solid #d6dde7;
-            border-right: 1px solid #d6dde7;
+          .services-table thead th {
+            background: linear-gradient(180deg, #edf3f8 0%, #e2ecf3 100%);
+            border-bottom: 2px solid #a3bdd0;
+            border-right: 1px solid #d5e3ee;
             padding: 12px 14px;
             font-size: 11px;
             font-weight: 700;
             text-transform: uppercase;
-            color: #1f2937;
+            color: #1a3352;
             text-align: left;
             letter-spacing: 0.8px;
-            font-family: 'Outfit', sans-serif;
+            font-family: 'Inter', sans-serif;
           }
-          .services-table-card th:last-child {
+          .services-table thead th:last-child {
             border-right: none;
           }
-          .services-table-card td {
-            border-bottom: 1px solid #d6dde7;
-            border-right: 1px solid #d6dde7;
+          .services-table tbody td {
+            border-bottom: 1px solid #d5e3ee;
+            border-right: 1px solid #d5e3ee;
             padding: 12px 14px;
-            font-size: 13px;
-            color: #334155;
+            color: #1a3352;
             background-color: #ffffff;
+            vertical-align: middle;
           }
-          .services-table-card tr:last-child td {
+          .services-table tbody tr:last-child td {
             border-bottom: none;
           }
-          .services-table-card td:last-child {
+          .services-table tbody td:last-child {
             border-right: none;
           }
-          .services-table-card tr:nth-child(even) td {
-            background-color: #fbfcfd;
+          .services-table tbody tr:nth-child(even) td {
+            background-color: #f4f8fc;
           }
-          .services-table-card td.type-cell {
+          .services-table tbody tr:hover td {
+            background-color: #eaf1f8;
+          }
+          .svc-type {
             font-weight: 700;
             text-transform: uppercase;
             font-size: 11px;
             letter-spacing: 0.5px;
-            color: #4b5563;
-            width: 22%;
+            color: #1a3352;
+            width: 16%;
           }
-          .services-table-card td.name-cell {
+          .svc-name {
             font-weight: 600;
-            color: #0f172a;
+            color: #0f1d32;
+            width: 40%;
           }
-          .services-table-card td.conf-cell {
+          .svc-status {
+            width: 18%;
+            text-align: center;
+          }
+          .svc-conf {
+            font-weight: 600;
+            color: #334155;
+            width: 26%;
+            font-family: 'Inter', monospace;
+            font-size: 12px;
+          }
+          .status-confirmed {
+            display: inline-block;
+            background: #f0f9f4;
+            color: #166534;
+            font-size: 11px;
             font-weight: 700;
-            color: #15803d;
-            text-align: right;
-            white-space: nowrap;
-            vertical-align: middle;
+            padding: 3px 10px;
+            border-radius: 20px;
+            border: 1px solid #b4dfc8;
+            letter-spacing: 0.3px;
           }
-          .services-table-card td.conf-cell.pending {
-            color: #d97706;
+          .status-pending {
+            display: inline-block;
+            background: #fef9f0;
+            color: #92400e;
+            font-size: 11px;
+            font-weight: 700;
+            padding: 3px 10px;
+            border-radius: 20px;
+            border: 1px solid #f5dea0;
+            letter-spacing: 0.3px;
           }
+          .status-cancelled {
+            display: inline-block;
+            background: #fef4f4;
+            color: #991b1b;
+            font-size: 11px;
+            font-weight: 700;
+            padding: 3px 10px;
+            border-radius: 20px;
+            border: 1px solid #f5c6c6;
+            letter-spacing: 0.3px;
+          }
+
+          /* ── EMPTY STATE ── */
+          .empty-row td {
+            text-align: center;
+            color: #94a3b8;
+            padding: 22px 14px;
+            font-style: italic;
+            font-size: 13px;
+          }
+
+          /* ── GENERATED NOTE ── */
           .generated-note {
             text-align: center;
             font-size: 11px;
-            color: #64748b;
+            color: #94a3b8;
             margin: 24px 0 0;
             font-weight: 500;
+            letter-spacing: 0.2px;
           }
+
+          /* ── FOOTER ── */
           .brand-footer {
-          background: linear-gradient(135deg, #020617, #0f172a, #d95508);
-            padding: 16px 24px;
-            border-top: 4px solid #d95508;
+            background: linear-gradient(135deg, #0f1d32 0%, #1a3352 50%, #264a6e 100%);
+            padding: 18px 28px;
+            border-top: 3px solid #3d6a8e;
             color: #ffffff;
             font-size: 12px;
             text-align: center;
@@ -406,17 +496,27 @@ export const buildVoucherHtml = (data, branding) => {
       </head>
       <body>
         <div class="voucher-container">
+          <!-- HEADER -->
           <div class="brand-header">
             <div class="brand-logo-box">
-              ${showBranding
-      ? `<img src="${VOUCHER_LOGO_URL}" alt="Holiday Circuit Logo" class="brand-logo">`
-      : `<div class="brand-mark"><div class="brand-mark-letters"><span class="brand-mark-t">T</span><span class="brand-mark-v">V</span></div><div class="brand-mark-sub">Travel Voucher</div></div>`
+              ${hasAgentBranding && agentLogoUrl
+      ? `<img src="${agentLogoUrl}" alt="${agentCompanyName || 'Agent'} Logo" class="brand-logo">`
+      : hasAgentBranding
+        ? `<div class="brand-mark"><div class="brand-mark-letters"><span class="brand-mark-t">${(agentCompanyName || 'A').charAt(0).toUpperCase()}</span></div><div class="brand-mark-sub">Travel Voucher</div></div>`
+        : showBranding
+          ? `<img src="${DEFAULT_FALLBACK_LOGO}" alt="Holiday Circuit Logo" class="brand-logo">`
+          : `<div class="brand-mark"><div class="brand-mark-letters"><span class="brand-mark-t">T</span><span class="brand-mark-v">V</span></div><div class="brand-mark-sub">Travel Voucher</div></div>`
     }
             </div>
-            <div class="brand-name">${showBranding ? "Holiday Circuit" : "Travel Voucher"}</div>
+            <div class="brand-name">${hasAgentBranding ? (agentCompanyName || "Travel Voucher") : showBranding ? "Holiday Circuit" : "Travel Voucher"}</div>
           </div>
+
+          <!-- TITLE BAR -->
           <div class="title-bar">Travel Voucher</div>
+
+          <!-- BODY -->
           <div class="voucher-body">
+            <!-- VOUCHER INFO -->
             <table class="metadata-card">
               <tr>
                 <td class="label-cell">Voucher Number</td>
@@ -436,6 +536,7 @@ export const buildVoucherHtml = (data, branding) => {
               </tr>
             </table>
 
+            <!-- GUEST INFO -->
             <table class="metadata-card">
               <tr>
                 <td class="label-cell">Guest Details</td>
@@ -451,33 +552,43 @@ export const buildVoucherHtml = (data, branding) => {
               </tr>
             </table>
 
+            <!-- SERVICE DETAILS -->
             <div class="section-heading">Service Details</div>
-            <table class="services-table-card">
+            <table class="services-table">
               <thead>
                 <tr>
-                  <th width="22%">Type</th>
-                  <th width="53%">Service Description</th>
-                  <th width="25%" style="text-align:right;">DMC Confirmation</th>
+                  <th width="16%">Type</th>
+                  <th width="40%">Service Description</th>
+                  <th width="18%" style="text-align:center;">Status</th>
+                  <th width="26%">Confirmation No.</th>
                 </tr>
               </thead>
               <tbody>
-                ${serviceRowsHtml || '<tr><td colspan="3" style="text-align:center;color:#64748b;padding:18px;">No services available</td></tr>'}
+                ${serviceRowsHtml || '<tr class="empty-row"><td colspan="4">No services available</td></tr>'}
               </tbody>
             </table>
 
+            <!-- GENERATED NOTE -->
             <div class="generated-note">
               This is a computer generated document. No signature/stamp required.
             </div>
           </div>
 
-          <div class="brand-footer">
-            <div class="footer-info">
-              <div class="footer-item">Phone: +91 8851346665, +91 9971706003 | Email: ops@holidaycircuit.com | Web: www.holidaycircuit.com</div>
+          <!-- FOOTER -->
+          ${voucherFooterSrc ? `
+            <div style="width:100%; margin-top:16px; text-align:center;">
+              <img src="${voucherFooterSrc}" alt="Footer Banner" style="width:100%; max-width:100%; height:auto; display:block;" />
             </div>
-            <div class="footer-address">
-              2nd Floor, 632 Block B1, Janakpuri, New Delhi - 110058
+          ` : `
+            <div class="brand-footer">
+              <div class="footer-info">
+                <div class="footer-item">Phone: ${data.agencyPhone || '+91 8851346665'} | Email: ${data.agencyEmail || 'ops@holidaycircuit.com'}</div>
+              </div>
+              <div class="footer-address">
+                ${data.agencyAddress || '2nd Floor, 632 Block B1, Janakpuri, New Delhi - 110058'}
+              </div>
             </div>
-          </div>
+          `}
         </div>
       </body>
     </html>

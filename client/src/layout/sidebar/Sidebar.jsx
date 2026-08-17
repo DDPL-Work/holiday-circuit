@@ -1,6 +1,6 @@
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import {LayoutGrid,FileQuestionMark,CircleCheckBig,FileText,Wallet,Users,FilePlus2,ClipboardList,Settings,LogOut,ChevronLeft,Box,X,
-  TicketPercent,
+  TicketPercent, ChevronDown, ChevronUp
 } from "lucide-react";
 import { MdOutlineDashboardCustomize } from "react-icons/md";
 import { GrUserManager } from "react-icons/gr";
@@ -15,61 +15,8 @@ import { useDispatch } from "react-redux";
 import { logout } from "../../redux/slices/authSlice";
 import { AnimatePresence, motion } from "framer-motion";
 import ProfileSettingsModal from "../../modal/ProfileSettingsModal";
-
-const menuConfig = {
-  agent: [
-    { label: "Dashboard", path: "/agent/dashboard", icon: LayoutGrid },
-    { label: "Queries", path: "/agent/queries", icon: FileQuestionMark },
-    { label: "Active Bookings", path: "/agent/bookings", icon: FilePlus2 },
-    { label: "Document Portal", path: "/agent/documents", icon: CircleCheckBig },
-    { label: "Finances", path: "/agent/finance", icon: Wallet },
-    { label: "Asset Library", path: "/agent/assets", icon: FileText },
-  ],
-  admin: [
-    { label: "Dashboard", path: "/admin/dashboard", icon: LayoutGrid },
-    { label: "Super Admin", path: "/admin/superAdminDashboard", hash: "#overview", icon: MdOutlineDashboardCustomize },
-    { label: "Discount", path: "/admin/discount", icon: TicketPercent },
-    { label: "Finance Dashboard", path: "/finance/dashboard", icon: Wallet },
-    { label: "Advanced Analytics", path: "/finance/advancedAnalytics", icon: ClipboardList },
-    { label: "Users Management", path: "/admin/user-management", hash: "#users-management", icon: Users },
-    { label: "Contracted Rates", path: "/dmc/contractedRates", icon: Box },
-    { label: "Booking Management", path: "/ops/bookings-management", icon: ClipboardList },
-    { label: "Order Acceptance", path: "/ops/order-acceptance", icon: CircleCheckBig },
-    { label: "Voucher Management", path: "/ops/voucher-management", icon: FileText },
-    { label: "Fulfillment", path: "/dmc/confirmation", icon: CircleCheckBig },
-    { label: "Payment Verification", path: "/finance/paymentVerification", icon: CircleCheckBig },
-    { label: "Internal Invoice", path: "/finance/internalInvoice", icon: FilePlus2 },
-  ],
-  operations: [
-    { label: "OPS Dashboard", path: "/ops/dashboard", icon: LayoutGrid },
-    { label: "Booking Management", path: "/ops/bookings-management", icon: ClipboardList },
-    { label: "Order Acceptance", path: "/ops/order-acceptance", icon: CircleCheckBig },
-    { label: "Voucher Management", path: "/ops/voucher-management", icon: FileText },
-  ],
-  dmc_partner: [
-    { label: "DMC Dashboard", path: "/dmc/dashboard", icon: LayoutGrid },
-    { label: "Contracted Rates", path: "/dmc/contractedRates", icon: Box },
-    { label: "Fulfillment", path: "/dmc/confirmation", icon: CircleCheckBig },
-  ],
-  finance_partner: [
-    { label: "Finance Dashboard", path: "/finance/dashboard", icon: LayoutGrid },
-    { label: "Advanced Analytics", path: "/finance/advancedAnalytics", icon: VscGraph },
-    { label: "Payment Verification", path: "/finance/paymentVerification", icon: MdOutlineVerifiedUser },
-    { label: "Internal Invoice", path: "/finance/internalInvoice", icon: FaFileInvoice },
-  ],
-  operation_manager: [
-    { label: "OPS Manager", path: "/operationManager/operationManagerDashboard", icon: GrUserManager },
-    { label: "All Team Queries", path: "/operationManager/allTeamQueries", icon: RiTeamFill },
-    { label: "My Team", path: "/operationManager/myTeam", icon: BsMicrosoftTeams },
-  ],
-  finance_manager: [
-    { label: "Finance Manager", path: "/financeManager/financeManagerDashboard", icon: GrUserManager },
-    { label: "Advanced Analytics", path: "/financeManager/advancedAnalytics", icon: VscGraph },
-    { label: "All Transactions", path: "/financeManager/allTeamTransaction", icon: RiTeamFill },
-    { label: "Internal DMC Invoice", path: "/financeManager/internalDmcInvoice", icon: FaFileInvoice },
-    { label: "My Finance Team", path: "/financeManager/myFinanceTeam", icon: BsMicrosoftTeams },
-  ],
-};
+import API from "../../utils/Api";
+import menuConfig from "../navConfig";
 
 const getAgentWorkspaceBranding = (user = {}) => ({
   name: user?.brandingName || user?.companyName || user?.name || "Holiday Circuit",
@@ -82,11 +29,59 @@ const Sidebar = ({ user, mobileOpen = false, onMobileClose = () => {} }) => {
   const [isMobileViewport, setIsMobileViewport] = useState(false);
   const [navNeedsScroll, setNavNeedsScroll] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [openSubmenus, setOpenSubmenus] = useState({ Queries: true });
+  const [queryCounts, setQueryCounts] = useState({});
   const navRef = useRef(null);
   const menus = menuConfig[user.role] || [];
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const location = useLocation();
+
+  useEffect(() => {
+    if (location.pathname.startsWith("/agent/queries")) {
+      setOpenSubmenus((prev) => ({ ...prev, Queries: true }));
+    }
+  }, [location.pathname]);
+
+  useEffect(() => {
+    if (user?.role === "agent") {
+      API.get("/agent/getAllQueries")
+        .then((res) => {
+          const queriesList = res.data?.queries || [];
+          const counts = {
+            All: queriesList.length,
+            Pending: queriesList.filter((q) => q.agentStatus === "Pending").length,
+            "In Progress": queriesList.filter((q) => q.agentStatus === "In Progress").length,
+            "Quote Sent": queriesList.filter((q) => q.agentStatus === "Quote Sent").length,
+            "Revision Requested": queriesList.filter((q) => q.agentStatus === "Revision Requested").length,
+            "Client Approved": queriesList.filter((q) => q.agentStatus === "Client Approved").length,
+            Confirmed: queriesList.filter((q) => q.agentStatus === "Confirmed").length,
+            Rejected: queriesList.filter((q) => q.agentStatus === "Rejected").length,
+          };
+          setQueryCounts(counts);
+        })
+        .catch((err) => {
+          console.error("Failed to fetch query counts for sidebar", err);
+        });
+    }
+  }, [user?.role, location.pathname, location.search]);
+
+  const getSubBadgeStyle = (color) => {
+    switch (color) {
+      case "orange":
+        return "bg-orange-500/20 text-orange-400 border border-orange-500/30";
+      case "sky":
+        return "bg-sky-500/20 text-sky-400 border border-sky-500/30";
+      case "emerald":
+        return "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30";
+      case "rose":
+        return "bg-rose-500/20 text-rose-400 border border-rose-500/30";
+      case "indigo":
+        return "bg-indigo-500/20 text-indigo-300 border border-indigo-500/30";
+      default:
+        return "bg-slate-800/80 text-slate-400 border border-slate-700/50";
+    }
+  };
 
   const roleConfig = {
     agent: {
@@ -223,7 +218,7 @@ const Sidebar = ({ user, mobileOpen = false, onMobileClose = () => {} }) => {
   const getLinkClass = (isActive) =>
     `group relative flex items-center rounded-xl text-sm transition-all duration-200 ${
       isActive
-        ? "bg-blue-600 text-white shadow-[0_12px_24px_rgba(37,99,235,0.28)]"
+        ? "bg-[#3E63DD] text-white shadow-[0_12px_24px_rgba(62,99,221,0.3)]"
         : "text-slate-300 hover:bg-white/[0.06] hover:text-white"
     }`;
 
@@ -324,6 +319,123 @@ const Sidebar = ({ user, mobileOpen = false, onMobileClose = () => {} }) => {
           {menus.map((item) => {
             const Icon = item.icon;
             const isActive = isItemActive(item);
+
+            if (item.hasSubmenu && item.subItems) {
+              const isSubmenuOpen = !!openSubmenus[item.label];
+              const searchParams = new URLSearchParams(location.search);
+              const currentStatus = searchParams.get("status") || "All";
+
+              return (
+                <div key={item.label} className="space-y-0.5">
+                  <NavLink
+                    to={getItemTarget(item)}
+                    title={effectiveCollapsed ? item.label : undefined}
+                    className={`${getLinkClass(isActive)} w-full ${
+                      effectiveCollapsed
+                        ? "justify-center px-0 py-2.5"
+                        : "gap-2.5 px-2 py-2"
+                    }`}
+                    onClick={() => {
+                      setOpenSubmenus((prev) => ({ ...prev, [item.label]: !prev[item.label] }));
+                      if (isMobileViewport) onMobileClose();
+                    }}
+                  >
+                    <span className={`${getIconWrapClass(isActive)} shrink-0 self-center`}>
+                      <Icon size={15} className="shrink-0" />
+                    </span>
+
+                    {!effectiveCollapsed && (
+                      <>
+                        <motion.span
+                          initial={false}
+                          variants={labelVariants}
+                          animate={effectiveCollapsed ? "collapsed" : "expanded"}
+                          className="min-w-0 flex-1 self-center truncate text-[12.5px] leading-5 overflow-hidden font-medium"
+                        >
+                          {item.label}
+                        </motion.span>
+
+                        <span className="shrink-0 self-center pr-1 text-white/80 hover:text-white transition-opacity">
+                          {isSubmenuOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                        </span>
+                      </>
+                    )}
+                  </NavLink>
+
+                  {/* Tree Submenu items */}
+                  <AnimatePresence initial={false}>
+                    {!effectiveCollapsed && isSubmenuOpen && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        exit={{ opacity: 0, height: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="overflow-hidden space-y-0.5 pt-0.5 pb-1"
+                      >
+                        {item.subItems.map((subItem, idx) => {
+                          const isSubActive =
+                            location.pathname.startsWith(subItem.path.split("?")[0]) &&
+                            currentStatus === subItem.statusKey;
+                          const count = queryCounts[subItem.statusKey] ?? 0;
+                          const isLast = idx === item.subItems.length - 1;
+
+                          return (
+                            <div key={subItem.label} className="relative pl-6 py-0.5">
+                              {/* Vertical tree trunk line */}
+                              <div
+                                className={`absolute left-3 top-0 ${
+                                  isLast ? "h-3.5" : "h-full"
+                                } w-[1.5px] bg-slate-700/60`}
+                              />
+                              {/* Curved tree branch line */}
+                              <svg
+                                className="absolute left-3 top-0.5 h-6 w-3.5 text-slate-700/80 pointer-events-none"
+                                fill="none"
+                                viewBox="0 0 14 24"
+                              >
+                                <path
+                                  d="M 1 0 V 10 Q 1 15 8 15 H 12"
+                                  stroke="currentColor"
+                                  strokeWidth="1.5"
+                                  fill="none"
+                                />
+                              </svg>
+
+                              <NavLink
+                                to={subItem.path}
+                                onClick={() => {
+                                  if (isMobileViewport) onMobileClose();
+                                  window.dispatchEvent(new CustomEvent("closeQueryDetails"));
+                                }}
+                                className={`relative flex items-center justify-between rounded-xl px-2.5 py-1.5 text-[12px] transition-all duration-200 ${
+                                  isSubActive
+                                    ? "bg-sky-500/20 text-sky-100 border border-sky-400/30 font-semibold shadow-xs"
+                                    : "text-slate-400 hover:bg-white/[0.08] hover:text-white font-medium"
+                                }`}
+                              >
+                                <span className="truncate">{subItem.label}</span>
+                                {count > 0 && (
+                                  <span
+                                    className={`ml-2 shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-bold ${
+                                      isSubActive
+                                        ? "bg-sky-400/25 text-sky-100 border border-sky-300/30"
+                                        : getSubBadgeStyle(subItem.badgeColor)
+                                    }`}
+                                  >
+                                    {count}
+                                  </span>
+                                )}
+                              </NavLink>
+                            </div>
+                          );
+                        })}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              );
+            }
+
             return (
               <NavLink
                 key={`${item.path}${item.hash || item.label}`}
@@ -356,6 +468,10 @@ const Sidebar = ({ user, mobileOpen = false, onMobileClose = () => {} }) => {
             );
           })}
         </nav>
+
+
+
+
 
         {/* PROFILE SECTION */}
         <motion.div
@@ -447,6 +563,10 @@ const Sidebar = ({ user, mobileOpen = false, onMobileClose = () => {} }) => {
           </motion.button>
         </motion.div>
       </motion.aside>
+
+
+
+      
 
       {/* Custom Premium Log Out Confirmation Modal */}
       <AnimatePresence>

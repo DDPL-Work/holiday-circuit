@@ -1,5 +1,6 @@
-import { Search, Plus } from "lucide-react";
-import { useState, useEffect } from "react";
+import { Search, Plus, X } from "lucide-react";
+import { useState, useEffect, useMemo } from "react";
+import { useSearchParams, useLocation, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { AnimatePresence } from "framer-motion";
 import CreateNewQueries from "../../modal/CreateNewQueries.Modal";
@@ -25,7 +26,19 @@ const itemVariant = {
   },
 };
 
+const statusTabs = [
+  { label: "New Query", statusKey: "Pending", param: "Pending" },
+  { label: "Quote Received", statusKey: "Quote Sent", param: "Quote Sent" },
+  { label: "Booking Processed", statusKey: "Client Approved", param: "Client Approved" },
+  { label: "Booking Confirmed", statusKey: "Confirmed", param: "Confirmed" },
+  { label: "All Queries", statusKey: "All", param: "All" },
+];
+
 const Queries = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const statusFilter = searchParams.get("status") || "Pending";
   const [openModal, setOpenModal] = useState(false);
   const [openEditModal, setOpenEditModal] = useState(false);
   const [openQueryDetails, setOpenQueryDetails] = useState(false);
@@ -33,7 +46,52 @@ const Queries = () => {
   const [queries, setQueries] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
+  const [dueTasks, setDueTasks] = useState([]);
+  const [showDueTasksPopup, setShowDueTasksPopup] = useState(false);
   const itemsPerPage = 8;
+
+  // Close query details view when location changes or custom sidebar click event is fired
+  useEffect(() => {
+    const handleCloseDetails = () => {
+      setOpenQueryDetails(false);
+      setSelectedQuery(null);
+    };
+
+    window.addEventListener("closeQueryDetails", handleCloseDetails);
+    return () => {
+      window.removeEventListener("closeQueryDetails", handleCloseDetails);
+    };
+  }, []);
+
+  useEffect(() => {
+    setOpenQueryDetails(false);
+    setSelectedQuery(null);
+  }, [location.pathname, location.search, location.key]);
+
+  // Auto-open Create New Query modal when navigated from Quick Actions (?create=true)
+  useEffect(() => {
+    if (searchParams.get("create") === "true" || searchParams.get("openModal") === "true") {
+      setOpenModal(true);
+    }
+  }, [searchParams]);
+
+  // Auto-open specific query details when id param or location.state is present
+  useEffect(() => {
+    const queryIdParam = searchParams.get("id") || location.state?.openQueryId || location.state?.queryId;
+    if (queryIdParam && queries.length > 0 && !openQueryDetails) {
+      const match = queries.find(
+        (q) =>
+          q._id === queryIdParam ||
+          q.queryId === queryIdParam ||
+          q.queryId?.replace(/^#\s*/, "") === String(queryIdParam).replace(/^#\s*/, "") ||
+          q.invoice?._id === queryIdParam
+      );
+      if (match) {
+        setSelectedQuery(match);
+        setOpenQueryDetails(true);
+      }
+    }
+  }, [searchParams, location.state, queries, openQueryDetails]);
 
   // ================= API =================
 
@@ -60,60 +118,102 @@ const Queries = () => {
     fetchQueries();
   }, []);
 
+  useEffect(() => {
+    const loadDueTasks = async () => {
+      try {
+        const { data } = await API.get("/agent/query-tasks/due-today");
+        const tasks = Array.isArray(data?.tasks) ? data.tasks : [];
+        setDueTasks(tasks);
+        setShowDueTasksPopup(tasks.length > 0);
+      } catch (error) {
+        console.error("Unable to load due tasks", error);
+      }
+    };
+
+    loadDueTasks();
+  }, []);
+
+  const dismissDueTasksPopup = async () => {
+    const taskIds = dueTasks.map((task) => task.id).filter(Boolean);
+    setShowDueTasksPopup(false);
+
+    try {
+      await API.patch("/agent/query-tasks/due-today/dismiss", { taskIds });
+    } catch (error) {
+      console.error("Unable to dismiss due tasks", error);
+    }
+  };
+
+  const queryCounts = useMemo(() => ({
+    All: queries.length,
+    Pending: queries.filter((q) => q.agentStatus === "Pending" || q.agentStatus === "In Progress").length,
+    "Quote Sent": queries.filter((q) => q.agentStatus === "Quote Sent").length,
+    "Client Approved": queries.filter((q) => q.agentStatus === "Client Approved").length,
+    Confirmed: queries.filter((q) => q.agentStatus === "Confirmed").length,
+  }), [queries]);
+
+  const handleStatusTabClick = (tab) => {
+    if (tab.param && tab.param !== "Pending") {
+      setSearchParams({ status: tab.param }, { replace: true });
+    } else {
+      setSearchParams({}, { replace: true });
+    }
+  };
+
   // ================= Helpers =================
   const getStatusBadge = (status) => {
-    if (status === "Quote Sent") {
+    if (status === "Quote Sent" || status === "Quote Received") {
       return {
-        className: "bg-green-200 text-green-700",
+        className: "bg-emerald-50 text-emerald-700 border border-emerald-200",
         label: "Quote Received",
       };
     }
 
     if (status === "Pending") {
       return {
-        className: "bg-yellow-100 text-yellow-700",
-        label: "Pending",
+        className: "bg-amber-50 text-amber-700 border border-amber-200",
+        label: "New Query",
+      };
+    }
+
+    if (status === "In Progress") {
+      return {
+        className: "bg-sky-50 text-sky-700 border border-sky-200",
+        label: "In Progress",
       };
     }
 
     if (status === "Revision Requested") {
       return {
-        className: "bg-red-400 text-white border",
+        className: "bg-orange-50 text-orange-700 border border-orange-200",
         label: "Revision Requested",
       };
     }
 
     if (status === "Rejected") {
       return {
-        className: "bg-rose-100 text-rose-700 border border-rose-200",
+        className: "bg-rose-50 text-rose-700 border border-rose-200",
         label: "Rejected",
-      };
-    }
-
-    if (status === "In Progress") {
-      return {
-        className: "bg-sky-300 text-white",
-        label: "In Progress",
       };
     }
 
     if (status === "Client Approved") {
       return {
-        className: "bg-indigo-100 text-indigo-700",
+        className: "bg-indigo-50 text-indigo-700 border border-indigo-200",
         label: "Booking Processed",
       };
     }
 
     if (status === "Confirmed") {
       return {
-        className: "bg-green-100 text-green-700",
+        className: "bg-emerald-50 text-emerald-700 border border-emerald-200 font-semibold",
         label: "Booking Confirmed",
       };
     }
 
     return {
-      className: "bg-gray-100 text-gray-700",
-      label: status || "Pending",
+      className: "bg-slate-50 text-slate-700 border border-slate-200",
+      label: status || "New Query",
     };
   };
 
@@ -127,17 +227,26 @@ const Queries = () => {
 
   const filteredQueries = queries.filter((query) => {
     const search = searchTerm.toLowerCase();
-    return (
+    const matchesSearch =
       query.queryId?.toLowerCase().includes(search) ||
       query.destination?.toLowerCase().includes(search) ||
-      query.agentStatus?.toLowerCase().includes(search)
-    );
+      query.agentStatus?.toLowerCase().includes(search);
+
+    if (!matchesSearch) return false;
+
+    if (!statusFilter || statusFilter === "All") return true;
+
+    if (statusFilter === "Pending" || statusFilter === "In Progress") {
+      return query.agentStatus === "Pending" || query.agentStatus === "In Progress";
+    }
+
+    return query.agentStatus === statusFilter;
   });
 
-  // Reset to first page when search changes
+  // Reset to first page when search or status filter changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm]);
+  }, [searchTerm, statusFilter]);
 
   // Pagination logic
   const totalPages = Math.ceil(filteredQueries.length / itemsPerPage);
@@ -164,39 +273,71 @@ const Queries = () => {
     >
       <>
         {/* Header */}
-        <motion.header
-          variants={itemVariant}
-          className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
-        >
-          <div>
-            <h1 className="text-2xl font-bold">Queries</h1>
-            <p className="text-sm text-gray-500">
-              Manage your travel requirements and quotes.
-            </p>
+        <motion.header variants={itemVariant}>
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h1 className="text-2xl font-bold">Queries</h1>
+              <p className="text-sm text-gray-500">
+                Manage your travel requirements and quotes.
+              </p>
+            </div>
+
+            {/* Search + Create Query */}
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <div className="relative w-full sm:w-72 lg:w-80">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
+                <input
+                  type="text"
+                  placeholder="Search queries..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full pl-9 pr-4 py-1.5 border rounded-lg text-sm border-gray-300 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition bg-white shadow-xs"
+                />
+              </div>
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => setOpenModal(true)}
+                className="flex w-full sm:w-auto items-center justify-center gap-2 rounded-lg bg-[#3E63DD] hover:bg-[#3252c4] px-3.5 py-1.5 text-xs font-semibold text-white shadow-sm transition-all duration-200 cursor-pointer shrink-0"
+              >
+                <Plus size={14} />
+                Create Query
+              </motion.button>
+            </div>
           </div>
 
-          <motion.button
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            onClick={() => setOpenModal(true)}
-            className="flex w-full items-center justify-center gap-2 rounded-full bg-gradient-to-r from-slate-950 via-slate-900 to-blue-900 hover:from-black hover:to-blue-800 px-3.5 py-1.5 text-xs font-semibold text-white shadow-sm transition-all duration-200 cursor-pointer sm:w-auto"
-          >
-            <Plus size={14} />
-            Create Query
-          </motion.button>
+          {/* Status Filter Tabs */}
+          <div className="mt-4 flex flex-wrap gap-2">
+            {statusTabs.map((tab) => {
+              const isActive = statusFilter === tab.statusKey;
+              const count = queryCounts[tab.statusKey] ?? 0;
+              return (
+                <button
+                  key={tab.label}
+                  onClick={() => handleStatusTabClick(tab)}
+                  className={`inline-flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-medium transition-all duration-200 cursor-pointer ${
+                    isActive
+                      ? "bg-[#3E63DD] text-white shadow-[0_2px_8px_rgba(62,99,221,0.3)]"
+                      : "bg-white text-gray-700 border border-gray-200 hover:bg-gray-50 hover:border-gray-300"
+                  }`}
+                >
+                  {tab.label}
+                  {count > 0 && (
+                    <span
+                      className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold leading-none ${
+                        isActive
+                          ? "bg-white/20 text-white"
+                          : "bg-gray-100 text-gray-500"
+                      }`}
+                    >
+                      {count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
         </motion.header>
-
-        {/* Search */}
-        <motion.div variants={itemVariant} className="relative w-full max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
-          <input
-            type="text"
-            placeholder="Search queries..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-9 pr-4 py-1.5 border rounded-2xl text-sm border-gray-300 focus:outline-none"
-          />
-        </motion.div>
 
         {/* Table */}
         <motion.div
@@ -258,13 +399,13 @@ const Queries = () => {
                       </td>
                       <td className="px-5 py-4 align-middle">
                         <span
-                          className={`inline-flex w-[140px] items-center justify-center whitespace-nowrap rounded-full px-2.5 py-2 text-[11px] font-medium leading-none ${getStatusBadge(query.agentStatus).className}`}
+                          className={`inline-flex w-[140px] items-center justify-center whitespace-nowrap rounded-md px-2.5 py-1.5 text-[11px] font-medium leading-none ${getStatusBadge(query.agentStatus).className}`}
                         >
                           {getStatusBadge(query.agentStatus).label}
                         </span>
                       </td>
                       <td className="px-5 py-4 align-middle text-right font-medium whitespace-nowrap">
-                        {query.customerBudget || "-"}
+                        {query.customerBudget ? query.customerBudget : "N/A"}
                       </td>
 
                       {/* FIX: View & Edit buttons — padding balanced, no overflow */}
@@ -468,11 +609,62 @@ const Queries = () => {
       </>
 
       <AnimatePresence>
+        {showDueTasksPopup && dueTasks.length > 0 && (
+          <motion.div
+            className="fixed inset-0 z-[100] flex items-start justify-center bg-slate-950/20 px-4 pt-20 sm:items-center sm:pt-4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <motion.div
+              className="relative w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl"
+              initial={{ opacity: 0, y: -16, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -16, scale: 0.98 }}
+              transition={{ duration: 0.2 }}
+              role="dialog"
+              aria-modal="true"
+              aria-label="Today's tasks"
+            >
+              <button
+                type="button"
+                onClick={dismissDueTasksPopup}
+                className="absolute right-3 top-3 rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 cursor-pointer"
+                aria-label="Close today's tasks"
+              >
+                <X size={18} />
+              </button>
+
+              <h2 className="pr-8 text-lg font-bold text-slate-900">Today's Tasks</h2>
+              <p className="mt-1 text-sm text-slate-500">
+                These tasks are due today.
+              </p>
+
+              <div className="mt-4 max-h-72 space-y-2 overflow-y-auto pr-1">
+                {dueTasks.map((task) => (
+                  <div key={task.id} className="rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3">
+                    <p className="text-sm font-semibold text-slate-800 whitespace-pre-line">{task.text}</p>
+                    <p className="mt-1 text-xs font-medium text-[#3E63DD]">
+                      Query ID: {task.queryId || "—"}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+
         {openModal && (
           <CreateNewQueries
             onCreated={handleQueryCreated}
             onClose={() => {
               setOpenModal(false);
+              if (searchParams.get("create") === "true" || searchParams.get("openModal") === "true") {
+                const newParams = new URLSearchParams(searchParams);
+                newParams.delete("create");
+                newParams.delete("openModal");
+                setSearchParams(newParams, { replace: true });
+              }
             }}
           />
         )}

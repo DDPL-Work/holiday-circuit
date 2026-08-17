@@ -2,11 +2,11 @@ import bcrypt from "bcrypt";
 import Auth from "../models/auth.model.js";
 import ApiError from "../utils/ApiError.js";
 import Notification from "../models/notification.model.js";
+import OpsActivityLog from "../models/opsActivityLog.model.js";
 import TravelQuery from "../models/TravelQuery.model.js";
 import Quotation from "../models/quotation.model.js";
 import { createNotification } from "../services/notificationDispatchService.js";
 import { ensureDestinationName } from "../services/destinationNameService.js";
-
 import { sendTeamMemberCredentialsMail } from "../services/sendEmail.js";
 
 const TERMINAL_OPS_STATUSES = new Set(["Rejected", "Vouchered", "Payment_Completed"]);
@@ -913,6 +913,8 @@ const buildQueryRows = (queries = []) =>
       client: query?.agent?.companyName || query?.agent?.name || "Travel Partner",
       clientEmail: query?.clientEmail || "",
       destination: query?.destination || "",
+      destinationCategory: query?.destinationCategory || "",
+      tourType: query?.tourType || "",
       assignedTo: assignedUserName,
       assignedToEmail: query?.assignedTo?.email || "",
       initials: initials(assignedUserName),
@@ -1332,7 +1334,7 @@ export const getOperationManagerQueries = async (req, res, next) => {
     const teamMembers = await getManagedTeamMembers(req);
     const teamIds = teamMembers.map((member) => member._id);
     const queries = await getManagedTeamQueries(teamIds, {
-      select: "queryId destination clientEmail customerBudget createdAt startDate endDate quotationStatus agentStatus opsStatus activityLog assignedTo numberOfAdults numberOfChildren hotelCategory transportRequired sightseeingRequired specialRequirements reassignmentHistory agent travelerDetails",
+      select: "queryId destination destinationCategory tourType clientEmail customerBudget createdAt startDate endDate quotationStatus agentStatus opsStatus activityLog assignedTo numberOfAdults numberOfChildren hotelCategory transportRequired sightseeingRequired specialRequirements reassignmentHistory agent travelerDetails",
       populate: [
         { path: "agent", select: "name companyName email" },
         { path: "assignedTo", select: "name email" },
@@ -1391,6 +1393,8 @@ export const updateOperationManagerQuery = async (req, res, next) => {
 
     const {
       destination,
+      destinationCategory,
+      tourType,
       clientEmail,
       startDate,
       endDate,
@@ -1432,6 +1436,8 @@ export const updateOperationManagerQuery = async (req, res, next) => {
     }
 
     const normalizedDestination = String(destination || "").trim();
+    const normalizedDestinationCategory = String(destinationCategory || "").trim();
+    const normalizedTourType = String(tourType || "").trim();
     const normalizedHotelCategory = normalizeHotelCategorySelection(hotelCategory);
     const normalizedTravelerDetails = normalizeOpsManagerTravelerDetails(
       travelerDetails,
@@ -1450,6 +1456,12 @@ export const updateOperationManagerQuery = async (req, res, next) => {
     const oldDestination = query.destination || "";
     if (normalizedDestination !== oldDestination) {
       changes.push(`Destination: "${oldDestination}" -> "${normalizedDestination}"`);
+    }
+    if (normalizedDestinationCategory !== (query.destinationCategory || "")) {
+      changes.push(`Destination Category: "${query.destinationCategory || "Other"}" -> "${normalizedDestinationCategory || "Other"}"`);
+    }
+    if (normalizedTourType !== (query.tourType || "")) {
+      changes.push(`Tour Type: "${query.tourType || "-"}" -> "${normalizedTourType || "-"}"`);
     }
     if (normalizedClientEmail !== String(query.clientEmail || "").trim().toLowerCase()) {
       changes.push(`Client Email: "${query.clientEmail || "-"}" -> "${normalizedClientEmail}"`);
@@ -1493,6 +1505,8 @@ export const updateOperationManagerQuery = async (req, res, next) => {
     }
 
     query.destination = normalizedDestination;
+    query.destinationCategory = normalizedDestinationCategory;
+    query.tourType = normalizedTourType;
     query.clientEmail = normalizedClientEmail;
     query.startDate = parsedStartDate;
     query.endDate = parsedEndDate;
@@ -1969,6 +1983,25 @@ export const submitOperationManagerReport = async (req, res, next) => {
     res.status(200).json({
       success: true,
       message: "Team report submitted to admin successfully",
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getOpsActivityLogs = async (req, res, next) => {
+  try {
+    ensureOperationManagerAccess(req);
+
+    const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 50));
+    const logs = await OpsActivityLog.find()
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .lean();
+
+    res.status(200).json({
+      success: true,
+      data: logs,
     });
   } catch (error) {
     next(error);

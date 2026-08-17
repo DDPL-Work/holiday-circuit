@@ -31,6 +31,19 @@ const DmcBulkUploadModal = ({ isOpen, onClose }) => {
     if (!file) return;
     setFileName(file.name);
     setFile(file);
+
+    const lower = file.name.toLowerCase();
+    if (lower.includes("transport") || lower.includes("transfer")) {
+      setCategory("transport");
+    } else if (lower.includes("hotel")) {
+      setCategory("hotel");
+    } else if (lower.includes("activity")) {
+      setCategory("activity");
+    } else if (lower.includes("package")) {
+      setCategory("package");
+    } else if (lower.includes("sightseeing")) {
+      setCategory("sightseeing");
+    }
   };
 
   const handleUpload = async () => {

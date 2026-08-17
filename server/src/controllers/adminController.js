@@ -45,6 +45,7 @@ const addQueryLogIfMissing = (query, action, performedBy) => {
   }
 };
 
+
 const createFinanceSideNotification = (req, payload) =>
   createNotification(payload, {
     mirrorToAdmins: true,
@@ -52,6 +53,7 @@ const createFinanceSideNotification = (req, payload) =>
     sourceUserId: req.user?.id || req.user?._id || null,
     sourceName: req.user?.name || req.user?.companyName || "Finance Team",
   });
+
 
 const buildEmailDeliveryNote = (email = "") =>
   ` It was sent to your email${email ? ` (${email})` : ""}.`;
@@ -107,31 +109,39 @@ const BACKEND_ROLE_TO_FRONTEND = {
 const normalizeManagedRole = (role = "") =>
   FRONTEND_ROLE_TO_BACKEND[role] || (MANAGED_USER_ROLES.includes(role) ? role : "");
 
-const formatManagedUser = (user) => ({
-  id: user._id,
-  name: user.name,
-  email: user.email,
-  companyName: user.companyName || "",
-  phone: user.phone || "",
-  profileImage: user.profileImage || "",
-  employeeId: user.employeeId || "",
-  manager: user.manager || "",
-  department: user.department || "",
-  designation: user.designation || "",
-  permissions: Array.isArray(user.permissions) ? user.permissions : [],
-  accountStatus: user.accountStatus || "Active",
-  isDeleted: Boolean(user.isDeleted),
-  deletedAt: user.deletedAt || null,
-  deletedBy: user.deletedBy || "",
-  deletionReason: user.deletionReason || "",
-  accessExpiry: user.accessExpiry || null,
-  lastLoginAt: user.lastLoginAt || null,
-  role: user.role,
-  roleLabel: BACKEND_ROLE_TO_FRONTEND[user.role] || user.role,
-  createdAt: user.createdAt,
-  updatedAt: user.updatedAt,
-  creditDays: Array.isArray(user.creditDays) ? user.creditDays : (user.creditDays !== undefined ? [user.creditDays] : [7]),
-});
+const formatManagedUser = (user) => {
+  const lastActiveDate = user.lastActiveAt || user.lastLoginAt;
+  const lastActiveMs = lastActiveDate ? new Date(lastActiveDate).getTime() : 0;
+  const isOnline = Boolean(lastActiveMs && (Date.now() - lastActiveMs) < 120000); // 2 minutes real-time window
+
+  return {
+    id: user._id,
+    name: user.name,
+    email: user.email,
+    companyName: user.companyName || "",
+    phone: user.phone || "",
+    profileImage: user.profileImage || "",
+    employeeId: user.employeeId || "",
+    manager: user.manager || "",
+    department: user.department || "",
+    designation: user.designation || "",
+    permissions: Array.isArray(user.permissions) ? user.permissions : [],
+    accountStatus: user.accountStatus || "Active",
+    isDeleted: Boolean(user.isDeleted),
+    deletedAt: user.deletedAt || null,
+    deletedBy: user.deletedBy || "",
+    deletionReason: user.deletionReason || "",
+    accessExpiry: user.accessExpiry || null,
+    lastLoginAt: user.lastLoginAt || null,
+    lastActiveAt: user.lastActiveAt || null,
+    isOnline: isOnline,
+    role: user.role,
+    roleLabel: BACKEND_ROLE_TO_FRONTEND[user.role] || user.role,
+    createdAt: user.createdAt,
+    updatedAt: user.updatedAt,
+    creditDays: Array.isArray(user.creditDays) ? user.creditDays : (user.creditDays !== undefined ? [user.creditDays] : [7]),
+  };
+};
 
 const AGENT_DOCUMENT_LABELS = ["GST Certificate", "Business License"];
 
@@ -260,6 +270,8 @@ const syncAdminOverrideCase = async ({
     { upsert: true, new: true, setDefaultsOnInsert: true },
   );
 };
+
+
 
 const ensureFinanceApiAccess = async (req) => {
   if (!["finance_partner", "finance_manager", "admin"].includes(req.user?.role)) {
@@ -1453,7 +1465,9 @@ export const resolveAdminOverrideCase = async (req, res, next) => {
             if (!["Confirmed", "Vouchered", "Payment_Completed"].includes(query.opsStatus)) {
               query.opsStatus = "Invoice_Requested";
             }
+            query.agentStatus = "Confirmed";
             addQueryLogIfMissing(query, "Partial Payment Override Approved", actorName);
+            addQueryLogIfMissing(query, "Booking Confirmed", actorName);
           } else {
             addQueryLogIfMissing(query, "Payment Override Rejected", actorName);
           }
@@ -6511,7 +6525,9 @@ export const reviewPaymentVerification = async (req, res, next) => {
           if (!["Confirmed", "Vouchered", "Payment_Completed"].includes(query.opsStatus)) {
             query.opsStatus = "Invoice_Requested";
           }
+          query.agentStatus = "Confirmed";
           addQueryLogIfMissing(query, "Partial Payment Verified", "Finance Team");
+          addQueryLogIfMissing(query, "Booking Confirmed", "Finance Team");
         } else if (!["Vouchered", "Payment_Completed"].includes(query.opsStatus)) {
           query.opsStatus = "Invoice_Requested";
           if (query.agentStatus === "Confirmed") {

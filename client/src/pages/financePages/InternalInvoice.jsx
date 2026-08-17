@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   FileText, Search, ChevronDown, Eye, Cloud, CheckCircle,
   FileDown, Calendar, X, AlertCircle, ArrowUpRight, Check, RefreshCw,
-  Clock, AlertTriangle, TrendingUp, IndianRupee, Upload
+  Clock, AlertTriangle, TrendingUp, IndianRupee, Upload, Loader2
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import API from '../../utils/Api';
@@ -204,7 +204,45 @@ const getInvoiceDisplayStatus = (status, dueDateValue) => {
   return isDatePast(dueDateValue) ? "Overdue" : "Pending";
 };
 
-const InternalInvoices = () => {
+const FeedbackToast = ({ feedback, onClose }) => {
+  if (!feedback) return null;
+  const styles = {
+    success: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    warning: "border-amber-200 bg-amber-50 text-amber-700",
+    error: "border-red-200 bg-red-50 text-red-700",
+  };
+  const Icon = feedback.type === "success" ? CheckCircle : AlertCircle;
+  return (
+    <div className="fixed right-4 top-4 z-[200] w-full max-w-sm sm:right-6 sm:top-6">
+      <div className={`rounded-2xl border px-4 py-3 shadow-xl ${styles[feedback.type] || styles.success}`}>
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="rounded-full bg-white/80 p-1.5 flex items-center justify-center shrink-0 shadow-sm">
+                <Icon className="h-4 w-4" />
+              </div>
+              <p className="text-[10px] font-bold uppercase tracking-[0.16em] leading-none">{feedback.title}</p>
+            </div>
+            <button
+              onClick={onClose}
+              className="rounded-full p-1 text-current/60 transition-colors hover:bg-white/60 hover:text-current flex items-center justify-center shrink-0 cursor-pointer"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          {feedback.message && (
+            <div className="pl-10">
+              <p className="text-[12px] leading-relaxed font-medium">{feedback.message}</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const InternalInvoice = () => {
+  const [feedback, setFeedback] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("All Status");
   const [dateFilter, setDateFilter] = useState("All Time");
@@ -438,8 +476,65 @@ const InternalInvoices = () => {
   const startIndex = (currentPage - 1) * itemsPerPage;
   const paginatedInvoices = filteredInvoices.slice(startIndex, startIndex + itemsPerPage);
 
+  const [exportingReport, setExportingReport] = useState(false);
+
+  const handleExportFinanceReport = async () => {
+    try {
+      setExportingReport(true);
+      await new Promise((resolve) => setTimeout(resolve, 600));
+
+      const items = (invoicesData || []).map((inv) => ({
+        invoiceNumber: inv.invoiceNumber || "",
+        dmcName: inv.dmcName || "",
+        amount: inv.amountValue || 0,
+        status: inv.status || "",
+        dueDate: inv.date || "",
+        utr: inv.utr || "",
+        bank: inv.bank || "",
+      }));
+
+      // 1. Create report payload for Finance Manager
+      const reportPayload = {
+        id: `report-dmc-${Date.now()}`,
+        title: "Internal DMC Invoices Finance Report",
+        type: "Internal DMC Invoices",
+        source: "Internal Invoices Desk",
+        generatedAt: new Date().toLocaleString(),
+        totalItems: items.length,
+        items,
+      };
+
+      // 2. Save report to storage for Finance Manager portal & dispatch event
+      try {
+        const existingReports = JSON.parse(localStorage.getItem("finance_reports_history") || "[]");
+        localStorage.setItem("finance_reports_history", JSON.stringify([reportPayload, ...existingReports]));
+        window.dispatchEvent(new Event("finance-report-submitted"));
+      } catch (err) {
+        console.warn("Error saving report to localStorage:", err);
+      }
+
+      setFeedback({
+        type: "success",
+        title: "Finance Report Exported",
+        message: "Report sent to Finance Manager successfully!",
+      });
+    } catch (error) {
+      console.error("Export report error:", error);
+      setFeedback({
+        type: "error",
+        title: "Export Failed",
+        message: "Failed to export report. Please try again.",
+      });
+    } finally {
+      setExportingReport(false);
+    }
+  };
+
   return (
-    <div className="min-h-full flex flex-col gap-4 max-w-400 mx-auto text-slate-800 w-full overflow-x-hidden sm:p- ">
+    <>
+      <FeedbackToast feedback={feedback} onClose={() => setFeedback(null)} />
+
+      <div className="min-h-full flex flex-col gap-4 max-w-400 mx-auto text-slate-800 w-full overflow-x-hidden sm:p- ">
 
       <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4 shrink-0">
         <div>
@@ -456,9 +551,23 @@ const InternalInvoices = () => {
             <Upload className="w-4 h-4" />
             Upload Bulk Invoice
           </button>
-          <button className="flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 hover:from-emerald-700 hover:via-teal-700 hover:to-emerald-600 active:scale-95 active:translate-y-0 hover:-translate-y-0.5 transition-all duration-300 ease-out text-white px-4.5 py-2 rounded-xl text-sm font-semibold shadow-sm hover:shadow-md shadow-emerald-500/10 hover:shadow-emerald-500/20">
-            <FileDown className="w-4 h-4" />
-            Export Finance Report
+          <button
+            type="button"
+            onClick={handleExportFinanceReport}
+            disabled={exportingReport}
+            className="flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 hover:from-emerald-700 hover:via-teal-700 hover:to-emerald-600 active:scale-95 active:translate-y-0 hover:-translate-y-0.5 transition-all duration-300 ease-out text-white px-4.5 py-2 rounded-xl text-sm font-semibold shadow-sm hover:shadow-md shadow-emerald-500/10 hover:shadow-emerald-500/20 cursor-pointer disabled:opacity-75"
+          >
+            {exportingReport ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin text-white" />
+                Exporting...
+              </>
+            ) : (
+              <>
+                <FileDown className="w-4 h-4" />
+                Export Finance Report
+              </>
+            )}
           </button>
         </div>
       </div>
@@ -746,6 +855,7 @@ const InternalInvoices = () => {
         )}
       </AnimatePresence>
     </div>
+    </>
   );
 };
 
@@ -958,4 +1068,4 @@ const PaymentTrackerModal = ({ invoice, onClose }) => {
   );
 };
 
-export default InternalInvoices;
+export default InternalInvoice;

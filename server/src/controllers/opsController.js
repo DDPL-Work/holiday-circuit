@@ -925,7 +925,9 @@ const resolveDynamicHotelServicePricing = async (service = {}) => {
       bestVariant?.supplierName ||
       "",
     type: normalizedType,
-    title: service?.title || bestVariant?.hotelName || "",
+    title: service?.serviceName || service?.title || bestVariant?.serviceName || bestVariant?.hotelName || "",
+    serviceName: service?.serviceName || bestVariant?.serviceName || "",
+    hotelName: service?.hotelName || bestVariant?.hotelName || "",
     city: service?.city || bestVariant?.city || "",
     country: service?.country || bestVariant?.country || "",
     description: service?.description || bestVariant?.description || service?.desc || "",
@@ -1675,7 +1677,7 @@ const buildAgentQuotationEmailPayload = ({ quotation, query }) => {
     : [];
   const sellerBankDetails = [
     { label: "Bank Name", value: "HDFC Bank" },
-    { label: "A/c Holder Name", value: "Leela Travels" },
+    { label: "A/c Holder Name", value: "Holiday Circuit" },
     { label: "A/c No.", value: "50200103968171" },
     { label: "IFSC", value: "HDFC0004413" },
     { label: "Branch", value: "RAMPHAL CHOWK SEC VII DWARKA" },
@@ -3177,7 +3179,7 @@ export const createQuotation = async (req, res, next) => {
         phone: query.agent?.phone,
         sellerBankDetails: [
           { label: "Bank Name", value: "HDFC Bank" },
-          { label: "A/c Holder Name", value: "Leela Travels" },
+          { label: "A/c Holder Name", value: "Holiday Circuit" },
           { label: "A/c No.", value: "50200103968171" },
           { label: "IFSC", value: "HDFC0004413" },
           { label: "Branch", value: "RAMPHAL CHOWK SEC VII DWARKA" },
@@ -3318,7 +3320,7 @@ export const createQuotation = async (req, res, next) => {
       phone: query.agent?.phone,
       sellerBankDetails: [
         { label: "Bank Name", value: "HDFC Bank" },
-        { label: "A/c Holder Name", value: "Leela Travels" },
+        { label: "A/c Holder Name", value: "Holiday Circuit" },
         { label: "A/c No.", value: "50200103968171" },
         { label: "IFSC", value: "HDFC0004413" },
         { label: "Branch", value: "RAMPHAL CHOWK SEC VII DWARKA" },
@@ -3717,7 +3719,7 @@ export const getVoucherManagementData = async (req, res, next) => {
     const rawVoucherDocs = await Voucher.find()
       .populate("query")
       .populate("quotation", "services")
-      .populate("agent", "name companyName email phone")
+      .populate("agent", "name companyName email phone brandingName brandingLogo")
       .sort({ createdAt: -1 });
 
     const voucherDocs = [];
@@ -3735,7 +3737,7 @@ export const getVoucherManagementData = async (req, res, next) => {
       ...assignmentFilter,
       opsStatus: { $in: ["Invoice_Requested", "Confirmed", "Vouchered", "Payment_Completed"] },
       _id: { $nin: voucherQueryIds },
-    }).populate("agent", "name companyName email phone");
+    }).populate("agent", "name companyName email phone brandingName brandingLogo");
 
     const readyInvoiceMap = await getLatestInvoiceByQueryId(
       candidateReadyQueries.map((query) => query._id),
@@ -3878,6 +3880,8 @@ export const getVoucherManagementData = async (req, res, next) => {
         agentName: voucher.agent?.companyName || voucher.agent?.name || "",
         agentEmail: voucher.agent?.email || "",
         agentPhone: voucher.agent?.phone || "",
+        agentBrandingName: voucher.agent?.brandingName || voucher.agent?.companyName || "",
+        agentLogo: voucher.agent?.brandingLogo || "",
       };
     }));
 
