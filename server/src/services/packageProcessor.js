@@ -1,7 +1,19 @@
 import XLSX from "xlsx"
 import Package from "../models/PackageDmc.model.js"
 
-export const processPackageExcel = async (filePath) => {
+const getVal = (row = {}, keys = []) => {
+  for (const k of keys) {
+    const foundKey = Object.keys(row || {}).find(
+      (rk) => String(rk).trim().toLowerCase() === k.toLowerCase()
+    );
+    if (foundKey && row[foundKey] !== undefined && row[foundKey] !== null) {
+      return String(row[foundKey]).trim();
+    }
+  }
+  return "";
+};
+
+export const processPackageExcel = async (filePath, ownerId) => {
 
   const workbook = XLSX.readFile(filePath)
 
@@ -12,20 +24,29 @@ export const processPackageExcel = async (filePath) => {
   const packageMap = {}
 
   for (const row of packageRows) {
-const pkg = await Package.create({
-  title: row["package_title"],
-  destination: row["city"],
-  country: row["country"] || row["city"], 
-  duration: row["duration"],
-  price: row["base_price"],
-  hotels: [],
-  activities: [],
-  transfers: [],
-  sightseeing: []
-})
+    const title = getVal(row, ["package_title", "title", "package title"]);
+    if (!title) continue;
 
-   const key = row["package_title"]?.trim().toLowerCase()
-   packageMap[key] = pkg
+    const pkg = await Package.create({
+      title,
+      destination: getVal(row, ["city", "destination"]),
+      country: getVal(row, ["country"]) || getVal(row, ["city", "destination"]), 
+      duration: getVal(row, ["duration"]),
+      price: Number(getVal(row, ["base_price", "price"])) || 0,
+      description: getVal(row, ["description"]),
+      inclusions: getVal(row, ["Inclusions", "inclusions"]),
+      exclusions: getVal(row, ["Exclusions", "exclusions"]),
+      dayWiseItinerary: getVal(row, ["Day Wise Itinerary", "day_wise_itinerary", "itinerary"]),
+      termsAndConditions: getVal(row, ["Terms & Conditions", "terms_and_conditions", "terms"]),
+      supplier: ownerId || null,
+      hotels: [],
+      activities: [],
+      transfers: [],
+      sightseeing: []
+    })
+
+    const key = title.trim().toLowerCase()
+    packageMap[key] = pkg
   }
 
   // ======================= SERVICES =======================
@@ -44,14 +65,26 @@ const pkg = await Package.create({
   }
 
     const serviceData = {
-      name: row["service_name"],
-      day: row["day"],
-      price: row["price"],
-      unit: row["unit"],
-      quantity: row["quantity"]
+      name: getVal(row, ["service_name", "service name", "name"]),
+      day: getVal(row, ["day"]),
+      price: Number(getVal(row, ["price"])) || 0,
+      unit: getVal(row, ["unit"]),
+      quantity: Number(getVal(row, ["quantity"])) || 1,
+      hotel_name: getVal(row, ["hotel_name", "hotel name"]),
+      hotelName: getVal(row, ["hotel_name", "hotel name"]),
+      room_type: getVal(row, ["room_type", "room type"]),
+      roomType: getVal(row, ["room_type", "room type"]),
+      vehicle_type: getVal(row, ["vehicle_type", "vehicle type"]),
+      vehicleType: getVal(row, ["vehicle_type", "vehicle type"]),
+      passenger_capacity: Number(getVal(row, ["passenger_capacity", "passenger capacity"])) || null,
+      passengerCapacity: Number(getVal(row, ["passenger_capacity", "passenger capacity"])) || null,
+      luggage_capacity: Number(getVal(row, ["luggage_capacity", "luggage capacity"])) || null,
+      luggageCapacity: Number(getVal(row, ["luggage_capacity", "luggage capacity"])) || null,
+      description: getVal(row, ["description"]),
     }
 
-    switch (row["service_type"]) {
+    const sType = String(getVal(row, ["service_type", "service type", "type"])).toLowerCase();
+    switch (sType) {
       case "hotel":
         pkg.hotels.push(serviceData)
         break
@@ -59,6 +92,7 @@ const pkg = await Package.create({
         pkg.activities.push(serviceData)
         break
       case "transport":
+      case "transfer":
         pkg.transfers.push(serviceData)
         break
       case "sightseeing":

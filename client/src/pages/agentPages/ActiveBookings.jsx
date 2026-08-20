@@ -237,7 +237,17 @@ const ActiveBookings = () => {
     if (!requestedBookingId || loading || !bookings.length) return;
     if (autoOpenedBookingRef.current === requestedBookingId) return;
 
-    const matchedBooking = bookings.find((booking) => booking._id === requestedBookingId);
+    const matchedBooking = bookings.find(
+      (booking) =>
+        booking._id === requestedBookingId ||
+        booking.invoiceId === requestedBookingId ||
+        booking.queryId === requestedBookingId ||
+        booking.invoice?._id === requestedBookingId ||
+        booking.bookingReference === requestedBookingId ||
+        booking.query?._id === requestedBookingId ||
+        booking.query?.queryId === requestedBookingId
+    ) || bookings[0];
+
     if (!matchedBooking) return;
 
     autoOpenedBookingRef.current = requestedBookingId;
@@ -247,6 +257,8 @@ const ActiveBookings = () => {
       issues: location.state?.documentIssues || [],
       issueSummary: location.state?.issueSummary || "",
       reviewStatus: location.state?.reviewStatus || "",
+      paymentOnly: Boolean(location.state?.paymentOnly),
+      hideDocuments: Boolean(location.state?.hideDocuments),
     });
     setOpenActiveBookingDetails(true);
     navigate(location.pathname, { replace: true, state: null });
@@ -326,6 +338,8 @@ const ActiveBookings = () => {
           setDocumentPortalContext(null);
         }}
         booking={selectedActiveBooking}
+        initialTab="payments"
+        isPaymentDesk
         onBookingUpdated={handleBookingUpdated}
         documentPortalContext={documentPortalContext}
       />
@@ -348,7 +362,7 @@ const ActiveBookings = () => {
       </svg>
       <motion.header variants={itemVariant} className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Active Bookings</h1>
+          <h1 className="text-2xl font-bold">Booking Payments</h1>
           <p className="text-sm text-gray-500">
             Manage your invoices, payments, and traveler documents.
           </p>

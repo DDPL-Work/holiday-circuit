@@ -368,6 +368,18 @@ const travelQuerySchema = new mongoose.Schema(
     required: true
   },
 
+  destinationCategory: {
+    type: String,
+    enum: ["Domestic", "International", "Other", ""],
+    default: ""
+  },
+
+  tourType: {
+    type: String,
+    enum: ["Group Tour", "Customized Tour", ""],
+    default: ""
+  },
+
   clientEmail: {
     type: String,
     default: "",

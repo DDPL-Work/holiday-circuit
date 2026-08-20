@@ -31,6 +31,15 @@ const DmcBulkUploadModal = ({ isOpen, onClose }) => {
     if (!file) return;
     setFileName(file.name);
     setFile(file);
+
+    const lower = file.name.toLowerCase();
+    if (lower.includes("transport") || lower.includes("transfer")) {
+      setCategory("transport");
+    } else if (lower.includes("hotel")) {
+      setCategory("hotel");
+    } else if (lower.includes("activity") || lower.includes("sightseeing")) {
+      setCategory("activity");
+    }
   };
 
   const handleUpload = async () => {
@@ -146,9 +155,7 @@ const DmcBulkUploadModal = ({ isOpen, onClose }) => {
           >
             <option value="hotel">Hotel Rates</option>
             <option value="transport">Transport & Transfers</option>
-            <option value="package">Package Tours</option>
-            <option value="activity">Activities & Excursions</option>
-            <option value="sightseeing">Sightseeing</option>
+            <option value="activity">Activities & Sightseeing</option>
           </select>
         </div>
 

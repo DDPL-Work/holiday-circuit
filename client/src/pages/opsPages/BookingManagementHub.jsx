@@ -135,12 +135,21 @@ export default function BookingManagementHub() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [dateFilter, setDateFilter] = useState("");
+  const [showMoreFilters, setShowMoreFilters] = useState(false);
+  const [docReviewFilter, setDocReviewFilter] = useState("All");
+  const [urgencyFilter, setUrgencyFilter] = useState("All");
+  const [paxFilter, setPaxFilter] = useState("All");
   const [currentPage, setCurrentPage] = useState(1);
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState(null);
   const [selectedDocumentBooking, setSelectedDocumentBooking] = useState(null);
   const itemsPerPage = 8;
+
+  const activeAdvancedFiltersCount =
+    (docReviewFilter !== "All" ? 1 : 0) +
+    (urgencyFilter !== "All" ? 1 : 0) +
+    (paxFilter !== "All" ? 1 : 0);
 
   const fetchQueries = async () => {
     try {
@@ -265,12 +274,40 @@ export default function BookingManagementHub() {
     const matchesDate =
       !dateFilter || new Date(row.startDate).toISOString().slice(0, 10) === dateFilter;
 
-    return matchesSearch && matchesStatus && matchesDate;
+    const matchesDocReview =
+      docReviewFilter === "All" || row.travelerDocumentReview.status === docReviewFilter;
+
+    const matchesUrgency = (() => {
+      if (urgencyFilter === "All") return true;
+      const q = row._raw;
+      if (!q || !q.createdAt) return false;
+      const hoursElapsed = (Date.now() - new Date(q.createdAt).getTime()) / (1000 * 60 * 60);
+      if (urgencyFilter === "Overdue") return hoursElapsed > 48;
+      if (urgencyFilter === "Warning") return hoursElapsed >= 24 && hoursElapsed <= 48;
+      return true;
+    })();
+
+    const matchesPax = (() => {
+      if (paxFilter === "All") return true;
+      if (paxFilter === "1-2") return row.pax >= 1 && row.pax <= 2;
+      if (paxFilter === "3-5") return row.pax >= 3 && row.pax <= 5;
+      if (paxFilter === "6+") return row.pax >= 6;
+      return true;
+    })();
+
+    return (
+      matchesSearch &&
+      matchesStatus &&
+      matchesDate &&
+      matchesDocReview &&
+      matchesUrgency &&
+      matchesPax
+    );
   });
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [search, statusFilter, dateFilter, rows.length]);
+  }, [search, statusFilter, dateFilter, docReviewFilter, urgencyFilter, paxFilter, rows.length]);
 
   const totalPages = Math.ceil(filteredRows.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
@@ -291,7 +328,7 @@ export default function BookingManagementHub() {
 
         <motion.div
           whileHover={{ scale: 1.002 }}
-          className="mb-5 flex flex-col gap-3 rounded-xl border border-gray-200 bg-[#F8FAFC] p-4 lg:flex-row lg:items-center lg:justify-between"
+          className="mb-3 flex flex-col gap-3 rounded-xl border border-gray-200 bg-[#F8FAFC] p-4 lg:flex-row lg:items-center lg:justify-between"
         >
           <div className="flex w-full items-center gap-2 rounded-xl border border-gray-300 bg-white px-3 py-2 text-xs text-gray-500 lg:max-w-md lg:flex-1">
             <Search className="h-4 w-4" />
@@ -327,11 +364,104 @@ export default function BookingManagementHub() {
             />
           </div>
 
-          <button className="flex items-center gap-2 rounded-xl border border-gray-300 bg-white px-3 py-2 text-xs hover:bg-gray-50">
+          <button
+            onClick={() => setShowMoreFilters((prev) => !prev)}
+            className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition cursor-pointer ${
+              showMoreFilters || activeAdvancedFiltersCount > 0
+                ? "border-blue-500 bg-blue-50 text-blue-700"
+                : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+            }`}
+          >
             <Filter className="h-4 w-4" />
             More Filters
+            {activeAdvancedFiltersCount > 0 && (
+              <span className="flex h-4 w-4 items-center justify-center rounded-full bg-blue-600 text-[10px] font-bold text-white">
+                {activeAdvancedFiltersCount}
+              </span>
+            )}
           </button>
         </motion.div>
+
+        {showMoreFilters && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            className="mb-5 rounded-xl border border-blue-100 bg-blue-50/50 p-4"
+          >
+            <div className="flex items-center justify-between mb-3 border-b border-blue-100/70 pb-2">
+              <span className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+                <Filter className="h-3.5 w-3.5 text-blue-600" />
+                Advanced Filters
+              </span>
+              {(activeAdvancedFiltersCount > 0 || statusFilter !== "All" || search || dateFilter) && (
+                <button
+                  onClick={() => {
+                    setSearch("");
+                    setStatusFilter("All");
+                    setDateFilter("");
+                    setDocReviewFilter("All");
+                    setUrgencyFilter("All");
+                    setPaxFilter("All");
+                  }}
+                  className="text-xs text-blue-600 hover:text-blue-800 font-semibold cursor-pointer underline"
+                >
+                  Reset All Filters
+                </button>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                  Document Review Status
+                </label>
+                <select
+                  value={docReviewFilter}
+                  onChange={(e) => setDocReviewFilter(e.target.value)}
+                  className="w-full rounded-xl border border-gray-300 bg-white px-3 py-1.5 text-xs outline-none cursor-pointer"
+                >
+                  <option value="All">All Documents Status</option>
+                  <option value="Verified">Verified Docs</option>
+                  <option value="Pending">Pending Review</option>
+                  <option value="Rejected">Correction Required</option>
+                  <option value="Draft">Docs Not Submitted</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                  Deadline & Urgency
+                </label>
+                <select
+                  value={urgencyFilter}
+                  onChange={(e) => setUrgencyFilter(e.target.value)}
+                  className="w-full rounded-xl border border-gray-300 bg-white px-3 py-1.5 text-xs outline-none cursor-pointer"
+                >
+                  <option value="All">All Deadlines</option>
+                  <option value="Overdue">Overdue (&gt;48h)</option>
+                  <option value="Warning">Warning (24h - 48h)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                  PAX / Group Size
+                </label>
+                <select
+                  value={paxFilter}
+                  onChange={(e) => setPaxFilter(e.target.value)}
+                  className="w-full rounded-xl border border-gray-300 bg-white px-3 py-1.5 text-xs outline-none cursor-pointer"
+                >
+                  <option value="All">All PAX Sizes</option>
+                  <option value="1-2">1 - 2 PAX (Solo/Couple)</option>
+                  <option value="3-5">3 - 5 PAX (Small Group)</option>
+                  <option value="6+">6+ PAX (Large Group)</option>
+                </select>
+              </div>
+            </div>
+          </motion.div>
+        )}
 
         <div className="overflow-hidden rounded-xl border border-gray-200">
           {loading ? (

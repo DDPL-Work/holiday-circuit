@@ -253,7 +253,7 @@ const Login = () => {
       setRecoveryLoading(true);
       await API.post("/auth/forgot-password/send-otp", { email: recovery.email.trim() });
       setForgotStep("verify");
-      setResendCooldown(45);
+      setResendCooldown(60);
       toast.success("A 6-digit verification code has been sent to your email.");
     } catch (requestError) {
       toast.error(
@@ -357,7 +357,7 @@ const Login = () => {
   return (
     <>
       <OpsTeamLoginModal open={openOpsModal} onClose={() => setOpenOpsModal(false)} />
-      <div className="h-screen overflow-hidden flex bg-gray-100">
+      <div className="min-h-screen overflow-y-auto lg:h-screen lg:overflow-hidden flex flex-col lg:flex-row bg-gray-100">
         <div className="hidden lg:flex w-1/2 relative overflow-hidden">
           <img src={image} alt="travel" className="absolute inset-0 w-full h-full object-cover" />
           <div className="absolute inset-0 bg-black/30" />
@@ -372,7 +372,7 @@ const Login = () => {
           </div>
         </div>
 
-        <div className="relative flex h-full w-full items-center justify-center overflow-hidden bg-gradient-to-br from-blue-100/85 via-blue-50/60 via-60% to-slate-200/50 px-6 lg:w-1/2">
+        <div className="relative flex min-h-screen w-full items-center justify-center bg-gradient-to-br from-blue-100/85 via-blue-50/60 via-60% to-slate-200/50 px-6 py-12 lg:w-1/2 lg:min-h-0 lg:h-full lg:py-0">
           <div className="absolute right-6 top-6 z-10">
             <button
               onClick={() => setOpenOpsModal(true)}
@@ -382,7 +382,7 @@ const Login = () => {
             </button>
           </div>
 
-          <div className="w-full max-w-md overflow-hidden py-6">
+          <div className="w-full max-w-md overflow-hidden py-6 mt-12 lg:mt-0">
             <AnimatePresence mode="wait" initial={false}>
               {authView === "login" ? (
                 <motion.div
@@ -397,7 +397,7 @@ const Login = () => {
                     initial={brandMotion.initial}
                     animate={brandMotion.animate}
                     transition={brandMotion.transition}
-                    className="mb-5 flex min-h-[88px] items-center justify-center"
+                    className="mb-5 flex min-h-[88px] items-center justify-center relative"
                   >
                     <img
                       src={logo}
@@ -406,18 +406,18 @@ const Login = () => {
                       height="88"
                       decoding="async"
                       fetchPriority="high"
-                      className="h-25 w-25 object-contain select-none absolute top-5 left-0.5"
+                      className="h-25 w-25 object-contain select-none"
                     />
                   </motion.div>
-                  <h2 className="text-3xl font-extrabold text-slate-900">Welcome back</h2>
-                  <p className="mb-6 mt-2 text-gray-500">
+                  <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900">Welcome back</h2>
+                  <p className="mb-4 mt-1.5 text-xs sm:text-sm text-gray-500">
                     Enter your agent credentials to access your dashboard
                   </p>
 
                   <form className="space-y-6" onSubmit={handleSubmit}>
                     <div>
                       <div className="mb-2 flex items-center justify-between gap-3">
-                        <label className="text-md font-semibold">
+                        <label className="text-sm sm:text-md font-semibold text-slate-800">
                           Email <span className="text-red-700">*</span>
                         </label>
                         <ValidationPill message={errors.email} />
@@ -430,7 +430,7 @@ const Login = () => {
                           value={form.email}
                           onChange={(e) => handleFieldChange("email", e.target.value)}
                           onBlur={() => handleFieldBlur("email")}
-                          className={`w-full rounded-2xl border py-2.5 pl-11 pr-4 focus:outline-none ${
+                          className={`w-full rounded-2xl border py-2 sm:py-2.5 pl-11 pr-4 text-sm sm:text-base focus:outline-none ${
                             errors.email ? "border-rose-300 bg-rose-50/40" : "border-gray-300"
                           }`}
                         />
@@ -439,7 +439,7 @@ const Login = () => {
 
                     <div className="relative">
                       <div className="mb-2 flex items-center justify-between gap-3 text-sm">
-                        <label className="text-md font-semibold">
+                        <label className="text-sm sm:text-md font-semibold text-slate-800">
                           Password <span className="text-red-700">*</span>
                         </label>
                         <div className="flex items-center gap-3">
@@ -466,7 +466,7 @@ const Login = () => {
                         value={form.password}
                         onChange={(e) => handleFieldChange("password", e.target.value)}
                         onBlur={() => handleFieldBlur("password")}
-                        className={`w-full rounded-2xl border py-2.5 pl-11 pr-11 focus:outline-none ${
+                        className={`w-full rounded-2xl border py-2 sm:py-2.5 pl-11 pr-11 text-sm sm:text-base focus:outline-none ${
                           errors.password ? "border-rose-300 bg-rose-50/40" : "border-gray-300"
                         }`}
                       />
@@ -523,8 +523,8 @@ const Login = () => {
                     </div>
                   </div>
 
-                  <h2 className="text-3xl font-extrabold text-slate-900">Forgot password</h2>
-                  <p className="mb-6 mt-2 text-gray-500">
+                  <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900">Forgot password</h2>
+                  <p className="mb-4 mt-1.5 text-xs sm:text-sm text-gray-500">
                     Recover your account in three quick steps without leaving the login screen.
                   </p>
 
@@ -540,7 +540,7 @@ const Login = () => {
                     <div className="space-y-5">
                       <div>
                         <div className="mb-2 flex items-center justify-between gap-3">
-                          <label className="text-md font-semibold text-slate-800">Work Email</label>
+                          <label className="text-sm sm:text-md font-semibold text-slate-800">Work Email</label>
                           <ValidationPill message={recoveryErrors.email} />
                         </div>
                         <input
@@ -549,7 +549,7 @@ const Login = () => {
                           onChange={(e) => handleRecoveryChange("email", e.target.value)}
                           onBlur={() => handleRecoveryBlur("email")}
                           placeholder="client@gmail.com"
-                          className={`w-full rounded-2xl border px-4 py-2.5 focus:outline-none transition-all ${
+                          className={`w-full rounded-2xl border px-4 py-2 sm:py-2.5 text-sm sm:text-base focus:outline-none transition-all ${
                             recoveryErrors.email
                               ? "border-rose-300 bg-rose-50/40 text-slate-900 placeholder:text-rose-300"
                               : "border-gray-300 bg-white text-slate-900 placeholder:text-slate-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
@@ -572,7 +572,7 @@ const Login = () => {
                     <div className="space-y-4">
                       <div>
                         <div className="mb-1 flex items-center justify-between gap-3">
-                          <label className="text-md font-semibold text-slate-800">6-Digit OTP</label>
+                          <label className="text-sm sm:text-md font-semibold text-slate-800">6-Digit OTP</label>
                           <ValidationPill message={recoveryErrors.otp} />
                         </div>
                         <input
@@ -582,7 +582,7 @@ const Login = () => {
                           onChange={(e) => handleRecoveryChange("otp", e.target.value)}
                           onBlur={() => handleRecoveryBlur("otp")}
                           placeholder="000000"
-                          className={`w-full rounded-2xl border px-4 py-2 text-center text-xl font-semibold tracking-[0.35em] focus:outline-none transition-all ${
+                          className={`w-full rounded-2xl border px-4 py-1.5 sm:py-2 text-center text-base sm:text-xl font-semibold tracking-[0.25em] sm:tracking-[0.35em] focus:outline-none transition-all ${
                             recoveryErrors.otp
                               ? "border-rose-300 bg-rose-50/40 text-rose-900 placeholder:text-rose-300"
                               : "border-gray-300 bg-white text-slate-900 placeholder:text-slate-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
@@ -590,16 +590,18 @@ const Login = () => {
                         />
                       </div>
 
-                      <div className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white/70 px-4 py-2 text-xs text-slate-500">
-                        <span>Didn&apos;t receive the code?</span>
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-2xl border border-slate-200 bg-white/70 px-4 py-2.5 text-xs text-slate-500">
+                        <span className="text-center sm:text-left">Didn&apos;t receive the code?</span>
                         <button
                           type="button"
                           onClick={handleSendOtp}
                           disabled={resendCooldown > 0 || recoveryLoading}
-                          className="inline-flex items-center gap-2 font-semibold text-blue-600 disabled:cursor-not-allowed disabled:text-slate-400"
+                          className="inline-flex items-center justify-center gap-2 font-semibold text-blue-600 disabled:cursor-not-allowed disabled:text-slate-400 w-full sm:w-auto"
                         >
-                          <RefreshCw size={13} />
-                          {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : "Resend OTP"}
+                          <RefreshCw size={13} className={resendCooldown > 0 ? "animate-spin" : ""} />
+                          <span className="whitespace-nowrap">
+                            {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : "Resend OTP"}
+                          </span>
                         </button>
                       </div>
 

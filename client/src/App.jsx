@@ -1,6 +1,6 @@
 import { useState } from "react";
 import AppRouter from "./routes";
-import { Toaster } from "react-hot-toast";
+import { Toaster, ToastBar, toast } from "react-hot-toast";
 import CircuitLoader from "./components/CircuitLoader";
 import "./App.css";
 
@@ -16,16 +16,17 @@ function App() {
         position="top-right"
         reverseOrder={false}
         gutter={12}
-        containerClassName="z-[999999]"
+        containerClassName="!z-[99999999]"
         containerStyle={{
           top: 24,
           right: 24,
+          zIndex: 99999999,
         }}
         toastOptions={{
           duration: 3500,
 
           style: {
-            background: "rgba(17, 24, 39, 0.85)", // dark glass
+            background: "rgba(17, 24, 39, 0.90)", // dark glass
             backdropFilter: "blur(12px)",
             WebkitBackdropFilter: "blur(12px)",
             color: "#f9fafb",
@@ -40,6 +41,7 @@ function App() {
             textAlign: "left",
             display: "inline-flex",
             alignItems: "center",
+            zIndex: 99999999,
           },
 
           success: {
@@ -75,7 +77,34 @@ function App() {
             },
           },
         }}
-      />
+      >
+        {(t) => (
+          <ToastBar toast={t}>
+            {({ icon, message }) => (
+              <div className="flex items-center justify-between w-full gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  {icon}
+                  {message}
+                </div>
+                {t.type !== "loading" && (
+                  <button
+                    type="button"
+                    onClick={() => toast.dismiss(t.id)}
+                    className="ml-2 -mr-1 rounded-lg p-1 text-white/60 hover:text-white hover:bg-white/15 transition cursor-pointer flex items-center justify-center shrink-0"
+                    title="Cancel / Close notification"
+                    aria-label="Cancel notification"
+                  >
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="18" y1="6" x2="6" y2="18" />
+                      <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                  </button>
+                )}
+              </div>
+            )}
+          </ToastBar>
+        )}
+      </Toaster>
       <AppRouter />
       {loading && <CircuitLoader onFinished={() => setLoading(false)} />}
     </>

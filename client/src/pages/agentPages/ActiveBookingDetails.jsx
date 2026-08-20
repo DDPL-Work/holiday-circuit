@@ -2,11 +2,15 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
   ArrowLeft,
+  ArrowRight,
   BadgePercent,
   Building2,
   CalendarDays,
   ChevronDown,
+  ChevronRight,
   CheckCircle2,
+  CheckCircle,
+  CheckCheck,
   Check,
   CreditCard,
   Download,
@@ -16,10 +20,13 @@ import {
   IdCard,
   LoaderCircle,
   MapPin,
+  Maximize2,
+  MessageSquare,
   Trash2,
   Upload,
   Users,
   UserSquare2,
+  User,
   Wallet,
   Coins,
   X,
@@ -27,6 +34,9 @@ import {
 import { AnimatePresence, motion } from "framer-motion";
 import API from "../../utils/Api";
 import CouponBillingModal from "../../modal/CouponBillingModal";
+import ServicesBookingsTab from "../../components/ServicesBookingsTab";
+import CreateProformaInvoice from "../../components/accounting/CreateProformaInvoice";
+import ProformaInvoiceView from "../../components/accounting/ProformaInvoiceView";
 
 const MAX_UPLOAD_SIZE_BYTES = 5 * 1024 * 1024;
 const docOptions = [
@@ -55,6 +65,29 @@ const formatAmountInput = (v = "") => {
   const digits = normalizeAmountDigits(v);
   return digits ? Number(digits).toLocaleString("en-IN") : "";
 };
+const formatDateRange = (startDate, endDate) => {
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return "Dates pending";
+  const format = (value) => value.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+  return `${format(start)} - ${format(end)}`;
+};
+
+const formatPax = (adults, children) =>
+  children > 0 ? `${adults} Adults, ${children} Kids` : `${adults} Adults`;
+
+const getTripDuration = (startDate, endDate) => {
+  if (!startDate || !endDate) return "";
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  const diffTime = Math.abs(end - start);
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  if (Number.isNaN(diffDays) || diffDays <= 0) return "";
+  const nights = diffDays;
+  const days = diffDays + 1;
+  return `${nights}N, ${days}D`;
+};
+
 const formatDate = (v) => {
   if (!v) return "Pending";
   const d = new Date(v);
@@ -118,6 +151,7 @@ const buildTrackerPaymentsFromSubmission = (paymentSubmission = {}) => {
           receiptStatus: String(entry?.receiptStatus || "").trim(),
           receiptSentAt: entry?.receiptSentAt || null,
           receiptSentByName: String(entry?.receiptSentByName || "").trim(),
+          utrNumber: String(entry?.utrNumber || (trackerEntries.length === 1 ? paymentSubmission?.utrNumber : "")).trim(),
         };
       })
       .filter(Boolean);
@@ -156,6 +190,7 @@ const buildTrackerPaymentsFromSubmission = (paymentSubmission = {}) => {
       receiptStatus: "",
       receiptSentAt: null,
       receiptSentByName: "",
+      utrNumber: String(paymentSubmission?.utrNumber || "").trim(),
     },
   ];
 };
@@ -319,6 +354,9 @@ function PaymentTracker({ totalAmount, payments, onAddPayment, onUpdatePayment, 
   return (
     <div className="mt-3 space-y-3">
 
+      {/* Legacy payment summary and history UI: retained for future use. Change false to true to restore. */}
+      {false && (
+        <>
       {/* Summary strip */}
       <div className="grid grid-cols-3 gap-3">
         <div className="rounded-xl bg-gradient-to-br from-slate-50 to-slate-100/60 px-4 py-3 border border-slate-200 border-l-4 border-l-slate-500 shadow-xs hover:shadow-sm transition-all duration-300">
@@ -561,6 +599,8 @@ function PaymentTracker({ totalAmount, payments, onAddPayment, onUpdatePayment, 
           </div>
         </div>
       </div>
+        </>
+      )}
 
       {/* Add Payment form */}
       <AnimatePresence initial={false}>
@@ -572,12 +612,8 @@ function PaymentTracker({ totalAmount, payments, onAddPayment, onUpdatePayment, 
             transition={{ duration: 0.24, ease: "easeInOut" }}
             className="overflow-hidden"
           >
-            <div className={`transition-all duration-300 rounded-2xl p-3.5 border ${editingId
-                ? "border-teal-300 bg-gradient-to-br from-teal-50/20 to-emerald-50/5 shadow-xs"
-                : "border-slate-200/60 bg-gradient-to-br from-slate-50/30 via-white to-slate-100/10 shadow-xs"
-              }`}>
-              <p className={`mb-2.5 text-[10px] font-bold uppercase tracking-[0.12em] ${editingId ? "text-teal-600" : "text-slate-400"
-                }`}>
+            <div className={`transition-all duration-300 rounded-xl border border-slate-200 bg-white p-3.5 shadow-xs ${editingId ? "ring-1 ring-teal-200" : ""}`}>
+              <p className="mb-2.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">
                 {editingId ? "Edit Payment Entry" : "Add Payment Entry"}
               </p>
               <div className="flex flex-wrap gap-2">
@@ -589,7 +625,7 @@ function PaymentTracker({ totalAmount, payments, onAddPayment, onUpdatePayment, 
                     onChange={(e) => setInputAmt(formatAmountInput(e.target.value))}
                     inputMode="numeric"
                     placeholder="Amount"
-                    className="h-9 w-full rounded-full border border-slate-300 bg-gradient-to-br from-slate-50 to-white pl-7 pr-4 text-[12px] font-semibold text-slate-700 outline-none transition focus:border-teal-400 focus:ring-2 focus:ring-teal-100/50"
+                    className="h-9 w-full rounded-lg border border-slate-200 bg-slate-50 pl-7 pr-4 text-[12px] font-semibold text-slate-700 outline-none transition focus:border-indigo-500"
                   />
                 </div>
                 <input
@@ -607,18 +643,18 @@ function PaymentTracker({ totalAmount, payments, onAddPayment, onUpdatePayment, 
                     }
                     setInputDate(nextDate);
                   }}
-                  className="h-9 w-32 rounded-full border border-slate-300 bg-gradient-to-br from-slate-50 to-white px-3.5 text-[12px] text-slate-600 outline-none transition focus:border-teal-400 focus:ring-2 focus:ring-teal-100/50 cursor-pointer"
+                  className="h-9 w-32 rounded-lg border border-slate-200 bg-slate-50 px-3.5 text-[12px] text-slate-600 outline-none transition focus:border-indigo-500 cursor-pointer"
                 />
                 <input
                   value={inputNote}
                   onChange={(e) => setInputNote(e.target.value)}
                   placeholder="Note (optional)"
-                  className="h-9 min-w-[80px] flex-1 rounded-full border border-slate-300 bg-gradient-to-br from-slate-50 to-white px-4 text-[12px] text-slate-600 outline-none transition focus:border-teal-400 focus:ring-2 focus:ring-teal-100/50"
+                  className="h-9 min-w-[80px] flex-1 rounded-lg border border-slate-200 bg-slate-50 px-4 text-[12px] text-slate-600 outline-none transition focus:border-indigo-500"
                 />
                 <button
                   type="button"
                   onClick={handleAddOrUpdate}
-                  className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-full bg-gradient-to-r from-teal-500 via-emerald-500 to-teal-600 hover:from-teal-600 hover:via-emerald-600 hover:to-teal-700 shadow-sm hover:shadow-md text-[12px] font-bold text-white transition active:scale-95 px-4.5"
+                  className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-lg bg-[#3E63DD] hover:bg-[#3151C2] shadow-sm hover:shadow-md text-[12px] font-bold text-white transition active:scale-95 px-4.5"
                 >
                   {editingId ? (
                     <>
@@ -640,7 +676,7 @@ function PaymentTracker({ totalAmount, payments, onAddPayment, onUpdatePayment, 
                   <button
                     type="button"
                     onClick={handleCancelEdit}
-                    className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-full border border-slate-300 bg-white hover:bg-slate-50 px-4.5 text-[12px] font-semibold text-slate-600 transition active:scale-95"
+                    className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 px-4.5 text-[12px] font-semibold text-slate-600 transition active:scale-95"
                   >
                     Cancel
                   </button>
@@ -902,7 +938,15 @@ function DocCard({
 
 // ─── Main Component ──────────────────────────────────────────────────────────
 
-export default function ActiveBookingDetails({ onClose, booking, onBookingUpdated, documentPortalContext }) {
+export default function ActiveBookingDetails({ onClose, booking, onBookingUpdated, documentPortalContext, initialTab, isPaymentDesk = false }) {
+  const isTravelerDocsDesk = Boolean(documentPortalContext?.documentsOnly) || initialTab === "documents" || initialTab === "docs" || (typeof window !== "undefined" && window.location.pathname.includes("/agent/documents"));
+  const defaultTab = initialTab || (documentPortalContext?.documentsOnly ? "docs" : isTravelerDocsDesk ? "docs" : "accounting");
+  const [detailTab, setDetailTab] = useState(defaultTab === "documents" ? "docs" : defaultTab === "payments" ? "accounting" : defaultTab);
+  const [accountingSubTab, setAccountingSubTab] = useState("payments");
+  const [isCreatingProforma, setIsCreatingProforma] = useState(false);
+  const [proformaInvoiceData, setProformaInvoiceData] = useState(null);
+  const activeTab = detailTab === "docs" ? "documents" : "payments";
+  const setActiveTab = (tab) => setDetailTab(tab === "documents" ? "docs" : "accounting");
   const container = { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { staggerChildren: 0.08 } } };
   const item = { hidden: { opacity: 0, y: 10 }, visible: { opacity: 1, y: 0, transition: { duration: 0.3, ease: "easeOut" } } };
   const paymentSubmission = useMemo(() => booking?.paymentSubmission || {}, [booking?.paymentSubmission]);
@@ -918,6 +962,16 @@ export default function ActiveBookingDetails({ onClose, booking, onBookingUpdate
   const docsUnlocked = true;
   const bookingConfirmationReady = isPaymentVerified;
 
+  const headerBookingId = booking?.queryId || booking?.bookingReference || booking?.invoiceNumber || booking?.query?.queryId || "Record";
+  const headerClientName = booking?.customerName || booking?.clientName || booking?.query?.clientName || booking?.travelerDetails?.[0]?.fullName || "Lead Client";
+  const headerDestination = booking?.destination || booking?.query?.destination || "Destination";
+  const headerTravelDates = booking?.dates || booking?.travelDates || (booking?.startDate && booking?.endDate ? formatDateRange(booking.startDate, booking.endDate) : "Dates Pending");
+  const headerAdultCount = Number(booking?.numberOfAdults || booking?.query?.numberOfAdults || 0);
+  const headerChildCount = Number(booking?.numberOfChildren || booking?.query?.numberOfChildren || 0);
+  const headerPaxSummary = formatPax(headerAdultCount || 1, headerChildCount);
+  const headerDuration = getTripDuration(booking?.startDate || booking?.query?.startDate, booking?.endDate || booking?.query?.endDate);
+  const headerClientPhone = booking?.clientPhone || booking?.query?.clientPhone || booking?.travelerDetails?.[0]?.phone || "";
+
   const [feedback, setFeedback] = useState(null);
   const [utrNumber, setUtrNumber] = useState(isRejectedPayment ? "" : paymentSubmission?.utrNumber || "");
   const [quotationAmount, setQuotationAmount] = useState("");
@@ -931,7 +985,7 @@ export default function ActiveBookingDetails({ onClose, booking, onBookingUpdate
   const [documentUploadErrors, setDocumentUploadErrors] = useState({});
   const [submittingDocs, setSubmittingDocs] = useState(false);
   const [isSubmitDocsConfirmOpen, setIsSubmitDocsConfirmOpen] = useState(false);
-  const [isPaymentUpdateOpen, setIsPaymentUpdateOpen] = useState(false);
+  const [isPaymentUpdateOpen, setIsPaymentUpdateOpen] = useState(true);
   const [payableQuotationAmount, setPayableQuotationAmount] = useState(0);
 
   // ── Payment tracker state ──
@@ -985,6 +1039,49 @@ export default function ActiveBookingDetails({ onClose, booking, onBookingUpdate
   );
   const hasExactPaymentMismatch = false;
   const paymentAmountWarningMessage = "";
+
+  const totalPaidAmount = useMemo(() => {
+    if (booking?.paidAmount) return Number(booking.paidAmount);
+    return validTrackerPayments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
+  }, [booking?.paidAmount, validTrackerPayments]);
+  const remainingPaymentAmount = Math.max(0, expectedPaymentAmount - totalPaidAmount);
+
+  const isFullPaymentVerified = useMemo(() => {
+    if (!isPaymentVerified) return false;
+    if (booking?.paymentStatus === "Paid") return true;
+    if (expectedPaymentAmount > 0 && totalPaidAmount >= expectedPaymentAmount) return true;
+    return false;
+  }, [booking?.paymentStatus, expectedPaymentAmount, isPaymentVerified, totalPaidAmount]);
+
+  const isPartialPaymentVerified = isPaymentVerified && !isFullPaymentVerified;
+
+  const paymentChipConfig = useMemo(() => {
+    if (isFullPaymentVerified) {
+      return {
+        wrapperClass: "bg-emerald-50 border border-emerald-200",
+        badgeClass: "bg-emerald-500 text-white",
+        textClass: "text-emerald-700 font-semibold",
+        label: "Full Payment Cleared",
+        isCheck: true,
+      };
+    }
+    if (isPartialPaymentVerified) {
+      return {
+        wrapperClass: "bg-sky-50 border border-sky-200",
+        badgeClass: "bg-sky-500 text-white",
+        textClass: "text-sky-700 font-semibold",
+        label: "Partial Payment Verified",
+        isCheck: true,
+      };
+    }
+    return {
+      wrapperClass: "bg-slate-100 border border-slate-200",
+      badgeClass: "bg-slate-200 text-slate-600",
+      textClass: "text-slate-700 font-semibold",
+      label: "Payment Update",
+      isCheck: false,
+    };
+  }, [isFullPaymentVerified, isPartialPaymentVerified]);
 
   const isInternationalTrip = useMemo(() => {
     const explicitQuoteCategory = String(
@@ -1162,12 +1259,13 @@ export default function ActiveBookingDetails({ onClose, booking, onBookingUpdate
     : isRejectedPayment
       ? "Please upload the corrected payment receipt before resubmitting."
       : "Please upload the payment receipt before submitting.";
+  const isPaymentOnlyMode = isPaymentDesk || Boolean(documentPortalContext?.paymentOnly || documentPortalContext?.hideDocuments);
   const canSubmitPayment =
     Boolean(invoiceId) &&
     !preparingInvoice &&
     !submittingPayment &&
     !hasExactPaymentMismatch &&
-    isTravelerDocumentsVerifiedComplete;
+    (isTravelerDocumentsVerifiedComplete || isPaymentOnlyMode);
   const submitButtonLabel = !invoiceId
     ? preparingInvoice
       ? "Preparing Amount..."
@@ -1256,8 +1354,10 @@ export default function ActiveBookingDetails({ onClose, booking, onBookingUpdate
   }, [booking?.quotation?._id, invoiceId, onBookingUpdated]);
 
   useEffect(() => {
-    setIsPaymentUpdateOpen(isTravelerDocumentsVerifiedComplete);
-  }, [isTravelerDocumentsVerifiedComplete]);
+    if (activeTab === "payments") {
+      setIsPaymentUpdateOpen(true);
+    }
+  }, [activeTab]);
 
   const handleView = (doc) => doc?.url && window.open(doc.url, "_blank", "noopener,noreferrer");
   const handleDownloadInstallmentReceipt = async (receipt, installmentIndex, options = {}) => {
@@ -1316,7 +1416,7 @@ export default function ActiveBookingDetails({ onClose, booking, onBookingUpdate
         "Please enter amount and payment date, then click Add so the new instalment appears in Payment History before submitting.",
       );
     }
-    if (!isTravelerDocumentsVerifiedComplete) {
+    if (!isTravelerDocumentsVerifiedComplete && !isPaymentOnlyMode) {
       return notify(
         "warning",
         "Traveler Documents Pending",
@@ -1338,7 +1438,7 @@ export default function ActiveBookingDetails({ onClose, booking, onBookingUpdate
       const { data } = await API.put(`/agent/invoices/${invoiceId}/payment-status`, fd, { headers: { "Content-Type": "multipart/form-data" } });
       onBookingUpdated?.({ type: "payment", invoice: data?.invoice });
       setReceiptFile(null);
-      setIsPaymentUpdateOpen(false);
+      setIsPaymentUpdateOpen(true);
       notify("success", "Payment Submitted", data?.message || "Payment submitted for verification.");
     } catch (error) {
       notify("error", "Submission Failed", error?.response?.data?.message || "Unable to submit payment right now.");
@@ -1481,6 +1581,22 @@ export default function ActiveBookingDetails({ onClose, booking, onBookingUpdate
     setIsSubmitDocsConfirmOpen(true);
   };
 
+  if (isCreatingProforma) {
+    return (
+      <div className="w-full min-h-screen bg-white font-sans antialiased">
+        <CreateProformaInvoice
+          onClose={() => setIsCreatingProforma(false)}
+          onSave={(data) => {
+            setProformaInvoiceData(data);
+            setIsCreatingProforma(false);
+            toast.success("Proforma Invoice saved successfully");
+          }}
+          queryData={booking}
+        />
+      </div>
+    );
+  }
+
   return (
     <motion.div variants={container} initial="hidden" animate="visible" className="min-h-screen bg-[#f5f8fc] [&_button]:cursor-pointer [&_button:disabled]:cursor-not-allowed">
       <Toast feedback={feedback} onClose={() => setFeedback(null)} />
@@ -1530,292 +1646,430 @@ export default function ActiveBookingDetails({ onClose, booking, onBookingUpdate
         ) : null}
       </AnimatePresence>
 
-      {/* Header */}
-      <motion.div variants={item} className="mb-5 flex flex-col gap-4 rounded-[18px] border border-slate-200 bg-white p-5 shadow-sm lg:flex-row lg:items-start lg:justify-between">
-        <div className="flex items-start gap-3">
-          <button type="button" onClick={onClose} className="flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 text-slate-700 hover:bg-slate-50"><ArrowLeft className="h-5 w-5" /></button>
-          <div>
-            <h1 className="text-[24px] font-bold tracking-[-0.03em] text-slate-900">{booking?.destination || "Booking Details"}</h1>
-            <p className="mt-1 text-sm text-slate-500">{booking?.bookingReference || booking?.invoiceNumber || "Booking Pending"} · {booking?.dates || "Dates pending"}</p>
-          </div>
+      {/* 1. TOP BREADCRUMB BAR (Back | Docs > Current) */}
+      <div className="flex items-center gap-2 mb-3 text-xs text-slate-500 font-medium px-1">
+        <button
+          type="button"
+          onClick={onClose}
+          className="inline-flex items-center gap-1 text-slate-700 hover:text-slate-900 font-bold cursor-pointer transition-all"
+        >
+          <ArrowLeft size={13} />
+          <span>Back</span>
+        </button>
+        <span className="text-slate-300 font-light mx-0.5">|</span>
+        <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium">
+          <span>
+            {detailTab === "basic"
+              ? "Basic Details"
+              : detailTab === "services"
+              ? "Services Bookings"
+              : detailTab === "accounting"
+              ? "Accounting"
+              : detailTab === "internal_invoice"
+              ? "Internal Generate Invoice"
+              : "Docs"}
+          </span>
+          <ChevronRight size={12} className="text-slate-400" />
+          <span className="text-slate-700 font-semibold">Current</span>
         </div>
-        <span className={`rounded-full px-4 py-1.5 text-xs font-semibold ${booking?.displayStatus?.className || "bg-slate-100 text-slate-700"}`}>{booking?.displayStatus?.label || "Booking Pending"}</span>
-      </motion.div>
+      </div>
 
-      {/* Payment Update Section */}
-      <motion.section variants={item} className="overflow-hidden rounded-[20px] bg-white">
+      {/* 2. QUERY HEADER SUMMARY CARD (Green Left Accent Border matching DMC UI) */}
+      <div className="bg-white border-y border-r border-slate-200 border-l-[5px] border-l-emerald-600 py-3 px-4 sm:py-3.5 sm:px-4.5 relative transition-all mb-4 shadow-2xs">
+        <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3">
+          {/* Left Details Block */}
+          <div className="flex-1 space-y-1.5 min-w-0">
+            {/* Line 1: # ID • Client Name • Destination • Agency • Badges */}
+            <div className="flex items-center gap-1.5 flex-wrap text-base sm:text-lg font-bold text-slate-900 leading-snug">
+              <span className="text-[#6679f4] font-bold">#</span>
+              <span className="font-extrabold">{String(headerBookingId).replace(/^#\s*/, "")}</span>
+              <span className="text-slate-300 font-normal mx-0.5">•</span>
+              <span className="truncate max-w-[240px] sm:max-w-none font-bold">{headerClientName}</span>
+              <span className="text-slate-300 font-normal mx-0.5">•</span>
+              <span className="font-bold">{headerDestination}</span>
+              <span className="text-slate-300 font-normal mx-0.5">•</span>
+              <span className="text-sm sm:text-base font-medium text-slate-700">
+                {booking?.agencyName || booking?.companyName || "DDLC Company"}
+              </span>
+              <span className="text-slate-300 font-normal mx-0.5">•</span>
 
-        {/* Header */}
-        <div className="relative overflow-hidden border-b border-slate-100 bg-gradient-to-br from-slate-900 via-slate-800 to-emerald-900 px-6 py-6">
-          <div className="pointer-events-none absolute -right-12 -top-12 h-48 w-48 rounded-full bg-emerald-500/10 blur-3xl" />
-          <div className="pointer-events-none absolute -bottom-8 left-1/3 h-32 w-32 rounded-full bg-teal-400/10 blur-2xl" />
-          <div className="relative flex flex-col gap-5 pr-24 sm:pr-28 xl:flex-row xl:items-start xl:justify-between">
-            <div className="flex items-start gap-4">
-              <div className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-400 to-teal-500 shadow-[0_8px_24px_rgba(16,185,129,0.35)]">
-                <svg className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.6}>
-                  <rect x="2" y="6" width="20" height="13" rx="2.5" strokeLinejoin="round" />
-                  <circle cx="12" cy="12.5" r="2.5" />
-                  <path d="M6 9.5h.01M18 15.5h.01" strokeLinecap="round" />
-                </svg>
-              </div>
-              <div>
-                <div className="mb-2 flex items-center gap-2">
-                  <div className={`flex items-center gap-1.5 rounded-full px-3 py-1 ring-1 ${isTravelerDocumentsVerifiedComplete ? "bg-emerald-500/20 ring-emerald-400/30" : "bg-white/5 ring-white/10"}`}>
-                    <div className={`flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-bold ${isTravelerDocumentsVerifiedComplete ? "bg-emerald-400 text-white" : "bg-white/10 text-white/65"}`}>
-                      {isTravelerDocumentsVerifiedComplete ? (
-                        <svg className="h-2.5 w-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                        </svg>
-                      ) : "1"}
-                    </div>
-                    <span className={`text-[10px] ${isTravelerDocumentsVerifiedComplete ? "font-semibold text-emerald-300" : "font-medium text-white/65"}`}>Traveler Documents</span>
-                  </div>
-                  <svg className="h-3 w-3 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" d="M9 5l7 7-7 7" /></svg>
-                  <div className={`flex items-center gap-1.5 rounded-full px-3 py-1 ring-1 ${bookingConfirmationReady ? "bg-emerald-500/20 ring-emerald-400/30" : "bg-white/5 ring-white/10"}`}>
-                    <div className={`flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-bold ${bookingConfirmationReady ? "bg-emerald-400 text-white" : isTravelerDocumentsVerifiedComplete ? "bg-white/15 text-white/80" : "bg-white/10 text-white/40"}`}>
-                      {bookingConfirmationReady ? (
-                        <svg className="h-2.5 w-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                        </svg>
-                      ) : "2"}
-                    </div>
-                    <span className={`text-[10px] ${bookingConfirmationReady ? "font-semibold text-emerald-300" : isTravelerDocumentsVerifiedComplete ? "font-semibold text-white/80" : "font-medium text-white/40"}`}>Payment Update</span>
-                  </div>
-                </div>
-                <h2 className="text-[20px] font-bold tracking-tight text-white">Agent Payment Details</h2>
-                <p className="mt-0.5 max-w-[600px] text-[12px] leading-5 text-slate-400">
-                  {isTravelerDocumentsVerifiedComplete
-                    ? "Traveler documents are verified. You can now submit payment details for finance verification."
-                    : "Payment details unlock only after operations verifies all required traveler documents without any issue."}
-                </p>
+              {/* Badges */}
+              <div className="inline-flex items-center gap-2 ml-1 flex-wrap">
+                <span className="px-2.5 py-0.5 rounded-md text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-300/80">
+                  {isFullPaymentVerified ? "Full Paid" : isPaymentVerified ? "Partial Paid" : "Active Booking"}
+                </span>
               </div>
             </div>
-            {isTravelerDocumentsVerifiedComplete ? (
-              <button
-                type="button"
-                onClick={() => setIsPaymentUpdateOpen((prev) => !prev)}
-                className="absolute right-0 top-0 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-white transition hover:bg-white/15"
-                aria-expanded={isPaymentUpdateOpen}
-              >
-                <span>{isPaymentUpdateOpen ? "Hide" : "Show"}</span>
-                <ChevronDown className={`h-3.5 w-3.5 transition-transform ${isPaymentUpdateOpen ? "rotate-180" : ""}`} />
-              </button>
-            ) : null}
+
+            {/* Line 2: Calendar Dates • Duration • Passengers */}
+            <div className="flex items-center gap-2 flex-wrap text-sm text-slate-700 font-medium">
+              <CalendarDays size={15} className="text-cyan-500 shrink-0" />
+              <span>{headerTravelDates}</span>
+              {headerDuration && (
+                <>
+                  <span className="text-slate-300 font-normal">•</span>
+                  <span>{headerDuration}</span>
+                </>
+              )}
+              <span className="text-slate-300 font-normal">•</span>
+              <Users size={15} className="text-amber-500 shrink-0 ml-0.5" />
+              <span>{headerPaxSummary}</span>
+            </div>
+
+            {/* Line 3: Lead Guest Name (2A) */}
+            <div className="flex items-center gap-2 flex-wrap text-sm text-slate-800 font-medium">
+              <UserSquare2 size={15} className="text-emerald-500 shrink-0" />
+              <span>{headerClientName}</span>
+              <span className="text-slate-900 font-bold">({headerAdultCount || 2}A)</span>
+            </div>
+
+            {/* Line 4: Arrow Agency Contact (DDLC Company) */}
+            <div className="flex items-center gap-2 flex-wrap text-sm text-slate-800 font-medium pt-0.5">
+              <ArrowRight size={15} className="text-violet-500 shrink-0" />
+              <span className="font-medium text-slate-900">
+                {booking?.agencyName || booking?.companyName || "DDLC Company"}
+              </span>
+            </div>
+          </div>
+
+          {/* Right Package Cost Block */}
+          <div className="lg:text-right shrink-0">
+            <p className="text-[11px] font-normal text-slate-500">Package (INR)</p>
+            <p className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">
+              {Math.floor(Number(expectedPaymentAmount || approvedQuotationAmount || 38650)).toLocaleString("en-IN")}
+            </p>
+            <p className="text-[10px] text-slate-400 font-normal">inc. GST</p>
           </div>
         </div>
+      </div>
 
-        {/* Body */}
-        <AnimatePresence initial={false}>
-          {isTravelerDocumentsVerifiedComplete && isPaymentUpdateOpen ? (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              exit={{ opacity: 0, height: 0 }}
-              transition={{ duration: 0.24, ease: "easeInOut" }}
-              className="overflow-hidden"
-            >
-              <div className="grid gap-6 bg-slate-50/40 py-6 xl:grid-cols-[minmax(0,1.3fr)_368px]">
+      {/* 3. HORIZONTAL TAB NAVIGATION (Basic Details | Services Bookings | Accounting | Internal Generate Invoice | Docs) */}
+      {!isPaymentDesk && !isTravelerDocsDesk && (
+        <div className="bg-white border-b border-x border-slate-200 px-5 pt-3 mb-5 shadow-2xs">
+          <div className="flex items-center gap-8 overflow-x-auto custom-scroll text-sm">
+            {[
+              { id: "basic", label: "Basic Details" },
+              { id: "services", label: "Services Bookings" },
+              { id: "accounting", label: "Accounting" },
+              { id: "internal_invoice", label: "Internal Generate Invoice" },
+              { id: "docs", label: "Docs" },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setDetailTab(tab.id)}
+                className={`pb-3 font-bold transition-all relative whitespace-nowrap cursor-pointer ${
+                  detailTab === tab.id
+                    ? "text-[#3E63DD] font-extrabold border-b-2 border-[#3E63DD]"
+                    : "text-slate-600 hover:text-slate-900 font-semibold"
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
-                {/* LEFT: form */}
-                <div className="space-y-4">
-                  {!invoiceId ? (
-                    <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-amber-800">
-                      <p className="text-[13px] font-semibold">Amount details are being prepared</p>
-                      <p className="mt-1 text-[13px] opacity-90">
-                        You can upload traveler documents now. Payment submission will unlock after the final amount is shared for this booking.
-                      </p>
+      {/* 4. BASIC DETAILS TAB */}
+      {detailTab === "basic" && (
+        <div className="bg-white border border-slate-200 rounded-lg p-5 shadow-2xs space-y-4 mb-6">
+          <h3 className="text-base font-bold text-slate-900">Basic Booking Details</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-xs">
+            <div className="bg-slate-50 p-3 rounded-md border border-slate-100">
+              <p className="text-slate-400 font-medium">Lead Passenger</p>
+              <p className="font-bold text-slate-900 text-sm mt-0.5">{headerClientName}</p>
+              <p className="text-slate-500 mt-1">Phone: {headerClientPhone || "N/A"}</p>
+            </div>
+            <div className="bg-slate-50 p-3 rounded-md border border-slate-100">
+              <p className="text-slate-400 font-medium">Destination</p>
+              <p className="font-bold text-slate-900 text-sm mt-0.5">{headerDestination}</p>
+              <p className="text-slate-500 mt-1">Dates: {headerTravelDates}</p>
+            </div>
+            <div className="bg-slate-50 p-3 rounded-md border border-slate-100">
+              <p className="text-slate-400 font-medium">PAX & Duration</p>
+              <p className="font-bold text-slate-900 text-sm mt-0.5">{headerPaxSummary}</p>
+              <p className="text-slate-500 mt-1">Duration: {headerDuration || "N/A"}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 5. SERVICES BOOKINGS TAB */}
+      {detailTab === "services" && (
+        <div className="mb-6 font-sans">
+          <ServicesBookingsTab
+            activeQuote={booking?.selectedQuotation || booking?.quotation}
+            query={booking}
+            currentUser={currentUser}
+          />
+        </div>
+      )}
+
+      {/* 6. INTERNAL GENERATE INVOICE TAB */}
+      {detailTab === "internal_invoice" && (
+        <div className="bg-white border border-slate-200 rounded-lg p-5 shadow-2xs space-y-4 mb-6">
+          <h3 className="text-base font-bold text-slate-900">Internal Generated Invoice</h3>
+          <div className="border border-slate-200 rounded-md p-4 bg-slate-50 flex items-center justify-between text-xs">
+            <div>
+              <p className="font-bold text-slate-900 text-sm">Invoice #{booking?.invoiceNumber || booking?.bookingReference || headerBookingId}</p>
+              <p className="text-slate-500 mt-0.5">Payable Amount: INR {(expectedPaymentAmount || 38650).toLocaleString("en-IN")}</p>
+            </div>
+            <span className="px-3 py-1 bg-emerald-50 text-emerald-700 font-bold border border-emerald-200 rounded text-xs">
+              Generated
+            </span>
+          </div>
+        </div>
+      )}
+
+      {detailTab === "accounting" && (
+        <div className="flex flex-col lg:flex-row gap-5 items-start mb-6">
+          {/* LEFT SIDEBAR SUB-TABS (Vertical list matching Sembark) */}
+          <div className="w-full lg:w-40 shrink-0 bg-white border-r border-slate-200/80 py-1 font-sans">
+            <div className="flex lg:flex-col overflow-x-auto">
+              <button
+                type="button"
+                onClick={() => setAccountingSubTab("payments")}
+                className={`w-full text-left px-3.5 py-2.5 text-[14px] transition-all relative flex items-center justify-between cursor-pointer ${
+                  accountingSubTab === "payments"
+                    ? "bg-[#f8fafc] text-slate-900 font-bold"
+                    : "text-slate-500 font-semibold hover:text-slate-900 hover:bg-slate-50/50"
+                }`}
+              >
+                <span>Payments</span>
+                {accountingSubTab === "payments" && (
+                  <span className="absolute right-0 top-0 bottom-0 w-[3px] bg-[#35489e] rounded-l-xs" />
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setAccountingSubTab("proforma")}
+                className={`w-full text-left px-3.5 py-2.5 text-[14px] transition-all relative flex items-center justify-between cursor-pointer ${
+                  accountingSubTab === "proforma"
+                    ? "bg-[#f8fafc] text-slate-900 font-bold"
+                    : "text-slate-500 font-semibold hover:text-slate-900 hover:bg-slate-50/50"
+                }`}
+              >
+                <span>Proforma Invoice</span>
+                {accountingSubTab === "proforma" && (
+                  <span className="absolute right-0 top-0 bottom-0 w-[3px] bg-[#35489e] rounded-l-xs" />
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* RIGHT CONTENT AREA */}
+          <div className="flex-1 min-w-0 w-full px-3 lg:px-4 pt-3 pb-3 space-y-5 bg-white border border-slate-200 rounded-sm shadow-2xs">
+            {accountingSubTab === "payments" && (
+              <div className="space-y-5 font-sans">
+                {/* SECTION 1: PAYMENTS FROM FINANCE */}
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 mb-2.5">Payments to Finance</h3>
+
+                  {/* Light Gray Section Wrapper matching Image 1 */}
+                  <div className="w-full bg-[#f1f5f9] p-3.5 lg:p-4.5 flex flex-col lg:flex-row items-start gap-3.5 lg:gap-5 rounded-xs border border-slate-200/50 mb-6">
+                    {/* Left summary stat block */}
+                    <div className="w-full lg:w-44 shrink-0 py-1 flex flex-col justify-start">
+                      <p className="text-xs font-bold text-slate-900">INR</p>
+                      <div className="mt-1 text-3xl font-extrabold text-[#15803d] tracking-tight leading-none">
+                        + {totalPaidAmount.toLocaleString("en-IN")}
+                      </div>
+                      <div className="mt-1.5 text-3xl font-extrabold text-slate-900 flex items-baseline gap-1 leading-none">
+                        <span className="text-slate-400 font-normal text-xl">/</span>
+                        <span>{(expectedPaymentAmount || 38650).toLocaleString("en-IN")}</span>
+                      </div>
+                      <div className="mt-3.5 space-y-1 text-[11px] text-slate-500 font-normal leading-tight">
+                        <p>Created by Finance Team</p>
+                        <p>Remaining: <span className="font-semibold text-amber-700">{"\u20B9"}{remainingPaymentAmount.toLocaleString("en-IN")}</span></p>
+                        <p>Trip ID: {headerBookingId}</p>
+                      </div>
                     </div>
-                  ) : null}
-                  {reviewBanner ? (
-                    <div className={`rounded-2xl border px-5 py-4 ${reviewBanner.tone}`}>
-                      <p className="text-[13px] font-semibold">{reviewBanner.title}</p>
-                      <p className="mt-1 text-[13px] opacity-90">{reviewBanner.msg}</p>
-                    </div>
-                  ) : null}
 
-                  <form onSubmit={handlePaymentSubmit} className="space-y-4">
-                    <div className={!invoiceId ? "pointer-events-none opacity-60" : ""}>
-                      {/* Row 1: UTR | Amount */}
-                      <div className="grid gap-3 xl:grid-cols-2">
-
-                        {/* UTR */}
-                        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs ring-1 ring-slate-100/60">
-                          <div className="mb-2.5 flex items-center gap-2">
-                            <motion.div
-                              animate={{ scale: [1, 1.08, 1] }}
-                              transition={{ repeat: Infinity, duration: 2.5, ease: "easeInOut" }}
-                              className="flex h-6 w-6 items-center justify-center rounded-lg bg-violet-50 text-violet-600"
-                            >
-                              <Fingerprint className="h-3.5 w-3.5" />
-                            </motion.div>
-                            <span className="text-[11px] font-semibold uppercase tracking-[0.13em] text-slate-500">UTR / Transaction ID</span>
-                          </div>
-                          <div className="relative [&>span]:hidden">
-                            <Fingerprint className="pointer-events-none absolute left-3 top-3 h-3.5 w-3.5 text-slate-400" />
-                            <input
-                              value={utrNumber}
-                              onChange={(e) => setUtrNumber(e.target.value.toUpperCase())}
-                              placeholder="SBINR52012345678"
-                              className="h-10 w-full rounded-xl border border-slate-300 bg-slate-50 pl-9 pr-4 text-[13px] font-mono text-slate-700 outline-none transition-all focus:border-violet-300 focus:bg-white focus:ring-2 focus:ring-violet-100"
-                            />
-                          </div>
-                          <p className="mt-2 px-0.5 text-[11px] leading-4 text-amber-700">e.g. 312345678901, HDFC1234567890</p>
-                        </div>
-
-                        {/* ── Quotation Amount + Payment Tracker ── */}
-                        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm ring-1 ring-slate-100/60 xl:col-span-2">
-                          {/* Card header */}
-                          <div className="mb-2.5 flex items-center justify-between gap-2">
-                            <div className="flex items-center gap-2">
-                              <motion.div
-                                animate={{ rotate: [0, 10, -10, 0], scale: [1, 1.05, 0.95, 1] }}
-                                transition={{ repeat: Infinity, duration: 3, ease: "easeInOut" }}
-                                className="flex h-6 w-6 items-center justify-center rounded-lg bg-amber-50 text-amber-600"
-                              >
-                                <Coins className="h-3.5 w-3.5" />
-                              </motion.div>
-                              <span className="text-[11px] font-semibold uppercase tracking-[0.13em] text-slate-500">Payable Quotation Amount</span>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => setCouponModalOpen(true)}
-                              className="inline-flex cursor-pointer items-center gap-1 rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[10px] font-semibold text-violet-700 transition hover:bg-violet-100"
-                            >
-                              <svg className="h-2.5 w-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M7 7h.01M3 11.586V6a1 1 0 011-1h5.586a1 1 0 01.707.293l8.414 8.414a2 2 0 010 2.829l-4.172 4.171a2 2 0 01-2.828 0L3.707 12.293A1 1 0 013 11.586z" />
-                              </svg>
-                              Apply Coupon
-                            </button>
-                          </div>
-
-                          {/* Amount input */}
-                          <div className="hidden">
-                            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[13px] font-semibold text-slate-400">₹</span>
-                            <input
-                              value={quotationAmount}
-                              onChange={(e) => setQuotationAmount(formatAmountInput(e.target.value))}
-                              inputMode="numeric"
-                              placeholder="Enter amount"
-                              className={`h-10 w-full rounded-xl border bg-slate-50 px-4 text-[13px] font-semibold text-slate-700 outline-none transition-all focus:bg-white focus:ring-2 ${hasExactPaymentMismatch
-                                ? "border-rose-300 focus:border-rose-300 focus:ring-rose-100"
-                                : "border-slate-300 focus:border-amber-300 focus:ring-amber-100"
-                                }`}
-                            />
-                          </div>
-                          {hasExactPaymentMismatch && (
-                            <div className="mt-2 rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] font-medium leading-5 text-rose-700">
-                              {paymentAmountWarningMessage}
-                            </div>
-                          )}
-
-                          {/* ── Payment Tracker sits here ── */}
-                          {trackerTotalAmount > 0 && (
-                            <>
-                              <div className="mt-4 mb-2 flex items-center gap-2">
-                                <div className="h-px flex-1 bg-indigo-200/80" />
-                                <span className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-indigo-950 bg-gradient-to-r from-indigo-50 via-purple-50/50 to-pink-50/30 border border-indigo-200/60 rounded-full px-4.5 py-1.5 shadow-sm">
-                                  Payment Tracker
-                                </span>
-                                <div className="h-px flex-1 bg-indigo-200/80" />
-                              </div>
-                              <PaymentTracker
-                                totalAmount={trackerTotalAmount}
-                                payments={trackerPayments}
-                                onAddPayment={handleAddTrackerPayment}
-                                onUpdatePayment={handleEditTrackerPayment}
-                                onDownloadReceipt={handleDownloadInstallmentReceipt}
-                                onValidationError={(message) => notify("warning", "Invalid Payment Date", message)}
-                              />
-                            </>
-                          )}
-                        </div>
-
+                    {/* Right Installment list matching Image 1 */}
+                    <div className="flex-1 min-w-0 bg-white border border-slate-200/90 rounded-sm p-3.5 lg:p-4 shadow-2xs space-y-3">
+                      <div className="grid grid-cols-12 text-xs font-bold text-slate-600 pb-2 border-b border-slate-200/80 gap-2">
+                        <div className="col-span-2">Amount (INR)</div>
+                        <div className="col-span-3">Status</div>
+                        <div className="col-span-2">Payment Date</div>
+                        <div className="col-span-5">Comments</div>
                       </div>
 
-                      {/* Receipt Upload */}
-                      <div>
-                        <div className="mb-2.5 flex items-center gap-2">
-                          <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-teal-50 text-teal-600">
-                            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.2}>
-                              <path strokeLinecap="round" d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66L9.41 17.41a2 2 0 01-2.83-2.83l8.49-8.49" />
-                            </svg>
-                          </div>
-                          <span className="text-[11px] font-semibold uppercase tracking-[0.13em] text-slate-500">Payment Receipt</span>
-                        </div>
-
-                        <div className="group overflow-hidden rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 via-teal-50/40 to-white p-5">
-                          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                            <div className="flex items-start gap-3.5">
-                              <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-400 to-teal-500 shadow-[0_6px_16px_rgba(16,185,129,0.3)]">
-                                <svg className="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-                                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.96 11.96 0 003 12c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-2.056-.503-3.996-1.398-5.709A11.96 11.96 0 0112 2.964z" />
-                                </svg>
-                              </div>
-                              <div>
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <p className="text-[13px] font-semibold text-slate-900">
-                                    {receiptFile?.name || "Upload receipt for this payment"}
-                                  </p>
-                                  {receiptFile?.name ? (
-                                    <span className="rounded-full bg-emerald-500 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white shadow-sm">Attached</span>
+                      {validTrackerPayments.length > 0 ? (
+                        validTrackerPayments.map((inst, idx) => {
+                          const isInstallmentVerified = inst?.verificationStatus === "Verified";
+                          const receiptForDownload = isInstallmentVerified ? inst?.financeReceipt : inst?.receipt;
+                          const hasDownloadableReceipt = isInstallmentVerified || Boolean(receiptForDownload?.url);
+                          const reviewerName = inst?.verifiedByName || booking?.assignedFinanceName || "Finance Team";
+                          return (
+                          <div key={idx} className="grid grid-cols-12 text-xs items-start py-2.5 border-b border-slate-100 last:border-0 gap-2">
+                            <div className="col-span-2 font-extrabold text-slate-900 text-sm">
+                              ₹{Number(inst.amount || 0).toLocaleString("en-IN")}
+                            </div>
+                            <div className="col-span-3">
+                              <div className="flex flex-col gap-1">
+                                <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-blue-50 text-blue-700 font-bold border border-blue-200 text-[11px] w-fit whitespace-nowrap">
+                                  <span>Paid: {inst.date || "Completed"}</span>
+                                  {hasDownloadableReceipt ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDownloadInstallmentReceipt(receiptForDownload, idx, { isInstallmentVerified })}
+                                      className="relative inline-flex text-slate-400 hover:text-slate-700"
+                                      title={`Open ${isInstallmentVerified ? "finance receipt" : "payment proof"}`}
+                                    >
+                                      <FileText size={11} className={inst?.receiptStatus === "Sent" ? "text-emerald-600" : undefined} />
+                                      {inst?.receiptStatus === "Sent" && (
+                                        <CheckCheck size={8} className="absolute -left-1 -top-1 text-emerald-600" aria-label="Receipt shared by finance" />
+                                      )}
+                                    </button>
                                   ) : null}
                                 </div>
-                                <p className="mt-1 text-[12px] leading-5 text-slate-500">
-                                  {receiptFile?.name
-                                    ? "New receipt selected. Submit now to send it for finance review."
-                                    : latestInstallmentNeedsReceipt
-                                      ? "Upload the payment proof for this installment. Previous receipts are available in Payment History."
-                                      : isRejectedPayment
-                                        ? "Previous receipt was reset for correction. Upload the updated proof again."
-                                        : paymentSubmission?.submittedAt
-                                          ? "Previous receipt is in Payment History. Add a new installment and upload its proof before submitting again."
-                                          : "Upload your payment proof here. JPG, PNG, WEBP and PDF supported."}
+                                <div className="hidden">
+                                  <CheckCircle size={11} className={isInstallmentVerified ? "text-emerald-600" : "text-amber-500"} />
+                                  {isInstallmentVerified ? "Verified" : "Pending"}
+                                </div>
+                                {false && inst?.receiptStatus === "Sent" && (
+                                  <span className="inline-flex items-center gap-1 text-[10.5px] text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100 font-semibold w-fit whitespace-nowrap">
+                                    Receipt Shared
+                                  </span>
+                                )}
+                                <p className="text-[11px] text-slate-700 font-medium leading-tight">
+                                  {isInstallmentVerified ? reviewerName : "Awaiting Finance Review"}
                                 </p>
-                                {latestInstallmentNeedsReceipt && !receiptFile ? (
-                                  <p className="mt-1 text-[11px] font-semibold text-rose-600">
-                                    Receipt is mandatory for this installment.
+                                <p className="text-[10.5px] text-slate-500 font-normal leading-tight">
+                                  Trip ID: {headerBookingId}
+                                </p>
+                                {inst?.utrNumber && (
+                                  <p className="text-[10.5px] text-slate-500 font-normal leading-tight break-all">
+                                    UTR: {inst.utrNumber}
                                   </p>
-                                ) : null}
+                                )}
                               </div>
                             </div>
-                            <div className="flex w-full flex-col gap-2 sm:w-auto sm:min-w-[200px]">
-                              <label className="inline-flex h-9 w-full cursor-pointer items-center justify-center gap-2 rounded-full bg-slate-900 px-4 text-[12px] font-semibold text-white shadow-sm transition hover:bg-slate-700 active:scale-[0.98]">
-                                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6h.1a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>
-                                {receiptFile?.name ? "Change receipt" : "Upload receipt"}
-                                <input type="file" accept=".jpg,.jpeg,.png,.webp,.pdf" className="hidden" onChange={(e) => setReceiptFile(e.target.files?.[0] || null)} />
-                              </label>
+                            <div className="col-span-2 text-xs font-semibold text-slate-700 pt-0.5 text-left whitespace-nowrap">
+                              {inst.date || "Pending"}
+                            </div>
+                            <div className="col-span-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 pt-0.5 min-w-0">
+                              <span className="text-xs text-slate-500 font-medium flex items-start gap-1 min-w-0 break-words pr-1">
+                                <MessageSquare size={12} className="shrink-0 mt-0.5" />
+                                <span className="break-words">{inst.note || "Payout confirmed by finance"}</span>
+                              </span>
+                              <div className="flex flex-col items-end gap-1 shrink-0">
+                                {inst?.receiptStatus === "Sent" && (
+                                  <span className="order-2 inline-flex items-center gap-1 text-[10.5px] text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100 font-semibold whitespace-nowrap">
+                                    Receipt Shared
+                                  </span>
+                                )}
+                                <span className={`order-1 inline-flex items-center gap-1 text-[10.5px] px-2 py-0.5 rounded border font-semibold whitespace-nowrap ${isInstallmentVerified ? "text-emerald-700 bg-emerald-50 border-emerald-200/80" : "text-amber-700 bg-amber-50 border-amber-200"}`}>
+                                  <CheckCircle size={11} className={isInstallmentVerified ? "text-emerald-600" : "text-amber-500"} />
+                                  {isInstallmentVerified ? "Verified" : "Pending"}
+                                </span>
+                                {hasDownloadableReceipt && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDownloadInstallmentReceipt(receiptForDownload, idx, { isInstallmentVerified })}
+                                    className="hidden"
+                                    title={`Download ${isInstallmentVerified ? "finance receipt" : "payment proof"}`}
+                                  >
+                                    <Download size={13} />
+                                  </button>
+                                )}
+                              </div>
                             </div>
                           </div>
+                          );
+                        })
+                      ) : (
+                        <div className="py-4 text-center text-xs text-slate-400 font-medium">
+                          No customer payment installments received yet.
                         </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* SECTION 2: SUBMIT AGENT PAYMENT DETAILS */}
+                <div className="pt-4 border-t border-slate-200">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <h3 className="text-sm font-bold text-slate-900">Submit / Update Agent Payment Details</h3>
+                    <button
+                      type="button"
+                      onClick={() => setCouponModalOpen(true)}
+                      disabled={!invoiceId || preparingInvoice}
+                      className="inline-flex items-center gap-1.5 rounded-md border border-[#3E63DD] bg-white px-3 py-1.5 text-xs font-semibold text-[#3E63DD] transition-colors hover:bg-blue-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400"
+                    >
+                      <BadgePercent size={14} />
+                      Apply Coupon
+                    </button>
+                  </div>
+                  <form onSubmit={handlePaymentSubmit} className="space-y-4">
+                    <PaymentTracker
+                      totalAmount={trackerTotalAmount}
+                      payments={trackerPayments}
+                      onAddPayment={handleAddTrackerPayment}
+                      onUpdatePayment={handleEditTrackerPayment}
+                      onDownloadReceipt={handleDownloadInstallmentReceipt}
+                      onValidationError={(message) => notify("warning", "Payment Details", message)}
+                    />
+                    <div className="grid gap-3 xl:grid-cols-2">
+                      {/* UTR */}
+                      <div className="rounded-xl border border-slate-200 bg-white p-3.5 shadow-xs">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-1">UTR / Transaction ID</span>
+                        <input
+                          value={utrNumber}
+                          onChange={(e) => setUtrNumber(e.target.value.toUpperCase())}
+                          className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold uppercase outline-none focus:border-indigo-500"
+                          placeholder="e.g. UTR12345678"
+                        />
+                        <p className="mt-1 text-[10px] text-slate-400">e.g. 312345678901, HDFC1234567890</p>
+                      </div>
+
+                      {/* Remarks */}
+                      <div className="rounded-xl border border-slate-200 bg-white p-3.5 shadow-xs">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-1">Remarks</span>
+                        <input
+                          value={remarks}
+                          onChange={(e) => setRemarks(e.target.value)}
+                          className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium outline-none focus:border-indigo-500"
+                          placeholder="Optional notes for finance..."
+                        />
                       </div>
                     </div>
 
-                    {/* Submit */}
-                    {!isTravelerDocumentsVerifiedComplete ? (
-                      <div className="mx-auto max-w-sm rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-center text-[12px] font-medium text-amber-800">
-                        Payment verification unlocks only after operations verifies all required traveler documents without any issue.
+                    {/* Receipt Upload */}
+                    <div className="rounded-xl border border-slate-200 bg-white p-3.5 shadow-xs">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-1">Payment Receipt</span>
+                      <div className="flex items-center gap-3">
+                        <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-indigo-300 bg-indigo-50/50 px-3.5 py-2 text-xs font-semibold text-indigo-700 hover:bg-indigo-100/60 transition-all">
+                          <Upload className="h-3.5 w-3.5" />
+                          <span>{receiptFile ? receiptFile.name : "Choose Receipt File"}</span>
+                          <input
+                            type="file"
+                            accept="image/*,application/pdf"
+                            onChange={(e) => setReceiptFile(e.target.files?.[0] || null)}
+                            className="hidden"
+                          />
+                        </label>
+                        {receiptFile && (
+                          <button
+                            type="button"
+                            onClick={() => setReceiptFile(null)}
+                            className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        )}
                       </div>
-                    ) : null}
+                    </div>
+
+                    {/* Submit Button */}
                     <button
                       type="submit"
                       disabled={!canSubmitPayment}
-                      className="group mx-auto flex h-11 w-full max-w-sm cursor-pointer items-center justify-center gap-2.5 rounded-2xl bg-gradient-to-r from-slate-900 to-slate-800 px-8 text-[13px] font-semibold text-white shadow-[0_4px_16px_rgba(15,23,42,0.25)] transition-all hover:shadow-[0_6px_24px_rgba(15,23,42,0.35)] hover:scale-[1.01] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:scale-100"
-                      title={!invoiceId ? "Submit for verification will unlock once the booking amount is prepared for this booking." : undefined}
+                      className="w-full sm:w-auto px-6 py-2.5 bg-gradient-to-r from-slate-900 to-slate-800 text-white rounded-lg text-xs font-bold shadow-md hover:from-slate-800 hover:to-slate-700 cursor-pointer disabled:opacity-50 transition-all"
                     >
-                      {submittingPayment ? (
-                        <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" d="M12 3v3M12 18v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M3 12h3M18 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12" /></svg>
-                      ) : (
-                        <svg className="h-4 w-4 transition-transform group-hover:translate-x-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" /></svg>
-                      )}
-                      {submitButtonLabel}
+                      {submittingPayment ? "Submitting..." : "Submit Payment For Verification"}
                     </button>
-                    {!invoiceId ? (
-                      <p className="text-center text-[12px] text-slate-500">
-                        {preparingInvoice
-                        ? "The booking amount is being prepared for payment submission."
-                        : "Once the booking amount is ready, verification submission will be unlocked."}
-                      </p>
-                    ) : null}
                   </form>
                 </div>
 
@@ -1856,30 +2110,30 @@ export default function ActiveBookingDetails({ onClose, booking, onBookingUpdate
                   </div>
 
                   {/* Finance Ownership */}
-                  <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xs">
-                    <div className="flex items-center justify-between border-b border-slate-300 bg-gradient-to-r from-slate-50 to-white px-5 py-3">
+                  <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xs">
+                    <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-3.5 py-3">
                       <div className="flex items-center gap-3">
-                        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-400 to-teal-500 shadow-[0_4px_12px_rgba(16,185,129,0.3)]">
-                          <svg className="h-4 w-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-100 text-emerald-600">
+                          <svg className="h-4 w-4 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
                             <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
                           </svg>
                         </div>
                         <div>
-                          <p className="text-[14px] font-bold text-slate-900">Finance Ownership</p>
-                          <p className="text-[11px] text-slate-400">Current reviewer & audit timing</p>
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Finance Ownership</p>
+                          <p className="mt-0.5 text-[11px] text-slate-400">Current reviewer & audit timing</p>
                         </div>
                       </div>
-                      <span className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-bold ${statusTone(paymentStatus)}`}>
+                      <span className={`inline-flex shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-bold ${statusTone(paymentStatus)}`}>
                         <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" d="M5 13l4 4L19 7" /></svg>
                         {paymentStatus}
                       </span>
                     </div>
-                    <div className="px-5 py-1.5">
+                    <div className="px-3.5 py-1.5">
                       {[
-                        { label: "Assigned Finance", value: booking?.assignedFinanceName || "Awaiting assignment", icon: <svg className="h-3 w-3 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg> },
-                        { label: "Reviewed By", value: booking?.reviewedByName || "Pending", icon: <svg className="h-3 w-3 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg> },
-                        { label: "Submitted", value: formatDateTime(paymentSubmission?.submittedAt), icon: <svg className="h-3 w-3 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" /></svg> },
-                        { label: "Last Finance Update", value: formatDateTime(paymentVerification?.reviewedAt), icon: <svg className="h-3 w-3 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg> },
+                        { label: "Assigned Finance", value: booking?.assignedFinanceName || "Awaiting assignment", icon: <svg className="box-content h-3 w-3 rounded-md bg-slate-100 p-1 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg> },
+                        { label: "Reviewed By", value: booking?.reviewedByName || "Pending", icon: <svg className="box-content h-3 w-3 rounded-md bg-slate-100 p-1 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg> },
+                        { label: "Submitted", value: formatDateTime(paymentSubmission?.submittedAt), icon: <svg className="box-content h-3 w-3 rounded-md bg-slate-100 p-1 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" /></svg> },
+                        { label: "Last Finance Update", value: formatDateTime(paymentVerification?.reviewedAt), icon: <svg className="box-content h-3 w-3 rounded-md bg-slate-100 p-1 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg> },
                       ].map(({ label, value, icon }) => (
                         <div key={label} className="flex items-center justify-between gap-3 border-b border-slate-50 py-2 last:border-b-0">
                           <span className="flex items-center gap-1.5 text-[12px] text-slate-500">{icon}{label}</span>
@@ -1890,23 +2144,88 @@ export default function ActiveBookingDetails({ onClose, booking, onBookingUpdate
                   </div>
                 </div>
               </div>
-            </motion.div>
-          ) : null}
-        </AnimatePresence>
-      </motion.section>
+            )}
 
-      {/* Traveler Documentation Section — unchanged below */}
-      <motion.section variants={item} className="mt-6 overflow-hidden rounded-[10px]">
-        <div className="border-b border-slate-200 bg-[radial-gradient(circle_at_top_left,_rgba(14,165,233,0.16),_rgba(255,255,255,0.96)_38%),linear-gradient(135deg,_#ffffff_0%,_#f8fbff_52%,_#f6fffb_100%)] px-3 py-6">
-          <div className="flex flex-col gap-5">
+            {accountingSubTab === "proforma" && (
+              proformaInvoiceData ? (
+                <ProformaInvoiceView
+                  invoiceData={proformaInvoiceData}
+                  queryData={booking}
+                  onEdit={() => setIsCreatingProforma(true)}
+                  onDelete={() => {
+                    setProformaInvoiceData(null);
+                    toast.success("Proforma Invoice deleted");
+                  }}
+                  onNew={() => {
+                    setProformaInvoiceData(null);
+                    setIsCreatingProforma(true);
+                  }}
+                />
+              ) : (
+                <div className="w-full font-sans space-y-3">
+                  {/* White Header Strip */}
+                  <div className="w-full bg-white pb-2 flex items-center justify-between border-b border-slate-100">
+                    <h2 className="text-[17px] font-bold text-slate-900 tracking-tight">Proforma Invoice</h2>
+                    <button
+                      type="button"
+                      onClick={() => setIsCreatingProforma(true)}
+                      className="text-xs font-semibold text-slate-600 hover:text-slate-900 flex items-center gap-1 cursor-pointer transition-colors"
+                    >
+                      <span className="text-sm font-normal">+</span>
+                      <span>New</span>
+                    </button>
+                  </div>
+
+                  {/* Light Gray Canvas Area */}
+                  <div className="w-full bg-[#f1f5f9] py-11 px-5 min-h-[170px] flex flex-col items-center justify-center text-center rounded-xs border border-slate-200/60">
+                    <h3 className="text-xl sm:text-2xl font-normal text-slate-800 tracking-tight mb-4.5 font-sans">
+                      No Proforma Invoice created for this Trip!
+                    </h3>
+                    <button
+                      type="button"
+                      onClick={() => setIsCreatingProforma(true)}
+                      className="px-6 py-2.5 bg-white border border-[#cbd5e1] rounded-md text-[14px] font-bold text-[#35489e] hover:bg-slate-50 hover:text-[#28377d] shadow-2xs transition-all cursor-pointer"
+                    >
+                      Create Proforma Invoice
+                    </button>
+                  </div>
+                </div>
+              )
+            )}
+
+            {accountingSubTab === "profit" && (
+              <div className="p-4 text-slate-700">
+                <h3 className="text-base font-bold text-slate-900 mb-2">Profit Report</h3>
+                <p className="text-xs text-slate-500">Summary of booking payouts & margins</p>
+                <div className="mt-4 border border-slate-200 rounded-lg p-4 bg-slate-50">
+                  <p className="text-sm font-bold text-emerald-700">Net Received: INR {totalPaidAmount.toLocaleString("en-IN")}</p>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Traveler Documentation Section */}
+      {detailTab === "docs" && (
+      <motion.section variants={item} className="mt-3 overflow-hidden rounded-[10px]  bg-white">
+        <div className="border-b border-slate-200 bg-[radial-gradient(circle_at_top_left,_rgba(14,165,233,0.12),_rgba(255,255,255,0.96)_38%),linear-gradient(135deg,_#ffffff_0%,_#f8fbff_52%,_#f6fffb_100%)] px-3.5 py-4">
+          <div className="flex flex-col gap-3">
             <div className="w-full">
               <div className="flex items-center gap-3">
                 <div className="flex h-14 w-14 items-center justify-center rounded-[22px] bg-slate-900 text-white shadow-[0_14px_30px_rgba(15,23,42,0.18)]">
                   <FileText className="h-6 w-6" />
                 </div>
                 <div>
-                  <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-sky-700">Step 1 of 2</p>
-                  <h2 className="mt-1 text-[22px] font-bold tracking-[-0.03em] text-slate-900">Traveler Documentation Desk</h2>
+                  <div className="mb-1 flex items-center gap-2">
+                    <div className="flex items-center gap-1.5 rounded-full bg-sky-500/10 px-3 py-1 ring-1 ring-sky-500/20">
+                      <div className="flex h-3.5 w-3.5 items-center justify-center rounded-full bg-sky-500 text-[8px] font-bold text-white">
+                        ✓
+                      </div>
+                      <span className="text-[10px] font-semibold text-sky-700">Traveler Documents</span>
+                    </div>
+                  </div>
+                  <h2 className="text-[22px] font-bold tracking-[-0.03em] text-slate-900">Traveler Documentation Desk</h2>
                 </div>
               </div>
               <p className="mt-4 max-w-[800px] text-xs leading-7 text-slate-800">
@@ -2121,6 +2440,7 @@ export default function ActiveBookingDetails({ onClose, booking, onBookingUpdate
           </div>
         </div>
       </motion.section>
+      )}
 
       <CouponBillingModal
         open={couponModalOpen}

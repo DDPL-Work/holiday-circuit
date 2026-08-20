@@ -109,7 +109,7 @@ const buildItineraryHtml = (items = [], emptyLabel = "No itinerary shared.") => 
 
 const DEFAULT_SELLER_BANK_DETAILS = Object.freeze([
   { label: "Bank Name", value: "HDFC Bank" },
-  { label: "A/c Holder Name", value: "Leela Travels" },
+  { label: "A/c Holder Name", value: "Holiday Circuit" },
   { label: "A/c No.", value: "50200103968171" },
   { label: "IFSC", value: "HDFC0004413" },
   { label: "Branch", value: "RAMPHAL CHOWK SEC VII DWARKA" },
@@ -308,257 +308,536 @@ const QUOTATION_BRAND = Object.freeze({
   logoUrl: "https://res.cloudinary.com/dszadvuz6/image/upload/e_trim/v1777932524/unzssx1sjkrigbgldg7h.png",
 });
 
-const buildAgentClientQuotationTemplate = (quoteDetails = {}) => {
-  const brandName = quoteDetails.agentBrandingName || QUOTATION_BRAND.name;
-  const brandLogo = quoteDetails.agentLogo || QUOTATION_BRAND.logoUrl;
-  const brandSubline = quoteDetails.agentBrandingName ? "Travel Quotation" : QUOTATION_BRAND.subline;
-  let brandDetails = "";
-  if (quoteDetails.agentBrandingName) {
-    const details = [];
-    details.push(`Prepared by ${escapeHtml(brandName)}`);
-    if (quoteDetails.agentEmail) {
-      details.push(`Email: ${escapeHtml(quoteDetails.agentEmail)}`);
-    }
-    if (quoteDetails.agentPhone) {
-      details.push(`Phone: ${escapeHtml(quoteDetails.agentPhone)}`);
-    }
-    if (quoteDetails.agentGstNumber) {
-      details.push(`GST: ${escapeHtml(quoteDetails.agentGstNumber)}`);
-    }
-    brandDetails = details.join("<br/>");
-  } else {
-    brandDetails = `${escapeHtml(QUOTATION_BRAND.address)}<br/>${escapeHtml(QUOTATION_BRAND.email)} | ${escapeHtml(QUOTATION_BRAND.phone)}`;
-  }
-
-  const issueDate = formatDateLabel(new Date());
+export const buildAgentClientQuotationTemplate = (quoteDetails = {}) => {
+  const brandName = quoteDetails.agentBrandingName || quoteDetails.agencyName || QUOTATION_BRAND.name;
+  const recipientName = quoteDetails.recipientName || "Guest";
+  const queryId = quoteDetails.queryId || "-";
+  const destination = quoteDetails.destination || "-";
+  const startDate = quoteDetails.travelDates?.split(" - ")[0] || quoteDetails.startDate || "-";
+  const durationLabel = quoteDetails.durationLabel || "-";
+  const travelerSummary = quoteDetails.travelerSummary || "-";
   const rawCurrency = quoteDetails.currency || "INR";
-  const safeCurrencySymbol = escapeHtml(String(rawCurrency).toUpperCase() === "INR" ? INR_SYMBOL : rawCurrency);
   const safeTotalAmount = escapeHtml(formatCurrency(quoteDetails.totalAmount, quoteDetails.currency));
-  const safeAmountInWords = escapeHtml(`${safeCurrencySymbol}: ${numberToWords(quoteDetails.totalAmount)}`);
-  const includeSellerBankDetails = quoteDetails?.includeSellerBankDetails !== false;
-  const sellerBankDetails = normalizeSellerBankDetails(quoteDetails.sellerBankDetails);
-  const snapshotItems = [
-    { label: "Quotation No.", value: quoteDetails.quotationNumber || "-" },
-    { label: "Trip ID", value: quoteDetails.queryId || "-" },
-    { label: "Destination", value: quoteDetails.destination || "-" },
-    { label: "Total Services", value: String(Array.isArray(quoteDetails.services) ? quoteDetails.services.length : 0) },
-    { label: "Travel Dates", value: quoteDetails.travelDates || "-" },
-    { label: "Duration", value: quoteDetails.durationLabel || "-" },
-    { label: "Travelers", value: quoteDetails.travelerSummary || "-" },
-    { label: "Valid Till", value: quoteDetails.validTill || "-" },
-  ];
-  const terms = [
-    "Rates are subject to availability and confirmation at the time of booking.",
-    "Only the services listed in this quotation are included in the shared amount.",
-    "Any amendment after confirmation may affect availability and final pricing.",
-    "Hotel check-in, check-out, and supplier-specific policies will apply as per service rules.",
-    "Please review and confirm within the validity period to avoid fare or rate changes.",
-  ];
+  const gstPercent = quoteDetails.gstPercent !== undefined ? Number(quoteDetails.gstPercent) : 5;
+  const taxText = gstPercent > 0 ? `(including ${gstPercent}% GST & other Taxes)` : `(including Taxes & Charges)`;
+  
+  const companyAddress = quoteDetails.agentCompanyAddress || quoteDetails.companyAddress || "KG 3/69, Ground Floor, Vikas Puri, New Delhi, Delhi - 110018";
+  const agentPhone = quoteDetails.agentPhone || "";
+  const agentEmail = quoteDetails.agentEmail || "";
+  const rawLogo = quoteDetails.agentLogo || "";
+  const rawFooter = quoteDetails.agentFooterImage || "";
 
+  const logoUrl = rawLogo ? escapeHtml(rawLogo) : "";
+  const footerUrl = rawFooter ? escapeHtml(rawFooter) : "";
 
+  const allServices = Array.isArray(quoteDetails.services) ? quoteDetails.services : [];
 
-  const snapshotHtml = snapshotItems
-    .map((item) => `
-      <td width="25%" style="padding:12px 10px;border:1px solid #cbd5e1;">
-        <div style="font-size:11px;font-weight:700;color:#64748b;margin-bottom:6px;">${escapeHtml(item.label)}</div>
-        <div style="font-size:13px;font-weight:700;color:#10213a;line-height:1.4;">${escapeHtml(item.value)}</div>
-      </td>
-    `)
-    .reduce((rows, cell, index) => {
-      const rowIndex = Math.floor(index / 4);
-      rows[rowIndex] = rows[rowIndex] || [];
-      rows[rowIndex].push(cell);
-      return rows;
-    }, [])
-    .map((row) => `<tr>${row.join("")}</tr>`)
-    .join("");
+  const isHotelItem = (s) => {
+    const type = String(s?.type || s?.category || "").trim().toLowerCase();
+    const title = String(s?.title || s?.hotelName || s?.name || "").trim().toLowerCase();
+    if (type === "hotel" || type === "accommodation" || type === "stay") return true;
+    if (s?.roomType || s?.starCategory || s?.hotelCategory || s?.starRating) return true;
+    if (title.includes("hotel") || title.includes("resort") || title.includes("villas") || title.includes("inn") || title.includes("suites") || title.includes("ramada") || title.includes("alka") || title.includes("hyatt") || title.includes("taj") || title.includes("eden") || title.includes("kandyan") || title.includes("amari")) return true;
+    return false;
+  };
 
-  const servicesHtml = (quoteDetails.services || [])
-    .map((service, index) => {
-      const normalizedTypeLabel = normalizeServiceTypeLabel(service.typeLabel);
-      const badge = getTypeBadgeColors(normalizedTypeLabel);
-      const descriptionHtml = buildServiceDescriptionHtml(service.description);
+  const isTransferItem = (s) => {
+    const type = String(s?.type || s?.category || "").trim().toLowerCase();
+    const title = String(s?.title || s?.name || s?.particulars || "").trim().toLowerCase();
+    if (type === "transfer" || type === "transport" || type === "cab" || type === "car" || type === "flight") return true;
+    if (title.includes("drop") || title.includes("pickup") || title.includes("transfer") || title.includes("airport") || title.includes("cab") || title.includes("car")) return true;
+    return false;
+  };
 
-      return `
-        <tr style="background:${index % 2 === 0 ? "#ffffff" : "#f8fafc"};">
-          <td width="7%" style="padding:12px 8px;border:1px solid #cbd5e1;text-align:center;font-size:12px;font-weight:700;color:#10213a;">${index + 1}</td>
-          <td width="32%" style="padding:12px 10px;border:1px solid #cbd5e1;">
-            <div style="font-size:13px;font-weight:700;color:#10213a;">${escapeHtml(service.title || "Service")}</div>
-            ${descriptionHtml}
-          </td>
-          <td width="16%" style="padding:12px 8px;border:1px solid #cbd5e1;text-align:center;">
-            <span style="display:inline-block;padding:5px 10px;border-radius:999px;background:${badge.background};border:1px solid ${badge.border};color:${badge.text};font-size:11px;font-weight:700;">
-              ${escapeHtml(normalizedTypeLabel)}
-            </span>
-          </td>
-          <td width="15%" style="padding:12px 8px;border:1px solid #cbd5e1;text-align:center;font-size:12px;color:#334155;">${escapeHtml(service.serviceDateLabel || "-")}</td>
-          <td width="17%" style="padding:12px 10px;border:1px solid #cbd5e1;font-size:12px;color:#334155;">${escapeHtml(service.location || "-")}</td>
-          <td width="13%" style="padding:12px 8px;border:1px solid #cbd5e1;text-align:center;font-size:12px;color:#334155;">${escapeHtml(service.quantityLabel || "-")}</td>
-        </tr>
-      `;
-    })
-    .join("");
+  const isActivityItem = (s) => {
+    const type = String(s?.type || s?.category || "").trim().toLowerCase();
+    const title = String(s?.title || s?.name || s?.particulars || "").trim().toLowerCase();
+    if (type === "activity" || type === "sightseeing") return true;
+    if (title.includes("sightseeing") || title.includes("tour") || title.includes("aarti") || title.includes("hopping") || title.includes("boating") || title.includes("safari") || title.includes("cruise") || title.includes("water sports")) return true;
+    return false;
+  };
 
-  const fallbackServiceHtml = `
-    <tr>
-      <td style="padding:14px 8px;border:1px solid #cbd5e1;text-align:center;font-size:12px;font-weight:700;color:#10213a;">1</td>
-      <td style="padding:14px 10px;border:1px solid #cbd5e1;">
-        <div style="font-size:13px;font-weight:700;color:#10213a;">Quotation for ${escapeHtml(quoteDetails.destination || "Trip")}</div>
-        <div style="margin-top:6px;font-size:11px;line-height:1.6;color:#334155;">Travelers: ${escapeHtml(quoteDetails.travelerSummary || "-")}<br/>Dates: ${escapeHtml(quoteDetails.travelDates || "-")}</div>
-      </td>
-      <td style="padding:14px 8px;border:1px solid #cbd5e1;text-align:center;"><span style="display:inline-block;padding:5px 10px;border-radius:999px;background:#e2e8f0;border:1px solid #cbd5e1;color:#10213a;font-size:11px;font-weight:700;">Travel</span></td>
-      <td style="padding:14px 8px;border:1px solid #cbd5e1;text-align:center;font-size:12px;color:#334155;">-</td>
-      <td style="padding:14px 10px;border:1px solid #cbd5e1;font-size:12px;color:#334155;">${escapeHtml(quoteDetails.destination || "-")}</td>
-      <td style="padding:14px 8px;border:1px solid #cbd5e1;text-align:center;font-size:12px;color:#334155;">-</td>
-    </tr>
-  `;
+  const hotelServices = allServices.filter((s) => isHotelItem(s));
+  const transferServices = allServices.filter((s) => !isHotelItem(s) && isTransferItem(s));
+  const activityServices = allServices.filter((s) => !isHotelItem(s) && !isTransferItem(s) && isActivityItem(s));
 
-  const inclusionsHtml = buildQuoteListHtml(quoteDetails.inclusions, "No inclusions shared.");
-  const exclusionsHtml = buildQuoteListHtml(quoteDetails.exclusions, "No exclusions shared.");
-  const additionalNotesHtml = buildQuoteListHtml(quoteDetails.additionalNotes, "No additional notes shared.");
-  const itineraryHtml = buildItineraryHtml(quoteDetails.dayWiseItinerary, "No itinerary shared.");
-  const sellerBankDetailsHtml = includeSellerBankDetails
-    ? sellerBankDetails
-      .map(
-        (item, index) => `
-            <tr>
-              <td style="padding:12px 14px;border-bottom:${index === sellerBankDetails.length - 1 ? "0" : "1px solid #cbd5e1"};font-size:12px;font-weight:700;color:#64748b;width:34%;">${escapeHtml(item.label)}</td>
-              <td style="padding:12px 14px;border-bottom:${index === sellerBankDetails.length - 1 ? "0" : "1px solid #cbd5e1"};font-size:12px;font-weight:700;color:#10213a;">${escapeHtml(item.value)}</td>
-            </tr>
-          `,
-      )
-      .join("")
-    : "";
-  const termsHtml = terms
-    .map(
-      (term, index) =>
-        `<div style="margin:0 0 8px;font-size:12px;line-height:1.6;color:#334155;">${index + 1}. ${escapeHtml(term)}</div>`,
-    )
-    .join("");
+  const hotelRowsHtml = hotelServices.length > 0 ? hotelServices.map((service, index) => {
+    const serviceName = escapeHtml(service.title || service.name || service.hotelName || "Hotel");
+    const location = escapeHtml(service.location || service.city || destination);
+    const rawDateLabel = service.serviceDateLabel || service.checkIn || service.startDate || service.date;
+    const dateLabel = rawDateLabel ? escapeHtml(rawDateLabel) : "";
+    const quantity = escapeHtml(service.quantityLabel || service.pax || travelerSummary);
+    const description = buildServiceDescriptionHtml(service.description || service.roomType || "Standard Room");
+    const combinedHText = `${service.title || ""} ${service.name || ""} ${service.hotelName || ""} ${service.description || ""} ${service.roomType || ""} ${service.hotelCategory || ""} ${service.starCategory || ""} ${service.starRating || ""}`.toLowerCase();
+    let count = 4;
+    if (combinedHText.includes("3-star") || combinedHText.includes("3 star") || combinedHText.includes("3star") || combinedHText.includes("citymax") || combinedHText.includes("budget")) {
+      count = 3;
+    } else if (combinedHText.includes("5-star") || combinedHText.includes("5 star") || combinedHText.includes("5star") || combinedHText.includes("luxury") || combinedHText.includes("atlantis")) {
+      count = 5;
+    } else {
+      const rawStars = service.hotelCategory || service.starCategory || service.starRating || "4 Star";
+      const starMatch = String(rawStars).match(/(\d+)/);
+      if (starMatch) count = Math.min(5, Math.max(1, Number(starMatch[1])));
+    }
+    const starIcons = "⭐".repeat(count);
+    const starDisplay = `${starIcons} ${count} Star`;
+
+    // Resolve Meal Plan details (EP, CP, MAP, AP) with checkmark ✅ and cross ❌
+    const resolveMealPlanDisplay = (srv) => {
+      const mealRaw = String(srv?.mealPlan || srv?.meals || "").trim();
+      const descRaw = String(srv?.description || srv?.roomType || "").trim();
+      const combined = `${mealRaw} ${descRaw}`.toUpperCase();
+
+      const hasAP = /\bAP\b|AMERICAN PLAN/i.test(combined) && !/\bMAP\b/i.test(combined);
+      const hasMAP = /\bMAP\b|MODIFIED AMERICAN|BREAKFAST AND DINNER|BREAKFAST & DINNER/i.test(combined);
+      const hasCP = (/\bCP\b|CONTINENTAL|BREAKFAST ONLY|ONLY BREAKFAST/i.test(combined)) && !hasMAP && !hasAP;
+      const hasEP = (/\bEP\b|EUROPEAN|ROOM ONLY|ONLY ROOM|NO MEALS/i.test(combined)) && !hasCP && !hasMAP && !hasAP;
+
+      if (hasAP) return `AP Plan (✅ Breakfast • ✅ Lunch • ✅ Dinner)`;
+      if (hasMAP) return `MAP Plan (✅ Breakfast • ✅ Dinner)`;
+      if (hasCP) return `CP Plan (✅ Breakfast • ❌ Dinner)`;
+      if (hasEP) return `EP Plan (❌ Breakfast • ❌ Dinner)`;
+
+      if (/dinner/i.test(mealRaw) && /breakfast/i.test(mealRaw)) return `MAP Plan (✅ Breakfast • ✅ Dinner)`;
+      if (/breakfast/i.test(mealRaw)) return `CP Plan (✅ Breakfast • ❌ Dinner)`;
+      if (/\bCP\b/.test(descRaw)) return `CP Plan (✅ Breakfast • ❌ Dinner)`;
+
+      return mealRaw ? escapeHtml(mealRaw) : `CP Plan (✅ Breakfast • ❌ Dinner)`;
+    };
+
+    const mealPlanDisplay = resolveMealPlanDisplay(service);
+    
+    let numNights = Number(service.nights || service.nightCount || 0);
+    if (!numNights && service.quantityLabel) {
+      const match = String(service.quantityLabel).match(/(\d+)\s*N/i);
+      if (match) numNights = Number(match[1]);
+    }
+    if (!numNights && service.stayLabel) {
+      const match = String(service.stayLabel).match(/(\d+)\s*N/i);
+      if (match) numNights = Number(match[1]);
+    }
+    if (!numNights && service.description) {
+      const match = String(service.description).match(/(\d+)\s*N/i);
+      if (match) numNights = Number(match[1]);
+    }
+    if (!numNights) {
+      numNights = 1;
+    }
+    const nightText = `${numNights} Night${numNights > 1 ? 's' : ''}`;
+
+    let checkOutVal = service.checkOut || service.endDate || "";
+    let dateRangeDisplay = "";
+
+    if (rawDateLabel && rawDateLabel !== "-") {
+      const rawStr = String(rawDateLabel).trim();
+      if (rawStr.includes(" - ") || rawStr.includes(" to ")) {
+        dateRangeDisplay = escapeHtml(rawStr);
+      } else if (checkOutVal && checkOutVal !== "-") {
+        dateRangeDisplay = `${escapeHtml(rawStr)} - ${escapeHtml(checkOutVal)}`;
+      } else {
+        const parsedStart = new Date(rawStr);
+        if (!isNaN(parsedStart.getTime())) {
+          const parsedEnd = new Date(parsedStart);
+          parsedEnd.setDate(parsedEnd.getDate() + numNights);
+          const startStr = parsedStart.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+          const endStr = parsedEnd.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+          dateRangeDisplay = `${startStr} - ${endStr}`;
+        } else {
+          dateRangeDisplay = escapeHtml(rawStr);
+        }
+      }
+    }
+
+    const firstColText = dateRangeDisplay 
+      ? `<strong>${nightText}</strong><br/><span style="font-size:11px; color:#475569; display:inline-block; margin-top:2px;">(${dateRangeDisplay})</span>`
+      : `<strong>${nightText}</strong>`;
+
+    const resolvedRoomType = escapeHtml(
+      service.roomType ||
+      (service.description && String(service.description).split("|")[0].trim()) ||
+      "Standard Room"
+    );
+
+    return `
+      <tr>
+        <td style="padding:10px 12px; border:1px solid #d1d5db; font-size:12px; color:#1e293b;">
+          ${firstColText}
+        </td>
+        <td style="padding:10px 12px; border:1px solid #d1d5db; font-size:12px; color:#1e293b; font-weight:bold;">
+          ${location}
+        </td>
+        <td style="padding:10px 12px; border:1px solid #d1d5db; font-size:12px; color:#1e293b;">
+          <strong>${serviceName}</strong><br/>
+          <span style="font-size:11px; color:#d97706; font-weight:600; display:inline-block; margin-top:3px;">${starDisplay}</span>
+        </td>
+        <td style="padding:10px 12px; border:1px solid #d1d5db; font-size:12px; color:#1e293b;">
+          <strong>${mealPlanDisplay}</strong>
+          <div style="font-size:11px; color:#475569; line-height:1.4; margin-top:3px;">${description}</div>
+        </td>
+        <td style="padding:10px 12px; border:1px solid #d1d5db; font-size:12px; color:#1e293b;">
+          <div style="font-weight:600; color:#0f172a;">${quantity}</div>
+          ${resolvedRoomType ? `<div style="font-size:11px; color:#475569; font-weight:500; margin-top:3px;">• ${resolvedRoomType}</div>` : ''}
+        </td>
+      </tr>
+    `;
+  }).join("") : "";
+
+  const transferRowsHtml = transferServices.map((service, index) => {
+    const serviceName = escapeHtml(service.title || service.name || service.particulars || "Airport Transfer");
+    const location = escapeHtml(service.location || service.city || destination);
+    const dateLabel = escapeHtml(service.serviceDateLabel || service.date || `Day ${index + 1}`);
+    const quantity = escapeHtml(service.quantityLabel || service.pax || travelerSummary);
+    const description = buildServiceDescriptionHtml(service.description || service.vehicle || service.vehicleType || "AC Sedan | Driver Included");
+    
+    return `
+      <tr>
+        <td style="padding:10px 12px; border:1px solid #d1d5db; font-size:12px; color:#1e293b;">
+          <strong>${dateLabel}</strong>
+        </td>
+        <td style="padding:10px 12px; border:1px solid #d1d5db; font-size:12px; color:#1e293b; font-weight:bold;">
+          ${serviceName}
+        </td>
+        <td style="padding:10px 12px; border:1px solid #d1d5db; font-size:12px; color:#1e293b;">
+          ${description}
+        </td>
+        <td style="padding:10px 12px; border:1px solid #d1d5db; font-size:12px; color:#1e293b;">
+          ${quantity}
+        </td>
+      </tr>
+    `;
+  }).join("");
+
+  const activityRowsHtml = activityServices.map((service, index) => {
+    const serviceName = escapeHtml(service.title || service.name || service.particulars || "Sightseeing Tour");
+    const location = escapeHtml(service.location || service.city || destination);
+    const dateLabel = escapeHtml(service.serviceDateLabel || service.date || `Day ${index + 1}`);
+    const quantity = escapeHtml(service.quantityLabel || service.pax || travelerSummary);
+    const description = buildServiceDescriptionHtml(service.description || "Guided Sightseeing Tour | Inclusions Included");
+    
+    return `
+      <tr>
+        <td style="padding:10px 12px; border:1px solid #d1d5db; font-size:12px; color:#1e293b;">
+          <strong>${dateLabel}</strong>
+        </td>
+        <td style="padding:10px 12px; border:1px solid #d1d5db; font-size:12px; color:#1e293b; font-weight:bold;">
+          ${serviceName}
+        </td>
+        <td style="padding:10px 12px; border:1px solid #d1d5db; font-size:12px; color:#1e293b;">
+          ${description}
+        </td>
+        <td style="padding:10px 12px; border:1px solid #d1d5db; font-size:12px; color:#1e293b;">
+          ${quantity}
+        </td>
+      </tr>
+    `;
+  }).join("");
+
+  const inclusionsList = Array.isArray(quoteDetails.inclusions) && quoteDetails.inclusions.length > 0
+    ? quoteDetails.inclusions
+    : [
+        "Stay as mentioned above or in Similar hotels",
+        "Meals as mentioned in the Itinerary",
+        "Enterances only as mentioned in Itinerary",
+        "Transport as per Itinerary - Point to Point Basis",
+        "Taxes as on Date"
+      ];
+      
+  const exclusionsList = Array.isArray(quoteDetails.exclusions) && quoteDetails.exclusions.length > 0
+    ? quoteDetails.exclusions
+    : [
+        "Airfare",
+        "Early Check and Late Check out charges",
+        "Personal Expenses - Room Service, Laundry, Porterage or Mini Bar etc",
+        "Hotel Security Deposit - Refundable at time of checkout",
+        "TCS and GST - 2 and 5 % (if not Included)",
+        "Any services not mentioned above",
+        "Visa Fees if not added in Inclusions",
+        "Travel Insurance - recommended"
+      ];
+
+  const inclusionsHtml = inclusionsList.map(item => `<li style="margin-bottom:6px; list-style-type:none;"><span style="color:#059669; font-weight:bold; margin-right:6px;">✔</span>${escapeHtml(item)}</li>`).join("");
+  const exclusionsHtml = exclusionsList.map(item => `<li style="margin-bottom:6px; list-style-type:none;"><span style="color:#dc2626; font-weight:bold; margin-right:6px;">✖</span>${escapeHtml(item)}</li>`).join("");
 
   return `
-    <div style="margin:0;padding:32px 14px;background:#f8fafc;font-family:Arial,sans-serif;color:#10213a;">
-      <div style="max-width:860px;margin:0 auto;background:#ffffff;border:1px solid #7dd3c7;border-radius:18px;overflow:hidden;">
-        <div style="background:#0f766e;padding:10px 18px;text-align:center;">
-          <span style="font-size:11px;font-weight:700;letter-spacing:0.24em;color:#ffffff;">${escapeHtml(brandName.toUpperCase())} QUOTATION</span>
-        </div>
-
-        <div style="padding:24px 24px 8px;">
-          <table width="100%" cellspacing="0" cellpadding="0" style="margin-bottom:18px;">
-            <tr>
-              <td width="55%" valign="top">
-                <table cellspacing="0" cellpadding="0">
-                  <tr>
-                    <td valign="top" style="padding-right:14px;">
-                      <div style="width:58px;height:58px;border:1px solid #cbd5e1;border-radius:12px;background:#ffffff;text-align:center;overflow:hidden;">
-                        <img src="${brandLogo}" alt="${escapeHtml(brandName)}" width="58" style="display:block;width:58px;height:58px;object-fit:contain;" />
-                      </div>
-                    </td>
-                    <td valign="top">
-                      <div style="font-size:24px;font-weight:700;color:#10213a;line-height:1.2;">${escapeHtml(brandName)}</div>
-                      <div style="margin-top:4px;font-size:12px;letter-spacing:0.14em;color:#64748b;text-transform:uppercase;">${escapeHtml(brandSubline)}</div>
-                      <div style="margin-top:8px;font-size:12px;line-height:1.6;color:#334155;">${brandDetails}</div>
-                    </td>
-                  </tr>
-                </table>
+    <div style="font-family: Arial, sans-serif; color: #1e293b; line-height: 1.5; max-width: 100%; margin: 0 auto; background: #ffffff; padding: 16px;">
+      
+      <!-- AGENT BRAND HEADER BANNER -->
+      <div style="background-color: #ffffff; border-bottom: 2px solid #e2e8f0; padding: 14px 20px; margin-bottom: 20px;">
+        <table style="width: 100%; border-collapse: collapse; margin: 0; padding: 0;">
+          <tr>
+            ${logoUrl ? `
+              <td style="vertical-align: middle; padding-right: 12px; width: 110px; text-align: left;">
+                <img src="${logoUrl}" alt="${escapeHtml(brandName)}" style="width: 105px; height: 75px; object-fit: contain; object-position: left; display: block; margin-left: 0;" />
               </td>
-              <td width="45%" valign="top" align="right">
-                <div style="display:inline-block;min-width:240px;padding:14px 16px;border:1px solid #cbd5e1;border-radius:14px;background:#ffffff;text-align:left;">
-                  <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.12em;margin-bottom:8px;">Quotation Meta</div>
-                  <div style="font-size:12px;line-height:1.8;color:#334155;"><strong style="color:#10213a;">Issue Date:</strong> ${escapeHtml(issueDate)}</div>
-                  <div style="font-size:12px;line-height:1.8;color:#334155;"><strong style="color:#10213a;">Valid Till:</strong> ${escapeHtml(quoteDetails.validTill || "-")}</div>
-                  <div style="font-size:12px;line-height:1.8;color:#334155;"><strong style="color:#10213a;">Quotation No.:</strong> ${escapeHtml(quoteDetails.quotationNumber || "-")}</div>
-                  <div style="font-size:12px;line-height:1.8;color:#334155;"><strong style="color:#10213a;">Recipient:</strong> ${escapeHtml(quoteDetails.recipientName || "Guest")}</div>
-                </div>
-              </td>
-            </tr>
-          </table>
-
-          <div style="margin-bottom:16px;padding:10px 12px;border-radius:8px;background:#ecfeff;border:1px solid #7dd3c7;text-align:center;font-size:12px;font-weight:700;letter-spacing:0.12em;color:#0f766e;">TRIP SNAPSHOT</div>
-          <table width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;margin-bottom:18px;">
-            ${snapshotHtml}
-          </table>
-
-          <div style="margin-bottom:16px;padding:10px 12px;border-radius:8px;background:#ecfeff;border:1px solid #7dd3c7;text-align:center;font-size:12px;font-weight:700;letter-spacing:0.12em;color:#0f766e;">SERVICES INCLUDED</div>
-          <table width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;margin-bottom:18px;">
-            <tr style="background:#f0fdfa;">
-              <td width="7%" style="padding:10px 8px;border:1px solid #7dd3c7;text-align:center;font-size:11px;font-weight:700;color:#10213a;">S.NO.</td>
-              <td width="32%" style="padding:10px 8px;border:1px solid #7dd3c7;font-size:11px;font-weight:700;color:#10213a;">PARTICULARS</td>
-              <td width="16%" style="padding:10px 8px;border:1px solid #7dd3c7;text-align:center;font-size:11px;font-weight:700;color:#10213a;">CATEGORY</td>
-              <td width="15%" style="padding:10px 8px;border:1px solid #7dd3c7;text-align:center;font-size:11px;font-weight:700;color:#10213a;">SERVICE DATE</td>
-              <td width="17%" style="padding:10px 8px;border:1px solid #7dd3c7;font-size:11px;font-weight:700;color:#10213a;">LOCATION</td>
-              <td width="13%" style="padding:10px 8px;border:1px solid #7dd3c7;text-align:center;font-size:11px;font-weight:700;color:#10213a;">QTY</td>
-            </tr>
-            ${servicesHtml || fallbackServiceHtml}
-          </table>
-
-          <div style="margin-bottom:16px;padding:10px 12px;border-radius:8px;background:#ecfeff;border:1px solid #7dd3c7;text-align:center;font-size:12px;font-weight:700;letter-spacing:0.12em;color:#0f766e;">QUOTATION SUMMARY</div>
-          <table width="100%" cellspacing="0" cellpadding="0" style="margin-bottom:18px;">
-            <tr>
-              <td width="66%" valign="top" style="padding-right:12px;">
-                <div style="height:100%;padding:16px 18px;border:1px solid #cbd5e1;border-radius:14px;background:#ffffff;">
-                  <div style="font-size:11px;font-weight:700;color:#64748b;letter-spacing:0.12em;text-transform:uppercase;margin-bottom:8px;">Amount Chargeable (In Words)</div>
-                  <div style="font-size:15px;font-weight:700;color:#10213a;line-height:1.6;">${safeAmountInWords}</div>
-                  <div style="margin-top:10px;font-size:12px;line-height:1.7;color:#334155;">Selected services: ${Array.isArray(quoteDetails.services) ? quoteDetails.services.length : 0} | Recipient: ${escapeHtml(quoteDetails.recipientName || "Guest")}</div>
-                </div>
-              </td>
-              <td width="34%" valign="top">
-                <div style="height:100%;padding:16px 18px;border:1px solid #bbf7d0;border-radius:14px;background:#ecfdf5;text-align:center;">
-                  <div style="font-size:11px;font-weight:700;color:#166534;letter-spacing:0.12em;text-transform:uppercase;margin-bottom:8px;">Final Amount</div>
-                  <div style="font-size:24px;font-weight:700;color:#166534;line-height:1.3;">${safeTotalAmount}</div>
-                  <div style="margin-top:8px;font-size:11px;line-height:1.6;color:#334155;">Taxes and charges are already reflected in the total shared by operations.</div>
-                </div>
-              </td>
-            </tr>
-          </table>
-
-          <table width="100%" cellspacing="0" cellpadding="0" style="margin-bottom:18px;">
-            <tr>
-              <td width="50%" valign="top" style="padding-right:10px;">
-                <div style="height:100%;padding:16px 18px;border:1px solid #cbd5e1;border-radius:14px;background:#ffffff;">
-                  <div style="font-size:11px;font-weight:700;color:#0f766e;letter-spacing:0.12em;text-transform:uppercase;margin-bottom:8px;">Inclusions</div>
-                  ${inclusionsHtml}
-                </div>
-              </td>
-              <td width="50%" valign="top" style="padding-left:10px;">
-                <div style="height:100%;padding:16px 18px;border:1px solid #cbd5e1;border-radius:14px;background:#ffffff;">
-                  <div style="font-size:11px;font-weight:700;color:#0f766e;letter-spacing:0.12em;text-transform:uppercase;margin-bottom:8px;">Exclusions</div>
-                  ${exclusionsHtml}
-                </div>
-              </td>
-            </tr>
-          </table>
-
-          <div style="margin-bottom:16px;padding:10px 12px;border-radius:8px;background:#ecfeff;border:1px solid #7dd3c7;text-align:center;font-size:12px;font-weight:700;letter-spacing:0.12em;color:#0f766e;">DAY WISE ITINERARY</div>
-          <div style="margin-bottom:18px;">${itineraryHtml}</div>
-
-          <div style="margin-bottom:16px;padding:10px 12px;border-radius:8px;background:#ecfeff;border:1px solid #7dd3c7;text-align:center;font-size:12px;font-weight:700;letter-spacing:0.12em;color:#0f766e;">IMPORTANT NOTES</div>
-          <div style="margin-bottom:18px;padding:16px 18px;border:1px solid #cbd5e1;border-radius:14px;background:#ffffff;">
-            ${additionalNotesHtml}
-          </div>
-
-          ${includeSellerBankDetails ? `
-            <div style="margin-bottom:16px;padding:10px 12px;border-radius:8px;background:#ecfeff;border:1px solid #7dd3c7;text-align:center;font-size:12px;font-weight:700;letter-spacing:0.12em;color:#0f766e;">SELLER'S BANK DETAILS</div>
-            <div style="margin-bottom:18px;border:1px solid #cbd5e1;border-radius:14px;background:#ffffff;overflow:hidden;">
-              <table width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;">
-                ${sellerBankDetailsHtml}
-              </table>
-            </div>
-          ` : ""}
-
-          <div style="margin-bottom:16px;padding:10px 12px;border-radius:8px;background:#ecfeff;border:1px solid #7dd3c7;text-align:center;font-size:12px;font-weight:700;letter-spacing:0.12em;color:#0f766e;">TERMS AND CONDITIONS</div>
-          <div style="padding:16px 18px;border:1px solid #cbd5e1;border-radius:14px;background:#ffffff;">
-            ${termsHtml}
-          </div>
-
-          <div style="margin-top:24px;text-align:center;font-size:11px;color:#64748b;">
-            This is a computer-generated quotation prepared by ${escapeHtml(brandName)} and does not require a signature.
-          </div>
-        </div>
+            ` : ""}
+            <td style="vertical-align: middle; text-align: left; font-family: -apple-system, BlinkMacSystemFont, Arial, sans-serif; padding: 0;">
+              <h2 style="margin: 0 0 3px 0; font-size: 20px; font-weight: 800; color: #0f172a; letter-spacing: -0.3px; line-height: 1.2;">
+                ${escapeHtml(brandName)}
+              </h2>
+              <p style="margin: 0 0 4px 0; font-size: 12px; color: #475569; line-height: 1.4;">
+                ${escapeHtml(companyAddress)}
+              </p>
+              <p style="margin: 0; font-size: 12px; font-weight: 600; color: #3252C3; line-height: 1.4;">
+                ${agentPhone ? `Phone: ${escapeHtml(agentPhone)}` : ""}${agentPhone && agentEmail ? ` &bull; ` : ""}${agentEmail ? `Email: ${escapeHtml(agentEmail)}` : ""}
+              </p>
+            </td>
+          </tr>
+        </table>
       </div>
+
+      <!-- Greeting Header -->
+      <div style="margin-bottom: 20px; font-size: 13px; color: #1e293b;">
+        <p style="margin: 0 0 10px 0;">Dear <strong>${escapeHtml(recipientName)}</strong>,</p>
+        <p style="margin: 0 0 10px 0;">Greetings from <strong>${escapeHtml(brandName)} !!!</strong></p>
+        <p style="margin: 0;">As per our discussion, following is the <strong>Updated Quote after Conversion</strong> details.</p>
+      </div>
+
+      <!-- 1. PACKAGE OVERVIEW -->
+      <table width="100%" cellspacing="0" cellpadding="0" style="border-collapse: collapse; margin-bottom: 20px; border: 1px solid #d1d5db;">
+        <thead>
+          <tr>
+            <th colspan="2" style="background-color: #ecfeff; color: #0f766e; padding: 8px 12px; font-size: 13px; font-weight: bold; text-align: center; border: 1px solid #7dd3c7;">
+              Package Overview
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td width="25%" style="padding: 8px 12px; border: 1px solid #d1d5db; font-size: 12px; font-weight: normal; color: #334155;">Trip ID</td>
+            <td width="75%" style="padding: 8px 12px; border: 1px solid #d1d5db; font-size: 12px; font-weight: bold; color: #0f172a;">${escapeHtml(queryId)}</td>
+          </tr>
+          <tr>
+            <td style="padding: 8px 12px; border: 1px solid #d1d5db; font-size: 12px; font-weight: normal; color: #334155;">Destination</td>
+            <td style="padding: 8px 12px; border: 1px solid #d1d5db; font-size: 12px; color: #0f172a;">
+              <strong>${escapeHtml(destination)}</strong><br/>
+              <span style="background-color: #fef08a; border: 1px solid #fde047; color: #854d0e; font-weight: bold; padding: 2px 6px; font-size: 11px; display: inline-block; margin-top: 4px; border-radius: 2px;">
+                ${escapeHtml(destination)} (${escapeHtml(durationLabel)})
+              </span>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 8px 12px; border: 1px solid #d1d5db; font-size: 12px; font-weight: normal; color: #334155;">Start Date</td>
+            <td style="padding: 8px 12px; border: 1px solid #d1d5db; font-size: 12px; font-weight: bold; color: #0f172a;">${escapeHtml(startDate)}</td>
+          </tr>
+          <tr>
+            <td style="padding: 8px 12px; border: 1px solid #d1d5db; font-size: 12px; font-weight: normal; color: #334155;">Trip Duration</td>
+            <td style="padding: 8px 12px; border: 1px solid #d1d5db; font-size: 12px; font-weight: bold; color: #0f172a;">${escapeHtml(durationLabel)}</td>
+          </tr>
+          <tr>
+            <td style="padding: 8px 12px; border: 1px solid #d1d5db; font-size: 12px; font-weight: normal; color: #334155;">Pax</td>
+            <td style="padding: 8px 12px; border: 1px solid #d1d5db; font-size: 12px; font-weight: bold; color: #0f172a;">${escapeHtml(travelerSummary)}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <!-- 2. HOTELS (IF ANY) -->
+      ${hotelRowsHtml ? `
+      <table width="100%" cellspacing="0" cellpadding="0" style="border-collapse: collapse; margin-bottom: 20px; border: 1px solid #d1d5db;">
+        <thead>
+          <tr>
+            <th colspan="5" style="background-color: #ecfeff; color: #0f766e; padding: 8px 12px; font-size: 13px; font-weight: bold; text-align: center; border: 1px solid #7dd3c7;">
+              Hotels
+            </th>
+          </tr>
+          <tr style="background-color: #ffffff; text-align: left;">
+            <th style="padding: 8px 12px; border: 1px solid #d1d5db; font-size: 12px; font-weight: bold; color: #0f172a; width: 18%; line-height: 1.3;">Service Date /<br/>Check-in - Check-out</th>
+            <th style="padding: 8px 12px; border: 1px solid #d1d5db; font-size: 12px; font-weight: bold; color: #0f172a; width: 12%;">City</th>
+            <th style="padding: 8px 12px; border: 1px solid #d1d5db; font-size: 12px; font-weight: bold; color: #0f172a; width: 22%;">Service Name / Hotel Name</th>
+            <th style="padding: 8px 12px; border: 1px solid #d1d5db; font-size: 12px; font-weight: bold; color: #0f172a; width: 32%;">Meal / Accommodation</th>
+            <th style="padding: 8px 12px; border: 1px solid #d1d5db; font-size: 12px; font-weight: bold; color: #0f172a; width: 16%;">Pax / Qty</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${hotelRowsHtml}
+        </tbody>
+      </table>
+      ` : `
+      <table width="100%" cellspacing="0" cellpadding="0" style="border-collapse: collapse; margin-bottom: 20px; border: 1px solid #d1d5db;">
+        <thead>
+          <tr>
+            <th colspan="5" style="background-color: #ecfeff; color: #0f766e; padding: 8px 12px; font-size: 13px; font-weight: bold; text-align: center; border: 1px solid #7dd3c7;">
+              Hotels
+            </th>
+          </tr>
+          <tr style="background-color: #ffffff; text-align: left;">
+            <th style="padding: 8px 12px; border: 1px solid #d1d5db; font-size: 12px; font-weight: bold; color: #0f172a; width: 18%; line-height: 1.3;">Service Date /<br/>Check-in - Check-out</th>
+            <th style="padding: 8px 12px; border: 1px solid #d1d5db; font-size: 12px; font-weight: bold; color: #0f172a; width: 12%;">City</th>
+            <th style="padding: 8px 12px; border: 1px solid #d1d5db; font-size: 12px; font-weight: bold; color: #0f172a; width: 22%;">Service Name / Hotel Name</th>
+            <th style="padding: 8px 12px; border: 1px solid #d1d5db; font-size: 12px; font-weight: bold; color: #0f172a; width: 32%;">Meal / Accommodation</th>
+            <th style="padding: 8px 12px; border: 1px solid #d1d5db; font-size: 12px; font-weight: bold; color: #0f172a; width: 16%;">Pax / Qty</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="padding:10px 12px; border:1px solid #d1d5db; font-size:12px;"><strong>1 Night</strong> (${escapeHtml(startDate)})</td>
+            <td style="padding:10px 12px; border:1px solid #d1d5db; font-size:12px; font-weight:bold;">${escapeHtml(destination)}</td>
+            <td style="padding:10px 12px; border:1px solid #d1d5db; font-size:12px;"><strong>As per Itinerary / Similar</strong><br/><span style="font-size:11px; color:#d97706; font-weight:600; display:inline-block; margin-top:3px;">⭐⭐⭐⭐⭐ 5 Star</span></td>
+            <td style="padding:10px 12px; border:1px solid #d1d5db; font-size:12px;">
+              <strong>Breakfast and Dinner</strong>
+              <div style="font-size:11px; color:#475569; line-height:1.4; margin-top:3px;">Standard Room</div>
+            </td>
+            <td style="padding:10px 12px; border:1px solid #d1d5db; font-size:12px; font-weight:600;">
+              ${escapeHtml(travelerSummary)}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      `}
+
+      <!-- 2.1 TRANSFERS & TRANSPORT (IF ANY) -->
+      ${transferRowsHtml ? `
+      <table width="100%" cellspacing="0" cellpadding="0" style="border-collapse: collapse; margin-bottom: 20px; border: 1px solid #d1d5db;">
+        <thead>
+          <tr>
+            <th colspan="4" style="background-color: #ecfeff; color: #0f766e; padding: 8px 12px; font-size: 13px; font-weight: bold; text-align: center; border: 1px solid #7dd3c7;">
+              Transfers & Transport
+            </th>
+          </tr>
+          <tr style="background-color: #ffffff; text-align: left;">
+            <th style="padding: 8px 12px; border: 1px solid #d1d5db; font-size: 12px; font-weight: bold; color: #0f172a; width: 18%;">Service Date</th>
+            <th style="padding: 8px 12px; border: 1px solid #d1d5db; font-size: 12px; font-weight: bold; color: #0f172a; width: 34%;">Service / Route</th>
+            <th style="padding: 8px 12px; border: 1px solid #d1d5db; font-size: 12px; font-weight: bold; color: #0f172a; width: 34%;">Transport Details</th>
+            <th style="padding: 8px 12px; border: 1px solid #d1d5db; font-size: 12px; font-weight: bold; color: #0f172a; width: 14%;">Pax / Qty</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${transferRowsHtml}
+        </tbody>
+      </table>
+      ` : ""}
+
+      <!-- 2.2 ACTIVITIES & SIGHTSEEING (IF ANY) -->
+      ${activityRowsHtml ? `
+      <table width="100%" cellspacing="0" cellpadding="0" style="border-collapse: collapse; margin-bottom: 20px; border: 1px solid #d1d5db;">
+        <thead>
+          <tr>
+            <th colspan="4" style="background-color: #ecfeff; color: #0f766e; padding: 8px 12px; font-size: 13px; font-weight: bold; text-align: center; border: 1px solid #7dd3c7;">
+              Activities & Sightseeing
+            </th>
+          </tr>
+          <tr style="background-color: #ffffff; text-align: left;">
+            <th style="padding: 8px 12px; border: 1px solid #d1d5db; font-size: 12px; font-weight: bold; color: #0f172a; width: 18%;">Service Date</th>
+            <th style="padding: 8px 12px; border: 1px solid #d1d5db; font-size: 12px; font-weight: bold; color: #0f172a; width: 34%;">Activity / Tour Name</th>
+            <th style="padding: 8px 12px; border: 1px solid #d1d5db; font-size: 12px; font-weight: bold; color: #0f172a; width: 34%;">Inclusions & Description</th>
+            <th style="padding: 8px 12px; border: 1px solid #d1d5db; font-size: 12px; font-weight: bold; color: #0f172a; width: 14%;">Pax / Qty</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${activityRowsHtml}
+        </tbody>
+      </table>
+      ` : ""}
+
+      <!-- 3. TOTAL PRICE -->
+      <table width="100%" cellspacing="0" cellpadding="0" style="border-collapse: collapse; margin-bottom: 20px; border: 1px solid #d1d5db;">
+        <thead>
+          <tr>
+            <th style="background-color: #ecfeff; color: #0f766e; padding: 8px 12px; font-size: 13px; font-weight: bold; text-align: center; border: 1px solid #7dd3c7;">
+              Total Price
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="padding: 12px; font-size: 13px;">
+              <div style="display: inline-block; background-color: #fef08a; border: 1px solid #fde047; color: #854d0e; font-weight: bold; padding: 3px 8px; font-size: 12px; margin-bottom: 8px; border-radius: 2px;">
+                Prices (${escapeHtml(rawCurrency)})
+              </div>
+              <div style="font-size: 14px; font-weight: bold; color: #0f172a;">
+                Total: ${safeTotalAmount} /- <span style="font-weight: 600; font-style: italic; color: #2563eb; font-size: 12px;">${taxText}</span>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <!-- 4. INCLUSIONS & EXCLUSIONS -->
+      <table width="100%" cellspacing="0" cellpadding="0" style="border-collapse: collapse; margin-bottom: 20px; border: 1px solid #d1d5db;">
+        <thead>
+          <tr>
+            <th width="50%" style="background-color: #ecfeff; color: #047857; padding: 8px 12px; font-size: 13px; font-weight: bold; text-align: center; border: 1px solid #7dd3c7;">
+              Inclusions
+            </th>
+            <th width="50%" style="background-color: #ecfeff; color: #b91c1c; padding: 8px 12px; font-size: 13px; font-weight: bold; text-align: center; border: 1px solid #7dd3c7;">
+              Exclusions
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td valign="top" style="padding: 12px 16px; border: 1px solid #d1d5db; font-size: 12px; color: #1e293b;">
+              <ul style="margin: 0; padding-left: 18px; line-height: 1.6;">
+                ${inclusionsHtml}
+              </ul>
+            </td>
+            <td valign="top" style="padding: 12px 16px; border: 1px solid #d1d5db; font-size: 12px; color: #1e293b;">
+              <ul style="margin: 0; padding-left: 18px; line-height: 1.6;">
+                ${exclusionsHtml}
+              </ul>
+              <p style="margin: 12px 0 0 0; font-weight: bold; color: #0f766e; font-size: 11px;">
+                NOTE: Anything not mentioned in the inclusions is excluded.
+              </p>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <!-- 5. TERMS AND CONDITIONS -->
+      <table width="100%" cellspacing="0" cellpadding="0" style="border-collapse: collapse; margin-bottom: 20px; border: 1px solid #d1d5db;">
+        <thead>
+          <tr>
+            <th style="background-color: #ecfeff; color: #0f766e; padding: 8px 12px; font-size: 13px; font-weight: bold; text-align: center; border: 1px solid #7dd3c7;">
+              Terms and Conditions
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="padding: 14px 16px; font-size: 12px; color: #1e293b; line-height: 1.6;">
+              <p style="font-weight: bold; font-size: 12px; margin: 0 0 8px 0; color: #0f172a;">General Terms and Conditions</p>
+              <ol style="margin: 0; padding-left: 18px; color: #334155;">
+                <li style="margin-bottom: 8px;">
+                  <strong>Introduction</strong> Welcome to <strong>${escapeHtml(brandName)}</strong> ("we," "our," or "us"). These Terms and Conditions ("Terms") govern your use of our travel services, including bookings, tours, and related services. By using our services, you agree to comply with and be bound by these Terms.
+                </li>
+                <li style="margin-bottom: 8px;">
+                  <strong>Services Provided</strong>
+                  <ul style="margin: 4px 0 0 0; padding-left: 18px;">
+                    <li><strong>${escapeHtml(brandName)}</strong> offers travel planning, tour packages, transportation arrangements, accommodation bookings, travel insurance facilitation, visa assistance, and other related services.</li>
+                    <li>Customized travel itineraries are available upon request, subject to additional fees.</li>
+                    <li>We provide both private transfers and shared transfers:
+                      <ul style="margin: 4px 0 0 0; padding-left: 18px;">
+                        <li><strong>Private Transfers</strong>: Exclusive transportation for the client or group point to point until and unless specified. Any delays caused by the client may result in additional charges.</li>
+                        <li><strong>Shared Transfers</strong>: Transportation shared with other travelers, operating on fixed schedules. Delays or cancellations due to other passengers are not our responsibility <strong>(Guest might have to wait upto 30 Mins)</strong>.</li>
+                      </ul>
+                    </li>
+                  </ul>
+                </li>
+              </ol>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <!-- 6. AGENT BRAND FOOTER BANNER -->
+      ${footerUrl
+        ? `
+          <div style="width: 100%; margin-top: 24px; text-align: center;">
+            <img src="${footerUrl}" alt="Footer Banner" style="width: 100%; max-width: 100%; height: auto; display: block; border-radius: 4px; border: 0;" />
+          </div>
+        `
+        : `
+          <div style="margin-top: 24px; border-top: 1px solid #e2e8f0; text-align: center; font-size: 11px; color: #64748b; font-family: Arial, sans-serif; line-height: 1.5; padding-top: 12px;">
+            <p style="margin: 0;"><strong>${escapeHtml(brandName)}</strong> ${agentPhone ? `&bull; Phone: ${escapeHtml(agentPhone)}` : ""} ${agentEmail ? `&bull; Email: ${escapeHtml(agentEmail)}` : ""}</p>
+            ${companyAddress ? `<p style="margin: 2px 0 0 0; color: #94a3b8;">${escapeHtml(companyAddress)}</p>` : ""}
+          </div>
+        `
+      }
+
     </div>
   `;
 };
+
+
 
 
 
@@ -678,6 +957,13 @@ export const buildVoucherTemplate = (voucherDetails, branding = "with") => {
     return passengers || "-";
   };
 
+  const voucherFooterSrc = String(
+    voucherDetails?.voucherFooterImage ||
+    voucherDetails?.footerBanner ||
+    voucherDetails?.pdfFooterImage ||
+    voucherDetails?.agentFooterImage ||
+    ""
+  ).trim();
   const resolvedTravelDate = voucherDetails.travelDate || voucherDetails.date || null;
   const passengerBreakup = formatTravelerBreakup({
     adults: voucherDetails.adults,
@@ -994,14 +1280,20 @@ export const buildVoucherTemplate = (voucherDetails, branding = "with") => {
             </div>
           </div>
 
-          <div class="brand-footer" style="background: linear-gradient(135deg, #020617, #0f172a, #d95508); padding: 16px 24px; border-top: 4px solid #d95508; color: #ffffff; font-size: 12px; text-align: center; line-height: 1.8; font-family: 'Plus Jakarta Sans', Arial, sans-serif;">
-            <div class="footer-info" style="font-weight: 600; margin-bottom: 4px;">
-              <span style="color: #cbd5e1;">Phone: +91 8851346665, +91 9971706003 | Email: ops@holidaycircuit.com | Web: www.holidaycircuit.com</span>
+          ${voucherFooterSrc ? `
+            <div style="width:100%; margin-top:16px; text-align:center;">
+              <img src="${voucherFooterSrc}" alt="Footer Banner" style="width:100%; max-width:100%; height:auto; display:block;" />
             </div>
-            <div class="footer-address" style="color: #94a3b8; font-size: 11px; font-weight: 500;">
-              2nd Floor, 632 Block B1, Janakpuri, New Delhi - 110058
+          ` : `
+            <div class="brand-footer" style="background: linear-gradient(135deg, #020617, #0f172a, #d95508); padding: 16px 24px; border-top: 4px solid #d95508; color: #ffffff; font-size: 12px; text-align: center; line-height: 1.8; font-family: 'Plus Jakarta Sans', Arial, sans-serif;">
+              <div class="footer-info" style="font-weight: 600; margin-bottom: 4px;">
+                <span style="color: #cbd5e1;">Phone: ${escapeHtml(voucherDetails.agencyPhone || '+91 8851346665')} | Email: ${escapeHtml(voucherDetails.agencyEmail || 'ops@holidaycircuit.com')}</span>
+              </div>
+              <div class="footer-address" style="color: #94a3b8; font-size: 11px; font-weight: 500;">
+                ${escapeHtml(voucherDetails.agencyAddress || '2nd Floor, 632 Block B1, Janakpuri, New Delhi - 110058')}
+              </div>
             </div>
-          </div>
+          `}
         </div>
       </body>
     </html>
@@ -1616,9 +1908,34 @@ export const buildFinalInvoiceTemplate = (invoiceDetails = {}) => {
   `;
 };
 
+const processInlineCidImages = (rawHtml = "") => {
+  const inlineAttachments = [];
+  let cidCounter = 0;
+
+  const cleanHtml = String(rawHtml || "").replace(
+    /src=["'](data:(image\/[a-zA-Z0-9.+-]+);base64,([^"']+))["']/gi,
+    (match, dataUrl, mimeType, base64Data) => {
+      cidCounter++;
+      const cid = `inline_img_${cidCounter}_${Date.now()}`;
+      const ext = mimeType.split("/")[1] || "png";
+      const buffer = Buffer.from(base64Data, "base64");
+
+      inlineAttachments.push({
+        filename: `inline_image_${cidCounter}.${ext}`,
+        content: buffer,
+        cid: cid,
+      });
+
+      return `src="cid:${cid}"`;
+    }
+  );
+
+  return { html: cleanHtml, inlineAttachments };
+};
+
 export const sendEmailQuote = async (email, quoteDetails) => {
   const transporter = createTransporter();
-  const htmlTemplate = buildAgentClientQuotationTemplate({
+  const rawHtmlTemplate = buildAgentClientQuotationTemplate({
     recipientName: quoteDetails?.recipientName || quoteDetails?.name || "Customer",
     quotationNumber: quoteDetails?.quotationNumber || "",
     queryId: quoteDetails?.queryId || "",
@@ -1636,6 +1953,9 @@ export const sendEmailQuote = async (email, quoteDetails) => {
     sellerBankDetails: quoteDetails?.sellerBankDetails || [],
     services: Array.isArray(quoteDetails?.services) ? quoteDetails.services : [],
   });
+
+  const { html: htmlTemplate, inlineAttachments } = processInlineCidImages(rawHtmlTemplate);
+
   const text = buildAgentClientQuotationText({
     recipientName: quoteDetails?.recipientName || quoteDetails?.name || "Customer",
     quotationNumber: quoteDetails?.quotationNumber || "",
@@ -1653,7 +1973,7 @@ export const sendEmailQuote = async (email, quoteDetails) => {
     services: Array.isArray(quoteDetails?.services) ? quoteDetails.services : [],
   });
 
-  let attachments = [];
+  let attachments = [...inlineAttachments];
   try {
     const pdfResult = await generatePDF(quoteDetails);
     if (pdfResult && pdfResult.filePath) {
@@ -1684,10 +2004,12 @@ export const sendEmailQuote = async (email, quoteDetails) => {
 
 export const sendAgentClientQuotationMail = async (email, quoteDetails = {}) => {
   const transporter = createTransporter();
-  const html = buildAgentClientQuotationTemplate(quoteDetails);
+  const rawHtml = buildAgentClientQuotationTemplate(quoteDetails);
   const text = buildAgentClientQuotationText(quoteDetails);
 
-  let attachments = [];
+  const { html, inlineAttachments } = processInlineCidImages(rawHtml);
+
+  let attachments = [...inlineAttachments];
   try {
     const pdfResult = await generatePDF(quoteDetails);
     if (pdfResult && pdfResult.filePath) {

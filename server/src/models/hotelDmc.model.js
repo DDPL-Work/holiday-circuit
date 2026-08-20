@@ -1,129 +1,132 @@
 import mongoose from "mongoose";
 
-const hotelSchema = new mongoose.Schema(
-{
+const roomSchema = new mongoose.Schema(
+  {
+    roomType: { type: String, required: true },
+    roomCategory: { type: String, default: "Double" },
+    bedType: { type: String, default: "Queen" },
+    extraBedType: { type: String, default: "None" },
+    maxAdults: { type: Number, default: 2 },
+    maxChildren: { type: Number, default: 1 },
+    childAgeLimit: { type: String, default: "As per hotel policy" },
+    mealPlan: {
+      type: String,
+      enum: ["EP", "CP", "MAP", "AP", "AI"],
+      default: "EP",
+    },
+    price: { type: Number, required: true },
+    basePrice: { type: Number, default: 0 },
+    awebRate: { type: Number, default: 0 },
+    cwebRate: { type: Number, default: 0 },
+    cwoebRate: { type: Number, default: 0 },
+    description: { type: String, default: "" },
 
-   serviceName: {
-    type: String
-  },
-
-   supplierName: {
-    type: String
-  },
-
-
-  hotelName: {
-    type: String,
-    required: true
-  },
-
-  country: {
-    type: String,
-    required: true
-  },
-
-  city: {
-    type: String,
-    required: true
-  },
-
-  serviceCategory: {
-  type: String,
-  default: "hotel"
-},
-
-  hotelCategory: {
-    type: String,
-    enum: ["3 Star", "4 Star", "5 Star", "Luxury"]
-  },
-
-  roomCategory: {
-    type: String,
-    default: "Double"
-  },
-
-  bedType: {
-    type: String,
-    enum: ["King", "Queen", "Twin"]
-  },
-
-  roomType: {
-    type: String
-  },
-
-  mealPlan: {
-    type: String,
-    enum: ["EP", "CP", "MAP", "AP", "AI"]
-  },
-
-  price: {
-    type: Number,
-    required: true
-  },
-
-  awebRate: {
-  type: Number,
-  required: true
-},
-cwebRate: {
-  type: Number,
-  required: true
-},
-cwoebRate: {
-  type: Number,
-  required: true
-},
-
-   currency: {
-    type: String,
-    enum: ["USD", "INR", "AED", "EUR", "IDR", "THB", "SGD", "GBP", "MYR", "EGP"],
-    default: "INR"
-  },
-
-  description: {
-  type: String
-},
-
-    validFrom: {
-    type: Date,
-    required: true
-  },
-
-    validTo: {
-    type: Date,
-    required: true
-  },
-
-  blackoutDates: {
-    type: [
+    // Structured Seasons Array (S1, S2, S3, etc.)
+    seasons: [
       {
-        rowNumber: { type: Number, default: 0 },
-        rawPeriod: { type: String, default: "" },
-        startDate: { type: Date, default: null },
-        endDate: { type: Date, default: null },
-        startDateKey: { type: String, default: "" },
-        endDateKey: { type: String, default: "" },
-        occasion: { type: String, default: "" },
-        category: { type: String, default: "" },
-        applicableRegion: { type: String, default: "" },
-        sourceSheet: { type: String, default: "" },
+        seasonName: { type: String, default: "S1" },
+        validFrom: { type: Date, default: null },
+        validTo: { type: Date, default: null },
+        price: { type: Number, default: 0 },
+        blackoutPrice: { type: Number, default: 0 },
       },
     ],
-    default: [],
   },
+  { _id: true }
+);
 
-  supplier: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "Auth"
+const hotelSubSchema = new mongoose.Schema(
+  {
+    hotelName: { type: String, required: true },
+    hotelCategory: {
+      type: String,
+      enum: ["3 Star", "4 Star", "5 Star", "Luxury"],
+      default: "5 Star",
+    },
+    supplierName: { type: String, default: "" },
+    rooms: [roomSchema],
   },
+  { _id: true }
+);
 
-  status: {
-    type: String,
-    default: "active"
-  }
+const hotelSchema = new mongoose.Schema(
+  {
+    serviceName: {
+      type: String,
+      required: true,
+    },
 
-},
-{ timestamps: true }
+    supplierName: {
+      type: String,
+      default: "",
+    },
+
+    country: {
+      type: String,
+      required: true,
+    },
+
+    city: {
+      type: String,
+      required: true,
+    },
+
+    serviceCategory: {
+      type: String,
+      default: "hotel",
+    },
+
+    currency: {
+      type: String,
+      enum: ["USD", "INR", "AED", "EUR", "IDR", "THB", "SGD", "GBP", "MYR", "EGP"],
+      default: "INR",
+    },
+
+    validFrom: {
+      type: Date,
+      required: true,
+    },
+
+    validTo: {
+      type: Date,
+      required: true,
+    },
+
+    blackoutDates: {
+      type: [
+        {
+          rowNumber: { type: Number, default: 0 },
+          blackoutName: { type: String, default: "" },
+          occasion: { type: String, default: "" },
+          rawPeriod: { type: String, default: "" },
+          startDate: { type: Date, default: null },
+          endDate: { type: Date, default: null },
+          startDateKey: { type: String, default: "" },
+          endDateKey: { type: String, default: "" },
+          season: { type: String, default: "" },
+          category: { type: String, default: "" },
+          applicableRegion: { type: String, default: "" },
+          rateAction: { type: String, default: "" },
+          sourceSheet: { type: String, default: "" },
+        },
+      ],
+      default: [],
+    },
+
+    supplier: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Auth",
+    },
+
+    status: {
+      type: String,
+      default: "active",
+    },
+
+    // Hierarchical Nested Hotels & Rooms Array
+    hotels: [hotelSubSchema],
+  },
+  { timestamps: true }
 );
 
 export default mongoose.model("Dmc_Hotel", hotelSchema);

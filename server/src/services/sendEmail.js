@@ -132,7 +132,7 @@ export const sendPasswordResetOtpMail = async (email, { name = "Team Member", ot
 
                     <h1 style="margin:0 0 12px;font-size:24px;font-weight:700;color:#0f172a;line-height:1.3;">Password Reset Code</h1>
                     <p style="margin:0 0 28px;font-size:14px;line-height:1.75;color:#64748b;">
-                      Hi <strong style="color:#0f172a;">${name}</strong>, use the code below to reset your password. It expires in <strong style="color:#0f172a;">10 minutes</strong>.
+                      Hi <strong style="color:#0f172a;">${name}</strong>, use the code below to reset your password. It expires in <strong style="color:#0f172a;">1 minute</strong>.
                     </p>
 
                     <!-- OTP box -->

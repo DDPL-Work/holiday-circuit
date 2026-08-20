@@ -1,10 +1,31 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSelector } from "react-redux";
-import { useLocation, useNavigate } from "react-router-dom";
-import { Bell, CheckCircle2, AlertCircle, Info, LoaderCircle, Menu, X, Gift } from "lucide-react";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
+import {
+  Bell,
+  CheckCircle2,
+  AlertCircle,
+  ChevronDown,
+  Info,
+  LoaderCircle,
+  Menu,
+  X,
+  Gift,
+  LogOut,
+  Settings,
+} from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
 import logo from "../../assets/logo img.png";
 import ExclusiveOfferModal from "../../modal/ExclusiveOfferModal.jsx";
+import ProfileSettingsModal from "../../modal/ProfileSettingsModal";
 import API from "../../utils/Api";
+import { useDispatch } from "react-redux";
+import { logout as logoutAction } from "../../redux/slices/authSlice";
+import {
+  getMenusForRole,
+  getItemTarget,
+  isItemActive,
+} from "../navConfig";
 
 const notificationRoles = new Set([
   "admin",
@@ -39,7 +60,9 @@ const isCouponNotification = (notification) =>
   notification?.title === "New Coupon Shared";
 
 const getNotificationEndpoint = (role) =>
-  role === "agent" || role === "dmc_partner" ? "/agent/notifications" : "/admin/notifications";
+  role === "agent" || role === "dmc_partner"
+    ? "/agent/notifications"
+    : "/admin/notifications";
 
 const getUnreadNotificationCount = (notifications = []) =>
   notifications.filter((notification) => !notification?.isRead).length;
@@ -64,6 +87,7 @@ const notificationRouteAllowlist = {
     "/admin/superAdminDashboard",
     "/admin/bookings-management",
     "/admin/user-management",
+    "/ops/create-package",
   ],
   operation_manager: [
     "/operationManager/operationManagerDashboard",
@@ -72,6 +96,7 @@ const notificationRouteAllowlist = {
     "/ops/bookings-management",
     "/ops/order-acceptance",
     "/ops/dashboard",
+    "/ops/create-package",
   ],
   finance_manager: [
     "/financeManager/financeManagerDashboard",
@@ -85,6 +110,7 @@ const notificationRouteAllowlist = {
     "/ops/order-acceptance",
     "/ops/quotation-builder",
     "/ops/voucher-management",
+    "/ops/create-package",
   ],
   finance_partner: [
     "/finance/dashboard",
@@ -128,7 +154,8 @@ const normalizeNotificationLink = (link = "") => {
       : `/${pathname}`
     : "";
 
-  const mappedPathname = legacyNotificationPathMap[normalizedPathname] || normalizedPathname;
+  const mappedPathname =
+    legacyNotificationPathMap[normalizedPathname] || normalizedPathname;
 
   return `${mappedPathname}${query ? `?${query}` : ""}${hash ? `#${hash}` : ""}`;
 };
@@ -143,7 +170,9 @@ const isAllowedNotificationRoute = (role, link = "") => {
   if (!pathname) return false;
 
   const allowedRoutes = notificationRouteAllowlist[role] || [];
-  return allowedRoutes.some((route) => pathname === route || pathname.startsWith(`${route}/`));
+  return allowedRoutes.some(
+    (route) => pathname === route || pathname.startsWith(`${route}/`),
+  );
 };
 
 const formatNotificationTimeAgo = (value) => {
@@ -152,7 +181,10 @@ const formatNotificationTimeAgo = (value) => {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return "";
 
-  const diffInMinutes = Math.max(0, Math.floor((Date.now() - parsed.getTime()) / 60000));
+  const diffInMinutes = Math.max(
+    0,
+    Math.floor((Date.now() - parsed.getTime()) / 60000),
+  );
 
   if (diffInMinutes < 1) return "Just now";
   if (diffInMinutes < 60) return `${diffInMinutes} min ago`;
@@ -184,15 +216,27 @@ const getContextualNotificationLink = (role, notification) => {
   const title = String(notification?.title || "").toLowerCase();
 
   if (
+    notification?.category === "Finance Report" ||
+    title.includes("finance report")
+  ) {
+    return role === "finance_manager"
+      ? "/finance/manager-dashboard"
+      : "/finance/internalInvoice";
+  }
+
+  if (
     role === "dmc_partner" &&
-    (notification?.meta?.internalInvoiceId || title.includes("internal invoice"))
+    (notification?.meta?.internalInvoiceId ||
+      title.includes("internal invoice"))
   ) {
     return "/dmc/confirmation";
   }
 
   if (
     role === "agent" &&
-    (notification?.meta?.invoiceId || title.includes("payment verified") || title.includes("payment rejected"))
+    (notification?.meta?.invoiceId ||
+      title.includes("payment verified") ||
+      title.includes("payment rejected"))
   ) {
     return "/agent/finance";
   }
@@ -226,7 +270,9 @@ const resolveNotificationLink = (role, notification, fallbackLink) => {
 
 const filterNotificationsByRole = (role, notifications = []) => {
   if (role === "agent") {
-    return notifications.filter((notification) => !isCouponNotification(notification));
+    return notifications.filter(
+      (notification) => !isCouponNotification(notification),
+    );
   }
 
   return notifications;
@@ -236,7 +282,9 @@ const isMirroredNotification = (notification) =>
   Boolean(notification?.meta?.mirroredForAdmin);
 
 const getNotificationSourceRole = (notification) =>
-  String(notification?.meta?.notificationSourceRole || "").trim().toLowerCase();
+  String(notification?.meta?.notificationSourceRole || "")
+    .trim()
+    .toLowerCase();
 
 const getAdminNotificationSourceGroup = (notification) => {
   if (!isMirroredNotification(notification)) {
@@ -247,7 +295,8 @@ const getAdminNotificationSourceGroup = (notification) => {
 
   if (sourceRole === "agent") return "agent";
   if (["operations", "operation_manager"].includes(sourceRole)) return "ops";
-  if (["finance_partner", "finance_manager"].includes(sourceRole)) return "finance";
+  if (["finance_partner", "finance_manager"].includes(sourceRole))
+    return "finance";
 
   return "other";
 };
@@ -269,8 +318,12 @@ const getAdminNotificationSourceLabel = (notification) => {
 };
 
 const isContractedRateNotification = (notification) =>
-  String(notification?.title || "").toLowerCase().includes("contracted rate") ||
-  Boolean(notification?.meta?.changeReasonLabel || notification?.meta?.changeReasonNote);
+  String(notification?.title || "")
+    .toLowerCase()
+    .includes("contracted rate") ||
+  Boolean(
+    notification?.meta?.changeReasonLabel || notification?.meta?.changeReasonNote,
+  );
 
 const adminNotificationFilters = [
   { key: "all", label: "All" },
@@ -284,7 +337,8 @@ const adminNotificationFilters = [
 const getDefaultNotificationLink = (role) => {
   if (role === "admin") return "/admin/superAdminDashboard#agent-approvals";
   if (role === "finance_manager") return "/financeManager/financeManagerDashboard";
-  if (role === "operation_manager") return "/operationManager/operationManagerDashboard";
+  if (role === "operation_manager")
+    return "/operationManager/operationManagerDashboard";
   if (role === "operations") return "/ops/bookings-management";
   if (role === "finance_partner") return "/finance/dashboard";
   if (role === "dmc_partner") return "/dmc/dashboard";
@@ -351,9 +405,10 @@ const getWorkspaceBranding = (user = null) => {
   };
 };
 
-const Header = ({ onMenuToggle }) => {
+const Header = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const dispatch = useDispatch();
   const { user } = useSelector((state) => state.auth);
   const workspaceBranding = getWorkspaceBranding(user);
 
@@ -374,6 +429,45 @@ const Header = ({ onMenuToggle }) => {
   const [offerOpen, setOfferOpen] = useState(false);
   const [couponUnreadCount, setCouponUnreadCount] = useState(0);
 
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [moreDropdownOpen, setMoreDropdownOpen] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [profileModalOpen, setProfileModalOpen] = useState(false);
+
+  const mobileNavRef = useRef(null);
+
+  const menus = useMemo(() => getMenusForRole(role, user), [role, user]);
+
+  const getAgentWorkspaceBranding = (usr = {}) => ({
+    name: usr?.brandingName || usr?.companyName || usr?.name || "Holiday Circuit",
+    logo: usr?.brandingLogo || "",
+  });
+
+  useEffect(() => {
+    if (!user?._id && !user?.id) return undefined;
+
+    const sendUserHeartbeat = async () => {
+      try {
+        await API.post("/auth/heartbeat");
+      } catch (err) {
+        // silent ping fail
+      }
+    };
+
+    sendUserHeartbeat();
+    const intervalId = window.setInterval(sendUserHeartbeat, 30000); // 30s live activity ping
+
+    return () => window.clearInterval(intervalId);
+  }, [user]);
+
+  const agentWorkspaceBranding = getAgentWorkspaceBranding(user);
+  const primaryIdentity =
+    role === "agent"
+      ? agentWorkspaceBranding.name
+      : user?.companyName || user?.name || "Holiday Circuit";
+  const avatarLetter = (primaryIdentity || "H").charAt(0).toUpperCase();
+  const profileImage = user?.profileImage || "";
+
   const toggleExpandNotification = (id, event) => {
     event.stopPropagation();
     setExpandedNotifications((prev) => ({
@@ -382,15 +476,61 @@ const Header = ({ onMenuToggle }) => {
     }));
   };
 
+  const [localReportNotifications, setLocalReportNotifications] = useState([]);
+
+  const loadLocalReports = () => {
+    try {
+      const stored = JSON.parse(
+        localStorage.getItem("finance_reports_history") || "[]",
+      );
+      const mapped = stored.map((report) => ({
+        _id: report.id,
+        id: report.id,
+        type: "info",
+        title: report.title || "Exported Finance Report",
+        message: `${report.title} exported with ${report.totalItems || report.items?.length || 0} items from ${report.source || "Finance Desk"} on ${report.generatedAt}. Available in Finance Manager Hub for download.`,
+        createdAt: report.generatedAt,
+        isRead: false,
+        category: "Finance Report",
+        link:
+          role === "finance_manager"
+            ? "/finance/manager-dashboard"
+            : "/finance/internalInvoice",
+      }));
+      setLocalReportNotifications(mapped);
+    } catch (e) {
+      console.warn("Could not load local report notifications:", e);
+    }
+  };
+
+  useEffect(() => {
+    loadLocalReports();
+
+    const handleReportSubmitted = () => loadLocalReports();
+    window.addEventListener("finance-report-submitted", handleReportSubmitted);
+    window.addEventListener("storage", handleReportSubmitted);
+
+    return () => {
+      window.removeEventListener(
+        "finance-report-submitted",
+        handleReportSubmitted,
+      );
+      window.removeEventListener("storage", handleReportSubmitted);
+    };
+  }, [role]);
+
   const hasFetchedRef = useRef(false);
   const prevUnreadRef = useRef(0);
   const bellPopFrameRef = useRef(null);
   const wrapRef = useRef(null);
 
-  const baseNotifications = useMemo(
-    () => filterNotificationsByRole(role, notifications),
-    [notifications, role],
-  );
+  const baseNotifications = useMemo(() => {
+    const roleFiltered = filterNotificationsByRole(role, notifications);
+    if (["finance_manager", "admin", "finance_partner"].includes(role)) {
+      return [...localReportNotifications, ...roleFiltered];
+    }
+    return roleFiltered;
+  }, [notifications, localReportNotifications, role]);
 
   const unreadCount = useMemo(
     () => getUnreadNotificationCount(baseNotifications),
@@ -407,11 +547,24 @@ const Header = ({ onMenuToggle }) => {
 
   const adminFilterCounts = useMemo(
     () => ({
-      direct: baseNotifications.filter((notification) => !isMirroredNotification(notification)).length,
-      mirrored: baseNotifications.filter((notification) => isMirroredNotification(notification)).length,
-      agent: baseNotifications.filter((notification) => getAdminNotificationSourceGroup(notification) === "agent").length,
-      ops: baseNotifications.filter((notification) => getAdminNotificationSourceGroup(notification) === "ops").length,
-      finance: baseNotifications.filter((notification) => getAdminNotificationSourceGroup(notification) === "finance").length,
+      direct: baseNotifications.filter(
+        (notification) => !isMirroredNotification(notification),
+      ).length,
+      mirrored: baseNotifications.filter((notification) =>
+        isMirroredNotification(notification),
+      ).length,
+      agent: baseNotifications.filter(
+        (notification) =>
+          getAdminNotificationSourceGroup(notification) === "agent",
+      ).length,
+      ops: baseNotifications.filter(
+        (notification) =>
+          getAdminNotificationSourceGroup(notification) === "ops",
+      ).length,
+      finance: baseNotifications.filter(
+        (notification) =>
+          getAdminNotificationSourceGroup(notification) === "finance",
+      ).length,
     }),
     [baseNotifications],
   );
@@ -421,20 +574,28 @@ const Header = ({ onMenuToggle }) => {
 
     if (canUseAdminMirrorFilters) {
       if (filterMode === "direct") {
-        source = baseNotifications.filter((notification) => !isMirroredNotification(notification));
+        source = baseNotifications.filter(
+          (notification) => !isMirroredNotification(notification),
+        );
       } else if (filterMode === "mirrored") {
-        source = baseNotifications.filter((notification) => isMirroredNotification(notification));
+        source = baseNotifications.filter((notification) =>
+          isMirroredNotification(notification),
+        );
       } else if (["agent", "ops", "finance"].includes(filterMode)) {
         source = baseNotifications.filter(
-          (notification) => getAdminNotificationSourceGroup(notification) === filterMode,
+          (notification) =>
+            getAdminNotificationSourceGroup(notification) === filterMode,
         );
       }
     } else if (canUseManagerFilter && filterMode === "important") {
-      source = baseNotifications.filter((notification) => notification.type === "warning");
+      source = baseNotifications.filter(
+        (notification) => notification.type === "warning",
+      );
     }
 
     return [...source].sort((a, b) => {
-      const createdAtDiff = new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
+      const createdAtDiff =
+        new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
       if (createdAtDiff !== 0) return createdAtDiff;
       if (a.isRead !== b.isRead) return a.isRead ? 1 : -1;
       if (a.type !== b.type) {
@@ -443,7 +604,12 @@ const Header = ({ onMenuToggle }) => {
       }
       return 0;
     });
-  }, [baseNotifications, canUseAdminMirrorFilters, canUseManagerFilter, filterMode]);
+  }, [
+    baseNotifications,
+    canUseAdminMirrorFilters,
+    canUseManagerFilter,
+    filterMode,
+  ]);
 
   const notificationCopy = getNotificationCopy(role);
   const defaultNotificationLink = getDefaultNotificationLink(role);
@@ -458,8 +624,12 @@ const Header = ({ onMenuToggle }) => {
         skipGlobalLoader: true,
       });
       const nextNotifications = data?.notifications || [];
-      const nextVisibleNotifications = filterNotificationsByRole(role, nextNotifications);
-      const nextUnreadCount = getUnreadNotificationCount(nextVisibleNotifications);
+      const nextVisibleNotifications = filterNotificationsByRole(
+        role,
+        nextNotifications,
+      );
+      const nextUnreadCount =
+        getUnreadNotificationCount(nextVisibleNotifications);
 
       if (hasFetchedRef.current && nextUnreadCount > prevUnreadRef.current) {
         if (bellPopFrameRef.current) {
@@ -501,53 +671,114 @@ const Header = ({ onMenuToggle }) => {
 
   const dismissNotification = async (id) => {
     try {
+      const isLocal = localReportNotifications.some(
+        (item) => item._id === id || item.id === id,
+      );
+
+      if (isLocal) {
+        setLocalReportNotifications((prev) =>
+          prev.filter((item) => item._id !== id && item.id !== id),
+        );
+        try {
+          const stored = JSON.parse(
+            localStorage.getItem("finance_reports_history") || "[]",
+          );
+          const updated = stored.filter(
+            (item) => item.id !== id && item._id !== id,
+          );
+          localStorage.setItem("finance_reports_history", JSON.stringify(updated));
+          window.dispatchEvent(new Event("finance-report-submitted"));
+        } catch (e) {
+          console.warn(
+            "Could not update local report history on dismiss:",
+            e,
+          );
+        }
+        return;
+      }
+
       await API.delete(`${getNotificationEndpoint(role)}/${id}`, {
         skipGlobalLoader: true,
       });
-      setNotifications((prev) => prev.filter((notification) => notification._id !== id));
+      setNotifications((prev) =>
+        prev.filter((notification) => notification._id !== id),
+      );
     } catch (error) {
       console.error("Failed to dismiss notification", error);
+      setNotifications((prev) =>
+        prev.filter((notification) => notification._id !== id),
+      );
+      setLocalReportNotifications((prev) =>
+        prev.filter((notification) => notification._id !== id),
+      );
     }
   };
 
   const markAllRead = async () => {
     try {
-      setNotifications((prev) => prev.map((notification) => ({ ...notification, isRead: true })));
+      setNotifications((prev) =>
+        prev.map((notification) => ({ ...notification, isRead: true })),
+      );
+      setLocalReportNotifications((prev) =>
+        prev.map((notification) => ({ ...notification, isRead: true })),
+      );
       prevUnreadRef.current = 0;
       setBellPop(false);
       setOpenNotifications(false);
 
-      await API.patch(`${getNotificationEndpoint(role)}/read-all`, null, {
-        skipGlobalLoader: true,
-      });
+      if (canViewNotifications) {
+        await API.patch(`${getNotificationEndpoint(role)}/read-all`, null, {
+          skipGlobalLoader: true,
+        });
+      }
 
       if (canViewOffers) {
         setCouponUnreadCount(0);
       }
     } catch (error) {
-      fetchNotifications(true);
       console.error("Failed to mark notifications read", error);
     }
   };
 
   const clearVisibleNotifications = async () => {
     try {
-      await Promise.all(
-        baseNotifications.map((notification) =>
-          API.delete(`${getNotificationEndpoint(role)}/${notification._id}`, {
-            skipGlobalLoader: true,
-          }),
-        ),
-      );
+      setLocalReportNotifications([]);
+      try {
+        localStorage.removeItem("finance_reports_history");
+        window.dispatchEvent(new Event("finance-report-submitted"));
+      } catch (e) {
+        console.warn("Could not clear local report history:", e);
+      }
+
+      if (canViewNotifications) {
+        await Promise.all(
+          baseNotifications
+            .filter((n) => !String(n._id || n.id).startsWith("report-"))
+            .map((notification) =>
+              API.delete(
+                `${getNotificationEndpoint(role)}/${notification._id}`,
+                { skipGlobalLoader: true },
+              ),
+            ),
+        );
+      }
 
       setNotifications((prev) =>
-        prev.filter((notification) => !baseNotifications.some((item) => item._id === notification._id)),
+        prev.filter(
+          (notification) =>
+            !baseNotifications.some(
+              (item) => item._id === notification._id,
+            ),
+        ),
       );
       prevUnreadRef.current = 0;
       setBellPop(false);
       setOpenNotifications(false);
     } catch (error) {
       console.error("Failed to clear notifications", error);
+      setLocalReportNotifications([]);
+      setNotifications([]);
+      setOpenNotifications(false);
     }
   };
 
@@ -555,7 +786,9 @@ const Header = ({ onMenuToggle }) => {
     setOpenNotifications(false);
     const link = resolveNotificationLink(role, notification, defaultNotificationLink);
     navigate(link, {
-      state: notification?.meta ? { notificationMeta: notification.meta } : undefined,
+      state: notification?.meta
+        ? { notificationMeta: notification.meta }
+        : undefined,
     });
   };
 
@@ -574,6 +807,12 @@ const Header = ({ onMenuToggle }) => {
     } catch (error) {
       console.error("Failed to mark coupon notifications as read", error);
     }
+  };
+
+  const handleLogout = () => {
+    dispatch(logoutAction());
+    localStorage.clear();
+    navigate("/", { replace: true });
   };
 
   useEffect(() => {
@@ -657,15 +896,22 @@ const Header = ({ onMenuToggle }) => {
     return () => window.clearTimeout(timeout);
   }, [bellPop]);
 
-  useEffect(() => () => {
-    if (bellPopFrameRef.current) {
-      window.cancelAnimationFrame(bellPopFrameRef.current);
-    }
-  }, []);
+  useEffect(
+    () => () => {
+      if (bellPopFrameRef.current) {
+        window.cancelAnimationFrame(bellPopFrameRef.current);
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     prevUnreadRef.current = unreadCount;
   }, [unreadCount]);
+
+  useEffect(() => {
+    setMobileNavOpen(false);
+  }, [location.pathname, location.search]);
 
   const getNotificationMeta = (type) => {
     if (type === "warning") {
@@ -673,7 +919,11 @@ const Header = ({ onMenuToggle }) => {
     }
 
     if (type === "success") {
-      return { Icon: CheckCircle2, iconClass: "text-emerald-600", dot: "bg-emerald-500" };
+      return {
+        Icon: CheckCircle2,
+        iconClass: "text-emerald-600",
+        dot: "bg-emerald-500",
+      };
     }
 
     return { Icon: Info, iconClass: "text-blue-600", dot: "bg-blue-500" };
@@ -687,12 +937,142 @@ const Header = ({ onMenuToggle }) => {
       ? "Mark all read"
       : "";
 
-  const handleBulkAction = clearAllRoles.has(role) ? clearVisibleNotifications : markAllRead;
+  const handleBulkAction = clearAllRoles.has(role)
+    ? clearVisibleNotifications
+    : markAllRead;
+
+  const renderNavItems = (isMobile = false) => {
+    if (isMobile) {
+      return menus.map((item) => {
+        const Icon = item.icon;
+        const active = isItemActive(item, location);
+        return (
+          <NavLink
+            key={`${item.path}${item.hash || item.label}`}
+            to={getItemTarget(item)}
+            onClick={() => setMobileNavOpen(false)}
+            className={`flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200 ${
+              active
+                ? "bg-[#3E63DD] text-white shadow-[0_8px_16px_rgba(62,99,221,0.3)]"
+                : "text-slate-300 hover:bg-white/[0.06] hover:text-white"
+            }`}
+          >
+            <Icon size={15} />
+            <span>{item.label}</span>
+          </NavLink>
+        );
+      });
+    }
+
+    if (menus.length > 4) {
+      const visibleCount = 4;
+      const visibleMenus = menus.slice(0, visibleCount);
+      const overflowMenus = menus.slice(visibleCount);
+      const isOverflowActive = overflowMenus.some((item) => isItemActive(item, location));
+
+      return (
+        <>
+          {visibleMenus.map((item) => {
+            const Icon = item.icon;
+            const active = isItemActive(item, location);
+            return (
+              <NavLink
+                key={`${item.path}${item.hash || item.label}`}
+                to={getItemTarget(item)}
+                className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-[13px] font-medium transition-all duration-200 ${
+                  active
+                    ? "bg-[#3E63DD] text-white shadow-[0_8px_16px_rgba(62,99,221,0.3)]"
+                    : "text-slate-300 hover:bg-white/[0.06] hover:text-white"
+                }`}
+              >
+                <Icon size={14} />
+                <span>{item.label}</span>
+              </NavLink>
+            );
+          })}
+
+          <div
+            className="relative"
+            onMouseEnter={() => setMoreDropdownOpen(true)}
+            onMouseLeave={() => setMoreDropdownOpen(false)}
+          >
+            <button
+              type="button"
+              onClick={() => setMoreDropdownOpen(!moreDropdownOpen)}
+              className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-[13px] font-medium transition-all duration-200 cursor-pointer ${
+                isOverflowActive || moreDropdownOpen
+                  ? "bg-[#3E63DD] text-white shadow-[0_8px_16px_rgba(62,99,221,0.3)]"
+                  : "text-slate-300 hover:bg-white/[0.06] hover:text-white"
+              }`}
+            >
+              <span>More</span>
+              <ChevronDown
+                size={14}
+                className={`transition-transform duration-200 ${moreDropdownOpen ? "rotate-180" : ""}`}
+              />
+            </button>
+
+            <AnimatePresence>
+              {moreDropdownOpen && (
+                <motion.div
+                  initial={{ opacity: 0, y: 6, scale: 0.96 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 6, scale: 0.96 }}
+                  transition={{ duration: 0.15, ease: "easeOut" }}
+                  className="absolute right-0 top-full mt-1 z-50 min-w-[210px] rounded-2xl border border-white/10 bg-[#0F172A] p-2 shadow-2xl backdrop-blur-xl"
+                >
+                  <div className="space-y-1">
+                    {overflowMenus.map((item) => {
+                      const Icon = item.icon;
+                      const active = isItemActive(item, location);
+                      return (
+                        <NavLink
+                          key={`${item.path}${item.hash || item.label}`}
+                          to={getItemTarget(item)}
+                          onClick={() => setMoreDropdownOpen(false)}
+                          className={`flex items-center gap-2.5 rounded-xl px-3 py-2 text-[12.5px] font-medium transition-all duration-150 ${
+                            active
+                              ? "bg-[#3E63DD] text-white shadow-sm"
+                              : "text-slate-300 hover:bg-white/[0.08] hover:text-white"
+                          }`}
+                        >
+                          <Icon size={14} className="shrink-0" />
+                          <span className="truncate">{item.label}</span>
+                        </NavLink>
+                      );
+                    })}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        </>
+      );
+    }
+
+    return menus.map((item) => {
+      const Icon = item.icon;
+      const active = isItemActive(item, location);
+      return (
+        <NavLink
+          key={`${item.path}${item.hash || item.label}`}
+          to={getItemTarget(item)}
+          className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-[13px] font-medium transition-all duration-200 ${
+            active
+              ? "bg-[#3E63DD] text-white shadow-[0_8px_16px_rgba(62,99,221,0.3)]"
+              : "text-slate-300 hover:bg-white/[0.06] hover:text-white"
+          }`}
+        >
+          <Icon size={14} />
+          <span>{item.label}</span>
+        </NavLink>
+      );
+    });
+  };
 
   return (
     <>
       <style>{`
-        /* Transparent scrollbar styles */
         .custom-scroll::-webkit-scrollbar {
           width: 5px;
           height: 5px;
@@ -702,8 +1082,8 @@ const Header = ({ onMenuToggle }) => {
           background: transparent;
         }
         .custom-scroll {
-          scrollbar-width: none; /* Firefox */
-          -ms-overflow-style: none; /* IE/Edge */
+          scrollbar-width: none;
+          -ms-overflow-style: none;
         }
 
         @keyframes notification-bell-swing {
@@ -733,46 +1113,75 @@ const Header = ({ onMenuToggle }) => {
           100% { transform: scale(1); }
         }
       `}</style>
-      <header className="h-16 border-b border-slate-800 bg-gradient-to-r from-black via-slate-950 to-blue-950 pl-3 pr-3 sm:pr-5 md:pl-0 lg:pr-8">
-        <div className="flex h-full items-center justify-between gap-3">
-          <div className="flex h-full items-center gap-3 md:gap-0">
+
+      <AnimatePresence>
+        {mobileNavOpen && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="fixed inset-0 z-40 bg-slate-950/50 backdrop-blur-[2px] lg:hidden"
+              onClick={() => setMobileNavOpen(false)}
+            />
+            <motion.div
+              ref={mobileNavRef}
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.2, ease: "easeOut" }}
+              className="fixed top-[4.5rem] left-0 right-0 z-50 max-h-[calc(100vh-4.5rem)] overflow-y-auto border-b border-white/10 bg-[#0F172A] lg:hidden custom-scroll"
+            >
+              <nav className="space-y-1 p-3">{renderNavItems(true)}</nav>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      <header className="h-[4.5rem] border-b border-white/10 bg-[#0F172A] px-3 sm:px-5">
+        <div className="flex h-full items-center gap-2 sm:gap-3">
+          <div className="flex h-full items-center gap-2 sm:gap-3 shrink-0">
             <button
               type="button"
-              onClick={onMenuToggle}
-              className="flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-white transition hover:bg-white/10 md:hidden"
+              onClick={() => setMobileNavOpen(!mobileNavOpen)}
+              className="flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-white transition hover:bg-white/10 lg:hidden"
+              aria-label="Toggle navigation"
             >
-              <Menu className="h-5 w-5" />
+              {mobileNavOpen ? (
+                <X className="h-5 w-5" />
+              ) : (
+                <Menu className="h-5 w-5" />
+              )}
             </button>
 
-            <div className="group flex h-full cursor-pointer items-center gap-3 px-4 transition-all duration-300 sm:w-60 md:pl-5 md:pr-4">
-              <div className="relative flex shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white p-1 shadow-inner ring-1 ring-black/5 transition-transform duration-500">
+            <div className="flex h-full cursor-pointer items-center px-2 sm:px-4">
+              <div className="relative flex h-11 w-11 sm:h-12 sm:w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white p-0.5 shadow-inner ring-1 ring-black/5">
                 <img
                   src={workspaceBranding.logo || logo}
                   alt={workspaceBranding.name || "Logo"}
-                  className="h-7 w-auto object-contain sm:h-8"
+                  className={`h-full w-full object-contain ${
+                    workspaceBranding.logo ? "scale-[1.15]" : "scale-[1.4]"
+                  }`}
                 />
-              </div>
-              <div className="hidden min-w-0 flex-1 sm:block">
-                <p className="truncate bg-linear-to-r from-white to-slate-300 bg-clip-text text-[15px] font-bold tracking-wide text-transparent">
-                  {workspaceBranding.name || "Holiday Circuit"}
-                </p>
-                <p className="mt-0.5 truncate text-[9px] font-bold uppercase tracking-[0.2em] text-sky-400">
-                  Workspace
-                </p>
               </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <nav className="hidden lg:flex items-center gap-2.5 sm:gap-3.5 ml-auto mr-3 shrink-0">
+            {renderNavItems(false)}
+          </nav>
+
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             {canViewOffers ? (
               <button
                 type="button"
                 onClick={handleOpenOffers}
-                className="relative flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-white transition hover:bg-white/10"
+                className="relative flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-white transition hover:bg-white/10"
                 aria-label="Offers"
                 title="Offers"
               >
-                <Gift className="h-5 w-5" />
+                <Gift className="h-4 w-4 sm:h-5 sm:w-5" />
                 {couponUnreadCount > 0 ? (
                   <span className="absolute -right-1 -top-1 min-w-[1.25rem] rounded-full bg-rose-500 px-1.5 py-0.5 text-[10px] font-semibold text-white">
                     {couponUnreadCount}
@@ -793,7 +1202,7 @@ const Header = ({ onMenuToggle }) => {
                       setFilterMode("all");
                     }
                   }}
-                  className={`relative flex h-10 w-10 cursor-pointer items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-white transition duration-300 hover:bg-white/10 ${
+                  className={`relative flex h-9 w-9 sm:h-10 sm:w-10 cursor-pointer items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-white transition duration-300 hover:bg-white/10 ${
                     bellPop
                       ? "scale-110 -translate-y-0.5 shadow-[0_0_0_5px_rgba(59,130,246,0.16),0_14px_28px_rgba(15,23,42,0.35)]"
                       : ""
@@ -805,11 +1214,17 @@ const Header = ({ onMenuToggle }) => {
                     <span key={bellPopKey} className="absolute inset-0">
                       <span
                         className="absolute inset-0 rounded-2xl border border-sky-300/70"
-                        style={{ animation: "notification-burst-ring 720ms ease-out forwards" }}
+                        style={{
+                          animation:
+                            "notification-burst-ring 720ms ease-out forwards",
+                        }}
                       />
                       <span
                         className="absolute inset-0 rounded-2xl border border-cyan-200/40"
-                        style={{ animation: "notification-burst-ring 980ms ease-out forwards" }}
+                        style={{
+                          animation:
+                            "notification-burst-ring 980ms ease-out forwards",
+                        }}
                       />
                       <span className="absolute inset-0 rounded-2xl bg-blue-400/20 animate-ping" />
                       {notificationBurstDots.map((dot) => (
@@ -819,7 +1234,8 @@ const Header = ({ onMenuToggle }) => {
                           style={{
                             backgroundColor: dot.color,
                             boxShadow: `0 0 12px ${dot.color}`,
-                            animation: "notification-burst-dot 780ms ease-out forwards",
+                            animation:
+                              "notification-burst-dot 780ms ease-out forwards",
                             "--tx": dot.tx,
                             "--ty": dot.ty,
                           }}
@@ -828,12 +1244,15 @@ const Header = ({ onMenuToggle }) => {
                     </span>
                   ) : null}
                   <Bell
-                    className={`relative h-5 w-5 ${
+                    className={`relative h-4 w-4 sm:h-5 sm:w-5 ${
                       bellPop && unreadCount > 0 ? "text-blue-300" : ""
                     }`}
                     style={
                       bellPop && unreadCount > 0
-                        ? { animation: "notification-bell-swing 760ms cubic-bezier(0.22, 1, 0.36, 1)" }
+                        ? {
+                            animation:
+                              "notification-bell-swing 760ms cubic-bezier(0.22, 1, 0.36, 1)",
+                          }
                         : undefined
                     }
                   />
@@ -844,7 +1263,10 @@ const Header = ({ onMenuToggle }) => {
                       }`}
                       style={
                         bellPop
-                          ? { animation: "notification-badge-pop 520ms cubic-bezier(0.34, 1.56, 0.64, 1), pulse 1s ease-in-out infinite" }
+                          ? {
+                              animation:
+                                "notification-badge-pop 520ms cubic-bezier(0.34, 1.56, 0.64, 1), pulse 1s ease-in-out infinite",
+                            }
                           : undefined
                       }
                     >
@@ -898,7 +1320,9 @@ const Header = ({ onMenuToggle }) => {
                         </p>
                         <p
                           className={`mt-0.5 text-xs ${
-                            isQuotationBuilder ? "text-slate-300" : "text-slate-500"
+                            isQuotationBuilder
+                              ? "text-slate-300"
+                              : "text-slate-500"
                           }`}
                         >
                           {notificationCopy.subtitle}
@@ -932,7 +1356,9 @@ const Header = ({ onMenuToggle }) => {
                         <div className="ml-auto flex items-center gap-2">
                           <span
                             className={`text-[11px] font-semibold uppercase tracking-[0.16em] ${
-                              isQuotationBuilder ? "text-slate-300" : "text-slate-500"
+                              isQuotationBuilder
+                                ? "text-slate-300"
+                                : "text-slate-500"
                             }`}
                           >
                             View
@@ -962,7 +1388,8 @@ const Header = ({ onMenuToggle }) => {
 
                               return (
                                 <option key={filter.key} value={filter.key}>
-                                  {filter.label}{countSuffix ? ` (${countSuffix})` : ""}
+                                  {filter.label}
+                                  {countSuffix ? ` (${countSuffix})` : ""}
                                 </option>
                               );
                             })}
@@ -1016,7 +1443,8 @@ const Header = ({ onMenuToggle }) => {
                             }
                             title="Only warning notifications"
                           >
-                            Important{importantCount ? ` (${importantCount})` : ""}
+                            Important
+                            {importantCount ? ` (${importantCount})` : ""}
                           </button>
                         </div>
                       ) : null}
@@ -1053,7 +1481,9 @@ const Header = ({ onMenuToggle }) => {
                               : "bg-slate-50 text-slate-500"
                           }`}
                           style={
-                            isQuotationBuilder ? { background: "rgba(255,255,255,0.06)" } : undefined
+                            isQuotationBuilder
+                              ? { background: "rgba(255,255,255,0.06)" }
+                              : undefined
                           }
                         >
                           No notifications right now.
@@ -1064,18 +1494,41 @@ const Header = ({ onMenuToggle }) => {
                             const { Icon, iconClass, dot } = getNotificationMeta(
                               notification?.type,
                             );
-                            const timeLabel = formatNotificationTimeAgo(notification?.createdAt);
-                            const timestampLabel = formatNotificationTimestamp(notification?.createdAt);
-                            const sourceLabel = getAdminNotificationSourceLabel(notification);
-                            const rateReasonLabel = String(notification?.meta?.changeReasonLabel || "").trim();
-                            const rateReasonNote = String(notification?.meta?.changeReasonNote || "").trim();
-                            const rateFields = Array.isArray(notification?.meta?.rateSensitiveFields)
-                              ? notification.meta.rateSensitiveFields.filter(Boolean)
+                            const timeLabel = formatNotificationTimeAgo(
+                              notification?.createdAt,
+                            );
+                            const timestampLabel = formatNotificationTimestamp(
+                              notification?.createdAt,
+                            );
+                            const sourceLabel =
+                              getAdminNotificationSourceLabel(notification);
+                            const rateReasonLabel = String(
+                              notification?.meta?.changeReasonLabel || "",
+                            ).trim();
+                            const rateReasonNote = String(
+                              notification?.meta?.changeReasonNote || "",
+                            ).trim();
+                            const rateFields = Array.isArray(
+                              notification?.meta?.rateSensitiveFields,
+                            )
+                              ? notification.meta.rateSensitiveFields.filter(
+                                  Boolean,
+                                )
                               : [];
-                            const isExpanded = Boolean(expandedNotifications[notification._id]);
+                            const isExpanded = Boolean(
+                              expandedNotifications[notification._id],
+                            );
                             const messageText = notification?.message || "";
                             const isLongText = messageText.length > 90;
-                            const hasMetadata = Boolean(rateReasonLabel || rateReasonNote || rateFields.length || notification?.meta?.revisionReason || (notification?.meta?.source === "ops_order_acceptance" && notification?.meta?.note));
+                            const hasMetadata = Boolean(
+                              rateReasonLabel ||
+                                rateReasonNote ||
+                                rateFields.length ||
+                                notification?.meta?.revisionReason ||
+                                (notification?.meta?.source ===
+                                  "ops_order_acceptance" &&
+                                  notification?.meta?.note),
+                            );
                             const isExpandable = isLongText || hasMetadata;
 
                             return (
@@ -1110,7 +1563,9 @@ const Header = ({ onMenuToggle }) => {
                                     }`}
                                     style={
                                       isQuotationBuilder
-                                        ? { background: "rgba(255,255,255,0.14)" }
+                                        ? {
+                                            background: "rgba(255,255,255,0.14)",
+                                          }
                                         : undefined
                                     }
                                   >
@@ -1118,20 +1573,28 @@ const Header = ({ onMenuToggle }) => {
                                   </div>
                                   <div className="min-w-0 flex-1">
                                     <div className="flex items-start gap-1.5">
-                                      <div className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${dot}`} />
+                                      <div
+                                        className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${dot}`}
+                                      />
                                       <div className="min-w-0 flex-1">
                                         <p
                                           className={`truncate text-xs font-semibold ${
-                                            isQuotationBuilder ? "text-white" : "text-slate-900"
+                                            isQuotationBuilder
+                                              ? "text-white"
+                                              : "text-slate-900"
                                           }`}
                                         >
                                           {notification?.title || "Notification"}
                                         </p>
                                         <p
                                           className={`mt-1 text-xs leading-5 ${
-                                            isExpandable && !isExpanded ? "line-clamp-2" : ""
+                                            isExpandable && !isExpanded
+                                              ? "line-clamp-2"
+                                              : ""
                                           } ${
-                                            isQuotationBuilder ? "text-slate-300" : "text-slate-600"
+                                            isQuotationBuilder
+                                              ? "text-slate-300"
+                                              : "text-slate-600"
                                           }`}
                                           style={{ wordBreak: "break-word" }}
                                         >
@@ -1139,7 +1602,7 @@ const Header = ({ onMenuToggle }) => {
                                         </p>
                                         {isExpanded && (
                                           <>
-                                            {(rateReasonLabel || rateReasonNote) ? (
+                                            {rateReasonLabel || rateReasonNote ? (
                                               <p
                                                 className={`mt-1.5 rounded-lg px-2.5 py-2 text-xs leading-5 font-semibold ${
                                                   isQuotationBuilder
@@ -1147,7 +1610,10 @@ const Header = ({ onMenuToggle }) => {
                                                     : "bg-amber-50 text-amber-800"
                                                 }`}
                                               >
-                                                Reason: {[rateReasonLabel, rateReasonNote].filter(Boolean).join(" - ")}
+                                                Reason:{" "}
+                                                {[rateReasonLabel, rateReasonNote]
+                                                  .filter(Boolean)
+                                                  .join(" - ")}
                                               </p>
                                             ) : null}
                                             {notification?.meta?.revisionReason ? (
@@ -1158,26 +1624,34 @@ const Header = ({ onMenuToggle }) => {
                                                     : "bg-rose-50 text-rose-800"
                                                 }`}
                                               >
-                                                Revision Remark: {notification.meta.revisionReason}
+                                                Revision Remark:{" "}
+                                                {notification.meta.revisionReason}
                                               </p>
                                             ) : null}
                                             {rateFields.length ? (
                                               <p
                                                 className={`mt-1 text-[11px] font-semibold ${
-                                                  isQuotationBuilder ? "text-slate-300" : "text-slate-500"
+                                                  isQuotationBuilder
+                                                    ? "text-slate-300"
+                                                    : "text-slate-500"
                                                 }`}
                                               >
-                                                Changed fields: {rateFields.join(", ")}
+                                                Changed fields:{" "}
+                                                {rateFields.join(", ")}
                                               </p>
                                             ) : null}
-                                            {notification?.meta?.source === "ops_order_acceptance" &&
+                                            {notification?.meta?.source ===
+                                              "ops_order_acceptance" &&
                                             notification?.meta?.note ? (
                                               <p
                                                 className={`mt-1 text-xs leading-5 font-medium ${
-                                                  isQuotationBuilder ? "text-amber-200" : "text-amber-700"
+                                                  isQuotationBuilder
+                                                    ? "text-amber-200"
+                                                    : "text-amber-700"
                                                 }`}
                                               >
-                                                Ops Team Note: {notification.meta.note}
+                                                Ops Team Note:{" "}
+                                                {notification.meta.note}
                                               </p>
                                             ) : null}
                                           </>
@@ -1185,21 +1659,32 @@ const Header = ({ onMenuToggle }) => {
                                         {isExpandable && (
                                           <button
                                             type="button"
-                                            onClick={(e) => toggleExpandNotification(notification._id, e)}
+                                            onClick={(e) =>
+                                              toggleExpandNotification(
+                                                notification._id,
+                                                e,
+                                              )
+                                            }
                                             className={`mt-1 inline-flex items-center text-[10px] font-bold ${
                                               isQuotationBuilder
                                                 ? "text-sky-400 hover:text-sky-300"
                                                 : "text-blue-600 hover:text-blue-700"
                                             }`}
                                           >
-                                            {isExpanded ? "Read Less" : "Read More"}
+                                            {isExpanded
+                                              ? "Read Less"
+                                              : "Read More"}
                                           </button>
                                         )}
-                                        {(timeLabel || timestampLabel) ? (
+                                        {timeLabel || timestampLabel ? (
                                           <p className="mt-2 text-[11px] font-medium text-slate-400">
-                                            {role === "admin" ? `${sourceLabel} • ` : ""}
+                                            {role === "admin"
+                                              ? `${sourceLabel} • `
+                                              : ""}
                                             {timeLabel || "Recently"}
-                                            {timestampLabel ? ` • ${timestampLabel}` : ""}
+                                            {timestampLabel
+                                              ? ` • ${timestampLabel}`
+                                              : ""}
                                           </p>
                                         ) : null}
                                       </div>
@@ -1217,7 +1702,9 @@ const Header = ({ onMenuToggle }) => {
                                     }`}
                                     style={
                                       isQuotationBuilder
-                                        ? { background: "rgba(255,255,255,0.04)" }
+                                        ? {
+                                            background: "rgba(255,255,255,0.04)",
+                                          }
                                         : undefined
                                     }
                                     title="Dismiss"
@@ -1236,13 +1723,103 @@ const Header = ({ onMenuToggle }) => {
                 ) : null}
               </div>
             ) : null}
+
+            <button
+              type="button"
+              onClick={() => setProfileModalOpen(true)}
+              className="relative flex h-9 w-9 sm:h-10 sm:w-10 cursor-pointer items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-white transition hover:bg-white/10 overflow-hidden shrink-0"
+              aria-label="Profile Settings"
+              title={primaryIdentity}
+            >
+              {profileImage ? (
+                <img
+                  src={profileImage}
+                  alt="Profile"
+                  className="h-full w-full object-cover rounded-2xl"
+                />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500 to-cyan-400 text-xs font-bold text-white">
+                  {avatarLetter}
+                </div>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setShowLogoutConfirm(true)}
+              className="flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-white transition hover:border-red-400/20 hover:bg-red-500/10"
+              title="Log Out"
+            >
+              <LogOut className="h-4 w-4 sm:h-[18px] sm:w-[18px]" />
+            </button>
           </div>
         </div>
       </header>
 
+      <ProfileSettingsModal
+        open={profileModalOpen}
+        onClose={() => setProfileModalOpen(false)}
+        user={user}
+      />
+
       {canViewOffers ? (
-        <ExclusiveOfferModal open={offerOpen} onClose={() => setOfferOpen(false)} />
+        <ExclusiveOfferModal
+          open={offerOpen}
+          onClose={() => setOfferOpen(false)}
+        />
       ) : null}
+
+      <AnimatePresence>
+        {showLogoutConfirm && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setShowLogoutConfirm(false)}
+            className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-[2px]"
+          >
+            <motion.div
+              initial={{ scale: 0.92, y: 15, opacity: 0 }}
+              animate={{ scale: 1, y: 0, opacity: 1 }}
+              exit={{ scale: 0.92, y: 15, opacity: 0 }}
+              transition={{ type: "spring", damping: 25, stiffness: 350 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl p-6 w-full max-w-sm text-center relative overflow-hidden"
+            >
+              <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-red-500 to-rose-600" />
+
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-red-500/10 text-red-500 mb-4">
+                <LogOut size={20} className="stroke-[2.5]" />
+              </div>
+
+              <h3 className="text-base font-bold text-white mb-1.5">
+                Confirm Log Out
+              </h3>
+              <p className="text-xs text-slate-400 mb-6 leading-relaxed">
+                Are you sure you want to log out of Holiday Circuit?
+              </p>
+
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  onClick={() => setShowLogoutConfirm(false)}
+                  className="rounded-xl border border-slate-700 bg-slate-800 text-xs font-semibold text-slate-200 py-2.5 hover:bg-slate-700 hover:text-white transition-all active:scale-95 duration-150 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    setShowLogoutConfirm(false);
+                    handleLogout();
+                  }}
+                  className="rounded-xl bg-gradient-to-r from-red-500 to-rose-600 hover:from-red-650 hover:to-rose-700 text-xs font-bold text-white py-2.5 shadow-[0_2px_10px_rgba(239,68,68,0.25)] transition-all active:scale-95 duration-150 cursor-pointer"
+                >
+                  Yes, Log Out
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </>
   );
 };

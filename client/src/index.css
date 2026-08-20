@@ -1,6 +1,18 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Cinzel+Decorative:wght@700&family=Playfair+Display:ital,wght@0,400;0,700;1,400;1,700&family=Bodoni+Moda:ital,wght@0,400;0,700;1,400;1,700&family=Prata&display=swap');
+
 @import "tailwindcss";
 
-@import url('https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@700&family=Playfair+Display:ital,wght@0,400;0,700;1,400;1,700&family=Bodoni+Moda:ital,wght@0,400;0,700;1,400;1,700&family=Prata&display=swap');
+*, *::before, *::after {
+  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+body, html, #root, button, input, select, textarea {
+  font-family: 'Inter', sans-serif !important;
+}
+
+.font-sans {
+  font-family: 'Inter', sans-serif !important;
+}
 
 @keyframes softBounce {
   0%, 100% {
@@ -118,29 +130,25 @@
 }
 
 .sidebar-scrollbar {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(148, 163, 184, 0.42) transparent;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 
 .sidebar-scrollbar::-webkit-scrollbar {
-  width: 10px;
+  width: 0px;
+  background: transparent;
 }
 
 .sidebar-scrollbar::-webkit-scrollbar-track {
   background: transparent;
-  border-radius: 999px;
 }
 
 .sidebar-scrollbar::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.32);
-  border: 2px solid transparent;
-  border-radius: 999px;
-  background-clip: padding-box;
+  background: transparent;
 }
 
 .sidebar-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: rgba(59, 130, 246, 0.72);
-  background-clip: padding-box;
+  background: transparent;
 }
 
 .finance-transparent-scrollbar {
@@ -326,5 +334,34 @@ div[role="status"] {
   height: 0px !important;
   background: transparent !important;
   display: none !important;
+}
+
+/* Date input styling for dark theme & highly visible calendar icon */
+input[type="date"] {
+  color-scheme: dark !important;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator {
+  cursor: pointer !important;
+  filter: invert(0.85) sepia(100%) saturate(600%) hue-rotate(5deg) brightness(1.2) !important;
+  opacity: 0.95 !important;
+  padding: 2px !important;
+  border-radius: 4px !important;
+  transition: transform 0.15s ease, opacity 0.15s ease !important;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator:hover {
+  opacity: 1 !important;
+  transform: scale(1.18) !important;
+}
+
+/* Hide duplicate native indicator when container has its own icon button */
+[data-date-picker-wrapper="true"] input[type="date"]::-webkit-calendar-picker-indicator {
+  display: none !important;
+  -webkit-appearance: none !important;
+  opacity: 0 !important;
+  width: 0 !important;
+  height: 0 !important;
+  pointer-events: none !important;
 }
 

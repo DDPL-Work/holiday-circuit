@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useSyncExternalStore } from "react";
 import Header from "./header/Header";
-import Sidebar from "./sidebar/Sidebar";
 import { Outlet, useLocation } from "react-router-dom";
-import { useSelector } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
+import { fetchCurrentUser } from "../redux/slices/authSlice.js";
 import GlobalDatabaseLoader from "../components/GlobalDatabaseLoader";
 import FinanceOverdueReminderWidget from "../components/FinanceOverdueReminderWidget";
 import OpsOverdueReminderWidget from "../components/OpsOverdueReminderWidget";
@@ -12,8 +12,8 @@ import {
 } from "../utils/requestLoader.js";
 
 const Layout = () => {
+  const dispatch = useDispatch();
   const { user, loading } = useSelector((state) => state.auth);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
   const mainRef = useRef(null);
   const location = useLocation();
   const isLoaderVisible = useSyncExternalStore(
@@ -23,6 +23,10 @@ const Layout = () => {
   );
 
   const isSuperAdminDashboardRoute = location.pathname === "/admin/superAdminDashboard";
+
+  useEffect(() => {
+    dispatch(fetchCurrentUser());
+  }, [dispatch]);
 
   useEffect(() => {
     const mainElement = mainRef.current;
@@ -93,26 +97,17 @@ const Layout = () => {
 
   return (
     <div className="flex h-screen flex-1 flex-col overflow-hidden bg-gray-50">
-      <Header onMenuToggle={() => setSidebarOpen(true)} />
-      <div className="flex flex-1 overflow-hidden">
-        {user && (
-          <Sidebar
-            user={user}
-            mobileOpen={sidebarOpen}
-            onMobileClose={() => setSidebarOpen(false)}
-          />
-        )}
-        <main
-          ref={mainRef}
-          className={`relative flex-1 overflow-y-scroll bg-gray-50 custom-scroll ${isSuperAdminDashboardRoute
-              ? "px-0 py-0"
-              : "px-3 py-3 sm:px-4 sm:py-4 lg:px-5 lg:py-5"
-            }`}
-        >
-          <GlobalDatabaseLoader scoped label="Loading..." />
-          <Outlet />
-        </main>
-      </div>
+      <Header />
+      <main
+        ref={mainRef}
+        className={`relative flex-1 overflow-y-auto bg-gray-50 custom-scroll ${isSuperAdminDashboardRoute
+            ? "px-0 py-0"
+            : "px-3 pt-3 pb-0 sm:px-4 sm:pt-4 sm:pb-0.5 lg:px-4 lg:pt-3 lg:pb-1"
+          }`}
+      >
+        <GlobalDatabaseLoader scoped label="Loading..." />
+        <Outlet />
+      </main>
       {user?.role === "finance_partner" && <FinanceOverdueReminderWidget />}
       {user?.role === "operations" && <OpsOverdueReminderWidget />}
     </div>

@@ -1,8 +1,9 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Search, MapPin, Package, X, Sparkles } from "lucide-react";
+import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { Search, MapPin, Package, X, Sparkles, Plus } from "lucide-react";
 import { LuPackageSearch } from "react-icons/lu";
 import { FaHotel, FaCar, FaUtensils, FaSpa, FaMapMarkedAlt } from "react-icons/fa";
 import API from "../../utils/Api.js";
+import CreatePreDefinedPackageModal from "../../modal/CreatePreDefinedPackageModal.jsx";
 
 const getServiceIcon = (service = "") => {
   const text = service.toLowerCase();
@@ -75,29 +76,30 @@ const PackageTemplate = ({ onApply }) => {
   const [packagesError, setPackagesError] = useState("");
   const [search, setSearch] = useState("");
   const [isApplied, setIsApplied] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
   const ref = useRef(null);
 
-  useEffect(() => {
-    const fetchPackages = async () => {
-      setPackagesLoading(true);
-      setPackagesError("");
+  const fetchPackages = useCallback(async () => {
+    setPackagesLoading(true);
+    setPackagesError("");
 
-      try {
-        const res = await API.get("/dmc/package", {
-          skipGlobalLoader: true,
-        });
-        setPackages(res.data.data || []);
-      } catch (error) {
-        console.log(error);
-        setPackages([]);
-        setPackagesError("Package templates are not available right now.");
-      } finally {
-        setPackagesLoading(false);
-      }
-    };
-
-    fetchPackages();
+    try {
+      const res = await API.get("/dmc/package", {
+        skipGlobalLoader: true,
+      });
+      setPackages(res.data.data || []);
+    } catch (error) {
+      console.log(error);
+      setPackages([]);
+      setPackagesError("Package templates are not available right now.");
+    } finally {
+      setPackagesLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    fetchPackages();
+  }, [fetchPackages]);
 
   useEffect(() => {
     const handler = (e) => {
@@ -109,6 +111,13 @@ const PackageTemplate = ({ onApply }) => {
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, []);
+
+  const handlePackageCreated = (newPkg) => {
+    fetchPackages();
+    if (newPkg) {
+      handleSelect(newPkg);
+    }
+  };
 
   const dropdownData = useMemo(() => {
     if (!search.trim()) {
@@ -173,22 +182,34 @@ const PackageTemplate = ({ onApply }) => {
       ref={ref}
       className="border border-yellow-500 rounded-xl p-4 bg-[#1a1600] transform transition-all duration-600 ease-out"
     >
-      <div className="flex flex-col gap- mb-3 ">
-        <div className="flex items-center gap-2.5">
-          <Package size={20} className="text-yellow-400" />
-          <h2 className="text-sm font-semibold">Package Template</h2>
+      <div className="flex items-start justify-between gap-2 mb-3 flex-wrap">
+        <div className="flex flex-col">
+          <div className="flex items-center gap-2.5">
+            <Package size={18} className="text-yellow-400" />
+            <h2 className="text-sm font-semibold text-slate-100">Package Template</h2>
+          </div>
+          <p className="text-[10px] pl-6.5 text-gray-400">
+            Apply pre-configured packages to quickly build quotations
+          </p>
+          <p className="pl-6.5 text-[10px] text-yellow-200/70">
+            {packagesLoading
+              ? "Templates are loading in the background..."
+              : packagesError || `${packages.length} templates ready`}
+          </p>
         </div>
-        <p className="text-[10px] pl-7 text-gray-400">
-          Apply pre-configured packages to quickly build quotations
-        </p>
-        <p className="pl-7 text-[10px] text-yellow-200/70">
-          {packagesLoading
-            ? "Templates are loading in the background..."
-            : packagesError || `${packages.length} templates ready`}
-        </p>
+
+        {/* Create Pre-defined Package Button for Ops Team */}
+        <button
+          type="button"
+          onClick={() => setShowCreateModal(true)}
+          className="flex items-center gap-1.5 rounded-md bg-amber-500/15 border border-amber-500/30 px-2.5 py-1 text-xs font-semibold text-amber-300 hover:bg-amber-500/25 transition-colors shrink-0 cursor-pointer shadow-xs"
+        >
+          <Plus size={13} />
+          <span>+ Create Pre-defined Package</span>
+        </button>
       </div>
 
-      <button className="text-xs text-yellow-400 flex items-center gap-2 mb-3 hover:underline">
+      <button className="text-xs text-yellow-400 flex items-center gap-2 mb-3 hover:underline cursor-pointer">
         <Sparkles size={14} />
         Apply Fixed Package Template
       </button>
@@ -339,6 +360,12 @@ const PackageTemplate = ({ onApply }) => {
           Add package base value to quotation total
         </label>
       </div>
+
+      <CreatePreDefinedPackageModal
+        isOpen={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        onSuccess={handlePackageCreated}
+      />
     </div>
   );
 };

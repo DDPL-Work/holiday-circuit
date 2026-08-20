@@ -1163,24 +1163,24 @@ const InvoiceDocumentModal = ({ invoice, onClose, onInvoiceUpdated, sidePanelOpe
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 14 }}
             transition={{ duration: 0.24, ease: 'easeOut' }}
-            className={`relative my-auto flex max-h-[calc(100vh-24px)] w-full max-w-[460px] flex-col overflow-hidden rounded-[18px] border border-slate-200 bg-white shadow-[0_24px_60px_rgba(15,23,42,0.22)] sm:max-h-[calc(100vh-32px)] ${
+            className={`relative my-auto flex max-h-[calc(100vh-24px)] w-full max-w-[490px] flex-col overflow-hidden rounded-[18px] border border-slate-200 bg-white shadow-[0_24px_60px_rgba(15,23,42,0.22)] sm:max-h-[calc(100vh-32px)] ${
               (showDispatchModal || showRejectModal) ? 'hidden' : ''
             }`}
           >
             <div className="flex items-start justify-between border-b border-slate-100 px-4 py-3">
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
-                  <h2 className="text-[12px] font-semibold text-slate-900">Internal Invoice View</h2>
+                  <h2 className="text-sm font-bold text-slate-900">Internal Invoice View</h2>
                   {isPaid && (
-                    <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[8px] font-bold uppercase tracking-[0.12em] text-emerald-700">
+                    <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[9.5px] font-bold uppercase tracking-[0.12em] text-emerald-700">
                       Paid
                     </span>
                   )}
                 </div>
-                <p className="mt-0.5 truncate text-[9px] text-slate-400">
+                <p className="mt-0.5 truncate text-[10.5px] text-slate-500 font-medium">
                   {invoice.id} | {invoice.ref}
                 </p>
-                <span className="mt-1 inline-flex rounded-full border border-blue-100 bg-blue-50 px-2 py-0.5 text-[8px] font-bold uppercase tracking-[0.12em] text-blue-700">
+                <span className="mt-1 inline-flex rounded-full border border-blue-100 bg-blue-50 px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] text-blue-700">
                   Invoice Source: {invoiceSourceLabel}
                 </span>
               </div>
@@ -1203,55 +1203,59 @@ const InvoiceDocumentModal = ({ invoice, onClose, onInvoiceUpdated, sidePanelOpe
               </div>
             </div>
 
-            <div className="hide-scrollbar flex-1 space-y-3 overflow-y-auto px-3 py-3">
+            <div className="hide-scrollbar flex-1 space-y-3 overflow-y-auto px-3.5 py-3.5">
               <div className={`rounded-xl border p-3 ${financeValidationPassed
                   ? "border-emerald-200 bg-emerald-50"
                   : "border-amber-200 bg-amber-50"
                 }`}>
                 <div className="mb-2.5 flex items-center gap-1.5">
                   {financeValidationPassed ? (
-                    <CheckCircle className="h-3 w-3 text-emerald-500" />
+                    <CheckCircle className="h-3.5 w-3.5 text-emerald-500" />
                   ) : (
-                    <AlertTriangle className="h-3 w-3 text-amber-500" />
+                    <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
                   )}
-                  <span className={`text-[8px] font-bold uppercase tracking-[0.14em] ${financeValidationPassed ? "text-emerald-700" : "text-amber-700"
+                  <span className={`text-[10px] font-extrabold uppercase tracking-[0.14em] ${financeValidationPassed ? "text-emerald-700" : "text-amber-700"
                     }`}>
                     Rate Validation / Match
                   </span>
                 </div>
 
                 <div className="grid grid-cols-2 gap-2">
-                  <div className="rounded-lg border border-emerald-100 bg-white p-2">
-                    <p className="text-[7px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                      Ops Selected Services Total
-                    </p>
-                    <div className="mt-1 flex items-center gap-1">
-                      <CheckCircle className="h-3 w-3 shrink-0 text-emerald-500" />
-                      <span className="text-[16px] font-bold leading-none text-emerald-600">
-                        {roundedAgreedRate}
-                      </span>
+                  <div className="flex flex-col justify-between rounded-lg border border-emerald-100 bg-white p-2.5">
+                    <div>
+                      <p className="text-[8.5px] font-bold uppercase tracking-wide leading-snug text-slate-500">
+                        Ops Selected Services Total
+                      </p>
+                      <div className="mt-1.5 flex items-center gap-1">
+                        <CheckCircle className="h-4 w-4 shrink-0 text-emerald-500" />
+                        <span className="text-[17px] font-extrabold leading-none text-emerald-600">
+                          {roundedAgreedRate}
+                        </span>
+                      </div>
                     </div>
-                    <p className="mt-1 text-[8px] text-slate-400">
+                    <p className="mt-2 text-[9px] font-medium leading-tight text-slate-500">
                       Total of the services selected by ops in the quotation
                     </p>
                   </div>
 
-                  <div className="rounded-lg border border-emerald-100 bg-white p-2">
-                    <p className="text-[7px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                      DMC Internal Invoice Services Total
-                    </p>
-                    <div className="mt-1 flex items-center gap-1">
-                      {ratesMatch ? (
-                        <CheckCircle className="h-3 w-3 shrink-0 text-emerald-500" />
-                      ) : (
-                        <AlertTriangle className="h-3 w-3 shrink-0 text-amber-500" />
-                      )}
-                      <span className={`text-[16px] font-bold leading-none ${ratesMatch ? "text-emerald-600" : "text-amber-600"
-                        }`}>
-                        {roundedInvoicedAmount}
-                      </span>
+                  <div className="flex flex-col justify-between rounded-lg border border-emerald-100 bg-white p-2.5">
+                    <div>
+                      <p className="text-[8.5px] font-bold uppercase tracking-wide leading-snug text-slate-500">
+                        DMC Internal Invoice Services Total
+                      </p>
+                      <div className="mt-1.5 flex items-center gap-1">
+                        {ratesMatch ? (
+                          <CheckCircle className="h-4 w-4 shrink-0 text-emerald-500" />
+                        ) : (
+                          <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" />
+                        )}
+                        <span className={`text-[17px] font-extrabold leading-none ${ratesMatch ? "text-emerald-600" : "text-amber-600"
+                          }`}>
+                          {roundedInvoicedAmount}
+                        </span>
+                      </div>
                     </div>
-                    <p className="mt-1 text-[8px] text-slate-400">
+                    <p className="mt-2 text-[9px] font-medium leading-tight text-slate-500">
                       Total of DMC service prices. Invoice tax shown separately: {roundedTaxAmount}
                     </p>
                   </div>
@@ -1268,7 +1272,7 @@ const InvoiceDocumentModal = ({ invoice, onClose, onInvoiceUpdated, sidePanelOpe
                           : "border-amber-100 bg-amber-50/80"
                       }`}>
                         <div className="flex items-center justify-between gap-2">
-                          <p className={`text-[8px] font-bold uppercase tracking-[0.12em] ${
+                          <p className={`text-[9.5px] font-bold uppercase tracking-[0.12em] ${
                             extractionPassed
                               ? "text-emerald-700"
                               : extractionFailed
@@ -1277,11 +1281,11 @@ const InvoiceDocumentModal = ({ invoice, onClose, onInvoiceUpdated, sidePanelOpe
                           }`}>
                             OCR / PDF Parser
                           </p>
-                          <span className="text-[8px] font-bold text-slate-500">
+                          <span className="text-[9.5px] font-bold text-slate-500">
                             {(invoiceExtraction.source || "parser").replace(/_/g, " ")} · {invoiceExtraction.confidence || 0}%
                           </span>
                         </div>
-                        <div className="mt-2 grid grid-cols-2 gap-1.5 text-[8.5px]">
+                        <div className="mt-2 grid grid-cols-2 gap-1.5 text-[9.5px]">
                           {extractionFieldChecks.map((field) => (
                             <div
                               key={field.key}
@@ -1294,20 +1298,20 @@ const InvoiceDocumentModal = ({ invoice, onClose, onInvoiceUpdated, sidePanelOpe
                               }`}
                             >
                               <div className="flex items-center justify-between gap-1.5 mb-1 opacity-80">
-                                <span className="text-[7.5px] font-extrabold uppercase tracking-wider">
+                                <span className="text-[8.5px] font-extrabold uppercase tracking-wider">
                                   {field.label}
                                 </span>
                                 {field.matched ? (
-                                  <CheckCircle size={9} className="text-emerald-600 shrink-0" />
+                                  <CheckCircle size={10} className="text-emerald-600 shrink-0" />
                                 ) : (
-                                  <XCircle size={9} className="text-rose-600 shrink-0" />
+                                  <XCircle size={10} className="text-rose-600 shrink-0" />
                                 )}
                               </div>
-                              <span className="font-extrabold text-[9px] leading-tight">
+                              <span className="font-extrabold text-[10px] leading-tight">
                                 {field.primaryValue}
                               </span>
                               {field.secondaryValue && (
-                                <span className="mt-0.5 text-[7.5px] font-medium text-slate-500/80 leading-normal">
+                                <span className="mt-0.5 text-[8.5px] font-medium text-slate-500/80 leading-normal">
                                   {field.secondaryValue}
                                 </span>
                               )}
@@ -1315,20 +1319,20 @@ const InvoiceDocumentModal = ({ invoice, onClose, onInvoiceUpdated, sidePanelOpe
                           ))}
                         </div>
                         {extractionWarnings.length ? (
-                          <div className="mt-2 flex items-start gap-1.5 rounded-lg bg-amber-500/10 border border-amber-200/50 p-2 text-[8px] leading-relaxed text-amber-950 shadow-sm">
-                            <AlertCircle size={10} className="mt-0.5 shrink-0 text-amber-600" />
+                          <div className="mt-2 flex items-start gap-1.5 rounded-lg bg-amber-500/10 border border-amber-200/50 p-2 text-[9.5px] leading-relaxed text-amber-950 shadow-sm">
+                            <AlertCircle size={11} className="mt-0.5 shrink-0 text-amber-600" />
                             <span>{extractionWarnings.join(" ")}</span>
                           </div>
                         ) : null}
                         {extractionNotes.length ? (
-                          <div className="mt-2 flex items-start gap-1.5 rounded-lg bg-blue-500/10 border border-blue-200/50 p-2 text-[8px] leading-relaxed text-blue-950 shadow-sm">
-                            <Info size={10} className="mt-0.5 shrink-0 text-blue-600" />
+                          <div className="mt-2 flex items-start gap-1.5 rounded-lg bg-blue-500/10 border border-blue-200/50 p-2 text-[9.5px] leading-relaxed text-blue-950 shadow-sm">
+                            <Info size={11} className="mt-0.5 shrink-0 text-blue-600" />
                             <span>{extractionNotes.join(" ")}</span>
                           </div>
                         ) : null}
                         {invoiceExtraction.error ? (
-                          <div className="mt-2 flex items-start gap-1.5 rounded-lg bg-rose-500/10 border border-rose-200/50 p-2 text-[8px] leading-relaxed text-rose-950 shadow-sm">
-                            <AlertCircle size={10} className="mt-0.5 shrink-0 text-rose-700" />
+                          <div className="mt-2 flex items-start gap-1.5 rounded-lg bg-rose-500/10 border border-rose-200/50 p-2 text-[9.5px] leading-relaxed text-rose-950 shadow-sm">
+                            <AlertCircle size={11} className="mt-0.5 shrink-0 text-rose-700" />
                             <span>{invoiceExtraction.error}</span>
                           </div>
                         ) : null}
@@ -1336,10 +1340,10 @@ const InvoiceDocumentModal = ({ invoice, onClose, onInvoiceUpdated, sidePanelOpe
                     ) : null}
 
                     <div className="mb-1.5 flex items-center justify-between gap-2">
-                      <p className="text-[8px] font-bold uppercase tracking-[0.12em] text-slate-500">
+                      <p className="text-[9.5px] font-bold uppercase tracking-[0.12em] text-slate-500">
                         Uploaded Amount Check
                       </p>
-                      <span className={`inline-flex items-center gap-1 text-[8px] font-bold ${
+                      <span className={`inline-flex items-center gap-1 text-[9.5px] font-bold ${
                         manualVerificationStatus === 'pass'
                           ? "text-emerald-700"
                           : manualVerificationStatus === 'fail'
@@ -1348,17 +1352,17 @@ const InvoiceDocumentModal = ({ invoice, onClose, onInvoiceUpdated, sidePanelOpe
                       }`}>
                         {manualVerificationStatus === 'pass' ? (
                           <>
-                            <CheckCircle className="h-3 w-3 text-emerald-500 shrink-0" />
+                            <CheckCircle className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
                             <span>Verified</span>
                           </>
                         ) : manualVerificationStatus === 'fail' ? (
                           <>
-                            <XCircle className="h-3 w-3 text-rose-500 shrink-0" />
+                            <XCircle className="h-3.5 w-3.5 text-rose-500 shrink-0" />
                             <span>Failed</span>
                           </>
                         ) : (
                           <>
-                            <AlertTriangle className="h-3 w-3 text-amber-500 shrink-0" />
+                            <AlertTriangle className="h-3.5 w-3.5 text-amber-500 shrink-0" />
                             <span>Pending Verification</span>
                           </>
                         )}
@@ -1368,7 +1372,7 @@ const InvoiceDocumentModal = ({ invoice, onClose, onInvoiceUpdated, sidePanelOpe
                       {amountValidationRows.map((row) => (
                         <div
                           key={row.label}
-                          className={`grid grid-cols-[84px_1fr_auto] items-center gap-2 text-[8px] ${
+                          className={`grid grid-cols-[92px_1fr_auto] items-center gap-2 text-[9.5px] ${
                             manualChecks[row.key] === 'pass'
                               ? "text-emerald-700 font-semibold"
                               : manualChecks[row.key] === 'fail'
@@ -1384,14 +1388,14 @@ const InvoiceDocumentModal = ({ invoice, onClose, onInvoiceUpdated, sidePanelOpe
                             <button
                               type="button"
                               onClick={() => handleVerifyPass(row.key, row.uploaded, row.expected, row.label)}
-                              className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border transition-all duration-200 ease-out transform active:scale-75 cursor-pointer ${
+                              className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-all duration-200 ease-out transform active:scale-75 cursor-pointer ${
                                 manualChecks[row.key] === 'pass'
                                   ? 'border-emerald-500 bg-emerald-500 text-white shadow-[0_2px_4px_rgba(16,185,129,0.2)] scale-105 font-bold'
                                   : 'border-slate-200 bg-slate-50/40 text-slate-300 hover:border-emerald-300 hover:text-emerald-500 hover:bg-emerald-50/20'
                               }`}
                               title="Mark as Pass"
                             >
-                              <Check className={`h-2 w-2 stroke-[4.5px] transition-transform duration-200 ${manualChecks[row.key] === 'pass' ? 'scale-110' : 'scale-100'}`} />
+                              <Check className={`h-2.5 w-2.5 stroke-[4.5px] transition-transform duration-200 ${manualChecks[row.key] === 'pass' ? 'scale-110' : 'scale-100'}`} />
                             </button>
                             <button
                               type="button"
@@ -1399,19 +1403,19 @@ const InvoiceDocumentModal = ({ invoice, onClose, onInvoiceUpdated, sidePanelOpe
                                 ...prev,
                                 [row.key]: prev[row.key] === 'fail' ? 'pending' : 'fail'
                               }))}
-                              className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border transition-all duration-200 ease-out transform active:scale-75 cursor-pointer ${
+                              className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-all duration-200 ease-out transform active:scale-75 cursor-pointer ${
                                 manualChecks[row.key] === 'fail'
                                   ? 'border-rose-500 bg-rose-500 text-white shadow-[0_2px_4px_rgba(244,63,94,0.2)] scale-105 font-bold'
                                   : 'border-slate-200 bg-slate-50/40 text-slate-300 hover:border-rose-300 hover:text-rose-500 hover:bg-rose-50/20'
                               }`}
                               title="Mark as Fail"
                             >
-                              <X className={`h-2 w-2 stroke-[4.5px] transition-transform duration-200 ${manualChecks[row.key] === 'fail' ? 'scale-110' : 'scale-100'}`} />
+                              <X className={`h-2.5 w-2.5 stroke-[4.5px] transition-transform duration-200 ${manualChecks[row.key] === 'fail' ? 'scale-110' : 'scale-100'}`} />
                             </button>
                           </div>
                         </div>
                       ))}
-                      <div className={`grid grid-cols-[84px_1fr_auto] items-center gap-2 text-[8px] ${
+                      <div className={`grid grid-cols-[92px_1fr_auto] items-center gap-2 text-[9.5px] ${
                         manualChecks.totalCheck === 'pass'
                           ? "text-emerald-700 font-semibold"
                           : manualChecks.totalCheck === 'fail'
@@ -1426,14 +1430,14 @@ const InvoiceDocumentModal = ({ invoice, onClose, onInvoiceUpdated, sidePanelOpe
                           <button
                             type="button"
                             onClick={() => handleVerifyPass('totalCheck', uploadedSummary.subtotal + uploadedSummary.taxAmount, expectedSummary.subtotal + expectedSummary.totalTax, 'Total Check')}
-                            className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border transition-all duration-200 ease-out transform active:scale-75 cursor-pointer ${
+                            className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-all duration-200 ease-out transform active:scale-75 cursor-pointer ${
                               manualChecks.totalCheck === 'pass'
                                 ? 'border-emerald-500 bg-emerald-500 text-white shadow-[0_2px_4px_rgba(16,185,129,0.2)] scale-105 font-bold'
                                 : 'border-slate-200 bg-slate-50/40 text-slate-300 hover:border-emerald-300 hover:text-emerald-500 hover:bg-emerald-50/20'
                             }`}
                             title="Mark as Pass"
                           >
-                            <Check className={`h-2 w-2 stroke-[4.5px] transition-transform duration-200 ${manualChecks.totalCheck === 'pass' ? 'scale-110' : 'scale-100'}`} />
+                            <Check className={`h-2.5 w-2.5 stroke-[4.5px] transition-transform duration-200 ${manualChecks.totalCheck === 'pass' ? 'scale-110' : 'scale-100'}`} />
                           </button>
                           <button
                             type="button"
@@ -1441,14 +1445,14 @@ const InvoiceDocumentModal = ({ invoice, onClose, onInvoiceUpdated, sidePanelOpe
                               ...prev,
                               totalCheck: prev.totalCheck === 'fail' ? 'pending' : 'fail'
                             }))}
-                            className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border transition-all duration-200 ease-out transform active:scale-75 cursor-pointer ${
+                            className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-all duration-200 ease-out transform active:scale-75 cursor-pointer ${
                               manualChecks.totalCheck === 'fail'
                                 ? 'border-rose-500 bg-rose-500 text-white shadow-[0_2px_4px_rgba(244,63,94,0.2)] scale-105 font-bold'
                                 : 'border-slate-200 bg-slate-50/40 text-slate-300 hover:border-rose-300 hover:text-rose-500 hover:bg-rose-50/20'
                             }`}
                             title="Mark as Fail"
                           >
-                            <X className={`h-2 w-2 stroke-[4.5px] transition-transform duration-200 ${manualChecks.totalCheck === 'fail' ? 'scale-110' : 'scale-100'}`} />
+                            <X className={`h-2.5 w-2.5 stroke-[4.5px] transition-transform duration-200 ${manualChecks.totalCheck === 'fail' ? 'scale-110' : 'scale-100'}`} />
                           </button>
                         </div>
                       </div>
@@ -1462,7 +1466,7 @@ const InvoiceDocumentModal = ({ invoice, onClose, onInvoiceUpdated, sidePanelOpe
                       : 'border-amber-200 bg-white/80'
                     : 'border-amber-200 bg-amber-50'
                   }`}>
-                  <p className={`text-[8px] leading-4 ${financeValidationPassed ? 'text-emerald-700' : 'text-amber-700'
+                  <p className={`text-[9.5px] leading-4 ${financeValidationPassed ? 'text-emerald-700' : 'text-amber-700'
                     }`}>
                     {financeValidationPassed
                       ? 'Service totals and uploaded invoice amount match, so finance can continue with verification and payout processing.'
@@ -1474,23 +1478,23 @@ const InvoiceDocumentModal = ({ invoice, onClose, onInvoiceUpdated, sidePanelOpe
               </div>
 
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <h3 className="mb-2 text-[9px] font-semibold text-slate-700">Payment Details</h3>
+                <h3 className="mb-2 text-[10.5px] font-bold text-slate-800">Payment Details</h3>
                 <div className="grid grid-cols-2 gap-x-4 gap-y-2">
                   <div className="min-w-0">
-                    <p className="text-[8px] text-slate-400">Party Name</p>
-                    <p className="truncate text-[10px] font-semibold text-slate-700">{invoice.party}</p>
+                    <p className="text-[9.5px] font-medium text-slate-500">Party Name</p>
+                    <p className="truncate text-xs font-bold text-slate-800">{invoice.party}</p>
                   </div>
                   <div className="min-w-0 text-right">
-                    <p className="text-[8px] text-slate-400">Invoice Number</p>
-                    <p className="truncate text-[10px] font-semibold text-slate-700">{invoice.id}</p>
+                    <p className="text-[9.5px] font-medium text-slate-500">Invoice Number</p>
+                    <p className="truncate text-xs font-bold text-slate-800">{invoice.id}</p>
                   </div>
                   <div className="min-w-0">
-                    <p className="text-[8px] text-slate-400">Due Date</p>
-                    <p className="text-[10px] font-semibold text-slate-700">{invoice.date}</p>
+                    <p className="text-[9.5px] font-medium text-slate-500">Due Date</p>
+                    <p className="text-xs font-bold text-slate-800">{invoice.date}</p>
                   </div>
                   <div className="min-w-0 text-right">
-                    <p className="text-[8px] text-slate-400">Credit Period</p>
-                    <p className="text-[10px] font-semibold text-slate-700">
+                    <p className="text-[9.5px] font-medium text-slate-500">Credit Period</p>
+                    <p className="text-xs font-bold text-slate-800">
                       {invoice.creditTermLabel || `${Number(invoice.creditPeriodDays || 7)}-day credit`}
                     </p>
                   </div>
@@ -1499,8 +1503,8 @@ const InvoiceDocumentModal = ({ invoice, onClose, onInvoiceUpdated, sidePanelOpe
 
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                 <div className="mb-2">
-                  <h3 className="text-[9px] font-semibold text-slate-700">Uploaded Documents</h3>
-                  <p className="mt-0.5 text-[8px] text-slate-400">
+                  <h3 className="text-[10.5px] font-bold text-slate-800">Uploaded Documents</h3>
+                  <p className="mt-0.5 text-[9.5px] font-medium text-slate-500">
                     DMC uploaded internal invoice files. Finance team can download and verify them here.
                   </p>
                 </div>
@@ -1511,25 +1515,25 @@ const InvoiceDocumentModal = ({ invoice, onClose, onInvoiceUpdated, sidePanelOpe
                       className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-2.5 py-2"
                     >
                       <div className="flex min-w-0 items-center gap-2">
-                        <FileText className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                        <FileText className="h-4 w-4 shrink-0 text-slate-400" />
                         <div className="min-w-0">
-                          <p className="truncate text-[9px] font-medium text-slate-700">{doc.name}</p>
-                          <p className="text-[8px] text-slate-400">{getDocumentMeta(doc)}</p>
+                          <p className="truncate text-xs font-semibold text-slate-800">{doc.name}</p>
+                          <p className="text-[9.5px] text-slate-400 font-medium">{getDocumentMeta(doc)}</p>
                         </div>
                       </div>
                       <div className="ml-2 flex shrink-0 items-center gap-1.5">
                         <button
                           onClick={() => handlePreviewDocument(doc)}
-                          className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-2 py-1 text-[8px] font-semibold text-slate-500 transition-colors hover:bg-slate-50"
+                          className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-2.5 py-1 text-[9.5px] font-bold text-slate-600 transition-colors hover:bg-slate-50 cursor-pointer"
                         >
-                          <Eye className="h-2.5 w-2.5" />
+                          <Eye className="h-3 w-3" />
                           Preview
                         </button>
                         <button
                           onClick={() => handleDownloadDocument(doc)}
-                          className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-2 py-1 text-[8px] font-semibold text-slate-500 transition-colors hover:bg-slate-50"
+                          className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-2.5 py-1 text-[9.5px] font-bold text-slate-600 transition-colors hover:bg-slate-50 cursor-pointer"
                         >
-                          <Download className="h-2.5 w-2.5" />
+                          <Download className="h-3 w-3" />
                           Download
                         </button>
                       </div>
@@ -1541,8 +1545,8 @@ const InvoiceDocumentModal = ({ invoice, onClose, onInvoiceUpdated, sidePanelOpe
               {payoutInstallments.length > 0 && (
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                   <div className="mb-2 flex items-center justify-between">
-                    <h3 className="text-[9px] font-bold uppercase tracking-[0.08em] text-slate-700">DMC Payout Statement</h3>
-                    <span className="text-[8px] font-bold text-slate-500">
+                    <h3 className="text-[10.5px] font-bold uppercase tracking-[0.08em] text-slate-800">DMC Payout Statement</h3>
+                    <span className="text-[9.5px] font-bold text-slate-600">
                       Paid: {formatRoundedAmount(cumulativePaid)} / {formatRoundedAmount(expectedPayoutAmount)}
                     </span>
                   </div>
@@ -1550,19 +1554,19 @@ const InvoiceDocumentModal = ({ invoice, onClose, onInvoiceUpdated, sidePanelOpe
                     {payoutInstallments.map((inst, index) => (
                       <div
                         key={inst.id || index}
-                        className="flex items-center justify-between rounded-lg border border-slate-100 bg-white px-2.5 py-1.5 text-[9px]"
+                        className="flex items-center justify-between rounded-lg border border-slate-100 bg-white px-2.5 py-2 text-xs"
                       >
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-1.5">
                             <span className="font-bold text-slate-800">Installment {index + 1}</span>
-                            <span className="text-[8px] text-slate-400">({inst.paymentDate || inst.date})</span>
+                            <span className="text-[9.5px] text-slate-400 font-medium">({inst.paymentDate || inst.date})</span>
                           </div>
-                          <p className="mt-0.5 truncate text-[8px] text-slate-400">
+                          <p className="mt-0.5 truncate text-[9.5px] text-slate-500 font-medium">
                             Ref: {inst.utrNumber} | Bank: {inst.bankName}
                           </p>
                         </div>
                         <div className="text-right">
-                          <span className="font-bold text-emerald-600">
+                          <span className="font-extrabold text-xs text-emerald-600">
                             {formatRoundedAmount(inst.amount)}
                           </span>
                         </div>
@@ -1575,39 +1579,39 @@ const InvoiceDocumentModal = ({ invoice, onClose, onInvoiceUpdated, sidePanelOpe
               {isPaid ? (
                 <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
                   <div className="mb-2.5 flex items-center gap-1.5">
-                    <CheckCircle className="h-3 w-3 text-emerald-600" />
-                    <span className="text-[8px] font-bold uppercase tracking-[0.14em] text-emerald-700">
+                    <CheckCircle className="h-3.5 w-3.5 text-emerald-600" />
+                    <span className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-emerald-700">
                       Payout Completed
                     </span>
                   </div>
 
                   <div className="grid grid-cols-2 gap-2">
                     <div className="rounded-lg border border-emerald-100 bg-white px-2.5 py-2">
-                      <p className="text-[8px] text-slate-400">Settled Amount</p>
-                      <p className="mt-1 text-[10px] font-bold text-emerald-700">{settledAmount}</p>
+                      <p className="text-[9.5px] font-medium text-slate-500">Settled Amount</p>
+                      <p className="mt-1 text-xs font-bold text-emerald-700">{settledAmount}</p>
                     </div>
                     <div className="rounded-lg border border-emerald-100 bg-white px-2.5 py-2">
-                      <p className="text-[8px] text-slate-400">Source Bank</p>
-                      <p className="mt-1 text-[10px] font-bold text-slate-700">
+                      <p className="text-[9.5px] font-medium text-slate-500">Source Bank</p>
+                      <p className="mt-1 text-xs font-bold text-slate-800">
                         {invoice.payoutBank || 'Recorded'}
                       </p>
                     </div>
                     <div className="rounded-lg border border-emerald-100 bg-white px-2.5 py-2">
-                      <p className="text-[8px] text-slate-400">Payout Reference</p>
-                      <p className="mt-1 text-[10px] font-bold text-slate-700">
+                      <p className="text-[9.5px] font-medium text-slate-500">Payout Reference</p>
+                      <p className="mt-1 text-xs font-bold text-slate-800">
                         {invoice.payoutReference || 'Recorded'}
                       </p>
                     </div>
                     <div className="rounded-lg border border-emerald-100 bg-white px-2.5 py-2">
-                      <p className="text-[8px] text-slate-400">Settled On</p>
-                      <p className="mt-1 text-[10px] font-bold text-slate-700">
+                      <p className="text-[9.5px] font-medium text-slate-500">Settled On</p>
+                      <p className="mt-1 text-xs font-bold text-slate-800">
                         {settledDate || 'Recorded'}
                       </p>
                     </div>
                   </div>
 
                   <div className="mt-2 rounded-lg border border-emerald-100 bg-white/90 px-2.5 py-2">
-                    <p className="text-[8px] leading-4 text-emerald-700">
+                    <p className="text-[9.5px] leading-4 text-emerald-700 font-medium">
                       This invoice has already been settled by finance. The payout has been recorded,
                       and the DMC has been notified of the completed payment status.
                     </p>
@@ -1616,15 +1620,15 @@ const InvoiceDocumentModal = ({ invoice, onClose, onInvoiceUpdated, sidePanelOpe
               ) : (
                 <div className="rounded-xl border border-sky-200 bg-sky-50 p-3">
                   <div className="mb-2.5 flex items-center gap-1.5">
-                    <Shield className="h-3 w-3 text-sky-600" />
-                    <span className="text-[8px] font-bold uppercase tracking-[0.14em] text-sky-700">
+                    <Shield className="h-3.5 w-3.5 text-sky-600" />
+                    <span className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-sky-700">
                       Record Company Payout
                     </span>
                   </div>
 
-                  <div className="space-y-2">
+                  <div className="space-y-2.5">
                     <div>
-                      <label className="mb-1 block text-[8px] font-semibold text-slate-500">
+                      <label className="mb-1 block text-[9.5px] font-bold text-slate-600">
                         UTR/Reference Number *
                       </label>
                       <input
@@ -1632,12 +1636,12 @@ const InvoiceDocumentModal = ({ invoice, onClose, onInvoiceUpdated, sidePanelOpe
                         placeholder="Enter UTR or transaction reference number"
                         value={utrInput}
                         onChange={(e) => setUtrInput(e.target.value)}
-                        className="h-8 w-full rounded-lg border border-sky-100 bg-white px-2.5 text-[10px] text-slate-700 outline-none placeholder:text-slate-300 focus:border-sky-300"
+                        className="h-8.5 w-full rounded-lg border border-sky-100 bg-white px-2.5 text-xs text-slate-800 font-medium outline-none placeholder:text-slate-300 focus:border-sky-300 shadow-xs"
                       />
                     </div>
 
                     <div>
-                      <label className="mb-1 block text-[8px] font-semibold text-slate-500">
+                      <label className="mb-1 block text-[9.5px] font-bold text-slate-600">
                         Transfer Amount *
                       </label>
                       <input
@@ -1646,41 +1650,41 @@ const InvoiceDocumentModal = ({ invoice, onClose, onInvoiceUpdated, sidePanelOpe
                         placeholder="Enter transfer amount"
                         value={transferAmount}
                         onChange={(e) => setTransferAmount(formatIntegerInput(e.target.value))}
-                        className="h-8 w-full rounded-lg border border-sky-100 bg-white px-2.5 text-[10px] text-slate-700 outline-none placeholder:text-slate-300 focus:border-sky-300"
+                        className="h-8.5 w-full rounded-lg border border-sky-100 bg-white px-2.5 text-xs text-slate-800 font-medium outline-none placeholder:text-slate-300 focus:border-sky-300 shadow-xs"
                       />
-                      <p className="mt-1 text-[8px] text-slate-400">
+                      <p className="mt-1 text-[9.5px] font-medium text-slate-500">
                         Remaining Balance: {formatRoundedAmount(remainingBalance)} (Total: {formatRoundedAmount(expectedPayoutAmount)})
                       </p>
                     </div>
 
                     <div className="grid grid-cols-2 gap-2">
                       <div>
-                        <label className="mb-1 block text-[8px] font-semibold text-slate-500">
+                        <label className="mb-1 block text-[9.5px] font-bold text-slate-600">
                           Date of Transfer *
                         </label>
                         <input
                           type="date"
                           value={dateInput}
                           onChange={(e) => setDateInput(e.target.value)}
-                          className="h-8 w-full rounded-lg border border-sky-100 bg-white px-2.5 text-[10px] text-slate-700 outline-none focus:border-sky-300"
+                          className="h-8.5 w-full rounded-lg border border-sky-100 bg-white px-2.5 text-xs text-slate-800 font-medium outline-none focus:border-sky-300 shadow-xs"
                         />
                       </div>
 
                       <div>
-                        <label className="mb-1 block text-[8px] font-semibold text-slate-500">
+                        <label className="mb-1 block text-[9.5px] font-bold text-slate-600">
                           Source Bank *
                         </label>
                         <div className="relative">
                           <button
                             type="button"
                             onClick={() => setIsBankDropdownOpen(!isBankDropdownOpen)}
-                            className="flex h-8 w-full items-center justify-between rounded-lg border border-sky-100 bg-white px-2.5 text-[10px] text-slate-700 outline-none focus:border-sky-300 transition-all shadow-[0_1px_2px_rgba(0,0,0,0.02)]"
+                            className="flex h-8.5 w-full items-center justify-between rounded-lg border border-sky-100 bg-white px-2.5 text-xs text-slate-800 font-medium outline-none focus:border-sky-300 transition-all shadow-[0_1px_2px_rgba(0,0,0,0.02)] cursor-pointer"
                           >
                             <div className="flex items-center gap-2">
                               {sourceBank ? (
                                 <>
                                   {BANK_LOGOS[sourceBank]}
-                                  <span className="font-semibold text-slate-700">{sourceBank}</span>
+                                  <span className="font-bold text-slate-800">{sourceBank}</span>
                                 </>
                               ) : (
                                 <span className="text-slate-400 font-medium">Select Bank</span>
@@ -1704,7 +1708,7 @@ const InvoiceDocumentModal = ({ invoice, onClose, onInvoiceUpdated, sidePanelOpe
                                       setSourceBank(bank);
                                       setIsBankDropdownOpen(false);
                                     }}
-                                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[10px] text-slate-700 transition-colors hover:bg-slate-50"
+                                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-slate-700 transition-colors hover:bg-slate-50 cursor-pointer"
                                   >
                                     {BANK_LOGOS[bank]}
                                     <span className={sourceBank === bank ? "font-bold text-sky-600" : "font-medium"}>
@@ -1720,71 +1724,71 @@ const InvoiceDocumentModal = ({ invoice, onClose, onInvoiceUpdated, sidePanelOpe
                     </div>
 
                     <div className="rounded-lg border border-sky-100 bg-white/80 px-2.5 py-2">
-                      <p className="mb-1 text-[8px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+                      <p className="mb-1 text-[9.5px] font-bold uppercase tracking-[0.08em] text-slate-500">
                         Verification Checklist
                       </p>
                       <div className="space-y-1">
-                        <div className={`flex items-center justify-between text-[8px] ${ratesMatch ? "text-emerald-700" : "text-rose-600"}`}>
+                        <div className={`flex items-center justify-between text-[9.5px] ${ratesMatch ? "text-emerald-700 font-medium" : "text-rose-600 font-medium"}`}>
                           <span>Rate validation matched</span>
                           <span className={`inline-flex items-center gap-1 font-bold ${ratesMatch ? "text-emerald-600" : "text-rose-500"}`}>
                             {ratesMatch ? (
                               <>
-                                <Check className="h-2.5 w-2.5 stroke-[3px]" />
+                                <Check className="h-3 w-3 stroke-[3px]" />
                                 <span>Pass</span>
                               </>
                             ) : (
                               <>
-                                <X className="h-2.5 w-2.5 stroke-[3px]" />
+                                <X className="h-3 w-3 stroke-[3px]" />
                                 <span>Check</span>
                               </>
                             )}
                           </span>
                         </div>
                         {showManualChecks && (
-                          <div className={`flex items-center justify-between text-[8px] ${allChecksPassed ? "text-emerald-700" : "text-rose-600"}`}>
+                          <div className={`flex items-center justify-between text-[9.5px] ${allChecksPassed ? "text-emerald-700 font-medium" : "text-rose-600 font-medium"}`}>
                             <span>Manual Uploaded Amount checks verified</span>
                             <span className={`inline-flex items-center gap-1 font-bold ${allChecksPassed ? "text-emerald-600" : "text-rose-500"}`}>
                               {allChecksPassed ? (
                                 <>
-                                  <Check className="h-2.5 w-2.5 stroke-[3px]" />
+                                  <Check className="h-3 w-3 stroke-[3px]" />
                                   <span>Pass</span>
                                 </>
                               ) : (
                                 <>
-                                  <X className="h-2.5 w-2.5 stroke-[3px]" />
+                                  <X className="h-3 w-3 stroke-[3px]" />
                                   <span>Pending</span>
                                 </>
                               )}
                             </span>
                           </div>
                         )}
-                        <div className={`flex items-center justify-between text-[8px] ${payoutAmountMatches ? "text-emerald-700" : "text-rose-600"}`}>
+                        <div className={`flex items-center justify-between text-[9.5px] ${payoutAmountMatches ? "text-emerald-700 font-medium" : "text-rose-600 font-medium"}`}>
                           <span>Transfer amount is within remaining balance</span>
                           <span className={`inline-flex items-center gap-1 font-bold ${payoutAmountMatches ? "text-emerald-600" : "text-rose-500"}`}>
                             {payoutAmountMatches ? (
                               <>
-                                <Check className="h-2.5 w-2.5 stroke-[3px]" />
+                                <Check className="h-3 w-3 stroke-[3px]" />
                                 <span>Pass</span>
                               </>
                             ) : (
                               <>
-                                <X className="h-2.5 w-2.5 stroke-[3px]" />
+                                <X className="h-3 w-3 stroke-[3px]" />
                                 <span>Check</span>
                               </>
                             )}
                           </span>
                         </div>
-                        <div className={`flex items-center justify-between text-[8px] ${payoutDetailsComplete ? "text-emerald-700" : "text-rose-600"}`}>
+                        <div className={`flex items-center justify-between text-[9.5px] ${payoutDetailsComplete ? "text-emerald-700 font-medium" : "text-rose-600 font-medium"}`}>
                           <span>Payout reference, date and bank entered</span>
                           <span className={`inline-flex items-center gap-1 font-bold ${payoutDetailsComplete ? "text-emerald-600" : "text-rose-500"}`}>
                             {payoutDetailsComplete ? (
                               <>
-                                <Check className="h-2.5 w-2.5 stroke-[3px]" />
+                                <Check className="h-3 w-3 stroke-[3px]" />
                                 <span>Pass</span>
                               </>
                             ) : (
                               <>
-                                <X className="h-2.5 w-2.5 stroke-[3px]" />
+                                <X className="h-3 w-3 stroke-[3px]" />
                                 <span>Pending</span>
                               </>
                             )}
@@ -1792,14 +1796,14 @@ const InvoiceDocumentModal = ({ invoice, onClose, onInvoiceUpdated, sidePanelOpe
                         </div>
                       </div>
                       {!bankReferenceMatched && payoutReferenceDetailsComplete && (
-                        <p className="mt-1 text-[8px] leading-4 text-rose-600">
+                        <p className="mt-1 text-[9.5px] leading-4 font-medium text-rose-600">
                           Selected bank should match the bank name/code present in the payout reference.
                         </p>
                       )}
                     </div>
 
                     <div className="rounded-lg border border-sky-100 bg-white/80 px-2.5 py-2">
-                      <p className="text-[8px] leading-4 text-slate-500">
+                      <p className="text-[9.5px] leading-4 text-slate-500 font-medium">
                         Important: Ensure all details match the actual bank transaction before
                         confirming payout.
                       </p>
@@ -1810,31 +1814,31 @@ const InvoiceDocumentModal = ({ invoice, onClose, onInvoiceUpdated, sidePanelOpe
             </div>
 
             {isPaid ? (
-              <div className="border-t border-slate-100 px-3 py-3">
-                <div className="inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 text-[10px] font-semibold text-emerald-700">
-                  <CheckCircle className="h-3 w-3" />
-                  Invoice Settled & Paid
+              <div className="border-t border-slate-100 px-3.5 py-3">
+                <div className="inline-flex h-9.5 w-full items-center justify-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 text-xs font-bold text-emerald-700">
+                  <CheckCircle className="h-3.5 w-3.5" />
+                  Invoice Settled &amp; Paid
                 </div>
               </div>
             ) : (
-              <div className="grid grid-cols-2 gap-2 border-t border-slate-100 px-3 py-3">
+              <div className="grid grid-cols-2 gap-2 border-t border-slate-100 px-3.5 py-3">
                 <button
                   onClick={handleReject}
                   disabled={isSubmitting}
-                  className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-red-200 bg-white text-[10px] font-semibold text-red-500 transition-colors hover:bg-red-50"
+                  className="inline-flex h-9.5 items-center justify-center gap-1.5 rounded-xl border border-red-200 bg-white text-xs font-bold text-red-500 transition-colors hover:bg-red-50 cursor-pointer"
                 >
-                  <X className="h-3 w-3" />
+                  <X className="h-3.5 w-3.5" />
                   Reject Invoice
                 </button>
                 <button
                   onClick={handleConfirm}
                   disabled={isSubmitting || !financeValidationPassed || !payoutAmountMatches || !payoutDetailsComplete}
-                  className={`inline-flex h-9 items-center justify-center gap-1.5 rounded-lg text-[10px] font-semibold text-white transition-colors ${isSubmitting || !financeValidationPassed || !payoutAmountMatches || !payoutDetailsComplete
+                  className={`inline-flex h-9.5 items-center justify-center gap-1.5 rounded-xl text-xs font-bold text-white transition-colors cursor-pointer ${isSubmitting || !financeValidationPassed || !payoutAmountMatches || !payoutDetailsComplete
                       ? "cursor-not-allowed bg-emerald-200"
-                      : "bg-emerald-400 hover:bg-emerald-500"
+                      : "bg-emerald-500 hover:bg-emerald-600 shadow-sm hover:shadow"
                     }`}
                 >
-                  <CheckCircle className="h-3 w-3" />
+                  <CheckCircle className="h-3.5 w-3.5" />
                   {isSubmitting ? 'Processing...' : 'Confirm Payout & Settle'}
                 </button>
               </div>

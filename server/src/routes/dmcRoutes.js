@@ -1,6 +1,6 @@
 import express from "express";
 import isAuthenticated from "../middlewares/auth.middleware.js";
-import { createHotel, getHotels, getHotelById, updateHotel, deleteHotel, createActivity, getActivities, createTransfer, getTransfers, createPackage, getPackages, createSightseeing, getSightseeing, deleteUpload, downloadUpload, createOrUpdateConfirmation, getConfirmedQueriesForDmc, getDmcDashboard, submitInternalInvoice, getDmcPaymentLedger, submitDmcSettlementBatch, previewUploadedInvoiceExtraction, } from "../controllers/dmcController.js";
+import { createHotel, getHotels, getHotelById, updateHotel, deleteHotel, createActivity, getActivities, createTransfer, getTransfers, createPackage, getPackages, deletePackage, createSightseeing, getSightseeing, deleteUpload, downloadUpload, createOrUpdateConfirmation, getConfirmedQueriesForDmc, getDmcDashboard, submitInternalInvoice, getDmcPaymentLedger, submitDmcSettlementBatch, previewUploadedInvoiceExtraction, addOrUpdateSupplierPayment } from "../controllers/dmcController.js";
 import { bulkUpload, getBulkUploadHistory, viewUploadData, editSpreadsheetRowAndNotify } from "../controllers/bulkUploadController.js";
 import multer from "multer";
 
@@ -29,7 +29,8 @@ router.get("/sightseeing", isAuthenticated, getSightseeing);
 
 /* 🔹  PACKAGE ROUTES  */
 router.post("/package", isAuthenticated, createPackage);
-router.get("/package", isAuthenticated, getPackages)
+router.get("/package", isAuthenticated, getPackages);
+router.delete("/package/:id", isAuthenticated, deletePackage);
 
 const storage = multer.diskStorage({
   destination: function (req, file, cb) { cb(null, "uploads/") },
@@ -44,6 +45,7 @@ router.get("/upload/view/:id", isAuthenticated, viewUploadData)
 router.patch("/upload/edit-row/:id", isAuthenticated, editSpreadsheetRowAndNotify)
 router.get("/dashboard", isAuthenticated, getDmcDashboard);
 router.get("/confirmation/queries", isAuthenticated, getConfirmedQueriesForDmc);
+router.post("/confirmation/supplier-payment", isAuthenticated, addOrUpdateSupplierPayment);
 router.post("/internal-invoice/parse-upload", isAuthenticated, upload.single("uploadedInvoice"), previewUploadedInvoiceExtraction);
 router.post("/internal-invoice", isAuthenticated, upload.single("uploadedInvoice"), submitInternalInvoice);
 router.get("/payment-ledger", isAuthenticated, getDmcPaymentLedger);

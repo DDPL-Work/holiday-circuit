@@ -48,19 +48,19 @@ export default function KycVerification({ back, submit, isActive = false }) {
   };
 
   const uploadBox =
-    "cursor-pointer rounded-xl p-6 text-center transition hover:border-black";
+    "cursor-pointer rounded-xl p-3 sm:p-5 text-center transition hover:border-black";
 
   return (
-    <div className="flex w-full items-center justify-center px-3">
-      <div className="w-full rounded-2xl p-6">
+    <div className="w-full">
+      <div className="w-full rounded-2xl p-2 sm:p-7">
         <RegisterStepper currentStep={3} isActive={isActive} />
 
-        <h2 className="text-lg font-bold text-gray-800">KYC Verification</h2>
-        <p className="mb-5 text-sm text-gray-500">
+        <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900">KYC Verification</h2>
+        <p className="mb-5 text-xs sm:text-sm text-slate-500">
           Upload required documents to verify your business
         </p>
 
-        <p className="mb-2 text-sm font-medium text-gray-700">GST Certificate</p>
+        <p className="mb-1.5 text-xs sm:text-sm font-semibold text-slate-700">GST Certificate</p>
         <div className="mb-3 rounded-2xl border border-gray-300">
           <label
             className={`${uploadBox} ${
@@ -90,7 +90,7 @@ export default function KycVerification({ back, submit, isActive = false }) {
           </label>
         </div>
 
-        <p className="mb-2 text-sm font-medium text-gray-700">Business License</p>
+        <p className="mb-1.5 text-xs sm:text-sm font-semibold text-slate-700">Business License</p>
         <div className="mb-3 rounded-2xl border border-gray-300">
           <label
             className={`${uploadBox} ${

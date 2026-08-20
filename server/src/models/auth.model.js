@@ -63,6 +63,12 @@ const agentSchema = new mongoose.Schema(
       default: "",
     },
 
+    coverImage: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+
     brandingName: {
       type: String,
       trim: true,
@@ -70,6 +76,12 @@ const agentSchema = new mongoose.Schema(
     },
 
     brandingLogo: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+
+    voucherFooterImage: {
       type: String,
       trim: true,
       default: "",
@@ -161,6 +173,11 @@ const agentSchema = new mongoose.Schema(
     },
 
     lastLoginAt: {
+      type: Date,
+      default: null,
+    },
+
+    lastActiveAt: {
       type: Date,
       default: null,
     },

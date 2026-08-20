@@ -10,80 +10,81 @@ export default function QuickAddService({
   addCustomService,
   savingService = false,
 }) {
+  const [category, setCategory] = useState("Activity / Experience");
+  const [name, setName] = useState("");
+  const [desc, setDesc] = useState("");
+  const [rate, setRate] = useState(0);
+  const [qty, setQty] = useState(1);
+  const [city, setCity] = useState("");
+  const [country, setCountry] = useState("");
+  const [currency, setCurrency] = useState("INR");
 
-const [category,setCategory] = useState("Activity / Experience");
-const [name,setName] = useState("");
-const [desc,setDesc] = useState("");
-const [rate,setRate] = useState(0);
-const [qty,setQty] = useState(1);
-const [city,setCity] = useState("");
-const [country,setCountry] = useState("");
-const [currency,setCurrency] = useState("INR");
+  const getServiceData = () => {
+    if (category === "Hotel / Accommodation") {
+      return {
+        icon: <LiaHotelSolid />,
+        color: "text-blue-400",
+        type: "hotel",
+        nights: qty,
+      };
+    }
 
+    if (category === "Transport / Transfer") {
+      return {
+        icon: <GiCityCar />,
+        color: "text-purple-400",
+        type: "transfer",
+        days: qty,
+        serviceType: "One Way",
+      };
+    }
 
-const getServiceData = () => {
+    if (category === "Sightseeing") {
+      return {
+        icon: <GiModernCity />,
+        color: "text-blue-400",
+        type: "sightseeing",
+        pax: Number(qty || 1),
+        tourType: "Group Tour",
+        pricingBasis: "Per Pax",
+        maxPax: "N/A (Shared Group)",
+      };
+    }
 
- if(category === "Hotel / Accommodation"){
+    return {
+      icon: <GiModernCity />,
+      color: "text-green-400",
+      type: "activity",
+      pax: Number(qty || 1),
+    };
+  };
 
-   return {
-     icon:<LiaHotelSolid />,
-     color:"text-blue-400",
-     type:"hotel",
-     nights:qty
-   };
+  const handleAddService = async () => {
+    if (!name.trim()) return;
+    if (!Number(rate)) return;
 
- }
+    const serviceData = getServiceData();
 
- if(category === "Transport / Transfer"){
+    await addCustomService({
+      title: name,
+      desc,
+      rate: Number(rate),
+      city,
+      country,
+      currency,
+      custom: true,
+      ...serviceData,
+    });
 
-   return {
-     icon:<GiCityCar />,
-     color:"text-purple-400",
-     type:"transfer",
-     days:qty,
-     serviceType:"One Way"
-   };
-
- }
-
-return {
-  icon: <GiModernCity />,
-  color: "text-green-400",
-  type: "activity",
-  pax: Number(qty || 1),
-};
-
-
-};
-
-const handleAddService = async () => {
-  if (!name.trim()) return;
-  if (!Number(rate)) return;
-
-  const serviceData = getServiceData();
-
-  await addCustomService({
-    title: name,
-    desc,
-    rate: Number(rate),
-    city,
-    country,
-    currency,
-    custom: true,
-    ...serviceData,
-  });
-
-  setName("");
-  setDesc("");
-  setRate(0);
-  setQty(1);
-  setCity("");
-  setCountry("");
-  setCurrency("INR");
-  setShowModal(false);
-};
-
-
+    setName("");
+    setDesc("");
+    setRate(0);
+    setQty(1);
+    setCity("");
+    setCountry("");
+    setCurrency("INR");
+    setShowModal(false);
+  };
 
   const closeModal = () => {
     setShowModal(false);
@@ -145,6 +146,7 @@ const handleAddService = async () => {
                     className="w-full rounded-[12px] border border-yellow-500/30 bg-[#1b1b1b] px-3 py-1.5 text-[11px] text-white outline-none transition focus:border-yellow-400"
                   >
                     <option>Activity / Experience</option>
+                    <option>Sightseeing</option>
                     <option>Hotel / Accommodation</option>
                     <option>Transport / Transfer</option>
                   </select>
@@ -156,7 +158,7 @@ const handleAddService = async () => {
                   </label>
                   <input
                     type="text"
-                    placeholder="e.g. Yacht Booking, Gala Dinner, etc."
+                    placeholder="e.g. Yacht Booking, City Tour, etc."
                     className="w-full rounded-[12px] border border-white/10 bg-[#1b1b1b] px-3 py-1.5 text-[11px] text-white outline-none transition focus:border-yellow-400"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
@@ -190,7 +192,7 @@ const handleAddService = async () => {
 
                   <div>
                     <label className="mb-1 block text-[11px] font-medium text-gray-300">
-                      Quantity
+                      Quantity (Pax / Nights / Days)
                     </label>
                     <input
                       type="number"

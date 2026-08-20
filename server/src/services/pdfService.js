@@ -4,32 +4,76 @@ import path from "path";
 import https from "https";
 import http from "http";
 
-const getLogoBuffer = (url) => {
+const getLogoBuffer = (inputPathOrUrl) => {
   return new Promise((resolve) => {
     try {
-      if (!url || typeof url !== "string") {
+      if (!inputPathOrUrl || typeof inputPathOrUrl !== "string") {
         resolve(null);
         return;
       }
-      const client = url.startsWith("https") ? https : http;
-      client.get(url, (res) => {
-        if (res.statusCode !== 200) {
-          resolve(null);
-          return;
-        }
-        const data = [];
-        res.on("data", (chunk) => {
-          data.push(chunk);
-        });
-        res.on("end", () => {
-          resolve(Buffer.concat(data));
-        });
-        res.on("error", () => {
-          resolve(null);
-        });
-      }).on("error", () => {
+
+      let cleanPath = inputPathOrUrl.trim();
+      if (!cleanPath) {
         resolve(null);
-      });
+        return;
+      }
+
+      if (cleanPath.startsWith("data:image/")) {
+        try {
+          const base64Data = cleanPath.split(";base64,").pop();
+          if (base64Data) {
+            resolve(Buffer.from(base64Data, "base64"));
+            return;
+          }
+        } catch (e) {}
+      }
+
+      let relativePath = cleanPath;
+      if (cleanPath.includes("/uploads/")) {
+        relativePath = cleanPath.substring(cleanPath.indexOf("/uploads/") + 9);
+      } else if (cleanPath.includes("\\uploads\\")) {
+        relativePath = cleanPath.substring(cleanPath.indexOf("\\uploads\\") + 9);
+      }
+      relativePath = relativePath.replace(/^[/\\]+/, "");
+
+      const candidates = [
+        cleanPath,
+        path.join(process.cwd(), relativePath),
+        path.join(process.cwd(), "uploads", relativePath),
+        path.join(process.cwd(), "..", "uploads", relativePath),
+        path.join(process.cwd(), "src", "uploads", relativePath),
+      ];
+
+      for (const candidate of candidates) {
+        try {
+          if (candidate && fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
+            resolve(fs.readFileSync(candidate));
+            return;
+          }
+        } catch (err) {}
+      }
+
+      if (cleanPath.startsWith("http://") || cleanPath.startsWith("https://")) {
+        const client = cleanPath.startsWith("https") ? https : http;
+        const req = client.get(cleanPath, (res) => {
+          if (res.statusCode !== 200) {
+            resolve(null);
+            return;
+          }
+          const data = [];
+          res.on("data", (chunk) => data.push(chunk));
+          res.on("end", () => resolve(Buffer.concat(data)));
+          res.on("error", () => resolve(null));
+        });
+        req.on("error", () => resolve(null));
+        req.setTimeout(2500, () => {
+          req.destroy();
+          resolve(null);
+        });
+        return;
+      }
+
+      resolve(null);
     } catch (e) {
       resolve(null);
     }
@@ -40,7 +84,7 @@ const BRAND = Object.freeze({
   name: "Holiday Circuit",
   subline: "Travel Quotation",
   address: "2nd Floor, 632 Block B1, Janakpuri, New Delhi - 110058",
-  email: "ops@leelatravels.com",
+  email: "ops@holidaycircuit.com",
   phone: "+91 8851346665, +91 9971706003",
 });
 
@@ -71,7 +115,7 @@ const SERVICE_ROW_BREAK_LIMIT = CONTENT_BOTTOM_LIMIT - 6;
 
 const DEFAULT_SELLER_BANK_DETAILS = Object.freeze([
   { label: "Bank Name", value: "HDFC Bank" },
-  { label: "A/c Holder Name", value: "Leela Travels" },
+  { label: "A/c Holder Name", value: "Holiday Circuit" },
   { label: "A/c No.", value: "50200103968171" },
   { label: "IFSC", value: "HDFC0004413" },
   { label: "Branch", value: "RAMPHAL CHOWK SEC VII DWARKA" },
@@ -942,20 +986,30 @@ const drawSummarySection = (doc, y, quoteDetails = {}, servicesCount = 0) => {
 const SUMMARY_SECTION_HEIGHT = 106;
 const TERMS_SECTION_HEIGHT = 132;
 
-const drawTermsSection = (doc, y) => {
-  const terms = [
-    "Rates are subject to availability and confirmation at the time of booking.",
-    "Only the services listed in this quotation are included in the shared amount.",
-    "Any amendment after confirmation may affect availability and final pricing.",
-    "Hotel check-in, check-out, and supplier-specific policies will apply as per service rules.",
-    "Please review and confirm within the validity period to avoid fare or rate changes.",
-  ];
+const drawTermsSection = (doc, y, customTerms = []) => {
+  const normalizedTerms = Array.isArray(customTerms) && customTerms.length > 0
+    ? customTerms.map((t) => String(t || "").trim()).filter(Boolean)
+    : [
+        "Rates are subject to availability and confirmation at the time of booking.",
+        "Only the services listed in this quotation are included in the shared amount.",
+        "Any amendment after confirmation may affect availability and final pricing.",
+        "Hotel check-in, check-out, and supplier-specific policies will apply as per service rules.",
+        "Please review and confirm within the validity period to avoid fare or rate changes.",
+      ];
 
   drawSectionBar(doc, y, "TERMS AND CONDITIONS");
-  drawRoundedBox(doc, PAGE.contentX, y + 30, PAGE.contentWidth, 88, "#ffffff");
+
+  let contentHeight = 18;
+  doc.font(doc.fontRegular || "Helvetica").fontSize(8.2);
+  normalizedTerms.forEach((term, index) => {
+    contentHeight += doc.heightOfString(`${index + 1}. ${term}`, { width: PAGE.contentWidth - 28 }) + 5;
+  });
+
+  const boxHeight = Math.max(50, contentHeight + 10);
+  drawRoundedBox(doc, PAGE.contentX, y + 30, PAGE.contentWidth, boxHeight, "#ffffff");
 
   let cursorY = y + 40;
-  terms.forEach((term, index) => {
+  normalizedTerms.forEach((term, index) => {
     doc
       .font(doc.fontRegular || "Helvetica")
       .fontSize(8.2)
@@ -967,7 +1021,7 @@ const drawTermsSection = (doc, y) => {
     cursorY = doc.y + 5;
   });
 
-  return y + 132;
+  return y + 30 + boxHeight + 14;
 };
 
 const normalizeSellerBankDetails = (items = []) => {
@@ -1103,10 +1157,10 @@ const normalizeItineraryItems = (items = []) =>
   Array.isArray(items)
     ? items
         .map((item, index) => ({
-          dayNumber: Math.max(1, Number(item?.dayNumber || index + 1)),
-          dayLabel: String(item?.dayLabel || "").trim(),
-          title: String(item?.title || item?.heading || "").trim(),
-          description: String(item?.description || "").trim(),
+          dayNumber: Math.max(1, Number(item?.dayNumber || item?.day || index + 1)),
+          dayLabel: String(item?.dayLabel || (item?.day ? `Day ${item.day}` : "")).trim(),
+          title: String(item?.title || item?.heading || item?.dayTitle || "").trim(),
+          description: String(item?.description || item?.details || item?.content || "").trim(),
         }))
         .filter((item) => item.title || item.description)
     : [];
@@ -1288,12 +1342,13 @@ export const generatePDF = async (quoteDetails = {}) => {
   const stream = fs.createWriteStream(filePath);
   doc.pipe(stream);
 
-  let logoPath = resolveBrandLogoPath();
+  let logoPath = null;
   if (quoteDetails.agentLogo) {
-    const logoBuffer = await getLogoBuffer(quoteDetails.agentLogo);
-    if (logoBuffer) {
-      logoPath = logoBuffer;
-    }
+    logoPath = await getLogoBuffer(quoteDetails.agentLogo);
+  }
+
+  if (!logoPath && !quoteDetails.agentBrandingName) {
+    logoPath = resolveBrandLogoPath();
   }
 
   drawPageFrame(doc);
@@ -1459,7 +1514,7 @@ export const generatePDF = async (quoteDetails = {}) => {
   cursorY = drawItinerarySection(
     doc,
     cursorY,
-    quoteDetails?.dayWiseItinerary,
+    quoteDetails?.dayWiseItinerary || quoteDetails?.itinerary || quoteDetails?.schedule,
     quoteDetails,
   );
 
@@ -1509,7 +1564,31 @@ export const generatePDF = async (quoteDetails = {}) => {
     cursorY = 132;
   }
 
-  drawTermsSection(doc, cursorY + 12);
+  cursorY = drawTermsSection(doc, cursorY + 12, quoteDetails?.termsAndConditions);
+
+  if (quoteDetails?.agentFooterImage) {
+    const footerBuffer = await getLogoBuffer(quoteDetails.agentFooterImage);
+    if (footerBuffer) {
+      const targetFooterY = PAGE.footerY - 60;
+
+      // If current content overlaps the bottom footer area, move footer banner to a new page
+      if (cursorY > targetFooterY - 10) {
+        doc.addPage();
+        drawPageFrame(doc);
+        drawContinuationHeader(doc, quoteDetails, "Quotation Details (Continued)");
+      }
+
+      try {
+        doc.image(footerBuffer, PAGE.contentX, targetFooterY, {
+          fit: [PAGE.contentWidth, 54],
+          align: "center",
+          valign: "center",
+        });
+      } catch (footerErr) {
+        console.error("Error embedding agent footer image in PDF:", footerErr);
+      }
+    }
+  }
 
   doc.end();
 

@@ -55,11 +55,11 @@ const ROLES = [
 
 const ALL_PERMISSIONS = [
   "View", "Edit", "Export", "Override", "Delete",
-  "Manage Users", "Manage Booking", "Approve Payments", "Reject Payment", "Submit Invoice", "System Config",
+  "Manage Users", "Manage Booking", "Manage Discounts", "Approve Payments", "Reject Payment", "Submit Invoice", "System Config",
 ];
 
 const ROLE_DEFAULT_PERMISSIONS = {
-  "Super Admin": ["View", "Edit", "Export", "Override", "Delete", "Manage Users", "Approve Payments", "System Config"],
+  "Super Admin": ["View", "Edit", "Export", "Override", "Delete", "Manage Users", "Manage Discounts", "Approve Payments", "System Config"],
   "Ops Team": ["View", "Edit", "Export", "Manage Booking"],
   "Finance Team": ["View", "Export", "Approve Payments", "Reject Payment"],
   "Operation Manager": ["View", "Edit", "Export", "Manage Booking"],

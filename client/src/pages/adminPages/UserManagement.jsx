@@ -465,21 +465,7 @@ export default function UserManagement() {
 
   return (
     <div className="min-h-screen bg-gray-50 font-sans text-sm text-gray-800">
-      <div className="bg-white border-b border-gray-200 py-2 flex justify-between items-center">
-        <div>
-          <p className="font-semibold text-gray-800 text-sm">Users Management</p>
-          <p className="text-xs text-gray-400">{formatHeaderDate()}</p>
-        </div>
-        <div className="text-right text-xs text-gray-400">
-          Logged in as
-          <br />
-          <span className="font-semibold text-gray-800">
-            {currentUser?.name || "Administrator"}
-          </span>
-        </div>
-      </div>
-
-      <div className="py-6">
+      <div className="pt-1 pb-6">
         <div className="flex justify-between items-start mb-5">
           <div>
             <h1 className="text-xl font-bold text-gray-900">User Management</h1>
@@ -545,17 +531,52 @@ export default function UserManagement() {
 
         <div className="grid grid-cols-4 gap-3.5 mb-5">
           {[
-            { label: "Total Users", value: totalUsers, iconBg: "bg-blue-50", iconColor: "text-blue-500", Icon: UsersIcon },
-            { label: "Active Users", value: activeUsers, iconBg: "bg-green-50", iconColor: "text-green-500", Icon: ShieldIcon },
-            { label: "Operations", value: operations, iconBg: "bg-blue-50", iconColor: "text-blue-500", Icon: ShieldIcon },
-            { label: "DMC Partners", value: dmcPartners, iconBg: "bg-green-50", iconColor: "text-green-500", Icon: ShieldIcon },
-          ].map(({ label, value, iconBg, iconColor, Icon }) => (
-            <div key={label} className="bg-white border border-gray-200 rounded-xl p-4 flex justify-between items-center">
+            {
+              label: "Total Users",
+              value: totalUsers,
+              cardBg: "bg-blue-50/60",
+              cardBorder: "border-blue-200/90",
+              iconBg: "bg-blue-100",
+              iconColor: "text-blue-600",
+              Icon: UsersIcon,
+            },
+            {
+              label: "Online Now",
+              value: users.filter((u) => Boolean(u.isOnline || (u.lastActiveAt && (Date.now() - new Date(u.lastActiveAt).getTime()) < 120000))).length,
+              cardBg: "bg-emerald-50/60",
+              cardBorder: "border-emerald-200/90",
+              iconBg: "bg-emerald-100",
+              iconColor: "text-emerald-600",
+              Icon: ShieldIcon,
+            },
+            {
+              label: "Operations",
+              value: operations,
+              cardBg: "bg-sky-50/60",
+              cardBorder: "border-sky-200/90",
+              iconBg: "bg-sky-100",
+              iconColor: "text-sky-600",
+              Icon: ShieldIcon,
+            },
+            {
+              label: "DMC Partners",
+              value: dmcPartners,
+              cardBg: "bg-indigo-50/60",
+              cardBorder: "border-indigo-200/90",
+              iconBg: "bg-indigo-100",
+              iconColor: "text-indigo-600",
+              Icon: ShieldIcon,
+            },
+          ].map(({ label, value, cardBg, cardBorder, iconBg, iconColor, Icon }) => (
+            <div
+              key={label}
+              className={`${cardBg} border ${cardBorder} rounded-xl p-4 flex justify-between items-center transition-all duration-200 hover:shadow-xs`}
+            >
               <div>
-                <p className="text-[11px] text-gray-400 mb-1">{label}</p>
+                <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-1">{label}</p>
                 <p className="text-2xl font-bold text-gray-900">{value}</p>
               </div>
-              <div className={`w-10 h-10 rounded-xl ${iconBg} flex items-center justify-center`}>
+              <div className={`w-10 h-10 rounded-xl ${iconBg} flex items-center justify-center shadow-xs`}>
                 <Icon className={`w-[18px] h-[18px] ${iconColor}`} />
               </div>
             </div>
@@ -584,70 +605,88 @@ export default function UserManagement() {
                   </td>
                 </tr>
               ) : filtered.length ? (
-                filtered.map((user) => (
-                  <tr
-                    key={user.id}
-                    className="border-b border-gray-200 last:border-b-0 hover:bg-gray-50 transition-colors"
-                  >
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-[13px] font-bold text-gray-500 shrink-0">
-                          {getInitial(user.name)}
-                        </div>
-                        <div>
-                          <p className="text-[13px] font-semibold text-gray-800">
-                            {user.name}
-                          </p>
-                          <p className="text-[11px] text-gray-400">{user.email}</p>
-                        </div>
-                      </div>
-                    </td>
+                filtered.map((user) => {
+                  const isUserOnline = Boolean(
+                    user.isOnline ||
+                      (user.lastActiveAt && (Date.now() - new Date(user.lastActiveAt).getTime()) < 120000)
+                  );
 
-                    <td className="px-4 py-3">
-                      <div className="flex flex-col gap-1">
-                        <div className="flex items-center gap-1.5 text-[12px] text-gray-500">
-                          <MailIcon />
-                          {user.email}
+                  return (
+                    <tr
+                      key={user.id}
+                      className="border-b border-gray-200 last:border-b-0 hover:bg-gray-50 transition-colors"
+                    >
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2.5">
+                          <div className="relative w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-[13px] font-bold text-gray-500 shrink-0">
+                            {getInitial(user.name)}
+                            {isUserOnline ? (
+                              <span className="absolute bottom-0 right-0 block h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-white" />
+                            ) : null}
+                          </div>
+                          <div>
+                            <p className="text-[13px] font-semibold text-gray-800">
+                              {user.name}
+                            </p>
+                            <p className="text-[11px] text-gray-400">{user.email}</p>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-1.5 text-[12px] text-gray-500">
-                          <PhoneIcon />
-                          {user.phone || "-"}
+                      </td>
+
+                      <td className="px-4 py-3">
+                        <div className="flex flex-col gap-1">
+                          <div className="flex items-center gap-1.5 text-[12px] text-gray-500">
+                            <MailIcon />
+                            {user.email}
+                          </div>
+                          <div className="flex items-center gap-1.5 text-[12px] text-gray-500">
+                            <PhoneIcon />
+                            {user.phone || "-"}
+                          </div>
                         </div>
-                      </div>
-                    </td>
+                      </td>
 
-                    <td className="px-4 py-3">
-                      <span
-                        className={`inline-block px-2.5 py-1 rounded-md text-[11px] font-semibold ${
-                          roleBadge[user.role] || "bg-gray-50 text-gray-600 border border-gray-200"
-                        }`}
-                      >
-                        {user.role}
-                      </span>
-                    </td>
-
-                    <td className="px-4 py-3">
-                      <span
-                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold ${
-                          user.status === "Active"
-                            ? "bg-green-50 text-green-600"
-                            : user.status === "Deleted"
-                              ? "bg-red-50 text-red-500"
-                              : "bg-gray-100 text-gray-500"
-                        }`}
-                      >
+                      <td className="px-4 py-3">
                         <span
-                          className={`w-1.5 h-1.5 rounded-full ${
-                            user.status === "Active"
-                              ? "bg-green-500"
-                              : user.status === "Deleted"
-                                ? "bg-red-500"
-                                : "bg-gray-400"
+                          className={`inline-block px-2.5 py-1 rounded-md text-[11px] font-semibold ${
+                            roleBadge[user.role] || "bg-gray-50 text-gray-600 border border-gray-200"
                           }`}
-                        />
-                        {user.status}
-                      </span>
-                    </td>
+                        >
+                          {user.role}
+                        </span>
+                      </td>
+
+                      <td className="px-4 py-3">
+                        <span
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold ${
+                            isUserOnline
+                              ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                              : user.status === "Active"
+                                ? "bg-blue-50 text-blue-600 border border-blue-200"
+                                : user.status === "Deleted"
+                                  ? "bg-red-50 text-red-500 border border-red-200"
+                                  : "bg-gray-100 text-gray-500 border border-gray-200"
+                          }`}
+                        >
+                          {isUserOnline ? (
+                            <span className="relative flex h-2 w-2">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                            </span>
+                          ) : (
+                            <span
+                              className={`w-1.5 h-1.5 rounded-full ${
+                                user.status === "Active"
+                                  ? "bg-blue-500"
+                                  : user.status === "Deleted"
+                                    ? "bg-red-500"
+                                    : "bg-gray-400"
+                              }`}
+                            />
+                          )}
+                          {isUserOnline ? "Online" : user.status}
+                        </span>
+                      </td>
 
                     <td className="px-4 py-3 text-[12px] text-gray-400">
                       {user.lastLogin}
@@ -696,8 +735,9 @@ export default function UserManagement() {
                       </div>
                     </td>
                   </tr>
-                ))
-              ) : (
+                );
+              })
+            ) : (
                 <tr>
                   <td colSpan={6} className="px-4 py-8 text-center text-gray-400 text-sm">
                     No users found.

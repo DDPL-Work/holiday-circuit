@@ -22,7 +22,8 @@ import {
   Mail,
   History,
   PieChart,
-  IndianRupee
+  IndianRupee,
+  Loader2
 } from "lucide-react";
 import API from "../../utils/Api";
 import { AnimatePresence, motion } from "framer-motion";
@@ -1832,6 +1833,60 @@ const PaymentVerification = () => {
       setSendingAgentReceipt(false);
     }
   };
+  const [exportingReport, setExportingReport] = useState(false);
+
+  const handleExportFinanceReport = async () => {
+    try {
+      setExportingReport(true);
+      await new Promise((resolve) => setTimeout(resolve, 600));
+
+      const items = (paymentData?.payments || []).map((p) => ({
+        bookingId: p.bookingReference || p.bookingId || p.id || "",
+        agentName: p.agentName || p.customerName || "",
+        amount: p.expectedAmount ?? p.amount ?? 0,
+        paymentMethod: p.paymentMethod || p.method || "Bank Transfer",
+        transactionId: p.utrNumber || p.transactionId || p.utr || "",
+        status: p.workflowStatus || p.status || "Pending",
+        date: p.paymentDateValue || p.submittedAtValue || p.date || "",
+      }));
+
+      // 1. Create report payload for Finance Manager
+      const reportPayload = {
+        id: `report-pv-${Date.now()}`,
+        title: "Payment Verification Finance Report",
+        type: "Payment Verification",
+        source: "Payment Verification Desk",
+        generatedAt: new Date().toLocaleString(),
+        totalItems: items.length,
+        items,
+      };
+
+      // 2. Save report to storage for Finance Manager portal & dispatch event
+      try {
+        const existingReports = JSON.parse(localStorage.getItem("finance_reports_history") || "[]");
+        localStorage.setItem("finance_reports_history", JSON.stringify([reportPayload, ...existingReports]));
+        window.dispatchEvent(new Event("finance-report-submitted"));
+      } catch (err) {
+        console.warn("Error saving payment verification report:", err);
+      }
+
+      setFeedback({
+        type: "success",
+        title: "Finance Report Exported",
+        message: "Report sent to Finance Manager successfully!",
+      });
+    } catch (error) {
+      console.error("Export payment report error:", error);
+      setFeedback({
+        type: "error",
+        title: "Export Failed",
+        message: "Failed to export Payment Verification report. Please try again.",
+      });
+    } finally {
+      setExportingReport(false);
+    }
+  };
+
   return (
     <>
       <FeedbackToast feedback={feedback} onClose={() => setFeedback(null)} />
@@ -1845,9 +1900,23 @@ const PaymentVerification = () => {
                 <h1 className="text-2xl font-bold text-slate-900">Payment Verification</h1>
                 <p className="mt-1 text-sm text-slate-500">Review and verify agent payment submissions before invoice workflow continues</p>
               </div>
-              <button className="flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 hover:from-emerald-700 hover:via-teal-700 hover:to-emerald-600 active:scale-95 active:translate-y-0 hover:-translate-y-0.5 transition-all duration-300 ease-out text-white px-4.5 py-2.5 rounded-xl text-sm font-semibold shadow-sm hover:shadow-md shadow-emerald-500/10 hover:shadow-emerald-500/20">
-                <FileDown className="h-4 w-4" />
-                Export Finance Report
+              <button
+                type="button"
+                onClick={handleExportFinanceReport}
+                disabled={exportingReport}
+                className="flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 hover:from-emerald-700 hover:via-teal-700 hover:to-emerald-600 active:scale-95 active:translate-y-0 hover:-translate-y-0.5 transition-all duration-300 ease-out text-white px-4.5 py-2.5 rounded-xl text-sm font-semibold shadow-sm hover:shadow-md shadow-emerald-500/10 hover:shadow-emerald-500/20 cursor-pointer disabled:opacity-75"
+              >
+                {exportingReport ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin text-white" />
+                    Exporting...
+                  </>
+                ) : (
+                  <>
+                    <FileDown className="h-4 w-4" />
+                    Export Finance Report
+                  </>
+                )}
               </button>
             </div>
 

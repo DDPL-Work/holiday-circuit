@@ -3,6 +3,8 @@ import {
   registerAgent,
   login,
   updateProfile,
+  getMe,
+  sendHeartbeat,
   sendForgotPasswordOtp,
   verifyForgotPasswordOtp,
   resetPasswordWithOtp,
@@ -15,6 +17,8 @@ const routes = express.Router();
 
 routes.post("/register", upload.array("documents", 5), registerAgent);
 routes.post("/login", login);
+routes.get("/me", isAuthenticated, getMe);
+routes.post("/heartbeat", isAuthenticated, sendHeartbeat);
 routes.patch("/profile", isAuthenticated, updateProfile);
 routes.post("/forgot-password/send-otp", sendForgotPasswordOtp);
 routes.post("/forgot-password/verify-otp", verifyForgotPasswordOtp);

@@ -946,7 +946,7 @@ export default function SuperAdminDashboard() {
                     height: 38,
                     minHeight: 38,
                     padding: "0 14px",
-                    borderRadius: "9999px",
+                    borderRadius: "10px",
                     border: "none",
                     background: isAgentDeskOpen
                       ? "linear-gradient(135deg, #4f46e5 0%, #3730a3 100%)"
@@ -963,7 +963,7 @@ export default function SuperAdminDashboard() {
                     style={{
                       width: 26,
                       height: 26,
-                      borderRadius: "9999px",
+                      borderRadius: "8px",
                       background: "rgba(255, 255, 255, 0.2)",
                       border: "1px solid rgba(255, 255, 255, 0.3)",
                       display: "flex",
@@ -981,7 +981,7 @@ export default function SuperAdminDashboard() {
                     style={{
                       minWidth: 18,
                       height: 18,
-                      borderRadius: "9999px",
+                      borderRadius: "6px",
                       padding: "0 5px",
                       display: "inline-flex",
                       alignItems: "center",
@@ -1006,7 +1006,7 @@ export default function SuperAdminDashboard() {
                     gap: 6,
                     height: 38,
                     padding: "0 16px",
-                    borderRadius: "9999px",
+                    borderRadius: "10px",
                     border: "none",
                     background: "linear-gradient(135deg, #22c55e 0%, #15803d 100%)",
                     color: "#fff",
@@ -1030,7 +1030,7 @@ export default function SuperAdminDashboard() {
                     height: 38,
                     minHeight: 38,
                     padding: "0 14px",
-                    borderRadius: "9999px",
+                    borderRadius: "10px",
                     border: "1px solid #e2e8f0",
                     background: "linear-gradient(135deg, #ffffff 0%, #f8fafc 100%)",
                   }}
@@ -1039,7 +1039,7 @@ export default function SuperAdminDashboard() {
                     style={{
                       width: 26,
                       height: 26,
-                      borderRadius: "9999px",
+                      borderRadius: "8px",
                       background: "#faf5ff",
                       border: "1px solid #e9d5ff",
                       display: "flex",

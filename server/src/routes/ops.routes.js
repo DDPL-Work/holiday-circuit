@@ -35,14 +35,18 @@ import {
   reassignOperationManagerWorkload,
   submitOperationManagerReport,
   updateOperationManagerQuery,
+  getOpsActivityLogs,
 } from "../controllers/opsManagerController.js";
 import { sendQuotationController } from "../controllers/quotationNotificationController.js";
-import { getAllServices } from "../controllers/dmcController.js";
+import { getAllServices, createPackage, getPackages, deletePackage } from "../controllers/dmcController.js";
 
 const router = express.Router();
 
 router.get("/dashboard", isAuthenticated, getOpsDashboard);
 router.get("/queries", isAuthenticated, getAllQueries);
+router.post("/package", isAuthenticated, createPackage);
+router.get("/package", isAuthenticated, getPackages);
+router.delete("/package/:id", isAuthenticated, deletePackage);
 router.put("/queries/:id/status", isAuthenticated, updateQueryStatus);
 router.patch("/queries/accept/:id", isAuthenticated, acceptQueryByOps);
 router.patch("/queries/reject/:id", isAuthenticated, rejectQueryByOps);
@@ -78,6 +82,7 @@ router.get("/manager/reassignments/:userId", isAuthenticated, getOperationManage
 router.post("/manager/team", isAuthenticated, createOperationTeamMember);
 router.post("/manager/reassign", isAuthenticated, reassignOperationManagerWorkload);
 router.post("/manager/report", isAuthenticated, submitOperationManagerReport);
+router.get("/manager/activity-logs", isAuthenticated, getOpsActivityLogs);
 
 router.post("/invoices", isAuthenticated, generateInvoice);
 

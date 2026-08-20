@@ -15,9 +15,35 @@ const ACTIVE_AGENT_FILTER = {
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-const ensureAdmin = (req) => {
-  if (req.user?.role !== "admin") {
-    throw new ApiError(403, "Only super admins can manage coupons");
+const ensureAdmin = async (req) => {
+  const role = req.user?.role;
+  if (role === "admin") return;
+
+  const userId = req.user?.id || req.user?._id;
+  if (!userId) {
+    throw new ApiError(403, "Access denied. Authentication required.");
+  }
+
+  const user = await Auth.findById(userId).select("permissions role accountStatus isDeleted");
+  if (!user || user.isDeleted || user.accountStatus !== "Active") {
+    throw new ApiError(403, "Access denied. Account is inactive or deleted.");
+  }
+
+  const permissions = Array.isArray(user.permissions) ? user.permissions : [];
+  const isAllowedManagerRole = [
+    "operation_manager",
+    "finance_manager",
+    "operations",
+    "finance_partner",
+  ].includes(user.role);
+
+  const hasDiscountPermission =
+    permissions.includes("Manage Discounts") ||
+    permissions.includes("Discounts & Coupons") ||
+    permissions.includes("Discount");
+
+  if (!isAllowedManagerRole || !hasDiscountPermission) {
+    throw new ApiError(403, "Access denied. Only Super Admin or authorized managers with 'Manage Discounts' permission can manage coupons.");
   }
 };
 
@@ -246,7 +272,7 @@ const buildCouponPayload = async (req, existingCoupon = null) => {
 
 export const generateCouponCode = async (req, res, next) => {
   try {
-    ensureAdmin(req);
+    await ensureAdmin(req);
 
     const code = await generateUniqueCouponCode();
 
@@ -263,7 +289,7 @@ export const generateCouponCode = async (req, res, next) => {
 
 export const getAdminCoupons = async (req, res, next) => {
   try {
-    ensureAdmin(req);
+    await ensureAdmin(req);
 
     const [coupons, agents] = await Promise.all([
       Coupon.find().sort({ createdAt: -1 }),
@@ -286,7 +312,7 @@ export const getAdminCoupons = async (req, res, next) => {
 
 export const createCoupon = async (req, res, next) => {
   try {
-    ensureAdmin(req);
+    await ensureAdmin(req);
 
     const payload = await buildCouponPayload(req);
     const coupon = await Coupon.create({
@@ -308,7 +334,7 @@ export const createCoupon = async (req, res, next) => {
 
 export const updateCoupon = async (req, res, next) => {
   try {
-    ensureAdmin(req);
+    await ensureAdmin(req);
 
     const coupon = await Coupon.findById(req.params.id);
     if (!coupon) {
@@ -334,7 +360,7 @@ export const updateCoupon = async (req, res, next) => {
 
 export const deleteCoupon = async (req, res, next) => {
   try {
-    ensureAdmin(req);
+    await ensureAdmin(req);
 
     const coupon = await Coupon.findById(req.params.id);
     if (!coupon) {
@@ -357,7 +383,7 @@ export const deleteCoupon = async (req, res, next) => {
 
 export const sendCouponToAgent = async (req, res, next) => {
   try {
-    ensureAdmin(req);
+    await ensureAdmin(req);
 
     const coupon = await Coupon.findById(req.params.id);
     if (!coupon) {

@@ -8,6 +8,7 @@ import {
   User,
   MapPin,
   Calendar,
+  Package,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
@@ -104,19 +105,100 @@ export default function VoucherManagement() {
     setShowPreview(true);
   };
 
-  const handleDownloadVoucher = (voucher, branding) => {
-    const html = buildVoucherHtml(voucher, branding);
+  const handleDownloadVoucher = (voucher, branding = "with") => {
+    try {
+      const agentBranding = {
+        name: voucher.agentBrandingName || voucher.agentName || "",
+        logo: voucher.agentLogo || "",
+      };
+      const html = buildVoucherHtml(voucher, branding, agentBranding);
+      const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
 
-    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `${voucher.voucherNumber || voucher.query}-${branding}.html`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${voucher.voucherNumber || voucher.query || "voucher"}-${branding}.html`;
+      document.body.appendChild(link);
+      link.click();
+
+      setTimeout(() => {
+        if (document.body.contains(link)) {
+          document.body.removeChild(link);
+        }
+        URL.revokeObjectURL(url);
+      }, 5000);
+    } catch (err) {
+      console.error("Failed to download voucher", err);
+      toast.error("Failed to generate voucher download file");
+    }
   };
+
+  const handleBulkDownload = () => {
+    const downloadable = filteredVouchers.filter(
+      (v) => v.status === "generated" || v.status === "sent" || v.voucherNumber
+    );
+
+    if (downloadable.length === 0) {
+      toast.error("No generated vouchers found to download in bulk.");
+      return;
+    }
+
+    toast.success(`Downloading ${downloadable.length} voucher(s) in bulk...`);
+
+    // 1. Trigger single Master Bulk File containing all ready vouchers for 1-click viewing/printing
+    try {
+      const combinedHtml = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Bulk Travel Vouchers (${downloadable.length} Vouchers)</title>
+  <style>
+    @media print {
+      .voucher-page { page-break-after: always; page-break-inside: avoid; }
+    }
+    .voucher-page { margin-bottom: 50px; }
+  </style>
+</head>
+<body>
+  ${downloadable.map((voucher) => {
+    const agentBranding = {
+      name: voucher.agentBrandingName || voucher.agentName || "",
+      logo: voucher.agentLogo || "",
+    };
+    const rawHtml = buildVoucherHtml(voucher, voucher.branding || "with", agentBranding);
+    const bodyMatch = rawHtml.match(/<body[^>]*>([\s\S]*)<\/body>/i);
+    const bodyContent = bodyMatch ? bodyMatch[1] : rawHtml;
+    return `<div class="voucher-page">${bodyContent}</div>`;
+  }).join("\n")}
+</body>
+</html>`;
+
+      const blob = new Blob([combinedHtml], { type: "text/html;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `Bulk-Vouchers-All-${downloadable.length}-Items.html`;
+      document.body.appendChild(link);
+      link.click();
+      setTimeout(() => {
+        if (document.body.contains(link)) document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+      }, 5000);
+    } catch (e) {
+      console.error("Bulk master file generation error:", e);
+    }
+
+    // 2. Stagger individual file downloads
+    downloadable.forEach((voucher, index) => {
+      setTimeout(() => {
+        handleDownloadVoucher(voucher, voucher.branding || "with");
+      }, (index + 1) * 300);
+    });
+  };
+
+  const downloadableCount = vouchers.filter(
+    (v) => v.status === "generated" || v.status === "sent" || v.voucherNumber
+  ).length;
 
   return (
     <>
@@ -129,9 +211,12 @@ export default function VoucherManagement() {
             </p>
           </div>
 
-          <button className="flex items-center gap-2 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 hover:shadow-md hover:shadow-emerald-500/10 transition-all duration-300 text-white px-4 py-2 rounded-full text-sm font-semibold">
+          <button
+            onClick={handleBulkDownload}
+            className="flex items-center gap-2 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 hover:shadow-md hover:shadow-emerald-500/10 transition-all duration-300 text-white px-4 py-2 rounded-full text-sm font-semibold cursor-pointer active:scale-95"
+          >
             <Download size={16} />
-            Bulk Download
+            Bulk Download {downloadableCount > 0 ? `(${downloadableCount})` : ""}
           </button>
         </div>
 
@@ -235,6 +320,8 @@ function StatCard({ title, count, type }) {
   );
 }
 
+
+
 function VoucherCard({
   id,
   status,
@@ -263,21 +350,21 @@ function VoucherCard({
   const statusMap = {
     ready: {
       label: "Ready to Generate",
-      badge: "bg-orange-50 text-orange-650 border border-orange-100",
-      icon: <FileText size={12} />,
-      cardBg: "bg-gradient-to-br from-orange-50/20 via-white to-white border-orange-100/80 hover:border-orange-200/90 shadow-orange-500/5",
+      badge: "bg-amber-100/90 text-amber-900 border border-amber-300/80 font-bold",
+      icon: <FileText size={12} className="text-amber-700" />,
+      cardBg: "bg-gradient-to-br from-amber-100/70 via-orange-50/40 to-white border-amber-200/90 hover:border-amber-300 shadow-2xs",
     },
     generated: {
       label: "Generated",
-      badge: "bg-blue-50 text-blue-650 border border-blue-100",
-      icon: <FileText size={12} />,
-      cardBg: "bg-gradient-to-br from-blue-50/20 via-white to-white border-blue-100/80 hover:border-blue-200/90 shadow-blue-500/5",
+      badge: "bg-indigo-100/90 text-indigo-900 border border-indigo-300/80 font-bold",
+      icon: <FileText size={12} className="text-indigo-700" />,
+      cardBg: "bg-gradient-to-br from-indigo-100/70 via-purple-50/40 to-white border-indigo-200/90 hover:border-indigo-300 shadow-2xs",
     },
     sent: {
       label: "Sent to Agent",
-      badge: "bg-green-50 text-green-655 border border-green-100",
-      icon: <CheckCircle size={12} />,
-      cardBg: "bg-gradient-to-br from-emerald-50/20 via-white to-white border-emerald-100/80 hover:border-emerald-200/90 shadow-emerald-500/5",
+      badge: "bg-emerald-100/90 text-emerald-900 border border-emerald-300/80 font-bold",
+      icon: <CheckCircle size={12} className="text-emerald-700" />,
+      cardBg: "bg-gradient-to-br from-emerald-100/70 via-teal-50/40 to-white border-emerald-200/90 hover:border-emerald-300 shadow-2xs",
     },
   };
 
@@ -306,58 +393,67 @@ function VoucherCard({
   const canSendFinalVoucher = Boolean(canSendVoucher);
 
   return (
-    <div className={`border shadow-sm rounded-2xl p-5 md:p-6 flex flex-col gap-4 hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 ease-out ${statusMap[status].cardBg}`}>
-      <div className="flex justify-between items-start flex-wrap gap-2">
+    <div className={`border rounded-2xl p-5 md:p-6 flex flex-col gap-4.5 transition-all duration-300 ${statusMap[status].cardBg}`}>
+      <div className="flex justify-between items-center flex-wrap gap-2">
         <div className="flex gap-3 items-center">
-          <h3 className="font-bold text-gray-900 text-lg tracking-tight">{query}</h3>
-          <span className={`flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full ${statusMap[status].badge}`}>
+          <h3 className="font-extrabold text-slate-900 text-xl tracking-tight font-sans">{query}</h3>
+          <span className={`flex items-center gap-1.5 text-xs px-3 py-1 rounded-full ${statusMap[status].badge}`}>
             {statusMap[status].icon}
             {statusMap[status].label}
           </span>
         </div>
         
         {status === "sent" && (
-          <div className="flex items-center gap-1.5 text-xs font-semibold text-green-655 bg-green-50/80 border border-green-100 px-2.5 py-1 rounded-full shadow-sm">
-            <CheckCircle size={12} />
+          <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-800 bg-emerald-100/80 border border-emerald-300/70 px-3 py-1 rounded-full shadow-2xs">
+            <CheckCircle size={13} className="text-emerald-600" />
             Synced to Agent Portal
           </div>
         )}
       </div>
 
-      <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-gray-650">
-        <div className="flex items-center gap-1.5">
-          <User size={14} className="text-gray-400" />
-          <span className="font-medium text-gray-800">{name}</span>
+      <div className="flex flex-wrap items-center gap-2.5 text-xs">
+        <div className="flex items-center gap-1.5 rounded-xl bg-white/90 border border-slate-200/80 px-3.5 py-1.5 font-bold text-slate-800 shadow-2xs">
+          <User size={13} className="text-indigo-600 shrink-0" />
+          <span>{name}</span>
         </div>
-        <div className="flex items-center gap-1.5">
-          <MapPin size={14} className="text-gray-400" />
-          <span className="text-gray-700">{destination}</span>
+        <div className="flex items-center gap-1.5 rounded-xl bg-white/90 border border-slate-200/80 px-3.5 py-1.5 font-bold text-slate-800 shadow-2xs">
+          <MapPin size={13} className="text-purple-600 shrink-0" />
+          <span>{destination}</span>
         </div>
-        <div className="flex items-center gap-1.5">
-          <Calendar size={14} className="text-gray-400" />
-          <span className="text-gray-750 font-medium">{formatDisplayDate(date)}</span>
-        </div>
-      </div>
-
-      <div className="flex flex-col sm:flex-row sm:items-center gap-2 border-t border-gray-100/60 pt-3">
-        <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider whitespace-nowrap">Services:</span>
-        <div className="flex flex-wrap gap-1.5">
-          {(services || []).map((s, i) => (
-            <span
-              key={i}
-              className="bg-gray-50 border border-gray-200 text-gray-750 text-xs px-2.5 py-1 rounded-full font-medium"
-            >
-              {typeof s === "string" ? s : s.title || s.name || "Service missing"}
-            </span>
-          ))}
+        <div className="flex items-center gap-1.5 rounded-xl bg-white/90 border border-slate-200/80 px-3.5 py-1.5 font-bold text-slate-800 shadow-2xs">
+          <Calendar size={13} className="text-orange-600 shrink-0" />
+          <span>{formatDisplayDate(date)}</span>
         </div>
       </div>
 
-      <div className="mt-2 flex flex-wrap gap-2.5 border-t border-gray-100/60 pt-4">
+      <div className="flex flex-col sm:flex-row sm:items-start gap-2.5 border-t border-slate-200/70 pt-3.5">
+        <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-slate-500 min-w-[95px] pt-1">
+          <Package size={13} className="text-indigo-600 shrink-0" />
+          <span>Services:</span>
+        </div>
+        <div className="flex flex-wrap gap-2 flex-1">
+          {(services || []).map((s, i) => {
+            const title = typeof s === "string" ? s : s.title || s.name || "Service missing";
+            return (
+              <div
+                key={i}
+                className="inline-flex items-center gap-1.5 bg-white/95 border border-slate-200/90 text-slate-800 text-xs px-3 py-1.5 rounded-full font-semibold shadow-2xs transition hover:border-indigo-300 hover:bg-indigo-50/40"
+              >
+                <span className="flex h-4 w-4 items-center justify-center rounded-full bg-indigo-100 text-[10px] font-bold text-indigo-700">
+                  {i + 1}
+                </span>
+                <span>{title}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="mt-1 flex flex-wrap gap-2.5 border-t border-slate-200/70 pt-4">
         {status === "ready" && (
           <button
             onClick={() => onGenerate(id)}
-            className="bg-gradient-to-r from-slate-900 via-blue-950 to-slate-900 hover:from-blue-950 hover:via-slate-900 hover:to-slate-950 text-white px-5 py-2 rounded-full text-sm font-semibold flex items-center gap-1.5 hover:shadow-md transition-all duration-300 ease-out"
+            className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 hover:from-indigo-950 hover:via-slate-900 hover:to-slate-950 text-white px-5 py-2.5 rounded-full text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer active:scale-95"
           >
             <FileText size={15} />
             Generate Voucher
@@ -368,7 +464,7 @@ function VoucherCard({
           <>
             <button
               onClick={() => onPreview(voucherPayload, "preview")}
-              className="flex items-center gap-1.5 border border-gray-300 hover:bg-gray-50 text-gray-750 px-5 py-2 rounded-full text-sm font-semibold shadow-sm transition-all duration-300 ease-out"
+              className="flex items-center gap-1.5 border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 px-5 py-2.5 rounded-full text-xs font-bold shadow-xs transition-all cursor-pointer active:scale-95"
             >
               <Eye size={14} />
               Preview
@@ -378,10 +474,10 @@ function VoucherCard({
               onClick={() => onPreview(voucherPayload, "send")}
               disabled={!canSendFinalVoucher}
               title={canSendFinalVoucher ? "Send voucher to agent" : "Payment must be verified before sending the voucher"}
-              className={`flex items-center gap-1.5 px-5 py-2 rounded-full text-sm font-semibold transition-all duration-300 shadow-sm ${
+              className={`flex items-center gap-1.5 px-5 py-2.5 rounded-full text-xs font-bold transition-all shadow-xs active:scale-95 ${
                 canSendFinalVoucher
-                  ? "bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white hover:shadow-md"
-                  : "cursor-not-allowed bg-gray-100 text-gray-400 border border-gray-200"
+                  ? "bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white shadow-xs cursor-pointer"
+                  : "cursor-not-allowed bg-slate-100 text-slate-400 border border-slate-200"
               }`}
             >
               <Send size={14} />
@@ -394,17 +490,10 @@ function VoucherCard({
           <>
             <button
               onClick={() => onPreview(voucherPayload, "view")}
-              className="flex items-center gap-1.5 border border-gray-300 hover:bg-gray-50 text-gray-750 px-5 py-2 rounded-full text-sm font-semibold shadow-sm transition-all duration-300 ease-out"
+              className="flex items-center gap-1.5 border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 px-5 py-2.5 rounded-full text-xs font-bold shadow-xs transition-all cursor-pointer active:scale-95"
             >
               <Eye size={14} />
               View
-            </button>
-            <button
-              onClick={() => onPreview(voucherPayload, "view")}
-              className="flex items-center gap-1.5 border border-gray-300 hover:bg-gray-50 text-gray-750 px-5 py-2 rounded-full text-sm font-semibold shadow-sm transition-all duration-300 ease-out"
-            >
-              <Download size={14} />
-              Download
             </button>
           </>
         )}

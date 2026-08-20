@@ -1,10 +1,35 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { MapPin, ArrowLeft, CheckCircle2, Sparkles, X, AlertCircle, User, ChevronDown, Compass, Globe } from "lucide-react";
+import toast from "react-hot-toast";
 import API from "../utils/Api.js";
 import { motion, AnimatePresence } from "framer-motion";
 
 const childAgeOptions = Array.from({ length: 12 }, (_, index) => index + 1);
+
+const PREDEFINED_DESTINATIONS = {
+  Domestic: [
+    { label: "Hotels Only", city: "Hotels Only", country: "India" },
+    { label: "Jammu & Kashmir", city: "Jammu & Kashmir", country: "India" },
+    { label: "North East", city: "North East", country: "India" },
+    { label: "Goa", city: "Goa", country: "India" },
+    { label: "Andamans", city: "Andamans", country: "India" },
+    { label: "Kerala", city: "Kerala", country: "India" },
+  ],
+  International: [
+    { label: "Thailand", city: "Thailand", country: "Thailand" },
+    { label: "UAE", city: "UAE", country: "United Arab Emirates" },
+    { label: "Indonesia", city: "Indonesia", country: "Indonesia" },
+    { label: "Sri Lanka", city: "Sri Lanka", country: "Sri Lanka" },
+    { label: "Nepal", city: "Nepal", country: "Nepal" },
+    { label: "Singapore", city: "Singapore", country: "Singapore" },
+    { label: "Malaysia", city: "Malaysia", country: "Malaysia" },
+    { label: "Vietnam", city: "Vietnam", country: "Vietnam" },
+    { label: "Europe", city: "Europe", country: "Europe" },
+  ],
+};
+
+const TOUR_TYPE_OPTIONS = ["Group Tour", "Customized Tour"];
 
 const createAdultTraveler = () => ({ fullName: "" });
 const createChildTraveler = () => ({ fullName: "", age: "" });
@@ -138,6 +163,8 @@ const CreateNewQueries = ({ onClose, onCreated, queryToEdit = null, isOpsView = 
   const [isModalVisible, setIsModalVisible] = useState(true);
   const [formData, setFormData] = useState({
     destination: "",
+    destinationCategory: "",
+    tourType: "",
     clientEmail: "",
     startDate: "",
     endDate: "",
@@ -198,6 +225,8 @@ const CreateNewQueries = ({ onClose, onCreated, queryToEdit = null, isOpsView = 
 
       setFormData({
         destination: queryToEdit.destination || "",
+        destinationCategory: queryToEdit.destinationCategory || "",
+        tourType: queryToEdit.tourType || "",
         clientEmail: queryToEdit.clientEmail || "",
         startDate: queryToEdit.startDate ? new Date(queryToEdit.startDate).toISOString().slice(0, 10) : "",
         endDate: queryToEdit.endDate ? new Date(queryToEdit.endDate).toISOString().slice(0, 10) : "",
@@ -298,6 +327,8 @@ const CreateNewQueries = ({ onClose, onCreated, queryToEdit = null, isOpsView = 
   const resetForm = () => {
     setFormData({
       destination: "",
+      destinationCategory: "",
+      tourType: "",
       clientEmail: "",
       startDate: "",
       endDate: "",
@@ -432,10 +463,28 @@ const CreateNewQueries = ({ onClose, onCreated, queryToEdit = null, isOpsView = 
   ];
 
   const handleSubmit = async () => {
+    if (!formData.destinationCategory) {
+      setFormAlert({
+        title: "Category Required",
+        message: "Please select a destination category before submitting the query.",
+      });
+      setStep(1);
+      return;
+    }
+
     if (!String(formData.destination || "").trim()) {
       setFormAlert({
         title: "Destination Required",
         message: "Please select a destination before submitting the query.",
+      });
+      setStep(1);
+      return;
+    }
+
+    if (formData.destinationCategory === "International" && formData.destination === "Europe" && !formData.tourType) {
+      setFormAlert({
+        title: "Tour Type Required",
+        message: "Please select a tour type for Europe.",
       });
       setStep(1);
       return;
@@ -491,11 +540,18 @@ const CreateNewQueries = ({ onClose, onCreated, queryToEdit = null, isOpsView = 
             payload,
           )
         : await API.post("/agent/queries", payload);
+
       onCreated?.(response?.data?.query);
-      setShowSuccessPopup(true);
+      
+      if (queryToEdit || isOpsView) {
+        toast.success(queryToEdit ? "Query updated successfully!" : "Query created successfully!");
+        closeModal(true);
+      } else {
+        setShowSuccessPopup(true);
+      }
     } catch (error) {
       console.error(error.response?.data || error.message);
-      window.alert(error?.response?.data?.message || "Unable to save query right now.");
+      toast.error(error?.response?.data?.message || "Unable to save query right now.");
     }
   };
 
@@ -896,9 +952,83 @@ const CreateNewQueries = ({ onClose, onCreated, queryToEdit = null, isOpsView = 
                 </div>
 
                 <div className={`${isOpsView ? "" : "relative"} mb-3`}>
-                  <label className="mb-1 block text-sm font-medium">Destination</label>
-                  {renderDestinationSelect({ compact: isOpsView })}
+                  <label className="mb-1 block text-sm font-medium">Destination Category</label>
+                  <div className="relative">
+                    <select
+                      value={formData.destinationCategory}
+                      onChange={(e) => {
+                        const category = e.target.value;
+                        setFormData((prev) => ({
+                          ...prev,
+                          destinationCategory: category,
+                          destination: "",
+                          tourType: "",
+                        }));
+                        setSelectedDestinationOptionId("");
+                        setDestinationSearch("");
+                      }}
+                      className="w-full appearance-none rounded-full border border-gray-300 bg-white px-4 py-1.5 pr-9 text-sm focus:outline-none focus:border-gray-400 transition duration-150"
+                    >
+                      <option value="">Select category</option>
+                      <option value="Domestic">Domestic</option>
+                      <option value="International">International</option>
+                      <option value="Other">Other</option>
+                    </select>
+                    <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  </div>
                 </div>
+
+                <div className={`${isOpsView ? "" : "relative"} mb-3`}>
+                  <label className="mb-1 block text-sm font-medium">Destination</label>
+                  {formData.destinationCategory === "Domestic" || formData.destinationCategory === "International" ? (
+                    <div className="relative">
+                      <MapPin size={16} className="absolute left-3 top-1/2 z-10 -translate-y-1/2 text-gray-400 sm:left-4" />
+                      <select
+                        value={formData.destination}
+                        onChange={(e) => {
+                          if (formAlert) setFormAlert(null);
+                          setFormData((prev) => ({
+                            ...prev,
+                            destination: e.target.value,
+                          }));
+                        }}
+                        className="w-full appearance-none rounded-full border border-gray-300 bg-white py-1.5 pl-9 pr-9 text-sm focus:outline-none focus:border-gray-400 transition duration-150 sm:pl-10"
+                      >
+                        <option value="">Select destination</option>
+                        {(PREDEFINED_DESTINATIONS[formData.destinationCategory] || []).map((dest) => (
+                          <option key={dest.label} value={dest.label}>{dest.label}</option>
+                        ))}
+                      </select>
+                      <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                    </div>
+                  ) : (
+                    renderDestinationSelect({ compact: isOpsView })
+                  )}
+                </div>
+
+                {formData.destinationCategory === "International" && formData.destination === "Europe" && (
+                  <div className={`${isOpsView ? "" : "relative"} mb-3`}>
+                    <label className="mb-1 block text-sm font-medium">Tour Type</label>
+                    <div className="relative">
+                      <select
+                        value={formData.tourType}
+                        onChange={(e) => {
+                          setFormData((prev) => ({
+                            ...prev,
+                            tourType: e.target.value,
+                          }));
+                        }}
+                        className="w-full appearance-none rounded-full border border-gray-300 bg-white px-4 py-1.5 pr-9 text-sm focus:outline-none focus:border-gray-400 transition duration-150"
+                      >
+                        <option value="">Select tour type</option>
+                        {TOUR_TYPE_OPTIONS.map((type) => (
+                          <option key={type} value={type}>{type}</option>
+                        ))}
+                      </select>
+                      <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                    </div>
+                  </div>
+                )}
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -928,10 +1058,26 @@ const CreateNewQueries = ({ onClose, onCreated, queryToEdit = null, isOpsView = 
                 <div className="mt-4 flex justify-end">
                   <button
                     onClick={() => {
+                      if (!formData.destinationCategory) {
+                        setFormAlert({
+                          title: "Category Required",
+                          message: "Please select a destination category before moving ahead.",
+                        });
+                        return;
+                      }
+
                       if (!String(formData.destination || "").trim()) {
                         setFormAlert({
                           title: "Destination Required",
                           message: "Please select a destination before moving ahead.",
+                        });
+                        return;
+                      }
+
+                      if (formData.destinationCategory === "International" && formData.destination === "Europe" && !formData.tourType) {
+                        setFormAlert({
+                          title: "Tour Type Required",
+                          message: "Please select a tour type for Europe.",
                         });
                         return;
                       }

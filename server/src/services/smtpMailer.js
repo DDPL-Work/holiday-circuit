@@ -195,45 +195,65 @@ export const getEmailDeliveryErrorMessage = (error) => {
 };
 
 
+let cachedTransport = null;
+
+const getOrCreateTransport = async () => {
+  if (cachedTransport) {
+    return cachedTransport;
+  }
+
+  const configError = getMailConfigError();
+  if (configError) {
+    throw configError;
+  }
+
+  const config = await resolveTransportConfig();
+
+  console.log("===== CREATING POOLED SMTP TRANSPORT =====");
+  console.log({
+    host: config.host,
+    port: config.port,
+    secure: config.secure,
+    service: config.service,
+    user: config.auth?.user,
+  });
+
+  cachedTransport = nodemailer.createTransport({
+    ...config,
+    pool: true,
+    maxConnections: 5,
+    maxMessages: 100,
+  });
+
+  return cachedTransport;
+};
+
 export const createTransporter = () => ({
   sendMail: async (mailOptions = {}) => {
-  console.log("sendMail() called");
+    console.log("sendMail() called");
     try {
-      const configError = getMailConfigError();
-
-      if (configError) {
-        throw configError;
-      }
-
-      const config = await resolveTransportConfig();
-
-      console.log("===== SMTP CONFIG =====");
-      console.log({
-        host: config.host,
-        port: config.port,
-        secure: config.secure,
-        service: config.service,
-        user: config.auth?.user,
-      });
-
-      const transport = nodemailer.createTransport(config);
-
+      const transport = await getOrCreateTransport();
       const info = await transport.sendMail(mailOptions);
-
-      console.log("Mail Sent Successfully");
-      console.log(info);
-
+      console.log("Mail Sent Successfully:", info?.messageId || info?.response);
       return info;
     } catch (error) {
-      console.error("========= SMTP ERROR =========");
-      console.error("Message:", error.message);
-      console.error("Code:", error.code);
-      console.error("Command:", error.command);
-      console.error("Response:", error.response);
-      console.error("Stack:", error.stack);
-      console.error("==============================");
-
-      throw error;
+      console.warn("SMTP send failed, clearing cached transport and retrying once:", error?.message);
+      cachedTransport = null;
+      try {
+        const freshTransport = await getOrCreateTransport();
+        const info = await freshTransport.sendMail(mailOptions);
+        console.log("Mail Sent Successfully on Retry:", info?.messageId || info?.response);
+        return info;
+      } catch (retryError) {
+        console.error("========= SMTP ERROR =========");
+        console.error("Message:", retryError.message);
+        console.error("Code:", retryError.code);
+        console.error("Command:", retryError.command);
+        console.error("Response:", retryError.response);
+        console.error("Stack:", retryError.stack);
+        console.error("==============================");
+        throw retryError;
+      }
     }
   },
 });

@@ -148,6 +148,28 @@ export const quotationSchema = new mongoose.Schema(
 
       // ================= ACTIVITY / SIGHTSEEING =================
       pax: { type: Number, default: 1 },
+      adultPrice: { type: Number, default: 0 },
+      childPrice: { type: Number, default: 0 },
+      operatingDays: { type: String, default: "Mon-Sun" },
+      openingTime: { type: String, default: "08:00" },
+      closingTime: { type: String, default: "18:00" },
+      duration: { type: String, default: "" },
+      slots: { type: String, default: "" },
+      selectedSlot: { type: String, default: "" },
+      tourType: { type: String, default: "" },
+      tourTypes: [
+        {
+          tourType: String,
+          adultPrice: Number,
+          childPrice: Number,
+          price: Number,
+          pricingBasis: String,
+          maxPax: String,
+          description: String
+        }
+      ],
+      pricingBasis: { type: String, default: "" },
+      maxPax: { type: String, default: "" },
 
       // ================= 🔥 PRICING =================
       currency: {

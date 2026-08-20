@@ -414,23 +414,23 @@ import API from "../../utils/Api.js";
 const hiddenLogActions = new Set();
 
 const logConfig = {
-  "Query Received": { color: "bg-sky-500", light: "bg-sky-50", text: "text-sky-700", border: "border-sky-200", icon: Activity },
-  "Query Accepted": { color: "bg-green-500", light: "bg-green-50", text: "text-green-700", border: "border-green-200", icon: FileCheck },
-  "Query Rejected": { color: "bg-red-500", light: "bg-red-50", text: "text-red-700", border: "border-red-200", icon: XCircle },
-  "Quotation Started": { color: "bg-amber-500", light: "bg-amber-50", text: "text-amber-700", border: "border-amber-200", icon: Activity },
-  "Quote Sent": { color: "bg-blue-500", light: "bg-blue-50", text: "text-blue-700", border: "border-blue-200", icon: Zap },
-  "Passed to Admin": { color: "bg-orange-500", light: "bg-orange-50", text: "text-orange-700", border: "border-orange-200", icon: AlertTriangle },
-  "Passed to Manager": { color: "bg-orange-500", light: "bg-orange-50", text: "text-orange-700", border: "border-orange-200", icon: AlertTriangle },
-  "Admin Replied": { color: "bg-indigo-500", light: "bg-indigo-50", text: "text-indigo-700", border: "border-indigo-200", icon: UserCheck },
-  "Revision Requested": { color: "bg-rose-500", light: "bg-rose-50", text: "text-rose-700", border: "border-rose-200", icon: ShieldAlert },
-  "Booking Confirmed": { color: "bg-emerald-500", light: "bg-emerald-50", text: "text-emerald-700", border: "border-emerald-200", icon: CheckCircle },
-  "Invoice Generated": { color: "bg-violet-500", light: "bg-violet-50", text: "text-violet-700", border: "border-violet-200", icon: FileCheck },
-  "Voucher Sent": { color: "bg-cyan-500", light: "bg-cyan-50", text: "text-cyan-700", border: "border-cyan-200", icon: Sparkles },
-  "Traveler Documents Submitted": { color: "bg-fuchsia-500", light: "bg-fuchsia-50", text: "text-fuchsia-700", border: "border-fuchsia-200", icon: UserCheck },
-  "Traveler Documents Verified": { color: "bg-teal-500", light: "bg-teal-50", text: "text-teal-700", border: "border-teal-200", icon: UserCheck },
-  "Traveler Documents Rejected": { color: "bg-pink-500", light: "bg-pink-50", text: "text-pink-700", border: "border-pink-200", icon: XCircle },
+  "Query Received": { color: "bg-[#3E63DD]", light: "bg-blue-50/50", text: "text-[#3E63DD]", border: "border-blue-100", icon: Activity },
+  "Query Accepted": { color: "bg-blue-600", light: "bg-blue-50/40", text: "text-blue-700", border: "border-blue-100", icon: FileCheck },
+  "Query Rejected": { color: "bg-rose-500", light: "bg-rose-50/50", text: "text-rose-700", border: "border-rose-100", icon: XCircle },
+  "Quotation Started": { color: "bg-amber-500", light: "bg-amber-50/50", text: "text-amber-700", border: "border-amber-100", icon: Activity },
+  "Quote Sent": { color: "bg-indigo-600", light: "bg-indigo-50/50", text: "text-indigo-700", border: "border-indigo-100", icon: Zap },
+  "Passed to Admin": { color: "bg-amber-500", light: "bg-amber-50/50", text: "text-amber-700", border: "border-amber-100", icon: AlertTriangle },
+  "Passed to Manager": { color: "bg-amber-500", light: "bg-amber-50/50", text: "text-amber-700", border: "border-amber-100", icon: AlertTriangle },
+  "Admin Replied": { color: "bg-indigo-500", light: "bg-indigo-50/50", text: "text-indigo-700", border: "border-indigo-100", icon: UserCheck },
+  "Revision Requested": { color: "bg-rose-500", light: "bg-rose-50/50", text: "text-rose-700", border: "border-rose-100", icon: ShieldAlert },
+  "Booking Confirmed": { color: "bg-emerald-600", light: "bg-emerald-50/50", text: "text-emerald-700", border: "border-emerald-100", icon: CheckCircle },
+  "Invoice Generated": { color: "bg-indigo-600", light: "bg-indigo-50/50", text: "text-indigo-700", border: "border-indigo-100", icon: FileCheck },
+  "Voucher Sent": { color: "bg-blue-600", light: "bg-blue-50/50", text: "text-blue-700", border: "border-blue-100", icon: Sparkles },
+  "Traveler Documents Submitted": { color: "bg-slate-600", light: "bg-slate-50/60", text: "text-slate-700", border: "border-slate-200", icon: UserCheck },
+  "Traveler Documents Verified": { color: "bg-emerald-600", light: "bg-emerald-50/50", text: "text-emerald-700", border: "border-emerald-100", icon: UserCheck },
+  "Traveler Documents Rejected": { color: "bg-rose-500", light: "bg-rose-50/50", text: "text-rose-700", border: "border-rose-100", icon: XCircle },
 };
-const fallbackConfig = { color: "bg-sky-500", light: "bg-sky-50", text: "text-sky-700", border: "border-sky-200", icon: Activity };
+const fallbackConfig = { color: "bg-slate-500", light: "bg-slate-50", text: "text-slate-700", border: "border-slate-200", icon: Activity };
 
 const getLatestReassignmentEntry = (order = {}) => {
   const history = Array.isArray(order?.reassignmentHistory) ? order.reassignmentHistory : [];
@@ -576,12 +576,12 @@ const ActivityStrip = ({ logs = [] }) => {
       initial={{ opacity: 0, y: -10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4 }}
-      className="relative w-full mb-6 overflow-visible rounded-2xl border border-gray-200 bg-white px-4 py-3 pb-2 shadow-sm"
+      className="relative w-full mb-6 overflow-visible rounded-2xl border border-emerald-200/80 bg-gradient-to-br from-emerald-50/80 via-white to-teal-50/40 px-4 py-3 pb-2 shadow-xs transition hover:border-emerald-300"
     >
       <div className="mb-2.5 flex items-center gap-2">
-        <Activity size={13} className="text-green-700" />
-        <span className="text-xs font-bold uppercase tracking-wider text-gray-800">Activity Log</span>
-        <span className="ml-auto rounded-full bg-gray-100 px-2 py-0.5 text-[9px] font-semibold text-gray-500">
+        <Activity size={13} className="text-emerald-600" />
+        <span className="text-xs font-bold uppercase tracking-wider text-slate-800">Activity Log</span>
+        <span className="ml-auto rounded-full border border-emerald-200/80 bg-emerald-100/70 px-2.5 py-0.5 text-[9px] font-bold text-emerald-800">
         {uniqueLogs.length} events
       </span>
       </div>
@@ -871,9 +871,7 @@ const handleStartQuotation = async (order) => {
      
         {/* SUMMARY CARD */}
         <motion.div
-          whileHover={{ scale: 1.002 }}
-          transition={{ type: "spring", stiffness: 200 }}
-          className="bg-white border border-gray-200 rounded-2xl px-6 py-4 mb-6 shadow-sm"
+          className="rounded-2xl border border-amber-200/80 bg-gradient-to-br from-amber-50/90 via-white to-orange-50/40 px-6 py-4 mb-6 shadow-xs transition hover:border-amber-300"
         >
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
@@ -969,18 +967,17 @@ const handleStartQuotation = async (order) => {
               key={order._id}
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              whileHover={isReadOnlyReassigned ? undefined : { scale: 1.003 }}
               transition={{ duration: 0.3 }}
-              className={`border rounded-2xl p-5 transition ${
+              className={`border rounded-2xl p-4 sm:p-5 transition-all duration-200 ${
                 isReadOnlyReassigned ? "" : "hover:shadow-md"
               } ${
                 highlightedOrderId === String(order._id)
-                  ? "border-blue-400 bg-blue-50/40 shadow-[0_0_0_4px_rgba(59,130,246,0.12)]"
+                  ? "border-blue-400 bg-gradient-to-br from-blue-50/90 via-indigo-50/40 to-slate-50 shadow-[0_0_0_4px_rgba(59,130,246,0.15)]"
                   : isReadOnlyReassigned
                     ? "border-slate-300 bg-slate-100/90 opacity-80 shadow-none"
                   : isActivityLogSelected
-                    ? "border-blue-300 bg-blue-50/20 shadow-[0_0_0_2px_rgba(59,130,246,0.08)]"
-                  : "border-gray-300"
+                    ? "border-blue-300 bg-gradient-to-br from-blue-50/60 via-slate-50/90 to-indigo-50/30 shadow-[0_0_0_2px_rgba(59,130,246,0.1)]"
+                  : "border-slate-200/90 bg-gradient-to-br from-slate-50/80 via-white to-blue-50/30 shadow-xs hover:border-slate-300"
               }`}
             >
               {/* TOP BAR */}
@@ -1022,20 +1019,22 @@ const handleStartQuotation = async (order) => {
                     ) : null}
                   </div>
                 </div>
-                <div className="flex flex-col items-end gap-3">
-                  <label className="inline-flex cursor-pointer select-none items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-[11px] font-semibold text-blue-700">
+                <div className="flex flex-wrap items-center justify-end gap-2.5 shrink-0">
+                  <label className="inline-flex cursor-pointer select-none items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-[11px] font-semibold text-blue-700 hover:bg-blue-100/60 transition">
                     <input
                       type="checkbox"
                       checked={isActivityLogSelected}
-                      onChange={() => setSelectedOrder(order)}
+                      onChange={() => setSelectedOrder(isActivityLogSelected ? null : order)}
                       className="h-3.5 w-3.5 cursor-pointer rounded border-blue-300 text-blue-600 focus:ring-2 focus:ring-blue-200"
                     />
                     Show activity log
                   </label>
-                  <p className="text-xs text-[#62748E]">Estimated Value</p>
-                  <p className="text-green-600 font-bold text-sm mt-1">
-                    ₹{order.customerBudget?.toLocaleString("en-IN")}
-                  </p>
+                  <div className="flex items-center gap-1.5 rounded-full border border-slate-200/90 bg-white/80 px-3 py-1 text-[11px] font-medium text-slate-600 shadow-2xs">
+                    <span className="text-[#62748E]">Est. Value:</span>
+                    <span className="font-bold text-emerald-600 text-xs">
+                      ₹{order.customerBudget?.toLocaleString("en-IN") || 0}
+                    </span>
+                  </div>
                 </div>
               </div>
 
@@ -1090,55 +1089,60 @@ const handleStartQuotation = async (order) => {
               ) : null}
 
               {/* INFO GRID */}
-              <div className={`mb-4 grid gap-4 rounded-2xl border border-gray-200 p-5 text-sm text-gray-600 ${
-                isReceivedQuery ? "grid-cols-2 md:grid-cols-3 xl:grid-cols-6" : "grid-cols-2 md:grid-cols-2 xl:grid-cols-4"
+              <div className={`mb-4 grid gap-3 rounded-2xl border border-slate-200/80 bg-white/70 backdrop-blur-xs p-3 sm:p-3.5 text-sm text-gray-600 ${
+                isReceivedQuery ? "grid-cols-2 sm:grid-cols-3 lg:grid-cols-6" : "grid-cols-2 sm:grid-cols-4"
               }`}>
-                <div className="flex flex-col">
-                  <div className="flex items-center gap-1 text-[#62748E]">
-                    <MapPin size={14} className="text-blue-500" />
-                    <p className="text-xs">Destination</p>
+                <div className="flex flex-col justify-center rounded-xl border border-blue-200/80 bg-gradient-to-br from-blue-100/70 via-blue-50/40 to-white px-3.5 py-2.5 shadow-2xs transition hover:border-blue-300">
+                  <div className="flex items-center gap-1.5 text-[#62748E] mb-1">
+                    <MapPin size={13} className="text-blue-600 shrink-0" />
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-blue-900/80">Destination</p>
                   </div>
-                  <span className="font-bold font-sans">{order.destination}</span>
+                  <span className="font-bold text-slate-900 text-xs sm:text-sm font-sans truncate">{order.destination}</span>
                 </div>
-                <div className="flex flex-col">
-                  <div className="flex items-center gap-1 text-[#62748E]">
-                    <Calendar size={14} className="text-purple-500" />
-                    <p className="text-xs">Travel Date</p>
+
+                <div className="flex flex-col justify-center rounded-xl border border-purple-200/80 bg-gradient-to-br from-purple-100/70 via-purple-50/40 to-white px-3.5 py-2.5 shadow-2xs transition hover:border-purple-300">
+                  <div className="flex items-center gap-1.5 text-[#62748E] mb-1">
+                    <Calendar size={13} className="text-purple-600 shrink-0" />
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-purple-900/80">Travel Date</p>
                   </div>
-                  <span className="font-bold font-sans">
+                  <span className="font-bold text-slate-900 text-xs sm:text-sm font-sans truncate">
                     {new Date(order.startDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
                   </span>
                 </div>
-                <div className="flex flex-col">
-                  <div className="flex items-center gap-1 text-[#62748E]">
-                    <Clock size={14} className="text-orange-500" />
-                    <p className="text-xs">Duration</p>
+
+                <div className="flex flex-col justify-center rounded-xl border border-orange-200/80 bg-gradient-to-br from-orange-100/70 via-orange-50/40 to-white px-3.5 py-2.5 shadow-2xs transition hover:border-orange-300">
+                  <div className="flex items-center gap-1.5 text-[#62748E] mb-1">
+                    <Clock size={13} className="text-orange-600 shrink-0" />
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-orange-900/80">Duration</p>
                   </div>
-                  <span className="font-bold font-sans">{getDuration(order.startDate, order.endDate)}</span>
+                  <span className="font-bold text-slate-900 text-xs sm:text-sm font-sans truncate">{getDuration(order.startDate, order.endDate)}</span>
                 </div>
-                <div className="flex flex-col">
-                  <div className="flex items-center gap-1 text-[#62748E]">
-                    <Users size={14} className="text-green-500" />
-                    <p className="text-xs">Passengers</p>
+
+                <div className="flex flex-col justify-center rounded-xl border border-emerald-200/80 bg-gradient-to-br from-emerald-100/70 via-emerald-50/40 to-white px-3.5 py-2.5 shadow-2xs transition hover:border-emerald-300">
+                  <div className="flex items-center gap-1.5 text-[#62748E] mb-1">
+                    <Users size={13} className="text-emerald-600 shrink-0" />
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-emerald-900/80">Passengers</p>
                   </div>
-                  <span className="font-bold font-sans">{order.numberOfAdults + order.numberOfChildren} PAX</span>
+                  <span className="font-bold text-slate-900 text-xs sm:text-sm font-sans truncate">{order.numberOfAdults + order.numberOfChildren} PAX</span>
                 </div>
+
                 {isReceivedQuery ? (
-                  <div className="flex flex-col">
-                    <div className="flex items-center gap-1 text-[#62748E]">
-                      <UserCheck size={14} className="text-blue-500" />
-                      <p className="text-xs">Assigned To</p>
+                  <div className="flex flex-col justify-center rounded-xl border border-sky-200/80 bg-gradient-to-br from-sky-100/70 via-sky-50/40 to-white px-3.5 py-2.5 shadow-2xs transition hover:border-sky-300">
+                    <div className="flex items-center gap-1.5 text-[#62748E] mb-1">
+                      <UserCheck size={13} className="text-sky-600 shrink-0" />
+                      <p className="text-[11px] font-bold uppercase tracking-wider text-sky-900/80">Assigned To</p>
                     </div>
-                    <span className="font-bold font-sans text-slate-900">{assignedExecutive}</span>
+                    <span className="font-bold text-slate-900 text-xs sm:text-sm font-sans truncate">{assignedExecutive}</span>
                   </div>
                 ) : null}
+
                 {isReceivedQuery ? (
-                  <div className="flex flex-col">
-                    <div className="flex items-center gap-1 text-[#62748E]">
-                      <UserCheck size={14} className="text-amber-500" />
-                      <p className="text-xs">Received From</p>
+                  <div className="flex flex-col justify-center rounded-xl border border-amber-200/80 bg-gradient-to-br from-amber-100/70 via-amber-50/40 to-white px-3.5 py-2.5 shadow-2xs transition hover:border-amber-300">
+                    <div className="flex items-center gap-1.5 text-[#62748E] mb-1">
+                      <UserCheck size={13} className="text-amber-600 shrink-0" />
+                      <p className="text-[11px] font-bold uppercase tracking-wider text-amber-900/80">Received From</p>
                     </div>
-                    <span className="font-bold font-sans text-amber-700">{receivedFrom}</span>
+                    <span className="font-bold text-amber-700 text-xs sm:text-sm font-sans truncate">{receivedFrom}</span>
                   </div>
                 ) : null}
               </div>
@@ -1163,24 +1167,35 @@ const handleStartQuotation = async (order) => {
               ) : null}
 
               {/* REQUIREMENTS */}
-              <div className="mb-4">
-                <p className="text-xs text-gray-500 mb-2">Requirements</p>
-                <div className="flex flex-wrap gap-2">
-                  {order.specialRequirements &&
-                    order.specialRequirements
+              {order.specialRequirements &&
+                order.specialRequirements
+                  .split("\n")
+                  .filter((req) => req.trim() !== "").length > 0 && (
+                <div className="mb-4 rounded-2xl border border-slate-200/80 bg-white/70 backdrop-blur-xs p-3.5 sm:p-4 shadow-2xs">
+                  <div className="flex items-center gap-1.5 mb-2.5">
+                    <Sparkles size={13} className="text-amber-500" />
+                    <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                      Requirements & Preferences
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                    {order.specialRequirements
                       .split("\n")
                       .filter((req) => req.trim() !== "")
                       .map((req, i) => (
-                        <motion.span
+                        <div
                           key={i}
-                          whileHover={{ scale: 1.01 }}
-                          className="text-xs px-3 py-1 border border-gray-300 rounded-full bg-gray-200 text-gray-700"
+                          className="flex items-center gap-2.5 rounded-full border border-slate-200/90 bg-white px-4 py-2 text-xs text-slate-700 shadow-2xs transition hover:border-blue-200"
                         >
-                          {req}
-                        </motion.span>
+                          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-blue-50 text-[10.5px] font-bold text-blue-600 border border-blue-100">
+                            {i + 1}
+                          </span>
+                          <p className="leading-snug font-medium text-slate-800 flex-1">{req.trim()}</p>
+                        </div>
                       ))}
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* ACTION BUTTONS */}
               <div className="flex gap-3">

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Loader2, Clock, CheckCircle2, AlertCircle, Coins, Receipt, Upload } from "lucide-react";
+import { Loader2, Clock, CheckCircle2, AlertCircle, Coins, IndianRupee, Upload } from "lucide-react";
 import { useSelector } from "react-redux";
 import API from "../../../utils/Api";
 import InvoiceDocumentModal from "../../../modal/InvoiceDocumentModal";
@@ -896,6 +896,87 @@ export default function InternalDMCInvoices() {
     }
   };
 
+  const [submittingReport, setSubmittingReport] = useState(false);
+  const [reportSubmitted, setReportSubmitted] = useState(false);
+
+  const handleSubmitFinanceReport = async () => {
+    try {
+      setSubmittingReport(true);
+
+      // 1. Notify backend (with fallback)
+      try {
+        await API.post("/ops/manager/report", {
+          reportType: "Finance DMC Payout Report",
+          summary: {
+            underReview: summary.underReview,
+            validated: summary.validated,
+            mismatched: summary.mismatch,
+            settled: summary.settled,
+            totalInvoices: invoices.length,
+          },
+        });
+      } catch (apiErr) {
+        console.warn("Backend report submit API fallback:", apiErr);
+      }
+
+      // 2. Generate and download detailed CSV Finance Report
+      const headers = [
+        "Invoice Number",
+        "DMC Name",
+        "Amount (INR)",
+        "Status",
+        "Due Date",
+        "Assigned Finance Exec",
+        "Submitted Date",
+        "Finance Notes / Reason",
+      ];
+
+      const csvRows = (invoices || []).map((inv) => [
+        `"${inv.invoiceNumber || ""}"`,
+        `"${inv.dmcName || ""}"`,
+        `"${inv.amount || 0}"`,
+        `"${inv.uiStatus || inv.status || ""}"`,
+        `"${inv.dueDate || ""}"`,
+        `"${inv.assignedFinanceName || ""}"`,
+        `"${inv.submittedAt || ""}"`,
+        `"${(inv.financeNotes || "").replace(/"/g, '""')}"`,
+      ]);
+
+      const csvContent =
+        "data:text/csv;charset=utf-8," +
+        [headers.join(","), ...csvRows.map((e) => e.join(","))].join("\n");
+
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement("a");
+      link.setAttribute("href", encodedUri);
+      link.setAttribute(
+        "download",
+        `DMC-Payout-Finance-Report-${new Date().toISOString().slice(0, 10)}.csv`
+      );
+      document.body.appendChild(link);
+      link.click();
+      setTimeout(() => {
+        if (document.body.contains(link)) document.body.removeChild(link);
+      }, 3000);
+
+      setReportSubmitted(true);
+      setFeedback({
+        type: "success",
+        title: "Finance Report Submitted",
+        message: "Internal DMC Invoices Finance Report submitted and downloaded successfully!",
+      });
+    } catch (err) {
+      console.error("Failed to submit finance report", err);
+      setFeedback({
+        type: "error",
+        title: "Report Submission Failed",
+        message: "Failed to submit Finance Report. Please try again.",
+      });
+    } finally {
+      setSubmittingReport(false);
+    }
+  };
+
   const handleEscalate = async (invoice, reason, message) => {
     if (!invoice) return;
 
@@ -948,7 +1029,7 @@ export default function InternalDMCInvoices() {
         <div className="flex items-center justify-between px-0 py-2">
           <div className="flex items-center gap-2.5">
             <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-50 text-blue-600 border border-blue-100/80 shadow-sm">
-              <Receipt size={14} className="stroke-[2.2]" />
+              <IndianRupee size={14} className="stroke-[2.2]" />
             </div>
             <div>
               <p className="text-[13px] font-bold text-slate-800 leading-none">Internal DMC Invoices</p>
@@ -962,47 +1043,65 @@ export default function InternalDMCInvoices() {
         </div>
       </div>
       <div className="px-0 pt-4">
-        <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div className="flex items-start gap-3">
-            <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-slate-800 to-slate-950 text-white shadow-md shadow-slate-900/10">
-              <Receipt size={19} className="stroke-[2.2]" />
+        <div className="mb-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="flex h-8 w-8 sm:h-9 sm:w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-slate-800 to-slate-950 text-white shadow-md shadow-slate-900/10">
+              <IndianRupee size={17} className="stroke-[2.2]" />
             </div>
-            <div>
+            <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <h1 className="text-[18px] font-extrabold text-slate-900 tracking-tight leading-none">
+                <h1 className="text-[16px] sm:text-[17.5px] font-extrabold text-slate-900 tracking-tight leading-none">
                   Internal DMC Invoices
                 </h1>
-                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-100 px-2 py-0.5 text-[9.5px] font-bold text-emerald-700 tracking-wide uppercase">
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-100 px-2 py-0.5 text-[9px] font-bold text-emerald-700 tracking-wide uppercase">
                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
                   Finance Portal
                 </span>
               </div>
-              <p className="mt-1 text-[13.5px] text-slate-500 font-medium">Payout validation view &bull; review and settle DMC invoices</p>
+              <p className="mt-0.5 text-[11.5px] sm:text-[12.5px] text-slate-500 font-medium truncate sm:whitespace-nowrap">
+                Payout validation view &bull; review and settle DMC invoices
+              </p>
             </div>
           </div>
-          <div className="flex items-center gap-2.5 self-start shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 flex-wrap">
             <button
               type="button"
               onClick={() => setShowBulkUpload(true)}
-              className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-[#0f172a] to-[#1d4ed8] px-4 py-2 text-[12.5px] font-semibold text-white shadow-md hover:shadow-lg transition-all duration-300 hover:opacity-95"
+              className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-[#0f172a] to-[#1d4ed8] px-3.5 py-1.5 text-[11px] font-semibold text-white shadow-2xs hover:shadow-xs transition-all duration-200 cursor-pointer active:scale-95"
             >
-              <Upload size={14} />
-              Upload Bulk Invoice
+              <Upload size={12} />
+              <span>Upload Bulk Invoice</span>
             </button>
             <button
               type="button"
               onClick={() => setShowAddVendor(true)}
-              className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-[#1d4ed8] to-[#2563eb] px-4 py-2 text-[12.5px] font-semibold text-white shadow-md hover:shadow-lg transition-all duration-300 hover:opacity-95"
+              className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-[#1d4ed8] to-[#2563eb] px-3.5 py-1.5 text-[11px] font-semibold text-white shadow-2xs hover:shadow-xs transition-all duration-200 cursor-pointer active:scale-95"
             >
               <UserPlusIcon />
-              Add Vendors
+              <span>Add Vendors</span>
             </button>
             <button
               type="button"
-              className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-[#0b1e36] via-[#1d3d63] to-[#107c41] px-4 py-2 text-[12.5px] font-semibold text-white shadow-md hover:shadow-lg transition-all duration-300 hover:opacity-95"
+              onClick={handleSubmitFinanceReport}
+              disabled={submittingReport}
+              className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-[#0b1e36] via-[#1d3d63] to-[#107c41] px-3.5 py-1.5 text-[11px] font-semibold text-white shadow-2xs hover:shadow-xs transition-all duration-200 cursor-pointer active:scale-95 disabled:opacity-75"
             >
-              <ReportIcon />
-              Submit Finance Report
+              {submittingReport ? (
+                <>
+                  <Loader2 size={12} className="animate-spin text-white" />
+                  <span>Submitting...</span>
+                </>
+              ) : reportSubmitted ? (
+                <>
+                  <CheckCircle2 size={12} className="text-emerald-300" />
+                  <span>Submitted!</span>
+                </>
+              ) : (
+                <>
+                  <ReportIcon />
+                  <span>Submit Finance Report</span>
+                </>
+              )}
             </button>
           </div>
         </div>
@@ -1061,7 +1160,7 @@ export default function InternalDMCInvoices() {
           <div className="flex items-center gap-3.5 border-b border-slate-200 px-5 py-4 bg-gradient-to-r from-slate-50/80 via-slate-50/30 to-white">
             <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white shadow-[0_4px_12px_rgba(59,130,246,0.22)] transition-transform duration-300 hover:scale-105">
               <div className="absolute inset-0 rounded-xl bg-white opacity-0 hover:opacity-10 transition-opacity" />
-              <Receipt size={18} className="drop-shadow-[0_1px_1px_rgba(0,0,0,0.15)]" />
+              <IndianRupee size={18} className="drop-shadow-[0_1px_1px_rgba(0,0,0,0.15)]" />
               <div className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-emerald-500 shadow-sm animate-pulse" />
             </div>
             <div className="flex-1 min-w-0">

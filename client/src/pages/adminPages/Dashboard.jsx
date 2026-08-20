@@ -112,7 +112,7 @@ const TABS = ["Overview", "Queries", "Bookings", "Vouchers", "Reports"];
 
 const permissionsFallback = [
   "Manage all users and roles",
-  "View and modify contracted rates",
+  "View and modify bulk service upload",
   "Full booking management access",
   "Order acceptance and processing",
   "Voucher generation and management",
