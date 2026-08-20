@@ -336,3 +336,32 @@ div[role="status"] {
   display: none !important;
 }
 
+/* Date input styling for dark theme & highly visible calendar icon */
+input[type="date"] {
+  color-scheme: dark !important;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator {
+  cursor: pointer !important;
+  filter: invert(0.85) sepia(100%) saturate(600%) hue-rotate(5deg) brightness(1.2) !important;
+  opacity: 0.95 !important;
+  padding: 2px !important;
+  border-radius: 4px !important;
+  transition: transform 0.15s ease, opacity 0.15s ease !important;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator:hover {
+  opacity: 1 !important;
+  transform: scale(1.18) !important;
+}
+
+/* Hide duplicate native indicator when container has its own icon button */
+[data-date-picker-wrapper="true"] input[type="date"]::-webkit-calendar-picker-indicator {
+  display: none !important;
+  -webkit-appearance: none !important;
+  opacity: 0 !important;
+  width: 0 !important;
+  height: 0 !important;
+  pointer-events: none !important;
+}
+

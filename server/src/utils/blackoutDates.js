@@ -1,3 +1,5 @@
+import XLSX from "xlsx";
+
 const MONTH_LOOKUP = {
   jan: 0,
   january: 0,
@@ -40,26 +42,50 @@ export const normalizeDateOnly = (value) => {
   }
 
   if (typeof value === "number" && Number.isFinite(value)) {
-    const date = new Date(Math.round((value - 25569) * MS_PER_DAY));
-    return Number.isNaN(date.getTime())
-      ? null
-      : new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+    const p = XLSX.SSF.parse_date_code(value);
+    if (p && p.y && p.m && p.d) {
+      return new Date(Date.UTC(p.y, p.m - 1, p.d));
+    }
   }
 
   const text = String(value || "").trim();
   if (!text) return null;
 
+  if (/^\d{5}$/.test(text)) {
+    const p = XLSX.SSF.parse_date_code(Number(text));
+    if (p && p.y && p.m && p.d) {
+      return new Date(Date.UTC(p.y, p.m - 1, p.d));
+    }
+  }
+
+  // Match YYYY-MM-DD or YYYY/MM/DD
   const isoMatch = text.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
   if (isoMatch) {
     return new Date(Date.UTC(Number(isoMatch[1]), Number(isoMatch[2]) - 1, Number(isoMatch[3])));
   }
 
+  // Match DD-Mon-YYYY or DD/Mon/YYYY or DD Mon YYYY (e.g. 24-Dec-2026, 04-Jan-2027)
+  const dayMonthYearDash = text.match(/^(\d{1,2})[-/\s]([a-zA-Z]+)[-/\s](\d{4})$/);
+  if (dayMonthYearDash) {
+    const month = MONTH_LOOKUP[dayMonthYearDash[2].toLowerCase()];
+    if (month !== undefined) {
+      return new Date(Date.UTC(Number(dayMonthYearDash[3]), month, Number(dayMonthYearDash[1])));
+    }
+  }
+
+  // Match DDst Mon YYYY
   const dayMonthYear = text.match(/^(\d{1,2})(?:st|nd|rd|th)?\s+([a-zA-Z]+)\s+(\d{4})$/);
   if (dayMonthYear) {
     const month = MONTH_LOOKUP[dayMonthYear[2].toLowerCase()];
     if (month !== undefined) {
       return new Date(Date.UTC(Number(dayMonthYear[3]), month, Number(dayMonthYear[1])));
     }
+  }
+
+  // Match DD-MM-YYYY or DD/MM/YYYY
+  const ddmmyyyy = text.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+  if (ddmmyyyy) {
+    return new Date(Date.UTC(Number(ddmmyyyy[3]), Number(ddmmyyyy[2]) - 1, Number(ddmmyyyy[1])));
   }
 
   const parsed = new Date(text);
@@ -129,7 +155,10 @@ const normalizeHeader = (value) =>
 
 const getColumnIndex = (headers = [], candidates = []) => {
   const normalizedCandidates = candidates.map(normalizeHeader);
-  return headers.findIndex((header) => normalizedCandidates.includes(normalizeHeader(header)));
+  return headers.findIndex((header) => {
+    const norm = normalizeHeader(header);
+    return normalizedCandidates.some((c) => norm === c || norm.includes(c));
+  });
 };
 
 export const parseBlackoutDatesFromWorkbook = (workbook) => {
@@ -146,37 +175,74 @@ export const parseBlackoutDatesFromWorkbook = (workbook) => {
     raw: false,
   });
 
-  const headerRowIndex = rows.findIndex((row = []) =>
-    row.some((cell) => normalizeHeader(cell).includes("date")) &&
-    row.some((cell) => normalizeHeader(cell).includes("occasion")),
-  );
+  const headerRowIndex = rows.findIndex((row = []) => {
+    const cells = row.map(normalizeHeader);
+    const hasDateOrName = cells.some((cell) =>
+      cell.includes("blackout") || cell.includes("date") || cell.includes("occasion") || cell.includes("start date")
+    );
+    const hasCategoryOrRegion = cells.some((cell) =>
+      cell.includes("region") || cell.includes("season") || cell.includes("category") || cell.includes("end date") || cell.includes("rate action")
+    );
+    return hasDateOrName && hasCategoryOrRegion;
+  });
+
   if (headerRowIndex < 0) return [];
 
   const headers = rows[headerRowIndex] || [];
-  const dateIndex = getColumnIndex(headers, ["Date / Period", "Date", "Period"]);
-  const occasionIndex = getColumnIndex(headers, ["Occasion", "Event"]);
-  const categoryIndex = getColumnIndex(headers, ["Category", "Type"]);
-  const regionIndex = getColumnIndex(headers, ["Applicable Region", "Region"]);
-
-  if (dateIndex < 0) return [];
+  const blackoutNameIndex = getColumnIndex(headers, ["Blackout Name", "Occasion", "Event", "Name"]);
+  const startDateIndex = getColumnIndex(headers, ["Start Date", "Start", "Date From", "From Date"]);
+  const endDateIndex = getColumnIndex(headers, ["End Date", "End", "Date To", "To Date"]);
+  const legacyDateIndex = getColumnIndex(headers, ["Date / Period", "Date", "Period"]);
+  const seasonIndex = getColumnIndex(headers, ["Season", "Season Name"]);
+  const categoryIndex = getColumnIndex(headers, ["Category", "Type", "Occasion Type"]);
+  const regionIndex = getColumnIndex(headers, ["Applicable Region", "Region", "Destination"]);
+  const rateActionIndex = getColumnIndex(headers, ["Rate Action", "Action", "Rate Policy"]);
 
   return rows
     .slice(headerRowIndex + 1)
     .map((row, index) => {
-      const rawPeriod = row?.[dateIndex] || "";
-      const { startDate, endDate } = parseDateText(rawPeriod);
+      let startDate = null;
+      let endDate = null;
+      let rawPeriod = "";
+
+      if (startDateIndex >= 0 && row?.[startDateIndex]) {
+        startDate = normalizeDateOnly(row[startDateIndex]);
+        if (endDateIndex >= 0 && row?.[endDateIndex]) {
+          endDate = normalizeDateOnly(row[endDateIndex]) || startDate;
+        } else {
+          endDate = startDate;
+        }
+        const sKey = toDateKey(startDate);
+        const eKey = toDateKey(endDate);
+        rawPeriod = sKey && eKey && sKey !== eKey ? `${sKey} to ${eKey}` : sKey || "";
+      } else if (legacyDateIndex >= 0 && row?.[legacyDateIndex]) {
+        rawPeriod = String(row[legacyDateIndex] || "").trim();
+        const parsed = parseDateText(rawPeriod);
+        startDate = parsed.startDate;
+        endDate = parsed.endDate || startDate;
+      }
+
       if (!startDate || !endDate) return null;
+
+      const nameVal = String(row?.[blackoutNameIndex] || "").trim();
+      const seasonVal = seasonIndex >= 0 ? String(row?.[seasonIndex] || "").trim() : "";
+      const categoryVal = categoryIndex >= 0 ? String(row?.[categoryIndex] || "").trim() : "";
+      const regionVal = regionIndex >= 0 ? String(row?.[regionIndex] || "").trim() : "";
+      const rateActionVal = rateActionIndex >= 0 ? String(row?.[rateActionIndex] || "").trim() : "Black Date Rate";
 
       return {
         rowNumber: headerRowIndex + index + 2,
-        rawPeriod: String(rawPeriod || "").trim(),
+        blackoutName: nameVal || "Blackout Event",
+        occasion: nameVal || "Blackout Event",
+        rawPeriod,
         startDate,
         endDate,
         startDateKey: toDateKey(startDate),
         endDateKey: toDateKey(endDate),
-        occasion: String(row?.[occasionIndex] || "").trim(),
-        category: String(row?.[categoryIndex] || "").trim(),
-        applicableRegion: String(row?.[regionIndex] || "").trim() || "All",
+        season: seasonVal || "Season 1",
+        category: categoryVal || "Festival",
+        applicableRegion: regionVal || "All India & International",
+        rateAction: rateActionVal || "Black Date Rate",
         sourceSheet: sheetName,
       };
     })
@@ -186,16 +252,22 @@ export const parseBlackoutDatesFromWorkbook = (workbook) => {
 const normalizeLocationText = (value) =>
   String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 
-const isRegionApplicable = ({ region = "", country = "", city = "", destination = "" }) => {
+export const isRegionApplicable = ({ region = "", country = "", city = "", destination = "" }) => {
   const normalizedRegion = normalizeLocationText(region);
-  if (!normalizedRegion || normalizedRegion.includes("all")) return true;
+  if (!normalizedRegion || normalizedRegion.includes("all") || normalizedRegion.includes("international")) return true;
 
   const normalizedCountry = normalizeLocationText(country);
   const normalizedCity = normalizeLocationText(city);
   const normalizedDestination = normalizeLocationText(destination);
 
   if (normalizedRegion.includes("india")) {
-    return normalizedCountry === "india" || normalizedDestination.includes("india");
+    if (normalizedCountry === "india" || normalizedDestination.includes("india")) {
+      const subTokens = normalizedRegion.split(/[/,&|]+/).map((t) => t.trim()).filter(Boolean);
+      if (subTokens.some((t) => t.includes("all india") || t === "india")) return true;
+      return [normalizedCountry, normalizedCity, normalizedDestination].some(
+        (val) => val && (normalizedRegion.includes(val) || val.includes(normalizedRegion)),
+      );
+    }
   }
 
   return [normalizedCountry, normalizedCity, normalizedDestination].some(
@@ -218,29 +290,34 @@ export const findBlackoutMatch = ({
   const normalizedStart = start <= end ? start : end;
   const normalizedEnd = start <= end ? end : start;
 
-  return blackoutDates.find((item) => {
-    const blackoutStart = normalizeDateOnly(item?.startDate || item?.startDateKey);
-    const blackoutEnd = normalizeDateOnly(item?.endDate || item?.endDateKey || item?.startDate);
-    if (!blackoutStart || !blackoutEnd) return false;
-    if (!isRegionApplicable({
-      region: item?.applicableRegion,
-      country,
-      city,
-      destination,
-    })) {
-      return false;
-    }
-    return blackoutStart <= normalizedEnd && blackoutEnd >= normalizedStart;
-  }) || null;
+  return (
+    blackoutDates.find((item) => {
+      const blackoutStart = normalizeDateOnly(item?.startDate || item?.startDateKey);
+      const blackoutEnd = normalizeDateOnly(item?.endDate || item?.endDateKey || item?.startDate);
+      if (!blackoutStart || !blackoutEnd) return false;
+      if (
+        !isRegionApplicable({
+          region: item?.applicableRegion,
+          country,
+          city,
+          destination,
+        })
+      ) {
+        return false;
+      }
+      return blackoutStart <= normalizedEnd && blackoutEnd >= normalizedStart;
+    }) || null
+  );
 };
 
 export const formatBlackoutLabel = (blackout = null) => {
   if (!blackout) return "";
+  const name = blackout.blackoutName || blackout.occasion || "";
   const period =
     blackout.startDateKey && blackout.endDateKey && blackout.startDateKey !== blackout.endDateKey
       ? `${blackout.startDateKey} to ${blackout.endDateKey}`
       : blackout.startDateKey || blackout.rawPeriod || "";
-  return [period, blackout.occasion, blackout.category].filter(Boolean).join(" - ");
+  return [period, name, blackout.season, blackout.category].filter(Boolean).join(" - ");
 };
 
-import XLSX from "xlsx";
+

@@ -36,14 +36,17 @@ blackoutDates: {
   type: [
     {
       rowNumber: { type: Number, default: 0 },
+      blackoutName: { type: String, default: "" },
+      occasion: { type: String, default: "" },
       rawPeriod: { type: String, default: "" },
       startDate: { type: Date, default: null },
       endDate: { type: Date, default: null },
       startDateKey: { type: String, default: "" },
       endDateKey: { type: String, default: "" },
-      occasion: { type: String, default: "" },
+      season: { type: String, default: "" },
       category: { type: String, default: "" },
       applicableRegion: { type: String, default: "" },
+      rateAction: { type: String, default: "" },
       sourceSheet: { type: String, default: "" },
     },
   ],

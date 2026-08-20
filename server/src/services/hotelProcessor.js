@@ -1,6 +1,6 @@
 import XLSX from "xlsx";
 import Hotel from "../models/hotelDmc.model.js";
-import { parseBlackoutDatesFromWorkbook } from "../utils/blackoutDates.js";
+import { parseBlackoutDatesFromWorkbook, normalizeDateOnly } from "../utils/blackoutDates.js";
 
 const allowedMealPlans = new Set(["EP", "CP", "MAP", "AP", "AI"]);
 const allowedCurrencies = new Set(["USD", "INR", "AED", "EUR", "IDR", "THB", "SGD", "GBP", "MYR", "EGP"]);
@@ -46,13 +46,8 @@ const getHotelCategory = (catStr = "", hotelNameStr = "") => {
 
 const parseExcelDate = (val, fallback = new Date("2026-04-01")) => {
   if (!val) return fallback;
-  if (val instanceof Date) return isNaN(val.getTime()) ? fallback : val;
-  if (typeof val === "number") {
-    const d = new Date(Math.round((val - 25569) * 86400 * 1000));
-    return isNaN(d.getTime()) ? fallback : d;
-  }
-  const parsed = new Date(val);
-  return isNaN(parsed.getTime()) ? fallback : parsed;
+  const parsed = normalizeDateOnly(val);
+  return parsed && !isNaN(parsed.getTime()) ? parsed : fallback;
 };
 
 export const processHotelExcel = async (filePath, ownerId) => {
@@ -68,7 +63,10 @@ export const processHotelExcel = async (filePath, ownerId) => {
 
   // Find header row indices dynamically
   const headers = (aoa[0] || []).map((h) => String(h || "").trim().toLowerCase());
-  const findIdx = (names) => headers.findIndex((h) => names.some((n) => h.includes(n.toLowerCase())));
+  const findIdx = (names) =>
+    headers.findIndex((h) =>
+      names.some((n) => h === n.toLowerCase() || h.includes(n.toLowerCase()))
+    );
 
   const sNameIdx = findIdx(["service name"]);
   const supNameIdx = findIdx(["supplier name"]);
@@ -78,20 +76,35 @@ export const processHotelExcel = async (filePath, ownerId) => {
   const hCatIdx = findIdx(["hotel category"]);
   const rCatIdx = findIdx(["room category"]);
   const bedIdx = findIdx(["bed type"]);
-  const extraBedIdx = findIdx(["extra bed"]);
+  const extraBedIdx = findIdx(["extra bed type", "extra bed"]);
   const maxAdultsIdx = findIdx(["max adults"]);
   const maxChildrenIdx = findIdx(["max children"]);
-  const childAgeIdx = findIdx(["child age"]);
+  const childAgeIdx = findIdx(["child age limit", "child age"]);
   const rTypeIdx = findIdx(["room type"]);
   const mealIdx = findIdx(["meal plan"]);
-  const awebIdx = findIdx(["a.w.e.b", "aweb"]);
-  const cwebIdx = findIdx(["c.w.e.b", "cweb"]);
-  const cwoebIdx = findIdx(["c.wo.e.b", "cwoeb"]);
+  const awebIdx = findIdx(["a.w.e.b rate", "a.w.e.b", "aweb rate", "aweb"]);
+  const cwebIdx = findIdx(["c.w.e.b rate", "c.w.e.b", "cweb rate", "cweb"]);
+  const cwoebIdx = findIdx(["c.wo.e.b rate", "c.wo.e.b", "cwoeb rate", "cwoeb", "cwob rate", "cwob"]);
   const currIdx = findIdx(["currency"]);
   const vfIdx = findIdx(["valid from"]);
   const vtIdx = findIdx(["valid to"]);
   const descIdx = findIdx(["description"]);
-  const priceIdx = findIdx(["price"]);
+
+  // Base Price / Price
+  const basePriceIdx = findIdx(["base price"]);
+  const priceIdx = basePriceIdx !== -1 ? basePriceIdx : findIdx(["price"]);
+
+  // Season 1
+  const s1VfIdx = findIdx(["s1 valid from", "s1_valid_from", "s1 validfrom"]);
+  const s1VtIdx = findIdx(["s1 valid to", "s1_valid_to", "s1 validto"]);
+  const s1PriceIdx = findIdx(["s1 price", "s1_price", "season 1 price"]);
+  const s1BoPriceIdx = findIdx(["s1 blackout price", "s1_blackout_price", "s1 blackout"]);
+
+  // Season 2
+  const s2VfIdx = findIdx(["s2 valid from", "s2_valid_from", "s2 validfrom"]);
+  const s2VtIdx = findIdx(["s2 valid to", "s2_valid_to", "s2 validto"]);
+  const s2PriceIdx = findIdx(["s2 price", "s2_price", "season 2 price"]);
+  const s2BoPriceIdx = findIdx(["s2 blackout price", "s2_blackout_price", "s2 blackout"]);
 
   let currService = "";
   let currSupplier = "";
@@ -120,11 +133,17 @@ export const processHotelExcel = async (filePath, ownerId) => {
     if (vfIdx !== -1 && row[vfIdx]) currValidFrom = parseExcelDate(row[vfIdx]);
     if (vtIdx !== -1 && row[vtIdx]) currValidTo = parseExcelDate(row[vtIdx]);
 
-    const price = Number(row[priceIdx]);
+    const rawBasePrice = basePriceIdx !== -1 && row[basePriceIdx] !== undefined ? Number(row[basePriceIdx]) : 0;
+    const rawPrice = priceIdx !== -1 && row[priceIdx] !== undefined ? Number(row[priceIdx]) : 0;
+    const s1Price = s1PriceIdx !== -1 ? Number(row[s1PriceIdx]) || 0 : 0;
+    const s2Price = s2PriceIdx !== -1 ? Number(row[s2PriceIdx]) || 0 : 0;
+
+    const basePrice = !isNaN(rawBasePrice) && rawBasePrice > 0 ? rawBasePrice : (!isNaN(rawPrice) && rawPrice > 0 ? rawPrice : 0);
+    const price = basePrice || s1Price || s2Price || 0;
     const roomType = rTypeIdx !== -1 ? String(row[rTypeIdx] || "").trim() : "";
 
     // Skip row if no hotel or no valid price
-    if (!currHotel || isNaN(price) || price <= 0) continue;
+    if (!currHotel || price <= 0) continue;
 
     const serviceKey = currService || currHotel;
     if (!serviceDocsMap.has(serviceKey)) {
@@ -167,6 +186,34 @@ export const processHotelExcel = async (filePath, ownerId) => {
     const cwoebRate = cwoebIdx !== -1 ? Number(row[cwoebIdx]) || 0 : 0;
     const description = descIdx !== -1 ? String(row[descIdx] || "").trim() : "";
 
+    const s1ValidFrom = s1VfIdx !== -1 && row[s1VfIdx] ? parseExcelDate(row[s1VfIdx], null) : null;
+    const s1ValidTo = s1VtIdx !== -1 && row[s1VtIdx] ? parseExcelDate(row[s1VtIdx], null) : null;
+    const s1BlackoutPrice = s1BoPriceIdx !== -1 ? Number(row[s1BoPriceIdx]) || 0 : 0;
+
+    const s2ValidFrom = s2VfIdx !== -1 && row[s2VfIdx] ? parseExcelDate(row[s2VfIdx], null) : null;
+    const s2ValidTo = s2VtIdx !== -1 && row[s2VtIdx] ? parseExcelDate(row[s2VtIdx], null) : null;
+    const s2BlackoutPrice = s2BoPriceIdx !== -1 ? Number(row[s2BoPriceIdx]) || 0 : 0;
+
+    const seasons = [];
+    if (s1Price > 0 || s1ValidFrom || s1ValidTo || s1BlackoutPrice > 0) {
+      seasons.push({
+        seasonName: "S1",
+        validFrom: s1ValidFrom,
+        validTo: s1ValidTo,
+        price: s1Price,
+        blackoutPrice: s1BlackoutPrice,
+      });
+    }
+    if (s2Price > 0 || s2ValidFrom || s2ValidTo || s2BlackoutPrice > 0) {
+      seasons.push({
+        seasonName: "S2",
+        validFrom: s2ValidFrom,
+        validTo: s2ValidTo,
+        price: s2Price,
+        blackoutPrice: s2BlackoutPrice,
+      });
+    }
+
     hotelObj.rooms.push({
       roomType: roomType || "Standard Room",
       roomCategory,
@@ -177,10 +224,12 @@ export const processHotelExcel = async (filePath, ownerId) => {
       childAgeLimit,
       mealPlan,
       price,
+      basePrice,
       awebRate,
       cwebRate,
       cwoebRate,
       description,
+      seasons,
     });
 
     totalRoomsCount++;
@@ -208,3 +257,4 @@ export const processHotelExcel = async (filePath, ownerId) => {
     blackoutDates,
   };
 };
+

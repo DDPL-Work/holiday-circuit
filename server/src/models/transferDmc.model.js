@@ -1,5 +1,31 @@
 import mongoose from "mongoose";
 
+const usageSeasonSchema = new mongoose.Schema(
+  {
+    seasonName: {
+      type: String,
+      default: "S1",
+    },
+    validFrom: {
+      type: Date,
+      default: null,
+    },
+    validTo: {
+      type: Date,
+      default: null,
+    },
+    price: {
+      type: Number,
+      default: 0,
+    },
+    blackoutPrice: {
+      type: Number,
+      default: 0,
+    },
+  },
+  { _id: true }
+);
+
 const usageOptionSchema = new mongoose.Schema(
   {
     name: {
@@ -19,6 +45,8 @@ const usageOptionSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    // Structured Seasons Array (S1, S2, etc.)
+    seasons: [usageSeasonSchema],
   },
   { _id: true }
 );
@@ -115,6 +143,28 @@ const transferSchema = new mongoose.Schema(
     status: {
       type: String,
       default: "active",
+    },
+
+    // Blackout Dates associated with this transport contract
+    blackoutDates: {
+      type: [
+        {
+          rowNumber: { type: Number, default: 0 },
+          blackoutName: { type: String, default: "" },
+          occasion: { type: String, default: "" },
+          rawPeriod: { type: String, default: "" },
+          startDate: { type: Date, default: null },
+          endDate: { type: Date, default: null },
+          startDateKey: { type: String, default: "" },
+          endDateKey: { type: String, default: "" },
+          season: { type: String, default: "" },
+          category: { type: String, default: "" },
+          applicableRegion: { type: String, default: "" },
+          rateAction: { type: String, default: "" },
+          sourceSheet: { type: String, default: "" },
+        },
+      ],
+      default: [],
     },
 
     // Hierarchical Nested Vehicles Array

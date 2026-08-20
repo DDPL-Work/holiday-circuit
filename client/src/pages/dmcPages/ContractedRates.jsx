@@ -1175,15 +1175,19 @@ const tabColorClasses = {
                           {sheetColumns.map((column, colIdx) => {
                             const isDesc =
                               column.isDesc || String(column.label || column.key || "").toLowerCase().includes("desc");
+                            const isDate =
+                              column.isDate ||
+                              /valid\s*from|valid\s*to|start\s*date|end\s*date|date/i.test(String(column.label || column.key || ""));
                             const isNumeric =
-                              column.numeric ||
-                              /rate|price|amount|capacity|count|#|id/i.test(String(column.label || column.key || ""));
+                              !isDate &&
+                              (column.numeric ||
+                              /rate|price|amount|capacity|count|#|id/i.test(String(column.label || column.key || "")));
                             return (
                               <th
                                 key={column.key}
                                 className={`px-3 py-2 font-bold border-r border-slate-700 uppercase tracking-wider bg-[#0f2438] text-white select-none whitespace-nowrap ${
-                                  isNumeric ? "text-right" : "text-left"
-                                } ${isDesc ? "min-w-[340px] max-w-[460px]" : "min-w-[120px]"}`}
+                                  isNumeric ? "text-right" : isDate ? "text-center" : "text-left"
+                                } ${isDesc ? "min-w-[340px] max-w-[460px]" : isDate ? "min-w-[130px]" : "min-w-[120px]"}`}
                               >
                                 {column.label || column.key}
                               </th>
@@ -1243,18 +1247,42 @@ const tabColorClasses = {
                                 }
                                 const isDesc =
                                   column.isDesc || String(column.label || header || "").toLowerCase().includes("desc");
+                                const isDate =
+                                  column.isDate ||
+                                  /valid\s*from|valid\s*to|start\s*date|end\s*date|date/i.test(String(column.label || header || ""));
                                 const isNumeric =
-                                  column.numeric ||
-                                  /rate|price|amount|pax|capacity|count|id|#|no/i.test(String(column.label || header || ""));
+                                  !isDate &&
+                                  (column.numeric ||
+                                  /rate|price|amount|pax|capacity|count|id|#|no/i.test(String(column.label || header || "")));
                                 const isSelected = selectedCell.row === excelRowNumber && selectedCell.col === colIdx;
 
-                                // Format numbers with commas if numeric
-                                const displayValue =
-                                  isNumeric && typeof cellVal === "number" && !isNaN(cellVal)
-                                    ? cellVal.toLocaleString("en-IN")
-                                    : isNumeric && !isNaN(Number(cellVal)) && String(cellVal).trim() !== ""
-                                    ? Number(cellVal).toLocaleString("en-IN")
-                                    : String(cellVal);
+                                // Format cell value: Date vs Numeric vs Text
+                                let displayValue = String(cellVal || "");
+                                if (isDate) {
+                                  if (cellVal instanceof Date && !isNaN(cellVal.getTime())) {
+                                    displayValue = cellVal.toISOString().split("T")[0];
+                                  } else if (typeof cellVal === "string" && /^\d{4}[-/]\d{1,2}[-/]\d{1,2}$/.test(cellVal.trim())) {
+                                    displayValue = cellVal.trim();
+                                  } else {
+                                    const rawNum = typeof cellVal === "number" ? cellVal : (!isNaN(Number(cellVal)) && /^\d{5}$/.test(String(cellVal).trim()) ? Number(cellVal) : null);
+                                    if (rawNum && rawNum > 25569 && rawNum < 60000) {
+                                      const utcDays = rawNum - 25569;
+                                      const d = new Date(utcDays * 86400 * 1000);
+                                      const year = d.getUTCFullYear();
+                                      const month = String(d.getUTCMonth() + 1).padStart(2, "0");
+                                      const day = String(d.getUTCDate()).padStart(2, "0");
+                                      displayValue = `${year}-${month}-${day}`;
+                                    } else if (typeof cellVal === "string") {
+                                      displayValue = cellVal.trim();
+                                    }
+                                  }
+                                } else if (isNumeric) {
+                                  if (typeof cellVal === "number" && !isNaN(cellVal)) {
+                                    displayValue = cellVal.toLocaleString("en-IN");
+                                  } else if (!isNaN(Number(cellVal)) && String(cellVal).trim() !== "") {
+                                    displayValue = Number(cellVal).toLocaleString("en-IN");
+                                  }
+                                }
 
                                 const rowSpan = isMergedGroup && row.groupRowIndex === 0 ? (row.groupRowSpan || 5) : 1;
 
@@ -1263,7 +1291,7 @@ const tabColorClasses = {
                                     key={header}
                                     rowSpan={rowSpan > 1 ? rowSpan : undefined}
                                     onClick={() =>
-                                      handleCellClick(originalIndex, colIdx, header, column.label, cellVal)
+                                      handleCellClick(originalIndex, colIdx, header, column.label, displayValue || cellVal)
                                     }
                                     className={`px-3 py-1.5 border-r border-b border-[#d4d4d4] font-medium transition-colors cursor-cell ${
                                       rowSpan > 1 ? "align-middle bg-white font-semibold" : ""
@@ -1276,6 +1304,8 @@ const tabColorClasses = {
                                         ? "min-w-[340px] max-w-[460px] whitespace-normal break-words py-2 leading-relaxed text-left align-top text-slate-700"
                                         : isNumeric
                                         ? "text-right font-mono text-slate-900 whitespace-nowrap"
+                                        : isDate
+                                        ? "text-center font-mono text-slate-800 whitespace-nowrap"
                                         : "whitespace-nowrap text-slate-800 text-left"
                                     }`}
                                   >

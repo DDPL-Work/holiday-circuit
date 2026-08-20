@@ -1604,18 +1604,26 @@ export const getAllServices = async (req, res, next) => {
       ]),
     );
 
-    const hotelSuppliersMissingBlackouts = [
-      ...new Set(
-        hotels
+    const suppliersMissingBlackouts = [
+      ...new Set([
+        ...hotels
           .filter((hotel) => !Array.isArray(hotel.blackoutDates) || !hotel.blackoutDates.length)
-          .map((hotel) => hotel.supplier?.toString?.())
-          .filter(Boolean),
-      ),
+          .map((hotel) => hotel.supplier?.toString?.()),
+        ...transfers
+          .filter((transfer) => !Array.isArray(transfer.blackoutDates) || !transfer.blackoutDates.length)
+          .map((transfer) => transfer.supplier?.toString?.()),
+        ...dedupedActivities
+          .filter((activity) => !Array.isArray(activity.blackoutDates) || !activity.blackoutDates.length)
+          .map((activity) => activity.supplier?.toString?.()),
+        ...sightseeing
+          .filter((item) => !Array.isArray(item.blackoutDates) || !item.blackoutDates.length)
+          .map((item) => item.supplier?.toString?.()),
+      ].filter(Boolean)),
     ];
 
     const fallbackBlackoutBySupplier = new Map(
       await Promise.all(
-        hotelSuppliersMissingBlackouts.map(async (supplierId) => [
+        suppliersMissingBlackouts.map(async (supplierId) => [
           supplierId,
           await getFallbackBlackoutDatesForSupplier(supplierId),
         ]),
@@ -1708,6 +1716,20 @@ export const getAllServices = async (req, res, next) => {
 
     // 🔹 FORMAT ACTIVITIES
     const activityData = dedupedActivities.map(a => {
+      const resolvedBlackoutDates = Array.isArray(a.blackoutDates) && a.blackoutDates.length
+        ? a.blackoutDates
+        : fallbackBlackoutBySupplier.get(a.supplier?.toString?.() || "") || [];
+      const blackoutMatch = queryContext
+        ? findBlackoutMatch({
+          blackoutDates: resolvedBlackoutDates,
+          travelStart: queryContext.startDate,
+          travelEnd: queryContext.endDate,
+          country: a.country,
+          city: a.city,
+          destination: queryContext.destination,
+        })
+        : null;
+
       const tourTypesList = Array.isArray(a.tourTypes) && a.tourTypes.length > 0 ? a.tourTypes : [];
       const defaultTour = tourTypesList[0] || {};
       const defaultPrice = defaultTour.price !== undefined ? defaultTour.price : (a.adultPrice || a.price || 0);
@@ -1734,18 +1756,48 @@ export const getAllServices = async (req, res, next) => {
         childPrice: a.childPrice || defaultTour.childPrice || 0,
         infantPrice: a.infantPrice || defaultTour.infantPrice || 0,
         currency: a.currency || "INR",
+        operatingDays: a.operatingDays || "Mon-Sun",
+        openingTime: a.openingTime && a.openingTime !== "09:00" ? a.openingTime : (a.openTime || "08:00"),
+        closingTime: a.closingTime || a.closeTime || "18:00",
+        duration: a.duration || a.durationMins || "",
+        slots: a.slots || "",
         tourTypes: tourTypesList,
         tourType: defaultTourType,
         pricingBasis: defaultPricingBasis,
         maxPax: defaultMaxPax,
         validFrom: a.validFrom,
         validTo: a.validTo,
+        blackoutDates: resolvedBlackoutDates,
+        blackout: blackoutMatch
+          ? {
+            isBlackout: true,
+            label: formatBlackoutLabel(blackoutMatch),
+            reason: blackoutMatch.occasion || blackoutMatch.category || "Blackout date",
+            startDate: blackoutMatch.startDateKey,
+            endDate: blackoutMatch.endDateKey,
+            applicableRegion: blackoutMatch.applicableRegion || "",
+          }
+          : { isBlackout: false },
       };
     });
 
 
     //======================== 🔹 FORMAT TRANSFERS =================================
     const transferData = transfers.map(t => {
+      const resolvedBlackoutDates = Array.isArray(t.blackoutDates) && t.blackoutDates.length
+        ? t.blackoutDates
+        : fallbackBlackoutBySupplier.get(t.supplier?.toString?.() || "") || [];
+      const blackoutMatch = queryContext
+        ? findBlackoutMatch({
+          blackoutDates: resolvedBlackoutDates,
+          travelStart: queryContext.startDate,
+          travelEnd: queryContext.endDate,
+          country: t.country,
+          city: t.city,
+          destination: queryContext.destination,
+        })
+        : null;
+
       const vehiclesList = Array.isArray(t.vehicles) && t.vehicles.length > 0 ? t.vehicles : [];
       const defaultVehicle = vehiclesList[0] || {};
       const pointToPoint = defaultVehicle.usageTypes?.pointToPoint || [];
@@ -1792,6 +1844,17 @@ export const getAllServices = async (req, res, next) => {
         halfDayExtraPerKmRate: Number(halfDayItem?.extraPerKmRate || t.halfDayExtraPerKmRate || 0),
         currency: t.currency,
         vehicles: vehiclesList,
+        blackoutDates: resolvedBlackoutDates,
+        blackout: blackoutMatch
+          ? {
+            isBlackout: true,
+            label: formatBlackoutLabel(blackoutMatch),
+            reason: blackoutMatch.occasion || blackoutMatch.category || "Blackout date",
+            startDate: blackoutMatch.startDateKey,
+            endDate: blackoutMatch.endDateKey,
+            applicableRegion: blackoutMatch.applicableRegion || "",
+          }
+          : { isBlackout: false },
         // 🔹 UI HELPER
         subtitle: `${defaultVehicle.vehicleType || t.vehicleType || "Vehicle"} | ${defaultUsage.name || t.usageType || ""}`
       };
@@ -1799,6 +1862,20 @@ export const getAllServices = async (req, res, next) => {
 
     // 🔹 FORMAT SIGHTSEEING
     const sightseeingData = sightseeing.map(s => {
+      const resolvedBlackoutDates = Array.isArray(s.blackoutDates) && s.blackoutDates.length
+        ? s.blackoutDates
+        : fallbackBlackoutBySupplier.get(s.supplier?.toString?.() || "") || [];
+      const blackoutMatch = queryContext
+        ? findBlackoutMatch({
+          blackoutDates: resolvedBlackoutDates,
+          travelStart: queryContext.startDate,
+          travelEnd: queryContext.endDate,
+          country: s.country,
+          city: s.city,
+          destination: queryContext.destination,
+        })
+        : null;
+
       const tourTypesList = Array.isArray(s.tourTypes) && s.tourTypes.length > 0 ? s.tourTypes : [];
       const defaultTour = tourTypesList[0] || {};
       const defaultPrice = defaultTour.price !== undefined ? defaultTour.price : (s.price || 0);
@@ -1822,12 +1899,28 @@ export const getAllServices = async (req, res, next) => {
         description: defaultTour.description || s.description || "",
         city: s.city,
         country: s.country || "",
+        operatingDays: s.operatingDays || "Mon-Sun",
+        openingTime: s.openingTime && s.openingTime !== "09:00" ? s.openingTime : (s.openTime || "08:00"),
+        closingTime: s.closingTime || s.closeTime || "18:00",
+        duration: s.duration || s.durationMins || "",
+        slots: s.slots || "",
         tourTypes: tourTypesList,
         tourType: defaultTourType,
         pricingBasis: defaultPricingBasis,
         maxPax: defaultMaxPax,
         validFrom: s.validFrom,
         validTo: s.validTo,
+        blackoutDates: resolvedBlackoutDates,
+        blackout: blackoutMatch
+          ? {
+            isBlackout: true,
+            label: formatBlackoutLabel(blackoutMatch),
+            reason: blackoutMatch.occasion || blackoutMatch.category || "Blackout date",
+            startDate: blackoutMatch.startDateKey,
+            endDate: blackoutMatch.endDateKey,
+            applicableRegion: blackoutMatch.applicableRegion || "",
+          }
+          : { isBlackout: false },
       };
     });
 

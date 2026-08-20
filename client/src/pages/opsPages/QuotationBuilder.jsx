@@ -3,6 +3,7 @@ import {
   Bell,
   CalendarDays,
   CheckCircle2,
+  Clock,
   Copy,
   Download,
   FileText,
@@ -28,7 +29,6 @@ import API from "../../utils/Api.js";
 import toast from "react-hot-toast";
 import { useNavigate } from "react-router-dom";
 import QuickAddServiceModal from "../../modal/QuickAddServiceModal";
-import PackageTemplate from "./PackageTemplate";
 import { ImLocation2 } from "react-icons/im";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
@@ -639,13 +639,14 @@ const buildWhatsAppHotelMeta = (service = {}, fallbackPax = 0) => {
 
   items.forEach((service) => {
   const quantityLabel = service?.quantityLabel ? ` _(${service.quantityLabel})_` : "";
+  const timeLabel = (service?.pickupTime || service?.time) ? ` [${service.pickupTime || service.time}]` : "";
   const description =
   service?.description &&
   String(service.description).trim().toLowerCase() !== String(service.title || "").trim().toLowerCase()
   ? ` - ${service.description}`
   : "";
 
-  lines.push(`• ${service?.title || "Service"}${description}${quantityLabel}`);
+  lines.push(`• ${service?.title || "Service"}${timeLabel}${description}${quantityLabel}`);
   });
 
   lines.push("");
@@ -1588,9 +1589,190 @@ const buildWhatsAppTermsSection = (items = []) => {
   };
 
 
-const getTransportVehicleUsagePrices = (vehicle = {}, service = {}) => {
+const normalizeDateOnlyString = (value) => {
+  if (!value) return "";
+  const text = String(value || "").trim();
+  if (!text) return "";
+  const parsed = new Date(text);
+  if (Number.isNaN(parsed.getTime())) return text.slice(0, 10);
+  return parsed.toISOString().slice(0, 10);
+};
+
+const isDateInRange = (targetDate, fromVal, toVal) => {
+  if (!targetDate || !fromVal || !toVal) return false;
+  const target = normalizeDateOnlyString(targetDate);
+  const from = normalizeDateOnlyString(fromVal);
+  const to = normalizeDateOnlyString(toVal);
+  if (!target || !from || !to) return false;
+  return target >= from && target <= to;
+};
+
+const checkBlackoutMatch = (blackoutDates = [], targetDate = "") => {
+  if (!targetDate || !Array.isArray(blackoutDates) || !blackoutDates.length) return null;
+  const target = normalizeDateOnlyString(targetDate);
+  if (!target) return null;
+  return (
+    blackoutDates.find((b) => {
+      const bStart = normalizeDateOnlyString(b.startDate || b.startDateKey || b.rawPeriod);
+      const bEnd = normalizeDateOnlyString(b.endDate || b.endDateKey || b.startDate || b.startDateKey);
+      if (!bStart || !bEnd) return false;
+      return target >= bStart && target <= bEnd;
+    }) || null
+  );
+};
+
+const resolveSmartSeasonAndBlackoutPrice = (basePrice = 0, seasons = [], blackoutDates = [], targetDate = "") => {
+  const defaultRate = Number(basePrice || 0);
+  const matchedBlackout = checkBlackoutMatch(blackoutDates, targetDate);
+
+  if (!targetDate || !Array.isArray(seasons) || !seasons.length) {
+    return {
+      rate: defaultRate,
+      tier: matchedBlackout ? "Blackout (Base Rate)" : "Base Rate",
+      seasonName: null,
+      isBlackout: Boolean(matchedBlackout),
+      blackoutLabel: matchedBlackout ? (matchedBlackout.blackoutName || matchedBlackout.occasion || "Blackout Event") : "",
+      appliedPricingType: "base",
+    };
+  }
+
+  const matchedSeason = seasons.find((s) => isDateInRange(targetDate, s.validFrom, s.validTo));
+
+  if (matchedSeason) {
+    const sName = String(matchedSeason.seasonName || "Season").toUpperCase();
+    const sNormalPrice = Number(matchedSeason.price || 0);
+    const sBlackoutPrice = Number(matchedSeason.blackoutPrice || 0);
+
+    if (matchedBlackout) {
+      const effectiveBlackoutRate = sBlackoutPrice > 0 ? sBlackoutPrice : (sNormalPrice > 0 ? sNormalPrice : defaultRate);
+      return {
+        rate: effectiveBlackoutRate,
+        tier: `${sName} Blackout`,
+        seasonName: sName,
+        isBlackout: true,
+        blackoutLabel: matchedBlackout.blackoutName || matchedBlackout.occasion || `${sName} Blackout Event`,
+        appliedPricingType: "season_blackout",
+      };
+    }
+
+    const effectiveSeasonRate = sNormalPrice > 0 ? sNormalPrice : defaultRate;
+    return {
+      rate: effectiveSeasonRate,
+      tier: `${sName} Rate`,
+      seasonName: sName,
+      isBlackout: false,
+      blackoutLabel: "",
+      appliedPricingType: "season_normal",
+    };
+  }
+
+  if (matchedBlackout) {
+    return {
+      rate: defaultRate,
+      tier: "Blackout (Standard Rate)",
+      seasonName: null,
+      isBlackout: true,
+      blackoutLabel: matchedBlackout.blackoutName || matchedBlackout.occasion || "Blackout Event",
+      appliedPricingType: "base_blackout",
+    };
+  }
+
+  return {
+    rate: defaultRate,
+    tier: "Standard Rate",
+    seasonName: null,
+    isBlackout: false,
+    blackoutLabel: "",
+    appliedPricingType: "base",
+  };
+};
+
+const resolveHotelSmartRate = (service = {}, targetDate = "") => {
+  const hotelsList = Array.isArray(service.hotels) ? service.hotels : [];
+  const selectedHotel = hotelsList.find((h) => h.hotelName === service.hotelName) || hotelsList[0] || {};
+  const roomsList = Array.isArray(selectedHotel.rooms) ? selectedHotel.rooms : [];
+  const matchedRoom =
+    roomsList.find(
+      (r) =>
+        normalizeComparisonTextValue(r.roomType) === normalizeComparisonTextValue(service.roomType) &&
+        normalizeComparisonTextValue(r.roomCategory) === normalizeComparisonTextValue(service.roomCategory)
+    ) ||
+    roomsList.find((r) => normalizeComparisonTextValue(r.roomType) === normalizeComparisonTextValue(service.roomType)) ||
+    roomsList.find((r) => normalizeComparisonTextValue(r.roomCategory) === normalizeComparisonTextValue(service.roomCategory)) ||
+    roomsList[0] ||
+    {};
+
+  const basePrice = matchedRoom.price !== undefined ? Number(matchedRoom.price) : Number(service.price || service.rate || 0);
+  const seasons = Array.isArray(matchedRoom.seasons) ? matchedRoom.seasons : [];
+  const blackoutDates = Array.isArray(service.blackoutDates) ? service.blackoutDates : [];
+
+  return resolveSmartSeasonAndBlackoutPrice(basePrice, seasons, blackoutDates, targetDate);
+};
+
+const resolveTransportSmartRate = (service = {}, targetDate = "") => {
+  const vehiclesList = Array.isArray(service.vehicles) ? service.vehicles : [];
+  const selectedVehicle =
+    vehiclesList.find(
+      (v) => normalizeComparisonTextValue(v.vehicleType) === normalizeComparisonTextValue(service.vehicleType)
+    ) || vehiclesList[0] || {};
+  const pointToPoint = selectedVehicle.usageTypes?.pointToPoint || [];
+  const hourly = selectedVehicle.usageTypes?.hourly || [];
+  const allOptions = [...pointToPoint, ...hourly];
+
+  const usageKey = service.transportUsageOptionKey || "one-way-airport-transfer";
+  let matchedOption = null;
+  if (usageKey === "one-way-airport-transfer") {
+    matchedOption = pointToPoint.find((p) => /one\s*way|airport/i.test(p.name || p.usageType || "")) || pointToPoint[0];
+  } else if (usageKey === "inter-hotel-transfer") {
+    matchedOption = pointToPoint.find((p) => /inter\s*hotel/i.test(p.name || p.usageType || "")) || pointToPoint[1];
+  } else if (usageKey === "full-day") {
+    matchedOption = hourly.find((h) => /full/i.test(h.name || h.usageType || "")) || hourly[0];
+  } else if (usageKey === "half-day") {
+    matchedOption = hourly.find((h) => /half/i.test(h.name || h.usageType || "")) || hourly[1];
+  }
+  if (!matchedOption) {
+    matchedOption = allOptions[0] || {};
+  }
+
+  const basePrice = matchedOption.price !== undefined ? Number(matchedOption.price) : Number(service.price || service.rate || 0);
+  const seasons = Array.isArray(matchedOption.seasons) ? matchedOption.seasons : [];
+  const blackoutDates = Array.isArray(service.blackoutDates) ? service.blackoutDates : [];
+
+  return resolveSmartSeasonAndBlackoutPrice(basePrice, seasons, blackoutDates, targetDate);
+};
+
+const resolveActivitySmartRate = (service = {}, targetDate = "", tourTypeName = "") => {
+  const tourList = Array.isArray(service.tourTypes) ? service.tourTypes : [];
+  const selectedTour = tourList.find((t) => t.tourType === (tourTypeName || service.tourType)) || tourList[0] || {};
+  const basePrice = selectedTour.adultPrice !== undefined ? Number(selectedTour.adultPrice) : (selectedTour.price !== undefined ? Number(selectedTour.price) : Number(service.price || service.rate || 0));
+  const childPrice = selectedTour.childPrice !== undefined ? Number(selectedTour.childPrice) : Number(service.childPrice || 0);
+  const seasons = Array.isArray(selectedTour.seasons) ? selectedTour.seasons : [];
+  const blackoutDates = Array.isArray(service.blackoutDates) ? service.blackoutDates : [];
+
+  const smartAdult = resolveSmartSeasonAndBlackoutPrice(basePrice, seasons, blackoutDates, targetDate);
+  const matchedSeason = seasons.find((s) => isDateInRange(targetDate, s.validFrom, s.validTo));
+  const matchedBlackout = checkBlackoutMatch(blackoutDates, targetDate);
+  let resolvedChildPrice = childPrice;
+  if (matchedSeason) {
+    if (matchedBlackout && matchedSeason.childBlackoutPrice > 0) {
+      resolvedChildPrice = matchedSeason.childBlackoutPrice;
+    } else if (matchedSeason.childPrice > 0) {
+      resolvedChildPrice = matchedSeason.childPrice;
+    }
+  }
+
+  return {
+    ...smartAdult,
+    adultPrice: smartAdult.rate,
+    childPrice: resolvedChildPrice,
+  };
+};
+
+const getTransportVehicleUsagePrices = (vehicle = {}, service = {}, targetDate = "") => {
   const pointToPoint = vehicle?.usageTypes?.pointToPoint || [];
   const hourly = vehicle?.usageTypes?.hourly || [];
+  const dateToUse = targetDate || service?.serviceDate || "";
+  const blackoutDates = Array.isArray(service?.blackoutDates) ? service.blackoutDates : [];
 
   const oneWay =
     pointToPoint.find((p) =>
@@ -1616,10 +1798,15 @@ const getTransportVehicleUsagePrices = (vehicle = {}, service = {}) => {
 
   const defaultPrice = Number(service?.price || service?.rate || 0);
 
-  const oneWayPrice = Number(oneWay?.price !== undefined ? oneWay.price : defaultPrice);
-  const interHotelPrice = Number(interHotel?.price !== undefined ? interHotel.price : defaultPrice);
-  const fullDayPrice = Number(fullDay?.price !== undefined ? fullDay.price : defaultPrice);
-  const halfDayPrice = Number(halfDay?.price !== undefined ? halfDay.price : defaultPrice);
+  const oneWayBase = Number(oneWay?.price !== undefined ? oneWay.price : defaultPrice);
+  const interHotelBase = Number(interHotel?.price !== undefined ? interHotel.price : defaultPrice);
+  const fullDayBase = Number(fullDay?.price !== undefined ? fullDay.price : defaultPrice);
+  const halfDayBase = Number(halfDay?.price !== undefined ? halfDay.price : defaultPrice);
+
+  const oneWaySmart = resolveSmartSeasonAndBlackoutPrice(oneWayBase, oneWay?.seasons, blackoutDates, dateToUse);
+  const interHotelSmart = resolveSmartSeasonAndBlackoutPrice(interHotelBase, interHotel?.seasons, blackoutDates, dateToUse);
+  const fullDaySmart = resolveSmartSeasonAndBlackoutPrice(fullDayBase, fullDay?.seasons, blackoutDates, dateToUse);
+  const halfDaySmart = resolveSmartSeasonAndBlackoutPrice(halfDayBase, halfDay?.seasons, blackoutDates, dateToUse);
 
   const fullDayExtraPerKmRate = Number(
     fullDay?.extraPerKmRate !== undefined
@@ -1633,12 +1820,16 @@ const getTransportVehicleUsagePrices = (vehicle = {}, service = {}) => {
   );
 
   return {
-    "one-way-airport-transfer": oneWayPrice,
-    "inter-hotel-transfer": interHotelPrice,
-    "full-day": fullDayPrice,
-    "half-day": halfDayPrice,
+    "one-way-airport-transfer": oneWaySmart.rate,
+    "inter-hotel-transfer": interHotelSmart.rate,
+    "full-day": fullDaySmart.rate,
+    "half-day": halfDaySmart.rate,
     fullDayExtraPerKmRate,
     halfDayExtraPerKmRate,
+    oneWayTier: oneWaySmart.tier,
+    interHotelTier: interHotelSmart.tier,
+    fullDayTier: fullDaySmart.tier,
+    halfDayTier: halfDaySmart.tier,
   };
 };
 
@@ -1686,7 +1877,7 @@ const getTransportVehicleOptions = (services = [], service = {}) => {
   ];
 };
 
-const resolveTransportVehicleSelection = (services = [], service = {}, nextVehicleType = "") => {
+const resolveTransportVehicleSelection = (services = [], service = {}, nextVehicleType = "", targetDate = "") => {
   const vehiclesList = Array.isArray(service.vehicles) && service.vehicles.length > 0 ? service.vehicles : [];
   let matchedVehicle =
     vehiclesList.find(
@@ -1720,7 +1911,8 @@ const resolveTransportVehicleSelection = (services = [], service = {}, nextVehic
     }
   }
 
-  const usagePrices = getTransportVehicleUsagePrices(matchedVehicle || {}, service);
+  const dateToUse = targetDate || service.serviceDate || "";
+  const usagePrices = getTransportVehicleUsagePrices(matchedVehicle || {}, service, dateToUse);
   const currentUsageKey = getTransportUsageOptionKey(service) || "one-way-airport-transfer";
   const nextPrice =
     usagePrices[currentUsageKey] !== undefined
@@ -1738,6 +1930,14 @@ const resolveTransportVehicleSelection = (services = [], service = {}, nextVehic
       : service.luggageCapacity || 2;
 
   const nextDescription = matchedVehicle?.description || service.description || "";
+  const tierKey =
+    currentUsageKey === "full-day"
+      ? usagePrices.fullDayTier
+      : currentUsageKey === "half-day"
+      ? usagePrices.halfDayTier
+      : currentUsageKey === "inter-hotel-transfer"
+      ? usagePrices.interHotelTier
+      : usagePrices.oneWayTier;
 
   return {
     ...service,
@@ -1748,20 +1948,18 @@ const resolveTransportVehicleSelection = (services = [], service = {}, nextVehic
     transportUsagePrices: usagePrices,
     fullDayExtraPerKmRate: usagePrices.fullDayExtraPerKmRate,
     halfDayExtraPerKmRate: usagePrices.halfDayExtraPerKmRate,
+    rate: nextPrice,
+    price: nextPrice,
+    quoteBaseRate: nextPrice,
+    pricingTier: tierKey || "Standard Rate",
     extraPerKmRate:
       currentUsageKey === "full-day"
         ? usagePrices.fullDayExtraPerKmRate
         : currentUsageKey === "half-day"
         ? usagePrices.halfDayExtraPerKmRate
         : 0,
-    rate: nextPrice,
-    price: nextPrice,
-    quoteBaseRate: nextPrice,
     useStoredPricing: false,
     manualRateOverride: true,
-    originalTotal: 0,
-    totalInInr: 0,
-    priceInInr: 0,
   };
 };
 
@@ -2295,7 +2493,10 @@ const scoreHotelVariantMatch = (variant = {}, nextService = {}, changedField = "
       hotelDocRooms[0];
 
     if (matchedRoom) {
-      const nextPrice = matchedRoom.price !== undefined ? Number(matchedRoom.price) : Number(service.price || service.rate || 0);
+      const baseRoomPrice = matchedRoom.price !== undefined ? Number(matchedRoom.price) : Number(service.price || service.rate || 0);
+      const targetDate = service.serviceDate || formatDateInput(order?.startDate);
+      const smart = resolveSmartSeasonAndBlackoutPrice(baseRoomPrice, matchedRoom.seasons, service.blackoutDates, targetDate);
+      const nextPrice = smart.rate;
       const occupancy = getInferredHotelMaxOccupancy(matchedRoom, {
         ...service,
         roomType: matchedRoom.roomType || targetRoomType || service.roomType,
@@ -2322,6 +2523,8 @@ const scoreHotelVariantMatch = (variant = {}, nextService = {}, changedField = "
         price: nextPrice,
         quoteBaseRate: nextPrice,
         roomTypeOptionRate: nextPrice,
+        pricingTier: smart.tier || "Standard Rate",
+        blackout: smart.isBlackout ? { isBlackout: true, label: smart.blackoutLabel } : { isBlackout: false },
         awebRate: Number(matchedRoom.awebRate || 0),
         cwebRate: Number(matchedRoom.cwebRate || 0),
         cwoebRate: Number(matchedRoom.cwoebRate || 0),
@@ -2631,13 +2834,15 @@ const scoreHotelVariantMatch = (variant = {}, nextService = {}, changedField = "
     }
 
     if (normalizedType === "activity" || normalizedType === "sightseeing") {
-      const basis = String(service?.pricingBasis || "").toLowerCase();
-      const tourType = String(service?.tourType || "").toLowerCase();
-      const isPerGroup = (basis.includes("group") && !basis.includes("pax")) || /private|premium|vip/i.test(tourType);
-      if (isPerGroup) {
-        return roundCurrencyAmount(Number(service?.rate || service?.price || 0));
+      const adultPrice = Number(service?.adultPrice !== undefined ? service.adultPrice : (service?.rate ?? service?.price ?? 0));
+      const childPrice = Number(service?.childPrice || 0);
+      const adultCount = Number(service?.adults !== undefined ? service.adults : (service?.pax || 1));
+      const childCount = Number(service?.children || 0);
+
+      if (childCount > 0 && childPrice > 0) {
+        return roundCurrencyAmount((adultPrice * adultCount) + (childPrice * childCount));
       }
-      return roundCurrencyAmount(Number(service?.rate || service?.price || 0) * Math.max(Number(service?.pax || 1), 1));
+      return roundCurrencyAmount(adultPrice * adultCount);
     }
 
     return roundCurrencyAmount(Number(service?.rate || 0));
@@ -3344,7 +3549,9 @@ const scoreHotelVariantMatch = (variant = {}, nextService = {}, changedField = "
       open: false,
       serviceId: "",
       serviceTitle: "",
+      vehicleType: "",
       passengerCapacity: 0,
+      luggageCapacity: 0,
       passengerCount: 0,
       });
       const [preparingFinanceInvoice, setPreparingFinanceInvoice] = useState(false);
@@ -3938,6 +4145,14 @@ setDraftValidTill("");
         tourTypes: Array.isArray(service.tourTypes) ? service.tourTypes : [],
         pricingBasis: service.pricingBasis || service.tourTypes?.[0]?.pricingBasis || (String(service.tourType || "").toLowerCase().includes("group") && !String(service.tourType || "").toLowerCase().includes("per group") ? "Per Pax" : "Per Group"),
         maxPax: service.maxPax || service.tourTypes?.[0]?.maxPax || (String(service.tourType || "").toLowerCase().includes("group") && !String(service.tourType || "").toLowerCase().includes("per group") ? "N/A (Shared Group)" : String(service.tourType || "").toLowerCase().includes("vip") ? "Up to 6 Pax" : "Up to 4 Pax"),
+        operatingDays: service.operatingDays || overrides.operatingDays || "Mon-Sun",
+        openingTime: service.openingTime || overrides.openingTime || "08:00",
+        closingTime: service.closingTime || overrides.closingTime || "18:00",
+        duration: service.duration || overrides.duration || "",
+        slots: service.slots || overrides.slots || "",
+        selectedSlot: service.selectedSlot || overrides.selectedSlot || "",
+        adultPrice: Number(service.adultPrice !== undefined ? service.adultPrice : (service.price || quoteBaseRate || 0)),
+        childPrice: Number(service.childPrice !== undefined ? service.childPrice : 0),
         roomCategory: resolvedRoomCategory,
         roomType: resolvedRoomType,
         hotelCategory: service.hotelCategory || "",
@@ -4207,6 +4422,16 @@ setDraftValidTill("");
       roomType: draftMappedService.roomType || service.roomType,
       roomCategory: draftMappedService.roomCategory || service.roomCategory,
       bedType: draftMappedService.bedType || service.bedType,
+      operatingDays: draftMappedService.operatingDays || service.operatingDays || "Mon-Sun",
+      openingTime: draftMappedService.openingTime || service.openingTime || "08:00",
+      closingTime: draftMappedService.closingTime || service.closingTime || "18:00",
+      duration: draftMappedService.duration || service.duration || "",
+      slots: draftMappedService.slots || service.slots || "",
+      selectedSlot: draftMappedService.selectedSlot || service.selectedSlot || "",
+      adultPrice: draftMappedService.adultPrice !== undefined ? draftMappedService.adultPrice : service.adultPrice,
+      childPrice: draftMappedService.childPrice !== undefined ? draftMappedService.childPrice : service.childPrice,
+      tourType: draftMappedService.tourType || service.tourType,
+      tourTypes: Array.isArray(draftMappedService.tourTypes) && draftMappedService.tourTypes.length ? draftMappedService.tourTypes : (service.tourTypes || []),
       useStoredPricing: true,
       originalTotal: sourceStoredTotal || draftMappedService.originalTotal || draftMappedService.total || draftMappedService.rate,
       totalInInr: shouldRefreshLiveDraftRate ? sourceStoredTotal : draftMappedService.totalInInr || 0,
@@ -4538,6 +4763,27 @@ setDraftValidTill("");
       { ...s, type: s.type, roomType: resolvedRoomType, roomCategory: resolvedRoomCategory },
       s.price || 0,
       );
+      const smart =
+        normalizedServiceType === "hotel"
+          ? resolveHotelSmartRate(
+              { ...s, type: s.type, roomType: resolvedRoomType, roomCategory: resolvedRoomCategory },
+              s.serviceDate || formatDateInput(order?.startDate)
+            )
+          : normalizedServiceType === "transfer" || normalizedServiceType === "car"
+          ? resolveTransportSmartRate(s, s.serviceDate || formatDateInput(order?.startDate))
+          : normalizedServiceType === "activity" || normalizedServiceType === "sightseeing"
+          ? resolveActivitySmartRate(s, s.serviceDate || formatDateInput(order?.startDate))
+          : { rate: s.price || 0, tier: "Standard Rate", isBlackout: false, blackoutLabel: "" };
+
+      const finalRate = smart.rate > 0 ? smart.rate : resolvedRate;
+      const initialUsagePrices =
+        normalizedServiceType === "transfer" || normalizedServiceType === "car"
+          ? getTransportVehicleUsagePrices(
+              (s.vehicles || []).find(v => normalizeComparisonTextValue(v.vehicleType) === normalizeComparisonTextValue(s.vehicleType)) || {},
+              s,
+              s.serviceDate || formatDateInput(order?.startDate)
+            )
+          : s.transportUsagePrices || {};
       const contractedFullServiceAmount = roundCurrencyAmount(
       Number(s.quoteBaseRate || 0) ||
       Number(s.originalTotal || 0) ||
@@ -4546,7 +4792,10 @@ setDraftValidTill("");
       const useContractedServiceTotal =
       normalizedServiceType === "hotel" &&
       contractedFullServiceAmount > 0 &&
-      contractedFullServiceAmount !== resolvedRate;
+      contractedFullServiceAmount !== finalRate;
+      const defaultTour = Array.isArray(s.tourTypes) && s.tourTypes.length > 0 ? s.tourTypes[0] : {};
+      const resolvedAdultPrice = Number(s.adultPrice !== undefined ? s.adultPrice : (defaultTour.adultPrice !== undefined ? defaultTour.adultPrice : (defaultTour.price || s.price || finalRate)));
+      const resolvedChildPrice = Number(s.childPrice !== undefined ? s.childPrice : (defaultTour.childPrice !== undefined ? defaultTour.childPrice : 0));
       return {
       id: s.id,
       serviceId: s.id,
@@ -4566,7 +4815,7 @@ setDraftValidTill("");
       vehicles: Array.isArray(s.vehicles) ? s.vehicles : [],
       fullDayNote: s.fullDayNote || "",
       halfDayNote: s.halfDayNote || "",
-      transportUsagePrices: s.transportUsagePrices || {},
+      transportUsagePrices: initialUsagePrices,
       usageType: s.usageType || "",
       transportUsageOptionKey: s.transportUsageOptionKey || "",
       transportUsageLabel: s.transportUsageLabel || "",
@@ -4576,10 +4825,23 @@ setDraftValidTill("");
       halfDayExtraPerKmRate: Number(s.halfDayExtraPerKmRate || 0),
       passengerCapacity: s.passengerCapacity || 0,
       luggageCapacity: s.luggageCapacity || 0,
-      rate: useContractedServiceTotal ? contractedFullServiceAmount : resolvedRate,
-      quoteBaseRate: useContractedServiceTotal ? contractedFullServiceAmount : 0,
-      roomTypeOptionRate: roundCurrencyAmount(s.roomTypeOptionRate ?? s.price ?? resolvedRate ?? 0),
+      rate: useContractedServiceTotal ? contractedFullServiceAmount : finalRate,
+      quoteBaseRate: useContractedServiceTotal ? contractedFullServiceAmount : finalRate,
+      roomTypeOptionRate: roundCurrencyAmount(s.roomTypeOptionRate ?? finalRate ?? 0),
       roomTypeOptionCurrency: normalizeCurrencyCode(s.roomTypeOptionCurrency || s.currency || "INR"),
+      pricingTier: smart.tier || "Standard Rate",
+      blackoutDates: Array.isArray(s.blackoutDates) ? s.blackoutDates : [],
+      blackout: smart.isBlackout
+        ? { isBlackout: true, label: smart.blackoutLabel }
+        : s.blackout || { isBlackout: false },
+      operatingDays: s.operatingDays || "Mon-Sun",
+      openingTime: s.openingTime || "08:00",
+      closingTime: s.closingTime || "18:00",
+      duration: s.duration || "",
+      slots: s.slots || "",
+      selectedSlot: s.selectedSlot || (String(s.slots || "").split(",")[0]?.trim()) || s.openingTime || "08:00",
+      adultPrice: resolvedAdultPrice,
+      childPrice: resolvedChildPrice,
       // 🔥 ADD THIS
       awebRate: s.awebRate || 0,
       cwebRate: s.cwebRate || 0,
@@ -4589,26 +4851,20 @@ setDraftValidTill("");
       nights: "",
       days: 1,
       pax: defaultServicePax,
-      tourType: s.tourType || s.tourTypes?.[0]?.tourType || "Group Tour",
+      tourType: s.tourType || defaultTour.tourType || "Sharing Tour",
       tourTypes: Array.isArray(s.tourTypes) ? s.tourTypes : [],
-      pricingBasis: s.pricingBasis || s.tourTypes?.[0]?.pricingBasis || (String(s.tourType || "").toLowerCase().includes("group") && !String(s.tourType || "").toLowerCase().includes("per group") ? "Per Pax" : "Per Group"),
-      maxPax: s.maxPax || s.tourTypes?.[0]?.maxPax || (String(s.tourType || "").toLowerCase().includes("group") && !String(s.tourType || "").toLowerCase().includes("per group") ? "N/A (Shared Group)" : String(s.tourType || "").toLowerCase().includes("vip") ? "Up to 6 Pax" : "Up to 4 Pax"),
-      // ================== ADD THIS ==================
       roomCategory: resolvedRoomCategory,
       roomType: resolvedRoomType,
       hotelCategory: s.hotelCategory,
       bedType: normalizeBedTypeValue(s.bedType) || "double-bed",
-      adults: 2,
-      children: 0,
+      adults: Number(order?.numberOfAdults || 2),
+      children: Number(order?.numberOfChildren || 0),
       infants: 0,
       rooms: s.rooms || 1,
       extraAdult: false,
       childWithBed: false,
-      childWithoutBed: false,
       hotelRateMode: useContractedServiceTotal ? "service-total" : "unit-rate",
       originalTotal: useContractedServiceTotal ? contractedFullServiceAmount : 0,
-      blackoutDates: Array.isArray(s.blackoutDates) ? s.blackoutDates : [],
-      blackout: s.blackout || { isBlackout: false },
       editBaseline: buildServiceEditBaseline({
       ...s,
       price: s.price || 0,
@@ -4910,6 +5166,16 @@ return true;
       nights: data.nights || "",
       days: data.days || 1,
       pax: data.pax || 1,
+      operatingDays: data.operatingDays || "Mon-Sun",
+      openingTime: data.openingTime || "08:00",
+      closingTime: data.closingTime || "18:00",
+      duration: data.duration || "",
+      slots: data.slots || "",
+      selectedSlot: data.selectedSlot || "",
+      tourType: data.tourType || "Group Tour",
+      tourTypes: Array.isArray(data.tourTypes) ? data.tourTypes : [],
+      adultPrice: data.adultPrice || data.rate || 0,
+      childPrice: data.childPrice || 0,
       vehicleType: data.vehicleType || "",
       usageType: data.usageType || "point-to-point",
       transportUsageOptionKey: data.transportUsageOptionKey || getTransportUsageOptionKey(data),
@@ -4987,6 +5253,16 @@ return true;
       nights: s.nights || "",
       days: s.days || 1,
       pax: s.pax || 1,
+      operatingDays: s.operatingDays || data.operatingDays || "Mon-Sun",
+      openingTime: s.openingTime || data.openingTime || "08:00",
+      closingTime: s.closingTime || data.closingTime || "18:00",
+      duration: s.duration || data.duration || "",
+      slots: s.slots || data.slots || "",
+      selectedSlot: s.selectedSlot || data.selectedSlot || "",
+      tourType: s.tourType || data.tourType || "Group Tour",
+      tourTypes: Array.isArray(s.tourTypes) && s.tourTypes.length ? s.tourTypes : (data.tourTypes || []),
+      adultPrice: s.adultPrice !== undefined ? s.adultPrice : (data.adultPrice || s.price || 0),
+      childPrice: s.childPrice !== undefined ? s.childPrice : (data.childPrice || 0),
       adults: s.adults || 0,
       children: s.children || 0,
       infants: s.infants || 0,
@@ -5468,6 +5744,8 @@ return true;
       usageType: service?.usageType || "",
       vehicleType: service?.vehicleType || "",
       passengerCapacity: Number(service?.passengerCapacity || 0),
+      pickupTime: service?.pickupTime || service?.time || "",
+      time: service?.pickupTime || service?.time || "",
       };
       }),
       };
@@ -5903,76 +6181,51 @@ const targetService = services.find((service) => service.id === id);
 const normalizedTargetType = normalizeServiceFilterType(targetService?.type);
 const nextChecked = !targetService?.checked;
 const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
-const canOverrideBlackoutRate = (() => {
-try {
-const values = [];
-for (let index = 0; index < window.localStorage.length; index += 1) {
-const key = window.localStorage.key(index);
-if (key) values.push(window.localStorage.getItem(key));
-}
-const pageRoleText = String(document?.body?.innerText || "").toLowerCase();
-if (pageRoleText.includes("ops manager") || pageRoleText.includes("operation manager")) {
-return true;
-}
-for (const value of values) {
-const parsed = JSON.parse(value || "null");
-const roleText = JSON.stringify(parsed || {}).toLowerCase();
-if (
-roleText.includes("operation_manager") ||
-roleText.includes("operations_manager") ||
-roleText.includes("ops_manager") ||
-roleText.includes("ops manager") ||
-roleText.includes("operation manager") ||
-roleText.includes("\"role\":\"admin\"")
-        ) {
-          return true;
-        }
-      }
-    } catch {
-      return false;
-    }
-    return false;
-  })();
 
-  if (!force && nextChecked && targetService?.blackout?.isBlackout) {
-    if (!canOverrideBlackoutRate) {
-      toast.error(
-        `Contract rate blocked for blackout date: ${targetService.blackout.label || targetService.blackout.reason || "Blackout date"}. Use manual/special pricing.`,
-        {
-          id: `blackout-rate-${id}`,
-        }
-      );
-      return;
-    } else {
-      toast(
-        `Contract rate override applied for blackout date: ${targetService.blackout.label || targetService.blackout.reason || "Blackout date"}. Confirm DMC special price, update the rate, then send.`,
-        {
-          id: `blackout-rate-${id}`,
-          icon: "⚠️",
-          style: {
-            border: "1px solid rgba(245, 158, 11, 0.25)",
-            boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.45), 0 8px 10px -6px rgba(0, 0, 0, 0.45), 0 0 15px rgba(245, 158, 11, 0.08), inset 0 1px 0 0 rgba(255, 255, 255, 0.1)",
-          }
-        }
-      );
-    }
-  }
       if (
       !force &&
       nextChecked &&
       (normalizedTargetType === "transfer" || normalizedTargetType === "car") &&
       servicePassengerCapacity > 0 &&
       totalPassengers > 0 &&
-      servicePassengerCapacity > totalPassengers
+      (servicePassengerCapacity < totalPassengers || (totalPassengers <= 4 && servicePassengerCapacity >= 6))
       ) {
       setTransportSelectionConfirm({
       open: true,
       serviceId: id,
       serviceTitle: targetService?.title || "Selected transport service",
+      vehicleType: targetService?.vehicleType || "Vehicle",
       passengerCapacity: servicePassengerCapacity,
+      luggageCapacity: Number(targetService?.luggageCapacity || (servicePassengerCapacity >= 6 ? 4 : 2)),
       passengerCount: totalPassengers,
       });
       return;
+      }
+
+      if (normalizedTargetType === "hotel" && nextChecked && totalPassengers > 0) {
+        const occupancy = getInferredHotelMaxOccupancy(
+          (targetService?.hotels?.[0]?.rooms?.[0]) || {},
+          targetService || {}
+        );
+        const maxAdultsPerRoom = Number(occupancy.maxAdults || targetService?.maxAdults || 2);
+        const currentRooms = Math.max(1, Number(targetService?.rooms || 1));
+        const totalCap = currentRooms * (maxAdultsPerRoom + (targetService?.extraAdult ? 1 : 0));
+        const neededRooms = Math.max(1, Math.ceil(totalPassengers / maxAdultsPerRoom));
+
+        if (totalPassengers > totalCap) {
+          toast(
+            `Room Suggestion: For ${totalPassengers} passengers, ${neededRooms} rooms are recommended based on ${targetService?.roomCategory || targetService?.roomType || "room"} capacity (${maxAdultsPerRoom} Pax/room). Currently ${currentRooms} room selected.`,
+            {
+              id: `hotel-pax-suggest-${id}`,
+              duration: 5500,
+              style: {
+                border: "1px solid rgba(250, 204, 21, 0.4)",
+                background: "#141414",
+                color: "#fef08a",
+              },
+            }
+          );
+        }
       }
 
       if (
@@ -6013,16 +6266,7 @@ roleText.includes("\"role\":\"admin\"")
       ...service,
       checked: true,
       useStoredPricing: service.useStoredPricing,
-      blackout: service.blackout?.isBlackout && canOverrideBlackoutRate
-      ? { ...service.blackout, isBlackout: false, wasBlackout: true, overrideApproved: true }
-      : service.blackout,
-      blackoutOverride: service.blackout?.isBlackout && canOverrideBlackoutRate
-      ? {
-      approved: true,
-      source: "ops_manager_special_rate",
-      reason: service.blackout.label || service.blackout.reason || "Blackout date special pricing",
-      }
-      : service.blackoutOverride,
+      blackout: service.blackout,
       serviceDate:
       service.serviceDate || getHotelDefaultStartDate(prev, id),
       nights: "",
@@ -6150,26 +6394,51 @@ roleText.includes("\"role\":\"admin\"")
       service.type === "hotel" &&
       ["roomCategory", "roomType", "bedType", "extraBedType"].includes(field)
       ) {
-      return resolveHotelVariantSelection(prev, service, field, value);
+        const resolved = resolveHotelVariantSelection(prev, service, field, value);
+        if (totalPassengers > 0) {
+          const occupancy = getInferredHotelMaxOccupancy(
+            (resolved.hotels?.[0]?.rooms?.[0]) || {},
+            resolved
+          );
+          const maxAdultsPerRoom = Number(occupancy.maxAdults || resolved.maxAdults || 2);
+          const currentRooms = Math.max(1, Number(resolved.rooms || 1));
+          const totalCap = currentRooms * (maxAdultsPerRoom + (resolved.extraAdult ? 1 : 0));
+          const neededRooms = Math.max(1, Math.ceil(totalPassengers / maxAdultsPerRoom));
+
+          if (totalPassengers > totalCap) {
+            toast(
+              `Room Suggestion: For ${totalPassengers} passengers, ${neededRooms} rooms are recommended based on ${resolved.roomCategory || resolved.roomType || "room"} capacity (${maxAdultsPerRoom} Pax/room). Currently ${currentRooms} room selected.`,
+              {
+                id: `hotel-pax-suggest-${id}`,
+                duration: 5000,
+                style: {
+                  border: "1px solid rgba(250, 204, 21, 0.4)",
+                  background: "#141414",
+                  color: "#fef08a",
+                },
+              }
+            );
+          }
+        }
+        return resolved;
       }
 
       if ((service.type === "sightseeing" || service.type === "activity") && field === "tourType") {
         const tourList = Array.isArray(service.tourTypes) ? service.tourTypes : [];
-        const matchedTour = tourList.find((t) => t.tourType === value) || {};
-        const nextPrice = matchedTour.price !== undefined ? Number(matchedTour.price) : Number(service.price || service.rate || 0);
-        const nextTourType = value;
-        const nextPricingBasis = matchedTour.pricingBasis || (String(value).toLowerCase().includes("group") && !String(value).toLowerCase().includes("per group") ? "Per Pax" : "Per Group");
-        const nextMaxPax = matchedTour.maxPax || (String(value).toLowerCase().includes("group") && !String(value).toLowerCase().includes("per group") ? "N/A (Shared Group)" : String(value).toLowerCase().includes("vip") ? "Up to 6 Pax" : "Up to 4 Pax");
+        const matchedTour = tourList.find((t) => String(t.tourType || "").trim().toLowerCase() === String(value || "").trim().toLowerCase()) || {};
+        const nextAdultPrice = Number(matchedTour.adultPrice !== undefined ? matchedTour.adultPrice : (matchedTour.price !== undefined ? matchedTour.price : (service.price || service.rate || 0)));
+        const nextChildPrice = Number(matchedTour.childPrice !== undefined ? matchedTour.childPrice : 0);
+        const nextTourType = matchedTour.tourType || value;
         const nextDesc = matchedTour.description || service.desc || service.description || "";
 
         return {
           ...service,
           tourType: nextTourType,
-          rate: nextPrice,
-          price: nextPrice,
-          quoteBaseRate: nextPrice,
-          pricingBasis: nextPricingBasis,
-          maxPax: nextMaxPax,
+          rate: nextAdultPrice,
+          price: nextAdultPrice,
+          adultPrice: nextAdultPrice,
+          childPrice: nextChildPrice,
+          quoteBaseRate: nextAdultPrice,
           desc: nextDesc,
           description: nextDesc,
           useStoredPricing: false,
@@ -6180,8 +6449,46 @@ roleText.includes("\"role\":\"admin\"")
         };
       }
 
+      if ((service.type === "sightseeing" || service.type === "activity") && field === "serviceDate") {
+        const smart = resolveActivitySmartRate(service, value, service.tourType);
+        return {
+          ...service,
+          serviceDate: value,
+          rate: service.manualRateOverride ? service.rate : smart.adultPrice,
+          price: service.manualRateOverride ? service.price : smart.adultPrice,
+          adultPrice: service.manualRateOverride ? service.adultPrice : smart.adultPrice,
+          childPrice: service.manualRateOverride ? service.childPrice : smart.childPrice,
+          pricingTier: smart.tier,
+          blackout: smart.isBlackout ? { isBlackout: true, label: smart.blackoutLabel } : { isBlackout: false },
+          useStoredPricing: false,
+        };
+      }
+
       if ((service.type === "transfer" || service.type === "car") && field === "vehicleType") {
-        return resolveTransportVehicleSelection(prev, service, value);
+        const resolved = resolveTransportVehicleSelection(prev, service, value);
+        const resolvedCap = Number(resolved.passengerCapacity || 0);
+        const resolvedLug = Number(resolved.luggageCapacity || (resolvedCap >= 6 ? 4 : 2));
+
+        if (totalPassengers > 0 && resolvedCap > 0 && resolvedCap < totalPassengers) {
+          toast.error(
+            `Capacity Warning: ${resolved.vehicleType || "Selected vehicle"} fits only ${resolvedCap} pax (luggage: ${resolvedLug} bags), but this query has ${totalPassengers} passengers.`,
+            { id: `vehicle-pax-warning-${id}`, duration: 5000 }
+          );
+        } else if (totalPassengers > 0 && totalPassengers <= 4 && resolvedCap >= 6) {
+          toast(
+            `Vehicle Suggestion: For ${totalPassengers} pax, a Sedan (3-4 Pax, 2-3 Bags) is more economical. Selected ${resolved.vehicleType} has ${resolvedCap} pax & ${resolvedLug} bags capacity.`,
+            {
+              id: `vehicle-pax-suggestion-${id}`,
+              duration: 5500,
+              style: {
+                border: "1px solid rgba(250, 204, 21, 0.4)",
+                background: "#141414",
+                color: "#fef08a",
+              },
+            }
+          );
+        }
+        return resolved;
       }
 
       if ((service.type === "transfer" || service.type === "car") && field === "transportUsageOptionKey") {
@@ -6220,10 +6527,39 @@ roleText.includes("\"role\":\"admin\"")
       return { ...service, days: safeDays, useStoredPricing: false };
       }
 
+      if (service.type === "hotel" && field === "serviceDate") {
+        const smart = resolveHotelSmartRate(service, value);
+        return {
+          ...service,
+          serviceDate: value,
+          rate: service.manualRateOverride ? service.rate : smart.rate,
+          price: service.manualRateOverride ? service.price : smart.rate,
+          quoteBaseRate: service.manualRateOverride ? service.quoteBaseRate : smart.rate,
+          roomTypeOptionRate: service.manualRateOverride ? service.roomTypeOptionRate : smart.rate,
+          pricingTier: smart.tier,
+          blackout: smart.isBlackout ? { isBlackout: true, label: smart.blackoutLabel } : { isBlackout: false },
+          useStoredPricing: false,
+        };
+      }
+
       if ((service.type === "transfer" || service.type === "car") && field === "serviceDate") {
-      const availableTransportDays = getAvailableTransportDaysFromDate(value);
-      const safeDays = Math.min(Math.max(Number(service.days || 1), 1), availableTransportDays);
-      return { ...service, serviceDate: value, days: safeDays, useStoredPricing: false };
+        const availableTransportDays = getAvailableTransportDaysFromDate(value);
+        const safeDays = Math.min(Math.max(Number(service.days || 1), 1), availableTransportDays);
+        const smart = resolveTransportSmartRate(service, value);
+        const selectedVehicle = (service.vehicles || []).find(v => normalizeComparisonTextValue(v.vehicleType) === normalizeComparisonTextValue(service.vehicleType)) || {};
+        const usagePrices = getTransportVehicleUsagePrices(selectedVehicle, service, value);
+        return {
+          ...service,
+          serviceDate: value,
+          days: safeDays,
+          rate: service.manualRateOverride ? service.rate : smart.rate,
+          price: service.manualRateOverride ? service.price : smart.rate,
+          quoteBaseRate: service.manualRateOverride ? service.quoteBaseRate : smart.rate,
+          pricingTier: smart.tier,
+          transportUsagePrices: usagePrices,
+          blackout: smart.isBlackout ? { isBlackout: true, label: smart.blackoutLabel } : { isBlackout: false },
+          useStoredPricing: false,
+        };
       }
 
       return { ...service, [field]: value, useStoredPricing: false };
@@ -6533,6 +6869,15 @@ roleText.includes("\"role\":\"admin\"")
                         iconColor="text-violet-400"
                         />
                         )}
+
+                      {(service.pickupTime || service.time) && (
+                      <Chip
+                        icon={<Clock size={10} />}
+                        value={`Pickup: ${service.pickupTime || service.time}`}
+                        accent="text-yellow-200"
+                        iconColor="text-yellow-400"
+                      />
+                      )}
 
                         {service.type === "activity" && (
                           <>
@@ -7788,9 +8133,6 @@ roleText.includes("\"role\":\"admin\"")
             )}
 
             <>
-              <motion.div variants={sectionRevealVariants}>
-                <PackageTemplate onApply={applyPackageToServices} />
-              </motion.div>
 
 
                 {/*=================================== Select Contracted Rates Service =============================== */}
@@ -7910,6 +8252,7 @@ roleText.includes("\"role\":\"admin\"")
                         hotelNightStart={getHotelNightStart(services, service.id)}
                         tripStartDate={formatDateInput(order?.startDate)}
                         tripEndDate={formatDateInput(order?.endDate)}
+                        totalPassengers={totalPassengers}
                       />
                     ))
                   ) : (
@@ -8191,6 +8534,19 @@ roleText.includes("\"role\":\"admin\"")
               value={`${service.days} day${Number(service.days) > 1 ? "s" : ""}`}
               accent="text-violet-200"
               iconColor="text-violet-400"
+            />
+          )}
+
+          {(service.pickupTime || service.time) && (
+            <Chip
+              icon={
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+                </svg>
+              }
+              value={`Pickup: ${service.pickupTime || service.time}`}
+              accent="text-yellow-200"
+              iconColor="text-yellow-400"
             />
           )}
 
@@ -9033,14 +9389,42 @@ roleText.includes("\"role\":\"admin\"")
             </div>
 
             <p className="mt-3 text-sm leading-6 text-slate-300">
-              This transport service is for{" "}
-              <span className="font-semibold text-yellow-300">{transportSelectionConfirm.passengerCapacity} pax</span>,
-              while this booking currently has{" "}
-              <span className="font-semibold text-white">
-                {transportSelectionConfirm.passengerCount} passenger{transportSelectionConfirm.passengerCount === 1 ? "" : "s"}
-              </span>.
-              Are you sure you want to continue with{" "}
-              <span className="font-semibold text-white">{transportSelectionConfirm.serviceTitle}</span>?
+              {transportSelectionConfirm.passengerCapacity < transportSelectionConfirm.passengerCount ? (
+                <>
+                  This transport vehicle is for only{" "}
+                  <span className="font-semibold text-yellow-300">{transportSelectionConfirm.passengerCapacity} pax</span> (
+                  <span className="text-slate-400">{transportSelectionConfirm.luggageCapacity || 2} luggage bags</span>),
+                  while this booking has{" "}
+                  <span className="font-semibold text-red-400">
+                    {transportSelectionConfirm.passengerCount} passengers
+                  </span>.
+                  The passenger count exceeds vehicle capacity. Are you sure you want to select{" "}
+                  <span className="font-semibold text-white">{transportSelectionConfirm.serviceTitle}</span>?
+                </>
+              ) : transportSelectionConfirm.passengerCount <= 4 && transportSelectionConfirm.passengerCapacity >= 6 ? (
+                <>
+                  For <span className="font-semibold text-yellow-300">{transportSelectionConfirm.passengerCount} passengers</span>,
+                  a <span className="font-semibold text-white">Sedan (3–4 Pax, 2–3 Bags)</span> is usually more suitable and cost-effective.
+                  <br />
+                  You have selected <span className="font-semibold text-white">{transportSelectionConfirm.serviceTitle}</span> (Capacity:{" "}
+                  <span className="font-semibold text-yellow-300">{transportSelectionConfirm.passengerCapacity} pax</span>, Luggage:{" "}
+                  <span className="font-semibold text-sky-300">{transportSelectionConfirm.luggageCapacity || 4} bags</span>).
+                  <br />
+                  Do you want to continue with this vehicle?
+                </>
+              ) : (
+                <>
+                  This transport service is for{" "}
+                  <span className="font-semibold text-yellow-300">{transportSelectionConfirm.passengerCapacity} pax</span> (
+                  <span className="text-slate-400">{transportSelectionConfirm.luggageCapacity || 2} bags</span>),
+                  while this booking currently has{" "}
+                  <span className="font-semibold text-white">
+                    {transportSelectionConfirm.passengerCount} passenger{transportSelectionConfirm.passengerCount === 1 ? "" : "s"}
+                  </span>.
+                  Are you sure you want to continue with{" "}
+                  <span className="font-semibold text-white">{transportSelectionConfirm.serviceTitle}</span>?
+                </>
+              )}
             </p>
 
             <div className="mt-6 flex gap-3">
@@ -9304,39 +9688,10 @@ const Service = ({
   hotelNightStart,
   tripStartDate,
   tripEndDate,
+  totalPassengers = 0,
 }) => {
   const isBlackoutService = Boolean(service?.blackout?.isBlackout);
   const blackoutLabel = service?.blackout?.label || service?.blackout?.reason || "Blackout date";
-  const canOverrideBlackoutRate = (() => {
-    try {
-      const values = [];
-      for (let index = 0; index < window.localStorage.length; index += 1) {
-        const key = window.localStorage.key(index);
-        if (key) values.push(window.localStorage.getItem(key));
-      }
-      const pageRoleText = String(document?.body?.innerText || "").toLowerCase();
-      if (pageRoleText.includes("ops manager") || pageRoleText.includes("operation manager")) {
-        return true;
-      }
-      for (const value of values) {
-        const parsed = JSON.parse(value || "null");
-        const roleText = JSON.stringify(parsed || {}).toLowerCase();
-        if (
-          roleText.includes("operation_manager") ||
-          roleText.includes("operations_manager") ||
-          roleText.includes("ops_manager") ||
-          roleText.includes("ops manager") ||
-          roleText.includes("operation manager") ||
-          roleText.includes("\"role\":\"admin\"")
-        ) {
-          return true;
-        }
-      }
-    } catch {
-      return false;
-    }
-    return false;
-  })();
   const currencyCode = normalizeCurrencyCode(service.currency);
   const exchangeRate = getExchangeRateForCurrency(currencyCode, exchangeRates);
   const baseRateDisplayValue = getHotelBaseRateDisplayValue(service);
@@ -9436,6 +9791,72 @@ const Service = ({
     input.click();
   };
 
+  const formatServiceDuration = (serv = {}, tourObj = {}) => {
+    let dur = serv.duration || tourObj.duration || "";
+    
+    if (!dur) {
+      const descText = `${tourObj.description || ""} ${serv.description || ""} ${serv.desc || ""}`;
+      const minMatch = descText.match(/(\d+)\s*(?:mins?|minutes?)/i);
+      const hrMatch = descText.match(/(\d+(?:\.\d+)?)\s*(?:hours?|hrs?)/i);
+      if (minMatch) {
+        dur = minMatch[1];
+      } else if (hrMatch) {
+        dur = Math.round(parseFloat(hrMatch[1]) * 60);
+      }
+    }
+
+    if (!dur) dur = "60";
+
+    const num = Number(String(dur).replace(/[^\d.]/g, ""));
+    if (!isNaN(num) && num > 0) {
+      return `${num} Mins`;
+    }
+
+    return String(dur);
+  };
+
+  const resolveSlotOptions = (serv = {}) => {
+    const rawSlots = String(serv.slots || "").trim();
+    const openTime = serv.openingTime || "08:00";
+    const closeTime = serv.closingTime || "18:00";
+
+    const generateRangeSlots = (open, close) => {
+      const [oh] = String(open).split(":").map(Number);
+      const [ch] = String(close).split(":").map(Number);
+      const startHour = !isNaN(oh) ? oh : 8;
+      const endHour = !isNaN(ch) ? ch : 18;
+      const list = [];
+      for (let h = startHour; h <= endHour; h++) {
+        list.push(`${String(h).padStart(2, "0")}:00`);
+      }
+      return list.length > 0 ? list : ["08:00", "10:00", "12:00", "14:00", "16:00", "18:00"];
+    };
+
+    if (!rawSlots) {
+      return generateRangeSlots(openTime, closeTime);
+    }
+
+    const parsed = rawSlots
+      .split(/[,;]/)
+      .map(s => s.trim())
+      .filter(Boolean);
+
+    // If exactly 2 slots matching open and close or "08:00, 18:00" -> treat as range
+    if (parsed.length === 2 && (
+      (parsed[0] === openTime && parsed[1] === closeTime) ||
+      (parsed[0] === "08:00" && parsed[1] === "18:00")
+    )) {
+      return generateRangeSlots(parsed[0], parsed[1]);
+    }
+
+    if (rawSlots.includes("-") && parsed.length === 1) {
+      const [start, end] = rawSlots.split("-").map(s => s.trim());
+      return generateRangeSlots(start, end);
+    }
+
+    return parsed;
+  };
+
   /* helpers for transport */
   const calculateTripDayCountFromDate = (startDate, endDate) => {
     if (!startDate || !endDate) return 1;
@@ -9521,7 +9942,6 @@ const Service = ({
         <input
           type="checkbox"
           checked={service.checked}
-          disabled={isBlackoutService && !canOverrideBlackoutRate}
           onChange={() => toggleService(service.id)}
           className="accent-yellow-400 mt-1 h-3.5 w-3.5 flex-shrink-0 cursor-pointer"
         />
@@ -9647,6 +10067,12 @@ const Service = ({
                         <HiOutlineBriefcase className="text-sky-400" />{service.luggageCapacity} Bags
                       </span>
                     )}
+                    {(service.pickupTime || service.time) && (
+                      <span className="flex items-center gap-1 text-yellow-300">
+                        <Clock size={11} className="text-yellow-400" />
+                        {service.pickupTime || service.time}
+                      </span>
+                    )}
                   </>
                 )}
               </div>
@@ -9662,6 +10088,17 @@ const Service = ({
               <p className="text-[15px] font-semibold leading-none text-white">
                 {formatCurrencyValue(total, currencyCode)}
               </p>
+              {service.pricingTier && (
+                <p className={`mt-1 text-[10px] font-medium leading-none ${
+                  service.pricingTier.includes("Blackout")
+                    ? "text-red-400 font-semibold"
+                    : service.pricingTier.includes("S1") || service.pricingTier.includes("S2")
+                    ? "text-emerald-400"
+                    : "text-slate-400"
+                }`}>
+                  / {service.pricingTier}
+                </p>
+              )}
               {isForeignCurrency && (
                 <p className="mt-1 text-[10px] text-sky-300">
                   INR {formatAmountValue(totalInInr)}
@@ -9678,14 +10115,6 @@ const Service = ({
                 {item}
               </span>
             ))}
-          </div>
-        )}
-
-        {isBlackoutService && (
-          <div className="col-start-2 col-span-2 w-full rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-[10px] font-semibold leading-5 text-red-200">
-            {canOverrideBlackoutRate
-              ? `Blackout date: ${blackoutLabel}. Confirm DMC special price, update the rate, then send.`
-              : `Contract rate blocked for ${blackoutLabel}. Use manual/special pricing.`}
           </div>
         )}
       </div>
@@ -9726,9 +10155,16 @@ const Service = ({
                   className="mt-1 w-full rounded-lg border border-yellow-500/30 bg-[#080808] px-2 py-1.5 text-[13px] font-semibold text-yellow-400 outline-none transition-colors focus:border-yellow-400"
                 />
               ) : (
-                <p className="text-[13px] font-semibold text-yellow-400">
-                  {formatCurrencyValue(baseRateDisplayValue || 0, currencyCode)}
-                </p>
+                <div className="flex items-baseline gap-1.5 flex-wrap">
+                  <p className="text-[13px] font-semibold text-yellow-400">
+                    {formatCurrencyValue(baseRateDisplayValue || 0, currencyCode)}
+                  </p>
+                  {service.pricingTier && (
+                    <span className="text-[10px] text-slate-400 font-normal">
+                      / {service.pricingTier}
+                    </span>
+                  )}
+                </div>
               )}
               {isForeignCurrency && (
                 <>
@@ -9877,30 +10313,76 @@ const Service = ({
 
 
               {/* Vehicle Specifications & Notes (Shown above dropdowns) */}
-              <div className="flex flex-wrap items-center gap-2 pb-1">
-                {service.vehicleType && (
-                  <span className="flex items-center gap-1.5 rounded-lg border border-[#232323] bg-[#141414] px-2.5 py-1 text-[10px] text-slate-300">
-                    <FaCarSide className="text-yellow-400" />
-                    <span className="text-slate-500">Vehicle:</span> {service.vehicleType}
+              <div className="flex flex-wrap items-center justify-between gap-2 pb-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  {service.vehicleType && (
+                    <span className="flex items-center gap-1.5 rounded-lg border border-[#232323] bg-[#141414] px-2.5 py-1 text-[10px] text-slate-300">
+                      <FaCarSide className="text-yellow-400" />
+                      <span className="text-slate-500">Vehicle:</span> {service.vehicleType}
+                    </span>
+                  )}
+                  {Number(service.passengerCapacity || 0) > 0 && (
+                    <span className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[10px] ${
+                      totalPassengers > Number(service.passengerCapacity || 0)
+                        ? "border-red-500/40 bg-red-500/10 text-red-300 font-semibold"
+                        : "border-[#232323] bg-[#141414] text-slate-300"
+                    }`}>
+                      <BsPeople className={totalPassengers > Number(service.passengerCapacity || 0) ? "text-red-400" : "text-emerald-400"} />
+                      <span className={totalPassengers > Number(service.passengerCapacity || 0) ? "text-red-400" : "text-slate-500"}>Capacity:</span> {service.passengerCapacity} Pax
+                      {totalPassengers > Number(service.passengerCapacity || 0) && (
+                        <span className="text-[9px] text-red-400 font-normal">({totalPassengers} Pax Query - Insufficient)</span>
+                      )}
+                    </span>
+                  )}
+                  {Number(service.luggageCapacity || 0) > 0 && (
+                    <span className="flex items-center gap-1.5 rounded-lg border border-[#232323] bg-[#141414] px-2.5 py-1 text-[10px] text-slate-300">
+                      <HiOutlineBriefcase className="text-blue-400" />
+                      <span className="text-slate-500">Luggage:</span> {service.luggageCapacity} Bags
+                    </span>
+                  )}
+                  {totalPassengers > 0 && totalPassengers <= 4 && Number(service.passengerCapacity || 0) >= 6 && (
+                    <span className="flex items-center gap-1.5 rounded-lg border border-yellow-500/35 bg-yellow-500/10 px-2.5 py-1 text-[10px] text-yellow-200">
+                      💡 <span>Suggestion: For {totalPassengers} Pax, a <b>Sedan</b> (3–4 Pax, 2–3 Bags) is more economical.</span>
+                    </span>
+                  )}
+                  {service.description && (
+                    <span className="flex items-center gap-1.5 rounded-lg border border-[#232323] bg-[#141414] px-2.5 py-1 text-[10px] text-slate-300">
+                      <span className="text-slate-500">Info:</span> {service.description}
+                    </span>
+                  )}
+                </div>
+
+                {/* Pickup / Transfer Time Selection on Top Right */}
+                <div className="flex items-center gap-1.5 ml-auto">
+                  <span className="text-[10px] font-medium text-slate-400 flex items-center gap-1">
+                    <Clock size={12} className="text-yellow-400" />
+                    Pickup Time:
                   </span>
-                )}
-                {Number(service.passengerCapacity || 0) > 0 && (
-                  <span className="flex items-center gap-1.5 rounded-lg border border-[#232323] bg-[#141414] px-2.5 py-1 text-[10px] text-slate-300">
-                    <BsPeople className="text-emerald-400" />
-                    <span className="text-slate-500">Capacity:</span> {service.passengerCapacity} Pax
-                  </span>
-                )}
-                {Number(service.luggageCapacity || 0) > 0 && (
-                  <span className="flex items-center gap-1.5 rounded-lg border border-[#232323] bg-[#141414] px-2.5 py-1 text-[10px] text-slate-300">
-                    <HiOutlineBriefcase className="text-blue-400" />
-                    <span className="text-slate-500">Luggage:</span> {service.luggageCapacity} Bags
-                  </span>
-                )}
-                {service.description && (
-                  <span className="flex items-center gap-1.5 rounded-lg border border-[#232323] bg-[#141414] px-2.5 py-1 text-[10px] text-slate-300">
-                    <span className="text-slate-500">Info:</span> {service.description}
-                  </span>
-                )}
+                  <div className="relative flex items-center">
+                    <input
+                      type="time"
+                      value={service.pickupTime || service.time || ""}
+                      onChange={(e) => {
+                        updateField(service.id, "pickupTime", e.target.value);
+                        updateField(service.id, "time", e.target.value);
+                      }}
+                      className="h-7 rounded-lg border border-[#2c2c2c] bg-[#141414] px-2 text-[11px] font-medium text-white outline-none focus:border-yellow-500 transition cursor-pointer [color-scheme:dark]"
+                    />
+                    {(service.pickupTime || service.time) && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          updateField(service.id, "pickupTime", "");
+                          updateField(service.id, "time", "");
+                        }}
+                        title="Clear time"
+                        className="ml-1 text-slate-500 hover:text-red-400 transition cursor-pointer text-xs"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                </div>
               </div>
 
               <div className={`grid grid-cols-1 gap-3 ${selectedTransportUsageLimitOptions.length > 0 ? "lg:grid-cols-4 md:grid-cols-2" : "lg:grid-cols-3 md:grid-cols-2"}`}>
@@ -10004,35 +10486,19 @@ const Service = ({
             </div>
           )}
 
-          {/* ── ACTIVITY: TOUR TYPE + BASE RATE + PRICING BASIS + DATE + PAX + MAX PAX + TOTAL ── */}
+          {/* ── ACTIVITY: TOUR TYPE + TIMINGS + ADULT PRICE + CHILD PRICE + DATE + ADULTS + CHILDREN + SLOT + TOTAL ── */}
           {service.type === "activity" && (() => {
             const tourTypesList = Array.isArray(service.tourTypes) && service.tourTypes.length > 0
               ? service.tourTypes
               : [
-                  { tourType: "Group Tour", price: service.price || service.rate || 0, pricingBasis: "Per Pax", maxPax: service.maxPax || "N/A (Shared Group)" },
-                  { tourType: "Private Tour", price: service.price || service.rate || 0, pricingBasis: "Per Group", maxPax: service.maxPax || "Up to 4 Pax" },
-                  { tourType: "Premium/VIP Tour", price: service.price || service.rate || 0, pricingBasis: "Per Group", maxPax: service.maxPax || "Up to 6 Pax" }
+                  { tourType: "Sharing Tour", adultPrice: service.adultPrice || service.price || service.rate || 0, childPrice: service.childPrice || 0 },
+                  { tourType: "Private Tour", adultPrice: service.adultPrice || service.price || service.rate || 0, childPrice: service.childPrice || 0 },
+                  { tourType: "Ticket Tour", adultPrice: service.adultPrice || service.price || service.rate || 0, childPrice: service.childPrice || 0 }
                 ];
-            const currentTourType = service.tourType || tourTypesList[0]?.tourType || "Group Tour";
-            const currentTourObj = tourTypesList.find(t => t.tourType === currentTourType) || tourTypesList[0] || {};
-            const pricingBasis = service.pricingBasis || currentTourObj.pricingBasis || (currentTourType.toLowerCase().includes("group") && !currentTourType.toLowerCase().includes("per group") ? "Per Pax" : "Per Group");
-            const maxPax = service.maxPax || currentTourObj.maxPax || "";
-            
-            const paxNum = Number(service.pax || 1);
-            
-            // Validate Max Pax if provided in data
-            let hasPaxValidationError = false;
-            let validationErrorMessage = "";
-            if (maxPax) {
-              const match = String(maxPax).match(/\d+/);
-              if (match) {
-                const maxLimit = Number(match[0]);
-                if (maxLimit > 0 && paxNum > maxLimit) {
-                  hasPaxValidationError = true;
-                  validationErrorMessage = `Maximum ${maxLimit} Pax allowed for ${currentTourType}.`;
-                }
-              }
-            }
+            const currentTourType = service.tourType || tourTypesList[0]?.tourType || "Sharing Tour";
+            const currentTourObj = tourTypesList.find(t => String(t.tourType || "").trim().toLowerCase() === String(currentTourType || "").trim().toLowerCase()) || tourTypesList[0] || {};
+            const availableSlots = resolveSlotOptions(service);
+            const resolvedDuration = formatServiceDuration(service, currentTourObj);
 
             return (
               <div className="rounded-xl border border-[#1f1f1f] bg-[#101010] p-3.5 space-y-3">
@@ -10055,7 +10521,7 @@ const Service = ({
                       >
                         {tourTypesList.map((t, idx) => (
                           <option key={t._id || idx} value={t.tourType} className="bg-[#111] text-slate-100 font-medium">
-                            {t.tourType} ({formatCurrencyValue(t.price ?? service.rate ?? 0, currencyCode)})
+                            {t.tourType}
                           </option>
                         ))}
                       </select>
@@ -10064,65 +10530,125 @@ const Service = ({
                   </div>
                 </div>
 
-                {/* Configuration Grid: Base Rate | Pricing Basis | Service Date | Pax | Max Pax (if avail) | Total */}
-                <div className={`grid grid-cols-2 sm:grid-cols-3 ${maxPax ? "lg:grid-cols-6" : "lg:grid-cols-5"} gap-3 pt-0.5`}>
-                  {/* 1. Base Rate */}
+                {/* Info Pills: Operating Days | Open / Close | Duration */}
+                <div className="flex flex-wrap items-center gap-2">
+                  {service.operatingDays && (
+                    <span className="flex items-center gap-1 rounded-md border border-[#232323] bg-[#141414] px-2 py-0.5 text-[10px] text-slate-300">
+                      <span className="text-slate-500">Days:</span> {service.operatingDays}
+                    </span>
+                  )}
+                  {(service.openingTime || service.closingTime) && (
+                    <span className="flex items-center gap-1 rounded-md border border-[#232323] bg-[#141414] px-2 py-0.5 text-[10px] text-slate-300">
+                      <Clock size={11} className="text-yellow-400" />
+                      <span className="text-slate-500">Open / Close:</span> {service.openingTime || "08:00"} / {service.closingTime || "18:00"}
+                    </span>
+                  )}
+                  {resolvedDuration && (
+                    <span className="flex items-center gap-1 rounded-md border border-[#232323] bg-[#141414] px-2 py-0.5 text-[10px] text-slate-300">
+                      <Clock size={11} className="text-purple-400" />
+                      <span className="text-slate-500">Duration:</span> {resolvedDuration}
+                    </span>
+                  )}
+                </div>
+
+                {/* Description shifted to the top */}
+                {(currentTourObj.description || service.description || service.desc) && (
+                  <p className="text-[10.5px] text-slate-400 font-normal italic leading-relaxed pt-0.5 border-t border-[#1c1c1c]/70">
+                    {currentTourObj.description || service.description || service.desc}
+                  </p>
+                )}
+
+                {/* Configuration Grid: Adult Price | Child Price | Adults | Children | Slot | Total */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 pt-0.5">
+                  {/* 1. Adult Price */}
                   <div>
-                    <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Base Rate</p>
+                    <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Adult Price</p>
                     {isEditMode ? (
                       <input
                         type="number"
-                        value={service.rate}
-                        onChange={(e) => updateField(service.id, "rate", Number(e.target.value))}
+                        value={service.adultPrice !== undefined ? service.adultPrice : service.rate}
+                        onChange={(e) => {
+                          const val = Number(e.target.value);
+                          updateField(service.id, "adultPrice", val);
+                          updateField(service.id, "rate", val);
+                        }}
                         className={`${inputCls} h-8 text-[11px] font-bold w-full`}
                       />
                     ) : (
                       <div className="flex h-8 w-full items-center rounded-lg border border-[#232323] bg-[#141414] px-2.5 text-[11px] font-bold text-slate-100">
-                        {formatCurrencyValue(service.rate, currencyCode)}
+                        {formatCurrencyValue(service.adultPrice !== undefined ? service.adultPrice : service.rate, currencyCode)}
                       </div>
                     )}
                   </div>
 
-                  {/* 2. Pricing Basis (Read-Only) */}
+                  {/* 2. Child Price */}
                   <div>
-                    <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Pricing Basis</p>
-                    <div className="flex h-8 w-full items-center justify-center rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-2 text-[10.5px] font-bold text-emerald-300 select-none shadow-2xs">
-                      {pricingBasis}
-                    </div>
+                    <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Child Price</p>
+                    {isEditMode ? (
+                      <input
+                        type="number"
+                        value={service.childPrice || 0}
+                        onChange={(e) => updateField(service.id, "childPrice", Number(e.target.value))}
+                        className={`${inputCls} h-8 text-[11px] font-bold w-full`}
+                      />
+                    ) : (
+                      <div className="flex h-8 w-full items-center rounded-lg border border-[#232323] bg-[#141414] px-2.5 text-[11px] font-bold text-slate-100">
+                        {formatCurrencyValue(service.childPrice || 0, currencyCode)}
+                      </div>
+                    )}
                   </div>
 
-                  {/* 3. Service Date */}
+                  {/* 3. Adults */}
                   <div>
-                    <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Service Date</p>
-                    <input
-                      type="date"
-                      value={formatDateInput(service.serviceDate)}
-                      onChange={(e) => updateField(service.id, "serviceDate", e.target.value)}
-                      className={`${inputCls} h-8 text-[11px] w-full`}
-                    />
-                  </div>
-
-                  {/* 4. Pax */}
-                  <div>
-                    <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Pax</p>
+                    <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Adults</p>
                     <input
                       type="number"
                       min={1}
-                      value={service.pax || 1}
-                      onChange={(e) => updateField(service.id, "pax", Math.max(1, Number(e.target.value) || 1))}
-                      className={`${inputCls} h-8 text-[11px] font-bold w-full ${hasPaxValidationError ? "border-rose-500 focus:border-rose-500 ring-1 ring-rose-500" : ""}`}
+                      value={service.adults !== undefined ? service.adults : (service.pax || 1)}
+                      onChange={(e) => {
+                        const num = Math.max(1, Number(e.target.value) || 1);
+                        updateField(service.id, "adults", num);
+                        updateField(service.id, "pax", num + Number(service.children || 0));
+                      }}
+                      className={`${inputCls} h-8 text-[11px] font-bold w-full`}
                     />
                   </div>
 
-                  {/* 5. Max Pax (Read-Only, if available) */}
-                  {maxPax && (
-                    <div>
-                      <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Max Pax</p>
-                      <div className="flex h-8 w-full items-center justify-center rounded-lg border border-purple-500/30 bg-purple-500/10 px-1.5 text-[10px] font-semibold text-purple-300 whitespace-nowrap overflow-hidden text-ellipsis select-none shadow-2xs">
-                        {maxPax}
-                      </div>
+                  {/* 4. Children */}
+                  <div>
+                    <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Children</p>
+                    <input
+                      type="number"
+                      min={0}
+                      value={service.children !== undefined ? service.children : 0}
+                      onChange={(e) => {
+                        const num = Math.max(0, Number(e.target.value) || 0);
+                        updateField(service.id, "children", num);
+                        updateField(service.id, "pax", Number(service.adults || service.pax || 1) + num);
+                      }}
+                      className={`${inputCls} h-8 text-[11px] font-bold w-full`}
+                    />
+                  </div>
+
+                  {/* 5. Slot / Time */}
+                  <div>
+                    <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Slot / Time</p>
+                    <div className="relative">
+                      <select
+                        value={service.selectedSlot || availableSlots[0] || "08:00"}
+                        onChange={(e) => updateField(service.id, "selectedSlot", e.target.value)}
+                        className={`${selectCls.replace('rounded-lg', 'rounded-md')} h-8 text-[11px] font-semibold w-full pl-2 pr-6 appearance-none bg-[#0a0a0a] border border-[#2a2a2a] text-white cursor-pointer focus:border-yellow-500`}
+                      >
+                        <option value="" disabled>Select Time</option>
+                        {availableSlots.map((slot, sIdx) => (
+                          <option key={sIdx} value={slot} className="bg-[#111] text-white font-medium">
+                            {slot}
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-yellow-400" />
                     </div>
-                  )}
+                  </div>
 
                   {/* 6. Total (Calculated) */}
                   <div>
@@ -10132,48 +10658,23 @@ const Service = ({
                     </div>
                   </div>
                 </div>
-
-                {/* Description of the selected tour type if available */}
-                {(currentTourObj.description || service.description || service.desc) && (
-                  <p className="text-[10.5px] text-slate-400 font-normal italic">
-                    {currentTourObj.description || service.description || service.desc}
-                  </p>
-                )}
-
-                {/* Validation Error Banner */}
-                {hasPaxValidationError && (
-                  <div className="flex items-center gap-2 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs font-semibold text-rose-300 animate-fadeIn">
-                    <AlertCircle size={15} className="shrink-0 text-rose-400" />
-                    <span>{validationErrorMessage}</span>
-                  </div>
-                )}
               </div>
             );
           })()}
 
-          {/* ── SIGHTSEEING: TOUR TYPE + BASE RATE + PRICING BASIS + DATE + PAX + MAX PAX + TOTAL ── */}
+          {/* ── SIGHTSEEING: TOUR TYPE + TIMINGS + ADULT PRICE + CHILD PRICE + DATE + ADULTS + CHILDREN + SLOT + TOTAL ── */}
           {service.type === "sightseeing" && (() => {
             const tourTypesList = Array.isArray(service.tourTypes) && service.tourTypes.length > 0
               ? service.tourTypes
               : [
-                  { tourType: "Group Tour", price: service.price || service.rate || 0, pricingBasis: "Per Pax", maxPax: "N/A (Shared Group)" },
-                  { tourType: "Private Tour", price: service.price || service.rate || 0, pricingBasis: "Per Group", maxPax: "Up to 4 Pax" },
-                  { tourType: "Premium/VIP Tour", price: service.price || service.rate || 0, pricingBasis: "Per Group", maxPax: "Up to 6 Pax" }
+                  { tourType: "Sharing Tour", adultPrice: service.adultPrice || service.price || service.rate || 0, childPrice: service.childPrice || 0 },
+                  { tourType: "Private Tour", adultPrice: service.adultPrice || service.price || service.rate || 0, childPrice: service.childPrice || 0 },
+                  { tourType: "Ticket Tour", adultPrice: service.adultPrice || service.price || service.rate || 0, childPrice: service.childPrice || 0 }
                 ];
-            const currentTourType = service.tourType || tourTypesList[0]?.tourType || "Group Tour";
-            const currentTourObj = tourTypesList.find(t => t.tourType === currentTourType) || tourTypesList[0] || {};
-            const pricingBasis = service.pricingBasis || currentTourObj.pricingBasis || (currentTourType.toLowerCase().includes("group") && !currentTourType.toLowerCase().includes("per group") ? "Per Pax" : "Per Group");
-            const maxPax = service.maxPax || currentTourObj.maxPax || (currentTourType.toLowerCase().includes("group") && !currentTourType.toLowerCase().includes("per group") ? "N/A (Shared Group)" : currentTourType.toLowerCase().includes("vip") ? "Up to 6 Pax" : "Up to 4 Pax");
-            
-            const paxNum = Number(service.pax || 1);
-            const isPrivateTourInvalid = /private/i.test(currentTourType) && paxNum > 4;
-            const isVipTourInvalid = /premium|vip/i.test(currentTourType) && paxNum > 6;
-            const hasPaxValidationError = isPrivateTourInvalid || isVipTourInvalid;
-            const validationErrorMessage = isPrivateTourInvalid
-              ? "Maximum 4 Pax allowed for Private Tour."
-              : isVipTourInvalid
-              ? "Maximum 6 Pax allowed for Premium/VIP Tour."
-              : "";
+            const currentTourType = service.tourType || tourTypesList[0]?.tourType || "Sharing Tour";
+            const currentTourObj = tourTypesList.find(t => String(t.tourType || "").trim().toLowerCase() === String(currentTourType || "").trim().toLowerCase()) || tourTypesList[0] || {};
+            const availableSlots = resolveSlotOptions(service);
+            const resolvedDuration = formatServiceDuration(service, currentTourObj);
 
             return (
               <div className="rounded-xl border border-[#1f1f1f] bg-[#101010] p-3.5 space-y-3">
@@ -10196,7 +10697,7 @@ const Service = ({
                       >
                         {tourTypesList.map((t, idx) => (
                           <option key={t._id || idx} value={t.tourType} className="bg-[#111] text-slate-100 font-medium">
-                            {t.tourType} ({formatCurrencyValue(t.price ?? service.rate ?? 0, currencyCode)})
+                            {t.tourType}
                           </option>
                         ))}
                       </select>
@@ -10205,61 +10706,123 @@ const Service = ({
                   </div>
                 </div>
 
-                {/* Configuration Grid: Base Rate | Pricing Basis | Service Date | Pax | Max Pax | Total */}
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 pt-0.5">
-                  {/* 1. Base Rate */}
+                {/* Info Pills: Operating Days | Open / Close | Duration */}
+                <div className="flex flex-wrap items-center gap-2">
+                  {service.operatingDays && (
+                    <span className="flex items-center gap-1 rounded-md border border-[#232323] bg-[#141414] px-2 py-0.5 text-[10px] text-slate-300">
+                      <span className="text-slate-500">Days:</span> {service.operatingDays}
+                    </span>
+                  )}
+                  {(service.openingTime || service.closingTime) && (
+                    <span className="flex items-center gap-1 rounded-md border border-[#232323] bg-[#141414] px-2 py-0.5 text-[10px] text-slate-300">
+                      <Clock size={11} className="text-yellow-400" />
+                      <span className="text-slate-500">Open / Close:</span> {service.openingTime || "08:00"} / {service.closingTime || "18:00"}
+                    </span>
+                  )}
+                  {resolvedDuration && (
+                    <span className="flex items-center gap-1 rounded-md border border-[#232323] bg-[#141414] px-2 py-0.5 text-[10px] text-slate-300">
+                      <Clock size={11} className="text-purple-400" />
+                      <span className="text-slate-500">Duration:</span> {resolvedDuration}
+                    </span>
+                  )}
+                </div>
+
+                {/* Description shifted to the top */}
+                {(currentTourObj.description || service.description || service.desc) && (
+                  <p className="text-[10.5px] text-slate-400 font-normal italic leading-relaxed pt-0.5 border-t border-[#1c1c1c]/70">
+                    {currentTourObj.description || service.description || service.desc}
+                  </p>
+                )}
+
+                {/* Configuration Grid: Adult Price | Child Price | Adults | Children | Slot | Total */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 pt-0.5">
+                  {/* 1. Adult Price */}
                   <div>
-                    <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Base Rate</p>
+                    <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Adult Price</p>
                     {isEditMode ? (
                       <input
                         type="number"
-                        value={service.rate}
-                        onChange={(e) => updateField(service.id, "rate", Number(e.target.value))}
+                        value={service.adultPrice !== undefined ? service.adultPrice : service.rate}
+                        onChange={(e) => {
+                          const val = Number(e.target.value);
+                          updateField(service.id, "adultPrice", val);
+                          updateField(service.id, "rate", val);
+                        }}
                         className={`${inputCls} h-8 text-[11px] font-bold w-full`}
                       />
                     ) : (
                       <div className="flex h-8 w-full items-center rounded-lg border border-[#232323] bg-[#141414] px-2.5 text-[11px] font-bold text-slate-100">
-                        {formatCurrencyValue(service.rate, currencyCode)}
+                        {formatCurrencyValue(service.adultPrice !== undefined ? service.adultPrice : service.rate, currencyCode)}
                       </div>
                     )}
                   </div>
 
-                  {/* 2. Pricing Basis (Read-Only) */}
+                  {/* 2. Child Price */}
                   <div>
-                    <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Pricing Basis</p>
-                    <div className="flex h-8 w-full items-center justify-center rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-2 text-[10.5px] font-bold text-emerald-300 select-none shadow-2xs">
-                      {pricingBasis}
-                    </div>
+                    <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Child Price</p>
+                    {isEditMode ? (
+                      <input
+                        type="number"
+                        value={service.childPrice || 0}
+                        onChange={(e) => updateField(service.id, "childPrice", Number(e.target.value))}
+                        className={`${inputCls} h-8 text-[11px] font-bold w-full`}
+                      />
+                    ) : (
+                      <div className="flex h-8 w-full items-center rounded-lg border border-[#232323] bg-[#141414] px-2.5 text-[11px] font-bold text-slate-100">
+                        {formatCurrencyValue(service.childPrice || 0, currencyCode)}
+                      </div>
+                    )}
                   </div>
 
-                  {/* 3. Service Date */}
+                  {/* 3. Adults */}
                   <div>
-                    <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Service Date</p>
-                    <input
-                      type="date"
-                      value={formatDateInput(service.serviceDate)}
-                      onChange={(e) => updateField(service.id, "serviceDate", e.target.value)}
-                      className={`${inputCls} h-8 text-[11px] w-full`}
-                    />
-                  </div>
-
-                  {/* 4. Pax */}
-                  <div>
-                    <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Pax</p>
+                    <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Adults</p>
                     <input
                       type="number"
                       min={1}
-                      value={service.pax || 1}
-                      onChange={(e) => updateField(service.id, "pax", Math.max(1, Number(e.target.value) || 1))}
-                      className={`${inputCls} h-8 text-[11px] font-bold w-full ${hasPaxValidationError ? "border-rose-500 focus:border-rose-500 ring-1 ring-rose-500" : ""}`}
+                      value={service.adults !== undefined ? service.adults : (service.pax || 1)}
+                      onChange={(e) => {
+                        const num = Math.max(1, Number(e.target.value) || 1);
+                        updateField(service.id, "adults", num);
+                        updateField(service.id, "pax", num + Number(service.children || 0));
+                      }}
+                      className={`${inputCls} h-8 text-[11px] font-bold w-full`}
                     />
                   </div>
 
-                  {/* 5. Max Pax (Read-Only) */}
+                  {/* 4. Children */}
                   <div>
-                    <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Max Pax</p>
-                    <div className="flex h-8 w-full items-center justify-center rounded-lg border border-purple-500/30 bg-purple-500/10 px-1.5 text-[10px] font-semibold text-purple-300 whitespace-nowrap overflow-hidden text-ellipsis select-none shadow-2xs">
-                      {maxPax}
+                    <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Children</p>
+                    <input
+                      type="number"
+                      min={0}
+                      value={service.children !== undefined ? service.children : 0}
+                      onChange={(e) => {
+                        const num = Math.max(0, Number(e.target.value) || 0);
+                        updateField(service.id, "children", num);
+                        updateField(service.id, "pax", Number(service.adults || service.pax || 1) + num);
+                      }}
+                      className={`${inputCls} h-8 text-[11px] font-bold w-full`}
+                    />
+                  </div>
+
+                  {/* 5. Slot / Time */}
+                  <div>
+                    <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Slot / Time</p>
+                    <div className="relative">
+                      <select
+                        value={service.selectedSlot || availableSlots[0] || "08:00"}
+                        onChange={(e) => updateField(service.id, "selectedSlot", e.target.value)}
+                        className={`${selectCls.replace('rounded-lg', 'rounded-md')} h-8 text-[11px] font-semibold w-full pl-2 pr-6 appearance-none bg-[#0a0a0a] border border-[#2a2a2a] text-white cursor-pointer focus:border-yellow-500`}
+                      >
+                        <option value="" disabled>Select Time</option>
+                        {availableSlots.map((slot, sIdx) => (
+                          <option key={sIdx} value={slot} className="bg-[#111] text-white font-medium">
+                            {slot}
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-yellow-400" />
                     </div>
                   </div>
 
@@ -10271,21 +10834,6 @@ const Service = ({
                     </div>
                   </div>
                 </div>
-
-                {/* Description of the selected tour type if available */}
-                {(currentTourObj.description || service.description || service.desc) && (
-                  <p className="text-[10.5px] text-slate-400 font-normal italic">
-                    {currentTourObj.description || service.description || service.desc}
-                  </p>
-                )}
-
-                {/* Validation Error Banner */}
-                {hasPaxValidationError && (
-                  <div className="flex items-center gap-2 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-xs font-semibold text-rose-300 animate-fadeIn">
-                    <AlertCircle size={15} className="shrink-0 text-rose-400" />
-                    <span>{validationErrorMessage}</span>
-                  </div>
-                )}
               </div>
             );
           })()}
@@ -10329,6 +10877,25 @@ const Service = ({
                     <span className="text-slate-500">Max:</span> {hotelOccupancy.maxAdults} Adults, {hotelOccupancy.maxChildren} Child{hotelOccupancy.maxChildren === 1 ? "" : "ren"}
                   </span>
               </div>
+
+              {/* Smart Hotel Room Capacity Suggestion Banner */}
+              {totalPassengers > 0 && totalPassengers > (Math.max(1, Number(service.rooms || 1)) * (Number(hotelOccupancy.maxAdults || 2) + (service.extraAdult ? 1 : 0))) && (
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-500/35 bg-amber-500/10 p-2.5 text-[11px] text-amber-200">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm">💡</span>
+                    <span>
+                      For <b>{totalPassengers} Passengers</b>, at least <b>{Math.max(1, Math.ceil(totalPassengers / Number(hotelOccupancy.maxAdults || 2)))} Rooms</b> are recommended based on {service.roomCategory || service.roomType || "room"} capacity ({hotelOccupancy.maxAdults || 2} Pax/room). Currently <b>{Number(service.rooms || 1)} Room{Number(service.rooms || 1) > 1 ? "s" : ""}</b> selected.
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => updateField(service.id, "rooms", Math.max(1, Math.ceil(totalPassengers / Number(hotelOccupancy.maxAdults || 2))))}
+                    className="cursor-pointer rounded-lg border border-amber-400/40 bg-amber-400/20 px-2.5 py-1 text-[10px] font-bold text-amber-100 transition hover:bg-amber-400/30"
+                  >
+                    Auto-Set {Math.max(1, Math.ceil(totalPassengers / Number(hotelOccupancy.maxAdults || 2)))} Rooms
+                  </button>
+                </div>
+              )}
 
               {isEditMode && (
                 <div className="grid grid-cols-1 gap-3 rounded-xl border border-[#1f1f1f] bg-[#101010] px-3 py-3 md:grid-cols-2 lg:grid-cols-3">

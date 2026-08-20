@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   X,
   Plus,
@@ -16,6 +16,15 @@ import {
   ChevronDown,
   IndianRupee,
   Coins,
+  MapPin,
+  Clock,
+  AlertTriangle,
+  Zap,
+  CheckCircle2,
+  Info,
+  Calendar,
+  ArrowRight,
+  Lightbulb,
 } from "lucide-react";
 import API from "../utils/Api.js";
 import toast from "react-hot-toast";
@@ -70,7 +79,7 @@ const initialTransfer = () => ({
   serviceName: "",
   name: "",
   title: "",
-  vehicleType: "Sedan / Dzire (4 Pax)",
+  vehicleType: "",
   passengerCapacity: 4,
   luggageCapacity: 2,
   day: "1",
@@ -95,22 +104,553 @@ const initialTransfer = () => ({
   halfDayNote: "",
   fullDayExtraPerKmRate: 0,
   halfDayExtraPerKmRate: 0,
+  pickupTime: "",
+  time: "",
 });
+
+const formatServiceDuration = (serv = {}, tourObj = {}) => {
+  let dur = serv.duration || tourObj?.duration || "";
+  
+  if (!dur) {
+    const descText = `${tourObj?.description || ""} ${serv.description || ""} ${serv.desc || ""}`;
+    const minMatch = descText.match(/(\d+)\s*(?:mins?|minutes?)/i);
+    const hrMatch = descText.match(/(\d+(?:\.\d+)?)\s*(?:hours?|hrs?)/i);
+    if (minMatch) {
+      dur = minMatch[1];
+    } else if (hrMatch) {
+      dur = Math.round(parseFloat(hrMatch[1]) * 60);
+    }
+  }
+
+  if (!dur) return "";
+
+  const num = Number(String(dur).replace(/[^\d.]/g, ""));
+  if (!isNaN(num) && num > 0) {
+    const totalMins = num;
+    const hrs = totalMins / 60;
+    if (hrs >= 1) {
+      if (Number.isInteger(hrs)) {
+        return `${totalMins} Mins (${hrs} ${hrs === 1 ? "Hour" : "Hours"})`;
+      } else {
+        const hPart = Math.floor(hrs);
+        const mPart = totalMins % 60;
+        return `${totalMins} Mins (${hPart}h ${mPart}m)`;
+      }
+    }
+    return `${totalMins} Mins`;
+  }
+
+  return String(dur);
+};
+
+const resolveSlotOptions = (serv = {}) => {
+  const rawSlots = String(serv.slots || "").trim();
+  const openTime = serv.openingTime || "08:00";
+  const closeTime = serv.closingTime || "18:00";
+
+  const generateRangeSlots = (open, close) => {
+    const [oh] = String(open).split(":").map(Number);
+    const [ch] = String(close).split(":").map(Number);
+    const startHour = !isNaN(oh) ? oh : 8;
+    const endHour = !isNaN(ch) ? ch : 18;
+    const list = [];
+    for (let h = startHour; h <= endHour; h++) {
+      list.push(`${String(h).padStart(2, "0")}:00`);
+    }
+    return list.length > 0 ? list : ["08:00", "10:00", "12:00", "14:00", "16:00", "18:00"];
+  };
+
+  if (!rawSlots) {
+    return generateRangeSlots(openTime, closeTime);
+  }
+
+  const parsed = rawSlots
+    .split(/[,;]/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  if (
+    parsed.length === 2 &&
+    ((parsed[0] === openTime && parsed[1] === closeTime) ||
+      (parsed[0] === "08:00" && parsed[1] === "18:00"))
+  ) {
+    return generateRangeSlots(parsed[0], parsed[1]);
+  }
+
+  if (rawSlots.includes("-") && parsed.length === 1) {
+    const [start, end] = rawSlots.split("-").map((s) => s.trim());
+    return generateRangeSlots(start, end);
+  }
+
+  return parsed;
+};
+
+// ==========================================
+// 🕒 SCHEDULE CONFLICT DETECTION & VISUAL HELPERS
+// ==========================================
+
+// Convert time string "HH:MM" (e.g. "09:30") to minutes from midnight
+const timeStringToMinutes = (timeStr = "") => {
+  if (!timeStr || typeof timeStr !== "string") return null;
+  const match = timeStr.trim().match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) return null;
+  const hours = parseInt(match[1], 10);
+  const mins = parseInt(match[2], 10);
+  if (isNaN(hours) || isNaN(mins)) return null;
+  return hours * 60 + mins;
+};
+
+// Convert minutes from midnight back to "HH:MM"
+const minutesToTimeString = (totalMinutes = 0) => {
+  const normalized = Math.max(0, Math.min(24 * 60 - 1, totalMinutes));
+  const hours = Math.floor(normalized / 60);
+  const mins = normalized % 60;
+  return `${String(hours).padStart(2, "0")}:${String(mins).padStart(2, "0")}`;
+};
+
+// Convert "08:00" to "08:00 AM", "16:00" to "04:00 PM"
+const formatTimeAMPM = (timeStr = "") => {
+  if (!timeStr) return "";
+  const mins = timeStringToMinutes(timeStr);
+  if (mins === null) return timeStr;
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  const period = h >= 12 ? "PM" : "AM";
+  const displayH = h % 12 === 0 ? 12 : h % 12;
+  return `${String(displayH).padStart(2, "0")}:${String(m).padStart(2, "0")} ${period}`;
+};
+
+// Extract duration in minutes from duration string or default
+const parseDurationInMinutes = (durStr = "", defaultMins = 60) => {
+  if (!durStr) return defaultMins;
+  const str = String(durStr).trim();
+  const minMatch = str.match(/(\d+)\s*(?:mins?|minutes?)/i);
+  if (minMatch) {
+    const m = parseInt(minMatch[1], 10);
+    if (!isNaN(m) && m > 0) return m;
+  }
+  const hrMatch = str.match(/(\d+(?:\.\d+)?)\s*(?:hours?|hrs?)/i);
+  if (hrMatch) {
+    const h = parseFloat(hrMatch[1]);
+    if (!isNaN(h) && h > 0) return Math.round(h * 60);
+  }
+  const rawNum = parseInt(str.replace(/[^\d]/g, ""), 10);
+  if (!isNaN(rawNum) && rawNum > 0) return rawNum;
+  return defaultMins;
+};
+
+// Format duration minutes to readable text, e.g. 600 -> "10 hrs", 90 -> "1h 30m"
+const formatDurationShort = (totalMins = 0) => {
+  if (!totalMins || isNaN(totalMins) || totalMins <= 0) return "0m";
+  const hrs = totalMins / 60;
+  if (hrs >= 1) {
+    if (Number.isInteger(hrs)) {
+      return `${hrs} ${hrs === 1 ? "hr" : "hrs"}`;
+    } else {
+      const hPart = Math.floor(hrs);
+      const mPart = totalMins % 60;
+      return `${hPart}h ${mPart}m`;
+    }
+  }
+  return `${totalMins}m`;
+};
+
+const formatDurationDetailed = (totalMins = 0) => {
+  if (!totalMins || isNaN(totalMins) || totalMins <= 0) return "0 Mins";
+  const hrs = totalMins / 60;
+  if (hrs >= 1) {
+    if (Number.isInteger(hrs)) {
+      return `${totalMins} Mins (${hrs} ${hrs === 1 ? "Hour" : "Hours"})`;
+    } else {
+      const hPart = Math.floor(hrs);
+      const mPart = totalMins % 60;
+      return `${totalMins} Mins (${hPart}h ${mPart}m)`;
+    }
+  }
+  return `${totalMins} Mins`;
+};
+
+// Master schedule conflict detector comparing transfers, activities & sightseeing
+const detectScheduleConflicts = (transfers = [], activities = [], sightseeing = [], totalDays = 2) => {
+  const scheduledItems = [];
+
+  // 1. Collect Transfers (Only if transfer explicitly has a duration)
+  transfers.forEach((tr, index) => {
+    const rawTime = tr.pickupTime || tr.time || "";
+    const startMins = timeStringToMinutes(rawTime);
+    if (startMins === null) return;
+    const durMins = parseDurationInMinutes(tr.duration, 0);
+    if (durMins <= 0) return; // Do not assume artificial default duration for transfers
+    const endMins = startMins + durMins;
+    const dayNum = Number(tr.day || 1);
+    const title = tr.name || tr.serviceName || tr.title || `Transfer #${index + 1}`;
+
+    scheduledItems.push({
+      id: `transfer-${index}`,
+      type: "transfer",
+      index,
+      day: dayNum,
+      name: title,
+      startMins,
+      endMins,
+      durMins,
+      startStr: minutesToTimeString(startMins),
+      endStr: minutesToTimeString(endMins),
+      startFormatted: formatTimeAMPM(minutesToTimeString(startMins)),
+      endFormatted: formatTimeAMPM(minutesToTimeString(endMins)),
+      durFormatted: formatDurationShort(durMins),
+      durDetailed: formatDurationDetailed(durMins),
+    });
+  });
+
+  // 2. Collect Activities
+  activities.forEach((act, index) => {
+    const rawTime = act.selectedSlot || act.time || "";
+    const startMins = timeStringToMinutes(rawTime);
+    if (startMins === null) return;
+    const durMins = parseDurationInMinutes(act.duration, 120);
+    const endMins = startMins + durMins;
+    const dayNum = Number(act.day || 1);
+    const title = act.name || act.serviceName || `Activity #${index + 1}`;
+
+    scheduledItems.push({
+      id: `activity-${index}`,
+      type: "activity",
+      index,
+      day: dayNum,
+      name: title,
+      startMins,
+      endMins,
+      durMins,
+      startStr: minutesToTimeString(startMins),
+      endStr: minutesToTimeString(endMins),
+      startFormatted: formatTimeAMPM(minutesToTimeString(startMins)),
+      endFormatted: formatTimeAMPM(minutesToTimeString(endMins)),
+      durFormatted: formatDurationShort(durMins),
+      durDetailed: formatDurationDetailed(durMins),
+    });
+  });
+
+  // 3. Collect Sightseeing
+  sightseeing.forEach((sight, index) => {
+    const rawTime = sight.selectedSlot || sight.time || "";
+    const startMins = timeStringToMinutes(rawTime);
+    if (startMins === null) return;
+    const durMins = parseDurationInMinutes(sight.duration, 60);
+    const endMins = startMins + durMins;
+    const dayNum = Number(sight.day || 1);
+    const title = sight.name || sight.serviceName || `Sightseeing #${index + 1}`;
+
+    scheduledItems.push({
+      id: `sightseeing-${index}`,
+      type: "sightseeing",
+      index,
+      day: dayNum,
+      name: title,
+      startMins,
+      endMins,
+      durMins,
+      startStr: minutesToTimeString(startMins),
+      endStr: minutesToTimeString(endMins),
+      startFormatted: formatTimeAMPM(minutesToTimeString(startMins)),
+      endFormatted: formatTimeAMPM(minutesToTimeString(endMins)),
+      durFormatted: formatDurationShort(durMins),
+      durDetailed: formatDurationDetailed(durMins),
+    });
+  });
+
+  const conflicts = [];
+
+  for (let i = 0; i < scheduledItems.length; i++) {
+    for (let j = i + 1; j < scheduledItems.length; j++) {
+      const itemA = scheduledItems[i];
+      const itemB = scheduledItems[j];
+
+      if (itemA.day === itemB.day) {
+        const overlapStart = Math.max(itemA.startMins, itemB.startMins);
+        const overlapEnd = Math.min(itemA.endMins, itemB.endMins);
+
+        if (overlapStart < overlapEnd) {
+          const overlapMins = overlapEnd - overlapStart;
+          const overlapStartStr = minutesToTimeString(overlapStart);
+          const overlapEndStr = minutesToTimeString(overlapEnd);
+          const overlapStartFormatted = formatTimeAMPM(overlapStartStr);
+          const overlapEndFormatted = formatTimeAMPM(overlapEndStr);
+          const overlapDurFormatted = formatDurationShort(overlapMins);
+
+          const typeLabelA = itemA.type === "transfer" ? "Transport" : itemA.type === "activity" ? "Activity" : "Sightseeing";
+          const typeLabelB = itemB.type === "transfer" ? "Transport" : itemB.type === "activity" ? "Activity" : "Sightseeing";
+
+          const detailedReason = `${typeLabelA} "${itemA.name}" (${itemA.durDetailed}) starts at ${itemA.startFormatted} and runs until ${itemA.endFormatted}. ${typeLabelB} "${itemB.name}" (${itemB.durDetailed}) starts at ${itemB.startFormatted} and runs until ${itemB.endFormatted}. Both clash for ${overlapDurFormatted} (${overlapStartFormatted} - ${overlapEndFormatted}) on Day ${itemA.day}.`;
+
+          // Find smart candidate touring days in the package
+          const suggestedDayShifts = [];
+
+          // 1. Shift Option for Item B (e.g. Sightseeing)
+          for (let d = 1; d <= totalDays; d++) {
+            if (d === itemA.day) continue;
+
+            // Rule 1: Departure Day (last day of multi-day trip) -> Guests have checkout & airport drop; not suitable for tours
+            if (totalDays >= 3 && d === totalDays) continue;
+
+            // Rule 2: Day 1 (Arrival Day) -> Guests arrive & check in; avoid scheduling long (>= 3 hrs) tours or early morning tours
+            if (totalDays >= 3 && d === 1) {
+              const hasDay1Transfer = transfers.some((tr) => Number(tr.day || 1) === 1);
+              const isLongTour = (itemB.durMins || 0) >= 180 || (itemB.startMins || 0) < 12 * 60;
+              if (hasDay1Transfer || isLongTour) continue;
+            }
+
+            // Rule 3: Check if Day d has a departure/airport drop transfer scheduled
+            const hasDepartureTransferOnDayD = transfers.some(
+              (tr) => Number(tr.day || 1) === d && /drop|departure|airport drop/i.test(tr.name || tr.serviceName || "")
+            );
+            if (hasDepartureTransferOnDayD) continue;
+
+            // Rule 4: Overlap check with existing services on Day d
+            const itemsOnDayD = scheduledItems.filter((it) => it.day === d);
+            const wouldConflictB = itemsOnDayD.some((it) => {
+              const oS = Math.max(it.startMins, itemB.startMins);
+              const oE = Math.min(it.endMins, itemB.endMins);
+              return oS < oE;
+            });
+            if (wouldConflictB) continue;
+
+            // Rule 5: Daily Daylight Capacity check (Max 10 hours / 600 mins)
+            const currentDayMins = itemsOnDayD.reduce((sum, it) => sum + (it.durMins || 0), 0);
+            if (currentDayMins + (itemB.durMins || 0) > 600) continue;
+
+            suggestedDayShifts.push({
+              targetItem: itemB,
+              itemType: typeLabelB,
+              toDay: d,
+              label: `Move ${typeLabelB} to Day ${d}`,
+              fullLabel: `Shift ${typeLabelB} "${itemB.name}" to Day ${d}`,
+            });
+          }
+
+          // 2. Shift Option for Item A (e.g. Activity) if not a transfer
+          if (itemA.type !== "transfer") {
+            for (let d = 1; d <= totalDays; d++) {
+              if (d === itemA.day) continue;
+              if (totalDays >= 3 && d === totalDays) continue;
+              if (totalDays >= 3 && d === 1) {
+                const hasDay1Transfer = transfers.some((tr) => Number(tr.day || 1) === 1);
+                const isLongTour = (itemA.durMins || 0) >= 180 || (itemA.startMins || 0) < 12 * 60;
+                if (hasDay1Transfer || isLongTour) continue;
+              }
+              const hasDepartureTransferOnDayD = transfers.some(
+                (tr) => Number(tr.day || 1) === d && /drop|departure|airport drop/i.test(tr.name || tr.serviceName || "")
+              );
+              if (hasDepartureTransferOnDayD) continue;
+
+              const itemsOnDayD = scheduledItems.filter((it) => it.day === d);
+              const wouldConflictA = itemsOnDayD.some((it) => {
+                const oS = Math.max(it.startMins, itemA.startMins);
+                const oE = Math.min(it.endMins, itemA.endMins);
+                return oS < oE;
+              });
+              if (wouldConflictA) continue;
+
+              const currentDayMins = itemsOnDayD.reduce((sum, it) => sum + (it.durMins || 0), 0);
+              if (currentDayMins + (itemA.durMins || 0) > 600) continue;
+
+              suggestedDayShifts.push({
+                targetItem: itemA,
+                itemType: typeLabelA,
+                toDay: d,
+                label: `Move ${typeLabelA} to Day ${d}`,
+                fullLabel: `Shift ${typeLabelA} "${itemA.name}" to Day ${d}`,
+              });
+            }
+          }
+
+          conflicts.push({
+            id: `${itemA.id}-${itemB.id}`,
+            day: itemA.day,
+            itemA,
+            itemB,
+            overlapStart,
+            overlapEnd,
+            overlapMins,
+            overlapStartStr,
+            overlapEndStr,
+            overlapStartFormatted,
+            overlapEndFormatted,
+            overlapDurFormatted,
+            detailedReason,
+            suggestedDayShifts,
+            message: `Day ${itemA.day}: ${typeLabelA} "${itemA.name}" (${itemA.startStr} - ${itemA.endStr}) overlaps with ${typeLabelB} "${itemB.name}" (${itemB.startStr} - ${itemB.endStr}) by ${overlapDurFormatted}`,
+          });
+        }
+      }
+    }
+  }
+
+  return { conflicts, scheduledItems };
+};
+
+// Check slot availability for dropdowns
+const checkSlotAvailability = (currentType, currentIndex, testSlot, dayNum, durationMins, scheduledItems = []) => {
+  const startMins = timeStringToMinutes(testSlot);
+  if (startMins === null) return { isConflicting: false };
+  const endMins = startMins + durationMins;
+
+  for (const item of scheduledItems) {
+    if (item.type === currentType && item.index === currentIndex) continue;
+    if (item.day !== dayNum) continue;
+
+    const overlapStart = Math.max(startMins, item.startMins);
+    const overlapEnd = Math.min(endMins, item.endMins);
+    if (overlapStart < overlapEnd) {
+      const typeLabel = item.type === "transfer" ? "Transport" : item.type === "activity" ? "Activity" : "Sightseeing";
+      return {
+        isConflicting: true,
+        conflictingWith: item.name,
+        conflictingType: typeLabel,
+        timeRange: `${item.startStr} - ${item.endStr}`,
+      };
+    }
+  }
+
+  return { isConflicting: false };
+};
+
+// Calculate total booked minutes and load for each day (Activities & Sightseeing)
+const getDayLoadSummary = (scheduledItems = [], totalDays = 2) => {
+  const summary = {};
+  for (let d = 1; d <= totalDays; d++) {
+    // Only count actual tours/activities/sightseeing towards daylight tour schedule
+    const items = scheduledItems.filter((it) => it.day === d && it.type !== "transfer");
+    const totalMins = items.reduce((sum, it) => sum + (it.durMins || 0), 0);
+    const hrs = Math.round((totalMins / 60) * 10) / 10;
+    const isFull = totalMins >= 600; // >= 10 hrs
+    summary[d] = {
+      day: d,
+      totalMins,
+      totalHours: hrs,
+      itemsCount: items.length,
+      isFull,
+      label: totalMins === 0 ? "Free" : `${hrs} hrs${isFull ? " (Full)" : ""}`,
+    };
+  }
+  return summary;
+};
+
+// ==========================================
+// 💡 SCHEDULE CONFLICT BREAKDOWN COMPONENT
+// ==========================================
+function DayScheduleVisualizer({
+  dayNum,
+  scheduledItems = [],
+  conflicts = [],
+  onShiftItemDay,
+  totalDays = 2,
+}) {
+  const itemsOnDay = scheduledItems.filter((it) => it.day === dayNum);
+  const dayConflicts = conflicts.filter((c) => c.day === dayNum);
+  const totalMins = itemsOnDay.reduce((sum, it) => sum + (it.durMins || 0), 0);
+  const totalHrs = Math.round((totalMins / 60) * 10) / 10;
+
+  if (dayConflicts.length === 0) return null;
+
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-3 shadow-xs">
+      {/* Header matching Agent Portal style */}
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-2.5">
+        <div className="flex items-center gap-2.5">
+          <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-blue-50 border border-blue-100 text-[#3E63DD] font-bold text-xs">
+            <Calendar size={13} /> Day {dayNum}
+          </span>
+          <div>
+            <div className="flex items-center gap-2">
+              <h4 className="text-xs sm:text-sm font-bold text-slate-900">
+                Schedule Timing Conflict
+              </h4>
+              <span className="rounded-md bg-rose-50 border border-rose-200 px-2 py-0.5 text-[11px] font-semibold text-rose-700">
+                ⚠️ {dayConflicts.length} Conflict{dayConflicts.length > 1 ? "s" : ""}
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-500 mt-0.5">
+              Total Booked: <span className="font-semibold text-slate-700">{totalHrs} Hours</span> ({totalMins} mins scheduled) • Standard daylight capacity is 10 Hours
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Detailed Math Explanation + 1-Click Auto Resolvers (Matching Agent Portal Remarks Style) */}
+      <div className="space-y-2.5">
+        {dayConflicts.map((c, cIdx) => (
+          <div
+            key={cIdx}
+            className="rounded-lg border border-gray-200 bg-slate-50/50 p-3.5 space-y-2.5 text-xs shadow-2xs"
+          >
+            <div className="border-l-3 border-amber-500 pl-3 space-y-1">
+              <p className="font-bold text-slate-900 flex items-center gap-1.5">
+                <AlertTriangle size={13} className="text-amber-600 shrink-0" />
+                Conflict Reason:
+              </p>
+              <p className="text-slate-700 leading-relaxed text-[11px]">
+                {c.detailedReason}
+              </p>
+            </div>
+
+            {/* Smart Action Buttons in Brand Blue #3E63DD */}
+            {Array.isArray(c.suggestedDayShifts) && c.suggestedDayShifts.length > 0 && (
+              <div className="pt-2.5 border-t border-gray-200/80 space-y-2">
+                <div className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-600">
+                  <Zap size={12} className="text-amber-600 shrink-0" />
+                  <span>Suggested 1-Click Auto-Fixes:</span>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {c.suggestedDayShifts.map((sug, sIdx) => (
+                    <button
+                      key={sIdx}
+                      type="button"
+                      onClick={() => onShiftItemDay(sug.targetItem, sug.toDay)}
+                      title={sug.fullLabel || sug.label}
+                      className="inline-flex items-center gap-1 rounded-md bg-[#3E63DD] hover:bg-[#3252c4] text-white px-2.5 py-1 text-xs font-semibold shadow-xs transition-all duration-150 cursor-pointer active:scale-98"
+                    >
+                      <Zap size={11} className="shrink-0" />
+                      <span>{sug.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 const initialActivity = () => ({
   serviceName: "",
   name: "",
   day: 1,
-  tourTypesList: [],
+  tourTypesList: [
+    { tourType: "Sharing Tour", adultPrice: 0, childPrice: 0 },
+    { tourType: "Private Tour", adultPrice: 0, childPrice: 0 },
+    { tourType: "Ticket Tour", adultPrice: 0, childPrice: 0 },
+  ],
   selectedTourIdx: 0,
-  tourType: "Group Tour",
-  pricingBasis: "Per Pax",
-  maxPax: "N/A (Shared Group)",
+  tourType: "",
+  adultPrice: "",
+  childPrice: "",
+  adults: 2,
+  children: 0,
   basePrice: 0,
-  pax: 1,
-  price: 0,
+  pax: 2,
+  selectedSlot: "08:00",
+  time: "08:00",
+  price: "",
   unit: "person",
   quantity: 1,
+  operatingDays: "",
+  openingTime: "",
+  closingTime: "",
+  duration: "",
   supplier: "",
   supplierName: "",
   description: "",
@@ -120,16 +660,28 @@ const initialSightseeing = () => ({
   serviceName: "",
   name: "",
   day: 1,
-  tourTypesList: [],
+  tourTypesList: [
+    { tourType: "Sharing Tour", adultPrice: 0, childPrice: 0 },
+    { tourType: "Private Tour", adultPrice: 0, childPrice: 0 },
+    { tourType: "Ticket Tour", adultPrice: 0, childPrice: 0 },
+  ],
   selectedTourIdx: 0,
-  tourType: "Group Tour",
-  pricingBasis: "Per Pax",
-  maxPax: "N/A (Shared Group)",
+  tourType: "",
+  adultPrice: "",
+  childPrice: "",
+  adults: 2,
+  children: 0,
   basePrice: 0,
-  pax: 1,
-  price: 0,
+  pax: 2,
+  selectedSlot: "08:00",
+  time: "08:00",
+  price: "",
   unit: "person",
   quantity: 1,
+  operatingDays: "",
+  openingTime: "",
+  closingTime: "",
+  duration: "",
   supplier: "",
   supplierName: "",
   description: "",
@@ -674,7 +1226,7 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
     };
     setHotels(updated);
     setActiveHotelDropdownIdx(null);
-    toast.success(`DMC Service linked: ${serviceTitle}`);
+    toast.success(`Service linked: ${serviceTitle}`);
   };
 
   const TRANSPORT_USAGE_OPTIONS = [
@@ -738,7 +1290,16 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
     };
   };
 
-  const addTransfer = () => setTransfers([...transfers, initialTransfer()]);
+  const totalDaysCount = Math.max(
+    1,
+    Number(days) || (duration ? Number(duration.match(/\d+/g)?.[1] || duration.match(/\d+/g)?.[0]) : 1) || 1
+  );
+
+  const addTransfer = () => {
+    const newIdx = transfers.length;
+    const assignedDay = newIdx === 0 ? 1 : newIdx === 1 ? totalDaysCount : Math.min(newIdx + 1, totalDaysCount);
+    setTransfers([...transfers, { ...initialTransfer(), day: assignedDay }]);
+  };
   const removeTransfer = (index) => setTransfers(transfers.filter((_, i) => i !== index));
   const updateTransfer = (index, field, value) => {
     const updated = [...transfers];
@@ -862,7 +1423,7 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
     };
     setTransfers(updated);
     setActiveTransferDropdownIdx(null);
-    toast.success(`DMC Transport linked: ${routeTitle}`);
+    toast.success(`Transport linked: ${routeTitle}`);
   };
 
   const addActivity = () => setActivities([...activities, initialActivity()]);
@@ -872,20 +1433,21 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
     const updated = [...activities];
     const item = updated[index];
     const tList = item.tourTypesList || [];
-    const matched = tList.find((t) => t.tourType === selectedTourType) || {};
+    const matched = tList.find((t) => String(t.tourType || "").trim().toLowerCase() === String(selectedTourType || "").trim().toLowerCase()) || {};
 
-    const rate = Number(matched.price !== undefined ? matched.price : item.basePrice || 0);
-    const basis = matched.pricingBasis || (selectedTourType.toLowerCase().includes("group") && !selectedTourType.toLowerCase().includes("per group") ? "Per Pax" : "Per Group");
-    const maxPaxVal = matched.maxPax !== undefined ? matched.maxPax : (selectedTourType.toLowerCase().includes("group") && !selectedTourType.toLowerCase().includes("per group") ? "N/A (Shared Group)" : selectedTourType.toLowerCase().includes("vip") ? "Up to 6 Pax" : "Up to 4 Pax");
-    const paxNum = Math.max(1, Number(item.pax || 1));
-    const isPerGroup = basis.toLowerCase().includes("group") && !basis.toLowerCase().includes("pax");
+    const adultRate = Number(matched.adultPrice !== undefined ? matched.adultPrice : (matched.price !== undefined ? matched.price : (item.adultPrice || 0)));
+    const childRate = Number(matched.childPrice !== undefined ? matched.childPrice : (matched.childRate !== undefined ? matched.childRate : (item.childPrice || 0)));
+    const adultsNum = Math.max(1, Number(item.adults !== undefined ? item.adults : (item.pax || 2)));
+    const childrenNum = Math.max(0, Number(item.children || 0));
 
     item.tourType = selectedTourType;
-    item.basePrice = rate;
-    item.pricingBasis = basis;
-    item.maxPax = maxPaxVal;
-    if (matched.description) item.description = matched.description;
-    item.price = isPerGroup ? rate : rate * paxNum;
+    if (selectedTourType) {
+      item.adultPrice = adultRate;
+      item.childPrice = childRate;
+      item.basePrice = adultRate;
+      if (matched.description) item.description = matched.description;
+      item.price = (adultRate * adultsNum) + (childRate * childrenNum);
+    }
 
     setActivities(updated);
   };
@@ -899,23 +1461,28 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
       updated[index].serviceName = value;
     }
 
-    if (field === "pax" || field === "basePrice") {
-      const paxNum = Math.max(1, Number(field === "pax" ? value : updated[index].pax || 1));
-      const base = Number(field === "basePrice" ? value : updated[index].basePrice || 0);
-      const basis = String(updated[index].pricingBasis || "").toLowerCase();
-      const isPerGroup = basis.includes("group") && !basis.includes("pax");
-      updated[index].price = isPerGroup ? base : base * paxNum;
+    if (field === "adults" || field === "children" || field === "adultPrice" || field === "childPrice") {
+      const aCount = Math.max(1, Number(field === "adults" ? value : (updated[index].adults !== undefined ? updated[index].adults : 1)));
+      const cCount = Math.max(0, Number(field === "children" ? value : (updated[index].children !== undefined ? updated[index].children : 0)));
+      const aRate = Number(field === "adultPrice" ? value : (updated[index].adultPrice !== undefined ? updated[index].adultPrice : 0));
+      const cRate = Number(field === "childPrice" ? value : (updated[index].childPrice !== undefined ? updated[index].childPrice : 0));
+      
+      updated[index].adults = aCount;
+      updated[index].children = cCount;
+      updated[index].pax = aCount + cCount;
+      updated[index].adultPrice = aRate;
+      updated[index].childPrice = cRate;
+      updated[index].basePrice = aRate;
+      updated[index].price = (aRate * aCount) + (cRate * cCount);
+    }
+
+    if (field === "selectedSlot") {
+      updated[index].selectedSlot = value;
+      updated[index].time = value;
     }
 
     if (field === "price") {
-      const paxNum = Math.max(1, Number(updated[index].pax || 1));
-      const basis = String(updated[index].pricingBasis || "").toLowerCase();
-      const isPerGroup = basis.includes("group") && !basis.includes("pax");
-      if (isPerGroup) {
-        updated[index].basePrice = Number(value || 0);
-      } else {
-        updated[index].basePrice = Math.round(Number(value || 0) / paxNum);
-      }
+      updated[index].price = Number(value || 0);
     }
 
     setActivities(updated);
@@ -926,25 +1493,59 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
     const updated = [...activities];
     const actTitle = dmcAct.serviceName || dmcAct.name || dmcAct.title || "";
     const tourTypesList = Array.isArray(dmcAct.tourTypes) && dmcAct.tourTypes.length > 0
-      ? dmcAct.tourTypes
+      ? dmcAct.tourTypes.map((t) => ({
+          ...t,
+          adultPrice: Number(t.adultPrice !== undefined ? t.adultPrice : (t.price || dmcAct.adultPrice || dmcAct.price || 0)),
+          childPrice: Number(t.childPrice !== undefined ? t.childPrice : (t.childRate || dmcAct.childPrice || dmcAct.childRate || 0)),
+        }))
       : [
           {
-            tourType: dmcAct.tourType || "Group Tour",
-            price: Number(dmcAct.price || dmcAct.rate || 0),
-            pricingBasis: dmcAct.pricingBasis || "Per Pax",
-            maxPax: dmcAct.maxPax || "N/A (Shared Group)",
+            tourType: dmcAct.tourType || "Sharing Tour",
+            adultPrice: Number(dmcAct.adultPrice !== undefined ? dmcAct.adultPrice : (dmcAct.price || dmcAct.rate || 0)),
+            childPrice: Number(dmcAct.childPrice !== undefined ? dmcAct.childPrice : (dmcAct.childRate || dmcAct.cwebRate || 0)),
+            description: dmcAct.description || "",
+          },
+          {
+            tourType: "Private Tour",
+            adultPrice: Number(dmcAct.adultPrice !== undefined ? dmcAct.adultPrice : (dmcAct.price || dmcAct.rate || 0)),
+            childPrice: Number(dmcAct.childPrice !== undefined ? dmcAct.childPrice : (dmcAct.childRate || dmcAct.cwebRate || 0)),
+            description: dmcAct.description || "",
+          },
+          {
+            tourType: "Ticket Tour",
+            adultPrice: Number(dmcAct.adultPrice !== undefined ? dmcAct.adultPrice : (dmcAct.price || dmcAct.rate || 0)),
+            childPrice: Number(dmcAct.childPrice !== undefined ? dmcAct.childPrice : (dmcAct.childRate || dmcAct.cwebRate || 0)),
             description: dmcAct.description || "",
           },
         ];
 
     const defaultTour = tourTypesList[0] || {};
-    const defaultTourType = defaultTour.tourType || dmcAct.tourType || "Group Tour";
-    const defaultPricingBasis = defaultTour.pricingBasis || (defaultTourType.toLowerCase().includes("group") && !defaultTourType.toLowerCase().includes("per group") ? "Per Pax" : "Per Group");
-    const defaultMaxPax = defaultTour.maxPax || (defaultTourType.toLowerCase().includes("group") && !defaultTourType.toLowerCase().includes("per group") ? "N/A (Shared Group)" : defaultTourType.toLowerCase().includes("vip") ? "Up to 6 Pax" : "Up to 4 Pax");
-    const baseRate = Number(defaultTour.price !== undefined ? defaultTour.price : (dmcAct.price || dmcAct.rate || 0));
-    const paxNum = Math.max(1, Number(updated[index].pax || 1));
-    const isPerGroup = defaultPricingBasis.toLowerCase().includes("group") && !defaultPricingBasis.toLowerCase().includes("pax");
-    const calculatedTotal = isPerGroup ? baseRate : baseRate * paxNum;
+    const defaultTourType = defaultTour.tourType || dmcAct.tourType || "Sharing Tour";
+    const adultRate = Number(
+      defaultTour.adultPrice !== undefined
+        ? defaultTour.adultPrice
+        : dmcAct.adultPrice !== undefined
+        ? dmcAct.adultPrice
+        : defaultTour.price || dmcAct.price || dmcAct.rate || 0
+    );
+    const childRate = Number(
+      defaultTour.childPrice !== undefined
+        ? defaultTour.childPrice
+        : dmcAct.childPrice !== undefined
+        ? dmcAct.childPrice
+        : dmcAct.childRate !== undefined
+        ? dmcAct.childRate
+        : dmcAct.cwebRate !== undefined
+        ? dmcAct.cwebRate
+        : 0
+    );
+    
+    const adultsNum = Math.max(1, Number(updated[index].adults || 2));
+    const childrenNum = Math.max(0, Number(updated[index].children || 0));
+    const calculatedTotal = (adultRate * adultsNum) + (childRate * childrenNum);
+
+    const availableSlots = resolveSlotOptions(dmcAct);
+    const selectedSlot = updated[index].selectedSlot || availableSlots[0] || "08:00";
 
     updated[index] = {
       ...updated[index],
@@ -953,10 +1554,19 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
       tourTypesList: tourTypesList,
       selectedTourIdx: 0,
       tourType: defaultTourType,
-      pricingBasis: defaultPricingBasis,
-      maxPax: defaultMaxPax,
-      basePrice: baseRate,
-      pax: paxNum,
+      adultPrice: adultRate,
+      childPrice: childRate,
+      basePrice: adultRate,
+      adults: adultsNum,
+      children: childrenNum,
+      pax: adultsNum + childrenNum,
+      selectedSlot: selectedSlot,
+      time: selectedSlot,
+      operatingDays: dmcAct.operatingDays || dmcAct.days || "Mon-Sun",
+      openingTime: dmcAct.openingTime || "08:00",
+      closingTime: dmcAct.closingTime || "18:00",
+      duration: dmcAct.duration || "120 Mins",
+      slots: dmcAct.slots || "",
       price: calculatedTotal,
       supplier: dmcAct.supplier || dmcAct.supplierId || dmcAct.dmcId || dmcAct._id || "",
       supplierName: dmcAct.supplierName || dmcAct.dmcName || "",
@@ -964,7 +1574,7 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
     };
     setActivities(updated);
     setActiveActivityDropdownIdx(null);
-    toast.success(`DMC Activity linked: ${actTitle}`);
+    toast.success(`Activity linked: ${actTitle}`);
   };
 
   const addSightseeing = () => setSightseeing([...sightseeing, initialSightseeing()]);
@@ -974,20 +1584,21 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
     const updated = [...sightseeing];
     const item = updated[index];
     const tList = item.tourTypesList || [];
-    const matched = tList.find((t) => t.tourType === selectedTourType) || {};
+    const matched = tList.find((t) => String(t.tourType || "").trim().toLowerCase() === String(selectedTourType || "").trim().toLowerCase()) || {};
 
-    const rate = Number(matched.price !== undefined ? matched.price : item.basePrice || 0);
-    const basis = matched.pricingBasis || (selectedTourType.toLowerCase().includes("group") && !selectedTourType.toLowerCase().includes("per group") ? "Per Pax" : "Per Group");
-    const maxPaxVal = matched.maxPax !== undefined ? matched.maxPax : (selectedTourType.toLowerCase().includes("group") && !selectedTourType.toLowerCase().includes("per group") ? "N/A (Shared Group)" : selectedTourType.toLowerCase().includes("vip") ? "Up to 6 Pax" : "Up to 4 Pax");
-    const paxNum = Math.max(1, Number(item.pax || 1));
-    const isPerGroup = basis.toLowerCase().includes("group") && !basis.toLowerCase().includes("pax");
+    const adultRate = Number(matched.adultPrice !== undefined ? matched.adultPrice : (matched.price !== undefined ? matched.price : (item.adultPrice || 0)));
+    const childRate = Number(matched.childPrice !== undefined ? matched.childPrice : (matched.childRate !== undefined ? matched.childRate : (item.childPrice || 0)));
+    const adultsNum = Math.max(1, Number(item.adults !== undefined ? item.adults : (item.pax || 2)));
+    const childrenNum = Math.max(0, Number(item.children || 0));
 
     item.tourType = selectedTourType;
-    item.basePrice = rate;
-    item.pricingBasis = basis;
-    item.maxPax = maxPaxVal;
-    if (matched.description) item.description = matched.description;
-    item.price = isPerGroup ? rate : rate * paxNum;
+    if (selectedTourType) {
+      item.adultPrice = adultRate;
+      item.childPrice = childRate;
+      item.basePrice = adultRate;
+      if (matched.description) item.description = matched.description;
+      item.price = (adultRate * adultsNum) + (childRate * childrenNum);
+    }
 
     setSightseeing(updated);
   };
@@ -1001,23 +1612,28 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
       updated[index].serviceName = value;
     }
 
-    if (field === "pax" || field === "basePrice") {
-      const paxNum = Math.max(1, Number(field === "pax" ? value : updated[index].pax || 1));
-      const base = Number(field === "basePrice" ? value : updated[index].basePrice || 0);
-      const basis = String(updated[index].pricingBasis || "").toLowerCase();
-      const isPerGroup = basis.includes("group") && !basis.includes("pax");
-      updated[index].price = isPerGroup ? base : base * paxNum;
+    if (field === "adults" || field === "children" || field === "adultPrice" || field === "childPrice") {
+      const aCount = Math.max(1, Number(field === "adults" ? value : (updated[index].adults !== undefined ? updated[index].adults : 1)));
+      const cCount = Math.max(0, Number(field === "children" ? value : (updated[index].children !== undefined ? updated[index].children : 0)));
+      const aRate = Number(field === "adultPrice" ? value : (updated[index].adultPrice !== undefined ? updated[index].adultPrice : 0));
+      const cRate = Number(field === "childPrice" ? value : (updated[index].childPrice !== undefined ? updated[index].childPrice : 0));
+      
+      updated[index].adults = aCount;
+      updated[index].children = cCount;
+      updated[index].pax = aCount + cCount;
+      updated[index].adultPrice = aRate;
+      updated[index].childPrice = cRate;
+      updated[index].basePrice = aRate;
+      updated[index].price = (aRate * aCount) + (cRate * cCount);
+    }
+
+    if (field === "selectedSlot") {
+      updated[index].selectedSlot = value;
+      updated[index].time = value;
     }
 
     if (field === "price") {
-      const paxNum = Math.max(1, Number(updated[index].pax || 1));
-      const basis = String(updated[index].pricingBasis || "").toLowerCase();
-      const isPerGroup = basis.includes("group") && !basis.includes("pax");
-      if (isPerGroup) {
-        updated[index].basePrice = Number(value || 0);
-      } else {
-        updated[index].basePrice = Math.round(Number(value || 0) / paxNum);
-      }
+      updated[index].price = Number(value || 0);
     }
 
     setSightseeing(updated);
@@ -1028,25 +1644,59 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
     const updated = [...sightseeing];
     const sightTitle = dmcSight.serviceName || dmcSight.name || dmcSight.title || "";
     const tourTypesList = Array.isArray(dmcSight.tourTypes) && dmcSight.tourTypes.length > 0
-      ? dmcSight.tourTypes
+      ? dmcSight.tourTypes.map((t) => ({
+          ...t,
+          adultPrice: Number(t.adultPrice !== undefined ? t.adultPrice : (t.price || dmcSight.adultPrice || dmcSight.price || 0)),
+          childPrice: Number(t.childPrice !== undefined ? t.childPrice : (t.childRate || dmcSight.childPrice || dmcSight.childRate || 0)),
+        }))
       : [
           {
-            tourType: dmcSight.tourType || "Group Tour",
-            price: Number(dmcSight.price || dmcSight.rate || 0),
-            pricingBasis: dmcSight.pricingBasis || "Per Pax",
-            maxPax: dmcSight.maxPax || "N/A (Shared Group)",
+            tourType: dmcSight.tourType || "Sharing Tour",
+            adultPrice: Number(dmcSight.adultPrice !== undefined ? dmcSight.adultPrice : (dmcSight.price || dmcSight.rate || 0)),
+            childPrice: Number(dmcSight.childPrice !== undefined ? dmcSight.childPrice : (dmcSight.childRate || dmcSight.cwebRate || 0)),
+            description: dmcSight.description || "",
+          },
+          {
+            tourType: "Private Tour",
+            adultPrice: Number(dmcSight.adultPrice !== undefined ? dmcSight.adultPrice : (dmcSight.price || dmcSight.rate || 0)),
+            childPrice: Number(dmcSight.childPrice !== undefined ? dmcSight.childPrice : (dmcSight.childRate || dmcSight.cwebRate || 0)),
+            description: dmcSight.description || "",
+          },
+          {
+            tourType: "Ticket Tour",
+            adultPrice: Number(dmcSight.adultPrice !== undefined ? dmcSight.adultPrice : (dmcSight.price || dmcSight.rate || 0)),
+            childPrice: Number(dmcSight.childPrice !== undefined ? dmcSight.childPrice : (dmcSight.childRate || dmcSight.cwebRate || 0)),
             description: dmcSight.description || "",
           },
         ];
 
     const defaultTour = tourTypesList[0] || {};
-    const defaultTourType = defaultTour.tourType || dmcSight.tourType || "Group Tour";
-    const defaultPricingBasis = defaultTour.pricingBasis || (defaultTourType.toLowerCase().includes("group") && !defaultTourType.toLowerCase().includes("per group") ? "Per Pax" : "Per Group");
-    const defaultMaxPax = defaultTour.maxPax || (defaultTourType.toLowerCase().includes("group") && !defaultTourType.toLowerCase().includes("per group") ? "N/A (Shared Group)" : defaultTourType.toLowerCase().includes("vip") ? "Up to 6 Pax" : "Up to 4 Pax");
-    const baseRate = Number(defaultTour.price !== undefined ? defaultTour.price : (dmcSight.price || dmcSight.rate || 0));
-    const paxNum = Math.max(1, Number(updated[index].pax || 1));
-    const isPerGroup = defaultPricingBasis.toLowerCase().includes("group") && !defaultPricingBasis.toLowerCase().includes("pax");
-    const calculatedTotal = isPerGroup ? baseRate : baseRate * paxNum;
+    const defaultTourType = defaultTour.tourType || dmcSight.tourType || "Sharing Tour";
+    const adultRate = Number(
+      defaultTour.adultPrice !== undefined
+        ? defaultTour.adultPrice
+        : dmcSight.adultPrice !== undefined
+        ? dmcSight.adultPrice
+        : defaultTour.price || dmcSight.price || dmcSight.rate || 0
+    );
+    const childRate = Number(
+      defaultTour.childPrice !== undefined
+        ? defaultTour.childPrice
+        : dmcSight.childPrice !== undefined
+        ? dmcSight.childPrice
+        : dmcSight.childRate !== undefined
+        ? dmcSight.childRate
+        : dmcSight.cwebRate !== undefined
+        ? dmcSight.cwebRate
+        : 0
+    );
+    
+    const adultsNum = Math.max(1, Number(updated[index].adults || 2));
+    const childrenNum = Math.max(0, Number(updated[index].children || 0));
+    const calculatedTotal = (adultRate * adultsNum) + (childRate * childrenNum);
+
+    const availableSlots = resolveSlotOptions(dmcSight);
+    const selectedSlot = updated[index].selectedSlot || availableSlots[0] || "08:00";
 
     updated[index] = {
       ...updated[index],
@@ -1055,10 +1705,19 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
       tourTypesList: tourTypesList,
       selectedTourIdx: 0,
       tourType: defaultTourType,
-      pricingBasis: defaultPricingBasis,
-      maxPax: defaultMaxPax,
-      basePrice: baseRate,
-      pax: paxNum,
+      adultPrice: adultRate,
+      childPrice: childRate,
+      basePrice: adultRate,
+      adults: adultsNum,
+      children: childrenNum,
+      pax: adultsNum + childrenNum,
+      selectedSlot: selectedSlot,
+      time: selectedSlot,
+      operatingDays: dmcSight.operatingDays || dmcSight.days || "Mon-Sun",
+      openingTime: dmcSight.openingTime || "08:00",
+      closingTime: dmcSight.closingTime || "18:00",
+      duration: dmcSight.duration || "60 Mins",
+      slots: dmcSight.slots || "",
       price: calculatedTotal,
       supplier: dmcSight.supplier || dmcSight.supplierId || dmcSight.dmcId || dmcSight._id || "",
       supplierName: dmcSight.supplierName || dmcSight.dmcName || "",
@@ -1066,7 +1725,7 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
     };
     setSightseeing(updated);
     setActiveSightseeingDropdownIdx(null);
-    toast.success(`DMC Sightseeing linked: ${sightTitle}`);
+    toast.success(`Sightseeing linked: ${sightTitle}`);
   };
 
   const addItineraryDay = () => setItinerary([...itinerary, initialItineraryDay(itinerary.length + 1)]);
@@ -1077,7 +1736,6 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
     setItinerary(updated);
   };
 
-  const totalDaysCount = Math.max(1, Number(days) || (duration ? Number(duration.match(/\d+/g)?.[1] || duration.match(/\d+/g)?.[0]) : 1) || 1);
   const numBaseCost = Number(basePrice || (price && !basePrice ? price : 0) || 0);
   const gstAmt = gstChecked && numBaseCost > 0 ? Math.round((numBaseCost * Number(gstPercent || 0)) / 100) : 0;
   const tcsAmt = tcsChecked && numBaseCost > 0 ? Math.round((numBaseCost * Number(tcsPercent || 0)) / 100) : 0;
@@ -1198,59 +1856,110 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
     }
   };
 
+  // Schedule Conflicts & Timeline Intelligence Detection
+  const { conflicts: scheduleConflicts, scheduledItems: allScheduledItems } = useMemo(() => {
+    return detectScheduleConflicts(transfers, activities, sightseeing, totalDaysCount);
+  }, [transfers, activities, sightseeing, totalDaysCount]);
+
+  const dayLoadSummary = useMemo(() => {
+    return getDayLoadSummary(allScheduledItems, totalDaysCount);
+  }, [allScheduledItems, totalDaysCount]);
+
+  const conflictingDays = useMemo(() => {
+    const daysSet = new Set(scheduleConflicts.map((c) => c.day));
+    return Array.from(daysSet).sort((a, b) => a - b);
+  }, [scheduleConflicts]);
+
+  const transferConflicts = useMemo(() => {
+    return scheduleConflicts.filter((c) => c.itemA.type === "transfer" || c.itemB.type === "transfer");
+  }, [scheduleConflicts]);
+
+  const activityOrSightConflicts = useMemo(() => {
+    return scheduleConflicts.filter((c) => c.itemA.type !== "transfer" || c.itemB.type !== "transfer");
+  }, [scheduleConflicts]);
+
+  const getServiceConflicts = (type, index) => {
+    return scheduleConflicts.filter(
+      (c) => (c.itemA.type === type && c.itemA.index === index) || (c.itemB.type === type && c.itemB.index === index)
+    );
+  };
+
+  const handleShiftItemDay = (item, newDay) => {
+    if (!item) return;
+    const targetDay = Number(newDay);
+    if (item.type === "activity") {
+      updateActivity(item.index, "day", targetDay);
+      toast.success(`Moved "${item.name}" to Day ${targetDay}`);
+    } else if (item.type === "sightseeing") {
+      updateSightseeing(item.index, "day", targetDay);
+      toast.success(`Moved "${item.name}" to Day ${targetDay}`);
+    } else if (item.type === "transfer") {
+      updateTransfer(item.index, "day", targetDay);
+      toast.success(`Moved "${item.name}" to Day ${targetDay}`);
+    }
+  };
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-xs animate-fadeIn">
-      <div className="relative flex max-h-[90vh] w-full max-w-5xl flex-col rounded-lg border border-slate-700 bg-[#0f141c] text-slate-200 shadow-2xl overflow-hidden font-sans">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-3 sm:p-5 animate-fadeIn">
+      <div className="relative flex max-h-[90vh] w-full max-w-6xl flex-col rounded-xl border border-gray-200 bg-white text-slate-800 shadow-2xl overflow-hidden font-sans">
         
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-slate-800 bg-[#161c26] px-5 py-3.5">
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-amber-500/15 border border-amber-500/30 text-amber-400">
-              <Package size={17} />
+        <div className="flex items-center justify-between border-b border-gray-200 bg-gray-50/90 px-6 py-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-50 border border-blue-200 text-[#3E63DD] shrink-0">
+              <Package size={18} />
             </div>
             <div>
-              <h2 className="text-sm font-bold text-slate-100 flex items-center gap-2">
+              <h2 className="text-base font-bold text-slate-900">
                 Create Pre-defined Package Template
-                <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-amber-300 border border-amber-500/30">
-                  DMC Connected
-                </span>
               </h2>
-              <p className="text-[11px] text-slate-400">
-                Configure reusable packages with live DMC-uploaded hotels, cabs, sightseeing & itinerary
+              <p className="text-xs text-gray-500 mt-0.5">
+                Configure reusable packages with live uploaded hotels, cabs, sightseeing & itinerary
               </p>
             </div>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-md p-1.5 text-slate-400 hover:bg-slate-800 hover:text-slate-200 transition-colors cursor-pointer"
+            className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-200 hover:text-gray-700 transition cursor-pointer"
           >
-            <X size={17} />
+            <X size={18} />
           </button>
         </div>
 
-        {/* Tab Navigation */}
-        <div className="flex items-center gap-1 border-b border-slate-800 bg-[#121720] px-5 pt-2 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+        {/* Tab Navigation with Schedule Conflict Badges */}
+        <div className="flex items-center gap-1 border-b border-gray-200 bg-gray-50/80 px-4 sm:px-6 pt-2 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden shrink-0">
           {[
-            { id: "basic", label: "1. Basic Details" },
-            { id: "hotels", label: `2. Hotels (${hotels.length})` },
-            { id: "transfers", label: `3. Transports (${transfers.length})` },
-            { id: "activities", label: `4. Activities & Tours (${activities.length + sightseeing.length})` },
-            { id: "pricing", label: "5. Pricing & Taxes" },
-            { id: "inclusions", label: "6. Inclusions & Notes" },
-            { id: "itinerary", label: `7. Day-wise Itinerary (${itinerary.length} Days)` },
+            { id: "basic", label: "1. Basic Details", count: null, hasWarning: false },
+            { id: "hotels", label: "2. Hotels", count: hotels.length, hasWarning: false },
+            { id: "transfers", label: "3. Transports", count: transfers.length, hasWarning: transferConflicts.length > 0 },
+            { id: "activities", label: "4. Activities & Tours", count: activities.length + sightseeing.length, hasWarning: activityOrSightConflicts.length > 0 },
+            { id: "pricing", label: "5. Pricing & Taxes", count: null, hasWarning: false },
+            { id: "inclusions", label: "6. Inclusions & Notes", count: null, hasWarning: false },
+            { id: "itinerary", label: "7. Day-wise Itinerary", count: itinerary.length > 0 ? `${itinerary.length} Days` : null, hasWarning: false },
           ].map((tab) => (
             <button
               key={tab.id}
               type="button"
               onClick={() => setActiveTab(tab.id)}
-              className={`rounded-t-md px-3.5 py-2 text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+              className={`relative -mb-px rounded-t-lg px-3.5 py-2.5 text-xs font-semibold whitespace-nowrap transition-all cursor-pointer inline-flex items-center gap-1.5 leading-normal ${
                 activeTab === tab.id
-                  ? "bg-[#1c2432] text-amber-400 border-t-2 border-t-amber-400 border-x border-x-slate-700"
-                  : "text-slate-400 hover:text-slate-200 hover:bg-[#161c26]"
+                  ? "bg-white text-[#3E63DD] border-t-2 border-t-[#3E63DD] border-x border-x-gray-200 border-b border-b-white shadow-2xs font-bold z-10"
+                  : "text-gray-600 hover:text-gray-900 hover:bg-gray-100/70 border-t-2 border-t-transparent border-x border-x-transparent border-b border-b-transparent font-medium"
               }`}
             >
-              {tab.label}
+              <span>{tab.label}</span>
+              {tab.count !== null && tab.count !== undefined && (
+                <span className={`text-[11px] ${activeTab === tab.id ? "text-[#3E63DD] font-bold" : "text-gray-500 font-medium"}`}>
+                  ({tab.count})
+                </span>
+              )}
+              {tab.hasWarning && (
+                <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-100 border border-amber-300 px-1.5 py-0.5 text-[9px] font-bold text-amber-800 leading-none shrink-0 shadow-2xs">
+                  <AlertTriangle size={10} className="text-amber-600 shrink-0" />
+                  <span>Overlap</span>
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -1258,28 +1967,28 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
         {/* Body Form */}
         <form
           onSubmit={handleSubmit}
-          className="flex-1 overflow-y-auto p-5 space-y-4 [scrollbar-width:thin] [scrollbar-color:#334155_transparent] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-slate-700/60 [&::-webkit-scrollbar-thumb]:rounded-full"
+          className="flex-1 overflow-y-auto p-6 space-y-5 bg-white [scrollbar-width:thin] [scrollbar-color:#cbd5e1_transparent] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-gray-300 [&::-webkit-scrollbar-thumb]:rounded-full"
         >
           
           {/* TAB 1: BASIC DETAILS */}
           {activeTab === "basic" && (
             <div className="space-y-4 pt-1">
-              <div className="flex items-center justify-between pb-2 border-b border-slate-800/80">
+              <div className="flex items-center justify-between pb-3 border-b border-gray-200">
                 <div>
-                  <p className="text-xs text-slate-200 font-semibold flex items-center gap-1.5">
-                    <Package size={14} className="text-amber-400" />
+                  <p className="text-xs sm:text-sm text-slate-900 font-bold flex items-center gap-1.5">
+                    <Package size={15} className="text-[#3E63DD]" />
                     1. Basic Package Information
                   </p>
-                  <p className="text-[11px] text-slate-400 mt-0.5">
-                    Select destination to automatically link DMC contracted rates and services.
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Select destination to automatically link contracted rates and services.
                   </p>
                 </div>
               </div>
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 pt-1">
                 <div className="sm:col-span-2">
-                  <label className="block text-xs font-medium text-slate-300 mb-1">
-                    Package Title <span className="text-rose-400">*</span>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Package Title <span className="text-rose-500">*</span>
                   </label>
                   <input
                     type="text"
@@ -1287,13 +1996,13 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
                     placeholder="e.g. 5N/6D Mussoorie & Dhanaulti Hills Delight"
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
-                    className="w-full rounded-md border border-slate-700 bg-[#161d27] px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:border-amber-500 focus:outline-none"
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs text-slate-800 placeholder-gray-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1">
-                    Destination <span className="text-rose-400">*</span>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Destination <span className="text-rose-500">*</span>
                   </label>
                   <input
                     type="text"
@@ -1301,20 +2010,20 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
                     placeholder="e.g. Mussoorie, Goa, Dubai, Kashmir, Kerala"
                     value={destination}
                     onChange={(e) => setDestination(e.target.value)}
-                    className="w-full rounded-md border border-slate-700 bg-[#161d27] px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:border-amber-500 focus:outline-none"
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs text-slate-800 placeholder-gray-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs"
                   />
                   {/* Quick destination suggestion pills */}
-                  <div className="mt-1.5 flex items-center gap-1 flex-wrap">
-                    <span className="text-[10px] text-slate-500 font-medium">Quick Select:</span>
+                  <div className="mt-2 flex items-center gap-1.5 flex-wrap">
+                    <span className="text-[11px] text-gray-500 font-medium">Quick Select:</span>
                     {POPULAR_DESTINATIONS.map((dest) => (
                       <button
                         key={dest}
                         type="button"
                         onClick={() => setDestination(dest)}
-                        className={`rounded px-1.5 py-0.5 text-[10px] font-semibold transition cursor-pointer ${
+                        className={`rounded-md px-2 py-0.5 text-[10px] font-semibold transition cursor-pointer ${
                           destination.toLowerCase() === dest.toLowerCase()
-                            ? "bg-amber-500/20 text-amber-300 border border-amber-500/40"
-                            : "bg-slate-800/80 text-slate-400 border border-slate-700 hover:text-slate-200"
+                            ? "bg-[#3E63DD] text-white shadow-xs"
+                            : "bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200/80"
                         }`}
                       >
                         {dest}
@@ -1324,7 +2033,7 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1">
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
                     Country
                   </label>
                   <input
@@ -1332,12 +2041,12 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
                     placeholder="e.g. India, UAE, Thailand"
                     value={country}
                     onChange={(e) => setCountry(e.target.value)}
-                    className="w-full rounded-md border border-slate-700 bg-[#161d27] px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:border-amber-500 focus:outline-none"
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs text-slate-800 placeholder-gray-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1">
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
                     Duration Label
                   </label>
                   <input
@@ -1345,12 +2054,12 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
                     placeholder="e.g. 5 Nights / 6 Days"
                     value={duration}
                     onChange={(e) => setDuration(e.target.value)}
-                    className="w-full rounded-md border border-slate-700 bg-[#161d27] px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:border-amber-500 focus:outline-none"
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs text-slate-800 placeholder-gray-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1">
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
                     Total Days (Number)
                   </label>
                   <input
@@ -1359,12 +2068,12 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
                     placeholder="e.g. 6"
                     value={days}
                     onChange={(e) => setDays(e.target.value)}
-                    className="w-full rounded-md border border-slate-700 bg-[#161d27] px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:border-amber-500 focus:outline-none"
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs text-slate-800 placeholder-gray-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs"
                   />
                 </div>
 
                 <div className="sm:col-span-2">
-                  <label className="block text-xs font-medium text-slate-300 mb-1">
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
                     Package Description / Overview
                   </label>
                   <textarea
@@ -1372,30 +2081,30 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
                     placeholder="Short overview of the holiday package, experience highlights, and key destination appeal..."
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
-                    className="w-full rounded-md border border-slate-700 bg-[#161d27] px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:border-amber-500 focus:outline-none"
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs text-slate-800 placeholder-gray-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs"
                   />
                 </div>
               </div>
             </div>
           )}
 
-          {/* TAB 3: HOTELS (WITH LIVE DMC AUTOCOMPLETE DROPDOWN & FULL ROOM/ADDON CONFIGURATION) */}
+          {/* TAB 2: HOTELS (WITH LIVE DMC AUTOCOMPLETE DROPDOWN & FULL ROOM/ADDON CONFIGURATION) */}
           {activeTab === "hotels" && (
             <div className="space-y-4 pt-1">
-              <div className="flex items-center justify-between pb-2 border-b border-slate-800/80">
+              <div className="flex items-center justify-between pb-3 border-b border-gray-200">
                 <div>
-                  <p className="text-xs text-slate-200 font-semibold flex items-center gap-1.5">
-                    <BedDouble size={14} className="text-amber-400" />
+                  <p className="text-xs sm:text-sm text-slate-900 font-bold flex items-center gap-1.5">
+                    <BedDouble size={15} className="text-amber-600" />
                     Hotel Stays & Accommodations
                   </p>
-                  <p className="text-[11px] text-slate-400 mt-0.5">
-                    Select from DMC-uploaded contracted hotels in <strong>{destination}</strong> or pick from catalogue / type custom properties.
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Select from contracted hotels in <strong>{destination}</strong> or pick from catalogue / type custom properties.
                   </p>
                 </div>
                 <button
                   type="button"
                   onClick={addHotel}
-                  className="flex items-center gap-1.5 rounded-md bg-amber-500/15 px-3 py-1.5 text-xs font-semibold text-amber-300 border border-amber-500/30 hover:bg-amber-500/25 transition cursor-pointer"
+                  className="flex items-center gap-1.5 rounded-lg bg-amber-50 border border-amber-200 px-3.5 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100 hover:border-amber-300 transition-colors cursor-pointer shadow-2xs"
                 >
                   <Plus size={13} /> Add Hotel
                 </button>
@@ -1410,44 +2119,44 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
                     : [];
 
                   return (
-                    <div key={index} className={`rounded-xl border border-slate-800 bg-[#161d27] p-4 space-y-3.5 relative ${activeHotelDropdownIdx === index ? "z-50 ring-1 ring-amber-500/50 overflow-visible" : "z-10 overflow-visible"}`}>
+                    <div key={index} className={`rounded-xl border border-gray-200 bg-gray-50/50 p-4 space-y-3.5 relative shadow-2xs ${activeHotelDropdownIdx === index ? "z-50 ring-1 ring-blue-500/50 overflow-visible" : "z-10 overflow-visible"}`}>
                       
                       {/* Hotel Card Header with Hotel Dropdown & Badges */}
-                      <div className="flex items-center justify-between flex-wrap gap-2 pb-2 border-b border-slate-800/60">
+                      <div className="flex items-center justify-between flex-wrap gap-2 pb-2.5 border-b border-gray-200">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
-                            <BedDouble size={14} /> Hotel #{index + 1}
+                          <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                            <BedDouble size={14} className="text-amber-600" /> Hotel #{index + 1}
                           </span>
 
                           {/* Hotel Dropdown (if multiple properties in DMC service) */}
                           {hotel.hotelsList && hotel.hotelsList.length > 1 ? (
-                            <div className="flex items-center gap-1.5 rounded-lg border border-slate-700 bg-[#0f141c] px-2 py-0.5 text-xs text-slate-300">
-                              <span className="text-slate-400 font-medium text-[11px]">Hotel:</span>
+                            <div className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2 py-0.5 text-xs text-slate-700 shadow-2xs">
+                              <span className="text-gray-500 font-medium text-[11px]">Hotel:</span>
                               <select
                                 value={hotel.selectedHotelIdx || 0}
                                 onChange={(e) => handleHotelPropertyChange(index, Number(e.target.value))}
-                                className="bg-transparent text-amber-300 font-semibold focus:outline-none cursor-pointer text-xs"
+                                className="bg-transparent text-slate-800 font-semibold focus:outline-none cursor-pointer text-xs"
                               >
                                 {hotel.hotelsList.map((hProp, pIdx) => (
-                                  <option key={pIdx} value={pIdx} className="bg-[#161d27] text-slate-200">
+                                  <option key={pIdx} value={pIdx} className="bg-white text-slate-800">
                                     {hProp.hotelName}
                                   </option>
                                 ))}
                               </select>
                             </div>
                           ) : hotel.hotelName ? (
-                            <span className="rounded-lg border border-slate-700/80 bg-[#0f141c] px-2.5 py-0.5 text-[11px] text-amber-300 font-semibold">
+                            <span className="rounded-md border border-gray-200 bg-white px-2.5 py-0.5 text-[11px] text-slate-800 font-semibold shadow-2xs">
                               Hotel: {hotel.hotelName}
                             </span>
                           ) : null}
 
-                          <span className="text-[11px] text-amber-400 font-semibold">
-                            ⭐ {hotel.starCategory || "5 Star"}
+                          <span className="rounded-md bg-amber-50 border border-amber-200 px-2 py-0.5 text-[11px] font-bold text-amber-700">
+                            ★ {hotel.starCategory || "5 Star"}
                           </span>
 
                           {hotel.supplierName && (
-                            <span className="rounded bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 text-[10px] text-emerald-400 font-medium">
-                              DMC: {hotel.supplierName}
+                            <span className="rounded-md bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-[10px] text-emerald-700 font-semibold">
+                              Supplier: {hotel.supplierName}
                             </span>
                           )}
                         </div>
@@ -1456,7 +2165,8 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
                           <button
                             type="button"
                             onClick={() => removeHotel(index)}
-                            className="text-slate-400 hover:text-rose-400 p-1 cursor-pointer transition-colors"
+                            className="text-gray-400 hover:text-rose-600 p-1.5 rounded-lg hover:bg-rose-50 cursor-pointer transition-colors"
+                            title="Remove Hotel"
                           >
                             <Trash2 size={14} />
                           </button>
@@ -1466,15 +2176,15 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
                       {/* Main Service Autocomplete Row + Meal Plan + Nights + Price */}
                       <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
                         
-                        {/* Service Name with DMC Live Autocomplete */}
+                        {/* Service Name with Live Autocomplete */}
                         <div className={`sm:col-span-2 relative dmc-autocomplete-container ${activeHotelDropdownIdx === index ? "z-40" : "z-10"}`}>
-                          <label className="block text-[11px] text-slate-400 mb-0.5 flex items-center justify-between">
-                            <span>Service Name (Select DMC Service or Type)</span>
+                          <label className="block text-[11px] font-semibold text-slate-600 mb-1 flex items-center justify-between">
+                            <span>Service Name (Select Service or Type)</span>
                             {servicesLoading ? (
-                              <span className="text-[10px] text-amber-400">Loading DMCs...</span>
+                              <span className="text-[10px] text-blue-600 font-medium">Loading Services...</span>
                             ) : (
-                              <span className="text-[10px] text-emerald-400 font-medium">
-                                {getFilteredHotels("").length} DMC Services in {destination || "Selected Destination"}
+                              <span className="text-[10px] text-emerald-600 font-semibold">
+                                {getFilteredHotels("").length} Services in {destination || "Selected Destination"}
                               </span>
                             )}
                           </label>
@@ -1488,12 +2198,12 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
                                 updateHotel(index, "serviceName", e.target.value);
                                 setActiveHotelDropdownIdx(index);
                               }}
-                              className="w-full rounded-md border border-slate-700 bg-[#0f141c] pl-2.5 pr-8 py-1.5 text-xs text-slate-200 focus:border-amber-500 focus:outline-none"
+                              className="w-full rounded-lg border border-gray-300 bg-white pl-3 pr-8 py-1.5 text-xs text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs"
                             />
                             <button
                               type="button"
                               onClick={() => setActiveHotelDropdownIdx(activeHotelDropdownIdx === index ? null : index)}
-                              className="absolute right-2 top-2 text-slate-400 hover:text-amber-400 p-0.5 cursor-pointer transition-colors"
+                              className="absolute right-2 top-2 text-gray-400 hover:text-gray-600 p-0.5 cursor-pointer transition-colors"
                             >
                               <ChevronDown size={14} />
                             </button>
@@ -1501,10 +2211,10 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
 
                           {/* Autocomplete Dropdown List */}
                           {activeHotelDropdownIdx === index && (
-                            <div className="absolute left-0 right-0 top-full mt-1.5 max-h-64 overflow-y-auto rounded-lg border border-slate-700 bg-[#0d121a] shadow-[0_20px_60px_rgba(0,0,0,0.95)] z-[100] divide-y divide-slate-800/90 [scrollbar-width:thin] [scrollbar-color:#334155_transparent]">
+                            <div className="absolute left-0 right-0 top-full mt-1.5 max-h-64 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-xl z-[100] divide-y divide-gray-100 [scrollbar-width:thin]">
                               {filteredHotels.length === 0 ? (
-                                <div className="p-3 text-[11px] text-slate-400 italic text-center">
-                                  No DMC service found matching "{hotel.serviceName || hotel.name || ""}". You can freely type custom service name.
+                                <div className="p-3 text-[11px] text-gray-500 italic text-center">
+                                  No service found matching "{hotel.serviceName || hotel.name || ""}". You can freely type custom service name.
                                 </div>
                               ) : (
                                 filteredHotels.map((dmcHotel, hIdx) => {
@@ -1519,39 +2229,42 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
                                     <div
                                       key={dmcHotel._id || dmcHotel.id || hIdx}
                                       onClick={() => selectDmcHotel(index, dmcHotel)}
-                                      className={`p-2.5 hover:bg-amber-500/15 cursor-pointer transition flex items-center justify-between gap-2 ${
-                                        isSelected ? "bg-amber-500/20 border-l-2 border-l-amber-400" : matchesDest ? "bg-amber-500/5" : ""
+                                      className={`p-3 hover:bg-blue-50/60 cursor-pointer transition flex items-center justify-between gap-2 ${
+                                        isSelected ? "bg-blue-50/90 border-l-3 border-l-blue-600" : matchesDest ? "bg-gray-50/60" : ""
                                       }`}
                                     >
                                       <div className="min-w-0 flex-1">
-                                        <p className="text-xs font-semibold text-slate-100 flex items-center gap-1.5 truncate">
-                                          <Building2 size={13} className="text-amber-400 shrink-0" />
+                                        <p className="text-xs font-bold text-slate-900 flex items-center gap-1.5 truncate">
+                                          <Building2 size={13} className="text-blue-600 shrink-0" />
                                           <span>{serviceTitle}</span>
                                           {isSelected && (
-                                            <span className="rounded bg-emerald-500/20 text-emerald-300 text-[9px] px-1 py-0.2 font-bold">
+                                            <span className="rounded bg-emerald-50 border border-emerald-200 text-emerald-700 text-[9px] px-1.5 py-0.2 font-bold">
                                               ✓ Selected
                                             </span>
                                           )}
-                                          <span className="text-[10px] font-normal text-amber-300">
-                                            ⭐ {dmcHotel.starCategory || dmcHotel.hotelCategory || "4 Star"}
+                                          <span className="text-[10px] font-semibold text-amber-600">
+                                            ★ {dmcHotel.starCategory || dmcHotel.hotelCategory || "4 Star"}
                                           </span>
                                         </p>
-                                        <p className="text-[10px] text-slate-400 mt-0.5 truncate">
-                                          📍 <span className="text-slate-300 font-medium">{dmcHotel.city || dmcHotel.destination || "Verified Location"}</span>
+                                        <p className="text-[11px] text-gray-500 mt-0.5 truncate flex items-center gap-1 flex-wrap">
+                                          <span className="inline-flex items-center gap-1 text-slate-700 font-medium">
+                                            <MapPin size={11} className="text-rose-500 shrink-0" />
+                                            {dmcHotel.city || dmcHotel.destination || "Verified Location"}
+                                          </span>
                                           {dmcHotel.hotelName && dmcHotel.hotelName !== serviceTitle && (
-                                            <> • Hotel: <span className="text-slate-300 font-medium">{dmcHotel.hotelName}</span></>
+                                            <> • Hotel: <span className="text-slate-700 font-medium">{dmcHotel.hotelName}</span></>
                                           )}
                                           • {dmcHotel.roomType || "Deluxe Room"} • {dmcHotel.mealPlan || "CP Plan"}
                                         </p>
-                                        <p className="text-[10px] text-emerald-400 font-medium mt-0.5">
-                                          DMC: {dmcHotel.supplierName || dmcHotel.dmcName || "Contracted Supplier"}
+                                        <p className="text-[10px] text-emerald-600 font-semibold mt-0.5">
+                                          Supplier: {dmcHotel.supplierName || dmcHotel.dmcName || "Contracted Supplier"}
                                         </p>
                                       </div>
                                       <div className="text-right shrink-0">
-                                        <span className="text-xs font-bold text-amber-400">
+                                        <span className="text-xs font-bold text-slate-900">
                                           ₹{Number(dmcHotel.price || dmcHotel.total || dmcHotel.rate || 0).toLocaleString("en-IN")}
                                         </span>
-                                        <span className="block text-[10px] text-slate-500">/ night</span>
+                                        <span className="block text-[10px] text-gray-500">/ night</span>
                                       </div>
                                     </div>
                                   );
@@ -1562,11 +2275,11 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
                         </div>
 
                         <div>
-                          <label className="block text-[11px] text-slate-400 mb-0.5">Meal Plan</label>
+                          <label className="block text-[11px] font-semibold text-slate-600 mb-1">Meal Plan</label>
                           <select
                             value={hotel.mealPlan || "EP"}
                             onChange={(e) => updateHotel(index, "mealPlan", e.target.value)}
-                            className="w-full rounded-md border border-slate-700 bg-[#0f141c] px-2.5 py-1.5 text-xs text-slate-200 focus:border-amber-500 focus:outline-none"
+                            className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs"
                           >
                             <option value="EP">EP (Room Only)</option>
                             <option value="CP">CP (Breakfast Included)</option>
@@ -1577,10 +2290,10 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
                         </div>
 
                         <div>
-                          <label className="block text-[11px] text-slate-400 mb-0.5">
+                          <label className="block text-[11px] font-semibold text-slate-600 mb-1">
                             Total Hotel Cost (₹)
                             {Number(hotel.basePrice) > 0 && (
-                              <span className="text-[10px] text-amber-400 ml-1 font-normal">
+                              <span className="text-[10px] text-blue-600 ml-1 font-normal">
                                 (₹{Number(hotel.basePrice).toLocaleString("en-IN")}/nt)
                               </span>
                             )}
@@ -1591,21 +2304,21 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
                             placeholder="e.g. 48900"
                             value={hotel.price || ""}
                             onChange={(e) => updateHotel(index, "price", Number(e.target.value))}
-                            className="w-full rounded-md border border-slate-700 bg-[#0f141c] px-2.5 py-1.5 text-xs font-semibold text-amber-400 focus:border-amber-500 focus:outline-none"
+                            className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs"
                           />
                         </div>
                       </div>
 
-                      {/* Room Configuration Grid (Matching Image 2) */}
-                      <div className="grid grid-cols-1 gap-3 rounded-lg border border-slate-800/90 bg-[#101620] p-3 md:grid-cols-3 lg:grid-cols-6">
+                      {/* Room Configuration Grid */}
+                      <div className="grid grid-cols-1 gap-3 rounded-lg border border-gray-200 bg-white p-3.5 md:grid-cols-3 lg:grid-cols-6 shadow-2xs">
                         <div>
-                          <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                          <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-gray-500">
                             Room Category
                           </label>
                           <select
                             value={hotel.roomType || "Standard Room"}
                             onChange={(e) => handleRoomCategoryChange(index, e.target.value)}
-                            className="w-full rounded-md border border-slate-700 bg-[#0a0f16] px-2 py-1.5 text-xs text-slate-200 focus:border-amber-500 focus:outline-none"
+                            className="w-full rounded-md border border-gray-300 bg-gray-50/50 px-2 py-1.5 text-xs text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition"
                           >
                             {availableRooms.length > 0 ? (
                               availableRooms.map((r, rIdx) => (
@@ -1627,13 +2340,13 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
                         </div>
 
                         <div>
-                          <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                          <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-gray-500">
                             Room Type (Occupancy)
                           </label>
                           <select
                             value={hotel.roomCategory || "Double"}
                             onChange={(e) => handleRoomOccupancyChange(index, e.target.value)}
-                            className="w-full rounded-md border border-slate-700 bg-[#0a0f16] px-2 py-1.5 text-xs text-slate-200 focus:border-amber-500 focus:outline-none"
+                            className="w-full rounded-md border border-gray-300 bg-gray-50/50 px-2 py-1.5 text-xs text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition"
                           >
                             <option value="Double">Double (2 persons)</option>
                             <option value="Triple">Triple (3 persons)</option>
@@ -1642,13 +2355,13 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
                         </div>
 
                         <div>
-                          <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                          <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-gray-500">
                             Nights
                           </label>
                           <select
                             value={Number(hotel.nights || 1)}
                             onChange={(e) => updateHotel(index, "nights", Math.max(1, Number(e.target.value || 1)))}
-                            className="w-full rounded-md border border-slate-700 bg-[#0a0f16] px-2 py-1.5 text-xs text-slate-200 focus:border-amber-500 focus:outline-none"
+                            className="w-full rounded-md border border-gray-300 bg-gray-50/50 px-2 py-1.5 text-xs text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition"
                           >
                             {[...Array(15)].map((_, i) => (
                               <option key={i + 1} value={i + 1}>
@@ -1659,13 +2372,13 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
                         </div>
 
                         <div>
-                          <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                          <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-gray-500">
                             Rooms
                           </label>
                           <select
                             value={Number(hotel.rooms || 1)}
                             onChange={(e) => updateHotel(index, "rooms", Math.max(1, Number(e.target.value || 1)))}
-                            className="w-full rounded-md border border-slate-700 bg-[#0a0f16] px-2 py-1.5 text-xs text-slate-200 focus:border-amber-500 focus:outline-none"
+                            className="w-full rounded-md border border-gray-300 bg-gray-50/50 px-2 py-1.5 text-xs text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition"
                           >
                             {[...Array(8)].map((_, i) => (
                               <option key={i + 1} value={i + 1}>
@@ -1676,13 +2389,13 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
                         </div>
 
                         <div>
-                          <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                          <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-gray-500">
                             Bed Type
                           </label>
                           <select
                             value={hotel.bedType || "Queen Bed"}
                             onChange={(e) => updateHotel(index, "bedType", e.target.value)}
-                            className="w-full rounded-md border border-slate-700 bg-[#0a0f16] px-2 py-1.5 text-xs text-slate-200 focus:border-amber-500 focus:outline-none"
+                            className="w-full rounded-md border border-gray-300 bg-gray-50/50 px-2 py-1.5 text-xs text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition"
                           >
                             <option value="Queen Bed">Queen Bed</option>
                             <option value="King Bed">King Bed</option>
@@ -1691,13 +2404,13 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
                         </div>
 
                         <div>
-                          <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                          <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-gray-500">
                             Extra Bed Type
                           </label>
                           <select
                             value={hotel.extraBedType || "None"}
                             onChange={(e) => updateHotel(index, "extraBedType", e.target.value)}
-                            className="w-full rounded-md border border-slate-700 bg-[#0a0f16] px-2 py-1.5 text-xs text-slate-200 focus:border-amber-500 focus:outline-none"
+                            className="w-full rounded-md border border-gray-300 bg-gray-50/50 px-2 py-1.5 text-xs text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition"
                           >
                             <option value="None">None</option>
                             <option value="Single Bed">Single Bed</option>
@@ -1707,74 +2420,74 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
 
                       {/* Max Occupancy Display Pill */}
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-[11px] text-slate-400 font-medium">MAX OCCUPANCY:</span>
-                        <div className="inline-flex items-center gap-2 rounded-md border border-slate-700 bg-[#0d121a] px-2.5 py-1 text-xs text-slate-300">
-                          <span className="text-emerald-400 font-semibold">{hotel.maxAdults || 2} Adult{Number(hotel.maxAdults || 2) === 1 ? "" : "s"}</span>
-                          <span className="text-slate-600">|</span>
-                          <span className="text-sky-400 font-semibold">{hotel.maxChildren !== undefined ? hotel.maxChildren : 1} Child{Number(hotel.maxChildren !== undefined ? hotel.maxChildren : 1) === 1 ? "" : "ren"}</span>
+                        <span className="text-[11px] text-gray-500 font-semibold uppercase tracking-wider">MAX OCCUPANCY:</span>
+                        <div className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-1 text-xs text-slate-700 shadow-2xs">
+                          <span className="text-emerald-700 font-bold">{hotel.maxAdults || 2} Adult{Number(hotel.maxAdults || 2) === 1 ? "" : "s"}</span>
+                          <span className="text-gray-300">|</span>
+                          <span className="text-sky-700 font-bold">{hotel.maxChildren !== undefined ? hotel.maxChildren : 1} Child{Number(hotel.maxChildren !== undefined ? hotel.maxChildren : 1) === 1 ? "" : "ren"}</span>
                         </div>
                       </div>
 
-                      {/* Optional Add-ons Row (Matching Image 2) */}
+                      {/* Optional Add-ons Row */}
                       <div className="space-y-2 pt-1">
-                        <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">
                           Optional Add-ons
                         </p>
-                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
                           
                           {/* A.W.E.B */}
-                          <label className="flex items-center justify-between gap-2 rounded-lg border border-slate-800 bg-[#0f141c] p-2.5 hover:border-amber-500/40 cursor-pointer transition">
-                            <div className="flex items-center gap-2">
+                          <label className={`flex items-center justify-between gap-2 rounded-lg border p-3 cursor-pointer transition shadow-2xs ${hotel.extraAdult ? "border-amber-300 bg-amber-50/50" : "border-gray-200 bg-white hover:border-gray-300"}`}>
+                            <div className="flex items-center gap-2.5">
                               <input
                                 type="checkbox"
                                 checked={hotel.extraAdult || false}
                                 onChange={(e) => updateHotel(index, "extraAdult", e.target.checked)}
-                                className="h-4 w-4 rounded border-slate-700 bg-slate-900 text-amber-500 focus:ring-amber-500 cursor-pointer"
+                                className="h-4 w-4 rounded border-gray-300 text-amber-600 focus:ring-amber-500 cursor-pointer"
                               />
                               <div>
-                                <p className="text-xs font-semibold text-amber-300">A.W.E.B</p>
-                                <p className="text-[10px] text-slate-400">Extra adult with extra bed</p>
+                                <p className="text-xs font-bold text-slate-900">A.W.E.B</p>
+                                <p className="text-[10px] text-gray-500">Extra adult with extra bed</p>
                               </div>
                             </div>
-                            <span className="text-xs font-bold text-amber-400">
+                            <span className="text-xs font-extrabold text-amber-700">
                               ₹{Number(hotel.awebRate || 0).toLocaleString("en-IN")}
                             </span>
                           </label>
 
                           {/* C.W.E.B */}
-                          <label className="flex items-center justify-between gap-2 rounded-lg border border-slate-800 bg-[#0f141c] p-2.5 hover:border-emerald-500/40 cursor-pointer transition">
-                            <div className="flex items-center gap-2">
+                          <label className={`flex items-center justify-between gap-2 rounded-lg border p-3 cursor-pointer transition shadow-2xs ${hotel.childWithBed ? "border-emerald-300 bg-emerald-50/50" : "border-gray-200 bg-white hover:border-gray-300"}`}>
+                            <div className="flex items-center gap-2.5">
                               <input
                                 type="checkbox"
                                 checked={hotel.childWithBed || false}
                                 onChange={(e) => updateHotel(index, "childWithBed", e.target.checked)}
-                                className="h-4 w-4 rounded border-slate-700 bg-slate-900 text-emerald-500 focus:ring-emerald-500 cursor-pointer"
+                                className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
                               />
                               <div>
-                                <p className="text-xs font-semibold text-emerald-300">C.W.E.B</p>
-                                <p className="text-[10px] text-slate-400">Child with extra bed</p>
+                                <p className="text-xs font-bold text-slate-900">C.W.E.B</p>
+                                <p className="text-[10px] text-gray-500">Child with extra bed</p>
                               </div>
                             </div>
-                            <span className="text-xs font-bold text-emerald-400">
+                            <span className="text-xs font-extrabold text-emerald-700">
                               ₹{Number(hotel.cwebRate || 0).toLocaleString("en-IN")}
                             </span>
                           </label>
 
                           {/* C.Wo.E.B */}
-                          <label className="flex items-center justify-between gap-2 rounded-lg border border-slate-800 bg-[#0f141c] p-2.5 hover:border-sky-500/40 cursor-pointer transition">
-                            <div className="flex items-center gap-2">
+                          <label className={`flex items-center justify-between gap-2 rounded-lg border p-3 cursor-pointer transition shadow-2xs ${hotel.childWithoutBed ? "border-sky-300 bg-sky-50/50" : "border-gray-200 bg-white hover:border-gray-300"}`}>
+                            <div className="flex items-center gap-2.5">
                               <input
                                 type="checkbox"
                                 checked={hotel.childWithoutBed || false}
                                 onChange={(e) => updateHotel(index, "childWithoutBed", e.target.checked)}
-                                className="h-4 w-4 rounded border-slate-700 bg-slate-900 text-sky-500 focus:ring-sky-500 cursor-pointer"
+                                className="h-4 w-4 rounded border-gray-300 text-sky-600 focus:ring-sky-500 cursor-pointer"
                               />
                               <div>
-                                <p className="text-xs font-semibold text-sky-300">C.Wo.E.B</p>
-                                <p className="text-[10px] text-slate-400">Child without extra bed</p>
+                                <p className="text-xs font-bold text-slate-900">C.Wo.E.B</p>
+                                <p className="text-[10px] text-gray-500">Child without extra bed</p>
                               </div>
                             </div>
-                            <span className="text-xs font-bold text-sky-400">
+                            <span className="text-xs font-extrabold text-sky-700">
                               ₹{Number(hotel.cwoebRate || 0).toLocaleString("en-IN")}
                             </span>
                           </label>
@@ -1788,27 +2501,57 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
             </div>
           )}
 
-          {/* TAB 4: TRANSPORTS (WITH LIVE DMC ROUTE AUTOCOMPLETE) */}
+          {/* TAB 3: TRANSPORTS (WITH LIVE DMC ROUTE AUTOCOMPLETE) */}
           {activeTab === "transfers" && (
             <div className="space-y-4 pt-1">
-              <div className="flex items-center justify-between pb-2 border-b border-slate-800/80">
+              <div className="flex items-center justify-between pb-3 border-b border-gray-200">
                 <div>
-                  <p className="text-xs text-slate-200 font-semibold flex items-center gap-1.5">
-                    <Car size={14} className="text-amber-400" />
+                  <p className="text-xs sm:text-sm text-slate-900 font-bold flex items-center gap-1.5">
+                    <Car size={15} className="text-sky-600" />
                     Airport Transfers & Cabs
                   </p>
-                  <p className="text-[11px] text-slate-400 mt-0.5">
-                    Select from DMC-uploaded transfer routes in <strong>{destination}</strong> or customize vehicles.
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Select from contracted transfer routes in <strong>{destination}</strong> or customize vehicles.
                   </p>
                 </div>
                 <button
                   type="button"
                   onClick={addTransfer}
-                  className="flex items-center gap-1.5 rounded-md bg-amber-500/15 px-3 py-1.5 text-xs font-semibold text-amber-300 border border-amber-500/30 hover:bg-amber-500/25 transition cursor-pointer"
+                  className="flex items-center gap-1.5 rounded-lg bg-sky-50 border border-sky-200 px-3.5 py-1.5 text-xs font-semibold text-sky-800 hover:bg-sky-100 hover:border-sky-300 transition-colors cursor-pointer shadow-2xs"
                 >
                   <Plus size={13} /> Add Transfer
                 </button>
               </div>
+
+              {/* Transport Conflicts Global Timeline Breakdown */}
+              {transferConflicts.length > 0 && (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between gap-3 rounded-xl border border-gray-200 bg-slate-50/80 px-4 py-2.5 text-xs text-slate-800 shadow-2xs">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <AlertTriangle size={15} className="text-amber-600 shrink-0" />
+                      <span className="font-semibold text-slate-900 truncate">
+                        Transport Timing Conflict: <span className="font-normal text-slate-600">{transferConflicts.length} schedule conflict{transferConflicts.length > 1 ? "s" : ""} found.</span>
+                      </span>
+                    </div>
+                    <span className="rounded-md bg-amber-50 border border-amber-200 px-2.5 py-0.5 text-[11px] font-semibold text-amber-800 shrink-0">
+                      Action Needed
+                    </span>
+                  </div>
+
+                  {conflictingDays
+                    .filter((d) => transferConflicts.some((c) => c.day === d))
+                    .map((dayNum) => (
+                      <DayScheduleVisualizer
+                        key={dayNum}
+                        dayNum={dayNum}
+                        scheduledItems={allScheduledItems}
+                        conflicts={scheduleConflicts}
+                        onShiftItemDay={handleShiftItemDay}
+                        totalDays={totalDaysCount}
+                      />
+                    ))}
+                </div>
+              )}
 
               <div className="space-y-3 pt-1">
                 {transfers.map((transfer, index) => {
@@ -1816,61 +2559,141 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
                   const availableVehicles = Array.isArray(transfer.vehiclesList) && transfer.vehiclesList.length > 0
                     ? transfer.vehiclesList
                     : [];
+                  const cardConflicts = getServiceConflicts("transfer", index);
 
                   return (
-                    <div key={index} className={`rounded-xl border border-slate-800 bg-[#161d27] p-4 space-y-3 relative ${activeTransferDropdownIdx === index ? "z-30 ring-1 ring-amber-500/40" : "z-10"}`}>
+                    <div key={index} className={`rounded-xl border ${cardConflicts.length > 0 ? "border-amber-300/80" : "border-gray-200"} bg-gray-50/50 p-4 space-y-3 relative shadow-2xs ${activeTransferDropdownIdx === index ? "z-30 ring-1 ring-blue-500/50" : "z-10"}`}>
                       
-                      {/* Transfer Header with Badges */}
-                      <div className="flex items-center justify-between flex-wrap gap-2 pb-2 border-b border-slate-800/60">
+                      {/* Individual Transfer Conflict Alert - Clean Agent Style */}
+                      {cardConflicts.length > 0 && (
+                        <div className="rounded-lg bg-amber-50/60 border border-amber-200 p-3 space-y-2 text-xs">
+                          <div className="flex items-start gap-2">
+                            <AlertTriangle size={14} className="text-amber-600 shrink-0 mt-0.5" />
+                            <div className="min-w-0 flex-1 space-y-1">
+                              <span className="font-bold text-xs text-slate-900 block">Pickup Timing Conflict</span>
+                              <div className="text-xs text-slate-700 space-y-0.5">
+                                {cardConflicts.map((c, cIdx) => (
+                                  <p key={cIdx}>
+                                    • {c.detailedReason}
+                                  </p>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* 1-Click Quick Move Actions */}
+                          <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t border-amber-200/60">
+                            <span className="text-[11px] font-semibold text-slate-600 flex items-center gap-1">
+                              <Zap size={11} className="text-amber-600" /> Quick Move:
+                            </span>
+                            {Array.from({ length: totalDaysCount }, (_, i) => i + 1)
+                              .filter((d) => d !== (transfer.day || 1))
+                              .map((d) => (
+                                <button
+                                  key={d}
+                                  type="button"
+                                  onClick={() => updateTransfer(index, "day", d)}
+                                  className="rounded-md bg-white border border-gray-300 hover:bg-gray-50 px-2.5 py-1 text-xs font-semibold text-slate-700 transition shadow-2xs cursor-pointer"
+                                >
+                                  Move to Day {d}
+                                </button>
+                              ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Transfer Header with Badges & Pickup Time */}
+                      <div className="flex items-center justify-between flex-wrap gap-2 pb-2.5 border-b border-gray-200">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
-                            <Car size={14} /> Transfer #{index + 1}
+                          <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                            <Car size={14} className="text-sky-600" /> Transfer #{index + 1}
                           </span>
 
                           {transfer.vehicleType && (
-                            <span className="rounded-lg border border-slate-700/80 bg-[#0f141c] px-2.5 py-0.5 text-[11px] text-amber-300 font-semibold">
+                            <span className="rounded-md border border-gray-200 bg-white px-2.5 py-0.5 text-[11px] text-slate-800 font-semibold shadow-2xs">
                               {transfer.vehicleType}
                             </span>
                           )}
 
-                          <span className="rounded bg-sky-500/15 border border-sky-500/30 px-2 py-0.5 text-[10px] text-sky-300 font-medium">
-                            👤 {transfer.passengerCapacity || 4} Pax
-                          </span>
+                          {Boolean(transfer.vehicleType) && (
+                            <span className="rounded-md bg-sky-50 border border-sky-200 px-2 py-0.5 text-[10px] text-sky-700 font-semibold">
+                              👤 {transfer.passengerCapacity || 4} Pax
+                            </span>
+                          )}
 
-                          <span className="rounded bg-indigo-500/15 border border-indigo-500/30 px-2 py-0.5 text-[10px] text-indigo-300 font-medium">
-                            🧳 {transfer.luggageCapacity !== undefined ? transfer.luggageCapacity : 2} Bags
-                          </span>
+                          {Boolean(transfer.vehicleType) && (
+                            <span className="rounded-md bg-indigo-50 border border-indigo-200 px-2 py-0.5 text-[10px] text-indigo-700 font-semibold">
+                              🧳 {transfer.luggageCapacity !== undefined ? transfer.luggageCapacity : 2} Bags
+                            </span>
+                          )}
 
                           {transfer.supplierName && (
-                            <span className="rounded bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 text-[10px] text-emerald-400 font-medium">
-                              DMC: {transfer.supplierName}
+                            <span className="rounded-md bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-[10px] text-emerald-700 font-semibold">
+                              Supplier: {transfer.supplierName}
                             </span>
                           )}
                         </div>
 
-                        {transfers.length > 1 && (
-                          <button
-                            type="button"
-                            onClick={() => removeTransfer(index)}
-                            className="text-slate-400 hover:text-rose-400 p-1 cursor-pointer transition-colors"
-                          >
-                            <Trash2 size={13} />
-                          </button>
-                        )}
+                        <div className="flex items-center gap-2 ml-auto">
+                          {/* Pickup Time input matching QuotationBuilder */}
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[11px] font-semibold text-slate-600 flex items-center gap-1">
+                              <Clock size={13} className="text-amber-600" />
+                              Pickup Time:
+                            </span>
+                            <div className="relative flex items-center">
+                              <input
+                                type="time"
+                                value={transfer.pickupTime || transfer.time || ""}
+                                onChange={(e) => {
+                                  updateTransfer(index, "pickupTime", e.target.value);
+                                  updateTransfer(index, "time", e.target.value);
+                                }}
+                                className={`h-7 rounded-lg border px-2 text-xs font-semibold text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition cursor-pointer shadow-2xs ${
+                                  cardConflicts.length > 0 ? "border-amber-400 bg-amber-50/60 ring-1 ring-amber-400" : "border-gray-300 bg-white"
+                                }`}
+                              />
+                              {(transfer.pickupTime || transfer.time) && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    updateTransfer(index, "pickupTime", "");
+                                    updateTransfer(index, "time", "");
+                                  }}
+                                  title="Clear time"
+                                  className="ml-1 text-gray-400 hover:text-rose-500 transition cursor-pointer text-xs"
+                                >
+                                  ✕
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
+                          {transfers.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => removeTransfer(index)}
+                              className="text-gray-400 hover:text-rose-600 p-1.5 rounded-lg hover:bg-rose-50 cursor-pointer transition-colors"
+                              title="Remove Transfer"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          )}
+                        </div>
                       </div>
 
-                      {/* Top Row: Service Name Autocomplete + Vehicle Type */}
-                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                      {/* Top Row: Service Name Autocomplete + Travel Day + Vehicle Type */}
+                      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-12">
                         
-                        {/* Route / Name with DMC Autocomplete */}
-                        <div className={`sm:col-span-2 relative dmc-autocomplete-container ${activeTransferDropdownIdx === index ? "z-40" : "z-10"}`}>
-                          <label className="block text-[11px] text-slate-400 mb-0.5 flex items-center justify-between">
-                            <span>Route / Service Name (Select DMC Route or Type)</span>
+                        {/* Route / Name with Live Autocomplete */}
+                        <div className={`sm:col-span-6 relative dmc-autocomplete-container ${activeTransferDropdownIdx === index ? "z-40" : "z-10"}`}>
+                          <label className="block text-[11px] font-semibold text-slate-600 mb-1 flex items-center justify-between">
+                            <span>Route / Service Name (Select Route or Type)</span>
                             {servicesLoading ? (
-                              <span className="text-[10px] text-amber-400">Loading DMCs...</span>
+                              <span className="text-[10px] text-blue-600 font-medium">Loading Routes...</span>
                             ) : (
-                              <span className="text-[10px] text-emerald-400 font-medium">
-                                {getFilteredTransfers("").length} DMC Routes in {destination || "Selected Destination"}
+                              <span className="text-[10px] text-emerald-600 font-semibold">
+                                {getFilteredTransfers("").length} Routes in {destination || "Selected Destination"}
                               </span>
                             )}
                           </label>
@@ -1884,12 +2707,12 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
                                 updateTransfer(index, "name", e.target.value);
                                 setActiveTransferDropdownIdx(index);
                               }}
-                              className="w-full rounded-md border border-slate-700 bg-[#0f141c] pl-2.5 pr-8 py-1.5 text-xs text-slate-200 focus:border-amber-500 focus:outline-none"
+                              className="w-full rounded-lg border border-gray-300 bg-white pl-3 pr-8 py-1.5 text-xs text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs"
                             />
                             <button
                               type="button"
                               onClick={() => setActiveTransferDropdownIdx(activeTransferDropdownIdx === index ? null : index)}
-                              className="absolute right-2 top-2 text-slate-400 hover:text-amber-400 p-0.5 cursor-pointer transition-colors"
+                              className="absolute right-2 top-2 text-gray-400 hover:text-gray-600 p-0.5 cursor-pointer transition-colors"
                             >
                               <ChevronDown size={14} />
                             </button>
@@ -1897,10 +2720,10 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
 
                           {/* Autocomplete Dropdown List */}
                           {activeTransferDropdownIdx === index && (
-                            <div className="absolute left-0 right-0 top-full mt-1.5 max-h-64 overflow-y-auto rounded-lg border border-slate-700 bg-[#0d121a] shadow-[0_20px_60px_rgba(0,0,0,0.95)] z-[100] divide-y divide-slate-800/90 [scrollbar-width:thin] [scrollbar-color:#334155_transparent]">
+                            <div className="absolute left-0 right-0 top-full mt-1.5 max-h-64 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-xl z-[100] divide-y divide-gray-100 [scrollbar-width:thin]">
                               {filteredTransfers.length === 0 ? (
-                                <div className="p-3 text-[11px] text-slate-400 italic text-center">
-                                  No DMC route found matching "{transfer.name}". You can freely type custom transfer route.
+                                <div className="p-3 text-[11px] text-gray-500 italic text-center">
+                                  No route found matching "{transfer.name}". You can freely type custom transfer route.
                                 </div>
                               ) : (
                                 filteredTransfers.map((dmcTransfer, tIdx) => {
@@ -1912,32 +2735,36 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
                                     <div
                                       key={dmcTransfer._id || dmcTransfer.id || tIdx}
                                       onClick={() => selectDmcTransfer(index, dmcTransfer)}
-                                      className={`p-2.5 hover:bg-amber-500/15 cursor-pointer transition flex items-center justify-between gap-2 ${
-                                        isSelected ? "bg-amber-500/20 border-l-2 border-l-amber-400" : matchesDest ? "bg-amber-500/5" : ""
+                                      className={`p-3 hover:bg-blue-50/60 cursor-pointer transition flex items-center justify-between gap-2 ${
+                                        isSelected ? "bg-blue-50/90 border-l-3 border-l-blue-600" : matchesDest ? "bg-gray-50/60" : ""
                                       }`}
                                     >
                                       <div className="min-w-0 flex-1">
-                                        <p className="text-xs font-semibold text-slate-100 flex items-center gap-1.5 truncate">
-                                          <Car size={13} className="text-amber-400 shrink-0" />
+                                        <p className="text-xs font-bold text-slate-900 flex items-center gap-1.5 truncate">
+                                          <Car size={13} className="text-sky-600 shrink-0" />
                                           <span>{routeTitle}</span>
                                           {isSelected && (
-                                            <span className="rounded bg-emerald-500/20 text-emerald-300 text-[9px] px-1 py-0.2 font-bold">
+                                            <span className="rounded bg-emerald-50 border border-emerald-200 text-emerald-700 text-[9px] px-1.5 py-0.2 font-bold">
                                               ✓ Selected
                                             </span>
                                           )}
                                         </p>
-                                        <p className="text-[10px] text-slate-400 mt-0.5 truncate">
-                                          📍 <span className="text-slate-300 font-medium">{dmcTransfer.city || dmcTransfer.destination || destination}</span> • Vehicle: <span className="text-slate-300 font-medium">{dmcTransfer.vehicleType || "Sedan / Car"}</span> • Capacity: {dmcTransfer.passengerCapacity || 4} Pax
+                                        <p className="text-[11px] text-gray-500 mt-0.5 truncate flex items-center gap-1 flex-wrap">
+                                          <span className="inline-flex items-center gap-1 text-slate-700 font-medium">
+                                            <MapPin size={11} className="text-rose-500 shrink-0" />
+                                            {dmcTransfer.city || dmcTransfer.destination || destination}
+                                          </span>
+                                          • Vehicle: <span className="text-slate-700 font-medium">{dmcTransfer.vehicleType || "Sedan / Car"}</span> • Capacity: {dmcTransfer.passengerCapacity || 4} Pax
                                         </p>
-                                        <p className="text-[10px] text-emerald-400 font-medium mt-0.5">
-                                          DMC: {dmcTransfer.supplierName || dmcTransfer.dmcName || "Contracted Supplier"}
+                                        <p className="text-[10px] text-emerald-600 font-semibold mt-0.5">
+                                          Supplier: {dmcTransfer.supplierName || dmcTransfer.dmcName || "Contracted Supplier"}
                                         </p>
                                       </div>
                                       <div className="text-right shrink-0">
-                                        <span className="text-xs font-bold text-amber-400">
+                                        <span className="text-xs font-bold text-slate-900">
                                           ₹{Number(dmcTransfer.price || dmcTransfer.total || dmcTransfer.rate || 0).toLocaleString("en-IN")}
                                         </span>
-                                        <span className="block text-[10px] text-slate-500">/ trip</span>
+                                        <span className="block text-[10px] text-gray-500">/ trip</span>
                                       </div>
                                     </div>
                                   );
@@ -1947,14 +2774,38 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
                           )}
                         </div>
 
-                        {/* Vehicle Type Dropdown */}
-                        <div>
-                          <label className="block text-[11px] text-slate-400 mb-0.5">Vehicle Type</label>
+                        {/* Travel Day Dropdown */}
+                        <div className="sm:col-span-2">
+                          <label className="block text-[11px] font-semibold text-slate-600 mb-1">Travel Day</label>
                           <select
-                            value={transfer.vehicleType}
-                            onChange={(e) => handleVehicleTypeChange(index, e.target.value)}
-                            className="w-full rounded-md border border-slate-700 bg-[#0f141c] px-2.5 py-1.5 text-xs text-slate-200 focus:border-amber-500 focus:outline-none"
+                            value={transfer.day || 1}
+                            onChange={(e) => updateTransfer(index, "day", Number(e.target.value))}
+                            className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs cursor-pointer"
                           >
+                            {Array.from({ length: totalDaysCount }, (_, i) => i + 1).map((d) => {
+                              const dayInfo = dayLoadSummary[d];
+                              let extraText = "";
+                              if (dayInfo) {
+                                extraText = dayInfo.totalMins > 0 ? ` (${dayInfo.label})` : " (Free)";
+                              }
+                              return (
+                                <option key={d} value={d}>
+                                  Day {d}{extraText}
+                                </option>
+                              );
+                            })}
+                          </select>
+                        </div>
+
+                        {/* Vehicle Type Dropdown */}
+                        <div className="sm:col-span-4">
+                          <label className="block text-[11px] font-semibold text-slate-600 mb-1">Vehicle Type</label>
+                          <select
+                            value={transfer.vehicleType || ""}
+                            onChange={(e) => handleVehicleTypeChange(index, e.target.value)}
+                            className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs cursor-pointer"
+                          >
+                            <option value="">Select Vehicle Type</option>
                             {availableVehicles.length > 0 ? (
                               availableVehicles.map((v, vIdx) => (
                                 <option key={vIdx} value={v.vehicleType}>
@@ -1979,11 +2830,11 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
                         
                         {/* Usage Dropdown matching Quotation side */}
                         <div className="sm:col-span-2">
-                          <label className="block text-[11px] text-slate-400 mb-0.5">Usage</label>
+                          <label className="block text-[11px] font-semibold text-slate-600 mb-1">Usage</label>
                           <select
                             value={transfer.usage || "one-way-airport-transfer"}
                             onChange={(e) => handleUsageChange(index, e.target.value)}
-                            className="w-full rounded-md border border-slate-700 bg-[#0f141c] px-2.5 py-1.5 text-xs text-slate-200 focus:border-amber-500 focus:outline-none"
+                            className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs"
                           >
                             {TRANSPORT_USAGE_OPTIONS.map((opt) => {
                               const optPrice = transfer.usagePrices && transfer.usagePrices[opt.value] !== undefined
@@ -2000,68 +2851,83 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
 
                         {/* Passenger Capacity */}
                         <div>
-                          <label className="block text-[11px] text-slate-400 mb-0.5">Pax Capacity</label>
+                          <label className="block text-[11px] font-semibold text-slate-600 mb-1">Pax Capacity</label>
                           <input
                             type="number"
                             min="1"
                             value={transfer.passengerCapacity || 4}
                             onChange={(e) => updateTransfer(index, "passengerCapacity", Number(e.target.value))}
-                            className="w-full rounded-md border border-slate-700 bg-[#0f141c] px-2.5 py-1.5 text-xs text-slate-200 focus:border-amber-500 focus:outline-none"
+                            className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs"
                           />
                         </div>
 
                         {/* Luggage Capacity */}
                         <div>
-                          <label className="block text-[11px] text-slate-400 mb-0.5">Luggage (Bags)</label>
+                          <label className="block text-[11px] font-semibold text-slate-600 mb-1">Luggage (Bags)</label>
                           <input
                             type="number"
                             min="0"
                             value={transfer.luggageCapacity !== undefined ? transfer.luggageCapacity : 2}
                             onChange={(e) => updateTransfer(index, "luggageCapacity", Number(e.target.value))}
-                            className="w-full rounded-md border border-slate-700 bg-[#0f141c] px-2.5 py-1.5 text-xs text-slate-200 focus:border-amber-500 focus:outline-none"
+                            className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs"
                           />
                         </div>
 
-                        {/* Days Dropdown */}
+                        {/* Dynamic Multiplier Dropdown (Trips / Rental Days / Half-Days) */}
                         <div>
-                          <label className="block text-[11px] text-slate-400 mb-0.5">Days</label>
+                          <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                            {transfer.usage === "full-day"
+                              ? "Rental Days"
+                              : transfer.usage === "half-day"
+                              ? "Half-Days"
+                              : "No. of Trips"}
+                          </label>
                           <select
                             value={Number(transfer.days || 1)}
                             onChange={(e) => updateTransfer(index, "days", Math.max(1, Number(e.target.value || 1)))}
-                            className="w-full rounded-md border border-slate-700 bg-[#0f141c] px-2.5 py-1.5 text-xs text-slate-200 focus:border-amber-500 focus:outline-none"
+                            className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs font-medium cursor-pointer"
                           >
-                            {[...Array(10)].map((_, i) => (
-                              <option key={i + 1} value={i + 1}>
-                                {i + 1} Day{i === 0 ? "" : "s"}
-                              </option>
-                            ))}
+                            {[...Array(10)].map((_, i) => {
+                              const count = i + 1;
+                              const unitLabel =
+                                transfer.usage === "full-day"
+                                  ? count === 1 ? "Day" : "Days"
+                                  : transfer.usage === "half-day"
+                                  ? count === 1 ? "Half-Day" : "Half-Days"
+                                  : count === 1 ? "Trip" : "Trips";
+                              return (
+                                <option key={count} value={count}>
+                                  {count} {unitLabel}
+                                </option>
+                              );
+                            })}
                           </select>
                         </div>
                       </div>
 
                       {/* Third Row: Rate & Usage Notes */}
-                      <div className="flex items-center justify-between flex-wrap gap-2 pt-1 border-t border-slate-800/40">
-                        <div className="text-[11px] text-amber-300/90 space-y-0.5">
+                      <div className="flex items-center justify-between flex-wrap gap-2 pt-2 border-t border-gray-200">
+                        <div className="text-[11px] text-gray-600 space-y-0.5">
                           {transfer.usage === "full-day" && transfer.fullDayNote && (
-                            <p className="italic">Note (Full Day): {transfer.fullDayNote}</p>
+                            <p className="italic font-medium text-slate-700">Note (Full Day): {transfer.fullDayNote}</p>
                           )}
                           {transfer.usage === "half-day" && transfer.halfDayNote && (
-                            <p className="italic">Note (Half Day): {transfer.halfDayNote}</p>
+                            <p className="italic font-medium text-slate-700">Note (Half Day): {transfer.halfDayNote}</p>
                           )}
                           {transfer.fullDayExtraPerKmRate > 0 && (
-                            <p className="italic text-yellow-400">Extra km rate: ₹{transfer.fullDayExtraPerKmRate}/km where applicable.</p>
+                            <p className="italic text-amber-700 font-medium">Extra km rate: ₹{transfer.fullDayExtraPerKmRate}/km where applicable.</p>
                           )}
                         </div>
 
                         <div className="flex items-center gap-2 ml-auto">
-                          <label className="text-[11px] text-slate-400">Total Price (₹):</label>
+                          <label className="text-[11px] font-semibold text-slate-700">Total Price (₹):</label>
                           <input
                             type="number"
                             min="0"
                             placeholder="e.g. 4500"
                             value={transfer.price || ""}
                             onChange={(e) => updateTransfer(index, "price", Number(e.target.value))}
-                            className="w-32 rounded-md border border-slate-700 bg-[#0f141c] px-2.5 py-1 text-xs font-bold text-amber-400 focus:border-amber-500 focus:outline-none"
+                            className="w-32 rounded-lg border border-gray-300 bg-white px-2.5 py-1 text-xs font-bold text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none shadow-2xs"
                           />
                         </div>
                       </div>
@@ -2073,99 +2939,223 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
             </div>
           )}
 
-          {/* TAB 5: SIGHTSEEING & ACTIVITIES (WITH LIVE DMC AUTOCOMPLETE) */}
+          {/* TAB 4: ACTIVITIES & SIGHTSEEING (WITH LIVE DMC AUTOCOMPLETE) */}
           {activeTab === "activities" && (
-            <div className="space-y-4 pt-1">
-              <div className="flex items-center justify-between pb-2 border-b border-slate-800/80">
+            <div className="space-y-5 pt-1">
+              <div className="flex items-center justify-between pb-3 border-b border-gray-200">
                 <div>
-                  <p className="text-xs text-slate-200 font-semibold flex items-center gap-1.5">
-                    <Landmark size={14} className="text-amber-400" />
+                  <p className="text-xs sm:text-sm text-slate-900 font-bold flex items-center gap-1.5">
+                    <Landmark size={15} className="text-emerald-600" />
                     Sightseeing Tours & Activities
                   </p>
-                  <p className="text-[11px] text-slate-400 mt-0.5">
-                    Select from DMC-uploaded activities & sightseeing in <strong>{destination}</strong>.
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Select from uploaded activities & sightseeing in <strong>{destination}</strong>.
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
                     onClick={addActivity}
-                    className="flex items-center gap-1.5 rounded-md bg-amber-500/15 px-3 py-1.5 text-xs font-semibold text-amber-300 border border-amber-500/30 hover:bg-amber-500/25 transition cursor-pointer"
+                    className="flex items-center gap-1.5 rounded-lg bg-emerald-50 border border-emerald-200 px-3.5 py-1.5 text-xs font-semibold text-emerald-800 hover:bg-emerald-100 hover:border-emerald-300 transition-colors cursor-pointer shadow-2xs"
                   >
                     <Plus size={13} /> Add Activity
                   </button>
                   <button
                     type="button"
                     onClick={addSightseeing}
-                    className="flex items-center gap-1.5 rounded-md bg-amber-500/15 px-3 py-1.5 text-xs font-semibold text-amber-300 border border-amber-500/30 hover:bg-amber-500/25 transition cursor-pointer"
+                    className="flex items-center gap-1.5 rounded-lg bg-purple-50 border border-purple-200 px-3.5 py-1.5 text-xs font-semibold text-purple-800 hover:bg-purple-100 hover:border-purple-300 transition-colors cursor-pointer shadow-2xs"
                   >
-                    <Plus size={13} /> Add Tour
+                    <Plus size={13} /> Add Sightseeing
                   </button>
                 </div>
               </div>
 
+              {/* Schedule Overlap Global Intelligence & Visual Timeline Breakdown */}
+              {scheduleConflicts.length > 0 && (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between gap-3 rounded-xl border border-gray-200 bg-slate-50/80 px-4 py-2.5 text-xs text-slate-800 shadow-2xs">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <AlertTriangle size={15} className="text-amber-600 shrink-0" />
+                      <span className="font-semibold text-slate-900 truncate">
+                        Timeline Overlap Detected:{" "}
+                        <span className="font-normal text-slate-600">
+                          {scheduleConflicts.length} schedule conflict{scheduleConflicts.length > 1 ? "s" : ""} found. Review below timeline & smart fixes.
+                        </span>
+                      </span>
+                    </div>
+                    <span className="rounded-md bg-amber-50 border border-amber-200 px-2.5 py-0.5 text-[11px] font-semibold text-amber-800 shrink-0">
+                      Action Needed
+                    </span>
+                  </div>
+
+                  {conflictingDays.map((dayNum) => (
+                    <DayScheduleVisualizer
+                      key={dayNum}
+                      dayNum={dayNum}
+                      scheduledItems={allScheduledItems}
+                      conflicts={scheduleConflicts}
+                      onShiftItemDay={handleShiftItemDay}
+                      totalDays={totalDaysCount}
+                    />
+                  ))}
+                </div>
+              )}
+
               {/* Activities Section */}
               <div className="space-y-3 pt-1">
-                <p className="text-xs font-bold text-slate-300">Activities & Experiences ({activities.length})</p>
+                <p className="text-xs font-bold text-slate-900">Activities & Experiences ({activities.length})</p>
                 {activities.length === 0 ? (
-                  <p className="text-xs text-slate-500 italic">No specific activities added yet. Click "+ Add Activity" to add.</p>
+                  <p className="text-xs text-gray-500 italic">No specific activities added yet. Click "+ Add Activity" to add.</p>
                 ) : (
                   activities.map((act, index) => {
                     const filteredActs = getFilteredActivities(act.name, act);
-                    const paxNum = Number(act.pax || 1);
-                    const maxPaxStr = String(act.maxPax || "").toLowerCase();
-                    const match = maxPaxStr.match(/\d+/);
-                    let hasPaxValidationError = false;
-                    let validationErrorMessage = "";
-                    if (match) {
-                      const maxLimit = Number(match[0]);
-                      if (maxLimit > 0 && paxNum > maxLimit) {
-                        hasPaxValidationError = true;
-                        validationErrorMessage = `Maximum ${maxLimit} Pax allowed for ${act.tourType || "this tour"}.`;
-                      }
-                    } else {
-                      const tourType = String(act.tourType || "").toLowerCase();
-                      if (/private/i.test(tourType) && paxNum > 4) {
-                        hasPaxValidationError = true;
-                        validationErrorMessage = "Maximum 4 Pax allowed for Private Tour.";
-                      } else if (/premium|vip/i.test(tourType) && paxNum > 6) {
-                        hasPaxValidationError = true;
-                        validationErrorMessage = "Maximum 6 Pax allowed for Premium/VIP Tour.";
-                      }
-                    }
-
                     const tourTypesList = Array.isArray(act.tourTypesList) && act.tourTypesList.length > 0
                       ? act.tourTypesList
                       : [
-                          { tourType: "Group Tour", price: act.basePrice || act.price || 0 },
-                          { tourType: "Private Tour", price: act.basePrice || act.price || 0 },
-                          { tourType: "Premium/VIP Tour", price: act.basePrice || act.price || 0 }
+                          { tourType: "Sharing Tour", adultPrice: act.adultPrice || act.basePrice || act.price || 0, childPrice: act.childPrice || 0 },
+                          { tourType: "Private Tour", adultPrice: act.adultPrice || act.basePrice || act.price || 0, childPrice: act.childPrice || 0 },
+                          { tourType: "Ticket Tour", adultPrice: act.adultPrice || act.basePrice || act.price || 0, childPrice: act.childPrice || 0 }
                         ];
+                    const currentTourType = act.tourType || tourTypesList[0]?.tourType || "Sharing Tour";
+                    const currentTourObj = tourTypesList.find(t => String(t.tourType || "").trim().toLowerCase() === String(currentTourType || "").trim().toLowerCase()) || tourTypesList[0] || {};
+                    const availableSlots = resolveSlotOptions(act);
+                    const resolvedDuration = formatServiceDuration(act, currentTourObj);
+                    const adultsCount = act.adults !== undefined ? Number(act.adults) : (act.pax !== undefined ? Number(act.pax) : 2);
+                    const childrenCount = act.children !== undefined ? Number(act.children) : 0;
+                    const adultPriceVal = act.adultPrice !== undefined ? Number(act.adultPrice) : Number(act.basePrice || 0);
+                    const childPriceVal = act.childPrice !== undefined ? Number(act.childPrice) : 0;
+                    const totalPriceVal = act.price !== undefined && act.price !== "" ? Number(act.price) : (adultPriceVal * adultsCount + childPriceVal * childrenCount);
+                    const cardConflicts = getServiceConflicts("activity", index);
 
                     return (
-                      <div key={index} className={`rounded-md border border-slate-800 bg-[#161d27] p-3 space-y-2.5 relative ${activeActivityDropdownIdx === index ? "z-30 ring-1 ring-amber-500/40" : "z-10"}`}>
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
-                            Activity #{index + 1}
-                            {act.supplierName && (
-                              <span className="rounded bg-emerald-500/15 border border-emerald-500/30 px-1.5 py-0.2 text-[10px] text-emerald-400 font-normal">
-                                DMC: {act.supplierName}
+                      <div key={index} className={`rounded-xl border ${cardConflicts.length > 0 ? "border-amber-300/80" : "border-gray-200"} bg-gray-50/50 p-4 space-y-3 relative shadow-2xs ${activeActivityDropdownIdx === index ? "z-30 ring-1 ring-blue-500/50" : "z-10"}`}>
+                        
+                        {/* Individual Activity Conflict Alert - Clean Agent Style */}
+                        {cardConflicts.length > 0 && (
+                          <div className="rounded-lg bg-amber-50/60 border border-amber-200 p-3 space-y-2 text-xs">
+                            <div className="flex items-start gap-2">
+                              <AlertTriangle size={14} className="text-amber-600 shrink-0 mt-0.5" />
+                              <div className="min-w-0 flex-1 space-y-1">
+                                <span className="font-bold text-xs text-slate-900 block">Time Overlap Conflict</span>
+                                <div className="text-xs text-slate-700 space-y-0.5">
+                                  {cardConflicts.map((c, cIdx) => (
+                                    <p key={cIdx}>
+                                      • {c.detailedReason}
+                                    </p>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* 1-Click Quick Move Actions */}
+                            <div className="pt-2 border-t border-amber-200/60 space-y-1.5">
+                              <span className="text-[11px] font-semibold text-slate-600 flex items-center gap-1">
+                                <Zap size={11} className="text-amber-600" /> Quick Move Activity:
                               </span>
-                            )}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => removeActivity(index)}
-                            className="text-slate-400 hover:text-rose-400 p-1 cursor-pointer transition-colors"
-                          >
-                            <Trash2 size={13} />
-                          </button>
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                {Array.from({ length: totalDaysCount }, (_, i) => i + 1)
+                                  .filter((d) => {
+                                    if (d === (act.day || 1)) return false;
+                                    if (totalDaysCount >= 3 && d === totalDaysCount) return false;
+                                    if (totalDaysCount >= 3 && d === 1) {
+                                      const hasDay1Transfer = transfers.some((tr) => Number(tr.day || 1) === 1);
+                                      const isLong = parseDurationInMinutes(act.duration, 120) >= 180;
+                                      if (hasDay1Transfer || isLong) return false;
+                                    }
+                                    return true;
+                                  })
+                                  .map((d) => (
+                                    <button
+                                      key={d}
+                                      type="button"
+                                      onClick={() => updateActivity(index, "day", d)}
+                                      className="rounded-md bg-white border border-gray-300 hover:bg-gray-50 px-2.5 py-1 text-xs font-semibold text-slate-700 transition shadow-2xs cursor-pointer"
+                                    >
+                                      Move to Day {d}
+                                    </button>
+                                  ))}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Top Header: Activity Configuration + Tour Type Selector + Delete */}
+                        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 pb-2.5">
+                          <div className="flex items-center gap-2">
+                            <span className="inline-block w-2 h-2 rounded-full bg-emerald-500"></span>
+                            <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                              Activity #{index + 1}
+                              {act.supplierName && (
+                                <span className="rounded-md bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-[10px] text-emerald-700 font-semibold">
+                                  Supplier: {act.supplierName}
+                                </span>
+                              )}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-2 ml-auto">
+                            <span className="text-[11px] font-semibold text-slate-600">Tour Type:</span>
+                            <div className="relative">
+                              <select
+                                value={act.tourType || ""}
+                                onChange={(e) => handleActivityTourTypeChange(index, e.target.value)}
+                                className="rounded-lg border border-gray-300 bg-white pl-2.5 pr-7 py-1 text-xs font-bold text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs cursor-pointer appearance-none"
+                              >
+                                <option value="">Select Tour Type</option>
+                                {tourTypesList.map((t, tIdx) => (
+                                  <option key={t._id || tIdx} value={t.tourType}>
+                                    {t.tourType}
+                                  </option>
+                                ))}
+                              </select>
+                              <ChevronDown size={13} className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400" />
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => removeActivity(index)}
+                              className="text-gray-400 hover:text-rose-600 p-1.5 rounded-lg hover:bg-rose-50 cursor-pointer transition-colors"
+                              title="Remove Activity"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
                         </div>
 
-                        {/* First Row: Search Input + Tour Type Selector + Day Dropdown */}
+                        {/* Info Badges: Days | Open/Close | Duration (Only when service has info or is selected) */}
+                        {Boolean(act.operatingDays || act.openingTime || act.closingTime || resolvedDuration) && (
+                          <div className="flex flex-wrap items-center gap-2">
+                            {act.operatingDays && (
+                              <span className="flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-0.5 text-[10px] text-slate-700 font-medium shadow-2xs">
+                                <span className="text-gray-400 font-normal">Days:</span> {act.operatingDays}
+                              </span>
+                            )}
+                            {(act.openingTime || act.closingTime) && (
+                              <span className="flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-0.5 text-[10px] text-slate-700 font-medium shadow-2xs">
+                                <Clock size={11} className="text-amber-600" />
+                                <span className="text-gray-400 font-normal">Open / Close:</span> {act.openingTime || "08:00"} / {act.closingTime || "18:00"}
+                              </span>
+                            )}
+                            {resolvedDuration && (
+                              <span className="flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-0.5 text-[10px] text-slate-700 font-medium shadow-2xs">
+                                <Clock size={11} className="text-purple-600" />
+                                <span className="text-gray-400 font-normal">Duration:</span> {resolvedDuration}
+                              </span>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Description / Highlights */}
+                        {Boolean(currentTourObj.description || act.description || act.desc) && (
+                          <p className="text-[11px] text-gray-500 italic">
+                            {currentTourObj.description || act.description || act.desc}
+                          </p>
+                        )}
+
+                        {/* First Row: Search Input + Day Dropdown */}
                         <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-12">
-                          <div className={`sm:col-span-6 relative dmc-autocomplete-container ${activeActivityDropdownIdx === index ? "z-40" : "z-10"}`}>
-                            <label className="block text-[11px] text-slate-400 mb-0.5">Activity / Experience</label>
+                          <div className={`sm:col-span-10 relative dmc-autocomplete-container ${activeActivityDropdownIdx === index ? "z-40" : "z-10"}`}>
+                            <label className="block text-[11px] font-semibold text-slate-600 mb-1">Activity / Experience</label>
                             <div className="relative">
                               <input
                                 type="text"
@@ -2176,12 +3166,12 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
                                   updateActivity(index, "name", e.target.value);
                                   setActiveActivityDropdownIdx(index);
                                 }}
-                                className="w-full rounded-md border border-slate-700 bg-[#0f141c] pl-2.5 pr-8 py-1.5 text-xs text-slate-200 focus:border-amber-500 focus:outline-none"
+                                className="w-full rounded-lg border border-gray-300 bg-white pl-3 pr-8 py-1.5 text-xs text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs"
                               />
                               <button
                                 type="button"
                                 onClick={() => setActiveActivityDropdownIdx(activeActivityDropdownIdx === index ? null : index)}
-                                className="absolute right-2 top-2 text-slate-400 hover:text-amber-400 p-0.5 cursor-pointer transition-colors"
+                                className="absolute right-2 top-2 text-gray-400 hover:text-gray-600 p-0.5 cursor-pointer transition-colors"
                               >
                                 <ChevronDown size={14} />
                               </button>
@@ -2189,43 +3179,74 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
 
                             {/* Dropdown */}
                             {activeActivityDropdownIdx === index && (
-                              <div className="absolute left-0 right-0 top-full mt-1.5 max-h-64 overflow-y-auto rounded-lg border border-slate-700 bg-[#0d121a] shadow-[0_20px_60px_rgba(0,0,0,0.95)] z-[100] divide-y divide-slate-800/90 [scrollbar-width:thin] [scrollbar-color:#334155_transparent]">
+                              <div className="absolute left-0 right-0 top-full mt-1.5 max-h-64 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-xl z-[100] divide-y divide-gray-100 [scrollbar-width:thin]">
                                 {filteredActs.length === 0 ? (
-                                  <div className="p-3 text-[11px] text-slate-400 italic text-center">
-                                    No DMC activity currently uploaded. You can freely type custom activity name.
+                                  <div className="p-3 text-[11px] text-gray-500 italic text-center">
+                                    No activity currently uploaded. You can freely type custom activity name.
                                   </div>
                                 ) : (
                                   filteredActs.map((dmcAct, aIdx) => {
                                     const actTitle = dmcAct.serviceName || dmcAct.name || dmcAct.title;
                                     const isSelected = Boolean(act.name && actTitle.toLowerCase() === act.name.trim().toLowerCase());
+                                    const defaultTour = Array.isArray(dmcAct.tourTypes) && dmcAct.tourTypes.length > 0 ? dmcAct.tourTypes[0] : {};
+                                    const actAdultPrice = Number(
+                                      dmcAct.adultPrice !== undefined
+                                        ? dmcAct.adultPrice
+                                        : defaultTour.adultPrice !== undefined
+                                        ? defaultTour.adultPrice
+                                        : dmcAct.price || dmcAct.rate || 0
+                                    );
+                                    const actChildPrice = Number(
+                                      dmcAct.childPrice !== undefined
+                                        ? dmcAct.childPrice
+                                        : defaultTour.childPrice !== undefined
+                                        ? defaultTour.childPrice
+                                        : dmcAct.childRate !== undefined
+                                        ? dmcAct.childRate
+                                        : dmcAct.cwebRate !== undefined
+                                        ? dmcAct.cwebRate
+                                        : 0
+                                    );
 
                                     return (
                                       <div
                                         key={dmcAct._id || dmcAct.id || aIdx}
                                         onClick={() => selectDmcActivity(index, dmcAct)}
-                                        className={`p-2.5 hover:bg-amber-500/15 cursor-pointer transition flex items-center justify-between gap-2 ${
-                                          isSelected ? "bg-amber-500/20 border-l-2 border-l-amber-400" : ""
+                                        className={`p-3 hover:bg-blue-50/60 cursor-pointer transition flex items-center justify-between gap-2 ${
+                                          isSelected ? "bg-blue-50/90 border-l-3 border-l-blue-600" : ""
                                         }`}
                                       >
                                         <div className="min-w-0 flex-1">
-                                          <p className="text-xs font-semibold text-slate-100 flex items-center gap-1.5 truncate">
+                                          <p className="text-xs font-bold text-slate-900 flex items-center gap-1.5 truncate">
                                             <span>{actTitle}</span>
                                             {isSelected && (
-                                              <span className="rounded bg-emerald-500/20 text-emerald-300 text-[9px] px-1 py-0.2 font-bold">
+                                              <span className="rounded bg-emerald-50 border border-emerald-200 text-emerald-700 text-[9px] px-1.5 py-0.2 font-bold">
                                                 ✓ Selected
                                               </span>
                                             )}
+                                            <span className="text-[10px] text-gray-500 font-medium">
+                                              • {dmcAct.tourType || defaultTour.tourType || "Sharing Tour"}
+                                            </span>
                                           </p>
-                                          <p className="text-[10px] text-slate-400 mt-0.5 truncate">
-                                            📍 <span className="text-slate-300 font-medium">{dmcAct.city || dmcAct.destination || destination}</span> • {dmcAct.category || "Experience"}
+                                          <p className="text-[11px] text-gray-500 mt-0.5 truncate flex items-center gap-1 flex-wrap">
+                                            <span className="inline-flex items-center gap-1 text-slate-700 font-medium">
+                                              <MapPin size={11} className="text-rose-500 shrink-0" />
+                                              {dmcAct.city || dmcAct.destination || destination}
+                                            </span>
+                                            • {dmcAct.category || "Experience"}
+                                            • Days: {dmcAct.operatingDays || dmcAct.days || "Mon-Sun"}
                                           </p>
-                                          <p className="text-[10px] text-emerald-400 font-medium mt-0.5">
-                                            DMC: {dmcAct.supplierName || dmcAct.dmcName || "Contracted Supplier"}
+                                          <p className="text-[10px] text-emerald-600 font-semibold mt-0.5">
+                                            Supplier: {dmcAct.supplierName || dmcAct.dmcName || "Contracted Supplier"}
                                           </p>
                                         </div>
                                         <div className="text-right shrink-0">
-                                          <span className="text-xs font-bold text-amber-400">
-                                            ₹{Number(dmcAct.price || dmcAct.total || 0).toLocaleString("en-IN")}
+                                          <span className="text-xs font-bold text-slate-900">
+                                            ₹{actAdultPrice.toLocaleString("en-IN")}
+                                          </span>
+                                          <span className="block text-[10px] text-gray-500">/ adult</span>
+                                          <span className="block text-[9px] text-gray-400">
+                                            Child: ₹{actChildPrice.toLocaleString("en-IN")}
                                           </span>
                                         </div>
                                       </div>
@@ -2236,107 +3257,122 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
                             )}
                           </div>
 
-                          {/* Tour Type Selector */}
-                          <div className="sm:col-span-4">
-                            <label className="block text-[11px] text-slate-400 mb-0.5">Tour Type</label>
-                            <select
-                              value={act.tourType || "Group Tour"}
-                              onChange={(e) => handleActivityTourTypeChange(index, e.target.value)}
-                              className="w-full rounded-md border border-slate-700 bg-[#0f141c] px-2.5 py-1.5 text-xs text-slate-200 focus:border-amber-500 focus:outline-none"
-                            >
-                              {tourTypesList.map((t, tIdx) => (
-                                <option key={tIdx} value={t.tourType}>
-                                  {t.tourType} (₹{Number(t.price !== undefined ? t.price : (act.basePrice || 0)).toLocaleString("en-IN")})
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-
                           {/* Day Dropdown */}
                           <div className="sm:col-span-2">
-                            <label className="block text-[11px] text-slate-400 mb-0.5">Day</label>
+                            <label className="block text-[11px] font-semibold text-slate-600 mb-1">Day</label>
                             <select
                               value={act.day || 1}
                               onChange={(e) => updateActivity(index, "day", Number(e.target.value))}
-                              className="w-full rounded-md border border-slate-700 bg-[#0f141c] px-2.5 py-1.5 text-xs text-slate-200 focus:border-amber-500 focus:outline-none"
+                              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs cursor-pointer"
                             >
-                              {Array.from({ length: totalDaysCount }, (_, i) => i + 1).map((d) => (
-                                <option key={d} value={d}>
-                                  Day {d}
-                                </option>
-                              ))}
+                              {Array.from({ length: totalDaysCount }, (_, i) => i + 1).map((d) => {
+                                const dayInfo = dayLoadSummary[d];
+                                let extraText = "";
+                                if (dayInfo) {
+                                  extraText = dayInfo.totalMins > 0 ? ` (${dayInfo.label})` : " (Free)";
+                                }
+                                return (
+                                  <option key={d} value={d}>
+                                    Day {d}{extraText}
+                                  </option>
+                                );
+                              })}
                             </select>
                           </div>
                         </div>
 
-                        {/* Second Row: Configuration Grid: Base Rate | Pricing Basis | Pax | Max Pax | Total Price */}
-                        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 pt-1 border-t border-slate-800/40">
-                          {/* 1. Base Rate */}
+                        {/* Second Row: Configuration Grid: Adult Price | Child Price | Adults | Children | Slot / Time | Total */}
+                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 pt-2 border-t border-gray-200">
+                          {/* 1. Adult Price */}
                           <div>
-                            <label className="block text-[10px] text-slate-400 uppercase tracking-wider mb-0.5">Base Rate</label>
+                            <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">Adult Price</label>
                             <input
                               type="number"
                               min="0"
-                              value={act.basePrice || ""}
-                              onChange={(e) => updateActivity(index, "basePrice", Number(e.target.value))}
-                              className="w-full rounded-md border border-slate-700 bg-[#0f141c] px-2 py-1 text-xs font-semibold text-slate-200 focus:border-amber-500 focus:outline-none"
+                              value={adultPriceVal || ""}
+                              onChange={(e) => updateActivity(index, "adultPrice", Number(e.target.value))}
+                              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs"
                             />
                           </div>
 
-                          {/* 2. Pricing Basis (Read-Only) */}
+                          {/* 2. Child Price */}
                           <div>
-                            <label className="block text-[10px] text-slate-400 uppercase tracking-wider mb-0.5">Pricing Basis</label>
-                            <div className="flex h-7.5 w-full items-center justify-center rounded-md border border-emerald-500/30 bg-emerald-500/10 px-1.5 text-[10px] font-bold text-emerald-300 select-none">
-                              {act.pricingBasis || "Per Pax"}
-                            </div>
+                            <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">Child Price</label>
+                            <input
+                              type="number"
+                              min="0"
+                              value={childPriceVal || ""}
+                              onChange={(e) => updateActivity(index, "childPrice", Number(e.target.value))}
+                              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs"
+                            />
                           </div>
 
-                          {/* 3. Pax */}
+                          {/* 3. Adults */}
                           <div>
-                            <label className="block text-[10px] text-slate-400 uppercase tracking-wider mb-0.5">Pax</label>
+                            <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">Adults</label>
                             <input
                               type="number"
                               min="1"
-                              value={act.pax || 1}
-                              onChange={(e) => updateActivity(index, "pax", Math.max(1, Number(e.target.value) || 1))}
-                              className={`w-full rounded-md border bg-[#0f141c] px-2 py-1 text-xs font-semibold text-slate-200 focus:outline-none ${hasPaxValidationError ? "border-rose-500 ring-1 ring-rose-500" : "border-slate-700 focus:border-amber-500"}`}
+                              value={adultsCount}
+                              onChange={(e) => updateActivity(index, "adults", Number(e.target.value))}
+                              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs"
                             />
                           </div>
 
-                          {/* 4. Max Pax (Read-Only) */}
+                          {/* 4. Children */}
                           <div>
-                            <label className="block text-[10px] text-slate-400 uppercase tracking-wider mb-0.5">Max Pax</label>
-                            <div className="flex h-7.5 w-full items-center justify-center rounded-md border border-purple-500/30 bg-purple-500/10 px-1.5 text-[10px] font-semibold text-purple-300 whitespace-nowrap overflow-hidden text-ellipsis select-none">
-                              {act.maxPax || "N/A (Shared Group)"}
-                            </div>
-                          </div>
-
-                          {/* 5. Total Price (₹) */}
-                          <div>
-                            <label className="block text-[10px] text-slate-400 uppercase tracking-wider mb-0.5">Total Price (₹)</label>
+                            <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">Children</label>
                             <input
                               type="number"
                               min="0"
-                              value={act.price || ""}
-                              onChange={(e) => updateActivity(index, "price", Number(e.target.value))}
-                              className="w-full rounded-md border border-slate-700 bg-[#0f141c] px-2 py-1 text-xs font-bold text-amber-400 focus:border-amber-500 focus:outline-none"
+                              value={childrenCount}
+                              onChange={(e) => updateActivity(index, "children", Number(e.target.value))}
+                              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs"
                             />
                           </div>
-                        </div>
 
-                        {/* Description */}
-                        {act.description && (
-                          <p className="text-[10px] text-slate-400 italic pt-0.5">
-                            {act.description}
-                          </p>
-                        )}
-
-                        {/* Validation Error Alert */}
-                        {hasPaxValidationError && (
-                          <div className="flex items-center gap-1.5 rounded-md border border-rose-500/40 bg-rose-500/10 px-2.5 py-1.5 text-[11px] font-semibold text-rose-300">
-                            <span>⚠️ {validationErrorMessage}</span>
+                          {/* 5. Slot / Time */}
+                          <div>
+                            <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">Slot / Time</label>
+                            <div className="relative">
+                              <select
+                                value={act.selectedSlot || availableSlots[0] || "08:00"}
+                                onChange={(e) => updateActivity(index, "selectedSlot", e.target.value)}
+                                className="w-full rounded-lg border border-gray-300 bg-white pl-2 pr-6 py-1.5 text-xs font-semibold text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs cursor-pointer appearance-none"
+                              >
+                                {availableSlots.map((slot, sIdx) => {
+                                  const slotCheck = checkSlotAvailability(
+                                    "activity",
+                                    index,
+                                    slot,
+                                    Number(act.day || 1),
+                                    parseDurationInMinutes(act.duration, 120),
+                                    allScheduledItems
+                                  );
+                                  return (
+                                    <option key={sIdx} value={slot}>
+                                      {slot} {slotCheck.isConflicting ? `⚠️ (Busy: ${slotCheck.conflictingWith})` : "✓ Free"}
+                                    </option>
+                                  );
+                                })}
+                              </select>
+                              <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400" />
+                            </div>
                           </div>
-                        )}
+
+                          {/* 6. Total */}
+                          <div>
+                            <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">Total (₹)</label>
+                            <input
+                              type="number"
+                              min="0"
+                              value={totalPriceVal || ""}
+                              onChange={(e) => updateActivity(index, "price", Number(e.target.value))}
+                              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-extrabold text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none shadow-2xs"
+                            />
+                          </div>
+
+                        </div>
                       </div>
                     );
                   })
@@ -2344,67 +3380,160 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
               </div>
 
               {/* Sightseeing Section */}
-              <div className="space-y-3 pt-2 border-t border-slate-800">
-                <p className="text-xs font-bold text-slate-300">Sightseeing Tours ({sightseeing.length})</p>
+              <div className="space-y-3 pt-3 border-t border-gray-200">
+                <p className="text-xs font-bold text-slate-900">Sightseeing Tours ({sightseeing.length})</p>
                 {sightseeing.length === 0 ? (
-                  <p className="text-xs text-slate-500 italic">No sightseeing tours added yet. Click "+ Add Tour" to add.</p>
+                  <p className="text-xs text-gray-500 italic">No sightseeing tours added yet. Click "+ Add Sightseeing" to add.</p>
                 ) : (
                   sightseeing.map((sight, index) => {
                     const filteredSight = getFilteredSightseeing(sight.name, sight);
-                    const paxNum = Number(sight.pax || 1);
-                    const maxPaxStr = String(sight.maxPax || "").toLowerCase();
-                    const match = maxPaxStr.match(/\d+/);
-                    let hasPaxValidationError = false;
-                    let validationErrorMessage = "";
-                    if (match) {
-                      const maxLimit = Number(match[0]);
-                      if (maxLimit > 0 && paxNum > maxLimit) {
-                        hasPaxValidationError = true;
-                        validationErrorMessage = `Maximum ${maxLimit} Pax allowed for ${sight.tourType || "this tour"}.`;
-                      }
-                    } else {
-                      const tourType = String(sight.tourType || "").toLowerCase();
-                      if (/private/i.test(tourType) && paxNum > 4) {
-                        hasPaxValidationError = true;
-                        validationErrorMessage = "Maximum 4 Pax allowed for Private Tour.";
-                      } else if (/premium|vip/i.test(tourType) && paxNum > 6) {
-                        hasPaxValidationError = true;
-                        validationErrorMessage = "Maximum 6 Pax allowed for Premium/VIP Tour.";
-                      }
-                    }
-
                     const tourTypesList = Array.isArray(sight.tourTypesList) && sight.tourTypesList.length > 0
                       ? sight.tourTypesList
                       : [
-                          { tourType: "Group Tour", price: sight.basePrice || sight.price || 0 },
-                          { tourType: "Private Tour", price: sight.basePrice || sight.price || 0 },
-                          { tourType: "Premium/VIP Tour", price: sight.basePrice || sight.price || 0 }
+                          { tourType: "Sharing Tour", adultPrice: sight.adultPrice || sight.basePrice || sight.price || 0, childPrice: sight.childPrice || 0 },
+                          { tourType: "Private Tour", adultPrice: sight.adultPrice || sight.basePrice || sight.price || 0, childPrice: sight.childPrice || 0 },
+                          { tourType: "Ticket Tour", adultPrice: sight.adultPrice || sight.basePrice || sight.price || 0, childPrice: sight.childPrice || 0 }
                         ];
+                    const currentTourType = sight.tourType || tourTypesList[0]?.tourType || "Sharing Tour";
+                    const currentTourObj = tourTypesList.find(t => String(t.tourType || "").trim().toLowerCase() === String(currentTourType || "").trim().toLowerCase()) || tourTypesList[0] || {};
+                    const availableSlots = resolveSlotOptions(sight);
+                    const resolvedDuration = formatServiceDuration(sight, currentTourObj);
+                    const adultsCount = sight.adults !== undefined ? Number(sight.adults) : (sight.pax !== undefined ? Number(sight.pax) : 2);
+                    const childrenCount = sight.children !== undefined ? Number(sight.children) : 0;
+                    const adultPriceVal = sight.adultPrice !== undefined ? Number(sight.adultPrice) : Number(sight.basePrice || 0);
+                    const childPriceVal = sight.childPrice !== undefined ? Number(sight.childPrice) : 0;
+                    const totalPriceVal = sight.price !== undefined && sight.price !== "" ? Number(sight.price) : (adultPriceVal * adultsCount + childPriceVal * childrenCount);
+                    const cardConflicts = getServiceConflicts("sightseeing", index);
 
                     return (
-                      <div key={index} className={`rounded-md border border-slate-800 bg-[#161d27] p-3 space-y-2.5 relative ${activeSightseeingDropdownIdx === index ? "z-30 ring-1 ring-amber-500/40" : "z-10"}`}>
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
-                            Sightseeing #{index + 1}
-                            {sight.supplierName && (
-                              <span className="rounded bg-emerald-500/15 border border-emerald-500/30 px-1.5 py-0.2 text-[10px] text-emerald-400 font-normal">
-                                DMC: {sight.supplierName}
+                      <div key={index} className={`rounded-xl border ${cardConflicts.length > 0 ? "border-amber-300/80" : "border-gray-200"} bg-gray-50/50 p-4 space-y-3 relative shadow-2xs ${activeSightseeingDropdownIdx === index ? "z-30 ring-1 ring-blue-500/50" : "z-10"}`}>
+                        
+                        {/* Individual Sightseeing Conflict Alert - Clean Agent Style */}
+                        {cardConflicts.length > 0 && (
+                          <div className="rounded-lg bg-amber-50/60 border border-amber-200 p-3 space-y-2 text-xs">
+                            <div className="flex items-start gap-2">
+                              <AlertTriangle size={14} className="text-amber-600 shrink-0 mt-0.5" />
+                              <div className="min-w-0 flex-1 space-y-1">
+                                <span className="font-bold text-xs text-slate-900 block">Time Overlap Conflict</span>
+                                <div className="text-xs text-slate-700 space-y-0.5">
+                                  {cardConflicts.map((c, cIdx) => (
+                                    <p key={cIdx}>
+                                      • {c.detailedReason}
+                                    </p>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* 1-Click Quick Move Actions */}
+                            <div className="pt-2 border-t border-amber-200/60 space-y-1.5">
+                              <span className="text-[11px] font-semibold text-slate-600 flex items-center gap-1">
+                                <Zap size={11} className="text-amber-600" /> Quick Move Sightseeing:
                               </span>
-                            )}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => removeSightseeing(index)}
-                            className="text-slate-400 hover:text-rose-400 p-1 cursor-pointer transition-colors"
-                          >
-                            <Trash2 size={13} />
-                          </button>
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                {Array.from({ length: totalDaysCount }, (_, i) => i + 1)
+                                  .filter((d) => {
+                                    if (d === (sight.day || 1)) return false;
+                                    if (totalDaysCount >= 3 && d === totalDaysCount) return false;
+                                    if (totalDaysCount >= 3 && d === 1) {
+                                      const hasDay1Transfer = transfers.some((tr) => Number(tr.day || 1) === 1);
+                                      const isLong = parseDurationInMinutes(sight.duration, 60) >= 180;
+                                      if (hasDay1Transfer || isLong) return false;
+                                    }
+                                    return true;
+                                  })
+                                  .map((d) => (
+                                    <button
+                                      key={d}
+                                      type="button"
+                                      onClick={() => updateSightseeing(index, "day", d)}
+                                      className="rounded-md bg-white border border-gray-300 hover:bg-gray-50 px-2.5 py-1 text-xs font-semibold text-slate-700 transition shadow-2xs cursor-pointer"
+                                    >
+                                      Move to Day {d}
+                                    </button>
+                                  ))}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Top Header: Sightseeing Configuration + Tour Type Selector + Delete */}
+                        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 pb-2.5">
+                          <div className="flex items-center gap-2">
+                            <span className="inline-block w-2 h-2 rounded-full bg-blue-500"></span>
+                            <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                              Sightseeing #{index + 1}
+                              {sight.supplierName && (
+                                <span className="rounded-md bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-[10px] text-emerald-700 font-semibold">
+                                  Supplier: {sight.supplierName}
+                                </span>
+                              )}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-2 ml-auto">
+                            <span className="text-[11px] font-semibold text-slate-600">Tour Type:</span>
+                            <div className="relative">
+                              <select
+                                value={sight.tourType || ""}
+                                onChange={(e) => handleSightseeingTourTypeChange(index, e.target.value)}
+                                className="rounded-lg border border-gray-300 bg-white pl-2.5 pr-7 py-1 text-xs font-bold text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs cursor-pointer appearance-none"
+                              >
+                                <option value="">Select Tour Type</option>
+                                {tourTypesList.map((t, tIdx) => (
+                                  <option key={t._id || tIdx} value={t.tourType}>
+                                    {t.tourType}
+                                  </option>
+                                ))}
+                              </select>
+                              <ChevronDown size={13} className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400" />
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => removeSightseeing(index)}
+                              className="text-gray-400 hover:text-rose-600 p-1.5 rounded-lg hover:bg-rose-50 cursor-pointer transition-colors"
+                              title="Remove Sightseeing"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
                         </div>
 
-                        {/* First Row: Search Input + Tour Type Selector + Day Dropdown */}
+                        {/* Info Badges: Days | Open/Close | Duration (Only when service has info or is selected) */}
+                        {Boolean(sight.operatingDays || sight.openingTime || sight.closingTime || resolvedDuration) && (
+                          <div className="flex flex-wrap items-center gap-2">
+                            {sight.operatingDays && (
+                              <span className="flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-0.5 text-[10px] text-slate-700 font-medium shadow-2xs">
+                                <span className="text-gray-400 font-normal">Days:</span> {sight.operatingDays}
+                              </span>
+                            )}
+                            {(sight.openingTime || sight.closingTime) && (
+                              <span className="flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-0.5 text-[10px] text-slate-700 font-medium shadow-2xs">
+                                <Clock size={11} className="text-amber-600" />
+                                <span className="text-gray-400 font-normal">Open / Close:</span> {sight.openingTime || "08:00"} / {sight.closingTime || "18:00"}
+                              </span>
+                            )}
+                            {resolvedDuration && (
+                              <span className="flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-0.5 text-[10px] text-slate-700 font-medium shadow-2xs">
+                                <Clock size={11} className="text-purple-600" />
+                                <span className="text-gray-400 font-normal">Duration:</span> {resolvedDuration}
+                              </span>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Description / Highlights */}
+                        {Boolean(currentTourObj.description || sight.description || sight.desc) && (
+                          <p className="text-[11px] text-gray-500 italic">
+                            {currentTourObj.description || sight.description || sight.desc}
+                          </p>
+                        )}
+
+                        {/* First Row: Search Input + Day Dropdown */}
                         <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-12">
-                          <div className={`sm:col-span-6 relative dmc-autocomplete-container ${activeSightseeingDropdownIdx === index ? "z-40" : "z-10"}`}>
-                            <label className="block text-[11px] text-slate-400 mb-0.5">Sightseeing Tour</label>
+                          <div className={`sm:col-span-10 relative dmc-autocomplete-container ${activeSightseeingDropdownIdx === index ? "z-40" : "z-10"}`}>
+                            <label className="block text-[11px] font-semibold text-slate-600 mb-1">Sightseeing Tour</label>
                             <div className="relative">
                               <input
                                 type="text"
@@ -2415,12 +3544,12 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
                                   updateSightseeing(index, "name", e.target.value);
                                   setActiveSightseeingDropdownIdx(index);
                                 }}
-                                className="w-full rounded-md border border-slate-700 bg-[#0f141c] pl-2.5 pr-8 py-1.5 text-xs text-slate-200 focus:border-amber-500 focus:outline-none"
+                                className="w-full rounded-lg border border-gray-300 bg-white pl-3 pr-8 py-1.5 text-xs text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs"
                               />
                               <button
                                 type="button"
                                 onClick={() => setActiveSightseeingDropdownIdx(activeSightseeingDropdownIdx === index ? null : index)}
-                                className="absolute right-2 top-2 text-slate-400 hover:text-amber-400 p-0.5 cursor-pointer transition-colors"
+                                className="absolute right-2 top-2 text-gray-400 hover:text-gray-600 p-0.5 cursor-pointer transition-colors"
                               >
                                 <ChevronDown size={14} />
                               </button>
@@ -2428,43 +3557,74 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
 
                             {/* Dropdown */}
                             {activeSightseeingDropdownIdx === index && (
-                              <div className="absolute left-0 right-0 top-full mt-1.5 max-h-64 overflow-y-auto rounded-lg border border-slate-700 bg-[#0d121a] shadow-[0_20px_60px_rgba(0,0,0,0.95)] z-[100] divide-y divide-slate-800/90 [scrollbar-width:thin] [scrollbar-color:#334155_transparent]">
+                              <div className="absolute left-0 right-0 top-full mt-1.5 max-h-64 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-xl z-[100] divide-y divide-gray-100 [scrollbar-width:thin]">
                                 {filteredSight.length === 0 ? (
-                                  <div className="p-3 text-[11px] text-slate-400 italic text-center">
-                                    No DMC sightseeing tour found. You can freely type custom tour name.
+                                  <div className="p-3 text-[11px] text-gray-500 italic text-center">
+                                    No sightseeing tour found. You can freely type custom tour name.
                                   </div>
                                 ) : (
                                   filteredSight.map((dmcSight, sIdx) => {
                                     const sightTitle = dmcSight.serviceName || dmcSight.name || dmcSight.title;
                                     const isSelected = Boolean(sight.name && sightTitle.toLowerCase() === sight.name.trim().toLowerCase());
+                                    const defaultTour = Array.isArray(dmcSight.tourTypes) && dmcSight.tourTypes.length > 0 ? dmcSight.tourTypes[0] : {};
+                                    const sightAdultPrice = Number(
+                                      dmcSight.adultPrice !== undefined
+                                        ? dmcSight.adultPrice
+                                        : defaultTour.adultPrice !== undefined
+                                        ? defaultTour.adultPrice
+                                        : dmcSight.price || dmcSight.rate || 0
+                                    );
+                                    const sightChildPrice = Number(
+                                      dmcSight.childPrice !== undefined
+                                        ? dmcSight.childPrice
+                                        : defaultTour.childPrice !== undefined
+                                        ? defaultTour.childPrice
+                                        : dmcSight.childRate !== undefined
+                                        ? dmcSight.childRate
+                                        : dmcSight.cwebRate !== undefined
+                                        ? dmcSight.cwebRate
+                                        : 0
+                                    );
 
                                     return (
                                       <div
                                         key={dmcSight._id || dmcSight.id || sIdx}
                                         onClick={() => selectDmcSightseeing(index, dmcSight)}
-                                        className={`p-2.5 hover:bg-amber-500/15 cursor-pointer transition flex items-center justify-between gap-2 ${
-                                          isSelected ? "bg-amber-500/20 border-l-2 border-l-amber-400" : ""
+                                        className={`p-3 hover:bg-blue-50/60 cursor-pointer transition flex items-center justify-between gap-2 ${
+                                          isSelected ? "bg-blue-50/90 border-l-3 border-l-blue-600" : ""
                                         }`}
                                       >
                                         <div className="min-w-0 flex-1">
-                                          <p className="text-xs font-semibold text-slate-100 flex items-center gap-1.5 truncate">
+                                          <p className="text-xs font-bold text-slate-900 flex items-center gap-1.5 truncate">
                                             <span>{sightTitle}</span>
                                             {isSelected && (
-                                              <span className="rounded bg-emerald-500/20 text-emerald-300 text-[9px] px-1 py-0.2 font-bold">
+                                              <span className="rounded bg-emerald-50 border border-emerald-200 text-emerald-700 text-[9px] px-1.5 py-0.2 font-bold">
                                                 ✓ Selected
                                               </span>
                                             )}
+                                            <span className="text-[10px] text-gray-500 font-medium">
+                                              • {dmcSight.tourType || defaultTour.tourType || "Sharing Tour"}
+                                            </span>
                                           </p>
-                                          <p className="text-[10px] text-slate-400 mt-0.5 truncate">
-                                            📍 <span className="text-slate-300 font-medium">{dmcSight.city || dmcSight.destination || destination}</span>
+                                          <p className="text-[11px] text-gray-500 mt-0.5 truncate flex items-center gap-1">
+                                            <span className="inline-flex items-center gap-1 text-slate-700 font-medium">
+                                              <MapPin size={11} className="text-rose-500 shrink-0" />
+                                              {dmcSight.city || dmcSight.destination || destination}
+                                            </span>
+                                            • {dmcSight.category || "Sightseeing"}
+                                            • Days: {dmcSight.operatingDays || dmcSight.days || "Mon-Sun"}
                                           </p>
-                                          <p className="text-[10px] text-emerald-400 font-medium mt-0.5">
-                                            DMC: {dmcSight.supplierName || dmcSight.dmcName || "Contracted Supplier"}
+                                          <p className="text-[10px] text-emerald-600 font-semibold mt-0.5">
+                                            Supplier: {dmcSight.supplierName || dmcSight.dmcName || "Contracted Supplier"}
                                           </p>
                                         </div>
                                         <div className="text-right shrink-0">
-                                          <span className="text-xs font-bold text-amber-400">
-                                            ₹{Number(dmcSight.price || dmcSight.total || 0).toLocaleString("en-IN")}
+                                          <span className="text-xs font-bold text-slate-900">
+                                            ₹{sightAdultPrice.toLocaleString("en-IN")}
+                                          </span>
+                                          <span className="block text-[10px] text-gray-500">/ adult</span>
+                                          <span className="block text-[9px] text-gray-400">
+                                            Child: ₹{sightChildPrice.toLocaleString("en-IN")}
                                           </span>
                                         </div>
                                       </div>
@@ -2475,107 +3635,122 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
                             )}
                           </div>
 
-                          {/* Tour Type Selector */}
-                          <div className="sm:col-span-4">
-                            <label className="block text-[11px] text-slate-400 mb-0.5">Tour Type</label>
-                            <select
-                              value={sight.tourType || "Group Tour"}
-                              onChange={(e) => handleSightseeingTourTypeChange(index, e.target.value)}
-                              className="w-full rounded-md border border-slate-700 bg-[#0f141c] px-2.5 py-1.5 text-xs text-slate-200 focus:border-amber-500 focus:outline-none"
-                            >
-                              {tourTypesList.map((t, tIdx) => (
-                                <option key={tIdx} value={t.tourType}>
-                                  {t.tourType} (₹{Number(t.price !== undefined ? t.price : (sight.basePrice || 0)).toLocaleString("en-IN")})
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-
                           {/* Day Dropdown */}
                           <div className="sm:col-span-2">
-                            <label className="block text-[11px] text-slate-400 mb-0.5">Day</label>
+                            <label className="block text-[11px] font-semibold text-slate-600 mb-1">Day</label>
                             <select
                               value={sight.day || 1}
                               onChange={(e) => updateSightseeing(index, "day", Number(e.target.value))}
-                              className="w-full rounded-md border border-slate-700 bg-[#0f141c] px-2.5 py-1.5 text-xs text-slate-200 focus:border-amber-500 focus:outline-none"
+                              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs cursor-pointer"
                             >
-                              {Array.from({ length: totalDaysCount }, (_, i) => i + 1).map((d) => (
-                                <option key={d} value={d}>
-                                  Day {d}
-                                </option>
-                              ))}
+                              {Array.from({ length: totalDaysCount }, (_, i) => i + 1).map((d) => {
+                                const dayInfo = dayLoadSummary[d];
+                                let extraText = "";
+                                if (dayInfo) {
+                                  extraText = dayInfo.totalMins > 0 ? ` (${dayInfo.label})` : " (Free)";
+                                }
+                                return (
+                                  <option key={d} value={d}>
+                                    Day {d}{extraText}
+                                  </option>
+                                );
+                              })}
                             </select>
                           </div>
                         </div>
 
-                        {/* Second Row: Configuration Grid: Base Rate | Pricing Basis | Pax | Max Pax | Total Price */}
-                        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 pt-1 border-t border-slate-800/40">
-                          {/* 1. Base Rate */}
+                        {/* Second Row: Configuration Grid: Adult Price | Child Price | Adults | Children | Slot / Time | Total */}
+                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 pt-2 border-t border-gray-200">
+                          {/* 1. Adult Price */}
                           <div>
-                            <label className="block text-[10px] text-slate-400 uppercase tracking-wider mb-0.5">Base Rate</label>
+                            <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">Adult Price</label>
                             <input
                               type="number"
                               min="0"
-                              value={sight.basePrice || ""}
-                              onChange={(e) => updateSightseeing(index, "basePrice", Number(e.target.value))}
-                              className="w-full rounded-md border border-slate-700 bg-[#0f141c] px-2 py-1 text-xs font-semibold text-slate-200 focus:border-amber-500 focus:outline-none"
+                              value={adultPriceVal || ""}
+                              onChange={(e) => updateSightseeing(index, "adultPrice", Number(e.target.value))}
+                              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs"
                             />
                           </div>
 
-                          {/* 2. Pricing Basis (Read-Only) */}
+                          {/* 2. Child Price */}
                           <div>
-                            <label className="block text-[10px] text-slate-400 uppercase tracking-wider mb-0.5">Pricing Basis</label>
-                            <div className="flex h-7.5 w-full items-center justify-center rounded-md border border-emerald-500/30 bg-emerald-500/10 px-1.5 text-[10px] font-bold text-emerald-300 select-none">
-                              {sight.pricingBasis || "Per Pax"}
-                            </div>
+                            <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">Child Price</label>
+                            <input
+                              type="number"
+                              min="0"
+                              value={childPriceVal || ""}
+                              onChange={(e) => updateSightseeing(index, "childPrice", Number(e.target.value))}
+                              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs"
+                            />
                           </div>
 
-                          {/* 3. Pax */}
+                          {/* 3. Adults */}
                           <div>
-                            <label className="block text-[10px] text-slate-400 uppercase tracking-wider mb-0.5">Pax</label>
+                            <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">Adults</label>
                             <input
                               type="number"
                               min="1"
-                              value={sight.pax || 1}
-                              onChange={(e) => updateSightseeing(index, "pax", Math.max(1, Number(e.target.value) || 1))}
-                              className={`w-full rounded-md border bg-[#0f141c] px-2 py-1 text-xs font-semibold text-slate-200 focus:outline-none ${hasPaxValidationError ? "border-rose-500 ring-1 ring-rose-500" : "border-slate-700 focus:border-amber-500"}`}
+                              value={adultsCount}
+                              onChange={(e) => updateSightseeing(index, "adults", Number(e.target.value))}
+                              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs"
                             />
                           </div>
 
-                          {/* 4. Max Pax (Read-Only) */}
+                          {/* 4. Children */}
                           <div>
-                            <label className="block text-[10px] text-slate-400 uppercase tracking-wider mb-0.5">Max Pax</label>
-                            <div className="flex h-7.5 w-full items-center justify-center rounded-md border border-purple-500/30 bg-purple-500/10 px-1.5 text-[10px] font-semibold text-purple-300 whitespace-nowrap overflow-hidden text-ellipsis select-none">
-                              {sight.maxPax || "N/A (Shared Group)"}
-                            </div>
-                          </div>
-
-                          {/* 5. Total Price (₹) */}
-                          <div>
-                            <label className="block text-[10px] text-slate-400 uppercase tracking-wider mb-0.5">Total Price (₹)</label>
+                            <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">Children</label>
                             <input
                               type="number"
                               min="0"
-                              value={sight.price || ""}
-                              onChange={(e) => updateSightseeing(index, "price", Number(e.target.value))}
-                              className="w-full rounded-md border border-slate-700 bg-[#0f141c] px-2 py-1 text-xs font-bold text-amber-400 focus:border-amber-500 focus:outline-none"
+                              value={childrenCount}
+                              onChange={(e) => updateSightseeing(index, "children", Number(e.target.value))}
+                              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs"
                             />
                           </div>
-                        </div>
 
-                        {/* Description */}
-                        {sight.description && (
-                          <p className="text-[10px] text-slate-400 italic pt-0.5">
-                            {sight.description}
-                          </p>
-                        )}
-
-                        {/* Validation Error Alert */}
-                        {hasPaxValidationError && (
-                          <div className="flex items-center gap-1.5 rounded-md border border-rose-500/40 bg-rose-500/10 px-2.5 py-1.5 text-[11px] font-semibold text-rose-300">
-                            <span>⚠️ {validationErrorMessage}</span>
+                          {/* 5. Slot / Time */}
+                          <div>
+                            <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">Slot / Time</label>
+                            <div className="relative">
+                              <select
+                                value={sight.selectedSlot || availableSlots[0] || "08:00"}
+                                onChange={(e) => updateSightseeing(index, "selectedSlot", e.target.value)}
+                                className="w-full rounded-lg border border-gray-300 bg-white pl-2 pr-6 py-1.5 text-xs font-semibold text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs cursor-pointer appearance-none"
+                              >
+                                {availableSlots.map((slot, sIdx) => {
+                                  const slotCheck = checkSlotAvailability(
+                                    "sightseeing",
+                                    index,
+                                    slot,
+                                    Number(sight.day || 1),
+                                    parseDurationInMinutes(sight.duration, 60),
+                                    allScheduledItems
+                                  );
+                                  return (
+                                    <option key={sIdx} value={slot}>
+                                      {slot} {slotCheck.isConflicting ? `⚠️ (Busy: ${slotCheck.conflictingWith})` : "✓ Free"}
+                                    </option>
+                                  );
+                                })}
+                              </select>
+                              <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400" />
+                            </div>
                           </div>
-                        )}
+
+                          {/* 6. Total */}
+                          <div>
+                            <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">Total (₹)</label>
+                            <input
+                              type="number"
+                              min="0"
+                              value={totalPriceVal || ""}
+                              onChange={(e) => updateSightseeing(index, "price", Number(e.target.value))}
+                              className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-extrabold text-slate-900 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none shadow-2xs"
+                            />
+                          </div>
+
+                        </div>
                       </div>
                     );
                   })
@@ -2587,30 +3762,30 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
           {/* TAB 5: PRICING & TAXES CONFIGURATION */}
           {activeTab === "pricing" && (
             <div className="space-y-4 pt-1">
-              <div className="flex items-center justify-between pb-2 border-b border-slate-800/80">
+              <div className="flex items-center justify-between pb-3 border-b border-gray-200">
                 <div>
-                  <p className="text-xs text-slate-200 font-semibold flex items-center gap-1.5">
-                    <IndianRupee size={14} className="text-amber-400" />
+                  <p className="text-xs sm:text-sm text-slate-900 font-bold flex items-center gap-1.5">
+                    <IndianRupee size={15} className="text-[#3E63DD]" />
                     5. Pricing & Taxes Configuration
                   </p>
-                  <p className="text-[11px] text-slate-400 mt-0.5">
+                  <p className="text-xs text-gray-500 mt-0.5">
                     Configure base net cost, view linked services subtotal, and apply GST, TCS & Tourism taxes.
                   </p>
                 </div>
-                <span className="rounded bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 text-[10px] font-semibold text-amber-300 shrink-0">
+                <span className="rounded-md bg-blue-50 border border-blue-200 px-2 py-0.5 text-[10px] font-bold text-blue-700 shrink-0">
                   Auto-Tax Engine
                 </span>
               </div>
 
               {/* Linked Services Auto-Sum helper banner */}
-              <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3.5 space-y-3">
+              <div className="rounded-xl border border-blue-200 bg-blue-50/40 p-4 space-y-3.5 shadow-2xs">
                 <div className="flex items-center justify-between gap-3 flex-wrap">
                   <div className="space-y-1">
-                    <p className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
-                      <Sparkles size={13} className="text-amber-400" />
-                      Linked Services Subtotal: ₹ {totalLinkedServicesCost.toLocaleString("en-IN")}
+                    <p className="text-xs sm:text-sm font-bold text-slate-900 flex items-center gap-1.5">
+                      <Sparkles size={14} className="text-blue-600" />
+                      Linked Services Subtotal: <span className="text-blue-700 font-extrabold">₹ {totalLinkedServicesCost.toLocaleString("en-IN")}</span>
                     </p>
-                    <p className="text-[11px] text-slate-400">
+                    <p className="text-xs text-gray-500">
                       Calculated from {validHotelsCount} Hotel(s), {validTransfersCount} Transport(s), {validActivitiesCount} Activity(s), and {validSightseeingCount} Sightseeing(s) added in previous tabs.
                     </p>
                   </div>
@@ -2622,7 +3797,7 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
                         setPrice(String(totalLinkedServicesCost));
                         toast.success(`Total Services Cost set to ₹ ${totalLinkedServicesCost.toLocaleString("en-IN")}`);
                       }}
-                      className="flex items-center gap-1.5 rounded-md bg-amber-500 px-3.5 py-1.5 text-xs font-bold text-slate-950 hover:bg-amber-400 transition cursor-pointer shadow-xs"
+                      className="flex items-center gap-1.5 rounded-lg bg-[#3E63DD] hover:bg-[#3252c4] px-3.5 py-1.5 text-xs font-semibold text-white shadow-xs transition-colors cursor-pointer"
                     >
                       <Sparkles size={12} />
                       <span>Select Services Base Cost</span>
@@ -2632,48 +3807,80 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
 
                 {/* Selected Services Itemized List with Name & Price */}
                 {(selectedHotelsList.length > 0 || selectedTransfersList.length > 0 || selectedActivitiesList.length > 0 || selectedSightseeingList.length > 0) && (
-                  <div className="border-t border-amber-500/20 pt-2.5 space-y-2">
-                    <p className="text-[10px] uppercase font-bold text-amber-400/80 tracking-wider">
+                  <div className="border-t border-blue-200/60 pt-3 space-y-2">
+                    <p className="text-[10px] uppercase font-bold text-slate-600 tracking-wider">
                       Selected Services Breakdown ({selectedHotelsList.length + selectedTransfersList.length + selectedActivitiesList.length + selectedSightseeingList.length} Items):
                     </p>
-                    <div className="grid grid-cols-1 gap-1.5 max-h-48 overflow-y-auto pr-1 [scrollbar-width:thin] [scrollbar-color:#334155_transparent]">
+                    <div className="grid grid-cols-1 gap-2 max-h-48 overflow-y-auto pr-1 [scrollbar-width:thin]">
                       
                       {/* Hotels List */}
                       {selectedHotelsList.map((h, idx) => {
                         const hNights = Number(h.nights) || 1;
-                        // `price` is already recalculated as the complete hotel amount
-                        // (nightly room rate × nights × rooms, including selected add-ons).
-                        // Do not multiply by nights again here.
+                        const hRooms = Number(h.rooms) || 1;
                         const hTotal = Number(h.price || 0);
                         const hNightlyRate = Number(h.basePrice || 0);
+
+                        // Extra bed details
+                        const extraBedsList = [];
+                        if (h.extraAdult && Number(h.awebRate) > 0) extraBedsList.push(`Extra Adult (₹${Number(h.awebRate).toLocaleString("en-IN")})`);
+                        if (h.childWithBed && Number(h.cwebRate) > 0) extraBedsList.push(`Child w/ Bed (₹${Number(h.cwebRate).toLocaleString("en-IN")})`);
+                        if (h.childWithoutBed && Number(h.cwoebRate) > 0) extraBedsList.push(`Child w/o Bed (₹${Number(h.cwoebRate).toLocaleString("en-IN")})`);
+                        if (extraBedsList.length === 0 && h.extraBedType && h.extraBedType !== "None") {
+                          extraBedsList.push(`Extra Bed: ${h.extraBedType}`);
+                        }
+
+                        const hotelMeta = [
+                          h.roomType ? `Room: ${h.roomType}` : "Standard Room",
+                          h.roomCategory ? `Category: ${h.roomCategory}` : "Double",
+                          h.bedType ? `Bed: ${h.bedType}` : "Queen Bed",
+                          extraBedsList.length > 0 ? extraBedsList.join(", ") : "Extra Bed: None",
+                          h.mealPlan ? `Meal: ${h.mealPlan}` : "EP",
+                          `${hRooms} Room${hRooms > 1 ? "s" : ""} • ${hNights} Night${hNights > 1 ? "s" : ""}`,
+                          h.starCategory ? `★ ${h.starCategory}` : null,
+                          h.supplierName ? `Supplier: ${h.supplierName}` : null,
+                        ].filter(Boolean).join(" • ");
+
                         return (
                           <div
                             key={`hotel-item-${idx}`}
-                            className="flex items-center justify-between rounded-md border border-slate-800 bg-[#0f141c]/90 px-3 py-2 text-xs transition-colors hover:border-amber-500/30"
+                            className="flex flex-col gap-1 rounded-lg border border-gray-200 bg-white px-3.5 py-2 text-xs shadow-2xs hover:border-gray-300 transition"
                           >
-                            <div className="flex items-center gap-2 min-w-0 pr-2">
-                              <span className="flex items-center gap-1 rounded bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.5 text-[10px] font-bold text-amber-400 shrink-0">
-                                <BedDouble size={11} /> Hotel
-                              </span>
-                              <div className="min-w-0">
-                                <span className="font-semibold text-slate-200 block truncate">
-                                  {h.hotelName || h.name || `Hotel ${idx + 1}`}
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-2.5 min-w-0 pr-2">
+                                <span className="flex items-center gap-1 rounded-md bg-amber-50 border border-amber-200 px-2 py-0.5 text-[10px] font-bold text-amber-700 shrink-0 self-start mt-0.5">
+                                  <BedDouble size={11} /> Hotel
                                 </span>
-                                <span className="text-[10px] text-slate-400 block truncate">
-                                  {h.roomType || "Standard Room"} • {hNights} Night{hNights > 1 ? "s" : ""} {h.mealPlan ? `• ${h.mealPlan}` : ""}
+                                <div className="min-w-0">
+                                  {h.serviceName && h.serviceName !== h.hotelName && (
+                                    <span className="text-[10px] font-semibold text-slate-500 block truncate">
+                                      {h.serviceName}
+                                    </span>
+                                  )}
+                                  <span className="font-bold text-xs text-slate-900 block truncate">
+                                    {h.hotelName || h.name || `Hotel ${idx + 1}`}
+                                  </span>
+                                  <span className="text-[11px] text-gray-500 block truncate mt-0.5">
+                                    {hotelMeta}
+                                  </span>
+                                </div>
+                              </div>
+                              <div className="text-right shrink-0">
+                                <span className="font-extrabold text-slate-900">
+                                  ₹ {hTotal.toLocaleString("en-IN")}
                                 </span>
+                                {hNights > 1 && hNightlyRate > 0 && (
+                                  <p className="text-[10px] text-gray-400">
+                                    (₹{hNightlyRate.toLocaleString("en-IN")} / night)
+                                  </p>
+                                )}
                               </div>
                             </div>
-                            <div className="text-right shrink-0">
-                              <span className="font-extrabold text-amber-300">
-                                ₹ {hTotal.toLocaleString("en-IN")}
-                              </span>
-                              {hNights > 1 && hNightlyRate > 0 && (
-                                <p className="text-[9px] text-slate-400">
-                                  (₹{hNightlyRate.toLocaleString("en-IN")} / night)
-                                </p>
-                              )}
-                            </div>
+                            {/* Hotel Description */}
+                            {Boolean(h.description || h.desc) && (
+                              <p className="text-[10px] text-slate-500 mt-0.5 truncate">
+                                {h.description || h.desc}
+                              </p>
+                            )}
                           </div>
                         );
                       })}
@@ -2681,29 +3888,64 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
                       {/* Transports List */}
                       {selectedTransfersList.map((t, idx) => {
                         const tCost = Number(t.price || 0);
+                        const tUsageLabel = t.usage === "one-way-airport-transfer"
+                          ? "One Way / Airport Transfer"
+                          : t.usage === "inter-hotel-transfer"
+                          ? "Inter-Hotel Transfer"
+                          : t.usage === "full-day"
+                          ? "Full Day Cab"
+                          : t.usage === "half-day"
+                          ? "Half Day Cab"
+                          : (t.usage || "One Way Transfer");
+
+                        const transferMeta = [
+                          t.day ? `Day ${t.day}` : null,
+                          t.vehicleType ? `Vehicle: ${t.vehicleType}` : null,
+                          tUsageLabel,
+                          `Capacity: ${t.passengerCapacity || 4} Pax, ${t.luggageCapacity !== undefined ? t.luggageCapacity : 2} Bags`,
+                          (t.pickupTime || t.time) ? `Pickup: ${t.pickupTime || t.time}` : null,
+                          t.days
+                            ? t.usage === "full-day"
+                              ? `${t.days} Day${Number(t.days) > 1 ? "s" : ""}`
+                              : t.usage === "half-day"
+                              ? `${t.days} Half-Day${Number(t.days) > 1 ? "s" : ""}`
+                              : `${t.days} Trip${Number(t.days) > 1 ? "s" : ""}`
+                            : "1 Trip",
+                          (t.fullDayExtraPerKmRate || t.halfDayExtraPerKmRate)
+                            ? `Extra: ₹${t.fullDayExtraPerKmRate || t.halfDayExtraPerKmRate}/km`
+                            : null,
+                          t.supplierName ? `Supplier: ${t.supplierName}` : null,
+                        ].filter(Boolean).join(" • ");
+
                         return (
                           <div
                             key={`transfer-item-${idx}`}
-                            className="flex items-center justify-between rounded-md border border-slate-800 bg-[#0f141c]/90 px-3 py-2 text-xs transition-colors hover:border-sky-500/30"
+                            className="flex flex-col gap-1 rounded-lg border border-gray-200 bg-white px-3.5 py-2 text-xs shadow-2xs hover:border-gray-300 transition"
                           >
-                            <div className="flex items-center gap-2 min-w-0 pr-2">
-                              <span className="flex items-center gap-1 rounded bg-sky-500/15 border border-sky-500/30 px-1.5 py-0.5 text-[10px] font-bold text-sky-400 shrink-0">
-                                <Car size={11} /> Transport
-                              </span>
-                              <div className="min-w-0">
-                                <span className="font-semibold text-slate-200 block truncate">
-                                  {t.name || t.vehicleType || `Transport ${idx + 1}`}
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-2.5 min-w-0 pr-2">
+                                <span className="flex items-center gap-1 rounded-md bg-sky-50 border border-sky-200 px-2 py-0.5 text-[10px] font-bold text-sky-700 shrink-0">
+                                  <Car size={11} /> Transport
                                 </span>
-                                {t.vehicleType && t.name && (
-                                  <span className="text-[10px] text-slate-400 block truncate">
-                                    {t.vehicleType}
+                                <div className="min-w-0">
+                                  <span className="font-bold text-slate-900 block truncate">
+                                    {t.name || t.serviceName || t.vehicleType || `Transport ${idx + 1}`}
                                   </span>
-                                )}
+                                  <span className="text-[11px] text-gray-500 block truncate">
+                                    {transferMeta}
+                                  </span>
+                                </div>
                               </div>
+                              <span className="font-extrabold text-slate-900 shrink-0">
+                                ₹ {tCost.toLocaleString("en-IN")}
+                              </span>
                             </div>
-                            <span className="font-extrabold text-sky-300 shrink-0">
-                              ₹ {tCost.toLocaleString("en-IN")}
-                            </span>
+                            {/* Transport Description / Notes */}
+                            {Boolean(t.description || t.fullDayNote || t.halfDayNote || t.desc) && (
+                              <p className="text-[10px] text-slate-500 mt-0.5 truncate">
+                                {t.description || t.fullDayNote || t.halfDayNote || t.desc}
+                              </p>
+                            )}
                           </div>
                         );
                       })}
@@ -2711,57 +3953,59 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
                       {/* Activities List */}
                       {selectedActivitiesList.map((a, idx) => {
                         const aCost = Number(a.price || 0);
-                        const aBase = Number(a.basePrice || 0);
-                        const aPax = Number(a.pax || 1);
-                        const aTourType = a.tourType || "Group Tour";
-                        const aBasis = a.pricingBasis || "Per Pax";
-                        const isPerGroup = aBasis.toLowerCase().includes("group") && !aBasis.toLowerCase().includes("pax");
+                        const aAdultPrice = Number(a.adultPrice !== undefined ? a.adultPrice : (a.basePrice || 0));
+                        const aChildPrice = Number(a.childPrice || 0);
+                        const aAdults = Number(a.adults !== undefined ? a.adults : (a.pax || 1));
+                        const aChildren = Number(a.children || 0);
+                        const aTourType = a.tourType || "Sharing Tour";
 
                         const details = [
                           a.day ? `Day ${a.day}` : null,
                           aTourType,
-                          aBasis,
-                          `${aPax} Pax`,
-                          a.maxPax && a.maxPax !== "N/A (Shared Group)" ? `Max: ${a.maxPax}` : null,
-                          aBase > 0 ? `Base: ₹${aBase.toLocaleString("en-IN")}` : null,
-                          a.supplierName ? `DMC: ${a.supplierName}` : null,
+                          `${aAdults} Adult(s)` + (aChildren > 0 ? `, ${aChildren} Child(ren)` : ""),
+                          a.selectedSlot || a.time ? `Slot: ${a.selectedSlot || a.time}` : null,
+                          aAdultPrice > 0 ? `Adult: ₹${aAdultPrice.toLocaleString("en-IN")}` : null,
+                          aChildPrice > 0 ? `Child: ₹${aChildPrice.toLocaleString("en-IN")}` : null,
+                          a.supplierName ? `Supplier: ${a.supplierName}` : null,
                         ].filter(Boolean).join(" • ");
 
                         return (
                           <div
                             key={`activity-item-${idx}`}
-                            className="flex flex-col gap-1 rounded-md border border-slate-800 bg-[#0f141c]/90 px-3 py-2 text-xs transition-colors hover:border-emerald-500/30"
+                            className="flex flex-col gap-1 rounded-lg border border-gray-200 bg-white px-3.5 py-2 text-xs shadow-2xs hover:border-gray-300 transition"
                           >
                             <div className="flex items-center justify-between gap-2">
-                              <div className="flex items-center gap-2 min-w-0 pr-2">
-                                <span className="flex items-center gap-1 rounded bg-emerald-500/15 border border-emerald-500/30 px-1.5 py-0.5 text-[10px] font-bold text-emerald-400 shrink-0">
+                              <div className="flex items-center gap-2.5 min-w-0 pr-2">
+                                <span className="flex items-center gap-1 rounded-md bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-[10px] font-bold text-emerald-700 shrink-0">
                                   <Sparkles size={11} /> Activity
                                 </span>
                                 <div className="min-w-0">
-                                  <span className="font-semibold text-slate-200 block truncate">
+                                  <span className="font-bold text-slate-900 block truncate">
                                     {a.name || a.serviceName || `Activity ${idx + 1}`}
                                   </span>
-                                  <span className="text-[10.5px] text-slate-400 block truncate">
+                                  <span className="text-[11px] text-gray-500 block truncate">
                                     {details}
                                   </span>
                                 </div>
                               </div>
                               <div className="text-right shrink-0">
-                                <span className="font-extrabold text-emerald-300">
+                                <span className="font-extrabold text-slate-900">
                                   ₹ {aCost.toLocaleString("en-IN")}
                                 </span>
-                                {aBase > 0 && !isPerGroup && aPax > 1 && (
-                                  <p className="text-[9px] text-slate-400">
-                                    (₹{aBase.toLocaleString("en-IN")} × {aPax} Pax)
+                                {(aAdultPrice > 0 || aChildPrice > 0) && (
+                                  <p className="text-[10px] text-gray-400">
+                                    {[
+                                      aAdultPrice > 0 ? `₹${aAdultPrice.toLocaleString("en-IN")} / adult` : null,
+                                      aChildPrice > 0 ? `₹${aChildPrice.toLocaleString("en-IN")} / child` : null,
+                                    ].filter(Boolean).join(" • ")}
                                   </p>
                                 )}
                               </div>
                             </div>
-
                             {/* Description */}
-                            {a.description && (
-                              <p className="text-[10px] text-slate-400 italic mt-0.5 truncate">
-                                {a.description}
+                            {Boolean(a.description || a.desc) && (
+                              <p className="text-[10px] text-slate-500 mt-0.5 truncate">
+                                {a.description || a.desc}
                               </p>
                             )}
                           </div>
@@ -2771,57 +4015,57 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
                       {/* Sightseeing List */}
                       {selectedSightseeingList.map((s, idx) => {
                         const sCost = Number(s.price || 0);
-                        const sBase = Number(s.basePrice || 0);
-                        const sPax = Number(s.pax || 1);
-                        const sTourType = s.tourType || "Group Tour";
-                        const sBasis = s.pricingBasis || "Per Pax";
-                        const isPerGroup = sBasis.toLowerCase().includes("group") && !sBasis.toLowerCase().includes("pax");
+                        const sAdultPrice = Number(s.adultPrice !== undefined ? s.adultPrice : (s.basePrice || 0));
+                        const sChildPrice = Number(s.childPrice || 0);
+                        const sAdults = Number(s.adults !== undefined ? s.adults : (s.pax || 1));
+                        const sChildren = Number(s.children || 0);
+                        const sTourType = s.tourType || "Sharing Tour";
 
                         const details = [
                           s.day ? `Day ${s.day}` : null,
                           sTourType,
-                          sBasis,
-                          `${sPax} Pax`,
-                          s.maxPax && s.maxPax !== "N/A (Shared Group)" ? `Max: ${s.maxPax}` : null,
-                          sBase > 0 ? `Base: ₹${sBase.toLocaleString("en-IN")}` : null,
-                          s.supplierName ? `DMC: ${s.supplierName}` : null,
+                          `${sAdults} Adult(s)` + (sChildren > 0 ? `, ${sChildren} Child(ren)` : ""),
+                          s.selectedSlot || s.time ? `Slot: ${s.selectedSlot || s.time}` : null,
+                          s.supplierName ? `Supplier: ${s.supplierName}` : null,
                         ].filter(Boolean).join(" • ");
 
                         return (
                           <div
                             key={`sightseeing-item-${idx}`}
-                            className="flex flex-col gap-1 rounded-md border border-slate-800 bg-[#0f141c]/90 px-3 py-2 text-xs transition-colors hover:border-purple-500/30"
+                            className="flex flex-col gap-1 rounded-lg border border-gray-200 bg-white px-3.5 py-2 text-xs shadow-2xs hover:border-gray-300 transition"
                           >
                             <div className="flex items-center justify-between gap-2">
-                              <div className="flex items-center gap-2 min-w-0 pr-2">
-                                <span className="flex items-center gap-1 rounded bg-purple-500/15 border border-purple-500/30 px-1.5 py-0.5 text-[10px] font-bold text-purple-400 shrink-0">
+                              <div className="flex items-center gap-2.5 min-w-0 pr-2">
+                                <span className="flex items-center gap-1 rounded-md bg-purple-50 border border-purple-200 px-2 py-0.5 text-[10px] font-bold text-purple-700 shrink-0">
                                   <Landmark size={11} /> Sightseeing
                                 </span>
                                 <div className="min-w-0">
-                                  <span className="font-semibold text-slate-200 block truncate">
+                                  <span className="font-bold text-slate-900 block truncate">
                                     {s.name || s.serviceName || `Sightseeing ${idx + 1}`}
                                   </span>
-                                  <span className="text-[10.5px] text-slate-400 block truncate">
+                                  <span className="text-[11px] text-gray-500 block truncate">
                                     {details}
                                   </span>
                                 </div>
                               </div>
                               <div className="text-right shrink-0">
-                                <span className="font-extrabold text-purple-300">
+                                <span className="font-extrabold text-slate-900">
                                   ₹ {sCost.toLocaleString("en-IN")}
                                 </span>
-                                {sBase > 0 && !isPerGroup && sPax > 1 && (
-                                  <p className="text-[9px] text-slate-400">
-                                    (₹{sBase.toLocaleString("en-IN")} × {sPax} Pax)
+                                {(sAdultPrice > 0 || sChildPrice > 0) && (
+                                  <p className="text-[10px] text-gray-400">
+                                    {[
+                                      sAdultPrice > 0 ? `₹${sAdultPrice.toLocaleString("en-IN")} / adult` : null,
+                                      sChildPrice > 0 ? `₹${sChildPrice.toLocaleString("en-IN")} / child` : null,
+                                    ].filter(Boolean).join(" • ")}
                                   </p>
                                 )}
                               </div>
                             </div>
-
                             {/* Description */}
-                            {s.description && (
-                              <p className="text-[10px] text-slate-400 italic mt-0.5 truncate">
-                                {s.description}
+                            {Boolean(s.description || s.desc) && (
+                              <p className="text-[10px] text-slate-500 mt-0.5 truncate">
+                                {s.description || s.desc}
                               </p>
                             )}
                           </div>
@@ -2834,15 +4078,15 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
               </div>
 
               {/* PRICING & TAXES CONFIGURATION DESK */}
-              <div className="rounded-lg border border-slate-700/80 bg-[#131922] p-4 space-y-4 shadow-sm">
+              <div className="rounded-xl border border-gray-200 bg-gray-50/60 p-4 space-y-4 shadow-2xs">
                 
                 {/* 1. Total Services Cost Input */}
                 <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1">
-                    Total Services Cost (₹ INR) <span className="text-rose-400">*</span>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Total Services Cost (₹ INR) <span className="text-rose-500">*</span>
                   </label>
                   <div className="relative">
-                    <span className="absolute left-3 top-2 text-xs font-bold text-slate-400">₹</span>
+                    <span className="absolute left-3 top-2 text-xs font-bold text-gray-500">₹</span>
                     <input
                       type="number"
                       min="0"
@@ -2852,10 +4096,10 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
                         setBasePrice(e.target.value);
                         setPrice(e.target.value);
                       }}
-                      className="w-full rounded-md border border-slate-700 bg-[#161d27] pl-7 pr-3 py-2 text-xs font-semibold text-slate-100 placeholder-slate-500 focus:border-amber-500 focus:outline-none"
+                      className="w-full rounded-lg border border-gray-300 bg-white pl-7 pr-3 py-2 text-xs font-bold text-slate-900 placeholder-gray-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs"
                     />
                   </div>
-                  <p className="mt-1 text-[10px] text-slate-400">
+                  <p className="mt-1 text-[11px] text-gray-500">
                     Base net cost of all included services before government and local taxes.
                   </p>
                 </div>
@@ -2864,22 +4108,22 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 pt-0.5">
                   
                   {/* A. GST Block */}
-                  <div className={`rounded-md border p-3 transition-all ${gstChecked ? "border-amber-500/40 bg-amber-500/5" : "border-slate-800 bg-[#0f141c]/60 opacity-70"}`}>
+                  <div className={`rounded-lg border p-3.5 transition-all shadow-2xs ${gstChecked ? "border-blue-300 bg-blue-50/50" : "border-gray-200 bg-white opacity-70"}`}>
                     <div className="flex items-center justify-between mb-2">
-                      <label className="flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-slate-200">
+                      <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-800">
                         <input
                           type="checkbox"
                           checked={gstChecked}
                           onChange={(e) => setGstChecked(e.target.checked)}
-                          className="rounded border-slate-700 bg-slate-900 text-amber-500 focus:ring-0 cursor-pointer h-3.5 w-3.5"
+                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer h-4 w-4"
                         />
                         <span>GST (Tax)</span>
                       </label>
-                      <span className={`text-xs font-bold ${gstChecked ? "text-amber-400" : "text-slate-500"}`}>
+                      <span className={`text-xs font-extrabold ${gstChecked ? "text-blue-700" : "text-gray-400"}`}>
                         + ₹ {gstAmt.toLocaleString("en-IN")}
                       </span>
                     </div>
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-2">
                       <input
                         type="number"
                         min="0"
@@ -2888,29 +4132,29 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
                         disabled={!gstChecked}
                         value={gstPercent}
                         onChange={(e) => setGstPercent(e.target.value)}
-                        className="w-16 rounded border border-slate-700 bg-[#0f141c] px-2 py-1 text-center text-xs font-bold text-slate-100 focus:border-amber-500 focus:outline-none disabled:opacity-50"
+                        className="w-16 rounded-md border border-gray-300 bg-white px-2 py-1 text-center text-xs font-bold text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none disabled:opacity-50 shadow-2xs"
                       />
-                      <span className="text-[11px] font-medium text-slate-400">% Rate</span>
+                      <span className="text-[11px] font-medium text-gray-500">% Rate</span>
                     </div>
                   </div>
 
                   {/* B. TCS Block */}
-                  <div className={`rounded-md border p-3 transition-all ${tcsChecked ? "border-amber-500/40 bg-amber-500/5" : "border-slate-800 bg-[#0f141c]/60 opacity-70"}`}>
+                  <div className={`rounded-lg border p-3.5 transition-all shadow-2xs ${tcsChecked ? "border-blue-300 bg-blue-50/50" : "border-gray-200 bg-white opacity-70"}`}>
                     <div className="flex items-center justify-between mb-2">
-                      <label className="flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-slate-200">
+                      <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-800">
                         <input
                           type="checkbox"
                           checked={tcsChecked}
                           onChange={(e) => setTcsChecked(e.target.checked)}
-                          className="rounded border-slate-700 bg-slate-900 text-amber-500 focus:ring-0 cursor-pointer h-3.5 w-3.5"
+                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer h-4 w-4"
                         />
                         <span>TCS</span>
                       </label>
-                      <span className={`text-xs font-bold ${tcsChecked ? "text-amber-400" : "text-slate-500"}`}>
+                      <span className={`text-xs font-extrabold ${tcsChecked ? "text-blue-700" : "text-gray-400"}`}>
                         + ₹ {tcsAmt.toLocaleString("en-IN")}
                       </span>
                     </div>
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-2">
                       <input
                         type="number"
                         min="0"
@@ -2919,30 +4163,30 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
                         disabled={!tcsChecked}
                         value={tcsPercent}
                         onChange={(e) => setTcsPercent(e.target.value)}
-                        className="w-16 rounded border border-slate-700 bg-[#0f141c] px-2 py-1 text-center text-xs font-bold text-slate-100 focus:border-amber-500 focus:outline-none disabled:opacity-50"
+                        className="w-16 rounded-md border border-gray-300 bg-white px-2 py-1 text-center text-xs font-bold text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none disabled:opacity-50 shadow-2xs"
                       />
-                      <span className="text-[11px] font-medium text-slate-400">% Rate</span>
+                      <span className="text-[11px] font-medium text-gray-500">% Rate</span>
                     </div>
                   </div>
 
                   {/* C. Tourism Fee / Other Tax Block */}
-                  <div className={`rounded-md border p-3 transition-all ${tourismChecked ? "border-amber-500/40 bg-amber-500/5" : "border-slate-800 bg-[#0f141c]/60 opacity-70"}`}>
+                  <div className={`rounded-lg border p-3.5 transition-all shadow-2xs ${tourismChecked ? "border-blue-300 bg-blue-50/50" : "border-gray-200 bg-white opacity-70"}`}>
                     <div className="flex items-center justify-between mb-2">
-                      <label className="flex items-center gap-1.5 cursor-pointer text-xs font-semibold text-slate-200">
+                      <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-800">
                         <input
                           type="checkbox"
                           checked={tourismChecked}
                           onChange={(e) => setTourismChecked(e.target.checked)}
-                          className="rounded border-slate-700 bg-slate-900 text-amber-500 focus:ring-0 cursor-pointer h-3.5 w-3.5"
+                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer h-4 w-4"
                         />
                         <span>Tourism Fee</span>
                       </label>
-                      <span className={`text-xs font-bold ${tourismChecked ? "text-amber-400" : "text-slate-500"}`}>
+                      <span className={`text-xs font-extrabold ${tourismChecked ? "text-blue-700" : "text-gray-400"}`}>
                         + ₹ {tourismAmt.toLocaleString("en-IN")}
                       </span>
                     </div>
                     <div className="flex items-center gap-1.5">
-                      <span className="text-[11px] text-slate-400 font-bold">₹</span>
+                      <span className="text-[11px] text-gray-500 font-bold">₹</span>
                       <input
                         type="number"
                         min="0"
@@ -2950,7 +4194,7 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
                         placeholder="e.g. 1000"
                         value={tourismAmount}
                         onChange={(e) => setTourismAmount(e.target.value)}
-                        className="w-full rounded border border-slate-700 bg-[#0f141c] px-2 py-1 text-xs font-bold text-slate-100 focus:border-amber-500 focus:outline-none disabled:opacity-50"
+                        className="w-full rounded-md border border-gray-300 bg-white px-2 py-1 text-xs font-bold text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none disabled:opacity-50 shadow-2xs"
                       />
                     </div>
                   </div>
@@ -2959,47 +4203,47 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
 
                 {/* 3. Live Summary Pill Card */}
                 <div className="grid grid-cols-3 gap-3 pt-1">
-                  <div className="rounded-md border border-slate-800 bg-[#0f141c] p-2.5 text-center flex flex-col justify-center">
-                    <p className="text-[10px] uppercase font-bold text-slate-500 tracking-wide">Services Cost</p>
-                    <p className="text-sm font-bold text-slate-200 mt-0.5">₹ {numBaseCost.toLocaleString("en-IN")}</p>
+                  <div className="rounded-lg border border-gray-200 bg-white p-3 text-center flex flex-col justify-center shadow-2xs">
+                    <p className="text-[10px] uppercase font-bold text-gray-500 tracking-wider">Services Cost</p>
+                    <p className="text-sm font-extrabold text-slate-900 mt-0.5">₹ {numBaseCost.toLocaleString("en-IN")}</p>
                   </div>
-                  <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-2.5 text-center flex flex-col justify-center">
-                    <p className="text-[10px] uppercase font-bold text-amber-400 tracking-wide">
+                  <div className="rounded-lg border border-blue-200 bg-blue-50/60 p-3 text-center flex flex-col justify-center shadow-2xs">
+                    <p className="text-[10px] uppercase font-bold text-blue-700 tracking-wider">
                       Total Taxes (GST + TCS + Tourism)
                     </p>
-                    <p className="text-sm font-bold text-amber-400 mt-0.5">+ ₹ {totalTaxAmt.toLocaleString("en-IN")}</p>
-                    <div className="mt-0.5 flex items-center justify-center gap-1 flex-wrap">
+                    <p className="text-sm font-extrabold text-blue-700 mt-0.5">+ ₹ {totalTaxAmt.toLocaleString("en-IN")}</p>
+                    <div className="mt-1 flex items-center justify-center gap-1 flex-wrap">
                       {gstChecked && gstAmt > 0 && (
-                        <span className="text-[9px] font-semibold text-amber-300 bg-amber-500/20 rounded px-1 py-0.5">
+                        <span className="text-[9px] font-bold text-blue-700 bg-blue-100/80 rounded px-1.5 py-0.2">
                           GST: +₹{gstAmt.toLocaleString("en-IN")}
                         </span>
                       )}
                       {tcsChecked && tcsAmt > 0 && (
-                        <span className="text-[9px] font-semibold text-amber-300 bg-amber-500/20 rounded px-1 py-0.5">
+                        <span className="text-[9px] font-bold text-blue-700 bg-blue-100/80 rounded px-1.5 py-0.2">
                           TCS: +₹{tcsAmt.toLocaleString("en-IN")}
                         </span>
                       )}
                       {tourismChecked && tourismAmt > 0 && (
-                        <span className="text-[9px] font-semibold text-amber-300 bg-amber-500/20 rounded px-1 py-0.5">
+                        <span className="text-[9px] font-bold text-blue-700 bg-blue-100/80 rounded px-1.5 py-0.2">
                           Tourism: +₹{tourismAmt.toLocaleString("en-IN")}
                         </span>
                       )}
                     </div>
                   </div>
-                  <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 p-2.5 text-center flex flex-col justify-center">
-                    <p className="text-[10px] uppercase font-bold text-emerald-400/80 tracking-wide">Final Price</p>
-                    <p className="text-sm font-extrabold text-emerald-400 mt-0.5">₹ {finalCalculatedPrice.toLocaleString("en-IN")}</p>
+                  <div className="rounded-lg border border-emerald-200 bg-emerald-50/60 p-3 text-center flex flex-col justify-center shadow-2xs">
+                    <p className="text-[10px] uppercase font-bold text-emerald-700 tracking-wider">Final Price</p>
+                    <p className="text-base font-extrabold text-emerald-700 mt-0.5">₹ {finalCalculatedPrice.toLocaleString("en-IN")}</p>
                   </div>
                 </div>
               </div>
 
               {/* FINAL TOTAL PACKAGE SELLING PRICE INPUT */}
-              <div className="rounded-lg border border-slate-800 bg-[#161d27] p-4 space-y-2">
-                <label className="block text-xs font-medium text-slate-300">
-                  Final Package Price (₹ INR) <span className="text-rose-400">*</span>
+              <div className="rounded-xl border border-blue-200 bg-blue-50/30 p-4 space-y-2 shadow-2xs">
+                <label className="block text-xs font-bold text-slate-900">
+                  Final Package Selling Price (₹ INR) <span className="text-rose-500">*</span>
                 </label>
                 <div className="relative">
-                  <span className="absolute left-3 top-2.5 text-base font-bold text-amber-400">₹</span>
+                  <span className="absolute left-3.5 top-2.5 text-base font-extrabold text-blue-700">₹</span>
                   <input
                     type="number"
                     required
@@ -3010,10 +4254,10 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
                       setPrice(e.target.value);
                       if (!basePrice) setBasePrice(e.target.value);
                     }}
-                    className="w-full rounded-md border border-amber-500/50 bg-[#0f141c] pl-8 pr-3 py-2.5 text-base font-extrabold text-amber-400 placeholder-slate-500 focus:border-amber-500 focus:outline-none"
+                    className="w-full rounded-lg border border-blue-400 bg-white pl-9 pr-3 py-2.5 text-base font-extrabold text-blue-700 placeholder-gray-400 focus:border-blue-600 focus:ring-1 focus:ring-blue-600 focus:outline-none shadow-2xs"
                   />
                 </div>
-                <p className="text-[11px] text-slate-400">
+                <p className="text-[11px] text-gray-500">
                   Standard package selling price (inclusive of taxes) applied when loaded in quotation builder and displayed to agents.
                 </p>
               </div>
@@ -3023,13 +4267,13 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
           {/* TAB 6: INCLUSIONS & NOTES */}
           {activeTab === "inclusions" && (
             <div className="space-y-4 pt-1">
-              <div className="flex items-center justify-between pb-2 border-b border-slate-800/80">
+              <div className="flex items-center justify-between pb-3 border-b border-gray-200">
                 <div>
-                  <p className="text-xs text-slate-200 font-semibold flex items-center gap-1.5">
-                    <Sparkles size={14} className="text-amber-400" />
+                  <p className="text-xs sm:text-sm text-slate-900 font-bold flex items-center gap-1.5">
+                    <Sparkles size={15} className="text-[#3E63DD]" />
                     6. Inclusions, Exclusions & Notes
                   </p>
-                  <p className="text-[11px] text-slate-400 mt-0.5">
+                  <p className="text-xs text-gray-500 mt-0.5">
                     Terms, inclusions and exclusions shown to client in quotation.
                   </p>
                 </div>
@@ -3037,7 +4281,7 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
 
               <div className="space-y-4 pt-1">
                 <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1">
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
                     Package Inclusions
                   </label>
                   <textarea
@@ -3045,12 +4289,12 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
                     placeholder="e.g. Daily breakfast, Hotel stay, Private airport transfers, Sightseeing as per itinerary"
                     value={inclusions}
                     onChange={(e) => setInclusions(e.target.value)}
-                    className="w-full rounded-md border border-slate-700 bg-[#161d27] px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:border-amber-500 focus:outline-none"
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs text-slate-800 placeholder-gray-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1">
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
                     Package Exclusions
                   </label>
                   <textarea
@@ -3058,7 +4302,7 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
                     placeholder="e.g. Flight tickets, Personal expenses, Alcoholic drinks, Entry monument tickets"
                     value={exclusions}
                     onChange={(e) => setExclusions(e.target.value)}
-                    className="w-full rounded-md border border-slate-700 bg-[#161d27] px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:border-amber-500 focus:outline-none"
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs text-slate-800 placeholder-gray-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs"
                   />
                 </div>
               </div>
@@ -3068,20 +4312,20 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
           {/* TAB 7: DAY-WISE ITINERARY (PLACED AT THE END) */}
           {activeTab === "itinerary" && (
             <div className="space-y-4 pt-1">
-              <div className="flex items-center justify-between pb-2 border-b border-slate-800/80">
+              <div className="flex items-center justify-between pb-3 border-b border-gray-200">
                 <div>
-                  <p className="text-xs text-slate-200 font-semibold flex items-center gap-1.5">
-                    <CalendarDays size={14} className="text-amber-400" />
+                  <p className="text-xs sm:text-sm text-slate-900 font-bold flex items-center gap-1.5">
+                    <CalendarDays size={15} className="text-purple-600" />
                     7. Day-by-Day Tour Itinerary Schedule
                   </p>
-                  <p className="text-[11px] text-slate-400 mt-0.5">
+                  <p className="text-xs text-gray-500 mt-0.5">
                     Define day-wise route, highlights & activities that will auto-fill in WhatsApp/PDF quotation.
                   </p>
                 </div>
                 <button
                   type="button"
                   onClick={addItineraryDay}
-                  className="flex items-center gap-1.5 rounded-md bg-amber-500/15 px-3 py-1.5 text-xs font-semibold text-amber-300 border border-amber-500/30 hover:bg-amber-500/25 transition cursor-pointer"
+                  className="flex items-center gap-1.5 rounded-lg bg-purple-50 border border-purple-200 px-3.5 py-1.5 text-xs font-semibold text-purple-800 hover:bg-purple-100 hover:border-purple-300 transition-colors cursor-pointer shadow-2xs"
                 >
                   <Plus size={13} /> Add Day
                 </button>
@@ -3089,10 +4333,10 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
 
               <div className="space-y-3 pt-1">
                 {itinerary.map((item, index) => (
-                  <div key={index} className="rounded-md border border-slate-800 bg-[#161d27] p-3.5 space-y-2.5">
+                  <div key={index} className="rounded-xl border border-gray-200 bg-gray-50/50 p-4 space-y-3 shadow-2xs">
                     <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2 flex-1">
-                        <span className="rounded bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 text-xs font-bold text-amber-400 shrink-0">
+                      <div className="flex items-center gap-2.5 flex-1">
+                        <span className="rounded-md bg-purple-50 border border-purple-200 px-2.5 py-1 text-xs font-bold text-purple-700 shrink-0">
                           Day {item.day || index + 1}
                         </span>
                         <input
@@ -3100,28 +4344,29 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
                           placeholder={`e.g. Day ${index + 1}: Sightseeing Tour & Excursion`}
                           value={item.title}
                           onChange={(e) => updateItinerary(index, "title", e.target.value)}
-                          className="w-full rounded-md border border-slate-700 bg-[#0f141c] px-2.5 py-1.5 text-xs font-semibold text-slate-100 placeholder-slate-500 focus:border-amber-500 focus:outline-none"
+                          className="w-full rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-900 placeholder-gray-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs"
                         />
                       </div>
                       {itinerary.length > 1 && (
                         <button
                           type="button"
                           onClick={() => removeItineraryDay(index)}
-                          className="text-slate-400 hover:text-rose-400 p-1 cursor-pointer transition-colors"
+                          className="text-gray-400 hover:text-rose-600 p-1.5 rounded-lg hover:bg-rose-50 cursor-pointer transition-colors"
+                          title="Remove Day"
                         >
-                          <Trash2 size={13} />
+                          <Trash2 size={14} />
                         </button>
                       )}
                     </div>
 
                     <div>
-                      <label className="block text-[11px] text-slate-400 mb-1">Itinerary Description / Activities</label>
+                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">Itinerary Description / Activities</label>
                       <textarea
                         rows="2"
                         placeholder="Detail pickup times, monuments visited, meals included, and evening plans..."
                         value={item.description}
                         onChange={(e) => updateItinerary(index, "description", e.target.value)}
-                        className="w-full rounded-md border border-slate-700 bg-[#0f141c] px-2.5 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:border-amber-500 focus:outline-none"
+                        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs text-slate-700 placeholder-gray-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs"
                       />
                     </div>
                   </div>
@@ -3131,18 +4376,18 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
           )}
 
           {/* Footer Actions */}
-          <div className="flex items-center justify-between pt-4 border-t border-slate-800">
+          <div className="flex items-center justify-between pt-4 border-t border-gray-200 bg-white">
             <button
               type="button"
               onClick={onClose}
-              className="rounded-md border border-slate-700 bg-[#161c26] px-4 py-2 text-xs font-semibold text-slate-300 hover:bg-slate-800 transition cursor-pointer"
+              className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 shadow-2xs transition cursor-pointer"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={loading}
-              className="flex items-center gap-2 rounded-md bg-amber-500 px-5 py-2 text-xs font-bold text-slate-950 hover:bg-amber-400 transition shadow-sm disabled:opacity-50 cursor-pointer"
+              className="flex items-center gap-2 rounded-lg bg-[#3E63DD] hover:bg-[#3252c4] px-5 py-2 text-xs font-bold text-white shadow-sm transition-all duration-200 disabled:opacity-50 cursor-pointer"
             >
               {loading ? "Saving Template..." : "Save Pre-defined Package"}
             </button>

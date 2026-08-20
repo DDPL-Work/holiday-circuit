@@ -15,10 +15,22 @@ const roomSchema = new mongoose.Schema(
       default: "EP",
     },
     price: { type: Number, required: true },
+    basePrice: { type: Number, default: 0 },
     awebRate: { type: Number, default: 0 },
     cwebRate: { type: Number, default: 0 },
     cwoebRate: { type: Number, default: 0 },
     description: { type: String, default: "" },
+
+    // Structured Seasons Array (S1, S2, S3, etc.)
+    seasons: [
+      {
+        seasonName: { type: String, default: "S1" },
+        validFrom: { type: Date, default: null },
+        validTo: { type: Date, default: null },
+        price: { type: Number, default: 0 },
+        blackoutPrice: { type: Number, default: 0 },
+      },
+    ],
   },
   { _id: true }
 );
@@ -84,14 +96,17 @@ const hotelSchema = new mongoose.Schema(
       type: [
         {
           rowNumber: { type: Number, default: 0 },
+          blackoutName: { type: String, default: "" },
+          occasion: { type: String, default: "" },
           rawPeriod: { type: String, default: "" },
           startDate: { type: Date, default: null },
           endDate: { type: Date, default: null },
           startDateKey: { type: String, default: "" },
           endDateKey: { type: String, default: "" },
-          occasion: { type: String, default: "" },
+          season: { type: String, default: "" },
           category: { type: String, default: "" },
           applicableRegion: { type: String, default: "" },
+          rateAction: { type: String, default: "" },
           sourceSheet: { type: String, default: "" },
         },
       ],

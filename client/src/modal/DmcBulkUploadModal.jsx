@@ -37,12 +37,8 @@ const DmcBulkUploadModal = ({ isOpen, onClose }) => {
       setCategory("transport");
     } else if (lower.includes("hotel")) {
       setCategory("hotel");
-    } else if (lower.includes("activity")) {
+    } else if (lower.includes("activity") || lower.includes("sightseeing")) {
       setCategory("activity");
-    } else if (lower.includes("package")) {
-      setCategory("package");
-    } else if (lower.includes("sightseeing")) {
-      setCategory("sightseeing");
     }
   };
 
@@ -159,9 +155,7 @@ const DmcBulkUploadModal = ({ isOpen, onClose }) => {
           >
             <option value="hotel">Hotel Rates</option>
             <option value="transport">Transport & Transfers</option>
-            <option value="package">Package Tours</option>
-            <option value="activity">Activities & Excursions</option>
-            <option value="sightseeing">Sightseeing</option>
+            <option value="activity">Activities & Sightseeing</option>
           </select>
         </div>
 
