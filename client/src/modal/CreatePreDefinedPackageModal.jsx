@@ -520,17 +520,29 @@ const getDayLoadSummary = (scheduledItems = [], totalDays = 2) => {
   const summary = {};
   for (let d = 1; d <= totalDays; d++) {
     // Only count actual tours/activities/sightseeing towards daylight tour schedule
-    const items = scheduledItems.filter((it) => it.day === d && it.type !== "transfer");
+    const items = scheduledItems.filter((it) => Number(it.day) === d && it.type !== "transfer");
     const totalMins = items.reduce((sum, it) => sum + (it.durMins || 0), 0);
     const hrs = Math.round((totalMins / 60) * 10) / 10;
+    const count = items.length;
     const isFull = totalMins >= 600; // >= 10 hrs
+
+    let label = "Free";
+    if (count === 1) {
+      const itemHrs = Math.round(((items[0].durMins || 60) / 60) * 10) / 10;
+      label = isFull ? `${itemHrs} hrs (Full Day • 1 Tour)` : `${itemHrs} hrs (1 Tour)`;
+    } else if (count > 1) {
+      const parts = items.map((it) => `${Math.round(((it.durMins || 60) / 60) * 10) / 10} hrs`);
+      const breakdown = parts.join(" + ");
+      label = `${breakdown} = ${hrs} hrs Total (${count} Tours)`;
+    }
+
     summary[d] = {
       day: d,
       totalMins,
       totalHours: hrs,
-      itemsCount: items.length,
+      itemsCount: count,
       isFull,
-      label: totalMins === 0 ? "Free" : `${hrs} hrs${isFull ? " (Full)" : ""}`,
+      label,
     };
   }
   return summary;
@@ -593,31 +605,6 @@ function DayScheduleVisualizer({
                 {c.detailedReason}
               </p>
             </div>
-
-            {/* Smart Action Buttons in Brand Blue #3E63DD */}
-            {Array.isArray(c.suggestedDayShifts) && c.suggestedDayShifts.length > 0 && (
-              <div className="pt-2.5 border-t border-gray-200/80 space-y-2">
-                <div className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-600">
-                  <Zap size={12} className="text-amber-600 shrink-0" />
-                  <span>Suggested 1-Click Auto-Fixes:</span>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-1.5">
-                  {c.suggestedDayShifts.map((sug, sIdx) => (
-                    <button
-                      key={sIdx}
-                      type="button"
-                      onClick={() => onShiftItemDay(sug.targetItem, sug.toDay)}
-                      title={sug.fullLabel || sug.label}
-                      className="inline-flex items-center gap-1 rounded-md bg-[#3E63DD] hover:bg-[#3252c4] text-white px-2.5 py-1 text-xs font-semibold shadow-xs transition-all duration-150 cursor-pointer active:scale-98"
-                    >
-                      <Zap size={11} className="shrink-0" />
-                      <span>{sug.label}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
         ))}
       </div>
@@ -814,6 +801,41 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
   // Helpers to get sorted & filtered list for destination and search terms
   const normalizeComparisonText = (val = "") => String(val || "").trim().toLowerCase();
 
+  const GOA_SUB_CITIES = [
+    "goa", "ponda", "panaji", "panjim", "calangute", "candolim", "baga",
+    "old goa", "south goa", "north goa", "anjuna", "colva",
+    "vagator", "margao", "mapusa", "vasco", "arambol", "morjim", "dabolim"
+  ];
+
+  const formatLocationWithDestination = (cityStr = "", destStr = "", pkgDestStr = "") => {
+    const c = String(cityStr || "").trim();
+    const d = String(destStr || "").trim();
+    const p = String(pkgDestStr || "").trim();
+
+    const cNorm = c.toLowerCase();
+    const pNorm = p.toLowerCase();
+    const dNorm = d.toLowerCase();
+
+    const isGoaRelated =
+      pNorm.includes("goa") ||
+      cNorm.includes("goa") ||
+      dNorm.includes("goa") ||
+      GOA_SUB_CITIES.some((sub) => cNorm.includes(sub));
+
+    if (isGoaRelated) {
+      if (cNorm && cNorm !== "goa" && !cNorm.includes("goa")) {
+        return `Goa (${c})`;
+      }
+      return c || d || "Goa";
+    }
+
+    if (c && p && c.toLowerCase() !== p.toLowerCase() && !c.toLowerCase().includes(p.toLowerCase())) {
+      return `${p} (${c})`;
+    }
+
+    return c || d || p || "Destination";
+  };
+
   const isMatchingPackageDestination = (item = {}, dest = "") => {
     const destClean = normalizeComparisonText(dest);
     if (!destClean) return true;
@@ -821,6 +843,15 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
     const city = normalizeComparisonText(item.city);
     const itemDest = normalizeComparisonText(item.destination);
     const title = normalizeComparisonText(item.title || item.hotelName || item.serviceName || item.name);
+
+    // Smart region mapping for Goa state and sub-cities
+    const isGoaPackage = GOA_SUB_CITIES.some((sub) => destClean.includes(sub));
+    if (isGoaPackage) {
+      const isItemInGoa = GOA_SUB_CITIES.some(
+        (sub) => city.includes(sub) || itemDest.includes(sub) || title.includes(sub)
+      );
+      if (isItemInGoa) return true;
+    }
 
     if (city && (city.includes(destClean) || destClean.includes(city))) return true;
     if (itemDest && (itemDest.includes(destClean) || destClean.includes(itemDest))) return true;
@@ -1091,7 +1122,12 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
   };
 
   // Switch Room Category (Standard Room, Deluxe Room, Suite, etc.)
-  const handleRoomCategoryChange = (hotelIdx, roomTypeName) => {
+  const isTripleAllowedCategory = (roomTypeName = "") => {
+  const name = String(roomTypeName || "").trim().toLowerCase();
+  return name.includes("family") || name.includes("luxury") || name.includes("suite");
+};
+
+const handleRoomCategoryChange = (hotelIdx, roomTypeName) => {
     const updated = [...hotels];
     const hotelItem = updated[hotelIdx];
     const hotelsList = hotelItem.hotelsList || [];
@@ -1100,8 +1136,18 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
     const foundRoom = roomsList.find((r) => r.roomType === roomTypeName);
 
     hotelItem.roomType = roomTypeName;
+
+    // Smart Rule: Triple Occupancy is ONLY allowed for Family Room, Luxury Room & Suite
+    if (!isTripleAllowedCategory(roomTypeName) && String(hotelItem.roomCategory || "").toLowerCase() === "triple") {
+      hotelItem.roomCategory = "Double";
+      hotelItem.maxAdults = 2;
+      toast.info(`Triple occupancy is only allowed for Family Room, Luxury Room, or Suite. Reset to Double (2 persons) for ${roomTypeName}.`);
+    }
+
     if (foundRoom) {
-      hotelItem.roomCategory = foundRoom.roomCategory || hotelItem.roomCategory;
+      if (isTripleAllowedCategory(roomTypeName) || String(foundRoom.roomCategory || "").toLowerCase() !== "triple") {
+        hotelItem.roomCategory = foundRoom.roomCategory || hotelItem.roomCategory;
+      }
       hotelItem.bedType = normalizeBedType(foundRoom.bedType || hotelItem.bedType);
       hotelItem.extraBedType = normalizeExtraBedType(foundRoom.extraBedType || hotelItem.extraBedType);
       hotelItem.maxAdults = foundRoom.maxAdults !== undefined ? foundRoom.maxAdults : hotelItem.maxAdults;
@@ -1120,7 +1166,15 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
   const handleRoomOccupancyChange = (hotelIdx, occupancyCategory) => {
     const updated = [...hotels];
     const hotelItem = updated[hotelIdx];
-    hotelItem.roomCategory = occupancyCategory;
+
+    // Smart Rule: If user attempts to select Triple (3 persons) for Standard/Deluxe/Premium Room
+    if (String(occupancyCategory).toLowerCase() === "triple" && !isTripleAllowedCategory(hotelItem.roomType)) {
+      toast.warning("Triple Occupancy (3 persons) requires Family Room, Luxury Room, or Suite. Switched category to Family Room.");
+      hotelItem.roomType = "Family Room";
+      hotelItem.roomCategory = "Triple";
+    } else {
+      hotelItem.roomCategory = occupancyCategory;
+    }
 
     const hotelsList = hotelItem.hotelsList || [];
     const selectedHotel = hotelsList[hotelItem.selectedHotelIdx || 0] || {};
@@ -1457,6 +1511,20 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
     updated[index][field] = value;
 
     if (field === "name" || field === "serviceName") {
+      const valNorm = String(value || "").trim().toLowerCase();
+      if (valNorm) {
+        const isDupAct = activities.some((a, i) => i !== index && String(a.name || a.serviceName || "").trim().toLowerCase() === valNorm);
+        const isDupSight = sightseeing.some((s) => String(s.name || s.serviceName || "").trim().toLowerCase() === valNorm);
+        if (isDupAct || isDupSight) {
+          toast.error(`Already selected: "${value}"`);
+          updated[index] = {
+            ...initialActivity(),
+            day: updated[index].day || 1,
+          };
+          setActivities(updated);
+          return;
+        }
+      }
       updated[index].name = value;
       updated[index].serviceName = value;
     }
@@ -1490,8 +1558,29 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
 
   // Select DMC Activity from Dropdown
   const selectDmcActivity = (index, dmcAct) => {
-    const updated = [...activities];
     const actTitle = dmcAct.serviceName || dmcAct.name || dmcAct.title || "";
+    const titleNorm = String(actTitle || "").trim().toLowerCase();
+
+    // Prevent duplicate selection across all activity and sightseeing slots
+    const isDuplicateActivity = activities.some(
+      (a, i) => i !== index && String(a.name || a.serviceName || "").trim().toLowerCase() === titleNorm
+    );
+    const isDuplicateSightseeing = sightseeing.some(
+      (s) => String(s.name || s.serviceName || "").trim().toLowerCase() === titleNorm
+    );
+
+    if (isDuplicateActivity || isDuplicateSightseeing) {
+      const updated = [...activities];
+      updated[index] = {
+        ...initialActivity(),
+        day: updated[index].day || 1,
+      };
+      setActivities(updated);
+      setActiveActivityDropdownIdx(null);
+      return toast.error(`Already selected: "${actTitle}"`);
+    }
+
+    const updated = [...activities];
     const tourTypesList = Array.isArray(dmcAct.tourTypes) && dmcAct.tourTypes.length > 0
       ? dmcAct.tourTypes.map((t) => ({
           ...t,
@@ -1608,6 +1697,20 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
     updated[index][field] = value;
 
     if (field === "name" || field === "serviceName") {
+      const valNorm = String(value || "").trim().toLowerCase();
+      if (valNorm) {
+        const isDupSight = sightseeing.some((s, i) => i !== index && String(s.name || s.serviceName || "").trim().toLowerCase() === valNorm);
+        const isDupAct = activities.some((a) => String(a.name || a.serviceName || "").trim().toLowerCase() === valNorm);
+        if (isDupSight || isDupAct) {
+          toast.error(`Already selected: "${value}"`);
+          updated[index] = {
+            ...initialSightseeing(),
+            day: updated[index].day || 1,
+          };
+          setSightseeing(updated);
+          return;
+        }
+      }
       updated[index].name = value;
       updated[index].serviceName = value;
     }
@@ -1641,8 +1744,29 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
 
   // Select DMC Sightseeing from Dropdown
   const selectDmcSightseeing = (index, dmcSight) => {
-    const updated = [...sightseeing];
     const sightTitle = dmcSight.serviceName || dmcSight.name || dmcSight.title || "";
+    const titleNorm = String(sightTitle || "").trim().toLowerCase();
+
+    // Prevent duplicate selection across all sightseeing and activity slots
+    const isDuplicateSightseeing = sightseeing.some(
+      (s, i) => i !== index && String(s.name || s.serviceName || "").trim().toLowerCase() === titleNorm
+    );
+    const isDuplicateActivity = activities.some(
+      (a) => String(a.name || a.serviceName || "").trim().toLowerCase() === titleNorm
+    );
+
+    if (isDuplicateSightseeing || isDuplicateActivity) {
+      const updated = [...sightseeing];
+      updated[index] = {
+        ...initialSightseeing(),
+        day: updated[index].day || 1,
+      };
+      setSightseeing(updated);
+      setActiveSightseeingDropdownIdx(null);
+      return toast.error(`Already selected: "${sightTitle}"`);
+    }
+
+    const updated = [...sightseeing];
     const tourTypesList = Array.isArray(dmcSight.tourTypes) && dmcSight.tourTypes.length > 0
       ? dmcSight.tourTypes.map((t) => ({
           ...t,
@@ -1773,6 +1897,27 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
       return toast.error("Please enter a valid base package price");
     }
 
+    // Validation for Duplicate Activities / Sightseeing tours
+    const chosenTitles = new Set();
+    for (const act of activities) {
+      const name = String(act.name || "").trim().toLowerCase();
+      if (name) {
+        if (chosenTitles.has(name)) {
+          return toast.error(`Already selected: "${act.name}"`);
+        }
+        chosenTitles.add(name);
+      }
+    }
+    for (const sight of sightseeing) {
+      const name = String(sight.name || "").trim().toLowerCase();
+      if (name) {
+        if (chosenTitles.has(name)) {
+          return toast.error(`Already selected: "${sight.name}"`);
+        }
+        chosenTitles.add(name);
+      }
+    }
+
     // Validation for Max Pax in Activities & Sightseeing
     for (const act of activities) {
       if (!act.name?.trim()) continue;
@@ -1840,8 +1985,54 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
         dayWiseItinerary: itinerary.filter((it) => it.title?.trim() || it.description?.trim()),
         hotels: hotels.filter((h) => h.hotelName?.trim() || h.name?.trim()),
         transfers: transfers.filter((t) => t.name?.trim()),
-        activities: activities.filter((a) => a.name?.trim()),
-        sightseeing: sightseeing.filter((s) => s.name?.trim()),
+        activities: activities
+          .filter((a) => a.name?.trim())
+          .map((a) => {
+            const dNum = Number(a.day) || 1;
+            const dHrs = dayLoadSummary[dNum]?.label || "";
+            const dLabel = `Day ${dNum}${dHrs ? ` (${dHrs})` : ""}`;
+            return {
+              ...a,
+              day: dNum,
+              dayHours: dHrs,
+              dayLabel: dLabel,
+              adults: Number(a.adults !== undefined ? a.adults : (a.pax || 2)),
+              children: Number(a.children !== undefined ? a.children : 0),
+              adultPrice: Number(a.adultPrice !== undefined ? a.adultPrice : (a.basePrice || a.price || 0)),
+              childPrice: Number(a.childPrice !== undefined ? a.childPrice : 0),
+              pax: Number(a.pax || ((a.adults !== undefined ? Number(a.adults) : 2) + (a.children !== undefined ? Number(a.children) : 0))),
+              duration: String(a.duration || ""),
+              operatingDays: String(a.operatingDays || a.days || ""),
+              openingTime: String(a.openingTime || ""),
+              closingTime: String(a.closingTime || ""),
+              selectedSlot: String(a.selectedSlot || a.time || ""),
+              time: String(a.time || a.selectedSlot || ""),
+            };
+          }),
+        sightseeing: sightseeing
+          .filter((s) => s.name?.trim())
+          .map((s) => {
+            const dNum = Number(s.day) || 1;
+            const dHrs = dayLoadSummary[dNum]?.label || "";
+            const dLabel = `Day ${dNum}${dHrs ? ` (${dHrs})` : ""}`;
+            return {
+              ...s,
+              day: dNum,
+              dayHours: dHrs,
+              dayLabel: dLabel,
+              adults: Number(s.adults !== undefined ? s.adults : (s.pax || 2)),
+              children: Number(s.children !== undefined ? s.children : 0),
+              adultPrice: Number(s.adultPrice !== undefined ? s.adultPrice : (s.basePrice || s.price || 0)),
+              childPrice: Number(s.childPrice !== undefined ? s.childPrice : 0),
+              pax: Number(s.pax || ((s.adults !== undefined ? Number(s.adults) : 2) + (s.children !== undefined ? Number(s.children) : 0))),
+              duration: String(s.duration || ""),
+              operatingDays: String(s.operatingDays || s.days || ""),
+              openingTime: String(s.openingTime || ""),
+              closingTime: String(s.closingTime || ""),
+              selectedSlot: String(s.selectedSlot || s.time || ""),
+              time: String(s.time || s.selectedSlot || ""),
+            };
+          }),
       };
 
       const res = await API.post("/dmc/package", payload);
@@ -2249,7 +2440,7 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
                                         <p className="text-[11px] text-gray-500 mt-0.5 truncate flex items-center gap-1 flex-wrap">
                                           <span className="inline-flex items-center gap-1 text-slate-700 font-medium">
                                             <MapPin size={11} className="text-rose-500 shrink-0" />
-                                            {dmcHotel.city || dmcHotel.destination || "Verified Location"}
+                                            {formatLocationWithDestination(dmcHotel.city, dmcHotel.destination, destination)}
                                           </span>
                                           {dmcHotel.hotelName && dmcHotel.hotelName !== serviceTitle && (
                                             <> • Hotel: <span className="text-slate-700 font-medium">{dmcHotel.hotelName}</span></>
@@ -2349,7 +2540,13 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
                             className="w-full rounded-md border border-gray-300 bg-gray-50/50 px-2 py-1.5 text-xs text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition"
                           >
                             <option value="Double">Double (2 persons)</option>
-                            <option value="Triple">Triple (3 persons)</option>
+                            <option
+                              value="Triple"
+                              disabled={!isTripleAllowedCategory(hotel.roomType)}
+                              className={!isTripleAllowedCategory(hotel.roomType) ? "text-gray-400 font-normal italic" : "text-slate-800 font-bold"}
+                            >
+                              Triple (3 persons) {!isTripleAllowedCategory(hotel.roomType) ? "— (Family/Luxury/Suite only)" : ""}
+                            </option>
                             <option value="Single">Single (1 person)</option>
                           </select>
                         </div>
@@ -2752,7 +2949,7 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
                                         <p className="text-[11px] text-gray-500 mt-0.5 truncate flex items-center gap-1 flex-wrap">
                                           <span className="inline-flex items-center gap-1 text-slate-700 font-medium">
                                             <MapPin size={11} className="text-rose-500 shrink-0" />
-                                            {dmcTransfer.city || dmcTransfer.destination || destination}
+                                            {formatLocationWithDestination(dmcTransfer.city, dmcTransfer.destination, destination)}
                                           </span>
                                           • Vehicle: <span className="text-slate-700 font-medium">{dmcTransfer.vehicleType || "Sedan / Car"}</span> • Capacity: {dmcTransfer.passengerCapacity || 4} Pax
                                         </p>
@@ -3126,20 +3323,20 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
                         {Boolean(act.operatingDays || act.openingTime || act.closingTime || resolvedDuration) && (
                           <div className="flex flex-wrap items-center gap-2">
                             {act.operatingDays && (
-                              <span className="flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-0.5 text-[10px] text-slate-700 font-medium shadow-2xs">
-                                <span className="text-gray-400 font-normal">Days:</span> {act.operatingDays}
+                              <span className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-xs text-slate-800 font-semibold shadow-2xs">
+                                <span className="text-slate-500 font-medium">Days:</span> {act.operatingDays}
                               </span>
                             )}
                             {(act.openingTime || act.closingTime) && (
-                              <span className="flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-0.5 text-[10px] text-slate-700 font-medium shadow-2xs">
-                                <Clock size={11} className="text-amber-600" />
-                                <span className="text-gray-400 font-normal">Open / Close:</span> {act.openingTime || "08:00"} / {act.closingTime || "18:00"}
+                              <span className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-xs text-slate-800 font-semibold shadow-2xs">
+                                <Clock size={13} className="text-amber-600" />
+                                <span className="text-slate-500 font-medium">Open / Close:</span> {act.openingTime || "08:00"} / {act.closingTime || "18:00"}
                               </span>
                             )}
                             {resolvedDuration && (
-                              <span className="flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-0.5 text-[10px] text-slate-700 font-medium shadow-2xs">
-                                <Clock size={11} className="text-purple-600" />
-                                <span className="text-gray-400 font-normal">Duration:</span> {resolvedDuration}
+                              <span className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-xs text-slate-800 font-semibold shadow-2xs">
+                                <Clock size={13} className="text-purple-600" />
+                                <span className="text-slate-500 font-medium">Duration:</span> {resolvedDuration}
                               </span>
                             )}
                           </div>
@@ -3147,14 +3344,14 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
 
                         {/* Description / Highlights */}
                         {Boolean(currentTourObj.description || act.description || act.desc) && (
-                          <p className="text-[11px] text-gray-500 italic">
+                          <p className="text-[11px] text-slate-600 font-medium">
                             {currentTourObj.description || act.description || act.desc}
                           </p>
                         )}
 
                         {/* First Row: Search Input + Day Dropdown */}
                         <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-12">
-                          <div className={`sm:col-span-10 relative dmc-autocomplete-container ${activeActivityDropdownIdx === index ? "z-40" : "z-10"}`}>
+                          <div className={`sm:col-span-7 relative dmc-autocomplete-container ${activeActivityDropdownIdx === index ? "z-40" : "z-10"}`}>
                             <label className="block text-[11px] font-semibold text-slate-600 mb-1">Activity / Experience</label>
                             <div className="relative">
                               <input
@@ -3207,13 +3404,17 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
                                         ? dmcAct.cwebRate
                                         : 0
                                     );
+                                    const normTitle = String(actTitle || "").trim().toLowerCase();
+                                    const isAlreadyInPackage =
+                                      activities.some((a, i) => i !== index && String(a.name || a.serviceName || "").trim().toLowerCase() === normTitle) ||
+                                      sightseeing.some((s) => String(s.name || s.serviceName || "").trim().toLowerCase() === normTitle);
 
                                     return (
                                       <div
                                         key={dmcAct._id || dmcAct.id || aIdx}
                                         onClick={() => selectDmcActivity(index, dmcAct)}
                                         className={`p-3 hover:bg-blue-50/60 cursor-pointer transition flex items-center justify-between gap-2 ${
-                                          isSelected ? "bg-blue-50/90 border-l-3 border-l-blue-600" : ""
+                                          isSelected ? "bg-blue-50/90 border-l-3 border-l-blue-600" : isAlreadyInPackage ? "bg-amber-50/40" : ""
                                         }`}
                                       >
                                         <div className="min-w-0 flex-1">
@@ -3224,6 +3425,11 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
                                                 ✓ Selected
                                               </span>
                                             )}
+                                            {!isSelected && isAlreadyInPackage && (
+                                              <span className="rounded bg-amber-100 border border-amber-300 text-amber-800 text-[9px] px-1.5 py-0.2 font-bold">
+                                                ⚠️ Already Added
+                                              </span>
+                                            )}
                                             <span className="text-[10px] text-gray-500 font-medium">
                                               • {dmcAct.tourType || defaultTour.tourType || "Sharing Tour"}
                                             </span>
@@ -3231,7 +3437,7 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
                                           <p className="text-[11px] text-gray-500 mt-0.5 truncate flex items-center gap-1 flex-wrap">
                                             <span className="inline-flex items-center gap-1 text-slate-700 font-medium">
                                               <MapPin size={11} className="text-rose-500 shrink-0" />
-                                              {dmcAct.city || dmcAct.destination || destination}
+                                              {formatLocationWithDestination(dmcAct.city, dmcAct.destination, destination)}
                                             </span>
                                             • {dmcAct.category || "Experience"}
                                             • Days: {dmcAct.operatingDays || dmcAct.days || "Mon-Sun"}
@@ -3258,7 +3464,7 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
                           </div>
 
                           {/* Day Dropdown */}
-                          <div className="sm:col-span-2">
+                          <div className="sm:col-span-5">
                             <label className="block text-[11px] font-semibold text-slate-600 mb-1">Day</label>
                             <select
                               value={act.day || 1}
@@ -3504,20 +3710,20 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
                         {Boolean(sight.operatingDays || sight.openingTime || sight.closingTime || resolvedDuration) && (
                           <div className="flex flex-wrap items-center gap-2">
                             {sight.operatingDays && (
-                              <span className="flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-0.5 text-[10px] text-slate-700 font-medium shadow-2xs">
-                                <span className="text-gray-400 font-normal">Days:</span> {sight.operatingDays}
+                              <span className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-xs text-slate-800 font-semibold shadow-2xs">
+                                <span className="text-slate-500 font-medium">Days:</span> {sight.operatingDays}
                               </span>
                             )}
                             {(sight.openingTime || sight.closingTime) && (
-                              <span className="flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-0.5 text-[10px] text-slate-700 font-medium shadow-2xs">
-                                <Clock size={11} className="text-amber-600" />
-                                <span className="text-gray-400 font-normal">Open / Close:</span> {sight.openingTime || "08:00"} / {sight.closingTime || "18:00"}
+                              <span className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-xs text-slate-800 font-semibold shadow-2xs">
+                                <Clock size={13} className="text-amber-600" />
+                                <span className="text-slate-500 font-medium">Open / Close:</span> {sight.openingTime || "08:00"} / {sight.closingTime || "18:00"}
                               </span>
                             )}
                             {resolvedDuration && (
-                              <span className="flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-0.5 text-[10px] text-slate-700 font-medium shadow-2xs">
-                                <Clock size={11} className="text-purple-600" />
-                                <span className="text-gray-400 font-normal">Duration:</span> {resolvedDuration}
+                              <span className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-xs text-slate-800 font-semibold shadow-2xs">
+                                <Clock size={13} className="text-purple-600" />
+                                <span className="text-slate-500 font-medium">Duration:</span> {resolvedDuration}
                               </span>
                             )}
                           </div>
@@ -3525,14 +3731,14 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
 
                         {/* Description / Highlights */}
                         {Boolean(currentTourObj.description || sight.description || sight.desc) && (
-                          <p className="text-[11px] text-gray-500 italic">
+                          <p className="text-[11px] text-slate-600 font-medium">
                             {currentTourObj.description || sight.description || sight.desc}
                           </p>
                         )}
 
                         {/* First Row: Search Input + Day Dropdown */}
                         <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-12">
-                          <div className={`sm:col-span-10 relative dmc-autocomplete-container ${activeSightseeingDropdownIdx === index ? "z-40" : "z-10"}`}>
+                          <div className={`sm:col-span-7 relative dmc-autocomplete-container ${activeSightseeingDropdownIdx === index ? "z-40" : "z-10"}`}>
                             <label className="block text-[11px] font-semibold text-slate-600 mb-1">Sightseeing Tour</label>
                             <div className="relative">
                               <input
@@ -3609,7 +3815,7 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
                                           <p className="text-[11px] text-gray-500 mt-0.5 truncate flex items-center gap-1">
                                             <span className="inline-flex items-center gap-1 text-slate-700 font-medium">
                                               <MapPin size={11} className="text-rose-500 shrink-0" />
-                                              {dmcSight.city || dmcSight.destination || destination}
+                                              {formatLocationWithDestination(dmcSight.city, dmcSight.destination, destination)}
                                             </span>
                                             • {dmcSight.category || "Sightseeing"}
                                             • Days: {dmcSight.operatingDays || dmcSight.days || "Mon-Sun"}
@@ -3636,7 +3842,7 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
                           </div>
 
                           {/* Day Dropdown */}
-                          <div className="sm:col-span-2">
+                          <div className="sm:col-span-5">
                             <label className="block text-[11px] font-semibold text-slate-600 mb-1">Day</label>
                             <select
                               value={sight.day || 1}
