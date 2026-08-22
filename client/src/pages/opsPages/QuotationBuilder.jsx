@@ -7099,23 +7099,23 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
         {isSelectedServicesModalOpen && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
           transition={{ duration: 0.2, ease: "easeOut" }}
-          className="fixed inset-0 z-[120] flex h-screen w-screen items-center justify-center bg-black/70 px-3 py-4 backdrop-blur-sm"
+          className="fixed inset-0 z-[120] flex h-screen w-screen items-center justify-center bg-slate-900/60 px-3 py-4 backdrop-blur-sm"
           onClick={closeSelectedServicesModal}>
           <motion.div initial={{ opacity: 0, y: 24, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 18, scale: 0.98 }} transition={{ duration: 0.24, ease: "easeOut" }} className={`flex
-            w-full flex-col overflow-hidden rounded-[28px] border border-[#22314a] bg-[#050505]
-            shadow-[0_24px_80px_rgba(0,0,0,0.45)] ${ selectedServicesModalScope==="single" ? "max-h-[90vh] max-w-3xl"
+            w-full flex-col overflow-hidden rounded-[28px] border border-gray-200 bg-white
+            shadow-2xl ${ selectedServicesModalScope==="single" ? "max-h-[90vh] max-w-3xl"
             : "h-[min(90vh,960px)] max-w-5xl" }`} onClick={(event)=> event.stopPropagation()}
             role="dialog"
             aria-modal="true"
             aria-label="Selected services"
             >
-            <div className="flex items-start justify-between gap-4 border-b border-[#162233] bg-[#08111c] px-5 py-4">
+            <div className="flex items-start justify-between gap-4 border-b border-gray-200 bg-slate-50 px-5 py-4">
               <div>
-                <h2 className="text-lg font-semibold text-white">
+                <h2 className="text-lg font-semibold text-slate-900">
                   {selectedServicesModalScope === "single" ? "Service Editor" : "Selected Services"}
                 </h2>
-                <p className="mt-1 text-sm text-slate-400">
+                <p className="mt-1 text-sm text-slate-500">
                   {selectedServicesModalScope === "single"
                   ? "This focused view shows only the service you chose to edit."
                   : "All checked services are listed here for quick edit or delete."}
@@ -7123,11 +7123,11 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
               </div>
               <div className="flex items-center gap-3">
                 <div
-                  className="rounded-full border border-yellow-500/30 bg-yellow-500/10 px-3 py-1 text-xs font-semibold text-yellow-200">
+                  className="rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800">
                   {visibleSelectedServices.length} {selectedServicesModalScope === "single" ? "service" : "selected"}
                 </div>
                 <button type="button" onClick={closeSelectedServicesModal}
-                  className="flex h-10 w-10 items-center justify-center rounded-full border border-[#22314a] bg-[#050505] text-slate-300 transition hover:border-sky-400/40 hover:text-white"
+                  className="flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white text-slate-500 transition hover:border-gray-300 hover:bg-slate-50 hover:text-slate-800 cursor-pointer"
                   aria-label="Close selected services modal">
                   <X size={18} />
                 </button>
@@ -7149,14 +7149,14 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
       const renderItineraryWorkspaceContent = () => (
       <div className="space-y-4">
         <div
-          className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#232323] bg-[#070707] px-4 py-3">
+          className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-gray-200 bg-slate-50 px-4 py-3">
           <div className="flex items-center gap-2">
             <span
-              className="flex h-8 w-8 items-center justify-center rounded-full border border-amber-500/30 bg-amber-500/10 text-amber-300">
+              className="flex h-8 w-8 items-center justify-center rounded-full border border-amber-300 bg-amber-100 text-amber-800">
               <CalendarDays size={15} />
             </span>
             <div>
-              <p className="text-sm font-semibold text-white">Auto Synced With Duration</p>
+              <p className="text-sm font-semibold text-slate-900">Auto Synced With Duration</p>
               <p className="mt-1 text-xs text-slate-500">
                 Duration: {tripDuration.label || "Trip dates pending"}{order?.startDate ? ` • Starts
                 ${formatShareDate(order.startDate)}` : ""}
@@ -7164,7 +7164,7 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
             </div>
           </div>
           <span
-            className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-[11px] font-medium text-amber-300">
+            className="rounded-full border border-amber-300 bg-amber-100 px-2.5 py-1 text-[11px] font-semibold text-amber-800">
             {itineraryEntries.length} Day{itineraryEntries.length === 1 ? "" : "s"}
           </span>
         </div>
@@ -7174,17 +7174,17 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
         const fullHeading = entry.title ? `${dayLabel}: ${entry.title}` : dayLabel;
 
         return (
-        <div key={`itinerary-day-${entry.dayNumber}`} className="rounded-2xl border border-[#232323] bg-[#070707] p-3">
+        <div key={`itinerary-day-${entry.dayNumber}`} className="rounded-2xl border border-gray-200 bg-slate-50 p-3">
           <div className="mb-3 flex items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-2">
               <span
-                className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full border border-orange-500/30 bg-orange-500/10 text-orange-300">
+                className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full border border-orange-200 bg-orange-100 text-orange-700">
                 <MdOutlineTravelExplore size={15} />
               </span>
-              <p className="truncate text-sm font-semibold text-white">{fullHeading}</p>
+              <p className="truncate text-sm font-semibold text-slate-900">{fullHeading}</p>
             </div>
             <span
-              className="rounded-full border border-orange-500/30 bg-orange-500/10 px-2.5 py-1 text-[11px] font-medium text-orange-300">
+              className="rounded-full border border-orange-200 bg-orange-100 px-2.5 py-1 text-[11px] font-semibold text-orange-800">
               Day {entry.dayNumber}
             </span>
           </div>
@@ -7193,19 +7193,19 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
             <input type="text" value={entry.title} onChange={(e)=> updateDayWiseItineraryEntry(entry.dayNumber, "title",
             e.target.value)}
             placeholder="Enter heading e.g. North Phu Quoc Airport to Phu Quoc Hotel - pvt"
-            className="w-full rounded-xl border border-gray-700 bg-black px-3 py-2 text-sm text-white outline-none
-            transition focus:border-yellow-500"
+            className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none
+            transition focus:border-[#3E63DD] focus:ring-1 focus:ring-[#3E63DD]"
             />
             <textarea value={entry.description} onChange={(e)=> updateDayWiseItineraryEntry(entry.dayNumber, "description", e.target.value)}
                 rows={4}
                 placeholder="Add description, timings, activities, transfers, meals, or special notes for this day..."
-                className="min-h-[120px] w-full resize-y rounded-xl border border-gray-700 bg-black px-3 py-2 text-sm text-white outline-none transition focus:border-yellow-500"
+                className="min-h-[120px] w-full resize-y rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-[#3E63DD] focus:ring-1 focus:ring-[#3E63DD]"
               />
             </div>
           </div>
         );
       }) : (
-        <p className="rounded-2xl border border-dashed border-[#2a2a2a] bg-[#070707] px-4 py-6 text-center text-xs text-slate-500">
+        <p className="rounded-2xl border border-dashed border-gray-300 bg-slate-50 px-4 py-6 text-center text-xs text-slate-500">
           Trip duration is not available yet, so itinerary days cannot be generated.
         </p>
       )}
@@ -7220,33 +7220,33 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
           title: "Inclusions",
           placeholder: "Add included item and press Add",
           items: inclusions,
-          accent: "border-emerald-500/30 bg-emerald-500/10 text-emerald-300",
+          accent: "border-emerald-300 bg-emerald-50 text-emerald-800 font-semibold",
         },
         {
           key: "exclusion",
           title: "Exclusions",
           placeholder: "Add excluded item and press Add",
           items: exclusions,
-          accent: "border-rose-500/30 bg-rose-500/10 text-rose-300",
+          accent: "border-rose-300 bg-rose-50 text-rose-800 font-semibold",
         },
         {
           key: "additionalNote",
           title: "Important Notes",
           placeholder: "Add special terms or extra information and press Add",
           items: additionalNotes,
-          accent: "border-sky-500/30 bg-sky-500/10 text-sky-300",
+          accent: "border-sky-300 bg-sky-50 text-sky-800 font-semibold",
         },
       ].map((section) => (
-        <div key={section.key} className="rounded-2xl border border-[#232323] bg-[#070707] p-3">
+        <div key={section.key} className="rounded-2xl border border-gray-200 bg-slate-50 p-3">
           <div className="mb-3 flex items-center justify-between gap-3">
             <div className="flex items-center gap-2">
               <span
                 className={`flex h-8 w-8 items-center justify-center rounded-full border ${
                   section.key === "inclusion"
-                    ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+                    ? "border-emerald-300 bg-emerald-100 text-emerald-700"
                     : section.key === "exclusion"
-                      ? "border-rose-500/30 bg-rose-500/10 text-rose-300"
-                      : "border-sky-500/30 bg-sky-500/10 text-sky-300"
+                      ? "border-rose-300 bg-rose-100 text-rose-700"
+                      : "border-sky-300 bg-sky-100 text-sky-700"
                 }`}
               >
                 {section.key === "inclusion" ? (
@@ -7264,9 +7264,9 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                   </svg>
                 )}
               </span>
-              <p className="text-sm font-semibold text-white">{section.title}</p>
+              <p className="text-sm font-semibold text-slate-900">{section.title}</p>
             </div>
-            <span className={`rounded-full border px-2.5 py-1 text-[11px] font-medium ${section.accent}`}>
+            <span className={`rounded-full border px-2.5 py-1 text-[11px] ${section.accent}`}>
               {section.items.length} item{section.items.length === 1 ? "" : "s"}
             </span>
           </div>
@@ -7283,12 +7283,12 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                 }
               }}
               placeholder={section.placeholder}
-              className="flex-1 rounded-xl border border-gray-700 bg-black px-3 py-2 text-sm text-white outline-none transition focus:border-yellow-500"
+              className="flex-1 rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-[#3E63DD] focus:ring-1 focus:ring-[#3E63DD]"
             />
             <button
               type="button"
               onClick={() => appendDynamicNoteItem(section.key)}
-              className="rounded-xl border border-yellow-500/40 bg-yellow-500/10 px-4 py-2 text-sm font-medium text-yellow-300 transition hover:bg-yellow-500/20"
+              className="rounded-xl border border-amber-400 bg-amber-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-amber-600 cursor-pointer shadow-xs"
             >
               Add
             </button>
@@ -7299,13 +7299,13 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
               {section.items.map((item, index) => (
                 <div
                   key={`${section.key}-${index}-${item}`}
-                  className="flex items-center gap-2 rounded-xl border border-[#2c2c2c] bg-[#111111] px-3 py-2 text-xs text-slate-200"
+                  className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs text-slate-800 shadow-2xs"
                 >
                   <span>{item}</span>
                   <button
                     type="button"
                     onClick={() => removeDynamicNoteItem(section.key, index)}
-                    className="text-slate-400 transition hover:text-red-300"
+                    className="text-slate-400 transition hover:text-red-500 cursor-pointer"
                     aria-label={`Remove ${section.title} item`}
                   >
                     <X size={14} />
@@ -7350,7 +7350,7 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2, ease: "easeOut" }}
-            className="fixed inset-0 z-[120] flex h-screen w-screen items-center justify-center bg-black/70 px-3 py-4 backdrop-blur-sm"
+            className="fixed inset-0 z-[120] flex h-screen w-screen items-center justify-center bg-slate-900/60 px-3 py-4 backdrop-blur-sm"
             onClick={closeWorkspaceModal}
           >
             <motion.div
@@ -7358,20 +7358,20 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 18, scale: 0.98 }}
               transition={{ duration: 0.24, ease: "easeOut" }}
-            className="flex h-[min(90vh,960px)] w-full max-w-5xl flex-col overflow-hidden rounded-[28px] border border-[#22314a] bg-[#050505] shadow-[0_24px_80px_rgba(0,0,0,0.45)]"
+            className="flex h-[min(90vh,960px)] w-full max-w-5xl flex-col overflow-hidden rounded-[28px] border border-gray-200 bg-white shadow-2xl"
             onClick={(event) => event.stopPropagation()}
             role="dialog"
             aria-modal="true"
             aria-label={modalConfig.ariaLabel}
           >
-            <div className="flex items-start justify-between gap-4 border-b border-[#162233] bg-[#08111c] px-5 py-4">
+            <div className="flex items-start justify-between gap-4 border-b border-gray-200 bg-slate-50 px-5 py-4">
               <div>
                 <div className="flex items-center gap-3">
                   <span
                     className={`flex h-10 w-10 items-center justify-center rounded-full border ${
                       activeWorkspaceModal === "itinerary"
-                        ? "border-orange-500/30 bg-orange-500/10 text-orange-200"
-                        : "border-sky-500/30 bg-sky-500/10 text-sky-200"
+                        ? "border-orange-200 bg-orange-100 text-orange-700"
+                        : "border-sky-200 bg-sky-100 text-sky-700"
                     }`}
                   >
                     {activeWorkspaceModal === "itinerary" ? (
@@ -7387,18 +7387,18 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                       </svg>
                     )}
                   </span>
-                  <h2 className="text-lg font-semibold text-white">{modalConfig.title}</h2>
+                  <h2 className="text-lg font-semibold text-slate-900">{modalConfig.title}</h2>
                 </div>
-                <p className="mt-1 text-sm text-slate-400">{modalConfig.description}</p>
+                <p className="mt-1 text-sm text-slate-500">{modalConfig.description}</p>
               </div>
                 <div className="flex items-center gap-3">
-                  <div className="rounded-full border border-yellow-500/30 bg-yellow-500/10 px-3 py-1 text-xs font-semibold text-yellow-200">
+                  <div className="rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800">
                     {modalConfig.badge}
                   </div>
                   <button
                     type="button"
                     onClick={closeWorkspaceModal}
-                    className="flex h-10 w-10 items-center justify-center rounded-full border border-[#22314a] bg-[#050505] text-slate-300 transition hover:border-sky-400/40 hover:text-white"
+                    className="flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white text-slate-500 transition hover:border-gray-300 hover:bg-slate-50 hover:text-slate-800 cursor-pointer"
                     aria-label={`Close ${modalConfig.title} modal`}
                   >
                     <X size={18} />
@@ -7419,34 +7419,34 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
 
   const renderSelectedServicesSection = (variants = sectionRevealVariants) => (
     <>
-      <motion.div variants={variants} className="rounded-xl border border-gray-700 bg-[#0e0e0e] p-4">
+      <motion.div variants={variants} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm text-slate-900">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h2 className="text-[13px] font-semibold text-white">Selected Services</h2>
-            <p className="mt-1 whitespace-nowrap text-[11px] leading-relaxed text-slate-400">
+            <h2 className="text-[13px] font-semibold text-slate-900">Selected Services</h2>
+            <p className="mt-1 whitespace-nowrap text-[11px] leading-relaxed text-slate-500">
               Review, edit, and manage all selected services inside a focused modal workspace.
             </p>
           </div>
-          <div className="flex min-w-[88px] items-center justify-center gap-1 rounded-[28px] border border-yellow-500/40 bg-[#2a2208] px-2 py-1.5 text-center text-yellow-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
-            <span className="text-[11px] font-semibold leading-none">{selectedServices.length}</span>
-            <span className="text-[11px] font-semibold leading-none">selected</span>
+          <div className="flex min-w-[88px] items-center justify-center gap-1 rounded-[28px] border border-blue-200 bg-blue-50 px-2 py-1.5 text-center text-blue-700 shadow-2xs">
+            <span className="text-[11px] font-bold leading-none">{selectedServices.length}</span>
+            <span className="text-[11px] font-bold leading-none">selected</span>
           </div>
         </div>
 
-        <div className="mt-4 rounded-2xl border border-[#1f2937] bg-[#080d14] p-4">
+        <div className="mt-4 rounded-2xl border border-gray-200 bg-slate-50 p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
                 Service Desk
               </p>
-              <p className="mt-1 text-xs text-slate-300">
+              <p className="mt-1 text-xs text-slate-700">
                 Open the modal to work with the currently selected quotation services.
               </p>
             </div>
             <button
               type="button"
               onClick={() => openSelectedServicesModal(editingServiceCardId || "", "all")}
-              className="cursor-pointer rounded-xl border border-sky-400/35 bg-sky-500/10 px-4 py-2 text-[11px] font-medium text-sky-200 transition hover:border-sky-300/50 hover:bg-sky-500/15"
+              className="cursor-pointer rounded-xl border border-blue-200 bg-blue-50 px-4 py-2 text-[11px] font-semibold text-blue-700 transition hover:bg-blue-100 shadow-2xs"
             >
               Open All Selected Services
             </button>
@@ -7466,11 +7466,11 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
           variants={variants}
           type="button"
           onClick={() => openWorkspaceModal("itinerary")}
-          className="flex w-full cursor-pointer items-center justify-center gap-3 rounded-xl bg-yellow-400 px-4 py-2 text-md font-semibold text-black transition hover:bg-yellow-500"
+          className="flex w-full cursor-pointer items-center justify-center gap-3 rounded-xl bg-amber-500 px-4 py-2.5 text-md font-semibold text-white transition hover:bg-amber-600 shadow-xs"
         >
           <CalendarDays size={18} />
           <span>Day Wise Itinerary</span>
-          <span className="rounded-full border border-black/10 bg-black/10 px-2 py-0.5 text-xs font-semibold">
+          <span className="rounded-full border border-white/20 bg-white/20 px-2 py-0.5 text-xs font-bold text-white">
             {itineraryEntries.length}D
           </span>
         </motion.button>
@@ -7479,7 +7479,7 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
           variants={variants}
           type="button"
           onClick={() => openWorkspaceModal("notes")}
-          className="flex w-full cursor-pointer items-center justify-center gap-3 rounded-xl bg-white px-4 py-2 text-md font-semibold text-slate-600 transition hover:bg-slate-100"
+          className="flex w-full cursor-pointer items-center justify-center gap-3 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-md font-semibold text-slate-700 transition hover:bg-gray-50 shadow-xs"
         >
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M8 3h8" />
@@ -7489,7 +7489,7 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
             <path d="M14 3h4a2 2 0 0 1 2 2v16l-3-2-3 2V5a2 2 0 0 0-2-2Z" />
           </svg>
           <span>Additional Notes</span>
-          <span className="rounded-full border border-slate-300 bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">
+          <span className="rounded-full border border-gray-300 bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">
             {totalNoteItems}
           </span>
         </motion.button>
@@ -7503,17 +7503,17 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
         initial="hidden"
         animate="visible"
         variants={pageShellVariants}
-        className="-m-3 min-h-[calc(100vh-24px)] overflow-x-hidden bg-black p-3 text-white font-sans sm:-m-4 sm:min-h-[calc(100vh-32px)] sm:p-4 lg:-m-5 lg:min-h-[calc(100vh-40px)] lg:p-5"
+        className="-m-3 min-h-[calc(100vh-24px)] overflow-x-hidden bg-slate-50 p-3 text-slate-900 font-sans sm:-m-4 sm:min-h-[calc(100vh-32px)] sm:p-4 lg:-m-5 lg:min-h-[calc(100vh-40px)] lg:p-5"
       >
         <motion.div variants={sectionRevealVariants} className="mx-auto flex min-h-[70vh] max-w-2xl items-center justify-center">
-          <div className="w-full rounded-3xl border border-yellow-500/30 bg-[#0b0f19] p-8 text-center shadow-[0_24px_80px_rgba(0,0,0,0.35)]">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-yellow-400">
+          <div className="w-full rounded-3xl border border-gray-200 bg-white p-8 text-center shadow-xl">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-amber-600">
               Quotation Builder
             </p>
-            <h1 className="mt-3 text-2xl font-bold text-white">
+            <h1 className="mt-3 text-2xl font-bold text-slate-900">
               Query details are missing
             </h1>
-            <p className="mt-3 text-sm leading-6 text-slate-300">
+            <p className="mt-3 text-sm leading-6 text-slate-600">
               This page needs query data from Order Acceptance. Open the quotation builder from the previous screen so we can load the right quotation context.
             </p>
 
@@ -7521,14 +7521,14 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
               <button
                 type="button"
                 onClick={() => navigate("/ops/order-acceptance")}
-                className="rounded-full bg-yellow-500 px-6 py-2 text-sm font-semibold text-black transition hover:bg-yellow-400"
+                className="rounded-full bg-amber-500 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-amber-600 shadow-xs cursor-pointer"
               >
                 Go to Order Acceptance
               </button>
               <button
                 type="button"
                 onClick={() => navigate(-1)}
-                className="rounded-full border border-slate-600 px-6 py-2 text-sm font-medium text-slate-200 transition hover:border-slate-400 hover:text-white"
+                className="rounded-full border border-gray-300 bg-white px-6 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-gray-50 cursor-pointer shadow-xs"
               >
                 Go Back
               </button>
@@ -7546,13 +7546,13 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
         initial="hidden"
         animate="visible"
         variants={pageShellVariants}
-        className="-m-3 min-h-[calc(100vh-24px)] overflow-x-hidden bg-black p-3 text-white font-sans sm:-m-4 sm:min-h-[calc(100vh-32px)] sm:p-4 lg:-m-5 lg:min-h-[calc(100vh-40px)] lg:p-5"
+        className="-m-3 min-h-[calc(100vh-24px)] overflow-x-hidden bg-slate-50 p-3 text-slate-900 font-sans sm:-m-4 sm:min-h-[calc(100vh-32px)] sm:p-4 lg:-m-5 lg:min-h-[calc(100vh-40px)] lg:p-5"
       >
         {/* Header */}
         <motion.div variants={sectionRevealVariants} className="mb-2.5 flex items-center justify-between">
           <button
             onClick={() => navigate(-1)}
-            className="text-yellow-400 text-sm cursor-pointer"
+            className="text-[#3E63DD] hover:text-[#3252c4] text-sm font-semibold cursor-pointer"
           >
             ← Back to Order Acceptance
           </button>
@@ -7561,11 +7561,11 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
               <button
                 type="button"
                 onClick={() => setIsQuotationHistoryOpen((prev) => !prev)}
-                className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-yellow-500/35 bg-[#131a28] px-3 py-2 text-xs font-semibold text-yellow-300 transition hover:border-yellow-400/60 hover:bg-[#172033]"
+                className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-gray-300 bg-white px-3.5 py-2 text-xs font-semibold text-gray-700 shadow-xs hover:bg-gray-50 hover:border-gray-400 transition"
               >
-                <FileText size={14} />
+                <FileText size={14} className="text-gray-500" />
                 <span>Quotation History</span>
-                <span className="rounded-full bg-yellow-500/15 px-2 py-0.5 text-[11px] text-yellow-200">
+                <span className="rounded-full bg-blue-50 border border-blue-200 px-2 py-0.5 text-[11px] font-bold text-blue-700">
                   {quotationHistory.length}
                 </span>
                 {isQuotationHistoryOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
@@ -7578,20 +7578,20 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: -8, scale: 0.97 }}
                   transition={{ duration: 0.22, ease: "easeOut" }}
-                  className="absolute right-0 top-full z-30 mt-2 w-[320px] origin-top-right overflow-hidden rounded-2xl border border-yellow-500/25 bg-[#0f1522] shadow-[0_20px_60px_rgba(0,0,0,0.45)]"
+                  className="absolute right-0 top-full z-30 mt-2 w-[320px] origin-top-right overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-xl text-slate-900"
                 >
-                  <div className="border-b border-slate-800 px-4 py-3">
-                    <p className="text-sm font-semibold text-white">Previous Quotations</p>
-                    <p className="mt-1 text-[11px] text-slate-400">
+                  <div className="border-b border-gray-100 bg-slate-50 px-4 py-3">
+                    <p className="text-sm font-semibold text-slate-900">Previous Quotations</p>
+                    <p className="mt-1 text-[11px] text-slate-500">
                       Select any quotation to review it first, then click edit if you want to load it in the builder.
                     </p>
                   </div>
 
                   <div className="max-h-[28rem] overflow-y-auto px-2 py-2 [scrollbar-color:transparent_transparent] [scrollbar-width:none] [&::-webkit-scrollbar]:w-0 [&::-webkit-scrollbar-thumb]:bg-transparent [&::-webkit-scrollbar-track]:bg-transparent">
                     {quotationHistoryLoading ? (
-                      <p className="px-2 py-3 text-xs text-slate-400">Loading quotation history...</p>
+                      <p className="px-2 py-3 text-xs text-slate-500">Loading quotation history...</p>
                     ) : quotationHistoryLoadError ? (
-                      <p className="px-2 py-3 text-xs text-rose-300">{quotationHistoryLoadError}</p>
+                      <p className="px-2 py-3 text-xs text-rose-600">{quotationHistoryLoadError}</p>
                     ) : quotationHistory.length ? (
                       quotationHistory.map((quotation) => {
                         const isSelected = quotation.id === selectedHistoryQuotationId;
@@ -7605,15 +7605,15 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                             }}
                             className={`mb-2 flex w-full items-start gap-3 rounded-2xl border px-3 py-3 text-left transition ${
                               isSelected
-                                ? "border-yellow-400/60 bg-yellow-500/10"
-                                : "border-slate-800 bg-[#111827] hover:border-slate-700 hover:bg-[#151f30]"
+                                ? "border-amber-400 bg-amber-50"
+                                : "border-gray-200 bg-white hover:border-gray-300 hover:bg-slate-50"
                             }`}
                           >
                             <span
                               className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
                                 isSelected
-                                  ? "border-yellow-400 bg-yellow-400 text-black"
-                                  : "border-slate-600 bg-transparent text-transparent"
+                                  ? "border-amber-500 bg-amber-500 text-white"
+                                  : "border-gray-300 bg-white text-transparent"
                               }`}
                             >
                               <CheckCircle2 size={11} strokeWidth={3} />
@@ -7621,19 +7621,19 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
 
                             <span className="min-w-0 flex-1">
                               <span className="flex items-center justify-between gap-2">
-                                <span className="truncate text-sm font-semibold text-white">
+                                <span className="truncate text-sm font-semibold text-slate-900">
                                   {quotation.quotationNumber || `Quotation ${quotation.attemptNumber}`}
                                 </span>
                                 {quotation.isLatest && (
-                                  <span className="rounded-full border border-emerald-400/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-emerald-300">
+                                  <span className="rounded-full border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-emerald-700">
                                     Latest
                                   </span>
                                 )}
                               </span>
-                              <span className="mt-1 block text-[11px] text-slate-400">
+                              <span className="mt-1 block text-[11px] text-slate-500">
                                 {quotation.status} • {quotation.createdAtLabel || "Date unavailable"}
                               </span>
-                              <span className="mt-1 block text-xs font-semibold text-yellow-200">
+                              <span className="mt-1 block text-xs font-semibold text-amber-700">
                                 {formatCurrencyValue(quotation.displayAmount || 0, quotation.pricing?.currency || "INR")}
                               </span>
                             </span>
@@ -7641,7 +7641,7 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                         );
                       })
                     ) : (
-                      <p className="px-2 py-3 text-xs text-slate-400">
+                      <p className="px-2 py-3 text-xs text-slate-500">
                         No previous quotations found for this query yet.
                       </p>
                     )}
@@ -7773,8 +7773,8 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
               </AnimatePresence>
             </div>
 
-            <div className="text-right font-semibold text-yellow-400">
-              <p className="text-xs text-[#90a1b9]">Query ID</p>
+            <div className="text-right font-semibold text-[#3E63DD]">
+              <p className="text-xs text-gray-500">Query ID</p>
               <span className="font-bold">{orderQueryId || "-"}</span>
             </div>
           </div>
@@ -7783,12 +7783,12 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
         {/* Title */}
         <motion.div variants={sectionRevealVariants} className="mb-6 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <h1 className="text-2xl font-bold">Quotation Builder</h1>
-            <p className="text-gray-400">
+            <h1 className="text-2xl font-bold text-slate-900">Quotation Builder</h1>
+            <p className="text-gray-500 text-sm">
               Create a quote from contracted rates
             </p>
             {order?.opsStatus === "Revision_Query" && (
-              <p className="mt-2 inline-flex rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-300">
+              <p className="mt-2 inline-flex rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-800">
                 Revision builder now starts with a fresh draft
               </p>
             )}
@@ -7797,41 +7797,41 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
         {showLatestSentQuotationCard && latestSentQuotation && (
           <motion.div
             variants={sectionRevealVariants}
-            className="mb-5 rounded-2xl border border-sky-400/30 bg-sky-500/10 p-4 shadow-[0_14px_38px_rgba(14,165,233,0.10)]"
+            className="mb-5 rounded-2xl border border-sky-200 bg-sky-50 p-4 shadow-xs text-slate-900"
           >
             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
               <div>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-sky-300">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-sky-800">
                   Latest Quotation Sent To Agent
                 </p>
                 <div className="mt-2 flex flex-wrap items-center gap-2">
-                  <span className="text-base font-semibold text-white">
+                  <span className="text-base font-semibold text-slate-900">
                     {latestSentQuotation.quotationNumber || "Quotation"}
                   </span>
-                  <span className="rounded-full border border-sky-400/30 bg-sky-500/10 px-2.5 py-1 text-[11px] font-semibold text-sky-200">
+                  <span className="rounded-full border border-sky-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-sky-800">
                     {latestSentQuotation.status || "Quote Sent"}
                   </span>
                   {latestSentQuotation.createdBy?.label && (
-                    <span className="rounded-full border border-yellow-400/30 bg-yellow-500/10 px-2.5 py-1 text-[11px] font-semibold text-yellow-200">
+                    <span className="rounded-full border border-amber-300 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-800">
                       Sent by {latestSentQuotation.createdBy.label}
                     </span>
                   )}
                 </div>
-                <p className="mt-2 text-xs leading-5 text-slate-300">
+                <p className="mt-2 text-xs leading-5 text-slate-600">
                   This query already has a quotation shared with the agent.
                   {latestSentQuotation.updatedAtLabel ? ` Last updated ${latestSentQuotation.updatedAtLabel}.` : ""}
                 </p>
               </div>
               <div className="grid min-w-[220px] grid-cols-2 gap-2">
-                <div className="rounded-xl border border-sky-400/20 bg-black/30 px-3 py-2">
+                <div className="rounded-xl border border-sky-200 bg-white px-3 py-2">
                   <p className="text-[10px] uppercase tracking-[0.16em] text-slate-500">Total</p>
-                  <p className="mt-1 text-sm font-semibold text-sky-200">
+                  <p className="mt-1 text-sm font-semibold text-sky-800">
                     {formatCurrencyValue(latestSentQuotation.displayAmount || 0, latestSentQuotation.pricing?.currency || "INR")}
                   </p>
                 </div>
-                <div className="rounded-xl border border-sky-400/20 bg-black/30 px-3 py-2">
+                <div className="rounded-xl border border-sky-200 bg-white px-3 py-2">
                   <p className="text-[10px] uppercase tracking-[0.16em] text-slate-500">Services</p>
-                  <p className="mt-1 text-sm font-semibold text-white">
+                  <p className="mt-1 text-sm font-semibold text-slate-900">
                     {latestSentQuotation.serviceCount || 0}
                   </p>
                 </div>
@@ -7842,54 +7842,54 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
         {SHOW_SELECTED_HISTORY_COMPARISON && selectedHistoryQuotation && (
           <motion.div
             variants={sectionRevealVariants}
-            className="mb-6 rounded-3xl border border-slate-800 bg-[#0d1320] p-5 shadow-[0_16px_44px_rgba(0,0,0,0.24)]"
+            className="mb-6 rounded-3xl border border-gray-200 bg-white p-5 shadow-sm text-slate-900"
           >
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="rounded-full border border-sky-400/30 bg-sky-500/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-sky-300">
+                  <span className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-sky-800">
                     Reference History
                   </span>
-                  <h2 className="text-lg font-semibold text-white">
+                  <h2 className="text-lg font-semibold text-slate-900">
                     {selectedHistoryQuotation.quotationNumber || `Quotation ${selectedHistoryQuotation.attemptNumber}`}
                   </h2>
-                  <span className="rounded-full border border-slate-700 bg-[#111827] px-3 py-1 text-[11px] font-medium text-slate-300">
+                  <span className="rounded-full border border-gray-200 bg-slate-100 px-3 py-1 text-[11px] font-medium text-slate-700">
                     {selectedHistoryQuotation.status}
                   </span>
                 </div>
-                <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">
+                <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
                   This quotation is shown only for comparison. The active revision draft below is fresh and independent from this history entry.
                 </p>
               </div>
 
               <div className="grid gap-2 text-sm sm:grid-cols-2">
-                <div className="rounded-2xl border border-slate-800 bg-[#111827] px-4 py-3">
+                <div className="rounded-2xl border border-gray-200 bg-slate-50 px-4 py-3">
                   <p className="text-[11px] uppercase tracking-[0.14em] text-slate-500">Created</p>
-                  <p className="mt-1 font-semibold text-white">{selectedHistoryQuotation.createdAtLabel || "-"}</p>
+                  <p className="mt-1 font-semibold text-slate-900">{selectedHistoryQuotation.createdAtLabel || "-"}</p>
                 </div>
-                <div className="rounded-2xl border border-slate-800 bg-[#111827] px-4 py-3">
+                <div className="rounded-2xl border border-gray-200 bg-slate-50 px-4 py-3">
                   <p className="text-[11px] uppercase tracking-[0.14em] text-slate-500">Valid Till</p>
-                  <p className="mt-1 font-semibold text-white">{selectedHistoryQuotation.validTillLabel || "-"}</p>
+                  <p className="mt-1 font-semibold text-slate-900">{selectedHistoryQuotation.validTillLabel || "-"}</p>
                 </div>
               </div>
             </div>
 
             <div className="mt-4 grid gap-3 md:grid-cols-3 xl:grid-cols-6">
-              <div className="rounded-2xl border border-slate-800 bg-[#111827] px-4 py-3">
+              <div className="rounded-2xl border border-gray-200 bg-slate-50 px-4 py-3">
                 <p className="text-[11px] uppercase tracking-[0.14em] text-slate-500">Services Total</p>
-                <p className="mt-1 text-sm font-semibold text-sky-300">
+                <p className="mt-1 text-sm font-semibold text-sky-700">
                   {formatCurrencyValue(selectedHistoryQuotation.pricing?.subTotal || 0, selectedHistoryQuotation.pricing?.currency || "INR")}
                 </p>
               </div>
-              <div className="rounded-2xl border border-slate-800 bg-[#111827] px-4 py-3">
+              <div className="rounded-2xl border border-gray-200 bg-slate-50 px-4 py-3">
                 <p className="text-[11px] uppercase tracking-[0.14em] text-slate-500">OPS Markup</p>
-                <p className="mt-1 text-sm font-semibold text-yellow-300">
+                <p className="mt-1 text-sm font-semibold text-amber-700">
                   {formatCurrencyValue(selectedHistoryQuotation.pricing?.opsMarkup?.amount || 0, selectedHistoryQuotation.pricing?.currency || "INR")}
                 </p>
               </div>
-              <div className="rounded-2xl border border-slate-800 bg-[#111827] px-4 py-3">
+              <div className="rounded-2xl border border-gray-200 bg-slate-50 px-4 py-3">
                 <p className="text-[11px] uppercase tracking-[0.14em] text-slate-500">OPS Charges</p>
-                <p className="mt-1 text-sm font-semibold text-orange-300">
+                <p className="mt-1 text-sm font-semibold text-orange-700">
                   {formatCurrencyValue(
                     Number(selectedHistoryQuotation.pricing?.opsCharges?.serviceCharge || 0) +
                     Number(selectedHistoryQuotation.pricing?.opsCharges?.handlingFee || 0),
@@ -7897,21 +7897,21 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                   )}
                 </p>
               </div>
-              <div className="rounded-2xl border border-slate-800 bg-[#111827] px-4 py-3">
+              <div className="rounded-2xl border border-gray-200 bg-slate-50 px-4 py-3">
                 <p className="text-[11px] uppercase tracking-[0.14em] text-slate-500">Taxes</p>
-                <p className="mt-1 text-sm font-semibold text-emerald-300">
+                <p className="mt-1 text-sm font-semibold text-emerald-700">
                   {formatCurrencyValue(selectedHistoryQuotation.pricing?.tax?.totalTax || 0, selectedHistoryQuotation.pricing?.currency || "INR")}
                 </p>
               </div>
-              <div className="rounded-2xl border border-slate-800 bg-[#111827] px-4 py-3">
+              <div className="rounded-2xl border border-gray-200 bg-slate-50 px-4 py-3">
                 <p className="text-[11px] uppercase tracking-[0.14em] text-slate-500">OPS Total</p>
-                <p className="mt-1 text-sm font-semibold text-white">
+                <p className="mt-1 text-sm font-semibold text-slate-900">
                   {formatCurrencyValue(selectedHistoryQuotation.opsTotalAmount || 0, selectedHistoryQuotation.pricing?.currency || "INR")}
                 </p>
               </div>
-              <div className="rounded-2xl border border-slate-800 bg-[#111827] px-4 py-3">
+              <div className="rounded-2xl border border-gray-200 bg-slate-50 px-4 py-3">
                 <p className="text-[11px] uppercase tracking-[0.14em] text-slate-500">Client Total</p>
-                <p className="mt-1 text-sm font-semibold text-violet-300">
+                <p className="mt-1 text-sm font-semibold text-violet-700">
                   {selectedHistoryQuotation.clientTotalAmount !== null && selectedHistoryQuotation.clientTotalAmount !== undefined
                     ? formatCurrencyValue(selectedHistoryQuotation.clientTotalAmount, selectedHistoryQuotation.pricing?.currency || "INR")
                     : "Not shared"}
@@ -7920,49 +7920,49 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
             </div>
 
             <div className="mt-4 grid gap-4 xl:grid-cols-[1.3fr_0.7fr]">
-              <div className="rounded-2xl border border-slate-800 bg-[#111827] p-4">
+              <div className="rounded-2xl border border-gray-200 bg-slate-50 p-4">
                 <div className="mb-3 flex items-center justify-between gap-3">
-                  <h3 className="text-sm font-semibold text-white">Services in this quotation</h3>
-                  <span className="rounded-full border border-slate-700 bg-[#0d1320] px-2.5 py-1 text-[11px] font-semibold text-slate-300">
+                  <h3 className="text-sm font-semibold text-slate-900">Services in this quotation</h3>
+                  <span className="rounded-full border border-gray-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700">
                     {selectedHistoryQuotation.serviceCount} item{selectedHistoryQuotation.serviceCount === 1 ? "" : "s"}
                   </span>
                 </div>
                 <div className="space-y-2">
                   {selectedHistoryQuotation.services?.length ? (
                     selectedHistoryQuotation.services.map((service, index) => (
-                      <div key={`${selectedHistoryQuotation.id}-service-${index}`} className="rounded-2xl border border-slate-800 bg-[#0d1320] px-3 py-3">
+                      <div key={`${selectedHistoryQuotation.id}-service-${index}`} className="rounded-2xl border border-gray-200 bg-white px-3 py-3 shadow-2xs">
                         <div className="flex flex-wrap items-center justify-between gap-2">
-                          <p className="text-sm font-semibold text-white">{service?.title || "Service"}</p>
-                          <span className="text-xs font-medium text-slate-400">
+                          <p className="text-sm font-semibold text-slate-900">{service?.title || "Service"}</p>
+                          <span className="text-xs font-medium text-slate-500">
                             {formatCurrencyValue(service?.totalInInr || service?.total || 0, selectedHistoryQuotation.pricing?.currency || "INR")}
                           </span>
                         </div>
-                        <p className="mt-1 text-xs text-slate-400">
+                        <p className="mt-1 text-xs text-slate-500">
                           {service?.type || "service"}{service?.city ? ` • ${service.city}` : ""}{service?.serviceDate ? ` • ${formatShareDate(service.serviceDate)}` : ""}
                         </p>
                       </div>
                     ))
                   ) : (
-                    <p className="text-xs text-slate-400">No services were saved in this quotation.</p>
+                    <p className="text-xs text-slate-500">No services were saved in this quotation.</p>
                   )}
                 </div>
               </div>
 
               <div className="space-y-4">
                 {selectedHistoryQuotation.agentRevisionRemark && (
-                  <div className="rounded-2xl border border-rose-500/25 bg-rose-500/10 p-4">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-rose-300">Revision Remark</p>
-                    <p className="mt-2 text-sm leading-6 text-rose-100">{selectedHistoryQuotation.agentRevisionRemark}</p>
+                  <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-rose-700">Revision Remark</p>
+                    <p className="mt-2 text-sm leading-6 text-rose-900">{selectedHistoryQuotation.agentRevisionRemark}</p>
                   </div>
                 )}
 
-                <div className="rounded-2xl border border-slate-800 bg-[#111827] p-4">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Inclusions</p>
-                  <p className="mt-2 text-sm text-white">{selectedHistoryQuotation.inclusions?.length || 0}</p>
-                  <p className="mt-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Exclusions</p>
-                  <p className="mt-2 text-sm text-white">{selectedHistoryQuotation.exclusions?.length || 0}</p>
-                  <p className="mt-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Additional Notes</p>
-                  <p className="mt-2 text-sm text-white">{selectedHistoryQuotation.additionalNotes?.length || 0}</p>
+                <div className="rounded-2xl border border-gray-200 bg-slate-50 p-4">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Inclusions</p>
+                  <p className="mt-2 text-sm font-semibold text-slate-900">{selectedHistoryQuotation.inclusions?.length || 0}</p>
+                  <p className="mt-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Exclusions</p>
+                  <p className="mt-2 text-sm font-semibold text-slate-900">{selectedHistoryQuotation.exclusions?.length || 0}</p>
+                  <p className="mt-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Additional Notes</p>
+                  <p className="mt-2 text-sm font-semibold text-slate-900">{selectedHistoryQuotation.additionalNotes?.length || 0}</p>
                 </div>
               </div>
             </div>
@@ -7976,8 +7976,8 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
           <motion.div variants={sideStackVariants} className="lg:col-span-2 space-y-8">
 
             {/* Query Info */}
-            <motion.div variants={sectionRevealVariants} className="bg-[#0b0f19] rounded-2xl p-6 border border-yellow-500/50">
-              <h2 className="text-md font-semibold text-white mb-6">
+            <motion.div variants={sectionRevealVariants} className="bg-white rounded-2xl p-6 border border-gray-200 shadow-sm text-slate-900">
+              <h2 className="text-md font-semibold text-slate-900 mb-6">
                 Query Information
               </h2>
 
@@ -7985,32 +7985,32 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
 
                 {/* Agent Name */}
                 <div>
-                  <p className="text-gray-400 text-xs mb-1">Agent Name</p>
-                  <p className="text-white text-xs font-medium">
+                  <p className="text-gray-500 text-xs mb-1">Agent Name</p>
+                  <p className="text-slate-900 text-xs font-semibold">
                     {order?.agent?.companyName}
                   </p>
                 </div>
 
                 {/* Agent Email */}
                 <div>
-                  <p className="text-gray-400 text-xs mb-1">Agent Email</p>
-                  <p className="text-white  text-xs font-medium">
+                  <p className="text-gray-500 text-xs mb-1">Agent Email</p>
+                  <p className="text-slate-900 text-xs font-semibold">
                     {order?.agent?.email}
                   </p>
                 </div>
 
                 {/* Destination */}
                 <div>
-                  <p className="text-gray-400 text-xs mb-">Destination</p>
-                  <p className="text-white  text-xs font-medium">
+                  <p className="text-gray-500 text-xs mb-1">Destination</p>
+                  <p className="text-slate-900 text-xs font-semibold">
                     {order?.destination}
                   </p>
                 </div>
 
                 {/* Travel Date */}
                 <div>
-                  <p className="text-gray-400 text-xs mb-">Travel Date</p>
-                  <p className="text-white  text-xs font-medium">
+                  <p className="text-gray-500 text-xs mb-1">Travel Date</p>
+                  <p className="text-slate-900 text-xs font-semibold">
                     {new Date(order?.startDate).toLocaleDateString("en-IN", {
                       day: "numeric",
                       month: "long",
@@ -8021,39 +8021,39 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
 
                 {/* Duration */}
                 <div>
-                  <p className="text-gray-400 text-xs">Duration</p>
-                  <p className="text-white  text-xs font-medium">
+                  <p className="text-gray-500 text-xs">Duration</p>
+                  <p className="text-slate-900 text-xs font-semibold">
                     {tripDuration.label}
                   </p>
                 </div>
 
                 {/* Passengers */}
                 <div>
-                  <p className="text-gray-400 text-xs">Passengers</p>
-                  <p className="text-white text-xs font-medium">
+                  <p className="text-gray-500 text-xs">Passengers</p>
+                  <p className="text-slate-900 text-xs font-semibold">
                     {totalPassengers} PAX
                   </p>
-                  <p className="mt-1 text-[11px] text-slate-400">
+                  <p className="mt-1 text-[11px] text-slate-500">
                     {adultPassengers} Adult{adultPassengers === 1 ? "" : "s"} | {childPassengers} Child{childPassengers === 1 ? "" : "ren"}
                   </p>
                 </div>
 
               </div>
 
-              <div className="mt-5 rounded-2xl border border-[#232833] bg-[#0f1522] p-4">
+              <div className="mt-5 rounded-2xl border border-gray-200 bg-slate-50 p-4">
                 <div className="flex items-center justify-between gap-3 flex-wrap">
                   <div>
-                    <p className="text-[11px] uppercase tracking-[0.18em] text-yellow-400/80">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-amber-700">
                       Query Requirements
                     </p>
-                    <p className="text-xs text-gray-400 mt-1">
+                    <p className="text-xs text-gray-500 mt-1">
                       Click to view the request context before building the quote.
                     </p>
                   </div>
                   <button
                     type="button"
                     onClick={() => setShowQueryRequirements((prev) => !prev)}
-                    className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-yellow-500/10 border border-yellow-500/30 text-[11px] text-yellow-300 hover:bg-yellow-500/15 transition-colors cursor-pointer"
+                    className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-100 border border-amber-300 text-[11px] font-semibold text-amber-800 hover:bg-amber-200 transition-colors cursor-pointer"
                   >
                     {showQueryRequirements ? "Hide Details" : "Show Details"}
                     {showQueryRequirements ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
@@ -8075,7 +8075,7 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                             {queryRequirementTags.map((tag) => (
                               <span
                                 key={tag}
-                                className="px-3 py-1.5 rounded-full bg-[#141c2b] border border-[#293244] text-[11px] font-medium text-gray-200"
+                                className="px-3 py-1.5 rounded-full bg-white border border-gray-200 text-[11px] font-medium text-slate-700 shadow-2xs"
                               >
                                 {tag}
                               </span>
@@ -8085,7 +8085,7 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                           <p className="text-xs text-gray-500 mb-3">No structured requirements added.</p>
                         )}
 
-                        <div className="rounded-2xl border border-dashed border-[#2a3448] bg-[#0c111b] px-4 py-3">
+                        <div className="rounded-2xl border border-dashed border-gray-300 bg-white px-4 py-3">
                           <p className="text-[11px] uppercase tracking-[0.16em] text-gray-500 mb-2">
                             Special Preferences / Notes
                           </p>
@@ -8098,7 +8098,7 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                                 .map((item, index) => (
                                   <span
                                     key={`${item}-${index}`}
-                                    className="px-3 py-1.5 rounded-xl bg-[#111827] border border-[#2b3648] text-xs text-slate-200"
+                                    className="px-3 py-1.5 rounded-xl bg-slate-100 border border-gray-200 text-xs text-slate-700"
                                   >
                                     {item}
                                   </span>
@@ -8118,13 +8118,13 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
             {isInvoiceRequestedStage && (
               <motion.div
                 variants={sectionRevealVariants}
-                className="rounded-2xl border border-amber-400/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100 shadow-[0_16px_35px_rgba(0,0,0,0.18)]"
+                className="rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 shadow-xs"
               >
                 <div className="flex items-start gap-3">
-                  <div className="mt-0.5 h-2.5 w-2.5 rounded-full bg-amber-300 shadow-[0_0_12px_rgba(252,211,77,0.8)]" />
+                  <div className="mt-0.5 h-2.5 w-2.5 rounded-full bg-amber-500" />
                   <div>
-                    <p className="font-semibold text-white">Client approval is already received for this query</p>
-                    <p className="mt-1 text-xs leading-5 text-amber-100/90">
+                    <p className="font-semibold text-slate-900">Client approval is already received for this query</p>
+                    <p className="mt-1 text-xs leading-5 text-amber-800">
                       This booking has moved ahead from quotation building and is now in the amount and documents workflow.
                     </p>
                   </div>
@@ -8137,27 +8137,27 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
 
                 {/*=================================== Select Contracted Rates Service =============================== */}
 
-                <motion.div variants={sectionRevealVariants} className="dark-scrollbar h-120 overflow-y-auto bg-black pr-1">
-                  <div className="sticky top-0 z-10 mb-3 bg-black p-2">
+                <motion.div variants={sectionRevealVariants} className="dark-scrollbar h-120 overflow-y-auto bg-slate-50 pr-1">
+                  <div className="sticky top-0 z-10 mb-3 bg-slate-50 p-2">
                     <div className="flex items-center justify-between gap-3 flex-wrap">
                       <div>
-                        <h2 className="font-semibold">
+                        <h2 className="font-semibold text-slate-900">
                           Select Contracted Rates
                         </h2>
-                        <p className="max-w-2xl text-[8px] leading-6 text-slate-400">
+                        <p className="max-w-2xl text-[11px] leading-relaxed text-slate-500">
                           Tune ops charges and tax values from one compact control desk before sharing the quotation.
                         </p>
                       </div>
 
                       <button
                         onClick={() => setShowQuickServiceModal(true)}
-                        className="text-xs bg-yellow-400 text-black px-3 py-2 rounded-lg hover:bg-yellow-500 font-medium cursor-pointer"
+                        className="text-xs bg-[#3E63DD] hover:bg-[#3252c4] text-white px-3.5 py-2 rounded-lg font-semibold cursor-pointer shadow-xs transition"
                       >
                         + Quick Add Service
                       </button>
                     </div>
 
-                    <div className="mt-3 rounded-2xl border border-[#1f1f1f] bg-[#0b0b0b] p-3">
+                    <div className="mt-3 rounded-2xl border border-gray-200 bg-white p-3 shadow-xs">
                       <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-col gap-2 sm:flex-row">
@@ -8167,7 +8167,7 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                               onChange={(e) => setContractedRatesSearch(e.target.value)}
                               placeholder={servicesLoading ? "Loading contracted rates..." : "Search hotel, transport, activity or sightseeing"}
                               disabled={servicesLoading}
-                              className="w-full rounded-xl border border-[#2a2a2a] bg-[#111111] px-3 py-2 text-xs text-white outline-none transition-colors focus:border-yellow-500 disabled:cursor-wait disabled:opacity-60"
+                              className="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-xs text-slate-900 outline-none transition-colors focus:border-[#3E63DD] focus:ring-1 focus:ring-[#3E63DD] disabled:cursor-wait disabled:opacity-60 shadow-2xs"
                             />
                             {(contractedRatesSearch || contractedRatesFilter !== "all") && (
                               <button
@@ -8176,13 +8176,13 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                                   setContractedRatesSearch("");
                                   setContractedRatesFilter("all");
                                 }}
-                                className="rounded-xl border border-[#2a2a2a] px-3 py-2 text-[11px] text-slate-300 transition-colors hover:border-yellow-500/50 hover:text-white cursor-pointer"
+                                className="rounded-xl border border-gray-300 bg-white px-3 py-2 text-[11px] font-medium text-gray-700 transition-colors hover:bg-gray-50 cursor-pointer shadow-2xs"
                               >
                                 Clear
                               </button>
                             )}
                           </div>
-                          <p className="mt-2 text-[10px] text-slate-500">
+                          <p className="mt-2 text-[10px] text-gray-500">
                             {servicesLoading
                               ? "Contracted rates are loading in the background..."
                               : filteredServices.length === destinationMatchedServices.length
@@ -8200,9 +8200,9 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                                 type="button"
                                 disabled={servicesLoading}
                                 onClick={() => setContractedRatesFilter(option.value)}
-                                className={`rounded-full border px-3 py-1.5 text-[11px] font-medium transition-colors cursor-pointer ${isActive
-                                  ? "border-yellow-500 bg-yellow-500/10 text-yellow-300"
-                                  : "border-[#2a2a2a] bg-[#111111] text-slate-300 hover:border-yellow-500/40 hover:text-white"
+                                className={`rounded-full border px-3.5 py-1.5 text-[11px] font-medium transition-all cursor-pointer ${isActive
+                                  ? "border-[#3E63DD] bg-[#3E63DD] text-white shadow-2xs font-semibold"
+                                  : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50 hover:border-gray-300"
                                   } disabled:cursor-wait disabled:opacity-60`}
                               >
                                 {option.label} ({contractedRateFilterCounts[option.value] || 0})
@@ -8217,17 +8217,17 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                   
                   {/* Service Card */}
                   {servicesLoading ? (
-                    <div className="rounded-2xl border border-dashed border-[#2a2a2a] bg-[#0b0b0b] px-4 py-8 text-center">
-                      <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-yellow-500/20 border-t-yellow-400" />
-                      <p className="mt-3 text-sm font-medium text-white">Loading contracted services</p>
-                      <p className="mt-2 text-xs text-slate-400">
+                    <div className="rounded-2xl border border-dashed border-gray-300 bg-white px-4 py-8 text-center shadow-xs">
+                      <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-blue-200 border-t-[#3E63DD]" />
+                      <p className="mt-3 text-sm font-semibold text-slate-900">Loading contracted services</p>
+                      <p className="mt-2 text-xs text-slate-500">
                         Quotation Builder is ready. Rates are being fetched in the background.
                       </p>
                     </div>
                   ) : servicesLoadError ? (
-                    <div className="rounded-2xl border border-dashed border-red-500/30 bg-red-500/5 px-4 py-8 text-center">
-                      <p className="text-sm font-medium text-white">{servicesLoadError}</p>
-                      <p className="mt-2 text-xs text-slate-400">
+                    <div className="rounded-2xl border border-dashed border-red-300 bg-red-50 px-4 py-8 text-center">
+                      <p className="text-sm font-semibold text-red-700">{servicesLoadError}</p>
+                      <p className="mt-2 text-xs text-slate-500">
                         Refresh the page or try again in a moment.
                       </p>
                     </div>
@@ -8256,9 +8256,9 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                       />
                     ))
                   ) : (
-                    <div className="rounded-2xl border border-dashed border-[#2a2a2a] bg-[#0b0b0b] px-4 py-8 text-center">
-                      <p className="text-sm font-medium text-white">No contracted services found</p>
-                      <p className="mt-2 text-xs text-slate-400">
+                    <div className="rounded-2xl border border-dashed border-gray-300 bg-white px-4 py-8 text-center shadow-xs">
+                      <p className="text-sm font-semibold text-slate-900">No contracted services found</p>
+                      <p className="mt-2 text-xs text-slate-500">
                         Try another search term or check whether contracted services exist for {order?.destination || "this destination"}.
                       </p>
                     </div>
@@ -8270,24 +8270,23 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
           </motion.div>
 
           {/*========================= RIGHT SIDE =================================================== */}
-
           <motion.div variants={sideStackVariants} className="space-y-6">
             {/*=========================== DMC Margin Section ============================= */}
-            <motion.div variants={rightCardVariants} className="bg-[#1a1600] border border-yellow-500 rounded-xl p-6">
+            <motion.div variants={rightCardVariants} className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm text-slate-900">
               {/* Title */}
-              <h2 className="font-semibold mb-4 text-start flex items-center gap-2">
+              <h2 className="font-semibold text-slate-900 mb-4 text-start flex items-center gap-2">
                 OPS Margin
               </h2>
 
               {/* Margin Type */}
-              <p className="text-sm text-gray-300 mb-1 text-start">
+              <p className="text-xs text-gray-500 mb-1 text-start font-medium">
                 Margin Type
               </p>
 
               <select
                 value={marginType}
                 onChange={(e) => setMarginType(e.target.value)}
-                className="w-full bg-black border text-sm mt-1 border-yellow-500 rounded-2xl pl-4 p-2 mb-4 outline-none text-white cursor-pointer"
+                className="w-full bg-white border border-gray-300 text-sm mt-1 rounded-2xl pl-4 p-2.5 mb-4 outline-none text-slate-900 cursor-pointer focus:border-[#3E63DD] focus:ring-1 focus:ring-[#3E63DD] shadow-2xs"
               >
                 <option value="percentage">Percentage (%)</option>
                 <option value="fixed">Fixed Amount</option>
@@ -8295,7 +8294,7 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
 
               {/*========================================= Markup Percentage Section ================================ */}
 
-              <p className="text-sm text-gray-300 mb-2 text-start">
+              <p className="text-xs text-gray-500 mb-2 text-start font-medium">
                 {marginType === "percentage"
                   ? "Markup Percentage"
                   : "Fixed Margin"}
@@ -8310,10 +8309,10 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                       ? setMarkup(e.target.value)
                       : setFixedMargin(roundCurrencyAmount(e.target.value))
                   }
-                  className="w-full bg-black border border-yellow-500 text-sm font-bold rounded-2xl text-start pl-5 p-2 outline-none"
+                  className="w-full bg-white border border-gray-300 text-sm font-bold rounded-2xl text-start pl-5 p-2.5 outline-none text-slate-900 focus:border-[#3E63DD] focus:ring-1 focus:ring-[#3E63DD] shadow-2xs"
                 />
 
-                <span className="text-yellow-400 text-lg">
+                <span className="text-[#3E63DD] text-lg font-bold">
                   {marginType === "percentage" ? "%" : "₹"}
                 </span>
               </div>
@@ -8322,19 +8321,19 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
             {/* ==================================== Price Breakdown Section ============================================ */}
 
             {!isInvoiceRequestedStage && selectedSendOption === "__price_breakdown_preview__" && (
-              <motion.div variants={rightCardVariants} className="bg-[#0e0e0e] border border-gray-700 rounded-xl p-4">
+              <motion.div variants={rightCardVariants} className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm text-slate-900">
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <h2 className="text-[13px] font-semibold text-white">Selected Services</h2>
-                  <p className="mt-1 max-w-47.5 text-[8px] leading-relaxed text-slate-400">
+                  <h2 className="text-[13px] font-semibold text-slate-900">Selected Services</h2>
+                  <p className="mt-1 max-w-47.5 text-[10px] leading-relaxed text-slate-500">
                     All checked services are listed here for quick edit or delete.
                   </p>
                 </div>
-                <div className="flex min-w-20 items-center justify-center gap-1 rounded-[28px] border border-yellow-500/40 bg-[#2a2208] px-1 py-1.5 text-center text-yellow-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
-                  <span className="text-[10px] font-semibold leading-none">
+                <div className="flex min-w-20 items-center justify-center gap-1 rounded-[28px] border border-blue-200 bg-blue-50 px-2 py-1.5 text-center text-blue-700 shadow-2xs">
+                  <span className="text-[10px] font-bold leading-none">
                     {selectedServices.length}
                   </span>
-                  <span className="text-[10px] font-semibold leading-none">
+                  <span className="text-[10px] font-bold leading-none">
                     selected
                   </span>
                 </div>
@@ -8342,17 +8341,6 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
 
               {selectedServices.length > 0 ? (
                 <div className="dark-scrollbar mt-4 max-h-80 space-y-3 overflow-y-auto pr-1">
-                  {/*
-                 // ─────────────────────────────────────────────────────────────────────────────
-// DROP-IN REPLACEMENT for the selectedServices.map(...) block
-// inside the "Selected Services" right-panel card in QuotationBuilder.jsx
-//
-// Replace the existing:
-//   {selectedServices.map((service) => { ... })}
-// with this block.
-// ─────────────────────────────────────────────────────────────────────────────
-
-                  */}
                   {selectedServices.map((service) => {
   const serviceEdits = getSelectedServiceQuotationEdits(service);
   const selectedTransportUsageLabels =
@@ -8367,9 +8355,8 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
       )
       : [];
 
-  // ── Chip factory — every chip gets identical height + padding ──────────
-  const Chip = ({ icon, label, value, accent = "text-slate-300", iconColor = "text-slate-500" }) => (
-    <div className="inline-flex items-center gap-1.5 rounded-lg border border-[#212f45] bg-[#0a1018] px-2.5 py-1.25">
+  const Chip = ({ icon, label, value, accent = "text-slate-700", iconColor = "text-slate-500" }) => (
+    <div className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-slate-50 px-2.5 py-1.25">
       {icon && (
         <span className={`shrink-0 ${iconColor}`} style={{ lineHeight: 0 }}>
           {icon}
@@ -8384,35 +8371,31 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
     </div>
   );
 
-  // ── service-type accent colour ─────────────────────────────────────────
   const typeAccent =
     service.type === "hotel"
-      ? { bg: "bg-indigo-500/10", border: "border-indigo-500/20", text: "text-indigo-200" }
+      ? { bg: "bg-indigo-50", border: "border-indigo-200", text: "text-indigo-800 font-semibold" }
       : service.type === "activity"
-        ? { bg: "bg-emerald-500/10", border: "border-emerald-500/20", text: "text-emerald-200" }
+        ? { bg: "bg-emerald-50", border: "border-emerald-200", text: "text-emerald-800 font-semibold" }
         : service.type === "transfer" || service.type === "car"
-          ? { bg: "bg-violet-500/10", border: "border-violet-500/20", text: "text-violet-200" }
-          : { bg: "bg-blue-500/10", border: "border-blue-500/20", text: "text-blue-200" };
+          ? { bg: "bg-violet-50", border: "border-violet-200", text: "text-violet-800 font-semibold" }
+          : { bg: "bg-blue-50", border: "border-blue-200", text: "text-blue-800 font-semibold" };
 
   return (
     <div
       key={`selected-${service.id}`}
-      className="rounded-[24px] border border-[#22314a] bg-[#050505] p-3"
+      className="rounded-[24px] border border-gray-200 bg-white p-3 shadow-2xs"
     >
-      {/* ── inner glass card ── */}
-      <div className="rounded-[18px] border border-[#162233] bg-[#08111c] px-3 py-3">
+      <div className="rounded-[18px] border border-gray-200 bg-slate-50 px-3 py-3">
 
-        {/* ── Row 1: icon · title · price ── */}
         <div className="flex items-start gap-2.5">
-          <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full border border-[#27436d] bg-[#0b1627]">
+          <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full border border-gray-200 bg-white shadow-2xs">
             {renderSelectedServiceSummaryIcon(service)}
           </div>
 
           <div className="min-w-0 flex-1">
-            <p className="truncate text-[13px] font-semibold leading-tight text-white">
+            <p className="truncate text-[13px] font-semibold leading-tight text-slate-900">
               {service.title}
             </p>
-            {/* sub: city/country */}
             {(service.city || service.country) && (
               <p className="mt-0.5 text-[10px] text-slate-500 truncate">
                 {[service.city, service.country].filter(Boolean).join(", ")}
@@ -8421,28 +8404,25 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
           </div>
 
           <div className="flex-shrink-0 text-right pl-1">
-            <p className="text-[12px] font-semibold text-yellow-300 leading-tight whitespace-nowrap">
+            <p className="text-[12px] font-bold text-amber-700 leading-tight whitespace-nowrap">
               {formatCurrencyValue(service.originalTotal || 0, service.currency)}
             </p>
             {service.isForeignCurrency && (
-              <p className="mt-0.5 text-[10px] text-sky-300 whitespace-nowrap">
+              <p className="mt-0.5 text-[10px] text-sky-700 whitespace-nowrap">
                 ₹ {formatAmountValue(service.totalInInr || 0)}
               </p>
             )}
           </div>
         </div>
 
-        {/* ── Row 2: chips strip ── */}
         <div className="mt-2.5 flex flex-wrap gap-1.5">
 
-          {/* Type chip */}
           <div className={`inline-flex items-center rounded-lg border px-2.5 py-[5px] ${typeAccent.bg} ${typeAccent.border}`}>
             <span className={`text-[10px] font-semibold leading-none ${typeAccent.text}`}>
               {getServiceTypeLabel(service.type)}
             </span>
           </div>
 
-          {/* Date chip */}
           {service.serviceDate && (
             <Chip
               icon={
@@ -8454,7 +8434,6 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
             />
           )}
 
-          {/* Hotel: nights */}
           {service.type === "hotel" && Number(service.nights || 0) > 0 && (
             <Chip
               icon={
@@ -8463,11 +8442,10 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                 </svg>
               }
               value={`${service.nights} night${Number(service.nights) > 1 ? "s" : ""}`}
-              accent="text-sky-200"
+              accent="text-sky-800"
             />
           )}
 
-          {/* Hotel: rooms */}
           {service.type === "hotel" && Number(service.rooms || 0) > 0 && (
             <Chip
               icon={
@@ -8479,7 +8457,6 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
             />
           )}
 
-          {/* Hotel: bed type */}
           {service.type === "hotel" && service.bedType && (
             <Chip
               icon={
@@ -8488,12 +8465,11 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                 </svg>
               }
               value={getBedTypeOptionLabel(service.bedType)}
-              accent="text-amber-200"
-              iconColor="text-amber-400"
+              accent="text-amber-800"
+              iconColor="text-amber-600"
             />
           )}
 
-          {/* Transfer: selected usage */}
           {selectedTransportUsageLabels.map((label) => (
             <Chip
               key={`${service.id}-usage-${label}`}
@@ -8503,12 +8479,11 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                 </svg>
               }
               value={label}
-              accent="text-violet-200"
-              iconColor="text-violet-400"
+              accent="text-violet-800"
+              iconColor="text-violet-600"
             />
           ))}
 
-          {/* Transfer: selected limit */}
           {selectedTransportUsageLimitLabels.map((label) => (
             <Chip
               key={`${service.id}-limit-${label}`}
@@ -8518,12 +8493,11 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                 </svg>
               }
               value={label}
-              accent="text-amber-200"
-              iconColor="text-amber-400"
+              accent="text-amber-800"
+              iconColor="text-amber-600"
             />
           ))}
 
-          {/* Transfer: days */}
           {(service.type === "transfer" || service.type === "car") && Number(service.days || 0) > 0 && (
             <Chip
               icon={
@@ -8532,8 +8506,8 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                 </svg>
               }
               value={`${service.days} day${Number(service.days) > 1 ? "s" : ""}`}
-              accent="text-violet-200"
-              iconColor="text-violet-400"
+              accent="text-violet-800"
+              iconColor="text-violet-600"
             />
           )}
 
@@ -8545,12 +8519,11 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                 </svg>
               }
               value={`Pickup: ${service.pickupTime || service.time}`}
-              accent="text-yellow-200"
-              iconColor="text-yellow-400"
+              accent="text-amber-800"
+              iconColor="text-amber-600"
             />
           )}
 
-          {/* Activity: tourType + pricingBasis + pax + maxPax */}
           {service.type === "activity" && (
             <>
               {service.tourType && (
@@ -8561,8 +8534,8 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                     </svg>
                   }
                   value={service.tourType}
-                  accent="text-emerald-200"
-                  iconColor="text-emerald-400"
+                  accent="text-emerald-800"
+                  iconColor="text-emerald-600"
                 />
               )}
               {service.pricingBasis && (
@@ -8573,8 +8546,8 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                     </svg>
                   }
                   value={service.pricingBasis}
-                  accent="text-emerald-200"
-                  iconColor="text-emerald-400"
+                  accent="text-emerald-800"
+                  iconColor="text-emerald-600"
                 />
               )}
               {Number(service.pax || 0) > 0 && (
@@ -8585,8 +8558,8 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                     </svg>
                   }
                   value={`${service.pax} pax`}
-                  accent="text-emerald-200"
-                  iconColor="text-emerald-400"
+                  accent="text-emerald-800"
+                  iconColor="text-emerald-600"
                 />
               )}
               {service.maxPax && (
@@ -8597,26 +8570,25 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                     </svg>
                   }
                   value={service.maxPax.includes("Max") ? service.maxPax : `Max: ${service.maxPax}`}
-                  accent="text-purple-200"
-                  iconColor="text-purple-400"
+                  accent="text-purple-800"
+                  iconColor="text-purple-600"
                 />
               )}
             </>
           )}
 
-          {/* Sightseeing: tourType + pricingBasis + pax + maxPax */}
           {service.type === "sightseeing" && (
             <>
               {service.tourType && (
                 <Chip
                   icon={
                     <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <circle cx="12" cy="12" r="10"/><polygon points="12 8 8 12 12 16 16 12 12 8"/>
+                      <circle cx="12" cy="12" r="10"/><polygon points="12 8 8 12 12 16 12 16 12 12 8"/>
                     </svg>
                   }
                   value={service.tourType}
-                  accent="text-sky-200"
-                  iconColor="text-sky-400"
+                  accent="text-sky-800"
+                  iconColor="text-sky-600"
                 />
               )}
               {service.pricingBasis && (
@@ -8627,8 +8599,8 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                     </svg>
                   }
                   value={service.pricingBasis}
-                  accent="text-emerald-200"
-                  iconColor="text-emerald-400"
+                  accent="text-emerald-800"
+                  iconColor="text-emerald-600"
                 />
               )}
               {Number(service.pax || 0) > 0 && (
@@ -8639,8 +8611,8 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                     </svg>
                   }
                   value={`${service.pax} pax`}
-                  accent="text-blue-200"
-                  iconColor="text-blue-400"
+                  accent="text-blue-800"
+                  iconColor="text-blue-600"
                 />
               )}
               {service.maxPax && (
@@ -8651,22 +8623,21 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                     </svg>
                   }
                   value={service.maxPax.includes("Max") ? service.maxPax : `Max: ${service.maxPax}`}
-                  accent="text-purple-200"
-                  iconColor="text-purple-400"
+                  accent="text-purple-800"
+                  iconColor="text-purple-600"
                 />
               )}
             </>
           )}
         </div>
 
-        {/* ── Row 3: Quotation Edits ── */}
         {serviceEdits.length > 0 && (
-          <div className="mt-3 rounded-[14px] border border-sky-500/20 bg-[#071420] px-3 py-2.5">
+          <div className="mt-3 rounded-[14px] border border-sky-200 bg-sky-50 px-3 py-2.5">
             <div className="flex items-center justify-between gap-2 mb-2">
-              <p className="text-[8px] font-semibold uppercase tracking-[0.18em] text-sky-200/80">
+              <p className="text-[9px] font-semibold uppercase tracking-[0.18em] text-sky-800">
                 Quotation Edits
               </p>
-              <span className="rounded-full border border-sky-400/25 bg-sky-500/10 px-2 py-0.5 text-[7px] font-semibold text-sky-200">
+              <span className="rounded-full border border-sky-300 bg-white px-2 py-0.5 text-[8px] font-semibold text-sky-800">
                 {serviceEdits.length} update{serviceEdits.length === 1 ? "" : "s"}
               </span>
             </div>
@@ -8674,20 +8645,20 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
               {serviceEdits.map((edit) => {
                 const toneClasses =
                   edit.variant === "success"
-                    ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-200"
+                    ? "border-emerald-300 bg-emerald-50 text-emerald-800"
                     : edit.variant === "warning"
-                      ? "border-yellow-500/25 bg-yellow-500/10 text-yellow-100"
+                      ? "border-amber-300 bg-amber-50 text-amber-900"
                       : edit.variant === "danger"
-                        ? "border-red-500/25 bg-red-500/10 text-red-200"
-                        : "border-sky-500/20 bg-sky-500/10 text-sky-100";
+                        ? "border-red-300 bg-red-50 text-red-800"
+                        : "border-sky-300 bg-sky-50 text-sky-800";
                 const iconClasses =
                   edit.variant === "success"
-                    ? "text-emerald-300"
+                    ? "text-emerald-600"
                     : edit.variant === "warning"
-                      ? "text-yellow-300"
+                      ? "text-amber-600"
                       : edit.variant === "danger"
-                        ? "text-red-300"
-                        : "text-sky-300";
+                        ? "text-red-600"
+                        : "text-sky-600";
 
                 return (
                   <span
@@ -8706,21 +8677,20 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
         )}
       </div>
 
-      {/* ── Quick Actions ── */}
       <div className="mt-2.5 flex items-center justify-between gap-3 px-0.5">
-        <p className="text-[10px] font-medium text-slate-400">Quick Actions</p>
+        <p className="text-[10px] font-medium text-slate-500">Quick Actions</p>
         <div className="flex items-center gap-1.5">
           <button
             type="button"
             onClick={() => handleSelectedServiceEditAction(service)}
-            className="rounded-xl border border-sky-400/35 bg-sky-500/10 px-3.5 py-1.5 text-[11px] font-medium text-sky-200 transition hover:border-sky-300/50 hover:bg-sky-500/15 cursor-pointer"
+            className="rounded-xl border border-blue-200 bg-blue-50 px-3.5 py-1.5 text-[11px] font-semibold text-blue-700 transition hover:bg-blue-100 cursor-pointer shadow-2xs"
           >
             {editingServiceCardId === service.id ? "Save" : "Edit"}
           </button>
           <button
             type="button"
             onClick={() => handleSelectedServiceDelete(service)}
-            className="rounded-xl border border-red-400/25 bg-red-500/10 px-3.5 py-1.5 text-[11px] font-medium text-red-200 transition hover:border-red-300/50 hover:bg-red-500/15 cursor-pointer"
+            className="rounded-xl border border-red-200 bg-red-50 px-3.5 py-1.5 text-[11px] font-semibold text-red-600 transition hover:bg-red-100 cursor-pointer shadow-2xs"
           >
             Delete
           </button>
@@ -8731,9 +8701,9 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
 })}
                 </div>
               ) : (
-                <div className="mt-4 rounded-2xl border border-dashed border-[#28303d] bg-[#090909] px-4 py-6 text-center">
-                  <p className="text-sm font-medium text-white">No services selected yet</p>
-                  <p className="mt-1 text-xs text-slate-400">
+                <div className="mt-4 rounded-2xl border border-dashed border-gray-300 bg-slate-50 px-4 py-6 text-center">
+                  <p className="text-sm font-semibold text-slate-900">No services selected yet</p>
+                  <p className="mt-1 text-xs text-slate-500">
                     Pick services from the left panel and they will appear here automatically.
                   </p>
                 </div>
@@ -8741,74 +8711,70 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
               </motion.div>
             )}
 
-            <motion.div variants={rightCardVariants} className="bg-[#0e0e0e] border border-gray-700 rounded-xl p-4 text-sm space-y-4">
-              <div className="flex  gap-3">
-                <h2 className="font-semibold mb-2">Price Breakdown</h2>
+            <motion.div variants={rightCardVariants} className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm text-sm space-y-4 text-slate-900">
+              <div className="flex justify-between items-center gap-3">
+                <h2 className="font-semibold text-slate-900 text-base">Price Breakdown</h2>
 
                 <button
                   onClick={openOpsChargesPopup}
-                  className="text-xs bg-yellow-400 text-black px-3 py-1 rounded-lg hover:bg-yellow-500 font-medium cursor-pointer"
+                  className="text-xs bg-amber-500 hover:bg-amber-600 text-white px-3 py-1.5 rounded-lg font-semibold cursor-pointer shadow-xs transition"
                 >
                   + OPS Charges
                 </button>
               </div>
-              <p className="flex justify-between border-b border-[#232426] ">
-                <span className="text-[#90A1B9] mb-2">Selected Items</span>
-                <span>{isInvoiceRequestedStage ? 0 : selectedServices.length} items</span>
+              <p className="flex justify-between border-b border-gray-100 pb-2">
+                <span className="text-slate-500 text-xs">Selected Items</span>
+                <span className="font-semibold text-slate-800 text-xs">{isInvoiceRequestedStage ? 0 : selectedServices.length} items</span>
               </p>
-              {/* <p className="flex justify-between">
-                <span className="text-[#90A1B9]">Subtotal (Base Rates)</span>
-                <span>₹{baseRate}</span>
-              </p> */}
               <p className="flex justify-between">
-                <span className="text-[#90A1B9]">
+                <span className="text-slate-500 text-xs">
                   OPS Markup (
                   {marginType === "percentage"
                     ? `${markup}%`
                     : `₹ ${formatAmountValue(fixedMargin)}`}
                   )
                 </span>
-                <span className="text-yellow-400">
+                <span className="text-amber-700 font-semibold text-xs">
                   ₹ {formatAmountValue(isInvoiceRequestedStage ? 0 : opsMarkup)}
                 </span>
               </p>
               <p className="flex justify-between">
-                <span className="text-[#90A1B9]">
+                <span className="text-slate-500 text-xs">
                   Taxes (GST + TCS + Other)
                 </span>
                 <span
-                  className={`${(isInvoiceRequestedStage ? 0 : appliedTaxTotal) > 0 ? "text-green-400" : "text-red-400"}`}>
+                  className={`text-xs font-semibold ${(isInvoiceRequestedStage ? 0 : appliedTaxTotal) > 0 ? "text-emerald-700" : "text-slate-500"}`}>
                   ₹ {formatAmountValue(isInvoiceRequestedStage ? 0 : appliedTaxTotal)}
                 </span>
               </p>
               <p className="flex justify-between">
-                <span className="text-[#90A1B9]">Services Total</span>
-                <span className={`${(isInvoiceRequestedStage ? 0 : servicesTotal) > 0 ? "text-sky-500" : "text-red-400"}`}>₹ {formatAmountValue(isInvoiceRequestedStage ? 0 : servicesTotal)}</span>
+                <span className="text-slate-500 text-xs">Services Total</span>
+                <span className={`text-xs font-semibold ${(isInvoiceRequestedStage ? 0 : servicesTotal) > 0 ? "text-sky-700" : "text-slate-500"}`}>₹ {formatAmountValue(isInvoiceRequestedStage ? 0 : servicesTotal)}</span>
               </p>
               <p className="flex justify-between">
-                <span className="text-[#90A1B9]">Package Template Add-on</span>
-                <span className={`${(isInvoiceRequestedStage ? 0 : packageTemplateAmount) > 0 ? "text-emerald-400" : "text-gray-500"}`}>
+                <span className="text-slate-500 text-xs">Package Template Add-on</span>
+                <span className={`text-xs font-semibold ${(isInvoiceRequestedStage ? 0 : packageTemplateAmount) > 0 ? "text-emerald-700" : "text-slate-500"}`}>
                   ₹ {formatAmountValue(isInvoiceRequestedStage ? 0 : packageTemplateAmount)}
                 </span>
               </p>
               {!isInvoiceRequestedStage && shouldShowDualPricing && (
-                <div className="rounded-xl border border-[#20262f] bg-black/30 px-3 py-3 text-xs">
-                  <p className="font-medium text-slate-200">Foreign Currency Snapshot</p>
+                <div className="rounded-xl border border-gray-200 bg-slate-50 px-3 py-3 text-xs">
+                  <p className="font-semibold text-slate-800">Foreign Currency Snapshot</p>
                   <div className="mt-2 space-y-2">
                     {foreignCurrencyBreakdown.map((item) => (
                       <div
                         key={item.currency}
-                        className="flex items-center justify-between gap-3 rounded-lg border border-[#1d2430] bg-[#0a0f16] px-3 py-2"
+                        className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 bg-white px-3 py-2"
                       >
                         <div>
-                          <p className="font-medium text-slate-100">
+                          <p className="font-semibold text-slate-900">
                             {formatCurrencyValue(item.originalTotal, item.currency)}
                           </p>
-                          <p className="text-[11px] text-slate-400">
+                          <p className="text-[11px] text-slate-500">
                             1 {item.currency} = ₹ {formatExchangeRateValue(item.exchangeRate)}
                           </p>
                         </div>
-                        <span className="text-sky-300">
+                        <span className="text-sky-700 font-semibold">
                           ₹ {formatAmountValue(item.inrTotal)}
                         </span>
                       </div>
@@ -8817,17 +8783,17 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                 </div>
               )}
               {!isInvoiceRequestedStage && shouldShowDualPricing && (
-                <div className="rounded-xl border border-[#20262f] bg-black/30 px-3 py-3 text-xs">
-                  <p className="font-medium text-slate-200">FX to ₹</p>
+                <div className="rounded-xl border border-gray-200 bg-slate-50 px-3 py-3 text-xs">
+                  <p className="font-semibold text-slate-800">FX to ₹</p>
                   <div className="mt-2 space-y-2">
                     {foreignCurrencyBreakdown.map((item) => (
                       <label
                         key={`${item.currency}-fx`}
-                        className="flex items-center justify-between gap-3 rounded-lg border border-[#1d2430] bg-[#0a0f16] px-3 py-2"
+                        className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 bg-white px-3 py-2"
                       >
-                        <span className="text-slate-300">1 {item.currency}</span>
+                        <span className="text-slate-700 font-medium">1 {item.currency}</span>
                         <div className="flex items-center gap-2">
-                          <span className="text-slate-500">=</span>
+                          <span className="text-slate-400">=</span>
                           <input
                             type="number"
                             min="0"
@@ -8839,33 +8805,33 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                                 [item.currency]: Number(e.target.value || 0),
                               }))
                             }
-                            className="w-24 rounded-lg border border-[#374151] bg-[#050505] px-2 py-1.5 text-right text-white outline-none focus:border-yellow-400"
+                            className="w-24 rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-right text-slate-900 outline-none focus:border-[#3E63DD] shadow-2xs font-semibold"
                           />
-                          <span className="text-slate-400">₹</span>
+                          <span className="text-slate-500">₹</span>
                         </div>
                       </label>
                     ))}
                   </div>
                 </div>
               )}
-              <div className="flex justify-between text-lg font-bold mt-4  border-t border-t-yellow-400 ">
-                <span className="mt-1.5">Total Amount</span>
-                <span className="text-yellow-400 mt-1.5">
+              <div className="flex justify-between text-lg font-bold mt-4 pt-3 border-t border-gray-200">
+                <span className="mt-0.5 text-slate-900">Total Amount</span>
+                <span className="text-[#3E63DD] mt-0.5">
                   ₹ {formatAmountValue(isInvoiceRequestedStage ? 0 : totalAmount)}
                 </span>
               </div>
-              <p className="flex justify-between text-gray-400">
+              <p className="flex justify-between text-slate-500 text-xs">
                 <span>Cost per Passenger</span>
-                <span>₹ {formatAmountValue(isInvoiceRequestedStage ? 0 : costPerPassenger)}</span>
+                <span className="font-semibold text-slate-700">₹ {formatAmountValue(isInvoiceRequestedStage ? 0 : costPerPassenger)}</span>
               </p>
             </motion.div>
 
             {/*============================================ Buttons Finalize Button ==================================  */}
             <motion.div variants={rightCardVariants} className="hidden">
               {isInvoiceRequestedStage ? (
-                <div className="space-y-2 rounded-xl border border-sky-400/35 bg-sky-500/10 px-3 py-3 text-[11px] leading-5 text-sky-100">
+                <div className="space-y-2 rounded-xl border border-sky-200 bg-sky-50 px-3 py-3 text-[11px] leading-5 text-sky-800">
                   <div className="flex items-start gap-2">
-                    <div className="mt-0.5 flex shrink-0 items-center gap-1 text-sky-300">
+                    <div className="mt-0.5 flex shrink-0 items-center gap-1 text-sky-700">
                       <AlertCircle size={12} strokeWidth={2.4} />
                     </div>
                     <p>Client approval is already received. This booking now continues in the shared amount and documents workflow.</p>
@@ -8874,9 +8840,9 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
               ) : (
                 <button
                   onClick={() => setShowSendOptions(!showSendOptions)}
-                  className="w-full bg-yellow-400 text-black text-md py-2 rounded-xl font-semibold hover:bg-yellow-500 flex items-center justify-center gap-2 cursor-pointer"
+                  className="w-full bg-[#3E63DD] text-white text-md py-3 rounded-xl font-semibold hover:bg-[#3252c4] flex items-center justify-center gap-2 cursor-pointer shadow-sm transition"
                 >
-                  <Send />
+                  <Send size={16} />
                   Finalize & Send Quote
                 </button>
               )}
@@ -8886,21 +8852,21 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
               <div
                 style={sendOptionsPanelStyle}
                 className={`absolute bottom-full mb-3 right-0 min-w-[320px] backdrop-blur-xl
-      bg-linear-to-br from-[#8787875e] to-[#11111113] border border-gray-700/60
-      rounded-xl shadow-[0_10px_40px_rgba(0,0,0,0.6)] overflow-hidden z-50
-      transform transition-all duration-300 ease-out origin-bottom-right
+      bg-white border border-gray-200
+      rounded-xl shadow-2xl overflow-hidden z-50
+      transform transition-all duration-300 ease-out origin-bottom-right text-slate-900
       ${!isInvoiceRequestedStage && showSendOptions ? "opacity-100 scale-100 translate-y-0 pointer-events-auto"
                     : "opacity-0 scale-95 translate-y-2 pointer-events-none"
                   }`}
               >
                 {/** Header Info */}
-                <div className="px-5 py-3 border-b border-gray-700/60">
-                  <p className="text-sm text-gray-400">Agent: {order?.agent?.companyName}</p>
-                  <p className="text-xs text-gray-500">Email: {order?.agent?.email}</p>
-                  <p className="text-xs text-gray-500">
+                <div className="px-5 py-3 border-b border-gray-100 bg-slate-50">
+                  <p className="text-sm font-semibold text-slate-900">Agent: {order?.agent?.companyName}</p>
+                  <p className="text-xs text-slate-500">Email: {order?.agent?.email}</p>
+                  <p className="text-xs text-slate-500">
                     Selected Services: {services.filter(s => s.checked).length}
                   </p>
-                  <p className="text-xs text-gray-500">
+                  <p className="text-xs font-semibold text-amber-700">
                     Total Amount: {"\u20B9"} {formatAmountValue(totalAmount)}
                   </p>
                 </div>
@@ -8912,15 +8878,15 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                     <div
                       key={idx}
                       onClick={() => setSelectedSendOption(option.label)}
-                      className={`flex items-center gap-3 px-5 py-3 cursor-pointer border-b
-  ${selectedSendOption === option.label ? "bg-yellow-400/20" : "hover:bg-white/5"}`}
+                      className={`flex items-center gap-3 px-5 py-3 cursor-pointer border-b border-gray-100
+  ${selectedSendOption === option.label ? "bg-blue-50" : "hover:bg-slate-50"}`}
                     >
-                      <span className="flex h-9 w-9 items-center justify-center rounded-full bg-white/8 text-yellow-300">
+                      <span className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-100 text-blue-700">
                         <Icon className="h-4 w-4" />
                       </span>
                       <div>
-                        <p className="text-sm font-medium text-white">{option.label}</p>
-                        <p className="text-xs text-gray-400">{option.description}</p>
+                        <p className="text-sm font-semibold text-slate-900">{option.label}</p>
+                        <p className="text-xs text-slate-500">{option.description}</p>
                       </div>
                     </div>
                   );
@@ -8928,7 +8894,7 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
 
                 <button
                   onClick={() => handleFinalSend()}
-                  className="w-full bg-yellow-400 text-black py-2 font-semibold cursor-pointer"
+                  className="w-full bg-[#3E63DD] hover:bg-[#3252c4] text-white py-2.5 font-semibold cursor-pointer transition"
                 >
                   Send Now
                 </button>
@@ -8942,9 +8908,9 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
               {!isInvoiceRequestedStage && (
                 <button
                   onClick={() => setShowSendOptions(!showSendOptions)}
-                  className="w-full bg-yellow-400 text-black text-md py-2 rounded-xl font-semibold hover:bg-yellow-500 flex items-center justify-center gap-2 cursor-pointer"
+                  className="w-full bg-[#3E63DD] hover:bg-[#3252c4] text-white text-md py-3 rounded-xl font-semibold flex items-center justify-center gap-2 cursor-pointer shadow-sm transition"
                 >
-                  <Send />
+                  <Send size={16} />
                   Finalize & Send Quote
                 </button>
               )}
@@ -8952,20 +8918,20 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
               <div
                 style={sendOptionsPanelStyle}
                 className={`absolute bottom-full mb-3 right-0 min-w-[320px] backdrop-blur-xl
-      bg-linear-to-br from-[#8787875e] to-[#11111113] border border-gray-700/60
-      rounded-xl shadow-[0_10px_40px_rgba(0,0,0,0.6)] overflow-hidden z-50
+      bg-white border border-gray-200
+      rounded-2xl shadow-2xl overflow-hidden z-50 text-slate-900
       transform transition-all duration-300 ease-out origin-bottom-right
       ${!isInvoiceRequestedStage && showSendOptions ? "opacity-100 scale-100 translate-y-0 pointer-events-auto"
                     : "opacity-0 scale-95 translate-y-2 pointer-events-none"
                   }`}
               >
-                <div className="px-5 py-3 border-b border-gray-700/60">
-                  <p className="text-sm text-gray-400">Agent: {order?.agent?.companyName}</p>
-                  <p className="text-xs text-gray-500">Email: {order?.agent?.email}</p>
-                  <p className="text-xs text-gray-500">
+                <div className="px-5 py-3 border-b border-gray-100 bg-slate-50">
+                  <p className="text-sm font-semibold text-slate-900">Agent: {order?.agent?.companyName}</p>
+                  <p className="text-xs text-slate-500">Email: {order?.agent?.email}</p>
+                  <p className="text-xs text-slate-500">
                     Selected Services: {services.filter((s) => s.checked).length}
                   </p>
-                  <p className="text-xs text-gray-500">
+                  <p className="text-xs font-semibold text-amber-700">
                     Total Amount: {"\u20B9"} {formatAmountValue(totalAmount)}
                   </p>
                 </div>
@@ -8976,15 +8942,15 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                     <div
                       key={idx}
                       onClick={() => setSelectedSendOption(option.label)}
-                      className={`flex items-center gap-3 px-5 py-3 cursor-pointer border-b
-  ${selectedSendOption === option.label ? "bg-yellow-400/20" : "hover:bg-white/5"}`}
+                      className={`flex items-center gap-3 px-5 py-3 cursor-pointer border-b border-gray-100
+  ${selectedSendOption === option.label ? "bg-blue-50" : "hover:bg-slate-50"}`}
                     >
-                      <span className="flex h-9 w-9 items-center justify-center rounded-full bg-white/8 text-yellow-300">
+                      <span className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-100 text-blue-700">
                         <Icon className="h-4 w-4" />
                       </span>
                       <div>
-                        <p className="text-sm font-medium text-white">{option.label}</p>
-                        <p className="text-xs text-gray-400">{option.description}</p>
+                        <p className="text-sm font-semibold text-slate-900">{option.label}</p>
+                        <p className="text-xs text-slate-500">{option.description}</p>
                       </div>
                     </div>
                   );
@@ -8992,7 +8958,7 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
 
                 <button
                   onClick={() => handleFinalSend()}
-                  className="w-full bg-yellow-400 text-black py-2 font-semibold cursor-pointer"
+                  className="w-full bg-[#3E63DD] hover:bg-[#3252c4] text-white py-2.5 font-semibold cursor-pointer transition"
                 >
                   Send Now
                 </button>
@@ -9005,7 +8971,7 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                 type="button"
                 onClick={handleSaveDraftQuote}
                 disabled={savingDraftQuote}
-                className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-white py-2 text-md font-semibold text-gray-600 hover:text-gray-600 disabled:cursor-not-allowed disabled:opacity-70"
+                className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl border border-gray-300 bg-white py-2.5 text-md font-semibold text-slate-700 hover:bg-gray-50 shadow-xs disabled:cursor-not-allowed disabled:opacity-70 transition"
               >
                 <FileText size={18} />
                 {savingDraftQuote ? "Saving Draft..." : "Save as Draft"}
@@ -9014,7 +8980,7 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
 
             {/* Footer Note */}
             {!isInvoiceRequestedStage && (
-              <motion.p variants={rightCardVariants} className="text-xs border p-5 rounded-2xl text-[#8EC5FF] bg-[#2B7FFF1A]">
+              <motion.p variants={rightCardVariants} className="text-xs border border-blue-200 p-4 rounded-2xl text-blue-800 bg-blue-50 shadow-2xs">
                 {`Note: The quotation will be sent to ${order?.agent?.email || "agent email"}. Once the agent uploads the payment receipt, you can track the verification status in the Booking Hub.`}
               </motion.p>
             )}
@@ -9022,34 +8988,28 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
         </motion.div>
       </motion.section>
 
-      {/*======================== ✅ POPUP Ops Charges =============================================*/}
-
-
-
-
-
-    {showOpsPopup && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#050505]/78 p-3 backdrop-blur-[6px] sm:p-4">
-          <div className="relative my-auto flex h-[calc(100vh-16px)] w-full max-w-6xl flex-col overflow-hidden rounded-[30px] border border-yellow-500/25 bg-[#101010]/95 shadow-[0_28px_120px_rgba(0,0,0,0.65)] animate-slideDown sm:h-[calc(100vh-24px)]">
+      {/* ======================== POPUP Ops Charges ======================== */}
+      {showOpsPopup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-3 backdrop-blur-xs sm:p-4">
+          <div className="relative my-auto flex h-[calc(100vh-16px)] w-full max-w-6xl flex-col overflow-hidden rounded-[30px] border border-gray-200 bg-white shadow-2xl animate-slideDown sm:h-[calc(100vh-24px)] text-slate-900">
 
             {/* ===== HEADER (title + close only) ===== */}
-            <div className="relative border-b border-[#2a2a2a] bg-[radial-gradient(circle_at_top_left,_rgba(250,204,21,0.16),_transparent_38%),linear-gradient(135deg,#171717_0%,#101010_65%,#0b0b0b_100%)] px-5 py-3 sm:px-6">
-              <div className="absolute inset-y-0 right-0 w-48 bg-[radial-gradient(circle_at_center,_rgba(59,130,246,0.16),_transparent_68%)]" />
+            <div className="relative border-b border-gray-200 bg-slate-50 px-5 py-4 sm:px-6">
               <div className="relative flex items-start justify-between gap-4">
                 <div>
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-yellow-300/80">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-amber-700">
                     Premium Controls
                   </p>
-                  <h2 className="mt-2 text-xl font-semibold text-white sm:text-2xl">
+                  <h2 className="mt-1 text-xl font-bold text-slate-900 sm:text-2xl">
                     Charges & Taxation
                   </h2>
-                  <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-400">
+                  <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-500">
                     Tune ops charges and tax values from one compact control desk before sharing the quotation.
                   </p>
                 </div>
                 <button
                   onClick={() => setShowOpsPopup(false)}
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5 text-gray-400 transition hover:border-red-400/40 hover:bg-red-500/10 hover:text-red-300 cursor-pointer"
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-gray-300 bg-white text-slate-500 transition hover:bg-gray-100 hover:text-slate-900 cursor-pointer shadow-2xs"
                 >
                   ✕
                 </button>
@@ -9057,56 +9017,56 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
             </div>
 
             {/* ===== STICKY SUMMARY CARDS (won't scroll) ===== */}
-            <div className="border-b border-[#1e1e1e] px-5 pt-3 pb-3 sm:px-6">
+            <div className="border-b border-gray-200 bg-slate-50 px-5 pt-3 pb-3 sm:px-6">
               <div className="grid grid-cols-3 gap-2">
-                <div className="rounded-2xl border border-white/8 bg-black/25 px-3 py-2.5">
+                <div className="rounded-2xl border border-gray-200 bg-white px-3.5 py-2.5 shadow-2xs">
                   <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
                     Ops Charges
                   </p>
-                  <p className="mt-1.5 text-lg font-semibold text-white">
+                  <p className="mt-1 text-lg font-bold text-slate-900">
                     ₹ {formatAmountValue(
                       roundCurrencyAmount(Number(draftServiceCharge || 0) + Number(draftHandlingFee || 0)),
                     )}
                   </p>
-                  <p className="mt-0.5 text-xs text-slate-400">Service + handling setup</p>
+                  <p className="mt-0.5 text-[11px] text-slate-500">Service + handling setup</p>
                 </div>
-                <div className="rounded-2xl border border-white/8 bg-black/25 px-3 py-2.5">
+                <div className="rounded-2xl border border-gray-200 bg-white px-3.5 py-2.5 shadow-2xs">
                   <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
                     Tax Preview
                   </p>
-                  <p className="mt-1.5 text-lg font-semibold text-white">
+                  <p className="mt-1 text-lg font-bold text-slate-900">
                     ₹ {formatAmountValue(draftTaxationTotal)}
                   </p>
-                  <p className="mt-0.5 text-xs text-slate-400">Live GST, TCS and tourism total</p>
+                  <p className="mt-0.5 text-[11px] text-slate-500">Live GST, TCS and tourism total</p>
                 </div>
-                <div className="rounded-2xl border border-white/8 bg-black/25 px-3 py-2.5">
+                <div className="rounded-2xl border border-gray-200 bg-white px-3.5 py-2.5 shadow-2xs">
                   <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
                     Quote Validity
                   </p>
-                  <p className="mt-1.5 text-lg font-semibold text-white">
+                  <p className="mt-1 text-lg font-bold text-slate-900">
                     {draftValidTill || "Not set"}
                   </p>
-                  <p className="mt-0.5 text-xs text-slate-400">Applied to the current quotation</p>
+                  <p className="mt-0.5 text-[11px] text-slate-500">Applied to the current quotation</p>
                 </div>
               </div>
             </div>
 
             {/* ===== SCROLLABLE BODY ===== */}
-            <div className="dark-scrollbar flex-1 overflow-y-auto px-5 py-3 sm:px-6">
+            <div className="dark-scrollbar flex-1 overflow-y-auto px-5 py-4 sm:px-6 bg-slate-50">
 
               {/* Two-column layout */}
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-[0.9fr_1.1fr]">
 
                 {/* ======= OPS CHARGES ======= */}
-                <div className="rounded-[24px] border border-[#2d3238] bg-[linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0.01))] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+                <div className="rounded-[24px] border border-gray-200 bg-white p-4 shadow-2xs">
                   <div className="mb-3 flex items-start justify-between gap-3">
                     <div>
-                      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-yellow-300/75">
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-700">
                         Classic Desk
                       </p>
-                      <h3 className="mt-2 text-lg font-semibold text-white">OPS Charges</h3>
+                      <h3 className="mt-1 text-lg font-bold text-slate-900">OPS Charges</h3>
                     </div>
-                    <div className="rounded-full border border-yellow-500/20 bg-yellow-500/10 px-3 py-1 text-[11px] font-medium text-yellow-200">
+                    <div className="rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-[11px] font-semibold text-amber-800">
                       {taxSetupMode === "auto" ? "Auto Ready" : "Manual Setup"}
                     </div>
                   </div>
@@ -9119,7 +9079,7 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                       type="number"
                       value={draftServiceCharge}
                       onChange={(e) => setDraftServiceCharge(roundCurrencyAmount(e.target.value))}
-                      className="mt-2 w-full rounded-2xl border border-[#31363f] bg-[#0d0d0d] px-4 py-3 text-sm text-white placeholder:text-slate-500 outline-none transition focus:border-yellow-400 focus:bg-[#111]"
+                      className="mt-1.5 w-full rounded-2xl border border-gray-300 bg-white px-4 py-2.5 text-sm text-slate-900 placeholder:text-gray-400 outline-none transition focus:border-[#3E63DD] shadow-2xs font-semibold"
                     />
                   </div>
 
@@ -9131,7 +9091,7 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                       type="number"
                       value={draftHandlingFee}
                       onChange={(e) => setDraftHandlingFee(roundCurrencyAmount(e.target.value))}
-                      className="mt-2 w-full rounded-2xl border border-[#31363f] bg-[#0d0d0d] px-4 py-3 text-sm text-white placeholder:text-slate-500 outline-none transition focus:border-yellow-400 focus:bg-[#111]"
+                      className="mt-1.5 w-full rounded-2xl border border-gray-300 bg-white px-4 py-2.5 text-sm text-slate-900 placeholder:text-gray-400 outline-none transition focus:border-[#3E63DD] shadow-2xs font-semibold"
                     />
                   </div>
 
@@ -9143,24 +9103,24 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                       type="date"
                       value={draftValidTill}
                       onChange={(e) => setDraftValidTill(e.target.value)}
-                      className="mt-2 w-full rounded-2xl border border-[#31363f] bg-[#0d0d0d] px-4 py-3 pr-10 text-sm text-white outline-none transition focus:border-yellow-400 focus:bg-[#111] [color-scheme:dark] [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:invert [&::-webkit-calendar-picker-indicator]:brightness-[3] [&::-webkit-calendar-picker-indicator]:opacity-100 [&::-webkit-calendar-picker-indicator]:drop-shadow-[0_0_2px_rgba(255,255,255,0.9)]"
+                      className="mt-1.5 w-full rounded-2xl border border-gray-300 bg-white px-4 py-2.5 pr-10 text-sm text-slate-900 outline-none transition focus:border-[#3E63DD] shadow-2xs font-semibold"
                     />
                   </div>
 
-                  <div className="mt-4 rounded-2xl border border-white/6 bg-black/20 px-4 py-3 text-xs leading-5 text-slate-400">
+                  <div className="mt-4 rounded-2xl border border-gray-200 bg-slate-50 px-4 py-3 text-xs leading-5 text-slate-600">
                     These charges stay outside the service cards and shape the final commercial quote only.
                   </div>
                 </div>
 
                 {/* ======= TAXATION ======= */}
-                <div className="rounded-[24px] border border-[#2d3238] bg-[linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0.01))] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+                <div className="rounded-[24px] border border-gray-200 bg-white p-4 shadow-2xs">
                   <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
                     <div>
-                      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-sky-300/70">
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-sky-700">
                         Tax Console
                       </p>
-                      <h3 className="mt-2 text-lg font-semibold text-white">Taxation</h3>
-                      <p className="mt-1 text-[11px] leading-5 text-slate-400">
+                      <h3 className="mt-1 text-lg font-bold text-slate-900">Taxation</h3>
+                      <p className="mt-1 text-[11px] leading-5 text-slate-500">
                         Auto se default taxes enable ho jayenge, aur manual mode me aap har value edit kar sakte ho.
                       </p>
                     </div>
@@ -9170,8 +9130,8 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                         onClick={applyAutoTaxPreset}
                         className={`rounded-full px-3 py-1.5 text-[11px] font-semibold transition cursor-pointer ${
                           taxSetupMode === "auto"
-                            ? "border border-emerald-400/40 bg-emerald-500/15 text-emerald-200"
-                            : "border border-[#3a4456] bg-black/20 text-slate-300 hover:border-emerald-400/30 hover:text-emerald-200"
+                            ? "border border-emerald-300 bg-emerald-50 text-emerald-800 shadow-2xs"
+                            : "border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
                         }`}
                       >
                         Auto Taxes
@@ -9181,8 +9141,8 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                         onClick={() => setTaxSetupMode("manual")}
                         className={`rounded-full px-3 py-1.5 text-[11px] font-semibold transition cursor-pointer ${
                           taxSetupMode === "manual"
-                            ? "border border-yellow-400/40 bg-yellow-500/12 text-yellow-200"
-                            : "border border-[#3a4456] bg-black/20 text-slate-300 hover:border-yellow-400/30 hover:text-yellow-200"
+                            ? "border border-amber-300 bg-amber-50 text-amber-900 shadow-2xs"
+                            : "border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
                         }`}
                       >
                         Manual
@@ -9191,9 +9151,9 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                   </div>
 
                   {/* GST */}
-                  <div className="mb-3 flex flex-col justify-between rounded-2xl border border-[#31363f] bg-[#171717] p-3">
+                  <div className="mb-3 flex flex-col justify-between rounded-2xl border border-gray-200 bg-slate-50 p-3">
                     <div className="flex flex-wrap items-center justify-between gap-3">
-                      <label className="flex items-center gap-2 text-sm font-medium text-slate-100">
+                      <label className="flex items-center gap-2 text-sm font-semibold text-slate-900 cursor-pointer">
                         <input
                           type="checkbox"
                           checked={draftGstChecked}
@@ -9201,6 +9161,7 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                             setTaxSetupMode("manual");
                             setDraftGstChecked(!draftGstChecked);
                           }}
+                          className="h-4 w-4 rounded border-gray-300 text-[#3E63DD] focus:ring-[#3E63DD]"
                         />
                         GST (Goods & Services Tax)
                       </label>
@@ -9212,21 +9173,21 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                             setTaxSetupMode("manual");
                             setDraftGstPercent(Number(e.target.value || 0));
                           }}
-                          className="w-18 rounded-2xl border border-[#434a57] bg-black px-3 py-2 text-center text-xs text-white outline-none"
+                          className="w-18 rounded-xl border border-gray-300 bg-white px-3 py-1.5 text-center text-xs font-semibold text-slate-900 outline-none focus:border-[#3E63DD] shadow-2xs"
                         />
-                        <span className="text-blue-400 text-xs">%</span>
+                        <span className="text-blue-700 text-xs font-bold">%</span>
                       </div>
                     </div>
-                    <p className="mt-2 flex items-center justify-between gap-3 text-[11px] leading-5 text-slate-400">
+                    <p className="mt-2 flex items-center justify-between gap-3 text-[11px] leading-5 text-slate-500">
                       <span>GST amount will be calculated from the taxable quotation value.</span>
-                      <span className="text-emerald-300">₹ {formatAmountValue(draftGstFinal)}</span>
+                      <span className="text-emerald-700 font-bold">₹ {formatAmountValue(draftGstFinal)}</span>
                     </p>
                   </div>
 
                   {/* TCS */}
-                  <div className="mb-3 flex flex-col justify-between rounded-2xl border border-[#31363f] bg-[#171717] p-3">
+                  <div className="mb-3 flex flex-col justify-between rounded-2xl border border-gray-200 bg-slate-50 p-3">
                     <div className="flex flex-wrap items-center justify-between gap-3">
-                      <label className="flex items-center gap-2 text-sm font-medium text-slate-100">
+                      <label className="flex items-center gap-2 text-sm font-semibold text-slate-900 cursor-pointer">
                         <input
                           type="checkbox"
                           checked={draftTcsChecked}
@@ -9234,6 +9195,7 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                             setTaxSetupMode("manual");
                             setDraftTcsChecked(!draftTcsChecked);
                           }}
+                          className="h-4 w-4 rounded border-gray-300 text-[#3E63DD] focus:ring-[#3E63DD]"
                         />
                         TCS (Tax Collected at Source)
                       </label>
@@ -9245,21 +9207,21 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                             setTaxSetupMode("manual");
                             setDraftTcsPercent(Number(e.target.value || 0));
                           }}
-                          className="w-18 rounded-2xl border border-[#434a57] bg-black px-3 py-2 text-center text-xs text-white outline-none"
+                          className="w-18 rounded-xl border border-gray-300 bg-white px-3 py-1.5 text-center text-xs font-semibold text-slate-900 outline-none focus:border-[#3E63DD] shadow-2xs"
                         />
-                        <span className="text-blue-400 text-xs">%</span>
+                        <span className="text-blue-700 text-xs font-bold">%</span>
                       </div>
                     </div>
-                    <p className="mt-2 flex items-center justify-between gap-3 text-[11px] leading-5 text-slate-400">
+                    <p className="mt-2 flex items-center justify-between gap-3 text-[11px] leading-5 text-slate-500">
                       <span>TCS amount will be calculated from the taxable quotation value.</span>
-                      <span className="text-emerald-300">₹ {formatAmountValue(draftTcsFinal)}</span>
+                      <span className="text-emerald-700 font-bold">₹ {formatAmountValue(draftTcsFinal)}</span>
                     </p>
                   </div>
 
                   {/* Tourism Fees */}
-                  <div className="mb-3 flex flex-col justify-end rounded-2xl border border-[#31363f] bg-[#171717] p-3">
+                  <div className="mb-3 flex flex-col justify-end rounded-2xl border border-gray-200 bg-slate-50 p-3">
                     <div className="flex flex-wrap items-center justify-between gap-3">
-                      <label className="flex items-center gap-2 text-sm font-medium text-slate-100">
+                      <label className="flex items-center gap-2 text-sm font-semibold text-slate-900 cursor-pointer">
                         <input
                           type="checkbox"
                           checked={draftTourismChecked}
@@ -9267,10 +9229,11 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                             setTaxSetupMode("manual");
                             setDraftTourismChecked(!draftTourismChecked);
                           }}
+                          className="h-4 w-4 rounded border-gray-300 text-[#3E63DD] focus:ring-[#3E63DD]"
                         />
                         Tourism Development Fee
                       </label>
-                      <span className="text-blue-400 text-sm">₹{DEFAULT_TOURISM_AMOUNT}</span>
+                      <span className="text-blue-700 text-sm font-bold">₹{DEFAULT_TOURISM_AMOUNT}</span>
                     </div>
                     {draftTourismChecked && (
                       <input
@@ -9280,15 +9243,15 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                           setTaxSetupMode("manual");
                           setDraftTourismAmount(roundCurrencyAmount(e.target.value || 0));
                         }}
-                        className="mt-3 w-full rounded-2xl border border-[#31363f] bg-black px-4 py-3 text-sm text-white placeholder:text-slate-500 focus:border-yellow-400 outline-none"
+                        className="mt-3 w-full rounded-2xl border border-gray-300 bg-white px-4 py-2.5 text-sm text-slate-900 placeholder:text-gray-400 focus:border-[#3E63DD] outline-none font-semibold shadow-2xs"
                       />
                     )}
                   </div>
 
                   {/* Total Tax */}
-                  <div className="mt-4 flex justify-between rounded-2xl border border-white/6 bg-black/25 px-4 py-3">
-                    <span className="text-sm font-medium text-slate-300">Total Tax Amount</span>
-                    <span className="text-lg font-semibold text-white">
+                  <div className="mt-4 flex justify-between rounded-2xl border border-gray-200 bg-slate-100 px-4 py-3">
+                    <span className="text-sm font-semibold text-slate-700">Total Tax Amount</span>
+                    <span className="text-lg font-bold text-slate-900">
                       ₹{formatAmountValue(draftTaxationTotal)}
                     </span>
                   </div>
@@ -9298,14 +9261,14 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
             </div>
 
             {/* ===== FOOTER BUTTONS ===== */}
-            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#2a2a2a] bg-black/20 px-5 py-3 sm:px-6">
-              <p className="text-xs uppercase tracking-[0.16em] text-slate-500">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-200 bg-white px-5 py-3.5 sm:px-6">
+              <p className="text-xs uppercase tracking-[0.16em] text-slate-500 font-semibold">
                 Quote control panel
               </p>
               <div className="flex flex-wrap justify-end gap-3">
                 <button
                   onClick={() => setShowOpsPopup(false)}
-                  className="px-4 py-2 text-sm border border-[#404654] rounded-full text-gray-300 hover:bg-gray-800 cursor-pointer"
+                  className="px-5 py-2 text-sm border border-gray-300 rounded-full text-slate-700 hover:bg-gray-50 font-semibold cursor-pointer transition shadow-2xs"
                 >
                   Cancel
                 </button>
@@ -9328,7 +9291,7 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                       toast.success("Charges & taxation applied");
                     }, 200);
                   }}
-                  className="px-5 py-2 text-sm bg-yellow-400 text-black rounded-full font-semibold hover:bg-yellow-500 cursor-pointer shadow-[0_12px_30px_rgba(250,204,21,0.18)]"
+                  className="px-6 py-2 text-sm bg-amber-500 text-white rounded-full font-bold hover:bg-amber-600 cursor-pointer shadow-xs transition"
                 >
                   Apply
                 </button>
@@ -9339,13 +9302,6 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
         </div>
       )}
 
-
-
-
-
-
-
-
       <AnimatePresence>
         {transportSelectionConfirm.open && (
           <motion.div
@@ -9353,21 +9309,21 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.22, ease: "easeOut" }}
-            className="fixed inset-0 z-[71] flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm"
+            className="fixed inset-0 z-[71] flex items-center justify-center bg-slate-900/60 px-4 backdrop-blur-xs"
           >
             <motion.div
               initial={{ opacity: 0, y: 18, scale: 0.96 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 18, scale: 0.96 }}
               transition={{ duration: 0.24, ease: "easeOut" }}
-              className="w-full max-w-sm rounded-[28px] border border-yellow-400/20 bg-[#111111] p-6 shadow-[0_24px_80px_rgba(0,0,0,0.55)]"
+              className="w-full max-w-sm rounded-[28px] border border-gray-200 bg-white p-6 shadow-2xl text-slate-900"
             >
             <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-yellow-300/80">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-amber-700">
                   Transport Warning
                 </p>
-                <h3 className="mt-2 text-xl font-semibold text-white">
+                <h3 className="mt-1 text-xl font-bold text-slate-900">
                   Confirm this transport service?
                 </h3>
               </div>
@@ -9382,47 +9338,47 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                     passengerCount: 0,
                   })
                 }
-                className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-slate-400 transition hover:border-red-400/40 hover:bg-red-500/10 hover:text-red-300"
+                className="flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-slate-50 text-slate-500 transition hover:bg-gray-100 hover:text-slate-900 cursor-pointer"
               >
                 <X size={18} />
               </button>
             </div>
 
-            <p className="mt-3 text-sm leading-6 text-slate-300">
+            <p className="mt-3 text-sm leading-6 text-slate-600">
               {transportSelectionConfirm.passengerCapacity < transportSelectionConfirm.passengerCount ? (
                 <>
                   This transport vehicle is for only{" "}
-                  <span className="font-semibold text-yellow-300">{transportSelectionConfirm.passengerCapacity} pax</span> (
-                  <span className="text-slate-400">{transportSelectionConfirm.luggageCapacity || 2} luggage bags</span>),
+                  <span className="font-semibold text-amber-700">{transportSelectionConfirm.passengerCapacity} pax</span> (
+                  <span className="text-slate-500">{transportSelectionConfirm.luggageCapacity || 2} luggage bags</span>),
                   while this booking has{" "}
-                  <span className="font-semibold text-red-400">
+                  <span className="font-semibold text-red-600">
                     {transportSelectionConfirm.passengerCount} passengers
                   </span>.
                   The passenger count exceeds vehicle capacity. Are you sure you want to select{" "}
-                  <span className="font-semibold text-white">{transportSelectionConfirm.serviceTitle}</span>?
+                  <span className="font-semibold text-slate-900">{transportSelectionConfirm.serviceTitle}</span>?
                 </>
               ) : transportSelectionConfirm.passengerCount <= 4 && transportSelectionConfirm.passengerCapacity >= 6 ? (
                 <>
-                  For <span className="font-semibold text-yellow-300">{transportSelectionConfirm.passengerCount} passengers</span>,
-                  a <span className="font-semibold text-white">Sedan (3–4 Pax, 2–3 Bags)</span> is usually more suitable and cost-effective.
+                  For <span className="font-semibold text-amber-700">{transportSelectionConfirm.passengerCount} passengers</span>,
+                  a <span className="font-semibold text-slate-900">Sedan (3–4 Pax, 2–3 Bags)</span> is usually more suitable and cost-effective.
                   <br />
-                  You have selected <span className="font-semibold text-white">{transportSelectionConfirm.serviceTitle}</span> (Capacity:{" "}
-                  <span className="font-semibold text-yellow-300">{transportSelectionConfirm.passengerCapacity} pax</span>, Luggage:{" "}
-                  <span className="font-semibold text-sky-300">{transportSelectionConfirm.luggageCapacity || 4} bags</span>).
+                  You have selected <span className="font-semibold text-slate-900">{transportSelectionConfirm.serviceTitle}</span> (Capacity:{" "}
+                  <span className="font-semibold text-amber-700">{transportSelectionConfirm.passengerCapacity} pax</span>, Luggage:{" "}
+                  <span className="font-semibold text-sky-700">{transportSelectionConfirm.luggageCapacity || 4} bags</span>).
                   <br />
                   Do you want to continue with this vehicle?
                 </>
               ) : (
                 <>
                   This transport service is for{" "}
-                  <span className="font-semibold text-yellow-300">{transportSelectionConfirm.passengerCapacity} pax</span> (
-                  <span className="text-slate-400">{transportSelectionConfirm.luggageCapacity || 2} bags</span>),
+                  <span className="font-semibold text-amber-700">{transportSelectionConfirm.passengerCapacity} pax</span> (
+                  <span className="text-slate-500">{transportSelectionConfirm.luggageCapacity || 2} bags</span>),
                   while this booking currently has{" "}
-                  <span className="font-semibold text-white">
+                  <span className="font-semibold text-slate-900">
                     {transportSelectionConfirm.passengerCount} passenger{transportSelectionConfirm.passengerCount === 1 ? "" : "s"}
                   </span>.
                   Are you sure you want to continue with{" "}
-                  <span className="font-semibold text-white">{transportSelectionConfirm.serviceTitle}</span>?
+                  <span className="font-semibold text-slate-900">{transportSelectionConfirm.serviceTitle}</span>?
                 </>
               )}
             </p>
@@ -9439,7 +9395,7 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                     passengerCount: 0,
                   })
                 }
-                className="flex-1 rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-white/10"
+                className="flex-1 rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-gray-50 shadow-2xs"
               >
                 Cancel
               </button>
@@ -9458,7 +9414,7 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                     toggleService(pendingServiceId, true);
                   }
                 }}
-                className="flex-1 rounded-xl bg-yellow-400 px-4 py-2.5 text-sm font-semibold text-black transition hover:bg-yellow-500"
+                className="flex-1 rounded-xl bg-amber-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-amber-600 shadow-xs cursor-pointer"
               >
                 Yes, Continue
               </button>
@@ -9470,27 +9426,27 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
 
       {/*======================== ✅ POPUP Success final Charges =============================================*/}
       {showFinanceInvoiceConfirm && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm">
-          <div className="w-full max-w-sm rounded-[28px] border border-yellow-400/20 bg-[#111111] p-6 shadow-[0_24px_80px_rgba(0,0,0,0.55)]">
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/60 px-4 backdrop-blur-xs">
+          <div className="w-full max-w-sm rounded-[28px] border border-gray-200 bg-white p-6 shadow-2xl text-slate-900">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-yellow-300/80">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-amber-700">
                   Finance Invoice
                 </p>
-                <h3 className="mt-2 text-xl font-semibold text-white">
+                <h3 className="mt-1 text-xl font-bold text-slate-900">
                   Continue with approved booking?
                 </h3>
               </div>
               <button
                 type="button"
                 onClick={() => setShowFinanceInvoiceConfirm(false)}
-                className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-slate-400 transition hover:border-red-400/40 hover:bg-red-500/10 hover:text-red-300"
+                className="flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-slate-50 text-slate-500 transition hover:bg-gray-100 hover:text-slate-900 cursor-pointer"
               >
                 <X size={18} />
               </button>
             </div>
 
-            <p className="mt-3 text-sm leading-6 text-slate-300">
+            <p className="mt-3 text-sm leading-6 text-slate-600">
               This will continue the approved booking flow and notify the agent that the booking is in the amount and documents stage.
             </p>
 
@@ -9498,14 +9454,14 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
               <button
                 type="button"
                 onClick={() => setShowFinanceInvoiceConfirm(false)}
-                className="flex-1 rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-white/10"
+                className="flex-1 rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-gray-50 shadow-2xs cursor-pointer"
               >
                 No
               </button>
               <button
                 type="button"
                 onClick={generateFinalInvoice}
-                className="flex-1 rounded-xl bg-yellow-400 px-4 py-2.5 text-sm font-semibold text-black transition hover:bg-yellow-500"
+                className="flex-1 rounded-xl bg-amber-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-amber-600 shadow-xs cursor-pointer"
               >
                 Yes
               </button>
@@ -9515,19 +9471,19 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
       )}
 
       {successPopup.open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs">
 
-          <div className="bg-[#111] border border-yellow-500/40 rounded-2xl p-6 w-100 text-center shadow-2xl animate-scaleIn">
+          <div className="bg-white border border-gray-200 rounded-3xl p-6 w-100 text-center shadow-2xl animate-scaleIn text-slate-900">
 
             {/* ICON */}
             <div className="flex justify-center mb-4">
-              <div className="w-16 h-16 rounded-full bg-yellow-400 flex items-center justify-center text-black text-3xl">
+              <div className="w-16 h-16 rounded-full bg-amber-500 flex items-center justify-center text-white text-3xl font-bold shadow-xs">
                 ✓
               </div>
             </div>
 
             {/* TITLE */}
-            <h2 className="text-xl font-semibold text-white mb-2">
+            <h2 className="text-xl font-bold text-slate-900 mb-2">
               {successPopup.kind === "invoice"
                 ? "Finance Invoice Prepared"
                 : successPopup.deliveryWarnings?.length
@@ -9536,7 +9492,7 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
             </h2>
 
             {/* SUBTEXT */}
-            <p className="text-gray-400 text-sm mb-4">
+            <p className="text-slate-500 text-sm mb-4">
               {successPopup.kind === "invoice"
                 ? "The approved quotation has been converted into a finance-ready invoice. Finance team will share the final invoice with the agent."
                 : successPopup.deliveryWarnings?.length
@@ -9545,16 +9501,16 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
             </p>
 
             {/* DETAILS */}
-            <div className="bg-[#1a1a1a] rounded-xl p-3 text-left text-xs mb-4">
+            <div className="bg-slate-50 border border-gray-200 rounded-xl p-3 text-left text-xs mb-4">
               {successPopup.kind === "invoice" && (
                 <p className="flex justify-between">
-                  <span className="text-gray-400">Invoice Number</span>
-                  <span className="text-white">{successPopup.invoiceNumber || "-"}</span>
+                  <span className="text-slate-500">Invoice Number</span>
+                  <span className="text-slate-900 font-semibold">{successPopup.invoiceNumber || "-"}</span>
                 </p>
               )}
               <p className="flex justify-between">
-                <span className="text-gray-400">Agent</span>
-                <span className="text-white">
+                <span className="text-slate-500">Agent</span>
+                <span className="text-slate-900 font-semibold">
                   {successPopup.agentName ||
                     order?.agent?.companyName ||
                     order?.agent?.name ||
@@ -9563,22 +9519,22 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
               </p>
 
               <p className="flex justify-between mt-1">
-                <span className="text-gray-400">Total Amount</span>
-                <span className="text-yellow-400">₹ {formatAmountValue(successPopup.totalAmount || 0)}</span>
+                <span className="text-slate-500">Total Amount</span>
+                <span className="text-amber-700 font-bold">₹ {formatAmountValue(successPopup.totalAmount || 0)}</span>
               </p>
 
               <p className="flex justify-between mt-1">
-                <span className="text-gray-400">Services</span>
-                <span className="text-white">{successPopup.serviceCount}</span>
+                <span className="text-slate-500">Services</span>
+                <span className="text-slate-900 font-semibold">{successPopup.serviceCount}</span>
               </p>
             </div>
 
             {successPopup.kind === "quote" && successPopup.deliveryWarnings?.length > 0 && (
-              <div className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-left">
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-300">
+              <div className="mb-4 rounded-xl border border-amber-300 bg-amber-50 p-3 text-left">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-800">
                   Delivery Issue
                 </p>
-                <p className="mt-1 text-sm text-amber-100">
+                <p className="mt-1 text-sm text-amber-900">
                   {successPopup.deliveryWarnings[0]}
                 </p>
               </div>
@@ -9588,7 +9544,7 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
             <div className="flex gap-3">
               <button
                 onClick={() => setSuccessPopup((prev) => ({ ...prev, open: false }))}
-                className="w-full bg-gray-800 text-white py-2 rounded-xl hover:bg-gray-700"
+                className="w-full border border-gray-300 bg-white text-slate-700 py-2.5 rounded-xl font-semibold hover:bg-gray-50 shadow-2xs cursor-pointer"
               >
                 Close
               </button>
@@ -9598,7 +9554,7 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                   setSuccessPopup((prev) => ({ ...prev, open: false }));
                   navigate(successPopup.kind === "invoice" ? "/ops/bookings-management" : "/ops/dashboard");
                 }}
-                className="w-full bg-yellow-400 text-black py-2 rounded-xl font-semibold hover:bg-yellow-500"
+                className="w-full bg-amber-500 text-white py-2.5 rounded-xl font-semibold hover:bg-amber-600 shadow-xs cursor-pointer"
               >
                 {successPopup.kind === "invoice" ? "Go to Booking Hub" : "Go to Dashboard"}
               </button>
@@ -9616,12 +9572,12 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
             transition={{ duration: 0.2 }}
             className="fixed bottom-5 right-5 z-[60]"
           >
-            <div className="min-w-[280px] max-w-[320px] rounded-2xl border border-yellow-500/25 bg-[#111111]/95 p-3 shadow-[0_18px_45px_rgba(0,0,0,0.35)] backdrop-blur-sm">
+            <div className="min-w-[280px] max-w-[320px] rounded-2xl border border-gray-200 bg-white p-3 shadow-xl backdrop-blur-sm text-slate-900">
               <div className="flex items-start gap-3">
                 <div
                   className={`mt-0.5 flex h-9 w-9 items-center justify-center rounded-xl ${quickActionPopup.type === "delete"
-                    ? "bg-red-500/12 text-red-300"
-                    : "bg-emerald-500/12 text-emerald-300"
+                    ? "bg-red-50 text-red-600 border border-red-200"
+                    : "bg-emerald-50 text-emerald-600 border border-emerald-200"
                     }`}
                 >
                   {quickActionPopup.type === "delete" ? (
@@ -9631,10 +9587,10 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                   )}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm font-semibold text-white">
+                  <p className="text-sm font-semibold text-slate-900">
                     {quickActionPopup.title}
                   </p>
-                  <p className="mt-1 text-xs leading-5 text-gray-400">
+                  <p className="mt-1 text-xs leading-5 text-slate-500">
                     {quickActionPopup.message}
                   </p>
                 </div>
@@ -9771,13 +9727,13 @@ const Service = ({
 
   /* ── shared micro-styles ── */
   const selectCls =
-    "bg-[#0a0a0a] border border-[#2a2a2a] hover:border-yellow-600/50 text-white text-[11px] rounded-lg px-2.5 py-1.5 outline-none cursor-pointer transition-colors focus:border-yellow-500";
+    "bg-white border border-gray-300 hover:border-[#3E63DD] text-slate-900 text-[11px] rounded-lg px-2.5 py-1.5 outline-none cursor-pointer transition-colors focus:border-[#3E63DD] shadow-2xs font-medium";
 
   const inputCls =
-    "bg-[#0a0a0a] border border-[#2a2a2a] hover:border-yellow-600/50 text-white text-[11px] rounded-lg px-2.5 py-1.5 w-20 outline-none transition-colors focus:border-yellow-500";
+    "bg-white border border-gray-300 hover:border-[#3E63DD] text-slate-900 text-[11px] rounded-lg px-2.5 py-1.5 w-20 outline-none transition-colors focus:border-[#3E63DD] shadow-2xs font-semibold";
 
   const dateCls =
-    "w-full bg-[#111] border border-[#343434] hover:border-yellow-600/60 text-white text-[11px] rounded-lg px-3 py-2.5 pr-9 outline-none transition-colors focus:border-yellow-500 [color-scheme:dark] [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-0";
+    "w-full bg-white border border-gray-300 hover:border-[#3E63DD] text-slate-900 text-[11px] rounded-lg px-3 py-2 pr-9 outline-none transition-colors focus:border-[#3E63DD] shadow-2xs font-semibold [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-0";
 
   const openDatePicker = (event) => {
     const input = event.currentTarget
@@ -9923,16 +9879,16 @@ const Service = ({
       initial="hidden"
       animate="visible"
       variants={serviceCardVariants}
-      className={`scroll-mt-28 mb-3 rounded-2xl border transition-all duration-200
-        ${isEditorFocused ? "ring-2 ring-sky-400/60 ring-offset-2 ring-offset-black" : ""}
+      className={`scroll-mt-28 mb-3 rounded-2xl border transition-all duration-200 text-slate-900
+        ${isEditorFocused ? "ring-2 ring-sky-500 ring-offset-2 ring-offset-slate-50" : ""}
         ${service.checked
-          ? "border-yellow-500/50 bg-[#0d0b00]"
-          : "border-[#1f1f1f] bg-[#0b0b0b] hover:border-[#2a2a2a]"
+          ? "border-amber-400 bg-amber-50/40 shadow-xs"
+          : "border-gray-200 bg-white hover:border-gray-300 shadow-2xs"
         }`}
     >
       {/* ── TOP ACCENT ── */}
       {service.checked && (
-        <div className="h-[1.5px] bg-gradient-to-r from-transparent via-yellow-500/50 to-transparent" />
+        <div className="h-[2px] bg-[#3E63DD]" />
       )}
 
       {/* ════════════════════════════════════════════
@@ -9943,27 +9899,27 @@ const Service = ({
           type="checkbox"
           checked={service.checked}
           onChange={() => toggleService(service.id)}
-          className="accent-yellow-400 mt-1 h-3.5 w-3.5 flex-shrink-0 cursor-pointer"
+          className="h-4 w-4 rounded border-gray-300 text-[#3E63DD] focus:ring-[#3E63DD] mt-1 shrink-0 cursor-pointer"
         />
 
         <div className="min-w-0">
-          <div className="grid grid-cols-[48px_minmax(0,1fr)] gap-x-4 gap-y-2">
-            <div className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl border text-lg
-              ${service.checked ? "border-yellow-500/20 bg-yellow-500/10" : "border-[#222] bg-[#161616]"}`}>
-              <span className={service.color || "text-gray-400"}>{service.icon || "Hotel"}</span>
+          <div className="grid grid-cols-[44px_minmax(0,1fr)] gap-x-3 gap-y-2">
+            <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border text-lg shadow-2xs
+              ${service.checked ? "border-amber-300 bg-amber-100" : "border-gray-200 bg-slate-50"}`}>
+              <span className={service.color || "text-gray-600"}>{service.icon || "Hotel"}</span>
             </div>
 
-            <div className="min-w-0 space-y-2">
+            <div className="min-w-0 space-y-1.5">
               <div className="flex flex-wrap items-center gap-2">
-                <p className="min-w-0 text-[13px] font-semibold leading-tight text-white">{service.serviceName || service.title || service.hotelName}</p>
+                <p className="min-w-0 text-sm font-semibold leading-tight text-slate-900">{service.serviceName || service.title || service.hotelName}</p>
 
-                <div className="inline-flex flex-shrink-0 items-center gap-2">
+                <div className="inline-flex shrink-0 items-center gap-2">
                   {service.checked ? (
-                    <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-emerald-300">
+                    <span className="rounded-full border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-emerald-800">
                       Added to Quote
                     </span>
                   ) : (
-                    <span className="rounded-full border border-slate-600/30 bg-slate-700/20 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-slate-400">
+                    <span className="rounded-full border border-gray-200 bg-slate-100 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-slate-500">
                       Not Selected
                     </span>
                   )}
@@ -9979,7 +9935,7 @@ const Service = ({
 
                         onStartServiceEdit?.(service);
                       }}
-                      className="inline-flex h-[22px] cursor-pointer items-center rounded-lg border border-sky-400/30 bg-sky-500/10 px-3 text-[10px] font-medium text-sky-200 transition hover:border-sky-300/50 hover:bg-sky-500/15"
+                      className="inline-flex h-[22px] cursor-pointer items-center rounded-lg border border-blue-200 bg-blue-50 px-2.5 text-[10px] font-semibold text-blue-700 transition hover:bg-blue-100 shadow-2xs"
                     >
                       {isEditMode ? "Review & Save" : "Click to Edit"}
                     </button>
@@ -9987,24 +9943,24 @@ const Service = ({
                 </div>
 
                 {isEditMode && service.checked && (
-                  <span className="rounded-full border border-sky-500/30 bg-sky-500/10 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-sky-300">
+                  <span className="rounded-full border border-sky-300 bg-sky-50 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-sky-800">
                     Editing
                   </span>
                 )}
                 {service.custom && (
-                  <span className="rounded-full bg-yellow-400 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-black">
+                  <span className="rounded-full bg-amber-500 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white">
                     Custom
                   </span>
                 )}
               </div>
 
-              <div className="flex flex-wrap items-center gap-3 text-[10px] text-slate-300">
-                <span className="flex items-center gap-1">
-                  <ImLocation2 className="text-emerald-400" />
+              <div className="flex flex-wrap items-center gap-3 text-xs text-slate-600">
+                <span className="flex items-center gap-1 font-medium">
+                  <ImLocation2 className="text-emerald-600" />
                   {[service.city, service.country].filter(Boolean).join(", ")}
                 </span>
                 {service.type === "hotel" && (
-                  <span className="flex items-center gap-1.5 text-slate-300">
+                  <span className="flex items-center gap-1.5 text-slate-600">
                     <span className="text-slate-400 font-normal">Hotel:</span>
                     {Array.isArray(service.hotels) && service.hotels.length > 1 ? (
                       <div className="relative inline-flex items-center">
@@ -10014,33 +9970,33 @@ const Service = ({
                             updateField(service.id, "hotelName", e.target.value);
                           }}
                           onClick={(e) => e.stopPropagation()}
-                          className="appearance-none bg-[#161616] hover:bg-[#202020] border border-slate-700/80 hover:border-yellow-500/60 text-slate-100 font-semibold text-[11px] rounded-lg pl-2 pr-6 py-0.5 outline-none cursor-pointer transition-all focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500/30"
+                          className="appearance-none bg-white hover:bg-gray-50 border border-gray-300 text-slate-900 font-semibold text-xs rounded-lg pl-2 pr-6 py-0.5 outline-none cursor-pointer transition-all focus:border-[#3E63DD] shadow-2xs"
                         >
                           {service.hotels.map((h, hIdx) => (
-                            <option key={h._id || hIdx} value={h.hotelName} className="bg-[#111] text-slate-100">
+                            <option key={h._id || hIdx} value={h.hotelName} className="bg-white text-slate-900">
                               {h.hotelName}
                             </option>
                           ))}
                         </select>
-                        <ChevronDown className="absolute right-1.5 text-yellow-400 pointer-events-none" size={12} />
+                        <ChevronDown className="absolute right-1.5 text-gray-500 pointer-events-none" size={12} />
                       </div>
                     ) : (
-                      <span className="text-slate-100 font-semibold">{service.hotelName}</span>
+                      <span className="text-slate-900 font-semibold">{service.hotelName}</span>
                     )}
                   </span>
                 )}
                 {service.type !== "hotel" && service.hotelName && (
-                  <span className="flex items-center gap-1 text-slate-300">
+                  <span className="flex items-center gap-1 text-slate-600">
                     <span className="text-slate-400 font-normal">Hotel:</span>
-                    <span className="text-slate-100 font-semibold">{service.hotelName}</span>
+                    <span className="text-slate-900 font-semibold">{service.hotelName}</span>
                   </span>
                 )}
                 {service.hotelCategory && (
-                  <span className="flex items-center gap-1 text-slate-400">
-                    <span className="text-slate-200">Hotel</span>
+                  <span className="flex items-center gap-1 text-slate-500">
+                    <span className="text-slate-700 font-medium">Hotel</span>
                     <span className="flex items-center gap-0.5 ml-0.5">
                       {Array.from({ length: getHotelStars(service.hotelCategory) }).map((_, i) => (
-                        <IoStarSharp key={i} className="text-yellow-400 text-[9px]" />
+                        <IoStarSharp key={i} className="text-amber-500 text-[10px]" />
                       ))}
                     </span>
                   </span>
@@ -10048,28 +10004,28 @@ const Service = ({
                 {service.type === "transfer" && (
                   <>
                     {service.vehicleType && (
-                      <span className="flex items-center gap-1 text-slate-400">
-                        <FaCarSide className="text-yellow-400" />{service.vehicleType}
+                      <span className="flex items-center gap-1 text-slate-600 font-medium">
+                        <FaCarSide className="text-amber-600" />{service.vehicleType}
                       </span>
                     )}
                     {(selectedTransportUsageLabels[0] || service.usageType) && (
-                      <span className="flex items-center gap-1 text-slate-400">
-                        <MdOutlineTravelExplore className="text-blue-400" />{selectedTransportUsageLabels[0] || formatUsage(service.usageType)}
+                      <span className="flex items-center gap-1 text-slate-600 font-medium">
+                        <MdOutlineTravelExplore className="text-blue-600" />{selectedTransportUsageLabels[0] || formatUsage(service.usageType)}
                       </span>
                     )}
                     {Number(service.passengerCapacity || 0) > 0 && (
-                      <span className="flex items-center gap-1 text-slate-400">
-                        <BsPeople className="text-emerald-400" />{service.passengerCapacity} Pax
+                      <span className="flex items-center gap-1 text-slate-600 font-medium">
+                        <BsPeople className="text-emerald-600" />{service.passengerCapacity} Pax
                       </span>
                     )}
                     {Number(service.luggageCapacity || 0) > 0 && (
-                      <span className="flex items-center gap-1 text-slate-400">
-                        <HiOutlineBriefcase className="text-sky-400" />{service.luggageCapacity} Bags
+                      <span className="flex items-center gap-1 text-slate-600 font-medium">
+                        <HiOutlineBriefcase className="text-sky-600" />{service.luggageCapacity} Bags
                       </span>
                     )}
                     {(service.pickupTime || service.time) && (
-                      <span className="flex items-center gap-1 text-yellow-300">
-                        <Clock size={11} className="text-yellow-400" />
+                      <span className="flex items-center gap-1 text-amber-700 font-semibold">
+                        <Clock size={11} className="text-amber-600" />
                         {service.pickupTime || service.time}
                       </span>
                     )}
@@ -10082,25 +10038,25 @@ const Service = ({
         </div>
 
         {service.checked && (
-          <div className="ml-2 flex flex-shrink-0 flex-col items-end text-right">
+          <div className="ml-2 flex shrink-0 flex-col items-end text-right">
             <div>
-              <p className="mb-1 text-[9px] uppercase tracking-widest text-slate-500">Total</p>
-              <p className="text-[15px] font-semibold leading-none text-white">
+              <p className="mb-1 text-[9px] uppercase tracking-widest text-slate-500 font-semibold">Total</p>
+              <p className="text-[15px] font-bold leading-none text-slate-900">
                 {formatCurrencyValue(total, currencyCode)}
               </p>
               {service.pricingTier && (
-                <p className={`mt-1 text-[10px] font-medium leading-none ${
+                <p className={`mt-1 text-[10px] font-semibold leading-none ${
                   service.pricingTier.includes("Blackout")
-                    ? "text-red-400 font-semibold"
+                    ? "text-rose-600 font-bold"
                     : service.pricingTier.includes("S1") || service.pricingTier.includes("S2")
-                    ? "text-emerald-400"
-                    : "text-slate-400"
+                    ? "text-emerald-700"
+                    : "text-slate-500"
                 }`}>
                   / {service.pricingTier}
                 </p>
               )}
               {isForeignCurrency && (
-                <p className="mt-1 text-[10px] text-sky-300">
+                <p className="mt-1 text-[10px] text-sky-700 font-semibold">
                   INR {formatAmountValue(totalInInr)}
                 </p>
               )}
@@ -10111,7 +10067,7 @@ const Service = ({
         {amenities.length > 0 && (
           <div className="col-start-2 col-span-2 flex w-full flex-wrap justify-start gap-x-1 gap-y-1.5">
             {amenities.map((item, i) => (
-              <span key={i} className="whitespace-nowrap rounded-md border border-[#232323] bg-[#141414] px-1.5 py-0.5 text-[10px] text-slate-300">
+              <span key={i} className="whitespace-nowrap rounded-md border border-gray-200 bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-700">
                 {item}
               </span>
             ))}
@@ -10125,17 +10081,17 @@ const Service = ({
           (only shown when service is checked)
       ════════════════════════════════════════════ */}
       {service.checked && (
-        <div className="space-y-3 border-t border-[#1a1a1a] bg-[#080800] px-4 py-4 rounded-b-2xl">
+        <div className="space-y-3 border-t border-gray-200 bg-slate-50 px-4 py-4 rounded-b-2xl">
 
           {/* ── label row ── */}
           <div className="flex items-center justify-between gap-2 flex-wrap">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-yellow-400/70">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-700">
               Configuration
             </p>
             {service.custom && (
               <button
                 onClick={() => deleteService(service.id)}
-                className="flex items-center gap-1.5 rounded-lg border border-red-500/20 bg-red-500/8 px-2.5 py-1 text-[10px] font-medium text-red-300 transition hover:bg-red-500/15 hover:text-red-200"
+                className="flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 text-[10px] font-semibold text-red-600 transition hover:bg-red-100 shadow-2xs cursor-pointer"
               >
                 <RiDeleteBin6Line className="text-[11px]" /> Remove
               </button>
@@ -10144,7 +10100,7 @@ const Service = ({
 
           {/* ── BASE RATE ── */}
           <div className="grid grid-cols-1 gap-2 lg:grid-cols-[minmax(0,1.15fr)_minmax(240px,0.85fr)]">
-            <div className="rounded-xl border border-[#1f1f1f] bg-[#101010] px-3 py-2.5">
+            <div className="rounded-xl border border-gray-200 bg-white px-3 py-2.5 shadow-2xs">
               <p className="text-[9px] font-semibold uppercase tracking-[0.18em] text-slate-500 mb-1">Base Rate</p>
               {isEditMode ? (
                 <input
@@ -10152,15 +10108,15 @@ const Service = ({
                   min="0"
                   value={baseRateDisplayValue || ""}
                   onChange={(event) => updateField(service.id, "rate", roundCurrencyAmount(event.target.value))}
-                  className="mt-1 w-full rounded-lg border border-yellow-500/30 bg-[#080808] px-2 py-1.5 text-[13px] font-semibold text-yellow-400 outline-none transition-colors focus:border-yellow-400"
+                  className="mt-1 w-full rounded-lg border border-amber-300 bg-amber-50 px-2 py-1.5 text-[13px] font-bold text-amber-900 outline-none transition-colors focus:border-amber-500"
                 />
               ) : (
                 <div className="flex items-baseline gap-1.5 flex-wrap">
-                  <p className="text-[13px] font-semibold text-yellow-400">
+                  <p className="text-[13px] font-bold text-amber-700">
                     {formatCurrencyValue(baseRateDisplayValue || 0, currencyCode)}
                   </p>
                   {service.pricingTier && (
-                    <span className="text-[10px] text-slate-400 font-normal">
+                    <span className="text-[10px] text-slate-500 font-normal">
                       / {service.pricingTier}
                     </span>
                   )}
@@ -10168,17 +10124,17 @@ const Service = ({
               )}
               {isForeignCurrency && (
                 <>
-                  <p className="text-[10px] text-sky-300 mt-0.5">
+                  <p className="text-[10px] text-sky-700 font-semibold mt-0.5">
                     ₹ {formatAmountValue(baseRateInInr)}
                   </p>
-                  <div className="mt-2 inline-flex items-center rounded-lg border border-sky-500/20 bg-sky-500/8 px-2.5 py-1 text-[10px] text-slate-200">
-                    1 {currencyCode} = <span className="ml-1 font-medium text-sky-300">₹ {formatExchangeRateValue(exchangeRate)}</span>
+                  <div className="mt-2 inline-flex items-center rounded-lg border border-sky-200 bg-sky-50 px-2.5 py-1 text-[10px] text-slate-700">
+                    1 {currencyCode} = <span className="ml-1 font-semibold text-sky-800">₹ {formatExchangeRateValue(exchangeRate)}</span>
                   </div>
                 </>
               )}
             </div>
 
-            <div className="rounded-xl border border-[#1f1f1f] bg-[#101010] px-3 py-2.5">
+            <div className="rounded-xl border border-gray-200 bg-white px-3 py-2.5 shadow-2xs">
               <p className="text-[9px] font-semibold uppercase tracking-[0.18em] text-slate-500 mb-2">Service Date</p>
               <div className="relative" data-date-picker-wrapper="true">
                 <input
@@ -10193,7 +10149,7 @@ const Service = ({
                 <button
                   type="button"
                   onClick={openDatePicker}
-                  className="absolute right-2.5 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-slate-300 transition hover:bg-white/5 hover:text-white"
+                  className="absolute right-2.5 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 cursor-pointer"
                   aria-label="Open service date picker"
                 >
                   <CalendarDays size={14} />
@@ -10202,39 +10158,26 @@ const Service = ({
             </div>
 
             {isForeignCurrency && (
-              <div className="rounded-xl border border-[#1f1f1f] bg-[#101010] px-3 py-2.5 flex items-center">
-                <p className="text-[11px] text-slate-300">
-                  1 {currencyCode} = <span className="text-sky-300 font-medium">₹ {formatExchangeRateValue(exchangeRate)}</span>
+              <div className="rounded-xl border border-gray-200 bg-white px-3 py-2.5 flex items-center shadow-2xs">
+                <p className="text-[11px] text-slate-700 font-medium">
+                  1 {currencyCode} = <span className="text-sky-700 font-bold">₹ {formatExchangeRateValue(exchangeRate)}</span>
                 </p>
               </div>
             )}
           </div>
 
-          {/* ── DATE ── */}
-          <div className="hidden rounded-xl border border-[#1f1f1f] bg-[#101010] px-3 py-2.5 max-w-[280px]">
-            <p className="text-[9px] font-semibold uppercase tracking-[0.18em] text-slate-500 mb-2">Service Date</p>
-            <input
-              type="date"
-              value={service.serviceDate || ""}
-              onChange={(e) => updateField(service.id, "serviceDate", e.target.value)}
-              min={tripStartDate || undefined}
-              max={transportDateOptions[transportDateOptions.length - 1] || tripEndDate || undefined}
-              className={dateCls}
-            />
-          </div>
-
           {/* ── HOTEL: NIGHTS ── */}
           {service.type === "hotel" && (
-            <div className="rounded-xl border border-[#1f1f1f] bg-[#101010] px-3 py-3 space-y-2.5">
+            <div className="rounded-xl border border-gray-200 bg-white px-3 py-3 space-y-2.5 shadow-2xs">
               <p className="text-[9px] font-semibold uppercase tracking-[0.18em] text-slate-500">Nights</p>
 
               {/* availability info */}
-              <div className="flex flex-wrap gap-x-4 gap-y-1">
-                <span className="text-[10px] text-emerald-400">
+              <div className="flex flex-wrap gap-x-4 gap-y-1 font-semibold">
+                <span className="text-[10px] text-emerald-700">
                   {remainingHotelNights} of {tripNights} nights available
                 </span>
                 {tripNights > 0 && hotelNightStart > 0 && (
-                  <span className="text-[10px] text-yellow-300">
+                  <span className="text-[10px] text-amber-700">
                     Slot: Night {hotelNightStart}
                     {remainingHotelNights > 1
                       ? `–${Math.min(tripNights, hotelNightStart + remainingHotelNights - 1)}`
@@ -10242,7 +10185,7 @@ const Service = ({
                   </span>
                 )}
                 {selectedNightCount > 0 && selectedNightEnd >= hotelNightStart && (
-                  <span className="text-[10px] text-sky-300">
+                  <span className="text-[10px] text-sky-700">
                     Assigned: Night {hotelNightStart}
                     {selectedNightEnd > hotelNightStart ? `–${selectedNightEnd}` : ""}
                   </span>
@@ -10264,17 +10207,17 @@ const Service = ({
 
           {/* ── TRANSFER: USAGE + DAYS ── */}
           {(service.type === "transfer" || service.type === "car") && (
-            <div className="rounded-xl border border-[#1f1f1f] bg-[#101010] px-3 py-3 space-y-2.5">
+            <div className="rounded-xl border border-gray-200 bg-white px-3 py-3 space-y-2.5 shadow-2xs">
               <p className="text-[9px] font-semibold uppercase tracking-[0.18em] text-slate-500">Transfer Setup</p>
 
-              <div className="flex flex-wrap gap-x-4 gap-y-1">
+              <div className="flex flex-wrap gap-x-4 gap-y-1 font-semibold">
                 {transportStartDate && (
-                  <span className="text-[10px] text-emerald-400">
+                  <span className="text-[10px] text-emerald-700">
                     Up to {maxTransportDays} day{maxTransportDays > 1 ? "s" : ""} from selected date
                   </span>
                 )}
                 {transportStartDate && transportEndDate && (
-                  <span className="text-[10px] text-sky-300">
+                  <span className="text-[10px] text-sky-700">
                     {transportStartDate === transportEndDate
                       ? formatDisplayDate(transportStartDate)
                       : `${formatDisplayDate(transportStartDate)} → ${formatDisplayDate(transportEndDate)}`}
@@ -10284,7 +10227,7 @@ const Service = ({
 
               {transportDateOptions.length > 1 && (
                 <div>
-                  <p className="mb-1.5 text-[9px] text-slate-500">Start Day</p>
+                  <p className="mb-1.5 text-[9px] font-semibold text-slate-500">Start Day</p>
                   <div className="flex flex-wrap gap-2">
                     {transportDateOptions.map((dateValue) => {
                       const isActive = dateValue === transportStartDate;
@@ -10293,10 +10236,10 @@ const Service = ({
                           key={dateValue}
                           type="button"
                           onClick={() => updateField(service.id, "serviceDate", dateValue)}
-                          className={`cursor-pointer rounded-full border px-3 py-1.5 text-[10px] font-medium transition ${
+                          className={`cursor-pointer rounded-full border px-3 py-1.5 text-[10px] font-semibold transition ${
                             isActive
-                              ? "border-yellow-500/50 bg-yellow-500/12 text-yellow-300"
-                              : "border-[#2c2c2c] bg-[#0b0b0b] text-slate-300 hover:border-yellow-500/35 hover:text-white"
+                              ? "border-amber-400 bg-amber-50 text-amber-900 shadow-2xs"
+                              : "border-gray-200 bg-white text-slate-700 hover:bg-slate-50"
                           }`}
                         >
                           {formatDisplayDate(dateValue)}
@@ -10304,7 +10247,7 @@ const Service = ({
                       );
                     })}
                   </div>
-                  <p className="mt-2 text-[10px] text-slate-400">
+                  <p className="mt-2 text-[10px] text-slate-500">
                     Choose any trip day first, then select `1 Day`, `2 Days`, or more from that date.
                   </p>
                 </div>
@@ -10316,37 +10259,37 @@ const Service = ({
               <div className="flex flex-wrap items-center justify-between gap-2 pb-1">
                 <div className="flex flex-wrap items-center gap-2">
                   {service.vehicleType && (
-                    <span className="flex items-center gap-1.5 rounded-lg border border-[#232323] bg-[#141414] px-2.5 py-1 text-[10px] text-slate-300">
-                      <FaCarSide className="text-yellow-400" />
+                    <span className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-slate-50 px-2.5 py-1 text-[10px] text-slate-700 font-medium">
+                      <FaCarSide className="text-amber-600" />
                       <span className="text-slate-500">Vehicle:</span> {service.vehicleType}
                     </span>
                   )}
                   {Number(service.passengerCapacity || 0) > 0 && (
-                    <span className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[10px] ${
+                    <span className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[10px] font-semibold ${
                       totalPassengers > Number(service.passengerCapacity || 0)
-                        ? "border-red-500/40 bg-red-500/10 text-red-300 font-semibold"
-                        : "border-[#232323] bg-[#141414] text-slate-300"
+                        ? "border-red-300 bg-red-50 text-red-800"
+                        : "border-gray-200 bg-slate-50 text-slate-700"
                     }`}>
-                      <BsPeople className={totalPassengers > Number(service.passengerCapacity || 0) ? "text-red-400" : "text-emerald-400"} />
-                      <span className={totalPassengers > Number(service.passengerCapacity || 0) ? "text-red-400" : "text-slate-500"}>Capacity:</span> {service.passengerCapacity} Pax
+                      <BsPeople className={totalPassengers > Number(service.passengerCapacity || 0) ? "text-red-600" : "text-emerald-600"} />
+                      <span className={totalPassengers > Number(service.passengerCapacity || 0) ? "text-red-600" : "text-slate-500"}>Capacity:</span> {service.passengerCapacity} Pax
                       {totalPassengers > Number(service.passengerCapacity || 0) && (
-                        <span className="text-[9px] text-red-400 font-normal">({totalPassengers} Pax Query - Insufficient)</span>
+                        <span className="text-[9px] text-red-600 font-normal">({totalPassengers} Pax Query - Insufficient)</span>
                       )}
                     </span>
                   )}
                   {Number(service.luggageCapacity || 0) > 0 && (
-                    <span className="flex items-center gap-1.5 rounded-lg border border-[#232323] bg-[#141414] px-2.5 py-1 text-[10px] text-slate-300">
-                      <HiOutlineBriefcase className="text-blue-400" />
+                    <span className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-slate-50 px-2.5 py-1 text-[10px] text-slate-700 font-medium">
+                      <HiOutlineBriefcase className="text-blue-600" />
                       <span className="text-slate-500">Luggage:</span> {service.luggageCapacity} Bags
                     </span>
                   )}
                   {totalPassengers > 0 && totalPassengers <= 4 && Number(service.passengerCapacity || 0) >= 6 && (
-                    <span className="flex items-center gap-1.5 rounded-lg border border-yellow-500/35 bg-yellow-500/10 px-2.5 py-1 text-[10px] text-yellow-200">
+                    <span className="flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1 text-[10px] text-amber-900 font-semibold">
                       💡 <span>Suggestion: For {totalPassengers} Pax, a <b>Sedan</b> (3–4 Pax, 2–3 Bags) is more economical.</span>
                     </span>
                   )}
                   {service.description && (
-                    <span className="flex items-center gap-1.5 rounded-lg border border-[#232323] bg-[#141414] px-2.5 py-1 text-[10px] text-slate-300">
+                    <span className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-slate-50 px-2.5 py-1 text-[10px] text-slate-700 font-medium">
                       <span className="text-slate-500">Info:</span> {service.description}
                     </span>
                   )}
@@ -10354,8 +10297,8 @@ const Service = ({
 
                 {/* Pickup / Transfer Time Selection on Top Right */}
                 <div className="flex items-center gap-1.5 ml-auto">
-                  <span className="text-[10px] font-medium text-slate-400 flex items-center gap-1">
-                    <Clock size={12} className="text-yellow-400" />
+                  <span className="text-[10px] font-semibold text-slate-500 flex items-center gap-1">
+                    <Clock size={12} className="text-amber-600" />
                     Pickup Time:
                   </span>
                   <div className="relative flex items-center">
@@ -10366,7 +10309,7 @@ const Service = ({
                         updateField(service.id, "pickupTime", e.target.value);
                         updateField(service.id, "time", e.target.value);
                       }}
-                      className="h-7 rounded-lg border border-[#2c2c2c] bg-[#141414] px-2 text-[11px] font-medium text-white outline-none focus:border-yellow-500 transition cursor-pointer [color-scheme:dark]"
+                      className="h-7 rounded-lg border border-gray-300 bg-white px-2 text-[11px] font-semibold text-slate-900 outline-none focus:border-[#3E63DD] transition cursor-pointer shadow-2xs"
                     />
                     {(service.pickupTime || service.time) && (
                       <button
@@ -10376,7 +10319,7 @@ const Service = ({
                           updateField(service.id, "time", "");
                         }}
                         title="Clear time"
-                        className="ml-1 text-slate-500 hover:text-red-400 transition cursor-pointer text-xs"
+                        className="ml-1 text-slate-400 hover:text-red-600 transition cursor-pointer text-xs"
                       >
                         ✕
                       </button>
@@ -10387,7 +10330,7 @@ const Service = ({
 
               <div className={`grid grid-cols-1 gap-3 ${selectedTransportUsageLimitOptions.length > 0 ? "lg:grid-cols-4 md:grid-cols-2" : "lg:grid-cols-3 md:grid-cols-2"}`}>
                 <div>
-                  <p className="text-[9px] text-slate-500 mb-1">Vehicle Type</p>
+                  <p className="text-[9px] font-semibold text-slate-500 mb-1">Vehicle Type</p>
                   <div className="relative">
                     <select
                       value={service.vehicleType || transportVehicleOptions[0]?.value || ""}
@@ -10404,7 +10347,7 @@ const Service = ({
                   </div>
                 </div>
                 <div>
-                  <p className="text-[9px] text-slate-500 mb-1">Days</p>
+                  <p className="text-[9px] font-semibold text-slate-500 mb-1">Days</p>
                   <div className="relative">
                     <select
                       value={selectedTransportDays}
@@ -10424,7 +10367,7 @@ const Service = ({
                   </div>
                 </div>
                 <div>
-                  <p className="text-[9px] text-slate-500 mb-1">Usage</p>
+                  <p className="text-[9px] font-semibold text-slate-500 mb-1">Usage</p>
                   <div className="relative">
                     <select
                       value={selectedTransportUsageKey}
@@ -10445,9 +10388,9 @@ const Service = ({
                 </div>
                 {selectedTransportUsageLimitOptions.length > 0 && (
                   <div>
-                    <p className="text-[9px] text-slate-500 mb-1">Limit</p>
+                    <p className="text-[9px] font-semibold text-slate-500 mb-1">Limit</p>
                     <div
-                      className="flex h-8 w-full items-center rounded-full border border-yellow-500/45 bg-[#0a0a0a] px-4 text-[11px] font-semibold text-white"
+                      className="flex h-8 w-full items-center rounded-full border border-amber-300 bg-amber-50 px-4 text-[11px] font-semibold text-amber-900 shadow-2xs"
                     >
                       {selectedTransportLimitSummary}
                     </div>
@@ -10464,7 +10407,7 @@ const Service = ({
                   transition={{ duration: 0.18, ease: "easeOut" }}
                   className="overflow-hidden"
                 >
-                <div className="space-y-1 text-[11px] italic text-yellow-300">
+                <div className="space-y-1 text-[11px] italic font-semibold text-amber-800">
                   {selectedTransportExtraKmRate > 0 && (
                     <p>Extra km rate: {formatCurrencyValue(selectedTransportExtraKmRate, currencyCode)}/km.</p>
                   )}
@@ -10501,31 +10444,31 @@ const Service = ({
             const resolvedDuration = formatServiceDuration(service, currentTourObj);
 
             return (
-              <div className="rounded-xl border border-[#1f1f1f] bg-[#101010] p-3.5 space-y-3">
-                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#1c1c1c] pb-2.5">
+              <div className="rounded-xl border border-gray-200 bg-white p-3.5 space-y-3 shadow-2xs text-slate-900">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-2.5">
                   <div className="flex items-center gap-2">
-                    <span className="inline-block w-2 h-2 rounded-full bg-emerald-500"></span>
-                    <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-300">
+                    <span className="inline-block w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+                    <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-700">
                       Activity Configuration
                     </p>
                   </div>
 
                   {/* Tour Type Selector */}
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-medium text-slate-400">Tour Type:</span>
+                    <span className="text-[10px] font-semibold text-slate-500">Tour Type:</span>
                     <div className="relative">
                       <select
                         value={currentTourType}
                         onChange={(e) => updateField(service.id, "tourType", e.target.value)}
-                        className={`${selectCls.replace('rounded-lg', 'rounded-full')} h-7.5 pl-3 pr-8 text-[11px] font-bold appearance-none bg-[#161616] border border-[#2a2a2a] text-slate-100 hover:border-yellow-500/50 cursor-pointer`}
+                        className={`${selectCls.replace('rounded-lg', 'rounded-full')} h-7.5 pl-3 pr-8 text-[11px] font-semibold appearance-none bg-white border border-gray-300 text-slate-900 hover:border-[#3E63DD] cursor-pointer shadow-2xs`}
                       >
                         {tourTypesList.map((t, idx) => (
-                          <option key={t._id || idx} value={t.tourType} className="bg-[#111] text-slate-100 font-medium">
+                          <option key={t._id || idx} value={t.tourType} className="bg-white text-slate-900 font-medium">
                             {t.tourType}
                           </option>
                         ))}
                       </select>
-                      <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-yellow-400" />
+                      <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500" />
                     </div>
                   </div>
                 </div>
@@ -10533,19 +10476,19 @@ const Service = ({
                 {/* Info Pills: Operating Days | Open / Close | Duration */}
                 <div className="flex flex-wrap items-center gap-2">
                   {service.operatingDays && (
-                    <span className="flex items-center gap-1 rounded-md border border-[#232323] bg-[#141414] px-2 py-0.5 text-[10px] text-slate-300">
+                    <span className="flex items-center gap-1 rounded-md border border-gray-200 bg-slate-50 px-2 py-0.5 text-[10px] font-medium text-slate-700">
                       <span className="text-slate-500">Days:</span> {service.operatingDays}
                     </span>
                   )}
                   {(service.openingTime || service.closingTime) && (
-                    <span className="flex items-center gap-1 rounded-md border border-[#232323] bg-[#141414] px-2 py-0.5 text-[10px] text-slate-300">
-                      <Clock size={11} className="text-yellow-400" />
+                    <span className="flex items-center gap-1 rounded-md border border-gray-200 bg-slate-50 px-2 py-0.5 text-[10px] font-medium text-slate-700">
+                      <Clock size={11} className="text-amber-600" />
                       <span className="text-slate-500">Open / Close:</span> {service.openingTime || "08:00"} / {service.closingTime || "18:00"}
                     </span>
                   )}
                   {resolvedDuration && (
-                    <span className="flex items-center gap-1 rounded-md border border-[#232323] bg-[#141414] px-2 py-0.5 text-[10px] text-slate-300">
-                      <Clock size={11} className="text-purple-400" />
+                    <span className="flex items-center gap-1 rounded-md border border-gray-200 bg-slate-50 px-2 py-0.5 text-[10px] font-medium text-slate-700">
+                      <Clock size={11} className="text-purple-600" />
                       <span className="text-slate-500">Duration:</span> {resolvedDuration}
                     </span>
                   )}
@@ -10553,7 +10496,7 @@ const Service = ({
 
                 {/* Description shifted to the top */}
                 {(currentTourObj.description || service.description || service.desc) && (
-                  <p className="text-[10.5px] text-slate-400 font-normal italic leading-relaxed pt-0.5 border-t border-[#1c1c1c]/70">
+                  <p className="text-[10.5px] text-slate-500 font-normal italic leading-relaxed pt-0.5 border-t border-gray-100">
                     {currentTourObj.description || service.description || service.desc}
                   </p>
                 )}
@@ -10575,7 +10518,7 @@ const Service = ({
                         className={`${inputCls} h-8 text-[11px] font-bold w-full`}
                       />
                     ) : (
-                      <div className="flex h-8 w-full items-center rounded-lg border border-[#232323] bg-[#141414] px-2.5 text-[11px] font-bold text-slate-100">
+                      <div className="flex h-8 w-full items-center rounded-lg border border-gray-200 bg-slate-50 px-2.5 text-[11px] font-bold text-slate-900">
                         {formatCurrencyValue(service.adultPrice !== undefined ? service.adultPrice : service.rate, currencyCode)}
                       </div>
                     )}
@@ -10592,7 +10535,7 @@ const Service = ({
                         className={`${inputCls} h-8 text-[11px] font-bold w-full`}
                       />
                     ) : (
-                      <div className="flex h-8 w-full items-center rounded-lg border border-[#232323] bg-[#141414] px-2.5 text-[11px] font-bold text-slate-100">
+                      <div className="flex h-8 w-full items-center rounded-lg border border-gray-200 bg-slate-50 px-2.5 text-[11px] font-bold text-slate-900">
                         {formatCurrencyValue(service.childPrice || 0, currencyCode)}
                       </div>
                     )}
@@ -10637,23 +10580,23 @@ const Service = ({
                       <select
                         value={service.selectedSlot || availableSlots[0] || "08:00"}
                         onChange={(e) => updateField(service.id, "selectedSlot", e.target.value)}
-                        className={`${selectCls.replace('rounded-lg', 'rounded-md')} h-8 text-[11px] font-semibold w-full pl-2 pr-6 appearance-none bg-[#0a0a0a] border border-[#2a2a2a] text-white cursor-pointer focus:border-yellow-500`}
+                        className={`${selectCls.replace('rounded-lg', 'rounded-md')} h-8 text-[11px] font-semibold w-full pl-2 pr-6 appearance-none bg-white border border-gray-300 text-slate-900 cursor-pointer focus:border-[#3E63DD]`}
                       >
                         <option value="" disabled>Select Time</option>
                         {availableSlots.map((slot, sIdx) => (
-                          <option key={sIdx} value={slot} className="bg-[#111] text-white font-medium">
+                          <option key={sIdx} value={slot} className="bg-white text-slate-900 font-medium">
                             {slot}
                           </option>
                         ))}
                       </select>
-                      <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-yellow-400" />
+                      <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500" />
                     </div>
                   </div>
 
                   {/* 6. Total (Calculated) */}
                   <div>
                     <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Total</p>
-                    <div className="flex h-8 w-full items-center rounded-lg border border-[#2c2c2c] bg-[#171717] px-2.5 text-[11.5px] font-extrabold text-white">
+                    <div className="flex h-8 w-full items-center rounded-lg border border-gray-200 bg-slate-100 px-2.5 text-[11.5px] font-bold text-slate-900">
                       {formatCurrencyValue(total, currencyCode)}
                     </div>
                   </div>
@@ -10677,31 +10620,31 @@ const Service = ({
             const resolvedDuration = formatServiceDuration(service, currentTourObj);
 
             return (
-              <div className="rounded-xl border border-[#1f1f1f] bg-[#101010] p-3.5 space-y-3">
-                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#1c1c1c] pb-2.5">
+              <div className="rounded-xl border border-gray-200 bg-white p-3.5 space-y-3 shadow-2xs text-slate-900">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-2.5">
                   <div className="flex items-center gap-2">
-                    <span className="inline-block w-2 h-2 rounded-full bg-blue-500"></span>
-                    <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-300">
+                    <span className="inline-block w-2.5 h-2.5 rounded-full bg-blue-500"></span>
+                    <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-700">
                       Sightseeing Configuration
                     </p>
                   </div>
 
                   {/* Tour Type Selector */}
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-medium text-slate-400">Tour Type:</span>
+                    <span className="text-[10px] font-semibold text-slate-500">Tour Type:</span>
                     <div className="relative">
                       <select
                         value={currentTourType}
                         onChange={(e) => updateField(service.id, "tourType", e.target.value)}
-                        className={`${selectCls.replace('rounded-lg', 'rounded-full')} h-7.5 pl-3 pr-8 text-[11px] font-bold appearance-none bg-[#161616] border border-[#2a2a2a] text-slate-100 hover:border-yellow-500/50 cursor-pointer`}
+                        className={`${selectCls.replace('rounded-lg', 'rounded-full')} h-7.5 pl-3 pr-8 text-[11px] font-semibold appearance-none bg-white border border-gray-300 text-slate-900 hover:border-[#3E63DD] cursor-pointer shadow-2xs`}
                       >
                         {tourTypesList.map((t, idx) => (
-                          <option key={t._id || idx} value={t.tourType} className="bg-[#111] text-slate-100 font-medium">
+                          <option key={t._id || idx} value={t.tourType} className="bg-white text-slate-900 font-medium">
                             {t.tourType}
                           </option>
                         ))}
                       </select>
-                      <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-yellow-400" />
+                      <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500" />
                     </div>
                   </div>
                 </div>
@@ -10709,19 +10652,19 @@ const Service = ({
                 {/* Info Pills: Operating Days | Open / Close | Duration */}
                 <div className="flex flex-wrap items-center gap-2">
                   {service.operatingDays && (
-                    <span className="flex items-center gap-1 rounded-md border border-[#232323] bg-[#141414] px-2 py-0.5 text-[10px] text-slate-300">
+                    <span className="flex items-center gap-1 rounded-md border border-gray-200 bg-slate-50 px-2 py-0.5 text-[10px] font-medium text-slate-700">
                       <span className="text-slate-500">Days:</span> {service.operatingDays}
                     </span>
                   )}
                   {(service.openingTime || service.closingTime) && (
-                    <span className="flex items-center gap-1 rounded-md border border-[#232323] bg-[#141414] px-2 py-0.5 text-[10px] text-slate-300">
-                      <Clock size={11} className="text-yellow-400" />
+                    <span className="flex items-center gap-1 rounded-md border border-gray-200 bg-slate-50 px-2 py-0.5 text-[10px] font-medium text-slate-700">
+                      <Clock size={11} className="text-amber-600" />
                       <span className="text-slate-500">Open / Close:</span> {service.openingTime || "08:00"} / {service.closingTime || "18:00"}
                     </span>
                   )}
                   {resolvedDuration && (
-                    <span className="flex items-center gap-1 rounded-md border border-[#232323] bg-[#141414] px-2 py-0.5 text-[10px] text-slate-300">
-                      <Clock size={11} className="text-purple-400" />
+                    <span className="flex items-center gap-1 rounded-md border border-gray-200 bg-slate-50 px-2 py-0.5 text-[10px] font-medium text-slate-700">
+                      <Clock size={11} className="text-purple-600" />
                       <span className="text-slate-500">Duration:</span> {resolvedDuration}
                     </span>
                   )}
@@ -10729,7 +10672,7 @@ const Service = ({
 
                 {/* Description shifted to the top */}
                 {(currentTourObj.description || service.description || service.desc) && (
-                  <p className="text-[10.5px] text-slate-400 font-normal italic leading-relaxed pt-0.5 border-t border-[#1c1c1c]/70">
+                  <p className="text-[10.5px] text-slate-500 font-normal italic leading-relaxed pt-0.5 border-t border-gray-100">
                     {currentTourObj.description || service.description || service.desc}
                   </p>
                 )}
@@ -10751,7 +10694,7 @@ const Service = ({
                         className={`${inputCls} h-8 text-[11px] font-bold w-full`}
                       />
                     ) : (
-                      <div className="flex h-8 w-full items-center rounded-lg border border-[#232323] bg-[#141414] px-2.5 text-[11px] font-bold text-slate-100">
+                      <div className="flex h-8 w-full items-center rounded-lg border border-gray-200 bg-slate-50 px-2.5 text-[11px] font-bold text-slate-900">
                         {formatCurrencyValue(service.adultPrice !== undefined ? service.adultPrice : service.rate, currencyCode)}
                       </div>
                     )}
@@ -10768,7 +10711,7 @@ const Service = ({
                         className={`${inputCls} h-8 text-[11px] font-bold w-full`}
                       />
                     ) : (
-                      <div className="flex h-8 w-full items-center rounded-lg border border-[#232323] bg-[#141414] px-2.5 text-[11px] font-bold text-slate-100">
+                      <div className="flex h-8 w-full items-center rounded-lg border border-gray-200 bg-slate-50 px-2.5 text-[11px] font-bold text-slate-900">
                         {formatCurrencyValue(service.childPrice || 0, currencyCode)}
                       </div>
                     )}
@@ -10813,23 +10756,23 @@ const Service = ({
                       <select
                         value={service.selectedSlot || availableSlots[0] || "08:00"}
                         onChange={(e) => updateField(service.id, "selectedSlot", e.target.value)}
-                        className={`${selectCls.replace('rounded-lg', 'rounded-md')} h-8 text-[11px] font-semibold w-full pl-2 pr-6 appearance-none bg-[#0a0a0a] border border-[#2a2a2a] text-white cursor-pointer focus:border-yellow-500`}
+                        className={`${selectCls.replace('rounded-lg', 'rounded-md')} h-8 text-[11px] font-semibold w-full pl-2 pr-6 appearance-none bg-white border border-gray-300 text-slate-900 cursor-pointer focus:border-[#3E63DD]`}
                       >
                         <option value="" disabled>Select Time</option>
                         {availableSlots.map((slot, sIdx) => (
-                          <option key={sIdx} value={slot} className="bg-[#111] text-white font-medium">
+                          <option key={sIdx} value={slot} className="bg-white text-slate-900 font-medium">
                             {slot}
                           </option>
                         ))}
                       </select>
-                      <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-yellow-400" />
+                      <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500" />
                     </div>
                   </div>
 
                   {/* 6. Total (Calculated) */}
                   <div>
                     <p className="text-[9px] font-semibold uppercase tracking-wider text-slate-500 mb-1">Total</p>
-                    <div className="flex h-8 w-full items-center rounded-lg border border-[#2c2c2c] bg-[#171717] px-2.5 text-[11.5px] font-extrabold text-white">
+                    <div className="flex h-8 w-full items-center rounded-lg border border-gray-200 bg-slate-100 px-2.5 text-[11.5px] font-bold text-slate-900">
                       {formatCurrencyValue(total, currencyCode)}
                     </div>
                   </div>
@@ -10841,46 +10784,46 @@ const Service = ({
           {/* ── HOTEL: ROOM + BED INFO ── */}
           {service.type === "hotel" && (
             <div className="space-y-2.5 pt-1">
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-2 font-medium">
                 {service.roomType && (
-                  <span className="flex items-center gap-1.5 rounded-lg border border-[#232323] bg-[#141414] px-2.5 py-1 text-[10px] text-slate-300">
-                    <LiaHotelSolid className="text-sky-400" />
+                  <span className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-[10px] text-slate-700 shadow-2xs">
+                    <LiaHotelSolid className="text-sky-600" />
                     <span className="text-slate-500">Category:</span> {service.roomType}
                   </span>
                 )}
                 {Number(service.rooms || 0) > 0 && (
-                  <span className="flex items-center gap-1.5 rounded-lg border border-[#232323] bg-[#141414] px-2.5 py-1 text-[10px] text-slate-300">
-                    <BsPeople className="text-emerald-400" />
+                  <span className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-[10px] text-slate-700 shadow-2xs">
+                    <BsPeople className="text-emerald-600" />
                     <span className="text-slate-500">Rooms:</span> {service.rooms}
                   </span>
                 )}
                 {service.roomCategory && (
-                  <span className="flex items-center gap-1.5 rounded-lg border border-[#232323] bg-[#141414] px-2.5 py-1 text-[10px] text-slate-300">
-                    <LiaHotelSolid className="text-blue-400" />
+                  <span className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-[10px] text-slate-700 shadow-2xs">
+                    <LiaHotelSolid className="text-blue-600" />
                     <span className="text-slate-500">Room Type:</span> {formatRoomOccupancyLabel(service.roomCategory)}
                   </span>
                 )}
                 {service.bedType && (
-                  <span className="flex items-center gap-1.5 rounded-lg border border-[#232323] bg-[#141414] px-2.5 py-1 text-[10px] text-slate-300">
-                    <MdKingBed className="text-yellow-400" />
+                  <span className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-[10px] text-slate-700 shadow-2xs">
+                    <MdKingBed className="text-amber-600" />
                     <span className="text-slate-500">Bed:</span> {getBedTypeOptionLabel(service.bedType)}
                   </span>
                 )}
                 {service.extraBedType && service.extraBedType !== "None" && (
-                  <span className="flex items-center gap-1.5 rounded-lg border border-[#232323] bg-[#141414] px-2.5 py-1 text-[10px] text-slate-300">
-                    <MdKingBed className="text-orange-400" />
+                  <span className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-[10px] text-slate-700 shadow-2xs">
+                    <MdKingBed className="text-orange-600" />
                     <span className="text-slate-500">Extra Bed:</span> {service.extraBedType}
                   </span>
                 )}
-                <span className="flex items-center gap-1.5 rounded-lg border border-[#232323] bg-[#141414] px-2.5 py-1 text-[10px] text-slate-300">
-                    <BsPeople className="text-purple-400" />
+                <span className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-[10px] text-slate-700 shadow-2xs">
+                    <BsPeople className="text-purple-600" />
                     <span className="text-slate-500">Max:</span> {hotelOccupancy.maxAdults} Adults, {hotelOccupancy.maxChildren} Child{hotelOccupancy.maxChildren === 1 ? "" : "ren"}
                   </span>
               </div>
 
               {/* Smart Hotel Room Capacity Suggestion Banner */}
               {totalPassengers > 0 && totalPassengers > (Math.max(1, Number(service.rooms || 1)) * (Number(hotelOccupancy.maxAdults || 2) + (service.extraAdult ? 1 : 0))) && (
-                <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-500/35 bg-amber-500/10 p-2.5 text-[11px] text-amber-200">
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-300 bg-amber-50 p-2.5 text-[11px] text-amber-900 shadow-2xs">
                   <div className="flex items-center gap-2">
                     <span className="text-sm">💡</span>
                     <span>
@@ -10890,7 +10833,7 @@ const Service = ({
                   <button
                     type="button"
                     onClick={() => updateField(service.id, "rooms", Math.max(1, Math.ceil(totalPassengers / Number(hotelOccupancy.maxAdults || 2))))}
-                    className="cursor-pointer rounded-lg border border-amber-400/40 bg-amber-400/20 px-2.5 py-1 text-[10px] font-bold text-amber-100 transition hover:bg-amber-400/30"
+                    className="cursor-pointer rounded-lg border border-amber-400 bg-amber-100 px-2.5 py-1 text-[10px] font-bold text-amber-900 transition hover:bg-amber-200 shadow-2xs"
                   >
                     Auto-Set {Math.max(1, Math.ceil(totalPassengers / Number(hotelOccupancy.maxAdults || 2)))} Rooms
                   </button>
@@ -10898,7 +10841,7 @@ const Service = ({
               )}
 
               {isEditMode && (
-                <div className="grid grid-cols-1 gap-3 rounded-xl border border-[#1f1f1f] bg-[#101010] px-3 py-3 md:grid-cols-2 lg:grid-cols-3">
+                <div className="grid grid-cols-1 gap-3 rounded-xl border border-gray-200 bg-white px-3 py-3 md:grid-cols-2 lg:grid-cols-5 shadow-2xs">
                   <div>
                     <label className="mb-1 block text-[9px] font-semibold uppercase tracking-[0.18em] text-slate-500">
                       Room Category
@@ -10991,17 +10934,6 @@ const Service = ({
                       ))}
                     </select>
                   </div>
-
-                  <div>
-                    <label className="mb-1 block text-[9px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                      Max Occupancy
-                    </label>
-                    <div className="flex items-center justify-between h-[34px] px-2.5 rounded-lg border border-[#2a2a2a] bg-[#0a0a0a] text-[11px] text-slate-300">
-                      <span className="text-emerald-400 font-semibold">{hotelOccupancy.maxAdults} Adults</span>
-                      <span className="text-slate-600">|</span>
-                      <span className="text-sky-400 font-semibold">{hotelOccupancy.maxChildren} Child{hotelOccupancy.maxChildren === 1 ? "" : "ren"}</span>
-                    </div>
-                  </div>
                 </div>
               )}
             </div>
@@ -11024,8 +10956,8 @@ const Service = ({
                 currencyCode={currencyCode}
                 isForeignCurrency={isForeignCurrency}
                 exchangeRates={exchangeRates}
-                accentClass="text-yellow-400"
-                borderHover="hover:border-yellow-500/30"
+                accentClass="text-amber-700"
+                borderHover="hover:border-amber-400"
               />
 
               {/* C.W.E.B */}
@@ -11038,8 +10970,8 @@ const Service = ({
                 currencyCode={currencyCode}
                 isForeignCurrency={isForeignCurrency}
                 exchangeRates={exchangeRates}
-                accentClass="text-emerald-400"
-                borderHover="hover:border-emerald-500/30"
+                accentClass="text-emerald-700"
+                borderHover="hover:border-emerald-400"
               />
 
               {/* C.Wo.E.B */}
@@ -11052,8 +10984,8 @@ const Service = ({
                 currencyCode={currencyCode}
                 isForeignCurrency={isForeignCurrency}
                 exchangeRates={exchangeRates}
-                accentClass="text-blue-400"
-                borderHover="hover:border-blue-500/30"
+                accentClass="text-blue-700"
+                borderHover="hover:border-blue-400"
               />
             </div>
           )}
@@ -11078,26 +11010,26 @@ const AddonRow = ({
   accentClass,
   borderHover,
 }) => (
-  <div className={`rounded-xl border border-[#222] bg-[#141414] px-3 py-2.5 transition-colors ${borderHover}`}>
+  <div className={`rounded-xl border border-gray-200 bg-white px-3 py-2.5 transition-colors shadow-2xs ${borderHover}`}>
     <label className="flex cursor-pointer items-center justify-between gap-3">
       <div className="flex items-center gap-2.5">
         <input
           type="checkbox"
           checked={checked}
           onChange={(e) => onChange(e.target.checked)}
-          className="accent-yellow-400 h-3.5 w-3.5"
+          className="h-4 w-4 rounded border-gray-300 text-[#3E63DD] focus:ring-[#3E63DD] shrink-0 cursor-pointer"
         />
         <div>
-          <p className="text-[11px] font-semibold text-white">{label}</p>
-          <p className="text-[9px] text-slate-500">{sublabel}</p>
+          <p className="text-[11px] font-semibold text-slate-900">{label}</p>
+          <p className="text-[9.5px] font-medium text-slate-500">{sublabel}</p>
         </div>
       </div>
       <div className="text-right">
-        <p className={`text-[11px] font-semibold ${accentClass}`}>
+        <p className={`text-[11px] font-bold ${accentClass}`}>
           {formatCurrencyValue(rate, currencyCode)}
         </p>
         {isForeignCurrency && (
-          <p className="text-[10px] text-sky-300">
+          <p className="text-[10px] font-semibold text-sky-700">
             ₹ {formatAmountValue(convertAmountToInr(rate, currencyCode, exchangeRates))}
           </p>
         )}

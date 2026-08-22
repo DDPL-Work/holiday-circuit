@@ -664,12 +664,16 @@ const CreateNewQueries = ({ onClose, onCreated, queryToEdit = null, isOpsView = 
   const selectedHotelCategories = formData.hotelCategory
     ? formData.hotelCategory.split(",").map((category) => category.trim()).filter(Boolean)
     : [];
+  const defaultFallbackCategories = ["3 Star", "4 Star", "5 Star"];
   const hotelCategoryItems = Array.from(
     new Set([
       ...selectedHotelCategories,
-      ...hotelCategoryOptions.map((category) => String(category || "").trim()).filter(Boolean),
+      ...hotelCategoryOptions
+        .map((category) => String(category || "").trim())
+        .filter((cat) => cat && cat.toLowerCase() !== "luxury"),
+      ...(hotelCategoryOptions.length === 0 ? defaultFallbackCategories : []),
     ]),
-  );
+  ).filter((cat) => cat.toLowerCase() !== "luxury");
   const adultCount = Number(formData.numberOfAdults || 0);
   const childCount = Number(formData.numberOfChildren || 0);
   const childAgeLabel = formData.childTravelers
@@ -874,7 +878,7 @@ const CreateNewQueries = ({ onClose, onCreated, queryToEdit = null, isOpsView = 
               transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
               className={`relative z-10 flex max-h-[calc(100vh-20px)] w-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-gradient-to-b from-white to-slate-50/95 p-4 shadow-2xl sm:max-h-[calc(100vh-32px)] sm:p-4.5 ${isOpsView ? 'max-w-[460px]' : 'max-w-[520px]'}`}
             >
-            <div className="relative -mx-4 -mt-4 mb-4 bg-gradient-to-r from-black via-[#000814] to-[#001f54] px-5 py-4 text-white sm:-mx-5 sm:-mt-5 sm:mb-5 shadow-md">
+            <div className="relative -mx-4 -mt-4 mb-4 bg-[linear-gradient(135deg,#051329_0%,#0e234e_55%,#3E63DD_100%)] px-5 py-4 text-white sm:-mx-5 sm:-mt-5 sm:mb-5 shadow-md">
               <div className="flex items-center justify-between">
                 <button
                   type="button"
@@ -1374,7 +1378,7 @@ const CreateNewQueries = ({ onClose, onCreated, queryToEdit = null, isOpsView = 
 
                   <button
                     onClick={handleSubmit}
-                    className="cursor-pointer rounded-full bg-gradient-to-r from-black to-[#001d3d] hover:from-[#000814] hover:to-[#003566] px-6 py-2 text-sm font-bold text-white shadow-md hover:shadow-lg transition-all active:scale-[0.98] duration-150"
+                    className="cursor-pointer rounded-full bg-[linear-gradient(135deg,#051329_0%,#0e234e_55%,#3E63DD_100%)] hover:opacity-95 px-6 py-2 text-sm font-bold text-white shadow-md hover:shadow-lg transition-all active:scale-[0.98] duration-150"
                   >
                     {queryToEdit ? "Save Changes →" : "Submit Query →"}
                   </button>
@@ -1401,76 +1405,76 @@ const CreateNewQueries = ({ onClose, onCreated, queryToEdit = null, isOpsView = 
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.94, y: 18 }}
               transition={{ duration: 0.22 }}
-              className="w-full max-w-md overflow-hidden rounded-[28px] border border-slate-100 bg-white shadow-2xl animate-scale-in"
+              className="w-full max-w-md overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
             >
-              <div className="relative bg-gradient-to-r from-[#107c41] via-[#0e4e2c] to-[#0b1e36] px-6 py-5 text-white">
+              <div className="relative bg-[linear-gradient(135deg,#051329_0%,#0e234e_55%,#3E63DD_100%)] px-6 py-4.5 text-white shadow-sm">
                 <button
                   onClick={handlePopupClose}
-                  className="absolute right-4 top-4 rounded-full bg-white/10 p-1.5 text-white transition hover:bg-white/20"
+                  className="absolute right-4 top-4 rounded-lg bg-white/10 p-1.5 text-slate-300 transition hover:bg-white/20 hover:text-white"
                 >
-                  <X size={15} />
+                  <X size={16} />
                 </button>
 
                 <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/15 shadow-sm backdrop-blur-md">
-                    <CheckCircle2 size={22} className="text-emerald-100" />
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                    <CheckCircle2 size={22} />
                   </div>
                   <div>
-                    <p className="text-[9px] font-bold uppercase tracking-[0.2em] text-emerald-100/80">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-400">
                       {queryToEdit ? "Query Updated" : "Query Submitted"}
                     </p>
-                    <h3 className="text-base font-bold leading-tight">
+                    <h3 className="text-base font-bold leading-tight text-white">
                       {queryToEdit ? "Travel Query Updated" : "Travel Query Created Successfully"}
                     </h3>
                   </div>
                 </div>
-                <p className="mt-2 text-[11px] text-emerald-50/85 font-medium leading-relaxed">
+                <p className="mt-2 text-xs text-slate-300 font-normal leading-relaxed">
                   {queryToEdit
                     ? "Your query details have been updated successfully and will be processed shortly."
                     : "Your request is now in the pipeline and will move into ops processing shortly."}
                 </p>
               </div>
 
-              <div className="px-6 py-5">
+              <div className="px-5 py-4 space-y-3.5">
                 <div className="grid grid-cols-3 gap-2">
-                  <div className="rounded-2xl border border-slate-200/80 bg-gradient-to-b from-slate-50 to-slate-100/50 px-2.5 py-2">
-                    <p className="text-[9px] font-bold uppercase tracking-wider text-slate-500">Destination</p>
-                    <p className="mt-1 text-xs font-bold text-slate-900 truncate" title={formData.destination}>
+                  <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-2">
+                    <p className="text-[9.5px] font-bold uppercase tracking-wider text-slate-500">Destination</p>
+                    <p className="mt-0.5 text-xs font-bold text-slate-900 truncate" title={formData.destination}>
                       {formData.destination || "-"}
                     </p>
                   </div>
-                  <div className="rounded-2xl border border-slate-200/80 bg-gradient-to-b from-slate-50 to-slate-100/50 px-2.5 py-2 text-center">
-                    <p className="text-[9px] font-bold uppercase tracking-wider text-slate-500">Dates</p>
-                    <p className="mt-1 text-xs font-bold text-slate-900 whitespace-nowrap">
+                  <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-2 text-center">
+                    <p className="text-[9.5px] font-bold uppercase tracking-wider text-slate-500">Dates</p>
+                    <p className="mt-0.5 text-xs font-bold text-slate-900 whitespace-nowrap">
                       {formatDate(formData.startDate)} - {formatDate(formData.endDate)}
                     </p>
                   </div>
-                  <div className="rounded-2xl border border-slate-200/80 bg-gradient-to-b from-slate-50 to-slate-100/50 px-2.5 py-2 text-right">
-                    <p className="text-[9px] font-bold uppercase tracking-wider text-slate-500">Travellers</p>
-                    <p className="mt-1 text-xs font-bold text-slate-900">
+                  <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-2 text-right">
+                    <p className="text-[9.5px] font-bold uppercase tracking-wider text-slate-500">Travellers</p>
+                    <p className="mt-0.5 text-xs font-bold text-slate-900">
                       {Number(formData.numberOfAdults || 0) + Number(formData.numberOfChildren || 0)} PAX
                     </p>
                   </div>
                 </div>
 
                 {/* TRIP PROFILE SUMMARY */}
-                <div className="mt-3 rounded-2xl border border-slate-200/80 bg-gradient-to-b from-white to-slate-50/40 p-3 shadow-[inset_0_1px_3px_rgba(0,0,0,0.02)]">
-                  <div className="mb-1.5 flex items-center gap-1.5 border-b border-slate-100 pb-1.5">
-                    <User size={13} className="text-slate-500" />
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Travel Profile Summary</p>
+                <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+                  <div className="mb-2 flex items-center gap-1.5 border-b border-slate-100 pb-2">
+                    <User size={14} className="text-slate-500" />
+                    <p className="text-[10.5px] font-bold uppercase tracking-wider text-slate-600">Travel Profile Summary</p>
                   </div>
-                  <div className="space-y-1.5">
+                  <div className="space-y-2">
                     {travelProfileRows.map((item) => (
-                      <div key={item.label} className="flex min-h-[32px] items-center justify-between gap-3 rounded-xl px-1.5 text-xs">
+                      <div key={item.label} className="flex min-h-[30px] items-center justify-between gap-3 px-1 text-xs">
                         <span className="min-w-0">
-                          <span className="block text-[8.5px] font-bold uppercase tracking-wider text-slate-400">
+                          <span className="block text-[9px] font-bold uppercase tracking-wider text-slate-400">
                             {item.label}
                           </span>
-                          <span className="block max-w-[360px] truncate font-semibold leading-5 text-slate-800" title={item.value}>
+                          <span className="block max-w-[340px] truncate font-semibold leading-5 text-slate-800" title={item.value}>
                             {item.value}
                           </span>
                         </span>
-                        <span className={`shrink-0 rounded-full border px-2.5 py-0.5 text-[9px] font-bold ${item.badgeClass}`}>
+                        <span className={`shrink-0 rounded-lg border px-2.5 py-0.5 text-[9.5px] font-semibold ${item.badgeClass}`}>
                           {item.badge}
                         </span>
                       </div>
@@ -1478,16 +1482,16 @@ const CreateNewQueries = ({ onClose, onCreated, queryToEdit = null, isOpsView = 
                   </div>
                 </div>
 
-                <div className="mt-3 rounded-2xl border border-emerald-100 bg-gradient-to-br from-emerald-50/50 to-teal-50/30 px-3.5 py-2.5">
+                <div className="rounded-xl border border-blue-100 bg-blue-50/40 p-3">
                   <div className="flex items-start gap-2.5">
-                    <div className="mt-0.5 rounded-lg bg-gradient-to-tr from-emerald-100 to-teal-100 p-1.5 text-emerald-700 shadow-sm">
-                      <Sparkles size={13} />
+                    <div className="mt-0.5 rounded-lg bg-blue-100 p-1.5 text-blue-600 shrink-0">
+                      <Sparkles size={14} />
                     </div>
                     <div>
-                      <p className="text-xs font-bold text-emerald-900 leading-tight">
+                      <p className="text-xs font-bold text-blue-950 leading-tight">
                         {queryToEdit ? "Information" : "Next Step"}
                       </p>
-                      <p className="mt-1 text-[11px] leading-relaxed text-emerald-800/90">
+                      <p className="mt-0.5 text-[11px] leading-relaxed text-blue-800/90">
                         {queryToEdit
                           ? "The operations team will be notified of the updates and adapt the itinerary/quotation if required."
                           : "Ops team will review availability, prepare pricing, and move this query forward for quotation."}
@@ -1496,16 +1500,16 @@ const CreateNewQueries = ({ onClose, onCreated, queryToEdit = null, isOpsView = 
                   </div>
                 </div>
 
-                <div className="mt-4 flex justify-end gap-3 border-t border-slate-100 pt-3.5">
+                <div className="flex justify-end gap-2.5 border-t border-slate-100 pt-3">
                   <button
                     onClick={handlePopupClose}
-                    className="rounded-xl border border-slate-300 bg-white hover:bg-slate-50 px-4.5 py-1.5 text-xs font-semibold text-slate-700 transition active:scale-95 duration-150 cursor-pointer"
+                    className="rounded-xl border border-slate-300 bg-white hover:bg-slate-50 px-4.5 py-2 text-xs font-semibold text-slate-700 transition active:scale-95 duration-150 cursor-pointer"
                   >
                     Close
                   </button>
                   <button
                     onClick={handlePopupClose}
-                    className="rounded-xl bg-gradient-to-r from-[#107c41] via-[#0e4e2c] to-[#0b1e36] px-5 py-2 text-xs font-bold text-white transition hover:opacity-95 shadow-[0_2px_8px_rgba(16,124,65,0.25)] active:scale-95 duration-150 cursor-pointer"
+                    className="rounded-xl bg-[linear-gradient(135deg,#051329_0%,#0e234e_55%,#3E63DD_100%)] hover:opacity-95 px-5 py-2 text-xs font-bold text-white transition shadow-md active:scale-95 duration-150 cursor-pointer"
                   >
                     Done
                   </button>

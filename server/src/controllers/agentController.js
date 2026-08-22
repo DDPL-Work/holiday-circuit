@@ -151,12 +151,46 @@ export const getHotelRateDestinations = async (req, res, next) => {
       {
         $match: {
           status: "active",
-          hotelCategory: { $type: "string", $ne: "" },
         },
       },
       {
         $project: {
-          hotelCategory: { $trim: { input: "$hotelCategory" } },
+          categories: {
+            $concatArrays: [
+              {
+                $cond: [
+                  { $eq: [{ $type: "$hotelCategory" }, "string"] },
+                  ["$hotelCategory"],
+                  [],
+                ],
+              },
+              {
+                $map: {
+                  input: { $ifNull: ["$hotels", []] },
+                  as: "h",
+                  in: "$$h.hotelCategory",
+                },
+              },
+            ],
+          },
+        },
+      },
+      {
+        $unwind: "$categories",
+      },
+      {
+        $project: {
+          hotelCategory: {
+            $trim: {
+              input: {
+                $cond: [
+                  { $eq: [{ $type: "$categories" }, "string"] },
+                  "$categories",
+                  "",
+                ],
+              },
+            },
+          },
         },
       },
       {
@@ -267,10 +301,12 @@ export const getHotelRateDestinations = async (req, res, next) => {
     const destinations = Array.from(destinationMap.values()).sort((left, right) =>
       String(left.label || "").localeCompare(String(right.label || "")),
     );
-    const categoryPriority = ["3 Star", "4 Star", "5 Star", "Luxury"];
-    const categories = hotelCategories
+    const categoryPriority = ["3 Star", "4 Star", "5 Star"];
+    const dbCategories = hotelCategories
       .map((category) => String(category?.label || "").trim())
-      .filter(Boolean)
+      .filter((cat) => cat && cat.toLowerCase() !== "luxury");
+    const mergedCategorySet = new Set([...dbCategories, ...categoryPriority]);
+    const categories = Array.from(mergedCategorySet)
       .sort((left, right) => {
         const leftPriority = categoryPriority.indexOf(left);
         const rightPriority = categoryPriority.indexOf(right);

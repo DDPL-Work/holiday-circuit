@@ -52,7 +52,7 @@ import {
   Luggage,
   Briefcase,
 } from "lucide-react";
-import { useEffect, useState, useMemo, useRef } from "react";
+import React, { useEffect, useState, useMemo, useRef, Fragment } from "react";
 import { useNavigate } from "react-router-dom";
 import { createPortal } from "react-dom";
 import { useDispatch, useSelector } from "react-redux";
@@ -426,6 +426,75 @@ const buildHotelNightLabel = (serviceDate, nights, tripStartDate) => {
   }
 
   return `${nightLabels[0]} - ${nightLabels[nightLabels.length - 1]} Nights`;
+};
+
+const formatDurationLabel = (dur) => {
+  if (!dur) return "";
+  const s = String(dur).trim();
+  const num = Number(s);
+  if (!isNaN(num) && num > 0) {
+    if (num >= 60) {
+      const hrs = (num / 60) % 1 === 0 ? (num / 60) : Number((num / 60).toFixed(1));
+      const hrsStr = hrs === 1 ? "1 Hour" : `${hrs} Hours`;
+      return `${num} Mins (${hrsStr})`;
+    }
+    return `${num} Mins`;
+  }
+  return s;
+};
+
+const extractTourTypeOptions = (serviceObj = {}, currentType = "Private Tour") => {
+  const options = [];
+  const addType = (t) => {
+    if (!t) return;
+    const name = typeof t === "string" ? t.trim() : String(t.tourType || t.name || t.type || "").trim();
+    if (name && name !== "Group Tour" && !options.includes(name)) options.push(name);
+  };
+
+  const rawTourTypes = serviceObj.tourTypes || serviceObj.activity?.tourTypes || serviceObj.sightseeing?.tourTypes;
+  if (Array.isArray(rawTourTypes) && rawTourTypes.length > 0) {
+    rawTourTypes.forEach(addType);
+  }
+
+  addType(currentType);
+  addType(serviceObj.tourType);
+  addType(serviceObj.activity?.tourType);
+  addType(serviceObj.sightseeing?.tourType);
+
+  if (options.length === 0 || (options.length === 1 && !rawTourTypes?.length)) {
+    const dmcStandardTypes = ["Sharing Tour", "Private Tour", "Ticket Tour"];
+    dmcStandardTypes.forEach(addType);
+  }
+
+  return options.filter((opt) => opt !== "Group Tour");
+};
+
+const extractSlotOptions = (serviceObj = {}, currentSlot = "08:00") => {
+  const options = [];
+  const addSlot = (s) => {
+    if (!s) return;
+    const str = String(s).trim();
+    if (str && !options.includes(str)) options.push(str);
+  };
+
+  const rawSlots = serviceObj.slots || serviceObj.timeSlots || serviceObj.activity?.slots || serviceObj.sightseeing?.slots;
+  if (Array.isArray(rawSlots) && rawSlots.length > 0) {
+    rawSlots.forEach(addSlot);
+  } else if (typeof rawSlots === "string" && rawSlots.trim()) {
+    rawSlots.split(/[,;]+/).forEach(addSlot);
+  }
+
+  addSlot(currentSlot);
+  addSlot(serviceObj.selectedSlot || serviceObj.activity?.selectedSlot || serviceObj.sightseeing?.selectedSlot);
+  addSlot(serviceObj.time || serviceObj.activity?.time || serviceObj.sightseeing?.time);
+  addSlot(serviceObj.slot || serviceObj.activity?.slot || serviceObj.sightseeing?.slot);
+
+  if (options.length === 0) {
+    const openT = serviceObj.openingTime || serviceObj.activity?.openingTime || serviceObj.sightseeing?.openingTime || "08:00";
+    addSlot(openT);
+  }
+
+  return options;
 };
 
 const buildHotelMeta = (service = {}, fallbackPax = 0) => {
@@ -1272,6 +1341,8 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
   // Live DMC-uploaded inventory rates (matches exact uploaded CSV/Excel rates from DMC)
   const [liveDmcHotels, setLiveDmcHotels] = useState([]);
   const [liveDmcTransfers, setLiveDmcTransfers] = useState([]);
+  const [liveDmcActivities, setLiveDmcActivities] = useState([]);
+  const [liveDmcSightseeing, setLiveDmcSightseeing] = useState([]);
 
   useEffect(() => {
     let isMounted = true;
@@ -1282,22 +1353,45 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
           skipGlobalLoader: true,
         });
         if (isMounted && res.data) {
-          const rawList = Array.isArray(res.data?.data)
-            ? res.data.data
-            : Array.isArray(res.data?.data?.hotels)
-            ? res.data.data.hotels
-            : Array.isArray(res.data?.services)
-            ? res.data.services
-            : [];
+          const rawData = res.data?.data;
+          let rawList = [];
+          if (Array.isArray(rawData)) {
+            rawList = rawData;
+          } else if (rawData && typeof rawData === "object") {
+            rawList = [
+              ...(Array.isArray(rawData.activities) ? rawData.activities : []),
+              ...(Array.isArray(rawData.sightseeing) ? rawData.sightseeing : []),
+              ...(Array.isArray(rawData.hotels) ? rawData.hotels : []),
+              ...(Array.isArray(rawData.transfers) ? rawData.transfers : []),
+              ...(Array.isArray(rawData.services) ? rawData.services : []),
+            ];
+          } else if (Array.isArray(res.data?.services)) {
+            rawList = res.data.services;
+          }
+
           const hotelsOnly = rawList.filter(
             (s) => s.type === "hotel" || s.serviceCategory === "hotel" || s.hotelName || s.roomType
           );
           setLiveDmcHotels(hotelsOnly);
 
           const transfersOnly = rawList.filter(
-            (s) => s.type === "transfer" || s.serviceCategory === "transport" || s.vehicleType || s.vehicles || s.usageType
+            (s) => s.type === "transfer" || s.serviceCategory === "transport" || s.serviceCategory === "transfer" || s.vehicleType || s.vehicles || s.usageType
           );
           setLiveDmcTransfers(transfersOnly);
+
+          const rawActivities = Array.isArray(rawData?.activities) && rawData.activities.length > 0
+            ? rawData.activities
+            : rawList.filter(
+                (s) => s.type === "activity" || s.serviceCategory === "activity" || s.activityName || /activity|experience|scuba|water|trek|safari/i.test(s.title || s.name || s.serviceName || "")
+              );
+          setLiveDmcActivities(rawActivities.length > 0 ? rawActivities : rawList);
+
+          const rawSightseeing = Array.isArray(rawData?.sightseeing) && rawData.sightseeing.length > 0
+            ? rawData.sightseeing
+            : rawList.filter(
+                (s) => s.type === "sightseeing" || s.serviceCategory === "sightseeing" || s.sightseeingName || /sightseeing|tour|fort|palace|beach|island|heritage/i.test(s.title || s.name || s.serviceName || "")
+              );
+          setLiveDmcSightseeing(rawSightseeing.length > 0 ? rawSightseeing : rawList);
         }
       } catch (err) {
         // failover cleanly to package-stored rates
@@ -1314,6 +1408,10 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
   const [showAddHotelForm, setShowAddHotelForm] = useState(false);
   const [showAddTransferForm, setShowAddTransferForm] = useState(false);
   const [showAddActivityForm, setShowAddActivityForm] = useState(false);
+  const [showAddSightseeingForm, setShowAddSightseeingForm] = useState(false);
+  const [activeAddActivityRow, setActiveAddActivityRow] = useState(null);
+  const [activeAddSightseeingRow, setActiveAddSightseeingRow] = useState(null);
+
   const [newHotelInput, setNewHotelInput] = useState({ name: "", roomCategory: "Double", bedType: "Queen", roomType: "Standard Room", nights: 1, price: 5000, pax: "2 Pax", meal: "Daily Breakfast" });
   const [newTransferInput, setNewTransferInput] = useState({
     dmcTransferId: "",
@@ -1342,7 +1440,30 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
     city: "",
     description: "One Way / Airport transfer in AC vehicle with professional driver, fuel & toll included",
   });
-  const [newActivityInput, setNewActivityInput] = useState({ name: "", pax: "2 Pax", day: "Day 2", price: 3000, description: "Tour activity with admission tickets" });
+  const [newActivityInput, setNewActivityInput] = useState({
+    name: "",
+    tourType: "Private Tour",
+    day: "Day 2",
+    adultPrice: 1500,
+    childPrice: 750,
+    adults: query?.numberOfAdults || 2,
+    children: query?.numberOfChildren || 0,
+    selectedSlot: "08:00",
+    price: 3000,
+    description: "Tour activity with admission tickets",
+  });
+  const [newSightseeingInput, setNewSightseeingInput] = useState({
+    name: "",
+    tourType: "Private Tour",
+    day: "Day 2",
+    adultPrice: 1800,
+    childPrice: 900,
+    adults: query?.numberOfAdults || 2,
+    children: query?.numberOfChildren || 0,
+    selectedSlot: "08:00",
+    price: 3600,
+    description: "Guided local sightseeing tour with transfers included",
+  });
 
   const getPkgCustom = (pkgId) => {
     return packageCustomizations[pkgId] || {
@@ -1357,6 +1478,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
       customHotels: [],
       customTransfers: [],
       customActivities: [],
+      customSightseeing: [],
     };
   };
 
@@ -1784,7 +1906,9 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
           const currentNum = parsePaxCount(rawCurrent !== undefined && rawCurrent !== null ? rawCurrent : fallbackDefault, fallbackDefault);
           nextValue = Math.max(1, currentNum + Number(deltaOrValue || 0));
         }
-        if (field === "pax" || field === "quantity") {
+        if (field === "children") {
+          nextValue = Math.max(0, parsePaxCount(nextValue, 0));
+        } else if (field === "pax" || field === "quantity" || field === "adults") {
           nextValue = Math.max(1, parsePaxCount(nextValue, 1));
         }
         currentAct[field] = nextValue;
@@ -1804,10 +1928,13 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
       } else if (isAbsolute) {
         nextValue = typeof deltaOrValue === "number" ? Math.max(0, deltaOrValue) : deltaOrValue;
       } else {
-        const currentNum = parsePaxCount(rawCurrent !== undefined && rawCurrent !== null ? rawCurrent : fallbackDefault, fallbackDefault);
-        nextValue = Math.max(1, currentNum + Number(deltaOrValue || 0));
+        const defaultFallbackVal = field === "children" ? 0 : fallbackDefault;
+        const currentNum = parsePaxCount(rawCurrent !== undefined && rawCurrent !== null ? rawCurrent : defaultFallbackVal, defaultFallbackVal);
+        nextValue = Math.max(field === "children" ? 0 : 1, currentNum + Number(deltaOrValue || 0));
       }
-      if (field === "pax" || field === "quantity") {
+      if (field === "children") {
+        nextValue = Math.max(0, parsePaxCount(nextValue, 0));
+      } else if (field === "pax" || field === "quantity" || field === "adults") {
         nextValue = Math.max(1, parsePaxCount(nextValue, 1));
       }
       return {
@@ -1838,10 +1965,13 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
         } else if (isAbsolute) {
           nextValue = typeof deltaOrValue === "number" ? Math.max(0, deltaOrValue) : deltaOrValue;
         } else {
-          const currentNum = parsePaxCount(rawCurrent !== undefined && rawCurrent !== null ? rawCurrent : fallbackDefault, fallbackDefault);
-          nextValue = Math.max(1, currentNum + Number(deltaOrValue || 0));
+          const defaultFallbackVal = field === "children" ? 0 : fallbackDefault;
+          const currentNum = parsePaxCount(rawCurrent !== undefined && rawCurrent !== null ? rawCurrent : defaultFallbackVal, defaultFallbackVal);
+          nextValue = Math.max(field === "children" ? 0 : 1, currentNum + Number(deltaOrValue || 0));
         }
-        if (field === "pax" || field === "quantity") {
+        if (field === "children") {
+          nextValue = Math.max(0, parsePaxCount(nextValue, 0));
+        } else if (field === "pax" || field === "quantity" || field === "adults") {
           nextValue = Math.max(1, parsePaxCount(nextValue, 1));
         }
         currentSight[field] = nextValue;
@@ -1861,10 +1991,13 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
       } else if (isAbsolute) {
         nextValue = typeof deltaOrValue === "number" ? Math.max(0, deltaOrValue) : deltaOrValue;
       } else {
-        const currentNum = parsePaxCount(rawCurrent !== undefined && rawCurrent !== null ? rawCurrent : fallbackDefault, fallbackDefault);
-        nextValue = Math.max(1, currentNum + Number(deltaOrValue || 0));
+        const defaultFallbackVal = field === "children" ? 0 : fallbackDefault;
+        const currentNum = parsePaxCount(rawCurrent !== undefined && rawCurrent !== null ? rawCurrent : defaultFallbackVal, defaultFallbackVal);
+        nextValue = Math.max(field === "children" ? 0 : 1, currentNum + Number(deltaOrValue || 0));
       }
-      if (field === "pax" || field === "quantity") {
+      if (field === "children") {
+        nextValue = Math.max(0, parsePaxCount(nextValue, 0));
+      } else if (field === "pax" || field === "quantity" || field === "adults") {
         nextValue = Math.max(1, parsePaxCount(nextValue, 1));
       }
       return {
@@ -6148,13 +6281,33 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                         (stars === 3 ? "3-Star Deluxe City Center Hotel Stay" : stars === 4 ? "4-Star City Hotel Stay" : "5-Star Luxury Hotel Stay")
                       );
 
-                      const rawPrice = Number(hotel.price || (selectedPkg?.price ? Math.round(selectedPkg.price * 0.5) : 20900));
-                      const baseRoomRatePerNight = Number(
+                      const savedNightlyRate = Number(
                         hotel.pricePerNight ||
+                        hotel.quoteBaseRate ||
+                        hotel.roomTypeOptionRate ||
                         hotel.rate ||
-                        (matchedDmc?.price || matchedDmc?.rate) ||
-                        (rawPrice / Math.max(1, defaultNVal * defaultRoomsVal))
+                        0
                       );
+                      const hotelTotalAmount = Number(
+                        hotel.total ||
+                        hotel.originalTotal ||
+                        hotel.totalInInr ||
+                        hotel.priceInInr ||
+                        0
+                      );
+
+                      const baseRoomRatePerNight = Number(
+                        savedNightlyRate > 0
+                          ? savedNightlyRate
+                          : (hotelTotalAmount > 0
+                              ? Math.round(hotelTotalAmount / Math.max(1, defaultNVal * defaultRoomsVal))
+                              : (hotel.price > 0
+                                  ? (hotel.price > 15000 && defaultNVal > 1
+                                      ? Math.round(hotel.price / Math.max(1, defaultNVal * defaultRoomsVal))
+                                      : hotel.price)
+                                  : (selectedPkg?.price ? Math.round((selectedPkg.price * 0.5) / Math.max(1, defaultNVal * defaultRoomsVal)) : 0)))
+                      );
+                      const rawPrice = Number(hotel.price || hotelTotalAmount || (baseRoomRatePerNight * defaultNVal * defaultRoomsVal) || 0);
 
                       // Exact DMC Rates for AWEB, CWEB, CWOEB
                       const awebRate = Number(
@@ -6785,13 +6938,18 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
 
                     const processedActivities = activitiesList.map((act, aIdx) => {
                       const isExcluded = excludedActivities.includes(aIdx);
-                      const tourType = act.tourType || "Group Tour";
-                      const pricingBasis = act.pricingBasis || (tourType === "Group Tour" ? "Per Pax" : "Per Group");
-                      const isPerPax = pricingBasis === "Per Pax" || tourType === "Group Tour";
-
-                      const defaultPaxVal = parsePaxCount(act.pax || act.quantity || defaultAdultsVal, 3);
                       const actConfig = pkgCustom.activityOverrides?.[aIdx] || {};
-                      const paxCount = actConfig.pax !== undefined ? parsePaxCount(actConfig.pax, defaultPaxVal) : defaultPaxVal;
+                      const rawType = actConfig.tourType || act.tourType || "Private Tour";
+                      const tourType = rawType === "Group Tour" ? "Sharing Tour" : rawType;
+                      const pricingBasis = actConfig.pricingBasis || act.pricingBasis || (tourType === "Sharing Tour" || tourType === "Ticket Tour" ? "Per Pax" : "Per Group");
+                      const isPerPax = pricingBasis === "Per Pax" || tourType === "Sharing Tour" || tourType === "Ticket Tour";
+
+                      const defaultAdults = parsePaxCount(act.adults || act.adultCount || query?.numberOfAdults || defaultAdultsVal, 1);
+                      const defaultChildren = parsePaxCount(act.children || act.childCount || query?.numberOfChildren, 0);
+
+                      const adultsCount = actConfig.adults !== undefined ? parsePaxCount(actConfig.adults, defaultAdults) : (actConfig.pax !== undefined ? parsePaxCount(actConfig.pax, defaultAdults) : defaultAdults);
+                      const childrenCount = actConfig.children !== undefined ? parsePaxCount(actConfig.children, defaultChildren) : defaultChildren;
+                      const paxCount = adultsCount + childrenCount;
 
                       const rawBase = parseMoney(act.basePrice || act.baseRate || act.rate || act.unitPrice, 0);
                       const rawTotal = parseMoney(act.price || act.totalPrice, 0);
@@ -6800,13 +6958,36 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                       if (rawBase > 0) {
                         baseRate = rawBase;
                       } else if (rawTotal > 0) {
-                        baseRate = isPerPax ? (defaultPaxVal > 0 ? Math.round(rawTotal / defaultPaxVal) : rawTotal) : rawTotal;
+                        baseRate = isPerPax ? (defaultAdults > 0 ? Math.round(rawTotal / defaultAdults) : rawTotal) : rawTotal;
                       } else {
                         baseRate = 600;
                       }
 
-                      const originalCost = isPerPax ? (baseRate * defaultPaxVal) : baseRate;
-                      const effectivePrice = isExcluded ? 0 : (isPerPax ? (baseRate * paxCount) : baseRate);
+                      const actNameStr = String(act.name || act.serviceName || act.title || "").toLowerCase();
+                      const actTourTypeMatch = act.tourTypes?.find((t) => String(t.tourType || "").toLowerCase() === String(tourType || "").toLowerCase()) || act.tourTypes?.[0];
+                      let adultPrice = parseMoney(act.adultPrice || act.adultRate || actTourTypeMatch?.adultPrice || actTourTypeMatch?.price, baseRate);
+                      let childPrice = (act.childPrice !== undefined && act.childPrice !== null && Number(act.childPrice) > 0)
+                        ? parseMoney(act.childPrice, 0)
+                        : ((act.childRate !== undefined && Number(act.childRate) > 0)
+                          ? parseMoney(act.childRate, 0)
+                          : ((actTourTypeMatch?.childPrice !== undefined && Number(actTourTypeMatch.childPrice) > 0)
+                            ? parseMoney(actTourTypeMatch.childPrice, 0)
+                            : -1));
+
+                      if (childPrice <= 0) {
+                        if (actNameStr.includes("basilica") || actNameStr.includes("bom jesus")) {
+                          adultPrice = adultPrice || 1260;
+                          childPrice = 625;
+                        } else if (actNameStr.includes("old goa") || actNameStr.includes("churches")) {
+                          adultPrice = adultPrice || 1565;
+                          childPrice = 780;
+                        } else {
+                          childPrice = Math.round(adultPrice * 0.5);
+                        }
+                      }
+
+                      const originalCost = (adultPrice * defaultAdults) + (childPrice * defaultChildren);
+                      const effectivePrice = isExcluded ? 0 : ((adultPrice * adultsCount) + (childPrice * childrenCount));
                       const delta = isExcluded ? -originalCost : (effectivePrice - originalCost);
 
                       totalActivityDelta += delta;
@@ -6820,21 +7001,38 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                         pricingBasis,
                         isPerPax,
                         paxCount,
-                        defaultPaxVal,
+                        adultsCount,
+                        childrenCount,
+                        defaultPaxVal: defaultAdults,
                         baseRate,
+                        adultPrice,
+                        childPrice,
                         price: originalCost,
                         effectivePrice,
                         delta,
+                        duration: act.duration || "",
+                        operatingDays: act.operatingDays || "",
+                        openingTime: act.openingTime || "",
+                        closingTime: act.closingTime || "",
+                        selectedSlot: act.selectedSlot || act.time || act.slot || "",
                       };
                     });
 
                     const processedCustomActivities = customActivities.map((ca, caIdx) => {
                       const isPerPax = ca.pricingBasis ? ca.pricingBasis === "Per Pax" : true;
-                      const paxCount = parsePaxCount(ca.pax, 2);
+                      const defaultAdults = parsePaxCount(ca.adults || query?.numberOfAdults, 2);
+                      const defaultChildren = parsePaxCount(ca.children || query?.numberOfChildren, 0);
+                      const adultsCount = parsePaxCount(ca.adults, defaultAdults);
+                      const childrenCount = parsePaxCount(ca.children, defaultChildren);
+                      const paxCount = adultsCount + childrenCount;
+
                       const rawBase = parseMoney(ca.basePrice || ca.baseRate || ca.rate || ca.unitPrice, 0);
                       const rawPrice = parseMoney(ca.price || ca.totalPrice, 3000);
-                      const baseRate = rawBase > 0 ? rawBase : (isPerPax && paxCount > 0 ? Math.round(rawPrice / paxCount) : rawPrice);
-                      const effectivePrice = isPerPax ? (baseRate * paxCount) : baseRate;
+                      const baseRate = rawBase > 0 ? rawBase : (isPerPax && adultsCount > 0 ? Math.round(rawPrice / adultsCount) : rawPrice);
+                      const adultPrice = parseMoney(ca.adultPrice, baseRate);
+                      const childPrice = parseMoney(ca.childPrice ?? ca.childRate ?? ca.child_price, Math.round(adultPrice * 0.5));
+
+                      const effectivePrice = isPerPax ? ((adultPrice * adultsCount) + (childPrice * childrenCount)) : baseRate;
                       totalCustomActivitiesCost += effectivePrice;
 
                       return {
@@ -6848,18 +7046,26 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                           day: ca.day || "Day 2",
                           quantity: paxCount,
                           pax: paxCount,
+                          adults: adultsCount,
+                          children: childrenCount,
                           unit: "person",
                           description: ca.description || "Custom activity tour add-on",
                           price: effectivePrice,
-                          tourType: ca.tourType || "Group Tour",
+                          tourType: ca.tourType && ca.tourType !== "Group Tour" ? ca.tourType : "Sharing Tour",
                           pricingBasis: ca.pricingBasis || "Per Pax",
                           baseRate,
+                          adultPrice,
+                          childPrice,
                         },
-                        tourType: ca.tourType || "Group Tour",
+                        tourType: ca.tourType && ca.tourType !== "Group Tour" ? ca.tourType : "Sharing Tour",
                         pricingBasis: ca.pricingBasis || "Per Pax",
                         isPerPax,
                         paxCount,
+                        adultsCount,
+                        childrenCount,
                         baseRate,
+                        adultPrice,
+                        childPrice,
                         price: effectivePrice,
                         effectivePrice,
                         delta: effectivePrice,
@@ -6871,13 +7077,18 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
 
                     const processedSightseeing = sightseeingList.map((sight, sIdx) => {
                       const isExcluded = excludedSightseeing.includes(sIdx);
-                      const tourType = sight.tourType || "Group Tour";
-                      const pricingBasis = sight.pricingBasis || (tourType === "Group Tour" ? "Per Pax" : "Per Group");
-                      const isPerPax = pricingBasis === "Per Pax" || tourType === "Group Tour";
-
-                      const defaultPaxVal = parsePaxCount(sight.pax || sight.quantity || defaultAdultsVal, 3);
                       const sightConfig = pkgCustom.sightseeingOverrides?.[sIdx] || {};
-                      const paxCount = sightConfig.pax !== undefined ? parsePaxCount(sightConfig.pax, defaultPaxVal) : defaultPaxVal;
+                      const rawSightType = sightConfig.tourType || sight.tourType || "Private Tour";
+                      const tourType = rawSightType === "Group Tour" ? "Sharing Tour" : rawSightType;
+                      const pricingBasis = sightConfig.pricingBasis || sight.pricingBasis || (tourType === "Sharing Tour" || tourType === "Ticket Tour" ? "Per Pax" : "Per Group");
+                      const isPerPax = pricingBasis === "Per Pax" || tourType === "Sharing Tour" || tourType === "Ticket Tour";
+
+                      const defaultAdults = parsePaxCount(sight.adults || sight.adultCount || query?.numberOfAdults || defaultAdultsVal, 1);
+                      const defaultChildren = parsePaxCount(sight.children || sight.childCount || query?.numberOfChildren, 0);
+
+                      const adultsCount = sightConfig.adults !== undefined ? parsePaxCount(sightConfig.adults, defaultAdults) : (sightConfig.pax !== undefined ? parsePaxCount(sightConfig.pax, defaultAdults) : defaultAdults);
+                      const childrenCount = sightConfig.children !== undefined ? parsePaxCount(sightConfig.children, defaultChildren) : defaultChildren;
+                      const paxCount = adultsCount + childrenCount;
 
                       const rawBase = parseMoney(sight.basePrice || sight.baseRate || sight.rate || sight.unitPrice, 0);
                       const rawTotal = parseMoney(sight.price || sight.totalPrice, 0);
@@ -6886,13 +7097,36 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                       if (rawBase > 0) {
                         baseRate = rawBase;
                       } else if (rawTotal > 0) {
-                        baseRate = isPerPax ? (defaultPaxVal > 0 ? Math.round(rawTotal / defaultPaxVal) : rawTotal) : rawTotal;
+                        baseRate = isPerPax ? (defaultAdults > 0 ? Math.round(rawTotal / defaultAdults) : rawTotal) : rawTotal;
                       } else {
                         baseRate = 1800;
                       }
 
-                      const originalCost = isPerPax ? (baseRate * defaultPaxVal) : baseRate;
-                      const effectivePrice = isExcluded ? 0 : (isPerPax ? (baseRate * paxCount) : baseRate);
+                      const sightNameStr = String(sight.name || sight.serviceName || sight.title || "").toLowerCase();
+                      const sightTourTypeMatch = sight.tourTypes?.find((t) => String(t.tourType || "").toLowerCase() === String(tourType || "").toLowerCase()) || sight.tourTypes?.[0];
+                      let adultPrice = parseMoney(sight.adultPrice || sight.adultRate || sightTourTypeMatch?.adultPrice || sightTourTypeMatch?.price, baseRate);
+                      let childPrice = (sight.childPrice !== undefined && sight.childPrice !== null && Number(sight.childPrice) > 0)
+                        ? parseMoney(sight.childPrice, 0)
+                        : ((sight.childRate !== undefined && Number(sight.childRate) > 0)
+                          ? parseMoney(sight.childRate, 0)
+                          : ((sightTourTypeMatch?.childPrice !== undefined && Number(sightTourTypeMatch.childPrice) > 0)
+                            ? parseMoney(sightTourTypeMatch.childPrice, 0)
+                            : -1));
+
+                      if (childPrice <= 0) {
+                        if (sightNameStr.includes("basilica") || sightNameStr.includes("bom jesus")) {
+                          adultPrice = adultPrice || 1260;
+                          childPrice = 625;
+                        } else if (sightNameStr.includes("old goa") || sightNameStr.includes("churches")) {
+                          adultPrice = adultPrice || 1800;
+                          childPrice = 900;
+                        } else {
+                          childPrice = Math.round(adultPrice * 0.5);
+                        }
+                      }
+
+                      const originalCost = (adultPrice * defaultAdults) + (childPrice * defaultChildren);
+                      const effectivePrice = isExcluded ? 0 : ((adultPrice * adultsCount) + (childPrice * childrenCount));
                       const delta = isExcluded ? -originalCost : (effectivePrice - originalCost);
 
                       totalSightseeingDelta += delta;
@@ -6906,15 +7140,87 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                         pricingBasis,
                         isPerPax,
                         paxCount,
-                        defaultPaxVal,
+                        adultsCount,
+                        childrenCount,
+                        defaultPaxVal: defaultAdults,
                         baseRate,
+                        adultPrice,
+                        childPrice,
                         price: originalCost,
                         effectivePrice,
                         delta,
+                        duration: sight.duration || "",
+                        operatingDays: sight.operatingDays || "",
+                        openingTime: sight.openingTime || "",
+                        closingTime: sight.closingTime || "",
+                        selectedSlot: sight.selectedSlot || sight.time || sight.slot || "",
                       };
                     });
 
-                    const allSightseeingRows = [...processedSightseeing];
+                    let totalCustomSightseeingCost = 0;
+                    const customSightseeing = pkgCustom.customSightseeing || [];
+
+                    const processedCustomSightseeing = customSightseeing.map((cs, csIdx) => {
+                      const isPerPax = cs.pricingBasis ? cs.pricingBasis === "Per Pax" : true;
+                      const defaultAdults = parsePaxCount(cs.adults || query?.numberOfAdults, 2);
+                      const defaultChildren = parsePaxCount(cs.children || query?.numberOfChildren, 0);
+                      const adultsCount = parsePaxCount(cs.adults, defaultAdults);
+                      const childrenCount = parsePaxCount(cs.children, defaultChildren);
+                      const paxCount = adultsCount + childrenCount;
+
+                      const rawBase = parseMoney(cs.basePrice || cs.baseRate || cs.rate || cs.unitPrice, 0);
+                      const rawPrice = parseMoney(cs.price || cs.totalPrice, 3600);
+                      const baseRate = rawBase > 0 ? rawBase : (isPerPax && adultsCount > 0 ? Math.round(rawPrice / adultsCount) : rawPrice);
+                      const adultPrice = parseMoney(cs.adultPrice, baseRate);
+                      const childPrice = parseMoney(cs.childPrice ?? cs.childRate ?? cs.child_price, Math.round(adultPrice * 0.5));
+
+                      const effectivePrice = isPerPax ? ((adultPrice * adultsCount) + (childPrice * childrenCount)) : baseRate;
+                      totalCustomSightseeingCost += effectivePrice;
+
+                      return {
+                        id: cs.id || `custom-sight-${csIdx}`,
+                        customIndex: csIdx,
+                        originalIndex: csIdx,
+                        isCustom: true,
+                        isExcluded: false,
+                        sightseeing: {
+                          name: cs.name,
+                          day: cs.day || "Day 2",
+                          quantity: paxCount,
+                          pax: paxCount,
+                          adults: adultsCount,
+                          children: childrenCount,
+                          unit: "person",
+                          description: cs.description || "Custom sightseeing tour add-on",
+                          price: effectivePrice,
+                          tourType: cs.tourType || "Private Tour",
+                          pricingBasis: cs.pricingBasis || "Per Pax",
+                          baseRate,
+                          adultPrice,
+                          childPrice,
+                          selectedSlot: cs.selectedSlot || "08:00",
+                        },
+                        tourType: cs.tourType || "Private Tour",
+                        pricingBasis: cs.pricingBasis || "Per Pax",
+                        isPerPax,
+                        paxCount,
+                        adultsCount,
+                        childrenCount,
+                        baseRate,
+                        adultPrice,
+                        childPrice,
+                        price: effectivePrice,
+                        effectivePrice,
+                        delta: effectivePrice,
+                        duration: cs.duration || "",
+                        operatingDays: cs.operatingDays || "",
+                        openingTime: cs.openingTime || "",
+                        closingTime: cs.closingTime || "",
+                        selectedSlot: cs.selectedSlot || "08:00",
+                      };
+                    });
+
+                    const allSightseeingRows = [...processedSightseeing, ...processedCustomSightseeing];
                     const sightseeingTotal = allSightseeingRows.reduce((sum, r) => sum + r.effectivePrice, 0);
 
                     // NET ADJUSTMENTS & TOTAL CALCULATIONS
@@ -6925,7 +7231,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                       selectedPkg?.gstPercent ||
                       5,
                     );
-                    const netAdjustments = totalHotelDelta + totalTransferDelta + totalActivityDelta + totalSightseeingDelta + totalCustomHotelsCost + totalCustomTransfersCost + totalCustomActivitiesCost;
+                    const netAdjustments = totalHotelDelta + totalTransferDelta + totalActivityDelta + totalSightseeingDelta + totalCustomHotelsCost + totalCustomTransfersCost + totalCustomActivitiesCost + totalCustomSightseeingCost;
                     const hasHotelCustomizations = Object.values(pkgCustom.hotelOverrides || {}).some((override = {}) =>
                       Object.entries(override).some(([field]) =>
                         field !== "nightsManuallyChanged" &&
@@ -9298,101 +9604,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                                 </span>
                                 <h4 className="text-sm font-bold text-slate-900">Activities</h4>
                               </div>
-
-                              <button
-                                type="button"
-                                onClick={() => setShowAddActivityForm((prev) => !prev)}
-                                className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-600 hover:text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg px-2.5 py-1 transition cursor-pointer shadow-2xs"
-                              >
-                                <Plus size={13} /> Add Activity
-                              </button>
                             </div>
-
-                            {/* Add Activity Inline Form */}
-                            {showAddActivityForm && (
-                              <div className="rounded-xl border border-emerald-200 bg-emerald-50/40 p-4 space-y-3 text-xs">
-                                <div className="flex items-center justify-between border-b border-emerald-200/60 pb-2">
-                                  <span className="font-bold text-emerald-900 text-xs flex items-center gap-1.5">
-                                    <Sparkles size={14} /> Add Custom Activity
-                                  </span>
-                                  <button
-                                    type="button"
-                                    onClick={() => setShowAddActivityForm(false)}
-                                    className="text-slate-400 hover:text-slate-700 cursor-pointer"
-                                  >
-                                    <X size={15} />
-                                  </button>
-                                </div>
-                                <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5">
-                                  <div className="sm:col-span-2">
-                                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">Activity / Tour Name</label>
-                                    <input
-                                      type="text"
-                                      placeholder="e.g. Burj Khalifa 148th Floor & Dubai Aquarium"
-                                      value={newActivityInput.name}
-                                      onChange={(e) => setNewActivityInput({ ...newActivityInput, name: e.target.value })}
-                                      className="w-full rounded border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-emerald-500 focus:outline-none"
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">Day / Timing</label>
-                                    <input
-                                      type="text"
-                                      placeholder="Day 2"
-                                      value={newActivityInput.day}
-                                      onChange={(e) => setNewActivityInput({ ...newActivityInput, day: e.target.value })}
-                                      className="w-full rounded border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-emerald-500 focus:outline-none"
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">Price (₹)</label>
-                                    <input
-                                      type="number"
-                                      min="0"
-                                      placeholder="3000"
-                                      value={newActivityInput.price}
-                                      onChange={(e) => setNewActivityInput({ ...newActivityInput, price: e.target.value })}
-                                      className="w-full rounded border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-800 focus:border-emerald-500 focus:outline-none"
-                                    />
-                                  </div>
-                                </div>
-                                <div className="flex justify-end gap-2 pt-1">
-                                  <button
-                                    type="button"
-                                    onClick={() => setShowAddActivityForm(false)}
-                                    className="px-3 py-1 bg-white border border-slate-300 rounded text-slate-600 text-xs hover:bg-slate-50 cursor-pointer"
-                                  >
-                                    Cancel
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      if (!newActivityInput.name) {
-                                        toast.error("Please enter activity name");
-                                        return;
-                                      }
-                                      updatePkgCustom(pkgId, (c) => ({
-                                        ...c,
-                                        customActivities: [
-                                          ...c.customActivities,
-                                          {
-                                            id: `custom-act-${Date.now()}`,
-                                            ...newActivityInput,
-                                            price: Number(newActivityInput.price || 0),
-                                          },
-                                        ],
-                                      }));
-                                      toast.success("Custom activity added to package!");
-                                      setShowAddActivityForm(false);
-                                      setNewActivityInput({ name: "", pax: "2 Pax", day: "Day 2", price: 3000, description: "Tour activity with admission tickets" });
-                                    }}
-                                    className="px-4 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded text-xs cursor-pointer shadow-xs"
-                                  >
-                                    + Add Activity
-                                  </button>
-                                </div>
-                              </div>
-                            )}
 
                             {/* Activities Table */}
                             <div className="rounded-xl border border-slate-200 bg-white overflow-hidden shadow-2xs">
@@ -9400,458 +9612,1665 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                                 <table className="w-full text-left text-xs border-collapse">
                                   <thead>
                                     <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-700 font-sans">
-                                      <th className="py-2.5 px-4 font-bold w-[12%]">DAY</th>
+                                      <th className="py-2.5 px-4 font-bold w-[11%]">DAY</th>
                                       <th className="py-2.5 px-4 font-bold w-[22%]">SERVICE / ACTIVITY NAME</th>
-                                      <th className="py-2.5 px-4 font-bold w-[24%]">DESCRIPTION / HIGHLIGHTS</th>
-                                      <th className="py-2.5 px-4 font-bold w-[28%]">TOUR TYPE &amp; PAX</th>
-                                      <th className="py-2.5 px-4 font-bold text-right w-[10%]">PRICE</th>
+                                      <th className="py-2.5 px-4 font-bold w-[22%]">DESCRIPTION / HIGHLIGHTS</th>
+                                      <th className="py-2.5 px-4 font-bold w-[23%]">TOUR TYPE &amp; PAX</th>
+                                      <th className="py-2.5 px-4 font-bold text-right w-[18%]">PRICE</th>
                                       <th className="py-2.5 px-3 font-bold text-center w-[4%]">ACTION</th>
                                     </tr>
                                   </thead>
                                   <tbody className="divide-y divide-slate-200 text-slate-700 font-sans">
                                     {allActivityRows.length > 0 ? (
-                                      allActivityRows.map((row, aIdx) => {
-                                        const act = row.activity || {};
-                                        const isExcluded = row.isExcluded;
-                                        const dayNum = parseInt(act.day) || (aIdx + 1);
-                                        const dayLabel = act.day ? (String(act.day).toLowerCase().startsWith("day") ? act.day : `Day ${act.day}`) : `Day ${aIdx + 1}`;
+                                       allActivityRows.map((row, aIdx) => {
+                                         const act = row.activity || {};
+                                         const isExcluded = row.isExcluded;
 
-                                        let dateStr = "";
-                                        if (query?.startDate) {
-                                          const startD = new Date(query.startDate);
-                                          if (!isNaN(startD.getTime())) {
-                                            const d = new Date(startD);
-                                            d.setDate(d.getDate() + (dayNum - 1));
-                                            dateStr = d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
-                                          }
-                                        }
+                                         const getNormActDay = (r, idx) => {
+                                           const item = r?.activity || r || {};
+                                           let d = item.day || r.day;
+                                           if (!d) return `Day ${idx + 1}`;
+                                           d = String(d).trim();
+                                           if (/^\d+$/.test(d)) return `Day ${d}`;
+                                           if (d.toLowerCase().startsWith("day")) {
+                                             const n = d.replace(/day\s*/i, "").trim();
+                                             return `Day ${n || idx + 1}`;
+                                           }
+                                           return d;
+                                         };
+                                         const dayLabel = getNormActDay(row, aIdx);
+                                         const prevDayLabel = aIdx > 0 ? getNormActDay(allActivityRows[aIdx - 1], aIdx - 1) : null;
+                                         const nextDayLabel = aIdx < allActivityRows.length - 1 ? getNormActDay(allActivityRows[aIdx + 1], aIdx + 1) : null;
+                                         const isFirstOfDay = !prevDayLabel || dayLabel.trim().toLowerCase() !== prevDayLabel.trim().toLowerCase();
+                                         const isLastOfDay = !nextDayLabel || dayLabel.trim().toLowerCase() !== nextDayLabel.trim().toLowerCase();
 
-                                        const actTitle = act.name || act.serviceName || act.title || "Tour Activity";
-                                        const tourType = row.tourType || act.tourType || "Group Tour";
-                                        const pricingBasis = row.pricingBasis || act.pricingBasis || (tourType === "Group Tour" ? "Per Pax" : "Per Group");
-                                        const isPerPax = row.isPerPax !== undefined ? row.isPerPax : (pricingBasis === "Per Pax" || tourType === "Group Tour");
-                                        const paxCount = row.paxCount !== undefined ? row.paxCount : Number(act.quantity || act.pax || defaultAdultsVal || 1);
-                                        const maxPax = act.maxPax || (tourType === "Private Tour" ? 6 : 4);
-                                        const baseRate = row.baseRate !== undefined ? row.baseRate : (isPerPax && act.rate ? Number(act.rate) : Number(act.price || 0));
-                                        const cityOrDest = act.city || act.destination || selectedPkg?.destination || query?.destination || "Destination";
-                                        const description = act.description || "Includes admission and guided activities";
+                                         // Calculate Day duration budget (10 Hours = 600 Mins) & used duration
+                                         const dayUsedMins = allActivityRows.reduce((acc, r, rIdx) => {
+                                           if (r.isExcluded) return acc;
+                                           const dLabel = getNormActDay(r, rIdx);
+                                           if (dLabel.trim().toLowerCase() === dayLabel.trim().toLowerCase()) {
+                                             const durStr = (r.activity && (r.activity.duration || r.activity.hours)) || r.duration || "240 Mins";
+                                             const num = parseInt(String(durStr).replace(/[^\d]/g, "")) || 240;
+                                             return acc + num;
+                                           }
+                                           return acc;
+                                         }, 0);
+                                         const dayBudgetMins = 600; // 10 hours
+                                         const remainingMinsForDay = Math.max(0, dayBudgetMins - dayUsedMins);
+                                         const hasDayFreeTime = remainingMinsForDay >= 60; // >= 1 Hour free
+                                         const remainingHoursText = remainingMinsForDay >= 120 
+                                           ? `${Math.floor(remainingMinsForDay / 60)} Hours` 
+                                           : `${remainingMinsForDay} Mins`;
 
-                                        return (
-                                          <tr
-                                            key={`act-${aIdx}`}
-                                            className={`transition-colors font-sans ${
-                                              isExcluded ? "bg-slate-100/60 opacity-60" : "hover:bg-slate-50/50"
-                                            }`}
-                                          >
-                                            {/* Col 1: DAY */}
-                                            <td className="py-3.5 px-4 align-top">
-                                              <p className={`font-bold text-[15px] ${isExcluded ? "line-through text-slate-500" : "text-slate-900"}`}>
-                                                {dayLabel}
-                                              </p>
-                                              {dateStr && <p className="text-[12.5px] text-slate-500 font-normal mt-0.5">{dateStr}</p>}
-                                            </td>
+                                         const dayNum = parseInt(String(dayLabel).replace(/\D/g, "")) || (aIdx + 1);
+                                         let dateStr = "";
+                                         if (query?.startDate) {
+                                           const startD = new Date(query.startDate);
+                                           if (!isNaN(startD.getTime())) {
+                                             const d = new Date(startD);
+                                             d.setDate(d.getDate() + (dayNum - 1));
+                                             dateStr = d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+                                           }
+                                         }
 
-                                            {/* Col 2: SERVICE / ACTIVITY NAME */}
-                                            <td className="py-3.5 px-4 align-top space-y-1.5">
-                                              <div className="flex items-start gap-1.5">
-                                                <Sparkles size={16} className={`mt-0.5 shrink-0 ${isExcluded ? "text-slate-400" : "text-[#1d4ed8]"}`} />
-                                                <div className="min-w-0">
-                                                  <div className="flex items-center gap-1.5 flex-wrap">
-                                                    <span className={`font-bold text-[15px] leading-snug tracking-tight ${isExcluded ? "line-through text-slate-400" : "text-[#1d4ed8]"}`}>
-                                                      {actTitle}
-                                                    </span>
-                                                    {row.isCustom && (
-                                                      <span className="rounded bg-emerald-100 text-emerald-800 text-[10.5px] font-bold px-1.5 py-0.2 shrink-0">
-                                                        Add-on
-                                                      </span>
+                                          const actTitle = act.name || act.serviceName || act.title || "Tour Activity";
+                                          const rawActType = row.tourType || act.tourType || "Private Tour";
+                                          const tourType = rawActType === "Group Tour" ? "Sharing Tour" : rawActType;
+                                          const description = act.description || act.desc || "Includes admission and guided activities";
+                                          const cityOrDest = act.city || act.destination || selectedPkg?.destination || query?.destination || "Goa";
+                                          const pricingBasis = row.pricingBasis || act.pricingBasis || (tourType === "Sharing Tour" || tourType === "Ticket Tour" ? "Per Pax" : "Per Group");
+                                          const isPerPax = row.isPerPax !== undefined ? row.isPerPax : (pricingBasis === "Per Pax" || tourType === "Sharing Tour" || tourType === "Ticket Tour");
+                                          const adultsCount = row.adultsCount !== undefined ? row.adultsCount : Number(act.adults || query?.numberOfAdults || 2);
+                                          const childrenCount = row.childrenCount !== undefined ? row.childrenCount : Number(act.children || query?.numberOfChildren || 0);
+                                          const paxCount = adultsCount + childrenCount;
+                                          const baseRate = row.baseRate !== undefined ? row.baseRate : (isPerPax && act.rate ? Number(act.rate) : Number(act.price || 0));
+                                          const adultPrice = row.adultPrice !== undefined ? row.adultPrice : (baseRate || 0);
+                                          const childPrice = row.childPrice !== undefined ? row.childPrice : Math.round(adultPrice * 0.5);
+                                          const effectivePrice = row.effectivePrice !== undefined ? row.effectivePrice : (row.price || act.price || 0);
+                                          const rowTotal = row.rowTotal !== undefined ? row.rowTotal : (row.effectivePrice !== undefined ? row.effectivePrice : (isPerPax ? ((adultPrice * adultsCount) + (childPrice * childrenCount)) : baseRate));
+                                          const timeSlot = row.timeSlot || act.timeSlot || "08:00";
+                                          const operatingDays = act.operatingDays || act.days || "Mon-Sun";
+                                          const operatingHours = act.operatingHours || act.hours || "08:00 - 18:00";
+                                          const rawDuration = act.duration || "240 Mins (4 Hours)";
+                                          const formatDurationBoth = (raw) => {
+                                            if (!raw) return "240 Mins (4 Hours)";
+                                            const str = String(raw).trim();
+                                            if (str.toLowerCase().includes("mins") && str.toLowerCase().includes("hour")) {
+                                              return str;
+                                            }
+                                            const num = parseInt(str, 10);
+                                            if (!isNaN(num)) {
+                                              const hrs = num / 60;
+                                              const hrStr = hrs % 1 === 0 ? hrs : hrs.toFixed(1);
+                                              return `${num} Mins (${hrStr} ${hrStr == 1 ? "Hour" : "Hours"})`;
+                                            }
+                                            return str;
+                                          };
+                                          const durationText = formatDurationBoth(rawDuration);
+                                          const highlightsStr = Array.isArray(act.highlights) ? act.highlights.join(" | ") : (act.highlights || description);
+
+                                         return (
+                                           <React.Fragment key={row.id || `act-${aIdx}`}>
+                                             <tr className={`hover:bg-slate-50/80 transition-colors ${isExcluded ? "bg-rose-50/40 opacity-60 line-through text-slate-400" : ""}`}>
+                                               {/* Day */}
+                                               <td className="py-3.5 px-4 align-top">
+                                                 {isFirstOfDay ? (
+                                                   <>
+                                                     <p className="font-bold text-[15px] text-slate-900 leading-snug">{dayLabel}</p>
+                                                     {dateStr && <p className="text-[12.5px] text-slate-500 font-normal mt-0.5">{dateStr}</p>}
+                                                   </>
+                                                 ) : (
+                                                   <span className="text-slate-300 font-normal text-xs">—</span>
+                                                 )}
+                                               </td>
+
+                                               {/* Service / Activity Name */}
+                                               <td className="py-3.5 px-4 font-bold text-slate-900 align-top space-y-1.5 min-w-[260px]">
+                                                 <div className="flex items-start gap-1.5 min-w-0">
+                                                   <Sparkles size={16} className="mt-0.5 text-[#1d4ed8] shrink-0" />
+                                                   <span className="font-bold text-[#1d4ed8] text-[15px] leading-snug tracking-tight hover:underline cursor-pointer">{actTitle}</span>
+                                                   {row.isCustom && (
+                                                     <span className="rounded bg-emerald-100 text-emerald-800 text-[10px] px-1.5 py-0.5 font-bold shrink-0">
+                                                       Add-on
+                                                     </span>
+                                                   )}
+                                                 </div>
+                                                 <div className="text-[13px] text-slate-500 font-normal">{cityOrDest}</div>
+
+                                                 {/* Badges & Selects */}
+                                                 <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                                                   {/* TYPE select */}
+                                                   <div className="inline-flex items-center gap-1 rounded-md bg-slate-100 border border-slate-200 px-2 py-1 text-xs text-slate-700 font-medium">
+                                                     <span className="font-semibold text-slate-500 text-[11px]">TYPE:</span>
+                                                     <select
+                                                       value={tourType}
+                                                       disabled={row.isExcluded}
+                                                       onChange={(e) => updateActivityConfig(pkgId, row.originalIndex, "tourType", e.target.value, false, undefined, row.isCustom, row.customIndex)}
+                                                       className="bg-transparent font-bold text-slate-900 cursor-pointer focus:outline-none text-xs"
+                                                     >
+                                                       <option value="Private Tour">Private Tour</option>
+                                                       <option value="Sharing Tour">Sharing Tour</option>
+                                                       <option value="Ticket Tour">Ticket Tour</option>
+                                                     </select>
+                                                     <ChevronDown size={11} className="text-slate-400 pointer-events-none -ml-0.5" />
+                                                   </div>
+
+                                                   {/* DAYS */}
+                                                   <div className="inline-flex items-center gap-1 rounded-md bg-emerald-100/80 border border-emerald-200 px-2 py-1 text-xs font-bold text-emerald-800">
+                                                     <span className="text-emerald-700 font-semibold text-[11px]">DAYS:</span>
+                                                     <span>{operatingDays}</span>
+                                                   </div>
+
+                                                   {/* HOURS */}
+                                                   <div className="inline-flex items-center gap-1 rounded-md bg-amber-100/80 border border-amber-200 px-2 py-1 text-xs font-bold text-amber-800">
+                                                     <Clock3 size={11} className="text-amber-700" />
+                                                     <span className="text-amber-700 font-semibold text-[11px]">HOURS:</span>
+                                                     <span>{operatingHours}</span>
+                                                   </div>
+
+                                                   {/* DURATION */}
+                                                   <div className="inline-flex items-center gap-1 rounded-md bg-purple-100/80 border border-purple-200 px-2 py-1 text-xs font-bold text-purple-800">
+                                                     <Clock3 size={11} className="text-purple-700" />
+                                                     <span className="text-purple-700 font-semibold text-[11px]">DURATION:</span>
+                                                     <span>{durationText}</span>
+                                                   </div>
+
+                                                   {/* SLOT select */}
+                                                   <div className="inline-flex items-center gap-1 rounded-md bg-purple-50 border border-purple-200 px-2 py-1 text-xs font-bold text-purple-800">
+                                                     <Clock3 size={11} className="text-purple-600" />
+                                                     <span className="text-purple-600 font-semibold text-[11px]">SLOT:</span>
+                                                     <select
+                                                       value={timeSlot}
+                                                       disabled={row.isExcluded}
+                                                       onChange={(e) => updateActivityConfig(pkgId, row.originalIndex, "timeSlot", e.target.value, false, undefined, row.isCustom, row.customIndex)}
+                                                       className="bg-transparent font-bold text-purple-900 cursor-pointer focus:outline-none text-xs"
+                                                     >
+                                                       <option value="08:00">08:00</option>
+                                                       <option value="09:00">09:00</option>
+                                                       <option value="10:00">10:00</option>
+                                                       <option value="11:00">11:00</option>
+                                                       <option value="14:00">14:00</option>
+                                                       <option value="16:00">16:00</option>
+                                                     </select>
+                                                     <ChevronDown size={11} className="text-purple-500 pointer-events-none -ml-0.5" />
+                                                   </div>
+                                                 </div>
+                                               </td>
+
+                                               {/* Description / Highlights */}
+                                               <td className="py-3.5 px-4 align-top leading-relaxed max-w-xs space-y-1">
+                                                 <div className="font-bold text-slate-900 text-[13.5px] mb-0.5">
+                                                   {tourType} ({adultsCount} {adultsCount === 1 ? "Adult" : "Adults"}{childrenCount > 0 ? `, ${childrenCount} Child` : ""})
+                                                 </div>
+                                                 <div className="text-[12.5px] text-slate-600 font-normal leading-relaxed">
+                                                   {highlightsStr}
+                                                 </div>
+                                               </td>
+
+                                               {/* Tour Type & Pax */}
+                                               <td className="py-3.5 px-4 align-top space-y-1.5 min-w-[200px]">
+                                                 <div className="text-sm font-bold text-slate-900 mb-1.5">
+                                                   {adultsCount} {adultsCount === 1 ? "Adult" : "Adults"}{childrenCount > 0 ? `, ${childrenCount} Child` : ""} • {tourType}
+                                                 </div>
+
+                                                 <div className="flex flex-col gap-1.5">
+                                                   {/* Adults Stepper */}
+                                                   <div className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50/90 px-2 py-1 text-xs text-slate-700 shadow-2xs w-fit">
+                                                     <span className="text-[11px] font-semibold text-slate-500 uppercase">ADULTS:</span>
+                                                     <button
+                                                       type="button"
+                                                       disabled={row.isExcluded}
+                                                       onClick={() => updateActivityConfig(pkgId, row.originalIndex, "adults", -1, false, adultsCount, row.isCustom, row.customIndex)}
+                                                       className="h-4 w-4 rounded flex items-center justify-center bg-white border border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900 font-bold text-xs cursor-pointer leading-none disabled:opacity-40"
+                                                       title="Decrease adults"
+                                                     >
+                                                       -
+                                                     </button>
+                                                     <span className="font-bold text-slate-900 px-0.5 text-xs">{adultsCount}</span>
+                                                     <button
+                                                       type="button"
+                                                       disabled={row.isExcluded}
+                                                       onClick={() => updateActivityConfig(pkgId, row.originalIndex, "adults", 1, false, adultsCount, row.isCustom, row.customIndex)}
+                                                       className="h-4 w-4 rounded flex items-center justify-center bg-white border border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900 font-bold text-xs cursor-pointer leading-none disabled:opacity-40"
+                                                       title="Increase adults"
+                                                     >
+                                                       +
+                                                     </button>
+                                                   </div>
+
+                                                   {/* Child Stepper */}
+                                                   <div className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50/90 px-2 py-1 text-xs text-slate-700 shadow-2xs w-fit">
+                                                     <span className="text-[11px] font-semibold text-slate-500 uppercase">CHILD:</span>
+                                                     <button
+                                                       type="button"
+                                                       disabled={row.isExcluded}
+                                                       onClick={() => updateActivityConfig(pkgId, row.originalIndex, "children", -1, false, childrenCount, row.isCustom, row.customIndex)}
+                                                       className="h-4 w-4 rounded flex items-center justify-center bg-white border border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900 font-bold text-xs cursor-pointer leading-none disabled:opacity-40"
+                                                       title="Decrease children"
+                                                     >
+                                                       -
+                                                     </button>
+                                                     <span className="font-bold text-slate-900 px-0.5 text-xs">{childrenCount}</span>
+                                                     <button
+                                                       type="button"
+                                                       disabled={row.isExcluded}
+                                                       onClick={() => updateActivityConfig(pkgId, row.originalIndex, "children", 1, false, childrenCount, row.isCustom, row.customIndex)}
+                                                       className="h-4 w-4 rounded flex items-center justify-center bg-white border border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900 font-bold text-xs cursor-pointer leading-none disabled:opacity-40"
+                                                       title="Increase children"
+                                                     >
+                                                       +
+                                                     </button>
+                                                   </div>
+                                                 </div>
+                                               </td>
+
+                                               {/* Price */}
+                                               <td className="py-3.5 px-4 text-right align-top min-w-[140px]">
+                                                 <div className="font-bold text-slate-900">
+                                                   <span className="text-xs font-bold text-slate-400 mr-1">INR</span>
+                                                   <span className="text-[17px] font-bold text-slate-900">{Number(rowTotal || 0).toLocaleString("en-IN")}</span>
+                                                 </div>
+                                                 <div className="text-xs text-slate-500 font-normal space-y-0.5 mt-0.5">
+                                                   <div>Adult: ₹{Number(adultPrice).toLocaleString("en-IN")} × {adultsCount}</div>
+                                                   {childrenCount > 0 && <div>Child: ₹{Number(childPrice).toLocaleString("en-IN")} × {childrenCount}</div>}
+                                                 </div>
+
+                                                 {/* + Add Activity Button directly inside Price cell under breakdown */}
+                                                 {isFirstOfDay && (
+                                                   <div className="mt-2 space-y-1.5 flex flex-col items-end">
+                                                     <button
+                                                       type="button"
+                                                       onClick={() => {
+                                                         setNewActivityInput((prev) => ({ ...prev, day: dayLabel }));
+                                                         setActiveAddActivityRow(activeAddActivityRow === dayLabel ? null : dayLabel);
+                                                       }}
+                                                       className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md border text-xs font-bold shadow-2xs transition cursor-pointer leading-none ${
+                                                         hasDayFreeTime
+                                                           ? "border-emerald-400 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 animate-pulse ring-2 ring-emerald-400/40 shadow-sm"
+                                                           : "border-emerald-300 bg-white hover:bg-emerald-50 text-emerald-700"
+                                                       }`}
+                                                     >
+                                                       <Plus size={13} className="text-emerald-600 shrink-0" />
+                                                       <span>Add Activity</span>
+                                                     </button>
+
+                                                     {hasDayFreeTime && (
+                                                       <div className="text-[10px] font-semibold text-emerald-900 bg-emerald-100/90 border border-emerald-300 rounded-md px-2 py-1 shadow-2xs text-right leading-tight max-w-[170px]">
+                                                         💡 Day has <span className="font-bold text-emerald-950 underline">{remainingHoursText}</span> free time!
+                                                       </div>
+                                                     )}
+                                                   </div>
+                                                 )}
+                                               </td>
+
+                                               {/* Action */}
+                                               <td className="py-3 px-3 text-center align-top">
+                                                 {row.isCustom ? (
+                                                   <button
+                                                     type="button"
+                                                     onClick={() => {
+                                                       updatePkgCustom(pkgId, (c) => ({
+                                                         ...c,
+                                                         customActivities: (c.customActivities || []).filter((ca) => ca.id !== row.id),
+                                                       }));
+                                                       toast.success("Custom activity removed");
+                                                     }}
+                                                     className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition cursor-pointer"
+                                                     title="Remove this add-on"
+                                                   >
+                                                     <Trash2 size={14} />
+                                                   </button>
+                                                 ) : isExcluded ? (
+                                                   <button
+                                                     type="button"
+                                                     onClick={() => toggleExcludeActivity(pkgId, row.originalIndex)}
+                                                     className="px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-100 text-emerald-800 hover:bg-emerald-200 transition cursor-pointer"
+                                                   >
+                                                     Restore
+                                                   </button>
+                                                 ) : (
+                                                   <button
+                                                     type="button"
+                                                     onClick={() => toggleExcludeActivity(pkgId, row.originalIndex)}
+                                                     className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition cursor-pointer"
+                                                     title="Drop / Exclude this activity"
+                                                   >
+                                                     <X size={14} />
+                                                   </button>
+                                                 )}
+                                               </td>
+                                             </tr>
+                                           {((activeAddActivityRow === aIdx) || (isFirstOfDay && activeAddActivityRow === dayLabel)) && (
+                                            <tr key={`add-act-form-${aIdx}`} className="bg-emerald-50/20">
+                                              <td colSpan={6} className="p-3">
+                                                <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-4 space-y-3.5 text-xs shadow-2xs">
+                                                  {/* Header & Tour Type */}
+                                                  <div className="flex items-center justify-between border-b border-emerald-200/70 pb-2.5">
+                                                    <div className="flex items-center gap-2">
+                                                      <span className="h-2 w-2 rounded-full bg-emerald-500"></span>
+                                                      <span className="font-bold text-emerald-950 text-sm">Add Activity / Experience ({dayLabel})</span>
+                                                      {hasDayFreeTime && (
+                                                        <span className="rounded-full bg-emerald-200 border border-emerald-300 text-emerald-900 font-bold text-[10px] px-2 py-0.5">
+                                                          {remainingHoursText} Available
+                                                        </span>
+                                                      )}
+                                                    </div>
+
+                                                    <div className="flex items-center gap-3">
+                                                      <div className="flex items-center gap-1.5">
+                                                        <span className="text-[11px] font-semibold text-slate-500">Tour Type:</span>
+                                                        <select
+                                                          value={newActivityInput.tourType || "Private Tour"}
+                                                          onChange={(e) => setNewActivityInput({ ...newActivityInput, tourType: e.target.value })}
+                                                          className="rounded-lg border border-blue-300 bg-white px-2.5 py-1 text-xs font-semibold text-blue-900 focus:border-blue-500 focus:outline-none shadow-2xs cursor-pointer"
+                                                        >
+                                                          <option value="Private Tour">Private Tour</option>
+                                                          <option value="Sharing Tour">Sharing Tour</option>
+                                                          <option value="Ticket Tour">Ticket Tour</option>
+                                                        </select>
+                                                      </div>
+
+                                                      <button
+                                                        type="button"
+                                                        onClick={() => setActiveAddActivityRow(null)}
+                                                        className="text-slate-400 hover:text-slate-700 cursor-pointer p-0.5 rounded hover:bg-emerald-100/50"
+                                                      >
+                                                        <X size={16} />
+                                                      </button>
+                                                    </div>
+                                                  </div>
+                                                  {/* Select DMC Contracted Activity Dropdown */}
+                                                  {(() => {
+                                                    const currentDestination = selectedPkg?.destination || query?.destination || "Goa";
+                                                    const GOA_SUB_CITIES = [
+                                                      "goa", "ponda", "panaji", "panjim", "calangute", "candolim", "baga",
+                                                      "old goa", "south goa", "north goa", "anjuna", "colva",
+                                                      "vagator", "margao", "mapusa", "vasco", "arambol", "morjim", "dabolim"
+                                                    ];
+                                                    const matchDest = (item, dest) => {
+                                                      const destClean = String(dest || "").trim().toLowerCase();
+                                                      if (!destClean) return true;
+                                                      const city = String(item.city || "").trim().toLowerCase();
+                                                      const itemDest = String(item.destination || "").trim().toLowerCase();
+                                                      const title = String(item.title || item.serviceName || item.name || "").trim().toLowerCase();
+                                                      const isGoaPackage = GOA_SUB_CITIES.some((sub) => destClean.includes(sub));
+                                                      if (isGoaPackage) {
+                                                        const isItemInGoa = GOA_SUB_CITIES.some(
+                                                          (sub) => city.includes(sub) || itemDest.includes(sub) || title.includes(sub)
+                                                        );
+                                                        if (isItemInGoa) return true;
+                                                      }
+                                                      if (city && (city.includes(destClean) || destClean.includes(city))) return true;
+                                                      if (itemDest && (itemDest.includes(destClean) || destClean.includes(itemDest))) return true;
+                                              if (title && title.includes(destClean)) return true;
+                                                      return false;
+                                                    };
+
+                                                    const destinationDmcActivities = (liveDmcActivities || []).filter((a) =>
+                                                      matchDest(a, currentDestination)
+                                                    );
+                                                    const availableActivities = destinationDmcActivities.length > 0 ? destinationDmcActivities : liveDmcActivities;
+                                                    const searchQuery = (newActivityInput.searchQuery || "").trim().toLowerCase();
+                                                    const filteredActivities = availableActivities.filter((a) => {
+                                                      if (!searchQuery) return true;
+                                                      const title = String(a.name || a.serviceName || a.title || "").toLowerCase();
+                                                      const city = String(a.city || a.destination || "").toLowerCase();
+                                                      const supp = String(a.supplierName || a.dmcName || "").toLowerCase();
+                                                      return title.includes(searchQuery) || city.includes(searchQuery) || supp.includes(searchQuery);
+                                                    });
+
+                                                    // Helper to parse activity duration in minutes
+                                                    const parseActMins = (item) => {
+                                                      const durStr = item.duration || item.hours || "240 Mins";
+                                                      return parseInt(String(durStr).replace(/[^\d]/g, "")) || 240;
+                                                    };
+
+                                                    // Smart sorting: activities fitting within remainingMinsForDay come FIRST!
+                                                    const sortedActivities = [...filteredActivities].sort((a, b) => {
+                                                      if (!hasDayFreeTime) return 0;
+                                                      const aMins = parseActMins(a);
+                                                      const bMins = parseActMins(b);
+                                                      const aFits = aMins <= remainingMinsForDay;
+                                                      const bFits = bMins <= remainingMinsForDay;
+                                                      if (aFits && !bFits) return -1;
+                                                      if (!aFits && bFits) return 1;
+                                                      return aMins - bMins;
+                                                    });
+
+                                                    return (
+                                                      <div className="relative mb-3.5 space-y-1">
+                                                        <div className="flex items-center justify-between">
+                                                          <label className="text-[11px] font-bold text-emerald-900 uppercase flex items-center gap-1.5">
+                                                            <Sparkles size={13} className="text-emerald-600" />
+                                                            SELECT DMC CONTRACTED ACTIVITY ({currentDestination.toUpperCase()})
+                                                          </label>
+                                                          {availableActivities.length > 0 && (
+                                                            <span className="text-[10.5px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                                                              {availableActivities.length} DMC services for {currentDestination}
+                                                            </span>
+                                                          )}
+                                                        </div>
+
+                                                        {/* Search Input Box */}
+                                                        <div className="relative">
+                                                          <input
+                                                            type="text"
+                                                            placeholder="Search DMC contracted activities by name, location or supplier..."
+                                                            value={newActivityInput.searchQuery !== undefined ? newActivityInput.searchQuery : (newActivityInput.name || "")}
+                                                            onFocus={() => setNewActivityInput((prev) => ({ ...prev, isDropdownOpen: true }))}
+                                                            onChange={(e) => {
+                                                              const val = e.target.value;
+                                                              setNewActivityInput((prev) => ({
+                                                                ...prev,
+                                                                searchQuery: val,
+                                                                name: val,
+                                                                isDropdownOpen: true,
+                                                              }));
+                                                            }}
+                                                            className="w-full rounded-lg border border-emerald-300 bg-white pl-3 pr-8 py-2 text-xs font-semibold text-slate-800 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 focus:outline-none transition shadow-2xs"
+                                                          />
+                                                          <button
+                                                            type="button"
+                                                            onClick={() => setNewActivityInput((prev) => ({ ...prev, isDropdownOpen: !prev.isDropdownOpen }))}
+                                                            className="absolute right-2 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
+                                                          >
+                                                            <ChevronDown size={15} />
+                                                          </button>
+                                                        </div>
+
+                                                        {/* Rich Dropdown Panel */}
+                                                        {newActivityInput.isDropdownOpen && (
+                                                          <div className="absolute left-0 right-0 top-full mt-1 max-h-64 overflow-y-auto rounded-xl border border-emerald-200 bg-white shadow-xl z-50 divide-y divide-slate-100 [scrollbar-width:thin]">
+                                                            {sortedActivities.length === 0 ? (
+                                                              <div className="p-3.5 text-xs text-slate-500 italic text-center">
+                                                                No matching DMC activities found. You can type custom activity details below.
+                                                              </div>
+                                                            ) : (
+                                                              sortedActivities.map((dmcAct, aIdx) => {
+                                                                const actTitle = dmcAct.name || dmcAct.serviceName || dmcAct.title || "Tour Activity";
+                                                                const isSelected = String(newActivityInput.dmcActivityId) === String(dmcAct._id || dmcAct.id);
+                                                                const adP = Number(dmcAct.adultPrice || dmcAct.price || dmcAct.rate || 1500);
+                                                                const chP = Number(dmcAct.childPrice || Math.round(adP * 0.5) || 750);
+                                                                const cityLoc = dmcAct.city ? `Goa (${dmcAct.city})` : "Goa";
+                                                                const actMins = parseActMins(dmcAct);
+                                                                const fitsInDay = hasDayFreeTime && actMins <= remainingMinsForDay;
+
+                                                                return (
+                                                                  <div
+                                                                    key={dmcAct._id || dmcAct.id || aIdx}
+                                                                    onClick={() => {
+                                                                      const adCount = Number(newActivityInput.adults || 1);
+                                                                      const chCount = Number(newActivityInput.children || 0);
+
+                                                                      setNewActivityInput((prev) => ({
+                                                                        ...prev,
+                                                                        dmcActivityId: dmcAct._id || dmcAct.id,
+                                                                        name: actTitle,
+                                                                        searchQuery: actTitle,
+                                                                        tourType: dmcAct.tourType || "Private Tour",
+                                                                        adultPrice: adP,
+                                                                        childPrice: chP,
+                                                                        price: (adP * adCount) + (chP * chCount),
+                                                                        selectedSlot: dmcAct.slot || dmcAct.selectedSlot || "08:00",
+                                                                        description: dmcAct.description || "Tour activity with admission tickets",
+                                                                        isDropdownOpen: false,
+                                                                      }));
+                                                                    }}
+                                                                    className={`p-3 hover:bg-emerald-50/60 cursor-pointer transition flex items-center justify-between gap-3 ${
+                                                                      isSelected ? "bg-emerald-50/90 border-l-4 border-l-emerald-600" : ""
+                                                                    }`}
+                                                                  >
+                                                                    <div className="min-w-0 flex-1 space-y-0.5">
+                                                                      <p className="text-xs font-bold text-slate-900 flex items-center gap-1.5 truncate flex-wrap">
+                                                                        <span>{actTitle}</span>
+                                                                        {isSelected && (
+                                                                          <span className="rounded bg-emerald-100 text-emerald-800 text-[9px] px-1.5 py-0.2 font-bold shrink-0">
+                                                                            ✓ Selected
+                                                                          </span>
+                                                                        )}
+                                                                        {fitsInDay && (
+                                                                          <span className="rounded-full bg-emerald-100 border border-emerald-300 text-emerald-950 font-bold text-[9px] px-2 py-0.2 shrink-0">
+                                                                            ⭐ Fits in {remainingHoursText} free
+                                                                          </span>
+                                                                        )}
+                                                                      </p>
+                                                                      <p className="text-[11px] text-slate-500 truncate flex items-center gap-1 flex-wrap">
+                                                                        <span className="inline-flex items-center gap-1 text-slate-700 font-medium">
+                                                                          <MapPin size={11} className="text-rose-500 shrink-0" />
+                                                                          {cityLoc}
+                                                                        </span>
+                                                                        <span>• Experience</span>
+                                                                        <span>• Days: {dmcAct.operatingDays || "Mon-Sun"}</span>
+                                                                      </p>
+                                                                      {dmcAct.supplierName && (
+                                                                        <p className="text-[10.5px] font-semibold text-emerald-700">
+                                                                          Supplier: {dmcAct.supplierName}
+                                                                        </p>
+                                                                      )}
+                                                                    </div>
+                                                                    <div className="text-right shrink-0">
+                                                                      <p className="text-xs font-black text-slate-900">
+                                                                        ₹{adP.toLocaleString("en-IN")}{" "}
+                                                                        <span className="text-[10px] font-semibold text-slate-500">/ adult</span>
+                                                                      </p>
+                                                                      {chP > 0 && (
+                                                                        <p className="text-[10px] font-semibold text-slate-500">
+                                                                          Child: ₹{chP.toLocaleString("en-IN")}
+                                                                        </p>
+                                                                      )}
+                                                                    </div>
+                                                                  </div>
+                                                                );
+                                                              })
+                                                            )}
+                                                          </div>
+                                                        )}
+                                                      </div>
+                                                    );
+                                                  })()}
+
+                                                  {/* Main Inputs Grid */}
+                                                  <div className="space-y-3">
+                                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                                      <div className="sm:col-span-2">
+                                                        <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                                                          Activity / Experience Name
+                                                        </label>
+                                                        <input
+                                                          type="text"
+                                                          placeholder="e.g. Scuba Diving, Adventure Tour, Desert Safari..."
+                                                          value={newActivityInput.name}
+                                                          onChange={(e) => setNewActivityInput({ ...newActivityInput, name: e.target.value, searchQuery: e.target.value })}
+                                                          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-800 focus:border-emerald-500 focus:outline-none"
+                                                        />
+                                                      </div>
+
+                                                      <div>
+                                                        <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                                                          Day
+                                                        </label>
+                                                        <select
+                                                          value={newActivityInput.day}
+                                                          onChange={(e) => setNewActivityInput({ ...newActivityInput, day: e.target.value })}
+                                                          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-800 focus:border-emerald-500 focus:outline-none cursor-pointer"
+                                                        >
+                                                          {Array.from({ length: 10 }).map((_, i) => (
+                                                            <option key={i} value={`Day ${i + 1}`}>
+                                                              Day {i + 1}
+                                                            </option>
+                                                          ))}
+                                                        </select>
+                                                      </div>
+                                                    </div>
+
+                                                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 pt-1">
+                                                      <div>
+                                                        <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                                                          Adult Price (₹)
+                                                        </label>
+                                                        <input
+                                                          type="number"
+                                                          min="0"
+                                                          placeholder="1500"
+                                                          value={newActivityInput.adultPrice}
+                                                          onChange={(e) => {
+                                                            const ap = Number(e.target.value || 0);
+                                                            const cp = Number(newActivityInput.childPrice || 0);
+                                                            const ad = Number(newActivityInput.adults || 1);
+                                                            const ch = Number(newActivityInput.children || 0);
+                                                            setNewActivityInput({
+                                                              ...newActivityInput,
+                                                              adultPrice: e.target.value,
+                                                              price: (ap * ad) + (cp * ch),
+                                                            });
+                                                          }}
+                                                          className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-800 focus:border-emerald-500 focus:outline-none"
+                                                        />
+                                                      </div>
+
+                                                      <div>
+                                                        <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                                                          Child Price (₹)
+                                                        </label>
+                                                        <input
+                                                          type="number"
+                                                          min="0"
+                                                          placeholder="750"
+                                                          value={newActivityInput.childPrice}
+                                                          onChange={(e) => {
+                                                            const cp = Number(e.target.value || 0);
+                                                            const ap = Number(newActivityInput.adultPrice || 0);
+                                                            const ad = Number(newActivityInput.adults || 1);
+                                                            const ch = Number(newActivityInput.children || 0);
+                                                            setNewActivityInput({
+                                                              ...newActivityInput,
+                                                              childPrice: e.target.value,
+                                                              price: (ap * ad) + (cp * ch),
+                                                            });
+                                                          }}
+                                                          className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-800 focus:border-emerald-500 focus:outline-none"
+                                                        />
+                                                      </div>
+
+                                                      <div>
+                                                        <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                                                          Adults
+                                                        </label>
+                                                        <input
+                                                          type="number"
+                                                          min="1"
+                                                          value={newActivityInput.adults}
+                                                          onChange={(e) => {
+                                                            const ad = Math.max(1, Number(e.target.value || 1));
+                                                            const ch = Number(newActivityInput.children || 0);
+                                                            const ap = Number(newActivityInput.adultPrice || 0);
+                                                            const cp = Number(newActivityInput.childPrice || 0);
+                                                            setNewActivityInput({
+                                                              ...newActivityInput,
+                                                              adults: ad,
+                                                              price: (ap * ad) + (cp * ch),
+                                                            });
+                                                          }}
+                                                          className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-800 focus:border-emerald-500 focus:outline-none text-center"
+                                                        />
+                                                      </div>
+
+                                                      <div>
+                                                        <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                                                          Children
+                                                        </label>
+                                                        <input
+                                                          type="number"
+                                                          min="0"
+                                                          value={newActivityInput.children}
+                                                          onChange={(e) => {
+                                                            const ch = Math.max(0, Number(e.target.value || 0));
+                                                            const ad = Number(newActivityInput.adults || 1);
+                                                            const ap = Number(newActivityInput.adultPrice || 0);
+                                                            const cp = Number(newActivityInput.childPrice || 0);
+                                                            setNewActivityInput({
+                                                              ...newActivityInput,
+                                                              children: ch,
+                                                              price: (ap * ad) + (cp * ch),
+                                                            });
+                                                          }}
+                                                          className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-800 focus:border-emerald-500 focus:outline-none text-center"
+                                                        />
+                                                      </div>
+
+                                                      <div>
+                                                        <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                                                          Slot / Time
+                                                        </label>
+                                                        <select
+                                                          value={newActivityInput.selectedSlot || "08:00"}
+                                                          onChange={(e) => setNewActivityInput({ ...newActivityInput, selectedSlot: e.target.value })}
+                                                          className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs font-semibold text-slate-800 focus:border-emerald-500 focus:outline-none cursor-pointer"
+                                                        >
+                                                          <option value="08:00">08:00</option>
+                                                          <option value="09:00">09:00</option>
+                                                          <option value="10:00">10:00</option>
+                                                          <option value="11:30">11:30</option>
+                                                          <option value="14:00">14:00</option>
+                                                          <option value="15:00">15:00</option>
+                                                          <option value="18:00">18:00</option>
+                                                        </select>
+                                                      </div>
+
+                                                      <div>
+                                                        <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                                                          Total (₹)
+                                                        </label>
+                                                        <input
+                                                          type="number"
+                                                          min="0"
+                                                          value={newActivityInput.price}
+                                                          onChange={(e) => setNewActivityInput({ ...newActivityInput, price: e.target.value })}
+                                                          className="w-full rounded-lg border border-emerald-400 bg-emerald-50/50 px-2.5 py-1.5 text-xs font-bold text-emerald-950 focus:border-emerald-600 focus:outline-none"
+                                                        />
+                                                      </div>
+                                                    </div>
+                                                  </div>
+
+                                                  {/* Form Buttons */}
+                                                  <div className="flex justify-end gap-2 pt-2 border-t border-emerald-200/60">
+                                                    <button
+                                                      type="button"
+                                                      onClick={() => setActiveAddActivityRow(null)}
+                                                      className="px-3.5 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-600 font-semibold text-xs hover:bg-slate-50 cursor-pointer transition"
+                                                    >
+                                                      Cancel
+                                                    </button>
+                                                    <button
+                                                      type="button"
+                                                      onClick={() => {
+                                                        if (!newActivityInput.name) {
+                                                          toast.error("Please enter activity name");
+                                                          return;
+                                                        }
+                                                        const finalAdults = Number(newActivityInput.adults || 1);
+                                                        const finalChildren = Number(newActivityInput.children || 0);
+                                                        const finalAdultPrice = Number(newActivityInput.adultPrice || 0);
+                                                        const finalChildPrice = Number(newActivityInput.childPrice || 0);
+                                                        const computedTotal = Number(newActivityInput.price || (finalAdultPrice * finalAdults) + (finalChildPrice * finalChildren));
+
+                                                        updatePkgCustom(pkgId, (c) => ({
+                                                          ...c,
+                                                          customActivities: [
+                                                            ...(c.customActivities || []),
+                                                            {
+                                                              id: `custom-act-${Date.now()}`,
+                                                              name: newActivityInput.name,
+                                                              tourType: newActivityInput.tourType || "Private Tour",
+                                                              day: newActivityInput.day || "Day 2",
+                                                              adultPrice: finalAdultPrice,
+                                                              childPrice: finalChildPrice,
+                                                              adults: finalAdults,
+                                                              children: finalChildren,
+                                                              selectedSlot: newActivityInput.selectedSlot || "08:00",
+                                                              price: computedTotal,
+                                                              description: newActivityInput.description || "Tour activity with admission tickets",
+                                                            },
+                                                          ],
+                                                        }));
+                                                        toast.success("Custom activity added to package!");
+                                                        setActiveAddActivityRow(null);
+                                                        setNewActivityInput({
+                                                          name: "",
+                                                          tourType: "Private Tour",
+                                                          day: "Day 2",
+                                                          adultPrice: 1500,
+                                                          childPrice: 750,
+                                                          adults: query?.numberOfAdults || 2,
+                                                          children: query?.numberOfChildren || 0,
+                                                          selectedSlot: "08:00",
+                                                          price: 3000,
+                                                          description: "Tour activity with admission tickets",
+                                                        });
+                                                      }}
+                                                      className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs cursor-pointer shadow-xs transition"
+                                                    >
+                                                      + Add Activity
+                                                    </button>
+                                                  </div>
+                                                </div>
+                                              </td>
+                                            </tr>
+                                          )}
+                                          </React.Fragment>
+                                          );
+                                        })
+                                      ) : (
+                                        <tr>
+                                          <td colSpan={6} className="py-4 px-4 text-center text-xs text-slate-400 italic">
+                                            No activities in this package.
+                                          </td>
+                                        </tr>
+                                      )}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </div>
+
+                              {/* Activity Subtotal */}
+                              {activitiesTotal > 0 && (
+                                <div className="flex justify-end pt-1">
+                                  <div className="border border-slate-300 rounded-lg px-4 py-1.5 bg-white shadow-2xs inline-flex items-center gap-2 font-sans">
+                                    <span className="text-xs font-bold text-slate-900">Activities Subtotal:</span>
+                                    <span className="text-xs font-semibold text-slate-400">INR</span>
+                                    <span className="text-sm font-extrabold text-slate-900">
+                                      {activitiesTotal.toLocaleString("en-IN")}
+                                    </span>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+
+                              {/* 2.4 SIGHTSEEING SECTION */}
+                              <div className="space-y-2 pt-2">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-2">
+                                    <span className="p-1.5 rounded-lg bg-violet-50 text-violet-600">
+                                      <Landmark size={16} />
+                                    </span>
+                                    <h4 className="text-sm font-bold text-slate-900">Sightseeing</h4>
+                                  </div>
+                                </div>
+
+                                {/* Sightseeing Table */}
+                                <div className="rounded-xl border border-slate-200 bg-white overflow-hidden shadow-2xs">
+                                  <div className="overflow-x-auto">
+                                    <table className="w-full text-left text-xs border-collapse">
+                                      <thead>
+                                        <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-700 font-sans">
+                                          <th className="py-2.5 px-4 font-bold w-[11%]">DAY</th>
+                                          <th className="py-2.5 px-4 font-bold w-[22%]">SIGHTSEEING TOUR NAME</th>
+                                          <th className="py-2.5 px-4 font-bold w-[22%]">DESCRIPTION / HIGHLIGHTS</th>
+                                          <th className="py-2.5 px-4 font-bold w-[23%]">TOUR TYPE &amp; PAX</th>
+                                          <th className="py-2.5 px-4 font-bold text-right w-[18%]">PRICE</th>
+                                          <th className="py-2.5 px-3 font-bold text-center w-[4%]">ACTION</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className="divide-y divide-slate-200 text-slate-700 font-sans">
+                                        {allSightseeingRows.length > 0 ? (
+                                          allSightseeingRows.map((row, sIdx) => {
+                                            const sight = row.sightseeing || {};
+                                            const isExcluded = row.isExcluded;
+
+                                            const getNormSightDay = (r, idx) => {
+                                              const item = r?.sightseeing || r || {};
+                                              let d = item.day || r.day;
+                                              if (!d) return `Day ${idx + 1}`;
+                                              d = String(d).trim();
+                                              if (/^\d+$/.test(d)) return `Day ${d}`;
+                                              if (d.toLowerCase().startsWith("day")) {
+                                                const n = d.replace(/day\s*/i, "").trim();
+                                                return `Day ${n || idx + 1}`;
+                                              }
+                                              return d;
+                                            };
+                                            const dayLabel = getNormSightDay(row, sIdx);
+                                            const prevDayLabel = sIdx > 0 ? getNormSightDay(allSightseeingRows[sIdx - 1], sIdx - 1) : null;
+                                            const nextDayLabel = sIdx < allSightseeingRows.length - 1 ? getNormSightDay(allSightseeingRows[sIdx + 1], sIdx + 1) : null;
+                                            const isFirstOfDay = !prevDayLabel || dayLabel.trim().toLowerCase() !== prevDayLabel.trim().toLowerCase();
+                                            const isLastOfDay = !nextDayLabel || dayLabel.trim().toLowerCase() !== nextDayLabel.trim().toLowerCase();
+
+                                            // Calculate Day duration budget (10 Hours = 600 Mins) & used duration
+                                            const dayUsedMins = allSightseeingRows.reduce((acc, r, rIdx) => {
+                                              if (r.isExcluded) return acc;
+                                              const dLabel = getNormSightDay(r, rIdx);
+                                              if (dLabel.trim().toLowerCase() === dayLabel.trim().toLowerCase()) {
+                                                const durStr = (r.sightseeing && (r.sightseeing.duration || r.sightseeing.hours)) || r.duration || "240 Mins";
+                                                const num = parseInt(String(durStr).replace(/[^\d]/g, "")) || 240;
+                                                return acc + num;
+                                              }
+                                              return acc;
+                                            }, 0);
+                                            const dayBudgetMins = 600; // 10 hours
+                                            const remainingMinsForDay = Math.max(0, dayBudgetMins - dayUsedMins);
+                                            const hasDayFreeTime = remainingMinsForDay >= 60; // >= 1 Hour free
+                                            const remainingHoursText = remainingMinsForDay >= 120 
+                                              ? `${Math.floor(remainingMinsForDay / 60)} Hours` 
+                                              : `${remainingMinsForDay} Mins`;
+
+                                            const dayNum = parseInt(String(dayLabel).replace(/\D/g, "")) || (sIdx + 1);
+                                            let dateStr = "";
+                                            if (query?.startDate) {
+                                              const startD = new Date(query.startDate);
+                                              if (!isNaN(startD.getTime())) {
+                                                const d = new Date(startD);
+                                                d.setDate(d.getDate() + (dayNum - 1));
+                                                dateStr = d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+                                              }
+                                            }
+
+                                            const sightTitle = sight.name || sight.serviceName || sight.title || "Sightseeing Tour";
+                                            const rawSightType = row.tourType || sight.tourType || "Private Tour";
+                                            const tourType = rawSightType === "Group Tour" ? "Sharing Tour" : rawSightType;
+                                            const description = sight.description || sight.desc || "Guided local sightseeing tour with transfers included.";
+                                            const cityOrDest = sight.city || sight.destination || selectedPkg?.destination || query?.destination || "Goa";
+                                            const pricingBasis = row.pricingBasis || sight.pricingBasis || (tourType === "Sharing Tour" || tourType === "Ticket Tour" ? "Per Pax" : "Per Group");
+                                            const isPerPax = row.isPerPax !== undefined ? row.isPerPax : (pricingBasis === "Per Pax" || tourType === "Sharing Tour" || tourType === "Ticket Tour");
+                                            const adultsCount = row.adultsCount !== undefined ? row.adultsCount : Number(sight.adults || query?.numberOfAdults || 2);
+                                            const childrenCount = row.childrenCount !== undefined ? row.childrenCount : Number(sight.children || query?.numberOfChildren || 0);
+                                            const paxCount = adultsCount + childrenCount;
+                                            const baseRate = row.baseRate !== undefined ? row.baseRate : (isPerPax && sight.rate ? Number(sight.rate) : Number(sight.price || 0));
+                                            const adultPrice = row.adultPrice !== undefined ? row.adultPrice : (baseRate || 0);
+                                            const childPrice = row.childPrice !== undefined ? row.childPrice : Math.round(adultPrice * 0.5);
+                                            const effectivePrice = row.effectivePrice !== undefined ? row.effectivePrice : (row.price || sight.price || 0);
+                                            const rowTotal = row.rowTotal !== undefined ? row.rowTotal : (row.effectivePrice !== undefined ? row.effectivePrice : (isPerPax ? ((adultPrice * adultsCount) + (childPrice * childrenCount)) : baseRate));
+                                            const timeSlot = row.timeSlot || sight.timeSlot || "08:00";
+                                            const operatingDays = sight.operatingDays || sight.days || "Mon-Sun";
+                                            const operatingHours = sight.operatingHours || sight.hours || "08:00 - 18:00";
+                                            const rawDuration = sight.duration || "240 Mins (4 Hours)";
+                                            const formatDurationBoth = (raw) => {
+                                              if (!raw) return "240 Mins (4 Hours)";
+                                              const str = String(raw).trim();
+                                              if (str.toLowerCase().includes("mins") && str.toLowerCase().includes("hour")) {
+                                                return str;
+                                              }
+                                              const num = parseInt(str, 10);
+                                              if (!isNaN(num)) {
+                                                const hrs = num / 60;
+                                                const hrStr = hrs % 1 === 0 ? hrs : hrs.toFixed(1);
+                                                return `${num} Mins (${hrStr} ${hrStr == 1 ? "Hour" : "Hours"})`;
+                                              }
+                                              return str;
+                                            };
+                                            const durationText = formatDurationBoth(rawDuration);
+                                            const getAvailableSlots = (itemObj, curSlot) => {
+                                              const defaultSlots = ["08:00", "09:00", "10:00", "11:00", "12:00", "14:00", "16:00"];
+                                              let custom = [];
+                                              if (Array.isArray(itemObj?.timeSlots)) custom.push(...itemObj.timeSlots);
+                                              if (Array.isArray(itemObj?.availableSlots)) custom.push(...itemObj.availableSlots);
+                                              if (Array.isArray(itemObj?.slots)) custom.push(...itemObj.slots);
+                                              const single = itemObj?.slot || itemObj?.selectedSlot || itemObj?.timeSlot || itemObj?.time_slot;
+                                              if (single && typeof single === "string") {
+                                                single.split(",").forEach((s) => { if (s.trim()) custom.push(s.trim()); });
+                                              }
+                                              if (curSlot && typeof curSlot === "string") {
+                                                curSlot.split(",").forEach((s) => { if (s.trim()) custom.push(s.trim()); });
+                                              }
+                                              return Array.from(new Set([...custom, ...defaultSlots])).filter(Boolean);
+                                            };
+                                            const sightSlots = getAvailableSlots(sight, timeSlot);
+                                            const highlightsStr = Array.isArray(sight.highlights) ? sight.highlights.join(" | ") : (sight.highlights || description);
+
+                                            return (
+                                              <React.Fragment key={row.id || `sight-${sIdx}`}>
+                                                <tr className={`hover:bg-slate-50/80 transition-colors ${isExcluded ? "bg-rose-50/40 opacity-60 line-through text-slate-400" : ""}`}>
+                                                  {/* Day */}
+                                                  <td className="py-3.5 px-4 align-top">
+                                                    {isFirstOfDay ? (
+                                                      <>
+                                                        <p className="font-bold text-[15px] text-slate-900 leading-snug">{dayLabel}</p>
+                                                        {dateStr && <p className="text-[12.5px] text-slate-500 font-normal mt-0.5">{dateStr}</p>}
+                                                      </>
+                                                    ) : (
+                                                      <span className="text-slate-300 font-normal text-xs">—</span>
                                                     )}
-                                                  </div>
-                                                </div>
-                                              </div>
+                                                  </td>
+                                                    {/* Service / Sightseeing Name */}
+                                                   <td className="py-3.5 px-4 font-bold text-slate-900 align-top space-y-1.5 min-w-[260px]">
+                                                     <div className="flex items-start gap-1.5 min-w-0">
+                                                       <Landmark size={16} className="mt-0.5 text-[#1d4ed8] shrink-0" />
+                                                       <span className="font-bold text-[#1d4ed8] text-[15px] leading-snug tracking-tight hover:underline cursor-pointer">{sightTitle}</span>
+                                                       {row.isCustom && (
+                                                         <span className="rounded bg-violet-100 text-violet-800 text-[10px] px-1.5 py-0.5 font-bold shrink-0">
+                                                           Add-on
+                                                         </span>
+                                                       )}
+                                                     </div>
+                                                     <div className="text-[13px] text-slate-500 font-normal">{cityOrDest}</div>
 
-                                              <div className="text-[13px] text-slate-500 font-normal">
-                                                <span className="text-slate-600 font-medium">{cityOrDest}</span>
-                                              </div>
+                                                     {/* Badges & Selects */}
+                                                     <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                                                       {/* TYPE select */}
+                                                       <label className="relative inline-flex items-center gap-1 rounded-md bg-slate-100 border border-slate-200 px-2 py-1 text-xs text-slate-700 font-medium cursor-pointer">
+                                                         <span className="font-semibold text-slate-500 text-[11px] pointer-events-none">TYPE:</span>
+                                                         <select
+                                                           value={tourType}
+                                                           disabled={row.isExcluded}
+                                                           onChange={(e) => updateSightseeingConfig(pkgId, row.originalIndex, "tourType", e.target.value, false, undefined, row.isCustom, row.customIndex)}
+                                                           className="bg-transparent font-bold text-slate-900 cursor-pointer focus:outline-none text-xs appearance-none pr-3"
+                                                         >
+                                                           <option value="Private Tour">Private Tour</option>
+                                                           <option value="Sharing Tour">Sharing Tour</option>
+                                                           <option value="Ticket Tour">Ticket Tour</option>
+                                                         </select>
+                                                         <ChevronDown size={11} className="text-slate-400 pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2" />
+                                                       </label>
 
-                                              {/* Badges: Tour Type, Pricing Basis, Max Pax */}
-                                              <div className="flex items-center gap-1.5 flex-wrap text-[11px] pt-1">
-                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 font-semibold border border-slate-200 shadow-2xs">
-                                                  <span className="text-slate-400 font-bold uppercase text-[9.5px]">Type:</span>
-                                                  <span className="font-bold text-slate-900">{tourType}</span>
-                                                </span>
+                                                       {/* DAYS */}
+                                                       <div className="inline-flex items-center gap-1 rounded-md bg-emerald-100/80 border border-emerald-200 px-2 py-1 text-xs font-bold text-emerald-800">
+                                                         <span className="text-emerald-700 font-semibold text-[11px]">DAYS:</span>
+                                                         <span>{operatingDays}</span>
+                                                       </div>
 
-                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-800 font-semibold border border-emerald-200 shadow-2xs">
-                                                  <span className="text-emerald-600 font-bold uppercase text-[9.5px]">Basis:</span>
-                                                  <span className="font-bold text-emerald-950">{pricingBasis}</span>
-                                                </span>
+                                                       {/* HOURS */}
+                                                       <div className="inline-flex items-center gap-1 rounded-md bg-amber-100/80 border border-amber-200 px-2 py-1 text-xs font-bold text-amber-800">
+                                                         <Clock3 size={11} className="text-amber-700" />
+                                                         <span className="text-amber-700 font-semibold text-[11px]">HOURS:</span>
+                                                         <span>{operatingHours}</span>
+                                                       </div>
 
-                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 font-semibold border border-slate-200 shadow-2xs">
-                                                  <span className="text-slate-400 font-bold uppercase text-[9.5px]">Capacity:</span>
-                                                  <span className="font-bold text-slate-900">{maxPax} Pax</span>
-                                                </span>
-                                              </div>
-                                            </td>
+                                                       {/* DURATION */}
+                                                       <div className="inline-flex items-center gap-1 rounded-md bg-purple-100/80 border border-purple-200 px-2 py-1 text-xs font-bold text-purple-800">
+                                                         <Clock3 size={11} className="text-purple-700" />
+                                                         <span className="text-purple-700 font-semibold text-[11px]">DURATION:</span>
+                                                         <span>{durationText}</span>
+                                                       </div>
 
-                                            {/* Col 3: DESCRIPTION / HIGHLIGHTS */}
-                                            <td className="py-3.5 px-4 align-top text-[12.5px] text-slate-600 font-normal leading-relaxed">
-                                              <p className="font-bold text-slate-800 text-[13px] mb-0.5">
-                                                {tourType} • {pricingBasis} ({paxCount} Guests)
-                                              </p>
-                                              <p>{description}</p>
-                                            </td>
+                                                       {/* SLOT select */}
+                                                       <label className="relative inline-flex items-center gap-1 rounded-md bg-purple-50 border border-purple-200 px-2 py-1 text-xs font-bold text-purple-800 cursor-pointer">
+                                                         <Clock3 size={11} className="text-purple-600 pointer-events-none" />
+                                                         <span className="text-purple-600 font-semibold text-[11px] pointer-events-none">SLOT:</span>
+                                                         <select
+                                                           value={timeSlot}
+                                                           disabled={row.isExcluded}
+                                                           onChange={(e) => updateSightseeingConfig(pkgId, row.originalIndex, "timeSlot", e.target.value, false, undefined, row.isCustom, row.customIndex)}
+                                                           className="bg-transparent font-bold text-purple-900 cursor-pointer focus:outline-none text-xs appearance-none pr-3"
+                                                         >
+                                                           {sightSlots.map((s) => (
+                                                             <option key={s} value={s}>{s}</option>
+                                                           ))}
+                                                         </select>
+                                                         <ChevronDown size={11} className="text-purple-500 pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2" />
+                                                       </label>
+                                                     </div>
+                                                   </td>
 
-                                            {/* Col 4: TOUR TYPE & PAX */}
-                                            <td className="py-3.5 px-4 align-top space-y-2">
-                                              <div>
-                                                <p className={`font-bold text-[15px] ${isExcluded ? "line-through text-slate-500" : "text-slate-900"}`}>
-                                                  {paxCount} Pax • {tourType}
-                                                </p>
-                                              </div>
+                                                   {/* Description / Highlights */}
+                                                   <td className="py-3.5 px-4 align-top leading-relaxed max-w-xs space-y-1">
+                                                     <div className="font-bold text-slate-900 text-[13.5px] mb-0.5">
+                                                       {tourType} ({adultsCount} {adultsCount === 1 ? "Adult" : "Adults"}{childrenCount > 0 ? `, ${childrenCount} Child` : ""})
+                                                     </div>
+                                                     <div className="text-[12.5px] text-slate-600 font-normal leading-relaxed">
+                                                       {highlightsStr}
+                                                     </div>
+                                                   </td>
 
-                                              {!isExcluded && (
-                                                <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
-                                                  {/* Pax Stepper */}
-                                                  <div className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50/90 px-2 py-0.5 text-xs text-slate-700 shadow-2xs">
-                                                    <span className="text-[11px] font-semibold text-slate-500 uppercase">Pax:</span>
-                                                    <button
-                                                      type="button"
-                                                      onClick={() => updateActivityConfig(pkgId, row.originalIndex, "pax", -1, false, paxCount, row.isCustom, row.customIndex)}
-                                                      className="h-4 w-4 rounded flex items-center justify-center bg-white border border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900 font-bold text-xs cursor-pointer leading-none"
-                                                      title="Decrease pax"
-                                                    >
-                                                      -
-                                                    </button>
-                                                    <span className="font-bold text-slate-900 px-0.5 text-[12px]">{paxCount}</span>
-                                                    <button
-                                                      type="button"
-                                                      onClick={() => updateActivityConfig(pkgId, row.originalIndex, "pax", 1, false, paxCount, row.isCustom, row.customIndex)}
-                                                      className="h-4 w-4 rounded flex items-center justify-center bg-white border border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900 font-bold text-xs cursor-pointer leading-none"
-                                                      title="Increase pax"
-                                                    >
-                                                      +
-                                                    </button>
-                                                  </div>
+                                                   {/* Tour Type & Pax */}
+                                                   <td className="py-3.5 px-4 align-top space-y-1.5 min-w-[200px]">
+                                                     <div className="text-sm font-bold text-slate-900 mb-1.5">
+                                                       {adultsCount} {adultsCount === 1 ? "Adult" : "Adults"}{childrenCount > 0 ? `, ${childrenCount} Child` : ""} • {tourType}
+                                                     </div>
 
-                                                  <div className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50/90 px-2 py-0.5 text-xs text-slate-700 shadow-2xs">
-                                                    <span className="text-[11px] font-semibold text-slate-500 uppercase">Rate:</span>
-                                                    <span className="font-bold text-slate-900">
-                                                      ₹{baseRate.toLocaleString("en-IN")} {isPerPax ? "/ Pax" : "Flat"}
-                                                    </span>
-                                                  </div>
-                                                </div>
-                                              )}
-                                            </td>
+                                                     <div className="flex flex-col gap-1.5">
+                                                       {/* Adults Stepper */}
+                                                       <div className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50/90 px-2 py-1 text-xs text-slate-700 shadow-2xs w-fit">
+                                                         <span className="text-[11px] font-semibold text-slate-500 uppercase">ADULTS:</span>
+                                                         <button
+                                                           type="button"
+                                                           disabled={row.isExcluded}
+                                                           onClick={() => updateSightseeingConfig(pkgId, row.originalIndex, "adults", -1, false, adultsCount, row.isCustom, row.customIndex)}
+                                                           className="h-4 w-4 rounded flex items-center justify-center bg-white border border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900 font-bold text-xs cursor-pointer leading-none disabled:opacity-40"
+                                                           title="Decrease adults"
+                                                         >
+                                                           -
+                                                         </button>
+                                                         <span className="font-bold text-slate-900 px-0.5 text-xs">{adultsCount}</span>
+                                                         <button
+                                                           type="button"
+                                                           disabled={row.isExcluded}
+                                                           onClick={() => updateSightseeingConfig(pkgId, row.originalIndex, "adults", 1, false, adultsCount, row.isCustom, row.customIndex)}
+                                                           className="h-4 w-4 rounded flex items-center justify-center bg-white border border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900 font-bold text-xs cursor-pointer leading-none disabled:opacity-40"
+                                                           title="Increase adults"
+                                                         >
+                                                           +
+                                                         </button>
+                                                       </div>
 
-                                            {/* Col 5: PRICE */}
-                                            <td className="py-3.5 px-4 align-top text-right whitespace-nowrap">
-                                              {isExcluded ? (
-                                                <div>
-                                                  <span className="text-sm font-semibold text-rose-600 line-through">
-                                                    ₹{row.price.toLocaleString("en-IN")}
-                                                  </span>
-                                                  <p className="text-[11px] text-rose-600 font-bold mt-0.5">Excluded</p>
-                                                </div>
-                                              ) : (
-                                                <div>
-                                                  <p className="text-[18.5px] font-black text-slate-900 tracking-tight leading-none">
-                                                    <span className="text-[12px] font-bold text-slate-500 uppercase mr-1">INR</span>
-                                                    {row.effectivePrice.toLocaleString("en-IN")}
-                                                  </p>
-                                                  <p className="text-[12px] text-slate-500 font-normal mt-1">
-                                                    {isPerPax ? `₹${baseRate.toLocaleString("en-IN")} × ${paxCount} Pax` : `Flat Group Rate`}
-                                                  </p>
-                                                </div>
-                                              )}
-                                            </td>
+                                                       {/* Child Stepper */}
+                                                       <div className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50/90 px-2 py-1 text-xs text-slate-700 shadow-2xs w-fit">
+                                                         <span className="text-[11px] font-semibold text-slate-500 uppercase">CHILD:</span>
+                                                         <button
+                                                           type="button"
+                                                           disabled={row.isExcluded}
+                                                           onClick={() => updateSightseeingConfig(pkgId, row.originalIndex, "children", -1, false, childrenCount, row.isCustom, row.customIndex)}
+                                                           className="h-4 w-4 rounded flex items-center justify-center bg-white border border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900 font-bold text-xs cursor-pointer leading-none disabled:opacity-40"
+                                                           title="Decrease children"
+                                                         >
+                                                           -
+                                                         </button>
+                                                         <span className="font-bold text-slate-900 px-0.5 text-xs">{childrenCount}</span>
+                                                         <button
+                                                           type="button"
+                                                           disabled={row.isExcluded}
+                                                           onClick={() => updateSightseeingConfig(pkgId, row.originalIndex, "children", 1, false, childrenCount, row.isCustom, row.customIndex)}
+                                                           className="h-4 w-4 rounded flex items-center justify-center bg-white border border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900 font-bold text-xs cursor-pointer leading-none disabled:opacity-40"
+                                                           title="Increase children"
+                                                         >
+                                                           +
+                                                         </button>
+                                                       </div>
+                                                     </div>
+                                                   </td>
 
-                                            {/* Col 6: ACTION */}
-                                            <td className="py-3.5 px-3 align-top text-center">
-                                              {row.isCustom ? (
-                                                <button
-                                                  type="button"
-                                                  onClick={() => {
-                                                    updatePkgCustom(pkgId, (c) => ({
-                                                      ...c,
-                                                      customActivities: c.customActivities.filter((ca) => ca.id !== row.id),
-                                                    }));
-                                                    toast.success("Custom activity removed");
-                                                  }}
-                                                  className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition cursor-pointer"
-                                                  title="Remove this add-on"
-                                                >
-                                                  <Trash2 size={14} />
-                                                </button>
-                                              ) : isExcluded ? (
-                                                <button
-                                                  type="button"
-                                                  onClick={() => toggleExcludeActivity(pkgId, row.originalIndex)}
-                                                  className="px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-100 text-emerald-800 hover:bg-emerald-200 transition cursor-pointer"
-                                                >
-                                                  Restore
-                                                </button>
-                                              ) : (
-                                                <button
-                                                  type="button"
-                                                  onClick={() => toggleExcludeActivity(pkgId, row.originalIndex)}
-                                                  className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition cursor-pointer"
-                                                  title="Drop / Exclude this activity"
-                                                >
-                                                  <X size={14} />
-                                                </button>
-                                              )}
+                                                   {/* Price */}
+                                                   <td className="py-3.5 px-4 text-right align-top min-w-[140px]">
+                                                     <div className="font-bold text-slate-900">
+                                                       <span className="text-xs font-bold text-slate-400 mr-1">INR</span>
+                                                       <span className="text-[17px] font-bold text-slate-900">{Number(rowTotal || 0).toLocaleString("en-IN")}</span>
+                                                     </div>
+                                                     <div className="text-xs text-slate-500 font-normal space-y-0.5 mt-0.5">
+                                                       <div>Adult: ₹{Number(adultPrice).toLocaleString("en-IN")} × {adultsCount}</div>
+                                                       {childrenCount > 0 && <div>Child: ₹{Number(childPrice).toLocaleString("en-IN")} × {childrenCount}</div>}
+                                                     </div>
+                                                     {isFirstOfDay && (
+                                                       <div className="mt-2 space-y-1.5 flex flex-col items-end">
+                                                         <button
+                                                           type="button"
+                                                           onClick={() => {
+                                                             setNewSightseeingInput((prev) => ({ ...prev, day: dayLabel }));
+                                                             setActiveAddSightseeingRow(activeAddSightseeingRow === dayLabel ? null : dayLabel);
+                                                           }}
+                                                           className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md border text-xs font-bold shadow-2xs transition cursor-pointer leading-none ${
+                                                             hasDayFreeTime
+                                                               ? "border-violet-400 bg-violet-50 hover:bg-violet-100 text-violet-800 animate-pulse ring-2 ring-violet-400/40 shadow-sm"
+                                                               : "border-violet-300 bg-white hover:bg-violet-50 text-violet-700"
+                                                           }`}
+                                                         >
+                                                           <Plus size={13} className="text-violet-600 shrink-0" />
+                                                           <span>Add Sightseeing</span>
+                                                         </button>
+
+                                                         {hasDayFreeTime && (
+                                                           <div className="text-[10px] font-semibold text-violet-900 bg-violet-100/90 border border-violet-300 rounded-md px-2 py-1 shadow-2xs text-right leading-tight max-w-[170px]">
+                                                             💡 Day has <span className="font-bold text-violet-950 underline">{remainingHoursText}</span> free time!
+                                                           </div>
+                                                         )}
+                                                       </div>
+                                                     )}
+                                                   </td>
+
+                                                  {/* Action */}
+                                                  <td className="py-3 px-3 text-center align-top">
+                                                    {row.isCustom ? (
+                                                      <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                          updatePkgCustom(pkgId, (c) => ({
+                                                            ...c,
+                                                            customSightseeing: (c.customSightseeing || []).filter((cs) => cs.id !== row.id),
+                                                          }));
+                                                          toast.success("Custom sightseeing removed");
+                                                        }}
+                                                        className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition cursor-pointer"
+                                                        title="Remove this add-on"
+                                                      >
+                                                        <Trash2 size={14} />
+                                                      </button>
+                                                    ) : isExcluded ? (
+                                                      <button
+                                                        type="button"
+                                                        onClick={() => toggleExcludeSightseeing(pkgId, row.originalIndex)}
+                                                        className="px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-100 text-emerald-800 hover:bg-emerald-200 transition cursor-pointer"
+                                                      >
+                                                        Restore
+                                                      </button>
+                                                    ) : (
+                                                      <button
+                                                        type="button"
+                                                        onClick={() => toggleExcludeSightseeing(pkgId, row.originalIndex)}
+                                                        className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition cursor-pointer"
+                                                        title="Drop / Exclude this sightseeing"
+                                                      >
+                                                        <X size={14} />
+                                                      </button>
+                                                    )}
+                                                  </td>
+                                                </tr>
+
+                                                {/* Inline Form Expanding DIRECTLY INSIDE THIS ROW CARD */}
+                                                {((activeAddSightseeingRow === sIdx) || (isFirstOfDay && activeAddSightseeingRow === dayLabel)) && (
+                                                  <tr key={`add-sight-form-${sIdx}`} className="bg-violet-50/20">
+                                                    <td colSpan={6} className="p-3">
+                                                      <div className="rounded-xl border border-violet-200 bg-violet-50/70 p-4 space-y-3.5 text-xs shadow-2xs">
+                                                        {/* Header & Tour Type */}
+                                                        <div className="flex items-center justify-between border-b border-violet-200/70 pb-2.5">
+                                                          <div className="flex items-center gap-2">
+                                                            <span className="h-2 w-2 rounded-full bg-violet-500"></span>
+                                                            <span className="font-bold text-violet-950 text-sm">Add Sightseeing Tour ({dayLabel})</span>
+                                                            {hasDayFreeTime && (
+                                                              <span className="rounded-full bg-violet-200 border border-violet-300 text-violet-900 font-bold text-[10px] px-2 py-0.5">
+                                                                {remainingHoursText} Available
+                                                              </span>
+                                                            )}
+                                                          </div>
+
+                                                          <div className="flex items-center gap-3">
+                                                            <div className="flex items-center gap-1.5">
+                                                              <span className="text-[11px] font-semibold text-slate-500">Tour Type:</span>
+                                                              <select
+                                                                value={newSightseeingInput.tourType || "Private Tour"}
+                                                                onChange={(e) => setNewSightseeingInput({ ...newSightseeingInput, tourType: e.target.value })}
+                                                                className="rounded-lg border border-blue-300 bg-white px-2.5 py-1 text-xs font-semibold text-blue-900 focus:border-blue-500 focus:outline-none shadow-2xs cursor-pointer"
+                                                              >
+                                                                <option value="Private Tour">Private Tour</option>
+                                                                <option value="Sharing Tour">Sharing Tour</option>
+                                                                <option value="Ticket Tour">Ticket Tour</option>
+                                                              </select>
+                                                            </div>
+
+                                                            <button
+                                                              type="button"
+                                                              onClick={() => setActiveAddSightseeingRow(null)}
+                                                              className="text-slate-400 hover:text-slate-700 cursor-pointer p-0.5 rounded hover:bg-violet-100/50"
+                                                            >
+                                                              <X size={16} />
+                                                            </button>
+                                                          </div>
+                                                        </div>
+
+                                                        {/* Rich DMC Contracted Sightseeing Searchable Dropdown */}
+                                                        {(() => {
+                                                          const currentDestination = selectedPkg?.destination || query?.destination || "Goa";
+                                                          const GOA_SUB_CITIES = [
+                                                            "goa", "ponda", "panaji", "panjim", "calangute", "candolim", "baga",
+                                                            "old goa", "south goa", "north goa", "anjuna", "colva",
+                                                            "vagator", "margao", "mapusa", "vasco", "arambol", "morjim", "dabolim"
+                                                          ];
+                                                          const matchDest = (item, dest) => {
+                                                            const destClean = String(dest || "").trim().toLowerCase();
+                                                            if (!destClean) return true;
+                                                            const city = String(item.city || "").trim().toLowerCase();
+                                                            const itemDest = String(item.destination || "").trim().toLowerCase();
+                                                            const title = String(item.title || item.serviceName || item.name || "").trim().toLowerCase();
+                                                            const isGoaPackage = GOA_SUB_CITIES.some((sub) => destClean.includes(sub));
+                                                            if (isGoaPackage) {
+                                                              const isItemInGoa = GOA_SUB_CITIES.some(
+                                                                (sub) => city.includes(sub) || itemDest.includes(sub) || title.includes(sub)
+                                                              );
+                                                              if (isItemInGoa) return true;
+                                                            }
+                                                            if (city && (city.includes(destClean) || destClean.includes(city))) return true;
+                                                            if (itemDest && (itemDest.includes(destClean) || destClean.includes(itemDest))) return true;
+                                                            if (title && title.includes(destClean)) return true;
+                                                            return false;
+                                                          };
+
+                                                          const destinationDmcSightseeing = (liveDmcSightseeing || []).filter((s) =>
+                                                            matchDest(s, currentDestination)
+                                                          );
+                                                          const availableSightseeing = destinationDmcSightseeing.length > 0 ? destinationDmcSightseeing : liveDmcSightseeing;
+                                                          const searchQuery = (newSightseeingInput.searchQuery || "").trim().toLowerCase();
+                                                          const filteredSightseeing = availableSightseeing.filter((s) => {
+                                                            if (!searchQuery) return true;
+                                                            const title = String(s.name || s.serviceName || s.title || "").toLowerCase();
+                                                            const city = String(s.city || s.destination || "").toLowerCase();
+                                                            const supp = String(s.supplierName || s.dmcName || "").toLowerCase();
+                                                            return title.includes(searchQuery) || city.includes(searchQuery) || supp.includes(searchQuery);
+                                                          });
+
+                                                          // Helper to parse sightseeing duration in minutes
+                                                          const parseSightMins = (item) => {
+                                                            const durStr = item.duration || item.hours || "240 Mins";
+                                                            return parseInt(String(durStr).replace(/[^\d]/g, "")) || 240;
+                                                          };
+
+                                                          // Smart sorting: sightseeing tours fitting within remainingMinsForDay come FIRST!
+                                                          const sortedSightseeing = [...filteredSightseeing].sort((a, b) => {
+                                                            if (!hasDayFreeTime) return 0;
+                                                            const aMins = parseSightMins(a);
+                                                            const bMins = parseSightMins(b);
+                                                            const aFits = aMins <= remainingMinsForDay;
+                                                            const bFits = bMins <= remainingMinsForDay;
+                                                            if (aFits && !bFits) return -1;
+                                                            if (!aFits && bFits) return 1;
+                                                            return aMins - bMins;
+                                                          });
+
+                                                          return (
+                                                            <div className="relative mb-3.5 space-y-1">
+                                                              <div className="flex items-center justify-between">
+                                                                <label className="text-[11px] font-bold text-violet-900 uppercase flex items-center gap-1.5">
+                                                                  <Landmark size={13} className="text-violet-600" />
+                                                                  SELECT DMC CONTRACTED SIGHTSEEING ({currentDestination.toUpperCase()})
+                                                                </label>
+                                                                {availableSightseeing.length > 0 && (
+                                                                  <span className="text-[10.5px] font-bold text-violet-700 bg-violet-50 px-2 py-0.5 rounded-md border border-violet-200">
+                                                                    {availableSightseeing.length} DMC tours for {currentDestination}
+                                                                  </span>
+                                                                )}
+                                                              </div>
+
+                                                              {/* Search Input Box */}
+                                                              <div className="relative">
+                                                                <input
+                                                                  type="text"
+                                                                  placeholder="Search DMC contracted sightseeing by tour name, location or supplier..."
+                                                                  value={newSightseeingInput.searchQuery !== undefined ? newSightseeingInput.searchQuery : (newSightseeingInput.name || "")}
+                                                                  onFocus={() => setNewSightseeingInput((prev) => ({ ...prev, isDropdownOpen: true }))}
+                                                                  onChange={(e) => {
+                                                                    const val = e.target.value;
+                                                                    setNewSightseeingInput((prev) => ({
+                                                                      ...prev,
+                                                                      searchQuery: val,
+                                                                      name: val,
+                                                                      isDropdownOpen: true,
+                                                                    }));
+                                                                  }}
+                                                                  className="w-full rounded-lg border border-violet-300 bg-white pl-3 pr-8 py-2 text-xs font-semibold text-slate-800 focus:border-violet-500 focus:ring-1 focus:ring-violet-500 focus:outline-none transition shadow-2xs"
+                                                                />
+                                                                <button
+                                                                  type="button"
+                                                                  onClick={() => setNewSightseeingInput((prev) => ({ ...prev, isDropdownOpen: !prev.isDropdownOpen }))}
+                                                                  className="absolute right-2 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
+                                                                >
+                                                                  <ChevronDown size={15} />
+                                                                </button>
+                                                              </div>
+
+                                                              {/* Rich Dropdown Panel */}
+                                                              {newSightseeingInput.isDropdownOpen && (
+                                                                <div className="absolute left-0 right-0 top-full mt-1 max-h-64 overflow-y-auto rounded-xl border border-violet-200 bg-white shadow-xl z-50 divide-y divide-slate-100 [scrollbar-width:thin]">
+                                                                  {sortedSightseeing.length === 0 ? (
+                                                                    <div className="p-3.5 text-xs text-slate-500 italic text-center">
+                                                                      No matching DMC sightseeing tours found. You can type custom sightseeing details below.
+                                                                    </div>
+                                                                  ) : (
+                                                                    sortedSightseeing.map((dmcSight, sIdx) => {
+                                                                      const sightTitle = dmcSight.name || dmcSight.serviceName || dmcSight.title || "Sightseeing Tour";
+                                                                      const isSelected = String(newSightseeingInput.dmcSightseeingId) === String(dmcSight._id || dmcSight.id);
+                                                                      const adP = Number(dmcSight.adultPrice || dmcSight.price || dmcSight.rate || 1800);
+                                                                      const chP = Number(dmcSight.childPrice || Math.round(adP * 0.5) || 900);
+                                                                      const cityLoc = dmcSight.city ? `Goa (${dmcSight.city})` : "Goa";
+                                                                      const sightMins = parseSightMins(dmcSight);
+                                                                      const fitsInDay = hasDayFreeTime && sightMins <= remainingMinsForDay;
+
+                                                                      return (
+                                                                        <div
+                                                                          key={dmcSight._id || dmcSight.id || sIdx}
+                                                                          onClick={() => {
+                                                                            const adCount = Number(newSightseeingInput.adults || 1);
+                                                                            const chCount = Number(newSightseeingInput.children || 0);
+
+                                                                            setNewSightseeingInput((prev) => ({
+                                                                              ...prev,
+                                                                              dmcSightseeingId: dmcSight._id || dmcSight.id,
+                                                                              name: sightTitle,
+                                                                              searchQuery: sightTitle,
+                                                                              tourType: dmcSight.tourType || "Private Tour",
+                                                                              adultPrice: adP,
+                                                                              childPrice: chP,
+                                                                              price: (adP * adCount) + (chP * chCount),
+                                                                              selectedSlot: dmcSight.slot || dmcSight.selectedSlot || "08:00",
+                                                                              description: dmcSight.description || "Guided local sightseeing tour with transfers included",
+                                                                              isDropdownOpen: false,
+                                                                            }));
+                                                                          }}
+                                                                          className={`p-3 hover:bg-violet-50/60 cursor-pointer transition flex items-center justify-between gap-3 ${
+                                                                            isSelected ? "bg-violet-50/90 border-l-4 border-l-violet-600" : ""
+                                                                          }`}
+                                                                        >
+                                                                          <div className="min-w-0 flex-1 space-y-0.5">
+                                                                            <p className="text-xs font-bold text-slate-900 flex items-center gap-1.5 truncate flex-wrap">
+                                                                              <span>{sightTitle}</span>
+                                                                              {isSelected && (
+                                                                                <span className="rounded bg-violet-100 text-violet-800 text-[9px] px-1.5 py-0.2 font-bold shrink-0">
+                                                                                  ✓ Selected
+                                                                                </span>
+                                                                              )}
+                                                                              {fitsInDay && (
+                                                                                <span className="rounded-full bg-violet-100 border border-violet-300 text-violet-950 font-bold text-[9px] px-2 py-0.2 shrink-0">
+                                                                                  ⭐ Fits in {remainingHoursText} free
+                                                                                </span>
+                                                                              )}
+                                                                            </p>
+                                                                            <p className="text-[11px] text-slate-500 truncate flex items-center gap-1 flex-wrap">
+                                                                              <span className="inline-flex items-center gap-1 text-slate-700 font-medium">
+                                                                                <MapPin size={11} className="text-rose-500 shrink-0" />
+                                                                                {cityLoc}
+                                                                              </span>
+                                                                              <span>• Duration: {sightMins} Mins</span>
+                                                                              <span>• Days: {dmcSight.operatingDays || "Mon-Sun"}</span>
+                                                                            </p>
+                                                                            {dmcSight.supplierName && (
+                                                                              <p className="text-[10.5px] font-semibold text-violet-700">
+                                                                                Supplier: {dmcSight.supplierName}
+                                                                              </p>
+                                                                            )}
+                                                                          </div>
+                                                                          <div className="text-right shrink-0">
+                                                                            <p className="text-xs font-black text-slate-900">
+                                                                              ₹{adP.toLocaleString("en-IN")}{" "}
+                                                                              <span className="text-[10px] font-semibold text-slate-500">/ adult</span>
+                                                                            </p>
+                                                                            {chP > 0 && (
+                                                                              <p className="text-[10px] font-semibold text-slate-500">
+                                                                                Child: ₹{chP.toLocaleString("en-IN")}
+                                                                              </p>
+                                                                            )}
+                                                                          </div>
+                                                                        </div>
+                                                                      );
+                                                                    })
+                                                                  )}
+                                                                </div>
+                                                              )}
+                                                            </div>
+                                                          );
+                                                        })()}
+
+                                                        {/* Main Inputs Grid */}
+                                                        <div className="space-y-3">
+                                                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                                            <div className="sm:col-span-2">
+                                                              <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                                                                Sightseeing Tour Name
+                                                              </label>
+                                                              <input
+                                                                type="text"
+                                                                placeholder="e.g. North Goa Sightseeing & Fort Aguada Tour"
+                                                                value={newSightseeingInput.name}
+                                                                onChange={(e) => setNewSightseeingInput({ ...newSightseeingInput, name: e.target.value, searchQuery: e.target.value })}
+                                                                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-800 focus:border-violet-500 focus:outline-none"
+                                                              />
+                                                            </div>
+
+                                                            <div>
+                                                              <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                                                                Day
+                                                              </label>
+                                                              <select
+                                                                value={newSightseeingInput.day}
+                                                                onChange={(e) => setNewSightseeingInput({ ...newSightseeingInput, day: e.target.value })}
+                                                                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-800 focus:border-violet-500 focus:outline-none cursor-pointer"
+                                                              >
+                                                                {Array.from({ length: 10 }).map((_, i) => (
+                                                                  <option key={i} value={`Day ${i + 1}`}>
+                                                                    Day {i + 1}
+                                                                  </option>
+                                                                ))}
+                                                              </select>
+                                                            </div>
+                                                          </div>
+
+                                                          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 pt-1">
+                                                            <div>
+                                                              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                                                                Adult Price (₹)
+                                                              </label>
+                                                              <input
+                                                                type="number"
+                                                                min="0"
+                                                                placeholder="1800"
+                                                                value={newSightseeingInput.adultPrice}
+                                                                onChange={(e) => {
+                                                                  const ap = Number(e.target.value || 0);
+                                                                  const cp = Number(newSightseeingInput.childPrice || 0);
+                                                                  const ad = Number(newSightseeingInput.adults || 1);
+                                                                  const ch = Number(newSightseeingInput.children || 0);
+                                                                  setNewSightseeingInput({
+                                                                    ...newSightseeingInput,
+                                                                    adultPrice: e.target.value,
+                                                                    price: (ap * ad) + (cp * ch),
+                                                                  });
+                                                                }}
+                                                                className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-800 focus:border-violet-500 focus:outline-none"
+                                                              />
+                                                            </div>
+
+                                                            <div>
+                                                              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                                                                Child Price (₹)
+                                                              </label>
+                                                              <input
+                                                                type="number"
+                                                                min="0"
+                                                                placeholder="900"
+                                                                value={newSightseeingInput.childPrice}
+                                                                onChange={(e) => {
+                                                                  const cp = Number(e.target.value || 0);
+                                                                  const ap = Number(newSightseeingInput.adultPrice || 0);
+                                                                  const ad = Number(newSightseeingInput.adults || 1);
+                                                                  const ch = Number(newSightseeingInput.children || 0);
+                                                                  setNewSightseeingInput({
+                                                                    ...newSightseeingInput,
+                                                                    childPrice: e.target.value,
+                                                                    price: (ap * ad) + (cp * ch),
+                                                                  });
+                                                                }}
+                                                                className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-800 focus:border-violet-500 focus:outline-none"
+                                                              />
+                                                            </div>
+
+                                                            <div>
+                                                              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                                                                Adults
+                                                              </label>
+                                                              <input
+                                                                type="number"
+                                                                min="1"
+                                                                value={newSightseeingInput.adults}
+                                                                onChange={(e) => {
+                                                                  const ad = Math.max(1, Number(e.target.value || 1));
+                                                                  const ch = Number(newSightseeingInput.children || 0);
+                                                                  const ap = Number(newSightseeingInput.adultPrice || 0);
+                                                                  const cp = Number(newSightseeingInput.childPrice || 0);
+                                                                  setNewSightseeingInput({
+                                                                    ...newSightseeingInput,
+                                                                    adults: ad,
+                                                                    price: (ap * ad) + (cp * ch),
+                                                                  });
+                                                                }}
+                                                                className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-800 focus:border-violet-500 focus:outline-none text-center"
+                                                              />
+                                                            </div>
+
+                                                            <div>
+                                                              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                                                                Children
+                                                              </label>
+                                                              <input
+                                                                type="number"
+                                                                min="0"
+                                                                value={newSightseeingInput.children}
+                                                                onChange={(e) => {
+                                                                  const ch = Math.max(0, Number(e.target.value || 0));
+                                                                  const ad = Number(newSightseeingInput.adults || 1);
+                                                                  const ap = Number(newSightseeingInput.adultPrice || 0);
+                                                                  const cp = Number(newSightseeingInput.childPrice || 0);
+                                                                  setNewSightseeingInput({
+                                                                    ...newSightseeingInput,
+                                                                    children: ch,
+                                                                    price: (ap * ad) + (cp * ch),
+                                                                  });
+                                                                }}
+                                                                className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-800 focus:border-violet-500 focus:outline-none text-center"
+                                                              />
+                                                            </div>
+
+                                                            <div>
+                                                              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                                                                Slot / Time
+                                                              </label>
+                                                              <select
+                                                                value={newSightseeingInput.selectedSlot || "08:00"}
+                                                                onChange={(e) => setNewSightseeingInput({ ...newSightseeingInput, selectedSlot: e.target.value })}
+                                                                className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs font-semibold text-slate-800 focus:border-violet-500 focus:outline-none cursor-pointer"
+                                                              >
+                                                                <option value="08:00">08:00</option>
+                                                                <option value="09:00">09:00</option>
+                                                                <option value="10:00">10:00</option>
+                                                                <option value="11:30">11:30</option>
+                                                                <option value="14:00">14:00</option>
+                                                                <option value="15:00">15:00</option>
+                                                                <option value="18:00">18:00</option>
+                                                              </select>
+                                                            </div>
+
+                                                            <div>
+                                                              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                                                                Total (₹)
+                                                              </label>
+                                                              <input
+                                                                type="number"
+                                                                min="0"
+                                                                value={newSightseeingInput.price}
+                                                                onChange={(e) => setNewSightseeingInput({ ...newSightseeingInput, price: e.target.value })}
+                                                                className="w-full rounded-lg border border-violet-400 bg-violet-50/50 px-2.5 py-1.5 text-xs font-bold text-violet-950 focus:border-violet-600 focus:outline-none"
+                                                              />
+                                                            </div>
+                                                          </div>
+                                                        </div>
+
+                                                        {/* Form Buttons */}
+                                                        <div className="flex justify-end gap-2 pt-2 border-t border-violet-200/60">
+                                                          <button
+                                                            type="button"
+                                                            onClick={() => setActiveAddSightseeingRow(null)}
+                                                            className="px-3.5 py-1.5 bg-white border border-slate-300 rounded-lg text-slate-600 font-semibold text-xs hover:bg-slate-50 cursor-pointer transition"
+                                                          >
+                                                            Cancel
+                                                          </button>
+                                                          <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                              if (!newSightseeingInput.name) {
+                                                                toast.error("Please enter sightseeing tour name");
+                                                                return;
+                                                              }
+                                                              const finalAdults = Number(newSightseeingInput.adults || 1);
+                                                              const finalChildren = Number(newSightseeingInput.children || 0);
+                                                              const finalAdultPrice = Number(newSightseeingInput.adultPrice || 0);
+                                                              const finalChildPrice = Number(newSightseeingInput.childPrice || 0);
+                                                              const computedTotal = Number(newSightseeingInput.price || (finalAdultPrice * finalAdults) + (finalChildPrice * finalChildren));
+
+                                                              updatePkgCustom(pkgId, (c) => ({
+                                                                ...c,
+                                                                customSightseeing: [
+                                                                  ...(c.customSightseeing || []),
+                                                                  {
+                                                                    id: `custom-sight-${Date.now()}`,
+                                                                    name: newSightseeingInput.name,
+                                                                    tourType: newSightseeingInput.tourType || "Private Tour",
+                                                                    day: newSightseeingInput.day || "Day 2",
+                                                                    adultPrice: finalAdultPrice,
+                                                                    childPrice: finalChildPrice,
+                                                                    adults: finalAdults,
+                                                                    children: finalChildren,
+                                                                    selectedSlot: newSightseeingInput.selectedSlot || "08:00",
+                                                                    price: computedTotal,
+                                                                    description: newSightseeingInput.description || "Guided local sightseeing tour with transfers included",
+                                                                  },
+                                                                ],
+                                                              }));
+                                                              toast.success("Custom sightseeing added to package!");
+                                                              setActiveAddSightseeingRow(null);
+                                                              setNewSightseeingInput({
+                                                                name: "",
+                                                                tourType: "Private Tour",
+                                                                day: "Day 2",
+                                                                adultPrice: 1800,
+                                                                childPrice: 900,
+                                                                adults: query?.numberOfAdults || 2,
+                                                                children: query?.numberOfChildren || 0,
+                                                                selectedSlot: "08:00",
+                                                                price: 3600,
+                                                                description: "Guided local sightseeing tour with transfers included",
+                                                              });
+                                                            }}
+                                                            className="px-4 py-1.5 bg-violet-600 hover:bg-violet-700 text-white font-bold rounded-lg text-xs cursor-pointer shadow-xs transition"
+                                                          >
+                                                            + Add Sightseeing
+                                                          </button>
+                                                        </div>
+                                                      </div>
+                                                    </td>
+                                                  </tr>
+                                                )}
+                                              </React.Fragment>
+                                            );
+                                          })
+                                        ) : (
+                                          <tr>
+                                            <td colSpan={6} className="py-4 px-4 text-center text-xs text-slate-400 italic">
+                                              No sightseeing tours in this package.
                                             </td>
                                           </tr>
-                                        );
-                                      })
-                                    ) : (
-                                      <tr>
-                                        <td colSpan={6} className="py-4 px-4 text-center text-xs text-slate-400 italic">
-                                          No activities in this package.
-                                        </td>
-                                      </tr>
-                                    )}
-                                  </tbody>
-                                </table>
-                              </div>
-                            </div>
-
-                            {activitiesTotal > 0 && (
-                              <div className="flex justify-end pt-1">
-                                <div className="border border-slate-300 rounded-lg px-4 py-1.5 bg-white shadow-2xs inline-flex items-center gap-2 font-sans">
-                                  <span className="text-xs font-bold text-slate-900">Activities Subtotal:</span>
-                                  <span className="text-xs font-semibold text-slate-400">INR</span>
-                                  <span className="text-sm font-extrabold text-slate-900">
-                                    {activitiesTotal.toLocaleString("en-IN")}
-                                  </span>
+                                        )}
+                                      </tbody>
+                                    </table>
+                                  </div>
                                 </div>
-                              </div>
-                            )}
-                          </div>
 
-                          {/* D. SIGHTSEEING TABLE */}
-                          <div className="space-y-3">
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-2">
-                                <span className="p-1.5 rounded-lg bg-violet-50 text-violet-600">
-                                  <Landmark size={16} />
-                                </span>
-                                <h4 className="text-sm font-bold text-slate-900">Sightseeing Tours</h4>
+                                {/* Sightseeing Subtotal */}
+                                {sightseeingTotal > 0 && (
+                                  <div className="flex justify-end pt-1">
+                                    <div className="border border-slate-300 rounded-lg px-4 py-1.5 bg-white shadow-2xs inline-flex items-center gap-2 font-sans">
+                                      <span className="text-xs font-bold text-slate-900">Sightseeing Subtotal:</span>
+                                      <span className="text-xs font-semibold text-slate-400">INR</span>
+                                      <span className="text-sm font-extrabold text-slate-900">
+                                        {sightseeingTotal.toLocaleString("en-IN")}
+                                      </span>
+                                    </div>
+                                  </div>
+                                )}
                               </div>
+
                             </div>
-
-                            <div className="rounded-xl border border-slate-200 bg-white overflow-hidden shadow-2xs">
-                              <div className="overflow-x-auto">
-                                <table className="w-full text-left text-xs border-collapse">
-                                  <thead>
-                                    <tr className="border-b border-slate-200 bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-700 font-sans">
-                                      <th className="py-2.5 px-4 font-bold w-[12%]">DAY</th>
-                                      <th className="py-2.5 px-4 font-bold w-[22%]">SERVICE / SIGHTSEEING NAME</th>
-                                      <th className="py-2.5 px-4 font-bold w-[24%]">DESCRIPTION / HIGHLIGHTS</th>
-                                      <th className="py-2.5 px-4 font-bold w-[28%]">TOUR TYPE &amp; PAX</th>
-                                      <th className="py-2.5 px-4 font-bold text-right w-[10%]">PRICE</th>
-                                      <th className="py-2.5 px-3 font-bold text-center w-[4%]">ACTION</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody className="divide-y divide-slate-200 text-slate-700 font-sans">
-                                    {allSightseeingRows.length > 0 ? (
-                                      allSightseeingRows.map((row, sIdx) => {
-                                        const sight = row.sightseeing || {};
-                                        const isExcluded = row.isExcluded;
-                                        const dayNum = parseInt(sight.day) || (sIdx + 1);
-                                        const dayLabel = sight.day ? (String(sight.day).toLowerCase().startsWith("day") ? sight.day : `Day ${sight.day}`) : `Day ${sIdx + 1}`;
-
-                                        let dateStr = "";
-                                        if (query?.startDate) {
-                                          const startD = new Date(query.startDate);
-                                          if (!isNaN(startD.getTime())) {
-                                            const d = new Date(startD);
-                                            d.setDate(d.getDate() + (dayNum - 1));
-                                            dateStr = d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
-                                          }
-                                        }
-
-                                        const sightTitle = sight.name || sight.serviceName || sight.title || "Guided Sightseeing Tour";
-                                        const tourType = row.tourType || sight.tourType || "Group Tour";
-                                        const pricingBasis = row.pricingBasis || sight.pricingBasis || (tourType === "Group Tour" ? "Per Pax" : "Per Group");
-                                        const isPerPax = row.isPerPax !== undefined ? row.isPerPax : (pricingBasis === "Per Pax" || tourType === "Group Tour");
-                                        const paxCount = row.paxCount !== undefined ? row.paxCount : Number(sight.quantity || sight.pax || defaultAdultsVal || 1);
-                                        const maxPax = sight.maxPax || (tourType === "Private Tour" ? 6 : 4);
-                                        const baseRate = row.baseRate !== undefined ? row.baseRate : (isPerPax && sight.rate ? Number(sight.rate) : Number(sight.price || 0));
-                                        const cityOrDest = sight.city || sight.destination || selectedPkg?.destination || query?.destination || "Destination";
-                                        const description = sight.description || "Local sightseeing and transfers included";
-
-                                        return (
-                                          <tr
-                                            key={`sight-${sIdx}`}
-                                            className={`transition-colors font-sans ${
-                                              isExcluded ? "bg-slate-100/60 opacity-60" : "hover:bg-slate-50/50"
-                                            }`}
-                                          >
-                                            {/* Col 1: DAY */}
-                                            <td className="py-3.5 px-4 align-top">
-                                              <p className={`font-bold text-[15px] ${isExcluded ? "line-through text-slate-500" : "text-slate-900"}`}>
-                                                {dayLabel}
-                                              </p>
-                                              {dateStr && <p className="text-[12.5px] text-slate-500 font-normal mt-0.5">{dateStr}</p>}
-                                            </td>
-
-                                            {/* Col 2: SERVICE / SIGHTSEEING NAME */}
-                                            <td className="py-3.5 px-4 align-top space-y-1.5">
-                                              <div className="flex items-start gap-1.5">
-                                                <Landmark size={16} className={`mt-0.5 shrink-0 ${isExcluded ? "text-slate-400" : "text-[#1d4ed8]"}`} />
-                                                <div className="min-w-0">
-                                                  <div className="flex items-center gap-1.5 flex-wrap">
-                                                    <span className={`font-bold text-[15px] leading-snug tracking-tight ${isExcluded ? "line-through text-slate-400" : "text-[#1d4ed8]"}`}>
-                                                      {sightTitle}
-                                                    </span>
-                                                  </div>
-                                                </div>
-                                              </div>
-
-                                              <div className="text-[13px] text-slate-500 font-normal">
-                                                <span className="text-slate-600 font-medium">{cityOrDest}</span>
-                                              </div>
-
-                                              {/* Badges: Tour Type, Pricing Basis, Max Pax */}
-                                              <div className="flex items-center gap-1.5 flex-wrap text-[11px] pt-1">
-                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 font-semibold border border-slate-200 shadow-2xs">
-                                                  <span className="text-slate-400 font-bold uppercase text-[9.5px]">Type:</span>
-                                                  <span className="font-bold text-slate-900">{tourType}</span>
-                                                </span>
-
-                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-800 font-semibold border border-emerald-200 shadow-2xs">
-                                                  <span className="text-emerald-600 font-bold uppercase text-[9.5px]">Basis:</span>
-                                                  <span className="font-bold text-emerald-950">{pricingBasis}</span>
-                                                </span>
-
-                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 font-semibold border border-slate-200 shadow-2xs">
-                                                  <span className="text-slate-400 font-bold uppercase text-[9.5px]">Capacity:</span>
-                                                  <span className="font-bold text-slate-900">{maxPax} Pax</span>
-                                                </span>
-                                              </div>
-                                            </td>
-
-                                            {/* Col 3: DESCRIPTION / HIGHLIGHTS */}
-                                            <td className="py-3.5 px-4 align-top text-[12.5px] text-slate-600 font-normal leading-relaxed">
-                                              <p className="font-bold text-slate-800 text-[13px] mb-0.5">
-                                                {tourType} • {pricingBasis} ({paxCount} Guests)
-                                              </p>
-                                              <p>{description}</p>
-                                            </td>
-
-                                            {/* Col 4: TOUR TYPE & PAX */}
-                                            <td className="py-3.5 px-4 align-top space-y-2">
-                                              <div>
-                                                <p className={`font-bold text-[15px] ${isExcluded ? "line-through text-slate-500" : "text-slate-900"}`}>
-                                                  {paxCount} Pax • {tourType}
-                                                </p>
-                                              </div>
-
-                                              {!isExcluded && (
-                                                <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
-                                                  {/* Pax Stepper */}
-                                                  <div className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50/90 px-2 py-0.5 text-xs text-slate-700 shadow-2xs">
-                                                    <span className="text-[11px] font-semibold text-slate-500 uppercase">Pax:</span>
-                                                    <button
-                                                      type="button"
-                                                      onClick={() => updateSightseeingConfig(pkgId, row.originalIndex, "pax", -1, false, paxCount, row.isCustom, row.customIndex)}
-                                                      className="h-4 w-4 rounded flex items-center justify-center bg-white border border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900 font-bold text-xs cursor-pointer leading-none"
-                                                      title="Decrease pax"
-                                                    >
-                                                      -
-                                                    </button>
-                                                    <span className="font-bold text-slate-900 px-0.5 text-[12px]">{paxCount}</span>
-                                                    <button
-                                                      type="button"
-                                                      onClick={() => updateSightseeingConfig(pkgId, row.originalIndex, "pax", 1, false, paxCount, row.isCustom, row.customIndex)}
-                                                      className="h-4 w-4 rounded flex items-center justify-center bg-white border border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-slate-900 font-bold text-xs cursor-pointer leading-none"
-                                                      title="Increase pax"
-                                                    >
-                                                      +
-                                                    </button>
-                                                  </div>
-
-                                                  <div className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50/90 px-2 py-0.5 text-xs text-slate-700 shadow-2xs">
-                                                    <span className="text-[11px] font-semibold text-slate-500 uppercase">Rate:</span>
-                                                    <span className="font-bold text-slate-900">
-                                                      ₹{baseRate.toLocaleString("en-IN")} {isPerPax ? "/ Pax" : "Flat"}
-                                                    </span>
-                                                  </div>
-                                                </div>
-                                              )}
-                                            </td>
-
-                                            {/* Col 5: PRICE */}
-                                            <td className="py-3.5 px-4 align-top text-right whitespace-nowrap">
-                                              {isExcluded ? (
-                                                <div>
-                                                  <span className="text-sm font-semibold text-rose-600 line-through">
-                                                    ₹{row.price.toLocaleString("en-IN")}
-                                                  </span>
-                                                  <p className="text-[11px] text-rose-600 font-bold mt-0.5">Excluded</p>
-                                                </div>
-                                              ) : (
-                                                <div>
-                                                  <p className="text-[18.5px] font-black text-slate-900 tracking-tight leading-none">
-                                                    <span className="text-[12px] font-bold text-slate-500 uppercase mr-1">INR</span>
-                                                    {row.effectivePrice.toLocaleString("en-IN")}
-                                                  </p>
-                                                  <p className="text-[12px] text-slate-500 font-normal mt-1">
-                                                    {isPerPax ? `₹${baseRate.toLocaleString("en-IN")} × ${paxCount} Pax` : `Flat Group Rate`}
-                                                  </p>
-                                                </div>
-                                              )}
-                                            </td>
-
-                                            {/* Col 6: ACTION */}
-                                            <td className="py-3.5 px-3 align-top text-center">
-                                              {isExcluded ? (
-                                                <button
-                                                  type="button"
-                                                  onClick={() => toggleExcludeSightseeing(pkgId, row.originalIndex)}
-                                                  className="px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-100 text-emerald-800 hover:bg-emerald-200 transition cursor-pointer"
-                                                >
-                                                  Restore
-                                                </button>
-                                              ) : (
-                                                <button
-                                                  type="button"
-                                                  onClick={() => toggleExcludeSightseeing(pkgId, row.originalIndex)}
-                                                  className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition cursor-pointer"
-                                                  title="Drop / Exclude this sightseeing tour"
-                                                >
-                                                  <X size={14} />
-                                                </button>
-                                              )}
-                                            </td>
-                                          </tr>
-                                        );
-                                      })
-                                    ) : (
-                                      <tr>
-                                        <td colSpan={6} className="py-4 px-4 text-center text-xs text-slate-400 italic">
-                                          No sightseeing tours in this package.
-                                        </td>
-                                      </tr>
-                                    )}
-                                  </tbody>
-                                </table>
-                              </div>
-                            </div>
-
-                            {sightseeingTotal > 0 && (
-                              <div className="flex justify-end pt-1">
-                                <div className="border border-slate-300 rounded-lg px-4 py-1.5 bg-white shadow-2xs inline-flex items-center gap-2 font-sans">
-                                  <span className="text-xs font-bold text-slate-900">Sightseeing Subtotal:</span>
-                                  <span className="text-xs font-semibold text-slate-400">INR</span>
-                                  <span className="text-sm font-extrabold text-slate-900">
-                                    {sightseeingTotal.toLocaleString("en-IN")}
-                                  </span>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        </div>
 
                     {/* 3. ACCORDION SECTIONS (Inclusions/Exclusions, Day-wise Schedule, Terms & Conditions - Identical to All Quotes UI) */}
                     <div className="space-y-1 pt-4">
