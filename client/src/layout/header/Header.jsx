@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSelector } from "react-redux";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
@@ -449,8 +449,8 @@ const Header = () => {
     const sendUserHeartbeat = async () => {
       try {
         await API.post("/auth/heartbeat");
-      } catch (err) {
-        // silent ping fail
+      } catch (error) {
+         console.error("Heartbeat failed:", error);
       }
     };
 
@@ -476,48 +476,54 @@ const Header = () => {
     }));
   };
 
-  const [localReportNotifications, setLocalReportNotifications] = useState([]);
 
-  const loadLocalReports = () => {
-    try {
-      const stored = JSON.parse(
-        localStorage.getItem("finance_reports_history") || "[]",
-      );
-      const mapped = stored.map((report) => ({
-        _id: report.id,
-        id: report.id,
-        type: "info",
-        title: report.title || "Exported Finance Report",
-        message: `${report.title} exported with ${report.totalItems || report.items?.length || 0} items from ${report.source || "Finance Desk"} on ${report.generatedAt}. Available in Finance Manager Hub for download.`,
-        createdAt: report.generatedAt,
-        isRead: false,
-        category: "Finance Report",
-        link:
-          role === "finance_manager"
-            ? "/finance/manager-dashboard"
-            : "/finance/internalInvoice",
-      }));
-      setLocalReportNotifications(mapped);
-    } catch (e) {
-      console.warn("Could not load local report notifications:", e);
-    }
+
+
+
+ const [localReportNotifications, setLocalReportNotifications] = useState([]);
+
+const loadLocalReports = useCallback(() => {
+  try {
+    const stored = JSON.parse(
+      localStorage.getItem("finance_reports_history") || "[]"
+    );
+
+    const mapped = stored.map((report) => ({
+      _id: report.id,
+      id: report.id,
+      type: "info",
+      title: report.title || "Exported Finance Report",
+      message: `${report.title} exported with ${
+        report.totalItems || report.items?.length || 0
+      } items from ${report.source || "Finance Desk"} on ${report.generatedAt}. Available in Finance Manager Hub for download.`,
+      createdAt: report.generatedAt,
+      isRead: false,
+      category: "Finance Report",
+      link:
+        role === "finance_manager"
+          ? "/finance/manager-dashboard"
+          : "/finance/internalInvoice",
+    }));
+
+    setLocalReportNotifications(mapped);
+  } catch (e) {
+    console.warn("Could not load local report notifications:", e);
+  }
+}, [role]);
+
+ useEffect(() => {
+  loadLocalReports();
+
+
+  return () => {
+    window.removeEventListener(
+      "finance-report-submitted",
+      // handleReportSubmitted
+    );
+
+    window.removeEventListener("storage",);
   };
-
-  useEffect(() => {
-    loadLocalReports();
-
-    const handleReportSubmitted = () => loadLocalReports();
-    window.addEventListener("finance-report-submitted", handleReportSubmitted);
-    window.addEventListener("storage", handleReportSubmitted);
-
-    return () => {
-      window.removeEventListener(
-        "finance-report-submitted",
-        handleReportSubmitted,
-      );
-      window.removeEventListener("storage", handleReportSubmitted);
-    };
-  }, [role]);
+}, [loadLocalReports]);
 
   const hasFetchedRef = useRef(false);
   const prevUnreadRef = useRef(0);
