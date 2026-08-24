@@ -309,7 +309,16 @@ const QUOTATION_BRAND = Object.freeze({
 });
 
 export const buildAgentClientQuotationTemplate = (quoteDetails = {}) => {
-  const brandName = quoteDetails.agentBrandingName || quoteDetails.agencyName || QUOTATION_BRAND.name;
+  const isOps = Boolean(
+    quoteDetails.isOpsQuotation ||
+    quoteDetails.fromOpsSide ||
+    quoteDetails.agentBrandingName === QUOTATION_BRAND.name ||
+    quoteDetails.agentBrandingName === "Holiday Circuit" ||
+    quoteDetails.agencyName === "Holiday Circuit"
+  );
+  const brandName = isOps 
+    ? QUOTATION_BRAND.name 
+    : (quoteDetails.agentBrandingName || quoteDetails.agencyName || QUOTATION_BRAND.name);
   const recipientName = quoteDetails.recipientName || "Guest";
   const queryId = quoteDetails.queryId || "-";
   const destination = quoteDetails.destination || "-";
@@ -321,48 +330,72 @@ export const buildAgentClientQuotationTemplate = (quoteDetails = {}) => {
   const gstPercent = quoteDetails.gstPercent !== undefined ? Number(quoteDetails.gstPercent) : 5;
   const taxText = gstPercent > 0 ? `(including ${gstPercent}% GST & other Taxes)` : `(including Taxes & Charges)`;
   
-  const companyAddress = quoteDetails.agentCompanyAddress || quoteDetails.companyAddress || "KG 3/69, Ground Floor, Vikas Puri, New Delhi, Delhi - 110018";
-  const agentPhone = quoteDetails.agentPhone || "";
-  const agentEmail = quoteDetails.agentEmail || "";
-  const rawLogo = quoteDetails.agentLogo || "";
-  const rawFooter = quoteDetails.agentFooterImage || "";
+  const companyAddress = isOps 
+    ? QUOTATION_BRAND.address 
+    : (quoteDetails.agentCompanyAddress || quoteDetails.companyAddress || "KG 3/69, Ground Floor, Vikas Puri, New Delhi, Delhi - 110018");
+  const agentPhone = isOps 
+    ? QUOTATION_BRAND.phone 
+    : (quoteDetails.agentPhone || "");
+  const agentEmail = isOps 
+    ? QUOTATION_BRAND.email 
+    : (quoteDetails.agentEmail || "");
+  const rawLogo = isOps 
+    ? QUOTATION_BRAND.logoUrl 
+    : (quoteDetails.agentLogo || "");
+  const rawFooter = isOps 
+    ? "" 
+    : (quoteDetails.agentFooterImage || "");
 
   const logoUrl = rawLogo ? escapeHtml(rawLogo) : "";
   const footerUrl = rawFooter ? escapeHtml(rawFooter) : "";
 
   const allServices = Array.isArray(quoteDetails.services) ? quoteDetails.services : [];
 
-  const isHotelItem = (s) => {
-    const type = String(s?.type || s?.category || "").trim().toLowerCase();
-    const title = String(s?.title || s?.hotelName || s?.name || "").trim().toLowerCase();
-    if (type === "hotel" || type === "accommodation" || type === "stay") return true;
-    if (s?.roomType || s?.starCategory || s?.hotelCategory || s?.starRating) return true;
-    if (title.includes("hotel") || title.includes("resort") || title.includes("villas") || title.includes("inn") || title.includes("suites") || title.includes("ramada") || title.includes("alka") || title.includes("hyatt") || title.includes("taj") || title.includes("eden") || title.includes("kandyan") || title.includes("amari")) return true;
-    return false;
+  const getNormalizedServiceCategory = (s) => {
+    const rawType = String(s?.type || s?.category || s?.serviceType || "").trim().toLowerCase();
+    if (rawType === "activity" || rawType === "sightseeing" || rawType === "tour") return "activity";
+    if (rawType === "transfer" || rawType === "transport" || rawType === "cab" || rawType === "car" || rawType === "flight") return "transfer";
+    if (rawType === "hotel" || rawType === "accommodation" || rawType === "stay") return "hotel";
+
+    const title = String(s?.title || s?.hotelName || s?.name || s?.particulars || "").trim().toLowerCase();
+    if (title.includes("tour") || title.includes("sightseeing") || title.includes("aarti") || title.includes("hopping") || title.includes("boating") || title.includes("safari") || title.includes("cruise") || title.includes("water sports") || title.includes("basilica") || title.includes("activity")) {
+      return "activity";
+    }
+    if (title.includes("drop") || title.includes("pickup") || title.includes("transfer") || title.includes("airport") || title.includes("cab") || title.includes("car")) {
+      return "transfer";
+    }
+    if (title.includes("hotel") || title.includes("resort") || title.includes("villas") || title.includes("inn") || title.includes("suites") || title.includes("ramada") || title.includes("alka") || title.includes("hyatt") || title.includes("taj") || title.includes("eden") || title.includes("kandyan") || title.includes("amari")) {
+      return "hotel";
+    }
+
+    if (s?.roomType && !title.includes("tour") && !title.includes("activity") && !title.includes("sightseeing")) return "hotel";
+
+    return "activity";
   };
 
-  const isTransferItem = (s) => {
-    const type = String(s?.type || s?.category || "").trim().toLowerCase();
-    const title = String(s?.title || s?.name || s?.particulars || "").trim().toLowerCase();
-    if (type === "transfer" || type === "transport" || type === "cab" || type === "car" || type === "flight") return true;
-    if (title.includes("drop") || title.includes("pickup") || title.includes("transfer") || title.includes("airport") || title.includes("cab") || title.includes("car")) return true;
-    return false;
-  };
-
-  const isActivityItem = (s) => {
-    const type = String(s?.type || s?.category || "").trim().toLowerCase();
-    const title = String(s?.title || s?.name || s?.particulars || "").trim().toLowerCase();
-    if (type === "activity" || type === "sightseeing") return true;
-    if (title.includes("sightseeing") || title.includes("tour") || title.includes("aarti") || title.includes("hopping") || title.includes("boating") || title.includes("safari") || title.includes("cruise") || title.includes("water sports")) return true;
-    return false;
-  };
-
-  const hotelServices = allServices.filter((s) => isHotelItem(s));
-  const transferServices = allServices.filter((s) => !isHotelItem(s) && isTransferItem(s));
-  const activityServices = allServices.filter((s) => !isHotelItem(s) && !isTransferItem(s) && isActivityItem(s));
+  const hotelServices = allServices.filter((s) => getNormalizedServiceCategory(s) === "hotel");
+  const transferServices = allServices.filter((s) => getNormalizedServiceCategory(s) === "transfer");
+  const activityServices = allServices.filter((s) => getNormalizedServiceCategory(s) === "activity");
 
   const hotelRowsHtml = hotelServices.length > 0 ? hotelServices.map((service, index) => {
-    const serviceName = escapeHtml(service.title || service.name || service.hotelName || "Hotel");
+    const resolveHotelName = (srv) => {
+      const hName = String(srv?.hotelName || srv?.actualHotelName || srv?.hotel_name || srv?.hotel || "").trim();
+      if (hName) return hName;
+      const desc = String(srv?.description || srv?.desc || "");
+      const pipeParts = desc.split("|").map(p => p.trim());
+      const hotelPart = pipeParts.find(p => /hotel|resort|villas|inn|suites|hyatt|taj|ramada|alka|eden|kandyan|amari|marriott|beach/i.test(p));
+      if (hotelPart && !hotelPart.toLowerCase().startsWith("standard room") && !hotelPart.toLowerCase().startsWith("deluxe")) {
+        return hotelPart.replace(/^Hotel:\s*/i, "");
+      }
+      return "";
+    };
+
+    const serviceName = escapeHtml(service.title || service.name || service.particulars || service.hotelName || "Hotel Service");
+    const resolvedHotelName = resolveHotelName(service);
+    const hotelNameHtml = resolvedHotelName && resolvedHotelName !== service.title && resolvedHotelName !== service.name
+      ? `<div style="font-size:11px; color:#334155; font-weight:600; margin-top:2px;">Hotel: ${escapeHtml(resolvedHotelName)}</div>`
+      : "";
+
     const location = escapeHtml(service.location || service.city || destination);
     const rawDateLabel = service.serviceDateLabel || service.checkIn || service.startDate || service.date;
     const dateLabel = rawDateLabel ? escapeHtml(rawDateLabel) : "";
@@ -457,6 +490,7 @@ export const buildAgentClientQuotationTemplate = (quoteDetails = {}) => {
       (service.description && String(service.description).split("|")[0].trim()) ||
       "Standard Room"
     );
+    const resolvedRoomCategory = escapeHtml(service.roomCategory || service.bedType || "");
 
     return `
       <tr>
@@ -468,6 +502,7 @@ export const buildAgentClientQuotationTemplate = (quoteDetails = {}) => {
         </td>
         <td style="padding:10px 12px; border:1px solid #d1d5db; font-size:12px; color:#1e293b;">
           <strong>${serviceName}</strong><br/>
+          ${hotelNameHtml}
           <span style="font-size:11px; color:#d97706; font-weight:600; display:inline-block; margin-top:3px;">${starDisplay}</span>
         </td>
         <td style="padding:10px 12px; border:1px solid #d1d5db; font-size:12px; color:#1e293b;">
@@ -476,7 +511,7 @@ export const buildAgentClientQuotationTemplate = (quoteDetails = {}) => {
         </td>
         <td style="padding:10px 12px; border:1px solid #d1d5db; font-size:12px; color:#1e293b;">
           <div style="font-weight:600; color:#0f172a;">${quantity}</div>
-          ${resolvedRoomType ? `<div style="font-size:11px; color:#475569; font-weight:500; margin-top:3px;">• ${resolvedRoomType}</div>` : ''}
+          ${resolvedRoomType ? `<div style="font-size:11px; color:#475569; font-weight:500; margin-top:3px;">• ${resolvedRoomType}${resolvedRoomCategory ? ` (${resolvedRoomCategory})` : ''}</div>` : ''}
         </td>
       </tr>
     `;
@@ -485,8 +520,11 @@ export const buildAgentClientQuotationTemplate = (quoteDetails = {}) => {
   const transferRowsHtml = transferServices.map((service, index) => {
     const serviceName = escapeHtml(service.title || service.name || service.particulars || "Airport Transfer");
     const location = escapeHtml(service.location || service.city || destination);
-    const dateLabel = escapeHtml(service.serviceDateLabel || service.date || `Day ${index + 1}`);
+    const dateLabel = escapeHtml(service.serviceDateLabel || service.date || (service.serviceDate ? new Date(service.serviceDate).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : `Day ${index + 1}`));
     const quantity = escapeHtml(service.quantityLabel || service.pax || travelerSummary);
+    const pickupTime = escapeHtml(service.pickupTime || service.time || service.selectedSlot || "");
+    const vehicleType = escapeHtml(service.vehicleType || "");
+    const usageLabel = escapeHtml(service.transportUsageLabel || service.usageType || "");
     const description = buildServiceDescriptionHtml(service.description || service.vehicle || service.vehicleType || "AC Sedan | Driver Included");
     
     return `
@@ -494,39 +532,133 @@ export const buildAgentClientQuotationTemplate = (quoteDetails = {}) => {
         <td style="padding:10px 12px; border:1px solid #d1d5db; font-size:12px; color:#1e293b;">
           <strong>${dateLabel}</strong>
         </td>
-        <td style="padding:10px 12px; border:1px solid #d1d5db; font-size:12px; color:#1e293b; font-weight:bold;">
-          ${serviceName}
+        <td style="padding:10px 12px; border:1px solid #d1d5db; font-size:12px; color:#1e293b;">
+          <strong style="color: #0f172a; font-size: 13px;">${serviceName}</strong>
+          ${location ? `<div style="font-size:11px; color:#64748b; font-weight:500; margin-top:2px;">📍 ${location}</div>` : ""}
+          ${pickupTime ? `<div style="font-size:11px; color:#b45309; font-weight:600; margin-top:3px; display:inline-block; background-color:#fef3c7; border:1px solid #fde68a; padding:2px 6px; border-radius:4px;">⏰ Pickup Time: ${pickupTime}</div>` : ""}
         </td>
         <td style="padding:10px 12px; border:1px solid #d1d5db; font-size:12px; color:#1e293b;">
           ${description}
+          ${(vehicleType || usageLabel || pickupTime) ? `
+            <div style="margin-top:6px; display:flex; flex-wrap:wrap; gap:4px; font-size:11px;">
+              ${pickupTime ? `<span style="background-color:#fef3c7; border:1px solid #fde68a; color:#b45309; font-weight:600; padding:2px 6px; border-radius:4px; display:inline-block;">⏰ Pickup: ${pickupTime}</span>` : ""}
+              ${vehicleType ? `<span style="background-color:#f0fdf4; border:1px solid #bbf7d0; color:#15803d; font-weight:600; padding:2px 6px; border-radius:4px; display:inline-block;">🚗 ${vehicleType}</span>` : ""}
+              ${usageLabel ? `<span style="background-color:#f1f5f9; border:1px solid #cbd5e1; color:#475569; font-weight:500; padding:2px 6px; border-radius:4px; display:inline-block;">🏷️ ${usageLabel}</span>` : ""}
+            </div>
+          ` : ""}
         </td>
         <td style="padding:10px 12px; border:1px solid #d1d5db; font-size:12px; color:#1e293b;">
-          ${quantity}
+          <strong>${quantity}</strong>
         </td>
       </tr>
     `;
   }).join("");
 
   const activityRowsHtml = activityServices.map((service, index) => {
-    const serviceName = escapeHtml(service.title || service.name || service.particulars || "Sightseeing Tour");
+    const serviceName = escapeHtml(service.title || service.name || service.particulars || service.activityName || service.sightseeingName || "Sightseeing Tour");
     const location = escapeHtml(service.location || service.city || destination);
-    const dateLabel = escapeHtml(service.serviceDateLabel || service.date || `Day ${index + 1}`);
+    const dateLabel = escapeHtml(service.serviceDateLabel || service.date || (service.serviceDate ? new Date(service.serviceDate).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : `Day ${index + 1}`));
     const quantity = escapeHtml(service.quantityLabel || service.pax || travelerSummary);
-    const description = buildServiceDescriptionHtml(service.description || "Guided Sightseeing Tour | Inclusions Included");
-    
+
+    // Tour Type (e.g., Private Tour / Sharing Tour)
+    const tourType = escapeHtml(service.tourType || service.tour_type || "Sharing Tour");
+
+    // Format Duration nicely (e.g. 600 -> 10 Hours, 150 -> 2.5 Hours)
+    const rawDuration = String(service.duration || "").trim();
+    let formattedDuration = "";
+    if (rawDuration) {
+      const numDur = Number(rawDuration);
+      if (!isNaN(numDur) && numDur > 0) {
+        const hrs = numDur / 60;
+        formattedDuration = hrs >= 1 ? `${hrs % 1 === 0 ? hrs : hrs.toFixed(1)} Hours` : `${numDur} Mins`;
+      } else {
+        formattedDuration = rawDuration;
+      }
+    }
+
+    // Selected Slot / Time (e.g., 08:00 AM)
+    const slotTime = escapeHtml(service.selectedSlot || service.slot || service.time || service.openingTime || "");
+
+    // Operating Days & Timings
+    const opDays = escapeHtml(service.operatingDays || "");
+    const openTime = escapeHtml(service.openingTime || "");
+    const closeTime = escapeHtml(service.closingTime || "");
+    let timingsDisplay = "";
+    if (openTime && closeTime) {
+      timingsDisplay = `${openTime} - ${closeTime}`;
+    } else if (openTime) {
+      timingsDisplay = openTime;
+    }
+
+    // Adult / Child Pricing Badges
+    const adultPriceNum = Number(service.adultPrice || service.adult_price || 0);
+    const childPriceNum = Number(service.childPrice || service.child_price || 0);
+
+    const description = buildServiceDescriptionHtml(service.description || "Guided Sightseeing Tour & Activity");
+
+    // Build Rich Info Badges HTML
+    const extraDetailsHtml = `
+      <div style="margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px; font-size: 11px;">
+        ${tourType ? `<span style="background-color: #eff6ff; border: 1px solid #bfdbfe; color: #1d4ed8; font-weight: 600; padding: 2px 6px; border-radius: 4px; display: inline-block;">● ${tourType}</span>` : ""}
+        ${slotTime ? `<span style="background-color: #fef3c7; border: 1px solid #fde68a; color: #b45309; font-weight: 600; padding: 2px 6px; border-radius: 4px; display: inline-block;">⏰ Slot: ${slotTime}</span>` : ""}
+        ${formattedDuration ? `<span style="background-color: #f3e8ff; border: 1px solid #e9d5ff; color: #6b21a8; font-weight: 600; padding: 2px 6px; border-radius: 4px; display: inline-block;">⏱️ Duration: ${escapeHtml(formattedDuration)}</span>` : ""}
+        ${opDays ? `<span style="background-color: #f1f5f9; border: 1px solid #cbd5e1; color: #475569; font-weight: 500; padding: 2px 6px; border-radius: 4px; display: inline-block;">📅 ${opDays}</span>` : ""}
+        ${timingsDisplay ? `<span style="background-color: #f1f5f9; border: 1px solid #cbd5e1; color: #475569; font-weight: 500; padding: 2px 6px; border-radius: 4px; display: inline-block;">⌛ ${timingsDisplay}</span>` : ""}
+      </div>
+      ${(adultPriceNum > 0 || childPriceNum > 0) ? `
+        <div style="margin-top: 4px; font-size: 11px; color: #047857; font-weight: 600;">
+          ${adultPriceNum > 0 ? `Adult: ₹${adultPriceNum.toLocaleString("en-IN")}` : ""}${childPriceNum > 0 ? ` | Child: ₹${childPriceNum.toLocaleString("en-IN")}` : ""}
+        </div>
+      ` : ""}
+    `;
+
+    // Resolve exact Total Pax & Adults/Children Breakdown
+    const resolveActivityPaxHtml = (srv) => {
+      const numAdults = Number(srv.adults !== undefined && srv.adults !== null ? srv.adults : 0);
+      const numChildren = Number(srv.children !== undefined && srv.children !== null ? srv.children : 0);
+      const numInfants = Number(srv.infants !== undefined && srv.infants !== null ? srv.infants : 0);
+      
+      const hasExplicitBreakdown = (numAdults > 0 || numChildren > 0 || numInfants > 0);
+      const calcTotalPax = hasExplicitBreakdown ? (numAdults + numChildren + numInfants) : Number(srv.pax || 0);
+
+      const parts = [];
+      if (numAdults > 0) parts.push(`${numAdults} Adult${numAdults > 1 ? 's' : ''}`);
+      if (numChildren > 0) parts.push(`${numChildren} Child${numChildren > 1 ? 'ren' : ''}`);
+      if (numInfants > 0) parts.push(`${numInfants} Infant${numInfants > 1 ? 's' : ''}`);
+
+      if (hasExplicitBreakdown) {
+        return `<strong style="color: #0f172a; font-size: 13px;">${calcTotalPax} Pax</strong>${parts.length > 0 ? `<br/><span style="font-size:11px; color:#475569; font-weight:600;">(${parts.join(", ")})</span>` : ""}`;
+      }
+
+      if (calcTotalPax > 1) {
+        return `<strong style="color: #0f172a; font-size: 13px;">${calcTotalPax} Pax</strong>${travelerSummary && travelerSummary !== "-" ? `<br/><span style="font-size:11px; color:#475569; font-weight:600;">(${escapeHtml(travelerSummary)})</span>` : ""}`;
+      }
+
+      if (travelerSummary && travelerSummary !== "-") {
+        return `<strong style="color: #0f172a; font-size: 12px;">${escapeHtml(travelerSummary)}</strong>`;
+      }
+
+      return `<strong style="color: #0f172a; font-size: 12px;">1 Pax</strong>`;
+    };
+
+    const paxDisplayHtml = resolveActivityPaxHtml(service);
+
     return `
       <tr>
         <td style="padding:10px 12px; border:1px solid #d1d5db; font-size:12px; color:#1e293b;">
           <strong>${dateLabel}</strong>
         </td>
-        <td style="padding:10px 12px; border:1px solid #d1d5db; font-size:12px; color:#1e293b; font-weight:bold;">
-          ${serviceName}
+        <td style="padding:10px 12px; border:1px solid #d1d5db; font-size:12px; color:#1e293b;">
+          <strong style="color: #0f172a; font-size: 13px;">${serviceName}</strong>
+          ${location ? `<div style="font-size:11px; color:#64748b; font-weight:500; margin-top:2px;">📍 ${location}</div>` : ""}
+          <div style="font-size:11px; color:#2563eb; font-weight:600; margin-top:2px;">Tour Type: ${tourType}</div>
         </td>
         <td style="padding:10px 12px; border:1px solid #d1d5db; font-size:12px; color:#1e293b;">
           ${description}
+          ${extraDetailsHtml}
         </td>
         <td style="padding:10px 12px; border:1px solid #d1d5db; font-size:12px; color:#1e293b;">
-          ${quantity}
+          ${paxDisplayHtml}
         </td>
       </tr>
     `;
@@ -751,6 +883,39 @@ export const buildAgentClientQuotationTemplate = (quoteDetails = {}) => {
         </tbody>
       </table>
 
+      <!-- 3.1 BANK DETAILS FOR PAYMENT -->
+      <table width="100%" cellspacing="0" cellpadding="0" style="border-collapse: collapse; margin-bottom: 20px; border: 1px solid #d1d5db;">
+        <thead>
+          <tr>
+            <th colspan="2" style="background-color: #ecfeff; color: #0f766e; padding: 8px 12px; font-size: 13px; font-weight: bold; text-align: center; border: 1px solid #7dd3c7;">
+              Bank Account Details for Payment
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="padding: 7px 12px; border: 1px solid #d1d5db; font-size: 12px; font-weight: 500; color: #475569; width: 35%;">Bank Name</td>
+            <td style="padding: 7px 12px; border: 1px solid #d1d5db; font-size: 12px; font-weight: bold; color: #0f172a;">HDFC Bank</td>
+          </tr>
+          <tr>
+            <td style="padding: 7px 12px; border: 1px solid #d1d5db; font-size: 12px; font-weight: 500; color: #475569;">Account Holder Name</td>
+            <td style="padding: 7px 12px; border: 1px solid #d1d5db; font-size: 12px; font-weight: bold; color: #0f172a;">Holiday Circuit</td>
+          </tr>
+          <tr>
+            <td style="padding: 7px 12px; border: 1px solid #d1d5db; font-size: 12px; font-weight: 500; color: #475569;">Account Number</td>
+            <td style="padding: 7px 12px; border: 1px solid #d1d5db; font-size: 12px; font-weight: bold; color: #0f172a;">50200103968171</td>
+          </tr>
+          <tr>
+            <td style="padding: 7px 12px; border: 1px solid #d1d5db; font-size: 12px; font-weight: 500; color: #475569;">IFSC Code</td>
+            <td style="padding: 7px 12px; border: 1px solid #d1d5db; font-size: 12px; font-weight: bold; color: #0f172a;">HDFC0004413</td>
+          </tr>
+          <tr>
+            <td style="padding: 7px 12px; border: 1px solid #d1d5db; font-size: 12px; font-weight: 500; color: #475569;">Branch</td>
+            <td style="padding: 7px 12px; border: 1px solid #d1d5db; font-size: 12px; font-weight: bold; color: #0f172a;">RAMPHAL CHOWK SEC VII DWARKA</td>
+          </tr>
+        </tbody>
+      </table>
+
       <!-- 4. INCLUSIONS & EXCLUSIONS -->
       <table width="100%" cellspacing="0" cellpadding="0" style="border-collapse: collapse; margin-bottom: 20px; border: 1px solid #d1d5db;">
         <thead>
@@ -794,23 +959,63 @@ export const buildAgentClientQuotationTemplate = (quoteDetails = {}) => {
         <tbody>
           <tr>
             <td style="padding: 14px 16px; font-size: 12px; color: #1e293b; line-height: 1.6;">
-              <p style="font-weight: bold; font-size: 12px; margin: 0 0 8px 0; color: #0f172a;">General Terms and Conditions</p>
-              <ol style="margin: 0; padding-left: 18px; color: #334155;">
-                <li style="margin-bottom: 8px;">
-                  <strong>Introduction</strong> Welcome to <strong>${escapeHtml(brandName)}</strong> ("we," "our," or "us"). These Terms and Conditions ("Terms") govern your use of our travel services, including bookings, tours, and related services. By using our services, you agree to comply with and be bound by these Terms.
-                </li>
-                <li style="margin-bottom: 8px;">
-                  <strong>Services Provided</strong>
-                  <ul style="margin: 4px 0 0 0; padding-left: 18px;">
-                    <li><strong>${escapeHtml(brandName)}</strong> offers travel planning, tour packages, transportation arrangements, accommodation bookings, travel insurance facilitation, visa assistance, and other related services.</li>
-                    <li>Customized travel itineraries are available upon request, subject to additional fees.</li>
-                    <li>We provide both private transfers and shared transfers:
-                      <ul style="margin: 4px 0 0 0; padding-left: 18px;">
-                        <li><strong>Private Transfers</strong>: Exclusive transportation for the client or group point to point until and unless specified. Any delays caused by the client may result in additional charges.</li>
-                        <li><strong>Shared Transfers</strong>: Transportation shared with other travelers, operating on fixed schedules. Delays or cancellations due to other passengers are not our responsibility <strong>(Guest might have to wait upto 30 Mins)</strong>.</li>
-                      </ul>
+              ${Array.isArray(quoteDetails.additionalNotes) && quoteDetails.additionalNotes.filter(Boolean).length > 0 ? `
+                <p style="font-weight: bold; font-size: 12px; margin: 0 0 6px 0; color: #0f172a;">Special Quotation Terms & Notes:</p>
+                <ol style="margin: 0 0 14px 0; padding-left: 18px; color: #334155;">
+                  ${quoteDetails.additionalNotes.filter(Boolean).map(item => `<li style="margin-bottom:6px;">${escapeHtml(item)}</li>`).join("")}
+                </ol>
+              ` : ""}
+              <p style="font-weight: bold; font-size: 13px; margin: 0 0 10px 0; color: #0f172a; border-bottom: 1px dashed #cbd5e1; padding-bottom: 6px;">Holiday Circuit Official Terms and Conditions</p>
+              <p style="font-size: 11.5px; color: #334155; margin-0 0 10px 0;">Welcome to <strong>Holiday Circuit</strong>. These Terms and Conditions govern your use of the Holiday Circuit services. When You Make a booking or reservation, you agree to be bound by these Terms.</p>
+              
+              <ol style="margin: 0; padding-left: 18px; color: #334155; font-size: 11.5px; line-height: 1.65;">
+                <li style="margin-bottom: 10px;">
+                  <strong style="color: #0f172a;">Bookings and Reservations:</strong>
+                  <ul style="margin: 4px 0 0 0; padding-left: 16px; list-style-type: disc;">
+                    <li style="margin-bottom: 4px;"><strong>Booking Process:</strong> When you make a booking through Holiday Circuit, you agree to provide accurate and complete information. Any discrepancies may result in cancellation.</li>
+                    <li style="margin-bottom: 6px;">
+                      <strong>Payment Terms:</strong> Payments are due as specified during booking. Failure to pay on time may result in cancellation.
+                      <ol style="margin: 4px 0 4px 0; padding-left: 16px; color: #1e293b;">
+                        <li style="margin-bottom: 3px;"><span style="color: #b91c1c; font-weight: 700; background-color: #fef2f2; padding: 1px 4px; border-radius: 3px;">Minimum 50%</span> of the booking amount is required at the time of booking confirmation.</li>
+                        <li style="margin-bottom: 3px;">Remaining 50% in 2 parts: <span style="color: #c2410c; font-weight: 600;">25% within 30 Days prior to departure</span> and <span style="color: #c2410c; font-weight: 600;">25% within 20 days prior to departure</span>.</li>
+                        <li style="margin-bottom: 3px;">In Case of Airline booking/Train Tickets, <span style="color: #b91c1c; font-weight: 700;">100% ticket cost</span> to be paid at confirmation.</li>
+                        <li style="margin-bottom: 3px;">If a booking is under 100% cancellation period, <span style="color: #b91c1c; font-weight: 700;">100% booking amount</span> is required at confirmation.</li>
+                      </ol>
                     </li>
+                    <li style="margin-bottom: 4px;"><strong>Confirmation:</strong> Booking is confirmed only upon receipt of payment. <span style="color: #dc2626; font-weight: 700; background-color: #fef2f2; padding: 1px 5px; border-radius: 3px;">*Booking will be auto cancelled in case of non-payment within stipulated time.*</span></li>
+                    <li style="margin-bottom: 4px;"><strong>Credit Card:</strong> Credit Card payments may attract an additional charge from <span style="color: #d97706; font-weight: 700;">3% to 5%</span> depending on card type (charged over & above actual package cost).</li>
+                    <li style="margin-bottom: 4px;"><strong>Confirmation Vouchers:</strong> Vouchers will only be provided <span style="color: #2563eb; font-weight: 700;">7 days before the arrival date</span>.</li>
+                    <li style="margin-bottom: 4px;"><strong>Airport Transfers & Tour Pick Ups:</strong> Includes <span style="color: #d97706; font-weight: 700; background-color: #fffbeb; padding: 1px 4px; border-radius: 3px;">60 minutes waiting time</span> for Airport pick-ups. Delayed at immigration/luggage requires calling emergency number to extend. For all other pick-ups, driver will wait for <span style="color: #d97706; font-weight: 700; background-color: #fffbeb; padding: 1px 4px; border-radius: 3px;">10 minutes</span> at Hotel Lobby / Reception.</li>
+                    <li style="margin-bottom: 4px;"><strong>Taxes:</strong> Any changes in taxes (GST/TCS/Government Tax) at confirmation will be adjusted as per prevailing tax regulations.</li>
+                    <li style="margin-bottom: 4px;"><strong>Changes & Cancellations:</strong> Subject to fees or penalties determined by service providers and Holiday Circuit.</li>
                   </ul>
+                </li>
+
+                <li style="margin-bottom: 10px;">
+                  <strong style="color: #0f172a;">Travel Documents and Requirements:</strong>
+                  <ul style="margin: 4px 0 0 0; padding-left: 16px; list-style-type: disc;">
+                    <li style="margin-bottom: 4px;"><strong>Valid ID Proof:</strong> Responsibility of guest to possess valid ID/Visas. <span style="color: #b91c1c; font-weight: 700; background-color: #fef2f2; padding: 2px 6px; border-radius: 3px; display: inline-block; margin-top: 2px;">⚠️ To Enter Nepal by Air: Valid Passport or Election Card is Mandatory. Aadhar Card is NOT valid for Travel.</span></li>
+                    <li style="margin-bottom: 4px;"><strong>Health & Vaccinations:</strong> Guest is responsible for meeting health and vaccination requirements.</li>
+                    <li style="margin-bottom: 4px;"><strong>Travel Insurance:</strong> We strongly recommend purchasing travel insurance to protect against unexpected events or emergencies.</li>
+                  </ul>
+                </li>
+
+                <li style="margin-bottom: 10px;">
+                  <strong style="color: #0f172a;">Changes to Itineraries & Liability:</strong>
+                  <ul style="margin: 4px 0 0 0; padding-left: 16px; list-style-type: disc;">
+                    <li style="margin-bottom: 4px;"><strong>Changes by Holiday Circuit:</strong> Right reserved to modify itinerary/accommodations due to unforeseen circumstances with prompt notice.</li>
+                    <li style="margin-bottom: 4px;"><strong>Service Providers Liability:</strong> Intermediary role; not liable for third-party service provider negligence or omissions.</li>
+                    <li style="margin-bottom: 4px;"><strong>Force Majeure:</strong> Not liable for disruptions, cancellations, or delays caused by natural disasters, strikes, political unrest, or force majeure.</li>
+                    <li style="margin-bottom: 4px;"><strong>Governing Law:</strong> Governed by the laws of <span style="color: #0f172a; font-weight: 700;">New Delhi Jurisdiction</span>.</li>
+                  </ul>
+                </li>
+
+                <li style="margin-bottom: 6px;">
+                  <strong style="color: #0f172a;">Contact Information:</strong><br/>
+                  <span style="color: #475569; font-size: 11px;">
+                    Holiday Circuit: KG 3/69, Ground Floor, Vikas Puri, New Delhi - 110018 (Near UK Nursing Home)<br/>
+                    Email: <a href="mailto:varun@holidaycircuit.com" style="color: #2563eb; text-decoration: underline;">varun@holidaycircuit.com</a> | Phone: +91 8851346665, +91 9971706003
+                  </span>
                 </li>
               </ol>
             </td>
@@ -1935,7 +2140,14 @@ const processInlineCidImages = (rawHtml = "") => {
 
 export const sendEmailQuote = async (email, quoteDetails) => {
   const transporter = createTransporter();
-  const rawHtmlTemplate = buildAgentClientQuotationTemplate({
+  const opsQuoteDetails = {
+    ...quoteDetails,
+    isOpsQuotation: true,
+    agentBrandingName: QUOTATION_BRAND.name,
+    agentLogo: QUOTATION_BRAND.logoUrl,
+    agentCompanyAddress: QUOTATION_BRAND.address,
+    agentPhone: QUOTATION_BRAND.phone,
+    agentEmail: QUOTATION_BRAND.email,
     recipientName: quoteDetails?.recipientName || quoteDetails?.name || "Customer",
     quotationNumber: quoteDetails?.quotationNumber || "",
     queryId: quoteDetails?.queryId || "",
@@ -1952,30 +2164,17 @@ export const sendEmailQuote = async (email, quoteDetails) => {
     dayWiseItinerary: quoteDetails?.dayWiseItinerary || [],
     sellerBankDetails: quoteDetails?.sellerBankDetails || [],
     services: Array.isArray(quoteDetails?.services) ? quoteDetails.services : [],
-  });
+  };
+
+  const rawHtmlTemplate = buildAgentClientQuotationTemplate(opsQuoteDetails);
 
   const { html: htmlTemplate, inlineAttachments } = processInlineCidImages(rawHtmlTemplate);
 
-  const text = buildAgentClientQuotationText({
-    recipientName: quoteDetails?.recipientName || quoteDetails?.name || "Customer",
-    quotationNumber: quoteDetails?.quotationNumber || "",
-    destination: quoteDetails?.destination || "",
-    travelDates: quoteDetails?.travelDates || "",
-    durationLabel: quoteDetails?.durationLabel || (quoteDetails?.days ? `${quoteDetails.days} Days` : "-"),
-    travelerSummary: quoteDetails?.travelerSummary || "",
-    validTill: quoteDetails?.validTill || "",
-    totalAmount: Number(quoteDetails?.totalAmount ?? quoteDetails?.price ?? 0),
-    currency: quoteDetails?.currency || "INR",
-    inclusions: quoteDetails?.inclusions || [],
-    exclusions: quoteDetails?.exclusions || [],
-    additionalNotes: quoteDetails?.additionalNotes || [],
-    dayWiseItinerary: quoteDetails?.dayWiseItinerary || [],
-    services: Array.isArray(quoteDetails?.services) ? quoteDetails.services : [],
-  });
+  const text = buildAgentClientQuotationText(opsQuoteDetails);
 
   let attachments = [...inlineAttachments];
   try {
-    const pdfResult = await generatePDF(quoteDetails);
+    const pdfResult = await generatePDF(opsQuoteDetails);
     if (pdfResult && pdfResult.filePath) {
       attachments.push({
         filename: pdfResult.fileName || `Quotation_${quoteDetails.quotationNumber || "Details"}.pdf`,

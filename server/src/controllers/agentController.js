@@ -3324,9 +3324,58 @@ export const getMyQueries = async (req, res, next) => {
       return res.status(401).json({ message: "Unauthorized" });
     }
 
-    const queries = await TravelQuery.find({ agent: req.user.id }).sort({ createdAt: -1 });
+    const queries = await TravelQuery.find({ agent: req.user.id }).sort({ createdAt: -1 }).lean();
+    if (!queries.length) {
+      return res.json({ message: "All queries fetched successfully", queries: [] });
+    }
 
-    return res.json({ message: "All queries fetched successfully", queries });
+    const queryIds = queries.map((q) => q._id);
+
+    const quotations = await Quotation.find({
+      agent: req.user.id,
+      queryId: { $in: queryIds },
+    })
+      .select("queryId clientTotalAmount pricing status createdAt updatedAt")
+      .sort({ updatedAt: -1, createdAt: -1 })
+      .lean();
+
+    const latestQuotationByQuery = {};
+    const approvedQuotationByQuery = {};
+
+    quotations.forEach((q) => {
+      const qKey = String(q.queryId);
+      if (!latestQuotationByQuery[qKey]) {
+        latestQuotationByQuery[qKey] = q;
+      }
+      if (
+        !approvedQuotationByQuery[qKey] &&
+        ["Quote Accepted", "Confirmed", "Sent to Client", "Quote Finalized", "Markup Applied"].includes(q.status)
+      ) {
+        approvedQuotationByQuery[qKey] = q;
+      }
+    });
+
+    const enrichedQueries = queries.map((query) => {
+      const qKey = String(query._id);
+      const latestQ = latestQuotationByQuery[qKey];
+      const approvedQ = approvedQuotationByQuery[qKey] || latestQ;
+
+      const latestPrice = latestQ
+        ? Number(latestQ.clientTotalAmount || latestQ.pricing?.totalAmount || 0)
+        : 0;
+
+      const approvedPrice = approvedQ
+        ? Number(approvedQ.clientTotalAmount || approvedQ.pricing?.totalAmount || 0)
+        : 0;
+
+      return {
+        ...query,
+        latestQuotationPrice: latestPrice,
+        approvedQuotationPrice: approvedPrice,
+      };
+    });
+
+    return res.json({ message: "All queries fetched successfully", queries: enrichedQueries });
 
   } catch (error) {
     next(error);

@@ -1692,11 +1692,17 @@ const buildAgentQuotationEmailPayload = ({ quotation, query }) => {
   ];
 
   return {
+    isOpsQuotation: true,
+    agentBrandingName: "Holiday Circuit",
+    agentLogo: "https://res.cloudinary.com/dszadvuz6/image/upload/e_trim/v1777932524/unzssx1sjkrigbgldg7h.png",
+    agentCompanyAddress: "2nd Floor, 632 Block B1, Janakpuri, New Delhi - 110058",
+    agentPhone: "+91 8851346665, +91 9971706003",
+    agentEmail: "ops@leelatravels.com",
     recipientName:
       query?.agent?.companyName ||
       query?.agent?.name ||
       "Guest",
-    agencyName: query?.agent?.companyName || "",
+    agencyName: "Holiday Circuit",
     quotationNumber: quotation?.quotationNumber || "",
     queryId: query?.queryId || "",
     destination: query?.destination || "",
@@ -1713,20 +1719,24 @@ const buildAgentQuotationEmailPayload = ({ quotation, query }) => {
     dayWiseItinerary: normalizeDayWiseItinerary(quotation?.dayWiseItinerary),
     services: Array.isArray(quotation?.services)
       ? quotation.services.map((service) => {
-        const normalizedServiceType = normalizeQuotationServiceType(service?.type);
-        const ratio = totalServiceBase > 0 ? Number(service.total || 0) / totalServiceBase : 0;
+        const rawService = typeof service?.toObject === "function" ? service.toObject() : (service || {});
+        const normalizedServiceType = normalizeQuotationServiceType(rawService?.type);
+        const ratio = totalServiceBase > 0 ? Number(rawService.total || 0) / totalServiceBase : 0;
         const clientAmount = totalServiceBase > 0 ? Math.round(totalAmount * ratio) : 0;
-        const serviceDescription = String(service?.description || "").replace(/\|/g, " | ").trim();
+        const serviceDescription = String(rawService?.description || "").replace(/\|/g, " | ").trim();
         const transportNotes = normalizedServiceType === "transfer"
-          ? buildTransportQuotationNotes(service)
+          ? buildTransportQuotationNotes(rawService)
           : [];
         const description = [serviceDescription, ...transportNotes].filter(Boolean).join("\n");
         return {
-          title: service?.title || "Service",
+          ...rawService,
+          title: rawService?.title || rawService?.name || "Service",
+          type: normalizedServiceType || rawService?.type || "hotel",
+          nights: Number(rawService?.nights || rawService?.nightCount || 0),
           typeLabel: MAIL_SERVICE_TYPE_LABELS[normalizedServiceType] || "Travel Service",
-          location: buildServiceLocationLabel(service),
-          serviceDateLabel: formatMailDateLabel(service?.serviceDate),
-          quantityLabel: buildServiceQuantityLabel(service, queryPax),
+          location: buildServiceLocationLabel(rawService),
+          serviceDateLabel: formatMailDateLabel(rawService?.serviceDate),
+          quantityLabel: buildServiceQuantityLabel(rawService, queryPax),
           description,
           clientAmount,
         };
@@ -3035,80 +3045,105 @@ export const createQuotation = async (req, res, next) => {
     // const subTotal = base + opsAmt + service + handling;
     const totalAmount = Number(subTotal + taxTotal);
 
-    const formattedServices = resolvedServices.map(s => ({
-      serviceId: s.serviceId,
-      supplierId: s.supplierId || undefined,
-      supplierName: s.supplierName || "",
-      dmcId: s.dmcId || s.supplierId || undefined,
-      dmcName: s.dmcName || "",
-      type: s.type || s.serviceType || s.category || "",
-      title:
-        s.title ||
-        s.serviceName ||
-        s.name ||
-        s.hotelName ||
-        s.activityName ||
-        s.sightseeingName ||
-        s.transferName ||
-        s.description ||
-        "Service",
+    const formattedServices = resolvedServices.map(s => {
+      const type = String(s.type || s.serviceType || s.category || "").toLowerCase();
+      const basePayload = {
+        serviceId: s.serviceId,
+        supplierId: s.supplierId || undefined,
+        supplierName: s.supplierName || "",
+        dmcId: s.dmcId || s.supplierId || undefined,
+        dmcName: s.dmcName || "",
+        type: s.type || s.serviceType || s.category || "",
+        title:
+          s.title ||
+          s.serviceName ||
+          s.name ||
+          s.hotelName ||
+          s.activityName ||
+          s.sightseeingName ||
+          s.transferName ||
+          s.description ||
+          "Service",
+        city: s.city,
+        country: s.country,
+        description: s.description,
+        serviceDate: s.serviceDate || undefined,
+        adults: Number(s.adults || 0),
+        children: Number(s.children || 0),
+        infants: Number(s.infants || 0),
+        currency: s.currency || "INR",
+        price: s.price || 0,
+        exchangeRate: Number(s.exchangeRate || 1),
+        priceInInr: Number(s.priceInInr || 0),
+        total: s.total || 0,
+        totalInInr: Number(s.totalInInr || 0),
+      };
 
-      city: s.city,
-      country: s.country,
-      description: s.description,
-      serviceDate: s.serviceDate || undefined,
+      if (type === "hotel") {
+        return {
+          ...basePayload,
+          roomCategory: s.roomCategory,
+          roomType: s.roomType,
+          hotelCategory: s.hotelCategory,
+          bedType: normalizeBedType(s.bedType),
+          rooms: s.rooms || 1,
+          nights: s.nights || 1,
+          hotelRateMode: s.hotelRateMode === "service-total" ? "service-total" : "unit-rate",
+          manualRateOverride: Boolean(s.manualRateOverride),
+          quoteBaseRate: Number(s.quoteBaseRate || 0),
+          roomTypeOptionRate: Number(s.roomTypeOptionRate || 0),
+          roomTypeOptionCurrency: s.roomTypeOptionCurrency || s.currency || "INR",
+          extraAdult: Boolean(s.extraAdult),
+          childWithBed: Boolean(s.childWithBed),
+          childWithoutBed: Boolean(s.childWithoutBed),
+          awebRate: Number(s.awebRate || 0),
+          cwebRate: Number(s.cwebRate || 0),
+          cwoebRate: Number(s.cwoebRate || 0),
+        };
+      } else if (["transfer", "transport", "car"].includes(type)) {
+        return {
+          ...basePayload,
+          vehicleType: s.vehicleType,
+          pickupTime: s.pickupTime || s.time || "",
+          time: s.pickupTime || s.time || "",
+          passengerCapacity: s.passengerCapacity,
+          luggageCapacity: s.luggageCapacity,
+          usageType: normalizeUsageType(s.usageType),
+          transportUsageOptionKey: s.transportUsageOptionKey || "",
+          transportUsageLabel: s.transportUsageLabel || "",
+          transportUsageLimitOptionKey: s.transportUsageLimitOptionKey || "",
+          extraPerKmRate: Number(s.extraPerKmRate || 0),
+          fullDayExtraPerKmRate: Number(s.fullDayExtraPerKmRate || 0),
+          halfDayExtraPerKmRate: Number(s.halfDayExtraPerKmRate || 0),
+          days: s.days || 1,
+          pax: s.pax || 1,
+        };
+      } else if (["activity", "sightseeing"].includes(type)) {
+        return {
+          ...basePayload,
+          tourType: s.tourType || "Sharing Tour",
+          tourTypes: Array.isArray(s.tourTypes) ? s.tourTypes : [],
+          pricingBasis: s.pricingBasis || "",
+          maxPax: s.maxPax || "",
+          adultPrice: Number(s.adultPrice !== undefined ? s.adultPrice : (s.price || 0)),
+          childPrice: Number(s.childPrice !== undefined ? s.childPrice : 0),
+          duration: s.duration || "",
+          slots: s.slots || "",
+          selectedSlot: s.selectedSlot || s.slot || "",
+          operatingDays: s.operatingDays || "",
+          openingTime: s.openingTime || "",
+          closingTime: s.closingTime || "",
+          days: s.days || 1,
+          pax: s.pax || 1,
+        };
+      }
 
-      roomCategory: s.roomCategory,
-      roomType: s.roomType,
-      hotelCategory: s.hotelCategory,
-      bedType: normalizeBedType(s.bedType),
-      adults: s.adults,
-      children: s.children,
-      infants: s.infants,
-
-      // HOTEL
-      nights: s.nights || 1,
-      adults: s.adults || 0,
-      children: s.children || 0,
-      infants: s.infants || 0,
-      rooms: s.rooms || 1,
-      bedType: normalizeBedType(s.bedType),
-
-      // TRANSFER
-      vehicleType: s.vehicleType,
-      passengerCapacity: s.passengerCapacity,
-      luggageCapacity: s.luggageCapacity,
-      transportUsageOptionKey: s.transportUsageOptionKey || "",
-      transportUsageLabel: s.transportUsageLabel || "",
-      transportUsageLimitOptionKey: s.transportUsageLimitOptionKey || "",
-      extraPerKmRate: Number(s.extraPerKmRate || 0),
-      fullDayExtraPerKmRate: Number(s.fullDayExtraPerKmRate || 0),
-      halfDayExtraPerKmRate: Number(s.halfDayExtraPerKmRate || 0),
-      days: s.days || 1,
-
-      // ACTIVITY
-      pax: s.pax || 1,
-
-      // PRICE
-      currency: s.currency || "INR",
-      price: s.price || 0,
-      hotelRateMode: s.hotelRateMode === "service-total" ? "service-total" : "unit-rate",
-      manualRateOverride: Boolean(s.manualRateOverride),
-      quoteBaseRate: Number(s.quoteBaseRate || 0),
-      roomTypeOptionRate: Number(s.roomTypeOptionRate || 0),
-      roomTypeOptionCurrency: s.roomTypeOptionCurrency || s.currency || "INR",
-      exchangeRate: Number(s.exchangeRate || 1),
-      priceInInr: Number(s.priceInInr || 0),
-      extraAdult: Boolean(s.extraAdult),
-      childWithBed: Boolean(s.childWithBed),
-      childWithoutBed: Boolean(s.childWithoutBed),
-      awebRate: Number(s.awebRate || 0),
-      cwebRate: Number(s.cwebRate || 0),
-      cwoebRate: Number(s.cwoebRate || 0),
-      total: s.total || 0,
-      totalInInr: Number(s.totalInInr || 0),
-      usageType: normalizeUsageType(s.usageType)
-    }));
+      return {
+        ...basePayload,
+        days: s.days || 1,
+        pax: s.pax || 1,
+      };
+    });
 
     console.log("🔥 DEBUG:", {
       subTotal,

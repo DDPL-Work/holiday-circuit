@@ -107,7 +107,7 @@ body, html, #root, button, input, select, textarea {
 
 .dark-scrollbar {
   scrollbar-width: thin;
-  scrollbar-color: #3f3f46 #050505;
+  scrollbar-color: #94a3b8 #f1f5f9;
 }
 
 .dark-scrollbar::-webkit-scrollbar {
@@ -116,17 +116,17 @@ body, html, #root, button, input, select, textarea {
 }
 
 .dark-scrollbar::-webkit-scrollbar-track {
-  background: #050505;
+  background: #f1f5f9;
   border-radius: 999px;
 }
 
 .dark-scrollbar::-webkit-scrollbar-thumb {
-  background: #3f3f46;
+  background: #cbd5e1;
   border-radius: 999px;
 }
 
 .dark-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: #52525b;
+  background: #3e63dd;
 }
 
 .sidebar-scrollbar {
