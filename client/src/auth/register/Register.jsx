@@ -109,7 +109,7 @@ export default function Register() {
 
       <div className="relative flex min-h-screen w-full items-center justify-center bg-gradient-to-br from-blue-100/85 via-blue-50/60 via-60% to-slate-200/50 px-6 py-12 lg:w-1/2 lg:min-h-0 lg:h-full lg:py-0">
         <div className="flex w-full justify-center">
-          <div className="w-full max-w-md px-0 sm:px-0 lg:max-w-xl overflow-hidden">
+          <div className="w-full max-w-md px-0 sm:px-0 lg:max-w-xl overflow-hidden py-6 pb-12">
             {showVerificationScreen ? (
               <VerificationOnline />
             ) : (
@@ -122,15 +122,19 @@ export default function Register() {
               >
                 <div className="flex w-1/3 shrink-0 items-center justify-center px-0">
                   <div className="w-full">
-                    <div className="mb-6 flex justify-center">
+                    <div className="pt-4 sm:pt-6 mb-1 flex justify-start">
                       <img
                         src={logo}
-                        alt="Logo"
-                        className="h-20 w-20 object-contain select-none"
+                        alt="Holiday Circuit Logo"
+                        width="104"
+                        height="104"
+                        decoding="async"
+                        fetchPriority="high"
+                        className="h-20 sm:h-24 w-auto object-contain select-none ml-0"
                       />
                     </div>
 
-                    <div className="rounded-2xl p-2 sm:p-7">
+                    <div className="rounded-2xl p-2 sm:p-2 sm:pt-0">
                       <RegisterStepper currentStep={1} isActive={step === 1} />
 
                       <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900">
@@ -221,7 +225,7 @@ export default function Register() {
                           <ArrowRight />
                         </button>
 
-                        <p className="text-center text-sm text-gray-500">
+                        <p className="text-center text-sm text-gray-500 mt-5 pb-6">
                           Already have an account?{" "}
                           <Link to="/" className="font-medium text-blue-600">
                             Sign in

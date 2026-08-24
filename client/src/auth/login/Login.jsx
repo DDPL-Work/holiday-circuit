@@ -382,7 +382,7 @@ const Login = () => {
             </button>
           </div>
 
-          <div className="w-full max-w-md overflow-hidden py-6 mt-12 lg:mt-0">
+          <div className="w-full max-w-md lg:max-w-xl overflow-hidden py-6 mt-12 lg:mt-0">
             <AnimatePresence mode="wait" initial={false}>
               {authView === "login" ? (
                 <motion.div
@@ -397,16 +397,16 @@ const Login = () => {
                     initial={brandMotion.initial}
                     animate={brandMotion.animate}
                     transition={brandMotion.transition}
-                    className="mb-5 flex min-h-[88px] items-center justify-center relative"
+                    className="pt-4 sm:pt-6 mb-1 flex items-center justify-start relative"
                   >
                     <img
                       src={logo}
-                      alt="Company Logo"
-                      width="88"
-                      height="88"
+                      alt="Holiday Circuit Logo"
+                      width="104"
+                      height="104"
                       decoding="async"
                       fetchPriority="high"
-                      className="h-25 w-25 object-contain select-none"
+                      className="h-20 sm:h-24 w-auto object-contain select-none ml-0"
                     />
                   </motion.div>
                   <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900">Welcome back</h2>

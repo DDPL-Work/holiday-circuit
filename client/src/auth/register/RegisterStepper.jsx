@@ -13,7 +13,7 @@ export default function RegisterStepper({ currentStep = 1, isActive = false }) {
       initial={isActive ? { opacity: 0, y: 8 } : false}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.28, ease: "easeOut" }}
-      className="mb-4 px-1"
+      className="mt-0 mb-3 px-1"
     >
       <div className="flex items-center">
         {Array.from({ length: TOTAL_STEPS }).map((_, index) => {

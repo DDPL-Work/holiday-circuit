@@ -52,7 +52,7 @@ export default function KycVerification({ back, submit, isActive = false }) {
 
   return (
     <div className="w-full">
-      <div className="w-full rounded-2xl p-2 sm:p-7">
+      <div className="w-full rounded-2xl p-2 sm:p-2">
         <RegisterStepper currentStep={3} isActive={isActive} />
 
         <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900">KYC Verification</h2>
