@@ -4101,6 +4101,38 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                                       const bType = s.bedType || (String(s.title || s.name || "").toLowerCase().includes("heritage") ? "Queen" : "King");
                                       const rType = s.roomType || (String(s.title || s.name || "").toLowerCase().includes("deluxe") ? "Deluxe Room" : "Superior Room");
 
+                                      const hAdults = Number(s.adults !== undefined && s.adults !== null ? s.adults : (query?.numberOfAdults || 0));
+                                      const hChildren = Number(s.children !== undefined && s.children !== null ? s.children : (query?.numberOfChildren || 0));
+                                      const hTotalPax = (hAdults > 0 || hChildren > 0) ? (hAdults + hChildren) : Number(s.pax || query?.numberOfTravelers || 2);
+                                      const hPaxParts = [];
+                                      if (hAdults > 0) hPaxParts.push(`${hAdults} Adult${hAdults > 1 ? 's' : ''}`);
+                                      if (hChildren > 0) hPaxParts.push(`${hChildren} Child${hChildren > 1 ? 'ren' : ''}`);
+                                      const hPaxDisplay = hPaxParts.length > 0 ? `${hTotalPax} Pax (${hPaxParts.join(", ")})` : `${hTotalPax} Pax`;
+
+                                      const itemPrice = Number(s.price || s.total || s.totalInInr || s.rate || 0);
+                                      const rCount = Number(s.rooms || 1);
+                                      const unitNightRate = itemPrice > 0 ? Math.round(itemPrice / nVal) : 0;
+                                      const unitRoomNightRate = itemPrice > 0 ? Math.round(itemPrice / (nVal * rCount)) : 0;
+
+                                      let nightlyRateLabel = "/ Night";
+                                      let breakdownDetailLabel = "";
+
+                                      if (itemPrice > 0) {
+                                        if (nVal > 1 && rCount > 1) {
+                                          nightlyRateLabel = `₹${unitNightRate.toLocaleString("en-IN")} / Night`;
+                                          breakdownDetailLabel = `(₹${unitRoomNightRate.toLocaleString("en-IN")} / Room / Night × ${rCount} Rooms × ${nVal} Nights)`;
+                                        } else if (nVal > 1) {
+                                          nightlyRateLabel = `₹${unitNightRate.toLocaleString("en-IN")} / Night`;
+                                          breakdownDetailLabel = `(${nVal} Nights)`;
+                                        } else if (rCount > 1) {
+                                          nightlyRateLabel = `₹${unitRoomNightRate.toLocaleString("en-IN")} / Room / Night`;
+                                          breakdownDetailLabel = `(${rCount} Rooms)`;
+                                        } else {
+                                          nightlyRateLabel = `₹${unitNightRate.toLocaleString("en-IN")} / Night`;
+                                          breakdownDetailLabel = "";
+                                        }
+                                      }
+
                                       return {
                                         nightLabel: `${nightNum}${nightSuffix}`,
                                         dateStr: currentDate.toLocaleDateString("en-IN", { day: "numeric", month: "short" }),
@@ -4113,8 +4145,10 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                                         bedType: bType,
                                         roomType: rType,
                                         nights: nVal,
-                                        pax: `${s.adults || query?.numberOfAdults || 2} Pax`,
-                                        price: s.price ? Number(s.price).toLocaleString("en-IN") : "1",
+                                        pax: hPaxDisplay,
+                                        nightlyRateLabel,
+                                        breakdownDetailLabel,
+                                        price: itemPrice > 0 ? Number(itemPrice).toLocaleString("en-IN") : "0",
                                       };
                                     })
                                     : defaultHotels;
@@ -4208,7 +4242,16 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                                               <span className="text-[10px] text-slate-400 font-normal uppercase mr-1">INR</span>
                                               {row.price}
                                             </p>
-                                            <p className="text-[11px] text-slate-400 font-normal mt-0.5">/ N/A</p>
+                                            {row.nightlyRateLabel && (
+                                              <p className="text-[11px] text-slate-500 font-normal mt-0.5">
+                                                {row.nightlyRateLabel}
+                                              </p>
+                                            )}
+                                            {row.breakdownDetailLabel && (
+                                              <p className="text-[10px] text-slate-400 font-normal mt-0.5">
+                                                {row.breakdownDetailLabel}
+                                              </p>
+                                            )}
                                           </td>
                                         </tr>
                                       ))}
@@ -4293,35 +4336,32 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                               };
                             }
 
-                            let mode = s.serviceType || s.transferType || s.tripType;
-                            if (!mode) {
-                              const fullText = (
-                                (s.title || s.name || s.particulars || "") +
-                                " " +
-                                (s.description || s.particularsDetails || s.details || "")
-                              ).toLowerCase();
+                            const usageLabel = s.transportUsageLabel || s.usageType || s.quantityLabel || s.routeType || "One Way / Airport Transfer";
 
-                              if (
-                                fullText.includes("sightseeing") ||
-                                fullText.includes("full day") ||
-                                fullText.includes("8 hours") ||
-                                fullText.includes("tour")
-                              ) {
-                                mode = "full day";
-                              } else {
-                                mode = "point to point";
-                              }
-                            }
+                            const tAdults = Number(s.adults !== undefined && s.adults !== null ? s.adults : (query?.numberOfAdults || 0));
+                            const tChildren = Number(s.children !== undefined && s.children !== null ? s.children : (query?.numberOfChildren || 0));
+                            const tInfants = Number(s.infants !== undefined && s.infants !== null ? s.infants : 0);
+                            const tTotalPax = (tAdults > 0 || tChildren > 0 || tInfants > 0) ? (tAdults + tChildren + tInfants) : Number(s.pax || query?.numberOfTravelers || 1);
 
-                            const paxStr = `${s.adults || s.pax || query?.numberOfAdults || (mode === "full day" ? 6 : 3)} Pax`;
-                            const vehicleStr = s.vehicle || s.vehicleType || (mode === "full day" ? "SUV" : "Sedan");
+                            const tPaxParts = [];
+                            if (tAdults > 0) tPaxParts.push(`${tAdults} Adult${tAdults > 1 ? 's' : ''}`);
+                            if (tChildren > 0) tPaxParts.push(`${tChildren} Child${tChildren > 1 ? 'ren' : ''}`);
+                            if (tInfants > 0) tPaxParts.push(`${tInfants} Infant${tInfants > 1 ? 's' : ''}`);
+                            const tPaxDisplay = tPaxParts.length > 0 ? `${tTotalPax} Pax (${tPaxParts.join(", ")})` : `${tTotalPax} Pax`;
 
-                            const qtyVal = s.qty || s.quantity || `${mode} | ${paxStr} | ${vehicleStr}`;
+                            const vehicleStr = s.vehicle || s.vehicleType || "Sedan";
+                            const passengerCap = s.passengerCapacity || s.maxPax || s.paxCapacity || s.passengers || (vehicleStr.toUpperCase().includes("SUV") ? 6 : 4);
+                            const luggageCap = s.luggageCapacity || s.maxLuggage || s.luggage || s.bags || (vehicleStr.toUpperCase().includes("SUV") ? 4 : 2);
 
                             groupMap[dateKey].items.push({
                               title: s.title || s.name || s.particulars || "Transfer Service",
                               description: s.description || s.particularsDetails || s.details || "",
-                              qty: qtyVal,
+                              pickupTime: s.pickupTime || s.time || s.selectedSlot || "",
+                              usageLabel,
+                              paxDisplay: tPaxDisplay,
+                              vehicleStr,
+                              passengerCap,
+                              luggageCap,
                               rateBreakdown: s.rateBreakdown || s.notes || "",
                               price: s.price ? Number(s.price).toLocaleString("en-IN") : "0",
                             });
@@ -4397,26 +4437,30 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                                                 </div>
                                               );
                                             })()}
+                                            <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
+                                              {item.pickupTime && (
+                                                <span className="inline-flex items-center gap-1 rounded bg-amber-50 px-2 py-0.5 font-semibold text-amber-800 border border-amber-200">
+                                                  ⏰ Pickup Time: {item.pickupTime}
+                                                </span>
+                                              )}
+                                              {item.passengerCap && (
+                                                <span className="inline-flex items-center gap-1 rounded bg-slate-100 px-2 py-0.5 font-medium text-slate-700 border border-slate-200">
+                                                  👥 Max Pax: {item.passengerCap} Passengers
+                                                </span>
+                                              )}
+                                              {item.luggageCap && (
+                                                <span className="inline-flex items-center gap-1 rounded bg-slate-100 px-2 py-0.5 font-medium text-slate-700 border border-slate-200">
+                                                  🧳 Luggage: {item.luggageCap} Bags
+                                                </span>
+                                              )}
+                                            </div>
                                           </div>
 
                                           {/* Middle: QTY Column (Center Aligned, Fixed Width) */}
-                                          <div className="text-left sm:text-center shrink-0 w-36 sm:w-44">
-                                            {(() => {
-                                              const qtyStr = String(item.qty || "");
-                                              const formattedWithDots = qtyStr.replace(/\s*\|\s*/g, " • ");
-                                              const parts = formattedWithDots.split(" • ");
-                                              const firstPart = parts[0] || "";
-                                              const restParts = parts.slice(1).join(" • ");
-
-                                              return (
-                                                <div>
-                                                  <p className="font-bold text-slate-900 text-sm">{firstPart}</p>
-                                                  {restParts && (
-                                                    <p className="text-xs text-slate-400 font-normal mt-0.5">{restParts}</p>
-                                                  )}
-                                                </div>
-                                              );
-                                            })()}
+                                          <div className="text-left sm:text-center shrink-0 w-44 sm:w-56">
+                                            <p className="font-bold text-slate-900 text-sm">{item.usageLabel}</p>
+                                            <p className="text-xs text-slate-600 font-semibold mt-0.5">{item.paxDisplay}</p>
+                                            <p className="text-[11px] text-slate-400 font-normal mt-0.5">{item.vehicleStr}</p>
                                             {item.rateBreakdown && item.rateBreakdown !== "0" && (
                                               <p className="text-[11px] text-slate-400 font-normal mt-1">
                                                 {item.rateBreakdown}
@@ -4518,12 +4562,51 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                               };
                             }
 
-                            const qtyVal = s.qty || s.quantity || `${s.duration || "1D"} | ${s.adults || query?.numberOfAdults || 2} Pax`;
+                            const numAdults = Number(s.adults !== undefined && s.adults !== null ? s.adults : 0);
+                            const numChildren = Number(s.children !== undefined && s.children !== null ? s.children : 0);
+                            const numInfants = Number(s.infants !== undefined && s.infants !== null ? s.infants : 0);
+                            const hasBreakdown = (numAdults > 0 || numChildren > 0 || numInfants > 0);
+                            const totalPax = hasBreakdown ? (numAdults + numChildren + numInfants) : Number(s.pax || query?.numberOfAdults || 1);
+
+                            let paxBreakdownStr = "";
+                            if (hasBreakdown) {
+                              const parts = [];
+                              if (numAdults > 0) parts.push(`${numAdults} Adult${numAdults > 1 ? 's' : ''}`);
+                              if (numChildren > 0) parts.push(`${numChildren} Child${numChildren > 1 ? 'ren' : ''}`);
+                              if (numInfants > 0) parts.push(`${numInfants} Infant${numInfants > 1 ? 's' : ''}`);
+                              paxBreakdownStr = `${totalPax} Pax (${parts.join(", ")})`;
+                            } else {
+                              paxBreakdownStr = `${totalPax} Pax`;
+                            }
+
+                            // Format Duration
+                            const rawDuration = String(s.duration || "").trim();
+                            let formattedDuration = "";
+                            if (rawDuration) {
+                              const numDur = Number(rawDuration);
+                              if (!isNaN(numDur) && numDur > 0) {
+                                const hrs = numDur / 60;
+                                formattedDuration = hrs >= 1 ? `${hrs % 1 === 0 ? hrs : hrs.toFixed(1)} Hours` : `${numDur} Mins`;
+                              } else {
+                                formattedDuration = rawDuration;
+                              }
+                            }
+
+                            const openTime = s.openingTime || "";
+                            const closeTime = s.closingTime || "";
+                            const timingsDisplay = openTime && closeTime ? `${openTime} - ${closeTime}` : openTime;
 
                             groupMap[dateKey].items.push({
                               title: s.title || s.name || s.particulars || "Activity / Sightseeing",
                               description: s.description || s.particularsDetails || s.details || "",
-                              qty: qtyVal,
+                              qty: s.quantityLabel || paxBreakdownStr,
+                              tourType: s.tourType || s.tour_type || "Sharing Tour",
+                              selectedSlot: s.selectedSlot || s.slot || s.time || "",
+                              duration: formattedDuration,
+                              operatingDays: s.operatingDays || "",
+                              timings: timingsDisplay,
+                              adultPrice: Number(s.adultPrice || s.adult_price || 0),
+                              childPrice: Number(s.childPrice || s.child_price || 0),
                               rateBreakdown: s.rateBreakdown || s.notes || "",
                               price: s.price ? Number(s.price).toLocaleString("en-IN") : "0",
                             });
@@ -4599,6 +4682,40 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                                                 </div>
                                               );
                                             })()}
+                                            {/* Rich Info Badges for Activities */}
+                                            <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
+                                              {item.tourType && (
+                                                <span className="inline-flex items-center gap-1 rounded bg-blue-50 px-2 py-0.5 font-semibold text-blue-700 border border-blue-200">
+                                                  ● {item.tourType}
+                                                </span>
+                                              )}
+                                              {item.selectedSlot && (
+                                                <span className="inline-flex items-center gap-1 rounded bg-amber-50 px-2 py-0.5 font-semibold text-amber-800 border border-amber-200">
+                                                  ⏰ Slot: {item.selectedSlot}
+                                                </span>
+                                              )}
+                                              {item.duration && (
+                                                <span className="inline-flex items-center gap-1 rounded bg-purple-50 px-2 py-0.5 font-semibold text-purple-800 border border-purple-200">
+                                                  ⏱️ Duration: {item.duration}
+                                                </span>
+                                              )}
+                                              {item.operatingDays && (
+                                                <span className="inline-flex items-center gap-1 rounded bg-slate-100 px-2 py-0.5 font-medium text-slate-700 border border-slate-200">
+                                                  📅 {item.operatingDays}
+                                                </span>
+                                              )}
+                                              {item.timings && (
+                                                <span className="inline-flex items-center gap-1 rounded bg-slate-100 px-2 py-0.5 font-medium text-slate-700 border border-slate-200">
+                                                  ⌛ {item.timings}
+                                                </span>
+                                              )}
+                                            </div>
+                                            {(item.adultPrice > 0 || item.childPrice > 0) && (
+                                              <div className="mt-1 text-xs font-semibold text-emerald-700">
+                                                {item.adultPrice > 0 && `Adult: ₹${item.adultPrice.toLocaleString("en-IN")}`}
+                                                {item.childPrice > 0 && ` | Child: ₹${item.childPrice.toLocaleString("en-IN")}`}
+                                              </div>
+                                            )}
                                           </div>
 
                                           {/* Middle: QTY Column (Center Aligned, Fixed Width) */}

@@ -225,6 +225,40 @@ const Queries = () => {
   const formatPax = (adults, children) =>
     children > 0 ? `${adults} Adults, ${children} Kids` : `${adults} Adults`;
 
+  const getQuotePriceHeaderTitle = (status) => {
+    if (status === "Pending" || status === "In Progress") return "Customer Budget";
+    if (status === "Quote Sent") return "Latest Quote Price";
+    if (status === "Client Approved") return "Approved Quote Price";
+    if (status === "Confirmed") return "Confirmed Quote Price";
+    return "Quote Price";
+  };
+
+  const getDisplayPrice = (query) => {
+    const activeTab = statusFilter && statusFilter !== "All" ? statusFilter : query.agentStatus;
+
+    let price = null;
+    if (activeTab === "Pending" || activeTab === "In Progress") {
+      price = query.customerBudget;
+    } else if (activeTab === "Quote Sent") {
+      price = query.latestQuotationPrice || query.customerBudget;
+    } else if (activeTab === "Client Approved" || activeTab === "Confirmed") {
+      price = query.approvedQuotationPrice || query.latestQuotationPrice || query.customerBudget;
+    } else {
+      if (query.agentStatus === "Confirmed" || query.agentStatus === "Client Approved") {
+        price = query.approvedQuotationPrice || query.latestQuotationPrice || query.customerBudget;
+      } else if (query.agentStatus === "Quote Sent") {
+        price = query.latestQuotationPrice || query.customerBudget;
+      } else {
+        price = query.customerBudget;
+      }
+    }
+
+    if (price && Number(price) > 0) {
+      return `₹${Number(price).toLocaleString("en-IN")}`;
+    }
+    return "N/A";
+  };
+
   const filteredQueries = queries.filter((query) => {
     const search = searchTerm.toLowerCase();
     const matchesSearch =
@@ -364,8 +398,10 @@ const Queries = () => {
                   <th className="text-left px-6 py-3">Dates</th>
                   <th className="text-left px-6 py-3">Pax</th>
                   <th className="text-left px-6 py-3">Status</th>
-                  {/* FIX: whitespace-nowrap add kiya — "Quote Price" ek line mein rahega */}
-                  <th className="text-right px-6 py-3 whitespace-nowrap">Quote Price</th>
+                  {/* Dynamic Column Header Name based on active tab */}
+                  <th className="text-right px-6 py-3 whitespace-nowrap">
+                    {getQuotePriceHeaderTitle(statusFilter)}
+                  </th>
                   <th className="px-6 py-3"></th>
                 </tr>
               </thead>
@@ -405,7 +441,7 @@ const Queries = () => {
                         </span>
                       </td>
                       <td className="px-5 py-4 align-middle text-right font-medium whitespace-nowrap">
-                        {query.customerBudget ? query.customerBudget : "N/A"}
+                        {getDisplayPrice(query)}
                       </td>
 
                       {/* FIX: View & Edit buttons — padding balanced, no overflow */}
