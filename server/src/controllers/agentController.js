@@ -40,6 +40,11 @@ const buildFrontendUrl = (path = "") => {
       process.env.FRONTEND_URL ||
       process.env.CLIENT_URL ||
       process.env.FRONTEND_LOGIN_URL ||
+      process.env.ADMIN_LOGIN_URL ||
+      process.env.OPS_LOGIN_URL ||
+      process.env.FINANCE_LOGIN_URL ||
+      process.env.AGENT_LOGIN_URL ||
+      process.env.DMC_LOGIN_URL ||
       "",
   ).trim();
 
@@ -2426,7 +2431,6 @@ export const login = async (req, res, next) => {
       } else {
         user.isDeleted = false;
         user.accountStatus = "Active";
-        await user.save();
       }
     }
 
@@ -2435,7 +2439,6 @@ export const login = async (req, res, next) => {
         return next(new ApiError(403, "Your account is inactive. Please contact the administrator."));
       } else {
         user.accountStatus = "Active";
-        await user.save();
       }
     }
 
@@ -2444,7 +2447,6 @@ export const login = async (req, res, next) => {
         return next(new ApiError(403, "Your account access has expired. Please contact the administrator."));
       } else {
         user.accessExpiry = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
-        await user.save();
       }
     }
 

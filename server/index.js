@@ -68,5 +68,6 @@ app.use((err, req, res, next) => {
 
 // ====================== SERVER START ======================
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  const env = process.env.NODE_ENV || "dev";
+  console.log(`🚀 Server running in ${env} mode on port ${PORT}`);
 });
