@@ -2,6 +2,7 @@ import { createElement, lazy, Suspense } from "react";
 import { createBrowserRouter } from "react-router-dom";
 import ProtectedRoute from "./ProtectedRoute";
 import Layout from "../layout/Layout";
+import { RouteErrorFallback } from "../components/ErrorBoundary";
 
 const AgentDashboard = lazy(() => import("../pages/agentPages/AgentDashboard"));
 const Queries = lazy(() => import("../pages/agentPages/Queries"));
@@ -58,44 +59,48 @@ const lazyPage = (Component) => (
 
 export const appRouter = createBrowserRouter([
   {
-    path: "/",
-    element: lazyPage(Login),
-  },
-   {
-    path: "/register",
-     element: lazyPage(Register),
-  },
-
-  {
-    element: <ProtectedRoute allowedRoles={["operations", "admin", "operation_manager"]} />,
+    errorElement: <RouteErrorFallback />,
     children: [
       {
         path: "/",
-        element: <Layout/>,
+        element: lazyPage(Login),
+      },
+      {
+        path: "/register",
+        element: lazyPage(Register),
+      },
+      {
+        element: <ProtectedRoute allowedRoles={["operations", "admin", "operation_manager"]} />,
         children: [
-          { path: "/ops/dashboard", element: lazyPage(OpsDashboardContent)},
-          { path: "/ops/bookings-management", element: lazyPage(BookingManagementHub)},
-          { path: "/ops/order-acceptance", element: lazyPage(OrderAcceptance)},
-          {path: "/ops/quotation-builder", element: lazyPage(QuotationBuilder)}, //:queryId dynamic
-          {path: "/ops/create-package", element: lazyPage(CreatePackage)},
-          {path: "/ops/voucher-management", element: lazyPage(VoucherManagement)},
-          
+          {
+            path: "/",
+            element: <Layout />,
+            children: [
+              { path: "/ops/dashboard", element: lazyPage(OpsDashboardContent) },
+              { path: "/ops/bookings-management", element: lazyPage(BookingManagementHub) },
+              { path: "/ops/order-acceptance", element: lazyPage(OrderAcceptance) },
+              { path: "/ops/quotation-builder", element: lazyPage(QuotationBuilder) }, //:queryId dynamic
+              { path: "/ops/create-package", element: lazyPage(CreatePackage) },
+              { path: "/ops/voucher-management", element: lazyPage(VoucherManagement) },
+            ],
+          },
         ],
       },
-    ],
-  }, 
- 
- 
-  {
-    element:<ProtectedRoute allowedRoles={["operation_manager"]} />,
-    children: [
-      { path: "/", element: <Layout/>,
+      {
+        element: <ProtectedRoute allowedRoles={["operation_manager"]} />,
         children: [
-          { path: "/operationManager/operationManagerDashboard", element: lazyPage(OperationManagerDashboard)},
-          { path: "/operationManager/allTeamQueries", element: lazyPage(AllTeamQueries)},
-          { path: "/operationManager/myTeam", element: lazyPage(MyOperationTeam)},
+          {
+            path: "/",
+            element: <Layout />,
+            children: [
+              { path: "/operationManager/operationManagerDashboard", element: lazyPage(OperationManagerDashboard) },
+              { path: "/operationManager/allTeamQueries", element: lazyPage(AllTeamQueries) },
+              { path: "/operationManager/myTeam", element: lazyPage(MyOperationTeam) },
+            ],
+          },
         ],
       },
     ],
   },
 ]);
+

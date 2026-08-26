@@ -64,7 +64,7 @@ const getEmailValidationError = (email) => {
   return null;
 };
 
-const validateEmail = (email) => getEmailValidationError(email) === null;
+// const validateEmail = (email) => getEmailValidationError(email) === null;
 
 const createRecoveryState = (email = "") => ({
   email,

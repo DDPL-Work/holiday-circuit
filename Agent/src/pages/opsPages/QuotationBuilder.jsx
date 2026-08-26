@@ -5765,14 +5765,17 @@ const QuotationBuilder = () => {
       >
         {/* Header */}
         <QuotationBuilderHeader
-          additionalNotes={additionalNotes}          editingSourceQuotationSnapshotRef={editingSourceQuotationSnapshotRef}
+          additionalNotes={additionalNotes}
+          editingSourceQuotationSnapshotRef={editingSourceQuotationSnapshotRef}
           editingTargetQuotationId={editingTargetQuotationId}
           exclusions={exclusions}
           formatCurrencyValue={formatCurrencyValue}
           inclusions={inclusions}
           isEditingHistoricalQuotation={isEditingHistoricalQuotation}
-          isQuotationHistoryOpen={isQuotationHistoryOpen}          navigate={navigate}
-          orderQueryId={orderQueryId}          quotationHistory={quotationHistory}
+          isQuotationHistoryOpen={isQuotationHistoryOpen}
+          navigate={navigate}
+          orderQueryId={orderQueryId}
+          quotationHistory={quotationHistory}
           quotationHistoryLoadError={quotationHistoryLoadError}
           quotationHistoryLoading={quotationHistoryLoading}
           resetBuilderWorkspace={resetBuilderWorkspace}
@@ -5786,7 +5789,8 @@ const QuotationBuilder = () => {
           setEditingTargetQuotationId={setEditingTargetQuotationId}
           setIsFreshDraftMode={setIsFreshDraftMode}
           setIsQuotationHistoryOpen={setIsQuotationHistoryOpen}
-          setSelectedHistoryQuotationId={setSelectedHistoryQuotationId}        />
+          setSelectedHistoryQuotationId={setSelectedHistoryQuotationId}
+        />
 
         {/* Title */}
         <motion.div
@@ -6073,15 +6077,18 @@ const QuotationBuilder = () => {
 
         {/* Layout */}
         <QuotationBuilderContent
-          CONTRACTED_RATE_FILTER_OPTIONS={CONTRACTED_RATE_FILTER_OPTIONS}          adultPassengers={adultPassengers}
+          CONTRACTED_RATE_FILTER_OPTIONS={CONTRACTED_RATE_FILTER_OPTIONS}
+          adultPassengers={adultPassengers}
           appliedTaxTotal={appliedTaxTotal}
           childPassengers={childPassengers}
           contractedRateFilterCounts={contractedRateFilterCounts}
           contractedRatesFilter={contractedRatesFilter}
           contractedRatesSearch={contractedRatesSearch}
-          costPerPassenger={costPerPassenger}          deleteService={deleteService}
+          costPerPassenger={costPerPassenger}
+          deleteService={deleteService}
           destinationMatchedServices={destinationMatchedServices}
-          editingServiceCardId={editingServiceCardId}          exchangeRates={exchangeRates}
+          editingServiceCardId={editingServiceCardId}
+          exchangeRates={exchangeRates}
           filteredServices={filteredServices}
           fixedMargin={fixedMargin}
           focusServiceEditor={focusServiceEditor}
@@ -6092,18 +6099,26 @@ const QuotationBuilder = () => {
           handleFinalSend={handleFinalSend}
           handleSaveDraftQuote={handleSaveDraftQuote}
           handleSelectedServiceDelete={handleSelectedServiceDelete}
-          handleSelectedServiceEditAction={handleSelectedServiceEditAction}          isInvoiceRequestedStage={isInvoiceRequestedStage}          marginType={marginType}
-          markup={markup}          openOpsChargesPopup={openOpsChargesPopup}
+          handleSelectedServiceEditAction={handleSelectedServiceEditAction}
+          isInvoiceRequestedStage={isInvoiceRequestedStage}
+          marginType={marginType}
+          markup={markup}
+          openOpsChargesPopup={openOpsChargesPopup}
           openSelectedServicesModalForService={
             openSelectedServicesModalForService
           }
-          opsMarkup={opsMarkup}          order={order}          packageTemplateAmount={packageTemplateAmount}
-          queryRequirementTags={queryRequirementTags}          renderQuotationWorkspaceButtons={renderQuotationWorkspaceButtons}
+          opsMarkup={opsMarkup}
+          order={order}
+          packageTemplateAmount={packageTemplateAmount}
+          queryRequirementTags={queryRequirementTags}
+          renderQuotationWorkspaceButtons={renderQuotationWorkspaceButtons}
           renderSelectedServicesSection={renderSelectedServicesSection}
           savingDraftQuote={savingDraftQuote}
           selectedSendOption={selectedSendOption}
-          selectedServices={selectedServices}          sendOptions={sendOptions}
-          sendOptionsPanelStyle={sendOptionsPanelStyle}          services={services}
+          selectedServices={selectedServices}
+          sendOptions={sendOptions}
+          sendOptionsPanelStyle={sendOptionsPanelStyle}
+          services={services}
           servicesLoadError={servicesLoadError}
           servicesLoading={servicesLoading}
           servicesTotal={servicesTotal}
@@ -6119,7 +6134,14 @@ const QuotationBuilder = () => {
           setShowSendOptions={setShowSendOptions}
           shouldShowDualPricing={shouldShowDualPricing}
           showQueryRequirements={showQueryRequirements}
-          showSendOptions={showSendOptions}          toggleService={toggleService}          totalAmount={totalAmount}          totalPassengers={totalPassengers}          tripDuration={tripDuration}          tripNights={tripNights}          updateField={updateField}        />
+          showSendOptions={showSendOptions}
+          toggleService={toggleService}
+          totalAmount={totalAmount}
+          totalPassengers={totalPassengers}
+          tripDuration={tripDuration}
+          tripNights={tripNights}
+          updateField={updateField}
+        />
       </motion.section>
 
       {/* ======================== POPUP Ops Charges ======================== */}

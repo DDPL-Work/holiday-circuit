@@ -23,7 +23,7 @@ export default function QuickAddService({
     if (category === "Hotel / Accommodation") {
       return {
         icon: <LiaHotelSolid />,
-        color: "text-blue-400",
+        color: "text-blue-600",
         type: "hotel",
         nights: qty,
       };
@@ -32,7 +32,7 @@ export default function QuickAddService({
     if (category === "Transport / Transfer") {
       return {
         icon: <GiCityCar />,
-        color: "text-purple-400",
+        color: "text-purple-600",
         type: "transfer",
         days: qty,
         serviceType: "One Way",
@@ -42,7 +42,7 @@ export default function QuickAddService({
     if (category === "Sightseeing") {
       return {
         icon: <GiModernCity />,
-        color: "text-blue-400",
+        color: "text-blue-600",
         type: "sightseeing",
         pax: Number(qty || 1),
         tourType: "Group Tour",
@@ -53,7 +53,7 @@ export default function QuickAddService({
 
     return {
       icon: <GiModernCity />,
-      color: "text-green-400",
+      color: "text-emerald-600",
       type: "activity",
       pax: Number(qty || 1),
     };
@@ -90,6 +90,8 @@ export default function QuickAddService({
     setShowModal(false);
   };
 
+  const inputStyle = "w-full rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-[11px] font-medium text-slate-900 outline-none transition focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-2xs";
+
   return (
     <AnimatePresence>
       {showModal && (
@@ -97,53 +99,58 @@ export default function QuickAddService({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          transition={{ duration: 0.25 }}
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-2 backdrop-blur-[3px]"
+          transition={{ duration: 0.2 }}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-3 backdrop-blur-xs"
+          onClick={closeModal}
         >
           <motion.div
-            initial={{ opacity: 0, scale: 0.9, y: 30 }}
+            initial={{ opacity: 0, scale: 0.96, y: 16 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.9, y: 30 }}
-            transition={{ duration: 0.3, ease: "easeOut" }}
-            className="w-full max-w-[374px] overflow-hidden rounded-[20px] border border-gray-200 bg-white shadow-[0_20px_60px_rgba(0,0,0,0.15)]"
+            exit={{ opacity: 0, scale: 0.96, y: 16 }}
+            transition={{ duration: 0.24, ease: "easeOut" }}
+            className="w-full max-w-[390px] overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl text-slate-900 font-sans"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
           >
-            <div className="border-b border-gray-100 bg-gradient-to-r from-yellow-500/10 via-yellow-500/5 to-transparent px-4 py-3">
+            {/* Header */}
+            <div className="border-b border-gray-200 bg-slate-50 px-4 py-3.5">
               <div className="flex items-start justify-between gap-4">
-                <div>
-                  <div className="flex items-center gap-2.5">
-                    <div className="flex h-7 w-7 items-center justify-center rounded-xl bg-yellow-100 text-yellow-600">
-                      <Plus size={14} />
-                    </div>
-                    <div>
-                      <h2 className="text-[14px] font-semibold text-gray-900">
-                        Quick Add Service
-                      </h2>
-                      <p className="mt-0.5 text-[10px] text-gray-500">
-                        Add a custom service to the quotation.
-                      </p>
-                    </div>
+                <div className="flex items-center gap-2.5">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-amber-200 bg-amber-100 text-amber-700 shadow-2xs">
+                    <Plus size={15} />
+                  </div>
+                  <div>
+                    <h2 className="text-sm font-bold text-slate-900">
+                      Quick Add Service
+                    </h2>
+                    <p className="mt-0.5 text-[10.5px] text-slate-500">
+                      Add a custom service to the quotation.
+                    </p>
                   </div>
                 </div>
 
                 <button
                   type="button"
-                  className="rounded-full border border-gray-200 bg-gray-50 p-2 text-gray-500 transition hover:bg-gray-100 hover:text-gray-900"
+                  className="flex h-7 w-7 items-center justify-center rounded-lg border border-gray-200 bg-white text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 cursor-pointer shadow-2xs"
                   onClick={closeModal}
                 >
                   <X size={14} />
                 </button>
               </div>
             </div>
-            <div className="px-4 py-3">
-              <div className="grid grid-cols-1 gap-2.5">
+
+            {/* Body */}
+            <div className="px-4 py-3.5">
+              <div className="grid grid-cols-1 gap-3">
                 <div>
-                  <label className="mb-1 block text-[11px] font-medium text-gray-700">
+                  <label className="mb-1 block text-[11px] font-semibold text-slate-700">
                     Service Category
                   </label>
                   <select
                     value={category}
                     onChange={(e) => setCategory(e.target.value)}
-                    className="w-full rounded-[12px] border border-gray-200 bg-gray-50 px-3 py-1.5 text-[11px] text-gray-900 outline-none transition focus:border-yellow-400 focus:ring-1 focus:ring-yellow-400/50"
+                    className={inputStyle}
                   >
                     <option>Activity / Experience</option>
                     <option>Sightseeing</option>
@@ -153,25 +160,26 @@ export default function QuickAddService({
                 </div>
 
                 <div>
-                  <label className="mb-1 block text-[11px] font-medium text-gray-700">
+                  <label className="mb-1 block text-[11px] font-semibold text-slate-700">
                     Service Name *
                   </label>
                   <input
                     type="text"
                     placeholder="e.g. Yacht Booking, City Tour, etc."
-                    className="w-full rounded-[12px] border border-gray-200 bg-gray-50 px-3 py-1.5 text-[11px] text-gray-900 outline-none transition focus:border-yellow-400 focus:ring-1 focus:ring-yellow-400/50 placeholder:text-gray-400"
+                    className={inputStyle}
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                   />
                 </div>
 
                 <div>
-                  <label className="mb-1 block text-[11px] font-medium text-gray-700">
+                  <label className="mb-1 block text-[11px] font-semibold text-slate-700">
                     Description
                   </label>
                   <textarea
+                    rows={3}
                     placeholder="Service details and inclusions..."
-                    className="h-[68px] w-full rounded-[12px] border border-gray-200 bg-gray-50 px-3 py-1.5 text-[11px] text-gray-900 outline-none transition focus:border-yellow-400 focus:ring-1 focus:ring-yellow-400/50 placeholder:text-gray-400"
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-[11px] font-medium text-slate-900 outline-none transition focus:border-amber-500 focus:ring-1 focus:ring-amber-500 shadow-2xs min-h-[72px] resize-y"
                     value={desc}
                     onChange={(e) => setDesc(e.target.value)}
                   />
@@ -179,64 +187,64 @@ export default function QuickAddService({
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="mb-1 block text-[11px] font-medium text-gray-700">
+                    <label className="mb-1 block text-[11px] font-semibold text-slate-700">
                       Base Rate *
                     </label>
                     <input
                       type="number"
                       value={rate}
                       onChange={(e) => setRate(e.target.value)}
-                      className="w-full rounded-[12px] border border-gray-200 bg-gray-50 px-3 py-1.5 text-[11px] text-gray-900 outline-none transition focus:border-yellow-400 focus:ring-1 focus:ring-yellow-400/50"
+                      className={inputStyle}
                     />
                   </div>
 
                   <div>
-                    <label className="mb-1 block text-[11px] font-medium text-gray-700">
+                    <label className="mb-1 block text-[11px] font-semibold text-slate-700">
                       Quantity (Pax / Nights / Days)
                     </label>
                     <input
                       type="number"
                       value={qty}
                       onChange={(e) => setQty(e.target.value)}
-                      className="w-full rounded-[12px] border border-gray-200 bg-gray-50 px-3 py-1.5 text-[11px] text-gray-900 outline-none transition focus:border-yellow-400 focus:ring-1 focus:ring-yellow-400/50"
+                      className={inputStyle}
                     />
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="mb-1 block text-[11px] font-medium text-gray-700">
+                    <label className="mb-1 block text-[11px] font-semibold text-slate-700">
                       City
                     </label>
                     <input
                       type="text"
                       value={city}
                       onChange={(e) => setCity(e.target.value)}
-                      className="w-full rounded-[12px] border border-gray-200 bg-gray-50 px-3 py-1.5 text-[11px] text-gray-900 outline-none transition focus:border-yellow-400 focus:ring-1 focus:ring-yellow-400/50"
+                      className={inputStyle}
                     />
                   </div>
 
                   <div>
-                    <label className="mb-1 block text-[11px] font-medium text-gray-700">
+                    <label className="mb-1 block text-[11px] font-semibold text-slate-700">
                       Country
                     </label>
                     <input
                       type="text"
                       value={country}
                       onChange={(e) => setCountry(e.target.value)}
-                      className="w-full rounded-[12px] border border-gray-200 bg-gray-50 px-3 py-1.5 text-[11px] text-gray-900 outline-none transition focus:border-yellow-400 focus:ring-1 focus:ring-yellow-400/50"
+                      className={inputStyle}
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="mb-1 block text-[11px] font-medium text-gray-700">
+                  <label className="mb-1 block text-[11px] font-semibold text-slate-700">
                     Currency
                   </label>
                   <select
                     value={currency}
                     onChange={(e) => setCurrency(e.target.value)}
-                    className="w-full rounded-[12px] border border-gray-200 bg-gray-50 px-3 py-1.5 text-[11px] text-gray-900 outline-none transition focus:border-yellow-400 focus:ring-1 focus:ring-yellow-400/50"
+                    className={inputStyle}
                   >
                     <option value="INR">INR</option>
                     <option value="USD">USD</option>
@@ -247,17 +255,18 @@ export default function QuickAddService({
                 </div>
               </div>
 
-              <div className="mt-4 flex gap-3 border-t border-gray-100 pt-4">
+              {/* Actions */}
+              <div className="mt-4 flex gap-2.5 border-t border-gray-100 pt-3">
                 <button
                   onClick={handleAddService}
                   disabled={savingService}
-                  className="flex-1 rounded-[12px] bg-yellow-400 py-2.5 text-[11px] font-semibold text-gray-900 shadow-sm transition hover:bg-yellow-500 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="flex-1 rounded-lg bg-amber-500 py-2 text-[11px] font-semibold text-white transition hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-60 shadow-xs cursor-pointer"
                 >
                   {savingService ? "Saving..." : "Add Service"}
                 </button>
                 <button
                   onClick={closeModal}
-                  className="flex-1 rounded-[12px] border border-gray-200 bg-white py-2.5 text-[11px] font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50 hover:text-gray-900"
+                  className="flex-1 rounded-lg border border-gray-300 bg-white py-2 text-[11px] font-semibold text-slate-700 transition hover:bg-gray-50 shadow-2xs cursor-pointer"
                 >
                   Cancel
                 </button>
@@ -269,3 +278,4 @@ export default function QuickAddService({
     </AnimatePresence>
   );
 }
+
