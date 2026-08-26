@@ -69,1221 +69,53 @@ import { buildVoucherHtml } from "../../utils/voucherTemplate";
 import CreateProformaInvoice from "../../components/accounting/CreateProformaInvoice";
 import ProformaInvoiceView from "../../components/accounting/ProformaInvoiceView";
 
-const containerVariant = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: { staggerChildren: 0.08 },
-  },
-};
-
-const itemVariant = {
-  hidden: { opacity: 0, y: 10 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.3, ease: "easeOut" } },
-};
-
-const formatMoney = (value) =>
-  `₹${Math.round(Number(value || 0)).toLocaleString("en-IN")}`;
-
-const formatDisplayDate = (value) => {
-  if (!value) return "";
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return "";
-
-  return parsed.toLocaleDateString("en-IN", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
-};
-
-const buildPublicAssetUrl = (assetPath = "") => {
-  const normalizedPath = String(assetPath || "").trim();
-  if (!normalizedPath) return "";
-
-  const apiBaseUrl = String(API.defaults.baseURL || window.location.origin);
-  const originBase = apiBaseUrl.replace(/\/api\/?$/, "");
-  return new URL(normalizedPath.replace(/^\//, ""), `${originBase}/`).toString();
-};
-
-const getOrdinalSuffix = (value) => {
-  const normalized = Math.abs(Number(value || 0));
-  const remainder100 = normalized % 100;
-
-  if (remainder100 >= 11 && remainder100 <= 13) return "th";
-
-  switch (normalized % 10) {
-    case 1:
-      return "st";
-    case 2:
-      return "nd";
-    case 3:
-      return "rd";
-    default:
-      return "th";
-  }
-};
-
-const getPackageNightCount = (pkg = {}) => {
-  const durationMatch = String(pkg?.duration || "").match(/(\d+)\s*nights?/i);
-  if (durationMatch) return Math.max(1, Number(durationMatch[1]));
-
-  const totalDays = Number(pkg?.days || 0);
-  return totalDays > 1 ? totalDays - 1 : 1;
-};
-
-const buildItineraryDayLabel = (dayNumber, startDate) => {
-  const numericDay = Math.max(1, Number(dayNumber || 1));
-  const prefix = `${numericDay}${getOrdinalSuffix(numericDay)} Day`;
-
-  if (!startDate) return prefix;
-
-  const parsed = new Date(startDate);
-  if (Number.isNaN(parsed.getTime())) return prefix;
-
-  parsed.setDate(parsed.getDate() + numericDay - 1);
-  const weekday = parsed.toLocaleDateString("en-GB", { weekday: "short" });
-  const month = parsed.toLocaleDateString("en-GB", { month: "short" });
-  const day = parsed.getDate();
-
-  return `${prefix} (${weekday} ${day}${getOrdinalSuffix(day)} ${month})`;
-};
-
-const getRelativeTimeString = (dateInput) => {
-  if (!dateInput) return "Recently";
-  const date = new Date(dateInput);
-  if (Number.isNaN(date.getTime())) return "Recently";
-  const now = new Date();
-  const diffMs = now - date;
-  if (diffMs < 0) return "Recently";
-  const diffSec = Math.floor(diffMs / 1000);
-  const diffMin = Math.floor(diffSec / 60);
-  const diffHours = Math.floor(diffMin / 60);
-  const diffDays = Math.floor(diffHours / 24);
-
-  if (diffSec < 60) return "Just now";
-  if (diffMin < 60) return `${diffMin} min${diffMin > 1 ? "s" : ""} ago`;
-  if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? "s" : ""} ago`;
-  if (diffDays < 7) return `${diffDays} day${diffDays > 1 ? "s" : ""} ago`;
-  return `on ${date.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}`;
-};
-
-const formatUsageLabel = (value = "") =>
-  String(value || "")
-    .split("-")
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
-
-const formatServiceTypeLabel = (value = "") =>
-  String(value || "")
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (char) => char.toUpperCase());
-
-const getServiceDescriptionBits = (description = "") =>
-  String(description || "")
-    .split(/[|,\n]/)
-    .map((item) => item.trim())
-    .filter(Boolean);
-
-const SELLER_BANK_DETAILS = [
-  { label: "Bank Name", value: "HDFC Bank" },
-  { label: "A/c Holder Name", value: "Holiday Circuit" },
-  { label: "A/c No.", value: "50200103968171" },
-  { label: "IFSC", value: "HDFC0004413" },
-  { label: "Branch", value: "RAMPHAL CHOWK SEC VII DWARKA" },
-];
-
-const QUOTATION_TERMS = [
-  "Welcome to Holiday Circuit. These Terms & Conditions govern your travel booking and services.",
-  "Services include travel planning, packages, transfers (Private & Shared - wait up to 30 mins), hotels & visa assistance.",
-  "Booking & Payment: 25% non-refundable advance to confirm. Full payment required 30 days before departure.",
-  "Cancellations: 25% (30 days before), 50% (29-16 days), 75% (15-8 days), 100% (within 7 days). Refunds in 15 days.",
-  "Changes & Modifications: Administrative/service fees apply for client-requested itinerary changes.",
-  "Travel Documents: Passport, visa & health documentation compliance is the client's sole responsibility.",
-  "Health & Safety: Medical conditions must be declared in advance; compliance with safety rules is mandatory.",
-  "Liability: Leela Travels acts as an intermediary for airlines, hotels & transporters.",
-  "Accommodation Policies: Standard check-in 14:00-15:00 Hrs, check-out 11:00-12:00 Hrs.",
-  "Travel Insurance: Highly recommended for medical, cancellation & personal loss coverage.",
-  "Intellectual Property & Privacy: Personal data is protected and used solely for booking purposes.",
-  "Governing Law: All disputes subject to New Delhi Jurisdiction only.",
-  "Force Majeure: Not liable for delays/cancellations due to natural disasters, weather, or emergencies.",
-  "Contact: Leela Travels, KG 3/101, Vikas Puri, New Delhi | ops@leelatravels.com | +91 8851346665.",
-  "By booking with DDLC Company, you acknowledge that you have read, understood, and agreed to these Terms and Conditions.",
-];
-
-const CLIENT_SHARE_TERMS = [
-  "Rates are subject to availability and confirmation at the time of booking.",
-  "Only the services listed in this quotation are included in the shared amount.",
-  "Any amendment after confirmation may affect availability and final pricing.",
-  "Hotel check-in, check-out, and supplier-specific policies will apply as per service rules.",
-  "Please review and confirm within the validity period to avoid fare or rate changes.",
-];
-
-const formatAmountValue = (value) =>
-  Math.round(Number(value || 0)).toLocaleString("en-IN");
-
-const parseShareDate = (value) => {
-  if (!value) return null;
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
-};
-
-const formatShareDate = (
-  value,
-  { month = "short", weekday = undefined, includeYear = true } = {},
-) => {
-  const parsed = parseShareDate(value);
-  if (!parsed) return "-";
-
-  const day = parsed.getDate();
-  const monthLabel = parsed.toLocaleDateString("en-GB", { month });
-  const weekdayLabel = weekday
-    ? `${parsed.toLocaleDateString("en-GB", { weekday })}, `
-    : "";
-  const baseLabel = `${day} ${monthLabel}`;
-
-  return includeYear
-    ? `${weekdayLabel}${baseLabel}, ${parsed.getFullYear()}`
-    : `${weekdayLabel}${baseLabel}`;
-};
-
-const formatShareActivityDate = (value) => {
-  const parsed = parseShareDate(value);
-  if (!parsed) return "";
-
-  const weekday = parsed.toLocaleDateString("en-GB", { weekday: "short" });
-  const month = parsed.toLocaleDateString("en-GB", { month: "short" });
-  const year = String(parsed.getFullYear()).slice(-2);
-
-  return `${weekday}, ${parsed.getDate()}${getOrdinalSuffix(parsed.getDate())} ${month}'${year}`;
-};
-
-const formatShareItineraryDate = (value) => {
-  const parsed = parseShareDate(value);
-  if (!parsed) return "";
-
-  const weekday = parsed.toLocaleDateString("en-GB", { weekday: "long" });
-  const month = parsed.toLocaleDateString("en-GB", { month: "short" });
-
-  return `${weekday} ${parsed.getDate()}${getOrdinalSuffix(parsed.getDate())} ${month}, ${parsed.getFullYear()}`;
-};
-
-const addDaysToShareDate = (value, daysToAdd = 0) => {
-  const parsed = parseShareDate(value);
-  if (!parsed) return "";
-
-  parsed.setDate(parsed.getDate() + Number(daysToAdd || 0));
-  return parsed.toISOString();
-};
-
-const getShareDateDiff = (startDate, endDate) => {
-  const start = parseShareDate(startDate);
-  const end = parseShareDate(endDate);
-
-  if (!start || !end) return 0;
-
-  const normalizedStart = new Date(start.getFullYear(), start.getMonth(), start.getDate());
-  const normalizedEnd = new Date(end.getFullYear(), end.getMonth(), end.getDate());
-
-  return Math.max(
-    0,
-    Math.round((normalizedEnd.getTime() - normalizedStart.getTime()) / (1000 * 60 * 60 * 24)),
-  );
-};
-
-const getDurationMeta = (query = {}) => {
-  const start = parseShareDate(query?.startDate);
-  const end = parseShareDate(query?.endDate);
-
-  if (!start || !end) {
-    return { totalDays: 0, totalNights: 0 };
-  }
-
-  const timeDiff = end.getTime() - start.getTime();
-  const totalDays = Math.max(1, Math.ceil(timeDiff / (1000 * 60 * 60 * 24)) + 1);
-  const totalNights = Math.max(0, totalDays - 1);
-
-  return { totalDays, totalNights };
-};
-
-const getClientRecipientName = (query = {}) => {
-  const travelers = Array.isArray(query?.travelerDetails) ? query.travelerDetails : [];
-  const primaryAdultTraveler = travelers.find(
-    (traveler) =>
-      String(traveler?.travelerType || "").trim().toLowerCase() === "adult" &&
-      String(traveler?.fullName || "").trim(),
-  );
-  const fallbackTraveler = travelers.find((traveler) => String(traveler?.fullName || "").trim());
-
-  return (
-    query?.name ||
-    query?.clientName ||
-    query?.customerName ||
-    query?.guestName ||
-    primaryAdultTraveler?.fullName ||
-    fallbackTraveler?.fullName ||
-    "Guest"
-  );
-};
-
-const getQueryTravelerCounts = (query = {}) => {
-  const travelers = Array.isArray(query?.travelerDetails) ? query.travelerDetails : [];
-  const adultFallbackCount = travelers.filter(
-    (traveler) => String(traveler?.travelerType || "").trim().toLowerCase() !== "child",
-  ).length;
-  const childFallbackCount = travelers.filter(
-    (traveler) => String(traveler?.travelerType || "").trim().toLowerCase() === "child",
-  ).length;
-  const adults = Number(query?.numberOfAdults ?? query?.adults ?? 0);
-  const children = Number(query?.numberOfChildren ?? query?.children ?? 0);
-  const infants = Number(query?.numberOfInfants ?? query?.infants ?? 0);
-
-  return {
-    adults: adults > 0 ? adults : adultFallbackCount,
-    children: children > 0 ? children : childFallbackCount,
-    infants: infants > 0 ? infants : 0,
-  };
-};
-
-const buildClientTravelerSummary = (query = {}) => {
-  const { adults, children } = getQueryTravelerCounts(query);
-  const travelers = [];
-
-  if (adults > 0) travelers.push(`${adults} Adult${adults === 1 ? "" : "s"}`);
-  if (children > 0) travelers.push(`${children} ${children === 1 ? "Child" : "Children"}`);
-
-  return travelers.join(", ") || "Traveler details pending";
-};
-
-const normalizeShareServiceType = (value = "") => {
-  const normalizedType = String(value || "").trim().toLowerCase();
-  if (normalizedType === "car" || normalizedType === "transport") return "transfer";
-  return normalizedType;
-};
-
-const inferSharingLabel = (services = []) => {
-  const primaryHotel = services.find(
-    (service) => normalizeShareServiceType(service?.type) === "hotel",
-  );
-
-  const rawLabel = `${primaryHotel?.bedType || ""} ${primaryHotel?.roomType || ""}`.toLowerCase();
-
-  if (rawLabel.includes("triple")) return "Triple Sharing";
-  if (rawLabel.includes("double")) return "Double Sharing";
-  if (rawLabel.includes("twin")) return "Twin Sharing";
-  if (rawLabel.includes("single")) return "Single Sharing";
-
-  return "Per Person";
-};
-
-const buildClientServiceQuantityLabel = (service = {}) => {
-  const normalizedType = normalizeShareServiceType(service?.type);
-  const details = [];
-
-  if (normalizedType === "hotel") {
-    if (Number(service?.nights || 0) > 0) details.push(`${service.nights}N`);
-    if (Number(service?.rooms || 0) > 0) {
-      details.push(`${service.rooms} Room${Number(service.rooms) > 1 ? "s" : ""}`);
-    }
-    if (Number(service?.pax || 0) > 0) details.push(`${service.pax} Pax`);
-    return details.join(" | ");
-  }
-
-  if (normalizedType === "transfer") {
-    if (service?.usageType) details.push(String(service.usageType).replace(/-/g, " "));
-    if (Number(service?.passengerCapacity || 0) > 0) {
-      details.push(`${service.passengerCapacity} Pax`);
-    } else if (Number(service?.pax || 0) > 0) {
-      details.push(`${service.pax} Pax`);
-    }
-    if (service?.vehicleType) details.push(service.vehicleType);
-    return details.join(" | ");
-  }
-
-  if (Number(service?.days || 0) > 0) details.push(`${service.days}D`);
-  if (Number(service?.pax || 0) > 0) details.push(`${service.pax} Pax`);
-  if (Number(service?.passengerCapacity || 0) > 0) details.push(`${service.passengerCapacity} Pax`);
-  if (service?.vehicleType) details.push(service.vehicleType);
-
-  return details.join(" | ");
-};
-
-const buildHotelNightLabel = (serviceDate, nights, tripStartDate) => {
-  const totalNights = Math.max(1, Number(nights || 1));
-  const startNightNumber = getShareDateDiff(tripStartDate, serviceDate) + 1;
-  const nightLabels = Array.from({ length: totalNights }, (_, index) => {
-    const value = startNightNumber + index;
-    return `${value}${getOrdinalSuffix(value)}`;
-  });
-
-  if (nightLabels.length === 1) {
-    return `${nightLabels[0]} Night`;
-  }
-
-  if (nightLabels.length <= 3) {
-    return `${nightLabels.join(", ")} Nights`;
-  }
-
-  return `${nightLabels[0]} - ${nightLabels[nightLabels.length - 1]} Nights`;
-};
-
-const formatDurationLabel = (dur) => {
-  if (!dur) return "";
-  const s = String(dur).trim();
-  const num = Number(s);
-  if (!isNaN(num) && num > 0) {
-    if (num >= 60) {
-      const hrs = (num / 60) % 1 === 0 ? (num / 60) : Number((num / 60).toFixed(1));
-      const hrsStr = hrs === 1 ? "1 Hour" : `${hrs} Hours`;
-      return `${num} Mins (${hrsStr})`;
-    }
-    return `${num} Mins`;
-  }
-  return s;
-};
-
-const extractTourTypeOptions = (serviceObj = {}, currentType = "Private Tour") => {
-  const options = [];
-  const addType = (t) => {
-    if (!t) return;
-    const name = typeof t === "string" ? t.trim() : String(t.tourType || t.name || t.type || "").trim();
-    if (name && name !== "Group Tour" && !options.includes(name)) options.push(name);
-  };
-
-  const rawTourTypes = serviceObj.tourTypes || serviceObj.activity?.tourTypes || serviceObj.sightseeing?.tourTypes;
-  if (Array.isArray(rawTourTypes) && rawTourTypes.length > 0) {
-    rawTourTypes.forEach(addType);
-  }
-
-  addType(currentType);
-  addType(serviceObj.tourType);
-  addType(serviceObj.activity?.tourType);
-  addType(serviceObj.sightseeing?.tourType);
-
-  if (options.length === 0 || (options.length === 1 && !rawTourTypes?.length)) {
-    const dmcStandardTypes = ["Sharing Tour", "Private Tour", "Ticket Tour"];
-    dmcStandardTypes.forEach(addType);
-  }
-
-  return options.filter((opt) => opt !== "Group Tour");
-};
-
-const extractSlotOptions = (serviceObj = {}, currentSlot = "08:00") => {
-  const options = [];
-  const addSlot = (s) => {
-    if (!s) return;
-    const str = String(s).trim();
-    if (str && !options.includes(str)) options.push(str);
-  };
-
-  const rawSlots = serviceObj.slots || serviceObj.timeSlots || serviceObj.activity?.slots || serviceObj.sightseeing?.slots;
-  if (Array.isArray(rawSlots) && rawSlots.length > 0) {
-    rawSlots.forEach(addSlot);
-  } else if (typeof rawSlots === "string" && rawSlots.trim()) {
-    rawSlots.split(/[,;]+/).forEach(addSlot);
-  }
-
-  addSlot(currentSlot);
-  addSlot(serviceObj.selectedSlot || serviceObj.activity?.selectedSlot || serviceObj.sightseeing?.selectedSlot);
-  addSlot(serviceObj.time || serviceObj.activity?.time || serviceObj.sightseeing?.time);
-  addSlot(serviceObj.slot || serviceObj.activity?.slot || serviceObj.sightseeing?.slot);
-
-  if (options.length === 0) {
-    const openT = serviceObj.openingTime || serviceObj.activity?.openingTime || serviceObj.sightseeing?.openingTime || "08:00";
-    addSlot(openT);
-  }
-
-  return options;
-};
-
-const buildHotelMeta = (service = {}, fallbackPax = 0) => {
-  const hotelPax =
-    Number(service?.pax || 0) ||
-    Number(service?.adults || 0) + Number(service?.children || 0) + Number(service?.infants || 0) ||
-    fallbackPax;
-  const parts = [];
-  const description = String(service?.description || "").replace(/\s+/g, " ").trim();
-
-  if (description) {
-    parts.push(description);
-  }
-
-  const roomBits = [];
-  if (Number(service?.rooms || 0) > 0) {
-    roomBits.push(
-      `${service.rooms} ${service?.roomType || "Room"}${Number(service.rooms) > 1 ? "s" : ""}`,
-    );
-  } else if (service?.roomType) {
-    roomBits.push(service.roomType);
-  }
-
-  if (hotelPax > 0) {
-    roomBits.push(`(${hotelPax} Pax)`);
-  }
-
-  if (roomBits.length) {
-    parts.push(roomBits.join(" "));
-  }
-
-  return parts.join(" | ") || "Stay included";
-};
-
-const buildClientWhatsAppQuotationMessage = ({ query, quote }) => {
-  const services = Array.isArray(quote?.services) ? quote.services : [];
-  const { adults, children, infants } = getQueryTravelerCounts(query);
-  const totalPax = adults + children + infants;
-  const totalAmount = Math.round(
-    Number(quote?.clientTotalAmount ?? quote?.pricing?.totalAmount ?? quote?.totalAmount ?? 0),
-  );
-  const perPersonAmount = totalPax > 0 ? Math.round(totalAmount / totalPax) : 0;
-  const destinationLabel = query?.destination ? `${query.destination} Trip` : "Trip";
-  const recipientName = getClientRecipientName(query);
-  const { totalDays, totalNights } = getDurationMeta(query);
-  const notes = Array.isArray(quote?.additionalNotes) ? quote.additionalNotes.filter(Boolean) : [];
-  const inclusions = Array.isArray(quote?.inclusions) ? quote.inclusions.filter(Boolean) : [];
-  const exclusions = Array.isArray(quote?.exclusions) ? quote.exclusions.filter(Boolean) : [];
-  const itinerary = Array.isArray(quote?.dayWiseItinerary)
-    ? quote.dayWiseItinerary.filter((item) => item?.title || item?.description)
-    : [];
-
-  const hotels = services
-    .filter((service) => normalizeShareServiceType(service?.type) === "hotel")
-    .sort(
-      (left, right) =>
-        new Date(left?.serviceDate || 0).getTime() - new Date(right?.serviceDate || 0).getTime(),
-    );
-
-  const transportAndActivities = services
-    .filter((service) => normalizeShareServiceType(service?.type) !== "hotel")
-    .sort(
-      (left, right) =>
-        new Date(left?.serviceDate || 0).getTime() - new Date(right?.serviceDate || 0).getTime(),
-    );
-
-  const lines = [
-    `Hi ${recipientName},`,
-    "",
-    quote?.agentBrandingName ? `Greetings from ${quote.agentBrandingName}.` : "Greetings from Holiday Circuit.",
-    "",
-    "Thank you for your query with us. As per your requirements, following are the package details.",
-    "",
-    `Trip ID ${query?.queryId || quote?.quotationNumber || "-"}`,
-    "----------",
-    destinationLabel,
-    `* ${formatShareDate(query?.startDate)} for *${totalNights} Nights,`,
-    `  ${totalDays} Days*`,
-    `* ${buildClientTravelerSummary(query)}`,
-    "",
-    "Price (₹):",
-    perPersonAmount > 0
-      ? `* ₹${formatAmountValue(perPersonAmount)} / Person (${inferSharingLabel(services)}) x ${totalPax}`
-      : "* Price on request",
-    perPersonAmount > 0 ? "  Pax" : "",
-    `Total: ₹${formatAmountValue(totalAmount)} /-`,
-  ];
-
-  if (notes.length) {
-    lines.push("");
-    lines.push("Notes");
-    lines.push("-------");
-    notes.forEach((note, index) => {
-      lines.push(`${index + 1}. ${note}`);
-    });
-    lines.push("-------");
-  }
-
-  if (hotels.length) {
-    lines.push("");
-    lines.push("Hotels");
-    lines.push("----------");
-
-    hotels.forEach((hotel) => {
-      const checkInDate = hotel?.serviceDate || query?.startDate || "";
-      const checkOutDate = addDaysToShareDate(checkInDate, Number(hotel?.nights || 1));
-      const locationLabel = hotel?.city || query?.destination || "Destination";
-      const hotelTitle = hotel?.hotelCategory
-        ? `${hotel.title} (${hotel.hotelCategory})`
-        : hotel.title || "Hotel stay";
-
-      lines.push(`${buildHotelNightLabel(checkInDate, hotel?.nights, query?.startDate)} at ${locationLabel}`);
-      lines.push(`Check-in: ${formatShareDate(checkInDate, { includeYear: false })} & _Check-out:`);
-      lines.push(`  ${formatShareDate(checkOutDate, { includeYear: false })}_`);
-      lines.push(hotelTitle);
-      lines.push(buildHotelMeta(hotel, totalPax));
-      lines.push("");
-    });
-  }
-
-  if (transportAndActivities.length) {
-    const groupedServices = transportAndActivities.reduce((accumulator, service) => {
-      const parsedDate = parseShareDate(service?.serviceDate);
-      const groupKey = parsedDate ? parsedDate.toISOString().slice(0, 10) : "undated";
-
-      if (!accumulator[groupKey]) {
-        accumulator[groupKey] = [];
-      }
-
-      accumulator[groupKey].push(service);
-      return accumulator;
-    }, {});
-
-    lines.push("Transportation and Activities");
-    lines.push("----------");
-
-    Object.entries(groupedServices).forEach(([groupDate, items], index) => {
-      const serviceDate = groupDate === "undated" ? "" : groupDate;
-      const dayNumber = serviceDate
-        ? getShareDateDiff(query?.startDate, serviceDate) + 1
-        : index + 1;
-
-      lines.push(`${dayNumber}${getOrdinalSuffix(dayNumber)} Day - ${formatShareActivityDate(serviceDate)}`);
-
-      items.forEach((service) => {
-        const quantityLabel = buildClientServiceQuantityLabel(service);
-        const description =
-          service?.description &&
-            String(service.description).trim().toLowerCase() !== String(service.title || "").trim().toLowerCase()
-            ? ` - ${String(service.description).trim()}`
-            : "";
-        lines.push(`* ${service?.title || "Service"}${description}${quantityLabel ? ` (${quantityLabel})` : ""}`);
-      });
-
-      lines.push("");
-    });
-  }
-
-  if (inclusions.length) {
-    lines.push("Inclusions");
-    lines.push("----------");
-    inclusions.forEach((item) => {
-      lines.push(`+ ${item}`);
-    });
-    lines.push("");
-  }
-
-  if (exclusions.length) {
-    lines.push("Exclusions");
-    lines.push("----------");
-    exclusions.forEach((item) => {
-      lines.push(`- ${item}`);
-    });
-    lines.push("");
-    lines.push("NOTE: Anything not mentioned in the inclusions is excluded");
-    lines.push("");
-  }
-
-  if (itinerary.length) {
-    lines.push("Day Wise Itinerary");
-    lines.push("----------");
-
-    itinerary.forEach((item, index) => {
-      const dayNumber = Number(item?.dayNumber || index + 1);
-      const itemDate = item?.date || addDaysToShareDate(query?.startDate, dayNumber - 1);
-
-      lines.push(`${dayNumber}${getOrdinalSuffix(dayNumber)} Day - ${formatShareItineraryDate(itemDate)}`);
-      lines.push("----");
-      if (item?.title) lines.push(item.title);
-      if (item?.description) lines.push(String(item.description).trim());
-      lines.push("");
-      lines.push("----------");
-      lines.push("");
-    });
-  }
-
-  if (CLIENT_SHARE_TERMS.length) {
-    lines.push("Terms and Conditions");
-    lines.push("----------");
-    CLIENT_SHARE_TERMS.forEach((item, index) => {
-      lines.push(`${index + 1}. ${item}`);
-    });
-  }
-
-  return lines
-    .filter((line, index, array) => {
-      if (line !== "") return true;
-      return array[index - 1] !== "";
-    })
-    .join("\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-};
-
-const getQuoteAttemptNumber = (index, totalQuotes) =>
-  Math.max(1, Number(totalQuotes || 1) - Number(index || 0));
-
-const validateAgentMarkupInput = ({ markupType, markupValue }) => {
-  const normalizedType = String(markupType || "").trim().toUpperCase();
-  const normalizedValue = Number(markupValue);
-
-  if (!Number.isFinite(normalizedValue) || normalizedValue <= 0) {
-    return "Please enter a valid markup value.";
-  }
-
-  if (["PERCENT", "AMOUNT"].includes(normalizedType)) return "";
-
-  return "Please select a valid markup type.";
-};
-
-const calculateAgentMarkupPreview = ({ markupType, markupValue, opsTotal }) => {
-  const normalizedType = String(markupType || "").trim().toUpperCase();
-  const normalizedValue = Number(markupValue);
-  const normalizedOpsTotal = Math.max(0, Number(opsTotal) || 0);
-
-  if (!Number.isFinite(normalizedValue) || normalizedValue <= 0) {
-    return {
-      markupAmount: 0,
-      finalAmount: normalizedOpsTotal,
-    };
-  }
-
-  const markupAmount =
-    normalizedType === "PERCENT"
-      ? Math.round((normalizedOpsTotal * normalizedValue) / 100)
-      : Math.round(normalizedValue);
-
-  return {
-    markupAmount,
-    finalAmount: normalizedOpsTotal + Math.max(0, markupAmount),
-  };
-};
-
-const fetchQuotationsByQuery = async (queryId) => {
-  const res = await API.get(`/agent/quotations/query/${queryId}`);
-  return (res.data.quotations || []).filter(
-    (quotation) => String(quotation?.status || "").trim() !== "Pending",
-  );
-};
-
-const getSavedAgentBranding = ({ quote = {}, user = null }) => ({
-  name: String(
-    quote?.agentBrandingName ||
-    user?.brandingName ||
-    user?.companyName ||
-    "",
-  ).trim(),
-  logo: String(
-    user?.brandingLogo ||
-    user?.brandLogoUrl ||
-    quote?.agentLogo ||
-    "",
-  ).trim(),
-});
-
-const ActionPillButton = ({
-  label,
-  icon,
-  onClick,
-  disabled = false,
-  tone = "slate",
-  className = "",
-}) => {
-  const tones = {
-    sky: "bg-gradient-to-r from-[#2563eb] to-[#4f46e5] hover:from-[#1d4ed8] hover:to-[#4338ca] shadow-[0_4px_14px_rgba(79,70,229,0.35)] hover:shadow-[0_6px_20px_rgba(79,70,229,0.45)] transition-all duration-300 transform hover:-translate-y-0.5",
-    rose: "bg-gradient-to-r from-[#f43f5e] to-[#ec4899] hover:from-[#e11d48] hover:to-[#db2777] shadow-[0_4px_14px_rgba(244,63,94,0.35)] hover:shadow-[0_6px_20px_rgba(244,63,94,0.45)] transition-all duration-300 transform hover:-translate-y-0.5",
-    emerald: "bg-gradient-to-r from-[#10b981] to-[#059669] hover:from-[#059669] hover:to-[#047857] shadow-[0_4px_14px_rgba(16,185,129,0.35)] hover:shadow-[0_6px_20px_rgba(16,185,129,0.45)] transition-all duration-300 transform hover:-translate-y-0.5",
-    slate: "bg-gradient-to-r from-[#475569] to-[#334155] hover:from-[#334155] hover:to-[#1e293b] shadow-[0_4px_14px_rgba(71,85,105,0.35)] hover:shadow-[0_6px_20px_rgba(71,85,105,0.45)] transition-all duration-300 transform hover:-translate-y-0.5",
-  };
-
-  const shellStyle = tones[tone] || tones.slate;
-
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className={`flex items-center justify-center gap-2 rounded-full px-6 py-3 shadow-2xl text-white transition-all duration-200 ${disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer"
-        } ${shellStyle} ${className}`}
-    >
-      <span className="flex items-center justify-center [&>svg]:w-3.5 [&>svg]:h-3.5">
-        {icon}
-      </span>
-      <span className="text-xs font-medium">{label}</span>
-    </button>
-  );
-};
-
-const QuoteInfoListCard = ({
-  title,
-  items = [],
-  tone = "slate",
-  emptyLabel = "No items provided",
-  icon = null,
-}) => {
-  const tones = {
-    emerald: {
-      border: "border-emerald-200",
-      shell: "bg-emerald-50",
-      iconBg: "bg-emerald-100",
-      iconText: "text-emerald-700",
-      badge: "bg-emerald-100 text-emerald-700 border border-emerald-200",
-      itemBorder: "border-l-[3px] border-emerald-500",
-    },
-    rose: {
-      border: "border-rose-200",
-      shell: "bg-rose-50",
-      iconBg: "bg-rose-100",
-      iconText: "text-rose-700",
-      badge: "bg-rose-100 text-rose-700 border border-rose-200",
-      itemBorder: "border-l-[3px] border-rose-500",
-    },
-    sky: {
-      border: "border-sky-200",
-      shell: "bg-sky-50",
-      iconBg: "bg-sky-100",
-      iconText: "text-sky-700",
-      badge: "bg-sky-100 text-sky-700 border border-sky-200",
-      itemBorder: "border-l-[3px] border-sky-500",
-    },
-    slate: {
-      border: "border-gray-200",
-      shell: "bg-gray-50",
-      iconBg: "bg-gray-100",
-      iconText: "text-gray-700",
-      badge: "bg-gray-100 text-gray-700 border border-gray-200",
-      itemBorder: "border-l-[3px] border-gray-400",
-    },
-  };
-
-  const currentTone = tones[tone] || tones.slate;
-  const normalizedItems = Array.isArray(items) ? items.filter(Boolean) : [];
-
-  return (
-    <div className={`mb-4 rounded-xl border bg-white p-3 ${currentTone.border}`}>
-      <div className="mb-3 flex items-center gap-2">
-        <div className={`flex h-7 w-7 items-center justify-center rounded-lg ${currentTone.iconBg} ${currentTone.iconText}`}>
-          {icon}
-        </div>
-        <h4 className="font-semibold text-sm text-gray-900">{title}</h4>
-        <span className={`ml-auto rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${currentTone.badge}`}>
-          {normalizedItems.length} item{normalizedItems.length === 1 ? "" : "s"}
-        </span>
-      </div>
-
-      {normalizedItems.length ? (
-        <ul className="space-y-2">
-          {normalizedItems.map((item, idx) => (
-            <li
-              key={`${title}-${idx}`}
-              className={`rounded-xl border border-gray-200 bg-gray-50 p-3 ${currentTone.itemBorder}`}
-            >
-              <span className="text-[13px] leading-relaxed text-slate-800">{item}</span>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <div className={`rounded-xl border border-dashed p-3 text-sm italic ${currentTone.shell} ${currentTone.border} text-gray-500`}>
-          {emptyLabel}
-        </div>
-      )}
-    </div>
-  );
-};
-
-const QuoteDayWiseItineraryCard = ({ items = [], startDate = "" }) => {
-  const normalizedItems = Array.isArray(items)
-    ? items.filter((item) => item && (item.heading || item.title || item.description))
-    : [];
-
-  if (!normalizedItems.length) return null;
-
-  return (
-    <div className="mb-4 rounded-xl border border-orange-200 bg-white p-3">
-      <div className="mb-3 flex items-center gap-2">
-        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-100 text-amber-700">
-          <Clock3 size={14} />
-        </div>
-        <h4 className="font-semibold text-sm text-gray-900">Day Wise Itinerary</h4>
-        <span className="ml-auto rounded-full border border-amber-200 bg-amber-100 px-2.5 py-0.5 text-[11px] font-semibold text-amber-700">
-          {normalizedItems.length} day{normalizedItems.length === 1 ? "" : "s"}
-        </span>
-      </div>
-
-      <div className="space-y-3">
-        {normalizedItems.map((item, index) => {
-          const dayLabel =
-            String(item?.dayLabel || "").trim() ||
-            buildItineraryDayLabel(item?.dayNumber || index + 1, startDate);
-          const heading = String(item?.heading || "").trim() || (item?.title ? `${dayLabel} : ${item.title}` : dayLabel);
-          const description = String(item?.description || "").trim();
-
-          return (
-            <div key={`quote-itinerary-${index}`} className="rounded-xl border border-gray-200 bg-gray-50 p-3" style={{ borderLeft: "3px solid #f59e0b" }}>
-              <div className="mb-1 flex items-center gap-2">
-                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-amber-100 text-[11px] font-semibold text-amber-700">
-                  {item?.dayNumber || index + 1}
-                </div>
-                <p className="text-[13px] font-semibold text-[#92400E]">{heading}</p>
-              </div>
-              {description ? (
-                <p className="mt-1 whitespace-pre-line text-[13px] leading-relaxed text-slate-700">{description}</p>
-              ) : (
-                <p className="mt-1 text-xs italic text-slate-400">Description pending.</p>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-};
-
-const DEFAULT_SELLER_BANK_DETAILS = [
-  { label: "Bank Name", value: "HDFC Bank" },
-  { label: "A/c Holder Name", value: "Holiday Circuit" },
-  { label: "A/c No.", value: "50200103968171" },
-  { label: "IFSC", value: "HDFC0004413" },
-  { label: "Branch", value: "RAMPHAL CHOWK SEC VII DWARKA" },
-];
-
-const QuoteSellerBankDetailsCard = ({ bankDetails = [] }) => {
-  const items = Array.isArray(bankDetails) && bankDetails.length > 0
-    ? bankDetails
-    : DEFAULT_SELLER_BANK_DETAILS;
-
-  return (
-    <div className="mb-4 rounded-xl border border-orange-200 bg-white p-3">
-      <div className="mb-3 flex items-center gap-2">
-        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-orange-100 text-orange-700">
-          <CreditCard size={14} />
-        </div>
-        <h4 className="font-semibold text-sm text-gray-900">Seller&apos;s Bank Details</h4>
-      </div>
-
-      <div className="space-y-2">
-        {items.map((item, idx) => (
-          <div key={item.label || idx} className="rounded-xl border border-gray-200 bg-gray-50 p-3" style={{ borderLeft: "3px solid #f97316" }}>
-            <p className="text-[13px] leading-relaxed text-slate-800">
-              <span className="font-semibold text-slate-900">{item.label}:</span>{" "}
-              <span>{item.value}</span>
-            </p>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-};
-
-const QuoteTermsAndConditionsCard = () => (
-  <div className="mb-4 rounded-xl border border-violet-200 bg-white p-3">
-    <div className="mb-3 flex items-center gap-2">
-      <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-violet-100 text-violet-700">
-        <ShieldAlert size={14} />
-      </div>
-      <h4 className="font-semibold text-sm text-gray-900">Terms and Conditions</h4>
-      <span className="ml-auto rounded-full border border-violet-200 bg-violet-100 px-2.5 py-0.5 text-[11px] font-semibold text-violet-700">
-        {QUOTATION_TERMS.length} points
-      </span>
-    </div>
-
-    <ol className="space-y-2">
-      {QUOTATION_TERMS.map((item, index) => (
-        <li
-          key={item}
-          className="flex items-start gap-2 rounded-xl border border-gray-200 bg-gray-50 p-3"
-          style={{ borderLeft: "3px solid #8b5cf6" }}
-        >
-          <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-violet-100 text-[10px] font-semibold text-violet-700">
-            {index + 1}
-          </span>
-          <span className="text-[13px] leading-relaxed text-slate-700">{item}</span>
-        </li>
-      ))}
-    </ol>
-  </div>
-);
-
-const TRANSPORT_USAGE_LABELS = {
-  "inter-hotel-transfer": "Inter Hotel Transfer",
-  "one-way-airport-transfer": "One Way / Airport Transfer",
-  "full-day": "Full Day",
-  "half-day": "Half Day",
-  "round-trip": "Round Trip",
-  "point-to-point": "One Way / Airport Transfer",
-};
-
-const TRANSPORT_USAGE_LIMIT_LABELS = {
-  "full-day-80-km": "80 km / 8 hours",
-  "full-day-100-km": "100 km / 10 hours",
-  "half-day-40-km": "40 km / 4 hours",
-  "half-day-4-hours": "40 km / 4 hours",
-};
-
-const normalizeTransportUsageOptionKeyForQuote = (value = "") => {
-  const normalizedValue = String(value || "").trim().toLowerCase();
-  if (!normalizedValue) return "";
-  if (normalizedValue.includes("inter hotel") || normalizedValue.includes("inter-hotel")) return "inter-hotel-transfer";
-  if (normalizedValue.includes("airport") || normalizedValue.includes("one way") || normalizedValue.includes("one-way")) return "one-way-airport-transfer";
-  if (normalizedValue.includes("full")) return "full-day";
-  if (normalizedValue.includes("half")) return "half-day";
-  if (normalizedValue.includes("round") || normalizedValue.includes("two way")) return "round-trip";
-  if (normalizedValue.includes("point")) return "point-to-point";
-  return normalizedValue;
-};
-
-const getTransportUsageDisplayLabelForQuote = (service = {}) => {
-  const key = normalizeTransportUsageOptionKeyForQuote(
-    service?.transportUsageOptionKey ||
-    service?.transportUsageLabel ||
-    service?.usageType,
-  );
-
-  return (
-    service?.transportUsageLabel ||
-    TRANSPORT_USAGE_LABELS[key] ||
-    String(service?.usageType || "")
-      .replace(/-/g, " ")
-      .replace(/\b\w/g, (char) => char.toUpperCase())
-  );
-};
-
-const getTransportLimitLabelForQuote = (service = {}) => {
-  const optionKey = normalizeTransportUsageOptionKeyForQuote(
-    service?.transportUsageOptionKey ||
-    service?.transportUsageLabel ||
-    service?.usageType,
-  );
-  const limitKeys = String(service?.transportUsageLimitOptionKey || "")
-    .split(",")
-    .map((k) => k.trim())
-    .filter(Boolean);
-  const explicitLimitLabel = limitKeys
-    .map((key) => TRANSPORT_USAGE_LIMIT_LABELS[key])
-    .filter(Boolean)[0];
-
-  if (explicitLimitLabel) return explicitLimitLabel;
-  if (TRANSPORT_USAGE_LIMIT_LABELS[optionKey]) return TRANSPORT_USAGE_LIMIT_LABELS[optionKey];
-
-  if (optionKey === "full-day") return "80 km / 8 hours";
-  if (optionKey === "half-day") return "40 km / 4 hours";
-
-  return "";
-};
-
-const buildTransportQuotationNotes = (service = {}) => {
-  const optionKey = normalizeTransportUsageOptionKeyForQuote(
-    service?.transportUsageOptionKey ||
-    service?.transportUsageLabel ||
-    service?.usageType,
-  );
-
-  if (!["full-day", "half-day"].includes(optionKey)) return [];
-
-  const usageLabel = getTransportUsageDisplayLabelForQuote(service);
-  const limitLabel = getTransportLimitLabelForQuote(service);
-  const extraKmRate = Number(service?.fullDayExtraPerKmRate || service?.halfDayExtraPerKmRate || service?.extraPerKmRate || 0);
-  const notes = [];
-
-  if (extraKmRate > 0) {
-    notes.push({ type: "extraKm", text: `Extra km rate: ₹ ${extraKmRate.toLocaleString("en-IN")}/km.` });
-  }
-
-  if (limitLabel) {
-    notes.push({ type: "limit", text: `Note: ${usageLabel} limit selected as ${limitLabel}. Extra km will attract extra charges where applicable.` });
-  }
-
-  return notes;
-};
-
-const QuoteServiceListCard = ({ services = [] }) => (
-  <div className="mb-4 rounded-xl border border-[#BEDBFF] bg-white p-3">
-    <div className="mb-3 flex items-center gap-2">
-      <div className="w-7 h-7 rounded-lg bg-blue-50 flex items-center justify-center">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" />
-        </svg>
-      </div>
-      <h4 className="font-semibold text-sm text-gray-900">Selected Services</h4>
-      <span className="ml-auto bg-blue-50 text-blue-600 border border-blue-200 rounded-full px-2.5 py-0.5 text-[11px] font-semibold">
-        {services.length} item{services.length === 1 ? "" : "s"}
-      </span>
-    </div>
-
-    <ul className="space-y-2">
-      {services.length > 0 ? (
-        services.map((service, idx) => {
-          const descriptionBits = getServiceDescriptionBits(service.description);
-          const serviceDateLabel = formatDisplayDate(service.serviceDate);
-          const typeLabel = formatServiceTypeLabel(service.type);
-          const serviceTheme =
-            service.type === "hotel"
-              ? {
-                borderColor: "#3b82f6",
-                iconBg: "bg-blue-100",
-                iconStroke: "#2563eb",
-                badgeClass: "bg-blue-100 text-blue-700",
-                metaClass: "bg-blue-50 text-blue-700 border border-blue-200",
-              }
-              : service.type === "transfer"
-                ? {
-                  borderColor: "#10b981",
-                  iconBg: "bg-green-100",
-                  iconStroke: "#15803d",
-                  badgeClass: "bg-green-100 text-green-800",
-                  metaClass: "bg-green-50 text-green-700 border border-green-200",
-                }
-                : service.type === "activity"
-                  ? {
-                    borderColor: "#f59e0b",
-                    iconBg: "bg-amber-100",
-                    iconStroke: "#d97706",
-                    badgeClass: "bg-amber-100 text-amber-800",
-                    metaClass: "bg-amber-50 text-amber-700 border border-amber-200",
-                  }
-                  : {
-                    borderColor: "#8b5cf6",
-                    iconBg: "bg-violet-100",
-                    iconStroke: "#7c3aed",
-                    badgeClass: "bg-violet-100 text-violet-800",
-                    metaClass: "bg-violet-50 text-violet-700 border border-violet-200",
-                  };
-
-          const detailBadges = [];
-          const metaBadges = [typeLabel];
-
-          if (service.type === "hotel") {
-            if (Number(service.nights || 0) > 0) detailBadges.push(`${service.nights}N`);
-            if (Number(service.rooms || 0) > 0) detailBadges.push(`${service.rooms}R`);
-            if (service.roomType) detailBadges.push(service.roomType);
-            if (service.bedType) detailBadges.push(`${service.bedType} bed`);
-            if (Number(service.adults || 0) > 0) detailBadges.push(`${service.adults} Adult`);
-            if (Number(service.children || 0) > 0) detailBadges.push(`${service.children} Child`);
-          }
-
-          if (service.type === "transfer") {
-            if (service.vehicleType) detailBadges.push(service.vehicleType);
-            if (Number(service.passengerCapacity || 0) > 0) detailBadges.push(`${service.passengerCapacity} Pax`);
-            if (Number(service.luggageCapacity || 0) > 0) detailBadges.push(`${service.luggageCapacity} Luggage`);
-            const usageDisplayLabel = getTransportUsageDisplayLabelForQuote(service);
-            if (usageDisplayLabel) detailBadges.push(usageDisplayLabel);
-            if (Number(service.days || 0) > 0) detailBadges.push(`${service.days} Day${Number(service.days) > 1 ? "s" : ""}`);
-          }
-
-          if (service.type === "activity" || service.type === "sightseeing") {
-            if (Number(service.pax || 0) > 0) detailBadges.push(`${service.pax} Pax`);
-            if (Number(service.days || 0) > 0) detailBadges.push(`${service.days} Day${Number(service.days) > 1 ? "s" : ""}`);
-          }
-
-          if (serviceDateLabel) metaBadges.push(serviceDateLabel);
-
-          if (service.type === "hotel") metaBadges.push("Stay included");
-          if (service.type === "transfer") metaBadges.push("Transfer included");
-          if (service.type === "activity" || service.type === "sightseeing") metaBadges.push("Experience included");
-
-          return (
-            <li key={idx} className="bg-gray-50 border border-gray-200 rounded-xl p-3" style={{ borderLeft: `3px solid ${serviceTheme.borderColor}` }}>
-              <div className="flex items-start justify-between gap-3 mb-2">
-                <div className="flex items-start gap-2 min-w-0">
-                  <div className={`w-7 h-7 rounded-lg ${serviceTheme.iconBg} flex items-center justify-center flex-shrink-0`}>
-                    {service.type === "hotel" ? (
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={serviceTheme.iconStroke} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" />
-                      </svg>
-                    ) : service.type === "transfer" ? (
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={serviceTheme.iconStroke} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M5 17H3a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v9a2 2 0 0 1-2 2h-2" /><circle cx="7.5" cy="17.5" r="2.5" /><circle cx="17.5" cy="17.5" r="2.5" />
-                      </svg>
-                    ) : service.type === "activity" ? (
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={serviceTheme.iconStroke} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M12 2v20" /><path d="M2 12h20" /><circle cx="12" cy="12" r="9" />
-                      </svg>
-                    ) : (
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={serviceTheme.iconStroke} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M12 3l2.7 5.47 6.03.88-4.36 4.25 1.03 6.01L12 16.77l-5.4 2.84 1.03-6.01L3.27 9.35l6.03-.88L12 3z" />
-                      </svg>
-                    )}
-                  </div>
-                  <div className="min-w-0">
-                    <div className="font-semibold text-xs text-gray-900 break-words">{service.title}</div>
-                    <div className="flex items-center gap-1 mt-0.5">
-                      <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" /><circle cx="12" cy="10" r="3" />
-                      </svg>
-                      <span className="text-[11px] text-gray-400 break-words">
-                        {[service.city, service.country].filter(Boolean).join(", ") || "Location shared in quotation"}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-                {detailBadges.length > 0 && (
-                  <div className="flex gap-1 flex-shrink-0 flex-wrap justify-end">
-                    {detailBadges.slice(0, 3).map((badge, badgeIndex) => (
-                      <span key={`${badge}-${badgeIndex}`} className={`flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-semibold ${serviceTheme.badgeClass}`}>
-                        {badge}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {detailBadges.length > 3 && (
-                <div className="mb-2 flex flex-wrap gap-1">
-                  {detailBadges.slice(3).map((badge, badgeIndex) => (
-                    <span key={`${badge}-${badgeIndex}`} className={`rounded-md px-2 py-0.5 text-[11px] font-semibold ${serviceTheme.badgeClass}`}>
-                      {badge}
-                    </span>
-                  ))}
-                </div>
-              )}
-
-              {metaBadges.length > 0 && (
-                <div className="mb-2 flex flex-wrap gap-1">
-                  {metaBadges.map((badge, badgeIndex) => (
-                    <span key={`${badge}-${badgeIndex}`} className={`rounded-md px-2 py-0.5 text-[10px] font-medium ${serviceTheme.metaClass}`}>
-                      {badge}
-                    </span>
-                  ))}
-                </div>
-              )}
-
-              {descriptionBits.length > 0 && (
-                <div className="flex flex-wrap gap-1">
-                  {descriptionBits.map((bit, bitIndex) => (
-                    <span key={`${bit}-${bitIndex}`} className="bg-white border border-gray-200 rounded px-2 py-0.5 text-[10px] text-gray-500">
-                      {bit}
-                    </span>
-                  ))}
-                </div>
-              )}
-
-              {/* Special transfer / activity rate and notes callout */}
-              {(() => {
-                const transportNotes = buildTransportQuotationNotes(service);
-                const specNote = String(service?.note || service?.specialNote || service?.transferNotes || service?.remarks || "").trim();
-
-                if (!transportNotes.length && !specNote) return null;
-
-                return (
-                  <div className="mt-2 space-y-1.5 rounded-lg border border-amber-200/90 bg-amber-50/80 p-2.5 text-xs">
-                    {transportNotes.map((note, nIdx) => (
-                      <p
-                        key={nIdx}
-                        className={
-                          note.type === "extraKm"
-                            ? "font-semibold text-amber-900"
-                            : "font-semibold text-[#9A3412] leading-relaxed"
-                        }
-                      >
-                        {note.text}
-                      </p>
-                    ))}
-                    {specNote && !transportNotes.some((n) => n.text.includes(specNote)) && (
-                      <p className="text-[11px] leading-relaxed text-amber-900">
-                        <span className="font-semibold">Note:</span> {specNote}
-                      </p>
-                    )}
-                  </div>
-                );
-              })()}
-            </li>
-          );
-        })
-      ) : (
-        <li className="text-center py-4 text-xs text-gray-400">No services provided</li>
-      )}
-    </ul>
-  </div>
-);
+import {
+  containerVariant,
+  itemVariant,
+  formatMoney,
+  formatDisplayDate,
+  buildPublicAssetUrl,
+  getOrdinalSuffix,
+  getPackageNightCount,
+  buildItineraryDayLabel,
+  getRelativeTimeString,
+  formatUsageLabel,
+  formatServiceTypeLabel,
+  getServiceDescriptionBits,
+  SELLER_BANK_DETAILS,
+  QUOTATION_TERMS,
+  CLIENT_SHARE_TERMS,
+  formatAmountValue,
+  parseShareDate,
+  formatShareDate,
+  formatShareActivityDate,
+  formatShareItineraryDate,
+  addDaysToShareDate,
+  getShareDateDiff,
+  getDurationMeta,
+  getClientRecipientName,
+  getQueryTravelerCounts,
+  buildClientTravelerSummary,
+  normalizeShareServiceType,
+  inferSharingLabel,
+  buildClientServiceQuantityLabel,
+  DEFAULT_SELLER_BANK_DETAILS,
+  TRANSPORT_USAGE_LABELS,
+  TRANSPORT_USAGE_LIMIT_LABELS,
+  fetchQuotationsByQuery,
+  getSavedAgentBranding,
+} from "./queryDetails/utils/queryDetailsHelpers";
+
+import { ActionPillButton } from "./queryDetails/components/Cards/ActionPillButton";
+import { QuoteInfoListCard } from "./queryDetails/components/Cards/QuoteInfoListCard";
+import { QuoteDayWiseItineraryCard } from "./queryDetails/components/Cards/QuoteDayWiseItineraryCard";
+import { QuoteSellerBankDetailsCard } from "./queryDetails/components/Cards/QuoteSellerBankDetailsCard";
+import { QuoteTermsAndConditionsCard } from "./queryDetails/components/Cards/QuoteTermsAndConditionsCard";
+import { QuoteServiceListCard } from "./queryDetails/components/Cards/QuoteServiceListCard";
+import { QueryHeaderCard } from "./queryDetails/components/Header/QueryHeaderCard";
+import { QueryTabNavigation } from "./queryDetails/components/Navigation/QueryTabNavigation";
+import { RevisionModal } from "./queryDetails/components/Modals/RevisionModal";
+import { SendSuccessModal } from "./queryDetails/components/Modals/SendSuccessModal";
 
 const QueryDetails = ({ query, onClose, onRefresh }) => {
   const dispatch = useDispatch();
@@ -3101,190 +1933,30 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
       animate="visible"
       className="p- sm:p- font-sans antialiased max-w-[1600px] mx-auto"
     >
-      {/* 1. TOP BREADCRUMB BAR (Back | [Active Tab] > Current) */}
-          <div className="flex items-center gap-2 mb-2.5 text-xs text-slate-500 font-medium px-2 py-1">
-        <button
-          type="button"
-          onClick={handleClose}
-          className="inline-flex items-center gap-1 text-slate-900 hover:text-slate-700 font-bold cursor-pointer transition-all"
-        >
-          <ArrowLeft size={14} />
-          <span className="text-sm">Back</span>
-        </button>
-        <span className="text-slate-300 font-light mx-0.5">|</span>
-        <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium flex-wrap">
-          <span className="text-slate-800 font-bold">
-            {(() => {
-              const status = String(query?.status || query?.agentStatus || "").trim();
-              if (["Confirmed", "Booking Confirmed", "Voucher Generated", "Active Booking", "Completed", "Vouchered"].includes(status)) {
-                return "Booking Confirmed";
-              }
-              if (["Booking Processed", "Payment Verified", "Client Approved", "Booking_Accepted", "Payment_Completed", "Invoice_Requested"].includes(status)) {
-                return "Booking Processed";
-              }
-              if (
-                ["Quote Sent", "Sent to Client", "Quote Received", "Markup Applied", "Quote Accepted", "Quote Updated"].includes(status) ||
-                (quotes && quotes.length > 0)
-              ) {
-                return "Quote Received";
-              }
-              if (["In Progress", "InProgress", "Working"].includes(status)) {
-                return "In Progress";
-              }
-              return "New Query";
-            })()}
-          </span>
-          <ChevronRight size={12} className="text-slate-400" />
-          <span className="text-slate-800 font-semibold">
-            {activeTab === "basic"
-              ? "Basic Details"
-              : activeTab === "quotes"
-                ? "All Quotes"
-                : activeTab === "services"
-                  ? "Services Bookings"
-                  : activeTab === "accounting"
-                    ? "Accounting"
-                    : activeTab === "docs"
-                      ? "Docs"
-                      : "Activities"}
-          </span>
-          <ChevronRight size={12} className="text-slate-400" />
-          <span className="text-slate-500 font-normal">Current</span>
-        </div>
-      </div>
+      <QueryHeaderCard
+        handleClose={handleClose}
+        query={query}
+        quotes={quotes}
+        activeTab={activeTab}
+        headerStatusMeta={headerStatusMeta}
+        headerLeadTraveler={headerLeadTraveler}
+        headerCompany={headerCompany}
+        headerDateRangeText={headerDateRangeText}
+        headerDuration={headerDuration}
+        headerPaxSummary={headerPaxSummary}
+        headerTravelerCounts={headerTravelerCounts}
+        headerPackageCurrency={headerPackageCurrency}
+        headerPackageAmount={headerPackageAmount}
+        activeQuote={activeQuote}
+      />
 
-      {/* 2. QUERY HEADER SUMMARY CARD */}
-      <div className={`bg-white border-y border-r border-slate-200 border-l-[5px] ${headerStatusMeta.accentBorder} py-3 px-4 sm:py-3.5 sm:px-4.5 relative transition-all`}>
-        <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3">
-          {/* Left Details Block */}
-          <div className="flex-1 space-y-1.5 min-w-0">
-            {/* Line 1: # ID • Client Name • Destination • Agency • Badges */}
-            <div className="flex items-center gap-1.5 flex-wrap text-base sm:text-lg font-bold text-slate-900 leading-snug">
-              <span className="text-indigo-400 font-bold">#</span>
-              <span className="font-extrabold">{String(query?.queryId || query?._id || "Not specified").replace(/^#\s*/, "")}</span>
-              <span className="text-slate-300 font-normal mx-0.5">•</span>
-              <span className="truncate max-w-[240px] sm:max-w-none font-bold">{headerLeadTraveler}</span>
-              <span className="text-slate-300 font-normal mx-0.5">•</span>
-              <span className="font-bold">{query?.destination || "Destination not specified"}</span>
-              <span className="text-slate-300 font-normal mx-0.5">•</span>
-              <span className="text-sm sm:text-base font-medium text-slate-700">
-                {headerCompany}
-              </span>
-              <span className="text-slate-300 font-normal mx-0.5">•</span>
-
-              {/* Badges */}
-              <div className="inline-flex items-center gap-2 ml-1 flex-wrap">
-                <span className={`px-2.5 py-0.5 rounded-md text-xs font-semibold ${headerStatusMeta.className}`}>
-                  {headerStatusMeta.label}
-                </span>
-              </div>
-            </div>
-
-            {/* Line 2: Calendar Dates • Duration • Passengers */}
-            <div className="flex items-center gap-2 flex-wrap text-sm text-slate-700 font-medium">
-              <CalendarDays size={15} className="text-sky-500 shrink-0" />
-              <span className="font-semibold text-slate-900">{headerDateRangeText}</span>
-              <span className="text-slate-300 font-normal">•</span>
-              <span>{headerDuration}</span>
-              <span className="text-slate-300 font-normal">•</span>
-              <Users size={15} className="text-amber-500 shrink-0 ml-0.5" />
-              <span>{headerPaxSummary}</span>
-            </div>
-
-            {/* Line 3: Lead Guest Name (2A) */}
-            <div className="flex items-center gap-2 flex-wrap text-sm text-slate-800 font-medium">
-              <UserSquare2 size={15} className="text-emerald-400 shrink-0" />
-              <span>{headerLeadTraveler}</span>
-              <span className="text-slate-900 font-bold">({headerTravelerCounts.adults || 0}A)</span>
-            </div>
-
-            {/* Line 4: Arrow Agency Contact (DDLC Company) */}
-            <div className="flex items-center gap-2 flex-wrap text-sm text-slate-800 font-medium pt-0.5">
-              <ArrowRight size={15} className="text-purple-400 shrink-0" />
-              <span className="font-medium text-slate-900">
-                {headerCompany}
-              </span>
-            </div>
-          </div>
-
-          {/* Right Package Cost Block */}
-          {quotes.length > 0 && activeQuote && (
-            <div className="lg:text-right shrink-0">
-              <p className="text-[11px] font-normal text-slate-500">Package ({headerPackageCurrency})</p>
-              <p className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">
-                {formatAmountValue(headerPackageAmount)}
-              </p>
-              <p className="text-[10px] text-slate-400 font-normal">inc. GST</p>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* 3. HORIZONTAL TAB NAVIGATION */}
-      <div className="bg-slate-100/80 border-b border-x border-slate-200 px-5 pt-3 mb-5">
-        <div className="flex items-center gap-7 overflow-x-auto custom-scroll text-sm ">
-          {(() => {
-            const currentStatus = String(query?.status || query?.agentStatus || "").trim();
-
-            // Stages: New Query, In Progress, and Quote Received show ONLY 3 tabs.
-            // Booking Processed and Booking Confirmed stages show ALL tabs.
-            const isBookingStage = [
-              "Booking Processed",
-              "Booking Confirmed",
-              "Confirmed",
-              "Client Approved",
-              "Payment Verified",
-              "Voucher Generated",
-              "Active Booking",
-              "Completed",
-              "Vouchered",
-              "Booking_Accepted",
-              "Payment_Completed",
-              "Invoice_Requested",
-            ].includes(currentStatus);
-
-            const isNewQueryStage =
-              ["New Query", "New", "Pending", "Unassigned"].includes(currentStatus) ||
-              (!query?.agentStatus && !query?.status);
-
-            const availableTabs = [
-              { id: "basic", label: "Basic Details" },
-              { id: "quotes", label: "All Quotes", badge: quotes.length },
-              ...(isNewQueryStage
-                ? [{ id: "packages", label: "Pre Packages" }]
-                : []),
-              ...(isBookingStage
-                ? [
-                    { id: "services", label: "Services Bookings", badge: activeQuote?.services?.length },
-                    { id: "accounting", label: "Accounting" },
-                    { id: "docs", label: "Docs" },
-                  ]
-                : []),
-              { id: "activities", label: "Activities", badge: query?.activityLog?.length },
-            ];
-
-            return availableTabs.map((tab) => (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setActiveTab(tab.id)}
-                className={`pb-2.5 px-0.5 text-sm font-semibold transition-all relative whitespace-nowrap cursor-pointer ${
-                  activeTab === tab.id
-                    ? "text-[#3E63DD] font-extrabold border-b-[3.5px] border-[#3E63DD] -mb-[1px]"
-                    : "text-slate-600 hover:text-slate-900"
-                }`}
-              >
-                {tab.label}{" "}
-                {tab.badge ? (
-                  <span className="ml-1.5 text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-bold">
-                    {tab.badge}
-                  </span>
-                ) : null}
-              </button>
-            ));
-          })()}
-        </div>
-      </div>
+      <QueryTabNavigation
+        query={query}
+        quotes={quotes}
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        activeQuote={activeQuote}
+      />
       <div className="w-full">
         {(activeTab === "basic" || activeTab === "quotes" || !activeTab) && (
           <div className="w-full flex flex-col lg:flex-row gap-3.5 items-stretch mb-8">
@@ -4109,10 +2781,19 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                                       if (hChildren > 0) hPaxParts.push(`${hChildren} Child${hChildren > 1 ? 'ren' : ''}`);
                                       const hPaxDisplay = hPaxParts.length > 0 ? `${hTotalPax} Pax (${hPaxParts.join(", ")})` : `${hTotalPax} Pax`;
 
-                                      const itemPrice = Number(s.price || s.total || s.totalInInr || s.rate || 0);
+                                      let itemPrice = Number(s.price || s.total || s.totalInInr || s.rate || 0);
                                       const rCount = Number(s.rooms || 1);
+
+                                      const directRoomNightRate = Number(s.roomPrice || s.unitPrice || s.ratePerNight || s.roomRate || 0);
+                                      let unitRoomNightRate = directRoomNightRate > 0
+                                        ? directRoomNightRate
+                                        : (itemPrice > 0 ? Math.round(itemPrice / (nVal * rCount)) : 0);
+
+                                      if (itemPrice === 0 && unitRoomNightRate > 0) {
+                                        itemPrice = unitRoomNightRate * rCount * nVal;
+                                      }
+
                                       const unitNightRate = itemPrice > 0 ? Math.round(itemPrice / nVal) : 0;
-                                      const unitRoomNightRate = itemPrice > 0 ? Math.round(itemPrice / (nVal * rCount)) : 0;
 
                                       let nightlyRateLabel = "/ Night";
                                       let breakdownDetailLabel = "";
@@ -4123,13 +2804,13 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                                           breakdownDetailLabel = `(₹${unitRoomNightRate.toLocaleString("en-IN")} / Room / Night × ${rCount} Rooms × ${nVal} Nights)`;
                                         } else if (nVal > 1) {
                                           nightlyRateLabel = `₹${unitNightRate.toLocaleString("en-IN")} / Night`;
-                                          breakdownDetailLabel = `(${nVal} Nights)`;
+                                          breakdownDetailLabel = `(₹${unitRoomNightRate.toLocaleString("en-IN")} / Room / Night × ${rCount} Room${rCount > 1 ? "s" : ""} × ${nVal} Nights)`;
                                         } else if (rCount > 1) {
                                           nightlyRateLabel = `₹${unitRoomNightRate.toLocaleString("en-IN")} / Room / Night`;
-                                          breakdownDetailLabel = `(${rCount} Rooms)`;
+                                          breakdownDetailLabel = `(₹${unitRoomNightRate.toLocaleString("en-IN")} / Room / Night × ${rCount} Rooms × 1 Night)`;
                                         } else {
                                           nightlyRateLabel = `₹${unitNightRate.toLocaleString("en-IN")} / Night`;
-                                          breakdownDetailLabel = "";
+                                          breakdownDetailLabel = `(₹${unitRoomNightRate.toLocaleString("en-IN")} / Room / Night × 1 Room × 1 Night)`;
                                         }
                                       }
 
@@ -4238,17 +2919,17 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                                             </p>
                                           </td>
                                           <td className="py-3.5 px-4 align-top text-right whitespace-nowrap">
-                                            <p className="text-sm font-bold text-slate-900">
-                                              <span className="text-[10px] text-slate-400 font-normal uppercase mr-1">INR</span>
+                                            <p className="text-base font-bold text-slate-900">
+                                              <span className="text-[11px] text-slate-400 font-normal uppercase mr-1">INR</span>
                                               {row.price}
                                             </p>
                                             {row.nightlyRateLabel && (
-                                              <p className="text-[11px] text-slate-500 font-normal mt-0.5">
+                                              <p className="text-[11px] font-medium text-slate-600 mt-0.5">
                                                 {row.nightlyRateLabel}
                                               </p>
                                             )}
                                             {row.breakdownDetailLabel && (
-                                              <p className="text-[10px] text-slate-400 font-normal mt-0.5">
+                                              <p className="text-[10px] font-normal text-slate-400 mt-0.5">
                                                 {row.breakdownDetailLabel}
                                               </p>
                                             )}
@@ -4562,11 +3243,14 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                               };
                             }
 
-                            const numAdults = Number(s.adults !== undefined && s.adults !== null ? s.adults : 0);
-                            const numChildren = Number(s.children !== undefined && s.children !== null ? s.children : 0);
-                            const numInfants = Number(s.infants !== undefined && s.infants !== null ? s.infants : 0);
+                            const queryAdults = Number(query?.numberOfAdults || 1);
+                            const queryChildren = Number(query?.numberOfChildren || 0);
+
+                            const numAdults = Number(s.adults !== undefined && s.adults !== null && s.adults !== "" ? s.adults : queryAdults);
+                            const numChildren = Number(s.children !== undefined && s.children !== null && s.children !== "" ? s.children : queryChildren);
+                            const numInfants = Number(s.infants !== undefined && s.infants !== null && s.infants !== "" ? s.infants : 0);
                             const hasBreakdown = (numAdults > 0 || numChildren > 0 || numInfants > 0);
-                            const totalPax = hasBreakdown ? (numAdults + numChildren + numInfants) : Number(s.pax || query?.numberOfAdults || 1);
+                            const totalPax = hasBreakdown ? (numAdults + numChildren + numInfants) : Number(s.pax || queryAdults);
 
                             let paxBreakdownStr = "";
                             if (hasBreakdown) {
@@ -4596,6 +3280,16 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                             const closeTime = s.closingTime || "";
                             const timingsDisplay = openTime && closeTime ? `${openTime} - ${closeTime}` : openTime;
 
+                            const adultP = Number(s.adultPrice || s.adult_price || 0);
+                            const childP = Number(s.childPrice || s.child_price || 0);
+
+                            let calculatedItemTotal = 0;
+                            if (adultP > 0 || childP > 0) {
+                              calculatedItemTotal = (numAdults * adultP) + (numChildren * childP);
+                            } else {
+                              calculatedItemTotal = Number(s.price || s.totalPrice || s.amount || 0);
+                            }
+
                             groupMap[dateKey].items.push({
                               title: s.title || s.name || s.particulars || "Activity / Sightseeing",
                               description: s.description || s.particularsDetails || s.details || "",
@@ -4605,10 +3299,13 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                               duration: formattedDuration,
                               operatingDays: s.operatingDays || "",
                               timings: timingsDisplay,
-                              adultPrice: Number(s.adultPrice || s.adult_price || 0),
-                              childPrice: Number(s.childPrice || s.child_price || 0),
+                              adultPrice: adultP,
+                              childPrice: childP,
+                              adultsCount: numAdults,
+                              childrenCount: numChildren,
                               rateBreakdown: s.rateBreakdown || s.notes || "",
-                              price: s.price ? Number(s.price).toLocaleString("en-IN") : "0",
+                              numericPrice: calculatedItemTotal,
+                              price: Math.round(calculatedItemTotal).toLocaleString("en-IN"),
                             });
                           });
 
@@ -4617,8 +3314,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
 
                         const activityTotal = displayActivityGroups.reduce((acc, g) => {
                           return acc + g.items.reduce((iAcc, item) => {
-                            const p = Number(String(item.price || "0").replace(/,/g, "")) || 0;
-                            return iAcc + p;
+                            return iAcc + (item.numericPrice || Number(String(item.price || "0").replace(/,/g, "")) || 0);
                           }, 0);
                         }, 0);
 
@@ -4745,11 +3441,22 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
 
                                           {/* Right: Price */}
                                           <div className="text-left sm:text-right shrink-0 whitespace-nowrap">
-                                            <p className="text-sm font-bold text-slate-900">
-                                              <span className="text-[10px] text-slate-400 font-normal uppercase mr-1">INR</span>
+                                            <p className="text-base font-bold text-slate-900">
+                                              <span className="text-[11px] text-slate-400 font-normal uppercase mr-1">INR</span>
                                               {item.price}
                                             </p>
-                                            <p className="text-[11px] text-slate-400 font-normal mt-0.5">/ N/A</p>
+                                            {item.adultsCount > 0 && item.adultPrice > 0 ? (
+                                              <>
+                                                <p className="text-[11px] font-medium text-slate-600 mt-0.5">
+                                                  ₹{item.adultPrice.toLocaleString("en-IN")} / Person
+                                                </p>
+                                                <p className="text-[10px] font-normal text-slate-400 mt-0.5">
+                                                  ({item.adultsCount} Adults × ₹{item.adultPrice.toLocaleString("en-IN")}{item.childrenCount > 0 && item.childPrice > 0 ? ` + ${item.childrenCount} Children × ₹${item.childPrice.toLocaleString("en-IN")}` : ""})
+                                                </p>
+                                              </>
+                                            ) : (
+                                              <p className="text-[11px] text-slate-400 font-normal mt-0.5">Total</p>
+                                            )}
                                           </div>
                                         </div>
                                       ))}
@@ -12164,206 +10871,25 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
 
 
 
-      {/*-------------------- SEND SUCCESS MODAL------------------------------ */}
-      <AnimatePresence>
-        {sendSuccessMeta && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/70 px-4"
-          >
-            <motion.div
-              initial={{ opacity: 0, y: 18, scale: 0.96 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 12, scale: 0.98 }}
-              transition={{ duration: 0.24, ease: "easeOut" }}
-              className="relative w-full max-w-sm overflow-hidden rounded-[24px] border border-emerald-100 bg-white shadow-2xl"
-            >
-              <div className="absolute -right-10 -top-10 h-32 w-32 rounded-full bg-emerald-200/40 blur-3xl" />
-              <div className="absolute -left-8 bottom-0 h-28 w-28 rounded-full bg-sky-200/30 blur-3xl" />
+      <SendSuccessModal
+        sendSuccessMeta={sendSuccessMeta}
+        onCloseModal={() => setSendSuccessMeta(null)}
+        onCloseQuery={handleClose}
+        query={query}
+      />
 
-              <div className="relative border-b border-emerald-50 bg-[linear-gradient(135deg,#ecfdf5_0%,#f0fdf4_45%,#eff6ff_100%)] px-5 py-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-400 to-teal-600 text-white shadow-md">
-                      <Send size={16} />
-                    </div>
-                    <div>
-                      <p className="text-[10px] font-bold uppercase tracking-[0.2em] bg-gradient-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent">
-                        Delivered
-                      </p>
-                      <h3 className="mt-0.5 text-base font-bold text-slate-900 leading-tight">
-                        Quotation Shared!
-                      </h3>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setSendSuccessMeta(null)}
-                    className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400 hover:text-slate-600 transition"
-                  >
-                    <X size={14} />
-                  </button>
-                </div>
-                <p className="mt-2 text-xs leading-relaxed text-slate-500">
-                  A dynamic quotation summary has been shared with travel dates, services, and final amount.
-                </p>
-              </div>
-
-              <div className="relative px-5 py-4">
-                <div className="grid gap-2 grid-cols-3">
-                  {/* Recipient Email Row (Full width) */}
-                  <div className="rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2 col-span-3 text-left">
-                    <p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-slate-400">Recipient</p>
-                    <p className="mt-0.5 text-xs font-bold text-slate-800 break-all select-all">
-                      {sendSuccessMeta.recipientEmail || "Registered email"}
-                    </p>
-                  </div>
-
-                  {/* 3 cards side-by-side */}
-                  <div className="rounded-xl border border-slate-200 bg-slate-50/50 px-1 py-2 text-center">
-                    <p className="text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-400">Quotation</p>
-                    <p className="mt-0.5 text-xs font-bold text-slate-800 truncate">
-                      {sendSuccessMeta.quotationNumber || "-"}
-                    </p>
-                  </div>
-                  <div className="rounded-xl border border-slate-200 bg-slate-50/50 px-1 py-2 text-center">
-                    <p className="text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-400">Destination</p>
-                    <p className="mt-0.5 text-xs font-semibold text-slate-800 truncate">
-                      {sendSuccessMeta.destination || query.destination}
-                    </p>
-                  </div>
-                  <div className="rounded-xl border border-slate-200 bg-slate-50/50 px-1 py-2 text-center">
-                    <p className="text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-400">Client Total</p>
-                    <p className="mt-0.5 text-xs font-extrabold bg-gradient-to-r from-emerald-600 to-teal-600 bg-clip-text text-transparent truncate">
-                      {formatMoney(sendSuccessMeta.totalAmount)}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="mt-3.5 rounded-xl border border-emerald-50 bg-emerald-50/30 px-3 py-2 text-center">
-                  <div className="flex items-center justify-center gap-2 text-[11px] text-slate-500">
-                    <span className="font-semibold text-emerald-700 bg-emerald-100/60 rounded px-1.5 py-0.5">
-                      {sendSuccessMeta.serviceCount} services
-                    </span>
-                    <span>•</span>
-                    <span>Valid till {sendSuccessMeta.validTill || "-"}</span>
-                  </div>
-                </div>
-
-                <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-                  <button
-                    type="button"
-                    onClick={() => setSendSuccessMeta(null)}
-                    className="rounded-full bg-gradient-to-r from-[#1e293b] to-[#0f172a] hover:from-[#0f172a] hover:to-black text-white px-5 py-2 text-xs font-semibold shadow-sm transition-all duration-300 transform hover:-translate-y-0.5"
-                  >
-                    Stay Here
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSendSuccessMeta(null);
-                      onClose?.();
-                    }}
-                    className="rounded-full bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white px-5 py-2 text-xs font-bold shadow-md hover:shadow-lg transition-all duration-300 transform hover:-translate-y-0.5"
-                  >
-                    Back to Queries
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-
-
-
-      {/* REVISION MODAL */}
-      <AnimatePresence>
-        {isRevisionModalOpen && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/40 backdrop-blur-[4px] p-4"
-          >
-            <motion.div
-              initial={{ opacity: 0, scale: 0.96, y: 12 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.96, y: 12 }}
-              transition={{ duration: 0.2, ease: "easeOut" }}
-              className="bg-white w-full max-w-md rounded-xl shadow-2xl p-5 relative border border-slate-200 border-t-4 border-t-[#b91c1c] overflow-hidden"
-            >
-              <button
-                type="button"
-                onClick={() => {
-                  setIsRevisionModalOpen(false);
-                  setRevisionReason("");
-                  setRevisionQuoteId(null);
-                }}
-                className="absolute top-4 right-4 rounded-lg p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
-              >
-                <X size={16} />
-              </button>
-
-              <div className="flex items-start gap-3 mb-3 pr-6">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-rose-50 text-[#b91c1c]">
-                  <RotateCcw size={18} />
-                </div>
-                <div>
-                  <p className="text-[11px] font-bold uppercase tracking-wider text-[#b91c1c]">
-                    Revision Request
-                  </p>
-                  <h3 className="mt-0.5 text-base font-bold text-slate-900 leading-tight">
-                    Send back to operations
-                  </h3>
-                </div>
-              </div>
-
-              <p className="text-xs leading-relaxed text-slate-600 mb-3">
-                Add the client's requested changes below. Operations will be notified to revise the quotation.
-              </p>
-
-              <div className="mb-4">
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Revision details
-                </label>
-                <textarea
-                  rows={3}
-                  value={revisionReason}
-                  onChange={(e) => setRevisionReason(e.target.value)}
-                  placeholder="Example: Client wants hotel option near city center, lower total budget, and airport transfer included."
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-rose-300 focus:ring-2 focus:ring-rose-100"
-                />
-              </div>
-
-              <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsRevisionModalOpen(false);
-                    setRevisionReason("");
-                    setRevisionQuoteId(null);
-                  }}
-                  className="px-4 py-2 border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-md transition-colors cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleRequestRevision}
-                  disabled={revisionSubmitting}
-                  className="px-4 py-2 bg-[#b91c1c] hover:bg-[#dc2626] text-white text-xs font-semibold rounded-md transition-colors disabled:opacity-60 cursor-pointer shadow-2xs"
-                >
-                  {revisionSubmitting ? "Sending..." : "Notify Ops Team"}
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <RevisionModal
+        isOpen={isRevisionModalOpen}
+        onClose={() => {
+          setIsRevisionModalOpen(false);
+          setRevisionReason("");
+          setRevisionQuoteId(null);
+        }}
+        revisionReason={revisionReason}
+        setRevisionReason={setRevisionReason}
+        handleRequestRevision={handleRequestRevision}
+        revisionSubmitting={revisionSubmitting}
+      />
     </motion.div>
   );
 };

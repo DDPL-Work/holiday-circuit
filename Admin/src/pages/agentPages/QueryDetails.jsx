@@ -4518,14 +4518,47 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                               };
                             }
 
-                            const qtyVal = s.qty || s.quantity || `${s.duration || "1D"} | ${s.adults || query?.numberOfAdults || 2} Pax`;
+                            const queryAdults = Number(query?.numberOfAdults || 1);
+                            const queryChildren = Number(query?.numberOfChildren || 0);
+
+                            const numAdults = Number(s.adults !== undefined && s.adults !== null && s.adults !== "" ? s.adults : queryAdults);
+                            const numChildren = Number(s.children !== undefined && s.children !== null && s.children !== "" ? s.children : queryChildren);
+                            const numInfants = Number(s.infants !== undefined && s.infants !== null && s.infants !== "" ? s.infants : 0);
+                            const hasBreakdown = (numAdults > 0 || numChildren > 0 || numInfants > 0);
+                            const totalPax = hasBreakdown ? (numAdults + numChildren + numInfants) : Number(s.pax || queryAdults);
+
+                            let paxBreakdownStr = "";
+                            if (hasBreakdown) {
+                              const parts = [];
+                              if (numAdults > 0) parts.push(`${numAdults} Adult${numAdults > 1 ? 's' : ''}`);
+                              if (numChildren > 0) parts.push(`${numChildren} Child${numChildren > 1 ? 'ren' : ''}`);
+                              if (numInfants > 0) parts.push(`${numInfants} Infant${numInfants > 1 ? 's' : ''}`);
+                              paxBreakdownStr = `${totalPax} Pax (${parts.join(", ")})`;
+                            } else {
+                              paxBreakdownStr = `${totalPax} Pax`;
+                            }
+
+                            const adultP = Number(s.adultPrice || s.adult_price || 0);
+                            const childP = Number(s.childPrice || s.child_price || 0);
+
+                            let calculatedItemTotal = 0;
+                            if (adultP > 0 || childP > 0) {
+                              calculatedItemTotal = (numAdults * adultP) + (numChildren * childP);
+                            } else {
+                              calculatedItemTotal = Number(s.price || s.totalPrice || s.amount || 0);
+                            }
 
                             groupMap[dateKey].items.push({
                               title: s.title || s.name || s.particulars || "Activity / Sightseeing",
                               description: s.description || s.particularsDetails || s.details || "",
-                              qty: qtyVal,
+                              qty: s.quantityLabel || paxBreakdownStr,
+                              adultPrice: adultP,
+                              childPrice: childP,
+                              adultsCount: numAdults,
+                              childrenCount: numChildren,
                               rateBreakdown: s.rateBreakdown || s.notes || "",
-                              price: s.price ? Number(s.price).toLocaleString("en-IN") : "0",
+                              numericPrice: calculatedItemTotal,
+                              price: Math.round(calculatedItemTotal).toLocaleString("en-IN"),
                             });
                           });
 
@@ -4534,8 +4567,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
 
                         const activityTotal = displayActivityGroups.reduce((acc, g) => {
                           return acc + g.items.reduce((iAcc, item) => {
-                            const p = Number(String(item.price || "0").replace(/,/g, "")) || 0;
-                            return iAcc + p;
+                            return iAcc + (item.numericPrice || Number(String(item.price || "0").replace(/,/g, "")) || 0);
                           }, 0);
                         }, 0);
 
@@ -4628,11 +4660,22 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
 
                                           {/* Right: Price */}
                                           <div className="text-left sm:text-right shrink-0 whitespace-nowrap">
-                                            <p className="text-sm font-bold text-slate-900">
-                                              <span className="text-[10px] text-slate-400 font-normal uppercase mr-1">INR</span>
+                                            <p className="text-base font-bold text-slate-900">
+                                              <span className="text-[11px] text-slate-400 font-normal uppercase mr-1">INR</span>
                                               {item.price}
                                             </p>
-                                            <p className="text-[11px] text-slate-400 font-normal mt-0.5">/ N/A</p>
+                                            {item.adultsCount > 0 && item.adultPrice > 0 ? (
+                                              <>
+                                                <p className="text-[11px] font-medium text-slate-600 mt-0.5">
+                                                  ₹{item.adultPrice.toLocaleString("en-IN")} / Person
+                                                </p>
+                                                <p className="text-[10px] font-normal text-slate-400 mt-0.5">
+                                                  ({item.adultsCount} Adults × ₹{item.adultPrice.toLocaleString("en-IN")}{item.childrenCount > 0 && item.childPrice > 0 ? ` + ${item.childrenCount} Children × ₹${item.childPrice.toLocaleString("en-IN")}` : ""})
+                                                </p>
+                                              </>
+                                            ) : (
+                                              <p className="text-[11px] text-slate-400 font-normal mt-0.5">Total</p>
+                                            )}
                                           </div>
                                         </div>
                                       ))}

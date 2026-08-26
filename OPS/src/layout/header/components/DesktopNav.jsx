@@ -2,7 +2,7 @@ import { useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { ChevronDown } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
-import { getItemTarget, isItemActive } from "../navConfig";
+import { getItemTarget, isItemActive } from "../../navConfig";
 
 export const DesktopNav = ({ menus = [] }) => {
   const location = useLocation();

@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { Menu, X } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
-import { getItemTarget, isItemActive } from "../navConfig";
+import { getItemTarget, isItemActive } from "../../navConfig";
 
 export const MobileNav = ({
   menus = [],
