@@ -40,6 +40,11 @@ const buildFrontendUrl = (path = "") => {
       process.env.FRONTEND_URL ||
       process.env.CLIENT_URL ||
       process.env.FRONTEND_LOGIN_URL ||
+      process.env.ADMIN_LOGIN_URL ||
+      process.env.OPS_LOGIN_URL ||
+      process.env.FINANCE_LOGIN_URL ||
+      process.env.AGENT_LOGIN_URL ||
+      process.env.DMC_LOGIN_URL,
       "",
   ).trim();
 
