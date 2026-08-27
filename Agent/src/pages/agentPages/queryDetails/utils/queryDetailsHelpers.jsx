@@ -420,6 +420,42 @@ export const getTransportLimitLabelForQuote = (service = {}) => {
   return "";
 };
 
+export const validateAgentMarkupInput = ({ markupType, markupValue }) => {
+  const normalizedType = String(markupType || "").trim().toUpperCase();
+  const normalizedValue = Number(markupValue);
+
+  if (!Number.isFinite(normalizedValue) || normalizedValue <= 0) {
+    return "Please enter a valid markup value.";
+  }
+
+  if (["PERCENT", "AMOUNT"].includes(normalizedType)) return "";
+
+  return "Please select a valid markup type.";
+};
+
+export const calculateAgentMarkupPreview = ({ markupType, markupValue, opsTotal }) => {
+  const normalizedType = String(markupType || "").trim().toUpperCase();
+  const normalizedValue = Number(markupValue);
+  const normalizedOpsTotal = Math.max(0, Number(opsTotal) || 0);
+
+  if (!Number.isFinite(normalizedValue) || normalizedValue <= 0) {
+    return {
+      markupAmount: 0,
+      finalAmount: normalizedOpsTotal,
+    };
+  }
+
+  const markupAmount =
+    normalizedType === "PERCENT"
+      ? Math.round((normalizedOpsTotal * normalizedValue) / 100)
+      : Math.round(normalizedValue);
+
+  return {
+    markupAmount,
+    finalAmount: normalizedOpsTotal + Math.max(0, markupAmount),
+  };
+};
+
 export const fetchQuotationsByQuery = async (queryId) => {
   const res = await API.get(`/agent/quotations/query/${queryId}`);
   return (res.data.quotations || []).filter(
@@ -441,5 +477,6 @@ export const getSavedAgentBranding = ({ quote = {}, user = null }) => ({
     "",
   ).trim(),
 });
+
 
 

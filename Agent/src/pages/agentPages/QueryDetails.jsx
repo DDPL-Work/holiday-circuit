@@ -2781,19 +2781,25 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                                       if (hChildren > 0) hPaxParts.push(`${hChildren} Child${hChildren > 1 ? 'ren' : ''}`);
                                       const hPaxDisplay = hPaxParts.length > 0 ? `${hTotalPax} Pax (${hPaxParts.join(", ")})` : `${hTotalPax} Pax`;
 
-                                      let itemPrice = Number(s.price || s.total || s.totalInInr || s.rate || 0);
                                       const rCount = Number(s.rooms || 1);
+                                      const directRoomNightRate = Number(s.roomPrice || s.unitPrice || s.ratePerNight || s.roomRate || s.pricePerNight || s.nightlyRate || 0);
+                                      const explicitTotalPrice = Number(s.total || s.totalInInr || s.totalPrice || (s.isTotalPrice || s.isTotal ? s.price : 0));
 
-                                      const directRoomNightRate = Number(s.roomPrice || s.unitPrice || s.ratePerNight || s.roomRate || 0);
-                                      let unitRoomNightRate = directRoomNightRate > 0
-                                        ? directRoomNightRate
-                                        : (itemPrice > 0 ? Math.round(itemPrice / (nVal * rCount)) : 0);
+                                      let unitRoomNightRate = 0;
+                                      let itemPrice = 0;
 
-                                      if (itemPrice === 0 && unitRoomNightRate > 0) {
+                                      if (directRoomNightRate > 0) {
+                                        unitRoomNightRate = directRoomNightRate;
+                                        itemPrice = explicitTotalPrice > 0 ? explicitTotalPrice : (unitRoomNightRate * rCount * nVal);
+                                      } else if (explicitTotalPrice > 0) {
+                                        itemPrice = explicitTotalPrice;
+                                        unitRoomNightRate = Math.round(itemPrice / (nVal * rCount));
+                                      } else {
+                                        unitRoomNightRate = Number(s.price || s.rate || 0);
                                         itemPrice = unitRoomNightRate * rCount * nVal;
                                       }
 
-                                      const unitNightRate = itemPrice > 0 ? Math.round(itemPrice / nVal) : 0;
+                                      const unitNightRate = itemPrice > 0 ? Math.round(itemPrice / nVal) : (unitRoomNightRate * rCount);
 
                                       let nightlyRateLabel = "/ Night";
                                       let breakdownDetailLabel = "";
@@ -2801,16 +2807,16 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                                       if (itemPrice > 0) {
                                         if (nVal > 1 && rCount > 1) {
                                           nightlyRateLabel = `₹${unitNightRate.toLocaleString("en-IN")} / Night`;
-                                          breakdownDetailLabel = `(₹${unitRoomNightRate.toLocaleString("en-IN")} / Room / Night × ${rCount} Rooms × ${nVal} Nights)`;
+                                          breakdownDetailLabel = `([₹ ${unitRoomNightRate.toLocaleString("en-IN")} / Room / Night] × ${rCount} Rooms × ${nVal} Nights)`;
                                         } else if (nVal > 1) {
                                           nightlyRateLabel = `₹${unitNightRate.toLocaleString("en-IN")} / Night`;
-                                          breakdownDetailLabel = `(₹${unitRoomNightRate.toLocaleString("en-IN")} / Room / Night × ${rCount} Room${rCount > 1 ? "s" : ""} × ${nVal} Nights)`;
+                                          breakdownDetailLabel = `([₹ ${unitRoomNightRate.toLocaleString("en-IN")} / Room / Night] × ${rCount} Room${rCount > 1 ? "s" : ""} × ${nVal} Nights)`;
                                         } else if (rCount > 1) {
                                           nightlyRateLabel = `₹${unitRoomNightRate.toLocaleString("en-IN")} / Room / Night`;
-                                          breakdownDetailLabel = `(₹${unitRoomNightRate.toLocaleString("en-IN")} / Room / Night × ${rCount} Rooms × 1 Night)`;
+                                          breakdownDetailLabel = `([₹ ${unitRoomNightRate.toLocaleString("en-IN")} / Room / Night] × ${rCount} Rooms × 1 Night)`;
                                         } else {
                                           nightlyRateLabel = `₹${unitNightRate.toLocaleString("en-IN")} / Night`;
-                                          breakdownDetailLabel = `(₹${unitRoomNightRate.toLocaleString("en-IN")} / Room / Night × 1 Room × 1 Night)`;
+                                          breakdownDetailLabel = `([₹ ${unitRoomNightRate.toLocaleString("en-IN")} / Room / Night] × 1 Room × 1 Night)`;
                                         }
                                       }
 
@@ -2951,7 +2957,21 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                             <span className="font-bold text-slate-900 text-sm">
                               {Math.round(
                                 hotelServices.length > 0
-                                  ? hotelServices.reduce((acc, s) => acc + (Number(s.price) || 0), 0)
+                                  ? hotelServices.reduce((acc, s) => {
+                                      const nVal = Number(s.nights || query?.numberOfNights || 1);
+                                      const rCount = Number(s.rooms || 1);
+                                      const directRoomNightRate = Number(s.roomPrice || s.unitPrice || s.ratePerNight || s.roomRate || s.pricePerNight || s.nightlyRate || 0);
+                                      const explicitTotalPrice = Number(s.total || s.totalInInr || s.totalPrice || (s.isTotalPrice || s.isTotal ? s.price : 0));
+                                      let calcItemPrice = 0;
+                                      if (directRoomNightRate > 0) {
+                                        calcItemPrice = explicitTotalPrice > 0 ? explicitTotalPrice : (directRoomNightRate * rCount * nVal);
+                                      } else if (explicitTotalPrice > 0) {
+                                        calcItemPrice = explicitTotalPrice;
+                                      } else {
+                                        calcItemPrice = Number(s.price || s.rate || 0) * rCount * nVal;
+                                      }
+                                      return acc + calcItemPrice;
+                                    }, 0)
                                   : 14500
                               ).toLocaleString("en-IN")}
                             </span>

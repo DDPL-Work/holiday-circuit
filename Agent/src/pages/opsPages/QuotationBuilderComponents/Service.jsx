@@ -58,6 +58,7 @@ const Service = ({
   tripStartDate,
   tripEndDate,
   totalPassengers = 0,
+  adultPassengers = 0,
 }) => {
   const isBlackoutService = Boolean(service?.blackout?.isBlackout);
   const blackoutLabel =
@@ -351,7 +352,6 @@ const Service = ({
         }`}
     >
       {/* ── TOP ACCENT ── */}
-      {service.checked && <div className="h-[2px] bg-[#3E63DD]" />}
 
       {/* ════════════════════════════════════════════
           SECTION 1 — HEADER  (identity + status)
@@ -450,7 +450,7 @@ const Service = ({
                           onClick={(e) => e.stopPropagation()}
                           className="appearance-none bg-white hover:bg-gray-50 border border-gray-300 text-slate-900 font-semibold text-xs rounded-lg pl-2 pr-6 py-0.5 outline-none cursor-pointer transition-all focus:border-[#3E63DD] shadow-2xs"
                         >
-                          {service.hotels.map((h, hIdx) => (
+                          {(service.hotels || []).map((h, hIdx) => (
                             <option
                               key={h._id || hIdx}
                               value={h.hotelName}
@@ -1694,6 +1694,36 @@ const Service = ({
                     {service.extraBedType}
                   </span>
                 )}
+                {/* Smart Hotel Room Capacity Suggestion Banner */}
+                {(() => {
+                  const effectiveAdults = Number(adultPassengers !== undefined ? adultPassengers : totalPassengers);
+                  const hasExtraBed = service.extraAdult || (service.extraBedType && service.extraBedType !== "None");
+                  if (effectiveAdults > 0 && effectiveAdults > Math.max(1, Number(service.rooms || 1)) * (Number(hotelOccupancy.maxAdults || 2) + (hasExtraBed ? 1 : 0))) {
+                    const needed = Math.max(1, Math.ceil(effectiveAdults / Number(hotelOccupancy.maxAdults || 2)));
+                    return (
+                      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-300 bg-amber-50 p-2.5 text-[11px] text-amber-900 shadow-2xs">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm">💡</span>
+                          <span>
+                            For <b>{effectiveAdults} Adult{effectiveAdults > 1 ? "s" : ""}</b>, at least{" "}
+                            <b>{needed} Room{needed > 1 ? "s are" : " is"}</b> recommended based on{" "}
+                            {service.roomCategory || service.roomType || "room"} capacity ({hotelOccupancy.maxAdults || 2} Adult{Number(hotelOccupancy.maxAdults || 2) > 1 ? "s" : ""}/room).
+                            Currently <b>{Number(service.rooms || 1)} Room{Number(service.rooms || 1) > 1 ? "s" : ""}</b> selected.
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => updateField(service.id, "rooms", needed)}
+                          className="cursor-pointer rounded-lg border border-amber-400 bg-amber-100 px-2.5 py-1 text-[10px] font-bold text-amber-900 transition hover:bg-amber-200 shadow-2xs"
+                        >
+                          Auto-Set {needed} Rooms
+                        </button>
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
+
                 <span className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-[10px] text-slate-700 shadow-2xs">
                   <BsPeople className="text-purple-600" />
                   <span className="text-slate-500">Max:</span>{" "}
@@ -1702,68 +1732,6 @@ const Service = ({
                   {hotelOccupancy.maxChildren === 1 ? "" : "ren"}
                 </span>
               </div>
-
-              {/* Smart Hotel Room Capacity Suggestion Banner */}
-              {totalPassengers > 0 &&
-                totalPassengers >
-                  Math.max(1, Number(service.rooms || 1)) *
-                    (Number(hotelOccupancy.maxAdults || 2) +
-                      (service.extraAdult ? 1 : 0)) && (
-                  <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-300 bg-amber-50 p-2.5 text-[11px] text-amber-900 shadow-2xs">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm">💡</span>
-                      <span>
-                        For <b>{totalPassengers} Passengers</b>, at least{" "}
-                        <b>
-                          {Math.max(
-                            1,
-                            Math.ceil(
-                              totalPassengers /
-                                Number(hotelOccupancy.maxAdults || 2),
-                            ),
-                          )}{" "}
-                          Rooms
-                        </b>{" "}
-                        are recommended based on{" "}
-                        {service.roomCategory || service.roomType || "room"}{" "}
-                        capacity ({hotelOccupancy.maxAdults || 2} Pax/room).
-                        Currently{" "}
-                        <b>
-                          {Number(service.rooms || 1)} Room
-                          {Number(service.rooms || 1) > 1 ? "s" : ""}
-                        </b>{" "}
-                        selected.
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        updateField(
-                          service.id,
-                          "rooms",
-                          Math.max(
-                            1,
-                            Math.ceil(
-                              totalPassengers /
-                                Number(hotelOccupancy.maxAdults || 2),
-                            ),
-                          ),
-                        )
-                      }
-                      className="cursor-pointer rounded-lg border border-amber-400 bg-amber-100 px-2.5 py-1 text-[10px] font-bold text-amber-900 transition hover:bg-amber-200 shadow-2xs"
-                    >
-                      Auto-Set{" "}
-                      {Math.max(
-                            1,
-                            Math.ceil(
-                              totalPassengers /
-                                Number(hotelOccupancy.maxAdults || 2),
-                            ),
-                      )}{" "}
-                      Rooms
-                    </button>
-                  </div>
-                )}
 
               {isEditMode && (
                 <div className="grid grid-cols-1 gap-3 rounded-xl border border-gray-200 bg-white px-3 py-3 md:grid-cols-2 lg:grid-cols-5 shadow-2xs">
@@ -1779,7 +1747,7 @@ const Service = ({
                       className={`${selectCls} w-full`}
                     >
                       <option value="">Select room category</option>
-                      {hotelVariantOptions.roomTypes.map((option) => (
+                      {(hotelVariantOptions?.roomTypes || (Array.isArray(hotelVariantOptions) ? hotelVariantOptions : [])).map((option) => (
                         <option key={option.value} value={option.value}>
                           {option.label}
                         </option>
@@ -1799,7 +1767,7 @@ const Service = ({
                       className={`${selectCls} w-full`}
                     >
                       <option value="">Select room type</option>
-                      {hotelVariantOptions.roomCategories.map((option) => (
+                      {(hotelVariantOptions?.roomCategories || ["Single", "Double", "Triple", "Quad"]).map((option) => (
                         <option key={option} value={option}>
                           {formatRoomOccupancyLabel(option)}
                         </option>
@@ -1842,7 +1810,14 @@ const Service = ({
                       className={`${selectCls} w-full`}
                     >
                       <option value="">Select bed type</option>
-                      {hotelVariantOptions.bedTypes.map((option) => (
+                      {(
+                        hotelVariantOptions?.bedTypes || [
+                          { value: "King", label: "King" },
+                          { value: "Queen", label: "Queen" },
+                          { value: "Twin", label: "Twin" },
+                          { value: "Single", label: "Single" },
+                        ]
+                      ).map((option) => (
                         <option key={option.value} value={option.value}>
                           {option.label}
                         </option>
@@ -1862,11 +1837,9 @@ const Service = ({
                       className={`${selectCls} w-full`}
                     >
                       {(
-                        hotelVariantOptions.extraBedTypes || [
+                        hotelVariantOptions?.extraBedTypes || [
                           { value: "None", label: "None" },
-                          { value: "Rollaway Bed", label: "Rollaway Bed" },
-                          { value: "Sofa Bed", label: "Sofa Bed" },
-                          { value: "Mattress", label: "Mattress" },
+                          { value: "Single Bed", label: "Single Bed" },
                         ]
                       ).map((option) => (
                         <option key={option.value} value={option.value}>

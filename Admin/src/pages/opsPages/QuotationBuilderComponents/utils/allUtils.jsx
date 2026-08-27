@@ -1,4 +1,4 @@
-﻿const pageShellVariants = {
+const pageShellVariants = {
   hidden: { opacity: 0 },
   visible: {
     opacity: 1,
@@ -109,7 +109,7 @@ const DEFAULT_EXCHANGE_RATES = Object.freeze({
 });
 
 const CURRENCY_LABELS = Object.freeze({
-  INR: "â‚¹",
+  INR: "\u20B9",
   USD: "$",
   EUR: "EUR",
   GBP: "GBP",
@@ -1974,9 +1974,12 @@ const resolveActivitySmartRate = (
     selectedTour.childPrice !== undefined
       ? Number(selectedTour.childPrice)
       : Number(service.childPrice || 0);
-  const seasons = Array.isArray(selectedTour.seasons)
-    ? selectedTour.seasons
-    : [];
+  const seasons =
+    Array.isArray(selectedTour.seasons) && selectedTour.seasons.length > 0
+      ? selectedTour.seasons
+      : Array.isArray(service.seasons)
+        ? service.seasons
+        : [];
   const blackoutDates = Array.isArray(service.blackoutDates)
     ? service.blackoutDates
     : [];

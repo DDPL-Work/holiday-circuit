@@ -2562,57 +2562,41 @@ const QuotationBuilder = () => {
     loadServices();
   }, [loadServices]);
 
-  useEffect(() => {
-    const canOverrideBlackoutRate = (() => {
-      try {
-        const values = [];
-        for (let index = 0; index < window.localStorage.length; index += 1) {
-          const key = window.localStorage.key(index);
-          if (key) values.push(window.localStorage.getItem(key));
-        }
-        const pageRoleText = String(
-          document?.body?.innerText || "",
-        ).toLowerCase();
+  const checkCanOverrideBlackoutRate = useCallback(() => {
+    try {
+      const values = [];
+      for (let index = 0; index < window.localStorage.length; index += 1) {
+        const key = window.localStorage.key(index);
+        if (key) values.push(window.localStorage.getItem(key));
+      }
+      const pageRoleText = String(
+        document?.body?.innerText || "",
+      ).toLowerCase();
+      if (
+        pageRoleText.includes("ops manager") ||
+        pageRoleText.includes("operation manager")
+      ) {
+        return true;
+      }
+      for (const value of values) {
+        const parsed = JSON.parse(value || "null");
+        const roleText = JSON.stringify(parsed || {}).toLowerCase();
         if (
-          pageRoleText.includes("ops manager") ||
-          pageRoleText.includes("operation manager")
+          roleText.includes("operation_manager") ||
+          roleText.includes("operations_manager") ||
+          roleText.includes("ops_manager") ||
+          roleText.includes("ops manager") ||
+          roleText.includes("operation manager") ||
+          roleText.includes('"role":"admin"')
         ) {
           return true;
         }
-        for (const value of values) {
-          const parsed = JSON.parse(value || "null");
-          const roleText = JSON.stringify(parsed || {}).toLowerCase();
-          if (
-            roleText.includes("operation_manager") ||
-            roleText.includes("operations_manager") ||
-            roleText.includes("ops_manager") ||
-            roleText.includes("ops manager") ||
-            roleText.includes("operation manager") ||
-            roleText.includes('"role":"admin"')
-          ) {
-            return true;
-          }
-        }
-      } catch {
-        return false;
       }
+    } catch {
       return false;
-    })();
-    if (canOverrideBlackoutRate) return;
-
-    const hasCheckedBlackoutService = services.some(
-      (service) => service.blackout?.isBlackout && service.checked,
-    );
-    if (!hasCheckedBlackoutService) return;
-
-    setServices((prev) =>
-      prev.map((service) =>
-        service.blackout?.isBlackout && service.checked
-          ? { ...service, checked: false, nights: "", useStoredPricing: false }
-          : service,
-      ),
-    );
-  }, [services]);
+    }
+    return false;
+  }, []);
 
   useEffect(() => {
     const refreshContractedRates = async ({ force = false } = {}) => {
@@ -3808,6 +3792,8 @@ const QuotationBuilder = () => {
       )
       .reduce((sum, service) => sum + Number(service.nights || 0), 0);
 
+    if (!tripNights || tripNights <= 0) return 999;
+
     return Math.max(0, tripNights - usedByOtherHotels);
   };
 
@@ -3871,6 +3857,16 @@ const QuotationBuilder = () => {
       targetService?.passengerCapacity || 0,
     );
 
+    if (nextChecked && targetService?.blackout?.isBlackout && !force) {
+      if (!checkCanOverrideBlackoutRate()) {
+        toast.error(
+          `Blackout Date: "${targetService?.title || "Selected service"}" is blocked due to blackout dates (${targetService?.blackout?.label || "Blackout"}).`,
+          { id: `blackout-limit-${id}` },
+        );
+        return;
+      }
+    }
+
     if (
       !force &&
       nextChecked &&
@@ -3898,26 +3894,33 @@ const QuotationBuilder = () => {
     if (
       normalizedTargetType === "hotel" &&
       nextChecked &&
-      totalPassengers > 0
+      adultPassengers > 0
     ) {
+      const roomsList = Array.isArray(targetService?.hotels?.[0]?.rooms) ? targetService.hotels[0].rooms : [];
+      const matchedRoom =
+        roomsList.find((r) => r.roomType === targetService?.roomType) ||
+        roomsList.find((r) => r.roomCategory === targetService?.roomCategory) ||
+        roomsList[0] ||
+        {};
       const occupancy = getInferredHotelMaxOccupancy(
-        targetService?.hotels?.[0]?.rooms?.[0] || {},
+        matchedRoom,
         targetService || {},
       );
       const maxAdultsPerRoom = Number(
         occupancy.maxAdults || targetService?.maxAdults || 2,
       );
       const currentRooms = Math.max(1, Number(targetService?.rooms || 1));
+      const hasExtraBed = targetService?.extraAdult || (targetService?.extraBedType && targetService?.extraBedType !== "None");
       const totalCap =
-        currentRooms * (maxAdultsPerRoom + (targetService?.extraAdult ? 1 : 0));
+        currentRooms * (maxAdultsPerRoom + (hasExtraBed ? 1 : 0));
       const neededRooms = Math.max(
         1,
-        Math.ceil(totalPassengers / maxAdultsPerRoom),
+        Math.ceil(adultPassengers / maxAdultsPerRoom),
       );
 
-      if (totalPassengers > totalCap) {
+      if (adultPassengers > totalCap) {
         toast(
-          `Room Suggestion: For ${totalPassengers} passengers, ${neededRooms} rooms are recommended based on ${targetService?.roomCategory || targetService?.roomType || "room"} capacity (${maxAdultsPerRoom} Pax/room). Currently ${currentRooms} room selected.`,
+          `Room Suggestion: For ${adultPassengers} adult(s), ${neededRooms} room(s) recommended based on ${targetService?.roomCategory || targetService?.roomType || "room"} capacity (${maxAdultsPerRoom} Adult(s)/room). Currently ${currentRooms} room selected.`,
           {
             id: `hotel-pax-suggest-${id}`,
             duration: 5500,
@@ -4138,25 +4141,32 @@ const QuotationBuilder = () => {
             field,
             value,
           );
-          if (totalPassengers > 0) {
+          if (adultPassengers > 0) {
+            const roomsList = Array.isArray(resolved.hotels?.[0]?.rooms) ? resolved.hotels[0].rooms : [];
+            const matchedRoom =
+              roomsList.find((r) => r.roomType === resolved.roomType) ||
+              roomsList.find((r) => r.roomCategory === resolved.roomCategory) ||
+              roomsList[0] ||
+              {};
             const occupancy = getInferredHotelMaxOccupancy(
-              resolved.hotels?.[0]?.rooms?.[0] || {},
+              matchedRoom,
               resolved,
             );
             const maxAdultsPerRoom = Number(
               occupancy.maxAdults || resolved.maxAdults || 2,
             );
             const currentRooms = Math.max(1, Number(resolved.rooms || 1));
+            const hasExtraBed = resolved.extraAdult || (resolved.extraBedType && resolved.extraBedType !== "None");
             const totalCap =
-              currentRooms * (maxAdultsPerRoom + (resolved.extraAdult ? 1 : 0));
+              currentRooms * (maxAdultsPerRoom + (hasExtraBed ? 1 : 0));
             const neededRooms = Math.max(
               1,
-              Math.ceil(totalPassengers / maxAdultsPerRoom),
+              Math.ceil(adultPassengers / maxAdultsPerRoom),
             );
 
-            if (totalPassengers > totalCap) {
+            if (adultPassengers > totalCap) {
               toast(
-                `Room Suggestion: For ${totalPassengers} passengers, ${neededRooms} rooms are recommended based on ${resolved.roomCategory || resolved.roomType || "room"} capacity (${maxAdultsPerRoom} Pax/room). Currently ${currentRooms} room selected.`,
+                `Room Suggestion: For ${adultPassengers} adult(s), ${neededRooms} room(s) recommended based on ${resolved.roomCategory || resolved.roomType || "room"} capacity (${maxAdultsPerRoom} Adult(s)/room). Currently ${currentRooms} room selected.`,
                 {
                   id: `hotel-pax-suggest-${id}`,
                   duration: 5000,
@@ -5209,7 +5219,7 @@ const QuotationBuilder = () => {
               exit={{ opacity: 0, y: 18, scale: 0.98 }}
               transition={{ duration: 0.24, ease: "easeOut" }}
               className={`flex
-            w-full flex-col overflow-hidden rounded-[28px] border border-gray-200 bg-white
+            w-full flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white
             shadow-2xl ${
               selectedServicesModalScope === "single"
                 ? "max-h-[90vh] max-w-3xl"
@@ -5533,7 +5543,7 @@ const QuotationBuilder = () => {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 18, scale: 0.98 }}
               transition={{ duration: 0.24, ease: "easeOut" }}
-              className="flex h-[min(90vh,960px)] w-full max-w-5xl flex-col overflow-hidden rounded-[28px] border border-gray-200 bg-white shadow-2xl"
+              className="flex h-[min(90vh,960px)] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl"
               onClick={(event) => event.stopPropagation()}
               role="dialog"
               aria-modal="true"
@@ -5621,7 +5631,7 @@ const QuotationBuilder = () => {
               modal workspace.
             </p>
           </div>
-          <div className="flex min-w-[88px] items-center justify-center gap-1 rounded-[28px] border border-blue-200 bg-blue-50 px-2 py-1.5 text-center text-blue-700 shadow-2xs">
+          <div className="flex min-w-[88px] items-center justify-center gap-1 rounded-xl border border-blue-200 bg-blue-50 px-2 py-1.5 text-center text-blue-700 shadow-2xs">
             <span className="text-[11px] font-bold leading-none">
               {selectedServices.length}
             </span>
@@ -5720,7 +5730,7 @@ const QuotationBuilder = () => {
           variants={sectionRevealVariants}
           className="mx-auto flex min-h-[70vh] max-w-2xl items-center justify-center"
         >
-          <div className="w-full rounded-3xl border border-gray-200 bg-white p-8 text-center shadow-xl">
+          <div className="w-full rounded-2xl border border-gray-200 bg-white p-8 text-center shadow-xl">
             <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-amber-600">
               Quotation Builder
             </p>
@@ -6147,7 +6157,7 @@ const QuotationBuilder = () => {
       {/* ======================== POPUP Ops Charges ======================== */}
       {showOpsPopup && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-3 backdrop-blur-xs sm:p-4">
-          <div className="relative my-auto flex h-[calc(100vh-16px)] w-full max-w-6xl flex-col overflow-hidden rounded-[30px] border border-gray-200 bg-white shadow-2xl animate-slideDown sm:h-[calc(100vh-24px)] text-slate-900">
+          <div className="relative my-auto flex h-[calc(100vh-16px)] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl animate-slideDown sm:h-[calc(100vh-24px)] text-slate-900">
             {/* ===== HEADER (title + close only) ===== */}
             <div className="relative border-b border-gray-200 bg-slate-50 px-5 py-4 sm:px-6">
               <div className="relative flex items-start justify-between gap-4">
@@ -6510,7 +6520,7 @@ const QuotationBuilder = () => {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 18, scale: 0.96 }}
               transition={{ duration: 0.24, ease: "easeOut" }}
-              className="w-full max-w-sm rounded-[28px] border border-gray-200 bg-white p-6 shadow-2xl text-slate-900"
+              className="w-full max-w-sm rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl text-slate-900"
             >
               <div className="flex items-start justify-between gap-4">
                 <div>
@@ -6662,7 +6672,7 @@ const QuotationBuilder = () => {
       {/*======================== ✅ POPUP Success final Charges =============================================*/}
       {showFinanceInvoiceConfirm && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/60 px-4 backdrop-blur-xs">
-          <div className="w-full max-w-sm rounded-[28px] border border-gray-200 bg-white p-6 shadow-2xl text-slate-900">
+          <div className="w-full max-w-sm rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl text-slate-900">>
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-amber-700">
@@ -6708,7 +6718,7 @@ const QuotationBuilder = () => {
 
       {successPopup.open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs">
-          <div className="bg-white border border-gray-200 rounded-3xl p-6 w-100 text-center shadow-2xl animate-scaleIn text-slate-900">
+          <div className="bg-white border border-gray-200 rounded-2xl p-6 w-100 text-center shadow-2xl animate-scaleIn text-slate-900">
             {/* ICON */}
             <div className="flex justify-center mb-4">
               <div className="w-16 h-16 rounded-full bg-amber-500 flex items-center justify-center text-white text-3xl font-bold shadow-xs">

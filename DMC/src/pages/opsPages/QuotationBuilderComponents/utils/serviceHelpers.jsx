@@ -817,13 +817,170 @@ export const serviceCardVariants = {
   hidden: { opacity: 0, y: 10 },
   visible: { opacity: 1, y: 0 }
 };
+export const ROOM_CATEGORY_PRESETS = [
+  {
+    name: "Standard Room",
+    occupancy: "Double",
+    bedType: "Queen",
+    extraBedType: "None",
+    mealPlan: "EP",
+    rate: 13600,
+  },
+  {
+    name: "Deluxe Room",
+    occupancy: "Double",
+    bedType: "Queen",
+    extraBedType: "None",
+    mealPlan: "CP",
+    rate: 16700,
+  },
+  {
+    name: "Premium Room",
+    occupancy: "Double",
+    bedType: "King",
+    extraBedType: "None",
+    mealPlan: "CP",
+    rate: 19900,
+  },
+  {
+    name: "Family Room",
+    occupancy: "Triple",
+    bedType: "Twin",
+    extraBedType: "Single Bed",
+    mealPlan: "MAP",
+    rate: 21900,
+  },
+  {
+    name: "Luxury Room",
+    occupancy: "Triple",
+    bedType: "King",
+    extraBedType: "Single Bed",
+    mealPlan: "MAP",
+    rate: 26100,
+  },
+  {
+    name: "Suite",
+    occupancy: "Triple",
+    bedType: "King",
+    extraBedType: "Single Bed",
+    mealPlan: "AP",
+    rate: 31400,
+  },
+];
 
 export const getHotelVariantOptions = (services = [], service = {}) => {
   const variants = getHotelVariantServices(services, service);
-  return variants.map(v => ({
-    label: String(v.roomType || v.title || "").trim() || "Standard",
-    value: v.id || v._id
-  }));
+  const baseRate = Number(service?.rate || service?.price || service?.baseRate || 13600);
+
+  const combinedMap = new Map();
+
+  // 1. Extract embedded rooms from dmc_hotel collection data (service.hotels / service.rooms / variants)
+  const embeddedRooms = [];
+  if (Array.isArray(service?.rooms)) {
+    embeddedRooms.push(...service.rooms);
+  }
+  if (Array.isArray(service?.hotels)) {
+    service.hotels.forEach((h) => {
+      if (Array.isArray(h?.rooms)) {
+        embeddedRooms.push(...h.rooms);
+      }
+    });
+  }
+  variants.forEach((v) => {
+    if (Array.isArray(v?.rooms)) {
+      embeddedRooms.push(...v.rooms);
+    }
+    if (Array.isArray(v?.hotels)) {
+      v.hotels.forEach((h) => {
+        if (Array.isArray(h?.rooms)) {
+          embeddedRooms.push(...h.rooms);
+        }
+      });
+    }
+  });
+
+  // Process embedded rooms from dmc_hotel collection
+  embeddedRooms.forEach((r) => {
+    const title = String(r.roomType || r.title || r.name || "").trim();
+    if (title && title.toLowerCase() !== "standard") {
+      const rPrice = Number(r.price || r.basePrice || r.rate || baseRate);
+      combinedMap.set(title.toLowerCase(), {
+        label: title,
+        value: title,
+        rate: rPrice > 0 ? rPrice : baseRate,
+        occupancy: r.roomCategory || r.occupancy || "Double",
+        bedType: r.bedType || "Queen",
+        extraBedType: r.extraBedType || "None",
+        mealPlan: r.mealPlan || "EP",
+      });
+    }
+  });
+
+  // 2. Process DB variants if any exist as separate service objects
+  variants.forEach((v) => {
+    const title = String(v.roomType || v.title || "").trim();
+    if (title && title.toLowerCase() !== "standard") {
+      const vRate = Number(v.rate || v.price || baseRate);
+      if (!combinedMap.has(title.toLowerCase())) {
+        combinedMap.set(title.toLowerCase(), {
+          label: title,
+          value: title,
+          rate: vRate > 0 ? vRate : baseRate,
+          occupancy: v.roomCategory || v.occupancy || (vRate > baseRate * 1.4 ? "Triple" : "Double"),
+          bedType: v.bedType || "Queen",
+          extraBedType: v.extraBedType || "None",
+          variantId: v.id || v._id,
+        });
+      }
+    }
+  });
+
+  // 3. Add standard presets from DMC sheet for any missing categories
+  ROOM_CATEGORY_PRESETS.forEach((preset) => {
+    const key = preset.name.toLowerCase();
+    if (!combinedMap.has(key)) {
+      combinedMap.set(key, {
+        label: preset.name,
+        value: preset.name,
+        rate: preset.rate || baseRate,
+        occupancy: preset.occupancy,
+        bedType: preset.bedType,
+        extraBedType: preset.extraBedType,
+        mealPlan: preset.mealPlan,
+      });
+    }
+  });
+
+  // 4. Current custom roomType if any (ignoring plain "Standard")
+  if (service?.roomType) {
+    const rt = String(service.roomType).trim();
+    if (rt && rt.toLowerCase() !== "standard" && !combinedMap.has(rt.toLowerCase())) {
+      combinedMap.set(rt.toLowerCase(), {
+        label: rt,
+        value: rt,
+        rate: baseRate,
+        occupancy: service.roomCategory || "Double",
+        bedType: service.bedType || "Queen",
+        extraBedType: service.extraBedType || "None",
+      });
+    }
+  }
+
+  const roomTypesList = Array.from(combinedMap.values());
+  const list = roomTypesList;
+  list.roomTypes = roomTypesList;
+  list.roomCategories = ["Single", "Double", "Triple", "Quad"];
+  list.bedTypes = [
+    { value: "King", label: "King" },
+    { value: "Queen", label: "Queen" },
+    { value: "Twin", label: "Twin" },
+    { value: "Single", label: "Single" },
+  ];
+  list.extraBedTypes = [
+    { value: "None", label: "None" },
+    { value: "Single Bed", label: "Single Bed" },
+  ];
+  return list;
 };
 
 export const getTransportVehicleOptions = (services = [], service = {}) => {
@@ -839,8 +996,18 @@ export const getTransportVehicleOptions = (services = [], service = {}) => {
   }));
 };
 
-export const getHotelBaseRateDisplayValue = (rate) => {
-  return rate ? Number(rate).toLocaleString('en-IN') : "0";
+export const getHotelBaseRateDisplayValue = (serviceOrRate) => {
+  if (typeof serviceOrRate === "object" && serviceOrRate !== null) {
+    const val =
+      serviceOrRate.rate ??
+      serviceOrRate.price ??
+      serviceOrRate.baseRate ??
+      0;
+    const num = Number(val);
+    return !isNaN(num) ? num : 0;
+  }
+  const num = Number(serviceOrRate);
+  return !isNaN(num) ? num : 0;
 };
 
 export const formatRoomOccupancyLabel = (type) => {

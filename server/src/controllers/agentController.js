@@ -2272,6 +2272,8 @@ export const sendAgentVoucherEmail = async (req, res, next) => {
           termsAndConditions: (Array.isArray(quotation?.termsAndConditions) && quotation.termsAndConditions.length > 0)
             ? quotation.termsAndConditions
             : defaultPackageTerms,
+          includeSellerBankDetails: false,
+          isClientQuotation: true,
           sellerBankDetails: [
             { label: "Bank Name", value: "HDFC Bank" },
             { label: "A/c Holder Name", value: companyName || "Holiday Circuit" },

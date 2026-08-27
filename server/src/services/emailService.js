@@ -309,13 +309,22 @@ const QUOTATION_BRAND = Object.freeze({
 });
 
 export const buildAgentClientQuotationTemplate = (quoteDetails = {}) => {
-  const isOps = Boolean(
+  const isClientQuote = Boolean(
+    quoteDetails.isClientQuotation ||
+    quoteDetails.includeSellerBankDetails === false
+  );
+  const isOps = !isClientQuote && Boolean(
     quoteDetails.isOpsQuotation ||
     quoteDetails.fromOpsSide ||
     quoteDetails.agentBrandingName === QUOTATION_BRAND.name ||
     quoteDetails.agentBrandingName === "Holiday Circuit" ||
     quoteDetails.agencyName === "Holiday Circuit"
   );
+  const showBankDetails = !isClientQuote && Boolean(
+    quoteDetails.includeSellerBankDetails ||
+    isOps
+  );
+  const showPriceBreakup = Boolean(quoteDetails.showPriceBreakup);
   const brandName = isOps 
     ? QUOTATION_BRAND.name 
     : (quoteDetails.agentBrandingName || quoteDetails.agencyName || QUOTATION_BRAND.name);
@@ -605,7 +614,7 @@ export const buildAgentClientQuotationTemplate = (quoteDetails = {}) => {
         ${opDays ? `<span style="background-color: #f1f5f9; border: 1px solid #cbd5e1; color: #475569; font-weight: 500; padding: 2px 6px; border-radius: 4px; display: inline-block;">📅 ${opDays}</span>` : ""}
         ${timingsDisplay ? `<span style="background-color: #f1f5f9; border: 1px solid #cbd5e1; color: #475569; font-weight: 500; padding: 2px 6px; border-radius: 4px; display: inline-block;">⌛ ${timingsDisplay}</span>` : ""}
       </div>
-      ${(adultPriceNum > 0 || childPriceNum > 0) ? `
+      ${(showPriceBreakup && (adultPriceNum > 0 || childPriceNum > 0)) ? `
         <div style="margin-top: 4px; font-size: 11px; color: #047857; font-weight: 600;">
           ${adultPriceNum > 0 ? `Adult: ₹${adultPriceNum.toLocaleString("en-IN")}` : ""}${childPriceNum > 0 ? ` | Child: ₹${childPriceNum.toLocaleString("en-IN")}` : ""}
         </div>
@@ -884,6 +893,7 @@ export const buildAgentClientQuotationTemplate = (quoteDetails = {}) => {
       </table>
 
       <!-- 3.1 BANK DETAILS FOR PAYMENT -->
+      ${showBankDetails ? `
       <table width="100%" cellspacing="0" cellpadding="0" style="border-collapse: collapse; margin-bottom: 20px; border: 1px solid #d1d5db;">
         <thead>
           <tr>
@@ -915,6 +925,7 @@ export const buildAgentClientQuotationTemplate = (quoteDetails = {}) => {
           </tr>
         </tbody>
       </table>
+      ` : ""}
 
       <!-- 4. INCLUSIONS & EXCLUSIONS -->
       <table width="100%" cellspacing="0" cellpadding="0" style="border-collapse: collapse; margin-bottom: 20px; border: 1px solid #d1d5db;">
