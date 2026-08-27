@@ -1,6 +1,6 @@
 import React from 'react';
 import { Mail, Download, CheckCircle, AlertTriangle } from 'lucide-react';
-import API from '../../utils/Api';
+import API from '../../../utils/Api';
 
 export const rejectionReasons = [
   'Rate Mismatch with System',
