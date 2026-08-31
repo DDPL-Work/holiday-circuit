@@ -51,6 +51,10 @@ import {
   Navigation,
   Luggage,
   Briefcase,
+  Clock,
+  Timer,
+  Hourglass,
+  Compass,
 } from "lucide-react";
 import React, { useEffect, useState, useMemo, useRef, Fragment } from "react";
 import { useNavigate } from "react-router-dom";
@@ -104,6 +108,8 @@ import {
   TRANSPORT_USAGE_LIMIT_LABELS,
   fetchQuotationsByQuery,
   getSavedAgentBranding,
+  calculateAgentMarkupPreview,
+  validateAgentMarkupInput,
 } from "./queryDetails/utils/queryDetailsHelpers";
 
 import { ActionPillButton } from "./queryDetails/components/Cards/ActionPillButton";
@@ -116,6 +122,33 @@ import { QueryHeaderCard } from "./queryDetails/components/Header/QueryHeaderCar
 import { QueryTabNavigation } from "./queryDetails/components/Navigation/QueryTabNavigation";
 import { RevisionModal } from "./queryDetails/components/Modals/RevisionModal";
 import { SendSuccessModal } from "./queryDetails/components/Modals/SendSuccessModal";
+
+function renderItemDescription(description) {
+  if (!description) return null;
+  const text = String(description).trim();
+  if (!text) return null;
+  const parts = text.split(/\s*\|\s*/).filter(Boolean);
+  if (parts.length <= 3) {
+    return <p className="text-xs text-slate-500 font-normal mt-1 leading-relaxed">{text}</p>;
+  }
+  let breakIdx = 4;
+  for (let i = 0; i < parts.length; i++) {
+    const p = parts[i].toLowerCase();
+    if (p.includes("hours") || p.includes("full day") || p.includes("half day")) {
+      breakIdx = i + 1;
+      break;
+    }
+  }
+  if (breakIdx >= parts.length) breakIdx = Math.ceil(parts.length / 2);
+  const descLine1 = parts.slice(0, breakIdx).join(" | ") + " |";
+  const descLine2 = parts.slice(breakIdx).join(" | ");
+  return (
+    <div className="text-xs text-slate-500 font-normal mt-1 leading-relaxed space-y-0.5">
+      <p>{descLine1}</p>
+      <p>{descLine2}</p>
+    </div>
+  );
+}
 
 const QueryDetails = ({ query, onClose, onRefresh }) => {
   const dispatch = useDispatch();
@@ -3138,24 +3171,24 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                                                 </div>
                                               );
                                             })()}
-                                            <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
-                                              {item.pickupTime && (
-                                                <span className="inline-flex items-center gap-1 rounded bg-amber-50 px-2 py-0.5 font-semibold text-amber-800 border border-amber-200">
-                                                  ⏰ Pickup Time: {item.pickupTime}
-                                                </span>
-                                              )}
-                                              {item.passengerCap && (
-                                                <span className="inline-flex items-center gap-1 rounded bg-slate-100 px-2 py-0.5 font-medium text-slate-700 border border-slate-200">
-                                                  👥 Max Pax: {item.passengerCap} Passengers
-                                                </span>
-                                              )}
-                                              {item.luggageCap && (
-                                                <span className="inline-flex items-center gap-1 rounded bg-slate-100 px-2 py-0.5 font-medium text-slate-700 border border-slate-200">
-                                                  🧳 Luggage: {item.luggageCap} Bags
-                                                </span>
-                                              )}
-                                            </div>
-                                          </div>
+                                        <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
+                                          {item.pickupTime && (
+                                            <span className="inline-flex items-center gap-1.5 rounded bg-amber-50 px-2.5 py-0.5 font-semibold text-amber-800 border border-amber-200">
+                                              <Clock size={12} className="text-amber-700 shrink-0" /> Pickup Time: {item.pickupTime}
+                                            </span>
+                                          )}
+                                          {item.passengerCap && (
+                                            <span className="inline-flex items-center gap-1.5 rounded bg-slate-100 px-2.5 py-0.5 font-medium text-slate-700 border border-slate-200">
+                                              <Users size={12} className="text-slate-600 shrink-0" /> Max Pax: {item.passengerCap} Passengers
+                                            </span>
+                                          )}
+                                          {item.luggageCap && (
+                                            <span className="inline-flex items-center gap-1.5 rounded bg-slate-100 px-2.5 py-0.5 font-medium text-slate-700 border border-slate-200">
+                                              <Luggage size={12} className="text-slate-600 shrink-0" /> Luggage: {item.luggageCap} Bags
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
 
                                           {/* Middle: QTY Column (Center Aligned, Fixed Width) */}
                                           <div className="text-left sm:text-center shrink-0 w-44 sm:w-56">
@@ -3401,28 +3434,28 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                                             {/* Rich Info Badges for Activities */}
                                             <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
                                               {item.tourType && (
-                                                <span className="inline-flex items-center gap-1 rounded bg-blue-50 px-2 py-0.5 font-semibold text-blue-700 border border-blue-200">
-                                                  ● {item.tourType}
+                                                <span className="inline-flex items-center gap-1.5 rounded bg-blue-50 px-2.5 py-0.5 font-semibold text-blue-700 border border-blue-200">
+                                                  <Compass size={12} className="text-blue-600 shrink-0" /> {item.tourType}
                                                 </span>
                                               )}
                                               {item.selectedSlot && (
-                                                <span className="inline-flex items-center gap-1 rounded bg-amber-50 px-2 py-0.5 font-semibold text-amber-800 border border-amber-200">
-                                                  ⏰ Slot: {item.selectedSlot}
+                                                <span className="inline-flex items-center gap-1.5 rounded bg-amber-50 px-2.5 py-0.5 font-semibold text-amber-800 border border-amber-200">
+                                                  <Clock size={12} className="text-amber-700 shrink-0" /> Slot: {item.selectedSlot}
                                                 </span>
                                               )}
                                               {item.duration && (
-                                                <span className="inline-flex items-center gap-1 rounded bg-purple-50 px-2 py-0.5 font-semibold text-purple-800 border border-purple-200">
-                                                  ⏱️ Duration: {item.duration}
+                                                <span className="inline-flex items-center gap-1.5 rounded bg-purple-50 px-2.5 py-0.5 font-semibold text-purple-800 border border-purple-200">
+                                                  <Timer size={12} className="text-purple-700 shrink-0" /> Duration: {item.duration}
                                                 </span>
                                               )}
                                               {item.operatingDays && (
-                                                <span className="inline-flex items-center gap-1 rounded bg-slate-100 px-2 py-0.5 font-medium text-slate-700 border border-slate-200">
-                                                  📅 {item.operatingDays}
+                                                <span className="inline-flex items-center gap-1.5 rounded bg-slate-100 px-2.5 py-0.5 font-medium text-slate-700 border border-slate-200">
+                                                  <CalendarDays size={12} className="text-slate-600 shrink-0" /> {item.operatingDays}
                                                 </span>
                                               )}
                                               {item.timings && (
-                                                <span className="inline-flex items-center gap-1 rounded bg-slate-100 px-2 py-0.5 font-medium text-slate-700 border border-slate-200">
-                                                  ⌛ {item.timings}
+                                                <span className="inline-flex items-center gap-1.5 rounded bg-slate-100 px-2.5 py-0.5 font-medium text-slate-700 border border-slate-200">
+                                                  <Hourglass size={12} className="text-slate-600 shrink-0" /> {item.timings}
                                                 </span>
                                               )}
                                             </div>

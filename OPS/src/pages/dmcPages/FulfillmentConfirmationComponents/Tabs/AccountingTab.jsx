@@ -220,25 +220,7 @@ export default function AccountingTab({
                         No customer payment installments received yet.
                       </div>
                     )}
-                    <div className="mt-3 pt-2.5 border-t border-slate-100">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          navigate("/agent/bookings", {
-                            state: {
-                              openBookingId:
-                                selectedQuery?.invoice?._id ||
-                                selectedQuery?._id ||
-                                selectedQuery?.queryId,
-                              paymentOnly: true,
-                            },
-                          });
-                        }}
-                        className="px-3.5 py-1.5 text-xs font-semibold text-blue-600 border border-blue-200 bg-white hover:bg-blue-50/80 rounded cursor-pointer transition-all shadow-2xs"
-                      >
-                        View Payment Breakdown
-                      </button>
-                    </div>
+
                   </div>
                 </div>
               </div>

@@ -377,16 +377,45 @@ const getLiveServiceModel = (type = "") => {
   return null;
 };
 
-const getLiveServiceRateSnapshot = (service = {}, typeOverride = "") => {
+const getLiveServiceRateSnapshot = (service = {}, typeOverride = "", quotedService = {}) => {
   const type = normalizeQuotationServiceType(typeOverride || service?.type || service?.serviceCategory);
 
   if (type === "hotel") {
+    let resolvedPrice = Number(service?.price || service?.basePrice || 0);
+    let resolvedAweb = Number(service?.awebRate || 0);
+    let resolvedCweb = Number(service?.cwebRate || 0);
+    let resolvedCwoeb = Number(service?.cwoebRate || 0);
+
+    if (Array.isArray(service?.hotels) && service.hotels.length > 0) {
+      const qHotelTitle = String(quotedService?.title || quotedService?.hotelName || quotedService?.name || "").trim().toLowerCase();
+      const qRoomType = String(quotedService?.roomType || quotedService?.roomCategory || "").trim().toLowerCase();
+
+      let targetHotel = service.hotels.find((h) => {
+        const hName = String(h?.hotelName || "").trim().toLowerCase();
+        return qHotelTitle && (hName.includes(qHotelTitle) || qHotelTitle.includes(hName));
+      }) || service.hotels[0];
+
+      if (targetHotel && Array.isArray(targetHotel?.rooms) && targetHotel.rooms.length > 0) {
+        let targetRoom = targetHotel.rooms.find((r) => {
+          const rType = String(r?.roomType || r?.roomCategory || "").trim().toLowerCase();
+          return qRoomType && (rType.includes(qRoomType) || qRoomType.includes(rType));
+        }) || targetHotel.rooms[0];
+
+        if (targetRoom) {
+          resolvedPrice = Number(targetRoom.price || targetRoom.basePrice || resolvedPrice);
+          resolvedAweb = Number(targetRoom.awebRate || resolvedAweb);
+          resolvedCweb = Number(targetRoom.cwebRate || resolvedCweb);
+          resolvedCwoeb = Number(targetRoom.cwoebRate || resolvedCwoeb);
+        }
+      }
+    }
+
     return {
       currency: normalizeCurrencyCode(service?.currency),
-      price: Number(service?.price || 0),
-      awebRate: Number(service?.awebRate || 0),
-      cwebRate: Number(service?.cwebRate || 0),
-      cwoebRate: Number(service?.cwoebRate || 0),
+      price: resolvedPrice,
+      awebRate: resolvedAweb,
+      cwebRate: resolvedCweb,
+      cwoebRate: resolvedCwoeb,
     };
   }
 
@@ -432,7 +461,7 @@ const buildQuotationRateMismatch = (service = {}, liveService = null) => {
   }
 
   const quoted = getQuotedServiceRateSnapshot(service);
-  const live = getLiveServiceRateSnapshot(liveService, type);
+  const live = getLiveServiceRateSnapshot(liveService, type, service);
   const changedFields = [];
 
   if (quoted.currency !== live.currency) {
@@ -4264,7 +4293,7 @@ export const confirmQuotation = async (req, res) => {
     const query = await TravelQuery.findById(quotation.queryId);
     let invoice = null;
     if (query) {
-      query.opsStatus = "Invoice_Requested";
+      query.opsStatus = "Confirmed";
       query.agentStatus = "Client Approved";
       query.quotationStatus = "Sent_To_Agent";
       query.activityLog = query.activityLog || [];

@@ -6650,7 +6650,7 @@ const QuotationBuilder = () => {
       {/*======================== ✅ POPUP Success final Charges =============================================*/}
       {showFinanceInvoiceConfirm && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/60 px-4 backdrop-blur-xs">
-          <div className="w-full max-w-sm rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl text-slate-900">>
+          <div className="w-full max-w-sm rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl text-slate-900">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-amber-700">

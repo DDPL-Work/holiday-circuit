@@ -81,20 +81,7 @@ export default function AccountingTab({
                 <span className="absolute right-0 top-0 bottom-0 w-[3px] bg-[#35489e] rounded-l-xs" />
               )}
             </button>
-            <button
-              type="button"
-              onClick={() => setAccountingSubTab("proforma")}
-              className={`w-full text-left px-3.5 py-2.5 text-[14px] transition-all relative flex items-center justify-between cursor-pointer ${
-                accountingSubTab === "proforma"
-                  ? "bg-[#f8fafc] text-slate-900 font-bold"
-                  : "text-slate-500 font-semibold hover:text-slate-900 hover:bg-slate-50/50"
-              }`}
-            >
-              <span>Proforma Invoice</span>
-              {accountingSubTab === "proforma" && (
-                <span className="absolute right-0 top-0 bottom-0 w-[3px] bg-[#35489e] rounded-l-xs" />
-              )}
-            </button>
+
           </div>
         </div>
 
@@ -220,25 +207,7 @@ export default function AccountingTab({
                         No customer payment installments received yet.
                       </div>
                     )}
-                    <div className="mt-3 pt-2.5 border-t border-slate-100">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          navigate("/agent/bookings", {
-                            state: {
-                              openBookingId:
-                                selectedQuery?.invoice?._id ||
-                                selectedQuery?._id ||
-                                selectedQuery?.queryId,
-                              paymentOnly: true,
-                            },
-                          });
-                        }}
-                        className="px-3.5 py-1.5 text-xs font-semibold text-blue-600 border border-blue-200 bg-white hover:bg-blue-50/80 rounded cursor-pointer transition-all shadow-2xs"
-                      >
-                        View Payment Breakdown
-                      </button>
-                    </div>
+
                   </div>
                 </div>
               </div>
