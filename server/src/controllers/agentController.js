@@ -377,16 +377,45 @@ const getLiveServiceModel = (type = "") => {
   return null;
 };
 
-const getLiveServiceRateSnapshot = (service = {}, typeOverride = "") => {
+const getLiveServiceRateSnapshot = (service = {}, typeOverride = "", quotedService = {}) => {
   const type = normalizeQuotationServiceType(typeOverride || service?.type || service?.serviceCategory);
 
   if (type === "hotel") {
+    let resolvedPrice = Number(service?.price || service?.basePrice || 0);
+    let resolvedAweb = Number(service?.awebRate || 0);
+    let resolvedCweb = Number(service?.cwebRate || 0);
+    let resolvedCwoeb = Number(service?.cwoebRate || 0);
+
+    if (Array.isArray(service?.hotels) && service.hotels.length > 0) {
+      const qHotelTitle = String(quotedService?.title || quotedService?.hotelName || quotedService?.name || "").trim().toLowerCase();
+      const qRoomType = String(quotedService?.roomType || quotedService?.roomCategory || "").trim().toLowerCase();
+
+      let targetHotel = service.hotels.find((h) => {
+        const hName = String(h?.hotelName || "").trim().toLowerCase();
+        return qHotelTitle && (hName.includes(qHotelTitle) || qHotelTitle.includes(hName));
+      }) || service.hotels[0];
+
+      if (targetHotel && Array.isArray(targetHotel?.rooms) && targetHotel.rooms.length > 0) {
+        let targetRoom = targetHotel.rooms.find((r) => {
+          const rType = String(r?.roomType || r?.roomCategory || "").trim().toLowerCase();
+          return qRoomType && (rType.includes(qRoomType) || qRoomType.includes(rType));
+        }) || targetHotel.rooms[0];
+
+        if (targetRoom) {
+          resolvedPrice = Number(targetRoom.price || targetRoom.basePrice || resolvedPrice);
+          resolvedAweb = Number(targetRoom.awebRate || resolvedAweb);
+          resolvedCweb = Number(targetRoom.cwebRate || resolvedCweb);
+          resolvedCwoeb = Number(targetRoom.cwoebRate || resolvedCwoeb);
+        }
+      }
+    }
+
     return {
       currency: normalizeCurrencyCode(service?.currency),
-      price: Number(service?.price || 0),
-      awebRate: Number(service?.awebRate || 0),
-      cwebRate: Number(service?.cwebRate || 0),
-      cwoebRate: Number(service?.cwoebRate || 0),
+      price: resolvedPrice,
+      awebRate: resolvedAweb,
+      cwebRate: resolvedCweb,
+      cwoebRate: resolvedCwoeb,
     };
   }
 
@@ -432,7 +461,7 @@ const buildQuotationRateMismatch = (service = {}, liveService = null) => {
   }
 
   const quoted = getQuotedServiceRateSnapshot(service);
-  const live = getLiveServiceRateSnapshot(liveService, type);
+  const live = getLiveServiceRateSnapshot(liveService, type, service);
   const changedFields = [];
 
   if (quoted.currency !== live.currency) {
@@ -2272,6 +2301,8 @@ export const sendAgentVoucherEmail = async (req, res, next) => {
           termsAndConditions: (Array.isArray(quotation?.termsAndConditions) && quotation.termsAndConditions.length > 0)
             ? quotation.termsAndConditions
             : defaultPackageTerms,
+          includeSellerBankDetails: false,
+          isClientQuotation: true,
           sellerBankDetails: [
             { label: "Bank Name", value: "HDFC Bank" },
             { label: "A/c Holder Name", value: companyName || "Holiday Circuit" },
@@ -3324,9 +3355,58 @@ export const getMyQueries = async (req, res, next) => {
       return res.status(401).json({ message: "Unauthorized" });
     }
 
-    const queries = await TravelQuery.find({ agent: req.user.id }).sort({ createdAt: -1 });
+    const queries = await TravelQuery.find({ agent: req.user.id }).sort({ createdAt: -1 }).lean();
+    if (!queries.length) {
+      return res.json({ message: "All queries fetched successfully", queries: [] });
+    }
 
-    return res.json({ message: "All queries fetched successfully", queries });
+    const queryIds = queries.map((q) => q._id);
+
+    const quotations = await Quotation.find({
+      agent: req.user.id,
+      queryId: { $in: queryIds },
+    })
+      .select("queryId clientTotalAmount pricing status createdAt updatedAt")
+      .sort({ updatedAt: -1, createdAt: -1 })
+      .lean();
+
+    const latestQuotationByQuery = {};
+    const approvedQuotationByQuery = {};
+
+    quotations.forEach((q) => {
+      const qKey = String(q.queryId);
+      if (!latestQuotationByQuery[qKey]) {
+        latestQuotationByQuery[qKey] = q;
+      }
+      if (
+        !approvedQuotationByQuery[qKey] &&
+        ["Quote Accepted", "Confirmed", "Sent to Client", "Quote Finalized", "Markup Applied"].includes(q.status)
+      ) {
+        approvedQuotationByQuery[qKey] = q;
+      }
+    });
+
+    const enrichedQueries = queries.map((query) => {
+      const qKey = String(query._id);
+      const latestQ = latestQuotationByQuery[qKey];
+      const approvedQ = approvedQuotationByQuery[qKey] || latestQ;
+
+      const latestPrice = latestQ
+        ? Number(latestQ.clientTotalAmount || latestQ.pricing?.totalAmount || 0)
+        : 0;
+
+      const approvedPrice = approvedQ
+        ? Number(approvedQ.clientTotalAmount || approvedQ.pricing?.totalAmount || 0)
+        : 0;
+
+      return {
+        ...query,
+        latestQuotationPrice: latestPrice,
+        approvedQuotationPrice: approvedPrice,
+      };
+    });
+
+    return res.json({ message: "All queries fetched successfully", queries: enrichedQueries });
 
   } catch (error) {
     next(error);
@@ -4213,7 +4293,7 @@ export const confirmQuotation = async (req, res) => {
     const query = await TravelQuery.findById(quotation.queryId);
     let invoice = null;
     if (query) {
-      query.opsStatus = "Invoice_Requested";
+      query.opsStatus = "Confirmed";
       query.agentStatus = "Client Approved";
       query.quotationStatus = "Sent_To_Agent";
       query.activityLog = query.activityLog || [];
@@ -5457,6 +5537,7 @@ export const updateQueryByAgent = async (req, res, next) => {
 };
 
 
+
 // ======================= UPDATE QUOTATION BRANDING BY AGENT =========================
 
 export const updateQuotationBranding = async (req, res, next) => {
@@ -5523,6 +5604,8 @@ const getAgentTaskStage = (query = {}) => {
   return "NEW_QUERY";
 };
 
+
+
 const getAgentTaskActorName = (req) =>
   String(req.user?.name || req.user?.fullName || req.user?.email || "Agent").trim() || "Agent";
 
@@ -5539,6 +5622,8 @@ const getAgentTaskTimeAgo = (value) => {
   return `${elapsedDays} day${elapsedDays === 1 ? "" : "s"} ago`;
 };
 
+
+
 const serializeAgentTask = (task = {}) => ({
   id: String(task?._id || task?.id || ""),
   text: String(task?.text || ""),
@@ -5550,6 +5635,9 @@ const serializeAgentTask = (task = {}) => ({
   resolvedTimeAgo: task?.resolvedAt ? getAgentTaskTimeAgo(task.resolvedAt) : null,
   createdAt: task?.createdAt || null,
 });
+
+
+
 
 const getAgentTaskDayRange = () => {
   const indiaOffsetMs = 330 * 60 * 1000;
@@ -5565,6 +5653,8 @@ const findAgentOwnedTaskQuery = async (agentId, queryId) => {
   if (!mongoose.isValidObjectId(queryId)) return null;
   return TravelQuery.findOne({ _id: queryId, agent: agentId }).select("agentStatus queryId");
 };
+
+
 
 export const getAgentQueryTasks = async (req, res, next) => {
   try {
@@ -5585,6 +5675,8 @@ export const getAgentQueryTasks = async (req, res, next) => {
     next(error);
   }
 };
+
+
 
 export const createAgentQueryTask = async (req, res, next) => {
   try {
@@ -5622,6 +5714,9 @@ export const createAgentQueryTask = async (req, res, next) => {
   }
 };
 
+
+
+
 export const updateAgentQueryTaskResolution = async (req, res, next) => {
   try {
     const agentId = getAuthenticatedUserId(req);
@@ -5644,6 +5739,9 @@ export const updateAgentQueryTaskResolution = async (req, res, next) => {
   }
 };
 
+
+
+
 export const deleteAgentQueryTask = async (req, res, next) => {
   try {
     const agentId = getAuthenticatedUserId(req);
@@ -5659,6 +5757,8 @@ export const deleteAgentQueryTask = async (req, res, next) => {
     next(error);
   }
 };
+
+
 
 export const getAgentDueTasks = async (req, res, next) => {
   try {
@@ -5687,6 +5787,7 @@ export const getAgentDueTasks = async (req, res, next) => {
     next(error);
   }
 };
+
 
 export const dismissAgentDueTasks = async (req, res, next) => {
   try {

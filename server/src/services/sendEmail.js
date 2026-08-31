@@ -1,4 +1,8 @@
-import {MAIL_FROM_ADDRESS,MAIL_REPLY_TO_ADDRESS,transporter,} from "./mailer.js";
+import {
+  MAIL_FROM_ADDRESS,
+  MAIL_REPLY_TO_ADDRESS,
+  transporter,
+} from "./mailer.js";
 
 const escapeHtml = (value = "") =>
   String(value || "")
@@ -8,15 +12,9 @@ const escapeHtml = (value = "") =>
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
 
-
-
-
 export const sendAgentRegistrationReceivedMail = async (
   email,
-  {
-    name = "Partner",
-    companyName = "your agency",
-  } = {},
+  { name = "Partner", companyName = "your agency" } = {},
 ) => {
   await transporter.sendMail({
     from: MAIL_FROM_ADDRESS,
@@ -39,13 +37,17 @@ export const sendAgentRegistrationReceivedMail = async (
   });
 };
 
-
 export const sendAgentApprovalMail = async (
   email,
   {
     name = "Partner",
     companyName = "your agency",
-    loginUrl = process.env.FRONTEND_LOGIN_URL,
+    loginUrl = process.env.FRONTEND_LOGIN_URL ||
+      process.env.ADMIN_LOGIN_URL ||
+      process.env.OPS_LOGIN_URL ||
+      process.env.FINANCE_LOGIN_URL ||
+      process.env.AGENT_LOGIN_URL ||
+      process.env.DMC_LOGIN_URL,
   } = {},
 ) => {
   await transporter.sendMail({
@@ -64,7 +66,6 @@ export const sendAgentApprovalMail = async (
     `,
   });
 };
-
 
 export const sendAgentRejectionMail = async (
   email,
@@ -98,8 +99,10 @@ export const sendAgentRejectionMail = async (
   });
 };
 
-
-export const sendPasswordResetOtpMail = async (email, { name = "Team Member", otp = "" } = {}) => {
+export const sendPasswordResetOtpMail = async (
+  email,
+  { name = "Team Member", otp = "" } = {},
+) => {
   await transporter.sendMail({
     from: MAIL_FROM_ADDRESS,
     to: email,
@@ -166,7 +169,6 @@ export const sendPasswordResetOtpMail = async (email, { name = "Team Member", ot
   });
 };
 
-
 export const sendTeamMemberCredentialsMail = async (
   email,
   {
@@ -174,7 +176,12 @@ export const sendTeamMemberCredentialsMail = async (
     role = "Team Member",
     loginEmail = email,
     password = "",
-    loginUrl = process.env.FRONTEND_LOGIN_URL,
+    loginUrl = process.env.FRONTEND_LOGIN_URL ||
+      process.env.ADMIN_LOGIN_URL ||
+      process.env.OPS_LOGIN_URL ||
+      process.env.FINANCE_LOGIN_URL ||
+      process.env.AGENT_LOGIN_URL ||
+      process.env.DMC_LOGIN_URL,
   } = {},
 ) => {
   const safeName = escapeHtml(name);
@@ -384,7 +391,8 @@ export const sendNewQueryAssignedMail = async (
     dashboardUrl = "",
   } = {},
 ) => {
-  const totalTravelers = Number(numberOfAdults || 0) + Number(numberOfChildren || 0);
+  const totalTravelers =
+    Number(numberOfAdults || 0) + Number(numberOfChildren || 0);
   const safeDashboardUrl = String(dashboardUrl || "").trim();
   const safeNotes = String(specialRequirements || "").trim();
   const inclusions = [
@@ -462,7 +470,6 @@ export const sendNewQueryAssignedMail = async (
   });
 };
 
-
 export const sendAgentQueryCreatedMail = async (
   email,
   {
@@ -482,7 +489,8 @@ export const sendAgentQueryCreatedMail = async (
     dashboardUrl = "",
   } = {},
 ) => {
-  const totalTravelers = Number(numberOfAdults || 0) + Number(numberOfChildren || 0);
+  const totalTravelers =
+    Number(numberOfAdults || 0) + Number(numberOfChildren || 0);
   const safeDashboardUrl = String(dashboardUrl || "").trim();
   const safeNotes = String(specialRequirements || "").trim();
   const services = [
@@ -559,8 +567,6 @@ export const sendAgentQueryCreatedMail = async (
       .join("\n"),
   });
 };
-
-
 
 export const sendAccountDeletionMail = async (
   email,
@@ -685,5 +691,3 @@ export const sendAccountDeletionMail = async (
     `,
   });
 };
-
-
