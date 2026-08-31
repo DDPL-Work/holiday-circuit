@@ -653,7 +653,7 @@ export default function BookingDetailsModal({ refresh, booking, onClose, viewMod
           >
             <motion.div
               variants={modal}
-              className={`relative flex max-h-[90vh] w-full transform-gpu flex-col overflow-hidden rounded-[32px] bg-white border border-slate-200/80 shadow-[0_30px_70px_rgba(15,23,42,0.18)] text-slate-800 ${isDocumentsView ? "max-w-5xl" : "max-w-[560px]"}`}
+              className={`relative flex max-h-[90vh] w-full transform-gpu flex-col overflow-hidden rounded-xl bg-white border border-slate-200/80 shadow-[0_30px_70px_rgba(15,23,42,0.18)] text-slate-800 ${isDocumentsView ? "max-w-5xl" : "max-w-[560px]"}`}
             >
               {/* Premium Navy Blue Gradient Header Banner */}
               <div className="bg-gradient-to-br from-[#0c142c] via-[#102454] to-[#060a18] text-white p-7 pb-5 relative shrink-0">
@@ -744,12 +744,12 @@ export default function BookingDetailsModal({ refresh, booking, onClose, viewMod
                 {isDocumentsView ? (
                   <motion.div
                     variants={item}
-                    className={`mt-5 overflow-hidden rounded-[28px] border p-5 shadow-[0_12px_36px_rgba(15,23,42,0.04)] ${travelerDocumentStatusConfig.surfaceClassName}`}
+                    className={`mt-5 overflow-hidden rounded-xl border p-5 shadow-[0_12px_36px_rgba(15,23,42,0.04)] ${travelerDocumentStatusConfig.surfaceClassName}`}
                   >
                   <div className="flex flex-col gap-5">
                     <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                       <div className="flex items-start gap-4">
-                        <div className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl ${travelerDocumentStatusConfig.iconClassName}`}>
+                        <div className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-lg ${travelerDocumentStatusConfig.iconClassName}`}>
                           <TravelerDocumentStatusIcon className="h-6 w-6" />
                         </div>
                         <div className="min-w-0">
@@ -775,9 +775,9 @@ export default function BookingDetailsModal({ refresh, booking, onClose, viewMod
 
                       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 xl:w-[420px] xl:grid-cols-1">
                         {/* Traveler Readiness */}
-                        <div className="group rounded-2xl border border-slate-200/60 bg-slate-50/50 px-4.5 py-4 shadow-[0_4px_12px_rgba(0,0,0,0.02)] transition-all duration-300 hover:-translate-y-1 hover:border-indigo-500/30 hover:bg-slate-50">
+                        <div className="group rounded-lg border border-slate-200/60 bg-slate-50/50 px-4.5 py-4 shadow-[0_4px_12px_rgba(0,0,0,0.02)] transition-all duration-300 hover:-translate-y-1 hover:border-indigo-500/30 hover:bg-slate-50">
                           <div className="flex items-center gap-2.5">
-                            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 transition-colors group-hover:bg-indigo-100">
+                            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 transition-colors group-hover:bg-indigo-100">
                               <Users className="h-4.5 w-4.5" />
                             </div>
                             <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-indigo-600">Traveler Readiness</p>
@@ -790,9 +790,9 @@ export default function BookingDetailsModal({ refresh, booking, onClose, viewMod
                         </div>
 
                         {/* Timeline */}
-                        <div className="group rounded-2xl border border-slate-200/60 bg-slate-50/50 px-4.5 py-4 shadow-[0_4px_12px_rgba(0,0,0,0.02)] transition-all duration-300 hover:-translate-y-1 hover:border-emerald-500/30 hover:bg-slate-50">
+                        <div className="group rounded-lg border border-slate-200/60 bg-slate-50/50 px-4.5 py-4 shadow-[0_4px_12px_rgba(0,0,0,0.02)] transition-all duration-300 hover:-translate-y-1 hover:border-emerald-500/30 hover:bg-slate-50">
                           <div className="flex items-center gap-2.5">
-                            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 transition-colors group-hover:bg-emerald-100">
+                            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 transition-colors group-hover:bg-emerald-100">
                               <Clock className="h-4.5 w-4.5" />
                             </div>
                             <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-emerald-600">Timeline</p>
@@ -808,9 +808,9 @@ export default function BookingDetailsModal({ refresh, booking, onClose, viewMod
                         </div>
 
                         {/* Review Notes */}
-                        <div className="group rounded-2xl border border-slate-200/60 bg-slate-50/50 px-4.5 py-4 shadow-[0_4px_12px_rgba(0,0,0,0.02)] transition-all duration-300 hover:-translate-y-1 hover:border-violet-500/30 hover:bg-slate-50">
+                        <div className="group rounded-lg border border-slate-200/60 bg-slate-50/50 px-4.5 py-4 shadow-[0_4px_12px_rgba(0,0,0,0.02)] transition-all duration-300 hover:-translate-y-1 hover:border-violet-500/30 hover:bg-slate-50">
                           <div className="flex items-center gap-2.5">
-                            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-violet-50 text-violet-600 transition-colors group-hover:bg-violet-100">
+                            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-50 text-violet-600 transition-colors group-hover:bg-violet-100">
                               <FileText className="h-4.5 w-4.5" />
                             </div>
                             <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-violet-600">Review Notes</p>
@@ -836,7 +836,7 @@ export default function BookingDetailsModal({ refresh, booking, onClose, viewMod
                     </div>
 
                     {travelerDocumentRejected && (
-                      <div className="rounded-[24px] border border-red-200 bg-red-50/30 px-4.5 py-4 shadow-[0_4px_12px_rgba(220,38,38,0.02)]">
+                      <div className="rounded-xl border border-red-200 bg-red-50/30 px-4.5 py-4 shadow-[0_4px_12px_rgba(220,38,38,0.02)]">
                         <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                           <div className="max-w-2xl">
                             <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-red-500">
@@ -851,14 +851,14 @@ export default function BookingDetailsModal({ refresh, booking, onClose, viewMod
                               </p>
                             )}
                           </div>
-                          <div className="rounded-2xl bg-red-100/50 px-4 py-3 text-xs leading-5 text-red-700 border border-red-200/50 font-medium">
+                          <div className="rounded-lg bg-red-100/50 px-4 py-3 text-xs leading-5 text-red-700 border border-red-200/50 font-medium">
                             Agent must update the document set and resubmit before ops can continue verification.
                           </div>
                         </div>
                       </div>
                     )}
 
-                    <div className="rounded-[28px] border border-slate-200/60 bg-slate-50 p-5 shadow-[0_8px_30px_rgba(15,23,42,0.02)]">
+                    <div className="rounded-xl border border-slate-200/60 bg-slate-50 p-5 shadow-[0_8px_30px_rgba(15,23,42,0.02)]">
                       <div className="flex items-center justify-between gap-3">
                         <div>
                           <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">
@@ -875,9 +875,9 @@ export default function BookingDetailsModal({ refresh, booking, onClose, viewMod
 
                       <div className="mt-4.5 grid gap-3 sm:grid-cols-3">
                         {/* File Quality */}
-                        <div className="group rounded-2xl border border-slate-200/60 bg-white px-4.5 py-4 shadow-[0_4px_12px_rgba(0,0,0,0.02)] transition-all duration-300 hover:-translate-y-1 hover:border-sky-500/30 hover:bg-slate-50/40">
+                        <div className="group rounded-lg border border-slate-200/60 bg-white px-4.5 py-4 shadow-[0_4px_12px_rgba(0,0,0,0.02)] transition-all duration-300 hover:-translate-y-1 hover:border-sky-500/30 hover:bg-slate-50/40">
                           <div className="flex items-center gap-3">
-                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-sky-50 text-sky-600 transition-transform group-hover:scale-105">
+                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-sky-50 text-sky-600 transition-transform group-hover:scale-105">
                               <FileText className="h-4.5 w-4.5" />
                             </div>
                             <p className="text-sm font-bold text-slate-800">File Quality</p>
@@ -888,9 +888,9 @@ export default function BookingDetailsModal({ refresh, booking, onClose, viewMod
                         </div>
 
                         {/* Identity Match */}
-                        <div className="group rounded-2xl border border-slate-200/60 bg-white px-4.5 py-4 shadow-[0_4px_12px_rgba(0,0,0,0.02)] transition-all duration-300 hover:-translate-y-1 hover:border-amber-500/30 hover:bg-slate-50/40">
+                        <div className="group rounded-lg border border-slate-200/60 bg-white px-4.5 py-4 shadow-[0_4px_12px_rgba(0,0,0,0.02)] transition-all duration-300 hover:-translate-y-1 hover:border-amber-500/30 hover:bg-slate-50/40">
                           <div className="flex items-center gap-3">
-                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-600 transition-transform group-hover:scale-105">
+                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-600 transition-transform group-hover:scale-105">
                               <Users className="h-4.5 w-4.5" />
                             </div>
                             <p className="text-sm font-bold text-slate-800">Identity Match</p>
@@ -901,9 +901,9 @@ export default function BookingDetailsModal({ refresh, booking, onClose, viewMod
                         </div>
 
                         {/* Validity Check */}
-                        <div className="group rounded-2xl border border-slate-200/60 bg-white px-4.5 py-4 shadow-[0_4px_12px_rgba(0,0,0,0.02)] transition-all duration-300 hover:-translate-y-1 hover:border-fuchsia-500/30 hover:bg-slate-50/40">
+                        <div className="group rounded-lg border border-slate-200/60 bg-white px-4.5 py-4 shadow-[0_4px_12px_rgba(0,0,0,0.02)] transition-all duration-300 hover:-translate-y-1 hover:border-fuchsia-500/30 hover:bg-slate-50/40">
                           <div className="flex items-center gap-3">
-                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-fuchsia-50 text-fuchsia-600 transition-transform group-hover:scale-105">
+                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-fuchsia-50 text-fuchsia-600 transition-transform group-hover:scale-105">
                               <Clock className="h-4.5 w-4.5" />
                             </div>
                             <p className="text-sm font-bold text-slate-800">Validity Check</p>
@@ -925,7 +925,7 @@ export default function BookingDetailsModal({ refresh, booking, onClose, viewMod
                   >
                     {travelerDocumentRows.length > 0 ? (
                       travelerDocumentRows.map((traveler) => (
-                      <div key={traveler.id} className="rounded-[28px] border border-slate-200 bg-slate-50/50 p-5 shadow-xs">
+                      <div key={traveler.id} className="rounded-xl border border-slate-200 bg-slate-50/50 p-5 shadow-xs">
                         <div className="flex items-center justify-between gap-3">
                           <div>
                             <p className="text-sm font-semibold text-slate-800">{traveler.name}</p>
@@ -1045,9 +1045,9 @@ export default function BookingDetailsModal({ refresh, booking, onClose, viewMod
                                   )}
                                 </div>
 
-                                {/* Card element */}
+                                 {/* Card element */}
                                 <div
-                                  className={`overflow-hidden rounded-[22px] border p-4 shadow-xs transition-all duration-300 ${
+                                  className={`overflow-hidden rounded-lg border p-4 shadow-xs transition-all duration-300 ${
                                     isIssue
                                       ? "border-red-200 bg-gradient-to-br from-red-50/50 via-white to-red-50/10 shadow-[0_8px_24px_rgba(220,38,38,0.04)]"
                                       : isVerified
@@ -1059,7 +1059,7 @@ export default function BookingDetailsModal({ refresh, booking, onClose, viewMod
                                 >
                                   <div className="flex items-start justify-between gap-3">
                                     <div className="flex items-start gap-3">
-                                      <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${
+                                      <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg ${
                                         document.uploaded ? documentCardConfig.iconClassName : "bg-slate-100 text-slate-400"
                                       }`}>
                                         <DocumentIcon className="h-5 w-5" />
@@ -1114,7 +1114,7 @@ export default function BookingDetailsModal({ refresh, booking, onClose, viewMod
                                     </span>
                                   </div>
 
-                                  <div className="mt-4 rounded-2xl border border-slate-200/60 bg-slate-50 px-4 py-3">
+                                  <div className="mt-4 rounded-lg border border-slate-200/60 bg-slate-50 px-4 py-3">
                                     <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                                       Uploaded File
                                     </p>
@@ -1138,7 +1138,7 @@ export default function BookingDetailsModal({ refresh, booking, onClose, viewMod
                                     <button
                                       onClick={() => handleTravelerDocumentView(document)}
                                       disabled={!document.uploaded}
-                                      className={`inline-flex items-center rounded-2xl border px-3.5 py-2 text-sm font-semibold transition cursor-pointer ${
+                                      className={`inline-flex items-center rounded-lg border px-3.5 py-2 text-sm font-semibold transition cursor-pointer ${
                                         document.uploaded
                                           ? "border-slate-200 bg-white text-slate-700 hover:bg-slate-50 hover:text-slate-900 shadow-xs"
                                           : "cursor-not-allowed border-slate-100 bg-slate-50 text-slate-400"
@@ -1151,7 +1151,7 @@ export default function BookingDetailsModal({ refresh, booking, onClose, viewMod
                                     {travelerDocumentReviewPending && document.uploaded && (
                                       <button
                                         onClick={() => toggleVerifiedDocument(traveler, document)}
-                                        className={`inline-flex items-center rounded-2xl border px-3.5 py-2 text-sm font-semibold transition cursor-pointer ${
+                                        className={`inline-flex items-center rounded-lg border px-3.5 py-2 text-sm font-semibold transition cursor-pointer ${
                                           documentVerifiedSelected
                                             ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 shadow-xs"
                                             : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-800 shadow-xs"
@@ -1165,7 +1165,7 @@ export default function BookingDetailsModal({ refresh, booking, onClose, viewMod
                                     {travelerDocumentReviewPending && document.uploaded && (
                                       <button
                                         onClick={() => toggleDocumentIssue(traveler, document)}
-                                        className={`inline-flex items-center rounded-2xl border px-3.5 py-2 text-sm font-semibold transition cursor-pointer ${
+                                        className={`inline-flex items-center rounded-lg border px-3.5 py-2 text-sm font-semibold transition cursor-pointer ${
                                           documentIssueSelected
                                             ? "border-red-300 bg-red-100/50 text-red-700 hover:bg-red-100 shadow-xs"
                                             : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-800 shadow-xs"
@@ -1194,7 +1194,7 @@ export default function BookingDetailsModal({ refresh, booking, onClose, viewMod
                 {isDocumentsView ? (
                 <motion.div
                   variants={item}
-                  className="mt-5 rounded-[24px] border border-slate-200 bg-slate-50 p-5 shadow-xs"
+                  className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-5 shadow-xs"
                 >
                   {travelerDocumentReviewPending ? (
                     <>
@@ -1212,7 +1212,7 @@ export default function BookingDetailsModal({ refresh, booking, onClose, viewMod
                             Approve now or return with a correction note
                           </h4>
                         </div>
-                        <div className="rounded-2xl bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 border border-blue-200 shadow-xs">
+                        <div className="rounded-lg bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 border border-blue-200 shadow-xs">
                           Review Active
                         </div>
                       </div>
@@ -1236,7 +1236,7 @@ export default function BookingDetailsModal({ refresh, booking, onClose, viewMod
                                 } 
                               }}
                               transition={{ duration: 0.25, ease: "easeInOut" }}
-                              className="relative overflow-hidden rounded-2xl border border-red-200 bg-red-50 p-4.5 pr-10 shadow-[0_12px_24px_rgba(220,38,38,0.03)]"
+                              className="relative overflow-hidden rounded-lg border border-red-200 bg-red-50 p-4.5 pr-10 shadow-[0_12px_24px_rgba(220,38,38,0.03)]"
                             >
                               <button
                                 type="button"
@@ -1247,7 +1247,7 @@ export default function BookingDetailsModal({ refresh, booking, onClose, viewMod
                                 <X size={15} />
                               </button>
                               <div className="flex items-start gap-3">
-                                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-red-100 text-red-600 border border-red-200 shadow-xs">
+                                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-red-100 text-red-600 border border-red-200 shadow-xs">
                                   <CircleX className="h-5 w-5" />
                                 </div>
                                 <div className="min-w-0">
@@ -1277,7 +1277,7 @@ export default function BookingDetailsModal({ refresh, booking, onClose, viewMod
                           <select
                             value={documentRejectionReason}
                             onChange={(e) => setDocumentRejectionReason(e.target.value)}
-                            className="w-full rounded-2xl border border-slate-300 bg-white text-slate-800 px-4 py-3 text-sm outline-none transition focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 focus:bg-white shadow-xs"
+                            className="w-full rounded-lg border border-slate-300 bg-white text-slate-800 px-4 py-3 text-sm outline-none transition focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 focus:bg-white shadow-xs"
                           >
                             <option value="">Select rejection reason</option>
                             {travelerDocumentRejectionOptions.map((reason) => (
@@ -1301,7 +1301,7 @@ export default function BookingDetailsModal({ refresh, booking, onClose, viewMod
                             value={customDocumentRejectionReason}
                             onChange={(e) => setCustomDocumentRejectionReason(e.target.value)}
                             placeholder="Example: passport file is cut, unreadable, or missing details"
-                            className="w-full rounded-2xl border border-slate-300 bg-white text-slate-800 px-4 py-3 text-sm outline-none transition focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 focus:bg-white shadow-xs"
+                            className="w-full rounded-lg border border-slate-300 bg-white text-slate-800 px-4 py-3 text-sm outline-none transition focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 focus:bg-white shadow-xs"
                           />
                         </div>
  
@@ -1319,7 +1319,7 @@ export default function BookingDetailsModal({ refresh, booking, onClose, viewMod
                             onChange={(e) => setDocumentRejectionRemarks(e.target.value)}
                             rows={4}
                             placeholder="Example: upload a clear passport first page and child age proof for traveler 2"
-                            className="w-full rounded-2xl border border-slate-300 bg-white text-slate-800 px-4 py-3 text-sm outline-none transition focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 focus:bg-white shadow-xs"
+                            className="w-full rounded-lg border border-slate-300 bg-white text-slate-800 px-4 py-3 text-sm outline-none transition focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 focus:bg-white shadow-xs"
                           />
                         </div>
                         <div className="grid gap-3 sm:grid-cols-2">
@@ -1327,7 +1327,7 @@ export default function BookingDetailsModal({ refresh, booking, onClose, viewMod
                             type="button"
                             onClick={() => openTravelerDocumentReviewConfirm("APPROVE")}
                             disabled={documentReviewLoading}
-                            className={`inline-flex items-center justify-center rounded-2xl px-4 py-3 text-sm font-semibold text-white transition cursor-pointer ${
+                            className={`inline-flex items-center justify-center rounded-lg px-4 py-3 text-sm font-semibold text-white transition cursor-pointer ${
                               documentReviewLoading
                                 ? "cursor-not-allowed bg-slate-350"
                                 : "cursor-pointer bg-emerald-600 hover:bg-emerald-700 shadow-[0_4px_12px_rgba(16,185,129,0.2)]"
@@ -1340,7 +1340,7 @@ export default function BookingDetailsModal({ refresh, booking, onClose, viewMod
                             type="button"
                             onClick={() => openTravelerDocumentReviewConfirm("REJECT")}
                             disabled={documentReviewLoading}
-                            className={`inline-flex items-center justify-center rounded-2xl border px-4 py-3 text-sm font-semibold transition ${
+                            className={`inline-flex items-center justify-center rounded-lg border px-4 py-3 text-sm font-semibold transition ${
                               documentReviewLoading
                                 ? "cursor-not-allowed border-slate-105 text-slate-400 bg-slate-50"
                                 : "cursor-pointer border-red-300 bg-red-100/50 text-red-700 hover:bg-red-100 hover:border-red-400 hover:text-red-800 shadow-[0_4px_12px_rgba(239,68,68,0.06)]"
@@ -1353,7 +1353,7 @@ export default function BookingDetailsModal({ refresh, booking, onClose, viewMod
                       </div>
                     </>
                   ) : (
-                    <div className="flex flex-col justify-between rounded-[20px] border border-slate-200 bg-slate-50 px-4 py-4">
+                    <div className="flex flex-col justify-between rounded-xl border border-slate-200 bg-slate-50 px-4 py-4">
                       <div>
                         <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">
                           Review State
@@ -1374,7 +1374,7 @@ export default function BookingDetailsModal({ refresh, booking, onClose, viewMod
                         </p>
                       </div>
 
-                      <div className="mt-4 rounded-2xl bg-slate-100 text-slate-600 px-4 py-3 text-xs leading-5 border border-slate-200/50">
+                      <div className="mt-4 rounded-lg bg-slate-100 text-slate-600 px-4 py-3 text-xs leading-5 border border-slate-200/50">
                         Review owner: <span className="font-semibold text-slate-800">{travelerDocumentReviewedByLabel}</span>
                       </div>
                     </div>
@@ -1462,11 +1462,11 @@ export default function BookingDetailsModal({ refresh, booking, onClose, viewMod
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: 12, scale: 0.97 }}
                   transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
-                  className="w-full max-w-sm rounded-[26px] border border-slate-200 bg-white p-5.5 shadow-[0_20px_60px_rgba(15,23,42,0.18)] text-slate-800"
+                  className="w-full max-w-sm rounded-xl border border-slate-200 bg-white p-5.5 shadow-[0_20px_60px_rgba(15,23,42,0.18)] text-slate-800"
                 >
                   <div className="flex items-start gap-3.5">
                     <div
-                      className={`mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border shadow-xs ${
+                      className={`mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border shadow-xs ${
                         pendingDocumentReviewAction === "APPROVE"
                           ? "bg-emerald-50 text-emerald-600 border-emerald-200 shadow-emerald-50/50"
                           : "bg-red-50 text-red-600 border-red-200 shadow-red-50/50"
@@ -1500,7 +1500,7 @@ export default function BookingDetailsModal({ refresh, booking, onClose, viewMod
                       type="button"
                       onClick={() => setPendingDocumentReviewAction(null)}
                       disabled={documentReviewLoading}
-                      className="inline-flex cursor-pointer items-center justify-center rounded-2xl border border-slate-200 bg-slate-50 hover:bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-600 transition shadow-xs disabled:cursor-not-allowed disabled:opacity-70"
+                      className="inline-flex cursor-pointer items-center justify-center rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-600 transition shadow-xs disabled:cursor-not-allowed disabled:opacity-70"
                     >
                       No
                     </button>
@@ -1508,7 +1508,7 @@ export default function BookingDetailsModal({ refresh, booking, onClose, viewMod
                       type="button"
                       onClick={confirmTravelerDocumentReview}
                       disabled={documentReviewLoading}
-                      className={`inline-flex cursor-pointer items-center justify-center rounded-2xl px-4 py-3 text-sm font-semibold text-white transition ${
+                      className={`inline-flex cursor-pointer items-center justify-center rounded-lg px-4 py-3 text-sm font-semibold text-white transition ${
                         pendingDocumentReviewAction === "APPROVE"
                           ? "bg-emerald-600 hover:bg-emerald-700 shadow-[0_4px_12px_rgba(16,185,129,0.2)]"
                           : "bg-red-600 hover:bg-red-700 shadow-[0_4px_12px_rgba(220,38,38,0.2)]"
@@ -1535,13 +1535,13 @@ export default function BookingDetailsModal({ refresh, booking, onClose, viewMod
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: 12, scale: 0.97 }}
                   transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
-                  className="w-full max-w-sm rounded-[26px] border border-slate-200 bg-white p-6 shadow-[0_20px_60px_rgba(15,23,42,0.18)] text-slate-800 relative overflow-hidden"
+                  className="w-full max-w-sm rounded-xl border border-slate-200 bg-white p-6 shadow-[0_20px_60px_rgba(15,23,42,0.18)] text-slate-800 relative overflow-hidden"
                 >
                   {/* Decorative subtle top bar */}
                   <div className="absolute top-0 left-0 right-0 h-1 bg-red-500" />
 
                   <div className="flex items-start gap-4">
-                    <div className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-red-50 text-red-600 border border-red-200 shadow-xs">
+                    <div className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-red-50 text-red-600 border border-red-200 shadow-xs">
                       <CircleX className="h-6 w-6" />
                     </div>
                     <div className="min-w-0 flex-1">
@@ -1561,7 +1561,7 @@ export default function BookingDetailsModal({ refresh, booking, onClose, viewMod
                     <button
                       type="button"
                       onClick={() => setDocumentVerificationError(null)}
-                      className="w-full sm:w-auto inline-flex cursor-pointer items-center justify-center rounded-2xl bg-gradient-to-r from-slate-950 via-slate-900 to-blue-950 hover:from-slate-900 hover:via-slate-800 hover:to-blue-900 text-white px-6 py-3 text-sm font-semibold transition-all duration-300 shadow-md shadow-blue-950/20 active:scale-[0.98] border border-slate-800/80"
+                      className="w-full sm:w-auto inline-flex cursor-pointer items-center justify-center rounded-lg bg-gradient-to-r from-slate-950 via-slate-900 to-blue-950 hover:from-slate-900 hover:via-slate-800 hover:to-blue-900 text-white px-6 py-3 text-sm font-semibold transition-all duration-300 shadow-md shadow-blue-950/20 active:scale-[0.98] border border-slate-800/80"
                     >
                       Got It, Let me check
                     </button>

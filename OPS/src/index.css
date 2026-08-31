@@ -107,26 +107,26 @@ body, html, #root, button, input, select, textarea {
 
 .dark-scrollbar {
   scrollbar-width: thin;
-  scrollbar-color: #3f3f46 #050505;
+  scrollbar-color: #cbd5e1 #f8fafc;
 }
 
 .dark-scrollbar::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
 }
 
 .dark-scrollbar::-webkit-scrollbar-track {
-  background: #050505;
+  background: #f8fafc;
   border-radius: 999px;
 }
 
 .dark-scrollbar::-webkit-scrollbar-thumb {
-  background: #3f3f46;
+  background: #cbd5e1;
   border-radius: 999px;
 }
 
 .dark-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: #52525b;
+  background: #94a3b8;
 }
 
 .sidebar-scrollbar {
@@ -336,23 +336,24 @@ div[role="status"] {
   display: none !important;
 }
 
-/* Date input styling for dark theme & highly visible calendar icon */
-input[type="date"] {
-  color-scheme: dark !important;
+/* Date & time input styling for clean light UI theme */
+input[type="date"], input[type="time"] {
+  color-scheme: light !important;
 }
 
-input[type="date"]::-webkit-calendar-picker-indicator {
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="time"]::-webkit-calendar-picker-indicator {
   cursor: pointer !important;
-  filter: invert(0.85) sepia(100%) saturate(600%) hue-rotate(5deg) brightness(1.2) !important;
-  opacity: 0.95 !important;
+  opacity: 0.7 !important;
   padding: 2px !important;
   border-radius: 4px !important;
   transition: transform 0.15s ease, opacity 0.15s ease !important;
 }
 
-input[type="date"]::-webkit-calendar-picker-indicator:hover {
+input[type="date"]::-webkit-calendar-picker-indicator:hover,
+input[type="time"]::-webkit-calendar-picker-indicator:hover {
   opacity: 1 !important;
-  transform: scale(1.18) !important;
+  transform: scale(1.1) !important;
 }
 
 /* Hide duplicate native indicator when container has its own icon button */

@@ -25,6 +25,8 @@ import {
   Calendar,
   ArrowRight,
   Lightbulb,
+  Users,
+  Luggage,
 } from "lucide-react";
 import API from "../utils/Api.js";
 import toast from "react-hot-toast";
@@ -2813,14 +2815,14 @@ const handleRoomCategoryChange = (hotelIdx, roomTypeName) => {
                           )}
 
                           {Boolean(transfer.vehicleType) && (
-                            <span className="rounded-md bg-sky-50 border border-sky-200 px-2 py-0.5 text-[10px] text-sky-700 font-semibold">
-                              👤 {transfer.passengerCapacity || 4} Pax
+                            <span className="rounded-md bg-sky-50 border border-sky-200 px-2 py-0.5 text-[10px] text-sky-700 font-semibold flex items-center gap-1">
+                              <Users size={11} className="text-sky-600 shrink-0" /> {transfer.passengerCapacity || 4} Pax
                             </span>
                           )}
 
                           {Boolean(transfer.vehicleType) && (
-                            <span className="rounded-md bg-indigo-50 border border-indigo-200 px-2 py-0.5 text-[10px] text-indigo-700 font-semibold">
-                              🧳 {transfer.luggageCapacity !== undefined ? transfer.luggageCapacity : 2} Bags
+                            <span className="rounded-md bg-indigo-50 border border-indigo-200 px-2 py-0.5 text-[10px] text-indigo-700 font-semibold flex items-center gap-1">
+                              <Luggage size={11} className="text-indigo-600 shrink-0" /> {transfer.luggageCapacity !== undefined ? transfer.luggageCapacity : 2} Bags
                             </span>
                           )}
 

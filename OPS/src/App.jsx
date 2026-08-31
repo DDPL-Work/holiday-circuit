@@ -2,6 +2,7 @@ import { useState } from "react";
 import AppRouter from "./routes";
 import { Toaster, ToastBar, toast } from "react-hot-toast";
 import CircuitLoader from "./components/CircuitLoader";
+import ErrorBoundary from "./components/ErrorBoundary";
 import "./App.css";
 
 function App() {
@@ -11,7 +12,7 @@ function App() {
   });
 
   return (
-    <>
+    <ErrorBoundary>
       <Toaster
         position="top-right"
         reverseOrder={false}
@@ -107,9 +108,10 @@ function App() {
       </Toaster>
       <AppRouter />
       {loading && <CircuitLoader onFinished={() => setLoading(false)} />}
-    </>
+    </ErrorBoundary>
   );
 }
 
 export default App;
+
 

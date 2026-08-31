@@ -93,70 +93,53 @@ export const quotationSchema = new mongoose.Schema(
       children: { type: Number, default: 0 },
       infants: { type: Number, default: 0 },
 
-      rooms: { type: Number, default: 1 },
+      rooms: Number,
 
       bedType: {
         type: String,
         enum: ["single", "double", "twin", "triple"]
       },
 
-      nights: { type: Number, default: 1 },
+      nights: Number,
 
       // ================= TRANSFER =================
       vehicleType: String,
+      pickupTime: String,
+      time: String,
 
-      passengerCapacity: { type: Number, default: 0 },
-      luggageCapacity: { type: Number, default: 0 },
+      passengerCapacity: Number,
+      luggageCapacity: Number,
 
       usageType: {
         type: String,
-        enum: ["point-to-point", "half-day", "full-day", "round-trip"],
-        default: "point-to-point"
+        enum: ["point-to-point", "half-day", "full-day", "round-trip"]
       },
 
-      transportUsageOptionKey: {
-        type: String,
-        default: ""
-      },
+      transportUsageOptionKey: String,
 
-      transportUsageLabel: {
-        type: String,
-        default: ""
-      },
+      transportUsageLabel: String,
 
-      transportUsageLimitOptionKey: {
-        type: String,
-        default: ""
-      },
+      transportUsageLimitOptionKey: String,
 
-      extraPerKmRate: {
-        type: Number,
-        default: 0
-      },
+      extraPerKmRate: Number,
 
-      fullDayExtraPerKmRate: {
-        type: Number,
-        default: 0
-      },
+      fullDayExtraPerKmRate: Number,
 
-      halfDayExtraPerKmRate: {
-        type: Number,
-        default: 0
-      },
+      halfDayExtraPerKmRate: Number,
 
       days: { type: Number, default: 1 },
 
       // ================= ACTIVITY / SIGHTSEEING =================
-      pax: { type: Number, default: 1 },
-      adultPrice: { type: Number, default: 0 },
-      childPrice: { type: Number, default: 0 },
-      operatingDays: { type: String, default: "Mon-Sun" },
-      openingTime: { type: String, default: "08:00" },
-      closingTime: { type: String, default: "18:00" },
-      duration: { type: String, default: "" },
-      slots: { type: String, default: "" },
-      selectedSlot: { type: String, default: "" },
-      tourType: { type: String, default: "" },
+      pax: Number,
+      adultPrice: Number,
+      childPrice: Number,
+      operatingDays: String,
+      openingTime: String,
+      closingTime: String,
+      duration: String,
+      slots: String,
+      selectedSlot: String,
+      tourType: String,
       tourTypes: [
         {
           tourType: String,
@@ -168,8 +151,8 @@ export const quotationSchema = new mongoose.Schema(
           description: String
         }
       ],
-      pricingBasis: { type: String, default: "" },
-      maxPax: { type: String, default: "" },
+      pricingBasis: String,
+      maxPax: String,
 
       // ================= 🔥 PRICING =================
       currency: {
@@ -185,29 +168,16 @@ export const quotationSchema = new mongoose.Schema(
 
       hotelRateMode: {
         type: String,
-        enum: ["unit-rate", "service-total"],
-        default: "unit-rate"
+        enum: ["unit-rate", "service-total"]
       },
 
-      manualRateOverride: {
-        type: Boolean,
-        default: false
-      },
+      manualRateOverride: Boolean,
 
-      quoteBaseRate: {
-        type: Number,
-        default: 0
-      },
+      quoteBaseRate: Number,
 
-      roomTypeOptionRate: {
-        type: Number,
-        default: 0
-      },
+      roomTypeOptionRate: Number,
 
-      roomTypeOptionCurrency: {
-        type: String,
-        default: "INR"
-      },
+      roomTypeOptionCurrency: String,
 
       exchangeRate: {
         type: Number,
@@ -219,35 +189,17 @@ export const quotationSchema = new mongoose.Schema(
         default: 0
       },
 
-      extraAdult: {
-        type: Boolean,
-        default: false
-      },
+      extraAdult: Boolean,
 
-      childWithBed: {
-        type: Boolean,
-        default: false
-      },
+      childWithBed: Boolean,
 
-      childWithoutBed: {
-        type: Boolean,
-        default: false
-      },
+      childWithoutBed: Boolean,
 
-      awebRate: {
-        type: Number,
-        default: 0
-      },
+      awebRate: Number,
 
-      cwebRate: {
-        type: Number,
-        default: 0
-      },
+      cwebRate: Number,
 
-      cwoebRate: {
-        type: Number,
-        default: 0
-      },
+      cwoebRate: Number,
 
       total: {
         type: Number,

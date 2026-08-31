@@ -115,7 +115,7 @@ export const DEFAULT_EXCHANGE_RATES = Object.freeze({
 });
 
 export const CURRENCY_LABELS = Object.freeze({
-  INR: "â‚¹",
+  INR: "\u20B9",
   USD: "$",
   EUR: "EUR",
   GBP: "GBP",

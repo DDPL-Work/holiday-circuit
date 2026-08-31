@@ -1331,11 +1331,13 @@ export default function FulfillmentConfirmation() {
     }
   };
   const customerTotalAmount = useMemo(() => {
+    const inv = selectedQuery?.internalInvoice;
+    if (!inv) return 0;
     return (
-      Number(selectedQuery?.internalInvoice?.summary?.grandTotal) ||
-      Number(selectedQuery?.packagePrice) ||
-      Number(selectedQuery?.quotationTaxableAmount) ||
-      getQueryCalculatedTotal(selectedQuery) ||
+      Number(inv?.summary?.grandTotal) ||
+      Number(inv?.grandTotal) ||
+      Number(inv?.totalAmount) ||
+      Number(inv?.summary?.totalAmount) ||
       0
     );
   }, [selectedQuery]);

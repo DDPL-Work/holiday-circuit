@@ -591,6 +591,39 @@ export default function SharePackageModal({
       setIsEmailPreviewLoading(true);
       setEmailPreviewError("");
 
+      if (quote?._id && shareMode !== "PACKAGE") {
+        try {
+          const { data } = await API.get(`/agent/quotations/${quote._id}/email-preview`, {
+            params: {
+              showIncExc,
+              showPriceBreakup,
+              hideTotalPrice,
+              removeItinerary,
+              removeTerms,
+              removeTransport,
+              similarHotelWord,
+              isPdfMode,
+              queryId: query?._id || query?.queryId,
+            },
+          });
+          if (!cancelled) {
+            setEmailPreviewHtml(data?.html || "");
+            setEmailPreviewError("");
+          }
+        } catch (error) {
+          console.error("Error fetching quotation email preview:", error);
+          if (!cancelled) {
+            setEmailPreviewHtml("");
+            setEmailPreviewError(error?.response?.data?.message || "Unable to load quotation email preview.");
+          }
+        } finally {
+          if (!cancelled) {
+            setIsEmailPreviewLoading(false);
+          }
+        }
+        return;
+      }
+
       if (shareMode === "PACKAGE" || selectedPkg) {
         try {
           const clientNameVal = query?.name || query?.clientName || query?.customerName || query?.guestName || query?.contactName || "Valued Guest";
@@ -883,106 +916,118 @@ export default function SharePackageModal({
                     </tr>
                   </thead>
                   <tbody>
-                    ${(Array.isArray(pkgObj?.hotels) && pkgObj.hotels.length > 0)
-                      ? pkgObj.hotels.map((h, idx) => {
-                          const actualHotel = h?.hotelName || h?.hotel_name || h?.actualHotelName || h?.name || "Atlantis, The Palm";
-                          const serviceTitle = h?.serviceTitle || h?.serviceName || h?.title || h?.name || "Luxury Resort Stay";
+                    ${(() => {
+                        const allServicesList = Array.isArray(pkgObj?.services) && pkgObj.services.length > 0
+                          ? pkgObj.services
+                          : Array.isArray(quote?.services) && quote.services.length > 0
+                          ? quote.services
+                          : Array.isArray(query?.services) && query.services.length > 0
+                          ? query.services
+                          : [];
+                        const hotelsList = (Array.isArray(pkgObj?.hotels) && pkgObj.hotels.length > 0)
+                          ? pkgObj.hotels
+                          : allServicesList.filter(s => {
+                              const type = String(s.type || s.category || s.serviceType || "").toLowerCase();
+                              const title = String(s.title || s.name || s.hotelName || "").toLowerCase();
+                              return type === "hotel" || type === "accommodation" || type === "stay" ||
+                                (!type && (title.includes("hotel") || title.includes("resort") || title.includes("stay") || title.includes("heritage") || title.includes("budget")));
+                            });
 
-                          const combinedHText = `${h?.starRating || ""} ${h?.hotelCategory || ""} ${h?.stars || ""} ${h?.category || ""} ${actualHotel} ${serviceTitle} ${h?.description || ""} ${h?.meal || ""} ${h?.mealPlan || ""} ${pkgObj?.description || ""} ${pkgObj?.title || ""}`.toLowerCase();
-                          let starCount = (() => {
-                            if (combinedHText.includes("3-star") || combinedHText.includes("3 star") || combinedHText.includes("3star") || combinedHText.includes("citymax") || combinedHText.includes("budget")) {
-                              return 3;
-                            }
-                            if (combinedHText.includes("5-star") || combinedHText.includes("5 star") || combinedHText.includes("5star") || combinedHText.includes("luxury") || combinedHText.includes("atlantis")) {
-                              return 5;
-                            }
-                            if (combinedHText.includes("4-star") || combinedHText.includes("4 star") || combinedHText.includes("4star")) {
-                              return 4;
-                            }
-                            const num = Number(String(h?.starRating || h?.hotelCategory || h?.stars || h?.category || "").replace(/\D/g, ""));
-                            if (num > 0 && num <= 5) return num;
-                            return combinedHText.includes("budget") ? 3 : 4;
-                          })();
-                          const starStr = "⭐".repeat(Math.min(5, Math.max(1, starCount))) + ` ${starCount} Star`;
-                          const roomType = h?.roomType || h?.room_type || h?.roomCategory || "Superior Room";
-                          const meal = h?.description || h?.mealPlan || "CP Plan (✅ Breakfast • ❌ Dinner)";
-                          const city = h?.city || destination;
-                          const nVal = Number(h?.nights || h?.numberOfNights || pkgObj?.nights || nights) || nights;
+                        if (hotelsList.length > 0) {
+                          return hotelsList.map((h, idx) => {
+                            const actualHotel = h?.hotelName || h?.hotel_name || h?.actualHotelName || h?.name || h?.title || "Hotel Stay";
+                            const serviceTitle = h?.serviceTitle || h?.serviceName || h?.title || h?.name || actualHotel;
 
-                          const baseStartObj = query?.startDate && !isNaN(new Date(query.startDate).getTime())
-                            ? new Date(query.startDate)
-                            : new Date();
-                          const hCheckIn = h?.checkIn && !isNaN(new Date(h.checkIn).getTime())
-                            ? new Date(h.checkIn)
-                            : baseStartObj;
-                          const hCheckOut = h?.checkOut && !isNaN(new Date(h.checkOut).getTime())
-                            ? new Date(h.checkOut)
-                            : new Date(hCheckIn.getTime() + nVal * 86400000);
+                            const combinedHText = `${h?.starRating || ""} ${h?.hotelCategory || ""} ${h?.stars || ""} ${h?.category || ""} ${actualHotel} ${serviceTitle} ${h?.description || ""} ${h?.meal || ""} ${h?.mealPlan || ""} ${pkgObj?.description || ""} ${pkgObj?.title || ""}`.toLowerCase();
+                            let starCount = (() => {
+                              if (combinedHText.includes("3-star") || combinedHText.includes("3 star") || combinedHText.includes("3star") || combinedHText.includes("citymax") || combinedHText.includes("budget")) return 3;
+                              if (combinedHText.includes("5-star") || combinedHText.includes("5 star") || combinedHText.includes("5star") || combinedHText.includes("luxury") || combinedHText.includes("atlantis")) return 5;
+                              if (combinedHText.includes("4-star") || combinedHText.includes("4 star") || combinedHText.includes("4star")) return 4;
+                              const num = Number(String(h?.starRating || h?.hotelCategory || h?.stars || h?.category || "").replace(/\D/g, ""));
+                              if (num > 0 && num <= 5) return num;
+                              return combinedHText.includes("budget") ? 3 : 4;
+                            })();
+                            const starStr = "⭐".repeat(Math.min(5, Math.max(1, starCount))) + ` ${starCount} Star`;
+                            const roomType = h?.roomType || h?.room_type || h?.roomCategory || "Standard Room";
+                            const meal = h?.description || h?.mealPlan || "CP Plan (✅ Breakfast • ❌ Dinner)";
+                            const city = h?.city || destination;
+                            const nVal = Number(h?.nights || h?.numberOfNights || pkgObj?.nights || nights) || nights;
 
-                          const checkInFormatted = !isNaN(hCheckIn.getTime())
-                            ? hCheckIn.toLocaleDateString("en-GB", { day: "numeric", month: "short" })
-                            : "-";
-                          const checkOutFormatted = !isNaN(hCheckOut.getTime())
-                            ? hCheckOut.toLocaleDateString("en-GB", { day: "numeric", month: "short" })
-                            : "-";
+                            const baseStartObj = query?.startDate && !isNaN(new Date(query.startDate).getTime())
+                              ? new Date(query.startDate)
+                              : new Date();
+                            const hCheckIn = h?.checkIn && !isNaN(new Date(h.checkIn).getTime())
+                              ? new Date(h.checkIn)
+                              : baseStartObj;
+                            const hCheckOut = h?.checkOut && !isNaN(new Date(h.checkOut).getTime())
+                              ? new Date(h.checkOut)
+                              : new Date(hCheckIn.getTime() + nVal * 86400000);
 
-                          return `
-                            <tr style="${idx % 2 === 1 ? 'background-color: #f8fafc;' : ''}">
-                              <td style="padding: 10px 12px; border: 1px solid #d1d5db; font-size: 12px; line-height: 1.4;">
-                                <strong style="color: #0f172a;">${nVal} Nights</strong><br/>
-                                <span style="font-size: 11px; color: #64748b; font-weight: 500;">(${checkInFormatted} - ${checkOutFormatted})</span>
-                              </td>
-                              <td style="padding: 10px 12px; border: 1px solid #d1d5db; font-size: 12px; font-weight: bold; color: #0f172a;">${city}</td>
-                              <td style="padding: 10px 12px; border: 1px solid #d1d5db; font-size: 12px;">
-                                <strong style="color: #0f172a;">${serviceTitle}</strong>
-                                ${actualHotel && actualHotel !== serviceTitle ? `<div style="font-size: 11px; color: #334155; font-weight: 600; margin-top: 2px;">Hotel: ${actualHotel}</div>` : ""}
-                                <div style="font-size: 11px; color: #d97706; font-weight: 600; margin-top: 3px;">${starStr}</div>
-                              </td>
-                              <td style="padding: 10px 12px; border: 1px solid #d1d5db; font-size: 12px;">
-                                <strong>${meal}</strong>
-                                <div style="font-size: 11px; color: #475569; line-height: 1.4; margin-top: 3px;">${roomType}</div>
-                              </td>
-                              <td style="padding: 10px 12px; border: 1px solid #d1d5db; font-size: 12px; font-weight: 600;">
-                                ${nVal}N | 1 Room | ${paxSummary}<br/>
-                                <span style="font-size: 11px; color: #64748b; font-weight: normal;">• ${roomType}</span>
-                              </td>
-                            </tr>
-                          `;
-                        }).join("")
-                      : (() => {
-                          const baseStartObj = query?.startDate && !isNaN(new Date(query.startDate).getTime())
-                            ? new Date(query.startDate)
-                            : new Date();
-                          const fallbackCheckInStr = !isNaN(baseStartObj.getTime())
-                            ? baseStartObj.toLocaleDateString("en-GB", { day: "numeric", month: "short" })
-                            : "-";
-                          const fallbackCheckOutObj = new Date(baseStartObj.getTime() + nights * 86400000);
-                          const fallbackCheckOutStr = !isNaN(fallbackCheckOutObj.getTime())
-                            ? fallbackCheckOutObj.toLocaleDateString("en-GB", { day: "numeric", month: "short" })
-                            : "-";
-                          return `
-                            <tr>
-                              <td style="padding:10px 12px; border:1px solid #d1d5db; font-size:12px; line-height:1.4;">
-                                <strong style="color: #0f172a;">${nights} Nights</strong><br/>
-                                <span style="font-size:11px; color:#64748b; font-weight: 500;">(${fallbackCheckInStr} - ${fallbackCheckOutStr})</span>
-                              </td>
-                              <td style="padding:10px 12px; border:1px solid #d1d5db; font-size:12px; font-weight:bold;">${destination}</td>
-                              <td style="padding:10px 12px; border:1px solid #d1d5db; font-size:12px;">
-                                <strong style="color: #0f172a;">5-Star Luxury Oceanfront Resort Stay</strong>
-                                <div style="font-size: 11px; color: #334155; font-weight: 600; margin-top: 2px;">Hotel: Atlantis, The Palm</div>
-                                <div style="font-size: 11px; color: #d97706; font-weight: 600; margin-top: 3px;">⭐⭐⭐⭐⭐ 5 Star</div>
-                              </td>
-                              <td style="padding:10px 12px; border:1px solid #d1d5db; font-size:12px;">
-                                <strong>CP Plan (✅ Breakfast • ❌ Dinner)</strong>
-                                <div style="font-size:11px; color:#475569; line-height:1.4; margin-top:3px;">Ocean Deluxe Room | Includes Aquaventure Waterpark access</div>
-                              </td>
-                              <td style="padding:10px 12px; border:1px solid #d1d5db; font-size:12px; font-weight:600;">
-                                ${nights}N | 1 Room | ${paxSummary}<br/>
-                                <span style="font-size:11px; color:#64748b; font-weight:normal;">• Ocean Deluxe Room</span>
-                              </td>
-                            </tr>
-                          `;
-                        })()}
+                            const checkInFormatted = !isNaN(hCheckIn.getTime())
+                              ? hCheckIn.toLocaleDateString("en-GB", { day: "numeric", month: "short" })
+                              : "-";
+                            const checkOutFormatted = !isNaN(hCheckOut.getTime())
+                              ? hCheckOut.toLocaleDateString("en-GB", { day: "numeric", month: "short" })
+                              : "-";
+
+                            return `
+                              <tr style="${idx % 2 === 1 ? 'background-color: #f8fafc;' : ''}">
+                                <td style="padding: 10px 12px; border: 1px solid #d1d5db; font-size: 12px; line-height: 1.4;">
+                                  <strong style="color: #0f172a;">${nVal} Nights</strong><br/>
+                                  <span style="font-size: 11px; color: #64748b; font-weight: 500;">(${checkInFormatted} - ${checkOutFormatted})</span>
+                                </td>
+                                <td style="padding: 10px 12px; border: 1px solid #d1d5db; font-size: 12px; font-weight: bold; color: #0f172a;">${city}</td>
+                                <td style="padding: 10px 12px; border: 1px solid #d1d5db; font-size: 12px;">
+                                  <strong style="color: #0f172a;">${serviceTitle}</strong>
+                                  ${actualHotel && actualHotel !== serviceTitle ? `<div style="font-size: 11px; color: #334155; font-weight: 600; margin-top: 2px;">Hotel: ${actualHotel}</div>` : ""}
+                                  <div style="font-size: 11px; color: #d97706; font-weight: 600; margin-top: 3px;">${starStr}</div>
+                                </td>
+                                <td style="padding: 10px 12px; border: 1px solid #d1d5db; font-size: 12px;">
+                                  <strong>${meal}</strong>
+                                  <div style="font-size: 11px; color: #475569; line-height: 1.4; margin-top: 3px;">${roomType}</div>
+                                </td>
+                                <td style="padding: 10px 12px; border: 1px solid #d1d5db; font-size: 12px; font-weight: 600;">
+                                  ${nVal}N | 1 Room | ${paxSummary}<br/>
+                                  <span style="font-size: 11px; color: #64748b; font-weight: normal;">• ${roomType}</span>
+                                </td>
+                              </tr>
+                            `;
+                          }).join("");
+                        }
+
+                        const baseStartObj = query?.startDate && !isNaN(new Date(query.startDate).getTime())
+                          ? new Date(query.startDate)
+                          : new Date();
+                        const fallbackCheckInStr = !isNaN(baseStartObj.getTime())
+                          ? baseStartObj.toLocaleDateString("en-GB", { day: "numeric", month: "short" })
+                          : "-";
+                        const fallbackCheckOutObj = new Date(baseStartObj.getTime() + nights * 86400000);
+                        const fallbackCheckOutStr = !isNaN(fallbackCheckOutObj.getTime())
+                          ? fallbackCheckOutObj.toLocaleDateString("en-GB", { day: "numeric", month: "short" })
+                          : "-";
+                        return `
+                          <tr>
+                            <td style="padding:10px 12px; border:1px solid #d1d5db; font-size:12px; line-height:1.4;">
+                              <strong style="color: #0f172a;">${nights} Nights</strong><br/>
+                              <span style="font-size:11px; color:#64748b; font-weight: 500;">(${fallbackCheckInStr} - ${fallbackCheckOutStr})</span>
+                            </td>
+                            <td style="padding:10px 12px; border:1px solid #d1d5db; font-size:12px; font-weight:bold;">${destination}</td>
+                            <td style="padding:10px 12px; border:1px solid #d1d5db; font-size:12px;">
+                              <strong style="color: #0f172a;">5-Star Luxury Oceanfront Resort Stay</strong>
+                              <div style="font-size: 11px; color: #334155; font-weight: 600; margin-top: 2px;">Hotel: Atlantis, The Palm</div>
+                              <div style="font-size: 11px; color: #d97706; font-weight: 600; margin-top: 3px;">⭐⭐⭐⭐⭐ 5 Star</div>
+                            </td>
+                            <td style="padding:10px 12px; border:1px solid #d1d5db; font-size:12px;">
+                              <strong>CP Plan (✅ Breakfast • ❌ Dinner)</strong>
+                              <div style="font-size:11px; color:#475569; line-height:1.4; margin-top:3px;">Ocean Deluxe Room | Includes Aquaventure Waterpark access</div>
+                            </td>
+                            <td style="padding:10px 12px; border:1px solid #d1d5db; font-size:12px; font-weight:600;">
+                              ${nights}N | 1 Room | ${paxSummary}<br/>
+                              <span style="font-size:11px; color:#64748b; font-weight:normal;">• Ocean Deluxe Room</span>
+                            </td>
+                          </tr>
+                        `;
+                      })()}
                   </tbody>
                 </table>
 

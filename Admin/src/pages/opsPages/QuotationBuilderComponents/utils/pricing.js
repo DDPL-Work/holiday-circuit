@@ -321,9 +321,12 @@ export const resolveActivitySmartRate = (
     selectedTour.childPrice !== undefined
       ? Number(selectedTour.childPrice)
       : Number(service.childPrice || 0);
-  const seasons = Array.isArray(selectedTour.seasons)
-    ? selectedTour.seasons
-    : [];
+  const seasons =
+    Array.isArray(selectedTour.seasons) && selectedTour.seasons.length > 0
+      ? selectedTour.seasons
+      : Array.isArray(service.seasons)
+        ? service.seasons
+        : [];
   const blackoutDates = Array.isArray(service.blackoutDates)
     ? service.blackoutDates
     : [];
@@ -929,10 +932,10 @@ export const getAdjustedHotelRoomTypeRate = (
 };
 
 export const getInferredHotelMaxOccupancy = (room = {}, service = {}) => {
-  const roomCat = String(room.roomCategory || service.roomCategory || "")
+  const roomCat = String(service.roomCategory || room.roomCategory || "")
     .toLowerCase()
     .trim();
-  const roomTyp = String(room.roomType || service.roomType || "")
+  const roomTyp = String(service.roomType || room.roomType || "")
     .toLowerCase()
     .trim();
 
@@ -942,9 +945,6 @@ export const getInferredHotelMaxOccupancy = (room = {}, service = {}) => {
   if (roomCat.includes("single") || roomTyp.includes("single")) {
     defaultAdults = 1;
     defaultChildren = 0;
-  } else if (roomCat.includes("triple") || roomTyp.includes("triple")) {
-    defaultAdults = 3;
-    defaultChildren = 1;
   } else if (
     roomCat.includes("quad") ||
     roomCat.includes("family") ||
@@ -954,6 +954,9 @@ export const getInferredHotelMaxOccupancy = (room = {}, service = {}) => {
   ) {
     defaultAdults = 4;
     defaultChildren = 2;
+  } else if (roomCat.includes("triple") || roomTyp.includes("triple")) {
+    defaultAdults = 3;
+    defaultChildren = 1;
   }
 
   const rawAdults =

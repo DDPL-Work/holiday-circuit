@@ -3248,8 +3248,7 @@ const getDmcVisibleQueriesData = async (req) => {
       service?.supplierId?.toString?.() ||
       service?.supplierId;
 
-    if (serviceSupplierId) {
-      if (serviceSupplierId !== currentDmcId) return null;
+    if (serviceSupplierId && serviceSupplierId === currentDmcId) {
       return mapQuotationServiceReference(service, schedule, alignedTotal, index);
     }
 
@@ -3257,26 +3256,21 @@ const getDmcVisibleQueriesData = async (req) => {
       return mapQuotationServiceReference(service, schedule, alignedTotal, index);
     }
 
-    if (!service?.serviceId) {
-      const ownedByDetails = await serviceBelongsToCurrentDmcByDetails(service);
-      return ownedByDetails
-        ? mapQuotationServiceReference(service, schedule, alignedTotal, index)
-        : null;
-    }
+    if (service?.serviceId) {
+      const ServiceModel = getServiceModel(service.type);
+      if (ServiceModel) {
+        const sourceServiceKey = `${String(service.type || "").trim().toLowerCase()}:${service.serviceId}`;
+        if (!sourceServiceSupplierByKey.has(sourceServiceKey)) {
+          const sourceService = await ServiceModel.findById(service.serviceId)
+            .select("supplier")
+            .lean();
+          sourceServiceSupplierByKey.set(sourceServiceKey, sourceService?.supplier?.toString() || "");
+        }
 
-    const ServiceModel = getServiceModel(service.type);
-    if (!ServiceModel) return null;
-
-    const sourceServiceKey = `${String(service.type || "").trim().toLowerCase()}:${service.serviceId}`;
-    if (!sourceServiceSupplierByKey.has(sourceServiceKey)) {
-      const sourceService = await ServiceModel.findById(service.serviceId)
-        .select("supplier")
-        .lean();
-      sourceServiceSupplierByKey.set(sourceServiceKey, sourceService?.supplier?.toString() || "");
-    }
-
-    if (sourceServiceSupplierByKey.get(sourceServiceKey) === currentDmcId) {
-      return mapQuotationServiceReference(service, schedule, alignedTotal, index);
+        if (sourceServiceSupplierByKey.get(sourceServiceKey) === currentDmcId) {
+          return mapQuotationServiceReference(service, schedule, alignedTotal, index);
+        }
+      }
     }
 
     const ownedByDetails = await serviceBelongsToCurrentDmcByDetails(service);

@@ -155,12 +155,30 @@ export default function ServicesTab({
                                   ? ` - ${service.nights} Night${service.nights > 1 ? "s" : ""}`
                                   : ""}
                             </span>
+                            {/* Pax Summary Line */}
+                            {(() => {
+                              const adults = Number(service.adults ?? selectedQuery?.numberOfAdults ?? selectedQuery?.adults ?? 2);
+                              const children = Number(service.children ?? selectedQuery?.numberOfChildren ?? selectedQuery?.children ?? 0);
+                              const totalPax = adults + children;
+                              const nights = Number(service.nights || 1);
+                              return (
+                                <div className="text-[11px] text-slate-500 font-medium">
+                                  {nights} Night{nights > 1 ? "s" : ""} • {totalPax} Pax ({adults} Adult{adults > 1 ? "s" : ""}{children > 0 ? `, ${children} Child${children > 1 ? "ren" : ""}` : ""})
+                                </div>
+                              );
+                            })()}
                             <div className="space-y-0.5 text-slate-600 text-[10.5px]">
                               <p>
                                 {service.displayDescription ||
                                   service.description ||
                                   "Room Stay & Meals"}
                               </p>
+                            </div>
+                            {/* Normal Text: CAT, BED, TYPE */}
+                            <div className="text-[10.5px] text-slate-500 font-normal mt-0.5">
+                              <span className="font-semibold text-slate-700">CAT:</span> {service.roomCategory || "Double"} •{" "}
+                              <span className="font-semibold text-slate-700">BED:</span> {service.bedType || "double"} •{" "}
+                              <span className="font-semibold text-slate-700">TYPE:</span> {service.roomType || "Standard"}
                             </div>
                           </div>
                         </td>

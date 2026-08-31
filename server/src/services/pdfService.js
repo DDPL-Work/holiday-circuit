@@ -747,12 +747,71 @@ const drawServiceDescriptionLines = (doc, lines = [], x, y, width) => {
 };
 
 const drawServiceRow = (doc, columns, y, service = {}, index = 0) => {
-  const descriptionLines = buildServiceDescriptionLines(service?.description);
-  const quantityText = service?.quantityLabel || "-";
-  const locationText = service?.location || "-";
-  const dateText = service?.serviceDateLabel || "-";
+  const type = String(service?.type || service?.serviceType || service?.category || "").toLowerCase();
+  
+  // Format description lines with rich details (Pickup Time, Tour Type, Slot, Duration, etc.)
+  let rawDesc = String(service?.description || "");
+  const extraDetails = [];
+
+  if (["transfer", "transport", "car"].includes(type)) {
+    const pickupTime = service?.pickupTime || service?.time || service?.selectedSlot || "";
+    if (pickupTime && !rawDesc.toLowerCase().includes("pickup time")) {
+      extraDetails.push(`Pickup Time: ${pickupTime}`);
+    }
+  } else if (["activity", "sightseeing"].includes(type)) {
+    const tourType = service?.tourType || "Sharing Tour";
+    const slotTime = service?.selectedSlot || service?.slot || service?.time || "";
+    
+    // Format duration (e.g. 600 -> 10 Hours)
+    const rawDur = String(service?.duration || "").trim();
+    let formattedDur = "";
+    if (rawDur) {
+      const numDur = Number(rawDur);
+      if (!isNaN(numDur) && numDur > 0) {
+        const hrs = numDur / 60;
+        formattedDur = hrs >= 1 ? `${hrs % 1 === 0 ? hrs : hrs.toFixed(1)} Hours` : `${numDur} Mins`;
+      } else {
+        formattedDur = rawDur;
+      }
+    }
+
+    if (tourType && !rawDesc.toLowerCase().includes("tour type")) extraDetails.push(`Tour Type: ${tourType}`);
+    if (slotTime && !rawDesc.toLowerCase().includes("slot")) extraDetails.push(`Slot: ${slotTime}`);
+    if (formattedDur && !rawDesc.toLowerCase().includes("duration")) extraDetails.push(`Duration: ${formattedDur}`);
+  }
+
+  const fullDesc = [rawDesc, ...extraDetails].filter(Boolean).join(" | ");
+  const descriptionLines = buildServiceDescriptionLines(fullDesc);
+
+  // Quantity / Pax formatting
+  let quantityText = service?.quantityLabel || "-";
+  if (["activity", "sightseeing"].includes(type)) {
+    const numAdults = Number(service?.adults !== undefined && service?.adults !== null ? service?.adults : 0);
+    const numChildren = Number(service?.children !== undefined && service?.children !== null ? service?.children : 0);
+    const numInfants = Number(service?.infants !== undefined && service?.infants !== null ? service?.infants : 0);
+    const hasBreakdown = (numAdults > 0 || numChildren > 0 || numInfants > 0);
+    const totalPax = hasBreakdown ? (numAdults + numChildren + numInfants) : Number(service?.pax || 0);
+
+    if (hasBreakdown) {
+      const parts = [];
+      if (numAdults > 0) parts.push(`${numAdults} Adult${numAdults > 1 ? 's' : ''}`);
+      if (numChildren > 0) parts.push(`${numChildren} Child${numChildren > 1 ? 'ren' : ''}`);
+      if (numInfants > 0) parts.push(`${numInfants} Infant${numInfants > 1 ? 's' : ''}`);
+      quantityText = `${totalPax} Pax (${parts.join(", ")})`;
+    } else if (totalPax > 1) {
+      quantityText = `${totalPax} Pax`;
+    }
+  } else if (["transfer", "transport", "car"].includes(type)) {
+    const pickupTime = service?.pickupTime || service?.time || "";
+    if (pickupTime && !quantityText.toLowerCase().includes("pickup")) {
+      quantityText = `${quantityText}\n(Pickup: ${pickupTime})`;
+    }
+  }
+
+  const locationText = service?.location || service?.city || "-";
+  const dateText = service?.serviceDateLabel || service?.date || "-";
   const titleText = service?.title || "Service";
-  const typeText = normalizeServiceTypeLabel(service?.typeLabel);
+  const typeText = normalizeServiceTypeLabel(service?.typeLabel || service?.type);
 
   doc.font(doc.fontBold || "Helvetica-Bold").fontSize(10);
   const titleHeight = doc.heightOfString(titleText, { width: columns[1].width - 16 });
@@ -987,38 +1046,60 @@ const SUMMARY_SECTION_HEIGHT = 106;
 const TERMS_SECTION_HEIGHT = 132;
 
 const drawTermsSection = (doc, y, customTerms = []) => {
-  const normalizedTerms = Array.isArray(customTerms) && customTerms.length > 0
-    ? customTerms.map((t) => String(t || "").trim()).filter(Boolean)
-    : [
-        "Rates are subject to availability and confirmation at the time of booking.",
-        "Only the services listed in this quotation are included in the shared amount.",
-        "Any amendment after confirmation may affect availability and final pricing.",
-        "Hotel check-in, check-out, and supplier-specific policies will apply as per service rules.",
-        "Please review and confirm within the validity period to avoid fare or rate changes.",
-      ];
+  const officialTerms = [
+    { text: "Welcome to Holiday Circuit. These Terms and Conditions govern your use of Holiday Circuit services. When you make a booking, you agree to be bound by these Terms.", bold: true, color: "#0f172a" },
+    { text: "1. Minimum 50% of the booking amount is required at the time of booking confirmation.", bold: true, color: "#b91c1c" },
+    { text: "2. Remaining 50% in 2 parts: 25% within 30 Days prior to departure and 25% within 20 days prior to departure.", bold: false, color: "#1e293b" },
+    { text: "3. In Case of Airline booking / Train Tickets, 100% ticket cost to be paid at the time of confirmation.", bold: true, color: "#b91c1c" },
+    { text: "4. In Case a booking is under 100% cancellation period, 100% booking amount is required at confirmation.", bold: true, color: "#b91c1c" },
+    { text: "5. Booking will be auto cancelled in case of non-payment within stipulated time.", bold: true, color: "#dc2626" },
+    { text: "6. Credit Card: Payments through Credit Cards may attract an additional charge from 3% to 5% depending upon card type (charged over & above actual package cost).", bold: true, color: "#d97706" },
+    { text: "7. Confirmation Vouchers: Provided only 7 days before the arrival date.", bold: true, color: "#2563eb" },
+    { text: "8. Airport Transfers & Pickups: Includes 60 minutes waiting time for Airport pick-ups. For all other pick-ups, driver will wait for 10 minutes at Hotel Lobby / Reception.", bold: true, color: "#d97706" },
+    { text: "9. Taxes: Any changes in taxes (GST/TCS/Government Tax) at confirmation will be adjusted as per prevailing law.", bold: false, color: "#1e293b" },
+    { text: "10. Changes & Cancellations are subject to fees/penalties determined by service providers and Holiday Circuit.", bold: false, color: "#1e293b" },
+    { text: "11. NEPAL ENTRY RULE: To Enter Nepal by Air - Valid Passport or Election Card is Mandatory. Aadhar Card is NOT valid for Travel.", bold: true, color: "#b91c1c" },
+    { text: "12. Health & Vaccinations: Guest is responsible for meeting all health and vaccination entry requirements.", bold: false, color: "#1e293b" },
+    { text: "13. Travel Insurance: Strongly recommended to protect against unexpected events, trip cancellations, or emergencies.", bold: false, color: "#1e293b" },
+    { text: "14. Force Majeure & Liability: Holiday Circuit acts as an intermediary; not liable for third-party negligence or force majeure events.", bold: false, color: "#1e293b" },
+    { text: "15. Governing Law: Governed by the laws of New Delhi Jurisdiction.", bold: true, color: "#0f172a" },
+    { text: "16. Contact Info: Holiday Circuit, KG 3/69, Ground Floor, Vikas Puri, New Delhi - 110018 | Email: varun@holidaycircuit.com | Ph: +91 8851346665, +91 9971706003", bold: false, color: "#475569" },
+  ];
+
+  const termsToRender = Array.isArray(customTerms) && customTerms.length > 0
+    ? customTerms.map((t, idx) => {
+        const str = String(t || "").trim();
+        const isCritical = /50%|100%|Nepal|auto cancel|60 min|10 min|3% to 5%|passport/i.test(str);
+        return {
+          text: `${idx + 1}. ${str}`,
+          bold: isCritical,
+          color: isCritical ? "#b91c1c" : COLORS.text,
+        };
+      })
+    : officialTerms;
 
   drawSectionBar(doc, y, "TERMS AND CONDITIONS");
 
   let contentHeight = 18;
-  doc.font(doc.fontRegular || "Helvetica").fontSize(8.2);
-  normalizedTerms.forEach((term, index) => {
-    contentHeight += doc.heightOfString(`${index + 1}. ${term}`, { width: PAGE.contentWidth - 28 }) + 5;
+  termsToRender.forEach((item) => {
+    doc.font(item.bold ? (doc.fontBold || "Helvetica-Bold") : (doc.fontRegular || "Helvetica")).fontSize(8);
+    contentHeight += doc.heightOfString(item.text, { width: PAGE.contentWidth - 28 }) + 4;
   });
 
-  const boxHeight = Math.max(50, contentHeight + 10);
+  const boxHeight = Math.max(60, contentHeight + 12);
   drawRoundedBox(doc, PAGE.contentX, y + 30, PAGE.contentWidth, boxHeight, "#ffffff");
 
-  let cursorY = y + 40;
-  normalizedTerms.forEach((term, index) => {
+  let cursorY = y + 38;
+  termsToRender.forEach((item) => {
     doc
-      .font(doc.fontRegular || "Helvetica")
-      .fontSize(8.2)
-      .fillColor(COLORS.text)
-      .text(`${index + 1}. ${term}`, PAGE.contentX + 14, cursorY, {
+      .font(item.bold ? (doc.fontBold || "Helvetica-Bold") : (doc.fontRegular || "Helvetica"))
+      .fontSize(8)
+      .fillColor(item.color || COLORS.text)
+      .text(item.text, PAGE.contentX + 14, cursorY, {
         width: PAGE.contentWidth - 28,
       });
 
-    cursorY = doc.y + 5;
+    cursorY = doc.y + 4;
   });
 
   return y + 30 + boxHeight + 14;

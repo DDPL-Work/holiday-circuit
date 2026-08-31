@@ -435,6 +435,7 @@ const QuotationBuilderContent = (props) => {
                   tripStartDate={formatDateInput(order?.startDate)}
                   tripEndDate={formatDateInput(order?.endDate)}
                   totalPassengers={totalPassengers}
+                  adultPassengers={adultPassengers}
                 />
               ))
             ) : (
@@ -521,7 +522,7 @@ const QuotationBuilderContent = (props) => {
                     delete.
                   </p>
                 </div>
-                <div className="flex min-w-20 items-center justify-center gap-1 rounded-[28px] border border-blue-200 bg-blue-50 px-2 py-1.5 text-center text-blue-700 shadow-2xs">
+                <div className="flex min-w-20 items-center justify-center gap-1 rounded-xl border border-blue-200 bg-blue-50 px-2 py-1.5 text-center text-blue-700 shadow-2xs">
                   <span className="text-[10px] font-bold leading-none">
                     {selectedServices.length}
                   </span>
