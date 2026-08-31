@@ -1,4 +1,4 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import AppRouter from "./routes";
 import { Toaster, ToastBar, toast } from "react-hot-toast";
 import CircuitLoader from "./components/CircuitLoader";

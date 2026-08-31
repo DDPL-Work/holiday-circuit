@@ -461,7 +461,8 @@ export default function BookingDetailsModal({ refresh, booking, onClose, viewMod
 
   const handleAcceptClick = () => {
     if (!canAcceptBooking) {
-      premiumToast.error("Booking already accepted");
+      handleClose();
+      navigate("/ops/quotation-builder", { state: currentBooking });
       return;
     }
 
@@ -1414,14 +1415,14 @@ export default function BookingDetailsModal({ refresh, booking, onClose, viewMod
 
                   <button
                     onClick={handleAcceptClick}
-                    className={`flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm transition ${
+                    className={`flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm transition cursor-pointer hover:scale-[1.03] active:scale-[0.97] ${
                       canAcceptBooking
-                        ? "cursor-pointer bg-green-600 text-white hover:scale-[1.03] hover:bg-green-700 active:scale-[0.97]"
-                        : "cursor-not-allowed bg-green-200 text-green-700"
+                        ? "bg-green-600 text-white hover:bg-green-700"
+                        : "bg-indigo-600 text-white hover:bg-indigo-700"
                     }`}
                   >
                     <CircleCheck className="h-4 w-4" />
-                    {canAcceptBooking ? "Accept" : canOpenQuotationBuilder ? "Ready" : "Accepted"}
+                    {canAcceptBooking ? "Accept" : "Proceed to Quotation Builder"}
                   </button>
                 </motion.div>
               ) : null}
@@ -1438,11 +1439,18 @@ export default function BookingDetailsModal({ refresh, booking, onClose, viewMod
             onDecisionSuccess={(updatedQuery) => {
               if (!updatedQuery) return;
 
-              setCurrentBooking((prev) => ({
-                ...prev,
+              const newBookingState = {
+                ...currentBooking,
                 ...updatedQuery,
-                agent: updatedQuery?.agent || prev?.agent,
-              }));
+                agent: updatedQuery?.agent || currentBooking?.agent,
+              };
+
+              setCurrentBooking(newBookingState);
+              
+              if (mode === "accept") {
+                handleClose();
+                navigate("/ops/quotation-builder", { state: newBookingState });
+              }
             }}
             onClose={() => {
               setIsModalOpen(false);

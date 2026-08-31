@@ -1,4 +1,4 @@
-import { createElement, lazy, Suspense } from "react";
+import React, { createElement, lazy, Suspense } from "react";
 import { createBrowserRouter } from "react-router-dom";
 import ProtectedRoute from "./ProtectedRoute";
 import Layout from "../layout/Layout";
