@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   ArrowLeft,
   ChevronRight,
@@ -6,7 +6,9 @@ import {
   Users,
   UserSquare2,
   ArrowRight,
+  Pencil,
 } from "lucide-react";
+import { TripTouristsModal } from "../../../../modal/TripTouristsModal";
 
 export const BookingHeaderCard = ({
   onClose,
@@ -24,6 +26,8 @@ export const BookingHeaderCard = ({
   expectedPaymentAmount,
   approvedQuotationAmount,
 }) => {
+  const [isTouristsModalOpen, setIsTouristsModalOpen] = useState(false);
+
   return (
     <>
       {/* 1. TOP BREADCRUMB BAR (Back | Docs > Current) */}
@@ -101,6 +105,12 @@ export const BookingHeaderCard = ({
               <UserSquare2 size={15} className="text-emerald-500 shrink-0" />
               <span>{headerClientName}</span>
               <span className="text-slate-900 font-bold">({headerAdultCount || 2}A)</span>
+              <Pencil
+                size={14}
+                className="text-slate-400 hover:text-slate-600 cursor-pointer transition-colors"
+                onClick={() => setIsTouristsModalOpen(true)}
+                title="Manage Tourists"
+              />
             </div>
 
             {/* Line 4: Arrow Agency Contact (DDLC Company) */}
@@ -122,6 +132,13 @@ export const BookingHeaderCard = ({
           </div>
         </div>
       </div>
+
+      <TripTouristsModal
+        isOpen={isTouristsModalOpen}
+        onClose={() => setIsTouristsModalOpen(false)}
+        query={booking}
+        headerLeadTraveler={headerClientName}
+      />
     </>
   );
 };

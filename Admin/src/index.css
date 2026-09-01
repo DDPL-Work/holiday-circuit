@@ -407,15 +407,15 @@ div[role="status"] {
   display: none !important;
 }
 
-/* Date input styling for dark theme & highly visible calendar icon */
+/* Date input styling for light theme & clean calendar icon */
 input[type="date"] {
-  color-scheme: dark !important;
+  color-scheme: light !important;
 }
 
 input[type="date"]::-webkit-calendar-picker-indicator {
   cursor: pointer !important;
-  filter: invert(0.85) sepia(100%) saturate(600%) hue-rotate(5deg) brightness(1.2) !important;
-  opacity: 0.95 !important;
+  filter: none !important;
+  opacity: 0.75 !important;
   padding: 2px !important;
   border-radius: 4px !important;
   transition: transform 0.15s ease, opacity 0.15s ease !important;

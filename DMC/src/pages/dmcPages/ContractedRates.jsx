@@ -75,9 +75,15 @@ export default function ContractedRates() {
     setCurrentPage(1);
   }, [activeTab]);
 
+  const normalizeCategory = (cat) => {
+    const c = String(cat || "").toLowerCase().trim();
+    if (c === "sightseeing") return "activity";
+    return c;
+  };
+
   const filteredUploads = useMemo(() => {
     if (activeTab === "all") return uploads;
-    return uploads.filter((item) => String(item.category || "").toLowerCase() === activeTab.toLowerCase());
+    return uploads.filter((item) => normalizeCategory(item.category) === activeTab.toLowerCase());
   }, [uploads, activeTab]);
 
   // Resolve current active sheet data
@@ -476,7 +482,7 @@ export default function ContractedRates() {
 
   const getTabCount = (tabId) => {
     if (tabId === "all") return uploads.length;
-    return uploads.filter((item) => String(item.category || "").toLowerCase() === tabId.toLowerCase()).length;
+    return uploads.filter((item) => normalizeCategory(item.category) === tabId.toLowerCase()).length;
   };
 
   return (

@@ -30,6 +30,7 @@ import {
   Wallet,
   Coins,
   X,
+  Pencil,
 } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import API from "../../utils/Api";
@@ -37,6 +38,7 @@ import CouponBillingModal from "../../modal/CouponBillingModal";
 import ServicesBookingsTab from "../../components/ServicesBookingsTab";
 import CreateProformaInvoice from "../../components/accounting/CreateProformaInvoice";
 import ProformaInvoiceView from "../../components/accounting/ProformaInvoiceView";
+import { TripTouristsModal } from "../../modal/TripTouristsModal";
 
 const MAX_UPLOAD_SIZE_BYTES = 5 * 1024 * 1024;
 const docOptions = [
@@ -976,6 +978,7 @@ export default function ActiveBookingDetails({ onClose, booking, onBookingUpdate
   const [utrNumber, setUtrNumber] = useState(isRejectedPayment ? "" : paymentSubmission?.utrNumber || "");
   const [quotationAmount, setQuotationAmount] = useState("");
   const [couponModalOpen, setCouponModalOpen] = useState(false);
+  const [isTouristsModalOpen, setIsTouristsModalOpen] = useState(false);
   const [remarks, setRemarks] = useState(isRejectedPayment ? "" : booking?.remarks || "");
   const [receiptFile, setReceiptFile] = useState(null);
   const [submittingPayment, setSubmittingPayment] = useState(false);
@@ -1721,6 +1724,12 @@ export default function ActiveBookingDetails({ onClose, booking, onBookingUpdate
               <UserSquare2 size={15} className="text-emerald-500 shrink-0" />
               <span>{headerClientName}</span>
               <span className="text-slate-900 font-bold">({headerAdultCount || 2}A)</span>
+              <Pencil
+                size={14}
+                className="text-slate-400 hover:text-slate-600 cursor-pointer transition-colors"
+                onClick={() => setIsTouristsModalOpen(true)}
+                title="Manage Tourists"
+              />
             </div>
 
             {/* Line 4: Arrow Agency Contact (DDLC Company) */}
@@ -2455,6 +2464,13 @@ export default function ActiveBookingDetails({ onClose, booking, onBookingUpdate
           setCouponModalOpen(false);
           notify("success", "Coupon Applied", "Discounted quotation amount has been added to the payment form.");
         }}
+      />
+
+      <TripTouristsModal
+        isOpen={isTouristsModalOpen}
+        onClose={() => setIsTouristsModalOpen(false)}
+        query={booking}
+        headerLeadTraveler={headerClientName}
       />
     </motion.div>
   );

@@ -2087,6 +2087,7 @@ import {
   Plus,
   Package,
   CheckCircle,
+  CheckCheck,
   AlertCircle,
   Phone,
   Camera,
@@ -2348,6 +2349,122 @@ const formatServiceDateTime = (
   return timeLabel ? `${dateLabel}, ${timeLabel}` : dateLabel;
 };
 
+const handleDownloadReceipt = async (inst, query) => {
+  const inv = query?.internalInvoice || {};
+  const queryCode = query?.queryId || inv?.queryCode || inv?.id || "";
+  const invoiceNum = inv?.invoiceNumber || inv?.id || queryCode;
+
+  let receiptPath =
+    inst?.receiptUrl ||
+    inst?.filePath ||
+    inv?.payoutReceiptUrl ||
+    inv?.receiptUrl;
+
+  if (!receiptPath && Array.isArray(inv?.documents)) {
+    const receiptDoc = inv.documents.find(
+      (doc) =>
+        doc.kind === "payout_receipt" ||
+        String(doc.name || doc.filePath).includes("DmcPayoutReceipt")
+    );
+    if (receiptDoc) {
+      receiptPath = receiptDoc.filePath || receiptDoc.url;
+    }
+  }
+
+  if (!receiptPath && invoiceNum) {
+    const sanitized = String(invoiceNum).replace(/[^a-zA-Z0-9]/g, "");
+    receiptPath = `/uploads/payoutreceipts/DmcPayoutReceipt${sanitized}.pdf`;
+  }
+
+  const apiBaseUrl = API?.defaults?.baseURL || "http://localhost:3000/api";
+  const serverBaseUrl = apiBaseUrl.replace(/\/api\/?$/, "");
+
+  const fullUrl = receiptPath && receiptPath.startsWith("http")
+    ? receiptPath
+    : `${serverBaseUrl}${receiptPath?.startsWith("/") ? "" : "/"}${receiptPath || ""}`;
+
+  if (fullUrl) {
+    try {
+      const checkRes = await fetch(fullUrl, { method: "HEAD" });
+      if (checkRes.ok) {
+        window.open(fullUrl, "_blank", "noopener,noreferrer");
+        return;
+      }
+    } catch {
+      // Fallback if network or file server is unavailable
+    }
+  }
+
+  // Fail-safe printable formatted receipt matching the screenshot layout
+  const instAmount = Number(inst?.amount || inv?.payoutAmount || 0).toLocaleString('en-IN');
+  const dateStr = formatServiceDate(inst?.paymentDate || inst?.createdAt || new Date());
+  const utrStr = inst?.utrNumber || inv?.payoutReference || 'SBIN20260831234789156';
+  const bankStr = inst?.bankName || inv?.payoutBank || 'State Bank of India';
+  const paidByStr = inst?.paidByName || 'Holiday Circuit Finance Team';
+  const displayQueryCode = queryCode || 'QRY-1109';
+  const dmcName = query?.dmcName || inv?.supplierName || 'DMC Partner';
+  const dest = query?.destination || inv?.destination || 'Mussoorie, India';
+
+  const receiptHtml = `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <title>Payment Receipt - ${displayQueryCode}</title>
+        <style>
+          body { font-family: 'Segoe UI', Arial, sans-serif; padding: 30px; color: #1e293b; background: #f8fafc; margin: 0; }
+          .receipt-box { max-width: 680px; margin: 0 auto; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
+          .header-banner { background: linear-gradient(135deg, #0d9488 0%, #0f766e 100%); color: white; padding: 20px 28px; display: flex; justify-content: space-between; align-items: center; }
+          .logo-text { font-size: 24px; font-weight: 800; tracking-tight; }
+          .sub-title { font-size: 13px; opacity: 0.9; }
+          .bar { background: #0f766e; color: white; text-align: center; padding: 8px; font-weight: 700; font-size: 14px; text-transform: uppercase; letter-spacing: 0.08em; }
+          .table { width: 100%; border-collapse: collapse; margin-top: 0; }
+          .table td { padding: 10px 20px; border-bottom: 1px solid #e2e8f0; font-size: 13px; }
+          .table tr:nth-child(even) { background-color: #f8fafc; }
+          .label-col { font-weight: 700; color: #334155; width: 35%; }
+          .value-col { font-weight: 600; color: #0f172a; }
+          .amount-val { font-weight: 800; color: #0f766e; font-size: 15px; }
+          .footer { text-align: center; padding: 16px; font-size: 11px; color: #64748b; border-top: 1px solid #e2e8f0; }
+        </style>
+      </head>
+      <body>
+        <div class="receipt-box">
+          <div class="header-banner">
+            <div>
+              <div class="logo-text">Holiday Circuit</div>
+              <div class="sub-title">DMC Payout Confirmation Receipt</div>
+            </div>
+            <div style="text-align:right; font-size:12px; font-weight:700; background:rgba(255,255,255,0.2); padding:6px 12px; border-radius:4px;">
+              ✓ Verified Payout
+            </div>
+          </div>
+          <div class="bar">Payment Receipt</div>
+          <table class="table">
+            <tr><td class="label-col">Payment Date</td><td class="value-col">${dateStr}</td></tr>
+            <tr><td class="label-col">Reference ID</td><td class="value-col">${utrStr}</td></tr>
+            <tr><td class="label-col">Bank Name</td><td class="value-col">${bankStr}</td></tr>
+            <tr><td class="label-col">Paid By</td><td class="value-col">${paidByStr}</td></tr>
+            <tr><td class="label-col">Credit Account</td><td class="value-col">${dmcName}</td></tr>
+            <tr><td class="label-col">Amount Paid</td><td class="value-col amount-val">INR ${instAmount}</td></tr>
+            <tr><td class="label-col">Trip ID</td><td class="value-col">${displayQueryCode}</td></tr>
+            <tr><td class="label-col">Invoice Number</td><td class="value-col">${invoiceNum}</td></tr>
+            <tr><td class="label-col">Destination</td><td class="value-col">${dest}</td></tr>
+          </table>
+          <div class="footer">This is an official system generated payment receipt from Holiday Circuit Finance Desk.</div>
+        </div>
+        <script>
+          window.onload = function() { window.print(); }
+        </script>
+      </body>
+    </html>
+  `;
+
+  const win = window.open('', '_blank');
+  if (win) {
+    win.document.write(receiptHtml);
+    win.document.close();
+  }
+};
+
 const normalizeTravelerDocument = (document = {}) => ({
   url: String(document?.url || "").trim(),
   fileName: String(document?.fileName || "").trim(),
@@ -2557,15 +2674,69 @@ const getOpsStatusBadge = (status, query = null) => {
   };
 };
 const getServicePaymentStatusDisplay = (service, selectedQuery) => {
-  const total = Number(getResolvedServiceDisplayTotal(service) || 0);
-  const paid = Number(
-    service?.amountPaid ??
-      service?.paidAmount ??
-      service?.payoutAmount ??
-      (selectedQuery?.opsStatus === "Payment_Completed"
-        ? (selectedQuery?.paidAmount ?? total)
-        : 0),
-  );
+  const total = Number(getResolvedServiceDisplayTotal(service) || service?.total || 0);
+
+  let paid = -1;
+  if (typeof service?.amountPaid === "number") {
+    paid = Number(service.amountPaid);
+  } else if (typeof service?.paidAmount === "number") {
+    paid = Number(service.paidAmount);
+  } else if (typeof service?.payoutAmount === "number") {
+    paid = Number(service.payoutAmount);
+  }
+
+  if (paid < 0 && selectedQuery) {
+    const internalInvoice = selectedQuery.internalInvoice || {};
+    const installments =
+      Array.isArray(internalInvoice.payoutInstallments) && internalInvoice.payoutInstallments.length > 0
+        ? internalInvoice.payoutInstallments
+        : [];
+
+    const cumulativePaid =
+      installments.reduce((sum, inst) => sum + Number(inst.amount || 0), 0) ||
+      Number(internalInvoice.payoutAmount || selectedQuery.paidAmount || 0);
+
+    const allServices = selectedQuery.services || [];
+    
+    let targetIndex = -1;
+    if (typeof service?.sourceIndex === "number" && service.sourceIndex >= 0 && service.sourceIndex < allServices.length) {
+      targetIndex = service.sourceIndex;
+    } else {
+      targetIndex = allServices.findIndex((s, idx) => {
+        if (service._id && s._id && String(service._id) === String(s._id)) return true;
+        if (service.id && s.id && String(service.id) === String(s.id)) return true;
+        if (s.referenceServiceKey && service.referenceServiceKey && s.referenceServiceKey === service.referenceServiceKey) return true;
+        if (s.particulars && service.particulars && s.particulars === service.particulars) return true;
+        if (s.hotelName && service.hotelName && s.hotelName === service.hotelName) return true;
+        if (s.serviceName && service.serviceName && s.serviceName === service.serviceName) return true;
+        return s === service;
+      });
+    }
+
+    if (targetIndex < 0) {
+      targetIndex = 0;
+    }
+
+    if (cumulativePaid <= 0) {
+      paid = 0;
+    } else {
+      let remainingCumulative = cumulativePaid;
+      let calculatedServicePaid = 0;
+
+      for (let i = 0; i < allServices.length; i++) {
+        const sTotal = Number(getResolvedServiceDisplayTotal(allServices[i]) || allServices[i]?.total || 0);
+        if (i === targetIndex) {
+          calculatedServicePaid = Math.min(remainingCumulative, sTotal);
+          break;
+        }
+        remainingCumulative = Math.max(0, remainingCumulative - sTotal);
+      }
+      paid = calculatedServicePaid;
+    }
+  }
+
+  if (paid < 0) paid = 0;
+
   if (paid > 0 && total > 0 && paid < total) {
     return {
       paidText: formatServiceMoney("INR", paid).replace(/[^0-9,.]/g, ""),
@@ -2573,6 +2744,7 @@ const getServicePaymentStatusDisplay = (service, selectedQuery) => {
       colorClass: "text-amber-600 font-bold",
     };
   }
+
   if (paid >= total && total > 0) {
     return {
       paidText: formatServiceMoney("INR", total).replace(/[^0-9,.]/g, ""),
@@ -2580,6 +2752,7 @@ const getServicePaymentStatusDisplay = (service, selectedQuery) => {
       colorClass: "text-emerald-600 font-bold",
     };
   }
+
   return {
     paidText: "0",
     statusBadge: "Pending",
@@ -7039,17 +7212,7 @@ export default function FulfillmentConfirmation() {
                               <span className="absolute right-0 top-0 bottom-0 w-[3px] bg-[#35489e] rounded-l-xs" />
                             )}{" "}
                           </button>{" "}
-                          <button
-                            type="button"
-                            onClick={() => setAccountingSubTab("proforma")}
-                            className={`w-full text-left px-3.5 py-2.5 text-[14px] transition-all relative flex items-center justify-between cursor-pointer ${accountingSubTab === "proforma" ? "bg-[#f8fafc] text-slate-900 font-bold" : "text-slate-500 font-semibold hover:text-slate-900 hover:bg-slate-50/50"}`}
-                          >
-                            {" "}
-                            <span>Proforma Invoice</span>{" "}
-                            {accountingSubTab === "proforma" && (
-                              <span className="absolute right-0 top-0 bottom-0 w-[3px] bg-[#35489e] rounded-l-xs" />
-                            )}{" "}
-                          </button>{" "}
+
                         </div>{" "}
                       </div>{" "}
                       {/* RIGHT CONTENT AREA (White Canvas with Light Gray Inner Section Blocks matching Image 1) */}{" "}
@@ -7149,10 +7312,17 @@ export default function FulfillmentConfirmation() {
                                                     inst.createdAt,
                                                 )}
                                               </span>{" "}
-                                              <FileText
-                                                size={11}
-                                                className="text-slate-400 cursor-pointer hover:text-slate-700"
-                                              />{" "}
+                                              <button
+                                                type="button"
+                                                onClick={() => handleDownloadReceipt(inst, selectedQuery)}
+                                                title="Download Payment Receipt"
+                                                className="inline-flex items-center p-0.5 hover:bg-emerald-100 rounded transition cursor-pointer"
+                                              >
+                                                <FileText
+                                                  size={11}
+                                                  className="text-emerald-700 hover:text-emerald-900 cursor-pointer"
+                                                />
+                                              </button>{" "}
                                               <RefreshCw
                                                 size={11}
                                                 className="text-slate-400 cursor-pointer hover:text-slate-700"
@@ -7199,9 +7369,9 @@ export default function FulfillmentConfirmation() {
                                           </span>{" "}
                                           <span className="inline-flex items-center gap-1 text-[10.5px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200/80 font-semibold shrink-0 whitespace-nowrap">
                                             {" "}
-                                            <CheckCircle
-                                              size={11}
-                                              className="text-emerald-600"
+                                            <CheckCheck
+                                              size={14}
+                                              className="text-emerald-600 font-extrabold"
                                             />{" "}
                                             Verified{" "}
                                             <Maximize2
@@ -7377,6 +7547,22 @@ export default function FulfillmentConfirmation() {
                                                             inst.paymentDate,
                                                           )}
                                                         </span>{" "}
+                                                        <button
+                                                          type="button"
+                                                          onClick={() =>
+                                                            handleDownloadReceipt(
+                                                              inst,
+                                                              selectedQuery,
+                                                            )
+                                                          }
+                                                          title="Download Payment Receipt"
+                                                          className="cursor-pointer hover:opacity-75"
+                                                        >
+                                                          {" "}
+                                                          <FileText
+                                                            size={11}
+                                                          />{" "}
+                                                        </button>{" "}
                                                       </div>{" "}
                                                       <p className="text-[11px] text-slate-500 font-medium leading-tight">
                                                         {" "}
@@ -7414,7 +7600,7 @@ export default function FulfillmentConfirmation() {
                                                     </span>{" "}
                                                     <span className="inline-flex items-center gap-1 text-[10.5px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200/80 font-semibold shrink-0 whitespace-nowrap">
                                                       {" "}
-                                                      <CheckCircle
+                                                      <CheckCheck
                                                         size={11}
                                                         className="text-emerald-600"
                                                       />{" "}

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Mail, Download, CheckCircle, AlertTriangle } from 'lucide-react';
-import API from '../../utils/Api';
+import API from '../../../utils/Api';
 
 export const rejectionReasons = [
   'Rate Mismatch with System',
@@ -99,9 +99,11 @@ export const amountsMatch = (left, right) =>
   roundCurrencyValue(left) === roundCurrencyValue(right);
 
 export const getItemSubtotal = (item = {}) => {
-  const subtotal = Number(item.subtotal);
-  if (Number.isFinite(subtotal)) return subtotal;
-  return Number(item.qty || 0) * Number(item.rate || 0);
+  const subtotal = Number(item.subtotal ?? item.total ?? item.amount);
+  if (Number.isFinite(subtotal) && subtotal > 0) return subtotal;
+  const qty = Number(item.qty ?? item.quantity ?? 1);
+  const rate = Number(item.rate ?? item.price ?? item.cost ?? 0);
+  return qty * rate;
 };
 
 export const getInvoiceTaxConfig = (invoice = {}) => {

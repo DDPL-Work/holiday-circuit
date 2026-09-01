@@ -792,14 +792,11 @@ export const bulkUpload = async (req, res) => {
           category = "hotel";
         } else if (
           sheetNames.some((s) => s.includes("activity") || s.includes("excursion")) ||
-          lowerName.includes("activity")
-        ) {
-          category = "activity";
-        } else if (
+          lowerName.includes("activity") ||
           sheetNames.some((s) => s.includes("sightseeing") || s.includes("tour")) ||
           lowerName.includes("sightseeing")
         ) {
-          category = "sightseeing";
+          category = "activity";
         } else if (sheetNames.some((s) => s.includes("package")) || lowerName.includes("package")) {
           category = "package";
         }
@@ -887,12 +884,23 @@ export const getBulkUploadHistory = async (req, res) => {
       filter.uploadedAuth = req.user.id;
     }
     // 👉 category filter
-    if (category) { filter.category = category; }
+    if (category) {
+      if (category === "activity" || category === "sightseeing") {
+        filter.category = { $in: ["activity", "sightseeing"] };
+      } else {
+        filter.category = category;
+      }
+    }
     const uploads = await UploadHistory.find(filter)
       .sort({ createdAt: -1 }) // latest first
       .lean();
 
-    res.status(200).json({ success: true, count: uploads.length, uploads });
+    const mappedUploads = uploads.map((u) => ({
+      ...u,
+      category: String(u.category || "").toLowerCase() === "sightseeing" ? "activity" : u.category,
+    }));
+
+    res.status(200).json({ success: true, count: mappedUploads.length, uploads: mappedUploads });
 
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });

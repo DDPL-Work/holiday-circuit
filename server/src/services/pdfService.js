@@ -13,7 +13,12 @@ const getLogoBuffer = (inputPathOrUrl) => {
       }
 
       let cleanPath = inputPathOrUrl.trim();
-      if (!cleanPath) {
+      if (
+        !cleanPath ||
+        cleanPath.includes("1771279110850") ||
+        cleanPath.includes("1771278920287") ||
+        cleanPath.includes("1771278816234")
+      ) {
         resolve(null);
         return;
       }
@@ -373,9 +378,6 @@ const formatAmountInWords = (value) => {
 const resolveBrandLogoPath = () => {
   const candidates = [
     path.join(process.cwd(), "..", "client", "src", "assets", "logo img.png"),
-    path.join(process.cwd(), "uploads", "1771279110850-logo img.png"),
-    path.join(process.cwd(), "uploads", "1771278920287-logo img.png"),
-    path.join(process.cwd(), "uploads", "1771278816234-logo img.png"),
   ];
 
   return candidates.find((candidate) => fs.existsSync(candidate)) || "";
