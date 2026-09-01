@@ -12,6 +12,10 @@
   "dependencies": {
     "@reduxjs/toolkit": "^2.11.2",
     "@tailwindcss/vite": "^4.1.18",
+    "@tiptap/core": "^3.30.6",
+    "@tiptap/extension-link": "^3.30.6",
+    "@tiptap/react": "^3.30.6",
+    "@tiptap/starter-kit": "^3.30.6",
     "axios": "^1.13.5",
     "exceljs": "^4.4.0",
     "framer-motion": "^12.34.0",

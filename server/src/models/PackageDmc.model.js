@@ -78,7 +78,9 @@ const packageSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.Mixed,
     default: []
   },
-  termsAndConditions: String,
+  termsAndConditions: {
+    type: mongoose.Schema.Types.Mixed,
+  },
 
   hotels: [serviceSchema],
   activities: [serviceSchema],

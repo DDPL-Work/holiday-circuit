@@ -4,6 +4,8 @@ import { getPendingAgents, approveAgent, getAllUsers, createRateContract, deacti
 import { createCoupon, deleteCoupon, generateCouponCode, getAdminCoupons, sendCouponToAgent, updateCoupon } from "../controllers/couponController.js";
 import { getMyNotifications, markAllNotificationsRead, deleteNotification } from "../controllers/agentController.js";
 import { getOperationManagerQueryQuotations } from "../controllers/opsManagerController.js";
+import { createTermsAndConditions, updateTermsAndConditions, fetchTermsAndConditions, fetchByIDTermsAndConditions, deleteTermsAndConditions } from "../controllers/adminTerms.controller.js";
+import { getIncExcPresets, getIncExcPresetById, createIncExcPreset, updateIncExcPreset, deleteIncExcPreset } from "../controllers/adminIncExc.controller.js";
 import multer from "multer";
 
 const routers = express.Router();
@@ -73,5 +75,17 @@ routers.patch("/internal-invoices/:id/status", isAuthenticated, updateInternalIn
 routers.get("/notifications", isAuthenticated, getMyNotifications);
 routers.patch("/notifications/read-all", isAuthenticated, markAllNotificationsRead);
 routers.delete("/notifications/:id", isAuthenticated, deleteNotification);
+
+routers.get("/terms", isAuthenticated, fetchTermsAndConditions);
+routers.post("/terms", isAuthenticated, createTermsAndConditions);
+routers.get("/terms/:id", isAuthenticated, fetchByIDTermsAndConditions);
+routers.put("/terms/:id", isAuthenticated, updateTermsAndConditions);
+routers.delete("/terms/:id", isAuthenticated, deleteTermsAndConditions);
+
+routers.get("/inc-exc-presets", isAuthenticated, getIncExcPresets);
+routers.get("/inc-exc-presets/:id", isAuthenticated, getIncExcPresetById);
+routers.post("/inc-exc-presets", isAuthenticated, createIncExcPreset);
+routers.put("/inc-exc-presets/:id", isAuthenticated, updateIncExcPreset);
+routers.delete("/inc-exc-presets/:id", isAuthenticated, deleteIncExcPreset);
 
 export default routers;

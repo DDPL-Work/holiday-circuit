@@ -43,6 +43,7 @@ export const quotationSchema = new mongoose.Schema(
       description: { type: String, default: "" },
     },
   ],
+  termsAndConditions: [{ type: String }],
 
   // ================= 🔥 SERVICES =================
   services: [

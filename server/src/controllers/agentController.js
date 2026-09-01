@@ -13,6 +13,7 @@ import Activity from "../models/activityDmc.model.js";
 import Transfer from "../models/transferDmc.model.js";
 import Sightseeing from "../models/sightseeingDmc.model.js";
 import DestinationName from "../models/destinationName.model.js";
+import AgentTerm from "../models/agentTerms.js";
 import bcrypt from "bcrypt";
 import crypto from "crypto";
 import jwt from "jsonwebtoken";
@@ -3940,7 +3941,74 @@ export const getQuotationsByQuery = async (req, res, next) => {
     next(error);
   }
 };
+// Update Quotation Terms and Conditions
+export const updateQuotationTermsAndConditions = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { termsAndConditions } = req.body;
 
+    if (!id) {
+      return next(new ApiError(400, "Quotation ID is required"));
+    }
+
+    if (!Array.isArray(termsAndConditions)) {
+      return next(new ApiError(400, "termsAndConditions must be an array of strings"));
+    }
+
+    const quotation = await Quotation.findById(id);
+    if (!quotation) {
+      return next(new ApiError(404, "Quotation not found"));
+    }
+
+    // Verify ownership
+    if (req.user.role === "agent" && quotation.agent.toString() !== req.user.id) {
+      return next(new ApiError(403, "Forbidden: You cannot modify this quotation"));
+    }
+
+    quotation.termsAndConditions = termsAndConditions;
+    await quotation.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Terms and conditions updated successfully for the quotation",
+      quotation
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Update Package Terms and Conditions (DMC Package)
+export const updatePackageTermsAndConditions = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { termsAndConditions } = req.body;
+
+    if (!id) {
+      return next(new ApiError(400, "Package ID is required"));
+    }
+
+    if (!Array.isArray(termsAndConditions)) {
+      return next(new ApiError(400, "termsAndConditions must be an array of strings"));
+    }
+
+    const pkg = await mongoose.model("Dmc_Package").findById(id);
+    if (!pkg) {
+      return next(new ApiError(404, "Package not found"));
+    }
+
+    pkg.termsAndConditions = termsAndConditions;
+    await pkg.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Terms and conditions updated successfully for the package",
+      package: pkg
+    });
+  } catch (error) {
+    next(error);
+  }
+};
 
 //================ Accept Quotation by Agent Controller ======================
 
@@ -5811,6 +5879,154 @@ export const dismissAgentDueTasks = async (req, res, next) => {
     );
 
     return res.json({ success: true, dismissed: result.modifiedCount || 0 });
+  } catch (error) {
+    next(error);
+  }
+};
+
+
+const formatTermDate = (date) => {
+  const d = new Date(date);
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  let hours = d.getHours();
+  const minutes = d.getMinutes().toString().padStart(2, '0');
+  const ampm = hours >= 12 ? 'PM' : 'AM';
+  hours = hours % 12;
+  hours = hours ? hours : 12; 
+  return `${d.getDate()} ${months[d.getMonth()]}, ${d.getFullYear()} ${hours}:${minutes} ${ampm}`;
+};
+
+export const createTermsAndConditions = async (req, res, next) => {
+  try {
+    const userId = getAuthenticatedUserId(req);
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+    const { name, content } = req.body;
+    if (!name || !content) return res.status(400).json({ message: "Name and content are required" });
+
+    const newTerm = new AgentTerm({
+      name,
+      content,
+      createdBy: userId,
+      revisions: [{
+        content,
+        updatedBy: userId,
+        action: "Created"
+      }]
+    });
+
+    await newTerm.save();
+    await newTerm.populate("createdBy", "name");
+
+    const formattedTerm = {
+      id: newTerm._id,
+      name: newTerm.name,
+      by: newTerm.createdBy?.name || 'Agent',
+      on: formatTermDate(newTerm.createdAt),
+      content: newTerm.content,
+      revisions: newTerm.revisions
+    };
+
+    res.status(201).json(formattedTerm);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateTermsAndConditions = async (req, res, next) => {
+  try {
+    const userId = getAuthenticatedUserId(req);
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+    const { id } = req.params;
+    const { name, content } = req.body;
+    
+    const term = await AgentTerm.findById(id);
+    if (!term) return res.status(404).json({ message: "Term not found" });
+
+    if (content && content !== term.content) {
+      term.revisions.push({
+        content,
+        updatedBy: userId,
+        action: "Updated"
+      });
+      term.content = content;
+    }
+    
+    if (name) term.name = name;
+
+    await term.save();
+    await term.populate("createdBy revisions.updatedBy", "name");
+
+    const formattedTerm = {
+      id: term._id,
+      name: term.name,
+      by: term.createdBy?.name || 'Agent',
+      on: formatTermDate(term.createdAt),
+      content: term.content,
+      revisions: term.revisions
+    };
+
+    res.status(200).json(formattedTerm);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const fetchTermsAndConditions = async (req, res, next) => {
+  try {
+    const terms = await AgentTerm.find().populate("createdBy", "name").sort({ createdAt: -1 });
+    
+    const formattedTerms = terms.map(term => ({
+      id: term._id,
+      name: term.name,
+      by: term.createdBy?.name || 'Agent',
+      on: formatTermDate(term.createdAt),
+      content: term.content
+    }));
+
+    res.status(200).json(formattedTerms);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const fetchByIDTermsAndConditions = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const term = await AgentTerm.findById(id).populate("createdBy revisions.updatedBy", "name");
+    
+    if (!term) return res.status(404).json({ message: "Term not found" });
+
+    const formattedTerm = {
+      id: term._id,
+      name: term.name,
+      by: term.createdBy?.name || 'Agent',
+      on: formatTermDate(term.createdAt),
+      content: term.content,
+      revisions: term.revisions.map(rev => ({
+         _id: rev._id,
+         content: rev.content,
+         action: rev.action,
+         updatedAt: rev.updatedAt,
+         formattedDate: formatTermDate(rev.updatedAt),
+         by: rev.updatedBy?.name || 'Agent'
+      }))
+    };
+
+    res.status(200).json(formattedTerm);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const deleteTermsAndConditions = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const term = await AgentTerm.findByIdAndDelete(id);
+    if (!term) return res.status(404).json({ message: "Term not found" });
+
+    res.status(200).json({ message: "Term deleted successfully" });
   } catch (error) {
     next(error);
   }

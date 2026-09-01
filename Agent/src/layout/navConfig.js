@@ -24,7 +24,7 @@ const menuConfig = {
     { label: "Queries", path: "/agent/queries", icon: FileQuestionMark },
     { label: "Booking Payments", path: "/agent/bookings", icon: FilePlus2 },
     // { label: "Document Portal", path: "/agent/documents", icon: CircleCheckBig },
-    // { label: "Finances", path: "/agent/finance", icon: Wallet },
+    { label: "T&C", path: "/agent/terms", icon: FileText },
   ],
   admin: [
     { label: "Dashboard", path: "/admin/dashboard", icon: LayoutGrid },

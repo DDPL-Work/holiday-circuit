@@ -18,6 +18,10 @@ const OrderAcceptance = lazy(() => import("../pages/opsPages/OrderAcceptance"));
 const QuotationBuilder = lazy(() => import("../pages/opsPages/QuotationBuilder"));
 const VoucherManagement = lazy(() => import("../pages/opsPages/VoucherManagement"));
 const CreatePackage = lazy(() => import("../pages/opsPages/CreatePackage"));
+const IncExcList = lazy(() => import("../pages/opsPages/incExc/IncExcList"));
+const IncExcCreate = lazy(() => import("../pages/opsPages/incExc/IncExcCreate"));
+const IncExcEdit = lazy(() => import("../pages/opsPages/incExc/IncExcEdit"));
+const IncExcDetails = lazy(() => import("../pages/opsPages/incExc/IncExcDetails"));
 const DmcDashboard = lazy(() => import("../pages/dmcPages/DmcDashboard"));
 const ContractedRates = lazy(() => import("../pages/dmcPages/ContractedRates"));
 const FulfillmentConfirmation = lazy(() => import("../pages/dmcPages/FulfillmentConfirmation"));
@@ -82,6 +86,10 @@ export const appRouter = createBrowserRouter([
               { path: "/ops/quotation-builder", element: lazyPage(QuotationBuilder) }, //:queryId dynamic
               { path: "/ops/create-package", element: lazyPage(CreatePackage) },
               { path: "/ops/voucher-management", element: lazyPage(VoucherManagement) },
+              { path: "/ops/inc-exc", element: lazyPage(IncExcList) },
+              { path: "/ops/inc-exc/create", element: lazyPage(IncExcCreate) },
+              { path: "/ops/inc-exc/:id/edit", element: lazyPage(IncExcEdit) },
+              { path: "/ops/inc-exc/:id", element: lazyPage(IncExcDetails) },
             ],
           },
         ],
