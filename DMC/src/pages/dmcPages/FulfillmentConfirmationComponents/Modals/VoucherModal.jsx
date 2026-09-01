@@ -1,8 +1,16 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { X, FileText, Phone, CheckCircle } from 'lucide-react';
+import { X, FileText, Phone, CheckCircle, RefreshCw } from 'lucide-react';
 
-export default function VoucherModal({ activeVoucherService, setActiveVoucherService, setShowVoucherModal, files, handleFile, handleSubmitVoucherModal }) {
+export default function VoucherModal({
+  activeVoucherService,
+  setActiveVoucherService,
+  setShowVoucherModal,
+  files,
+  handleFile,
+  handleSubmitVoucherModal,
+  issuingVoucher = false,
+}) {
   return (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
             {" "}
@@ -286,11 +294,17 @@ export default function VoucherModal({ activeVoucherService, setActiveVoucherSer
                 </button>{" "}
                 <button
                   type="button"
+                  disabled={issuingVoucher}
                   onClick={handleSubmitVoucherModal}
-                  className="px-4 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl cursor-pointer shadow-xs flex items-center gap-1.5"
+                  className="px-4 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl cursor-pointer shadow-xs flex items-center gap-1.5"
                 >
                   {" "}
-                  <CheckCircle size={14} /> Generate & Issue Voucher{" "}
+                  {issuingVoucher ? (
+                    <RefreshCw size={14} className="animate-spin" />
+                  ) : (
+                    <CheckCircle size={14} />
+                  )}{" "}
+                  {issuingVoucher ? "Saving & Issuing..." : "Generate & Issue Voucher"}{" "}
                 </button>{" "}
               </div>{" "}
             </motion.div>{" "}

@@ -2760,19 +2760,28 @@ const getServicePaymentStatusDisplay = (service, selectedQuery) => {
   };
 };
 const getServiceVoucherStatusInfo = (service, selectedQuery) => {
+  const voucherNum =
+    service?.voucherNumber ||
+    service?.voucherReference ||
+    (service?.confirmationNumber && service.confirmationNumber !== "Pending" && service.confirmationNumber !== "N/A"
+      ? service.confirmationNumber
+      : "");
   const hasServiceVoucher = Boolean(
-    service?.voucherNumber || service?.isVoucherGenerated,
+    service?.voucherNumber ||
+    service?.isVoucherGenerated ||
+    (service?.confirmationNumber && service.confirmationNumber !== "Pending" && service.confirmationNumber !== "N/A"),
   );
+
   if (hasServiceVoucher) {
     return {
       isVouchered: true,
-      label: service?.voucherNumber
-        ? `Vouchered (${service.voucherNumber})`
+      label: voucherNum
+        ? `Vouchered (${voucherNum})`
         : "Voucher Generated",
       bgClass:
-        "bg-emerald-50 text-emerald-900 border-emerald-200 hover:bg-emerald-100",
+        "bg-emerald-50 text-emerald-900 border-emerald-300 hover:bg-emerald-100 font-bold",
       iconClass: "text-emerald-600",
-      textClass: "text-emerald-800",
+      textClass: "text-emerald-800 font-bold",
     };
   }
   return {
@@ -3903,21 +3912,30 @@ export default function FulfillmentConfirmation() {
   const [showTravelerDocsModal, setShowTravelerDocsModal] = useState(false);
   const [showVoucherModal, setShowVoucherModal] = useState(false);
   const [activeVoucherService, setActiveVoucherService] = useState(null);
+  const [issuingVoucher, setIssuingVoucher] = useState(false);
   const handleOpenVoucherModal = (service) => {
     setActiveVoucherService({
+      _id: service?._id,
+      id: service?.id,
+      serviceIndex: service?.serviceIndex ?? service?.sourceIndex,
       type: serviceTypeLabel(service?.type || "Hotel"),
-      serviceName: service?.serviceName || "Hotel Booking",
+      rawType: service?.type || "Hotel",
+      serviceName: service?.serviceName || service?.title || "Hotel Booking",
       serviceDate:
         service?.resolvedServiceDate ||
         service?.serviceDate ||
         new Date().toISOString().split("T")[0],
-      confirmationNumber: service?.confirmationNumber || "CNF-17241",
+      confirmationNumber:
+        service?.confirmationNumber && service?.confirmationNumber !== "Pending" && service?.confirmationNumber !== "N/A"
+          ? service.confirmationNumber
+          : "CNF-17241",
       voucherNumber: service?.voucherNumber || "VCH-88219",
       status: service?.status || "Confirmed",
       emergency:
         service?.emergency ||
         "24/7 Local Support: +91 98765 43210 | ops@dmc.com",
       referenceServiceKey: service?.referenceServiceKey || "",
+      originalService: service,
     });
     setShowVoucherModal(true);
   };
@@ -3931,13 +3949,124 @@ export default function FulfillmentConfirmation() {
           "Please fill required fields (Service Name & Confirmation Number)",
         );
       }
+
+      setIssuingVoucher(true);
+
+      const targetKey = activeVoucherService.referenceServiceKey;
+      const targetServiceId = activeVoucherService._id || activeVoucherService.id;
+      const targetServiceName = activeVoucherService.serviceName;
+
+      const currentServices = Array.isArray(selectedQuery?.services)
+        ? [...selectedQuery.services]
+        : [];
+
+      let found = false;
+      const updatedServicesList = currentServices.map((s, idx) => {
+        const sKey = `${idx}-${getReferenceServiceName(s, idx)}`;
+        const sId = s._id || s.id;
+        const sName = s.serviceName || s.title || s.hotelName || s.name || getReferenceServiceName(s, idx);
+
+        const isMatch =
+          (targetKey && sKey === targetKey) ||
+          (targetServiceId && sId && String(sId) === String(targetServiceId)) ||
+          (targetServiceName && sName && targetServiceName.toLowerCase().trim() === sName.toLowerCase().trim()) ||
+          (activeVoucherService.originalService && (s === activeVoucherService.originalService || (sId && sId === activeVoucherService.originalService?._id)));
+
+        if (isMatch && !found) {
+          found = true;
+          return {
+            ...s,
+            serviceName: activeVoucherService.serviceName,
+            serviceDate: activeVoucherService.serviceDate || s.serviceDate || s.resolvedServiceDate,
+            resolvedServiceDate: activeVoucherService.serviceDate || s.serviceDate || s.resolvedServiceDate,
+            status: activeVoucherService.status || "Confirmed",
+            confirmationNumber: activeVoucherService.confirmationNumber,
+            voucherNumber: activeVoucherService.voucherNumber || activeVoucherService.confirmationNumber,
+            emergency: activeVoucherService.emergency,
+            isVoucherGenerated: true,
+            updatedAt: new Date().toISOString(),
+          };
+        }
+        return s;
+      });
+
+      if (!found && updatedServicesList.length > 0) {
+        const fallbackIdx = updatedServicesList.findIndex(
+          (s) => String(s.type || "").toLowerCase() === String(activeVoucherService.rawType || activeVoucherService.type || "").toLowerCase(),
+        );
+        const idxToUpdate = fallbackIdx >= 0 ? fallbackIdx : 0;
+        updatedServicesList[idxToUpdate] = {
+          ...updatedServicesList[idxToUpdate],
+          serviceName: activeVoucherService.serviceName,
+          serviceDate: activeVoucherService.serviceDate || updatedServicesList[idxToUpdate].serviceDate,
+          resolvedServiceDate: activeVoucherService.serviceDate || updatedServicesList[idxToUpdate].resolvedServiceDate,
+          status: activeVoucherService.status || "Confirmed",
+          confirmationNumber: activeVoucherService.confirmationNumber,
+          voucherNumber: activeVoucherService.voucherNumber || activeVoucherService.confirmationNumber,
+          emergency: activeVoucherService.emergency,
+          isVoucherGenerated: true,
+          updatedAt: new Date().toISOString(),
+        };
+      }
+
+      const formData = new FormData();
+      formData.append("queryId", selectedQuery?.queryId || selectedQuery?._id || "");
+      formData.append("services", JSON.stringify(updatedServicesList));
+      formData.append(
+        "emergencyContact",
+        activeVoucherService.emergency ||
+          JSON.stringify(updatedServicesList.map((service) => service.emergency || "")),
+      );
+      formData.append("status", "submitted");
+
+      if (files.supplier) {
+        formData.append("supplierConfirmation", files.supplier);
+      }
+      if (files.voucher) {
+        formData.append("voucherReference", files.voucher);
+      }
+      if (files.terms) {
+        formData.append("termsConditions", files.terms);
+      }
+
+      await API.post("/dmc/confirmation", formData, {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+      });
+
+      const updatedQuery = {
+        ...selectedQuery,
+        services: updatedServicesList,
+        isVoucherGenerated: true,
+        voucherNumber: activeVoucherService.voucherNumber || selectedQuery?.voucherNumber,
+      };
+
+      setSelectedQuery(updatedQuery);
+
+      setConfirmedQueries((prevQueries) =>
+        prevQueries.map((q) => {
+          if (q._id === selectedQuery._id || q.queryId === selectedQuery.queryId) {
+            return {
+              ...q,
+              services: updatedServicesList,
+              isVoucherGenerated: true,
+              voucherNumber: activeVoucherService.voucherNumber || q.voucherNumber,
+            };
+          }
+          return q;
+        }),
+      );
+
       toast.success(
-        `Voucher issued successfully for ${activeVoucherService.serviceName}!`,
+        `Voucher issued & confirmed successfully for ${activeVoucherService.serviceName}!`,
       );
       setShowVoucherModal(false);
     } catch (err) {
-      console.error(err);
-      toast.error("Failed to generate voucher");
+      console.error("Voucher submission error:", err);
+      toast.error(err?.response?.data?.message || err?.message || "Failed to generate voucher");
+    } finally {
+      setIssuingVoucher(false);
     }
   };
   const [downloadingDocumentId, setDownloadingDocumentId] = useState("");
@@ -9728,11 +9857,17 @@ export default function FulfillmentConfirmation() {
                 </button>{" "}
                 <button
                   type="button"
+                  disabled={issuingVoucher}
                   onClick={handleSubmitVoucherModal}
-                  className="px-4 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl cursor-pointer shadow-xs flex items-center gap-1.5"
+                  className="px-4 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl cursor-pointer shadow-xs flex items-center gap-1.5"
                 >
                   {" "}
-                  <CheckCircle size={14} /> Generate & Issue Voucher{" "}
+                  {issuingVoucher ? (
+                    <RefreshCw size={14} className="animate-spin" />
+                  ) : (
+                    <CheckCircle size={14} />
+                  )}{" "}
+                  {issuingVoucher ? "Saving & Issuing..." : "Generate & Issue Voucher"}{" "}
                 </button>{" "}
               </div>{" "}
             </motion.div>{" "}
