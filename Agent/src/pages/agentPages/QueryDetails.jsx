@@ -1549,15 +1549,20 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
   };
 
   const getClientPdfUrl = async (quoteId) => {
-    const { data } = await API.get(`/agent/quotations/${quoteId}/client-pdf`);
-    const publicUrl = buildPublicAssetUrl(data?.pdf?.publicFilePath);
+    try {
+      const { data } = await API.get(`/agent/quotations/${quoteId}/client-pdf`);
+      const publicUrl = buildPublicAssetUrl(data?.pdf?.publicFilePath || data?.pdfUrl || data?.publicUrl || data?.url);
 
-    if (!publicUrl) {
-      throw new Error("Unable to prepare client PDF");
+      if (!publicUrl) {
+        return null;
+      }
+
+      const separator = publicUrl.includes("?") ? "&" : "?";
+      return `${publicUrl}${separator}v=${Date.now()}`;
+    } catch (err) {
+      console.warn("Client PDF API error, fallback to client window print", err);
+      return null;
     }
-
-    const separator = publicUrl.includes("?") ? "&" : "?";
-    return `${publicUrl}${separator}v=${Date.now()}`;
   };
 
   const openRevisionModal = (quoteId) => {
@@ -1953,7 +1958,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
             setIsCreatingProforma(false);
             toast.success("Proforma Invoice saved successfully");
           }}
-          queryData={query}
+          queryData={{ ...query, activeQuote, quotes, headerPackageAmount, headerLeadTraveler }}
         />
       </div>
     );
@@ -2338,7 +2343,14 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
               const isValidRemark = (text) => {
                 const str = String(text || "").trim();
                 if (str.length < 4) return false;
+
+                const alphaOnly = str.replace(/[^a-zA-Z]/g, "").toLowerCase();
+                if (!alphaOnly || alphaOnly.length < 3) return false;
+                if (/[bcdfghjklmnpqrstvwxyz]{5,}/i.test(alphaOnly)) return false;
+                const vowels = alphaOnly.match(/[aeiou]/gi) || [];
+                if (alphaOnly.length > 5 && vowels.length / alphaOnly.length < 0.15) return false;
                 if (/^[a-z]\s+[a-z]\s+[a-z]+/i.test(str)) return false;
+
                 return true;
               };
 
@@ -2645,16 +2657,92 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                                 {showThreeDotsMenu && (
                                   <div className="absolute right-0 top-full mt-2 w-48 rounded-xl bg-white border border-slate-200 shadow-2xs py-1.5 z-[100] text-xs font-semibold text-slate-700">
                                     <button
-                                      type="button"
-                                      onClick={async () => {
-                                        setShowThreeDotsMenu(false);
-                                        try {
-                                          const url = await getClientPdfUrl(quote._id);
-                                          if (url) window.open(url, "_blank");
-                                        } catch (err) {
-                                          toast.error("Unable to download PDF");
-                                        }
-                                      }}
+                                       type="button"
+                                       onClick={async () => {
+                                         setShowThreeDotsMenu(false);
+                                         const printWindow = window.open("", "_blank");
+                                         if (printWindow) {
+                                           printWindow.document.write(`
+                                             <!DOCTYPE html>
+                                             <html>
+                                               <head><title>Preparing PDF...</title></head>
+                                               <body style="font-family: system-ui, sans-serif; display: flex; align-items: center; justify-content: center; height: 90vh; margin: 0; background: #f8fafc; color: #334155;">
+                                                 <div style="text-align: center;">
+                                                   <div style="font-size: 18px; font-weight: 600; margin-bottom: 8px;">Generating Quotation PDF...</div>
+                                                   <div style="font-size: 13px; color: #64748b;">Please wait a moment.</div>
+                                                 </div>
+                                               </body>
+                                             </html>
+                                           `);
+                                           printWindow.document.close();
+                                         }
+
+                                         try {
+                                           const targetQuote = quote || activeQuote || quotes[0];
+                                           let url = null;
+                                           if (targetQuote?._id) {
+                                             url = await getClientPdfUrl(targetQuote._id);
+                                           }
+
+                                           if (url && printWindow) {
+                                             printWindow.location.href = url;
+                                           } else {
+                                             const clientName = cleanLeadName || headerLeadTraveler || "Client";
+                                             const quoteNum = targetQuote?.quotationNumber || query?.queryId || "QRY-1093";
+                                             const dest = query?.destination || "Goa";
+                                             const priceVal = Math.round(activeQuotePrice || targetQuote?.clientTotalAmount || targetQuote?.totalAmount || 0);
+                                             const priceStr = priceVal > 0 ? priceVal.toLocaleString("en-IN") : "Price on Request";
+                                             const company = headerCompany || "Holiday Circuit";
+
+                                             const fallbackHtml = `
+                                               <!DOCTYPE html>
+                                               <html>
+                                                 <head>
+                                                   <title>${quoteNum} - ${clientName}</title>
+                                                   <style>
+                                                     body { font-family: system-ui, -apple-system, sans-serif; padding: 32px; color: #0f172a; line-height: 1.5; background: #ffffff; }
+                                                     .header { border-bottom: 2px solid #3b82f6; padding-bottom: 16px; margin-bottom: 24px; }
+                                                     .title { font-size: 22px; font-weight: 800; color: #0f172a; margin: 0; }
+                                                     .subtitle { font-size: 13px; color: #64748b; margin-top: 6px; }
+                                                     .card { background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 12px; padding: 20px; margin-top: 20px; }
+                                                     .price-tag { font-size: 26px; font-weight: 800; color: #0284c7; }
+                                                     @media print { body { padding: 0; } }
+                                                   </style>
+                                                 </head>
+                                                 <body>
+                                                   <div class="header">
+                                                     <h1 class="title">${company} - Travel Quotation</h1>
+                                                     <p class="subtitle">Quotation Ref: <strong>#${quoteNum}</strong> &bull; Lead Traveler: <strong>${clientName}</strong> &bull; Destination: <strong>${dest}</strong></p>
+                                                   </div>
+                                                   <div class="card">
+                                                     <div style="font-size:12px; font-weight:600; color:#64748b; margin-bottom:4px;">Package Quote Price</div>
+                                                     <div class="price-tag">₹ ${priceStr} <span style="font-size:13px; font-weight:500; color:#475569;">(inc. GST & Taxes)</span></div>
+                                                   </div>
+                                                   <script>
+                                                     window.onload = function() {
+                                                       setTimeout(function() { window.print(); }, 200);
+                                                     };
+                                                   </script>
+                                                 </body>
+                                               </html>
+                                             `;
+
+                                             if (printWindow) {
+                                               printWindow.document.open();
+                                               printWindow.document.write(fallbackHtml);
+                                               printWindow.document.close();
+                                             } else {
+                                               const blob = new Blob([fallbackHtml], { type: "text/html" });
+                                               const blobUrl = URL.createObjectURL(blob);
+                                               window.open(blobUrl, "_blank");
+                                             }
+                                           }
+                                         } catch (err) {
+                                           console.error("Download PDF error:", err);
+                                           if (printWindow) printWindow.close();
+                                           toast.error("Unable to generate PDF preview");
+                                         }
+                                       }}
                                       className="w-full text-left px-3.5 py-2.5 hover:bg-slate-50 flex items-center gap-2.5 cursor-pointer text-slate-700 font-medium transition-colors"
                                     >
                                       <FileText size={15} className="text-slate-500" />
@@ -2680,6 +2768,8 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                           </div>
                         </div>
 
+
+
                         {/* TRIP SUMMARY PILL BOX AT BOTTOM OF QUOTE CARD */}
                         <div className="rounded-lg border border-slate-200/90 bg-white px-3.5 py-2.5 text-xs font-medium text-slate-700 flex flex-wrap items-center gap-2.5 shadow-2xs">
                           <div className="flex items-center gap-1.5">
@@ -2698,6 +2788,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                         </div>
                       </div>
                     </div>
+                    
 
                     {/* 2. SERVICES SECTION */}
                     <div className="pt-2 space-y-4">
@@ -2983,6 +3074,8 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                           </div>
                         </div>
 
+
+
                         {/* Accommodation Footer Total (Standalone under table) */}
                         <div className="mt-3 flex justify-end">
                           <div className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-800 shadow-2xs">
@@ -3011,6 +3104,8 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                           </div>
                         </div>
                       </div>
+
+
 
                       {/* 1. TRANSFERS / TRANSPORTATION CARD */}
                       {(() => {
@@ -3230,6 +3325,8 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                           </div>
                         );
                       })()}
+
+
 
                       {/* 2. ACTIVITIES & SIGHTSEEING CARD */}
                       {(() => {
@@ -3533,6 +3630,8 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                       })()}
                     </div>
 
+
+
                     {/* 4. INCLUSIONS & EXCLUSIONS SECTION */}
                     <div className="border-t border-slate-200 pt-3">
                       <button
@@ -3596,6 +3695,8 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                         </div>
                       )}
                     </div>
+
+
 
                     {/* 5. DAY-WISE SCHEDULE SECTION */}
                     <div className="border-t border-slate-200 pt-3">
@@ -3743,6 +3844,8 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                       })()}
                     </div>
 
+
+
                     {/* 6. TERMS AND CONDITIONS SECTION */}
                     <div className="border-t border-slate-200 pt-3">
                       <div className="flex items-center gap-2.5">
@@ -3885,12 +3988,14 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
 
 
 
+
                     {/* MARKUP MODAL (REMOVED NESTED - MOVED TO TOP LEVEL) */}
                   </div>
 
                   {/* RIGHT COLUMN SIDEBAR (Only in Basic Details) */}
                   {(activeTab === "basic" || !activeTab) && (
                     <div className="w-full lg:w-[280px] shrink-0 space-y-3.5">
+
                       {/* TASKS & COMMENTS */}
                       <div className="border border-slate-200 shadow-2xs rounded-xl overflow-hidden bg-white">
                         <div className="px-4 py-3 border-b border-slate-200 bg-[#f8fafc]">
@@ -4040,6 +4145,8 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                         </div>
                       </div>
 
+
+
                       {/* REQUIREMENTS */}
                       <div className="border border-slate-200 shadow-2xs rounded-xl overflow-hidden bg-white font-sans">
                         <div className="px-4.5 py-3.5 border-b border-slate-200 bg-[#f8fafc]">
@@ -4097,7 +4204,11 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
           </div>
         )}
 
+
+
+
         {/* TAB VIEW: SERVICES BOOKINGS */}
+
         {activeTab === "services" && (
           <motion.div
             initial={{ opacity: 0, y: 10 }}
@@ -4116,6 +4227,8 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
             />
           </motion.div>
         )}
+
+
 
         {/* TAB VIEW: ACCOUNTING & FINANCIALS (Matches Image Design 1-to-1) */}
         {activeTab === "accounting" && (() => {
@@ -10703,6 +10816,8 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
         shareMode={sendShareMode}
       />
 
+
+
       {/* TOP-LEVEL MARKUP MODAL */}
       {isMarkupModalOpen && (() => {
         const isPackageTarget =
@@ -10931,6 +11046,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
         query={query}
       />
 
+
       <RevisionModal
         isOpen={isRevisionModalOpen}
         onClose={() => {
@@ -10943,6 +11059,8 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
         handleRequestRevision={handleRequestRevision}
         revisionSubmitting={revisionSubmitting}
       />
+
+
     </motion.div>
   );
 };

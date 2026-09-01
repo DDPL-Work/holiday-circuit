@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   ArrowLeft,
   ChevronRight,
@@ -6,8 +6,10 @@ import {
   Users,
   UserSquare2,
   ArrowRight,
+  Pencil,
 } from "lucide-react";
 import { formatAmountValue } from "../../utils/queryDetailsHelpers";
+import { TripTouristsModal } from "../../../../../modal/TripTouristsModal";
 
 export const QueryHeaderCard = ({
   handleClose,
@@ -25,6 +27,72 @@ export const QueryHeaderCard = ({
   headerPackageAmount,
   activeQuote,
 }) => {
+  const queryKey = `trip_tourists_${query?._id || query?.queryId || "default"}`;
+
+  const [isTouristsModalOpen, setIsTouristsModalOpen] = useState(false);
+  const [currentLeadTraveler, setCurrentLeadTraveler] = useState(() => {
+    try {
+      const savedLead = localStorage.getItem(`${queryKey}_lead`);
+      if (savedLead) return savedLead;
+    } catch (e) {}
+    return headerLeadTraveler;
+  });
+
+  const [currentLeadPhone, setCurrentLeadPhone] = useState(() => {
+    try {
+      const savedPhone = localStorage.getItem(`${queryKey}_phone`);
+      if (savedPhone) return savedPhone;
+    } catch (e) {}
+    return query?.phone || query?.mobileNumber || query?.contactNumber || query?.clientPhone || "";
+  });
+
+  React.useEffect(() => {
+    try {
+      const savedLead = localStorage.getItem(`${queryKey}_lead`);
+      if (savedLead) {
+        setCurrentLeadTraveler(savedLead);
+      } else if (headerLeadTraveler) {
+        setCurrentLeadTraveler(headerLeadTraveler);
+      }
+      const savedPhone = localStorage.getItem(`${queryKey}_phone`);
+      if (savedPhone) {
+        setCurrentLeadPhone(savedPhone);
+      }
+    } catch (e) {}
+  }, [queryKey, headerLeadTraveler, query]);
+
+  const rawLeadName = currentLeadTraveler || headerLeadTraveler || "";
+  // Fix duplicate salutations like "Mr. Mr FRANK" => "Mr. FRANK"
+  const cleanLeadName = rawLeadName.replace(/^(Mr\.|Mrs\.|Ms\.|Master|Dr\.)\s+(?=(Mr\.|Mrs\.|Ms\.|Master|Dr\.)\b)/i, "");
+  const activeLeadName = cleanLeadName || currentLeadTraveler || headerLeadTraveler;
+
+  const handleSaveTourists = (savedTourists) => {
+    if (Array.isArray(savedTourists) && savedTourists.length > 0) {
+      const primary = savedTourists.find((t) => t.isFlagged) || savedTourists[0];
+      const salutation = primary?.salutation || "";
+      const rawName = (primary?.name || "").replace(/^(Mr\.|Mrs\.|Ms\.|Master|Dr\.)\s*/i, "").trim();
+      const fullName = [salutation, rawName].filter(Boolean).join(" ");
+      if (fullName) {
+        setCurrentLeadTraveler(fullName);
+      }
+      const phoneObj = primary?.phones?.[0];
+      if (phoneObj && phoneObj.number) {
+        const rawNum = phoneObj.number.trim();
+        const codeStr = phoneObj.countryCode ? `+${phoneObj.countryCode.split("-")[0]}-` : "+91-";
+        const formatted = rawNum.startsWith("+") ? rawNum : `${codeStr}${rawNum}`;
+        setCurrentLeadPhone(formatted);
+        try {
+          localStorage.setItem(`${queryKey}_phone`, formatted);
+        } catch (e) {}
+      }
+      if (primary?.email) {
+        try {
+          localStorage.setItem(`${queryKey}_email`, primary.email.trim());
+        } catch (e) {}
+      }
+    }
+  };
+
   return (
     <>
       {/* 1. TOP BREADCRUMB BAR (Back | [Active Tab] > Current) */}
@@ -89,7 +157,7 @@ export const QueryHeaderCard = ({
               <span className="text-indigo-400 font-bold">#</span>
               <span className="font-extrabold">{String(query?.queryId || query?._id || "Not specified").replace(/^#\s*/, "")}</span>
               <span className="text-slate-300 font-normal mx-0.5">•</span>
-              <span className="truncate max-w-[240px] sm:max-w-none font-bold">{headerLeadTraveler}</span>
+              <span className="truncate max-w-[240px] sm:max-w-none font-bold">{cleanLeadName}</span>
               <span className="text-slate-300 font-normal mx-0.5">•</span>
               <span className="font-bold">{query?.destination || "Destination not specified"}</span>
               <span className="text-slate-300 font-normal mx-0.5">•</span>
@@ -117,11 +185,22 @@ export const QueryHeaderCard = ({
               <span>{headerPaxSummary}</span>
             </div>
 
-            {/* Line 3: Lead Guest Name (2A) */}
+            {/* Line 3: Lead Guest Name + Phone (1A) */}
             <div className="flex items-center gap-2 flex-wrap text-sm text-slate-800 font-medium">
               <UserSquare2 size={15} className="text-emerald-400 shrink-0" />
-              <span>{headerLeadTraveler}</span>
+              <span>{cleanLeadName}</span>
+              {currentLeadPhone && (
+                <span className="text-slate-600 font-medium text-xs sm:text-sm">
+                  {currentLeadPhone.startsWith("+") ? currentLeadPhone : `+91-${currentLeadPhone}`}
+                </span>
+              )}
               <span className="text-slate-900 font-bold">({headerTravelerCounts.adults || 0}A)</span>
+              <Pencil
+                size={14}
+                className="text-slate-400 hover:text-slate-600 cursor-pointer transition-colors"
+                onClick={() => setIsTouristsModalOpen(true)}
+                title="Manage Tourists"
+              />
             </div>
 
             {/* Line 4: Arrow Agency Contact (DDLC Company) */}
@@ -145,6 +224,14 @@ export const QueryHeaderCard = ({
           )}
         </div>
       </div>
+
+      <TripTouristsModal
+        isOpen={isTouristsModalOpen}
+        onClose={() => setIsTouristsModalOpen(false)}
+        query={query}
+        headerLeadTraveler={activeLeadName}
+        onSave={handleSaveTourists}
+      />
     </>
   );
 };

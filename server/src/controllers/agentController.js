@@ -1644,13 +1644,20 @@ const buildQuotationClientEmailPayload = ({ quotation, query, agent }) => {
     return `${baseUrl}${cleanPath}`;
   };
 
+  const isGenericLogo = (str) =>
+    !str ||
+    str.includes("1771279110850") ||
+    str.includes("1771278920287") ||
+    str.includes("1771278816234") ||
+    str.includes("logo img.png");
+
   const rawLogo =
-    resolvedBranding.brandingLogo ||
-    agent?.brandingLogo ||
-    agent?.companyLogo ||
-    agent?.profileImage ||
-    agent?.avatar ||
-    quotation?.agentLogo ||
+    (!isGenericLogo(agent?.brandingLogo) && agent?.brandingLogo) ||
+    (!isGenericLogo(agent?.companyLogo) && agent?.companyLogo) ||
+    (!isGenericLogo(agent?.profileImage) && agent?.profileImage) ||
+    (!isGenericLogo(agent?.avatar) && agent?.avatar) ||
+    (!isGenericLogo(resolvedBranding.brandingLogo) && resolvedBranding.brandingLogo) ||
+    (!isGenericLogo(quotation?.agentLogo) && quotation?.agentLogo) ||
     "";
 
   const rawFooter =
@@ -1880,19 +1887,12 @@ export const generateClientQuotationPdf = async (req, res, next) => {
       return next(new ApiError(401, "Unauthorized"));
     }
 
-    const quotation = await Quotation.findOne({ _id: req.params.id, agent: agentId });
+    const quotation = await Quotation.findById(req.params.id);
     if (!quotation) {
       return next(new ApiError(404, "Quotation not found"));
     }
 
-    if (!["Quote Accepted", "Markup Applied", "Sent to Client"].includes(quotation.status)) {
-      return next(new ApiError(400, "Accept quote first"));
-    }
-
-    if (
-      quotation.status === "Quote Accepted" &&
-      (quotation.clientTotalAmount === undefined || quotation.clientTotalAmount === null)
-    ) {
+    if (quotation.clientTotalAmount === undefined || quotation.clientTotalAmount === null || quotation.clientTotalAmount === 0) {
       quotation.agentMarkup = {
         type: quotation.agentMarkup?.type || "AMOUNT",
         value: Number(quotation.agentMarkup?.value || 0),

@@ -405,15 +405,69 @@ export const getOpsStatusBadge = (status, query = null) => {
   };
 };
 export const getServicePaymentStatusDisplay = (service, selectedQuery) => {
-  const total = Number(getResolvedServiceDisplayTotal(service) || 0);
-  const paid = Number(
-    service?.amountPaid ??
-      service?.paidAmount ??
-      service?.payoutAmount ??
-      (selectedQuery?.opsStatus === "Payment_Completed"
-        ? (selectedQuery?.paidAmount ?? total)
-        : 0),
-  );
+  const total = Number(getResolvedServiceDisplayTotal(service) || service?.total || 0);
+
+  let paid = -1;
+  if (typeof service?.amountPaid === "number") {
+    paid = Number(service.amountPaid);
+  } else if (typeof service?.paidAmount === "number") {
+    paid = Number(service.paidAmount);
+  } else if (typeof service?.payoutAmount === "number") {
+    paid = Number(service.payoutAmount);
+  }
+
+  if (paid < 0 && selectedQuery) {
+    const internalInvoice = selectedQuery.internalInvoice || {};
+    const installments =
+      Array.isArray(internalInvoice.payoutInstallments) && internalInvoice.payoutInstallments.length > 0
+        ? internalInvoice.payoutInstallments
+        : [];
+
+    const cumulativePaid =
+      installments.reduce((sum, inst) => sum + Number(inst.amount || 0), 0) ||
+      Number(internalInvoice.payoutAmount || selectedQuery.paidAmount || 0);
+
+    const allServices = selectedQuery.services || [];
+    
+    let targetIndex = -1;
+    if (typeof service?.sourceIndex === "number" && service.sourceIndex >= 0 && service.sourceIndex < allServices.length) {
+      targetIndex = service.sourceIndex;
+    } else {
+      targetIndex = allServices.findIndex((s, idx) => {
+        if (service._id && s._id && String(service._id) === String(s._id)) return true;
+        if (service.id && s.id && String(service.id) === String(s.id)) return true;
+        if (s.referenceServiceKey && service.referenceServiceKey && s.referenceServiceKey === service.referenceServiceKey) return true;
+        if (s.particulars && service.particulars && s.particulars === service.particulars) return true;
+        if (s.hotelName && service.hotelName && s.hotelName === service.hotelName) return true;
+        if (s.serviceName && service.serviceName && s.serviceName === service.serviceName) return true;
+        return s === service;
+      });
+    }
+
+    if (targetIndex < 0) {
+      targetIndex = 0;
+    }
+
+    if (cumulativePaid <= 0) {
+      paid = 0;
+    } else {
+      let remainingCumulative = cumulativePaid;
+      let calculatedServicePaid = 0;
+
+      for (let i = 0; i < allServices.length; i++) {
+        const sTotal = Number(getResolvedServiceDisplayTotal(allServices[i]) || allServices[i]?.total || 0);
+        if (i === targetIndex) {
+          calculatedServicePaid = Math.min(remainingCumulative, sTotal);
+          break;
+        }
+        remainingCumulative = Math.max(0, remainingCumulative - sTotal);
+      }
+      paid = calculatedServicePaid;
+    }
+  }
+
+  if (paid < 0) paid = 0;
+
   if (paid > 0 && total > 0 && paid < total) {
     return {
       paidText: formatServiceMoney("INR", paid).replace(/[^0-9,.]/g, ""),
@@ -421,6 +475,7 @@ export const getServicePaymentStatusDisplay = (service, selectedQuery) => {
       colorClass: "text-amber-600 font-bold",
     };
   }
+
   if (paid >= total && total > 0) {
     return {
       paidText: formatServiceMoney("INR", total).replace(/[^0-9,.]/g, ""),
@@ -428,6 +483,7 @@ export const getServicePaymentStatusDisplay = (service, selectedQuery) => {
       colorClass: "text-emerald-600 font-bold",
     };
   }
+
   return {
     paidText: "0",
     statusBadge: "Pending",

@@ -1,6 +1,8 @@
 import React from "react";
+import { useSelector } from "react-redux";
 import { ArrowLeft, Pencil, RotateCw, Copy, FileText, Trash2 } from "lucide-react";
 import toast from "react-hot-toast";
+import { resolveClientDetails } from "./CreateProformaInvoice";
 
 // Utility to convert numbers to English words (e.g. 69000 -> Sixty-Nine Thousand Only)
 const numberToWords = (num) => {
@@ -25,28 +27,167 @@ const numberToWords = (num) => {
 };
 
 const ProformaInvoiceView = ({ invoiceData = {}, onEdit, onDelete, onNew, queryData = {} }) => {
-  const queryId = invoiceData?.queryId || queryData?.queryId || queryData?.id || "4121824";
-  const customerName = invoiceData?.buyerName || queryData?.clientName || queryData?.name || "Sen Destination";
-  const buyerAddress = invoiceData?.buyerAddress || queryData?.clientAddress || "Colombo Sri Lanka, Sri Lanka";
-  const buyerPhone = invoiceData?.buyerPhone || queryData?.clientPhone || "+94-717819657";
-  const buyerEmail = invoiceData?.buyerEmail || queryData?.clientEmail || "anushka@sendestinations.com";
+  const { user } = useSelector((state) => state.auth || {});
+
+  const queryId = invoiceData?.queryId || queryData?.queryId || queryData?.id || "4310346";
+  
+  const sellerDetails = invoiceData?.sellerDetails || {
+    name: invoiceData?.sellerName || queryData?.sellerName || "DDLC Company Pvt. Ltd.",
+    address: invoiceData?.sellerAddress || queryData?.sellerAddress || "KG 3/69, Ground Floor, Vikas Puri",
+    cityState: invoiceData?.sellerCityState || queryData?.sellerCityState || "New Delhi, Delhi",
+    countryZip: invoiceData?.sellerCountryZip || queryData?.sellerCountryZip || "India, 110018",
+    phone: invoiceData?.sellerPhone || queryData?.sellerPhone || "9368825518",
+    email: invoiceData?.sellerEmail || queryData?.sellerEmail || "joy@gmail.com",
+    pan: invoiceData?.sellerPan || queryData?.sellerPan || "ABAPW1816B",
+    gst: invoiceData?.sellerGst || queryData?.sellerGst || "07ABAPW1816B3ZZ",
+    msme: invoiceData?.sellerMsme || queryData?.sellerMsme || "UDYAM-DL-10-0079437",
+    tan: invoiceData?.sellerTan || queryData?.sellerTan || "DELV30189F",
+  };
+
+  // Resolve Agent's Branding Logo dynamically (DDPL / Agent Logo, never Holiday Circuit HC logo)
+  const sellerLogo =
+    invoiceData?.brandingLogo ||
+    invoiceData?.sellerLogo ||
+    invoiceData?.logo ||
+    queryData?.brandingLogo ||
+    queryData?.agentLogo ||
+    queryData?.agent?.brandingLogo ||
+    queryData?.agent?.brandLogoUrl ||
+    queryData?.agent?.logo ||
+    queryData?.sellerLogo ||
+    (user?.role === "agent" ? (user?.brandingLogo || user?.brandLogoUrl || user?.logo) : "") ||
+    user?.brandingLogo ||
+    user?.brandLogoUrl ||
+    user?.logo ||
+    "";
+
+  const clientInfo = resolveClientDetails(queryData);
+  const clientLeadName = invoiceData?.buyerName && invoiceData?.buyerName !== "Carma Tours" ? invoiceData.buyerName : (clientInfo.name || "Client");
+  const clientLeadPhone = invoiceData?.buyerPhone || clientInfo.phone || "";
+  const clientLeadEmail = invoiceData?.buyerEmail || clientInfo.email || "";
+  const clientLeadAddress = invoiceData?.buyerAddress || clientInfo.address || "";
+  const clientLeadCountry = invoiceData?.buyerCountry || clientInfo.country || "India";
+
+  const buyerDetails = invoiceData?.buyerDetails || {
+    name: clientLeadName,
+    address: clientLeadAddress,
+    country: clientLeadCountry,
+    phone: clientLeadPhone,
+    email: clientLeadEmail,
+  };
+
+  const bankDetails = invoiceData?.bankDetails || {
+    bankName: invoiceData?.bankName || queryData?.bankName || "",
+    branchName: invoiceData?.branchName || queryData?.branchName || "",
+    accountHolderName: invoiceData?.accountHolderName || queryData?.accountHolderName || "",
+    accountNumber: invoiceData?.accountNumber || queryData?.accountNumber || "",
+    ifscCode: invoiceData?.ifscCode || queryData?.ifscCode || "",
+  };
+
+  const hasBankDetails = Boolean(
+    bankDetails?.bankName ||
+    bankDetails?.branchName ||
+    bankDetails?.accountHolderName ||
+    bankDetails?.accountNumber ||
+    bankDetails?.ifscCode
+  );
 
   const issueDate = invoiceData?.issueDate || "02 Aug, 2026";
   const dueDate = invoiceData?.dueDate || "30 Jul, 2026";
+  const overview = invoiceData?.overview || queryData?.overview || "";
+
+  const extractQuotationAmount = (data) => {
+    if (!data) return 0;
+    const candidates = [
+      data?.headerPackageAmount,
+      data?.clientTotalAmount,
+      data?.quotationAmount,
+      data?.quotation,
+      data?.quoteAmount,
+      data?.activeQuote?.clientTotalAmount,
+      data?.activeQuote?.pricing?.totalAmount,
+      data?.activeQuote?.pricing?.subTotal,
+      data?.activeQuote?.pricing?.grandTotal,
+      data?.activeQuote?.totalAmount,
+      data?.totalAmount,
+      data?.finalQuoteAmount,
+      data?.packagePrice,
+      data?.pkgPrice,
+      data?.pricing?.grandTotal,
+      data?.pricing?.totalAmount,
+      data?.pricing?.subTotal,
+      data?.costing?.agentCost,
+      data?.costing?.totalCost,
+      data?.costing?.grandTotal,
+      data?.costing?.total,
+      data?.amount,
+      data?.price,
+      data?.cost,
+    ];
+
+    for (const cand of candidates) {
+      const cleaned = String(cand || "").replace(/[^0-9.]/g, "");
+      const parsed = Number(cleaned);
+      if (!isNaN(parsed) && parsed > 0) return parsed;
+    }
+
+    if (Array.isArray(data?.quotes) && data.quotes.length > 0) {
+      for (const q of data.quotes) {
+        const cleaned = String(q?.clientTotalAmount || q?.pricing?.totalAmount || q?.pricing?.subTotal || q?.totalAmount || "").replace(/[^0-9.]/g, "");
+        const qAmt = Number(cleaned);
+        if (!isNaN(qAmt) && qAmt > 0) return qAmt;
+      }
+    }
+
+    return 0;
+  };
+
+  const extractedPrice = extractQuotationAmount(queryData);
+  const defaultBaseAmount = extractedPrice > 0 ? extractedPrice : 160000;
 
   const items = invoiceData?.items || [
     {
-      particularText: `Trip#: ${queryId}\nColombo,Srilanka Tour Package\nMr. Michal Zeman - 03 Aug 2026 - 2N,3D - 2A`,
-      baseAmount: 69000,
+      particularText: `Trip#: ${queryId}\nIndia Tour Package\n${buyerDetails.name} - 04 Oct 2026 - 4N,5D - 8A`,
+      qty: 1,
+      baseAmount: defaultBaseAmount,
       applyTax: true,
-      taxPercentage: 0,
+      taxType: "percentage",
+      taxes: [{ id: 1, name: "GST", value: 0 }],
     },
   ];
 
-  const grandTotal = items.reduce((sum, item) => {
-    const base = Number(item.baseAmount || 0);
-    const tax = item.applyTax ? (base * Number(item.taxPercentage || 0)) / 100 : 0;
-    return sum + base + tax;
+  const calculateItemBase = (item) => {
+    return Number(item.qty || 1) * Number(item.baseAmount || 0);
+  };
+
+  const getItemTaxesList = (item) => {
+    if (!item.applyTax) return [];
+    if (Array.isArray(item.taxes) && item.taxes.length > 0) {
+      return item.taxes;
+    }
+    if (item.taxPercentage !== undefined || item.taxName) {
+      return [{ id: 1, name: item.taxName || "GST", value: Number(item.taxPercentage || 0) }];
+    }
+    return [];
+  };
+
+  const calculateSingleTax = (item, tax) => {
+    if (!item.applyTax) return 0;
+    const base = calculateItemBase(item);
+    const val = Number(tax.value ?? tax.taxPercentage ?? 0);
+    if (item.taxType === "amount") {
+      return val;
+    }
+    return (base * val) / 100;
+  };
+
+  const calculateItemTotalTaxes = (item) => {
+    const taxList = getItemTaxesList(item);
+    return taxList.reduce((sum, tax) => sum + calculateSingleTax(item, tax), 0);
+  };
+
+  const grandTotal = invoiceData?.grandTotal ?? items.reduce((sum, item) => {
+    return sum + calculateItemBase(item) + calculateItemTotalTaxes(item);
   }, 0);
 
   const handlePrintPDF = () => {
@@ -133,18 +274,26 @@ const ProformaInvoiceView = ({ invoiceData = {}, onEdit, onDelete, onNew, queryD
 
       {/* Main A4 Template Render */}
       <div className="w-full bg-white border border-slate-200/90 shadow-md rounded-xs p-6 lg:p-8 space-y-6 font-sans">
-        {/* Dark Red Banner */}
-        <div className="w-full bg-[#b91c1c] text-white text-center font-extrabold tracking-wider text-xs sm:text-sm py-2 uppercase">
+        {/* Dark Teal Banner */}
+        <div className="w-full bg-[#0f766e] text-white text-center font-extrabold tracking-wider text-xs sm:text-sm py-2 uppercase">
           PROFORMA INVOICE
         </div>
 
-        {/* Header Info: Logo & Dates */}
+        {/* Header Info: Agent's Branding Logo alone & Dates */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pt-1">
           <div>
-            <div className="h-12 flex items-center">
-              <span className="text-2xl font-black italic tracking-tighter text-slate-900 border-b-2 border-rose-600 pb-0.5">
-                HC <span className="text-xs font-semibold not-italic text-slate-500">Holiday Circuit</span>
-              </span>
+            <div className="min-h-[4.5rem] flex items-center">
+              {sellerLogo ? (
+                <img
+                  src={sellerLogo}
+                  alt={sellerDetails.name || "Agent Branding Logo"}
+                  className="h-16 sm:h-20 max-h-24 w-auto object-contain max-w-[260px]"
+                />
+              ) : (
+                <span className="text-2xl font-black italic tracking-tighter text-slate-900 border-b-2 border-[#0f766e] pb-0.5">
+                  {sellerDetails.name}
+                </span>
+              )}
             </div>
           </div>
           <div className="text-xs font-bold text-slate-800 space-y-1 sm:text-right">
@@ -163,79 +312,91 @@ const ProformaInvoiceView = ({ invoiceData = {}, onEdit, onDelete, onNew, queryD
           </div>
         </div>
 
-        {/* Seller & Buyer Grid */}
+        {/* Seller & Buyer Grid (Plain Text, No Cards) */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pt-4 border-t border-slate-100 text-xs">
-          {/* Seller */}
+          {/* Seller (Main Agent) */}
           <div className="space-y-1">
             <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">SELLER</p>
-            <h3 className="text-sm font-bold text-slate-900">Holiday Circuit - A unit of Leela Travels</h3>
-            <p className="text-slate-600 italic leading-relaxed">
-              KG 3/69, Ground Floor, Vikas Puri, Landmark: Near UK Nursing Home
-            </p>
-            <p className="text-slate-600 italic">Delhi, Delhi, India - 110018</p>
-            <p className="text-slate-700 font-semibold pt-1">+91-885146665 • varun@holidaycircuit.com</p>
+            <h3 className="text-sm font-bold text-slate-900">{sellerDetails.name}</h3>
+            <p className="text-slate-600 italic leading-relaxed">{sellerDetails.address}</p>
+            <p className="text-slate-600 italic">{sellerDetails.cityState} {sellerDetails.countryZip}</p>
+            <p className="text-slate-700 font-semibold pt-1">{sellerDetails.phone} • {sellerDetails.email}</p>
             <div className="pt-2 text-slate-800 font-medium space-y-0.5 text-[11px]">
-              <p>PAN: <span className="font-bold">ABAPW1816B</span></p>
-              <p>GST: <span className="font-bold">07ABAPW1816B3ZZ</span></p>
-              <p>MSME REG NO : <span className="font-bold">UDYAM-DL-10-0079437</span></p>
-              <p>TAN NO - <span className="font-bold">DELV30189F</span></p>
+              <p>PAN: <span className="font-bold">{sellerDetails.pan}</span></p>
+              <p>GST: <span className="font-bold">{sellerDetails.gst}</span></p>
+              <p>MSME REG NO : <span className="font-bold">{sellerDetails.msme}</span></p>
+              <p>TAN NO - <span className="font-bold">{sellerDetails.tan}</span></p>
             </div>
           </div>
 
-          {/* Buyer */}
+          {/* Buyer (Agent's Client) */}
           <div className="sm:text-right space-y-1">
             <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">BUYER (BILL TO)</p>
-            <h3 className="text-sm font-bold text-slate-900">{customerName}</h3>
-            <p className="text-slate-600 italic leading-relaxed">{buyerAddress}</p>
-            <p className="text-slate-700 font-semibold pt-1">Phone: {buyerPhone}</p>
-            <p className="text-slate-700 font-semibold">Email: {buyerEmail}</p>
+            <h3 className="text-sm font-bold text-slate-900">{buyerDetails.name}</h3>
+            <p className="text-slate-600 italic leading-relaxed">{buyerDetails.address}</p>
+            <p className="text-slate-600 italic">{buyerDetails.country}</p>
+            <p className="text-slate-700 font-semibold pt-1">Phone: {buyerDetails.phone}</p>
+            <p className="text-slate-700 font-semibold">Email: {buyerDetails.email}</p>
           </div>
         </div>
 
+        {/* Overview Section */}
+        {overview && overview.trim() && (
+          <div className="pt-3.5 pb-1 border-t border-slate-200 text-xs">
+            <p className="text-[11px] font-bold text-slate-900 uppercase tracking-wider mb-1">OVERVIEW</p>
+            <p className="text-slate-700 whitespace-pre-line leading-relaxed font-normal">{overview.trim()}</p>
+          </div>
+        )}
+
         {/* Particulars Table */}
-        <div className="w-full border border-rose-200/80 rounded-xs overflow-hidden pt-2">
+        <div className="w-full border border-teal-200/80 rounded-xs overflow-hidden pt-2">
           <table className="w-full text-left text-xs border-collapse">
             <thead>
-              <tr className="bg-[#fee2e2]/50 border-b border-rose-200 text-rose-900 font-extrabold uppercase text-[11px]">
-                <th className="py-2.5 px-3 w-16 text-center border-r border-rose-200">S.NO.</th>
-                <th className="py-2.5 px-4 border-r border-rose-200">PARTICULARS</th>
+              <tr className="bg-[#e6fffb]/70 border-b border-[#7dd3c7] text-[#0f766e] font-extrabold uppercase text-[11px]">
+                <th className="py-2.5 px-3 w-16 text-center border-r border-[#7dd3c7]/60">S.NO.</th>
+                <th className="py-2.5 px-4 border-r border-[#7dd3c7]/60">PARTICULARS</th>
                 <th className="py-2.5 px-4 w-44 text-right">AMOUNT (INR)</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-rose-100 text-slate-800 font-medium">
+            <tbody className="divide-y divide-teal-100 text-slate-800 font-medium">
               {items.map((item, idx) => {
-                const base = Number(item.baseAmount || 0);
-                const tax = item.applyTax ? (base * Number(item.taxPercentage || 0)) / 100 : 0;
+                const base = calculateItemBase(item);
+                const taxesList = getItemTaxesList(item);
+
                 return (
                   <React.Fragment key={idx}>
                     <tr>
-                      <td className="py-3 px-3 text-center align-top border-r border-rose-100 font-bold">{idx + 1}.</td>
-                      <td className="py-3 px-4 align-top border-r border-rose-100 whitespace-pre-line leading-relaxed">
+                      <td className="py-3 px-3 text-center align-top border-r border-teal-100 font-bold">{idx + 1}.</td>
+                      <td className="py-3 px-4 align-top border-r border-teal-100 whitespace-pre-line leading-relaxed">
                         {item.particularText}
                       </td>
-                      <td className="py-3 px-4 align-top text-right font-bold border-rose-100">
+                      <td className="py-3 px-4 align-top text-right font-bold border-teal-100">
                         INR {base.toLocaleString("en-IN")}.00
                       </td>
                     </tr>
-                    {item.applyTax && (
-                      <tr className="bg-slate-50/50 text-[11px] text-slate-600">
-                        <td className="border-r border-rose-100"></td>
-                        <td className="py-1.5 px-4 border-r border-rose-100 italic">
-                          Taxes @ {Number(item.taxPercentage || 0).toFixed(2)} %
-                        </td>
-                        <td className="py-1.5 px-4 text-right font-semibold">
-                          INR {tax.toLocaleString("en-IN")}.00
-                        </td>
-                      </tr>
-                    )}
+                    {taxesList.map((tax, tIdx) => {
+                      const taxAmt = calculateSingleTax(item, tax);
+                      const isPercent = item.taxType !== "amount";
+                      return (
+                        <tr key={tIdx} className="bg-slate-50/50 text-[11px] text-slate-600">
+                          <td className="border-r border-teal-100"></td>
+                          <td className="py-1.5 px-4 border-r border-teal-100 italic">
+                            {tax.name || "GST"} {isPercent ? `@ ${Number(tax.value ?? tax.taxPercentage ?? 0).toFixed(2)} %` : ""}
+                          </td>
+                          <td className="py-1.5 px-4 text-right font-semibold">
+                            INR {taxAmt.toLocaleString("en-IN")}.00
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </React.Fragment>
                 );
               })}
-              <tr className="bg-slate-50 font-bold border-t-2 border-rose-200 text-slate-900">
-                <td colSpan={2} className="py-3 px-4 text-right border-r border-rose-200 text-xs uppercase font-extrabold">
+              <tr className="bg-slate-50 font-bold border-t-2 border-[#7dd3c7] text-slate-900">
+                <td colSpan={2} className="py-3 px-4 text-right border-r border-[#7dd3c7]/60 text-xs uppercase font-extrabold">
                   Total (INR)
                 </td>
-                <td className="py-3 px-4 text-right font-extrabold text-sm text-slate-900">
+                <td className="py-3 px-4 text-right font-extrabold text-sm text-[#0f766e]">
                   INR {grandTotal.toLocaleString("en-IN")}.00
                 </td>
               </tr>
@@ -247,7 +408,7 @@ const ProformaInvoiceView = ({ invoiceData = {}, onEdit, onDelete, onNew, queryD
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 pt-1 text-xs">
           <div>
             <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">AMOUNT CHARGEABLE (IN WORDS)</p>
-            <p className="text-sm font-extrabold text-slate-900 mt-0.5">
+            <p className="text-sm font-extrabold text-[#0f766e] mt-0.5">
               INR: {numberToWords(grandTotal)}
             </p>
           </div>
@@ -256,21 +417,33 @@ const ProformaInvoiceView = ({ invoiceData = {}, onEdit, onDelete, onNew, queryD
           </div>
         </div>
 
-        {/* Seller's Bank Details */}
-        <div className="pt-3 border-t border-rose-200/80 space-y-1 text-xs">
-          <p className="text-[11px] font-bold text-slate-900 uppercase tracking-wider">SELLER'S BANK DETAILS</p>
-          <div className="text-slate-700 space-y-0.5 leading-relaxed">
-            <p>Bank Name: <span className="font-bold text-slate-900">LEELA TRAVELS</span></p>
-            <p>A/c Holder Name: <span className="font-semibold">Leela Travels</span></p>
-            <p>A/c No. <span className="font-semibold">051727000000221</span></p>
-            <p>IFSC: <span className="font-semibold">YESB0000517</span></p>
-            <p>Branch: <span className="font-semibold">DWARKA</span></p>
+        {/* Seller's Bank Details (Only shown if filled in Create Proforma Form) */}
+        {hasBankDetails && (
+          <div className="pt-3 border-t border-teal-200/80 space-y-1 text-xs">
+            <p className="text-[11px] font-bold text-[#0f766e] uppercase tracking-wider">SELLER'S BANK DETAILS</p>
+            <div className="text-slate-700 space-y-0.5 leading-relaxed">
+              {(bankDetails.bankName || bankDetails.branchName) && (
+                <p>Bank Name: <span className="font-bold text-slate-900">{bankDetails.bankName || bankDetails.branchName}</span></p>
+              )}
+              {bankDetails.branchName && bankDetails.bankName && bankDetails.branchName !== bankDetails.bankName && (
+                <p>Branch: <span className="font-semibold">{bankDetails.branchName}</span></p>
+              )}
+              {bankDetails.accountHolderName && (
+                <p>A/c Holder Name: <span className="font-semibold">{bankDetails.accountHolderName}</span></p>
+              )}
+              {bankDetails.accountNumber && (
+                <p>A/c No. <span className="font-semibold">{bankDetails.accountNumber}</span></p>
+              )}
+              {bankDetails.ifscCode && (
+                <p>IFSC: <span className="font-semibold">{bankDetails.ifscCode}</span></p>
+              )}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Terms and Conditions Section */}
-        <div className="w-full border border-rose-200/80 rounded-xs overflow-hidden mt-4">
-          <div className="w-full bg-[#fee2e2]/70 text-[#991b1b] text-center font-bold py-1.5 text-xs">
+        <div className="w-full border border-teal-200/80 rounded-xs overflow-hidden mt-4">
+          <div className="w-full bg-[#e6fffb]/70 text-[#0f766e] text-center font-bold py-1.5 text-xs">
             Terms and Conditions
           </div>
           <div className="p-4 text-xs text-slate-700 space-y-1.5 font-medium leading-relaxed bg-white">

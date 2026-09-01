@@ -46,7 +46,7 @@ export const UploadHistoryTable = ({
                 </td>
                 <td className="text-center px-2 py-4 whitespace-nowrap">
                   <span className="bg-gray-100 text-gray-700 text-[10px] px-2 py-0.5 rounded-md font-semibold capitalize">
-                    {item.category}
+                    {String(item.category || "").toLowerCase() === "sightseeing" ? "Activity" : item.category}
                   </span>
                 </td>
                 <td className="text-center px-2 py-4 text-[12px] text-gray-600 whitespace-nowrap font-medium">

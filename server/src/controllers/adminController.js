@@ -2062,6 +2062,201 @@ export const getAdminDashboardData = async (req, res, next) => {
       invoice.paymentVerification?.status === "Pending",
     ).length;
 
+    // =========================================================================
+    // Booking Trends Comparison: Last Year Same Month & Same Quarter (YoY & QoQ)
+    // =========================================================================
+    const calculateTrendPct = (current = 0, previous = 0) => {
+      const c = Number(current) || 0;
+      const p = Number(previous) || 0;
+      if (p === 0) return c > 0 ? 100 : 0;
+      return Number((((c - p) / p) * 100).toFixed(1));
+    };
+
+    const currentYear = now.getFullYear();
+    const currentMonthIndex = now.getMonth(); // 0 to 11
+    const lastYear = currentYear - 1;
+    const currentQuarterIndex = Math.floor(currentMonthIndex / 3); // 0 (Q1) to 3 (Q4)
+
+    const confirmedBookingQueries = queries.filter((query) =>
+      activeBookingStatuses.has(query.opsStatus) ||
+      ["Confirmed", "Vouchered", "Payment_Completed"].includes(query.opsStatus) ||
+      ["Confirmed", "Client Approved"].includes(query.agentStatus)
+    );
+
+    const getQueryBookingRevenue = (query) => {
+      const qKey = String(query._id || query.queryId || "").trim();
+      const inv = invoiceByQueryId[qKey];
+      return Number(inv?.totalAmount || inv?.pricingSnapshot?.grandTotal || query.customerBudget || 0);
+    };
+
+    const getQueryReferenceDate = (query) => {
+      return new Date(query.createdAt || query.updatedAt || query.startDate || now);
+    };
+
+    const filterBookingsInWindow = (winStart, winEnd) => {
+      return confirmedBookingQueries.filter((query) => {
+        const d = getQueryReferenceDate(query);
+        return isWithinRange(d, winStart, winEnd);
+      });
+    };
+
+    // 1. Monthly Comparison (Same Month Last Year & Previous Month MoM)
+    const curMonthRangeStart = new Date(currentYear, currentMonthIndex, 1, 0, 0, 0, 0);
+    const curMonthRangeEnd = new Date(currentYear, currentMonthIndex + 1, 0, 23, 59, 59, 999);
+    const lastYearMonthRangeStart = new Date(lastYear, currentMonthIndex, 1, 0, 0, 0, 0);
+    const lastYearMonthRangeEnd = new Date(lastYear, currentMonthIndex + 1, 0, 23, 59, 59, 999);
+    const prevMonthRangeStart = new Date(currentYear, currentMonthIndex - 1, 1, 0, 0, 0, 0);
+    const prevMonthRangeEnd = new Date(currentYear, currentMonthIndex, 0, 23, 59, 59, 999);
+
+    const curMonthBookingsList = filterBookingsInWindow(curMonthRangeStart, curMonthRangeEnd);
+    const lastYearMonthBookingsList = filterBookingsInWindow(lastYearMonthRangeStart, lastYearMonthRangeEnd);
+    const prevMonthBookingsList = filterBookingsInWindow(prevMonthRangeStart, prevMonthRangeEnd);
+
+    const curMonthBookingsCount = curMonthBookingsList.length;
+    const lastYearMonthBookingsCount = lastYearMonthBookingsList.length;
+    const prevMonthBookingsCount = prevMonthBookingsList.length;
+
+    const curMonthBookingRevenue = curMonthBookingsList.reduce((sum, q) => sum + getQueryBookingRevenue(q), 0);
+    const lastYearMonthBookingRevenue = lastYearMonthBookingsList.reduce((sum, q) => sum + getQueryBookingRevenue(q), 0);
+    const prevMonthBookingRevenue = prevMonthBookingsList.reduce((sum, q) => sum + getQueryBookingRevenue(q), 0);
+
+    const monthYoYGrowth = calculateTrendPct(curMonthBookingsCount, lastYearMonthBookingsCount);
+    const monthMoMGrowth = calculateTrendPct(curMonthBookingsCount, prevMonthBookingsCount);
+    const monthRevenueYoYGrowth = calculateTrendPct(curMonthBookingRevenue, lastYearMonthBookingRevenue);
+
+    const monthNamesList = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const curMonthName = monthNamesList[currentMonthIndex];
+    const prevMonthName = monthNamesList[currentMonthIndex === 0 ? 11 : currentMonthIndex - 1];
+
+    // 2. Quarterly Comparison (Same Quarter Last Year & Previous Quarter QoQ)
+    const quarterStartMonth = currentQuarterIndex * 3;
+    const curQuarterRangeStart = new Date(currentYear, quarterStartMonth, 1, 0, 0, 0, 0);
+    const curQuarterRangeEnd = new Date(currentYear, quarterStartMonth + 3, 0, 23, 59, 59, 999);
+    const lastYearQuarterRangeStart = new Date(lastYear, quarterStartMonth, 1, 0, 0, 0, 0);
+    const lastYearQuarterRangeEnd = new Date(lastYear, quarterStartMonth + 3, 0, 23, 59, 59, 999);
+
+    const prevQYear = currentQuarterIndex === 0 ? currentYear - 1 : currentYear;
+    const prevQStartMonth = currentQuarterIndex === 0 ? 9 : (currentQuarterIndex - 1) * 3;
+    const prevQuarterRangeStart = new Date(prevQYear, prevQStartMonth, 1, 0, 0, 0, 0);
+    const prevQuarterRangeEnd = new Date(prevQYear, prevQStartMonth + 3, 0, 23, 59, 59, 999);
+
+    const curQuarterBookingsList = filterBookingsInWindow(curQuarterRangeStart, curQuarterRangeEnd);
+    const lastYearQuarterBookingsList = filterBookingsInWindow(lastYearQuarterRangeStart, lastYearQuarterRangeEnd);
+    const prevQuarterBookingsList = filterBookingsInWindow(prevQuarterRangeStart, prevQuarterRangeEnd);
+
+    const curQuarterBookingsCount = curQuarterBookingsList.length;
+    const lastYearQuarterBookingsCount = lastYearQuarterBookingsList.length;
+    const prevQuarterBookingsCount = prevQuarterBookingsList.length;
+
+    const curQuarterBookingRevenue = curQuarterBookingsList.reduce((sum, q) => sum + getQueryBookingRevenue(q), 0);
+    const lastYearQuarterBookingRevenue = lastYearQuarterBookingsList.reduce((sum, q) => sum + getQueryBookingRevenue(q), 0);
+    const prevQuarterBookingRevenue = prevQuarterBookingsList.reduce((sum, q) => sum + getQueryBookingRevenue(q), 0);
+
+    const quarterYoYGrowth = calculateTrendPct(curQuarterBookingsCount, lastYearQuarterBookingsCount);
+    const quarterQoQGrowth = calculateTrendPct(curQuarterBookingsCount, prevQuarterBookingsCount);
+    const quarterRevenueYoYGrowth = calculateTrendPct(curQuarterBookingRevenue, lastYearQuarterBookingRevenue);
+
+    const quarterLabelsList = ["Q1 (Jan - Mar)", "Q2 (Apr - Jun)", "Q3 (Jul - Sep)", "Q4 (Oct - Dec)"];
+    const curQuarterLabel = quarterLabelsList[currentQuarterIndex];
+    const lastYearSameQuarterLabel = `${quarterLabelsList[currentQuarterIndex]} ${lastYear}`;
+    const prevQuarterLabel = `${quarterLabelsList[prevQStartMonth / 3]} ${prevQYear}`;
+
+    // 3. 12-Month YoY Trend Chart Array
+    const monthlyTrendData = monthNamesList.map((name, mIdx) => {
+      const mThisStart = new Date(currentYear, mIdx, 1, 0, 0, 0, 0);
+      const mThisEnd = new Date(currentYear, mIdx + 1, 0, 23, 59, 59, 999);
+      const mLastStart = new Date(lastYear, mIdx, 1, 0, 0, 0, 0);
+      const mLastEnd = new Date(lastYear, mIdx + 1, 0, 23, 59, 59, 999);
+
+      const thisList = filterBookingsInWindow(mThisStart, mThisEnd);
+      const lastList = filterBookingsInWindow(mLastStart, mLastEnd);
+
+      const thisCount = thisList.length;
+      const lastCount = lastList.length;
+      const thisRev = thisList.reduce((sum, q) => sum + getQueryBookingRevenue(q), 0);
+      const lastRev = lastList.reduce((sum, q) => sum + getQueryBookingRevenue(q), 0);
+      const yoyChange = calculateTrendPct(thisCount, lastCount);
+      const yoyRevChange = calculateTrendPct(thisRev, lastRev);
+
+      return {
+        month: name,
+        fullLabel: `${name} ${currentYear}`,
+        thisYear: thisCount,
+        lastYear: lastCount,
+        thisYearRevenue: thisRev,
+        lastYearRevenue: lastRev,
+        growthPercent: yoyChange,
+        revenueGrowthPercent: yoyRevChange,
+        isCurrentMonth: mIdx === currentMonthIndex,
+      };
+    });
+
+    // 4. 4-Quarter Trend Chart Array
+    const quarterlyTrendData = quarterLabelsList.map((label, qIdx) => {
+      const qStartMonth = qIdx * 3;
+      const qThisStart = new Date(currentYear, qStartMonth, 1, 0, 0, 0, 0);
+      const qThisEnd = new Date(currentYear, qStartMonth + 3, 0, 23, 59, 59, 999);
+      const qLastStart = new Date(lastYear, qStartMonth, 1, 0, 0, 0, 0);
+      const qLastEnd = new Date(lastYear, qStartMonth + 3, 0, 23, 59, 59, 999);
+
+      const thisList = filterBookingsInWindow(qThisStart, qThisEnd);
+      const lastList = filterBookingsInWindow(qLastStart, qLastEnd);
+
+      const thisCount = thisList.length;
+      const lastCount = lastList.length;
+      const thisRev = thisList.reduce((sum, q) => sum + getQueryBookingRevenue(q), 0);
+      const lastRev = lastList.reduce((sum, q) => sum + getQueryBookingRevenue(q), 0);
+      const yoyChange = calculateTrendPct(thisCount, lastCount);
+      const yoyRevChange = calculateTrendPct(thisRev, lastRev);
+
+      return {
+        quarter: `Q${qIdx + 1}`,
+        label,
+        thisYear: thisCount,
+        lastYear: lastCount,
+        thisYearRevenue: thisRev,
+        lastYearRevenue: lastRev,
+        growthPercent: yoyChange,
+        revenueGrowthPercent: yoyRevChange,
+        isCurrentQuarter: qIdx === currentQuarterIndex,
+      };
+    });
+
+    const bookingTrendsPayload = {
+      monthlyComparison: {
+        currentMonthLabel: `${curMonthName} ${currentYear}`,
+        lastYearSameMonthLabel: `${curMonthName} ${lastYear}`,
+        previousMonthLabel: `${prevMonthName} ${currentMonthIndex === 0 ? currentYear - 1 : currentYear}`,
+        currentMonthBookings: curMonthBookingsCount,
+        lastYearSameMonthBookings: lastYearMonthBookingsCount,
+        previousMonthBookings: prevMonthBookingsCount,
+        currentMonthRevenue: curMonthBookingRevenue,
+        lastYearSameMonthRevenue: lastYearMonthBookingRevenue,
+        previousMonthRevenue: prevMonthBookingRevenue,
+        growthPercent: monthYoYGrowth,
+        momGrowthPercent: monthMoMGrowth,
+        revenueGrowthPercent: monthRevenueYoYGrowth,
+        trend: monthYoYGrowth >= 0 ? "up" : "down",
+      },
+      quarterlyComparison: {
+        currentQuarterLabel: `${curQuarterLabel} ${currentYear}`,
+        lastYearSameQuarterLabel,
+        previousQuarterLabel: prevQuarterLabel,
+        currentQuarterBookings: curQuarterBookingsCount,
+        lastYearSameQuarterBookings: lastYearQuarterBookingsCount,
+        previousQuarterBookings: prevQuarterBookingsCount,
+        currentQuarterRevenue: curQuarterBookingRevenue,
+        lastYearSameQuarterRevenue: lastYearQuarterBookingRevenue,
+        previousQuarterRevenue: prevQuarterBookingRevenue,
+        growthPercent: quarterYoYGrowth,
+        qoqGrowthPercent: quarterQoQGrowth,
+        revenueGrowthPercent: quarterRevenueYoYGrowth,
+        trend: quarterYoYGrowth >= 0 ? "up" : "down",
+      },
+      monthlyTrendData,
+      quarterlyTrendData,
+    };
+
     const dashboardPayload = {
       header: {
         title: "Admin Dashboard",
@@ -2204,6 +2399,7 @@ export const getAdminDashboardData = async (req, res, next) => {
           { name: "Finance Team", hours: Number(financeReviewHours.toFixed(1)) },
           { name: "DMC Partners", hours: Number(dmcFulfillmentHours.toFixed(1)) },
         ],
+        bookingTrends: bookingTrendsPayload,
         masterBookings: masterBookingRows,
         overrideCases: overrideCaseRows,
         overrideSummary: {
@@ -7277,6 +7473,11 @@ export const updateInternalInvoiceStatus = async (req, res, next) => {
         name: payoutReceipt.fileName,
         filePath: payoutReceipt.publicFilePath,
       };
+      if (currentInst) {
+        currentInst.receiptUrl = payoutReceipt.publicFilePath;
+        currentInst.filePath = payoutReceipt.publicFilePath;
+      }
+      invoice.payoutReceiptUrl = payoutReceipt.publicFilePath;
       invoice.documents = Array.isArray(invoice.documents) ? invoice.documents : [];
       invoice.documents.push({
         name: payoutReceipt.fileName,

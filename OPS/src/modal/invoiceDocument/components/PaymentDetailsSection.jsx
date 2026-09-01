@@ -1,9 +1,10 @@
 import React from 'react';
-import { FileText, Eye, Download, CheckCircle, ChevronDown, Coins } from 'lucide-react';
+import { FileText, Eye, Download, CheckCircle, ChevronDown, CheckSquare, Square, Coins } from 'lucide-react';
 import {
   formatRoundedAmount,
   getDocumentMeta,
   BANK_LOGOS,
+  getItemSubtotal,
 } from '../utils/invoiceHelpers.jsx';
 
 export const PaymentDetailsSection = ({
@@ -28,6 +29,7 @@ export const PaymentDetailsSection = ({
   bankOptions,
   bankReferenceMatched,
   payoutReferenceDetailsComplete,
+  payoutDetailsComplete: propPayoutDetailsComplete,
   transferAmount,
   setTransferAmount,
   formatIntegerInput,
@@ -39,7 +41,16 @@ export const PaymentDetailsSection = ({
   handleReject,
   handleConfirm,
   isSubmitting,
+  invoiceItems = [],
+  selectedItemIndices = [],
+  handleToggleItem,
+  handleSelectAllItems,
+  handleDeselectAllItems,
 }) => {
+  const payoutDetailsComplete =
+    propPayoutDetailsComplete ??
+    Boolean(payoutReferenceDetailsComplete && bankReferenceMatched);
+
   return (
     <>
       <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
@@ -176,7 +187,104 @@ export const PaymentDetailsSection = ({
           </div>
         </div>
       ) : (
-        <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+        <>
+          {/* SERVICE SELECTION CHECKLIST FOR SMART PAYOUT */}
+          {invoiceItems && invoiceItems.length > 0 && (
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-[10.5px] font-bold text-slate-800 flex items-center gap-1.5">
+                    <CheckSquare size={13} className="text-blue-600" />
+                    Service Selection Checklist
+                  </h3>
+                  <p className="mt-0.5 text-[9.5px] font-medium text-slate-500">
+                    Select services to include in payout. Amount will auto-calculate.
+                  </p>
+                </div>
+                <div className="flex items-center gap-1.5 text-[9.5px] font-bold">
+                  <button
+                    type="button"
+                    onClick={handleSelectAllItems}
+                    className="text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
+                  >
+                    Select All
+                  </button>
+                  <span className="text-slate-300">|</span>
+                  <button
+                    type="button"
+                    onClick={handleDeselectAllItems}
+                    className="text-slate-500 hover:text-slate-700 hover:underline cursor-pointer"
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
+
+              <div
+                className="space-y-1.5 max-h-48 overflow-y-auto pr-1.5 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-track]:bg-transparent"
+                style={{ scrollbarWidth: "thin", scrollbarColor: "#cbd5e1 transparent" }}
+              >
+                {invoiceItems.map((item, idx) => {
+                  const isSelected = selectedItemIndices.includes(idx);
+                  const itemTotal = getItemSubtotal(item);
+                  const serviceTitle =
+                    item.service ||
+                    item.serviceName ||
+                    item.name ||
+                    item.description ||
+                    item.title ||
+                    item.vehicleType ||
+                    item.hotelName ||
+                    `Service #${idx + 1}`;
+                  return (
+                    <div
+                      key={idx}
+                      onClick={() => handleToggleItem && handleToggleItem(idx)}
+                      className={`flex items-center justify-between p-2 rounded-lg border transition-all cursor-pointer ${
+                        isSelected
+                          ? "bg-blue-50/80 border-blue-200 text-slate-900 shadow-2xs"
+                          : "bg-white border-slate-200 text-slate-500 hover:bg-slate-100/60"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className="shrink-0 text-blue-600">
+                          {isSelected ? (
+                            <CheckSquare size={14} className="text-blue-600" />
+                          ) : (
+                            <Square size={14} className="text-slate-400" />
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold truncate">
+                            {serviceTitle}
+                          </p>
+                          <p className="text-[9.5px] font-medium text-slate-400">
+                            {item.type || item.serviceType || "Service"}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="text-xs font-extrabold text-slate-900">
+                          ₹{itemTotal.toLocaleString("en-IN")}
+                        </p>
+                        <span
+                          className={`inline-block text-[9px] px-1.5 py-0.5 rounded font-bold ${
+                            isSelected
+                              ? "bg-emerald-100 text-emerald-700"
+                              : "bg-slate-100 text-slate-500"
+                          }`}
+                        >
+                          {isSelected ? "Selected" : "Excluded"}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
           <div>
             <div className="flex items-center justify-between">
               <h3 className="text-[10.5px] font-bold text-slate-800">Bank Transfer Details</h3>
@@ -222,7 +330,8 @@ export const PaymentDetailsSection = ({
                 type="date"
                 value={dateInput}
                 onChange={(e) => setDateInput(e.target.value)}
-                className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs font-semibold text-slate-800 outline-none transition-all focus:border-blue-500 cursor-pointer"
+                style={{ colorScheme: 'light' }}
+                className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs font-semibold text-slate-800 outline-none transition-all focus:border-blue-500 cursor-pointer [color-scheme:light]"
               />
             </div>
 
@@ -324,6 +433,7 @@ export const PaymentDetailsSection = ({
             </button>
           </div>
         </div>
+      </>
       )}
     </>
   );

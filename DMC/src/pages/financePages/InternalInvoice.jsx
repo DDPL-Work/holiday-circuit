@@ -447,6 +447,11 @@ const InternalInvoice = () => {
             payoutDateValue: updatedInvoice.payoutDateValue || updatedInvoice.payoutDate || "",
             payoutBank: updatedInvoice.payoutBank || "",
             payoutAmount: Number(updatedInvoice.payoutAmount || 0),
+            payoutInstallments: updatedInvoice.payoutInstallments || prev?.payoutInstallments || [],
+            cumulativePaid: (updatedInvoice.payoutInstallments || prev?.payoutInstallments || []).reduce(
+              (sum, inst) => sum + Number(inst.amount || 0),
+              Number(updatedInvoice.payoutAmount || 0),
+            ),
           }
         : prev,
     );
