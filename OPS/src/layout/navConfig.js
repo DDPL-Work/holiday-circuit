@@ -10,6 +10,7 @@ import {
   Box,
   TicketPercent,
   PackagePlus,
+  ListTodo,
 } from "lucide-react";
 import { MdOutlineDashboardCustomize, MdOutlineVerifiedUser } from "react-icons/md";
 import { GrUserManager } from "react-icons/gr";
@@ -48,6 +49,7 @@ const menuConfig = {
     { label: "Order Acceptance", path: "/ops/order-acceptance", icon: CircleCheckBig },
     { label: "Create Package", path: "/ops/create-package", icon: PackagePlus },
     { label: "Voucher Management", path: "/ops/voucher-management", icon: FileText },
+    { label: "Inc & Exc Presets", path: "/ops/inc-exc", icon: ListTodo },
   ],
   dmc_partner: [
     { label: "DMC Dashboard", path: "/dmc/dashboard", icon: LayoutGrid },

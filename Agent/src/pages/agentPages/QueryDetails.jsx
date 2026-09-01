@@ -122,6 +122,7 @@ import { QueryHeaderCard } from "./queryDetails/components/Header/QueryHeaderCar
 import { QueryTabNavigation } from "./queryDetails/components/Navigation/QueryTabNavigation";
 import { RevisionModal } from "./queryDetails/components/Modals/RevisionModal";
 import { SendSuccessModal } from "./queryDetails/components/Modals/SendSuccessModal";
+import { InlineTermsEditor } from "./queryDetails/components/InlineEditors/InlineTermsEditor";
 
 function renderItemDescription(description) {
   if (!description) return null;
@@ -165,6 +166,11 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
   const [activeQuoteId, setActiveQuoteId] = useState(null);
   const [markupTargetMode, setMarkupTargetMode] = useState("QUOTATION");
   const [markupTargetItem, setMarkupTargetItem] = useState(null);
+  const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
+  const [rejectNote, setRejectNote] = useState("");
+  const [rejecting, setRejecting] = useState(false);
+
+  const inlineTermsRefs = useRef({});
   const [isRevisionModalOpen, setIsRevisionModalOpen] = useState(false);
   const [revisionQuoteId, setRevisionQuoteId] = useState(null);
   const [revisionReason, setRevisionReason] = useState("");
@@ -3729,9 +3735,10 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                                         {evt.title}
                                       </h4>
                                       {evt.description && (
-                                        <p className="text-slate-600 text-xs sm:text-sm font-normal leading-relaxed whitespace-pre-line">
-                                          {evt.description}
-                                        </p>
+                                        <div 
+                                          className="text-slate-600 text-xs sm:text-sm font-normal leading-relaxed rte-content"
+                                          dangerouslySetInnerHTML={{ __html: evt.description }}
+                                        />
                                       )}
                                     </div>
                                   ))}
@@ -3745,140 +3752,45 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
 
                     {/* 6. TERMS AND CONDITIONS SECTION */}
                     <div className="border-t border-slate-200 pt-3">
-                      <div className="flex items-center gap-2.5">
-                        <button
-                          type="button"
-                          onClick={() => setIsTermsExpanded(!isTermsExpanded)}
-                          className="flex items-center gap-2.5 text-base sm:text-[17px] font-bold text-slate-900 cursor-pointer py-2.5 text-left"
-                        >
-                          <ChevronRight size={18} className={`transition-transform duration-200 ${isTermsExpanded ? "rotate-90" : ""}`} />
-                          <span>Terms and Conditions</span>
-                        </button>
-                        <span className="rounded bg-amber-100 text-amber-800 text-[10px] font-bold px-2 py-0.5">
-                          Archived
-                        </span>
+                      <div className="flex items-center justify-between gap-2.5">
+                        <div className="flex items-center gap-2.5">
+                          <button
+                            type="button"
+                            onClick={() => setIsTermsExpanded(!isTermsExpanded)}
+                            className="flex items-center gap-2.5 text-base sm:text-[17px] font-bold text-slate-900 cursor-pointer py-2.5 text-left"
+                          >
+                            <ChevronRight size={18} className={`transition-transform duration-200 ${isTermsExpanded ? "rotate-90" : ""}`} />
+                            <span>Terms and Conditions</span>
+                          </button>
+                          <span className="rounded bg-amber-100 text-amber-800 text-[10px] font-bold px-2 py-0.5">
+                            Archived
+                          </span>
+                        </div>
+                        
+                        {isTermsExpanded && quote?._id && (
+                          <button
+                            onClick={() => inlineTermsRefs.current[quote?._id]?.startEditing()}
+                            className="text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors mr-6"
+                          >
+                            <Pencil size={14} />
+                            Edit Terms
+                          </button>
+                        )}
                       </div>
 
                       {isTermsExpanded && (
                         <div className="pt-3 pl-6 font-sans text-xs sm:text-sm text-slate-800 leading-relaxed space-y-4">
-                          {quote.termsAndConditions && Array.isArray(quote.termsAndConditions) && quote.termsAndConditions.length > 0 ? (
-                            <ul className="list-disc pl-5 space-y-2">
-                              {quote.termsAndConditions.map((term, tIdx) => (
-                                <li key={tIdx}>{term}</li>
-                              ))}
-                            </ul>
-                          ) : (
-                            <>
-                              <p>
-                                Welcome to <strong className="font-bold text-slate-900">Holiday Circuit</strong>. These Terms and Conditions govern your use of the <strong className="font-bold text-slate-900">Holiday Circuit</strong> services. When You Make a booking or reservation, you agree to be bound by these Terms.
-                              </p>
-
-                              <div className="space-y-2">
-                                <h4 className="font-bold text-slate-900 text-sm sm:text-base">Bookings and Reservations</h4>
-                                <ul className="list-disc pl-5 space-y-2">
-                                  <li>
-                                    <strong className="font-bold text-slate-900">Booking Process:</strong> When you make a booking or reservation through <strong className="font-bold text-slate-900">Holiday Circuit</strong>, you agree to provide accurate and complete information. Any discrepancies or errors in the information you provide may result in the cancellation of your booking.
-                                  </li>
-                                </ul>
-                              </div>
-
-                              <div className="space-y-2">
-                                <p>
-                                  <strong className="font-bold text-slate-900">Payment:</strong> Payments for bookings are due as specified during the booking process. Failure to make payments on time may result in the cancellation of your booking.
-                                </p>
-
-                                <ol className="list-none space-y-2 font-bold text-slate-900">
-                                  <li>1. Minimum 50% of the booking amount is required at the time of booking confirmation.</li>
-                                  <li>2. Remaining 50% in 2 parts i.e. 25% of total booking amount within 30 Days prior to departure and 25% within 20 days prior to departure.</li>
-                                  <li>3. In Case of Airline booking/Train Tickets, 100% ticket cost to be paid at the time of confirmation.</li>
-                                  <li>4. In Case a booking is under 100% cancellation period, then 100% booking amount is required at the time of booking confirmation.</li>
-                                </ol>
-                              </div>
-
-                              <p>
-                                <strong className="font-bold text-slate-900">Confirmation:</strong> Your booking is considered confirmed only upon receipt of payment and confirmation from <strong className="font-bold text-slate-900">Holiday Circuit</strong>. Please review all booking details carefully to ensure accuracy.
-                              </p>
-
-                              <p className="font-bold text-slate-900">
-                                Booking will be auto cancelled in case of non-payment within stipulated time
-                              </p>
-
-                              <p>
-                                <strong className="font-bold text-slate-900">Credit Card:</strong> We accept payments through Credit Cards which may attract an additional charge from 3% to 5% depends upon the card type. Card charges shall be over and above the actual service/package cost.
-                              </p>
-
-                              <p>
-                                <strong className="font-bold text-slate-900">Confirmation Vouchers:</strong> The service will be confirmed once the advance payment is made. However, the confirmation vouchers will only be provided 7 days before the arrival date.
-                              </p>
-
-                              <p>
-                                <strong className="font-bold text-slate-900">Airport Transfers & Tour Pick Ups:</strong> The service includes 60 minutes of waiting time for Airport pick-ups. If you are delayed at immigration or luggage claim, please call the emergency number to extend the waiting time. Additional parking and waiting time charges may apply. For all other pick-ups, the driver will wait for 10 mins at the meeting point i.e. Hotel Lobby or Reception or any other fixed meeting point.
-                              </p>
-
-                              <p>
-                                <strong className="font-bold text-slate-900">Taxes:</strong> In case of any changes in taxes (such as GST/Government Tax/TCS) at the time of confirmation, the price will be adjusted accordingly and shall be charged as per the prevailing law. This means that if there is an increase or decrease in applicable taxes between the time of booking confirmation and the actual provision of services, the final price will be adjusted to reflect these changes in accordance with the relevant tax regulations.
-                              </p>
-
-                              <p>
-                                <strong className="font-bold text-slate-900">Changes and Cancellations:</strong> Changes to bookings or cancellations may be subject to fees or penalties, as determined by the service providers (e.g., airlines, hotels, tour operators) and <strong className="font-bold text-slate-900">Holiday Circuit</strong>. These fees and penalties may vary depending on the service and the timing of the change or cancellation.
-                              </p>
-
-                              <div className="space-y-2">
-                                <h4 className="font-bold text-slate-900 text-sm sm:text-base">Travel Documents and Requirements</h4>
-                                <ul className="list-disc pl-5 space-y-2">
-                                  <li>
-                                    <strong className="font-bold text-slate-900">Valid Id Proof:</strong> It is your responsibility to ensure that you have a valid ID as per destination entry requirements and any required visas or travel documents for your trip. <strong className="font-bold text-slate-900">Holiday Circuit</strong> is not responsible for any issues arising from the lack of proper travel documents. <strong className="font-bold text-slate-900">(To Enter Nepal by Air- Valid Passport or Election Card is Mandatory. Aadhar Card is not valid for Travel)</strong>
-                                  </li>
-                                  <li>
-                                    <strong className="font-bold text-slate-900">Health and Vaccinations:</strong> You are responsible for ensuring that you meet all health and vaccination requirements for your travel destinations.
-                                  </li>
-                                  <li>
-                                    <strong className="font-bold text-slate-900">Travel Insurance:</strong> We strongly recommend that you purchase travel insurance to protect against unexpected events such as trip cancellations, delays, or emergencies during your travel. <strong className="font-bold text-slate-900">Holiday Circuit</strong> can assist you in obtaining travel insurance, but the decision to purchase it is ultimately yours.
-                                  </li>
-                                </ul>
-                              </div>
-
-                              <div className="space-y-2">
-                                <h4 className="font-bold text-slate-900 text-sm sm:text-base">Changes to Itineraries</h4>
-                                <ul className="list-disc pl-5 space-y-2">
-                                  <li>
-                                    <strong className="font-bold text-slate-900">By Holiday Circuit:</strong> We reserve the right to make changes to your itinerary or accommodations due to unforeseen circumstances. We will make every effort to inform you of such changes as soon as possible.
-                                  </li>
-                                  <li>
-                                    <strong className="font-bold text-slate-900">By You:</strong> Any changes requested by you to your itinerary may be subject to fees or penalties, as determined by the service providers and <strong className="font-bold text-slate-900">Holiday Circuit</strong>.
-                                  </li>
-                                </ul>
-                              </div>
-
-                              <div className="space-y-2">
-                                <h4 className="font-bold text-slate-900 text-sm sm:text-base">Liability</h4>
-                                <ul className="list-disc pl-5 space-y-2">
-                                  <li>
-                                    <strong className="font-bold text-slate-900">Service Providers: Holiday Circuit</strong> acts as an intermediary between you and service providers such as airlines, hotels, and tour operators. We are not liable for any actions, omissions, or negligence on the part of these service providers.
-                                  </li>
-                                  <li>
-                                    <strong className="font-bold text-slate-900">Force Majeure: Holiday Circuit</strong> is not liable for any disruptions, cancellations, or delays caused by circumstances beyond our control, including natural disasters, strikes, political unrest, or other force majeure events.
-                                  </li>
-                                </ul>
-                              </div>
-
-                              <p>
-                                <strong className="font-bold text-slate-900">Governing Law and Jurisdiction:</strong> These Terms and your use of <strong className="font-bold text-slate-900">Holiday Circuit</strong> services are governed by the laws of New Delhi Jurisdiction, and any disputes shall be resolved in the courts of New Delhi Jurisdiction.
-                              </p>
-
-                              <p>
-                                <strong className="font-bold text-slate-900">Changes to Terms and Conditions:</strong> We reserve the right to update and modify these Terms and Conditions at any time. Please review them periodically for changes. Your continued use of our services after any modifications indicates your acceptance of the updated Terms.
-                              </p>
-
-                              <p>
-                                <strong className="font-bold text-slate-900">Contact Information:</strong> For any inquiries, please contact us at: <strong className="font-bold text-slate-900">Holiday Circuit</strong> KG 3/69, Ground Floor, Vikas Puri, New Delhi -110018, Near UK Nursing Home , Email id - <a href="mailto:varun@holidaycircuit.com" className="text-blue-600 underline hover:text-blue-800">varun@holidaycircuit.com</a> +91 8851346665, +91 9971706003
-                              </p>
-
-                              <p className="italic font-bold text-slate-900 pt-2">
-                                By booking with Holiday Circuit, you acknowledge that you have read, understood, and agreed to these Terms and Conditions.
-                              </p>
-                            </>
-                          )}
+                          <InlineTermsEditor
+                            ref={el => inlineTermsRefs.current[quote._id] = el}
+                            initialTerms={quote.termsAndConditions}
+                            quotationId={quote._id}
+                            isPackageTemplate={false}
+                            onUpdate={(newTerms) => {
+                              setQuotes(prevQuotes => prevQuotes.map(q => 
+                                q._id === quote._id ? { ...q, termsAndConditions: newTerms } : q
+                              ));
+                            }}
+                          />
                         </div>
                       )}
                     </div>
@@ -10181,7 +10093,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                                 ]).map((inc, i) => (
                                   <li key={i} className="flex items-start gap-2.5 text-xs text-slate-700 font-medium leading-relaxed">
                                     <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0 mt-1.5" />
-                                    <span>{inc}</span>
+                                    <div className="rte-content text-slate-700" dangerouslySetInnerHTML={{ __html: inc }} />
                                   </li>
                                 ))}
                               </ul>
@@ -10203,7 +10115,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                                 ]).map((exc, i) => (
                                   <li key={i} className="flex items-start gap-2.5 text-xs text-slate-700 font-medium leading-relaxed">
                                     <span className="w-2 h-2 rounded-full bg-rose-400 shrink-0 mt-1.5" />
-                                    <span>{exc}</span>
+                                    <div className="rte-content text-slate-700" dangerouslySetInnerHTML={{ __html: exc }} />
                                   </li>
                                 ))}
                               </ul>
@@ -10349,9 +10261,10 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                                           {evt.title}
                                         </h4>
                                         {evt.description && (
-                                          <p className="text-slate-600 text-xs sm:text-sm font-normal leading-relaxed whitespace-pre-line">
-                                            {evt.description}
-                                          </p>
+                                          <div 
+                                            className="text-slate-600 text-xs sm:text-sm font-normal leading-relaxed rte-content"
+                                            dangerouslySetInnerHTML={{ __html: evt.description }}
+                                          />
                                         )}
                                       </div>
                                     ))}
@@ -10365,136 +10278,53 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
 
                       {/* ACCORDION 3: TERMS AND CONDITIONS */}
                       <div className="border-t border-slate-200 pt-3">
-                        <button
-                          type="button"
-                          onClick={() => setPackageAccordions(prev => ({ ...prev, terms: !prev.terms }))}
-                          className="flex items-center gap-2.5 text-base sm:text-[17px] font-bold text-slate-900 cursor-pointer py-2.5 w-full text-left font-sans"
-                        >
-                          <ChevronRight size={18} className={`transition-transform duration-200 ${packageAccordions.terms ? "rotate-90" : ""}`} />
-                          <span>Terms and Conditions</span>
-                          <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded font-semibold ml-2">Archived</span>
-                        </button>
+                        <div className="flex items-center justify-between py-2.5 w-full">
+                          <button
+                            onClick={() => setPackageAccordions(prev => ({ ...prev, terms: !prev.terms }))}
+                            className="flex items-center gap-2.5 text-base sm:text-[17px] font-bold text-slate-900 cursor-pointer text-left font-sans"
+                          >
+                            <ChevronRight size={18} className={`transition-transform duration-200 ${packageAccordions.terms ? "rotate-90" : ""}`} />
+                            <span>Terms and Conditions</span>
+                            <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded font-semibold ml-2">Archived</span>
+                          </button>
+                          
+                          {packageAccordions.terms && selectedPkg?._id && (
+                            <button
+                              onClick={() => inlineTermsRefs.current[selectedPkg?._id]?.startEditing()}
+                              className="text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors mr-6"
+                            >
+                              <Pencil size={14} />
+                              Edit Terms
+                            </button>
+                          )}
+                        </div>
 
                         {packageAccordions.terms && (
                           <div className="pt-3 pl-6 font-sans text-xs sm:text-sm text-slate-800 leading-relaxed space-y-4">
-                            {selectedPkg?.termsAndConditions && Array.isArray(selectedPkg.termsAndConditions) && selectedPkg.termsAndConditions.length > 0 ? (
-                              <ul className="list-disc pl-5 space-y-2">
-                                {selectedPkg.termsAndConditions.map((term, tIdx) => (
-                                  <li key={tIdx}>{term}</li>
-                                ))}
-                              </ul>
-                            ) : (
-                              <>
-                                <p>
-                                  Welcome to <strong className="font-bold text-slate-900">Holiday Circuit</strong>. These Terms and Conditions govern your use of the <strong className="font-bold text-slate-900">Holiday Circuit</strong> services. When You Make a booking or reservation, you agree to be bound by these Terms.
-                                </p>
-
-                                <div className="space-y-2">
-                                  <h4 className="font-bold text-slate-900 text-sm sm:text-base">Bookings and Reservations</h4>
-                                  <ul className="list-disc pl-5 space-y-2">
-                                    <li>
-                                      <strong className="font-bold text-slate-900">Booking Process:</strong> When you make a booking or reservation through <strong className="font-bold text-slate-900">Holiday Circuit</strong>, you agree to provide accurate and complete information. Any discrepancies or errors in the information you provide may result in the cancellation of your booking.
-                                    </li>
-                                  </ul>
-                                </div>
-
-                                <div className="space-y-2">
-                                  <p>
-                                    <strong className="font-bold text-slate-900">Payment:</strong> Payments for bookings are due as specified during the booking process. Failure to make payments on time may result in the cancellation of your booking.
-                                  </p>
-
-                                  <ol className="list-none space-y-2 font-bold text-slate-900">
-                                    <li>1. Minimum 50% of the booking amount is required at the time of booking confirmation.</li>
-                                    <li>2. Remaining 50% in 2 parts i.e. 25% of total booking amount within 30 Days prior to departure and 25% within 20 days prior to departure.</li>
-                                    <li>3. In Case of Airline booking/Train Tickets, 100% ticket cost to be paid at the time of confirmation.</li>
-                                    <li>4. In Case a booking is under 100% cancellation period, then 100% booking amount is required at the time of booking confirmation.</li>
-                                  </ol>
-                                </div>
-
-                                <p>
-                                  <strong className="font-bold text-slate-900">Confirmation:</strong> Your booking is considered confirmed only upon receipt of payment and confirmation from <strong className="font-bold text-slate-900">Holiday Circuit</strong>. Please review all booking details carefully to ensure accuracy.
-                                </p>
-
-                                <p className="font-bold text-slate-900">
-                                  Booking will be auto cancelled in case of non-payment within stipulated time
-                                </p>
-
-                                <p>
-                                  <strong className="font-bold text-slate-900">Credit Card:</strong> We accept payments through Credit Cards which may attract an additional charge from 3% to 5% depends upon the card type. Card charges shall be over and above the actual service/package cost.
-                                </p>
-
-                                <p>
-                                  <strong className="font-bold text-slate-900">Confirmation Vouchers:</strong> The service will be confirmed once the advance payment is made. However, the confirmation vouchers will only be provided 7 days before the arrival date.
-                                </p>
-
-                                <p>
-                                  <strong className="font-bold text-slate-900">Airport Transfers & Tour Pick Ups:</strong> The service includes 60 minutes of waiting time for Airport pick-ups. If you are delayed at immigration or luggage claim, please call the emergency number to extend the waiting time. Additional parking and waiting time charges may apply. For all other pick-ups, the driver will wait for 10 mins at the meeting point i.e. Hotel Lobby or Reception or any other fixed meeting point.
-                                </p>
-
-                                <p>
-                                  <strong className="font-bold text-slate-900">Taxes:</strong> In case of any changes in taxes (such as GST/Government Tax/TCS) at the time of confirmation, the price will be adjusted accordingly and shall be charged as per the prevailing law. This means that if there is an increase or decrease in applicable taxes between the time of booking confirmation and the actual provision of services, the final price will be adjusted to reflect these changes in accordance with the relevant tax regulations.
-                                </p>
-
-                                <p>
-                                  <strong className="font-bold text-slate-900">Changes and Cancellations:</strong> Changes to bookings or cancellations may be subject to fees or penalties, as determined by the service providers (e.g., airlines, hotels, tour operators) and <strong className="font-bold text-slate-900">Holiday Circuit</strong>. These fees and penalties may vary depending on the service and the timing of the change or cancellation.
-                                </p>
-
-                                <div className="space-y-2">
-                                  <h4 className="font-bold text-slate-900 text-sm sm:text-base">Travel Documents and Requirements</h4>
-                                  <ul className="list-disc pl-5 space-y-2">
-                                    <li>
-                                      <strong className="font-bold text-slate-900">Valid Id Proof:</strong> It is your responsibility to ensure that you have a valid ID as per destination entry requirements and any required visas or travel documents for your trip. <strong className="font-bold text-slate-900">Holiday Circuit</strong> is not responsible for any issues arising from the lack of proper travel documents. <strong className="font-bold text-slate-900">(To Enter Nepal by Air- Valid Passport or Election Card is Mandatory. Aadhar Card is not valid for Travel)</strong>
-                                    </li>
-                                    <li>
-                                      <strong className="font-bold text-slate-900">Health and Vaccinations:</strong> You are responsible for ensuring that you meet all health and vaccination requirements for your travel destinations.
-                                    </li>
-                                    <li>
-                                      <strong className="font-bold text-slate-900">Travel Insurance:</strong> We strongly recommend that you purchase travel insurance to protect against unexpected events such as trip cancellations, delays, or emergencies during your travel. <strong className="font-bold text-slate-900">Holiday Circuit</strong> can assist you in obtaining travel insurance, but the decision to purchase it is ultimately yours.
-                                    </li>
-                                  </ul>
-                                </div>
-
-                                <div className="space-y-2">
-                                  <h4 className="font-bold text-slate-900 text-sm sm:text-base">Changes to Itineraries</h4>
-                                  <ul className="list-disc pl-5 space-y-2">
-                                    <li>
-                                      <strong className="font-bold text-slate-900">By Holiday Circuit:</strong> We reserve the right to make changes to your itinerary or accommodations due to unforeseen circumstances. We will make every effort to inform you of such changes as soon as possible.
-                                    </li>
-                                    <li>
-                                      <strong className="font-bold text-slate-900">By You:</strong> Any changes requested by you to your itinerary may be subject to fees or penalties, as determined by the service providers and <strong className="font-bold text-slate-900">Holiday Circuit</strong>.
-                                    </li>
-                                  </ul>
-                                </div>
-
-                                <div className="space-y-2">
-                                  <h4 className="font-bold text-slate-900 text-sm sm:text-base">Liability</h4>
-                                  <ul className="list-disc pl-5 space-y-2">
-                                    <li>
-                                      <strong className="font-bold text-slate-900">Service Providers: Holiday Circuit</strong> acts as an intermediary between you and service providers such as airlines, hotels, and tour operators. We are not liable for any actions, omissions, or negligence on the part of these service providers.
-                                    </li>
-                                    <li>
-                                      <strong className="font-bold text-slate-900">Force Majeure: Holiday Circuit</strong> is not liable for any disruptions, cancellations, or delays caused by circumstances beyond our control, including natural disasters, strikes, political unrest, or other force majeure events.
-                                    </li>
-                                  </ul>
-                                </div>
-
-                                <p>
-                                  <strong className="font-bold text-slate-900">Governing Law and Jurisdiction:</strong> These Terms and your use of <strong className="font-bold text-slate-900">Holiday Circuit</strong> services are governed by the laws of New Delhi Jurisdiction, and any disputes shall be resolved in the courts of New Delhi Jurisdiction.
-                                </p>
-
-                                <p>
-                                  <strong className="font-bold text-slate-900">Changes to Terms and Conditions:</strong> We reserve the right to update and modify these Terms and Conditions at any time. Please review them periodically for changes. Your continued use of our services after any modifications indicates your acceptance of the updated Terms.
-                                </p>
-
-                                <p>
-                                  <strong className="font-bold text-slate-900">Contact Information:</strong> For any inquiries, please contact us at: <strong className="font-bold text-slate-900">Holiday Circuit</strong> KG 3/69, Ground Floor, Vikas Puri, New Delhi -110018, Near UK Nursing Home , Email id - <a href="mailto:varun@holidaycircuit.com" className="text-blue-600 underline hover:text-blue-800">varun@holidaycircuit.com</a> +91 8851346665, +91 9971706003
-                                </p>
-
-                                <p className="italic font-bold text-slate-900 pt-2">
-                                  By booking with Holiday Circuit, you acknowledge that you have read, understood, and agreed to these Terms and Conditions.
-                                </p>
-                              </>
-                            )}
+                            <InlineTermsEditor
+                            ref={el => inlineTermsRefs.current[selectedPkg?._id] = el}
+                              initialTerms={selectedPkg?.termsAndConditions}
+                              quotationId={selectedPkg?._id}
+                              isPackageTemplate={activeTab === "packages"}
+                              onUpdate={(newTerms) => {
+                                if (activeTab === "packages") {
+                                  setAgentPackages(prev => prev.map(p => 
+                                    p._id === selectedPkg?._id ? { ...p, termsAndConditions: newTerms } : p
+                                  ));
+                                } else {
+                                  setQuotes(prev => prev.map(q => 
+                                    q._id === selectedQuoteId 
+                                      ? {
+                                          ...q,
+                                          packages: q.packages.map(p => 
+                                            p._id === selectedPkg?._id ? { ...p, termsAndConditions: newTerms } : p
+                                          )
+                                        }
+                                      : q
+                                  ));
+                                }
+                              }}
+                            />
                           </div>
                         )}
                       </div>

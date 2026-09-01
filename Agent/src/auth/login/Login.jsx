@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import logo from "../../assets/logo img.png";
 import image from "../../assets/Image (Luxury Travel).svg";
 import {

@@ -3461,11 +3461,17 @@ const scoreHotelVariantMatch = (variant = {}, nextService = {}, changedField = "
       const [inclusions, setInclusions] = useState([]);
       const [exclusions, setExclusions] = useState([]);
       const [additionalNotes, setAdditionalNotes] = useState([]);
+      const [termsAndConditions, setTermsAndConditions] = useState([]);
+      const [adminTerms, setAdminTerms] = useState([]);
+  const [incExcPresets, setIncExcPresets] = useState([]);
+  const [selectedIncExcId, setSelectedIncExcId] = useState("");
+  const [isIncExcDropdownOpen, setIsIncExcDropdownOpen] = useState(false);
       const [dayWiseItinerary, setDayWiseItinerary] = useState([]);
       const [dynamicNoteInputs, setDynamicNoteInputs] = useState({
       inclusion: "",
       exclusion: "",
       additionalNote: "",
+      termsAndConditions: "",
       });
       // ops charges
       const [serviceCharge, setServiceCharge] = useState(0);
@@ -3624,23 +3630,39 @@ const scoreHotelVariantMatch = (variant = {}, nextService = {}, changedField = "
       };
 
       const appendDynamicNoteItem = (field) => {
-      const normalizedValue = String(dynamicNoteInputs?.[field] || "")
-      .replace(/\s+/g, " ")
-      .trim();
+      let normalizedValue = "";
 
-      if (!normalizedValue) return;
+      if (field === "termsAndConditions") {
+        const selectedTerm = adminTerms.find(t => t.id === dynamicNoteInputs[field]);
+        if (selectedTerm) {
+          normalizedValue = selectedTerm.content;
+        } else {
+          return;
+        }
+      } else {
+        normalizedValue = String(dynamicNoteInputs?.[field] || "")
+        .replace(/\s+/g, " ")
+        .trim();
+        if (!normalizedValue) return;
+      }
 
       const applyUpdate =
       field === "inclusion"
       ? setInclusions
       : field === "exclusion"
       ? setExclusions
+      : field === "termsAndConditions"
+      ? setTermsAndConditions
       : setAdditionalNotes;
 
-      applyUpdate((prev) => {
-      const nextItems = sanitizeDynamicListItems([...prev, normalizedValue]);
-      return Array.from(new Set(nextItems));
-      });
+      if (field === "termsAndConditions") {
+        applyUpdate([normalizedValue]);
+      } else {
+        applyUpdate((prev) => {
+        const nextItems = sanitizeDynamicListItems([...prev, normalizedValue]);
+        return Array.from(new Set(nextItems));
+        });
+      }
 
       setDynamicNoteInputs((prev) => ({
       ...prev,
@@ -3654,6 +3676,8 @@ const scoreHotelVariantMatch = (variant = {}, nextService = {}, changedField = "
       ? setInclusions
       : field === "exclusion"
       ? setExclusions
+      : field === "termsAndConditions"
+      ? setTermsAndConditions
       : setAdditionalNotes;
 
       applyUpdate((prev) => prev.filter((_, index) => index !== indexToRemove));
@@ -3955,6 +3979,11 @@ setDraftValidTill("");
       setInclusions(sanitizeDynamicListItems(quotation?.inclusions));
       setExclusions(sanitizeDynamicListItems(quotation?.exclusions));
       setAdditionalNotes(sanitizeDynamicListItems(quotation?.additionalNotes));
+      setTermsAndConditions(
+        Array.isArray(quotation?.termsAndConditions)
+          ? sanitizeDynamicListItems(quotation.termsAndConditions)
+          : []
+      );
       setDayWiseItinerary(
         reconcileDayWiseItineraryItems(
           quotation?.dayWiseItinerary,
@@ -3963,6 +3992,27 @@ setDraftValidTill("");
         ),
       );
     };
+
+    useEffect(() => {
+        const fetchAdminTerms = async () => {
+          try {
+            const response = await API.get('/admin/terms');
+            setAdminTerms(response.data || []);
+          } catch (error) {
+            console.error('Failed to fetch admin terms:', error);
+          }
+        };
+        const fetchIncExcPresets = async () => {
+          try {
+            const response = await API.get('/admin/inc-exc-presets');
+            setIncExcPresets(response.data || []);
+          } catch (error) {
+            console.error('Failed to fetch inc-exc presets:', error);
+          }
+        };
+        fetchAdminTerms();
+        fetchIncExcPresets();
+      }, []);
 
     useEffect(() => {
       const loadQuotationDraft = async () => {
@@ -5697,10 +5747,9 @@ return true;
       additionalNotes: sanitizeDynamicListItems(
       Array.isArray(quotation?.additionalNotes) ? quotation.additionalNotes : additionalNotes,
       ),
-      termsAndConditions: Array.isArray(quotation?.termsAndConditions) &&
-      quotation.termsAndConditions.length
-      ? sanitizeDynamicListItems(quotation.termsAndConditions)
-      : [...DEFAULT_WHATSAPP_TERMS],
+      termsAndConditions: sanitizeDynamicListItems(
+        Array.isArray(quotation?.termsAndConditions) ? quotation.termsAndConditions : termsAndConditions
+      ),
       dayWiseItinerary: sanitizeDayWiseItineraryItems(
       Array.isArray(quotation?.dayWiseItinerary) ? quotation.dayWiseItinerary : itineraryEntries,
       )
@@ -7223,26 +7272,116 @@ const renderSelectedServicesModal = () => {
 
   const renderNotesWorkspaceContent = () => (
     <div className="space-y-4">
+      <div className="rounded-2xl border border-gray-200 bg-slate-50 p-3">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <span className="flex h-8 w-8 items-center justify-center rounded-full border border-purple-300 bg-purple-100 text-purple-700">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M20.24 12.24a6 6 0 0 0-8.49-8.49L5 10.5V19h8.5z" />
+                <line x1="16" y1="8" x2="2" y2="22" />
+                <line x1="17.5" y1="15" x2="9" y2="6.5" />
+              </svg>
+            </span>
+            <p className="text-sm font-semibold text-slate-900">Inclusions & Exclusions Preset</p>
+          </div>
+        </div>
+        <div className="flex flex-col gap-4">
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setIsIncExcDropdownOpen(!isIncExcDropdownOpen)}
+              className="flex w-full items-center justify-between rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-[#3E63DD] focus:ring-1 focus:ring-[#3E63DD] hover:border-gray-400"
+            >
+              <span>
+                {selectedIncExcId 
+                  ? incExcPresets.find(p => p._id === selectedIncExcId)?.name || "Select a preset..."
+                  : "Select a preset..."}
+              </span>
+              <svg className={`h-4 w-4 text-gray-500 transition-transform ${isIncExcDropdownOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
+            </button>
+            {isIncExcDropdownOpen && (
+              <div className="absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-xl border border-gray-200 bg-white py-1 shadow-lg">
+                <button
+                  type="button"
+                  className={`w-full px-4 py-2 text-left text-sm hover:bg-gray-50 ${!selectedIncExcId ? "bg-blue-50 text-blue-700 font-medium" : "text-gray-700"}`}
+                  onClick={() => {
+                    setSelectedIncExcId("");
+                    setInclusions([]);
+                    setExclusions([]);
+                    setIsIncExcDropdownOpen(false);
+                  }}
+                >
+                  Select a preset...
+                </button>
+                {incExcPresets.map(preset => (
+                  <button
+                    key={preset._id}
+                    type="button"
+                    className={`w-full px-4 py-2 text-left text-sm hover:bg-gray-50 ${selectedIncExcId === preset._id ? "bg-blue-50 text-blue-700 font-medium" : "text-gray-700"}`}
+                    onClick={() => {
+                      setSelectedIncExcId(preset._id);
+                      if (preset) {
+                        const incStrings = (preset.inclusions || []).map(i => i.category ? `<b className='font-semibold'>${i.category}</b>: ${i.description}` : i.description);
+                        const excStrings = (preset.exclusions || []).map(ex => ex.category ? `<b className='font-semibold'>${ex.category}</b>: ${ex.description}` : ex.description);
+                        setInclusions(incStrings);
+                        setExclusions(excStrings);
+                      }
+                      setIsIncExcDropdownOpen(false);
+                    }}
+                  >
+                    {preset.name}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          
+          {(inclusions.length > 0 || exclusions.length > 0) && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+              {inclusions.length > 0 && (
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-3">
+                  <p className="text-xs font-bold text-emerald-800 mb-2">Inclusions ({inclusions.length})</p>
+                  <ul className="space-y-1.5">
+                    {inclusions.map((inc, i) => (
+                      <li key={i} className="text-xs text-emerald-900 flex gap-2 items-start">
+                        <svg className="shrink-0 mt-0.5 text-emerald-500" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+                        <span dangerouslySetInnerHTML={{ __html: inc }} />
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {exclusions.length > 0 && (
+                <div className="rounded-xl border border-rose-200 bg-rose-50/50 p-3">
+                  <p className="text-xs font-bold text-rose-800 mb-2">Exclusions ({exclusions.length})</p>
+                  <ul className="space-y-1.5">
+                    {exclusions.map((exc, i) => (
+                      <li key={i} className="text-xs text-rose-900 flex gap-2 items-start">
+                        <svg className="shrink-0 mt-0.5 text-rose-500" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                        <span dangerouslySetInnerHTML={{ __html: exc }} />
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
       {[
-        {
-          key: "inclusion",
-          title: "Inclusions",
-          placeholder: "Add included item and press Add",
-          items: inclusions,
-          accent: "border-emerald-300 bg-emerald-50 text-emerald-800 font-semibold",
-        },
-        {
-          key: "exclusion",
-          title: "Exclusions",
-          placeholder: "Add excluded item and press Add",
-          items: exclusions,
-          accent: "border-rose-300 bg-rose-50 text-rose-800 font-semibold",
-        },
         {
           key: "additionalNote",
           title: "Important Notes",
           placeholder: "Add special terms or extra information and press Add",
           items: additionalNotes,
+          accent: "border-sky-300 bg-sky-50 text-sky-800 font-semibold",
+        },
+        {
+          key: "termsAndConditions",
+          title: "Terms & Conditions",
+          placeholder: "Add terms and conditions here",
+          items: termsAndConditions,
           accent: "border-sky-300 bg-sky-50 text-sky-800 font-semibold",
         },
       ].map((section) => (
@@ -7281,19 +7420,32 @@ const renderSelectedServicesModal = () => {
           </div>
 
           <div className="flex flex-col gap-2 md:flex-row">
-            <input
-              type="text"
-              value={dynamicNoteInputs[section.key]}
-              onChange={(e) => updateDynamicNoteInput(section.key, e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  appendDynamicNoteItem(section.key);
-                }
-              }}
-              placeholder={section.placeholder}
-              className="flex-1 rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-[#3E63DD] focus:ring-1 focus:ring-[#3E63DD]"
-            />
+            {section.key === "termsAndConditions" ? (
+              <select
+                value={dynamicNoteInputs[section.key]}
+                onChange={(e) => updateDynamicNoteInput(section.key, e.target.value)}
+                className="flex-1 rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-[#3E63DD] focus:ring-1 focus:ring-[#3E63DD]"
+              >
+                <option value="">Select a Term & Condition</option>
+                {adminTerms.map(term => (
+                  <option key={term.id} value={term.id}>{term.name}</option>
+                ))}
+              </select>
+            ) : (
+              <input
+                type="text"
+                value={dynamicNoteInputs[section.key]}
+                onChange={(e) => updateDynamicNoteInput(section.key, e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    appendDynamicNoteItem(section.key);
+                  }
+                }}
+                placeholder={section.placeholder}
+                className="flex-1 rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-[#3E63DD] focus:ring-1 focus:ring-[#3E63DD]"
+              />
+            )}
             <button
               type="button"
               onClick={() => appendDynamicNoteItem(section.key)}
@@ -7307,10 +7459,14 @@ const renderSelectedServicesModal = () => {
             <div className="mt-3 flex flex-wrap gap-2">
               {section.items.map((item, index) => (
                 <div
-                  key={`${section.key}-${index}-${item}`}
+                  key={`${section.key}-${index}`}
                   className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs text-slate-800 shadow-2xs"
                 >
-                  <span>{item}</span>
+                  {section.key === "termsAndConditions" ? (
+                    <span className="rte-content max-h-32 overflow-hidden block" dangerouslySetInnerHTML={{ __html: item }} />
+                  ) : (
+                    <span>{item}</span>
+                  )}
                   <button
                     type="button"
                     onClick={() => removeDynamicNoteItem(section.key, index)}
