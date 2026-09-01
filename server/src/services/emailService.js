@@ -1654,6 +1654,9 @@ const getTransportLimitLabelForQuote = (service = {}) => {
   return explicitLimitLabel || TRANSPORT_USAGE_LIMIT_LABELS[optionKey] || "";
 };
 
+
+
+
 const buildServiceQuantityLabel = (service = {}, fallbackPax = 0) => {
   const normalizedType = String(service?.type || "").trim().toLowerCase();
   const details = [];
@@ -1687,6 +1690,7 @@ const buildServiceQuantityLabel = (service = {}, fallbackPax = 0) => {
   return details.join(" | ");
 };
 
+
 const buildTransportQuotationNotes = (service = {}) => {
   const optionKey = normalizeTransportUsageOptionKeyForQuote(
     service?.transportUsageOptionKey ||
@@ -1711,6 +1715,8 @@ const buildTransportQuotationNotes = (service = {}) => {
 
   return notes;
 };
+
+
 
 export const buildFinalInvoiceTemplate = (invoiceDetails = {}) => {
   const currency = invoiceDetails.currency || "INR";
@@ -2124,6 +2130,7 @@ export const buildFinalInvoiceTemplate = (invoiceDetails = {}) => {
   `;
 };
 
+
 const processInlineCidImages = (rawHtml = "") => {
   const inlineAttachments = [];
   let cidCounter = 0;
@@ -2148,6 +2155,8 @@ const processInlineCidImages = (rawHtml = "") => {
 
   return { html: cleanHtml, inlineAttachments };
 };
+
+
 
 export const sendEmailQuote = async (email, quoteDetails) => {
   const transporter = createTransporter();
@@ -2290,6 +2299,7 @@ export const sendEmailVoucher = async (
   console.log("VOUCHER EMAIL SENT:", info.response);
   return { status: "sent", email };
 };
+
 
 
 

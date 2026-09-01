@@ -532,19 +532,28 @@ export const getServicePaymentStatusDisplay = (service, selectedQuery) => {
 };
 
 export const getServiceVoucherStatusInfo = (service, selectedQuery) => {
+  const voucherNum =
+    service?.voucherNumber ||
+    service?.voucherReference ||
+    (service?.confirmationNumber && service.confirmationNumber !== "Pending" && service.confirmationNumber !== "N/A"
+      ? service.confirmationNumber
+      : "");
   const hasServiceVoucher = Boolean(
-    service?.voucherNumber || service?.isVoucherGenerated,
+    service?.voucherNumber ||
+    service?.isVoucherGenerated ||
+    (service?.confirmationNumber && service.confirmationNumber !== "Pending" && service.confirmationNumber !== "N/A"),
   );
+
   if (hasServiceVoucher) {
     return {
       isVouchered: true,
-      label: service?.voucherNumber
-        ? `Vouchered (${service.voucherNumber})`
+      label: voucherNum
+        ? `Vouchered (${voucherNum})`
         : "Voucher Generated",
       bgClass:
-        "bg-emerald-50 text-emerald-900 border-emerald-200 hover:bg-emerald-100",
+        "bg-emerald-50 text-emerald-900 border-emerald-300 hover:bg-emerald-100 font-bold",
       iconClass: "text-emerald-600",
-      textClass: "text-emerald-800",
+      textClass: "text-emerald-800 font-bold",
     };
   }
   return {

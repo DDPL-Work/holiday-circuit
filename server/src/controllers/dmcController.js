@@ -3206,11 +3206,11 @@ const getDmcVisibleQueriesData = async (req) => {
       checkInDate: schedule?.checkInDate || "",
       checkOutDate: schedule?.checkOutDate || "",
       checkInTime: alignedService.checkInTime || alignedService.hotelCheckInTime || "",
-      checkOutTime: alignedService.checkOutTime || alignedService.hotelCheckOutTime || "",
-      status: "Confirmed",
-      confirmationNumber: "",
-      voucherNumber: "",
-      emergency: "",
+      status: alignedService.status || "Confirmed",
+      confirmationNumber: alignedService.confirmationNumber || alignedService.voucherNumber || "",
+      voucherNumber: alignedService.voucherNumber || "",
+      emergency: alignedService.emergency || "",
+      isVoucherGenerated: Boolean(alignedService.voucherNumber || alignedService.confirmationNumber || alignedService.isVoucherGenerated),
       city: alignedService.city || "",
       country: alignedService.country || "",
       supplierId: alignedService.supplierId || alignedService.dmcId || "",
@@ -3423,6 +3423,28 @@ const getDmcVisibleQueriesData = async (req) => {
           vouchers: vouchersByQueryId.get(queryKey) || [],
         },
       );
+
+      if (Array.isArray(confirmation?.services) && confirmation.services.length > 0) {
+        quotationServices.forEach((qs, qIdx) => {
+          const qsTitle = normalizeText(qs.title || qs.serviceName || qs.hotelName || qs.name || "");
+          const matchedConf = confirmation.services.find((cs, cIdx) => {
+            if (cs._id && qs._id && String(cs._id) === String(qs._id)) return true;
+            if (cs.serviceId && qs.serviceId && String(cs.serviceId) === String(qs.serviceId)) return true;
+            const csTitle = normalizeText(cs.serviceName || cs.title || cs.name || "");
+            if (csTitle && qsTitle && (csTitle === qsTitle || csTitle.includes(qsTitle) || qsTitle.includes(csTitle))) return true;
+            return cIdx === qIdx;
+          });
+
+          if (matchedConf) {
+            if (matchedConf.confirmationNumber) qs.confirmationNumber = matchedConf.confirmationNumber;
+            if (matchedConf.voucherNumber) qs.voucherNumber = matchedConf.voucherNumber;
+            if (matchedConf.status) qs.status = matchedConf.status;
+            if (matchedConf.emergency) qs.emergency = matchedConf.emergency;
+            if (matchedConf.serviceDate) qs.serviceDate = matchedConf.serviceDate;
+            qs.isVoucherGenerated = Boolean(matchedConf.voucherNumber || matchedConf.confirmationNumber || matchedConf.isVoucherGenerated);
+          }
+        });
+      }
       const derivedServiceSchedule = deriveQuotationServiceSchedule(
         quotationServices,
         query.startDate,

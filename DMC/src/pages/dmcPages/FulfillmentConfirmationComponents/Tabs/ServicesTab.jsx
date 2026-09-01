@@ -2,6 +2,7 @@ import React from "react";
 import {
   BedDouble,
   CheckCircle,
+  CheckCheck,
   FileText,
   AlertCircle,
   RefreshCw,
@@ -227,26 +228,33 @@ export default function ServicesTab({
                                 >
                                   <FileText
                                     size={12}
-                                    className="text-slate-500 shrink-0"
+                                    className={vInfo.isVouchered ? "text-emerald-600 shrink-0" : "text-slate-500 shrink-0"}
                                   />
-                                  <span className="text-amber-400 text-[10px]">
+                                  <span className={vInfo.isVouchered ? "text-emerald-400 text-[10px]" : "text-amber-400 text-[10px]"}>
                                     •
                                   </span>
-                                  <AlertCircle
-                                    size={12}
-                                    className={`${vInfo.iconClass} shrink-0`}
-                                  />
+                                  {vInfo.isVouchered ? (
+                                    <CheckCheck
+                                      size={13}
+                                      className="text-emerald-600 shrink-0"
+                                    />
+                                  ) : (
+                                    <AlertCircle
+                                      size={12}
+                                      className={`${vInfo.iconClass} shrink-0`}
+                                    />
+                                  )}
                                   <span
                                     className={`whitespace-nowrap font-bold ${vInfo.textClass}`}
                                   >
                                     {vInfo.label}
                                   </span>
-                                  <span className="text-amber-400 text-[10px]">
+                                  <span className={vInfo.isVouchered ? "text-emerald-400 text-[10px]" : "text-amber-400 text-[10px]"}>
                                     •
                                   </span>
                                   <RefreshCw
                                     size={11}
-                                    className="text-slate-400 shrink-0"
+                                    className={vInfo.isVouchered ? "text-emerald-500 shrink-0" : "text-slate-400 shrink-0"}
                                   />
                                 </button>
                               );
@@ -460,26 +468,33 @@ export default function ServicesTab({
                                 >
                                   <FileText
                                     size={12}
-                                    className="text-slate-500 shrink-0"
+                                    className={vInfo.isVouchered ? "text-emerald-600 shrink-0" : "text-slate-500 shrink-0"}
                                   />
-                                  <span className="text-amber-400 text-[10px]">
+                                  <span className={vInfo.isVouchered ? "text-emerald-400 text-[10px]" : "text-amber-400 text-[10px]"}>
                                     •
                                   </span>
-                                  <AlertCircle
-                                    size={12}
-                                    className={`${vInfo.iconClass} shrink-0`}
-                                  />
+                                  {vInfo.isVouchered ? (
+                                    <CheckCheck
+                                      size={13}
+                                      className="text-emerald-600 shrink-0"
+                                    />
+                                  ) : (
+                                    <AlertCircle
+                                      size={12}
+                                      className={`${vInfo.iconClass} shrink-0`}
+                                    />
+                                  )}
                                   <span
                                     className={`whitespace-nowrap font-bold ${vInfo.textClass}`}
                                   >
                                     {vInfo.label}
                                   </span>
-                                  <span className="text-amber-400 text-[10px]">
+                                  <span className={vInfo.isVouchered ? "text-emerald-400 text-[10px]" : "text-amber-400 text-[10px]"}>
                                     •
                                   </span>
                                   <RefreshCw
                                     size={11}
-                                    className="text-slate-400 shrink-0"
+                                    className={vInfo.isVouchered ? "text-emerald-500 shrink-0" : "text-slate-400 shrink-0"}
                                   />
                                 </button>
                               );
@@ -691,26 +706,33 @@ export default function ServicesTab({
                                 >
                                   <FileText
                                     size={12}
-                                    className="text-slate-500 shrink-0"
+                                    className={vInfo.isVouchered ? "text-emerald-600 shrink-0" : "text-slate-500 shrink-0"}
                                   />
-                                  <span className="text-amber-400 text-[10px]">
+                                  <span className={vInfo.isVouchered ? "text-emerald-400 text-[10px]" : "text-amber-400 text-[10px]"}>
                                     •
                                   </span>
-                                  <AlertCircle
-                                    size={12}
-                                    className={`${vInfo.iconClass} shrink-0`}
-                                  />
+                                  {vInfo.isVouchered ? (
+                                    <CheckCheck
+                                      size={13}
+                                      className="text-emerald-600 shrink-0"
+                                    />
+                                  ) : (
+                                    <AlertCircle
+                                      size={12}
+                                      className={`${vInfo.iconClass} shrink-0`}
+                                    />
+                                  )}
                                   <span
                                     className={`whitespace-nowrap font-bold ${vInfo.textClass}`}
                                   >
                                     {vInfo.label}
                                   </span>
-                                  <span className="text-amber-400 text-[10px]">
+                                  <span className={vInfo.isVouchered ? "text-emerald-400 text-[10px]" : "text-amber-400 text-[10px]"}>
                                     •
                                   </span>
                                   <RefreshCw
                                     size={11}
-                                    className="text-slate-400 shrink-0"
+                                    className={vInfo.isVouchered ? "text-emerald-500 shrink-0" : "text-slate-400 shrink-0"}
                                   />
                                 </button>
                               );
@@ -923,26 +945,33 @@ export default function ServicesTab({
                                 >
                                   <FileText
                                     size={12}
-                                    className="text-slate-500 shrink-0"
+                                    className={vInfo.isVouchered ? "text-emerald-600 shrink-0" : "text-slate-500 shrink-0"}
                                   />
-                                  <span className="text-amber-400 text-[10px]">
+                                  <span className={vInfo.isVouchered ? "text-emerald-400 text-[10px]" : "text-amber-400 text-[10px]"}>
                                     •
                                   </span>
-                                  <AlertCircle
-                                    size={12}
-                                    className={`${vInfo.iconClass} shrink-0`}
-                                  />
+                                  {vInfo.isVouchered ? (
+                                    <CheckCheck
+                                      size={13}
+                                      className="text-emerald-600 shrink-0"
+                                    />
+                                  ) : (
+                                    <AlertCircle
+                                      size={12}
+                                      className={`${vInfo.iconClass} shrink-0`}
+                                    />
+                                  )}
                                   <span
                                     className={`whitespace-nowrap font-bold ${vInfo.textClass}`}
                                   >
                                     {vInfo.label}
                                   </span>
-                                  <span className="text-amber-400 text-[10px]">
+                                  <span className={vInfo.isVouchered ? "text-emerald-400 text-[10px]" : "text-amber-400 text-[10px]"}>
                                     •
                                   </span>
                                   <RefreshCw
                                     size={11}
-                                    className="text-slate-400 shrink-0"
+                                    className={vInfo.isVouchered ? "text-emerald-500 shrink-0" : "text-slate-400 shrink-0"}
                                   />
                                 </button>
                               );
