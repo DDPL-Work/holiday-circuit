@@ -7,7 +7,7 @@ import {
   summaryCardIcons,
 } from "../utils/formatter";
 
-export default function ReportSummaryCard({ item, loading }) {
+export default function ReportSummaryCard({ item, comparedItem, loading, comparedLoading }) {
   const labelUpper = (item.styleKey || item.label || "").toUpperCase();
   const style = summaryCardStyles[labelUpper] || defaultSummaryStyle;
   const IconComponent = summaryCardIcons[labelUpper] || FileText;
@@ -31,15 +31,20 @@ export default function ReportSummaryCard({ item, loading }) {
           <IconComponent size={13} />
         </span>
       </div>
-      <div className="mt-0.5 flex items-baseline">
+      <div className="mt-0.5 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
         <p
-          className={`text-lg sm:text-xl font-black ${style.valColor} tracking-tight leading-none`}
+          className={`text-lg sm:text-xl font-black ${style.valColor} tracking-tight leading-none shrink-0`}
         >
           {loading ? "..." : item.value}
         </p>
+        {comparedItem && (
+          <p className="text-xs sm:text-sm font-bold text-slate-400 tracking-tight leading-none shrink-0">
+            vs {comparedLoading ? "..." : comparedItem.value}
+          </p>
+        )}
       </div>
       <div className="mt-0.5 overflow-hidden">
-        <p className="text-[8.5px] sm:text-[9px] font-semibold text-slate-400 leading-tight">
+        <p className="text-[11px] sm:text-[12px] font-medium text-slate-400 leading-tight">
           {loading ? "Loading..." : item.sub}
         </p>
       </div>

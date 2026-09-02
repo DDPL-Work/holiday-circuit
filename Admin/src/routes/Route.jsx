@@ -39,6 +39,9 @@ const InternalInvoice = lazy(
 const AdvancedAnalytics = lazy(
   () => import("../pages/financePages/AdvancedAnalytics"),
 );
+const BookingStatistics = lazy(
+  () => import("../pages/financePages/BookingStatistics"),
+);
 const Dashboard = lazy(() => import("../pages/adminPages/Dashboard"));
 const SuperAdminDashboard = lazy(
   () => import("../pages/adminPages/SuperAdminDashboard"),
@@ -176,6 +179,10 @@ export const appRouter = createBrowserRouter([
           {
             path: "/finance/advancedAnalytics",
             element: lazyPage(AdvancedAnalytics),
+          },
+          {
+            path: "/finance/bookingStatistics",
+            element: lazyPage(BookingStatistics),
           },
           {
             path: "/finance/paymentVerification",

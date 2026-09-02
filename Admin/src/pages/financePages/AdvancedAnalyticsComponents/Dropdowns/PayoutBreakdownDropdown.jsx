@@ -23,7 +23,7 @@ const PayoutBreakdownDropdown = forwardRef(
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95, y: -10 }}
         transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-        className="absolute left-0 right-0 top-full -mt-28 z-40 bg-gradient-to-br from-white via-sky-50/50 to-sky-100/25 backdrop-blur-md border border-sky-100/60 rounded-2xl p-0 overflow-hidden shadow-[0_25px_60px_-15px_rgba(0,0,0,0.15)] flex flex-col max-h-[88vh]"
+        className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[100] w-[95vw] max-w-7xl bg-gradient-to-br from-white via-sky-50/50 to-sky-100/25 backdrop-blur-md border border-sky-100/60 rounded-2xl p-0 overflow-hidden shadow-[0_25px_60px_-15px_rgba(0,0,0,0.15)] flex flex-col max-h-[88vh]"
       >
         <style
           dangerouslySetInnerHTML={{

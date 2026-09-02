@@ -4,6 +4,7 @@ import { getPendingAgents, approveAgent, getAllUsers, createRateContract, deacti
 import { createCoupon, deleteCoupon, generateCouponCode, getAdminCoupons, sendCouponToAgent, updateCoupon } from "../controllers/couponController.js";
 import { getMyNotifications, markAllNotificationsRead, deleteNotification } from "../controllers/agentController.js";
 import { getOperationManagerQueryQuotations } from "../controllers/opsManagerController.js";
+import { getVoucheredQueries, getQueryDetails } from "../controllers/admin.bookingStatistics.controller.js";
 import { createTermsAndConditions, updateTermsAndConditions, fetchTermsAndConditions, fetchByIDTermsAndConditions, deleteTermsAndConditions } from "../controllers/adminTerms.controller.js";
 import { getIncExcPresets, getIncExcPresetById, createIncExcPreset, updateIncExcPreset, deleteIncExcPreset } from "../controllers/adminIncExc.controller.js";
 import multer from "multer";
@@ -48,6 +49,10 @@ routers.get("/stats", isAuthenticated , getSystemStats);
 routers.get("/dashboard", isAuthenticated, getAdminDashboardData);
 routers.get("/queries/:queryId/quotations", isAuthenticated, getOperationManagerQueryQuotations);
 routers.patch("/queries/:id/reply-to-ops", isAuthenticated, replyToOpsEscalation);
+
+routers.get("/booking-statistics/vouchered", isAuthenticated, getVoucheredQueries);
+routers.get("/booking-statistics/query/:id", isAuthenticated, getQueryDetails);
+
 routers.patch("/override-cases/:targetType/:id/resolve", isAuthenticated, resolveAdminOverrideCase);
 routers.get("/payments", getAllPayments);
 routers.get("/payment-verifications", isAuthenticated, getPaymentVerifications);

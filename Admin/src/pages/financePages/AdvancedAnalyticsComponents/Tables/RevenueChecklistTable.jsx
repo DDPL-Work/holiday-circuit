@@ -1,292 +1,526 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, CheckCircle2 } from "lucide-react";
-import {
-  formatShortDate,
-  formatCompactCurrency,
-  getInvoiceMonthVerifiedPayment,
-  getInvoiceMonthVerifiedPaymentDate,
-  getPrimaryTravelDate,
-  getInvoiceTotalAmount,
-  isClientApprovedChecklistRecord,
-} from "../utils/formatter";
+import { TrendingUp, TrendingDown, ChevronDown } from "lucide-react";
+import { formatCompactCurrency } from "../utils/formatter";
+
+function CustomPeriodDropdown({ period, value, onChange, currentPeriodStr, direction }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (ref.current && !ref.current.contains(event.target)) setIsOpen(false);
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const options = useMemo(() => {
+    let opts = [];
+    if (period === "monthly") {
+      const yr = currentPeriodStr ? Number(currentPeriodStr.split("-")[0]) : new Date().getFullYear();
+      for (let y = yr - 3; y <= yr + 3; y++) {
+        for (let m = 1; m <= 12; m++) {
+          const val = `${y}-${String(m).padStart(2, '0')}`;
+          const d = new Date(y, m - 1, 1);
+          const label = d.toLocaleString('en-US', { month: 'short', year: 'numeric' });
+          opts.push({ val, label });
+        }
+      }
+    } else if (period === "quarterly") {
+      const yr = currentPeriodStr ? Number(currentPeriodStr.split("-")[0]) : new Date().getFullYear();
+      for (let y = yr - 3; y <= yr + 3; y++) {
+        for (let q = 1; q <= 4; q++) {
+          opts.push({ val: `${y}-Q${q}`, label: `Q${q} ${y}` });
+        }
+      }
+    } else if (period === "yearly") {
+      const yr = currentPeriodStr ? Number(currentPeriodStr) : new Date().getFullYear();
+      for (let y = yr - 5; y <= yr + 5; y++) {
+        opts.push({ val: String(y), label: String(y) });
+      }
+    }
+
+    if (direction === "past") {
+      opts = opts.filter(o => o.val < currentPeriodStr);
+      opts.reverse();
+    } else if (direction === "upcoming") {
+      opts = opts.filter(o => o.val > currentPeriodStr);
+    }
+
+    return opts;
+  }, [period, currentPeriodStr, direction]);
+
+  const selectedLabel = options.find(o => o.val === value)?.label || value;
+
+  return (
+    <div className="relative" ref={ref}>
+      <div 
+        onClick={() => setIsOpen(!isOpen)}
+        className={`w-32 sm:w-36 h-8 flex items-center justify-between rounded-lg border px-2.5 text-[10px] font-bold cursor-pointer transition-all shadow-sm ${isOpen ? 'border-indigo-300 ring-2 ring-indigo-100 bg-white text-slate-800' : 'border-slate-200 bg-white text-slate-700 hover:border-indigo-200 hover:bg-slate-50'}`}
+      >
+        <span className="truncate">{selectedLabel}</span>
+        <ChevronDown size={14} className={`text-slate-400 transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`} />
+      </div>
+      
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div
+            initial={{ opacity: 0, y: 5 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 5 }}
+            transition={{ duration: 0.15 }}
+            className="absolute right-0 z-10 mt-1 w-full rounded-xl border border-slate-100 bg-white shadow-xl max-h-48 overflow-y-auto thin-scrollbar"
+          >
+            {options.map((opt) => (
+              <div 
+                key={opt.val}
+                onClick={() => {
+                  onChange(opt.val);
+                  setIsOpen(false);
+                }}
+                className={`px-3 py-2 text-[10px] font-medium cursor-pointer transition-colors ${value === opt.val ? 'bg-indigo-50 text-indigo-700 font-bold' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'}`}
+              >
+                {opt.label}
+              </div>
+            ))}
+            {options.length === 0 && (
+               <div className="px-3 py-2 text-[10px] font-medium text-slate-400 italic">No options</div>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function sumGroup(list) {
+  return list.reduce(
+    (acc, invoice) => {
+      const m = invoice.computedMetrics || {};
+      acc.incoming     += m.incoming     || 0;
+      acc.incomingPaid += m.incomingPaid || 0;
+      acc.dueAgent     += m.dueAgent     || 0;
+      acc.outgoing     += m.outgoing     || 0;
+      acc.outgoingPaid += m.outgoingPaid || 0;
+      acc.upcomingDmc  += m.upcomingDmc  || 0;
+      acc.grossProfit  += m.grossProfit  || 0;
+      return acc;
+    },
+    {
+      incoming: 0,
+      incomingPaid: 0,
+      dueAgent: 0,
+      outgoing: 0,
+      outgoingPaid: 0,
+      upcomingDmc: 0,
+      grossProfit: 0,
+    }
+  );
+}
+
+// Per-tense metric labels — plain language, no technical jargon, no party names except DMC
+const METRIC_LABELS_BY_PERIOD = {
+  past: [
+    {
+      key: "incoming",
+      label: "Total Payment Received",
+      subtitle: (t) => `Already received: ${formatCompactCurrency(t.incomingPaid)}`,
+      color: "text-sky-700",
+      labelColor: "text-sky-500",
+    },
+    {
+      key: "dueAgent",
+      label: "Pending Payment to Collect",
+      subtitle: (t) => `Outstanding from ${formatCompactCurrency(t.incoming)} billed`,
+      color: "text-rose-600",
+      labelColor: "text-rose-400",
+    },
+    {
+      key: "outgoing",
+      label: "Total Paid to DMC",
+      subtitle: (t) => `Settled: ${formatCompactCurrency(t.outgoingPaid)}`,
+      color: "text-slate-800",
+      labelColor: "text-slate-400",
+    },
+    {
+      key: "upcomingDmc",
+      label: "Pending Payment to DMC",
+      subtitle: (t) => `Balance from ${formatCompactCurrency(t.outgoing)} total cost`,
+      color: "text-orange-600",
+      labelColor: "text-orange-400",
+    },
+    {
+      key: "grossProfit",
+      label: "Total Profit",
+      subtitle: (t) => {
+        const margin = t.incoming > 0 ? ((t.grossProfit / t.incoming) * 100).toFixed(1) : "0.0";
+        return `Margin: ${margin}%`;
+      },
+      color: (t) => (t.grossProfit >= 0 ? "text-emerald-600" : "text-rose-600"),
+      labelColor: (t) => (t.grossProfit >= 0 ? "text-emerald-500" : "text-rose-400"),
+      icon: (t) => t.grossProfit >= 0
+        ? <TrendingUp size={11} className="text-emerald-500" />
+        : <TrendingDown size={11} className="text-rose-500" />,
+    },
+  ],
+  current: [
+    {
+      key: "incoming",
+      label: "Total Payment Received",
+      subtitle: (t) => `Received so far: ${formatCompactCurrency(t.incomingPaid)}`,
+      color: "text-sky-700",
+      labelColor: "text-sky-500",
+    },
+    {
+      key: "dueAgent",
+      label: "Pending Payment to Collect",
+      subtitle: (t) => `Out of ${formatCompactCurrency(t.incoming)} total billed`,
+      color: "text-rose-600",
+      labelColor: "text-rose-400",
+    },
+    {
+      key: "outgoing",
+      label: "Total Paid to DMC",
+      subtitle: (t) => `Paid so far: ${formatCompactCurrency(t.outgoingPaid)}`,
+      color: "text-slate-800",
+      labelColor: "text-slate-400",
+    },
+    {
+      key: "upcomingDmc",
+      label: "Pending Payment to DMC",
+      subtitle: (t) => `Balance from ${formatCompactCurrency(t.outgoing)} total cost`,
+      color: "text-orange-600",
+      labelColor: "text-orange-400",
+    },
+    {
+      key: "grossProfit",
+      label: "Total Profit",
+      subtitle: (t) => {
+        const margin = t.incoming > 0 ? ((t.grossProfit / t.incoming) * 100).toFixed(1) : "0.0";
+        return `Margin: ${margin}%`;
+      },
+      color: (t) => (t.grossProfit >= 0 ? "text-emerald-600" : "text-rose-600"),
+      labelColor: (t) => (t.grossProfit >= 0 ? "text-emerald-500" : "text-rose-400"),
+      icon: (t) => t.grossProfit >= 0
+        ? <TrendingUp size={11} className="text-emerald-500" />
+        : <TrendingDown size={11} className="text-rose-500" />,
+    },
+  ],
+  upcoming: [
+    {
+      key: "incoming",
+      label: "Total Payment Received",
+      subtitle: (t) => `Advance received: ${formatCompactCurrency(t.incomingPaid)}`,
+      color: "text-sky-700",
+      labelColor: "text-sky-500",
+    },
+    {
+      key: "dueAgent",
+      label: "Pending Payment to Collect",
+      subtitle: (t) => `From ${formatCompactCurrency(t.incoming)} total expected`,
+      color: "text-rose-600",
+      labelColor: "text-rose-400",
+    },
+    {
+      key: "outgoing",
+      label: "Total Paid to DMC",
+      subtitle: (t) => `Advance paid: ${formatCompactCurrency(t.outgoingPaid)}`,
+      color: "text-slate-800",
+      labelColor: "text-slate-400",
+    },
+    {
+      key: "upcomingDmc",
+      label: "Pending Payment to DMC",
+      subtitle: (t) => `Balance from ${formatCompactCurrency(t.outgoing)} planned cost`,
+      color: "text-orange-600",
+      labelColor: "text-orange-400",
+    },
+    {
+      key: "grossProfit",
+      label: "Total Profit",
+      subtitle: (t) => {
+        const margin = t.incoming > 0 ? ((t.grossProfit / t.incoming) * 100).toFixed(1) : "0.0";
+        return `Projected margin: ${margin}%`;
+      },
+      color: (t) => (t.grossProfit >= 0 ? "text-emerald-600" : "text-rose-600"),
+      labelColor: (t) => (t.grossProfit >= 0 ? "text-emerald-500" : "text-rose-400"),
+      icon: (t) => t.grossProfit >= 0
+        ? <TrendingUp size={11} className="text-emerald-500" />
+        : <TrendingDown size={11} className="text-rose-500" />,
+    },
+  ],
+};
+
+// Grand total uses neutral labels (all periods combined)
+const METRIC_CONFIGS_GRAND = [
+  { key: "incoming",    label: "Total Revenue",    },
+  { key: "dueAgent",   label: "Total Receivable",  },
+  { key: "outgoing",   label: "Total Paid to DMC", },
+  { key: "upcomingDmc",label: "DMC Balance Due",   },
+  {
+    key: "grossProfit",
+    label: "Net Profit",
+    icon: (t) => t.grossProfit >= 0
+      ? <TrendingUp size={11} className="text-emerald-400" />
+      : <TrendingDown size={11} className="text-rose-400" />,
+  },
+];
+
+
+function PeriodSummaryCard({
+  title,
+  colorClass,
+  accentBg,
+  totals,
+  count,
+  delay,
+  monthPicker,
+  period,
+}) {
+  const metricConfigs = METRIC_LABELS_BY_PERIOD[period] || METRIC_LABELS_BY_PERIOD.current;
+  if (count === 0) {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.25, delay }}
+        className="border border-dashed border-slate-200 rounded-2xl overflow-hidden"
+      >
+        {/* Header */}
+        <div className={`flex items-center justify-between px-5 py-3 ${accentBg} border-b border-slate-100`}>
+          {/* <div className="flex items-center gap-2">
+            <span className={`text-[10px] font-black uppercase tracking-widest ${colorClass}`}>{title}</span>
+            <span className="text-[9px] font-bold text-slate-400 bg-white/70 border border-slate-200 px-1.5 py-0.5 rounded-full">
+              0 bookings
+            </span>
+          </div> */}
+          {monthPicker && <div onClick={(e) => e.stopPropagation()}>{monthPicker}</div>}
+        </div>
+        <div className="px-6 py-5 bg-slate-50/40 text-[11px] text-slate-400 font-medium">
+          No bookings for this period.
+        </div>
+      </motion.div>
+    );
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.25, delay }}
+      className="border border-slate-100 rounded-2xl overflow-hidden shadow-sm bg-white"
+    >
+      {/* Card Header */}
+      <div className={`flex items-center justify-between px-5 py-3 ${accentBg} border-b border-slate-100`}>
+        <div className="flex items-center gap-2">
+          <span className={`text-[10px] font-black uppercase tracking-widest ${colorClass}`}>{title}</span>
+          {/* <span className="text-[9px] font-bold text-slate-500 bg-white/80 border border-slate-200 px-2 py-0.5 rounded-full shadow-inner">
+            {count} booking{count !== 1 ? "s" : ""}
+          </span> */}
+        </div>
+        {monthPicker && <div onClick={(e) => e.stopPropagation()}>{monthPicker}</div>}
+      </div>
+
+      {/* Metrics Grid */}
+      <div className="grid grid-cols-5 divide-x divide-slate-100">
+        {metricConfigs.map((cfg) => {
+          const rawColor   = typeof cfg.color     === "function" ? cfg.color(totals)     : cfg.color;
+          const rawLabel   = typeof cfg.labelColor === "function" ? cfg.labelColor(totals) : cfg.labelColor;
+          const icon       = cfg.icon ? cfg.icon(totals) : null;
+          const subtitle   = cfg.subtitle ? cfg.subtitle(totals) : "";
+          const value      = totals[cfg.key] || 0;
+
+          return (
+            <div key={cfg.key} className="flex flex-col gap-1 px-4 py-4">
+              <span className={`text-[9px] font-extrabold uppercase tracking-wider ${rawLabel}`}>
+                {cfg.label}
+              </span>
+              <div className="flex items-center gap-1">
+                {icon}
+                <span className={`text-sm font-black font-mono ${rawColor} leading-tight`}>
+                  {formatCompactCurrency(value)}
+                </span>
+              </div>
+              <span className="text-[9px] text-slate-400 font-medium truncate">{subtitle}</span>
+            </div>
+          );
+        })}
+      </div>
+    </motion.div>
+  );
+}
 
 export default function RevenueChecklistTable({
   groups,
   effectiveSelectedTaxMonth,
+  effectiveSelectedTaxQuarter,
+  effectiveSelectedTaxYear,
+  period = "monthly",
   loading,
   selectedPastMonth,
   onSelectPastMonth,
   selectedUpcomingMonth,
   onSelectUpcomingMonth,
-  pastMonthsList,
 }) {
-  const [collapsedGroups, setCollapsedGroups] = useState({
-    past: false,
-    current: false,
-    upcoming: false,
-  });
+  let currentPeriodStr = "";
+  let pastPeriodStrDefault = "";
+  let upcomingPeriodStrDefault = "";
 
-  const toggleGroup = (key) => {
-    setCollapsedGroups((prev) => ({
-      ...prev,
-      [key]: !prev[key],
-    }));
+  if (period === "monthly") {
+    const [selectedYear, selectedMonth] = effectiveSelectedTaxMonth.split("-").map(Number);
+    currentPeriodStr = effectiveSelectedTaxMonth;
+    const pastMonthDate = new Date(selectedYear, selectedMonth - 2, 1);
+    const upcomingMonthDate = new Date(selectedYear, selectedMonth, 1);
+    pastPeriodStrDefault = `${pastMonthDate.getFullYear()}-${String(pastMonthDate.getMonth() + 1).padStart(2, "0")}`;
+    upcomingPeriodStrDefault = `${upcomingMonthDate.getFullYear()}-${String(upcomingMonthDate.getMonth() + 1).padStart(2, "0")}`;
+  } else if (period === "quarterly") {
+    currentPeriodStr = effectiveSelectedTaxQuarter;
+    const [yStr, qStr] = effectiveSelectedTaxQuarter.split("-Q");
+    const y = Number(yStr);
+    const q = Number(qStr);
+    const pQ = q === 1 ? 4 : q - 1;
+    const pY = q === 1 ? y - 1 : y;
+    pastPeriodStrDefault = `${pY}-Q${pQ}`;
+    
+    const uQ = q === 4 ? 1 : q + 1;
+    const uY = q === 4 ? y + 1 : y;
+    upcomingPeriodStrDefault = `${uY}-Q${uQ}`;
+  } else if (period === "yearly") {
+    currentPeriodStr = String(effectiveSelectedTaxYear);
+    const y = Number(currentPeriodStr);
+    pastPeriodStrDefault = String(y - 1);
+    upcomingPeriodStrDefault = String(y + 1);
+  }
+
+  const pastPeriodStr = selectedPastMonth || pastPeriodStrDefault;
+  const upcomingPeriodStr = selectedUpcomingMonth || upcomingPeriodStrDefault;
+
+  const formatPeriodTitle = (str) => {
+    if (!str) return "";
+    if (period === "monthly") {
+      const [y, m] = str.split("-").map(Number);
+      return new Date(y, m - 1, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" });
+    } else if (period === "quarterly") {
+      const [y, q] = str.split("-");
+      return `${q} ${y}`;
+    } else if (period === "yearly") {
+      return str;
+    }
   };
 
-  const getMonthYearLabel = (monthStr) => {
-    if (!monthStr) return "";
-    const [yr, mn] = monthStr.split("-").map(Number);
-    const date = new Date(yr, mn - 1, 1);
-    return date.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+  const pastTotals     = sumGroup(groups.past     || []);
+  const currentTotals  = sumGroup(groups.current  || []);
+  const upcomingTotals = sumGroup(groups.upcoming || []);
+
+  const grandTotals = {
+    incoming:     pastTotals.incoming     + currentTotals.incoming     + upcomingTotals.incoming,
+    incomingPaid: pastTotals.incomingPaid + currentTotals.incomingPaid + upcomingTotals.incomingPaid,
+    dueAgent:     pastTotals.dueAgent     + currentTotals.dueAgent     + upcomingTotals.dueAgent,
+    outgoing:     pastTotals.outgoing     + currentTotals.outgoing     + upcomingTotals.outgoing,
+    outgoingPaid: pastTotals.outgoingPaid + currentTotals.outgoingPaid + upcomingTotals.outgoingPaid,
+    upcomingDmc:  pastTotals.upcomingDmc  + currentTotals.upcomingDmc  + upcomingTotals.upcomingDmc,
+    grossProfit:  pastTotals.grossProfit  + currentTotals.grossProfit  + upcomingTotals.grossProfit,
   };
+  const grandCount =
+    (groups.past?.length || 0) +
+    (groups.current?.length || 0) +
+    (groups.upcoming?.length || 0);
 
-  const [selectedYear, selectedMonth] = effectiveSelectedTaxMonth.split("-").map(Number);
-  const currentMonthDate = new Date(selectedYear, selectedMonth - 1, 1);
-  const pastMonthDate = new Date(selectedYear, selectedMonth - 2, 1);
-  const upcomingMonthDate = new Date(selectedYear, selectedMonth, 1);
-
-  const pastMonthStrDefault = `${pastMonthDate.getFullYear()}-${String(
-    pastMonthDate.getMonth() + 1
-  ).padStart(2, "0")}`;
-  const pastMonthStr = selectedPastMonth || pastMonthStrDefault;
-  const currentMonthStr = `${currentMonthDate.getFullYear()}-${String(
-    currentMonthDate.getMonth() + 1
-  ).padStart(2, "0")}`;
-  const upcomingMonthStrDefault = `${upcomingMonthDate.getFullYear()}-${String(
-    upcomingMonthDate.getMonth() + 1
-  ).padStart(2, "0")}`;
-  const upcomingMonthStr = selectedUpcomingMonth || upcomingMonthStrDefault;
-
-  const renderGroup = (key, title, list, colorClass, borderLeftColor) => {
-    const isCollapsed = collapsedGroups[key];
+  if (loading) {
     return (
-      <div className="flex flex-col">
-        {/* Group Header Accordion Control */}
-        <div
-          onClick={() => toggleGroup(key)}
-          className="flex items-center justify-between px-4 py-2.5 bg-slate-50/80 hover:bg-slate-100/75 border-y border-slate-150 cursor-pointer select-none transition-all duration-150"
-        >
-          <div className="flex items-center gap-2">
-            <ChevronDown
-              size={13}
-              className={`text-slate-400 transition-transform duration-200 transform ${
-                isCollapsed ? "-rotate-90" : ""
-              }`}
-            />
-
-            <span className={`text-[10px] font-black tracking-wider uppercase ${colorClass}`}>
-              {title}
-            </span>
-            <span className="inline-flex items-center justify-center h-4.5 min-w-[20px] px-1 rounded-full text-[9.5px] font-extrabold bg-slate-200/85 text-slate-600 font-mono shadow-inner">
-              {list.length}
-            </span>
-          </div>
-
-          {/* Right side controls in the header */}
-          <div className="flex items-center gap-2">
-            {key === "past" && (
-              <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">
-                  Select Month:
-                </span>
-                <input
-                  type="month"
-                  value={pastMonthStr}
-                  onChange={(e) => {
-                    onSelectPastMonth(e.target.value);
-                    if (collapsedGroups.past) {
-                      setCollapsedGroups((prev) => ({ ...prev, past: false }));
-                    }
-                  }}
-                  className="px-2 py-0.5 text-[10px] font-bold text-slate-700 bg-white border border-slate-200 rounded-lg cursor-pointer outline-none transition focus:border-indigo-300"
-                />
-              </div>
-            )}
-            {key === "upcoming" && (
-              <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
-                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">
-                  Select Month:
-                </span>
-                <input
-                  type="month"
-                  value={upcomingMonthStr}
-                  onChange={(e) => {
-                    onSelectUpcomingMonth(e.target.value);
-                    if (collapsedGroups.upcoming) {
-                      setCollapsedGroups((prev) => ({ ...prev, upcoming: false }));
-                    }
-                  }}
-                  className="px-2 py-0.5 text-[10px] font-bold text-slate-700 bg-white border border-slate-200 rounded-lg cursor-pointer outline-none transition focus:border-orange-300"
-                />
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Group Rows Container */}
-        <div className="relative overflow-hidden">
-          <AnimatePresence initial={false}>
-            {!isCollapsed && (
-              <motion.div
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: "auto", opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }}
-                transition={{ duration: 0.2, ease: "easeInOut" }}
-                className="overflow-hidden bg-white"
-              >
-                {list.length === 0 ? (
-                  <div className="px-6 py-5 text-center text-xs text-slate-455 font-semibold border-b border-slate-100 bg-slate-50/20">
-                    No items in this month.
-                  </div>
-                ) : (
-                  list.map((invoice, idx) => {
-                    const destination =
-                      invoice.tripSnapshot?.destination ||
-                      invoice.query?.destination ||
-                      "Unknown Destination";
-                    const preTravelPaidAmount = getInvoiceMonthVerifiedPayment(
-                      invoice,
-                      effectiveSelectedTaxMonth
-                    );
-                    const isClientApprovedWithoutPayment =
-                      preTravelPaidAmount <= 0 && isClientApprovedChecklistRecord(invoice);
-                    const statusLabel = isClientApprovedWithoutPayment
-                      ? "Client Approved"
-                      : invoice.paymentStatus;
-
-                    // Generate tags
-                    const tags = [];
-                    if (statusLabel) {
-                      const isPaidState = statusLabel === "Paid";
-                      const isPartialState = statusLabel.includes("Partial");
-                      tags.push({
-                        label: isPaidState ? "FULL PAID" : statusLabel.replace("_", " "),
-                        isFullPaid: isPaidState,
-                        className: isPaidState
-                          ? "bg-emerald-50 text-emerald-700 border border-emerald-100"
-                          : isPartialState
-                          ? "bg-amber-50 text-amber-750 border border-amber-100"
-                          : statusLabel === "Unpaid"
-                          ? "bg-rose-50 text-rose-700 border border-rose-100"
-                          : "bg-blue-50 text-blue-700 border border-blue-100",
-                      });
-                    }
-
-                    return (
-                      <motion.div
-                        key={invoice._id || idx}
-                        whileHover={{ backgroundColor: "rgba(248, 250, 252, 0.55)" }}
-                        className="flex gap-4 px-4 py-3 border-b border-slate-100 items-center text-xs text-slate-700 select-none relative"
-                      >
-                        {/* Status border accent on the left of each row */}
-                        <div className={`absolute left-0 top-0 bottom-0 w-[3.5px] ${borderLeftColor}`} />
-
-                        {/* Query ID Column */}
-                        <div className="w-[18%] pl-1 flex flex-col gap-0.5 min-w-0">
-                          <span className="font-extrabold text-slate-900 truncate">
-                            {invoice.query?.queryId || invoice.invoiceNumber || "Draft Query"}
-                          </span>
-                          <span className="text-[10px] text-slate-450 font-bold truncate">
-                            {destination}
-                          </span>
-                        </div>
-
-                        {/* Create Date Column */}
-                        <div className="w-[13%] text-slate-600 font-medium truncate">
-                          {formatShortDate(invoice.createdAt)}
-                        </div>
-
-                        {/* Travel Date Column */}
-                        <div className="w-[13%] text-slate-600 font-medium truncate">
-                          {formatShortDate(
-                            invoice.tripSnapshot?.startDate || getPrimaryTravelDate(invoice)
-                          )}
-                        </div>
-
-                        {/* Payment Date Column */}
-                        <div className="w-[13%] text-slate-600 font-medium truncate">
-                          {formatShortDate(
-                            getInvoiceMonthVerifiedPaymentDate(invoice, effectiveSelectedTaxMonth)
-                          ) || "-"}
-                        </div>
-
-                        {/* Partially Paid Column */}
-                        <div className="w-[13%] font-bold text-slate-800 font-mono">
-                          {formatCompactCurrency(preTravelPaidAmount)}
-                        </div>
-
-                        {/* Status Column */}
-                        <div className="w-[12%] flex justify-center items-center min-w-0">
-                          {tags.slice(0, 1).map((tag, tagIdx) => (
-                            <span
-                              key={tagIdx}
-                              className={`text-[8.5px] font-black uppercase tracking-wider px-1.5 py-0.2 rounded-md flex items-center gap-1 ${tag.className}`}
-                            >
-                              {tag.isFullPaid && (
-                                <CheckCircle2
-                                  size={10}
-                                  className="text-emerald-500 fill-emerald-50/50 shrink-0"
-                                />
-                              )}
-                              <span>{tag.label}</span>
-                            </span>
-                          ))}
-                        </div>
-
-                        {/* Total Amount Column */}
-                        <div className="w-[18%] text-right pr-2 font-black text-slate-900 font-mono">
-                          {formatCompactCurrency(getInvoiceTotalAmount(invoice))}
-                        </div>
-                      </motion.div>
-                    );
-                  })
-                )}
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
+      <div className="w-full rounded-2xl border border-slate-100 bg-slate-50 px-6 py-10 text-center text-xs text-slate-400 font-semibold animate-pulse">
+        Loading financial data…
       </div>
     );
-  };
+  }
 
   return (
-    <div className="w-full border border-slate-200/80 rounded-2xl shadow-sm bg-white overflow-hidden select-none finance-transparent-scrollbar">
-      {/* Table Headers */}
-      <div className="flex gap-4 items-center px-4 py-3 bg-gradient-to-r from-slate-50 via-slate-50/50 to-white border-b border-slate-200/85 text-[10px] font-extrabold uppercase text-slate-650 tracking-wider">
-        <div className="w-[18%] pl-1">Query ID</div>
-        <div className="w-[13%]">Create Date</div>
-        <div className="w-[13%]">Travel Date</div>
-        <div className="w-[13%]">Payment Date</div>
-        <div className="w-[13%]">Partially Paid</div>
-        <div className="w-[12%] text-center">Status</div>
-        <div className="w-[18%] text-right pr-2">Total Amount</div>
-      </div>
+    <div className="w-full flex flex-col gap-3">
+      {/* Grand Total Banner */}
+      {/* {grandCount > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: -6 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="rounded-2xl bg-gradient-to-r from-slate-800 to-slate-700 px-5 py-4 grid grid-cols-5 divide-x divide-white/10 shadow-lg"
+        >
+          {METRIC_CONFIGS_GRAND.map((cfg) => {
+            const icon  = cfg.icon ? cfg.icon(grandTotals) : null;
+            const value = grandTotals[cfg.key] || 0;
+            return (
+              <div key={cfg.key} className="flex flex-col gap-0.5 px-4">
+                <span className="text-[9px] font-extrabold uppercase tracking-widest text-slate-400">
+                  {cfg.label}
+                </span>
+                <div className="flex items-center gap-1">
+                  {icon}
+                  <span className="text-sm font-black font-mono text-white leading-tight">
+                    {formatCompactCurrency(value)}
+                  </span>
+                </div>
+                <span className="text-[9px] text-slate-500 font-medium">{grandCount} bookings total</span>
+              </div>
+            );
+          })}
+        </motion.div>
+      )} */}
 
-      {/* Accordions */}
-      <div className="flex flex-col">
-        {renderGroup(
-          "past",
-          `Past Month (${getMonthYearLabel(pastMonthStr)})`,
-          groups.past,
-          "text-purple-600",
-          "bg-purple-500"
-        )}
-        {renderGroup(
-          "current",
-          `Current Month (${getMonthYearLabel(currentMonthStr)})`,
-          groups.current,
-          "text-sky-600",
-          "bg-sky-500"
-        )}
-        {renderGroup(
-          "upcoming",
-          `Upcoming Month (${getMonthYearLabel(upcomingMonthStr)})`,
-          groups.upcoming,
-          "text-orange-500",
-          "bg-orange-500"
-        )}
-      </div>
+      {/* Per-Period Cards */}
+      <PeriodSummaryCard
+        title={`Past — ${formatPeriodTitle(pastPeriodStr)}`}
+        colorClass="text-purple-600"
+        accentBg="bg-purple-50/60"
+        totals={pastTotals}
+        count={groups.past?.length || 0}
+        delay={0}
+        monthPicker={
+          <div className="flex items-center gap-2">
+            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">
+              {period === 'monthly' ? 'Month' : period === 'quarterly' ? 'Quarter' : 'Year'}:
+            </span>
+            <CustomPeriodDropdown 
+              period={period}
+              value={pastPeriodStr}
+              onChange={(val) => onSelectPastMonth && onSelectPastMonth(val)}
+              currentPeriodStr={currentPeriodStr}
+              direction="past"
+            />
+          </div>
+        }
+        period="past"
+      />
+      <PeriodSummaryCard
+        title={`Present — ${formatPeriodTitle(currentPeriodStr)}`}
+        colorClass="text-sky-600"
+        accentBg="bg-sky-50/60"
+        totals={currentTotals}
+        count={groups.current?.length || 0}
+        delay={0.05}
+        period="current"
+      />
+      <PeriodSummaryCard
+        title={`Upcoming — ${formatPeriodTitle(upcomingPeriodStr)}`}
+        colorClass="text-orange-500"
+        accentBg="bg-orange-50/60"
+        totals={upcomingTotals}
+        count={groups.upcoming?.length || 0}
+        delay={0.1}
+        monthPicker={
+          <div className="flex items-center gap-2">
+            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">
+              {period === 'monthly' ? 'Month' : period === 'quarterly' ? 'Quarter' : 'Year'}:
+            </span>
+            <CustomPeriodDropdown 
+              period={period}
+              value={upcomingPeriodStr}
+              onChange={(val) => onSelectUpcomingMonth && onSelectUpcomingMonth(val)}
+              currentPeriodStr={currentPeriodStr}
+              direction="upcoming"
+            />
+          </div>
+        }
+        period="upcoming"
+      />
     </div>
   );
 }
