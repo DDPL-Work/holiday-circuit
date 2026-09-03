@@ -463,20 +463,33 @@ export const fetchQuotationsByQuery = async (queryId) => {
   );
 };
 
-export const getSavedAgentBranding = ({ quote = {}, user = null }) => ({
-  name: String(
-    quote?.agentBrandingName ||
+export const getSavedAgentBranding = ({ quote = {}, user = null }) => {
+  const rawName = String(
     user?.brandingName ||
     user?.companyName ||
-    "",
-  ).trim(),
-  logo: String(
+    user?.agencyName ||
+    quote?.agentBrandingName ||
+    quote?.agencyName ||
+    ""
+  ).trim();
+
+  const name = rawName || "Holiday Circuit";
+  const logo = String(
     user?.brandingLogo ||
     user?.brandLogoUrl ||
+    user?.logo ||
     quote?.agentLogo ||
-    "",
-  ).trim(),
-});
+    ""
+  ).trim();
+
+  return {
+    name,
+    logo,
+    phone: String(user?.phone || user?.companyPhone || quote?.agentPhone || "+91-8851346665").trim(),
+    email: String(user?.email || user?.companyEmail || quote?.agentEmail || "ops@holidaycircuit.com").trim(),
+    address: String(user?.companyAddress || user?.address || quote?.agentAddress || "KG 3/69, Ground Floor, Vikas Puri, New Delhi, Near UK Nursing Home, New Delhi, Delhi, India - 110018").trim(),
+  };
+};
 
 
 

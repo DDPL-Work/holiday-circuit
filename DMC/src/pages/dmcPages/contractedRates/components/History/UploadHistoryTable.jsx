@@ -64,8 +64,12 @@ export const UploadHistoryTable = ({
                 <td className="text-center px-2 py-4 whitespace-nowrap">
                   {item.status === "success" ? (
                     <CheckCircle className="text-green-500 mx-auto" size={16} />
+                  ) : item.status === "processing" ? (
+                    <span className="inline-flex items-center rounded-full bg-amber-50 px-2 py-1 text-[10px] font-semibold text-amber-700 ring-1 ring-amber-200">
+                      Processing
+                    </span>
                   ) : (
-                    <AlertCircle className="text-yellow-500 mx-auto" size={16} />
+                    <AlertCircle className="text-rose-500 mx-auto" size={16} />
                   )}
                 </td>
                 <td className="text-end px-3 py-4 text-xs whitespace-nowrap">

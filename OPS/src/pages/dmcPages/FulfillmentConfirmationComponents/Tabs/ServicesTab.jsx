@@ -367,6 +367,87 @@ export default function ServicesTab({
                                 service.unitLabel ||
                                 "Vehicle"}
                             </span>
+
+                            {(() => {
+                              const vType = service.vehicleType || service.vehicle || service.displayQuantityLabel || service.unitLabel || "Vehicle";
+                              const rawUsage = String(service.usageType || service.transferType || service.tripType || service.serviceMode || service.direction || "").trim();
+                              let usageLabel = "";
+                              if (rawUsage) {
+                                const lowUsage = rawUsage.toLowerCase();
+                                if (lowUsage.includes("point") || lowUsage.includes("oneway") || lowUsage.includes("one-way") || lowUsage.includes("one way")) {
+                                  usageLabel = "One Way";
+                                } else if (lowUsage.includes("round")) {
+                                  usageLabel = "Round Trip";
+                                } else if (lowUsage.includes("full") || lowUsage.includes("day")) {
+                                  usageLabel = "Full Day Disposal";
+                                } else if (lowUsage.includes("half")) {
+                                  usageLabel = "Half Day Disposal";
+                                } else {
+                                  usageLabel = rawUsage;
+                                }
+                              } else {
+                                usageLabel = "One Way Transfer";
+                              }
+
+                              let passCap = service.passengerCapacity || service.maxPassengers || service.maxPax || service.seatingCapacity || service.seats || null;
+                              let luggCap = service.luggageCapacity || service.maxLuggage || service.luggage || service.baggageCapacity || service.bags || null;
+
+                              if (!passCap) {
+                                const vtLow = String(vType).toLowerCase();
+                                if (vtLow.includes("sedan") || vtLow.includes("etios") || vtLow.includes("dzire") || vtLow.includes("car")) {
+                                  passCap = "Max 4 Pax";
+                                } else if (vtLow.includes("innova") || vtLow.includes("suv") || vtLow.includes("ertiga") || vtLow.includes("crysta")) {
+                                  passCap = "Max 6 Pax";
+                                } else if (vtLow.includes("tempo") || vtLow.includes("van") || vtLow.includes("minivan")) {
+                                  passCap = "Max 12 Pax";
+                                } else if (vtLow.includes("coach") || vtLow.includes("bus")) {
+                                  passCap = "Max 25 Pax";
+                                } else {
+                                  passCap = "Max 4 Pax";
+                                }
+                              } else if (!String(passCap).toLowerCase().includes("pax")) {
+                                passCap = `Max ${passCap} Pax`;
+                              }
+
+                              if (!luggCap) {
+                                const vtLow = String(vType).toLowerCase();
+                                if (vtLow.includes("sedan") || vtLow.includes("etios") || vtLow.includes("dzire") || vtLow.includes("car")) {
+                                  luggCap = "2 Bags";
+                                } else if (vtLow.includes("innova") || vtLow.includes("suv") || vtLow.includes("ertiga") || vtLow.includes("crysta")) {
+                                  luggCap = "4 Bags";
+                                } else if (vtLow.includes("tempo") || vtLow.includes("van") || vtLow.includes("minivan")) {
+                                  luggCap = "8 Bags";
+                                } else if (vtLow.includes("coach") || vtLow.includes("bus")) {
+                                  luggCap = "20 Bags";
+                                } else {
+                                  luggCap = "2-3 Bags";
+                                }
+                              } else if (!String(luggCap).toLowerCase().includes("bag")) {
+                                luggCap = `${luggCap} Bags`;
+                              }
+
+                              return (
+                                <div className="flex flex-col gap-1 mt-1">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className="bg-blue-50 text-blue-700 border border-blue-200 text-[10px] font-bold px-1.5 py-0.5 rounded">
+                                      🚗 {usageLabel}
+                                    </span>
+                                    <span className="bg-slate-100 text-slate-700 text-[10px] font-semibold px-1.5 py-0.5 rounded">
+                                      👥 {passCap}
+                                    </span>
+                                    <span className="bg-slate-100 text-slate-700 text-[10px] font-semibold px-1.5 py-0.5 rounded">
+                                      🧳 {luggCap}
+                                    </span>
+                                  </div>
+                                  {(service.pickupLocation || service.dropLocation) && (
+                                    <span className="text-[10px] text-slate-500 font-medium">
+                                      📍 {service.pickupLocation || 'Pickup'} ➔ {service.dropLocation || 'Drop'}
+                                    </span>
+                                  )}
+                                </div>
+                              );
+                            })()}
+
                             <div className="mt-1 text-[11px]">
                               <span className="font-semibold text-slate-700">
                                 CNF:{" "}

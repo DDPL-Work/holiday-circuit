@@ -14,6 +14,8 @@ import Transfer from "../models/transferDmc.model.js";
 import Sightseeing from "../models/sightseeingDmc.model.js";
 import DestinationName from "../models/destinationName.model.js";
 import AgentTerm from "../models/agentTerms.js";
+import Confirmation from "../models/dmcConfirmation.js";
+import Voucher from "../models/voucher.model.js";
 import bcrypt from "bcrypt";
 import crypto from "crypto";
 import jwt from "jsonwebtoken";
@@ -1675,7 +1677,7 @@ const buildQuotationClientEmailPayload = ({ quotation, query, agent }) => {
     agencyName: agent?.companyName || "",
     agentLogo: getAbsoluteMediaUrl(rawLogo),
     agentFooterImage: getAbsoluteMediaUrl(rawFooter),
-    agentBrandingName: resolvedBranding.brandingName || agent?.brandingName || agent?.companyName || "DDLC Company",
+    agentBrandingName: resolvedBranding.brandingName || agent?.brandingName || agent?.companyName || "Holiday Circuit",
     agentCompanyAddress: agent?.companyAddress || agent?.address || "KG 3/69, Ground Floor, Vikas Puri, New Delhi, Delhi - 110018",
     agentPhone: agent?.phone || "",
     agentEmail: agent?.email || "",
@@ -1973,7 +1975,11 @@ export const sendAgentVoucherEmail = async (req, res, next) => {
       queryId ? TravelQuery.findById(queryId) : null,
     ]);
 
-    const quotation = query ? await Quotation.findOne({ queryId: query._id }).sort({ createdAt: -1 }) : null;
+    let quotation = query ? await Quotation.findOne({ queryId: query._id }).sort({ createdAt: -1 }) : null;
+    if (quotation && query) {
+      const [enriched] = await enrichQuotationServicesWithConfirmations([quotation], query);
+      quotation = enriched;
+    }
 
     // Helper to format relative upload paths into absolute server URLs for email clients
     const getAbsoluteMediaUrl = (urlStr) => {
@@ -2001,11 +2007,17 @@ export const sendAgentVoucherEmail = async (req, res, next) => {
 
     const absoluteLogoUrl = getAbsoluteMediaUrl(rawLogo);
 
-    const companyName = agent?.brandingName || agent?.companyName || "Holiday Circuit Partner Desk";
-    const companyPhone = agent?.phone || "+91 9368825518";
-    const companyEmail = agent?.email || "support@holidaycircuit.com";
+    const normalizeCompanyName = (name, fallback = "Holiday Circuit") => {
+      const str = String(name || "").trim();
+      if (!str || str.toLowerCase().includes("ddlc")) return fallback;
+      return str;
+    };
+
+    const companyName = normalizeCompanyName(agent?.brandingName || agent?.companyName, "Holiday Circuit");
+    const companyPhone = agent?.phone || "+91-8851346665";
+    const companyEmail = agent?.email || "ops@holidaycircuit.com";
     const companyAddress = agent?.companyAddress || "KG 3/69, Ground Floor, Vikas Puri, New Delhi, Near UK Nursing Home, New Delhi, Delhi, India - 110018";
-    const website = agent?.website || "";
+    const website = agent?.website || "www.holidaycircuit.com";
 
     const headerLogoCell = absoluteLogoUrl
       ? `<td style="vertical-align: middle; padding-right: 12px; width: 110px; text-align: left;">
@@ -2063,79 +2075,58 @@ export const sendAgentVoucherEmail = async (req, res, next) => {
     cleanHtml = cleanHtml.replace(/<img[^>]*src=["']data:image\/[^"']*["'][^>]*>/gi, '');
     cleanHtml = cleanHtml.replace(/<!--\s*AGENT BRAND HEADER BANNER[\s\S]*?<\/table>\s*<\/div>/i, "");
 
-    const voucherOverviewIndex = cleanHtml.search(/TRAVEL\s+VOUCHER\s+OVERVIEW/i);
+    const voucherOverviewIndex = cleanHtml.search(/TRAVEL\s+VOUCHER\s+OVERVIEW|Hotels\s+Confirmation\s+Voucher/i);
     const voucherSectionStart = cleanHtml.lastIndexOf("<div", voucherOverviewIndex);
     
-    // Remove any duplicate company name/address text headers before TRAVEL VOUCHER OVERVIEW
-    const voucherStartIndex = cleanHtml.search(/(?:📋\s*)?(?:TRAVEL\s+)?VOUCHER\s+OVERVIEW|<table/i);
     if (voucherOverviewIndex !== -1) {
       cleanHtml = cleanHtml.substring(voucherSectionStart !== -1 ? voucherSectionStart : voucherOverviewIndex);
     } else {
       cleanHtml = cleanHtml.replace(/<div[^>]*>[^<]*<h2[^>]*>[\s\S]*?<\/h2>[\s\S]*?<\/div>/gi, '');
     }
 
-    const servicesList = quotation?.services || [];
-    const serviceTableRows = servicesList.length > 0
-      ? servicesList.map((s) => `
-          <tr style="border-bottom: 1px solid #e2e8f0;">
-            <td style="padding: 10px 14px; font-weight: 700; color: #1e3a8a; font-size: 11px; text-transform: uppercase; border-right: 1px solid #e2e8f0; width: 110px;">${s.type || s.category || "SERVICE"}</td>
-            <td style="padding: 10px 14px; color: #0f172a; font-size: 12px; font-weight: 600; border-right: 1px solid #e2e8f0;">
-              <div style="font-weight: 700;">${s.title || s.hotelName || s.name || "Service"}</div>
-              ${s.city ? `<div style="font-size: 11px; color: #64748b;">City: ${s.city}</div>` : ""}
-            </td>
-            <td style="padding: 10px 14px; color: #0f172a; font-weight: 600; font-size: 11px; border-right: 1px solid #e2e8f0; width: 150px;">${s.status || (String(s.confirmation || "").toLowerCase().includes("pending") ? "Pending" : "Confirmed")}</td>
-            <td style="padding: 10px 14px; color: #0f172a; font-weight: 600; font-size: 12px; width: 160px;">${s.confirmationNumber || s.confirmationNo || "-"}</td>
-          </tr>
-        `).join("")
-      : `
-          <tr>
-            <td colspan="4" style="padding: 14px; text-align: center; color: #64748b; font-size: 12px;">No specific service line items found.</td>
-          </tr>
-        `;
+    const defaultTripId = voucherNumber || query?.voucherNumber || query?.queryId || "4304633";
+    const defaultClient = query?.clientName || query?.name || "Valued Client";
+    const defaultPhone = query?.clientPhone || query?.phone || query?.contactNumber || "-";
+    const defaultDest = query?.destination || quotation?.destination || "India";
+    const defaultDuration = `${query?.numberOfNights || quotation?.nights || 1} Night${(query?.numberOfNights || quotation?.nights || 1) > 1 ? "s" : ""} / ${(query?.numberOfNights || quotation?.nights || 1) + 1} Days`;
+    const defaultIssuedBy = "Holiday Circuit";
+    const defaultPax = `${query?.numberOfAdults || 2} Adults${(query?.numberOfChildren || 0) > 0 ? `, ${query.numberOfChildren} Children` : ""}`;
 
     const defaultVoucherBodyHtml = `
-      <div style="margin-bottom: 24px;">
-        <div style="background-color: #f1f5f9; border: 1px solid #cbd5e1; padding: 10px 14px; font-weight: 800; color: #1e293b; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em; border-radius: 6px 6px 0 0;">
-          📋 TRAVEL VOUCHER OVERVIEW
-        </div>
-        <table style="width: 100%; border-collapse: collapse; font-size: 12px; border: 1px solid #cbd5e1; border-top: none;">
-          <tbody>
-            <tr style="border-bottom: 1px solid #e2e8f0;">
-              <td style="padding: 9px 14px; color: #475569; font-weight: 600; background-color: #f8fafc; width: 140px; border-right: 1px solid #e2e8f0;">Voucher Number:</td>
-              <td style="padding: 9px 14px; color: #0f172a; font-weight: 800; background-color: #ffffff;">${voucherNumber || query?.voucherNumber || `VCH-${query?.queryId || "1070"}`}</td>
-            </tr>
-            <tr style="border-bottom: 1px solid #e2e8f0;">
-              <td style="padding: 9px 14px; color: #475569; font-weight: 600; background-color: #f8fafc; border-right: 1px solid #e2e8f0;">Guest Details:</td>
-              <td style="padding: 9px 14px; color: #0f172a; font-weight: 700; background-color: #ffffff;">${query?.clientName || "Valued Client"}</td>
-            </tr>
-            <tr style="border-bottom: 1px solid #e2e8f0;">
-              <td style="padding: 9px 14px; color: #475569; font-weight: 600; background-color: #f8fafc; border-right: 1px solid #e2e8f0;">Destination:</td>
-              <td style="padding: 9px 14px; color: #0f172a; font-weight: 700; background-color: #ffffff;">${query?.destination || "Destination"}</td>
-            </tr>
-            <tr style="border-bottom: 1px solid #e2e8f0;">
-              <td style="padding: 9px 14px; color: #475569; font-weight: 600; background-color: #f8fafc; border-right: 1px solid #e2e8f0;">Duration:</td>
-              <td style="padding: 9px 14px; color: #0f172a; font-weight: 700; background-color: #ffffff;">${(query?.numberOfNights || 5)} Nights / ${(query?.numberOfNights || 5) + 1} Days</td>
-            </tr>
-            <tr>
-              <td style="padding: 9px 14px; color: #475569; font-weight: 600; background-color: #f8fafc; border-right: 1px solid #e2e8f0;">Passengers:</td>
-              <td style="padding: 9px 14px; color: #0f172a; font-weight: 700; background-color: #ffffff;">${query?.numberOfAdults || 2} Adults</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      <div style="margin-bottom: 24px;">
-        <table style="width: 100%; border-collapse: collapse; font-size: 12px; border: 1px solid #cbd5e1;">
+      <div style="padding: 0 10px; font-family: Arial, sans-serif;">
+        <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 13px; border: 1px solid #b3cae8;">
           <thead>
-            <tr style="background-color: #ebf5ff; text-align: left; border-bottom: 2px solid #bfdbfe;">
-              <th style="padding: 10px 14px; font-weight: 800; color: #1e3a8a; font-size: 11px; text-transform: uppercase; border-right: 1px solid #bfdbfe; width: 110px;">TYPE</th>
-              <th style="padding: 10px 14px; font-weight: 800; color: #1e3a8a; font-size: 11px; text-transform: uppercase; border-right: 1px solid #bfdbfe;">SERVICE DESCRIPTION</th>
-              <th style="padding: 10px 14px; font-weight: 800; color: #1e3a8a; font-size: 11px; text-transform: uppercase; border-right: 1px solid #bfdbfe; width: 150px;">CONFIRMATION STATUS</th>
-              <th style="padding: 10px 14px; font-weight: 800; color: #1e3a8a; font-size: 11px; text-transform: uppercase; width: 160px;">CONFIRMATION NUMBER</th>
+            <tr style="background-color: #dce8f6;">
+              <th colspan="4" style="padding: 9px 14px; font-size: 13px; font-weight: 800; color: #000000; text-align: center; border: 1px solid #b3cae8; letter-spacing: 0.3px;">
+                Trip ID: ${defaultTripId}
+              </th>
             </tr>
           </thead>
           <tbody>
-            ${serviceTableRows}
+            <tr>
+              <td style="padding: 8px 12px; color: #1e293b; width: 18%; font-weight: 500; border: 1px solid #b3cae8;">Start Date</td>
+              <td style="padding: 8px 12px; color: #000000; width: 32%; font-weight: 700; border: 1px solid #b3cae8;">${query?.startDate || "22 December, 2026"}</td>
+              <td style="padding: 8px 12px; color: #1e293b; width: 20%; font-weight: 500; border: 1px solid #b3cae8;">Trip Duration</td>
+              <td style="padding: 8px 12px; color: #000000; width: 30%; font-weight: 700; border: 1px solid #b3cae8;">${defaultDuration}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 12px; color: #1e293b; font-weight: 500; border: 1px solid #b3cae8;">Destination</td>
+              <td colspan="3" style="padding: 8px 12px; color: #000000; font-weight: 700; border: 1px solid #b3cae8;">${defaultDest}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 12px; color: #1e293b; font-weight: 500; border: 1px solid #b3cae8;">Guest Name</td>
+              <td style="padding: 8px 12px; color: #000000; font-weight: 700; border: 1px solid #b3cae8;">${defaultClient}</td>
+              <td style="padding: 8px 12px; color: #1e293b; font-weight: 500; border: 1px solid #b3cae8;">Guest Ph.</td>
+              <td style="padding: 8px 12px; color: #000000; font-weight: 600; border: 1px solid #b3cae8;">${defaultPhone}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 12px; color: #1e293b; font-weight: 500; border: 1px solid #b3cae8;">Pax Details</td>
+              <td colspan="3" style="padding: 8px 12px; color: #000000; font-weight: 700; border: 1px solid #b3cae8;">${defaultPax}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 12px; color: #000000; font-weight: 700; border: 1px solid #b3cae8;">Issued By</td>
+              <td colspan="3" style="padding: 8px 12px; color: #1e293b; font-weight: 500; border: 1px solid #b3cae8;">${defaultIssuedBy}</td>
+            </tr>
           </tbody>
         </table>
       </div>
@@ -2174,18 +2165,27 @@ export const sendAgentVoucherEmail = async (req, res, next) => {
     const safeQueryId = String(query?.queryId || query?._id?.slice(-7) || "1107").replace(/[^a-zA-Z0-9-_]/g, "");
     const isPackageEmail = String(subject || "").toLowerCase().includes("package") || String(voucherNumber || "").startsWith("PKG");
 
+    const nights = Number(query?.numberOfNights || quotation?.nights || 4);
+    const days = Number(query?.numberOfDays || quotation?.days || (nights + 1));
+
     const voucherDetails = {
       voucherNumber: voucherNumber || query?.voucherNumber || `VCH-${query?.queryId || "1070"}`,
       query: query?.queryId || "QRY",
-      destination: query?.destination || "Destination",
-      duration: query?.duration || `${(query?.numberOfNights || query?.nights || 5)} Nights / ${(query?.numberOfNights || query?.nights || 5) + 1} Days`,
+      destination: query?.destination || quotation?.destination || "Destination",
+      duration: query?.duration || `${nights} Nights / ${days} Days`,
       passengers: `${query?.numberOfAdults || 2} Adults${Number(query?.numberOfChildren || 0) ? `, ${query.numberOfChildren} Children` : ""}`,
       name: query?.clientName || query?.name || query?.customerName || query?.guestName || "Valued Client",
       guestName: query?.clientName || query?.name || query?.customerName || query?.guestName || "Valued Client",
       travelDate: query?.startDate || query?.travelDates?.from || null,
+      startDate: query?.startDate || query?.travelDates?.from || null,
+      endDate: query?.endDate || query?.travelDates?.to || null,
       adults: query?.numberOfAdults || 2,
       children: query?.numberOfChildren || 0,
       infants: query?.numberOfInfants || 0,
+      nights,
+      days,
+      clientPhone: query?.clientPhone || query?.phone || query?.contactNumber || "-",
+      issuedBy: defaultIssuedBy,
       travelerSummary: `${query?.numberOfAdults || 2} Adults${Number(query?.numberOfChildren || 0) ? `, ${query.numberOfChildren} Children` : ""}`,
       travelDates: query?.travelDates ? `${new Date(query.travelDates.from).toLocaleDateString("en-IN")} to ${new Date(query.travelDates.to).toLocaleDateString("en-IN")}` : "Flexible",
       services: quotation?.services || [],
@@ -3902,6 +3902,84 @@ export const submitTravelerDocumentsForVerification = async (req, res, next) => 
 
 /* ========================= VIEW QUOTATION CONTROLLER ========================= */
 
+export const enrichQuotationServicesWithConfirmations = async (quotations, query) => {
+  if (!quotations || !quotations.length) return quotations;
+
+  const queryIds = [
+    query?._id,
+    query?.queryId,
+    String(query?._id || ""),
+    String(query?.queryId || ""),
+  ].filter(Boolean);
+
+  const [confirmation, voucher] = await Promise.all([
+    Confirmation.findOne({ queryId: { $in: queryIds } }).lean().catch(() => null),
+    Voucher.findOne({ query: query?._id }).sort({ createdAt: -1 }).lean().catch(() => null),
+  ]);
+
+  const confirmationServices = confirmation?.services || [];
+  const voucherServices = voucher?.services || [];
+
+  return quotations.map((q) => {
+    const qObj = q.toObject ? q.toObject() : { ...q };
+    if (!Array.isArray(qObj.services) || !qObj.services.length) return qObj;
+
+    qObj.voucherNumber = query?.voucherNumber || voucher?.voucherNumber || qObj.voucherNumber;
+    qObj.voucherStatus = query?.voucherStatus || voucher?.status || qObj.voucherStatus;
+
+    qObj.services = qObj.services.map((service, idx) => {
+      const sObj = { ...service };
+      const rawTitle = sObj.title || sObj.name || sObj.serviceName || sObj.hotelName || "";
+      const normTitle = String(rawTitle).toLowerCase().replace(/[^a-z0-9]/g, "");
+
+      // 1. Try matching with Confirmation services
+      const matchedConf = confirmationServices.find((cs, cIdx) => {
+        if (cs._id && sObj._id && String(cs._id) === String(sObj._id)) return true;
+        if (cs.serviceId && sObj.serviceId && String(cs.serviceId) === String(sObj.serviceId)) return true;
+        const csTitle = String(cs.serviceName || cs.title || cs.name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+        if (csTitle && normTitle && (csTitle === normTitle || csTitle.includes(normTitle) || normTitle.includes(csTitle))) return true;
+        return cIdx === idx;
+      });
+
+      // 2. Try matching with Voucher services
+      const matchedVoucher = voucherServices.find((vs, vIdx) => {
+        if (vs._id && sObj._id && String(vs._id) === String(sObj._id)) return true;
+        const vsTitle = String(vs.name || vs.title || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+        if (vsTitle && normTitle && (vsTitle === normTitle || vsTitle.includes(normTitle) || normTitle.includes(vsTitle))) return true;
+        return vIdx === idx;
+      });
+
+      const realCnf =
+        matchedConf?.confirmationNumber ||
+        matchedConf?.voucherNumber ||
+        (matchedVoucher?.confirmation && matchedVoucher.confirmation !== "Pending" ? matchedVoucher.confirmation : null) ||
+        sObj.confirmationNumber ||
+        sObj.voucherNumber ||
+        (sObj.confirmation && !String(sObj.confirmation).toLowerCase().includes("pending") && sObj.confirmation !== "Confirmed(Confirmed)" && sObj.confirmation !== "Confirmed" ? sObj.confirmation : null);
+
+      const status =
+        matchedConf?.status ||
+        matchedVoucher?.status ||
+        (realCnf ? "Confirmed" : (sObj.status || "Pending"));
+
+      if (realCnf) {
+        sObj.confirmationNumber = realCnf;
+        sObj.voucherNumber = realCnf;
+        sObj.confirmation = realCnf;
+        sObj.status = "Confirmed";
+        sObj.isVoucherGenerated = true;
+      } else if (status && status !== "Pending") {
+        sObj.status = status;
+        sObj.confirmation = status;
+      }
+
+      return sObj;
+    });
+
+    return qObj;
+  });
+};
+
 // Get quotations for a specific TravelQuery
 export const getQuotationsByQuery = async (req, res, next) => {
   try {
@@ -3931,10 +4009,12 @@ export const getQuotationsByQuery = async (req, res, next) => {
       status: { $in: AGENT_VISIBLE_QUOTATION_STATUSES },
     }).sort({ updatedAt: -1, createdAt: -1 });
 
+    const enrichedQuotations = await enrichQuotationServicesWithConfirmations(quotations, query);
+
     res.status(200).json({
       success: true,
-      count: quotations.length,
-      quotations
+      count: enrichedQuotations.length,
+      quotations: enrichedQuotations,
     });
 
   } catch (error) {

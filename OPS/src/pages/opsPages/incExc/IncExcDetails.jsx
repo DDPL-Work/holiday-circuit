@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Edit2 } from 'lucide-react';
+import { ArrowLeft, Edit2, MapPin } from 'lucide-react';
 import API from '../../../utils/Api';
 
 const IncExcDetails = () => {
@@ -59,8 +59,22 @@ const IncExcDetails = () => {
       <div className="border-b border-gray-200 bg-white px-6 py-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <p className="text-xs text-gray-500 mb-1">Name</p>
-            <h1 className="text-xl font-bold text-gray-900">{preset.name}</h1>
+            <div className="flex items-center gap-3">
+              <h1 className="text-xl font-bold text-gray-900">{preset.name}</h1>
+              {preset.destination ? (
+                <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">
+                  <MapPin className="h-3.5 w-3.5 text-blue-500" />
+                  {preset.destination}
+                </span>
+              ) : (
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-normal bg-gray-100 text-gray-600">
+                  All Destinations
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-gray-500 mt-1">
+              Preset ID: <span className="font-mono">{preset._id}</span>
+            </p>
           </div>
           
           <div className="flex gap-8">

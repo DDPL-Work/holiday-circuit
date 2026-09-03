@@ -1235,26 +1235,66 @@ export const deletePackage = async (req, res, next) => {
 
 export const deleteUpload = async (req, res) => {
   try {
-    const { id } = req.params
+    const { id } = req.params;
+    const ownerFilter = req.user?.role === "admin" ? {} : { uploadedAuth: req.user?.id };
 
-    const file = await UploadHistory.findById(id)
+    const file = await UploadHistory.findOne({ _id: id, ...ownerFilter });
 
     if (!file) {
-      return res.status(404).json({ message: "File not found" })
+      return res.status(404).json({ message: "File not found" });
     }
 
-    // server se file delete
+    if (file.status === "processing") {
+      return res.status(409).json({ message: "This upload is still processing and cannot be deleted yet." });
+    }
+
+    if (!file.inventoryTracked) {
+      return res.status(409).json({
+        message: "This is a legacy upload without inventory tracking. Its database records cannot be deleted safely from this screen.",
+      });
+    }
+
+    // Only inventory tagged with this exact upload is deleted. Records from
+    // older uploads without sourceUpload are intentionally left untouched.
+    const inventoryFilter = { sourceUpload: file._id };
+    let inventoryDeleteResult;
+    switch (String(file.category || "").toLowerCase()) {
+      case "hotel":
+        inventoryDeleteResult = await Hotel.deleteMany(inventoryFilter);
+        break;
+      case "transport":
+        inventoryDeleteResult = await Transfer.deleteMany(inventoryFilter);
+        break;
+      case "activity":
+      case "sightseeing": {
+        const [activityResult, sightseeingResult] = await Promise.all([
+          Activity.deleteMany(inventoryFilter),
+          Sightseeing.deleteMany(inventoryFilter),
+        ]);
+        inventoryDeleteResult = { deletedCount: activityResult.deletedCount + sightseeingResult.deletedCount };
+        break;
+      }
+      case "package":
+        inventoryDeleteResult = await Package.deleteMany(inventoryFilter);
+        break;
+      default:
+        inventoryDeleteResult = { deletedCount: 0 };
+    }
+
+    // Delete the original Excel file from the server.
     if (file.filePath && fs.existsSync("." + file.filePath)) {
-      fs.unlinkSync("." + file.filePath)
+      fs.unlinkSync("." + file.filePath);
     }
 
-    // DB se delete
-    await UploadHistory.findByIdAndDelete(id)
+    await UploadHistory.findByIdAndDelete(id);
 
-    res.json({ message: "Deleted successfully" })
+    return res.json({
+      message: `Deleted upload and ${Number(inventoryDeleteResult?.deletedCount || 0)} linked inventory record(s).`,
+      deletedInventoryRecords: Number(inventoryDeleteResult?.deletedCount || 0),
+    });
 
   } catch (error) {
-    res.status(500).json({ error: error.message })
+    return res.status(500).json({ error: error.message });
   }
 }
 

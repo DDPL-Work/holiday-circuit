@@ -51,11 +51,11 @@ const DEFAULT_WHATSAPP_TERMS = Object.freeze([
 const normalizeSellerBankDetails = (items = []) => {
   const normalizedItems = Array.isArray(items)
     ? items
-        .map((item) => ({
-          label: String(item?.label || "").trim(),
-          value: String(item?.value || "").trim(),
-        }))
-        .filter((item) => item.label && item.value)
+      .map((item) => ({
+        label: String(item?.label || "").trim(),
+        value: String(item?.value || "").trim(),
+      }))
+      .filter((item) => item.label && item.value)
     : [];
 
   return normalizedItems.length ? normalizedItems : [...DEFAULT_SELLER_BANK_DETAILS];
@@ -75,13 +75,13 @@ const buildWhatsappMessage = (quoteDetails = {}) => {
   const termsAndConditions = normalizeTermsAndConditions(quoteDetails?.termsAndConditions);
   const sellerBankSection = includeSellerBankDetails && sellerBankDetails.length
     ? `\n\nSeller Bank Details\n----------\n${sellerBankDetails
-        .map((item) => `${item.label}: ${item.value}`)
-        .join("\n")}`
+      .map((item) => `${item.label}: ${item.value}`)
+      .join("\n")}`
     : "";
   const termsSection = termsAndConditions.length
     ? `\n\nTerms and Conditions\n----------\n${termsAndConditions
-        .map((item, index) => `${index + 1}. ${item}`)
-        .join("\n")}`
+      .map((item, index) => `${index + 1}. ${item}`)
+      .join("\n")}`
     : "";
 
   return `

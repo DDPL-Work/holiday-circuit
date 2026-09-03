@@ -1,7 +1,7 @@
 import express from "express";
 import isAuthenticated from "../middlewares/auth.middleware.js";
 import { createHotel, getHotels, getHotelById, updateHotel, deleteHotel, createActivity, getActivities, createTransfer, getTransfers, createPackage, getPackages, deletePackage, createSightseeing, getSightseeing, deleteUpload, downloadUpload, createOrUpdateConfirmation, getConfirmedQueriesForDmc, getDmcDashboard, submitInternalInvoice, getDmcPaymentLedger, submitDmcSettlementBatch, previewUploadedInvoiceExtraction, addOrUpdateSupplierPayment } from "../controllers/dmcController.js";
-import { bulkUpload, getBulkUploadHistory, viewUploadData, editSpreadsheetRowAndNotify } from "../controllers/bulkUploadController.js";
+import { bulkUpload, getBulkUploadHistory, getBulkUploadStatus, viewUploadData, editSpreadsheetRowAndNotify } from "../controllers/bulkUploadController.js";
 import multer from "multer";
 
 
@@ -38,6 +38,7 @@ const storage = multer.diskStorage({
 })
 const upload = multer({ storage })
 router.post("/bulk-upload", upload.single("file"), isAuthenticated, bulkUpload)
+router.get("/bulk-upload/:id/status", isAuthenticated, getBulkUploadStatus);
 router.get("/bulk-upload-history", isAuthenticated, getBulkUploadHistory);
 router.delete("/upload/:id", isAuthenticated, deleteUpload)
 router.get("/upload/download/:id", isAuthenticated, downloadUpload)

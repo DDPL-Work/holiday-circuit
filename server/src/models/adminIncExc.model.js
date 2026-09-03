@@ -21,6 +21,16 @@ const adminIncExcSchema = new mongoose.Schema(
       unique: true,
       trim: true,
     },
+    destinationCategory: {
+      type: String,
+      enum: ["Domestic", "International", "Other", ""],
+      default: "",
+    },
+    destination: {
+      type: String,
+      default: "",
+      trim: true,
+    },
     inclusions: {
       type: [itemSchema],
       default: [],

@@ -1188,6 +1188,13 @@ export const buildVoucherTemplate = (voucherDetails, branding = "with") => {
     passengers: voucherDetails.passengers,
   });
 
+  const rawTerms = voucherDetails?.termsAndConditions || voucherDetails?.terms || [];
+  const termsList = Array.isArray(rawTerms)
+    ? rawTerms.filter((t) => typeof t === "string" && t.trim().length > 0)
+    : typeof rawTerms === "string"
+    ? rawTerms.split("\n").map((t) => t.trim()).filter((t) => t.length > 0)
+    : [];
+
   const serviceRowsHtml = (voucherDetails.services || [])
     .map((service) => {
       const confirmation = service.confirmation || "Pending";
@@ -1490,6 +1497,23 @@ export const buildVoucherTemplate = (voucherDetails, branding = "with") => {
                 ${serviceRowsHtml || '<tr><td colspan="3" style="text-align:center;color:#64748b;padding:18px;font-family: \'Plus Jakarta Sans\', Arial, sans-serif;">No services available</td></tr>'}
               </tbody>
             </table>
+
+            ${termsList.length > 0 ? `
+              <div class="section-heading" style="margin: 24px 0 12px; font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.8px; color: #ffffff; background: linear-gradient(135deg, #020617, #0f172a, #d95508); padding: 10px 14px; font-family: 'Outfit', sans-serif; border-bottom: 2px solid #101b31;">
+                Terms &amp; Conditions
+              </div>
+              <table class="services-table-card" width="100%" style="width: 100%; border-collapse: collapse; border: 1px solid #cfd6de;">
+                <tbody>
+                  ${termsList.map((term, idx) => `
+                    <tr>
+                      <td style="padding: 10px 14px; font-size: 12px; color: #334155; line-height: 1.6; border-bottom: 1px solid #d6dde7; font-family: 'Plus Jakarta Sans', Arial, sans-serif;">
+                        <strong style="color: #0f172a; margin-right: 6px;">${idx + 1}.</strong> ${escapeHtml(term)}
+                      </td>
+                    </tr>
+                  `).join("")}
+                </tbody>
+              </table>
+            ` : ""}
 
             <div class="generated-note" style="text-align: center; font-size: 11px; color: #64748b; margin: 24px 0 0; font-weight: 500; font-family: 'Plus Jakarta Sans', Arial, sans-serif;">
               This is a computer generated document. No signature/stamp required.

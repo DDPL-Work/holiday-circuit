@@ -118,6 +118,15 @@ const hotelSchema = new mongoose.Schema(
       ref: "Auth",
     },
 
+    // Links inventory to the exact bulk file that created it, enabling a
+    // safe delete of that upload without touching other DMC inventory.
+    sourceUpload: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "UploadHistory",
+      index: true,
+      default: null,
+    },
+
     status: {
       type: String,
       default: "active",

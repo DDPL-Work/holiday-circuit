@@ -1,11 +1,16 @@
 import AdminIncExc from "../models/adminIncExc.model.js";
 
 // @route   GET /admin/inc-exc-presets
-// @desc    Get all inclusion/exclusion presets
+// @desc    Get all inclusion/exclusion presets (optionally filtered by destination)
 // @access  Private (Admin)
 export const getIncExcPresets = async (req, res) => {
   try {
-    const presets = await AdminIncExc.find()
+    const filter = {};
+    if (req.query.destination) {
+      filter.destination = { $regex: req.query.destination.trim(), $options: "i" };
+    }
+
+    const presets = await AdminIncExc.find(filter)
       .populate("createdBy", "name email")
       .populate("updatedBy", "name email")
       .sort({ createdAt: -1 });
@@ -40,7 +45,7 @@ export const getIncExcPresetById = async (req, res) => {
 // @access  Private (Admin)
 export const createIncExcPreset = async (req, res) => {
   try {
-    const { name, inclusions, exclusions } = req.body;
+    const { name, destinationCategory, destination, inclusions, exclusions } = req.body;
 
     // Check if preset with same name exists
     const existingPreset = await AdminIncExc.findOne({ name });
@@ -50,6 +55,8 @@ export const createIncExcPreset = async (req, res) => {
 
     const newPreset = new AdminIncExc({
       name,
+      destinationCategory: destinationCategory || "",
+      destination: destination ? destination.trim() : "",
       inclusions: inclusions || [],
       exclusions: exclusions || [],
       createdBy: req.user?._id || req.user?.id,
@@ -69,7 +76,7 @@ export const createIncExcPreset = async (req, res) => {
 // @access  Private (Admin)
 export const updateIncExcPreset = async (req, res) => {
   try {
-    const { name, inclusions, exclusions } = req.body;
+    const { name, destinationCategory, destination, inclusions, exclusions } = req.body;
 
     const preset = await AdminIncExc.findById(req.params.id);
     if (!preset) {
@@ -85,6 +92,8 @@ export const updateIncExcPreset = async (req, res) => {
       preset.name = name;
     }
 
+    if (destinationCategory !== undefined) preset.destinationCategory = destinationCategory || "";
+    if (destination !== undefined) preset.destination = destination ? destination.trim() : "";
     if (inclusions) preset.inclusions = inclusions;
     if (exclusions) preset.exclusions = exclusions;
     preset.updatedBy = req.user?._id || req.user?.id;

@@ -594,12 +594,17 @@ export const TripTouristsModal = ({ isOpen, onClose, query, headerLeadTraveler, 
         const payload = {
           clientName: fullName,
           leadTraveler: fullName,
+          name: fullName,
+          clientPhone: formattedPhone,
+          phone: formattedPhone,
+          clientEmail: primaryEmail,
+          email: primaryEmail,
           travelerDetails: tourists.map((t) => ({
             fullName: [t.salutation, t.name].filter(Boolean).join(" "),
             travelerType: t.type || "Adult",
             childAge: t.age ? Number(t.age) : null,
             nationality: t.nationality || "Indian",
-            phone: t.phones?.[0]?.number || "",
+            phone: (t.phones?.find((p) => p.isPrimary)?.number || t.phones?.[0]?.number || "").trim(),
             email: t.email || "",
           })),
         };
