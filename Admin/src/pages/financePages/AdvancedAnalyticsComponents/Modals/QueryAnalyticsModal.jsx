@@ -121,7 +121,7 @@ export default function QueryAnalyticsModal({
                     <span className="text-slate-800 font-bold">{Math.min(endIdx, destinationQueryRows.length)}</span> of{' '}
                     <span className="text-slate-800 font-bold">{destinationQueryRows.length}</span> entries
                   </span>
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center justify-center gap-1.5 flex-wrap">
                     <button
                       onClick={() => setDestinationPage((prev) => Math.max(prev - 1, 1))}
                       disabled={destinationPage === 1}

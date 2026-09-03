@@ -122,10 +122,19 @@ export const NotificationDropdown = ({
       </button>
 
       {openNotifications ? (
-        <div
-          className={`absolute right-0 top-12 z-50 w-[min(92vw,22.5rem)] overflow-hidden rounded-2xl border shadow-2xl ${
-            isQuotationBuilder ? "" : "border-slate-200 bg-white"
-          }`}
+        <>
+          {/* Backdrop for mobile */}
+          <div 
+            className="fixed inset-0 z-[60] bg-slate-950/20 backdrop-blur-sm sm:hidden" 
+            onClick={(e) => {
+              e.stopPropagation();
+              setOpenNotifications(false);
+            }} 
+          />
+          <div
+            className={`fixed inset-y-0 right-0 z-[60] flex w-[85vw] max-w-sm flex-col overflow-hidden border shadow-2xl transition-transform sm:absolute sm:bottom-auto sm:top-12 sm:h-auto sm:w-[22.5rem] sm:rounded-2xl sm:flex-none ${
+              isQuotationBuilder ? "" : "border-slate-200 bg-white"
+            }`}
           style={
             isQuotationBuilder
               ? {
@@ -306,7 +315,7 @@ export const NotificationDropdown = ({
             ) : null}
           </div>
 
-          <div className="max-h-[360px] overflow-y-auto px-1 pb-4 pt-0 custom-scroll">
+          <div className="flex-1 overflow-y-auto px-1 pb-4 pt-0 custom-scroll sm:max-h-[360px] sm:flex-none">
             {loadingNotifications ? (
               <div
                 className={`flex items-center justify-center py-12 ${
@@ -560,6 +569,7 @@ export const NotificationDropdown = ({
             )}
           </div>
         </div>
+        </>
       ) : null}
     </div>
   );

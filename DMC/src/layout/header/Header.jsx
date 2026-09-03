@@ -97,14 +97,8 @@ const Header = () => {
       `}</style>
 
       <header className="h-[4.5rem] border-b border-white/10 bg-[#0F172A] px-3 sm:px-5">
-        <div className="flex h-full items-center gap-2 sm:gap-3">
+        <div className="flex h-full items-center justify-between gap-2 sm:gap-3 w-full">
           <div className="flex h-full items-center gap-2 sm:gap-3 shrink-0">
-            <MobileNav
-              menus={menus}
-              mobileNavOpen={mobileNavOpen}
-              setMobileNavOpen={setMobileNavOpen}
-            />
-
             <div className="flex h-full cursor-pointer items-center px-2 sm:px-4">
               <div className="relative flex h-11 w-11 sm:h-12 sm:w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white p-0.5 shadow-inner ring-1 ring-black/5">
                 <img
@@ -174,6 +168,12 @@ const Header = () => {
             >
               <LogOut className="h-4 w-4 sm:h-[18px] sm:w-[18px]" />
             </button>
+
+            <MobileNav
+              menus={menus}
+              mobileNavOpen={mobileNavOpen}
+              setMobileNavOpen={setMobileNavOpen}
+            />
           </div>
         </div>
       </header>

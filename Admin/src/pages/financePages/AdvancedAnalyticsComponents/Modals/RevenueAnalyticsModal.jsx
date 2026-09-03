@@ -373,15 +373,15 @@ export default function RevenueAnalyticsModal({
           <div className="flex flex-col gap-6 w-full">
             {/* Verified Payment Revenue (Top Section) */}
             <div className="bg-white p-5 border border-slate-100 rounded-2xl shadow-sm w-full">
-              <div className="flex items-center justify-between mb-3.5 pb-1 border-b border-slate-105">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-3.5 pb-2 border-b border-slate-105">
                 <h3 className="flex items-center gap-2 text-xs font-black text-slate-800 uppercase tracking-wider">
-                  <Receipt size={14} className="text-emerald-500" />
+                  <Receipt size={14} className="text-emerald-500 shrink-0" />
                   Verified Payment Revenue
                 </h3>
                 <button
                   type="button"
                   onClick={() => setShowRevenueChecklist(!showRevenueChecklist)}
-                  className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold transition-all duration-200 shadow-sm border border-slate-200 cursor-pointer"
+                  className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-bold transition-all duration-200 shadow-sm border border-slate-200 cursor-pointer w-full sm:w-auto"
                 >
                   {showRevenueChecklist ? (
                     <>
@@ -461,7 +461,7 @@ export default function RevenueAnalyticsModal({
                     <span className="text-slate-800 font-bold">{Math.min(endProfitIdx, destinationProfitRows.length)}</span> of{' '}
                     <span className="text-slate-800 font-bold">{destinationProfitRows.length}</span> entries
                   </span>
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center justify-center gap-1.5 flex-wrap">
                     <button
                       onClick={() => setProfitabilityPage((prev) => Math.max(prev - 1, 1))}
                       disabled={profitabilityPage === 1}

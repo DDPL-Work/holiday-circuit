@@ -793,7 +793,22 @@ export const bulkUpload = async (req, res) => {
         uploadHistoryId: String(upload._id),
       },
     });
-    worker.on("error", (error) => console.error("Bulk upload worker startup error:", error));
+    worker.on("message", async (msg) => {
+      if (msg.status === "failed") {
+        try {
+          await UploadHistory.findByIdAndUpdate(msg.uploadHistoryId, { status: "failed" });
+        } catch (err) {
+          console.error("Parent could not update failed status:", err);
+        }
+      }
+    });
+
+    worker.on("error", async (error) => {
+      console.error("Bulk upload worker startup error:", error);
+      try {
+        await UploadHistory.findByIdAndUpdate(upload._id, { status: "failed" });
+      } catch (err) {}
+    });
 
     return res.status(202).json({
       message: "Upload received and is processing in the background.",
@@ -903,6 +918,7 @@ export const bulkUpload = async (req, res) => {
       uploadedBy,
     });
     */
+   
   } catch (error) {
     console.log("ACTUAL ERROR:", error);
 

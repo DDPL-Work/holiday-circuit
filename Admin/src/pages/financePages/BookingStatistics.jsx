@@ -339,17 +339,17 @@ export default function BookingStatistics() {
             />
 
             <div className="flex flex-col gap-2 sm:col-span-2 xl:col-span-6">
-              <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-4 items-end">
+              <div className="grid grid-cols-1 lg:grid-cols-[1fr_1fr_auto] gap-4 items-end">
                 <div>
                   <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Booking Dates</label>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                     <input
                       type="date"
                       value={bookingFromDate}
                       onChange={(e) => setBookingFromDate(e.target.value)}
                       className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all cursor-pointer text-slate-600"
                     />
-                    <span className="text-slate-400 text-sm font-medium">to</span>
+                    <span className="text-slate-400 text-sm font-medium hidden sm:block">to</span>
                     <input
                       type="date"
                       value={bookingToDate}
@@ -360,14 +360,14 @@ export default function BookingStatistics() {
                 </div>
                 <div>
                   <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Travel Dates</label>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                     <input
                       type="date"
                       value={travelFromDate}
                       onChange={(e) => setTravelFromDate(e.target.value)}
                       className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all cursor-pointer text-slate-600"
                     />
-                    <span className="text-slate-400 text-sm font-medium">to</span>
+                    <span className="text-slate-400 text-sm font-medium hidden sm:block">to</span>
                     <input
                       type="date"
                       value={travelToDate}
@@ -376,13 +376,14 @@ export default function BookingStatistics() {
                     />
                   </div>
                 </div>
-                <div className="flex h-[38px]">
+                <div className="flex h-[38px] w-full lg:w-auto mt-1 lg:mt-0">
                   <button 
                     onClick={resetFilters}
-                    className="px-3 h-full bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-700 rounded-lg transition-colors flex items-center justify-center border border-slate-200 shadow-sm"
+                    className="w-full px-4 h-full bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-700 rounded-lg transition-colors flex items-center justify-center border border-slate-200 shadow-sm"
                     title="Reset All Filters"
                   >
                     <RotateCcw size={18} />
+                    <span className="ml-2 lg:hidden text-sm font-semibold">Reset Filters</span>
                   </button>
                 </div>
               </div>

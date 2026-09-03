@@ -288,7 +288,7 @@ function PeriodSummaryCard({
         className="border border-dashed border-slate-200 rounded-2xl overflow-hidden"
       >
         {/* Header */}
-        <div className={`flex items-center justify-between px-5 py-3 ${accentBg} border-b border-slate-100`}>
+        <div className={`flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 px-5 py-3 ${accentBg} border-b border-slate-100`}>
           {/* <div className="flex items-center gap-2">
             <span className={`text-[10px] font-black uppercase tracking-widest ${colorClass}`}>{title}</span>
             <span className="text-[9px] font-bold text-slate-400 bg-white/70 border border-slate-200 px-1.5 py-0.5 rounded-full">
@@ -312,7 +312,7 @@ function PeriodSummaryCard({
       className="border border-slate-100 rounded-2xl overflow-hidden shadow-sm bg-white"
     >
       {/* Card Header */}
-      <div className={`flex items-center justify-between px-5 py-3 ${accentBg} border-b border-slate-100`}>
+      <div className={`flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 px-5 py-3 ${accentBg} border-b border-slate-100`}>
         <div className="flex items-center gap-2">
           <span className={`text-[10px] font-black uppercase tracking-widest ${colorClass}`}>{title}</span>
           {/* <span className="text-[9px] font-bold text-slate-500 bg-white/80 border border-slate-200 px-2 py-0.5 rounded-full shadow-inner">
@@ -323,8 +323,9 @@ function PeriodSummaryCard({
       </div>
 
       {/* Metrics Grid */}
-      <div className="grid grid-cols-5 divide-x divide-slate-100">
-        {metricConfigs.map((cfg) => {
+      <div className="overflow-x-auto thin-scrollbar">
+        <div className="grid grid-cols-5 divide-x divide-slate-100 min-w-[700px] xl:min-w-0">
+          {metricConfigs.map((cfg) => {
           const rawColor   = typeof cfg.color     === "function" ? cfg.color(totals)     : cfg.color;
           const rawLabel   = typeof cfg.labelColor === "function" ? cfg.labelColor(totals) : cfg.labelColor;
           const icon       = cfg.icon ? cfg.icon(totals) : null;
@@ -346,6 +347,7 @@ function PeriodSummaryCard({
             </div>
           );
         })}
+        </div>
       </div>
     </motion.div>
   );
