@@ -9,38 +9,37 @@ import sharp from "sharp";
 
 const BRAND = Object.freeze({
   name: "Holiday Circuit",
-  address: "2nd Floor, 632 Block B1, Janakpuri, New Delhi - 110058",
+  address: "KG 3/69, Ground Floor, Vikas Puri, New Delhi, Near UK Nursing Home, New Delhi, Delhi, India - 110018",
   email: "ops@holidaycircuit.com",
-  phone: "+91 8851346665, +91 9971706003",
+  phone: "+91 8851346665",
   website: "www.holidaycircuit.com",
-  navy: "#151d31",
-  orange: "#d95508",
-  orangeLight: "#f08b4c",
-  orangeBright: "#ff7a00",
-  border: "#cfd6de",
-  labelBg: "#f2f4f7",
-  text: "#0f172a",
-  muted: "#64748b",
+  headerBg: "#dce8f6",       // Soft light pastel blue
+  yellowBg: "#fef08a",       // Soft yellow
+  border: "#b3cae8",         // Soft blue border
+  navy: "#0f1d32",
+  text: "#000000",
+  textMuted: "#334155",
+  textDark: "#1e293b",
+  blueConfirm: "#713f12",    // Confirmation brown
+  greenConfirmed: "#15803d", // Confirmed green
+  danger: "#e11d48",         // Pending red
+  notesGold: "#92400e",      // Notes label
   surface: "#ffffff",
-  success: "#15803d",
-  danger: "#dc2626",
 });
 
-// Every x/y/width used across the document is derived from this single
-// object so the geometry never has to be "guessed" per-section.
 const PAGE = Object.freeze({
   x: 34,
   y: 28,
   width: 527,
-  bodyX: 50,
-  bodyWidth: 495,
-  footerY: 770,
-  contentBottom: 748, // last y a new row/paragraph may start at before we page-break
-  continuationTop: 50, // where content resumes on page 2+
+  bodyX: 34,
+  bodyWidth: 527,
+  footerY: 768,
+  contentBottom: 752,
+  continuationTop: 40,
 });
 
 /* ============================================================================
- * GENERIC HELPERS (unchanged behaviour from the previous implementation)
+ * GENERIC HELPERS
  * ==========================================================================*/
 
 const ensureDir = (dirPath) => {
@@ -52,15 +51,34 @@ const ensureDir = (dirPath) => {
 
 const ensureVouchersDir = () => ensureDir(path.join(process.cwd(), "uploads", "vouchers"));
 
-const formatDateLabel = (value) => {
-  if (!value) return "-";
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return String(value);
-  return parsed.toLocaleDateString("en-GB", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
+const normalizeCompanyName = (name, fallback = "Holiday Circuit") => {
+  const str = String(name || "").trim();
+  if (!str) return fallback;
+  return str;
+};
+
+const formatOrdinalDate = (d) => {
+  if (!d) return "-";
+  const dateObj = new Date(d);
+  if (isNaN(dateObj.getTime())) return String(d);
+  const day = dateObj.getDate();
+  const month = dateObj.toLocaleString("en-US", { month: "short" });
+  const year = dateObj.getFullYear();
+  let suffix = "th";
+  if (day % 10 === 1 && day !== 11) suffix = "st";
+  else if (day % 10 === 2 && day !== 12) suffix = "nd";
+  else if (day % 10 === 3 && day !== 13) suffix = "rd";
+  return `${day}${suffix} ${month}, ${year}`;
+};
+
+const formatShortDate = (d) => {
+  if (!d) return "-";
+  const dateObj = new Date(d);
+  if (isNaN(dateObj.getTime())) return String(d);
+  const day = dateObj.getDate();
+  const month = dateObj.toLocaleString("en-US", { month: "short" });
+  const year = dateObj.getFullYear();
+  return `${day} ${month}, ${year}`;
 };
 
 const formatTravelerBreakup = ({ adults = 0, children = 0, travelerSummary = "", passengers = "" } = {}) => {
@@ -73,7 +91,7 @@ const formatTravelerBreakup = ({ adults = 0, children = 0, travelerSummary = "",
 
   if (parts.length) return parts.join(", ");
   if (travelerSummary) return travelerSummary;
-  return passengers || "-";
+  return passengers || "2 Adults";
 };
 
 const resolveBrandLogoPath = () => {
@@ -107,7 +125,7 @@ const loadBrandImage = async (source = "") => {
     }
   }
 
-  if (/^https:\/\//i.test(value) && typeof fetch === "function") {
+  if (/^https?:\/\//i.test(value) && typeof fetch === "function") {
     try {
       const response = await fetch(value, { signal: AbortSignal.timeout(8000) });
       if (!response.ok) return null;
@@ -121,7 +139,84 @@ const loadBrandImage = async (source = "") => {
   return fs.existsSync(localPath) ? toPdfImage(await fs.promises.readFile(localPath)) : null;
 };
 
-const capitalize = (value = "") => (value ? value.charAt(0).toUpperCase() + value.slice(1).toLowerCase() : "");
+const resolveHotelMealPlanText = (h = {}) => {
+  const candidates = [
+    h.mealPlan,
+    h.meal_plan,
+    h.meal,
+    h.meals,
+    h.mealType,
+  ].filter((v) => typeof v === "string" && v.trim().length > 0);
+
+  for (const candidate of candidates) {
+    const upper = candidate.trim().toUpperCase();
+    if (upper === "EP" || upper.includes("ROOM ONLY") || upper.includes("ONLY ROOM") || upper.includes("NO MEAL")) {
+      return "EP ( Room Only )";
+    }
+    if (upper === "MAP" || upper.includes("HALF BOARD") || upper.includes("BREAKFAST & DINNER") || upper.includes("BREAKFAST AND DINNER") || upper.includes("BREAKFAST + DINNER")) {
+      return "MAP ( Breakfast & Dinner Included )";
+    }
+    if (upper === "AP" || upper.includes("FULL BOARD") || upper.includes("ALL MEAL")) {
+      return "AP ( Breakfast, Lunch & Dinner Included )";
+    }
+    if (upper === "AI" || upper.includes("ALL INCLUSIVE")) {
+      return "AI ( All Inclusive )";
+    }
+    if (upper === "CP" || upper.includes("BREAKFAST") || upper.includes("BED & BREAKFAST") || upper.includes("B&B")) {
+      return "CP ( Breakfast Included )";
+    }
+  }
+
+  const textSources = [
+    h.description,
+    h.roomDescription,
+    h.hotelDescription,
+    h.roomType,
+    h.roomCategory,
+    h.inclusions,
+    h.notes,
+  ].filter(Boolean);
+
+  for (const source of textSources) {
+    const segments = String(source).split("|").map((s) => s.trim().toUpperCase());
+    for (const seg of segments) {
+      if (seg === "EP" || seg === "ROOM ONLY" || seg === "ONLY ROOM" || seg === "NO MEALS" || seg === "NO MEAL") {
+        return "EP ( Room Only )";
+      }
+      if (seg === "MAP" || seg === "HALF BOARD" || seg === "BREAKFAST & DINNER" || seg === "BREAKFAST AND DINNER" || seg === "BREAKFAST + DINNER") {
+        return "MAP ( Breakfast & Dinner Included )";
+      }
+      if (seg === "AP" || seg === "FULL BOARD" || seg === "ALL MEALS" || seg === "ALL MEAL") {
+        return "AP ( Breakfast, Lunch & Dinner Included )";
+      }
+      if (seg === "AI" || seg === "ALL INCLUSIVE") {
+        return "AI ( All Inclusive )";
+      }
+      if (seg === "CP" || seg === "BREAKFAST INCLUDED" || seg === "BREAKFAST" || seg === "BED & BREAKFAST" || seg === "B&B") {
+        return "CP ( Breakfast Included )";
+      }
+    }
+  }
+
+  const fullDesc = textSources.join(" ");
+  if (/\b(EP|ROOM\s*ONLY|ONLY\s*ROOM|EUROPEAN\s*PLAN|NO\s*MEALS?)\b/i.test(fullDesc)) {
+    return "EP ( Room Only )";
+  }
+  if (/\b(MAP|HALF\s*BOARD|BREAKFAST\s*(?:AND|&|\+)\s*DINNER)\b/i.test(fullDesc)) {
+    return "MAP ( Breakfast & Dinner Included )";
+  }
+  if (/\b(AP|FULL\s*BOARD|ALL\s*MEALS?)\b/i.test(fullDesc)) {
+    return "AP ( Breakfast, Lunch & Dinner Included )";
+  }
+  if (/\b(AI|ALL\s*INCLUSIVE)\b/i.test(fullDesc)) {
+    return "AI ( All Inclusive )";
+  }
+  if (/\b(CP|BREAKFAST(?:\s*INCLUDED)?|BED\s*&\s*BREAKFAST)\b/i.test(fullDesc)) {
+    return "CP ( Breakfast Included )";
+  }
+
+  return "EP ( Room Only )";
+};
 
 /* ============================================================================
  * LOW LEVEL DRAWING PRIMITIVES
@@ -130,7 +225,13 @@ const capitalize = (value = "") => (value ? value.charAt(0).toUpperCase() + valu
 const drawRect = (doc, x, y, width, height, fillColor, strokeColor = BRAND.border, lineWidth = 0.7) => {
   doc.save();
   doc.lineWidth(lineWidth);
-  doc.rect(x, y, width, height).fillAndStroke(fillColor, strokeColor);
+  if (fillColor && strokeColor) {
+    doc.rect(x, y, width, height).fillAndStroke(fillColor, strokeColor);
+  } else if (fillColor) {
+    doc.rect(x, y, width, height).fill(fillColor);
+  } else if (strokeColor) {
+    doc.rect(x, y, width, height).stroke(strokeColor);
+  }
   doc.restore();
 };
 
@@ -140,117 +241,69 @@ const drawFrame = (doc) => {
   doc.restore();
 };
 
-/**
- * Full-width colored section header bar used above every table
- * (Trip Voucher / a services category / Terms and Conditions / Helpline).
- * Returns the y coordinate directly below the bar.
- */
-const drawSectionHeader = (doc, y, title, { height = 22 } = {}) => {
-  doc.save();
-  doc.rect(PAGE.bodyX, y, PAGE.bodyWidth, height).fill(BRAND.navy);
-  doc.rect(PAGE.bodyX, y, PAGE.bodyWidth, 1.6).fill(BRAND.orange);
-  doc.restore();
-
-  doc.font("Helvetica-Bold").fontSize(9.5).fillColor("#ffffff").text(title, PAGE.bodyX, y + height / 2 - 5, {
-    width: PAGE.bodyWidth,
-    align: "center",
-    characterSpacing: 0.6,
-  });
-
-  return y + height;
-};
-
 /* ============================================================================
- * HEADER / FOOTER
+ * HEADER & FOOTER
  * ==========================================================================*/
 
 const drawHeader = (doc, { logoPath = "" } = {}) => {
-  drawRect(doc, PAGE.x, PAGE.y, PAGE.width, 76, BRAND.navy, BRAND.navy);
+  drawRect(doc, PAGE.x, PAGE.y, PAGE.width, 74, BRAND.navy, BRAND.navy);
 
-  doc.save();
-  doc
-    .polygon([PAGE.x, PAGE.y], [PAGE.x + 92, PAGE.y], [PAGE.x + 70, PAGE.y + 76], [PAGE.x, PAGE.y + 76])
-    .fill(BRAND.orangeBright);
-  doc
-    .polygon(
-      [PAGE.x + PAGE.width - 54, PAGE.y],
-      [PAGE.x + PAGE.width, PAGE.y],
-      [PAGE.x + PAGE.width - 30, PAGE.y + 76],
-      [PAGE.x + PAGE.width - 84, PAGE.y + 76],
-    )
-    .fill(BRAND.orangeBright);
-  doc.restore();
-
-  drawRect(doc, PAGE.x + 40, PAGE.y + 16, 132, 46, BRAND.surface, BRAND.orange, 1);
+  drawRect(doc, PAGE.x + 30, PAGE.y + 14, 120, 46, BRAND.surface, "#5a8aa8", 1.5);
   if (logoPath) {
     try {
-      doc.image(logoPath, PAGE.x + 48, PAGE.y + 22, { fit: [116, 34], align: "center", valign: "center" });
+      doc.image(logoPath, PAGE.x + 36, PAGE.y + 18, { fit: [108, 38], align: "center", valign: "center" });
     } catch {
-      doc.font("Helvetica-Bold").fontSize(18).fillColor(BRAND.orange).text("HC", PAGE.x + 40, PAGE.y + 27, {
-        width: 132,
+      doc.font("Helvetica-Bold").fontSize(18).fillColor(BRAND.navy).text("HC", PAGE.x + 30, PAGE.y + 25, {
+        width: 120,
         align: "center",
       });
     }
   }
 
-  doc.font("Helvetica-Bold").fontSize(22).fillColor("#fff7ed").text(BRAND.name, PAGE.x + 210, PAGE.y + 30, {
-    width: 280,
+  doc.font("Helvetica-Bold").fontSize(22).fillColor("#ffffff").text(BRAND.name, PAGE.x + 180, PAGE.y + 26, {
+    width: 320,
     align: "right",
   });
 
-  return PAGE.y + 76;
+  return PAGE.y + 80;
 };
 
 const drawAgentHeader = (doc, branding = {}, logo = null) => {
-  drawRect(doc, PAGE.x, PAGE.y, PAGE.width, 94, BRAND.surface, BRAND.border, 0.8);
+  drawRect(doc, PAGE.x, PAGE.y, PAGE.width, 88, BRAND.surface, BRAND.border, 0.8);
   if (logo) {
     try {
-      doc.image(logo, PAGE.x + 16, PAGE.y + 12, { fit: [100, 70], align: "center", valign: "center" });
+      doc.image(logo, PAGE.x + 16, PAGE.y + 10, { fit: [95, 68], align: "center", valign: "center" });
     } catch {
       /* ignore broken logo */
     }
   }
 
-  const detailsX = logo ? PAGE.x + 128 : PAGE.x + 22;
-  const detailsWidth = PAGE.x + PAGE.width - detailsX - 18;
-  const name = String(branding.name || BRAND.name);
-  doc.font("Helvetica-Bold").fontSize(20).fillColor(BRAND.text).text(name, detailsX, PAGE.y + 17, { width: detailsWidth });
-  doc.font("Helvetica").fontSize(8).fillColor("#475569").text(String(branding.address || ""), detailsX, PAGE.y + 46, {
+  const detailsX = logo ? PAGE.x + 120 : PAGE.x + 20;
+  const detailsWidth = PAGE.x + PAGE.width - detailsX - 16;
+  const name = normalizeCompanyName(branding.name || BRAND.name);
+  const address = branding.address || "KG 3/69, Ground Floor, Vikas Puri, New Delhi, Near UK Nursing Home, New Delhi, Delhi, India - 110018";
+
+  doc.font("Helvetica-Bold").fontSize(18).fillColor(BRAND.text).text(name, detailsX, PAGE.y + 14, { width: detailsWidth });
+  doc.font("Helvetica").fontSize(7.8).fillColor("#475569").text(String(address), detailsX, PAGE.y + 39, {
     width: detailsWidth,
     lineGap: 1,
+    height: 22,
+    ellipsis: true,
   });
-  doc.font("Helvetica-Bold").fontSize(8).fillColor("#3252C3").text(
+  doc.font("Helvetica-Bold").fontSize(8).fillColor("#2B5083").text(
     `Phone: ${branding.phone || "-"}${branding.email ? `  •  Email: ${branding.email}` : ""}`,
     detailsX,
-    PAGE.y + 74,
+    PAGE.y + 66,
     { width: detailsWidth },
   );
-  doc.save();
-  doc.moveTo(PAGE.x, PAGE.y + 94).lineTo(PAGE.x + PAGE.width, PAGE.y + 94).lineWidth(1.4).strokeColor("#dbe3ee").stroke();
-  doc.restore();
 
   return PAGE.y + 94;
-};
-
-/** Dedicated title bar, drawn as its own layout step (spec item #2). */
-const drawMainTitle = (doc, y, title) => {
-  doc.save();
-  doc.rect(PAGE.x, y, PAGE.width, 30).fill(BRAND.orange);
-  doc.rect(PAGE.x, y, PAGE.width, 2).fill(BRAND.orangeLight);
-  doc.restore();
-
-  doc.font("Helvetica-Bold").fontSize(13).fillColor("#ffffff").text(title, PAGE.x, y + 9, {
-    width: PAGE.width,
-    align: "center",
-  });
-
-  return y + 30;
 };
 
 const drawFooter = (doc, { branding = {}, hasAgentBranding = false, agentFooterImage = null } = {}) => {
   if (hasAgentBranding && agentFooterImage) {
     try {
-      doc.image(agentFooterImage, PAGE.x, PAGE.footerY - 48, { fit: [PAGE.width, 76], align: "center", valign: "center" });
+      doc.image(agentFooterImage, PAGE.x, PAGE.footerY - 44, { fit: [PAGE.width, 68], align: "center", valign: "center" });
       return;
     } catch {
       /* fall through to text footer */
@@ -258,62 +311,42 @@ const drawFooter = (doc, { branding = {}, hasAgentBranding = false, agentFooterI
   }
 
   if (hasAgentBranding) {
-    drawRect(doc, PAGE.x, PAGE.footerY - 8, PAGE.width, 36, "#f8fafc", "#dbe3ee", 0.7);
-    doc.font("Helvetica-Bold").fontSize(7.4).fillColor("#334155").text(String(branding.name || BRAND.name), PAGE.bodyX, PAGE.footerY, {
+    drawRect(doc, PAGE.x, PAGE.footerY - 6, PAGE.width, 32, "#f8fafc", BRAND.border, 0.7);
+    doc.font("Helvetica-Bold").fontSize(7.4).fillColor("#334155").text(String(normalizeCompanyName(branding.name || BRAND.name)), PAGE.bodyX, PAGE.footerY, {
       width: PAGE.bodyWidth,
       align: "center",
     });
     doc.font("Helvetica").fontSize(7.2).fillColor("#475569").text(
-      `Phone: ${branding.phone || "-"}  |  Email: ${branding.email || "-"}${branding.website ? `  |  ${branding.website}` : ""}`,
+      `Phone: ${branding.phone || "-"}  |  Email: ${branding.email || "-"}`,
       PAGE.bodyX,
-      PAGE.footerY + 13,
+      PAGE.footerY + 12,
       { width: PAGE.bodyWidth, align: "center" },
     );
     return;
   }
 
-  drawRect(doc, PAGE.x, PAGE.footerY, PAGE.width, 24, BRAND.navy, BRAND.navy);
-  doc.save();
-  doc.polygon([PAGE.x, PAGE.footerY], [PAGE.x + 14, PAGE.footerY + 12], [PAGE.x, PAGE.footerY + 24]).fill(BRAND.orangeBright);
-  doc
-    .polygon([PAGE.x + PAGE.width, PAGE.footerY], [PAGE.x + PAGE.width - 14, PAGE.footerY + 12], [PAGE.x + PAGE.width, PAGE.footerY + 24])
-    .fill(BRAND.orangeBright);
-  doc.restore();
-
+  drawRect(doc, PAGE.x, PAGE.footerY, PAGE.width, 22, BRAND.navy, BRAND.navy);
   doc.font("Helvetica").fontSize(7.3).fillColor("#ffffff").text(
-    `${BRAND.name}  |  ${branding.phone || BRAND.phone}  |  ${branding.email || BRAND.email}  |  ${branding.website || BRAND.website}`,
+    `${BRAND.name}  |  ${branding.phone || BRAND.phone}  |  ${branding.email || BRAND.email}`,
     PAGE.bodyX,
-    PAGE.footerY + 8,
+    PAGE.footerY + 6,
     { width: PAGE.bodyWidth, align: "center" },
   );
 };
 
-const drawContinuationBanner = (doc, title) => {
-  doc.font("Helvetica-Bold").fontSize(9).fillColor(BRAND.muted).text(`${title} (contd.)`, PAGE.bodyX, 30, {
-    width: PAGE.bodyWidth,
-    align: "right",
-  });
-};
-
 /* ============================================================================
  * PAGE-BREAK MANAGEMENT
- *
- * `pageCtx` is created once per document and reused everywhere so that a
- * table/paragraph drawer never has to know how to add a page itself beyond
- * calling `ensureSpace`.
  * ==========================================================================*/
 
-const createPageContext = (doc, { branding, hasAgentBranding, agentFooterImage, title }) => {
+const createPageContext = (doc, { branding, hasAgentBranding, agentFooterImage }) => {
   const footerOpts = { branding, hasAgentBranding, agentFooterImage };
 
   doc.on("pageAdded", () => {
     drawFrame(doc);
     drawFooter(doc, footerOpts);
-    drawContinuationBanner(doc, title);
   });
 
   return {
-    /** Ensures `needed` px are available below `y`; returns the (possibly new) y. */
     ensureSpace(y, needed) {
       if (y + needed <= PAGE.contentBottom) return y;
       doc.addPage();
@@ -323,441 +356,510 @@ const createPageContext = (doc, { branding, hasAgentBranding, agentFooterImage, 
 };
 
 /* ============================================================================
- * GENERIC GRID TABLE UTILITY (drawGridTable)
- *
- * headers: [{ label, width, align? }]
- * rows:    array of row-defs, each row-def is an array (1 per column) of
- *          cell-defs: { lines: [{ text, bold?, color?, size?, align? }] }
+ * 1. OVERVIEW TABLE
  * ==========================================================================*/
 
-const LINE_HEIGHT = 10.2;
-const CELL_PAD_X = 7;
-const CELL_PAD_Y = 6;
+const drawOverviewTable = (doc, pageCtx, y, data) => {
+  let cursorY = pageCtx.ensureSpace(y, 134);
 
-const measureRowHeight = (row) => {
-  const maxLines = Math.max(1, ...row.map((cell) => cell.lines.length));
-  return Math.max(24, maxLines * LINE_HEIGHT + CELL_PAD_Y * 2);
-};
+  const startX = PAGE.bodyX;
+  const totalWidth = PAGE.bodyWidth;
+  const rowHeight = 22;
 
-const drawTableHeaderRow = (doc, x, y, headers) => {
-  const totalWidth = headers.reduce((sum, h) => sum + h.width, 0);
-  doc.save();
-  doc.rect(x, y, totalWidth, 20).fill(BRAND.navy);
-  doc.restore();
-
-  let cx = x;
-  headers.forEach((h) => {
-    doc.font("Helvetica-Bold").fontSize(8).fillColor("#ffffff").text(h.label, cx + CELL_PAD_X, y + 6, {
-      width: h.width - CELL_PAD_X * 2,
-      align: h.align || "left",
-    });
-    if (cx > x) {
-      doc.save();
-      doc.moveTo(cx, y).lineTo(cx, y + 20).lineWidth(0.6).strokeColor("#2a3550").stroke();
-      doc.restore();
-    }
-    cx += h.width;
-  });
-
-  return y + 20;
-};
-
-const drawTableDataRow = (doc, x, y, headers, row) => {
-  const totalWidth = headers.reduce((sum, h) => sum + h.width, 0);
-  const rowHeight = measureRowHeight(row);
-
-  doc.save();
-  doc.rect(x, y, totalWidth, rowHeight).lineWidth(0.7).strokeColor(BRAND.border).stroke();
-  doc.restore();
-
-  let cx = x;
-  headers.forEach((h, colIndex) => {
-    if (cx > x) {
-      doc.save();
-      doc.moveTo(cx, y).lineTo(cx, y + rowHeight).lineWidth(0.7).strokeColor(BRAND.border).stroke();
-      doc.restore();
-    }
-
-    let ly = y + CELL_PAD_Y;
-    const cell = row[colIndex] || { lines: [{ text: "-" }] };
-    cell.lines.forEach((line) => {
-      doc
-        .font(line.bold ? "Helvetica-Bold" : "Helvetica")
-        .fontSize(line.size || 8.3)
-        .fillColor(line.color || BRAND.text)
-        .text(line.text ?? "-", cx + CELL_PAD_X, ly, {
-          width: h.width - CELL_PAD_X * 2,
-          align: line.align || h.align || "left",
-        });
-      ly += LINE_HEIGHT;
-    });
-
-    cx += h.width;
-  });
-
-  return y + rowHeight;
-};
-
-/**
- * Draws a bordered grid table with a solid header bar, wrapping text inside
- * cells and re-emitting the header row automatically whenever a page break
- * occurs mid-table.
- */
-const drawGridTable = (doc, pageCtx, { x = PAGE.bodyX, y, headers, rows }) => {
-  let cursorY = pageCtx.ensureSpace(y, 20 + measureRowHeight(rows[0] || [{ lines: [{ text: "-" }] }]));
-  cursorY = drawTableHeaderRow(doc, x, cursorY, headers);
-
-  rows.forEach((row) => {
-    const rowHeight = measureRowHeight(row);
-    const afterBreakY = pageCtx.ensureSpace(cursorY, rowHeight);
-    if (afterBreakY !== cursorY) {
-      // A page break happened - repeat the header on the new page for context.
-      cursorY = drawTableHeaderRow(doc, x, afterBreakY, headers);
-    } else {
-      cursorY = afterBreakY;
-    }
-    cursorY = drawTableDataRow(doc, x, cursorY, headers, row);
-  });
-
-  return cursorY;
-};
-
-/* ============================================================================
- * TRIP VOUCHER TABLE (label/value 2-column grid, spec item #3)
- * ==========================================================================*/
-
-const drawLabelValueHalfCell = (doc, x, y, width, height, label, value, labelWidth = 84) => {
-  doc.save();
-  doc.rect(x, y, width, height).lineWidth(0.7).strokeColor(BRAND.border).stroke();
-  doc.rect(x, y, labelWidth, height).fillAndStroke(BRAND.labelBg, BRAND.border);
-  doc.moveTo(x + labelWidth, y).lineTo(x + labelWidth, y + height).lineWidth(0.7).strokeColor(BRAND.border).stroke();
-  doc.restore();
-
-  doc.font("Helvetica-Bold").fontSize(8.3).fillColor(BRAND.text).text(label, x + 8, y + height / 2 - 5, {
-    width: labelWidth - 14,
-  });
-  doc.font("Helvetica").fontSize(8.6).fillColor(BRAND.text).text(value || "-", x + labelWidth + 8, y + height / 2 - 5, {
-    width: width - labelWidth - 14,
-  });
-};
-
-const drawTripVoucherTable = (doc, pageCtx, y, data) => {
-  let cursorY = pageCtx.ensureSpace(y, 22);
-  cursorY = drawSectionHeader(doc, cursorY, "Trip Voucher");
-
-  const halfWidth = PAGE.bodyWidth / 2;
-  const rowHeight = 26;
-  const leftX = PAGE.bodyX;
-  const rightX = PAGE.bodyX + halfWidth;
-
-  const pairedRows = [
-    { left: ["Trip ID", data.tripId], right: ["Start Date", data.startDate] },
-    { left: ["Destination", data.destination], right: ["Trip Duration", data.duration] },
-    { left: ["Guest Name", data.guestName], right: ["Guest Ph.", data.guestPhone] },
-  ];
-
-  pairedRows.forEach(({ left, right }) => {
-    cursorY = pageCtx.ensureSpace(cursorY, rowHeight);
-    drawLabelValueHalfCell(doc, leftX, cursorY, halfWidth, rowHeight, left[0], left[1]);
-    drawLabelValueHalfCell(doc, rightX, cursorY, halfWidth, rowHeight, right[0], right[1]);
-    cursorY += rowHeight;
-  });
-
-  // Pax has no right-hand equivalent, so it spans the full row width.
-  cursorY = pageCtx.ensureSpace(cursorY, rowHeight);
-  drawLabelValueHalfCell(doc, leftX, cursorY, PAGE.bodyWidth, rowHeight, "Pax", data.pax, 84);
+  // Table Header
+  drawRect(doc, startX, cursorY, totalWidth, rowHeight, BRAND.headerBg, BRAND.border, 0.8);
+  doc.font("Helvetica-Bold").fontSize(9.5).fillColor(BRAND.text).text(
+    `Trip ID: ${data.tripId || "4304633"}`,
+    startX,
+    cursorY + 6,
+    { width: totalWidth, align: "center" }
+  );
   cursorY += rowHeight;
 
-  return cursorY;
+  // Row 1: Start Date & Trip Duration
+  const wLabel1 = 95;
+  const wVal1 = 168.5;
+  const wLabel2 = 105;
+  const wVal2 = 158.5;
+
+  // Row 1
+  drawRect(doc, startX, cursorY, wLabel1, rowHeight, BRAND.surface, BRAND.border, 0.7);
+  doc.font("Helvetica").fontSize(8).fillColor(BRAND.textDark).text("Start Date", startX + 8, cursorY + 6);
+
+  drawRect(doc, startX + wLabel1, cursorY, wVal1, rowHeight, BRAND.surface, BRAND.border, 0.7);
+  doc.font("Helvetica-Bold").fontSize(8.5).fillColor(BRAND.text).text(String(data.startDate || "-"), startX + wLabel1 + 8, cursorY + 6);
+
+  drawRect(doc, startX + wLabel1 + wVal1, cursorY, wLabel2, rowHeight, BRAND.surface, BRAND.border, 0.7);
+  doc.font("Helvetica").fontSize(8).fillColor(BRAND.textDark).text("Trip Duration", startX + wLabel1 + wVal1 + 8, cursorY + 6);
+
+  drawRect(doc, startX + wLabel1 + wVal1 + wLabel2, cursorY, wVal2, rowHeight, BRAND.surface, BRAND.border, 0.7);
+  doc.font("Helvetica-Bold").fontSize(8.5).fillColor(BRAND.text).text(String(data.duration || "-"), startX + wLabel1 + wVal1 + wLabel2 + 8, cursorY + 6);
+  cursorY += rowHeight;
+
+  // Row 2: Destination
+  drawRect(doc, startX, cursorY, wLabel1, rowHeight, BRAND.surface, BRAND.border, 0.7);
+  doc.font("Helvetica").fontSize(8).fillColor(BRAND.textDark).text("Destination", startX + 8, cursorY + 6);
+
+  drawRect(doc, startX + wLabel1, cursorY, totalWidth - wLabel1, rowHeight, BRAND.surface, BRAND.border, 0.7);
+  doc.font("Helvetica-Bold").fontSize(8.5).fillColor(BRAND.text).text(String(data.destination || "-"), startX + wLabel1 + 8, cursorY + 6);
+  cursorY += rowHeight;
+
+  // Row 3: Guest Name & Guest Ph.
+  drawRect(doc, startX, cursorY, wLabel1, rowHeight, BRAND.surface, BRAND.border, 0.7);
+  doc.font("Helvetica").fontSize(8).fillColor(BRAND.textDark).text("Guest Name", startX + 8, cursorY + 6);
+
+  drawRect(doc, startX + wLabel1, cursorY, wVal1, rowHeight, BRAND.surface, BRAND.border, 0.7);
+  doc.font("Helvetica-Bold").fontSize(8.5).fillColor(BRAND.text).text(String(data.guestName || "Valued Client"), startX + wLabel1 + 8, cursorY + 6);
+
+  drawRect(doc, startX + wLabel1 + wVal1, cursorY, wLabel2, rowHeight, BRAND.surface, BRAND.border, 0.7);
+  doc.font("Helvetica").fontSize(8).fillColor(BRAND.textDark).text("Guest Ph.", startX + wLabel1 + wVal1 + 8, cursorY + 6);
+
+  drawRect(doc, startX + wLabel1 + wVal1 + wLabel2, cursorY, wVal2, rowHeight, BRAND.surface, BRAND.border, 0.7);
+  doc.font("Helvetica").fontSize(8).fillColor(BRAND.text).text(String(data.guestPhone || "-"), startX + wLabel1 + wVal1 + wLabel2 + 8, cursorY + 6);
+  cursorY += rowHeight;
+
+  // Row 4: Pax Details
+  drawRect(doc, startX, cursorY, wLabel1, rowHeight, BRAND.surface, BRAND.border, 0.7);
+  doc.font("Helvetica").fontSize(8).fillColor(BRAND.textDark).text("Pax Details", startX + 8, cursorY + 6);
+
+  drawRect(doc, startX + wLabel1, cursorY, totalWidth - wLabel1, rowHeight, BRAND.surface, BRAND.border, 0.7);
+  doc.font("Helvetica-Bold").fontSize(8.5).fillColor(BRAND.text).text(String(data.pax || "-"), startX + wLabel1 + 8, cursorY + 6);
+  cursorY += rowHeight;
+
+  // Row 5: Issued By
+  drawRect(doc, startX, cursorY, wLabel1, rowHeight, BRAND.surface, BRAND.border, 0.7);
+  doc.font("Helvetica-Bold").fontSize(8.5).fillColor(BRAND.text).text("Issued By", startX + 8, cursorY + 6);
+
+  drawRect(doc, startX + wLabel1, cursorY, totalWidth - wLabel1, rowHeight, BRAND.surface, BRAND.border, 0.7);
+  doc.font("Helvetica").fontSize(8).fillColor(BRAND.textDark).text(String(data.issuedBy || "Holiday Circuit"), startX + wLabel1 + 8, cursorY + 6);
+  cursorY += rowHeight;
+
+  return cursorY + 12;
 };
 
 /* ============================================================================
- * CATEGORIZED SERVICES TABLES (spec item #4)
+ * 2. HOTEL CARDS
  * ==========================================================================*/
 
-const statusColor = (status) => {
-  const s = String(status || "").toLowerCase();
-  if (s.includes("confirm")) return BRAND.success;
-  if (s.includes("cancel")) return BRAND.danger;
-  return BRAND.orange; // pending / unknown
-};
+const drawHotelCard = (doc, pageCtx, y, hotel, tripDefaults) => {
+  const cardHeight = 142;
+  let cursorY = pageCtx.ensureSpace(y, cardHeight);
 
-const groupServicesByType = (services = []) => {
-  const preferredOrder = ["hotel", "flight", "cab", "transfer", "activity", "sightseeing"];
-  const groups = new Map();
+  const startX = PAGE.bodyX;
+  const totalWidth = PAGE.bodyWidth;
 
-  services.forEach((service) => {
-    const type = String(service.type || "other").toLowerCase();
-    if (!groups.has(type)) groups.set(type, []);
-    groups.get(type).push(service);
-  });
+  const hTitle = hotel.title || hotel.hotelName || hotel.name || `${tripDefaults.destination || "Destination"} Hotel`;
+  const hRating = hotel.rating || hotel.starRating || hotel.category || "5 star";
+  const hAddress = hotel.address || hotel.hotelAddress || hotel.location || `${tripDefaults.destination || "India"}`;
 
-  const orderedKeys = [
-    ...preferredOrder.filter((k) => groups.has(k)),
-    ...[...groups.keys()].filter((k) => !preferredOrder.includes(k)).sort(),
-  ];
-
-  return orderedKeys.map((type) => ({ type, items: groups.get(type) }));
-};
-
-const CATEGORY_LABELS = {
-  hotel: "Hotels",
-  flight: "Flights",
-  cab: "Cabs",
-  transfer: "Transfers",
-  activity: "Activities",
-  sightseeing: "Sightseeing",
-};
-
-const resolveConfirmationNumber = (service) => {
-  const raw = String(service.confirmation || "").trim();
-  const isStatusWord = /^(pending|confirmed|not available)$/i.test(raw);
-  return (
-    service.confirmationNumber ||
-    service.confirmationNo ||
-    service.cnfNumber ||
-    service.supplierConfirmation ||
-    (!isStatusWord && raw ? raw : "") ||
-    "-"
+  const realCnfNum = hotel.confirmationNumber || hotel.cnfNumber || hotel.supplierConfirmation || hotel.voucherNumber || (hotel.confirmation && !hotel.confirmation.toLowerCase().includes("pending") ? hotel.confirmation : null);
+  const isHotelConfirmed = Boolean(
+    realCnfNum ||
+    (hotel.status && String(hotel.status).toLowerCase() === "confirmed") ||
+    (hotel.confirmation && !String(hotel.confirmation).toLowerCase().includes("pending")) ||
+    hotel.isVoucherGenerated
   );
-};
+  const hStatLabel = isHotelConfirmed ? "Confirmed" : "Pending";
+  const cnfDisplay = realCnfNum ? String(realCnfNum).trim() : (isHotelConfirmed ? "Confirmed" : "Pending");
 
-const resolveStatus = (service, confirmationNumber) => {
-  const raw = String(service.confirmation || "").trim();
-  return service.status || (confirmationNumber === "-" || /^pending$/i.test(raw) ? "Pending" : "Confirmed");
-};
+  const checkInDate = hotel.checkIn ? formatOrdinalDate(hotel.checkIn) : tripDefaults.startDateOrdinal;
+  const checkInTime = hotel.checkInTime || "14:00 hrs";
+  const nights = Number(hotel.nights || hotel.numberOfNights || tripDefaults.nights || 1);
+  const checkOutDate = hotel.checkOut ? formatOrdinalDate(hotel.checkOut) : tripDefaults.endDateOrdinal;
+  const checkOutTime = hotel.checkOutTime || "12:00 hrs";
 
-/** Hotel-specific columns: Hotel | Check-In | Check-Out | Accommodation */
-const buildHotelRow = (service) => {
-  const confirmationNumber = resolveConfirmationNumber(service);
-  const status = resolveStatus(service, confirmationNumber);
+  const checkInShort = hotel.checkIn ? formatShortDate(hotel.checkIn) : tripDefaults.startDateShort;
+  const mealPlanStr = resolveHotelMealPlanText(hotel);
+  const nightMealStr = `${checkInShort} (${hotel.nightLabel || (nights > 1 ? `${nights} Nights` : '1st N')}) - ${mealPlanStr}`;
+  const roomTypeStr = `${hotel.numberOfRooms || hotel.rooms || 1} x ${hotel.roomType || hotel.roomCategory || "Superior King Room"}`;
+  const paxDetailStr = hotel.pax || tripDefaults.pax || "2 Pax";
 
-  const hotelLines = [{ text: service.name || service.title || "Hotel details missing", bold: true }];
-  if (service.address) hotelLines.push({ text: service.address, size: 7.4, color: BRAND.muted });
+  // Card Header
+  drawRect(doc, startX, cursorY, totalWidth, 20, BRAND.headerBg, BRAND.border, 0.8);
+  doc.font("Helvetica-Bold").fontSize(9.5).fillColor(BRAND.text).text("Hotel", startX + 10, cursorY + 5);
+  cursorY += 20;
 
-  const checkInLines = [{ text: formatDateLabel(service.checkIn || service.checkInDate) }];
-  if (service.nights) checkInLines.push({ text: `${service.nights} Night${service.nights > 1 ? "s" : ""}`, size: 7.4, color: BRAND.muted });
+  // Card Body Background & Border
+  const bodyHeight = 122;
+  drawRect(doc, startX, cursorY, totalWidth, bodyHeight, BRAND.surface, BRAND.border, 0.8);
 
-  const checkOutLines = [{ text: formatDateLabel(service.checkOut || service.checkOutDate) }];
+  const innerX = startX + 10;
+  const innerW = totalWidth - 20;
 
-  const accommodationLines = [];
-  if (service.roomType || service.roomCount) {
-    accommodationLines.push({ text: `${service.roomCount || 1} x ${service.roomType || "Room"}` });
-  }
-  if (service.mealPlan) accommodationLines.push({ text: service.mealPlan, size: 7.6, color: BRAND.muted });
-  accommodationLines.push({ text: `CNF: ${confirmationNumber}`, bold: true, color: statusColor(status), size: 7.8 });
+  // Title, Rating, Address
+  doc.font("Helvetica-Bold").fontSize(9.5).fillColor(BRAND.text).text(hTitle, innerX, cursorY + 8, { width: innerW });
+  doc.font("Helvetica").fontSize(7.5).fillColor(BRAND.textMuted).text(hRating, innerX, cursorY + 21, { width: innerW });
+  doc.font("Helvetica").fontSize(7.5).fillColor(BRAND.textDark).text(hAddress, innerX, cursorY + 31, { width: innerW, height: 10, ellipsis: true });
 
-  return [
-    { lines: hotelLines },
-    { lines: checkInLines },
-    { lines: checkOutLines },
-    { lines: accommodationLines },
-  ];
-};
+  // Confirmation line
+  doc.save();
+  doc.moveTo(innerX, cursorY + 44).lineTo(innerX + innerW, cursorY + 44).lineWidth(0.5).strokeColor("#e2e8f0").stroke();
+  doc.restore();
 
-/** Generic columns for every non-hotel category: Date | Description | Confirmation No. | Status */
-const buildGenericRow = (service) => {
-  const confirmationNumber = resolveConfirmationNumber(service);
-  const status = resolveStatus(service, confirmationNumber);
+  doc.font("Helvetica-Bold").fontSize(8.5).fillColor(BRAND.blueConfirm).text(`Confirmation: ${cnfDisplay}`, innerX, cursorY + 49, { continued: true });
+  doc.font("Helvetica-BoldOblique").fontSize(8).fillColor(isHotelConfirmed ? BRAND.greenConfirmed : BRAND.danger).text(`  ( ${hStatLabel} )`);
 
-  const descriptionLines = [{ text: service.name || service.title || "Service details missing", bold: true }];
-  if (service.description) descriptionLines.push({ text: service.description, size: 7.4, color: BRAND.muted });
+  // Check-In & Check-Out Highlight Box
+  const boxY = cursorY + 63;
+  const boxH = 22;
+  const col1W = 60;
+  const col2W = (innerW / 2) - col1W;
 
-  return [
-    { lines: [{ text: formatDateLabel(service.date || service.travelDate) }] },
-    { lines: descriptionLines },
-    { lines: [{ text: confirmationNumber }] },
-    { lines: [{ text: status, bold: true, color: statusColor(status) }] },
-  ];
-};
+  // Check-In
+  drawRect(doc, innerX, boxY, col1W, boxH, BRAND.yellowBg, BRAND.border, 0.7);
+  doc.font("Helvetica-Bold").fontSize(8).fillColor(BRAND.text).text("Check-in", innerX, boxY + 6, { width: col1W, align: "center" });
 
-const drawServicesSection = (doc, pageCtx, y, services = []) => {
-  const groups = groupServicesByType(services);
-  let cursorY = y;
+  drawRect(doc, innerX + col1W, boxY, col2W, boxH, BRAND.surface, BRAND.border, 0.7);
+  doc.font("Helvetica-Bold").fontSize(7.8).fillColor(BRAND.text).text(checkInDate, innerX + col1W + 6, boxY + 6, { continued: true });
+  doc.font("Helvetica-Oblique").fontSize(7).fillColor(BRAND.textMuted).text(` at ${checkInTime}`);
 
-  groups.forEach(({ type, items }) => {
-    const label = CATEGORY_LABELS[type] || `${capitalize(type)}s`;
+  // Check-Out
+  const col3X = innerX + (innerW / 2);
+  drawRect(doc, col3X, boxY, col1W, boxH, BRAND.yellowBg, BRAND.border, 0.7);
+  doc.font("Helvetica-Bold").fontSize(8).fillColor(BRAND.text).text("Check-out", col3X, boxY + 6, { width: col1W, align: "center" });
 
-    cursorY = pageCtx.ensureSpace(cursorY, 22);
-    cursorY = drawSectionHeader(doc, cursorY, label);
+  drawRect(doc, col3X + col1W, boxY, col2W, boxH, BRAND.surface, BRAND.border, 0.7);
+  doc.font("Helvetica-Bold").fontSize(7.8).fillColor(BRAND.text).text(`${checkOutDate} (${nights}N)`, col3X + col1W + 6, boxY + 6, { continued: true });
+  doc.font("Helvetica-BoldOblique").fontSize(7).fillColor(isHotelConfirmed ? BRAND.greenConfirmed : BRAND.danger).text(` (${hStatLabel})`);
 
-    if (type === "hotel") {
-      const headers = [
-        { label: "Hotel", width: 150 },
-        { label: "Check-In", width: 90 },
-        { label: "Check-Out", width: 90 },
-        { label: "Accommodation", width: 165 },
-      ];
-      const rows = items.map(buildHotelRow);
-      cursorY = drawGridTable(doc, pageCtx, { y: cursorY, headers, rows });
-    } else {
-      const headers = [
-        { label: "Date", width: 85 },
-        { label: "Description", width: 220 },
-        { label: "Confirmation No.", width: 105 },
-        { label: "Status", width: 85 },
-      ];
-      const rows = items.map(buildGenericRow);
-      cursorY = drawGridTable(doc, pageCtx, { y: cursorY, headers, rows });
-    }
+  // Night and Meals & Room Type Sub-Table
+  const subY = boxY + boxH + 6;
+  const subH1 = 14;
+  const subH2 = 17;
+  const subCol1W = innerW * 0.58;
+  const subCol2W = innerW * 0.42;
 
-    cursorY += 12; // gap before next category
-  });
+  // Sub-Header
+  drawRect(doc, innerX, subY, subCol1W, subH1, BRAND.headerBg, BRAND.border, 0.7);
+  doc.font("Helvetica-Bold").fontSize(7.5).fillColor(BRAND.text).text("Night and Meals", innerX + 6, subY + 3);
 
-  return cursorY;
+  drawRect(doc, innerX + subCol1W, subY, subCol2W, subH1, BRAND.headerBg, BRAND.border, 0.7);
+  doc.font("Helvetica-Bold").fontSize(7.5).fillColor(BRAND.text).text("Room Type", innerX + subCol1W + 6, subY + 3);
+
+  // Sub-Row
+  drawRect(doc, innerX, subY + subH1, subCol1W, subH2, BRAND.surface, BRAND.border, 0.7);
+  doc.font("Helvetica").fontSize(7.2).fillColor(BRAND.text).text(nightMealStr, innerX + 6, subY + subH1 + 4, { width: subCol1W - 12 });
+
+  drawRect(doc, innerX + subCol1W, subY + subH1, subCol2W, subH2, BRAND.surface, BRAND.border, 0.7);
+  doc.font("Helvetica-Bold").fontSize(7.2).fillColor(BRAND.text).text(roomTypeStr, innerX + subCol1W + 6, subY + subH1 + 4, { width: subCol2W - 12, continued: true });
+  doc.font("Helvetica").fontSize(6.8).fillColor(BRAND.textMuted).text(`  •  ${paxDetailStr}`);
+
+  cursorY += bodyHeight;
+  return cursorY + 12;
 };
 
 /* ============================================================================
- * DYNAMIC TERMS AND CONDITIONS (spec item #5)
- *
- * Accepts:
- *  - an array of plain strings           -> rendered as bullets
- *  - an array of { text, bold, heading } -> bold/heading honoured per item
- *  - an HTML-ish string                  -> <li> become bullets, <b>/<strong>
- *                                            become bold runs, other tags
- *                                            are stripped
+ * 3. TRANSFER / ACTIVITY / SIGHTSEEING CARDS
  * ==========================================================================*/
 
-const decodeEntities = (str = "") =>
-  str
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&amp;/gi, "&")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;/gi, "'");
+const drawNonHotelCard = (doc, pageCtx, y, s, tripDefaults) => {
+  const cardHeight = 136;
+  let cursorY = pageCtx.ensureSpace(y, cardHeight);
 
-/** Splits a chunk of text/HTML into { text, bold } runs on <b>/<strong>. */
-const splitBoldRuns = (fragment = "") => {
-  const runs = [];
-  const regex = /<(b|strong)>(.*?)<\/\1>/gis;
-  let lastIndex = 0;
-  let match;
+  const startX = PAGE.bodyX;
+  const totalWidth = PAGE.bodyWidth;
 
-  while ((match = regex.exec(fragment)) !== null) {
-    if (match.index > lastIndex) {
-      runs.push({ text: fragment.slice(lastIndex, match.index), bold: false });
+  const sTypeRaw = String(s.type || s.category || "Service").toLowerCase();
+  const sTitle = s.title || s.name || s.serviceName || `${tripDefaults.destination || "Service"} Service`;
+  const sDesc = s.description || s.details || s.notes || "";
+
+  const isTransport = sTypeRaw.includes("transfer") || sTypeRaw.includes("transport") || sTypeRaw.includes("cab") || sTypeRaw.includes("car");
+
+  // Format Transport Specifics (Usage/Trip Type, Passenger & Luggage Capacity)
+  const rawUsage = String(s.usageType || s.transferType || s.tripType || s.serviceMode || s.direction || "").trim();
+  let usageLabel = "";
+  if (rawUsage) {
+    const lowUsage = rawUsage.toLowerCase();
+    if (lowUsage.includes("point") || lowUsage.includes("oneway") || lowUsage.includes("one-way") || lowUsage.includes("one way")) {
+      usageLabel = "One Way (Point to Point)";
+    } else if (lowUsage.includes("round")) {
+      usageLabel = "Round Trip";
+    } else if (lowUsage.includes("full") || lowUsage.includes("day")) {
+      usageLabel = "Full Day Disposal";
+    } else if (lowUsage.includes("half")) {
+      usageLabel = "Half Day Disposal";
+    } else if (lowUsage.includes("pickup") || lowUsage.includes("pick-up")) {
+      usageLabel = "Airport / Station Pickup";
+    } else if (lowUsage.includes("drop")) {
+      usageLabel = "Airport / Station Drop";
+    } else {
+      usageLabel = rawUsage;
     }
-    runs.push({ text: match[2], bold: true });
-    lastIndex = regex.lastIndex;
-  }
-  if (lastIndex < fragment.length) {
-    runs.push({ text: fragment.slice(lastIndex), bold: false });
-  }
-
-  return runs
-    .map((r) => ({ ...r, text: decodeEntities(r.text.replace(/<[^>]+>/g, "")).trim() }))
-    .filter((r) => r.text.length > 0);
-};
-
-const normalizeTerms = (input) => {
-  // Array of strings or objects. A string entry may itself contain several
-  // <li> tags (e.g. pasted from a rich-text editor), so it is expanded into
-  // one bullet per <li> rather than being treated as a single bullet.
-  if (Array.isArray(input) && input.length) {
-    return input.flatMap((item) => {
-      if (typeof item === "string") {
-        const listItems = [...item.matchAll(/<li[^>]*>(.*?)<\/li>/gis)].map((m) => m[1]);
-        if (listItems.length) {
-          return listItems.map((li) => ({ type: "bullet", runs: splitBoldRuns(li) }));
-        }
-        return [{ type: "bullet", runs: splitBoldRuns(item) }];
-      }
-      const text = item.text || item.label || "";
-      return [
-        {
-          type: item.heading ? "heading" : "bullet",
-          runs: [{ text: decodeEntities(String(text)), bold: Boolean(item.bold || item.heading) }],
-        },
-      ];
-    });
-  }
-
-  // HTML / plain string.
-  if (typeof input === "string" && input.trim()) {
-    const listItems = [...input.matchAll(/<li[^>]*>(.*?)<\/li>/gis)].map((m) => m[1]);
-    if (listItems.length) {
-      return listItems.map((item) => ({ type: "bullet", runs: splitBoldRuns(item) }));
-    }
-
-    const paragraphs = input
-      .split(/<\/p>|<br\s*\/?>|\n+/i)
-      .map((p) => p.trim())
-      .filter(Boolean);
-    if (paragraphs.length) {
-      return paragraphs.map((p) => ({ type: "paragraph", runs: splitBoldRuns(p) }));
+  } else {
+    const titleLow = String(sTitle || "").toLowerCase();
+    if (titleLow.includes("round trip") || titleLow.includes("round-trip")) {
+      usageLabel = "Round Trip";
+    } else if (titleLow.includes("disposal") || titleLow.includes("full day")) {
+      usageLabel = "Full Day Disposal";
+    } else if (titleLow.includes("half day")) {
+      usageLabel = "Half Day Disposal";
+    } else {
+      usageLabel = "One Way Transfer";
     }
   }
 
-  // Fallback default terms when none were supplied by the database.
-  return [
-    "All bookings are subject to availability at the time of confirmation.",
-    "Check-in and check-out times are as per the respective service provider's policy.",
-    "Cancellations and amendments are governed by the applicable supplier's terms.",
-    "Holiday Circuit acts as a facilitator and is not liable for service-provider delays.",
-  ].map((text) => ({ type: "bullet", runs: [{ text, bold: false }] }));
-};
+  const vType = s.vehicleType || s.carType || s.vehicle || (isTransport ? "Private AC Vehicle" : "Standard Vehicle");
+  const vCount = s.vehicleCount || s.numberOfVehicles || s.quantity || 1;
+  const vehicleTitle = `${vCount > 1 ? `${vCount} x ` : ''}${vType}`;
 
-const drawTermsSection = (doc, pageCtx, y, termsInput) => {
-  const terms = normalizeTerms(termsInput);
-  let cursorY = pageCtx.ensureSpace(y, 22);
-  cursorY = drawSectionHeader(doc, cursorY, "Terms and Conditions");
-  cursorY += 10;
+  let passCap = s.passengerCapacity || s.maxPassengers || s.maxPax || s.seatingCapacity || s.seats || s.paxCapacity || null;
+  let luggCap = s.luggageCapacity || s.maxLuggage || s.luggage || s.baggageCapacity || s.bags || null;
 
-  const textX = PAGE.bodyX + 4;
-  const textWidth = PAGE.bodyWidth - 8;
-
-  terms.forEach((term) => {
-    const bulletIndent = term.type === "bullet" ? 12 : 0;
-    const startX = textX + bulletIndent;
-    const startWidth = textWidth - bulletIndent;
-
-    cursorY = pageCtx.ensureSpace(cursorY, 12);
-
-    if (term.type === "bullet") {
-      doc.font("Helvetica").fontSize(8.4).fillColor(BRAND.text).text("•", textX, cursorY, { width: 10 });
+  if (!passCap && isTransport) {
+    const vtLow = String(vType).toLowerCase();
+    if (vtLow.includes("sedan") || vtLow.includes("etios") || vtLow.includes("dzire") || vtLow.includes("car")) {
+      passCap = "Max 4 Pax";
+    } else if (vtLow.includes("innova") || vtLow.includes("suv") || vtLow.includes("ertiga") || vtLow.includes("crysta")) {
+      passCap = "Max 6 Pax";
+    } else if (vtLow.includes("tempo") || vtLow.includes("van") || vtLow.includes("minivan")) {
+      passCap = "Max 12 Pax";
+    } else if (vtLow.includes("coach") || vtLow.includes("bus")) {
+      passCap = "Max 25 Pax";
+    } else {
+      passCap = "Max 4 Pax";
     }
+  } else if (passCap && !String(passCap).toLowerCase().includes("pax")) {
+    passCap = `Max ${passCap} Pax`;
+  }
 
-    doc.fontSize(term.type === "heading" ? 9.5 : 8.4).fillColor(BRAND.text);
-    term.runs.forEach((run, idx) => {
-      const isLast = idx === term.runs.length - 1;
-      doc.font(run.bold || term.type === "heading" ? "Helvetica-Bold" : "Helvetica");
-      if (idx === 0) {
-        doc.text(`${run.text} `, startX, cursorY, { width: startWidth, continued: !isLast, lineGap: 2 });
-      } else {
-        doc.text(`${run.text} `, { continued: !isLast, lineGap: 2 });
-      }
-    });
+  if (!luggCap && isTransport) {
+    const vtLow = String(vType).toLowerCase();
+    if (vtLow.includes("sedan") || vtLow.includes("etios") || vtLow.includes("dzire") || vtLow.includes("car")) {
+      luggCap = "2 Bags";
+    } else if (vtLow.includes("innova") || vtLow.includes("suv") || vtLow.includes("ertiga") || vtLow.includes("crysta")) {
+      luggCap = "4 Bags";
+    } else if (vtLow.includes("tempo") || vtLow.includes("van") || vtLow.includes("minivan")) {
+      luggCap = "8 Bags";
+    } else if (vtLow.includes("coach") || vtLow.includes("bus")) {
+      luggCap = "20 Bags";
+    } else {
+      luggCap = "2-3 Bags";
+    }
+  } else if (luggCap && !String(luggCap).toLowerCase().includes("bag")) {
+    luggCap = `${luggCap} Bags`;
+  }
 
-    cursorY = doc.y + 4;
-  });
+  let sectionTitle = "Service";
+  let badge1Label = "Service Date";
+  let badge2Label = "Service Type";
+  let badge2Value = s.transferType || s.vehicleType || s.category || "Standard Service";
+  let subCol1Title = "Service Details";
+  let subCol2Title = "Pax / Vehicle Details";
 
-  return cursorY;
+  if (isTransport) {
+    sectionTitle = "Transfer";
+    badge1Label = "Transfer Date";
+    badge2Label = "Vehicle & Trip";
+    badge2Value = `${vType} (${usageLabel})`;
+    subCol1Title = "Transfer Description & Route";
+    subCol2Title = "Vehicle & Capacity Details";
+  } else if (sTypeRaw.includes("activity")) {
+    sectionTitle = "Activity";
+    badge1Label = "Activity Date";
+    badge2Label = "Timing";
+    badge2Value = s.timing || s.duration || s.slot || "As per schedule";
+    subCol1Title = "Activity Description";
+    subCol2Title = "Pax Details";
+  } else if (sTypeRaw.includes("sightseeing")) {
+    sectionTitle = "Sightseeing";
+    badge1Label = "Tour Date";
+    badge2Label = "Tour Type";
+    badge2Value = s.tourType || "Sightseeing Tour";
+    subCol1Title = "Sightseeing Description";
+    subCol2Title = "Pax Details";
+  } else if (sTypeRaw.includes("flight")) {
+    sectionTitle = "Flight";
+    badge1Label = "Flight Date";
+    badge2Label = "Sector";
+    badge2Value = s.flightNumber || s.sector || "Flight Service";
+    subCol1Title = "Flight Details";
+    subCol2Title = "Pax Details";
+  }
+
+  const realCnf = s.confirmationNumber || s.cnfNumber || s.supplierConfirmation || s.voucherNumber || (s.confirmation && !s.confirmation.toLowerCase().includes("pending") ? s.confirmation : null);
+  const isConfirmed = Boolean(
+    realCnf ||
+    (s.status && String(s.status).toLowerCase() === "confirmed") ||
+    (s.confirmation && !String(s.confirmation).toLowerCase().includes("pending")) ||
+    s.isVoucherGenerated
+  );
+  const statLabel = isConfirmed ? "Confirmed" : "Pending";
+  const cnfDisplay = realCnf ? String(realCnf).trim() : (isConfirmed ? "Confirmed" : "Pending");
+
+  const sDateFormatted = s.serviceDate ? formatOrdinalDate(s.serviceDate) : (s.date ? formatOrdinalDate(s.date) : tripDefaults.startDateOrdinal);
+  const sTimeFormatted = s.time || s.pickupTime || "10:00 hrs";
+  const sPaxVehicleStr = s.vehicleType ? `${s.vehicleType} • ${tripDefaults.pax || "2 Pax"}` : (s.pax || tripDefaults.pax || "2 Pax");
+  const sDetailsStr = `${sTitle} - ${statLabel === "Confirmed" ? "Confirmed Service" : "Service"}`;
+
+  // Card Header
+  drawRect(doc, startX, cursorY, totalWidth, 20, BRAND.headerBg, BRAND.border, 0.8);
+  doc.font("Helvetica-Bold").fontSize(9.5).fillColor(BRAND.text).text(sectionTitle, startX + 10, cursorY + 5);
+  cursorY += 20;
+
+  // Card Body Background & Border (increased height for transport if details are richer)
+  const bodyHeight = isTransport ? 126 : 116;
+  drawRect(doc, startX, cursorY, totalWidth, bodyHeight, BRAND.surface, BRAND.border, 0.8);
+
+  const innerX = startX + 10;
+  const innerW = totalWidth - 20;
+
+  // Title, Subtitle, Desc
+  doc.font("Helvetica-Bold").fontSize(9.5).fillColor(BRAND.text).text(sTitle, innerX, cursorY + 8, { width: innerW });
+  doc.font("Helvetica").fontSize(7.5).fillColor(BRAND.textMuted).text(`${sectionTitle} • ${tripDefaults.destination || "Destination"}`, innerX, cursorY + 21, { width: innerW });
+  if (sDesc) {
+    doc.font("Helvetica").fontSize(7.2).fillColor(BRAND.textDark).text(sDesc, innerX, cursorY + 31, { width: innerW, height: 10, ellipsis: true });
+  }
+
+  // Confirmation line
+  doc.save();
+  doc.moveTo(innerX, cursorY + 42).lineTo(innerX + innerW, cursorY + 42).lineWidth(0.5).strokeColor("#e2e8f0").stroke();
+  doc.restore();
+
+  doc.font("Helvetica-Bold").fontSize(8.5).fillColor(BRAND.blueConfirm).text(`Confirmation: ${cnfDisplay}`, innerX, cursorY + 46, { continued: true });
+  doc.font("Helvetica-BoldOblique").fontSize(8).fillColor(isConfirmed ? BRAND.greenConfirmed : BRAND.danger).text(`  ( ${statLabel} )`);
+
+  // Service Date & Details Highlight Box
+  const boxY = cursorY + 59;
+  const boxH = 22;
+  const col1W = 65;
+  const col2W = (innerW / 2) - col1W;
+
+  // Badge 1
+  drawRect(doc, innerX, boxY, col1W, boxH, BRAND.yellowBg, BRAND.border, 0.7);
+  doc.font("Helvetica-Bold").fontSize(7.5).fillColor(BRAND.text).text(badge1Label, innerX, boxY + 6, { width: col1W, align: "center" });
+
+  drawRect(doc, innerX + col1W, boxY, col2W, boxH, BRAND.surface, BRAND.border, 0.7);
+  doc.font("Helvetica-Bold").fontSize(7.8).fillColor(BRAND.text).text(sDateFormatted, innerX + col1W + 6, boxY + 6, { continued: true });
+  doc.font("Helvetica-Oblique").fontSize(7).fillColor(BRAND.textMuted).text(` at ${sTimeFormatted}`);
+
+  // Badge 2
+  const col3X = innerX + (innerW / 2);
+  drawRect(doc, col3X, boxY, col1W, boxH, BRAND.yellowBg, BRAND.border, 0.7);
+  doc.font("Helvetica-Bold").fontSize(7.5).fillColor(BRAND.text).text(badge2Label, col3X, boxY + 6, { width: col1W, align: "center" });
+
+  drawRect(doc, col3X + col1W, boxY, col2W, boxH, BRAND.surface, BRAND.border, 0.7);
+  doc.font("Helvetica-Bold").fontSize(7.8).fillColor(BRAND.text).text(badge2Value, col3X + col1W + 6, boxY + 6, { continued: true });
+  doc.font("Helvetica-BoldOblique").fontSize(7).fillColor(isConfirmed ? BRAND.greenConfirmed : BRAND.danger).text(` (${statLabel})`);
+
+  // Sub-Table
+  const subY = boxY + boxH + 6;
+  const subH1 = 14;
+  const subH2 = isTransport ? 28 : 17;
+  const subCol1W = innerW * 0.58;
+  const subCol2W = innerW * 0.42;
+
+  // Sub-Header
+  drawRect(doc, innerX, subY, subCol1W, subH1, BRAND.headerBg, BRAND.border, 0.7);
+  doc.font("Helvetica-Bold").fontSize(7.5).fillColor(BRAND.text).text(subCol1Title, innerX + 6, subY + 3);
+
+  drawRect(doc, innerX + subCol1W, subY, subCol2W, subH1, BRAND.headerBg, BRAND.border, 0.7);
+  doc.font("Helvetica-Bold").fontSize(7.5).fillColor(BRAND.text).text(subCol2Title, innerX + subCol1W + 6, subY + 3);
+
+  // Sub-Row
+  drawRect(doc, innerX, subY + subH1, subCol1W, subH2, BRAND.surface, BRAND.border, 0.7);
+  if (isTransport) {
+    doc.font("Helvetica-Bold").fontSize(7.2).fillColor(BRAND.text).text(sDetailsStr, innerX + 6, subY + subH1 + 4, { width: subCol1W - 12, height: 10, ellipsis: true });
+    doc.font("Helvetica-Bold").fontSize(6.8).fillColor("#1e40af").text(`${usageLabel}`, innerX + 6, subY + subH1 + 15, { continued: Boolean(s.pickupLocation || s.dropLocation) });
+    if (s.pickupLocation || s.dropLocation) {
+      doc.font("Helvetica").fontSize(6.8).fillColor(BRAND.textDark).text(`  •  ${s.pickupLocation || 'Pickup'} ➔ ${s.dropLocation || 'Drop'}`);
+    }
+  } else {
+    doc.font("Helvetica").fontSize(7.2).fillColor(BRAND.text).text(sDetailsStr, innerX + 6, subY + subH1 + 4, { width: subCol1W - 12, height: 10, ellipsis: true });
+  }
+
+  drawRect(doc, innerX + subCol1W, subY + subH1, subCol2W, subH2, BRAND.surface, BRAND.border, 0.7);
+  if (isTransport) {
+    doc.font("Helvetica-Bold").fontSize(7.2).fillColor(BRAND.text).text(vehicleTitle, innerX + subCol1W + 6, subY + subH1 + 3);
+    doc.font("Helvetica").fontSize(6.8).fillColor(BRAND.textDark).text(`Pax: ${passCap}  |  Luggage: ${luggCap}`, innerX + subCol1W + 6, subY + subH1 + 14);
+  } else {
+    doc.font("Helvetica-Bold").fontSize(7.2).fillColor(BRAND.text).text(sPaxVehicleStr, innerX + subCol1W + 6, subY + subH1 + 4, { width: subCol2W - 12 });
+  }
+
+  cursorY += bodyHeight;
+  return cursorY + 12;
 };
 
 /* ============================================================================
- * HELPLINE TABLE (spec item #6)
+ * 3.5. TERMS & CONDITIONS TABLE
+ * ==========================================================================*/
+
+const drawTermsAndConditionsTable = (doc, pageCtx, y, terms = []) => {
+  const rawTerms = Array.isArray(terms)
+    ? terms.filter((t) => typeof t === "string" && t.trim().length > 0)
+    : typeof terms === "string"
+    ? terms.split("\n").map((t) => t.trim()).filter((t) => t.length > 0)
+    : [];
+
+  if (!rawTerms.length) return y;
+
+  const startX = PAGE.bodyX;
+  const totalWidth = PAGE.bodyWidth;
+
+  let cursorY = pageCtx.ensureSpace(y, 40);
+
+  // Header
+  drawRect(doc, startX, cursorY, totalWidth, 18, BRAND.headerBg, BRAND.border, 0.8);
+  doc.font("Helvetica-Bold").fontSize(8.5).fillColor(BRAND.text).text("Terms & Conditions", startX + 8, cursorY + 4.5);
+  cursorY += 18;
+
+  // Items
+  rawTerms.forEach((item, idx) => {
+    const text = `${idx + 1}. ${item}`;
+    doc.font("Helvetica").fontSize(7.2);
+    const itemHeight = Math.max(16, doc.heightOfString(text, { width: totalWidth - 16, lineGap: 1.5 }) + 6);
+    cursorY = pageCtx.ensureSpace(cursorY, itemHeight);
+
+    drawRect(doc, startX, cursorY, totalWidth, itemHeight, BRAND.surface, BRAND.border, 0.5);
+    doc.font("Helvetica").fontSize(7.2).fillColor(BRAND.textDark).text(text, startX + 8, cursorY + 3.5, {
+      width: totalWidth - 16,
+      lineGap: 1.5,
+    });
+    cursorY += itemHeight;
+  });
+
+  return cursorY + 8;
+};
+
+/* ============================================================================
+ * 4. HELPLINE TABLE
  * ==========================================================================*/
 
 const drawHelplineTable = (doc, pageCtx, y, helpline = {}) => {
-  let cursorY = pageCtx.ensureSpace(y, 22);
-  cursorY = drawSectionHeader(doc, cursorY, "Helpline");
+  let cursorY = pageCtx.ensureSpace(y, 44);
 
-  const headers = [
-    { label: "Company Name", width: 195, align: "left" },
-    { label: "Timings", width: 150, align: "center" },
-    { label: "Phone Number", width: 150, align: "right" },
-  ];
+  const startX = PAGE.bodyX;
+  const totalWidth = PAGE.bodyWidth;
 
-  const rows = [
-    [
-      { lines: [{ text: helpline.companyName || BRAND.name, bold: true }] },
-      { lines: [{ text: helpline.timings || "24x7 Operational", align: "center" }] },
-      { lines: [{ text: helpline.phone || BRAND.phone, align: "right", bold: true, color: BRAND.orange }] },
-    ],
-  ];
+  // Header
+  drawRect(doc, startX, cursorY, totalWidth, 18, BRAND.yellowBg, BRAND.border, 0.8);
+  doc.font("Helvetica-Bold").fontSize(9).fillColor(BRAND.text).text("Helpline", startX, cursorY + 4.5, {
+    width: totalWidth,
+    align: "center",
+  });
+  cursorY += 18;
 
-  return drawGridTable(doc, pageCtx, { y: cursorY, headers, rows });
+  // Row
+  const rowH = 22;
+  const col1W = totalWidth * 0.34;
+  const col2W = totalWidth * 0.33;
+  const col3W = totalWidth * 0.33;
+
+  drawRect(doc, startX, cursorY, col1W, rowH, BRAND.surface, BRAND.border, 0.7);
+  doc.font("Helvetica-Bold").fontSize(8).fillColor(BRAND.text).text(String(helpline.companyName || BRAND.name), startX + 8, cursorY + 6);
+
+  drawRect(doc, startX + col1W, cursorY, col2W, rowH, BRAND.surface, BRAND.border, 0.7);
+  doc.font("Helvetica").fontSize(8).fillColor(BRAND.text).text("24x7 Operational", startX + col1W, cursorY + 6, {
+    width: col2W,
+    align: "center",
+  });
+
+  drawRect(doc, startX + col1W + col2W, cursorY, col3W, rowH, BRAND.surface, BRAND.border, 0.7);
+  doc.font("Helvetica-Bold").fontSize(8).fillColor(BRAND.text).text(String(helpline.phone || BRAND.phone), startX + col1W + col2W, cursorY + 6, {
+    width: col3W - 8,
+    align: "right",
+  });
+
+  return cursorY + rowH + 8;
 };
 
 /* ============================================================================
@@ -787,70 +889,129 @@ export const generateVoucherPdf = async (voucherDetails) => {
   const stream = fs.createWriteStream(absoluteFilePath);
   doc.pipe(stream);
 
-  const title = "Booking Confirmation Voucher";
   const branding = voucherDetails?.branding && typeof voucherDetails.branding === "object" ? voucherDetails.branding : {};
   const hasAgentBranding = Boolean(branding.name || branding.logo || branding.footer);
   const [agentLogo, agentFooterImage] = hasAgentBranding
     ? await Promise.all([loadBrandImage(branding.logo), loadBrandImage(branding.footer)])
     : [null, null];
 
-  // Page 1 frame/footer must be drawn manually - the `pageAdded` listener
-  // (registered below) only fires for page 2 onward.
   drawFrame(doc);
   drawFooter(doc, { branding, hasAgentBranding, agentFooterImage });
 
-  const pageCtx = createPageContext(doc, { branding, hasAgentBranding, agentFooterImage, title });
+  const pageCtx = createPageContext(doc, { branding, hasAgentBranding, agentFooterImage });
 
-  // 1. Header/Logo
+  // 1. Header (Agent Header or Brand Header)
   let y = hasAgentBranding ? drawAgentHeader(doc, branding, agentLogo) : drawHeader(doc, { logoPath: resolveBrandLogoPath() });
+  y += 10;
 
-  // 2. Title
-  y = drawMainTitle(doc, y + 8, title);
-  y += 16;
+  // Resolve Dates & Pax
+  const resolvedTravelDate = voucherDetails.startDate || voucherDetails.travelDate || voucherDetails.date || null;
+  const startObj = resolvedTravelDate ? new Date(resolvedTravelDate) : new Date();
+  const startDateOrdinal = !isNaN(startObj.getTime()) ? formatOrdinalDate(startObj) : "22nd Dec, 2026";
+  const startDateShort = !isNaN(startObj.getTime()) ? formatShortDate(startObj) : "22 Dec, 2026";
 
-  // 3. Introductory text
-  doc.font("Helvetica").fontSize(9).fillColor(BRAND.muted).text(
-    "We are pleased to confirm the below booking. Please find confirmation details",
+  const nights = Number(voucherDetails.nights || voucherDetails.numberOfNights || 4);
+  const days = Number(voucherDetails.days || voucherDetails.numberOfDays || (nights + 1));
+  const endObj = voucherDetails.endDate ? new Date(voucherDetails.endDate) : new Date(startObj.getTime() + nights * 86400000);
+  const endDateOrdinal = !isNaN(endObj.getTime()) ? formatOrdinalDate(endObj) : "26th Dec, 2026";
+
+  const tripDefaults = {
+    destination: voucherDetails.destination || "India",
+    duration: voucherDetails.duration || `${nights} Night${nights > 1 ? "s" : ""} / ${days} Days`,
+    nights,
+    days,
+    startDateOrdinal,
+    startDateShort,
+    endDateOrdinal,
+    pax: formatTravelerBreakup({
+      adults: voucherDetails.adults,
+      children: voucherDetails.children,
+      travelerSummary: voucherDetails.travelerSummary,
+      passengers: voucherDetails.passengers,
+    }),
+  };
+
+  const resolveTripId = (data) => {
+    const raw = data.tripId || data.queryId || data.query || data.voucherNumber || "";
+    const clean = String(raw).replace(/^#\s*/, "").trim();
+    if (!clean) return "QRY-1109";
+    if (clean.toUpperCase().startsWith("QRY-")) return clean.toUpperCase();
+    if (clean.toUpperCase().startsWith("VCH-")) return `QRY-${clean.replace(/^VCH-?/i, "")}`;
+    return `QRY-${clean}`;
+  };
+
+  // 2. Overview Table
+  y = drawOverviewTable(doc, pageCtx, y, {
+    tripId: resolveTripId(voucherDetails),
+    startDate: startDateOrdinal,
+    duration: tripDefaults.duration,
+    destination: tripDefaults.destination,
+    guestName: voucherDetails.guestName || voucherDetails.name || "Valued Client",
+    guestPhone: voucherDetails.guestPhone || voucherDetails.clientPhone || voucherDetails.phone || "-",
+    pax: tripDefaults.pax,
+    issuedBy: normalizeCompanyName(
+      voucherDetails.issuedBy || BRAND.name,
+      BRAND.name
+    ),
+  });
+
+  // 3. Services (Hotel Cards & Non-Hotel Cards)
+  const rawServices = Array.isArray(voucherDetails.services) && voucherDetails.services.length > 0 ? voucherDetails.services : [];
+  const hotelServices = rawServices.filter((s) => String(s.type || s.category || "").toLowerCase().includes("hotel"));
+  const nonHotelServices = rawServices.filter((s) => !String(s.type || s.category || "").toLowerCase().includes("hotel"));
+
+  const displayHotels = hotelServices.length > 0 ? hotelServices : (rawServices.length === 0 ? [
+    {
+      title: `${tripDefaults.destination} Heritage Resort & Spa`,
+      rating: "5 star",
+      address: `${tripDefaults.destination}, India`,
+      confirmation: "97739SG008801",
+      roomType: "Superior King Room",
+      mealPlan: "Breakfast",
+      numberOfRooms: 1,
+      nights,
+    }
+  ] : []);
+
+  displayHotels.forEach((h) => {
+    y = drawHotelCard(doc, pageCtx, y, h, tripDefaults);
+  });
+
+  nonHotelServices.forEach((s) => {
+    y = drawNonHotelCard(doc, pageCtx, y, s, tripDefaults);
+  });
+
+  // 3.5 Terms & Conditions Table
+  const defaultTermsList = [
+    "Welcome to Holiday Circuit. These Terms and Conditions govern your use of the Holiday Circuit services. When You Make a booking or reservation, you agree to be bound by these Terms.",
+    "Bookings and Reservations",
+    "Booking Process: When you make a booking or reservation through Holiday Circuit, you agree to provide accurate and complete information. Any discrepancies or errors in the information you provide may result in the cancellation of your booking.",
+    "Payment: Payments for bookings are due as specified during the booking process. Failure to make payments on time may result in the cancellation of your booking.",
+    "Cancellations and Refunds: Cancellation and refund policies vary depending on the type of booking. Please refer to the specific cancellation policy provided at the time of booking. Holiday Circuit reserves the right to charge cancellation fees as applicable.",
+    "Intellectual Property",
+    "Ownership: All content, trademarks, logos, and intellectual property on the Holiday Circuit website and app are the property of Holiday Circuit or its licensors. You may not use, reproduce, or distribute our content without prior written permission.",
+    "Changes to Terms and Conditions: We reserve the right to update and modify these Terms and Conditions at any time. Please review them periodically for changes. Your continued use of our services after any modifications indicates your acceptance of the updated Terms.",
+    "By booking with Holiday Circuit, you acknowledge that you have read, understood, and agreed to these Terms and Conditions.",
+  ];
+  let termsList = voucherDetails.termsAndConditions || voucherDetails.terms || [];
+  if (!termsList || !termsList.length) {
+    termsList = defaultTermsList;
+  }
+  y = drawTermsAndConditionsTable(doc, pageCtx, y, termsList);
+
+  // 4. Helpline Table
+  y = drawHelplineTable(doc, pageCtx, y, {
+    companyName: BRAND.name,
+    phone: BRAND.phone,
+  });
+
+  // 6. Generated timestamp note
+  doc.font("Helvetica").fontSize(7.5).fillColor("#64748b").text(
+    `Generated On - ${new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })} - ${new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false })} Hrs UTC`,
     PAGE.bodyX,
     y,
-    { width: PAGE.bodyWidth, align: "left" },
+    { width: PAGE.bodyWidth, align: "right" }
   );
-  y = doc.y + 14;
-
-  // 4. Trip Voucher table
-  const passengers = formatTravelerBreakup({
-    adults: voucherDetails.adults,
-    children: voucherDetails.children,
-    travelerSummary: voucherDetails.travelerSummary,
-    passengers: voucherDetails.passengers,
-  });
-
-  y = drawTripVoucherTable(doc, pageCtx, y, {
-    tripId: voucherDetails.tripId || voucherDetails.voucherNumber || voucherDetails.query || "-",
-    destination: voucherDetails.destination,
-    guestName: voucherDetails.guestName || voucherDetails.name,
-    pax: passengers,
-    startDate: voucherDetails.startDate || formatDateLabel(voucherDetails.travelDate || voucherDetails.date),
-    duration: voucherDetails.duration,
-    guestPhone: voucherDetails.guestPhone || voucherDetails.phone,
-  });
-  y += 14;
-
-  // 5. Services section, grouped by type
-  if (Array.isArray(voucherDetails.services) && voucherDetails.services.length) {
-    y = drawServicesSection(doc, pageCtx, y, voucherDetails.services);
-  }
-
-  // 6. Terms and conditions
-  y = drawTermsSection(doc, pageCtx, y, voucherDetails.termsAndConditions);
-  y += 14;
-
-  // 7. Helpline table
-  y = drawHelplineTable(doc, pageCtx, y, {
-    companyName: branding.name || BRAND.name,
-    timings: voucherDetails.helpline?.timings,
-    phone: branding.phone || voucherDetails.helpline?.phone || BRAND.phone,
-  });
 
   await finalizePdf(doc, stream);
 

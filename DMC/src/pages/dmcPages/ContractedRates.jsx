@@ -376,6 +376,12 @@ export default function ContractedRates() {
     fetchUploads();
   }, []);
 
+  useEffect(() => {
+    if (!uploads.some((upload) => upload.status === "processing")) return undefined;
+    const intervalId = setInterval(fetchUploads, 5000);
+    return () => clearInterval(intervalId);
+  }, [uploads]);
+
   const fetchUploads = async () => {
     try {
       const res = await API.get("/dmc/bulk-upload-history");
@@ -408,12 +414,12 @@ export default function ContractedRates() {
     if (!result.isConfirmed) return;
 
     try {
-      await API.delete(`/dmc/upload/${id}`);
+      const deleteResponse = await API.delete(`/dmc/upload/${id}`);
       setUploads((prev) => prev.filter((item) => item._id !== id));
 
       Swal.fire({
         title: "Deleted!",
-        text: "Upload has been removed successfully.",
+        text: deleteResponse.data?.message || "Upload has been removed successfully.",
         icon: "success",
         iconColor: "#107c41",
         timer: 1500,
@@ -535,7 +541,11 @@ export default function ContractedRates() {
         </div>
       </div>
 
-      <DmcBulkUploadModal isOpen={showBulkUploadModal} onClose={() => setShowBulkUploadModal(false)}/>
+      <DmcBulkUploadModal
+        isOpen={showBulkUploadModal}
+        onClose={() => setShowBulkUploadModal(false)}
+        onUploadStarted={fetchUploads}
+      />
 
       {/* EXCEL SHEET VIEWER MODAL */}
       <AnimatePresence>

@@ -386,7 +386,12 @@ export const TripTouristsModal = ({ isOpen, onClose, query, headerLeadTraveler, 
         if (savedData) {
           const parsed = JSON.parse(savedData);
           if (Array.isArray(parsed) && parsed.length > 0) {
-            setTourists(parsed);
+            const savedAddress = localStorage.getItem(`${queryKey}_address`) || "";
+            const withAddress = parsed.map((t, idx) => ({
+              ...t,
+              address: t.address !== undefined ? t.address : (idx === 0 ? (savedAddress || query?.clientAddress || query?.address || "") : ""),
+            }));
+            setTourists(withAddress);
             setExpandedIds([]);
             setActiveDropdownId(null);
             return;
@@ -402,6 +407,17 @@ export const TripTouristsModal = ({ isOpen, onClose, query, headerLeadTraveler, 
       const salutation = salutationMatch ? salutationMatch[1] : "Mr.";
       const name = leadFullName.replace(/^(Mr\.|Mrs\.|Ms\.|Master|Dr\.)\s*/i, "").trim() || "";
       const leadPhone = query?.phone || query?.mobileNumber || query?.contactNumber || query?.clientPhone || "";
+      let leadAddress = "";
+      try {
+        leadAddress = localStorage.getItem(`${queryKey}_address`) || "";
+        const cleanId = String(query?._id || query?.queryId || "").replace(/^#\s*/, "").trim();
+        if (!leadAddress && cleanId) {
+          leadAddress = localStorage.getItem(`trip_tourists_${cleanId}_address`) || "";
+        }
+      } catch (e) {}
+      if (!leadAddress) {
+        leadAddress = query?.clientAddress || query?.buyerAddress || query?.address || "";
+      }
 
       const initialId = 1;
       setTourists([
@@ -413,6 +429,7 @@ export const TripTouristsModal = ({ isOpen, onClose, query, headerLeadTraveler, 
           dob: "",
           age: "",
           nationality: "Indian",
+          address: leadAddress,
           phones: [
             {
               id: 101,
@@ -471,6 +488,7 @@ export const TripTouristsModal = ({ isOpen, onClose, query, headerLeadTraveler, 
       dob: "",
       age: "",
       nationality: "",
+      address: "",
       phones: [
         {
           id: Date.now() + 1,
@@ -565,6 +583,7 @@ export const TripTouristsModal = ({ isOpen, onClose, query, headerLeadTraveler, 
     const codeStr = phoneObj?.countryCode ? `+${phoneObj.countryCode.split("-")[0]}-` : "+91-";
     const formattedPhone = rawNum ? (rawNum.startsWith("+") ? rawNum : `${codeStr}${rawNum}`) : "";
     const primaryEmail = primary?.email ? primary.email.trim() : "";
+    const primaryAddress = primary?.address ? primary.address.trim() : "";
 
     // 1. Save locally for instant UI responsiveness & persistent reloads
     try {
@@ -584,6 +603,10 @@ export const TripTouristsModal = ({ isOpen, onClose, query, headerLeadTraveler, 
         localStorage.setItem(`${queryKey}_email`, primaryEmail);
         if (cleanId && cleanId !== rawId) localStorage.setItem(`trip_tourists_${cleanId}_email`, primaryEmail);
       }
+      if (primaryAddress) {
+        localStorage.setItem(`${queryKey}_address`, primaryAddress);
+        if (cleanId && cleanId !== rawId) localStorage.setItem(`trip_tourists_${cleanId}_address`, primaryAddress);
+      }
     } catch (e) {
       console.error("Failed to save tourists to localStorage", e);
     }
@@ -594,12 +617,20 @@ export const TripTouristsModal = ({ isOpen, onClose, query, headerLeadTraveler, 
         const payload = {
           clientName: fullName,
           leadTraveler: fullName,
+          name: fullName,
+          clientPhone: formattedPhone,
+          phone: formattedPhone,
+          clientEmail: primaryEmail,
+          email: primaryEmail,
+          clientAddress: primaryAddress,
+          address: primaryAddress,
           travelerDetails: tourists.map((t) => ({
             fullName: [t.salutation, t.name].filter(Boolean).join(" "),
             travelerType: t.type || "Adult",
             childAge: t.age ? Number(t.age) : null,
             nationality: t.nationality || "Indian",
-            phone: t.phones?.[0]?.number || "",
+            address: t.address || "",
+            phone: (t.phones?.find((p) => p.isPrimary)?.number || t.phones?.[0]?.number || "").trim(),
             email: t.email || "",
           })),
         };
@@ -817,7 +848,7 @@ export const TripTouristsModal = ({ isOpen, onClose, query, headerLeadTraveler, 
                         </div>
                       </div>
 
-                      {/* Row 2: Age, Nationality */}
+                      {/* Row 2: Age, Nationality, Address */}
                       <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
                         {/* Age */}
                         <div>
@@ -839,6 +870,18 @@ export const TripTouristsModal = ({ isOpen, onClose, query, headerLeadTraveler, 
                             value={tourist.nationality || ""}
                             onChange={(val) => handleUpdateTourist(tourist.id, "nationality", val)}
                             onOpenChange={(isOpen) => setActiveDropdownId(isOpen ? tourist.id : null)}
+                          />
+                        </div>
+
+                        {/* Address */}
+                        <div className="sm:col-span-2">
+                          <label className="text-xs font-bold text-slate-800 mb-1.5 block">Address</label>
+                          <input
+                            type="text"
+                            value={tourist.address || ""}
+                            onChange={(e) => handleUpdateTourist(tourist.id, "address", e.target.value)}
+                            placeholder="e.g. 123 MG Road, Connaught Place, New Delhi"
+                            className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-800 bg-white focus:outline-none focus:border-[#3E63DD] placeholder-slate-300 font-normal"
                           />
                         </div>
                       </div>

@@ -328,6 +328,21 @@ const travelerDetailSchema = new mongoose.Schema(
       max: 12,
       default: null,
     },
+    nationality: {
+      type: String,
+      default: "Indian",
+      trim: true,
+    },
+    phone: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    email: {
+      type: String,
+      default: "",
+      trim: true,
+    },
     documentType: {
       type: String,
       default: "Passport",
@@ -361,6 +376,36 @@ const travelQuerySchema = new mongoose.Schema(
 
    queryId: {
     type: String
+  },
+
+  clientName: {
+    type: String,
+    default: "",
+    trim: true,
+  },
+
+  name: {
+    type: String,
+    default: "",
+    trim: true,
+  },
+
+  leadTraveler: {
+    type: String,
+    default: "",
+    trim: true,
+  },
+
+  clientPhone: {
+    type: String,
+    default: "",
+    trim: true,
+  },
+
+  phone: {
+    type: String,
+    default: "",
+    trim: true,
   },
 
   destination: {

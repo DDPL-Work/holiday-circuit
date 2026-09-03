@@ -15,6 +15,7 @@ import Hotel from "../models/hotelDmc.model.js"
 import Transport from "../models/transferDmc.model.js"
 import Activity from "../models/activityDmc.model.js"
 import Sightseeing from "../models/sightseeingDmc.model.js"
+import { Worker } from "worker_threads";
 
 const allowedCurrencies = new Set(["USD", "INR", "AED", "EUR", "IDR", "THB", "SGD", "GBP", "MYR", "EGP"]);
 
@@ -759,6 +760,49 @@ const sanitizeCount = (val) => {
 
 export const bulkUpload = async (req, res) => {
   try {
+    if (!req.file) {
+      return res.status(400).json({ message: "Upload file is required" });
+    }
+
+    const requestedCategory = String(req.body.category || "hotel").toLowerCase().trim();
+    const fileName = req.file.originalname;
+    const ext = path.extname(fileName).toLowerCase();
+    if (![".xlsx", ".xls", ".csv"].includes(ext)) {
+      return res.status(400).json({ message: "Only Excel or CSV files are allowed" });
+    }
+
+    const uploadedBy = req.user?.name || req.user?.email || req.user?.id;
+    const upload = await UploadHistory.create({
+      fileName,
+      filePath: `uploads/${req.file.filename}`,
+      category: requestedCategory,
+      uploadedAuth: req.user.id,
+      uploadedBy,
+      records: 0,
+      blackoutDates: [],
+      status: "processing",
+      inventoryTracked: true,
+    });
+
+    const worker = new Worker(new URL("../workers/bulkUploadWorker.js", import.meta.url), {
+      workerData: {
+        filePath: req.file.path,
+        fileName,
+        requestedCategory,
+        ownerId: String(req.user.id),
+        uploadHistoryId: String(upload._id),
+      },
+    });
+    worker.on("error", (error) => console.error("Bulk upload worker startup error:", error));
+
+    return res.status(202).json({
+      message: "Upload received and is processing in the background.",
+      uploadId: upload._id,
+      status: "processing",
+      uploadedBy,
+    });
+
+    /* Legacy synchronous implementation retained temporarily for reference.
     let category = String(req.body.category || "hotel").toLowerCase().trim();
     const fileName = req.file.originalname;
 
@@ -858,6 +902,7 @@ export const bulkUpload = async (req, res) => {
       blackoutDatesImported: blackoutDates.length,
       uploadedBy,
     });
+    */
   } catch (error) {
     console.log("ACTUAL ERROR:", error);
 
@@ -871,6 +916,29 @@ export const bulkUpload = async (req, res) => {
       status: "failed",
     });
     res.status(500).json({ message: error.message, error: error.message });
+  }
+};
+
+export const getBulkUploadStatus = async (req, res) => {
+  try {
+    const filter = { _id: req.params.id };
+    if (req.user?.role !== "admin") filter.uploadedAuth = req.user?.id;
+
+    const upload = await UploadHistory.findOne(filter).lean();
+    if (!upload) return res.status(404).json({ message: "Upload job not found" });
+
+    return res.json({
+      success: true,
+      upload: {
+        _id: upload._id,
+        status: upload.status,
+        records: upload.records || 0,
+        category: upload.category,
+        uploadedBy: upload.uploadedBy,
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
   }
 };
 

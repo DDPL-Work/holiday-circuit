@@ -185,6 +185,8 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
   const [sendSubmittingId, setSendSubmittingId] = useState(null);
   const [sendSuccessMeta, setSendSuccessMeta] = useState(null);
   const [isSendModalOpen, setIsSendModalOpen] = useState(false);
+  const [isVoucherPreviewModalOpen, setIsVoucherPreviewModalOpen] = useState(false);
+  const [voucherPreviewHtml, setVoucherPreviewHtml] = useState("");
   const [sendQuoteId, setSendQuoteId] = useState(null);
   const [sendShareMode, setSendShareMode] = useState("QUOTATION");
   const [sendRecipientEmail, setSendRecipientEmail] = useState("");
@@ -1053,36 +1055,118 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
     const targetQuote = activeQuote || quotes[0] || {};
     const rawServices = Array.isArray(targetQuote?.services) && targetQuote.services.length > 0
       ? targetQuote.services
-      : Array.isArray(query?.services)
-      ? query.services
-      : [];
+      : (Array.isArray(query?.services) && query.services.length > 0
+          ? query.services
+          : (Array.isArray(query?.voucherServices) && query.voucherServices.length > 0
+              ? query.voucherServices
+              : []));
 
-    const nights = query?.nights || targetQuote?.nights || 4;
-    const days = query?.days || targetQuote?.days || (nights + 1);
+    const nights = Number(query?.nights || query?.numberOfNights || targetQuote?.nights || 4);
+    const days = Number(query?.days || query?.numberOfDays || targetQuote?.days || (nights + 1));
+
+    const targetQueryId = query?._id || query?.queryId || targetQuote?.queryId;
+    let savedTourists = null;
+    if (typeof window !== "undefined" && targetQueryId) {
+      try {
+        const rawSaved =
+          localStorage.getItem(`trip_tourists_${targetQueryId}`) ||
+          localStorage.getItem(`trip_tourists_${String(targetQueryId).replace(/^#\s*/, "")}`);
+        if (rawSaved) savedTourists = JSON.parse(rawSaved);
+      } catch (e) {}
+    }
+    const primaryTourist = Array.isArray(savedTourists) && savedTourists.length > 0
+      ? (savedTourists.find((t) => t.isFlagged) || savedTourists[0])
+      : null;
+    const touristName = primaryTourist ? [primaryTourist.salutation, primaryTourist.name].filter(Boolean).join(" ").trim() : "";
+    const primaryPhoneObj = primaryTourist?.phones?.find((p) => p.isPrimary) || primaryTourist?.phones?.[0];
+    const touristPhoneRaw = primaryPhoneObj?.number ? String(primaryPhoneObj.number).trim() : "";
+    const touristPhoneCode = primaryPhoneObj?.countryCode ? `+${primaryPhoneObj.countryCode.split("-")[0]}-` : "+91-";
+    const touristPhone = touristPhoneRaw ? (touristPhoneRaw.startsWith("+") ? touristPhoneRaw : `${touristPhoneCode}${touristPhoneRaw}`) : "";
+
+    const travelerDetailsPhone = query?.travelerDetails?.[0]?.phone || targetQuote?.travelerDetails?.[0]?.phone || "";
+    const travelerDetailsName = query?.travelerDetails?.[0]?.fullName || targetQuote?.travelerDetails?.[0]?.fullName || "";
+
+    const resolvedGuestName =
+      touristName ||
+      travelerDetailsName ||
+      query?.clientName ||
+      query?.leadTraveler ||
+      query?.name ||
+      query?.customerName ||
+      query?.guestName ||
+      targetQuote?.clientName ||
+      targetQuote?.guestName ||
+      "Valued Client";
+
+    const resolvedGuestPhone =
+      touristPhone ||
+      query?.clientPhone ||
+      query?.phone ||
+      query?.contactNumber ||
+      travelerDetailsPhone ||
+      targetQuote?.clientPhone ||
+      targetQuote?.phone ||
+      "-";
+
+    const cleanGuestPhone = (!resolvedGuestPhone || String(resolvedGuestPhone).includes("8287725270")) ? "-" : resolvedGuestPhone;
+
+    const queryNum = query?.queryId || query?.queryNumber || targetQuote?.queryId || "";
+    const cleanQueryNum = String(queryNum).replace(/^#\s*/, "").trim();
+    const formattedTripId = cleanQueryNum ? (cleanQueryNum.toUpperCase().startsWith("QRY-") ? cleanQueryNum.toUpperCase() : `QRY-${cleanQueryNum}`) : (query?._id || "4304633");
+    const formattedVoucherNo = query?.voucherNumber || targetQuote?.voucherNumber || (cleanQueryNum ? `VCH-${cleanQueryNum.replace(/^QRY-?/i, "")}` : "VCH-001");
+
+    const candidateTerms =
+      query?.voucherDetails?.termsAndConditions ||
+      query?.voucher?.termsAndConditions ||
+      query?.termsAndConditions ||
+      query?.voucherTerms ||
+      query?.voucherDetails?.terms ||
+      query?.voucher?.terms ||
+      targetQuote?.voucherDetails?.termsAndConditions ||
+      targetQuote?.voucher?.termsAndConditions ||
+      targetQuote?.termsAndConditions ||
+      targetQuote?.voucherTerms ||
+      targetQuote?.voucherDetails?.terms ||
+      targetQuote?.voucher?.terms ||
+      query?.activeQuote?.termsAndConditions ||
+      query?.quotation?.termsAndConditions ||
+      query?.terms ||
+      targetQuote?.terms;
 
     return {
       _id: query?._id,
-      query: query?.queryId || query?._id,
-      voucherNumber: query?.voucherNumber || `VCH-${query?.queryId || "001"}`,
-      name: query?.name || query?.clientName || query?.customerName || query?.guestName || "Valued Client",
-      guestName: query?.name || query?.clientName || query?.customerName || query?.guestName || "Valued Client",
-      destination: query?.destination || "Destination",
-      travelDate: query?.startDate || null,
-      passengers: `${(query?.numberOfAdults || 1)} Adults${query?.numberOfChildren > 0 ? `, ${query.numberOfChildren} Children` : ""}`,
-      duration: query?.duration || targetQuote?.duration || `${nights}N / ${days}D`,
-      adults: query?.numberOfAdults || 1,
-      children: query?.numberOfChildren || 0,
+      query: formattedTripId,
+      queryId: formattedTripId,
+      tripId: formattedTripId,
+      voucherNumber: formattedVoucherNo,
+      name: resolvedGuestName,
+      guestName: resolvedGuestName,
+      destination: query?.destination || targetQuote?.destination || "Destination",
+      travelDate: query?.startDate || targetQuote?.startDate || null,
+      startDate: query?.startDate || targetQuote?.startDate || null,
+      endDate: query?.endDate || targetQuote?.endDate || null,
+      passengers: `${(query?.numberOfAdults || targetQuote?.numberOfAdults || 2)} Adults${(query?.numberOfChildren || targetQuote?.numberOfChildren) > 0 ? `, ${query?.numberOfChildren || targetQuote?.numberOfChildren} Child${(query?.numberOfChildren || targetQuote?.numberOfChildren) > 1 ? "ren" : ""}` : ""}`,
+      duration: query?.duration || targetQuote?.duration || `${nights} Night${nights > 1 ? "s" : ""} / ${days} Days`,
+      adults: query?.numberOfAdults || targetQuote?.numberOfAdults || 2,
+      children: query?.numberOfChildren || targetQuote?.numberOfChildren || 0,
+      nights,
+      days,
       services: rawServices.map((s) => ({
-        type: s.type || "service",
-        title: s.title || s.name || s.description || "Service details",
-        name: s.title || s.name || s.description || "Service details",
-        status: s.confirmationNumber || s.status ? "Confirmed" : "Pending",
-        confirmation: s.confirmationNumber || s.status || "Pending",
+        ...s,
+        type: s.type || s.category || "service",
+        title: s.title || s.name || s.hotelName || s.serviceName || s.description || "Service details",
+        name: s.title || s.name || s.hotelName || s.serviceName || s.description || "Service details",
       })),
+      clientPhone: cleanGuestPhone,
+      guestPhone: cleanGuestPhone,
+      phone: cleanGuestPhone,
+      issuedBy: query?.voucherDetails?.issuedBy || query?.issuedBy || "Holiday Circuit",
       agencyPhone: currentUser?.phone || "+91 8851346665",
       agencyEmail: currentUser?.email || "ops@holidaycircuit.com",
-      agencyAddress: currentUser?.companyAddress || currentUser?.address || "2nd Floor, 632 Block B1, Janakpuri, New Delhi - 110058",
+      agencyAddress: currentUser?.companyAddress || currentUser?.address || "KG 3/69, Ground Floor, Vikas Puri, New Delhi, Near UK Nursing Home, New Delhi, Delhi, India - 110018",
       voucherFooterImage: currentUser?.voucherFooterImage || currentUser?.footerBanner || currentUser?.pdfFooterImage || "",
+      termsAndConditions: candidateTerms || [],
+      terms: candidateTerms || [],
     };
   };
 
@@ -1092,16 +1176,23 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
       const targetQuote = activeQuote || quotes[0] || {};
       const agentBranding = getSavedAgentBranding({ quote: targetQuote, user: currentUser });
       const htmlContent = buildVoucherHtml(vData, "with", agentBranding);
+
       const win = window.open("", "_blank");
       if (win && win.document) {
+        win.document.open();
         win.document.write(htmlContent);
         win.document.close();
       } else {
-        handleOpenSendModal(activeQuote || quotes[0], "VOUCHER");
+        const blob = new Blob(["\ufeff", htmlContent], { type: "text/html" });
+        const url = URL.createObjectURL(blob);
+        const fallbackWin = window.open(url, "_blank");
+        if (!fallbackWin) {
+          toast.error("Please allow popups in your browser to view the voucher.");
+        }
       }
     } catch (err) {
       console.error("Voucher preview error:", err);
-      handleOpenSendModal(activeQuote || quotes[0], "VOUCHER");
+      toast.error("Failed to generate voucher preview.");
     }
   };
 
@@ -1135,6 +1226,29 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
       mainElement.scrollTo({ top: 0, left: 0, behavior: "auto" });
     }
     window.scrollTo(0, 0);
+
+    const fetchAdminVoucherTerms = async () => {
+      try {
+        let res = null;
+        try {
+          res = await API.get("/admin/terms");
+        } catch (e) {
+          res = await API.get("/agent/terms");
+        }
+        const list = Array.isArray(res?.data)
+          ? res.data
+          : Array.isArray(res?.data?.data)
+          ? res.data.data
+          : [];
+        const matched = list.find((t) =>
+          String(t?.name || "").toLowerCase().includes("voucher")
+        ) || list[0];
+        if (matched?.content) {
+          localStorage.setItem("voucher_admin_terms_cached", JSON.stringify(matched.content));
+        }
+      } catch (e) {}
+    };
+    fetchAdminVoucherTerms();
   }, []);
 
   useEffect(() => {
@@ -4685,9 +4799,55 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                           <p className="text-xs font-medium text-slate-600 mt-0.5 font-sans whitespace-nowrap">PAN Card / Passport copy</p>
                         </div>
                       </div>
-                      <span className="shrink-0 rounded-lg bg-amber-100 border border-amber-200 px-2.5 py-0.5 text-[10px] font-bold text-amber-800 shadow-2xs font-sans whitespace-nowrap">
-                        Pending Upload
-                      </span>
+                      {(() => {
+                        const docVerificationStatus = String(query?.travelerDocumentVerification?.status || "").trim();
+                        const travelers = Array.isArray(query?.travelerDetails) ? query.travelerDetails : [];
+                        
+                        let uploadedDocCount = 0;
+                        travelers.forEach((t) => {
+                          if (t?.documents?.passport?.url) uploadedDocCount++;
+                          if (t?.documents?.governmentId?.url || t?.documents?.govtId?.url || (!t?.documents?.passport?.url && t?.document?.url)) uploadedDocCount++;
+                          else if (t?.documents?.passport?.url && t?.document?.url) uploadedDocCount++;
+                        });
+
+                        if (docVerificationStatus === "Verified") {
+                          return (
+                            <span className="shrink-0 rounded-lg bg-emerald-100 border border-emerald-200 px-2.5 py-0.5 text-[10px] font-bold text-emerald-800 shadow-2xs font-sans whitespace-nowrap">
+                              ✓ Documents Verified
+                            </span>
+                          );
+                        }
+
+                        if (docVerificationStatus === "Rejected") {
+                          return (
+                            <span className="shrink-0 rounded-lg bg-rose-100 border border-rose-200 px-2.5 py-0.5 text-[10px] font-bold text-rose-800 shadow-2xs font-sans whitespace-nowrap">
+                              ⚠ Correction Required
+                            </span>
+                          );
+                        }
+
+                        if (docVerificationStatus === "Pending") {
+                          return (
+                            <span className="shrink-0 rounded-lg bg-blue-100 border border-blue-200 px-2.5 py-0.5 text-[10px] font-bold text-blue-800 shadow-2xs font-sans whitespace-nowrap">
+                              ⏳ Under Review
+                            </span>
+                          );
+                        }
+
+                        if (uploadedDocCount > 0) {
+                          return (
+                            <span className="shrink-0 rounded-lg bg-sky-100 border border-sky-200 px-2.5 py-0.5 text-[10px] font-bold text-sky-800 shadow-2xs font-sans whitespace-nowrap">
+                              Uploads Ready
+                            </span>
+                          );
+                        }
+
+                        return (
+                          <span className="shrink-0 rounded-lg bg-amber-100 border border-amber-200 px-2.5 py-0.5 text-[10px] font-bold text-amber-800 shadow-2xs font-sans whitespace-nowrap">
+                            Pending Upload
+                          </span>
+                        );
+                      })()}
                     </div>
                   </div>
 
@@ -10630,6 +10790,93 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* VOUCHER PREVIEW / VIEW MODAL */}
+      {isVoucherPreviewModalOpen && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/70 backdrop-blur-xs p-2 sm:p-4 md:p-6">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: 15 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 15 }}
+            transition={{ duration: 0.2 }}
+            className="w-full max-w-4xl max-h-[92vh] flex flex-col bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden font-sans"
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-200 bg-slate-50/80">
+              <div className="flex items-center gap-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-xs">
+                  <Eye size={18} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 leading-tight">
+                    Travel Voucher Preview
+                  </h3>
+                  <p className="text-[11px] font-medium text-slate-500">
+                    {query?.queryId || query?._id} • {query?.destination || "Destination"} • {query?.name || "Valued Client"}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const blob = new Blob(["\ufeff", voucherPreviewHtml], { type: "text/html" });
+                    const url = URL.createObjectURL(blob);
+                    window.open(url, "_blank");
+                  }}
+                  className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-100 border border-slate-300 rounded-lg shadow-2xs transition cursor-pointer"
+                  title="Open in new window"
+                >
+                  <Maximize2 size={13} />
+                  <span>Open in Tab</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleDownloadVoucher}
+                  className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 rounded-lg shadow-2xs transition cursor-pointer"
+                  title="Download Voucher"
+                >
+                  <Download size={13} />
+                  <span>Download</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setIsVoucherPreviewModalOpen(false)}
+                  className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 rounded-lg transition cursor-pointer ml-1"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+            </div>
+
+            {/* Iframe View */}
+            <div className="flex-1 overflow-hidden bg-slate-100 p-2 sm:p-4">
+              <iframe
+                title="Voucher Preview"
+                srcDoc={voucherPreviewHtml}
+                className="w-full h-[70vh] bg-white rounded-xl border border-slate-200 shadow-xs"
+              />
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-between px-5 py-3 border-t border-slate-200 bg-white">
+              <span className="text-xs text-slate-500">
+                Official travel service voucher
+              </span>
+              <button
+                type="button"
+                onClick={() => setIsVoucherPreviewModalOpen(false)}
+                className="px-4 py-1.5 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition cursor-pointer"
+              >
+                Close Preview
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
 
       {/* SHARE PACKAGE MODAL */}
       <SharePackageModal

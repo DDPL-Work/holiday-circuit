@@ -22,6 +22,69 @@ export const formatTravelDate = (value) => {
   });
 };
 
+export const parseAdminTermContent = (rawContent) => {
+  if (!rawContent) return [];
+  if (Array.isArray(rawContent)) {
+    const list = [];
+    rawContent.forEach((item) => {
+      if (typeof item === "string") {
+        if (/<[a-z][\s\S]*>/i.test(item)) {
+          list.push(...parseAdminTermContent(item));
+        } else {
+          const trimmed = item.replace(/^\d+[\.\)]\s*/, "").trim();
+          if (trimmed) list.push(trimmed);
+        }
+      } else if (item && typeof item === "object") {
+        const text = item.content || item.text || item.name || item.item || item.label || "";
+        if (text) list.push(...parseAdminTermContent(text));
+      }
+    });
+    return list.filter(Boolean);
+  }
+  if (typeof rawContent !== "string") return [];
+
+  if (/<[a-z][\s\S]*>/i.test(rawContent)) {
+    try {
+      const doc = new DOMParser().parseFromString(rawContent, "text/html");
+      const lines = [];
+      const processNode = (node) => {
+        if (!node) return;
+        if (node.nodeType === Node.ELEMENT_NODE) {
+          const tag = node.tagName.toLowerCase();
+          if (["ul", "ol"].includes(tag)) {
+            Array.from(node.childNodes).forEach(processNode);
+          } else if (["p", "h1", "h2", "h3", "h4", "h5", "h6", "li", "blockquote", "div"].includes(tag)) {
+            const text = (node.textContent || "").replace(/^\d+[\.\)]\s*/, "").trim();
+            if (text && !lines.includes(text)) {
+              lines.push(text);
+            }
+          } else {
+            Array.from(node.childNodes).forEach(processNode);
+          }
+        }
+      };
+      Array.from(doc.body.childNodes).forEach(processNode);
+      if (lines.length > 0) return lines;
+      const plain = (doc.body.textContent || "").trim();
+      return plain.split("\n").map((l) => l.replace(/^\d+[\.\)]\s*/, "").trim()).filter(Boolean);
+    } catch (e) {
+      return rawContent
+        .replace(/<br\s*[\/]?>/gi, "\n")
+        .replace(/<\/p>/gi, "\n")
+        .replace(/<\/li>/gi, "\n")
+        .replace(/<[^>]+>/g, "")
+        .split("\n")
+        .map((t) => t.replace(/^\d+[\.\)]\s*/, "").trim())
+        .filter(Boolean);
+    }
+  }
+
+  return rawContent
+    .split("\n")
+    .map((t) => t.replace(/^\d+[\.\)]\s*/, "").trim())
+    .filter(Boolean);
+};
+
 export const formatTravelerBreakup = ({
   adults = 0,
   children = 0,
@@ -123,37 +186,590 @@ const getConfirmationStatusDisplay = (confirmation = "", status = "") => {
 
 export const buildVoucherHtml = (data, branding, agentBranding = {}) => {
   const showBranding = branding === "with";
-  const resolvedTravelDate = data?.travelDate || data?.date || null;
+  const resolvedTravelDate = data?.travelDate || data?.startDate || data?.date || null;
   const voucherFooterSrc = String(
     data?.voucherFooterImage || data?.footerBanner || data?.pdfFooterImage || data?.agentFooterImage || ""
   ).trim();
-  const passengerBreakup = formatTravelerBreakup({
-    adults: data.adults,
-    children: data.children,
-    travelerSummary: data.travelerSummary,
-    passengers: data.passengers,
-  });
 
-  const agentLogoUrl = String(agentBranding?.logo || "").trim();
-  const agentCompanyName = String(agentBranding?.name || "").trim();
-  const hasAgentBranding = showBranding && (agentLogoUrl || agentCompanyName);
+  const normalizeCompanyName = (name, fallback = "Holiday Circuit") => {
+    const str = String(name || "").trim();
+    if (!str) return fallback;
+    return str;
+  };
 
-  const serviceRowsHtml = (data.services || [])
-    .map((service, idx) => {
-      const confirmation = service.confirmation || "Pending";
-      const statusDisplay = getConfirmationStatusDisplay(confirmation, service.status);
-      const confNumber = confirmation && confirmation.toLowerCase() !== "pending" ? confirmation : "-";
+  const rawAgentCompanyName = String(agentBranding?.name || agentBranding?.brandingName || agentBranding?.companyName || data?.agentName || data?.agencyName || "").trim();
+  const agentCompanyName = rawAgentCompanyName ? normalizeCompanyName(rawAgentCompanyName, "Holiday Circuit") : "";
+  const isAgentHolidayCircuit = !agentCompanyName || agentCompanyName.toLowerCase() === "holiday circuit";
+  const agentLogoUrl = isAgentHolidayCircuit ? "" : String(agentBranding?.logo || data?.agentLogo || "").trim();
+  const hasAgentBranding = showBranding && !isAgentHolidayCircuit && Boolean(agentLogoUrl || agentCompanyName);
 
-      return `
-        <tr>
-          <td class="svc-type">${formatServiceTypeLabel(service.type)}</td>
-          <td class="svc-name">${service.title || service.name || "Service details missing"}</td>
-          <td class="svc-status"><span class="${statusDisplay.cssClass}">${statusDisplay.label}</span></td>
-          <td class="svc-conf">${confNumber}</td>
+  const formatOrdinalDate = (d) => {
+    if (!d || isNaN(new Date(d).getTime())) return "-";
+    const dateObj = new Date(d);
+    const day = dateObj.getDate();
+    const month = dateObj.toLocaleString("en-US", { month: "short" });
+    const year = dateObj.getFullYear();
+    let suffix = "th";
+    if (day % 10 === 1 && day !== 11) suffix = "st";
+    else if (day % 10 === 2 && day !== 12) suffix = "nd";
+    else if (day % 10 === 3 && day !== 13) suffix = "rd";
+    return `${day}${suffix} ${month}, ${year}`;
+  };
+
+  const formatShortDate = (d) => {
+    if (!d || isNaN(new Date(d).getTime())) return "-";
+    const dateObj = new Date(d);
+    const day = dateObj.getDate();
+    const month = dateObj.toLocaleString("en-US", { month: "short" });
+    const year = dateObj.getFullYear();
+    return `${day} ${month}, ${year}`;
+  };
+
+  const normalizeRoomType = (rt) => {
+    if (!rt) return "Standard Room";
+    let clean = String(rt).replace(/\(.*?\)/g, "").trim();
+    clean = clean.replace(/^(standard|deluxe|executive|superior|suite|family|classic)\s*room$/i, "$1 Room");
+    return clean || "Standard Room";
+  };
+
+  const resolveHotelMealPlanText = (h = {}) => {
+    const candidates = [
+      h.mealPlan,
+      h.meal_plan,
+      h.meal,
+      h.meals,
+      h.mealType,
+    ].filter((v) => typeof v === "string" && v.trim().length > 0);
+
+    for (const candidate of candidates) {
+      const upper = candidate.trim().toUpperCase();
+      if (upper === "EP" || upper.includes("ROOM ONLY") || upper.includes("ONLY ROOM") || upper.includes("NO MEAL")) {
+        return "EP ( Room Only )";
+      }
+      if (upper === "MAP" || upper.includes("HALF BOARD") || upper.includes("BREAKFAST & DINNER") || upper.includes("BREAKFAST AND DINNER") || upper.includes("BREAKFAST + DINNER")) {
+        return "MAP ( Breakfast & Dinner Included )";
+      }
+      if (upper === "AP" || upper.includes("FULL BOARD") || upper.includes("ALL MEAL")) {
+        return "AP ( Breakfast, Lunch & Dinner Included )";
+      }
+      if (upper === "AI" || upper.includes("ALL INCLUSIVE")) {
+        return "AI ( All Inclusive )";
+      }
+      if (upper === "CP" || upper.includes("BREAKFAST") || upper.includes("BED & BREAKFAST") || upper.includes("B&B")) {
+        return "CP ( Breakfast Included )";
+      }
+    }
+
+    const textSources = [
+      h.description,
+      h.roomDescription,
+      h.hotelDescription,
+      h.roomType,
+      h.roomCategory,
+      h.inclusions,
+      h.notes,
+    ].filter(Boolean);
+
+    for (const source of textSources) {
+      const segments = String(source).split("|").map((s) => s.trim().toUpperCase());
+      for (const seg of segments) {
+        if (seg === "EP" || seg === "ROOM ONLY" || seg === "ONLY ROOM" || seg === "NO MEALS" || seg === "NO MEAL") {
+          return "EP ( Room Only )";
+        }
+        if (seg === "MAP" || seg === "HALF BOARD" || seg === "BREAKFAST & DINNER" || seg === "BREAKFAST AND DINNER" || seg === "BREAKFAST + DINNER") {
+          return "MAP ( Breakfast & Dinner Included )";
+        }
+        if (seg === "AP" || seg === "FULL BOARD" || seg === "ALL MEALS" || seg === "ALL MEAL") {
+          return "AP ( Breakfast, Lunch & Dinner Included )";
+        }
+        if (seg === "AI" || seg === "ALL INCLUSIVE") {
+          return "AI ( All Inclusive )";
+        }
+        if (seg === "CP" || seg === "BREAKFAST INCLUDED" || seg === "BREAKFAST" || seg === "BED & BREAKFAST" || seg === "B&B") {
+          return "CP ( Breakfast Included )";
+        }
+      }
+    }
+
+    const fullDesc = textSources.join(" ");
+    if (/\b(EP|ROOM\s*ONLY|ONLY\s*ROOM|EUROPEAN\s*PLAN|NO\s*MEALS?)\b/i.test(fullDesc)) {
+      return "EP ( Room Only )";
+    }
+    if (/\b(MAP|HALF\s*BOARD|BREAKFAST\s*(?:AND|&|\+)\s*DINNER)\b/i.test(fullDesc)) {
+      return "MAP ( Breakfast & Dinner Included )";
+    }
+    if (/\b(AP|FULL\s*BOARD|ALL\s*MEALS?)\b/i.test(fullDesc)) {
+      return "AP ( Breakfast, Lunch & Dinner Included )";
+    }
+    if (/\b(AI|ALL\s*INCLUSIVE)\b/i.test(fullDesc)) {
+      return "AI ( All Inclusive )";
+    }
+    if (/\b(CP|BREAKFAST(?:\s*INCLUDED)?|BED\s*&\s*BREAKFAST)\b/i.test(fullDesc)) {
+      return "CP ( Breakfast Included )";
+    }
+
+    return "EP ( Room Only )";
+  };
+
+  const startObj = resolvedTravelDate ? new Date(resolvedTravelDate) : new Date();
+  const startDateOrdinal = !isNaN(startObj.getTime()) ? formatOrdinalDate(startObj) : "22nd Dec, 2026";
+  const startDateShort = !isNaN(startObj.getTime()) ? formatShortDate(startObj) : "22 Dec, 2026";
+
+  const nights = Number(data?.nights || data?.numberOfNights || 4);
+  const days = Number(data?.days || data?.numberOfDays || (nights + 1));
+  const endObj = data?.endDate ? new Date(data.endDate) : new Date(startObj.getTime() + nights * 86400000);
+  const endDateOrdinal = !isNaN(endObj.getTime()) ? formatOrdinalDate(endObj) : "26th Dec, 2026";
+
+  const rawTripId = data?.queryId || data?.tripId || data?.query || data?.queryNumber || data?.quotationNumber;
+  let tripIdVal = "QRY-4304633";
+  if (rawTripId) {
+    const cleanId = String(rawTripId).replace(/^#\s*/, "").trim();
+    tripIdVal = cleanId.toUpperCase().startsWith("QRY-") ? cleanId.toUpperCase() : `QRY-${cleanId}`;
+  } else if (data?.voucherNumber) {
+    const cleanVch = String(data.voucherNumber).replace(/^VCH-?/i, "").trim();
+    tripIdVal = cleanVch ? `QRY-${cleanVch}` : "QRY-001";
+  }
+
+  const destinationVal = data?.destination || "India";
+  const durationVal = data?.duration || `${nights} Night${nights > 1 ? "s" : ""} / ${days} Days`;
+  const guestNameVal = data?.name || data?.guestName || data?.clientName || data?.leadTraveler || "Valued Client";
+
+  const rawPhone = data?.clientPhone || data?.guestPhone || data?.phone || "";
+  const isDummyPhone = !rawPhone || String(rawPhone).includes("8287725270") || String(rawPhone).trim() === "" || String(rawPhone).trim() === "-";
+  const guestPhoneVal = isDummyPhone ? "-" : String(rawPhone).trim();
+  const paxVal = data?.passengers || data?.travelerSummary || `${data?.adults || 2} Adults${Number(data?.children || 0) > 0 ? `, ${data.children} Children` : ""}`;
+  const fallbackIssuedBy = agentCompanyName || "Holiday Circuit";
+  const rawIssuedBy = data?.issuedBy || data?.agencyName || agentCompanyName || "Holiday Circuit";
+  const isUserName = rawIssuedBy && (rawIssuedBy.toLowerCase().includes("user") || rawIssuedBy.toLowerCase().includes("guest"));
+  const issuedByVal = (!rawIssuedBy || isUserName) ? fallbackIssuedBy : normalizeCompanyName(rawIssuedBy, fallbackIssuedBy);
+  const helplinePhone = data?.agencyPhone || "+91-8851346665";
+  const helplineCompany = "Holiday Circuit";
+
+  const rawServices = Array.isArray(data?.services) && data.services.length > 0 ? data.services : [];
+  const hotelServices = rawServices.filter((s) => String(s.type || s.category || "").toLowerCase().includes("hotel"));
+  const nonHotelServices = rawServices.filter((s) => !String(s.type || s.category || "").toLowerCase().includes("hotel"));
+
+  const displayHotels = hotelServices.length > 0 ? hotelServices : (rawServices.length === 0 ? [
+    {
+      title: `${destinationVal} Heritage Resort & Spa`,
+      rating: "5 star",
+      address: `${destinationVal}, India`,
+      confirmation: "97739SG008801",
+      roomType: "Superior King Room",
+      mealPlan: "Breakfast",
+      numberOfRooms: 1,
+      pax: paxVal,
+      nights: nights,
+    }
+  ] : []);
+
+  let runningHotelDate = startObj && !isNaN(startObj.getTime()) ? new Date(startObj.getTime()) : new Date();
+
+  const hotelsHtml = displayHotels.map((h, idx) => {
+    const rawTitle = String(h.title || "").trim();
+    const rawHotelName = String(h.hotelName || h.hotel || "").trim();
+    const rawServiceName = String(h.serviceName || h.name || "").trim();
+
+    const hHotelName = rawHotelName || (rawTitle && !rawTitle.toLowerCase().includes("hotel stay") && !rawTitle.toLowerCase().includes("service") ? rawTitle : (rawServiceName || `${destinationVal} Heritage Resort`));
+    const hServiceName = rawServiceName && rawServiceName !== hHotelName ? rawServiceName : (rawTitle && rawTitle !== hHotelName ? rawTitle : "");
+
+    const hRating = h.rating || h.starRating || h.hotelCategory || h.category || "5 star";
+    const hAddress = h.address || h.hotelAddress || h.location || (h.city ? `${h.city}, ${destinationVal}` : `${destinationVal}, India`);
+    const hDesc = h.description || h.hotelDescription || h.details || "";
+
+    const realCnfNum = h.confirmationNumber || h.cnfNumber || h.supplierConfirmation || h.voucherNumber || (h.confirmation && h.confirmation !== "Confirmed(Confirmed)" && h.confirmation !== "Confirmed" && h.confirmation !== "Pending" ? h.confirmation : null);
+    const isHotelConfirmed = Boolean(
+      realCnfNum ||
+      (h.status && String(h.status).toLowerCase() === "confirmed") ||
+      (h.confirmation && !String(h.confirmation).toLowerCase().includes("pending")) ||
+      h.isVoucherGenerated
+    );
+    const hStatLabel = isHotelConfirmed ? "Confirmed" : "Pending";
+    const cnfDisplay = realCnfNum ? String(realCnfNum).trim() : (isHotelConfirmed ? "Confirmed" : "Pending");
+
+    // Calculate dates per hotel
+    const hNights = Number(h.nights || h.numberOfNights || (displayHotels.length > 1 ? 2 : nights) || 2);
+
+    let hCheckInObj;
+    if (h.checkIn) {
+      hCheckInObj = new Date(h.checkIn);
+    } else if (h.startDate && idx === 0) {
+      hCheckInObj = new Date(h.startDate);
+    } else if (h.startDate && h.startDate !== data?.startDate && h.startDate !== data?.travelDate) {
+      hCheckInObj = new Date(h.startDate);
+    } else if (idx > 0) {
+      hCheckInObj = new Date(runningHotelDate.getTime());
+    } else {
+      hCheckInObj = startObj && !isNaN(startObj.getTime()) ? startObj : new Date();
+    }
+
+    let hCheckOutObj;
+    if (h.checkOut) {
+      hCheckOutObj = new Date(h.checkOut);
+    } else if (h.endDate && idx === displayHotels.length - 1 && displayHotels.length === 1) {
+      hCheckOutObj = new Date(h.endDate);
+    } else if (h.endDate && h.endDate !== data?.endDate) {
+      hCheckOutObj = new Date(h.endDate);
+    } else {
+      hCheckOutObj = new Date(hCheckInObj.getTime() + hNights * 86400000);
+    }
+
+    runningHotelDate = new Date(hCheckOutObj.getTime());
+
+    const hCheckInDate = hCheckInObj && !isNaN(hCheckInObj.getTime()) ? formatOrdinalDate(hCheckInObj) : startDateOrdinal;
+    const hCheckInShort = hCheckInObj && !isNaN(hCheckInObj.getTime()) ? formatShortDate(hCheckInObj) : startDateShort;
+    const hCheckInTime = h.checkInTime || "14:00 hrs";
+    const hCheckOutDate = hCheckOutObj && !isNaN(hCheckOutObj.getTime()) ? formatOrdinalDate(hCheckOutObj) : endDateOrdinal;
+    const hCheckOutTime = h.checkOutTime || "12:00 hrs";
+
+    const formattedMeal = resolveHotelMealPlanText(h);
+    const nightMealStr = `${hCheckInShort} (${hNights > 1 ? `${hNights} Nights` : '1 Night'}) - ${formattedMeal}`;
+    const rawRoomType = h.roomType || h.roomCategory || "Standard Room";
+    const formattedRoomType = normalizeRoomType(rawRoomType);
+    const roomTypeStr = `${h.numberOfRooms || h.rooms || 1} x ${formattedRoomType}`;
+    const paxDetailStr = h.pax || paxVal || "2 Adults";
+    const roomDesc = h.roomDescription || h.roomDetails || "";
+
+    return `
+      <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 13px; border: 1px solid #b3cae8; font-family: Arial, sans-serif;">
+        <thead>
+          <tr style="background-color: #dce8f6;">
+            <th colspan="2" style="padding: 9px 14px; font-size: 13px; font-weight: 800; color: #000000; text-align: left; border: 1px solid #b3cae8; letter-spacing: 0.2px;">
+              Hotel
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td colspan="2" style="padding: 14px; background-color: #ffffff; border: 1px solid #b3cae8;">
+              <div style="font-size: 15px; font-weight: 800; color: #000000; margin-bottom: 2px; line-height: 1.3;">
+                ${hHotelName}
+              </div>
+              ${hServiceName ? `<div style="font-size: 12px; font-weight: 700; color: #2B5083; margin-bottom: 3px;">Service: ${hServiceName}</div>` : ''}
+              <div style="font-size: 12px; color: #334155; margin-bottom: 3px;">
+                ${hRating}
+              </div>
+              <div style="font-size: 12px; color: #1e293b; line-height: 1.4; margin-bottom: ${hDesc ? '6px' : '12px'};">
+                ${hAddress}
+              </div>
+              ${hDesc ? `<div style="font-size: 11px; color: #475569; line-height: 1.4; margin-bottom: 12px;">${hDesc}</div>` : ''}
+              <div style="font-size: 13px; font-weight: 800; color: #713f12; border-top: 1px solid #e2e8f0; padding-top: 10px; margin-bottom: 12px;">
+                Confirmation: ${cnfDisplay} <span style="font-style: italic; font-size: 12px; color: ${hStatLabel === 'Confirmed' ? '#15803d' : '#e11d48'}; font-weight: 700; margin-left: 6px;">( ${hStatLabel} )</span>
+              </div>
+
+              <!-- CHECK-IN & CHECK-OUT HIGHLIGHT BOX -->
+              <table style="width: 100%; border-collapse: collapse; margin-bottom: 14px; border: 1px solid #b3cae8;">
+                <tr>
+                  <td style="width: 14%; background-color: #fef08a; padding: 10px 12px; font-weight: 700; color: #000000; border: 1px solid #b3cae8; font-size: 13px; text-align: center;">
+                    Check-in
+                  </td>
+                  <td style="width: 36%; padding: 10px 12px; background-color: #ffffff; border: 1px solid #b3cae8; font-size: 13px;">
+                    <strong style="color: #000000;">${hCheckInDate}</strong> <span style="font-style: italic; font-size: 11px; color: #334155;">at ${hCheckInTime}</span>
+                  </td>
+                  <td style="width: 14%; background-color: #fef08a; padding: 10px 12px; font-weight: 700; color: #000000; border: 1px solid #b3cae8; font-size: 13px; text-align: center;">
+                    Check-out
+                  </td>
+                  <td style="width: 36%; padding: 10px 12px; background-color: #ffffff; border: 1px solid #b3cae8; font-size: 13px;">
+                    <strong style="color: #000000;">${hCheckOutDate} ( ${hNights} Night${hNights > 1 ? "s" : ""} )</strong> <span style="font-style: italic; font-size: 11px; color: #334155;">at ${hCheckOutTime}</span> <span style="font-style: italic; font-size: 11px; color: ${hStatLabel === 'Confirmed' ? '#15803d' : '#e11d48'}; font-weight: 700; margin-left: 4px;">( ${hStatLabel} )</span>
+                  </td>
+                </tr>
+              </table>
+
+              <!-- NIGHT AND MEALS & ROOM TYPE SUB-TABLE -->
+              <table style="width: 100%; border-collapse: collapse; border: 1px solid #b3cae8;">
+                <thead>
+                  <tr style="background-color: #dce8f6;">
+                    <th style="width: 55%; padding: 8px 12px; font-size: 13px; font-weight: 700; color: #000000; text-align: left; border: 1px solid #b3cae8;">
+                      Night and Meals
+                    </th>
+                    <th style="width: 45%; padding: 8px 12px; font-size: 13px; font-weight: 700; color: #000000; text-align: left; border: 1px solid #b3cae8;">
+                      Room Type
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td style="padding: 10px 12px; background-color: #ffffff; border: 1px solid #b3cae8; font-size: 12px; color: #000000; vertical-align: top;">
+                      <div style="font-weight: 600; color: #000000;">${nightMealStr}</div>
+                      ${h.mealDescription ? `<div style="font-size: 11px; color: #475569; margin-top: 4px;">${h.mealDescription}</div>` : ''}
+                    </td>
+                    <td style="padding: 10px 12px; background-color: #ffffff; border: 1px solid #b3cae8; font-size: 12px; color: #000000; vertical-align: top;">
+                      <div style="font-weight: 700; color: #000000;">${roomTypeStr}</div>
+                      <div style="font-size: 11px; color: #475569; margin-top: 4px;">${paxDetailStr}</div>
+                      ${roomDesc ? `<div style="font-size: 11px; color: #64748b; margin-top: 2px;">${roomDesc}</div>` : ''}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    `;
+  }).join("");
+
+  const nonHotelServicesHtml = nonHotelServices.map((s) => {
+    const sTypeRaw = String(s.type || s.category || "Service").toLowerCase();
+    const sTitle = s.title || s.name || s.serviceName || `${destinationVal} Service`;
+    const sDesc = s.description || s.details || s.notes || "";
+
+    const isTransport = sTypeRaw.includes("transfer") || sTypeRaw.includes("transport") || sTypeRaw.includes("cab") || sTypeRaw.includes("car");
+
+    // Format Transport Specifics (Usage/Trip Type, Passenger & Luggage Capacity)
+    const rawUsage = String(s.usageType || s.transferType || s.tripType || s.serviceMode || s.direction || "").trim();
+    let usageLabel = "";
+    if (rawUsage) {
+      const lowUsage = rawUsage.toLowerCase();
+      if (lowUsage.includes("point") || lowUsage.includes("oneway") || lowUsage.includes("one-way") || lowUsage.includes("one way")) {
+        usageLabel = "One Way (Point to Point)";
+      } else if (lowUsage.includes("round")) {
+        usageLabel = "Round Trip";
+      } else if (lowUsage.includes("full") || lowUsage.includes("day")) {
+        usageLabel = "Full Day Disposal";
+      } else if (lowUsage.includes("half")) {
+        usageLabel = "Half Day Disposal";
+      } else if (lowUsage.includes("pickup") || lowUsage.includes("pick-up")) {
+        usageLabel = "Airport / Station Pickup";
+      } else if (lowUsage.includes("drop")) {
+        usageLabel = "Airport / Station Drop";
+      } else {
+        usageLabel = rawUsage;
+      }
+    } else {
+      const titleLow = String(sTitle || "").toLowerCase();
+      if (titleLow.includes("round trip") || titleLow.includes("round-trip")) {
+        usageLabel = "Round Trip";
+      } else if (titleLow.includes("disposal") || titleLow.includes("full day")) {
+        usageLabel = "Full Day Disposal";
+      } else if (titleLow.includes("half day")) {
+        usageLabel = "Half Day Disposal";
+      } else {
+        usageLabel = "One Way Transfer";
+      }
+    }
+
+    const vType = s.vehicleType || s.carType || s.vehicle || (isTransport ? "Private AC Vehicle" : "Standard Vehicle");
+    const vCount = s.vehicleCount || s.numberOfVehicles || s.quantity || 1;
+    const vehicleTitle = `${vCount > 1 ? `${vCount} x ` : ''}${vType}`;
+
+    let passCap = s.passengerCapacity || s.maxPassengers || s.maxPax || s.seatingCapacity || s.seats || s.paxCapacity || null;
+    let luggCap = s.luggageCapacity || s.maxLuggage || s.luggage || s.baggageCapacity || s.bags || null;
+
+    if (!passCap && isTransport) {
+      const vtLow = String(vType).toLowerCase();
+      if (vtLow.includes("sedan") || vtLow.includes("etios") || vtLow.includes("dzire") || vtLow.includes("car")) {
+        passCap = "Max 4 Pax";
+      } else if (vtLow.includes("innova") || vtLow.includes("suv") || vtLow.includes("ertiga") || vtLow.includes("crysta")) {
+        passCap = "Max 6 Pax";
+      } else if (vtLow.includes("tempo") || vtLow.includes("van") || vtLow.includes("minivan")) {
+        passCap = "Max 12 Pax";
+      } else if (vtLow.includes("coach") || vtLow.includes("bus")) {
+        passCap = "Max 25 Pax";
+      } else {
+        passCap = "Max 4 Pax";
+      }
+    } else if (passCap && !String(passCap).toLowerCase().includes("pax")) {
+      passCap = `Max ${passCap} Pax`;
+    }
+
+    if (!luggCap && isTransport) {
+      const vtLow = String(vType).toLowerCase();
+      if (vtLow.includes("sedan") || vtLow.includes("etios") || vtLow.includes("dzire") || vtLow.includes("car")) {
+        luggCap = "2 Bags";
+      } else if (vtLow.includes("innova") || vtLow.includes("suv") || vtLow.includes("ertiga") || vtLow.includes("crysta")) {
+        luggCap = "4 Bags";
+      } else if (vtLow.includes("tempo") || vtLow.includes("van") || vtLow.includes("minivan")) {
+        luggCap = "8 Bags";
+      } else if (vtLow.includes("coach") || vtLow.includes("bus")) {
+        luggCap = "20 Bags";
+      } else {
+        luggCap = "2-3 Bags";
+      }
+    } else if (luggCap && !String(luggCap).toLowerCase().includes("bag")) {
+      luggCap = `${luggCap} Bags`;
+    }
+
+    let sectionTitle = "Service";
+    let badge1Label = "Service Date";
+    let badge2Label = "Service Type";
+    let badge2Value = s.transferType || s.vehicleType || s.category || "Standard Service";
+    let subCol1Title = "Service Details";
+    let subCol2Title = "Pax / Vehicle Details";
+
+    if (isTransport) {
+      sectionTitle = "Transfer";
+      badge1Label = "Transfer Date";
+      badge2Label = "Vehicle & Trip";
+      badge2Value = `${vType} (${usageLabel})`;
+      subCol1Title = "Transfer Description & Route";
+      subCol2Title = "Vehicle & Capacity Details";
+    } else if (sTypeRaw.includes("activity")) {
+      sectionTitle = "Activity";
+      badge1Label = "Activity Date";
+      badge2Label = "Timing / Duration";
+      badge2Value = s.timing || s.duration || s.slot || "As per schedule";
+      subCol1Title = "Activity Description";
+      subCol2Title = "Pax Details";
+    } else if (sTypeRaw.includes("sightseeing")) {
+      sectionTitle = "Sightseeing";
+      badge1Label = "Tour Date";
+      badge2Label = "Tour Type";
+      badge2Value = s.tourType || "Sightseeing Tour";
+      subCol1Title = "Sightseeing Description";
+      subCol2Title = "Pax Details";
+    } else if (sTypeRaw.includes("flight")) {
+      sectionTitle = "Flight";
+      badge1Label = "Flight Date";
+      badge2Label = "Flight / Sector";
+      badge2Value = s.flightNumber || s.sector || "Flight Service";
+      subCol1Title = "Flight Details";
+      subCol2Title = "Pax Details";
+    }
+
+    const realCnf = s.confirmationNumber || s.cnfNumber || s.supplierConfirmation || s.voucherNumber || (s.confirmation && s.confirmation !== "Confirmed(Confirmed)" && s.confirmation !== "Confirmed" && s.confirmation !== "Pending" ? s.confirmation : null);
+    const isConfirmed = Boolean(
+      realCnf ||
+      (s.status && String(s.status).toLowerCase() === "confirmed") ||
+      (s.confirmation && !String(s.confirmation).toLowerCase().includes("pending")) ||
+      s.isVoucherGenerated
+    );
+    const statLabel = isConfirmed ? "Confirmed" : "Pending";
+    const cnfDisplay = realCnf ? String(realCnf).trim() : (isConfirmed ? "Confirmed" : "Pending");
+
+    const sDateObj = s.serviceDate ? new Date(s.serviceDate) : (s.date ? new Date(s.date) : (s.startDate ? new Date(s.startDate) : startObj));
+    const sDateFormatted = sDateObj && !isNaN(sDateObj.getTime()) ? formatOrdinalDate(sDateObj) : startDateOrdinal;
+    const sTimeFormatted = s.time || s.pickupTime || s.serviceDate || "10:00 hrs";
+
+    const sPaxVehicleStr = s.vehicleType ? `${s.vehicleType} • ${paxVal}` : (s.pax || paxVal || "2 Pax");
+    const sDetailsStr = `${sTitle} - ${statLabel === "Confirmed" ? "Confirmed Service" : "Service"}`;
+
+    return `
+      <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 13px; border: 1px solid #b3cae8; font-family: Arial, sans-serif;">
+        <thead>
+          <tr style="background-color: #dce8f6;">
+            <th colspan="2" style="padding: 9px 14px; font-size: 13px; font-weight: 800; color: #000000; text-align: left; border: 1px solid #b3cae8; letter-spacing: 0.2px;">
+              ${sectionTitle}
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td colspan="2" style="padding: 14px; background-color: #ffffff; border: 1px solid #b3cae8;">
+              <div style="font-size: 14px; font-weight: 800; color: #000000; margin-bottom: 3px; line-height: 1.3;">
+                ${sTitle}
+              </div>
+              <div style="font-size: 12px; color: #334155; margin-bottom: 3px;">
+                ${sectionTitle} • ${destinationVal}
+              </div>
+              ${sDesc ? `<div style="font-size: 12px; color: #1e293b; line-height: 1.4; margin-bottom: 12px;">${sDesc}</div>` : `<div style="margin-bottom: 8px;"></div>`}
+              
+              <div style="font-size: 13px; font-weight: 800; color: #713f12; border-top: 1px solid #e2e8f0; padding-top: 10px; margin-bottom: 12px;">
+                Confirmation: ${cnfDisplay}
+              </div>
+
+              <!-- SERVICE DATE & DETAILS HIGHLIGHT BOX -->
+              <table style="width: 100%; border-collapse: collapse; margin-bottom: 14px; border: 1px solid #b3cae8;">
+                <tr>
+                  <td style="width: 14%; background-color: #fef08a; padding: 10px 12px; font-weight: 700; color: #000000; border: 1px solid #b3cae8; font-size: 13px; text-align: center;">
+                    ${badge1Label}
+                  </td>
+                  <td style="width: 36%; padding: 10px 12px; background-color: #ffffff; border: 1px solid #b3cae8; font-size: 13px;">
+                    <strong style="color: #000000;">${sDateFormatted}</strong> <span style="font-style: italic; font-size: 11px; color: #334155;">at ${sTimeFormatted}</span>
+                  </td>
+                  <td style="width: 14%; background-color: #fef08a; padding: 10px 12px; font-weight: 700; color: #000000; border: 1px solid #b3cae8; font-size: 13px; text-align: center;">
+                    ${badge2Label}
+                  </td>
+                  <td style="width: 36%; padding: 10px 12px; background-color: #ffffff; border: 1px solid #b3cae8; font-size: 13px;">
+                    <strong style="color: #000000;">${badge2Value}</strong> <span style="font-style: italic; font-size: 11px; color: ${statLabel === 'Confirmed' ? '#15803d' : '#334155'}; font-weight: 600;">( ${statLabel} )</span>
+                  </td>
+                </tr>
+              </table>
+
+              <!-- SERVICE SUB-TABLE -->
+              <table style="width: 100%; border-collapse: collapse; border: 1px solid #b3cae8;">
+                <thead>
+                  <tr style="background-color: #dce8f6;">
+                    <th style="width: 58%; padding: 8px 12px; font-size: 13px; font-weight: 700; color: #000000; text-align: left; border: 1px solid #b3cae8;">
+                      ${subCol1Title}
+                    </th>
+                    <th style="width: 42%; padding: 8px 12px; font-size: 13px; font-weight: 700; color: #000000; text-align: left; border: 1px solid #b3cae8;">
+                      ${subCol2Title}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td style="padding: 10px 12px; background-color: #ffffff; border: 1px solid #b3cae8; font-size: 12px; color: #000000; vertical-align: top;">
+                      <div style="font-weight: 600; color: #000000;">${sDetailsStr}</div>
+                      ${isTransport ? `
+                        <div style="margin-top: 4px; font-size: 11px; color: #1e40af; font-weight: 600;">
+                          ${usageLabel}${s.pickupLocation || s.dropLocation ? ` &nbsp;•&nbsp; ${s.pickupLocation || 'Pickup'} ➔ ${s.dropLocation || 'Drop'}` : ''}
+                        </div>
+                      ` : ''}
+                      ${sDesc ? `<div style="font-size: 11px; color: #475569; margin-top: 4px; line-height: 1.4;">${sDesc}</div>` : ''}
+                    </td>
+                    <td style="padding: 10px 12px; background-color: #ffffff; border: 1px solid #b3cae8; font-size: 12px; color: #000000; vertical-align: top;">
+                      ${isTransport ? `
+                        <div style="font-weight: 700; color: #000000; font-size: 12px; margin-bottom: 6px;">${vehicleTitle}</div>
+                        <table style="width: 100%; border-collapse: collapse; font-size: 11px; color: #1e293b;">
+                          <tr>
+                            <td style="padding: 2px 0; color: #475569;"><strong>Passenger Capacity:</strong></td>
+                            <td style="padding: 2px 0; font-weight: 700; color: #0f172a; text-align: right;">${passCap}</td>
+                          </tr>
+                          <tr>
+                            <td style="padding: 2px 0; color: #475569;"><strong>Luggage Capacity:</strong></td>
+                            <td style="padding: 2px 0; font-weight: 700; color: #0f172a; text-align: right;">${luggCap}</td>
+                          </tr>
+                          <tr>
+                            <td style="padding: 2px 0; color: #475569;"><strong>Booked Pax:</strong></td>
+                            <td style="padding: 2px 0; font-weight: 700; color: #0f172a; text-align: right;">${paxVal}</td>
+                          </tr>
+                        </table>
+                      ` : `
+                        <div style="font-weight: 600; color: #000000;">${sPaxVehicleStr}</div>
+                        <div style="font-size: 11px; color: #475569; margin-top: 4px;"><strong>Booked Pax:</strong> ${paxVal}</div>
+                      `}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    `;
+  }).join("");
+
+  // TERMS AND CONDITIONS SECTION
+  const rawTerms = data?.termsAndConditions || data?.terms || [];
+  let termsList = [];
+  if (Array.isArray(rawTerms)) {
+    termsList = rawTerms.filter((t) => typeof t === "string" && t.trim().length > 0);
+  } else if (typeof rawTerms === "string" && rawTerms.trim()) {
+    termsList = rawTerms.split("\n").map((t) => t.trim()).filter((t) => t.length > 0);
+  }
+
+  const termsHtml = termsList.length > 0 ? `
+    <!-- TERMS & CONDITIONS SECTION -->
+    <table style="width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 13px; border: 1px solid #b3cae8; font-family: Arial, sans-serif;">
+      <thead>
+        <tr style="background-color: #dce8f6;">
+          <th style="padding: 8px 12px; font-size: 13px; font-weight: 800; color: #000000; text-align: left; border: 1px solid #b3cae8; letter-spacing: 0.3px;">
+            Terms &amp; Conditions
+          </th>
         </tr>
-      `;
-    })
-    .join("");
+      </thead>
+      <tbody>
+        <tr>
+          <td style="padding: 12px 16px; background-color: #ffffff; border: 1px solid #b3cae8; color: #1e293b; line-height: 1.6; font-size: 11.5px;">
+            <ol style="margin: 0; padding-left: 20px;">
+              ${termsList.map((t) => `<li style="margin-bottom: 5px;">${t.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</li>`).join("")}
+            </ol>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  ` : "";
 
   return `
     <!DOCTYPE html>
@@ -161,15 +777,14 @@ export const buildVoucherHtml = (data, branding, agentBranding = {}) => {
       <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Travel Voucher - ${data.voucherNumber || data.query}</title>
-        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+        <title>Travel Voucher - ${tripIdVal}</title>
         <style>
           * { box-sizing: border-box; }
           body {
             margin: 0;
             background-color: #f0f4f8;
             padding: 40px 20px;
-            font-family: 'Plus Jakarta Sans', 'Inter', Arial, sans-serif;
+            font-family: Arial, sans-serif;
             color: #1e293b;
             -webkit-font-smoothing: antialiased;
           }
@@ -181,8 +796,6 @@ export const buildVoucherHtml = (data, branding, agentBranding = {}) => {
             overflow: hidden;
             border-radius: 2px;
           }
-
-          /* ── HEADER ── */
           .brand-header {
             background: linear-gradient(135deg, #0f1d32 0%, #1a3352 50%, #264a6e 100%);
             height: 110px;
@@ -220,7 +833,7 @@ export const buildVoucherHtml = (data, branding, agentBranding = {}) => {
           }
           .brand-logo-box {
             background: #ffffff;
-            padding: 12px 18px;
+            padding: 10px 16px;
             display: inline-flex;
             align-items: center;
             justify-content: center;
@@ -231,246 +844,33 @@ export const buildVoucherHtml = (data, branding, agentBranding = {}) => {
             border-radius: 4px;
           }
           .brand-logo {
-            height: 62px;
+            height: 60px;
             width: auto;
             object-fit: contain;
           }
-          .brand-mark {
-            display: inline-flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            line-height: 1;
-          }
-          .brand-mark-letters {
-            display: inline-flex;
-            align-items: flex-end;
-            font-family: 'Inter', sans-serif;
-            font-size: 36px;
-            font-weight: 800;
-            letter-spacing: -1px;
-          }
-          .brand-mark-t {
-            color: #0f1d32;
-          }
-          .brand-mark-v {
-            background: linear-gradient(180deg, #5a8aa8 0%, #3d6a8e 55%, #1a3352 100%);
-            -webkit-background-clip: text;
-            background-clip: text;
-            -webkit-text-fill-color: transparent;
-            color: transparent;
-            margin-left: 1px;
-          }
-          .brand-mark-sub {
-            margin-top: 3px;
-            font-family: 'Plus Jakarta Sans', Arial, sans-serif;
-            font-size: 7px;
-            font-weight: 700;
-            letter-spacing: 0.18em;
-            color: #7badc8;
-            text-transform: uppercase;
-          }
           .brand-name {
             color: #ffffff;
-            font-family: 'Inter', sans-serif;
-            font-size: 32px;
+            font-size: 28px;
             font-weight: 800;
             letter-spacing: -0.5px;
             z-index: 2;
             position: relative;
           }
-
-          /* ── TITLE BAR ── */
           .title-bar {
             background: linear-gradient(135deg, #0f1d32 0%, #1a3352 50%, #264a6e 100%);
             color: #ffffff;
             text-align: center;
-            font-size: 17px;
+            font-size: 16px;
             font-weight: 700;
-            padding: 15px 20px;
+            padding: 13px 20px;
             letter-spacing: 4px;
             text-transform: uppercase;
-            font-family: 'Inter', sans-serif;
             border-top: 2px solid #5a8aa8;
             border-bottom: 2px solid #0f1d32;
           }
-
-          /* ── BODY ── */
           .voucher-body {
-            padding: 28px 30px 30px;
+            padding: 24px 28px;
           }
-
-          /* ── METADATA CARDS ── */
-          .metadata-card {
-            width: 100%;
-            border-collapse: collapse;
-            border: 1px solid #e2e8f0;
-            margin-bottom: 18px;
-          }
-          .metadata-card tr td {
-            border-bottom: 1px solid #e2e8f0;
-            border-right: 1px solid #e2e8f0;
-            padding: 11px 14px;
-            font-size: 13px;
-            vertical-align: middle;
-          }
-          .metadata-card tr:last-child td {
-            border-bottom: none;
-          }
-          .metadata-card tr td:last-child {
-            border-right: none;
-          }
-          .metadata-card td.label-cell {
-            background-color: #f1f5f9;
-            font-weight: 700;
-            color: #334155;
-            width: 32%;
-            font-family: 'Inter', sans-serif;
-            font-size: 12px;
-            letter-spacing: 0.2px;
-          }
-          .metadata-card td.value-cell {
-            background-color: #ffffff;
-            color: #0f172a;
-            font-weight: 600;
-          }
-
-          /* ── SECTION HEADING ── */
-          .section-heading {
-            margin: 24px 0 12px;
-            font-size: 13px;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 2px;
-            color: #ffffff;
-            background: linear-gradient(135deg, #0f1d32 0%, #1a3352 50%, #264a6e 100%);
-            padding: 11px 16px;
-            font-family: 'Inter', sans-serif;
-            border-top: 2px solid #5a8aa8;
-            border-bottom: 2px solid #0f1d32;
-          }
-
-          /* ── SERVICES TABLE ── */
-          .services-table {
-            width: 100%;
-            border-collapse: collapse;
-            border: 1px solid #d5e3ee;
-            font-size: 13px;
-          }
-          .services-table thead th {
-            background: linear-gradient(180deg, #edf3f8 0%, #e2ecf3 100%);
-            border-bottom: 2px solid #a3bdd0;
-            border-right: 1px solid #d5e3ee;
-            padding: 12px 14px;
-            font-size: 11px;
-            font-weight: 700;
-            text-transform: uppercase;
-            color: #1a3352;
-            text-align: left;
-            letter-spacing: 0.8px;
-            font-family: 'Inter', sans-serif;
-          }
-          .services-table thead th:last-child {
-            border-right: none;
-          }
-          .services-table tbody td {
-            border-bottom: 1px solid #d5e3ee;
-            border-right: 1px solid #d5e3ee;
-            padding: 12px 14px;
-            color: #1a3352;
-            background-color: #ffffff;
-            vertical-align: middle;
-          }
-          .services-table tbody tr:last-child td {
-            border-bottom: none;
-          }
-          .services-table tbody td:last-child {
-            border-right: none;
-          }
-          .services-table tbody tr:nth-child(even) td {
-            background-color: #f4f8fc;
-          }
-          .services-table tbody tr:hover td {
-            background-color: #eaf1f8;
-          }
-          .svc-type {
-            font-weight: 700;
-            text-transform: uppercase;
-            font-size: 11px;
-            letter-spacing: 0.5px;
-            color: #1a3352;
-            width: 16%;
-          }
-          .svc-name {
-            font-weight: 600;
-            color: #0f1d32;
-            width: 40%;
-          }
-          .svc-status {
-            width: 18%;
-            text-align: center;
-          }
-          .svc-conf {
-            font-weight: 600;
-            color: #334155;
-            width: 26%;
-            font-family: 'Inter', monospace;
-            font-size: 12px;
-          }
-          .status-confirmed {
-            display: inline-block;
-            background: #f0f9f4;
-            color: #166534;
-            font-size: 11px;
-            font-weight: 700;
-            padding: 3px 10px;
-            border-radius: 20px;
-            border: 1px solid #b4dfc8;
-            letter-spacing: 0.3px;
-          }
-          .status-pending {
-            display: inline-block;
-            background: #fef9f0;
-            color: #92400e;
-            font-size: 11px;
-            font-weight: 700;
-            padding: 3px 10px;
-            border-radius: 20px;
-            border: 1px solid #f5dea0;
-            letter-spacing: 0.3px;
-          }
-          .status-cancelled {
-            display: inline-block;
-            background: #fef4f4;
-            color: #991b1b;
-            font-size: 11px;
-            font-weight: 700;
-            padding: 3px 10px;
-            border-radius: 20px;
-            border: 1px solid #f5c6c6;
-            letter-spacing: 0.3px;
-          }
-
-          /* ── EMPTY STATE ── */
-          .empty-row td {
-            text-align: center;
-            color: #94a3b8;
-            padding: 22px 14px;
-            font-style: italic;
-            font-size: 13px;
-          }
-
-          /* ── GENERATED NOTE ── */
-          .generated-note {
-            text-align: center;
-            font-size: 11px;
-            color: #94a3b8;
-            margin: 24px 0 0;
-            font-weight: 500;
-            letter-spacing: 0.2px;
-          }
-
-          /* ── FOOTER ── */
           .brand-footer {
             background: linear-gradient(135deg, #0f1d32 0%, #1a3352 50%, #264a6e 100%);
             padding: 18px 28px;
@@ -502,10 +902,10 @@ export const buildVoucherHtml = (data, branding, agentBranding = {}) => {
               ${hasAgentBranding && agentLogoUrl
       ? `<img src="${agentLogoUrl}" alt="${agentCompanyName || 'Agent'} Logo" class="brand-logo">`
       : hasAgentBranding
-        ? `<div class="brand-mark"><div class="brand-mark-letters"><span class="brand-mark-t">${(agentCompanyName || 'A').charAt(0).toUpperCase()}</span></div><div class="brand-mark-sub">Travel Voucher</div></div>`
+        ? `<div style="font-size: 24px; font-weight: 800; color: #0f1d32;">${(agentCompanyName || 'A').charAt(0).toUpperCase()}</div>`
         : showBranding
           ? `<img src="${DEFAULT_FALLBACK_LOGO}" alt="Holiday Circuit Logo" class="brand-logo">`
-          : `<div class="brand-mark"><div class="brand-mark-letters"><span class="brand-mark-t">T</span><span class="brand-mark-v">V</span></div><div class="brand-mark-sub">Travel Voucher</div></div>`
+          : `<div style="font-size: 24px; font-weight: 800; color: #0f1d32;">TV</div>`
     }
             </div>
             <div class="brand-name">${hasAgentBranding ? (agentCompanyName || "Travel Voucher") : showBranding ? "Holiday Circuit" : "Travel Voucher"}</div>
@@ -516,61 +916,73 @@ export const buildVoucherHtml = (data, branding, agentBranding = {}) => {
 
           <!-- BODY -->
           <div class="voucher-body">
-            <!-- VOUCHER INFO -->
-            <table class="metadata-card">
-              <tr>
-                <td class="label-cell">Voucher Number</td>
-                <td class="value-cell">${data.voucherNumber || data.query}</td>
-              </tr>
-              <tr>
-                <td class="label-cell">Destination</td>
-                <td class="value-cell">${data.destination || "-"}</td>
-              </tr>
-              <tr>
-                <td class="label-cell">Duration</td>
-                <td class="value-cell">${data.duration || "-"}</td>
-              </tr>
-              <tr>
-                <td class="label-cell">Passengers</td>
-                <td class="value-cell">${data.passengers || "-"}</td>
-              </tr>
-            </table>
-
-            <!-- GUEST INFO -->
-            <table class="metadata-card">
-              <tr>
-                <td class="label-cell">Guest Details</td>
-                <td class="value-cell">${data.name || data.guestName || "-"}</td>
-              </tr>
-              <tr>
-                <td class="label-cell">Pax Details</td>
-                <td class="value-cell">${passengerBreakup}</td>
-              </tr>
-              <tr>
-                <td class="label-cell">Travel Date</td>
-                <td class="value-cell">${formatTravelDate(resolvedTravelDate)}</td>
-              </tr>
-            </table>
-
-            <!-- SERVICE DETAILS -->
-            <div class="section-heading">Service Details</div>
-            <table class="services-table">
+            <!-- OVERVIEW TABLE -->
+            <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 13px; border: 1px solid #b3cae8;">
               <thead>
-                <tr>
-                  <th width="16%">Type</th>
-                  <th width="40%">Service Description</th>
-                  <th width="18%" style="text-align:center;">Status</th>
-                  <th width="26%">Confirmation No.</th>
+                <tr style="background-color: #dce8f6;">
+                  <th colspan="4" style="padding: 9px 14px; font-size: 13px; font-weight: 800; color: #000000; text-align: center; border: 1px solid #b3cae8; letter-spacing: 0.3px;">
+                    Trip ID: ${tripIdVal}
+                  </th>
                 </tr>
               </thead>
               <tbody>
-                ${serviceRowsHtml || '<tr class="empty-row"><td colspan="4">No services available</td></tr>'}
+                <tr>
+                  <td style="padding: 8px 12px; color: #1e293b; width: 18%; font-weight: 500; border: 1px solid #b3cae8;">Start Date</td>
+                  <td style="padding: 8px 12px; color: #000000; width: 32%; font-weight: 700; border: 1px solid #b3cae8;">${startDateOrdinal}</td>
+                  <td style="padding: 8px 12px; color: #1e293b; width: 20%; font-weight: 500; border: 1px solid #b3cae8;">Trip Duration</td>
+                  <td style="padding: 8px 12px; color: #000000; width: 30%; font-weight: 700; border: 1px solid #b3cae8;">${durationVal}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 8px 12px; color: #1e293b; font-weight: 500; border: 1px solid #b3cae8;">Destination</td>
+                  <td colspan="3" style="padding: 8px 12px; color: #000000; font-weight: 700; border: 1px solid #b3cae8;">${destinationVal}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 8px 12px; color: #1e293b; font-weight: 500; border: 1px solid #b3cae8;">Guest Name</td>
+                  <td style="padding: 8px 12px; color: #000000; font-weight: 700; border: 1px solid #b3cae8;">${guestNameVal}</td>
+                  <td style="padding: 8px 12px; color: #1e293b; font-weight: 500; border: 1px solid #b3cae8;">Guest Ph.</td>
+                  <td style="padding: 8px 12px; color: #000000; font-weight: 600; border: 1px solid #b3cae8;">${guestPhoneVal}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 8px 12px; color: #1e293b; font-weight: 500; border: 1px solid #b3cae8;">Pax Details</td>
+                  <td colspan="3" style="padding: 8px 12px; color: #000000; font-weight: 700; border: 1px solid #b3cae8;">${paxVal}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 8px 12px; color: #000000; font-weight: 700; border: 1px solid #b3cae8;">Issued By</td>
+                  <td colspan="3" style="padding: 8px 12px; color: #1e293b; font-weight: 500; border: 1px solid #b3cae8;">${issuedByVal}</td>
+                </tr>
+              </tbody>
+            </table>
+
+            <!-- HOTELS SECTION -->
+            ${hotelsHtml}
+
+            <!-- TRANSFERS & ACTIVITIES SECTION -->
+            ${nonHotelServicesHtml}
+
+            <!-- TERMS & CONDITIONS SECTION -->
+            ${termsHtml}
+
+            <!-- HELPLINE SECTION -->
+            <table style="width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 13px; border: 1px solid #b3cae8; font-family: Arial, sans-serif;">
+              <thead>
+                <tr style="background-color: #fef08a;">
+                  <th colspan="3" style="padding: 8px 12px; font-size: 13px; font-weight: 800; color: #000000; text-align: center; border: 1px solid #b3cae8;">
+                    Helpline
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td style="padding: 9px 12px; color: #000000; font-weight: 600; width: 34%; border: 1px solid #b3cae8;">Holiday Circuit</td>
+                  <td style="padding: 9px 12px; color: #000000; font-weight: 500; width: 33%; border: 1px solid #b3cae8;">24x7 Operational</td>
+                  <td style="padding: 9px 12px; color: #000000; font-weight: 700; width: 33%; border: 1px solid #b3cae8;">+91-8851346665</td>
+                </tr>
               </tbody>
             </table>
 
             <!-- GENERATED NOTE -->
-            <div class="generated-note">
-              This is a computer generated document. No signature/stamp required.
+            <div style="text-align: right; font-size: 11px; color: #64748b; margin-top: 14px; font-family: Arial, sans-serif;">
+              Generated On - ${new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })} - ${new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false })} Hrs UTC
             </div>
           </div>
 
@@ -582,7 +994,7 @@ export const buildVoucherHtml = (data, branding, agentBranding = {}) => {
           ` : `
             <div class="brand-footer">
               <div class="footer-info">
-                <div class="footer-item">Phone: ${data.agencyPhone || '+91 8851346665'} | Email: ${data.agencyEmail || 'ops@holidaycircuit.com'}</div>
+                <div class="footer-item">Phone: ${data.agencyPhone || helplinePhone} | Email: ${data.agencyEmail || 'ops@holidaycircuit.com'}</div>
               </div>
               <div class="footer-address">
                 ${data.agencyAddress || '2nd Floor, 632 Block B1, Janakpuri, New Delhi - 110058'}

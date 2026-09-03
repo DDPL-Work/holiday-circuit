@@ -178,28 +178,17 @@ function ConfirmUserActionModal({
 }) {
   if (!dialog?.open || !dialog?.user) return null;
 
-  const isSoftDelete = dialog.type === "soft-delete";
   const isRestore = dialog.type === "restore";
-  const title = isSoftDelete
-    ? "Soft Delete User"
-    : isRestore
-      ? "Restore User"
-      : "Permanent Delete User";
-  const description = isSoftDelete
-    ? `This will hide ${dialog.user.name} from the active list and mark the account as deleted.`
-    : isRestore
-      ? `This will bring ${dialog.user.name} back into the active management list.`
-      : `This will permanently delete ${dialog.user.name}. This action cannot be undone.`;
-  const confirmLabel = isSoftDelete
-    ? "Soft Delete"
-    : isRestore
-      ? "Restore"
-      : "Permanent Delete";
+  const title = isRestore ? "Restore User" : "Delete User";
+  const description = isRestore
+    ? `This will bring ${dialog.user.name} back into the active management list.`
+    : `Are you sure you want to permanently delete ${dialog.user.name}? This will remove the user completely from the database and frontend. This action cannot be undone.`;
+  const confirmLabel = isRestore ? "Restore" : "Delete User";
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4">
-      <div className="w-full max-w-md rounded-xl border border-gray-200 bg-white shadow-xl">
-        <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+      <div className="w-full max-w-md rounded-xl border border-gray-200 bg-white shadow-xl overflow-hidden">
+        <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4">
           <h3 className="text-sm font-semibold text-gray-900">{title}</h3>
           <button
             type="button"
@@ -210,31 +199,31 @@ function ConfirmUserActionModal({
           </button>
         </div>
 
-        <div className="px-4 py-4">
-          <p className="text-sm text-gray-600">{description}</p>
+        <div className="px-5 py-4">
+          <p className="text-sm text-gray-600 leading-relaxed">{description}</p>
 
-          {isSoftDelete ? (
+          {!isRestore ? (
             <div className="mt-4">
               <p className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-400">
-                Deletion Reason
+                Deletion Reason (Optional)
               </p>
               <textarea
                 value={dialog.reason}
                 onChange={(e) => onReasonChange(e.target.value)}
                 rows={3}
-                placeholder="Enter deletion reason..."
+                placeholder="Enter deletion reason (optional)..."
                 className="w-full resize-none rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 outline-none transition-colors focus:border-gray-400"
               />
             </div>
           ) : null}
         </div>
 
-        <div className="flex justify-end gap-2 border-t border-gray-200 px-4 py-3">
+        <div className="flex justify-end gap-2 border-t border-gray-200 bg-gray-50 px-5 py-3">
           <button
             type="button"
             onClick={onClose}
             disabled={submitting}
-            className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50 disabled:opacity-50"
+            className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50 disabled:opacity-50"
           >
             Cancel
           </button>
@@ -243,11 +232,9 @@ function ConfirmUserActionModal({
             onClick={onConfirm}
             disabled={submitting}
             className={`rounded-lg px-3 py-2 text-sm font-semibold text-white transition-colors disabled:opacity-50 ${
-              dialog.type === "permanent-delete"
-                ? "bg-red-500 hover:bg-red-600"
-                : dialog.type === "restore"
-                  ? "bg-green-600 hover:bg-green-700"
-                  : "bg-gray-900 hover:bg-gray-700"
+              isRestore
+                ? "bg-green-600 hover:bg-green-700"
+                : "bg-red-600 hover:bg-red-700"
             }`}
           >
             {submitting ? "Please wait..." : confirmLabel}
@@ -390,12 +377,12 @@ export default function UserManagement() {
     return data;
   };
 
-  const openSoftDeleteDialog = (user) => {
+  const openDeleteDialog = (user) => {
     setConfirmDialog({
       open: true,
-      type: "soft-delete",
+      type: "delete",
       user,
-      reason: user.deletionReason || "",
+      reason: "",
     });
   };
 
@@ -408,37 +395,14 @@ export default function UserManagement() {
     });
   };
 
-  const openPermanentDeleteDialog = (user) => {
-    setConfirmDialog({
-      open: true,
-      type: "permanent-delete",
-      user,
-      reason: "",
-    });
-  };
-
   const handleConfirmUserAction = async () => {
     const user = confirmDialog.user;
     if (!user?.id) return;
 
-    if (confirmDialog.type === "soft-delete" && !confirmDialog.reason.trim()) {
-      toast.error("Deletion reason is required");
-      return;
-    }
-
     try {
       setUserActionId(user.id);
 
-      if (confirmDialog.type === "soft-delete") {
-        const { data } = await API.delete(`/admin/managed-users/${user.id}`, {
-          data: { reason: confirmDialog.reason.trim() },
-        });
-        const nextUser = mapApiUserToRow(data?.user || {});
-        setUsers((prev) =>
-          prev.map((entry) => (entry.id === nextUser.id ? nextUser : entry)),
-        );
-        toast.success(data?.message || "User deleted successfully");
-      } else if (confirmDialog.type === "restore") {
+      if (confirmDialog.type === "restore") {
         const { data } = await API.patch(
           `/admin/managed-users/${user.id}/restore`,
         );
@@ -447,12 +411,12 @@ export default function UserManagement() {
           prev.map((entry) => (entry.id === nextUser.id ? nextUser : entry)),
         );
         toast.success(data?.message || "User restored successfully");
-      } else if (confirmDialog.type === "permanent-delete") {
-        const { data } = await API.delete(
-          `/admin/managed-users/${user.id}/permanent`,
-        );
+      } else {
+        const { data } = await API.delete(`/admin/managed-users/${user.id}`, {
+          data: { reason: confirmDialog.reason?.trim() || "" },
+        });
         setUsers((prev) => prev.filter((entry) => entry.id !== user.id));
-        toast.success(data?.message || "User permanently deleted successfully");
+        toast.success(data?.message || "User deleted successfully");
       }
 
       closeConfirmDialog();
@@ -704,7 +668,7 @@ export default function UserManagement() {
                               <RestoreIcon />
                             </button>
                             <button
-                              onClick={() => openPermanentDeleteDialog(user)}
+                              onClick={() => openDeleteDialog(user)}
                               disabled={userActionId === user.id}
                               className="p-1.5 rounded-md text-red-400 hover:bg-red-50 transition-colors disabled:opacity-50"
                             >
@@ -724,7 +688,7 @@ export default function UserManagement() {
                               <EditIcon />
                             </button>
                             <button
-                              onClick={() => openSoftDeleteDialog(user)}
+                              onClick={() => openDeleteDialog(user)}
                               disabled={userActionId === user.id}
                               className="p-1.5 rounded-md text-red-400 hover:bg-red-50 transition-colors disabled:opacity-50"
                             >

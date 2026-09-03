@@ -590,29 +590,34 @@ export const TripTouristsModal = ({ isOpen, onClose, query, headerLeadTraveler, 
 
     // 2. Save to Backend MongoDB Database
     if (targetQueryId) {
-      try {
-        const payload = {
-          clientName: fullName,
-          leadTraveler: fullName,
-          travelerDetails: tourists.map((t) => ({
-            fullName: [t.salutation, t.name].filter(Boolean).join(" "),
-            travelerType: t.type || "Adult",
-            childAge: t.age ? Number(t.age) : null,
-            nationality: t.nationality || "Indian",
-            phone: t.phones?.[0]?.number || "",
-            email: t.email || "",
-          })),
-        };
+       try {
+         const payload = {
+           clientName: fullName,
+           leadTraveler: fullName,
+           name: fullName,
+           clientPhone: formattedPhone,
+           phone: formattedPhone,
+           clientEmail: primaryEmail,
+           email: primaryEmail,
+           travelerDetails: tourists.map((t) => ({
+             fullName: [t.salutation, t.name].filter(Boolean).join(" "),
+             travelerType: t.type || "Adult",
+             childAge: t.age ? Number(t.age) : null,
+             nationality: t.nationality || "Indian",
+             phone: (t.phones?.find((p) => p.isPrimary)?.number || t.phones?.[0]?.number || "").trim(),
+             email: t.email || "",
+           })),
+         };
 
-        await API.put(`/agent/queries/${targetQueryId}`, payload).catch(() =>
-          API.put(`/ops/queries/${targetQueryId}`, payload).catch(() =>
-            API.put(`/queries/${targetQueryId}`, payload)
-          )
-        );
-      } catch (err) {
-        console.warn("Backend DB sync warning:", err);
-      }
-    }
+         await API.put(`/agent/queries/${targetQueryId}`, payload).catch(() =>
+           API.put(`/ops/queries/${targetQueryId}`, payload).catch(() =>
+             API.put(`/queries/${targetQueryId}`, payload)
+           )
+         );
+       } catch (err) {
+         console.warn("Backend DB sync warning:", err);
+       }
+     }
 
     if (onSave) {
       onSave(tourists);

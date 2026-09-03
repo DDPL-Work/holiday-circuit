@@ -90,6 +90,11 @@ export const QueryHeaderCard = ({
           localStorage.setItem(`${queryKey}_email`, primary.email.trim());
         } catch (e) {}
       }
+      if (primary?.address) {
+        try {
+          localStorage.setItem(`${queryKey}_address`, primary.address.trim());
+        } catch (e) {}
+      }
     }
   };
 

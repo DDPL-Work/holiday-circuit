@@ -1,5 +1,50 @@
 import React, { useState, useRef, useEffect } from "react";
-import { ArrowLeft, Pencil, Phone, Mail, CreditCard, Plus, X, ChevronDown, AlertTriangle } from "lucide-react";
+import { ArrowLeft, Pencil, Phone, Mail, CreditCard, Plus, X, ChevronDown, AlertTriangle, FileText } from "lucide-react";
+import API from "../../utils/Api";
+
+const extractPlainTextFromTerm = (rawContent) => {
+  if (!rawContent) return "";
+  if (Array.isArray(rawContent)) {
+    return rawContent.map((t) => String(t || "").trim()).filter(Boolean).join("\n");
+  }
+  if (typeof rawContent !== "string") return "";
+
+  if (/<[a-z][\s\S]*>/i.test(rawContent)) {
+    try {
+      const doc = new DOMParser().parseFromString(rawContent, "text/html");
+      const lines = [];
+      const processNode = (node) => {
+        if (!node) return;
+        if (node.nodeType === Node.ELEMENT_NODE) {
+          const tag = node.tagName.toLowerCase();
+          if (["ul", "ol"].includes(tag)) {
+            Array.from(node.childNodes).forEach(processNode);
+          } else if (["p", "h1", "h2", "h3", "h4", "h5", "h6", "li", "blockquote", "div"].includes(tag)) {
+            const text = (node.textContent || "").trim();
+            if (text) {
+              lines.push(text);
+            }
+          } else {
+            Array.from(node.childNodes).forEach(processNode);
+          }
+        }
+      };
+      Array.from(doc.body.childNodes).forEach(processNode);
+      if (lines.length > 0) return lines.join("\n");
+      const plain = (doc.body.textContent || "").trim();
+      if (plain) return plain;
+    } catch (e) {
+      return rawContent
+        .replace(/<br\s*[\/]?>/gi, "\n")
+        .replace(/<\/p>/gi, "\n")
+        .replace(/<\/li>/gi, "\n")
+        .replace(/<[^>]+>/g, "")
+        .trim();
+    }
+  }
+
+  return rawContent;
+};
 
 const PRESET_TAX_OPTIONS = [
   { id: "gst", label: "GST (GST)", value: "GST" },
@@ -270,10 +315,53 @@ const CreateProformaInvoice = ({ onClose, onSave, queryData = {} }) => {
   const [ifscCode, setIfscCode] = useState(queryData?.ifscCode || "");
   const [overview, setOverview] = useState("");
   const [specialNotes, setSpecialNotes] = useState("");
-  const [termsConditions, setTermsConditions] = useState("Invoice TnC");
+  const [termsConditions, setTermsConditions] = useState(
+    queryData?.termsConditions || queryData?.terms || "Invoice TnC"
+  );
+  const [termsList, setTermsList] = useState([]);
+  const [loadingTerms, setLoadingTerms] = useState(false);
+  const [selectedTermId, setSelectedTermId] = useState("");
   const [confirmed, setConfirmed] = useState(false);
   const [activeTypeDropdownIndex, setActiveTypeDropdownIndex] = useState(null);
   const [isRoundedOff, setIsRoundedOff] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+    const fetchAgentTerms = async () => {
+      try {
+        setLoadingTerms(true);
+        let res;
+        try {
+          res = await API.get("/agent/terms");
+        } catch (e) {
+          try {
+            res = await API.get("/admin/terms");
+          } catch (err) {
+            console.error("Failed to fetch terms:", err);
+          }
+        }
+        let list = [];
+        if (Array.isArray(res?.data)) {
+          list = res.data;
+        } else if (res?.data?.success || res?.data?.data || res?.data?.terms) {
+          list = res.data.data || res.data.terms || [];
+        }
+        if (isMounted) {
+          setTermsList(list);
+        }
+      } catch (err) {
+        console.error("Failed to load terms and conditions:", err);
+      } finally {
+        if (isMounted) {
+          setLoadingTerms(false);
+        }
+      }
+    };
+    fetchAgentTerms();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const parseAmount = (val) => {
     if (typeof val === "number") return val;
@@ -1178,7 +1266,7 @@ const CreateProformaInvoice = ({ onClose, onSave, queryData = {} }) => {
               Special Notes <span className="text-slate-400 font-normal ml-1">(optional)</span>
             </label>
             <textarea
-              rows={3}
+              rows={4}
               placeholder="Any special notes here"
               value={specialNotes}
               onChange={(e) => setSpecialNotes(e.target.value)}
@@ -1187,12 +1275,55 @@ const CreateProformaInvoice = ({ onClose, onSave, queryData = {} }) => {
           </div>
 
           <div>
-            <label className="block text-sm font-bold text-slate-900 mb-1.5">Terms and Conditions</label>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 mb-1.5">
+              <label className="flex items-center gap-1.5 text-sm font-bold text-slate-900">
+                <FileText className="w-4 h-4 text-blue-600 shrink-0" />
+                <span>Terms and Conditions</span>
+              </label>
+
+              {/* Agent Terms & Conditions Dropdown */}
+              <div className="relative min-w-[220px] max-w-[280px]">
+                <select
+                  value={selectedTermId}
+                  onChange={(e) => {
+                    const termId = e.target.value;
+                    setSelectedTermId(termId);
+                    if (termId) {
+                      const foundTerm = termsList.find(
+                         (t) => String(t.id || t._id) === String(termId)
+                      );
+                      if (foundTerm) {
+                        const parsed = extractPlainTextFromTerm(foundTerm.content);
+                        setTermsConditions(parsed || foundTerm.content || "");
+                      }
+                    }
+                  }}
+                  disabled={loadingTerms}
+                  className="w-full appearance-none rounded-md border border-slate-300 bg-white py-1.5 pl-2.5 pr-8 text-xs font-medium text-slate-700 shadow-2xs outline-none transition hover:border-slate-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 cursor-pointer disabled:bg-slate-50 disabled:cursor-not-allowed"
+                >
+                  <option value="">
+                    {loadingTerms
+                      ? "Loading TnC templates..."
+                      : termsList.length === 0
+                      ? "-- No saved TnC found --"
+                      : "-- Select Saved TnC Template --"}
+                  </option>
+                  {termsList.map((term) => (
+                    <option key={term.id || term._id} value={term.id || term._id}>
+                      {term.name}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 w-3.5 h-3.5" />
+              </div>
+            </div>
+
             <textarea
-              rows={3}
+              rows={4}
               value={termsConditions}
               onChange={(e) => setTermsConditions(e.target.value)}
-              className="w-full border border-slate-300 rounded-md p-3 text-sm bg-white focus:outline-none focus:border-blue-600"
+              placeholder="Terms and Conditions here..."
+              className="w-full border border-slate-300 rounded-md p-3 text-sm bg-white focus:outline-none focus:border-blue-600 font-normal leading-relaxed"
             />
           </div>
         </div>

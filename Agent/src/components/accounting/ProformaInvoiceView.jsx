@@ -1,7 +1,9 @@
-import React from "react";
+import React, { useRef, useState } from "react";
 import { useSelector } from "react-redux";
-import { ArrowLeft, Pencil, RotateCw, Copy, FileText, Trash2 } from "lucide-react";
+import { ArrowLeft, Pencil, RotateCw, Copy, FileText, Trash2, Download, Loader2 } from "lucide-react";
 import toast from "react-hot-toast";
+import html2canvas from "html2canvas";
+import jsPDF from "jspdf";
 import { resolveClientDetails } from "./CreateProformaInvoice";
 
 // Utility to convert numbers to English words (e.g. 69000 -> Sixty-Nine Thousand Only)
@@ -24,6 +26,303 @@ const numberToWords = (num) => {
   const val = Math.round(Number(num || 0));
   if (val === 0) return "Zero Only";
   return `${inWords(val)} Only`;
+};
+
+// The PDF is rasterised one A4 page at a time. Keep terms in deliberately
+// small, readable chunks so no text is clipped at the end of the canvas.
+// A continuation page has much more room than the invoice page, whose top
+// section contains the billing details and totals.
+const FIRST_PAGE_TERMS_LINE_CAPACITY = 50;
+const TERMS_PAGE_LINE_CAPACITY = 110;
+
+const escapePdfHtml = (value) => String(value || "")
+  .replace(/&/g, "&amp;")
+  .replace(/</g, "&lt;")
+  .replace(/>/g, "&gt;")
+  .replace(/\"/g, "&quot;")
+  .replace(/'/g, "&#039;");
+
+const estimateTermLines = (term) => {
+  const lines = String(term || "").split(/\r?\n/);
+  return lines.reduce(
+    (total, line) => total + Math.max(1, Math.ceil(line.trim().length / 88)) + 1,
+    0,
+  );
+};
+
+const takeTermsForPage = (terms = [], lineCapacity) => {
+  const pageTerms = [];
+  let usedLines = 0;
+
+  for (let index = 0; index < terms.length; index += 1) {
+    const linesNeeded = estimateTermLines(terms[index]);
+    if (pageTerms.length && usedLines + linesNeeded > lineCapacity) {
+      return { pageTerms, remainingTerms: terms.slice(index) };
+    }
+    pageTerms.push(terms[index]);
+    usedLines += linesNeeded;
+  }
+
+  return { pageTerms, remainingTerms: [] };
+};
+
+const splitTermsAcrossPages = (terms = [], lineCapacity = TERMS_PAGE_LINE_CAPACITY) => {
+  const pages = [];
+  let page = [];
+  let usedLines = 0;
+
+  terms.forEach((term) => {
+    const linesNeeded = estimateTermLines(term);
+    if (page.length && usedLines + linesNeeded > lineCapacity) {
+      pages.push(page);
+      page = [];
+      usedLines = 0;
+    }
+    page.push(term);
+    usedLines += linesNeeded;
+  });
+
+  if (page.length) pages.push(page);
+  return pages;
+};
+
+const buildInvoiceCleanHtml = ({
+  sellerLogo,
+  sellerDetails,
+  buyerDetails,
+  issueDate,
+  dueDate,
+  queryId,
+  overview,
+  items,
+  calculateItemBase,
+  getItemTaxesList,
+  calculateSingleTax,
+  grandTotal,
+  bankDetails,
+  hasBankDetails,
+  invoiceData,
+}) => {
+  const renderedTableRows = items
+    .map((item, idx) => {
+      const base = calculateItemBase(item);
+      const taxesList = getItemTaxesList(item);
+
+      const mainRow = `
+        <tr style="border-bottom: 1px solid #7dd3c7;">
+          <td style="padding: 6px 8px; text-align: center; vertical-align: top; border-right: 1px solid #7dd3c7; font-weight: 700; color: #0f172a;">${idx + 1}.</td>
+          <td style="padding: 6px 10px; vertical-align: top; border-right: 1px solid #7dd3c7; white-space: pre-line; line-height: 1.4; color: #1e293b;">${item.particularText}</td>
+          <td style="padding: 6px 10px; vertical-align: top; text-align: right; font-weight: 700; color: #0f172a;">INR ${base.toLocaleString("en-IN")}.00</td>
+        </tr>
+      `;
+
+      const taxRows = taxesList
+        .map((tax) => {
+          const taxAmt = calculateSingleTax(item, tax);
+          const isPercent = item.taxType !== "amount";
+          const rateText = isPercent ? `@ ${Number(tax.value ?? tax.taxPercentage ?? 0).toFixed(2)} %` : "";
+          return `
+            <tr style="background-color: #f8fafc; font-size: 10px; color: #475569; border-bottom: 1px solid #f1f5f9;">
+              <td style="border-right: 1px solid #7dd3c7;"></td>
+              <td style="padding: 3px 10px; border-right: 1px solid #7dd3c7; font-style: italic;">${tax.name || "GST"} ${rateText}</td>
+              <td style="padding: 3px 10px; text-align: right; font-weight: 600;">INR ${taxAmt.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+            </tr>
+          `;
+        })
+        .join("");
+
+      return mainRow + taxRows;
+    })
+    .join("");
+
+  let termsList = [];
+  if (invoiceData?.termsConditions) {
+    if (typeof invoiceData.termsConditions === "string") {
+      termsList = invoiceData.termsConditions
+        .split("\n")
+        .map((t) => t.trim())
+        .filter(Boolean);
+    } else if (Array.isArray(invoiceData.termsConditions)) {
+      termsList = invoiceData.termsConditions
+        .map((t) => (typeof t === "string" ? t.trim() : JSON.stringify(t)))
+        .filter(Boolean);
+    }
+  }
+
+  if (termsList.length === 0) {
+    termsList = [
+      "1. Balance payment to be cleared before travel",
+      "2. Cancellation as per supplier policy; service charges non-refundable",
+      "3. Amendments subject to availability & extra cost",
+      "4. No refund for no-show / unused services",
+      "5. Guests must carry valid travel documents",
+      "6. Not liable for delays, cancellations, or unforeseen events",
+      "7. All disputes are subject to Delhi jurisdiction only",
+    ];
+  }
+
+  const { pageTerms: firstPageTerms, remainingTerms } = takeTermsForPage(
+    termsList,
+    FIRST_PAGE_TERMS_LINE_CAPACITY,
+  );
+  const continuationTermsPages = splitTermsAcrossPages(remainingTerms);
+  const totalTermsPages = 1 + continuationTermsPages.length;
+  const firstPageTermsHtml = firstPageTerms
+    .map((term) => `<div style="margin-bottom: 3.5px; line-height: 1.38; white-space: pre-line;">${escapePdfHtml(term)}</div>`)
+    .join("");
+
+  const termsPagesHtml = continuationTermsPages
+    .map((termsOnPage, pageIndex) => {
+      const pageTermsHtml = termsOnPage
+        .map((term) => `<div style="margin-bottom: 8px; line-height: 1.52; white-space: pre-line;">${escapePdfHtml(term)}</div>`)
+        .join("");
+
+      return `
+        <div class="pdf-page" style="width: 794px; height: 1120px; box-sizing: border-box; padding: 24px 28px; background: #ffffff; display: flex; flex-direction: column; justify-content: space-between; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #0f172a; font-size: 11px; line-height: 1.45;">
+          <div>
+            <div style="background-color: #0f766e; color: #ffffff; text-align: center; font-weight: 800; letter-spacing: 1px; font-size: 12.5px; padding: 7px 0; text-transform: uppercase; border-radius: 2px;">PROFORMA INVOICE</div>
+            <div style="margin-top: 16px; border: 1px solid #7dd3c7; border-radius: 2px; overflow: hidden; background: #ffffff;">
+              <div style="background-color: #e6fffb; color: #0f766e; text-align: center; font-weight: 800; padding: 7px 0; font-size: 12px; text-transform: uppercase;">Terms and Conditions</div>
+              <div style="padding: 8px 12px; color: #64748b; font-size: 9.5px; font-weight: 700; border-bottom: 1px solid #ccfbf1; text-align: right;">Trip ID: ${escapePdfHtml(queryId)} &nbsp;|&nbsp; Page ${pageIndex + 2} of ${totalTermsPages}</div>
+              <div style="padding: 16px 18px 12px; color: #334155; background: #ffffff;">
+                ${pageTermsHtml}
+              </div>
+            </div>
+          </div>
+          <div style="text-align: center; padding-top: 6px; font-size: 8.5px; color: #94a3b8; font-style: italic; border-top: 1px solid #f1f5f9;">This is a computer generated document. No signature required.</div>
+        </div>
+      `;
+    })
+    .join("");
+
+  return `
+    <div class="pdf-page" style="width: 794px; height: 1120px; box-sizing: border-box; padding: 24px 28px; background: #ffffff; display: flex; flex-direction: column; justify-content: space-between; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #0f172a; font-size: 10.5px; line-height: 1.4;">
+      <div>
+        <!-- Dark Teal Banner -->
+        <div style="background-color: #0f766e; color: #ffffff; text-align: center; font-weight: 800; letter-spacing: 1px; font-size: 12.5px; padding: 7px 0; text-transform: uppercase; border-radius: 2px;">
+          PROFORMA INVOICE
+        </div>
+
+        <!-- Header Info -->
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px; padding-bottom: 6px;">
+          <div style="min-height: 48px; display: flex; align-items: center;">
+            ${
+              sellerLogo
+                ? `<img src="${sellerLogo}" crossorigin="anonymous" style="max-height: 60px; max-width: 200px; object-fit: contain;" />`
+                : `<span style="font-size: 18px; font-weight: 900; font-style: italic; color: #0f172a; border-bottom: 2px solid #0f766e; padding-bottom: 2px;">${sellerDetails.name}</span>`
+            }
+          </div>
+          <div style="font-size: 10px; font-weight: 700; text-align: right; line-height: 1.5;">
+            <div><span style="color: #64748b; margin-right: 10px; font-weight: 600;">Issue Date</span><span style="color: #0f172a;">${issueDate}</span></div>
+            <div><span style="color: #64748b; margin-right: 10px; font-weight: 600;">Due Date</span><span style="color: #0f172a;">${dueDate}</span></div>
+            <div><span style="color: #64748b; margin-right: 10px; font-weight: 600;">Trip ID</span><span style="color: #0f172a;">${queryId}</span></div>
+          </div>
+        </div>
+
+        <!-- Seller & Buyer -->
+        <div style="display: flex; justify-content: space-between; border-top: 1px solid #f1f5f9; padding-top: 8px; margin-top: 2px; font-size: 10.5px;">
+          <!-- Seller -->
+          <div style="width: 48%; line-height: 1.38;">
+            <div style="font-size: 9px; font-weight: 800; color: #64748b; text-transform: uppercase; margin-bottom: 2px;">SELLER</div>
+            <div style="font-size: 11.5px; font-weight: 800; color: #0f172a;">${sellerDetails.name}</div>
+            <div style="color: #475569; font-style: italic;">${sellerDetails.address}</div>
+            <div style="color: #475569; font-style: italic;">${sellerDetails.cityState} ${sellerDetails.countryZip}</div>
+            <div style="color: #334155; font-weight: 600; margin-top: 2px;">${sellerDetails.phone} • ${sellerDetails.email}</div>
+            <div style="margin-top: 3px; font-size: 9.5px; color: #1e293b; line-height: 1.35;">
+              <div>PAN: <strong>${sellerDetails.pan}</strong></div>
+              <div>GST: <strong>${sellerDetails.gst}</strong></div>
+              <div>MSME REG NO : <strong>${sellerDetails.msme}</strong></div>
+              <div>TAN NO - <strong>${sellerDetails.tan}</strong></div>
+            </div>
+          </div>
+
+          <!-- Buyer -->
+          <div style="width: 48%; text-align: right; line-height: 1.38;">
+            <div style="font-size: 9px; font-weight: 800; color: #64748b; text-transform: uppercase; margin-bottom: 2px;">BUYER (BILL TO)</div>
+            <div style="font-size: 11.5px; font-weight: 800; color: #0f172a;">${buyerDetails.name}</div>
+            <div style="color: #475569; font-style: italic;">${buyerDetails.address}</div>
+            <div style="color: #475569; font-style: italic;">${buyerDetails.country}</div>
+            ${buyerDetails.phone ? `<div style="color: #334155; font-weight: 600; margin-top: 2px;">Phone: ${buyerDetails.phone}</div>` : ""}
+            ${buyerDetails.email ? `<div style="color: #334155; font-weight: 600;">Email: ${buyerDetails.email}</div>` : ""}
+          </div>
+        </div>
+
+        <!-- Overview -->
+        ${
+          overview && overview.trim()
+            ? `
+          <div style="margin-top: 8px; padding-top: 6px; border-top: 1px solid #e2e8f0; font-size: 10px;">
+            <div style="font-size: 9px; font-weight: 800; color: #0f172a; text-transform: uppercase; margin-bottom: 2px;">OVERVIEW</div>
+            <div style="color: #334155; white-space: pre-line; line-height: 1.35;">${overview.trim()}</div>
+          </div>
+        `
+            : ""
+        }
+
+        <!-- Particulars Table -->
+        <div style="margin-top: 8px; border: 1px solid #7dd3c7; border-radius: 2px; overflow: hidden;">
+          <table style="width: 100%; border-collapse: collapse; font-size: 10px; text-align: left;">
+            <thead>
+              <tr style="background-color: #e6fffb; border-bottom: 1px solid #7dd3c7; color: #0f766e; font-weight: 800; font-size: 9.5px; text-transform: uppercase;">
+                <th style="padding: 5px 8px; width: 40px; text-align: center; border-right: 1px solid #7dd3c7;">S.NO.</th>
+                <th style="padding: 5px 10px; border-right: 1px solid #7dd3c7;">PARTICULARS</th>
+                <th style="padding: 5px 10px; width: 120px; text-align: right;">AMOUNT (INR)</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${renderedTableRows}
+              <tr style="background-color: #f8fafc; font-weight: 800; border-top: 2px solid #7dd3c7; color: #0f172a;">
+                <td colspan="2" style="padding: 6px 10px; text-align: right; border-right: 1px solid #7dd3c7; text-transform: uppercase; font-size: 9.5px;">TOTAL (INR)</td>
+                <td style="padding: 6px 10px; text-align: right; font-size: 11px; color: #0f766e; font-weight: 900;">INR ${grandTotal.toLocaleString("en-IN")}.00</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Amount in Words -->
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 6px; font-size: 10px;">
+          <div>
+            <div style="font-size: 8.5px; font-weight: 800; color: #64748b; text-transform: uppercase;">AMOUNT CHARGEABLE (IN WORDS)</div>
+            <div style="font-size: 11px; font-weight: 900; color: #0f766e; margin-top: 1px;">INR: ${numberToWords(grandTotal)}</div>
+          </div>
+          <div style="color: #64748b; font-weight: 700; font-size: 9.5px;">E. & O.E.</div>
+        </div>
+
+        <!-- Bank Details -->
+        ${
+          hasBankDetails
+            ? `
+          <div style="margin-top: 8px; padding-top: 6px; border-top: 1px solid #7dd3c7; font-size: 10px;">
+            <div style="font-size: 8.5px; font-weight: 800; color: #0f766e; text-transform: uppercase; margin-bottom: 2px;">SELLER'S BANK DETAILS</div>
+            <div style="color: #334155; line-height: 1.35;">
+              ${bankDetails.bankName || bankDetails.branchName ? `<div>Bank Name: <strong style="color: #0f172a;">${bankDetails.bankName || bankDetails.branchName}</strong></div>` : ""}
+              ${bankDetails.branchName && bankDetails.bankName && bankDetails.branchName !== bankDetails.bankName ? `<div>Branch: <strong>${bankDetails.branchName}</strong></div>` : ""}
+              ${bankDetails.accountHolderName ? `<div>A/c Holder Name: <strong>${bankDetails.accountHolderName}</strong></div>` : ""}
+              ${bankDetails.accountNumber ? `<div>A/c No. <strong>${bankDetails.accountNumber}</strong></div>` : ""}
+              ${bankDetails.ifscCode ? `<div>IFSC: <strong>${bankDetails.ifscCode}</strong></div>` : ""}
+            </div>
+          </div>
+        `
+            : ""
+        }
+
+        <!-- Use the blank area on the invoice page before continuing terms. -->
+        <div style="margin-top: 10px; border: 1px solid #7dd3c7; border-radius: 2px; overflow: hidden; background: #ffffff;">
+          <div style="background-color: #e6fffb; color: #0f766e; text-align: center; font-weight: 800; padding: 3px 0; font-size: 9.5px; text-transform: uppercase;">Terms and Conditions</div>
+          <div style="padding: 4px 10px; color: #64748b; font-size: 8px; font-weight: 700; border-bottom: 1px solid #ccfbf1; text-align: right;">Trip ID: ${escapePdfHtml(queryId)} &nbsp;|&nbsp; Page 1 of ${totalTermsPages}</div>
+          <div style="padding: 6px 10px; font-size: 9.5px; color: #334155; line-height: 1.38; background: #ffffff;">
+            ${firstPageTermsHtml}
+          </div>
+        </div>
+      </div>
+
+      <!-- Computer Generated Document Notice -->
+      <div style="text-align: center; padding-top: 6px; font-size: 8.5px; color: #94a3b8; font-style: italic; border-top: 1px solid #f1f5f9;">
+        This is a computer generated document. No signature required.
+      </div>
+    </div>
+    ${termsPagesHtml}
+  `;
 };
 
 const ProformaInvoiceView = ({ invoiceData = {}, onEdit, onDelete, onNew, queryData = {} }) => {
@@ -188,8 +487,104 @@ const ProformaInvoiceView = ({ invoiceData = {}, onEdit, onDelete, onNew, queryD
     return sum + calculateItemBase(item) + calculateItemTotalTaxes(item);
   }, 0);
 
-  const handlePrintPDF = () => {
-    window.print();
+  const invoicePaperRef = useRef(null);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+
+  const handleDownloadPDF = async () => {
+    setIsGeneratingPdf(true);
+    const toastId = toast.loading("Downloading Proforma Invoice PDF...");
+
+    const container = document.createElement("div");
+    container.style.position = "fixed";
+    container.style.top = "0";
+    container.style.left = "0";
+    container.style.width = "794px";
+    container.style.backgroundColor = "#ffffff";
+    container.style.zIndex = "-9999";
+    container.style.opacity = "1";
+    container.style.pointerEvents = "none";
+    container.innerHTML = buildInvoiceCleanHtml({
+      sellerLogo,
+      sellerDetails,
+      buyerDetails,
+      issueDate,
+      dueDate,
+      queryId,
+      overview,
+      items,
+      calculateItemBase,
+      getItemTaxesList,
+      calculateSingleTax,
+      grandTotal,
+      numberToWords,
+      bankDetails,
+      hasBankDetails,
+      invoiceData,
+    });
+
+    document.body.appendChild(container);
+
+    try {
+      const images = container.querySelectorAll("img");
+      await Promise.all(
+        Array.from(images).map((img) => {
+          if (img.complete) return Promise.resolve();
+          return new Promise((resolve) => {
+            img.onload = resolve;
+            img.onerror = resolve;
+            setTimeout(resolve, 400);
+          });
+        })
+      );
+
+      await new Promise((resolve) => setTimeout(resolve, 150));
+
+      const pageElements = container.querySelectorAll(".pdf-page");
+      const pdf = new jsPDF({
+        orientation: "portrait",
+        unit: "mm",
+        format: "a4",
+      });
+
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = pdf.internal.pageSize.getHeight();
+
+      for (let i = 0; i < pageElements.length; i++) {
+        if (i > 0) {
+          pdf.addPage();
+        }
+        const canvas = await html2canvas(pageElements[i], {
+          scale: 2,
+          useCORS: true,
+          allowTaint: true,
+          backgroundColor: "#ffffff",
+          logging: false,
+          width: 794,
+          height: 1120,
+          windowWidth: 794,
+          windowHeight: 1120,
+        });
+
+        const imgData = canvas.toDataURL("image/jpeg", 0.98);
+        pdf.addImage(imgData, "JPEG", 0, 0, pdfWidth, pdfHeight, undefined, "FAST");
+      }
+
+      if (document.body.contains(container)) {
+        document.body.removeChild(container);
+      }
+
+      const cleanId = String(queryId).replace(/^#\s*/, "") || "Invoice";
+      pdf.save(`Proforma_Invoice_${cleanId}.pdf`);
+      toast.success("Proforma Invoice PDF downloaded successfully!", { id: toastId });
+    } catch (err) {
+      if (document.body.contains(container)) {
+        document.body.removeChild(container);
+      }
+      console.error("PDF generation failed:", err);
+      toast.error("Could not download PDF. Please try again.", { id: toastId });
+    } finally {
+      setIsGeneratingPdf(false);
+    }
   };
 
   const handleCopy = () => {
@@ -245,11 +640,13 @@ const ProformaInvoiceView = ({ invoiceData = {}, onEdit, onDelete, onNew, queryD
           </button>
           <button
             type="button"
-            onClick={handlePrintPDF}
-            className="px-3 py-1.5 bg-[#2563eb] hover:bg-blue-700 text-white font-bold text-xs rounded-md flex items-center gap-1.5 cursor-pointer transition-colors shadow-2xs"
+            onClick={handleDownloadPDF}
+            disabled={isGeneratingPdf}
+            className="px-3 py-1.5 bg-[#2563eb] hover:bg-blue-700 text-white font-bold text-xs rounded-md flex items-center gap-1.5 cursor-pointer transition-colors shadow-2xs disabled:opacity-75 disabled:cursor-not-allowed"
+            title="Download PDF"
           >
-            <FileText size={14} />
-            <span>PDF</span>
+            {isGeneratingPdf ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+            <span>{isGeneratingPdf ? "Generating..." : "PDF"}</span>
           </button>
           <button
             type="button"
@@ -271,7 +668,11 @@ const ProformaInvoiceView = ({ invoiceData = {}, onEdit, onDelete, onNew, queryD
       </div>
 
       {/* Main A4 Template Render */}
-      <div className="w-full bg-white border border-slate-200/90 shadow-md rounded-xs p-6 lg:p-8 space-y-6 font-sans">
+      <div
+        ref={invoicePaperRef}
+        id="proforma-invoice-paper"
+        className="w-full bg-white border border-slate-200/90 shadow-md rounded-xs p-6 lg:p-8 space-y-6 font-sans"
+      >
         {/* Dark Teal Banner */}
         <div className="w-full bg-[#0f766e] text-white text-center font-extrabold tracking-wider text-xs sm:text-sm py-2 uppercase">
           PROFORMA INVOICE
@@ -445,13 +846,31 @@ const ProformaInvoiceView = ({ invoiceData = {}, onEdit, onDelete, onNew, queryD
             Terms and Conditions
           </div>
           <div className="p-4 text-xs text-slate-700 space-y-1.5 font-medium leading-relaxed bg-white">
-            <p>1. Balance payment to be cleared before travel</p>
-            <p>2. Cancellation as per supplier policy; service charges non-refundable</p>
-            <p>3. Amendments subject to availability & extra cost</p>
-            <p>4. No refund for no-show / unused services</p>
-            <p>5. Guests must carry valid travel documents</p>
-            <p>6. Not liable for delays, cancellations, or unforeseen events</p>
-            <p>7. All disputes are subject to Delhi jurisdiction only</p>
+            {invoiceData?.termsConditions ? (
+              typeof invoiceData.termsConditions === "string" ? (
+                invoiceData.termsConditions
+                  .split("\n")
+                  .map((t) => t.trim())
+                  .filter(Boolean)
+                  .map((t, idx) => <p key={idx}>{t}</p>)
+              ) : Array.isArray(invoiceData.termsConditions) ? (
+                invoiceData.termsConditions.map((t, idx) => (
+                  <p key={idx}>{typeof t === "string" ? t : JSON.stringify(t)}</p>
+                ))
+              ) : (
+                <p>{String(invoiceData.termsConditions)}</p>
+              )
+            ) : (
+              <>
+                <p>1. Balance payment to be cleared before travel</p>
+                <p>2. Cancellation as per supplier policy; service charges non-refundable</p>
+                <p>3. Amendments subject to availability & extra cost</p>
+                <p>4. No refund for no-show / unused services</p>
+                <p>5. Guests must carry valid travel documents</p>
+                <p>6. Not liable for delays, cancellations, or unforeseen events</p>
+                <p>7. All disputes are subject to Delhi jurisdiction only</p>
+              </>
+            )}
           </div>
         </div>
 
