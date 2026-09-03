@@ -520,9 +520,9 @@ export default function ProfileSettingsModal({ open, onClose, user }) {
                       type="button"
                       onClick={handleSave}
                       disabled={isSaving}
-                    className="flex-1 rounded-lg bg-[linear-gradient(135deg,#7c3aed_0%,#6366f1_35%,#0ea5e9_70%,#06b6d4_100%)] hover:bg-[linear-gradient(135deg,#6d28d9_0%,#4f46e5_35%,#0284c7_70%,#0891b2_100%)] text-xs font-bold text-white shadow-xl shadow-indigo-500/30 px-4 py-2 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-2xl active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer text-center"
+                      className="flex-1 rounded-lg bg-[linear-gradient(135deg,#7c3aed_0%,#6366f1_35%,#0ea5e9_70%,#06b6d4_100%)] hover:bg-[linear-gradient(135deg,#6d28d9_0%,#4f46e5_35%,#0284c7_70%,#0891b2_100%)] text-xs font-bold text-white shadow-xl shadow-indigo-500/30 px-4 py-2 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-2xl active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer text-center"
                     >
-                      {isSaving ? "Saving..." : "Save Profile"}
+                      {isSaving ? "Uploading & Saving..." : "Save Profile"}
                     </button>
                     <button
                       type="button"

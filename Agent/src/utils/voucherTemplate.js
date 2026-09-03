@@ -1,5 +1,17 @@
 const DEFAULT_FALLBACK_LOGO = "https://res.cloudinary.com/dszadvuz6/image/upload/e_trim/v1777932524/unzssx1sjkrigbgldg7h.png";
 
+export const DEFAULT_VOUCHER_TERMS = [
+  "Welcome to Holiday Circuit. These Terms and Conditions govern your use of the Holiday Circuit services. When You Make a booking or reservation, you agree to be bound by these Terms.",
+  "Bookings and Reservations",
+  "Booking Process: When you make a booking or reservation through Holiday Circuit, you agree to provide accurate and complete information. Any discrepancies or errors in the information you provide may result in the cancellation of your booking.",
+  "Payment: Payments for bookings are due as specified during the booking process. Failure to make payments on time may result in the cancellation of your booking.",
+  "Cancellations and Refunds: Cancellation and refund policies vary depending on the type of booking. Please refer to the specific cancellation policy provided at the time of booking. Holiday Circuit reserves the right to charge cancellation fees as applicable.",
+  "Intellectual Property",
+  "Ownership: All content, trademarks, logos, and intellectual property on the Holiday Circuit website and app are the property of Holiday Circuit or its licensors. You may not use, reproduce, or distribute our content without prior written permission.",
+  "Changes to Terms and Conditions: We reserve the right to update and modify these Terms and Conditions at any time. Please review them periodically for changes. Your continued use of our services after any modifications indicates your acceptance of the updated Terms.",
+  "By booking with Holiday Circuit, you acknowledge that you have read, understood, and agreed to these Terms and Conditions.",
+];
+
 export const formatServiceTypeLabel = (value = "") => {
   const normalized = String(value || "").trim().toLowerCase();
   if (!normalized) return "Service";
@@ -38,6 +50,69 @@ export const formatTravelerBreakup = ({
   if (parts.length) return parts.join(", ");
   if (travelerSummary) return travelerSummary;
   return passengers || "-";
+};
+
+export const parseAdminTermContent = (rawContent) => {
+  if (!rawContent) return [];
+  if (Array.isArray(rawContent)) {
+    const list = [];
+    rawContent.forEach((item) => {
+      if (typeof item === "string") {
+        if (/<[a-z][\s\S]*>/i.test(item)) {
+          list.push(...parseAdminTermContent(item));
+        } else {
+          const trimmed = item.replace(/^\d+[\.\)]\s*/, "").trim();
+          if (trimmed) list.push(trimmed);
+        }
+      } else if (item && typeof item === "object") {
+        const text = item.content || item.text || item.name || item.item || item.label || "";
+        if (text) list.push(...parseAdminTermContent(text));
+      }
+    });
+    return list.filter(Boolean);
+  }
+  if (typeof rawContent !== "string") return [];
+
+  if (/<[a-z][\s\S]*>/i.test(rawContent)) {
+    try {
+      const doc = new DOMParser().parseFromString(rawContent, "text/html");
+      const lines = [];
+      const processNode = (node) => {
+        if (!node) return;
+        if (node.nodeType === Node.ELEMENT_NODE) {
+          const tag = node.tagName.toLowerCase();
+          if (["ul", "ol"].includes(tag)) {
+            Array.from(node.childNodes).forEach(processNode);
+          } else if (["p", "h1", "h2", "h3", "h4", "h5", "h6", "li", "blockquote", "div"].includes(tag)) {
+            const text = (node.textContent || "").replace(/^\d+[\.\)]\s*/, "").trim();
+            if (text && !lines.includes(text)) {
+              lines.push(text);
+            }
+          } else {
+            Array.from(node.childNodes).forEach(processNode);
+          }
+        }
+      };
+      Array.from(doc.body.childNodes).forEach(processNode);
+      if (lines.length > 0) return lines;
+      const plain = (doc.body.textContent || "").trim();
+      return plain.split("\n").map((l) => l.replace(/^\d+[\.\)]\s*/, "").trim()).filter(Boolean);
+    } catch (e) {
+      return rawContent
+        .replace(/<br\s*[\/]?>/gi, "\n")
+        .replace(/<\/p>/gi, "\n")
+        .replace(/<\/li>/gi, "\n")
+        .replace(/<[^>]+>/g, "")
+        .split("\n")
+        .map((t) => t.replace(/^\d+[\.\)]\s*/, "").trim())
+        .filter(Boolean);
+    }
+  }
+
+  return rawContent
+    .split("\n")
+    .map((t) => t.replace(/^\d+[\.\)]\s*/, "").trim())
+    .filter(Boolean);
 };
 
 export const getVoucherStatusNote = (services = [], isAlreadySent = false) => {
@@ -276,10 +351,10 @@ export const buildVoucherHtml = (data, branding, agentBranding = {}) => {
   const guestPhoneVal = isDummyPhone ? "-" : String(rawPhone).trim();
 
   const paxVal = data?.passengers || data?.travelerSummary || `${data?.adults || 2} Adults${Number(data?.children || 0) > 0 ? `, ${data.children} Children` : ""}`;
-  const fallbackIssuedBy = agentCompanyName || "Holiday Circuit";
-  const rawIssuedBy = data?.issuedBy || data?.agencyName || agentCompanyName || "Holiday Circuit";
-  const isUserName = rawIssuedBy && (rawIssuedBy.toLowerCase().includes("user") || rawIssuedBy.toLowerCase().includes("guest"));
-  const issuedByVal = (!rawIssuedBy || isUserName) ? fallbackIssuedBy : normalizeCompanyName(rawIssuedBy, fallbackIssuedBy);
+  const fallbackIssuedBy = "Holiday Circuit";
+  const rawIssuedBy = data?.issuedBy || "Holiday Circuit";
+  const isUserName = rawIssuedBy && (rawIssuedBy.toLowerCase().includes("user") || rawIssuedBy.toLowerCase().includes("guest") || rawIssuedBy.toLowerCase().includes("ddlc"));
+  const issuedByVal = (!rawIssuedBy || isUserName || rawIssuedBy === agentCompanyName) ? fallbackIssuedBy : normalizeCompanyName(rawIssuedBy, fallbackIssuedBy);
   const helplinePhone = data?.agencyPhone || "+91-8851346665";
   const helplineCompany = "Holiday Circuit";
 
@@ -679,12 +754,30 @@ export const buildVoucherHtml = (data, branding, agentBranding = {}) => {
   }).join("");
 
   // TERMS AND CONDITIONS SECTION (Replaces old "Notes:" section)
-  const rawTerms = data?.termsAndConditions || data?.terms || [];
-  let termsList = [];
-  if (Array.isArray(rawTerms)) {
-    termsList = rawTerms.filter((t) => typeof t === "string" && t.trim().length > 0);
-  } else if (typeof rawTerms === "string" && rawTerms.trim()) {
-    termsList = rawTerms.split("\n").map((t) => t.trim()).filter((t) => t.length > 0);
+  const rawTerms =
+    data?.termsAndConditions ||
+    data?.terms ||
+    data?.voucherDetails?.termsAndConditions ||
+    data?.voucher?.termsAndConditions ||
+    [];
+  let termsList = parseAdminTermContent(rawTerms);
+
+  if (!termsList || termsList.length === 0) {
+    if (typeof window !== "undefined") {
+      try {
+        const cached = localStorage.getItem("voucher_admin_terms_cached");
+        if (cached) {
+          const parsedCached = JSON.parse(cached);
+          if (Array.isArray(parsedCached) && parsedCached.length > 0) {
+            termsList = parseAdminTermContent(parsedCached);
+          }
+        }
+      } catch (e) {}
+    }
+  }
+
+  if (!termsList || termsList.length === 0) {
+    termsList = DEFAULT_VOUCHER_TERMS;
   }
 
   const termsHtml = termsList.length > 0 ? `

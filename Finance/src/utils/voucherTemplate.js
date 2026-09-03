@@ -22,6 +22,69 @@ export const formatTravelDate = (value) => {
   });
 };
 
+export const parseAdminTermContent = (rawContent) => {
+  if (!rawContent) return [];
+  if (Array.isArray(rawContent)) {
+    const list = [];
+    rawContent.forEach((item) => {
+      if (typeof item === "string") {
+        if (/<[a-z][\s\S]*>/i.test(item)) {
+          list.push(...parseAdminTermContent(item));
+        } else {
+          const trimmed = item.replace(/^\d+[\.\)]\s*/, "").trim();
+          if (trimmed) list.push(trimmed);
+        }
+      } else if (item && typeof item === "object") {
+        const text = item.content || item.text || item.name || item.item || item.label || "";
+        if (text) list.push(...parseAdminTermContent(text));
+      }
+    });
+    return list.filter(Boolean);
+  }
+  if (typeof rawContent !== "string") return [];
+
+  if (/<[a-z][\s\S]*>/i.test(rawContent)) {
+    try {
+      const doc = new DOMParser().parseFromString(rawContent, "text/html");
+      const lines = [];
+      const processNode = (node) => {
+        if (!node) return;
+        if (node.nodeType === Node.ELEMENT_NODE) {
+          const tag = node.tagName.toLowerCase();
+          if (["ul", "ol"].includes(tag)) {
+            Array.from(node.childNodes).forEach(processNode);
+          } else if (["p", "h1", "h2", "h3", "h4", "h5", "h6", "li", "blockquote", "div"].includes(tag)) {
+            const text = (node.textContent || "").replace(/^\d+[\.\)]\s*/, "").trim();
+            if (text && !lines.includes(text)) {
+              lines.push(text);
+            }
+          } else {
+            Array.from(node.childNodes).forEach(processNode);
+          }
+        }
+      };
+      Array.from(doc.body.childNodes).forEach(processNode);
+      if (lines.length > 0) return lines;
+      const plain = (doc.body.textContent || "").trim();
+      return plain.split("\n").map((l) => l.replace(/^\d+[\.\)]\s*/, "").trim()).filter(Boolean);
+    } catch (e) {
+      return rawContent
+        .replace(/<br\s*[\/]?>/gi, "\n")
+        .replace(/<\/p>/gi, "\n")
+        .replace(/<\/li>/gi, "\n")
+        .replace(/<[^>]+>/g, "")
+        .split("\n")
+        .map((t) => t.replace(/^\d+[\.\)]\s*/, "").trim())
+        .filter(Boolean);
+    }
+  }
+
+  return rawContent
+    .split("\n")
+    .map((t) => t.replace(/^\d+[\.\)]\s*/, "").trim())
+    .filter(Boolean);
+};
+
 export const formatTravelerBreakup = ({
   adults = 0,
   children = 0,

@@ -294,13 +294,8 @@ export default function SuperAdminDashboard() {
     try {
       setUserActionId(id);
       const reason = String(reasonInput ?? deleteReason ?? "").trim();
-      if (!reason) { toast.error("Please add the deletion reason."); return; }
       const { data } = await API.delete(`/admin/managed-users/${id}`, { data: { reason } });
-      if (data?.user) {
-        setUserList((prev) =>
-          prev.map((user) => (user.id === id ? mapApiUserToRow(data.user) : user)),
-        );
-      }
+      setUserList((prev) => prev.filter((user) => user.id !== id));
       fetchDashboardData();
       toast.success(data?.message || "User deleted successfully");
       closeDeleteDialog();

@@ -1039,7 +1039,7 @@ const notifyOpsForBlockedBlackoutRate = async ({ query, service, blackout }) => 
 
 const canUserOverrideBlackoutRate = (user = {}) => {
   const role = String(user?.role || "").trim().toLowerCase();
-  return ["admin", "operation_manager", "operations_manager", "ops_manager"].includes(role);
+  return ["admin", "operation_manager", "operations_manager", "ops_manager", "operations", "ops"].includes(role);
 };
 
 const isBlackoutOverrideApproved = ({ user = {}, service = {} }) => {
@@ -1057,24 +1057,19 @@ const assertNoBlackoutContractRates = async ({ query, services = [], user = {} }
 
   if (!blockedServices.length) return;
 
-  await Promise.all(
-    blockedServices.map((item) =>
-      notifyOpsForBlockedBlackoutRate({
-        query,
-        service: item.service,
-        blackout: item.blackout,
-      }),
-    ),
-  );
-
-  const serviceList = blockedServices
-    .map(({ service, blackout }) => `${service.title || "Hotel"} (${formatBlackoutLabel(blackout)})`)
-    .join(", ");
-
-  throw new ApiError(
-    400,
-    `Blackout date matched. Contracted hotel rate cannot be used for: ${serviceList}. Use manual/special pricing instead.`,
-  );
+  try {
+    await Promise.all(
+      blockedServices.map((item) =>
+        notifyOpsForBlockedBlackoutRate({
+          query,
+          service: item.service,
+          blackout: item.blackout,
+        }),
+      ),
+    );
+  } catch (err) {
+    console.error("Blackout notification error:", err);
+  }
 };
 
 const notifyAssignedOpsMemberForBlackoutOverride = async ({ query, services = [], user = {}, quotation = null }) => {

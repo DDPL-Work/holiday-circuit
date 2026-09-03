@@ -119,6 +119,7 @@ export const resolveClientDetails = (data) => {
   let savedLeadName = "";
   let savedLeadPhone = "";
   let savedLeadEmail = "";
+  let savedLeadAddress = "";
 
   if (qId) {
     const rawId = String(qId);
@@ -193,6 +194,23 @@ export const resolveClientDetails = (data) => {
         }
       } catch (e) {}
     }
+
+    const addressKeys = [
+      `trip_tourists_${rawId}_address`,
+      `trip_tourists_${cleanId}_address`,
+      data?._id ? `trip_tourists_${data._id}_address` : null,
+      data?.queryId ? `trip_tourists_${data.queryId}_address` : null,
+    ].filter(Boolean);
+
+    for (const k of addressKeys) {
+      try {
+        const val = localStorage.getItem(k);
+        if (val) {
+          savedLeadAddress = val;
+          break;
+        }
+      } catch (e) {}
+    }
   }
 
   const primaryTourist = savedTourists
@@ -216,6 +234,7 @@ export const resolveClientDetails = (data) => {
   }
 
   const primaryTouristEmail = primaryTourist?.email ? primaryTourist.email.trim() : "";
+  const primaryTouristAddress = primaryTourist?.address ? primaryTourist.address.trim() : "";
 
   // Check data.travelerDetails
   const travelers = Array.isArray(data?.travelerDetails) ? data.travelerDetails : [];
@@ -229,6 +248,7 @@ export const resolveClientDetails = (data) => {
     dbTravelerPhone = `+91-${dbTravelerPhone.replace(/^\+?91-?/, "").trim()}`;
   }
   const dbTravelerEmail = primaryDbTraveler?.email || "";
+  const dbTravelerAddress = primaryDbTraveler?.address || "";
 
   // Resolved Name
   const rawName =
@@ -284,6 +304,9 @@ export const resolveClientDetails = (data) => {
 
   // Resolved Address
   const resolvedAddress =
+    savedLeadAddress ||
+    primaryTouristAddress ||
+    dbTravelerAddress ||
     data?.clientAddress ||
     data?.buyerAddress ||
     data?.address ||
@@ -316,7 +339,7 @@ const CreateProformaInvoice = ({ onClose, onSave, queryData = {} }) => {
   const [overview, setOverview] = useState("");
   const [specialNotes, setSpecialNotes] = useState("");
   const [termsConditions, setTermsConditions] = useState(
-    queryData?.termsConditions || queryData?.terms || "Invoice TnC"
+    queryData?.termsConditions || queryData?.terms || ""
   );
   const [termsList, setTermsList] = useState([]);
   const [loadingTerms, setLoadingTerms] = useState(false);
@@ -999,7 +1022,7 @@ const CreateProformaInvoice = ({ onClose, onSave, queryData = {} }) => {
                     <tr key={index} className="border-b border-slate-200/80 align-top">
                       <td className="p-3.5 font-semibold text-slate-700">{index + 1}</td>
                       
-                      {/* Particular Description & HSN/SAC */}
+                      {/* Particular Description */}
                       <td className="p-3.5 space-y-3">
                         <textarea
                           rows={4}
@@ -1008,16 +1031,6 @@ const CreateProformaInvoice = ({ onClose, onSave, queryData = {} }) => {
                           placeholder="Details regarding the item"
                           className="w-full border border-slate-300 rounded-md p-3 text-sm focus:outline-none focus:border-blue-600 font-normal leading-relaxed placeholder:text-slate-400"
                         />
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-slate-900 text-sm">HSN/SAC</span>
-                          <input
-                            type="text"
-                            placeholder="e.g. 998555"
-                            value={item.hsnSac}
-                            onChange={(e) => handleItemChange(index, "hsnSac", e.target.value)}
-                            className="border border-slate-300 rounded-md px-3 py-1.5 text-sm w-36 focus:outline-none focus:border-blue-600 placeholder:text-slate-400"
-                          />
-                        </div>
                       </td>
 
                       {/* Qty */}
@@ -1322,8 +1335,8 @@ const CreateProformaInvoice = ({ onClose, onSave, queryData = {} }) => {
               rows={4}
               value={termsConditions}
               onChange={(e) => setTermsConditions(e.target.value)}
-              placeholder="Terms and Conditions here..."
-              className="w-full border border-slate-300 rounded-md p-3 text-sm bg-white focus:outline-none focus:border-blue-600 font-normal leading-relaxed"
+              placeholder="Terms and Conditions"
+              className="w-full border border-slate-300 rounded-md p-3 text-sm bg-white focus:outline-none focus:border-blue-600 font-normal leading-relaxed placeholder:text-slate-400"
             />
           </div>
         </div>

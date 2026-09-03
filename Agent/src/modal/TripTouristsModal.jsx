@@ -386,7 +386,12 @@ export const TripTouristsModal = ({ isOpen, onClose, query, headerLeadTraveler, 
         if (savedData) {
           const parsed = JSON.parse(savedData);
           if (Array.isArray(parsed) && parsed.length > 0) {
-            setTourists(parsed);
+            const savedAddress = localStorage.getItem(`${queryKey}_address`) || "";
+            const withAddress = parsed.map((t, idx) => ({
+              ...t,
+              address: t.address !== undefined ? t.address : (idx === 0 ? (savedAddress || query?.clientAddress || query?.address || "") : ""),
+            }));
+            setTourists(withAddress);
             setExpandedIds([]);
             setActiveDropdownId(null);
             return;

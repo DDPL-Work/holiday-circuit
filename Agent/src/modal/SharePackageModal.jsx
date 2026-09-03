@@ -4,7 +4,7 @@ import { X, Copy, RefreshCw, AlertTriangle, FileText, CheckCircle2, Mail, Send }
 import toast from "react-hot-toast";
 import { AnimatePresence, motion } from "framer-motion";
 import API from "../utils/Api";
-import { buildVoucherHtml } from "../utils/voucherTemplate";
+import { buildVoucherHtml, parseAdminTermContent } from "../utils/voucherTemplate";
 
 // Default Seller Bank Details
 const DEFAULT_SELLER_BANK_DETAILS = [
@@ -262,11 +262,85 @@ export default function SharePackageModal({
         const voucherNum = query?.voucherNumber || `VCH-${query?.queryId || tripId}`;
         const queryTargetId = query?._id || query?.queryId;
 
+        // Resolve tourists from localStorage
+        let savedTourists = null;
+        if (typeof window !== "undefined" && (query?._id || query?.queryId || quote?.queryId)) {
+          const qId = query?._id || query?.queryId || quote?.queryId;
+          try {
+            const rawSaved =
+              localStorage.getItem(`trip_tourists_${qId}`) ||
+              localStorage.getItem(`trip_tourists_${String(qId).replace(/^#\s*/, "")}`);
+            if (rawSaved) savedTourists = JSON.parse(rawSaved);
+          } catch (e) {}
+        }
+        const primaryTourist = Array.isArray(savedTourists) && savedTourists.length > 0
+          ? (savedTourists.find((t) => t.isFlagged) || savedTourists[0])
+          : null;
+        const touristName = primaryTourist ? [primaryTourist.salutation, primaryTourist.name].filter(Boolean).join(" ").trim() : "";
+        const primaryPhoneObj = primaryTourist?.phones?.find((p) => p.isPrimary) || primaryTourist?.phones?.[0];
+        const touristPhoneRaw = primaryPhoneObj?.number ? String(primaryPhoneObj.number).trim() : "";
+        const touristPhoneCode = primaryPhoneObj?.countryCode ? `+${primaryPhoneObj.countryCode.split("-")[0]}-` : "+91-";
+        const touristPhone = touristPhoneRaw ? (touristPhoneRaw.startsWith("+") ? touristPhoneRaw : `${touristPhoneCode}${touristPhoneRaw}`) : "";
+
+        const travelerDetailsPhone = query?.travelerDetails?.[0]?.phone || quote?.travelerDetails?.[0]?.phone || "";
+        const travelerDetailsName = query?.travelerDetails?.[0]?.fullName || quote?.travelerDetails?.[0]?.fullName || "";
+
+        const finalGuestName =
+          touristName ||
+          travelerDetailsName ||
+          query?.clientName ||
+          query?.leadTraveler ||
+          query?.name ||
+          query?.customerName ||
+          query?.guestName ||
+          quote?.clientName ||
+          quote?.guestName ||
+          "Valued Client";
+
+        const finalGuestPhone =
+          touristPhone ||
+          query?.clientPhone ||
+          query?.phone ||
+          query?.contactNumber ||
+          travelerDetailsPhone ||
+          quote?.clientPhone ||
+          quote?.phone ||
+          "-";
+
+        const rawTripNum = query?.queryId || query?.queryNumber || quote?.queryId || tripId || "";
+        const cleanTripNum = String(rawTripNum).replace(/^#\s*/, "").trim();
+        const finalTripId = cleanTripNum
+          ? (cleanTripNum.toUpperCase().startsWith("QRY-") ? cleanTripNum.toUpperCase() : `QRY-${cleanTripNum.replace(/^VCH-?/i, "")}`)
+          : "QRY-1109";
+
+        const resolvedAddress =
+          effectiveUser?.companyAddress ||
+          effectiveUser?.address ||
+          currentUser?.companyAddress ||
+          currentUser?.address ||
+          "KG 3/69, Ground Floor, Vikas Puri, New Delhi, Near UK Nursing Home, New Delhi, Delhi, India - 110018";
+
+        const resolvedCompany =
+          effectiveUser?.brandingName ||
+          effectiveUser?.companyName ||
+          currentUser?.companyName ||
+          "DDLC Company";
+
         await API.post(`/agent/queries/${queryTargetId}/send-voucher-email`, {
           recipientEmail: recipientEmail,
-          subject: emailSubjectInput || `Official Travel Voucher (${voucherNum}) for ${destination} - Trip #${tripId}`,
+          subject: emailSubjectInput || `Official Travel Voucher (${voucherNum}) for ${destination} - Trip #${finalTripId}`,
           html: voucherHtml,
           voucherNumber: voucherNum,
+          tripId: finalTripId,
+          guestName: finalGuestName,
+          guestPhone: finalGuestPhone,
+          clientName: finalGuestName,
+          clientPhone: finalGuestPhone,
+          companyAddress: resolvedAddress,
+          companyName: resolvedCompany,
+          companyPhone: effectiveUser?.phone || currentUser?.phone || "+91-8851346665",
+          companyEmail: effectiveUser?.email || currentUser?.email || "",
+          brandingLogo: effectiveUser?.brandingLogo || effectiveUser?.brandLogoUrl || brandLogoUrl || "",
         });
 
         toast.success(`Travel Voucher email successfully sent to ${recipientEmail}!`);
@@ -340,6 +414,56 @@ export default function SharePackageModal({
   const [removeTransport, setRemoveTransport] = useState(false);
   const [isPdfMode, setIsPdfMode] = useState(false);
   const [similarHotelWord, setSimilarHotelWord] = useState(true);
+  const [availableAdminTerms, setAvailableAdminTerms] = useState([]);
+  const [availableAgentTerms, setAvailableAgentTerms] = useState([]);
+  const [selectedTermId, setSelectedTermId] = useState("default");
+  const [loadingTerms, setLoadingTerms] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    let isMounted = true;
+    const fetchVoucherTerms = async () => {
+      try {
+        setLoadingTerms(true);
+        let agentList = [];
+        try {
+          const res = await API.get("/agent/terms");
+          agentList = Array.isArray(res?.data)
+            ? res.data
+            : Array.isArray(res?.data?.data)
+            ? res.data.data
+            : [];
+        } catch (e) {
+          console.warn("Could not fetch /agent/terms:", e);
+        }
+
+        const parsed = agentList
+          .map((item) => {
+            const items = parseAdminTermContent(item.content || "");
+            return {
+              id: String(item.id || item._id),
+              name: item.name || "Terms & Conditions",
+              by: item.by || item.createdBy?.name || "Agent",
+              content: item.content || "",
+              items,
+            };
+          })
+          .filter((t) => t.items.length > 0);
+
+        if (isMounted) {
+          setAvailableAgentTerms(parsed);
+        }
+      } catch (err) {
+        console.error("Failed to load agent terms for voucher preview:", err);
+      } finally {
+        if (isMounted) setLoadingTerms(false);
+      }
+    };
+    fetchVoucherTerms();
+    return () => {
+      isMounted = false;
+    };
+  }, [isOpen]);
 
   const emailContentRef = useRef(null);
   const emailPreviewIframeRef = useRef(null);
@@ -383,7 +507,7 @@ export default function SharePackageModal({
         const companyNameVal = normalizeCompanyName(effectiveUser?.brandingName || effectiveUser?.companyName || effectiveUser?.agencyName, "Holiday Circuit");
         const rawIssued = query?.voucherDetails?.issuedBy || query?.issuedBy || quote?.issuedBy;
         const isUserName = rawIssued && ["valued client", "joy root"].includes(String(rawIssued).trim().toLowerCase());
-        const issuedByVal = (!rawIssued || isUserName) ? companyNameVal : normalizeCompanyName(rawIssued, companyNameVal);
+        const issuedByVal = (!rawIssued || isUserName || rawIssued === companyNameVal || String(rawIssued).toLowerCase().includes("ddlc")) ? "Holiday Circuit" : normalizeCompanyName(rawIssued, "Holiday Circuit");
         const targetQueryId = query?._id || query?.queryId || quote?.queryId;
         let savedTourists = null;
         if (typeof window !== "undefined" && targetQueryId) {
@@ -1019,17 +1143,54 @@ export default function SharePackageModal({
         const generatedOnStr = `${genDay} ${genMonth}, ${genYear} - ${genHours}:${genMins} Hrs UTC`;
 
         // Dynamic Terms & Conditions from Voucher / Query / Quote (sent by OPS or set by Admin)
-        const rawVoucherTerms = !removeTerms
-          ? (query?.termsAndConditions || quote?.termsAndConditions || query?.terms || quote?.terms || query?.voucher?.termsAndConditions || quote?.voucher?.termsAndConditions || [])
-          : [];
+        const candidateTerms =
+          query?.voucherDetails?.termsAndConditions ||
+          query?.voucher?.termsAndConditions ||
+          query?.termsAndConditions ||
+          query?.voucherTerms ||
+          query?.voucherDetails?.terms ||
+          query?.voucher?.terms ||
+          quote?.voucherDetails?.termsAndConditions ||
+          quote?.voucher?.termsAndConditions ||
+          quote?.termsAndConditions ||
+          quote?.voucherTerms ||
+          quote?.voucherDetails?.terms ||
+          quote?.voucher?.terms ||
+          query?.activeQuote?.termsAndConditions ||
+          query?.quotation?.termsAndConditions ||
+          query?.terms ||
+          quote?.terms ||
+          selectedPkg?.termsAndConditions ||
+          selectedPkg?.terms;
+
         let parsedVoucherTerms = [];
-        if (Array.isArray(rawVoucherTerms)) {
-          parsedVoucherTerms = rawVoucherTerms.filter((t) => typeof t === "string" && t.trim().length > 0);
-        } else if (typeof rawVoucherTerms === "string" && rawVoucherTerms.trim()) {
-          parsedVoucherTerms = rawVoucherTerms.split("\n").map((t) => t.trim()).filter((t) => t.length > 0);
+        if (!removeTerms && selectedTermId !== "none") {
+          if (selectedTermId && selectedTermId !== "default") {
+            const matchedCustomTerm = availableAgentTerms.find((t) => t.id === selectedTermId);
+            if (matchedCustomTerm && matchedCustomTerm.items?.length > 0) {
+              parsedVoucherTerms = matchedCustomTerm.items;
+            }
+          }
+          if (parsedVoucherTerms.length === 0) {
+            if (candidateTerms && (!Array.isArray(candidateTerms) || candidateTerms.length > 0)) {
+              parsedVoucherTerms = parseAdminTermContent(candidateTerms);
+            }
+
+            // Fallback to voucher template matching "voucher" from availableAgentTerms (e.g. "voucher T&C (9 points)" selected by OPS)
+            if (parsedVoucherTerms.length === 0 && availableAgentTerms.length > 0) {
+              const matchedVoucherTerm = availableAgentTerms.find((t) =>
+                t.name.toLowerCase().includes("voucher")
+              );
+              if (matchedVoucherTerm && matchedVoucherTerm.items?.length > 0) {
+                parsedVoucherTerms = matchedVoucherTerm.items;
+              } else if (availableAgentTerms[0]?.items?.length > 0) {
+                parsedVoucherTerms = availableAgentTerms[0].items;
+              }
+            }
+          }
         }
 
-        const voucherTermsHtml = parsedVoucherTerms.length > 0 ? `
+        const voucherTermsHtml = (!removeTerms && selectedTermId !== "none" && parsedVoucherTerms.length > 0) ? `
           <!-- TERMS & CONDITIONS SECTION -->
           <div style="margin-top: 18px; margin-bottom: 18px; font-family: Arial, sans-serif;">
             <div style="font-size: 13.5px; font-weight: 800; color: #9a3412; margin-bottom: 8px;">
@@ -2074,8 +2235,24 @@ export default function SharePackageModal({
     };
 
     loadEmailPreview();
-    return () => { cancelled = true; };
-  }, [isOpen, quote?._id, emailPreviewVersion, shareMode, selectedPkg]);
+  }, [
+    isOpen,
+    quote?._id,
+    emailPreviewVersion,
+    shareMode,
+    selectedPkg,
+    removeTerms,
+    showIncExc,
+    showPriceBreakup,
+    hideTotalPrice,
+    removeItinerary,
+    removeTransport,
+    similarHotelWord,
+    isPdfMode,
+    availableAdminTerms,
+    availableAgentTerms,
+    selectedTermId,
+  ]);
 
   // Check if terms are disabled
   const isTermsDisabled = quote?.termsDisabled || query?.termsDisabled || true;
@@ -2326,14 +2503,39 @@ export default function SharePackageModal({
         lines.push("");
       });
 
-      const rawVoucherTerms = !removeTerms
-        ? (query?.termsAndConditions || quote?.termsAndConditions || query?.terms || quote?.terms || query?.voucher?.termsAndConditions || quote?.voucher?.termsAndConditions || [])
-        : [];
       let parsedVoucherTerms = [];
-      if (Array.isArray(rawVoucherTerms)) {
-        parsedVoucherTerms = rawVoucherTerms.filter((t) => typeof t === "string" && t.trim().length > 0);
-      } else if (typeof rawVoucherTerms === "string" && rawVoucherTerms.trim()) {
-        parsedVoucherTerms = rawVoucherTerms.split("\n").map((t) => t.trim()).filter((t) => t.length > 0);
+      if (!removeTerms && selectedTermId !== "none") {
+        if (selectedTermId && selectedTermId !== "default") {
+          const matched = availableAgentTerms.find((t) => t.id === selectedTermId);
+          if (matched && matched.items?.length > 0) {
+            parsedVoucherTerms = matched.items;
+          }
+        }
+        if (parsedVoucherTerms.length === 0) {
+          const rawVoucherTerms =
+            query?.termsAndConditions ||
+            quote?.termsAndConditions ||
+            query?.terms ||
+            quote?.terms ||
+            query?.voucher?.termsAndConditions ||
+            quote?.voucher?.termsAndConditions ||
+            [];
+          if (Array.isArray(rawVoucherTerms)) {
+            parsedVoucherTerms = rawVoucherTerms.filter((t) => typeof t === "string" && t.trim().length > 0);
+          } else if (typeof rawVoucherTerms === "string" && rawVoucherTerms.trim()) {
+            parsedVoucherTerms = rawVoucherTerms.split("\n").map((t) => t.trim()).filter((t) => t.length > 0);
+          }
+          if (parsedVoucherTerms.length === 0 && availableAgentTerms.length > 0) {
+            const matchedVoucherTerm = availableAgentTerms.find((t) =>
+              t.name.toLowerCase().includes("voucher")
+            );
+            if (matchedVoucherTerm && matchedVoucherTerm.items?.length > 0) {
+              parsedVoucherTerms = matchedVoucherTerm.items;
+            } else if (availableAgentTerms[0]?.items?.length > 0) {
+              parsedVoucherTerms = availableAgentTerms[0].items;
+            }
+          }
+        }
       }
 
       if (parsedVoucherTerms.length > 0) {
@@ -2469,11 +2671,22 @@ export default function SharePackageModal({
       lines.push("");
     }
 
-    if (!removeTerms) {
+    if (!removeTerms && selectedTermId !== "none") {
+      let quoteTerms = [];
+      if (selectedTermId && selectedTermId !== "default") {
+        const matched = availableAgentTerms.find((t) => t.id === selectedTermId);
+        if (matched && matched.items?.length > 0) {
+          quoteTerms = matched.items;
+        }
+      }
       lines.push(`📋 *Terms & Conditions:*`);
-      lines.push(`• 25% non-refundable deposit required to confirm booking.`);
-      lines.push(`• Standard Check-in: 14:00-15:00, Check-out: 11:00-12:00.`);
-      lines.push(`• Rates & availability subject to change until confirmed.`);
+      if (quoteTerms.length > 0) {
+        quoteTerms.forEach((pt) => lines.push(`• ${pt}`));
+      } else {
+        lines.push(`• 25% non-refundable deposit required to confirm booking.`);
+        lines.push(`• Standard Check-in: 14:00-15:00, Check-out: 11:00-12:00.`);
+        lines.push(`• Rates & availability subject to change until confirmed.`);
+      }
       lines.push("");
     }
 
@@ -2503,6 +2716,8 @@ export default function SharePackageModal({
     query?.voucherNumber,
     query?.queryId,
     durationText,
+    selectedTermId,
+    availableAgentTerms,
   ]);
 
   const handleSendWhatsApp = async () => {
@@ -2655,10 +2870,10 @@ export default function SharePackageModal({
             {/* SUBTITLE */}
             <div className="px-6 pt-2.5 pb-1 text-[12px] text-slate-500 flex items-center gap-1.5 font-normal">
               <span>💡</span>
-              <span>Use toggles to customize the content according to your needs.</span>
+              <span>Use toggles and terms template dropdown to customize the voucher content according to your needs.</span>
             </div>
 
-            {/* OPTIONS ROW WITH BUTTON ON RIGHT */}
+            {/* OPTIONS ROW WITH TERMS DROPDOWN AND BUTTON ON RIGHT */}
             <div className="px-6 pb-3 text-xs text-slate-700 flex flex-wrap items-center justify-between gap-3">
               <div className="flex flex-wrap items-center gap-5 font-medium">
                 {activeTab === "whatsapp" ? (
@@ -2680,7 +2895,7 @@ export default function SharePackageModal({
                         onChange={(e) => setShowPriceBreakup(e.target.checked)}
                         className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
                       />
-                      <span>Price Breakup (Component Wise Total) âˆ¨</span>
+                      <span>Price Breakup (Component Wise Total) ˅</span>
                     </label>
 
                     <label className="inline-flex items-center gap-1.5 cursor-pointer select-none hover:text-slate-900">
@@ -2707,7 +2922,11 @@ export default function SharePackageModal({
                       <input
                         type="checkbox"
                         checked={removeTerms}
-                        onChange={(e) => setRemoveTerms(e.target.checked)}
+                        onChange={(e) => {
+                          setRemoveTerms(e.target.checked);
+                          if (e.target.checked) setSelectedTermId("none");
+                          else setSelectedTermId("default");
+                        }}
                         className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
                       />
                       <span>Remove Terms</span>
@@ -2739,7 +2958,11 @@ export default function SharePackageModal({
                       <input
                         type="checkbox"
                         checked={removeTerms}
-                        onChange={(e) => setRemoveTerms(e.target.checked)}
+                        onChange={(e) => {
+                          setRemoveTerms(e.target.checked);
+                          if (e.target.checked) setSelectedTermId("none");
+                          else setSelectedTermId("default");
+                        }}
                         className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
                       />
                       <span>Remove Terms</span>
@@ -2778,15 +3001,47 @@ export default function SharePackageModal({
                 )}
               </div>
 
-              {activeTab === "whatsapp" && (
-                <button
-                  type="button"
-                  onClick={handleDownloadPDF}
-                  className="px-4 py-1.5 bg-[#3b82f6] hover:bg-blue-600 text-white rounded-md font-bold text-xs shadow-xs transition-colors cursor-pointer shrink-0 active:scale-95"
-                >
-                  Download PDF
-                </button>
-              )}
+              {/* RIGHT SIDE: AGENT TERMS & CONDITIONS DROPDOWN & ACTIONS */}
+              <div className="flex items-center gap-2.5 ml-auto flex-wrap sm:flex-nowrap">
+                <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200/90 rounded-lg px-2.5 py-1 shadow-2xs">
+                  <span className="text-[11px] font-semibold text-slate-700 flex items-center gap-1 whitespace-nowrap">
+                    <FileText size={12} className="text-amber-600" />
+                    <span>Terms:</span>
+                  </span>
+                  <select
+                    value={selectedTermId}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setSelectedTermId(val);
+                      if (val === "none") {
+                        setRemoveTerms(true);
+                      } else {
+                        setRemoveTerms(false);
+                      }
+                    }}
+                    disabled={loadingTerms}
+                    className="text-xs font-semibold bg-white border border-slate-300 rounded px-2 py-0.5 text-slate-800 shadow-2xs focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 outline-none cursor-pointer max-w-[200px] sm:max-w-[240px] truncate disabled:opacity-50"
+                  >
+                    <option value="default">Default (OPS / Voucher T&amp;C)</option>
+                    {availableAgentTerms.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name} ({t.items?.length || 0} pts)
+                      </option>
+                    ))}
+                    <option value="none">None (Exclude Terms)</option>
+                  </select>
+                </div>
+
+                {activeTab === "whatsapp" && (
+                  <button
+                    type="button"
+                    onClick={handleDownloadPDF}
+                    className="px-4 py-1.5 bg-[#3b82f6] hover:bg-blue-600 text-white rounded-md font-bold text-xs shadow-xs transition-colors cursor-pointer shrink-0 active:scale-95"
+                  >
+                    Download PDF
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 
@@ -2845,6 +3100,42 @@ export default function SharePackageModal({
                           })}
                         </div>
                       </div>
+
+                      {!removeTerms && selectedTermId !== "none" && (
+                        <div className="mt-4 pt-3 border-t border-emerald-300/60">
+                          <p className="font-bold text-black text-xs uppercase tracking-wide">📋 Terms &amp; Conditions</p>
+                          <p className="text-slate-400 font-mono text-xs select-none">---------</p>
+                          <div className="mt-2 space-y-1 text-xs text-slate-900">
+                            {(() => {
+                              let termsToShow = [];
+                              if (selectedTermId && selectedTermId !== "default") {
+                                const matched = availableAgentTerms.find((t) => t.id === selectedTermId);
+                                if (matched && matched.items?.length > 0) termsToShow = matched.items;
+                              }
+                              if (termsToShow.length === 0) {
+                                const raw = query?.termsAndConditions || quote?.termsAndConditions || query?.terms || quote?.terms || query?.voucher?.termsAndConditions || quote?.voucher?.termsAndConditions || [];
+                                if (Array.isArray(raw)) termsToShow = raw.filter((t) => typeof t === "string" && t.trim().length > 0);
+                                else if (typeof raw === "string" && raw.trim()) termsToShow = raw.split("\n").map(t => t.trim()).filter(Boolean);
+                              }
+                              if (termsToShow.length === 0 && availableAgentTerms.length > 0) {
+                                const matchedVoucher = availableAgentTerms.find((t) => t.name.toLowerCase().includes("voucher"));
+                                if (matchedVoucher && matchedVoucher.items?.length > 0) termsToShow = matchedVoucher.items;
+                                else if (availableAgentTerms[0]?.items?.length > 0) termsToShow = availableAgentTerms[0].items;
+                              }
+                              if (termsToShow.length === 0) {
+                                termsToShow = [
+                                  "25% non-refundable deposit required to confirm booking.",
+                                  "Standard Check-in: 14:00-15:00, Check-out: 11:00-12:00.",
+                                  "Rates & availability subject to change until confirmed."
+                                ];
+                              }
+                              return termsToShow.map((pt, idx) => (
+                                <p key={idx}>• {pt}</p>
+                              ));
+                            })()}
+                          </div>
+                        </div>
+                      )}
 
                       <div className="mt-4 pt-3 border-t border-emerald-300/60 text-slate-800 italic">
                         <p>Please find your official Travel Voucher details attached above. Have a wonderful trip! ✈️</p>

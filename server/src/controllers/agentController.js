@@ -20,6 +20,7 @@ import bcrypt from "bcrypt";
 import crypto from "crypto";
 import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
+import { v2 as cloudinary } from "cloudinary";
 import {
   sendAgentQueryCreatedMail,
   sendAgentRegistrationReceivedMail,
@@ -2009,15 +2010,23 @@ export const sendAgentVoucherEmail = async (req, res, next) => {
 
     const normalizeCompanyName = (name, fallback = "Holiday Circuit") => {
       const str = String(name || "").trim();
-      if (!str || str.toLowerCase().includes("ddlc")) return fallback;
+      if (!str) return fallback;
       return str;
     };
 
-    const companyName = normalizeCompanyName(agent?.brandingName || agent?.companyName, "Holiday Circuit");
-    const companyPhone = agent?.phone || "+91-8851346665";
-    const companyEmail = agent?.email || "ops@holidaycircuit.com";
-    const companyAddress = agent?.companyAddress || "KG 3/69, Ground Floor, Vikas Puri, New Delhi, Near UK Nursing Home, New Delhi, Delhi, India - 110018";
-    const website = agent?.website || "www.holidaycircuit.com";
+    const companyName = normalizeCompanyName(
+      req.body.companyName || agent?.brandingName || agent?.companyName || agent?.name,
+      "Holiday Circuit"
+    );
+    const companyPhone = req.body.companyPhone || agent?.phone || "+91-8851346665";
+    const companyEmail = req.body.companyEmail || agent?.email || "";
+    const companyAddress =
+      req.body.companyAddress ||
+      agent?.companyAddress ||
+      agent?.address ||
+      query?.agentAddress ||
+      "KG 3/69, Ground Floor, Vikas Puri, New Delhi, Near UK Nursing Home, New Delhi, Delhi, India - 110018";
+    const website = req.body.website || agent?.website || "";
 
     const headerLogoCell = absoluteLogoUrl
       ? `<td style="vertical-align: middle; padding-right: 12px; width: 110px; text-align: left;">
@@ -2058,11 +2067,12 @@ export const sendAgentVoucherEmail = async (req, res, next) => {
             ${companyName}
           </p>
           <p style="margin: 0 0 6px 0; font-size: 12px; font-weight: 500; color: #475569; line-height: 1.6;">
-            Phone: ${companyPhone} &bull; Email: ${companyEmail}${website ? ` &bull; Web: ${website}` : ""}
+            Phone: ${companyPhone}${companyEmail ? ` &bull; Email: ${companyEmail}` : ""}${website ? ` &bull; Web: ${website}` : ""}
           </p>
+          ${companyAddress ? `
           <p style="margin: 0; font-size: 11px; font-weight: 400; color: #64748b; line-height: 1.5;">
             ${companyAddress}
-          </p>
+          </p>` : ""}
           <p style="margin: 12px 0 0 0; font-size: 10px; color: #94a3b8; font-style: italic;">
             Thank you for choosing ${companyName}. Have a safe & memorable journey!
           </p>
@@ -2084,9 +2094,41 @@ export const sendAgentVoucherEmail = async (req, res, next) => {
       cleanHtml = cleanHtml.replace(/<div[^>]*>[^<]*<h2[^>]*>[\s\S]*?<\/h2>[\s\S]*?<\/div>/gi, '');
     }
 
-    const defaultTripId = voucherNumber || query?.voucherNumber || query?.queryId || "4304633";
-    const defaultClient = query?.clientName || query?.name || "Valued Client";
-    const defaultPhone = query?.clientPhone || query?.phone || query?.contactNumber || "-";
+    const rawTripNum = req.body.tripId || query?.queryId || query?.queryNumber || voucherNumber || query?.voucherNumber || "1109";
+    const cleanTripNum = String(rawTripNum).replace(/^#\s*/, "").trim();
+    const formattedTripId = cleanTripNum.toUpperCase().startsWith("QRY-")
+      ? cleanTripNum.toUpperCase()
+      : (cleanTripNum.toUpperCase().startsWith("VCH-") ? `QRY-${cleanTripNum.replace(/^VCH-?/i, "")}` : `QRY-${cleanTripNum}`);
+
+    const resolvedGuestName =
+      req.body.guestName ||
+      req.body.clientName ||
+      query?.travelerDetails?.[0]?.fullName ||
+      query?.tourists?.[0]?.name ||
+      query?.clientName ||
+      query?.leadTraveler ||
+      query?.name ||
+      query?.customerName ||
+      query?.guestName ||
+      quotation?.clientName ||
+      quotation?.guestName ||
+      "Valued Client";
+
+    const resolvedGuestPhone =
+      req.body.guestPhone ||
+      req.body.clientPhone ||
+      query?.tourists?.[0]?.phones?.[0]?.number ||
+      query?.travelerDetails?.[0]?.phone ||
+      query?.clientPhone ||
+      query?.phone ||
+      query?.contactNumber ||
+      quotation?.clientPhone ||
+      quotation?.phone ||
+      "-";
+
+    const defaultTripId = formattedTripId;
+    const defaultClient = resolvedGuestName;
+    const defaultPhone = resolvedGuestPhone;
     const defaultDest = query?.destination || quotation?.destination || "India";
     const defaultDuration = `${query?.numberOfNights || quotation?.nights || 1} Night${(query?.numberOfNights || quotation?.nights || 1) > 1 ? "s" : ""} / ${(query?.numberOfNights || quotation?.nights || 1) + 1} Days`;
     const defaultIssuedBy = "Holiday Circuit";
@@ -2168,14 +2210,34 @@ export const sendAgentVoucherEmail = async (req, res, next) => {
     const nights = Number(query?.numberOfNights || quotation?.nights || 4);
     const days = Number(query?.numberOfDays || quotation?.days || (nights + 1));
 
+    const defaultVoucherTerms = [
+      "Welcome to Holiday Circuit. These Terms and Conditions govern your use of the Holiday Circuit services. When You Make a booking or reservation, you agree to be bound by these Terms.",
+      "Bookings and Reservations",
+      "Booking Process: When you make a booking or reservation through Holiday Circuit, you agree to provide accurate and complete information. Any discrepancies or errors in the information you provide may result in the cancellation of your booking.",
+      "Payment: Payments for bookings are due as specified during the booking process. Failure to make payments on time may result in the cancellation of your booking.",
+      "Cancellations and Refunds: Cancellation and refund policies vary depending on the type of booking. Please refer to the specific cancellation policy provided at the time of booking. Holiday Circuit reserves the right to charge cancellation fees as applicable.",
+      "Intellectual Property",
+      "Ownership: All content, trademarks, logos, and intellectual property on the Holiday Circuit website and app are the property of Holiday Circuit or its licensors. You may not use, reproduce, or distribute our content without prior written permission.",
+      "Changes to Terms and Conditions: We reserve the right to update and modify these Terms and Conditions at any time. Please review them periodically for changes. Your continued use of our services after any modifications indicates your acceptance of the updated Terms.",
+      "By booking with Holiday Circuit, you acknowledge that you have read, understood, and agreed to these Terms and Conditions.",
+    ];
+
+    const resolvedTerms =
+      query?.termsAndConditions ||
+      query?.voucherDetails?.termsAndConditions ||
+      quotation?.termsAndConditions ||
+      defaultVoucherTerms;
+
     const voucherDetails = {
       voucherNumber: voucherNumber || query?.voucherNumber || `VCH-${query?.queryId || "1070"}`,
-      query: query?.queryId || "QRY",
+      query: formattedTripId,
+      queryId: formattedTripId,
+      tripId: formattedTripId,
       destination: query?.destination || quotation?.destination || "Destination",
       duration: query?.duration || `${nights} Nights / ${days} Days`,
       passengers: `${query?.numberOfAdults || 2} Adults${Number(query?.numberOfChildren || 0) ? `, ${query.numberOfChildren} Children` : ""}`,
-      name: query?.clientName || query?.name || query?.customerName || query?.guestName || "Valued Client",
-      guestName: query?.clientName || query?.name || query?.customerName || query?.guestName || "Valued Client",
+      name: resolvedGuestName,
+      guestName: resolvedGuestName,
       travelDate: query?.startDate || query?.travelDates?.from || null,
       startDate: query?.startDate || query?.travelDates?.from || null,
       endDate: query?.endDate || query?.travelDates?.to || null,
@@ -2184,14 +2246,19 @@ export const sendAgentVoucherEmail = async (req, res, next) => {
       infants: query?.numberOfInfants || 0,
       nights,
       days,
-      clientPhone: query?.clientPhone || query?.phone || query?.contactNumber || "-",
+      clientPhone: resolvedGuestPhone,
+      guestPhone: resolvedGuestPhone,
+      phone: resolvedGuestPhone,
       issuedBy: defaultIssuedBy,
       travelerSummary: `${query?.numberOfAdults || 2} Adults${Number(query?.numberOfChildren || 0) ? `, ${query.numberOfChildren} Children` : ""}`,
       travelDates: query?.travelDates ? `${new Date(query.travelDates.from).toLocaleDateString("en-IN")} to ${new Date(query.travelDates.to).toLocaleDateString("en-IN")}` : "Flexible",
-      services: quotation?.services || [],
+      services: (quotation?.services && quotation.services.length > 0) ? quotation.services : (query?.services || query?.voucherServices || []),
       agentName: companyName,
+      companyName,
       companyPhone,
       companyEmail,
+      termsAndConditions: resolvedTerms,
+      terms: resolvedTerms,
       branding: {
         name: companyName,
         address: companyAddress,
@@ -2519,6 +2586,41 @@ export const sendHeartbeat = async (req, res, next) => {
   }
 };
 
+// Helper to upload base64 image strings to Cloudinary and return the secure URL
+const uploadBase64ToCloudinary = async (base64String, folder = "holiday-circuit/profiles") => {
+  if (!base64String || typeof base64String !== "string") return "";
+  const trimmed = base64String.trim();
+  if (!trimmed) return "";
+
+  // If already a remote URL (e.g. https://res.cloudinary.com/...), keep it as is
+  if (/^https?:\/\//i.test(trimmed)) {
+    return trimmed;
+  }
+
+  // If it is a base64 Data URI or raw base64 data, upload to Cloudinary
+  if (trimmed.startsWith("data:") || /^[A-Za-z0-9+/=]{50,}/.test(trimmed)) {
+    cloudinary.config({
+      cloud_name: process.env.CLOUDINARY_NAME,
+      api_key: process.env.CLOUDINARY_API_KEY,
+      api_secret: process.env.CLOUDINARY_API_SECRET,
+    });
+
+    try {
+      const uploadResponse = await cloudinary.uploader.upload(trimmed, {
+        folder,
+        resource_type: "auto",
+      });
+
+      return uploadResponse.secure_url || uploadResponse.url || trimmed;
+    } catch (err) {
+      console.error("Cloudinary upload failed for base64 image:", err);
+      throw new ApiError(500, `Failed to upload image to Cloudinary: ${err?.message || err}`);
+    }
+  }
+
+  return trimmed;
+};
+
 // ========================= Update Profile Controller ==========================
 
 export const updateProfile = async (req, res, next) => {
@@ -2539,7 +2641,6 @@ export const updateProfile = async (req, res, next) => {
     const email = String(req.body?.email || "").trim().toLowerCase();
     const phone = String(req.body?.phone || "").trim();
     const companyName = String(req.body?.companyName || "").trim();
-    const profileImage = String(req.body?.profileImage || "").trim();
     const normalizedPhone = phone || undefined;
 
     if (!name) {
@@ -2577,17 +2678,22 @@ export const updateProfile = async (req, res, next) => {
     user.name = name;
     user.email = email;
     user.phone = normalizedPhone;
+
     if (req.body?.profileImage !== undefined) {
-      user.profileImage = String(req.body.profileImage || "").trim();
+      const raw = String(req.body.profileImage || "").trim();
+      user.profileImage = raw ? await uploadBase64ToCloudinary(raw, "holiday-circuit/profiles") : "";
     }
     if (req.body?.coverImage !== undefined) {
-      user.coverImage = String(req.body.coverImage || "").trim();
+      const raw = String(req.body.coverImage || "").trim();
+      user.coverImage = raw ? await uploadBase64ToCloudinary(raw, "holiday-circuit/covers") : "";
     }
     if (req.body?.brandingLogo !== undefined) {
-      user.brandingLogo = String(req.body.brandingLogo || "").trim();
+      const raw = String(req.body.brandingLogo || "").trim();
+      user.brandingLogo = raw ? await uploadBase64ToCloudinary(raw, "holiday-circuit/branding") : "";
     }
     if (req.body?.voucherFooterImage !== undefined) {
-      user.voucherFooterImage = String(req.body.voucherFooterImage || "").trim();
+      const raw = String(req.body.voucherFooterImage || "").trim();
+      user.voucherFooterImage = raw ? await uploadBase64ToCloudinary(raw, "holiday-circuit/vouchers") : "";
     }
     if (req.body?.brandingName !== undefined) {
       user.brandingName = String(req.body.brandingName || "").trim();
@@ -5254,6 +5360,7 @@ const resolveReceiptClientName = (query = {}) => {
   );
 };
 
+
 const resolveAgentReceiptExpectedAmount = (invoice = {}) => {
   const couponApplication = invoice?.paymentSubmission?.couponApplication || null;
   const couponPayableAmount = Math.round(Number(couponApplication?.payableAmount || 0));
@@ -5743,6 +5850,10 @@ export const updateQuotationBranding = async (req, res, next) => {
     next(error);
   }
 };
+
+
+
+
 
 const getAgentTaskStage = (query = {}) => {
   const status = String(query?.agentStatus || "").trim();

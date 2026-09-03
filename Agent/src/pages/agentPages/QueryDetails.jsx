@@ -1115,6 +1115,24 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
     const formattedTripId = cleanQueryNum ? (cleanQueryNum.toUpperCase().startsWith("QRY-") ? cleanQueryNum.toUpperCase() : `QRY-${cleanQueryNum}`) : (query?._id || "4304633");
     const formattedVoucherNo = query?.voucherNumber || targetQuote?.voucherNumber || (cleanQueryNum ? `VCH-${cleanQueryNum.replace(/^QRY-?/i, "")}` : "VCH-001");
 
+    const candidateTerms =
+      query?.voucherDetails?.termsAndConditions ||
+      query?.voucher?.termsAndConditions ||
+      query?.termsAndConditions ||
+      query?.voucherTerms ||
+      query?.voucherDetails?.terms ||
+      query?.voucher?.terms ||
+      targetQuote?.voucherDetails?.termsAndConditions ||
+      targetQuote?.voucher?.termsAndConditions ||
+      targetQuote?.termsAndConditions ||
+      targetQuote?.voucherTerms ||
+      targetQuote?.voucherDetails?.terms ||
+      targetQuote?.voucher?.terms ||
+      query?.activeQuote?.termsAndConditions ||
+      query?.quotation?.termsAndConditions ||
+      query?.terms ||
+      targetQuote?.terms;
+
     return {
       _id: query?._id,
       query: formattedTripId,
@@ -1147,6 +1165,8 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
       agencyEmail: currentUser?.email || "ops@holidaycircuit.com",
       agencyAddress: currentUser?.companyAddress || currentUser?.address || "KG 3/69, Ground Floor, Vikas Puri, New Delhi, Near UK Nursing Home, New Delhi, Delhi, India - 110018",
       voucherFooterImage: currentUser?.voucherFooterImage || currentUser?.footerBanner || currentUser?.pdfFooterImage || "",
+      termsAndConditions: candidateTerms || [],
+      terms: candidateTerms || [],
     };
   };
 
@@ -1206,6 +1226,29 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
       mainElement.scrollTo({ top: 0, left: 0, behavior: "auto" });
     }
     window.scrollTo(0, 0);
+
+    const fetchAdminVoucherTerms = async () => {
+      try {
+        let res = null;
+        try {
+          res = await API.get("/admin/terms");
+        } catch (e) {
+          res = await API.get("/agent/terms");
+        }
+        const list = Array.isArray(res?.data)
+          ? res.data
+          : Array.isArray(res?.data?.data)
+          ? res.data.data
+          : [];
+        const matched = list.find((t) =>
+          String(t?.name || "").toLowerCase().includes("voucher")
+        ) || list[0];
+        if (matched?.content) {
+          localStorage.setItem("voucher_admin_terms_cached", JSON.stringify(matched.content));
+        }
+      } catch (e) {}
+    };
+    fetchAdminVoucherTerms();
   }, []);
 
   useEffect(() => {

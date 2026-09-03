@@ -944,10 +944,6 @@ export const deleteManagedUser = async (req, res, next) => {
     const { id } = req.params;
     const reason = String(req.body?.reason || "").trim();
 
-    if (!reason) {
-      return next(new ApiError(400, "Deletion reason is required"));
-    }
-
     const user = await Auth.findOne({
       _id: id,
       role: { $in: MANAGED_USER_ROLES },
@@ -961,33 +957,26 @@ export const deleteManagedUser = async (req, res, next) => {
       return next(new ApiError(400, "You cannot delete your own account"));
     }
 
-    if (user.isDeleted) {
-      return next(new ApiError(400, "User is already deleted"));
-    }
+    // Permanently remove user from DB
+    await Auth.deleteOne({ _id: user._id });
 
-    user.isDeleted = true;
-    user.deletedAt = new Date();
-    user.deletedBy = String(req.user?.id || "");
-    user.deletionReason = reason;
-    user.accountStatus = "Inactive";
-    await user.save();
-
-    // Notify via email (notifications cannot be seen after deletion).
-    // If email fails, we still keep deletion successful.
-    try {
-      await sendAccountDeletionMail(user.email, {
-        name: user.name || "Team Member",
-        role: BACKEND_ROLE_TO_FRONTEND[user.role] || user.role,
-        reason,
-      });
-    } catch (mailError) {
-      console.error("Account deletion email failed:", mailError);
+    // Notify via email if email exists
+    if (user.email) {
+      try {
+        await sendAccountDeletionMail(user.email, {
+          name: user.name || "Team Member",
+          role: BACKEND_ROLE_TO_FRONTEND[user.role] || user.role,
+          reason: reason || "Account removed by administrator",
+        });
+      } catch (mailError) {
+        console.error("Account deletion email failed:", mailError);
+      }
     }
 
     res.status(200).json({
       success: true,
       message: "User deleted successfully",
-      user: formatManagedUser(user),
+      userId: String(user._id),
     });
   } catch (error) {
     next(error);
@@ -1057,10 +1046,6 @@ export const permanentlyDeleteManagedUser = async (req, res, next) => {
 
     if (String(req.user?.id) === String(user._id)) {
       return next(new ApiError(400, "You cannot permanently delete your own account"));
-    }
-
-    if (!user.isDeleted) {
-      return next(new ApiError(400, "Please soft delete the user first"));
     }
 
     await Auth.deleteOne({ _id: user._id });

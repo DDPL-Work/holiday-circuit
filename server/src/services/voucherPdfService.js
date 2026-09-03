@@ -54,10 +54,6 @@ const ensureVouchersDir = () => ensureDir(path.join(process.cwd(), "uploads", "v
 const normalizeCompanyName = (name, fallback = "Holiday Circuit") => {
   const str = String(name || "").trim();
   if (!str) return fallback;
-  const lower = str.toLowerCase();
-  if (lower.includes("ddlc")) {
-    return fallback;
-  }
   return str;
 };
 
@@ -285,9 +281,10 @@ const drawAgentHeader = (doc, branding = {}, logo = null) => {
   const detailsX = logo ? PAGE.x + 120 : PAGE.x + 20;
   const detailsWidth = PAGE.x + PAGE.width - detailsX - 16;
   const name = normalizeCompanyName(branding.name || BRAND.name);
+  const address = branding.address || "KG 3/69, Ground Floor, Vikas Puri, New Delhi, Near UK Nursing Home, New Delhi, Delhi, India - 110018";
 
   doc.font("Helvetica-Bold").fontSize(18).fillColor(BRAND.text).text(name, detailsX, PAGE.y + 14, { width: detailsWidth });
-  doc.font("Helvetica").fontSize(7.8).fillColor("#475569").text(String(branding.address || ""), detailsX, PAGE.y + 39, {
+  doc.font("Helvetica").fontSize(7.8).fillColor("#475569").text(String(address), detailsX, PAGE.y + 39, {
     width: detailsWidth,
     lineGap: 1,
     height: 22,
@@ -892,11 +889,7 @@ export const generateVoucherPdf = async (voucherDetails) => {
   const stream = fs.createWriteStream(absoluteFilePath);
   doc.pipe(stream);
 
-  const rawBranding = voucherDetails?.branding && typeof voucherDetails.branding === "object" ? voucherDetails.branding : {};
-  const isDdlcBranding = String(rawBranding.name || "").toLowerCase().includes("ddlc") ||
-    String(rawBranding.email || "").toLowerCase().includes("ddlc") ||
-    String(rawBranding.footer || "").toLowerCase().includes("ddlc");
-  const branding = isDdlcBranding ? {} : rawBranding;
+  const branding = voucherDetails?.branding && typeof voucherDetails.branding === "object" ? voucherDetails.branding : {};
   const hasAgentBranding = Boolean(branding.name || branding.logo || branding.footer);
   const [agentLogo, agentFooterImage] = hasAgentBranding
     ? await Promise.all([loadBrandImage(branding.logo), loadBrandImage(branding.footer)])
@@ -938,9 +931,18 @@ export const generateVoucherPdf = async (voucherDetails) => {
     }),
   };
 
+  const resolveTripId = (data) => {
+    const raw = data.tripId || data.queryId || data.query || data.voucherNumber || "";
+    const clean = String(raw).replace(/^#\s*/, "").trim();
+    if (!clean) return "QRY-1109";
+    if (clean.toUpperCase().startsWith("QRY-")) return clean.toUpperCase();
+    if (clean.toUpperCase().startsWith("VCH-")) return `QRY-${clean.replace(/^VCH-?/i, "")}`;
+    return `QRY-${clean}`;
+  };
+
   // 2. Overview Table
   y = drawOverviewTable(doc, pageCtx, y, {
-    tripId: voucherDetails.voucherNumber || voucherDetails.tripId || voucherDetails.query || "4304633",
+    tripId: resolveTripId(voucherDetails),
     startDate: startDateOrdinal,
     duration: tripDefaults.duration,
     destination: tripDefaults.destination,
@@ -980,7 +982,21 @@ export const generateVoucherPdf = async (voucherDetails) => {
   });
 
   // 3.5 Terms & Conditions Table
-  const termsList = voucherDetails.termsAndConditions || voucherDetails.terms || [];
+  const defaultTermsList = [
+    "Welcome to Holiday Circuit. These Terms and Conditions govern your use of the Holiday Circuit services. When You Make a booking or reservation, you agree to be bound by these Terms.",
+    "Bookings and Reservations",
+    "Booking Process: When you make a booking or reservation through Holiday Circuit, you agree to provide accurate and complete information. Any discrepancies or errors in the information you provide may result in the cancellation of your booking.",
+    "Payment: Payments for bookings are due as specified during the booking process. Failure to make payments on time may result in the cancellation of your booking.",
+    "Cancellations and Refunds: Cancellation and refund policies vary depending on the type of booking. Please refer to the specific cancellation policy provided at the time of booking. Holiday Circuit reserves the right to charge cancellation fees as applicable.",
+    "Intellectual Property",
+    "Ownership: All content, trademarks, logos, and intellectual property on the Holiday Circuit website and app are the property of Holiday Circuit or its licensors. You may not use, reproduce, or distribute our content without prior written permission.",
+    "Changes to Terms and Conditions: We reserve the right to update and modify these Terms and Conditions at any time. Please review them periodically for changes. Your continued use of our services after any modifications indicates your acceptance of the updated Terms.",
+    "By booking with Holiday Circuit, you acknowledge that you have read, understood, and agreed to these Terms and Conditions.",
+  ];
+  let termsList = voucherDetails.termsAndConditions || voucherDetails.terms || [];
+  if (!termsList || !termsList.length) {
+    termsList = defaultTermsList;
+  }
   y = drawTermsAndConditionsTable(doc, pageCtx, y, termsList);
 
   // 4. Helpline Table
