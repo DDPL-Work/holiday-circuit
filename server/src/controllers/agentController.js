@@ -3288,7 +3288,7 @@ export const createQuery = async (req, res, next) => {
         endDate: query.endDate,
         numberOfAdults: query.numberOfAdults,
         numberOfChildren: query.numberOfChildren,
-        customerBudget: query.customerBudget,
+        customerBudget: query.customerBudge0t,
         hotelCategory: query.hotelCategory,
         transportRequired: query.transportRequired,
         sightseeingRequired: query.sightseeingRequired,

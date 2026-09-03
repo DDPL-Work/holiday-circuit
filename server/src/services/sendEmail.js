@@ -176,6 +176,7 @@ export const sendTeamMemberCredentialsMail = async (
     role = "Team Member",
     loginEmail = email,
     password = "",
+    from = MAIL_FROM_ADDRESS,
     loginUrl = process.env.FRONTEND_LOGIN_URL ||
       process.env.ADMIN_LOGIN_URL ||
       process.env.OPS_LOGIN_URL ||
@@ -191,7 +192,7 @@ export const sendTeamMemberCredentialsMail = async (
   const safeLoginUrl = escapeHtml(String(loginUrl || "#").trim() || "#");
 
   await transporter.sendMail({
-    from: MAIL_FROM_ADDRESS,
+    from: from || MAIL_FROM_ADDRESS,
     to: email,
     subject: "Holiday Circuit Workspace Credentials",
     html: `
@@ -388,6 +389,7 @@ export const sendNewQueryAssignedMail = async (
     agentName = "Agent",
     agentCompany = "",
     agentEmail = "",
+    from,
     dashboardUrl = "",
   } = {},
 ) => {
@@ -401,9 +403,9 @@ export const sendNewQueryAssignedMail = async (
   ];
 
   await transporter.sendMail({
-    from: MAIL_FROM_ADDRESS,
+    from: from ? `${from} <${MAIL_FROM_ADDRESS}>` : MAIL_FROM_ADDRESS,
+    replyTo: agentEmail || MAIL_REPLY_TO_ADDRESS,
     to: email,
-    replyTo: MAIL_REPLY_TO_ADDRESS,
     subject: `New Query Assigned: ${queryId || destination || "Holiday Circuit"}`,
     html: `
       <div style="margin:0;padding:0;background:#f1f5f9;font-family:Arial,sans-serif;color:#0f172a;">
@@ -486,6 +488,7 @@ export const sendAgentQueryCreatedMail = async (
     sightseeingRequired = false,
     specialRequirements = "",
     assignedOpsName = "Operations Team",
+    from,
     dashboardUrl = "",
   } = {},
 ) => {
@@ -499,7 +502,7 @@ export const sendAgentQueryCreatedMail = async (
   ];
 
   await transporter.sendMail({
-    from: MAIL_FROM_ADDRESS,
+    from: from || MAIL_FROM_ADDRESS,
     to: email,
     replyTo: MAIL_REPLY_TO_ADDRESS,
     subject: `Travel Query Created: ${queryId || destination || "Holiday Circuit"}`,
