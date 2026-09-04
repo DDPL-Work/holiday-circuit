@@ -1,5 +1,7 @@
 import { parentPort, workerData } from "worker_threads";
 import mongoose from "mongoose";
+import dotenv from "dotenv";
+dotenv.config();
 import XLSX from "xlsx";
 import dns from "dns";
 

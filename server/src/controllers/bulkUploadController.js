@@ -796,6 +796,7 @@ export const bulkUpload = async (req, res) => {
     worker.on("message", async (msg) => {
       if (msg.status === "failed") {
         try {
+          console.error("Worker failed with error:", msg.error);
           await UploadHistory.findByIdAndUpdate(msg.uploadHistoryId, { status: "failed" });
         } catch (err) {
           console.error("Parent could not update failed status:", err);
