@@ -1,6 +1,9 @@
 import { parentPort, workerData } from "worker_threads";
 import mongoose from "mongoose";
 import XLSX from "xlsx";
+import dns from "dns";
+
+dns.setServers(['8.8.8.8']);
 
 import UploadHistory from "../models/uploadHistory.model.js";
 import { processHotelExcel } from "../services/hotelProcessor.js";

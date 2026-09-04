@@ -3137,9 +3137,9 @@ const AdvancedAnalytics = () => {
             Comprehensive financial insights and tax reporting
           </p>
         </div>
-        <div className="flex items-center gap-3 flex-wrap sm:flex-nowrap">
-          <div className="relative" ref={dropdownRef}>
-            <div className="flex items-center gap-1 bg-gray-100 rounded-full px-1 py-1 flex-nowrap whitespace-nowrap">
+        <div className="flex flex-col xl:flex-row items-stretch xl:items-center gap-3 w-full sm:w-auto">
+          <div className="relative w-full sm:w-auto" ref={dropdownRef}>
+            <div className="flex flex-wrap xl:flex-nowrap justify-center items-center gap-1 bg-gray-100 rounded-2xl xl:rounded-full px-1 py-1">
               <PeriodDropdownTab
                 active={period === "monthly"}
                 label="Monthly"
@@ -3349,7 +3349,7 @@ const AdvancedAnalytics = () => {
               </motion.div>
             )}
           </div>
-          <div className="flex items-center gap-2.5 shrink-0">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 shrink-0 w-full sm:w-auto mt-2 xl:mt-0">
             <ExportButton
               icon={FileText}
               label={`${periodLabel} PDF`}
@@ -3494,7 +3494,7 @@ const AdvancedAnalytics = () => {
             Explore detailed query trends and revenue insights by category.
           </p>
         </div>
-        <div className="flex items-center gap-3 w-full sm:w-auto shrink-0 justify-end">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto shrink-0 sm:justify-end">
           <button
             type="button"
             onClick={() => setShowQueryModal(true)}
@@ -3740,7 +3740,7 @@ const AdvancedAnalytics = () => {
             transactions, tax summaries, and analytics
           </p>
         </div>
-        <div className="flex items-center gap-3 shrink-0">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 shrink-0 w-full sm:w-auto mt-2 sm:mt-0">
           <ExportButton
             icon={FileText}
             label={`${periodLabel} Audit PDF`}

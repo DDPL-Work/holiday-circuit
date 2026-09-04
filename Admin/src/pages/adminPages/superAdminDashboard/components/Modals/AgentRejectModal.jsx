@@ -50,7 +50,7 @@ export const AgentRejectModal = ({
                 {agentRejectDialogUser?.companyName || "Agent registration"}
               </span>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 12px", marginTop: 8, paddingTop: 8, borderTop: "1px dashed #e2e8f0" }}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-1.5 gap-x-3 mt-2 pt-2 border-t border-dashed border-slate-200">
               <div style={{ display: "flex", alignItems: "center", gap: 5, minWidth: 0 }}>
                 <Users size={11} color="#64748b" style={{ flexShrink: 0 }} />
                 <span style={{ fontSize: 11, color: "#475569", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>

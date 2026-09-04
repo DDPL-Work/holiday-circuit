@@ -1248,11 +1248,9 @@ export const deleteUpload = async (req, res) => {
       return res.status(409).json({ message: "This upload is still processing and cannot be deleted yet." });
     }
 
-    if (!file.inventoryTracked) {
-      return res.status(409).json({
-        message: "This is a legacy upload without inventory tracking. Its database records cannot be deleted safely from this screen.",
-      });
-    }
+    // We now allow deletion of legacy uploads. 
+    // The inventoryFilter below ensures we don't accidentally delete all inventory,
+    // as it specifically requires `sourceUpload: file._id`, which legacy records lack.
 
     // Only inventory tagged with this exact upload is deleted. Records from
     // older uploads without sourceUpload are intentionally left untouched.
