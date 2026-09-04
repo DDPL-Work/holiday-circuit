@@ -793,8 +793,7 @@ export default function SharePackageModal({
                   </td>
                 </tr>
               </tbody>
-            </table>
-          `;
+            </table>`;
         }).join("") : `<div style="padding: 16px 20px; text-align: center; color: #64748b; font-style: italic; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; margin-bottom: 20px; font-size: 13px;">No specific hotel accommodations listed for this voucher.</div>`;
 
         const nonHotelServicesHtml = nonHotelServices.map((s) => {

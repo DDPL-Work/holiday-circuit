@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useCallback, useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Calendar, ChevronLeft, ChevronRight } from "lucide-react";
+import { Calendar, ChevronLeft, ChevronRight, Download } from "lucide-react";
 import PeriodDropdownTab from "../Buttons/PeriodDropdownTab";
 
 const CHART_TYPES = [
@@ -25,57 +25,69 @@ const PALETTE = [
 ];
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-function formatYM(date) {
+export function formatYM(date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
 }
 
-function formatTaxMonth(date) {
+export function formatTaxMonth(date) {
   const d = date instanceof Date ? date : new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
-function monthLabel(date) {
+export function monthLabel(date) {
   return date.toLocaleString("default", { month: "short", year: "2-digit" });
 }
 
-function dayLabel(year, month, day) {
+export function dayLabel(year, month, day) {
   return new Date(year, month - 1, day).toLocaleString("default", { month: "short", day: "numeric" });
 }
 
 // Filter + group bookings for given period/selection
-function buildChartData(bookings, groupKey, period, selMonth, selQuarter, selYear, customFrom, customTo) {
-  let filtered = bookings;
+export function buildChartData(bookings = [], groupKey = "agent", period = "monthly", selMonth, selQuarter, selYear, customFrom, customTo) {
+  let filtered = bookings || [];
 
   // Date bounds from selection
   let minDate = null, maxDate = null;
   let granularity = "month"; // "day" | "month"
 
   if (period === "monthly") {
-    const [yr, mn] = selMonth.split("-").map(Number);
-    minDate = new Date(yr, mn - 1, 1);
-    maxDate = new Date(yr, mn, 0); // last day of month
-    granularity = "day";
+    const [yr, mn] = (selMonth || "").split("-").map(Number);
+    if (yr && mn) {
+      minDate = new Date(yr, mn - 1, 1);
+      maxDate = new Date(yr, mn, 0, 23, 59, 59, 999); // last day of month
+      granularity = "day";
+    }
   } else if (period === "quarterly") {
-    const [yr, q] = selQuarter.split("-Q").map(Number);
-    const startMonth = (q - 1) * 3;
-    minDate = new Date(yr, startMonth, 1);
-    maxDate = new Date(yr, startMonth + 3, 0);
-    granularity = "month";
+    const [yrStr, qStr] = (selQuarter || "").split("-Q");
+    const yr = Number(yrStr);
+    const q = Number(qStr);
+    if (yr && q) {
+      const startMonth = (q - 1) * 3;
+      minDate = new Date(yr, startMonth, 1);
+      maxDate = new Date(yr, startMonth + 3, 0, 23, 59, 59, 999);
+      granularity = "month";
+    }
   } else if (period === "yearly") {
     const yr = Number(selYear);
-    minDate = new Date(yr, 0, 1);
-    maxDate = new Date(yr, 11, 31);
-    granularity = "month";
+    if (yr) {
+      minDate = new Date(yr, 0, 1);
+      maxDate = new Date(yr, 11, 31, 23, 59, 59, 999);
+      granularity = "month";
+    }
   } else if (period === "custom") {
     if (customFrom) minDate = new Date(customFrom);
-    if (customTo)   maxDate = new Date(customTo);
+    if (customTo) {
+      const toD = new Date(customTo);
+      toD.setHours(23, 59, 59, 999);
+      maxDate = toD;
+    }
     granularity = "month";
   }
 
   // Filter
-  filtered = bookings.filter((row) => {
+  filtered = (bookings || []).filter((row) => {
     const d = new Date(row.travelDate);
-    if (isNaN(d)) return false;
+    if (isNaN(d.getTime())) return false;
     if (minDate && d < minDate) return false;
     if (maxDate && d > maxDate) return false;
     return true;
@@ -83,16 +95,18 @@ function buildChartData(bookings, groupKey, period, selMonth, selQuarter, selYea
 
   // Build date labels
   let dates = [];
-  if (granularity === "day" && period === "monthly") {
+  if (granularity === "day" && period === "monthly" && selMonth) {
     const [yr, mn] = selMonth.split("-").map(Number);
-    const daysInMonth = new Date(yr, mn, 0).getDate();
-    dates = Array.from({ length: daysInMonth }, (_, i) => dayLabel(yr, mn, i + 1));
+    if (yr && mn) {
+      const daysInMonth = new Date(yr, mn, 0).getDate();
+      dates = Array.from({ length: daysInMonth }, (_, i) => dayLabel(yr, mn, i + 1));
+    }
   } else if (granularity === "month") {
     // Collect all month labels from filtered data
     const set = new Set();
     filtered.forEach((row) => {
       const d = new Date(row.travelDate);
-      if (!isNaN(d)) set.add(monthLabel(d));
+      if (!isNaN(d.getTime())) set.add(monthLabel(d));
     });
     dates = [...set].sort((a, b) => new Date(`01 ${a}`) - new Date(`01 ${b}`));
   }
@@ -101,10 +115,10 @@ function buildChartData(bookings, groupKey, period, selMonth, selQuarter, selYea
   const entityMap = {};
   filtered.forEach((row) => {
     const d = new Date(row.travelDate);
-    if (isNaN(d)) return;
+    if (isNaN(d.getTime())) return;
 
     let label;
-    if (granularity === "day") {
+    if (granularity === "day" && selMonth) {
       const [yr, mn] = selMonth.split("-").map(Number);
       label = dayLabel(yr, mn, d.getDate());
     } else {
@@ -123,7 +137,13 @@ function buildChartData(bookings, groupKey, period, selMonth, selQuarter, selYea
     });
   });
 
-  return { entities: Object.keys(entityMap), dates, entityMap, count: filtered.length };
+  return {
+    entities: Object.keys(entityMap),
+    dates,
+    entityMap,
+    count: filtered.length,
+    filteredBookings: filtered
+  };
 }
 
 // ── Skeleton ─────────────────────────────────────────────────────────────────
@@ -234,30 +254,67 @@ function ChartSkeleton() {
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
-export default function BookingChart({ bookingData }) {
+export default function BookingChart({
+  bookingData,
+  chartType: propChartType,
+  setChartType: propSetChartType,
+  period: propPeriod,
+  setPeriod: propSetPeriod,
+  selectedTaxMonth: propMonth,
+  setSelectedTaxMonth: propSetMonth,
+  selectedTaxQuarter: propQuarter,
+  setSelectedTaxQuarter: propSetQuarter,
+  selectedTaxYear: propYear,
+  setSelectedTaxYear: propSetYear,
+  customFrom: propCustomFrom,
+  setCustomFrom: propSetCustomFrom,
+  customTo: propCustomTo,
+  setCustomTo: propSetCustomTo,
+  onExportChart,
+}) {
   const canvasRef     = useRef(null);
   const chartRef      = useRef(null);
   const buildChartRef = useRef(() => {});
   const scriptLoaded  = useRef(false);
   const dropdownRef   = useRef(null);
 
-  const [chartType, setChartType] = useState("agent");
+  const [localChartType, setLocalChartType] = useState("agent");
+  const chartType = propChartType !== undefined ? propChartType : localChartType;
+  const setChartType = propSetChartType || setLocalChartType;
 
   // Period state — mirrors AdvancedAnalytics exactly
-  const [period, setPeriod] = useState("monthly");
+  const [localPeriod, setLocalPeriod] = useState("monthly");
+  const period = propPeriod !== undefined ? propPeriod : localPeriod;
+  const setPeriod = propSetPeriod || setLocalPeriod;
+
   const [monthMenuOpen,   setMonthMenuOpen]   = useState(false);
   const [quarterMenuOpen, setQuarterMenuOpen] = useState(false);
   const [yearMenuOpen,    setYearMenuOpen]    = useState(false);
 
   const now = new Date();
-  const [selectedTaxMonth,   setSelectedTaxMonth]   = useState(formatTaxMonth(now));
-  const [selectedTaxQuarter, setSelectedTaxQuarter] = useState(`${now.getFullYear()}-Q${Math.floor(now.getMonth() / 3) + 1}`);
-  const [selectedTaxYear,    setSelectedTaxYear]    = useState(String(now.getFullYear()));
+  const [localMonth, setLocalMonth] = useState(formatTaxMonth(now));
+  const selectedTaxMonth = propMonth !== undefined ? propMonth : localMonth;
+  const setSelectedTaxMonth = propSetMonth || setLocalMonth;
+
+  const [localQuarter, setLocalQuarter] = useState(`${now.getFullYear()}-Q${Math.floor(now.getMonth() / 3) + 1}`);
+  const selectedTaxQuarter = propQuarter !== undefined ? propQuarter : localQuarter;
+  const setSelectedTaxQuarter = propSetQuarter || setLocalQuarter;
+
+  const [localYear, setLocalYear] = useState(String(now.getFullYear()));
+  const selectedTaxYear = propYear !== undefined ? propYear : localYear;
+  const setSelectedTaxYear = propSetYear || setLocalYear;
+
   const [pickerQuarterYear,  setPickerQuarterYear]  = useState(now.getFullYear());
   const [pickerYearStart,    setPickerYearStart]    = useState(Math.floor(now.getFullYear() / 12) * 12);
 
-  const [customFrom, setCustomFrom] = useState("");
-  const [customTo,   setCustomTo]   = useState("");
+  const [localCustomFrom, setLocalCustomFrom] = useState("");
+  const customFrom = propCustomFrom !== undefined ? propCustomFrom : localCustomFrom;
+  const setCustomFrom = propSetCustomFrom || setLocalCustomFrom;
+
+  const [localCustomTo, setLocalCustomTo] = useState("");
+  const customTo = propCustomTo !== undefined ? propCustomTo : localCustomTo;
+  const setCustomTo = propSetCustomTo || setLocalCustomTo;
+
   const [customRangeError, setCustomRangeError] = useState("");
 
   // Close dropdowns on outside click
@@ -414,9 +471,10 @@ export default function BookingChart({ bookingData }) {
           </p>
         </div>
 
-        {/* ── Period selector — exact same UI as AdvancedAnalytics ── */}
-        <div className="relative shrink-0" ref={dropdownRef}>
-          <div className="flex items-center gap-1 bg-gray-100 rounded-full px-1 py-1 flex-nowrap whitespace-nowrap">
+        <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+          {/* ── Period selector — exact same UI as AdvancedAnalytics ── */}
+          <div className="relative shrink-0" ref={dropdownRef}>
+            <div className="flex items-center gap-1 bg-gray-100 rounded-full px-1 py-1 flex-nowrap whitespace-nowrap">
 
             <PeriodDropdownTab
               active={period === "monthly"}
@@ -575,6 +633,19 @@ export default function BookingChart({ bookingData }) {
             )}
           </AnimatePresence>
         </div>
+
+        {onExportChart && (
+          <button
+            type="button"
+            onClick={onExportChart}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 transition-all font-semibold text-xs shadow-sm cursor-pointer whitespace-nowrap"
+            title="Export chart data and time-series analytics to Excel"
+          >
+            <Download size={13} />
+            Export Chart Data
+          </button>
+        )}
+      </div>
       </div>
 
       {/* placeholder to keep spacing consistent */}
