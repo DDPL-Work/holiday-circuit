@@ -2,6 +2,7 @@ import PDFDocument from "pdfkit";
 import fs from "fs";
 import path from "path";
 import sharp from "sharp";
+import { pdfMemoryCache } from "../utils/pdfCache.js";
 
 /* ============================================================================
  * BRAND / PAGE CONSTANTS
@@ -880,15 +881,28 @@ const finalizePdf = async (doc, stream) => {
  * ==========================================================================*/
 
 export const generateVoucherPdf = async (voucherDetails) => {
-  const dirPath = ensureVouchersDir();
+  // [LOCAL] Disk write disabled — no files saved to uploads/vouchers/
+  // const dirPath = ensureVouchersDir();
+  const dirPath = "";
   const safeVoucherNumber = String(voucherDetails.voucherNumber || voucherDetails.query || "voucher").replace(/[^a-zA-Z0-9-_]/g, "");
   const fileName = `Travel_Voucher_${safeVoucherNumber}.pdf`;
-  const absoluteFilePath = path.join(dirPath, fileName);
+  // const absoluteFilePath = path.join(dirPath, fileName); // [LOCAL] disk write disabled
+  const absoluteFilePath = "";
   const publicFilePath = `/uploads/vouchers/${fileName}`;
 
   const doc = new PDFDocument({ margin: 34, size: "A4" });
-  const stream = fs.createWriteStream(absoluteFilePath);
-  doc.pipe(stream);
+  
+  const chunks = [];
+  doc.on("data", (chunk) => chunks.push(chunk));
+  const pdfPromise = new Promise((resolve, reject) => {
+    doc.on("end", () => {
+      const buffer = Buffer.concat(chunks);
+      pdfMemoryCache.set(publicFilePath, buffer);
+      setTimeout(() => pdfMemoryCache.delete(publicFilePath), 15 * 60 * 1000);
+      resolve();
+    });
+    doc.on("error", reject);
+  });
 
   const branding = voucherDetails?.branding && typeof voucherDetails.branding === "object" ? voucherDetails.branding : {};
   const hasAgentBranding = Boolean(branding.name || branding.logo || branding.footer);
@@ -1019,7 +1033,9 @@ export const generateVoucherPdf = async (voucherDetails) => {
     { width: PAGE.bodyWidth, align: "right" }
   );
 
-  await finalizePdf(doc, stream);
+  // await finalizePdf(doc, stream); // [LOCAL] disk write disabled
+  doc.end();
+  await pdfPromise;
 
   return {
     absoluteFilePath,

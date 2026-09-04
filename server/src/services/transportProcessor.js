@@ -269,8 +269,8 @@ export const processTransportExcel = async (filePath, ownerId, providedWorkbook 
     const serviceNames = finalDocs.map((d) => d.serviceName).filter(Boolean);
     if (serviceNames.length > 0) {
       const deleteFilter = { serviceName: { $in: serviceNames } };
-      if (supplierId) {
-        deleteFilter.supplier = supplierId;
+      if (ownerId) {
+        deleteFilter.supplier = ownerId;
       }
       await Transport.deleteMany(deleteFilter);
     }
