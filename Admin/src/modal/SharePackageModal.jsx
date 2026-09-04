@@ -6,132 +6,11 @@ import { AnimatePresence, motion } from "framer-motion";
 import API from "../utils/Api";
 import { buildVoucherHtml, parseAdminTermContent } from "../utils/voucherTemplate";
 
-// Default Seller Bank Details
-const DEFAULT_SELLER_BANK_DETAILS = [
-  { label: "Bank Name", value: "HDFC Bank" },
-  { label: "A/c Holder Name", value: "Holiday Circuit" },
-  { label: "A/c No.", value: "50200103968171" },
-  { label: "IFSC", value: "HDFC0004413" },
-  { label: "Branch", value: "RAMPHAL CHOWK SEC VII DWARKA" },
-];
-
-// Hardcoded Terms & Conditions
-const GENERAL_TERMS_AND_CONDITIONS = [
-  {
-    title: "1. Introduction",
-    text: `Welcome to **Leela Travels** ("we," "our," or "us"). These Terms and Conditions ("Terms") govern your use of our travel services, including bookings, tours, and related services. By using our services, you agree to comply with and be bound by these Terms.`,
-  },
-  {
-    title: "2. Services Provided",
-    text: `â€¢ **Leela Travels** offers travel planning, tour packages, transportation arrangements, accommodation bookings, travel insurance facilitation, visa assistance, and other related services.
-â€¢ Customized travel itineraries are available upon request, subject to additional fees.
-â€¢ Specific service details will be outlined in individual agreements.
-â€¢ We provide both private transfers and shared transfers:
-  - **Private Transfers**: Exclusive transportation for the client or group point to point until and unless specified. Any delays caused by the client may result in additional charges.
-  - **Shared Transfers**: Transportation shared with other travelers, operating on fixed schedules. Delays or cancellations due to other passengers are not our responsibility **(Guest might have to wait upto 30 Mins)**`,
-  },
-  {
-    title: "3. Booking and Payment",
-    text: `1. All bookings are subject to availability and confirmation at the time of Booking Advance Payment
-2. Non-Refundable deposit of 25% is required to confirm your booking.
-3. Full payment must be made by 30 Days before the commencement of the tour.
-4. Payments can be made via UPI/Bank Transfers/Cash- **Delhi Only/Credit Card with additional 2.5 % Surcharge**/ Cheques- **Subject to realization.**
-5. Late payments may incur additional charges or result in cancellation of booking.`,
-  },
-  {
-    title: "4. Cancellations and Refunds",
-    text: `1. Cancellations must be made in writing at least 10 Day prior to Departure.
-2. Cancellation fees apply as follows:
-   - a) 25 % if canceled 30 days before departure
-   - b) 50 % if canceled 29-16 days before departure
-   - c) 75 % if canceled 15-08 days before departure
-   - d) 100% if canceled within 07 days before departure
-   - e) No refund if canceled less than 07 days before departure
-3. Refunds will be processed within 15 business days.
-4. Certain bookings (e.g., flights, special events) may be non-refundable or subject to specific cancellation terms.**`,
-  },
-  {
-    title: "5. Changes and Modifications",
-    text: `1. We reserve the right to modify or cancel tours due to unforeseen circumstances, including but not limited to weather conditions, natural disasters, or political instability.
-2. If changes occur, we will offer alternative arrangements or a refund at our discretion.
-3. Clients requesting changes to their booking may incur administrative/Service fees.`,
-  },
-  {
-    title: "6. Travel Documents and Requirements",
-    text: `1. Clients are responsible for obtaining valid passports, visas, and any other required travel documents.
-2. We are not liable for any travel disruptions due to incomplete or incorrect documentation.
-3. Clients must comply with all customs, immigration, and health regulations of the destination country.`,
-  },
-  {
-    title: "7. Health and Safety",
-    text: `1. Clients must inform us of any medical conditions, allergies, or special requirements prior to booking.
-2. We reserve the right to refuse participation if health and safety are at risk.
-3. Clients must adhere to local health and safety guidelines, including vaccination requirements.`,
-  },
-  {
-    title: "8. Liability",
-    text: `**Leela Travels** acts as an intermediary between you and service providers such as airlines, hotels, and tour operators. We are not liable for any actions, omissions, or negligence on the part of these service providers.`,
-  },
-  {
-    title: "9. Accommodation Policies",
-    text: `**Standard check-in time is 1400-1500 Hrs , and standard check-out time is 1100-1200 Hrs. Early check-in and late check-out requests are subject to availability and may incur additional charges.**`,
-  },
-  {
-    title: "10. Travel Insurance",
-    text: `1. Travel Insurance is highly recommended and is the responsibility of the client.
-2. Insurance should cover trip cancellations, medical expenses, personal liability, and loss of belongings.`,
-  },
-  {
-    title: "11. Intellectual Property",
-    text: `1. All content, logos, and materials provided by us are our intellectual property and may not be used without permission.
-2. Unauthorized use of our intellectual property may result in legal action.`,
-  },
-  {
-    title: "12. Governing Law",
-    text: `1. These Terms are governed by the laws of New Delhi Jurisdiction.
-2. Any disputes will be resolved in the courts of New Delhi Jurisdiction.`,
-  },
-  {
-    title: "13. Privacy Policy",
-    text: `1. We are committed to protecting your privacy. Personal data collected will be used solely for booking and communication purposes.
-2. We do not share your personal information with third parties without your consent, except where required by law.`,
-  },
-  {
-    title: "14. Force Majeure",
-    text: `1. We are not liable for failure to perform our obligations due to events beyond our control, including but not limited to natural disasters, war, terrorism, and pandemics.`,
-  },
-  {
-    title: "15. Changes to Terms and Conditions",
-    text: `We reserve the right to update and modify these Terms and Conditions at any time. Please review them periodically for changes. Your continued use of our services after any modifications indicates your acceptance of the updated Terms.`,
-  },
-  {
-    title: "16. Contact Information",
-    text: `**For any inquiries, please contact us at: Leela Travels** KG 3/101, Ground Floor, Vikas Puri, New Delhi -110018, Near UK Nursing Home, Email id - ops@leelatravels.com +91 8851346665, +91 9971706003`,
-  },
-  {
-    title: "17. Acknowledgment",
-    text: `By booking with **DDLC Company**, you acknowledge that you have read, understood, and agreed to these Terms and Conditions.`,
-  },
-];
-
-const DEFAULT_INCLUSIONS = [
-  "Stay as mentioned above or in Similar hotels",
-  "Meals as mentioned in the Itinerary",
-  "Enterances only as mentioned in Itinerary",
-  "Transport as per Itinerary - Point to Point Basis",
-  "Taxes as on Date",
-];
-
-const DEFAULT_EXCLUSIONS = [
-  "Airfare",
-  "Early Check and Late Check out charges",
-  "Personal Expenses - Room Service, Laundry, Porterage or Mini Bar etc",
-  "Hotel Security Deposit - Refundable at time of checkout",
-  "TCS and GST - 2 and 5 % (if not Included)",
-  "Any services not mentioned above",
-  "Visa Fees if not added in Inclusions",
-  "Travel Insurance - recommended",
-];
+// Clean Dynamic Default Fallbacks
+const DEFAULT_SELLER_BANK_DETAILS = [];
+const GENERAL_TERMS_AND_CONDITIONS = [];
+const DEFAULT_INCLUSIONS = [];
+const DEFAULT_EXCLUSIONS = [];
 
 const toDisplayList = (value) => {
   if (Array.isArray(value)) {
@@ -605,29 +484,12 @@ export default function SharePackageModal({
               ? query.services
               : (Array.isArray(query?.voucherServices) && query.voucherServices.length > 0
                   ? query.voucherServices
-                  : [
-                      { type: "hotel", title: "Jaypee Residency Manor Mussoorie", confirmation: "Confirmed(Confirmed)", rating: "5 star", address: "Mall Road, Mussoorie, Uttarakhand 248179", roomType: "Superior King Room", mealPlan: "Breakfast", numberOfRooms: 1, pax: paxVal },
-                      { type: "activity", title: "Mussoorie Paragliding", confirmation: "Confirmed(Confirmed)" },
-                      { type: "transport", title: "Mussoorie Dehradun Transfer", confirmation: "Confirmed(Confirmed)" },
-                      { type: "sightseeing", title: "Mussoorie Mall Road & Kempty", confirmation: "Confirmed(Confirmed)" }
-                    ]));
+                  : []));
 
         const hotelServices = rawServices.filter((s) => String(s.type || s.category || "").toLowerCase().includes("hotel"));
         const nonHotelServices = rawServices.filter((s) => !String(s.type || s.category || "").toLowerCase().includes("hotel"));
 
-        const displayHotels = hotelServices.length > 0 ? hotelServices : [
-          {
-            title: `${destinationVal} Heritage Resort & Spa`,
-            rating: "5 star",
-            address: `${destinationVal}, India`,
-            confirmation: "97739SG008801",
-            roomType: "Superior King Room",
-            mealPlan: "Breakfast",
-            numberOfRooms: 1,
-            pax: paxVal,
-            nights: nights,
-          }
-        ];
+        const displayHotels = hotelServices;
 
         const isHcCompany = !companyNameVal || companyNameVal.toLowerCase() === "holiday circuit";
 
@@ -754,21 +616,22 @@ export default function SharePackageModal({
             return "CP ( Breakfast Included )";
           }
 
-          return "EP ( Room Only )";
+          const fallbackRaw = candidates[0] || h.description || h.roomType || "";
+          return fallbackRaw.trim() ? fallbackRaw.trim() : "As per hotel policy";
         };
 
         let runningHotelDate = startObj && !isNaN(startObj.getTime()) ? new Date(startObj.getTime()) : new Date();
 
-        const hotelsHtml = displayHotels.map((h, idx) => {
+        const hotelsHtml = displayHotels.length > 0 ? displayHotels.map((h, idx) => {
           const rawTitle = String(h.title || "").trim();
           const rawHotelName = String(h.hotelName || h.hotel || "").trim();
           const rawServiceName = String(h.serviceName || h.name || "").trim();
 
-          const hHotelName = rawHotelName || (rawTitle && !rawTitle.toLowerCase().includes("hotel stay") && !rawTitle.toLowerCase().includes("service") ? rawTitle : (rawServiceName || `${destinationVal} Heritage Resort`));
+          const hHotelName = rawHotelName || (rawTitle && !rawTitle.toLowerCase().includes("hotel stay") && !rawTitle.toLowerCase().includes("service") ? rawTitle : (rawServiceName || "Hotel Accommodation"));
           const hServiceName = rawServiceName && rawServiceName !== hHotelName ? rawServiceName : (rawTitle && rawTitle !== hHotelName ? rawTitle : "");
 
-          const hRating = h.rating || h.starRating || h.hotelCategory || h.category || "5 star";
-          const hAddress = h.address || h.hotelAddress || h.location || (h.city ? `${h.city}, ${destinationVal}` : `${destinationVal}, India`);
+          const hRating = h.rating || h.starRating || h.hotelCategory || h.category || "";
+          const hAddress = h.address || h.hotelAddress || h.location || (h.city ? `${h.city}, ${destinationVal}` : (destinationVal ? `${destinationVal}, India` : ""));
           const hDesc = h.description || h.hotelDescription || h.details || "";
 
           const realCnfNum = h.confirmationNumber || h.cnfNumber || h.supplierConfirmation || h.voucherNumber || (h.confirmation && h.confirmation !== "Confirmed(Confirmed)" && h.confirmation !== "Confirmed" && h.confirmation !== "Pending" ? h.confirmation : null);
@@ -900,7 +763,7 @@ export default function SharePackageModal({
               </tbody>
             </table>
           `;
-        }).join("");
+        }).join("") : `<div style="padding: 16px 20px; text-align: center; color: #64748b; font-style: italic; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; margin-bottom: 20px; font-size: 13px;">No specific hotel accommodations listed for this voucher.</div>`;
 
         const nonHotelServicesHtml = nonHotelServices.map((s) => {
           const sTypeRaw = String(s.type || s.category || "Service").toLowerCase();
@@ -2475,33 +2338,38 @@ export default function SharePackageModal({
       lines.push(`📋 *BOOKED SERVICES & CONFIRMATIONS*`);
       lines.push(`----------------------------------------`);
 
-      const rawServices = Array.isArray(quote?.services) && quote.services.length > 0 ? quote.services : [
-        { type: "hotel", title: "Jaypee Residency Manor Mussoorie", confirmationNumber: "CNF-1085-1" },
-        { type: "hotel", title: "The Landour Retreat Mussoorie", confirmationNumber: "CNF-1085-2" },
-        { type: "activity", title: "Mussoorie Paragliding", confirmationNumber: "CNF-1085-3" },
-        { type: "transport", title: "Mussoorie Dehradun Transfer", confirmationNumber: "CNF-1085-4" },
-        { type: "sightseeing", title: "Mussoorie Mall Road & Kempty", confirmationNumber: "CNF-1085-5" }
-      ];
+      const rawServices = Array.isArray(quote?.services) && quote.services.length > 0 
+        ? quote.services 
+        : (Array.isArray(query?.services) && query.services.length > 0
+            ? query.services
+            : (Array.isArray(query?.voucherServices) && query.voucherServices.length > 0
+                ? query.voucherServices
+                : []));
 
-      rawServices.forEach((s) => {
-        const sType = String(s.type || "service").toLowerCase();
-        let icon = "📌";
-        if (sType.includes("hotel")) icon = "🏨";
-        else if (sType.includes("transport") || sType.includes("transfer") || sType.includes("cab")) icon = "🚗";
-        else if (sType.includes("activity") || sType.includes("sightseeing") || sType.includes("tour")) icon = "🪂";
-        else if (sType.includes("flight")) icon = "✈️";
-
-        const sTitle = s.title || s.name || "Service";
-        const realCnfNum = s.confirmationNumber || s.cnfNumber || s.supplierConfirmation || s.voucherNumber || (s.confirmation && s.confirmation !== "Confirmed(Confirmed)" && s.confirmation !== "Confirmed" && s.confirmation !== "Pending" ? s.confirmation : null);
-        const cnfNumDisplay = realCnfNum ? String(realCnfNum).trim() : "-";
-        const isPending = (String(s.confirmation || "").toLowerCase().includes("pending") || cnfNumDisplay === "-");
-        const statusText = isPending ? "⏳ *Pending*" : "✅ *Confirmed*";
-
-        lines.push(`${icon} *${sTitle}*`);
-        lines.push(`   └ Status: ${statusText}`);
-        lines.push(`   └ Confirmation No: *${cnfNumDisplay}*`);
+      if (rawServices.length === 0) {
+        lines.push("_No specific services listed for this voucher._");
         lines.push("");
-      });
+      } else {
+        rawServices.forEach((s) => {
+          const sType = String(s.type || "service").toLowerCase();
+          let icon = "📌";
+          if (sType.includes("hotel")) icon = "🏨";
+          else if (sType.includes("transport") || sType.includes("transfer") || sType.includes("cab")) icon = "🚗";
+          else if (sType.includes("activity") || sType.includes("sightseeing") || sType.includes("tour")) icon = "🪂";
+          else if (sType.includes("flight")) icon = "✈️";
+
+          const sTitle = s.title || s.name || "Service";
+          const realCnfNum = s.confirmationNumber || s.cnfNumber || s.supplierConfirmation || s.voucherNumber || (s.confirmation && s.confirmation !== "Confirmed(Confirmed)" && s.confirmation !== "Confirmed" && s.confirmation !== "Pending" ? s.confirmation : null);
+          const cnfNumDisplay = realCnfNum ? String(realCnfNum).trim() : "-";
+          const isPending = (String(s.confirmation || "").toLowerCase().includes("pending") || cnfNumDisplay === "-");
+          const statusText = isPending ? "⏳ *Pending*" : "✅ *Confirmed*";
+
+          lines.push(`${icon} *${sTitle}*`);
+          lines.push(`   └ Status: ${statusText}`);
+          lines.push(`   └ Confirmation No: *${cnfNumDisplay}*`);
+          lines.push("");
+        });
+      }
 
       let parsedVoucherTerms = [];
       if (!removeTerms && selectedTermId !== "none") {
@@ -3077,27 +2945,33 @@ export default function SharePackageModal({
                         <p className="font-bold text-black text-xs uppercase tracking-wide">Included Services & Confirmations</p>
                         <p className="text-slate-400 font-mono text-xs select-none">---------</p>
                         <div className="mt-2 space-y-2.5 text-xs text-slate-900">
-                          {(Array.isArray(quote?.services) && quote.services.length > 0 ? quote.services : [
-                            { type: "hotel", title: "Jaypee Residency Manor Mussoorie", confirmationNumber: "CNF-1085-1" },
-                            { type: "hotel", title: "The Landour Retreat Mussoorie", confirmationNumber: "CNF-1085-2" },
-                            { type: "activity", title: "Mussoorie Paragliding", confirmationNumber: "CNF-1085-3" },
-                            { type: "transport", title: "Mussoorie Dehradun Transfer", confirmationNumber: "CNF-1085-4" },
-                            { type: "sightseeing", title: "Mussoorie Mall Road & Kempty", confirmationNumber: "CNF-1085-5" }
-                          ]).map((s, idx) => {
-                            const sTitle = s.title || s.name || "Service";
-                            const realCnfNum = s.confirmationNumber || s.cnfNumber || s.supplierConfirmation || s.voucherNumber || (s.confirmation && s.confirmation !== "Confirmed(Confirmed)" && s.confirmation !== "Confirmed" && s.confirmation !== "Pending" ? s.confirmation : null);
-                            const cnfNumDisplay = realCnfNum ? String(realCnfNum).trim() : "-";
-                            const isPending = !realCnfNum && String(s.confirmation || "").toLowerCase().includes("pending");
+                          {(() => {
+                            const previewServices = Array.isArray(quote?.services) && quote.services.length > 0 
+                              ? quote.services 
+                              : (Array.isArray(query?.services) && query.services.length > 0
+                                  ? query.services
+                                  : (Array.isArray(query?.voucherServices) && query.voucherServices.length > 0
+                                      ? query.voucherServices
+                                      : []));
+                            if (previewServices.length === 0) {
+                              return <p className="italic text-slate-400">No specific services listed for this voucher.</p>;
+                            }
+                            return previewServices.map((s, idx) => {
+                              const sTitle = s.title || s.name || "Service";
+                              const realCnfNum = s.confirmationNumber || s.cnfNumber || s.supplierConfirmation || s.voucherNumber || (s.confirmation && s.confirmation !== "Confirmed(Confirmed)" && s.confirmation !== "Confirmed" && s.confirmation !== "Pending" ? s.confirmation : null);
+                              const cnfNumDisplay = realCnfNum ? String(realCnfNum).trim() : "-";
+                              const isPending = !realCnfNum && String(s.confirmation || "").toLowerCase().includes("pending");
 
-                            return (
-                              <div key={idx} className="space-y-0.5">
-                                <p className="font-bold text-black">• {sTitle}</p>
-                                <p className="pl-3 text-slate-800">
-                                  Status: <span className={isPending ? "text-amber-800 font-semibold" : "text-emerald-800 font-bold"}>{isPending ? "⏳ Pending" : "✓ Confirmed"}</span> &nbsp;|&nbsp; Confirmation No: <strong>{cnfNumDisplay}</strong>
-                                </p>
-                              </div>
-                            );
-                          })}
+                              return (
+                                <div key={idx} className="space-y-0.5">
+                                  <p className="font-bold text-black">• {sTitle}</p>
+                                  <p className="pl-3 text-slate-800">
+                                    Status: <span className={isPending ? "text-amber-800 font-semibold" : "text-emerald-800 font-bold"}>{isPending ? "⏳ Pending" : "✓ Confirmed"}</span> &nbsp;|&nbsp; Confirmation No: <strong>{cnfNumDisplay}</strong>
+                                  </p>
+                                </div>
+                              );
+                            });
+                          })()}
                         </div>
                       </div>
 

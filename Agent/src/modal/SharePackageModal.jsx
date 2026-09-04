@@ -4,134 +4,13 @@ import { X, Copy, RefreshCw, AlertTriangle, FileText, CheckCircle2, Mail, Send }
 import toast from "react-hot-toast";
 import { AnimatePresence, motion } from "framer-motion";
 import API from "../utils/Api";
-import { buildVoucherHtml, parseAdminTermContent } from "../utils/voucherTemplate";
+import { buildVoucherHtml, parseAdminTermContent, DEFAULT_VOUCHER_TERMS } from "../utils/voucherTemplate";
 
-// Default Seller Bank Details
-const DEFAULT_SELLER_BANK_DETAILS = [
-  { label: "Bank Name", value: "HDFC Bank" },
-  { label: "A/c Holder Name", value: "Holiday Circuit" },
-  { label: "A/c No.", value: "50200103968171" },
-  { label: "IFSC", value: "HDFC0004413" },
-  { label: "Branch", value: "RAMPHAL CHOWK SEC VII DWARKA" },
-];
-
-// Hardcoded Terms & Conditions
-const GENERAL_TERMS_AND_CONDITIONS = [
-  {
-    title: "1. Introduction",
-    text: `Welcome to **Leela Travels** ("we," "our," or "us"). These Terms and Conditions ("Terms") govern your use of our travel services, including bookings, tours, and related services. By using our services, you agree to comply with and be bound by these Terms.`,
-  },
-  {
-    title: "2. Services Provided",
-    text: `â€¢ **Leela Travels** offers travel planning, tour packages, transportation arrangements, accommodation bookings, travel insurance facilitation, visa assistance, and other related services.
-â€¢ Customized travel itineraries are available upon request, subject to additional fees.
-â€¢ Specific service details will be outlined in individual agreements.
-â€¢ We provide both private transfers and shared transfers:
-  - **Private Transfers**: Exclusive transportation for the client or group point to point until and unless specified. Any delays caused by the client may result in additional charges.
-  - **Shared Transfers**: Transportation shared with other travelers, operating on fixed schedules. Delays or cancellations due to other passengers are not our responsibility **(Guest might have to wait upto 30 Mins)**`,
-  },
-  {
-    title: "3. Booking and Payment",
-    text: `1. All bookings are subject to availability and confirmation at the time of Booking Advance Payment
-2. Non-Refundable deposit of 25% is required to confirm your booking.
-3. Full payment must be made by 30 Days before the commencement of the tour.
-4. Payments can be made via UPI/Bank Transfers/Cash- **Delhi Only/Credit Card with additional 2.5 % Surcharge**/ Cheques- **Subject to realization.**
-5. Late payments may incur additional charges or result in cancellation of booking.`,
-  },
-  {
-    title: "4. Cancellations and Refunds",
-    text: `1. Cancellations must be made in writing at least 10 Day prior to Departure.
-2. Cancellation fees apply as follows:
-   - a) 25 % if canceled 30 days before departure
-   - b) 50 % if canceled 29-16 days before departure
-   - c) 75 % if canceled 15-08 days before departure
-   - d) 100% if canceled within 07 days before departure
-   - e) No refund if canceled less than 07 days before departure
-3. Refunds will be processed within 15 business days.
-4. Certain bookings (e.g., flights, special events) may be non-refundable or subject to specific cancellation terms.**`,
-  },
-  {
-    title: "5. Changes and Modifications",
-    text: `1. We reserve the right to modify or cancel tours due to unforeseen circumstances, including but not limited to weather conditions, natural disasters, or political instability.
-2. If changes occur, we will offer alternative arrangements or a refund at our discretion.
-3. Clients requesting changes to their booking may incur administrative/Service fees.`,
-  },
-  {
-    title: "6. Travel Documents and Requirements",
-    text: `1. Clients are responsible for obtaining valid passports, visas, and any other required travel documents.
-2. We are not liable for any travel disruptions due to incomplete or incorrect documentation.
-3. Clients must comply with all customs, immigration, and health regulations of the destination country.`,
-  },
-  {
-    title: "7. Health and Safety",
-    text: `1. Clients must inform us of any medical conditions, allergies, or special requirements prior to booking.
-2. We reserve the right to refuse participation if health and safety are at risk.
-3. Clients must adhere to local health and safety guidelines, including vaccination requirements.`,
-  },
-  {
-    title: "8. Liability",
-    text: `**Leela Travels** acts as an intermediary between you and service providers such as airlines, hotels, and tour operators. We are not liable for any actions, omissions, or negligence on the part of these service providers.`,
-  },
-  {
-    title: "9. Accommodation Policies",
-    text: `**Standard check-in time is 1400-1500 Hrs , and standard check-out time is 1100-1200 Hrs. Early check-in and late check-out requests are subject to availability and may incur additional charges.**`,
-  },
-  {
-    title: "10. Travel Insurance",
-    text: `1. Travel Insurance is highly recommended and is the responsibility of the client.
-2. Insurance should cover trip cancellations, medical expenses, personal liability, and loss of belongings.`,
-  },
-  {
-    title: "11. Intellectual Property",
-    text: `1. All content, logos, and materials provided by us are our intellectual property and may not be used without permission.
-2. Unauthorized use of our intellectual property may result in legal action.`,
-  },
-  {
-    title: "12. Governing Law",
-    text: `1. These Terms are governed by the laws of New Delhi Jurisdiction.
-2. Any disputes will be resolved in the courts of New Delhi Jurisdiction.`,
-  },
-  {
-    title: "13. Privacy Policy",
-    text: `1. We are committed to protecting your privacy. Personal data collected will be used solely for booking and communication purposes.
-2. We do not share your personal information with third parties without your consent, except where required by law.`,
-  },
-  {
-    title: "14. Force Majeure",
-    text: `1. We are not liable for failure to perform our obligations due to events beyond our control, including but not limited to natural disasters, war, terrorism, and pandemics.`,
-  },
-  {
-    title: "15. Changes to Terms and Conditions",
-    text: `We reserve the right to update and modify these Terms and Conditions at any time. Please review them periodically for changes. Your continued use of our services after any modifications indicates your acceptance of the updated Terms.`,
-  },
-  {
-    title: "16. Contact Information",
-    text: `**For any inquiries, please contact us at: Leela Travels** KG 3/101, Ground Floor, Vikas Puri, New Delhi -110018, Near UK Nursing Home, Email id - ops@leelatravels.com +91 8851346665, +91 9971706003`,
-  },
-  {
-    title: "17. Acknowledgment",
-    text: `By booking with **DDLC Company**, you acknowledge that you have read, understood, and agreed to these Terms and Conditions.`,
-  },
-];
-
-const DEFAULT_INCLUSIONS = [
-  "Stay as mentioned above or in Similar hotels",
-  "Meals as mentioned in the Itinerary",
-  "Enterances only as mentioned in Itinerary",
-  "Transport as per Itinerary - Point to Point Basis",
-  "Taxes as on Date",
-];
-
-const DEFAULT_EXCLUSIONS = [
-  "Airfare",
-  "Early Check and Late Check out charges",
-  "Personal Expenses - Room Service, Laundry, Porterage or Mini Bar etc",
-  "Hotel Security Deposit - Refundable at time of checkout",
-  "TCS and GST - 2 and 5 % (if not Included)",
-  "Any services not mentioned above",
-  "Visa Fees if not added in Inclusions",
-  "Travel Insurance - recommended",
-];
+// Clean Dynamic Default Fallbacks
+const DEFAULT_SELLER_BANK_DETAILS = [];
+const GENERAL_TERMS_AND_CONDITIONS = [];
+const DEFAULT_INCLUSIONS = [];
+const DEFAULT_EXCLUSIONS = [];
 
 const toDisplayList = (value) => {
   if (Array.isArray(value)) {
@@ -416,7 +295,7 @@ export default function SharePackageModal({
   const [similarHotelWord, setSimilarHotelWord] = useState(true);
   const [availableAdminTerms, setAvailableAdminTerms] = useState([]);
   const [availableAgentTerms, setAvailableAgentTerms] = useState([]);
-  const [selectedTermId, setSelectedTermId] = useState("default");
+  const [selectedTermId, setSelectedTermId] = useState("");
   const [loadingTerms, setLoadingTerms] = useState(false);
 
   useEffect(() => {
@@ -483,7 +362,11 @@ export default function SharePackageModal({
 
   // Always open on the same quotation email format received from Operations.
   useEffect(() => {
-    if (isOpen) setActiveTab("email");
+    if (isOpen) {
+      setActiveTab("email");
+      setSelectedTermId("");
+      setRemoveTerms(false);
+    }
   }, [isOpen]);
 
   useEffect(() => {
@@ -605,29 +488,12 @@ export default function SharePackageModal({
               ? query.services
               : (Array.isArray(query?.voucherServices) && query.voucherServices.length > 0
                   ? query.voucherServices
-                  : [
-                      { type: "hotel", title: "Jaypee Residency Manor Mussoorie", confirmation: "Confirmed(Confirmed)", rating: "5 star", address: "Mall Road, Mussoorie, Uttarakhand 248179", roomType: "Superior King Room", mealPlan: "Breakfast", numberOfRooms: 1, pax: paxVal },
-                      { type: "activity", title: "Mussoorie Paragliding", confirmation: "Confirmed(Confirmed)" },
-                      { type: "transport", title: "Mussoorie Dehradun Transfer", confirmation: "Confirmed(Confirmed)" },
-                      { type: "sightseeing", title: "Mussoorie Mall Road & Kempty", confirmation: "Confirmed(Confirmed)" }
-                    ]));
+                  : []));
 
         const hotelServices = rawServices.filter((s) => String(s.type || s.category || "").toLowerCase().includes("hotel"));
         const nonHotelServices = rawServices.filter((s) => !String(s.type || s.category || "").toLowerCase().includes("hotel"));
 
-        const displayHotels = hotelServices.length > 0 ? hotelServices : [
-          {
-            title: `${destinationVal} Heritage Resort & Spa`,
-            rating: "5 star",
-            address: `${destinationVal}, India`,
-            confirmation: "97739SG008801",
-            roomType: "Superior King Room",
-            mealPlan: "Breakfast",
-            numberOfRooms: 1,
-            pax: paxVal,
-            nights: nights,
-          }
-        ];
+        const displayHotels = hotelServices;
 
         const isHcCompany = !companyNameVal || companyNameVal.toLowerCase() === "holiday circuit";
 
@@ -754,21 +620,22 @@ export default function SharePackageModal({
             return "CP ( Breakfast Included )";
           }
 
-          return "EP ( Room Only )";
+          const fallbackRaw = candidates[0] || h.description || h.roomType || "";
+          return fallbackRaw.trim() ? fallbackRaw.trim() : "As per hotel policy";
         };
 
         let runningHotelDate = startObj && !isNaN(startObj.getTime()) ? new Date(startObj.getTime()) : new Date();
 
-        const hotelsHtml = displayHotels.map((h, idx) => {
+        const hotelsHtml = displayHotels.length > 0 ? displayHotels.map((h, idx) => {
           const rawTitle = String(h.title || "").trim();
           const rawHotelName = String(h.hotelName || h.hotel || "").trim();
           const rawServiceName = String(h.serviceName || h.name || "").trim();
 
-          const hHotelName = rawHotelName || (rawTitle && !rawTitle.toLowerCase().includes("hotel stay") && !rawTitle.toLowerCase().includes("service") ? rawTitle : (rawServiceName || `${destinationVal} Heritage Resort`));
+          const hHotelName = rawHotelName || (rawTitle && !rawTitle.toLowerCase().includes("hotel stay") && !rawTitle.toLowerCase().includes("service") ? rawTitle : (rawServiceName || "Hotel Accommodation"));
           const hServiceName = rawServiceName && rawServiceName !== hHotelName ? rawServiceName : (rawTitle && rawTitle !== hHotelName ? rawTitle : "");
 
-          const hRating = h.rating || h.starRating || h.hotelCategory || h.category || "5 star";
-          const hAddress = h.address || h.hotelAddress || h.location || (h.city ? `${h.city}, ${destinationVal}` : `${destinationVal}, India`);
+          const hRating = h.rating || h.starRating || h.hotelCategory || h.category || "";
+          const hAddress = h.address || h.hotelAddress || h.location || (h.city ? `${h.city}, ${destinationVal}` : (destinationVal ? `${destinationVal}, India` : ""));
           const hDesc = h.description || h.hotelDescription || h.details || "";
 
           const realCnfNum = h.confirmationNumber || h.cnfNumber || h.supplierConfirmation || h.voucherNumber || (h.confirmation && h.confirmation !== "Confirmed(Confirmed)" && h.confirmation !== "Confirmed" && h.confirmation !== "Pending" ? h.confirmation : null);
@@ -900,7 +767,7 @@ export default function SharePackageModal({
               </tbody>
             </table>
           `;
-        }).join("");
+        }).join("") : `<div style="padding: 16px 20px; text-align: center; color: #64748b; font-style: italic; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; margin-bottom: 20px; font-size: 13px;">No specific hotel accommodations listed for this voucher.</div>`;
 
         const nonHotelServicesHtml = nonHotelServices.map((s) => {
           const sTypeRaw = String(s.type || s.category || "Service").toLowerCase();
@@ -1164,8 +1031,8 @@ export default function SharePackageModal({
           selectedPkg?.terms;
 
         let parsedVoucherTerms = [];
-        if (!removeTerms && selectedTermId !== "none") {
-          if (selectedTermId && selectedTermId !== "default") {
+        if (!removeTerms) {
+          if (selectedTermId && selectedTermId !== "default" && selectedTermId !== "none") {
             const matchedCustomTerm = availableAgentTerms.find((t) => t.id === selectedTermId);
             if (matchedCustomTerm && matchedCustomTerm.items?.length > 0) {
               parsedVoucherTerms = matchedCustomTerm.items;
@@ -1175,22 +1042,15 @@ export default function SharePackageModal({
             if (candidateTerms && (!Array.isArray(candidateTerms) || candidateTerms.length > 0)) {
               parsedVoucherTerms = parseAdminTermContent(candidateTerms);
             }
-
-            // Fallback to voucher template matching "voucher" from availableAgentTerms (e.g. "voucher T&C (9 points)" selected by OPS)
-            if (parsedVoucherTerms.length === 0 && availableAgentTerms.length > 0) {
-              const matchedVoucherTerm = availableAgentTerms.find((t) =>
-                t.name.toLowerCase().includes("voucher")
+            if (parsedVoucherTerms.length === 0 && DEFAULT_VOUCHER_TERMS?.length > 0) {
+              parsedVoucherTerms = DEFAULT_VOUCHER_TERMS.map((t) =>
+                t.replace(/Holiday Circuit/g, companyNameVal)
               );
-              if (matchedVoucherTerm && matchedVoucherTerm.items?.length > 0) {
-                parsedVoucherTerms = matchedVoucherTerm.items;
-              } else if (availableAgentTerms[0]?.items?.length > 0) {
-                parsedVoucherTerms = availableAgentTerms[0].items;
-              }
             }
           }
         }
 
-        const voucherTermsHtml = (!removeTerms && selectedTermId !== "none" && parsedVoucherTerms.length > 0) ? `
+        const voucherTermsHtml = (!removeTerms && parsedVoucherTerms.length > 0) ? `
           <!-- TERMS & CONDITIONS SECTION -->
           <div style="margin-top: 18px; margin-bottom: 18px; font-family: Arial, sans-serif;">
             <div style="font-size: 13.5px; font-weight: 800; color: #9a3412; margin-bottom: 8px;">
@@ -1205,27 +1065,25 @@ export default function SharePackageModal({
         const emailVoucherHtml = `
           <div style="font-family: 'Plus Jakarta Sans', Arial, sans-serif; color: #1e293b; width: 100%; padding: 0px; box-sizing: border-box; background: #ffffff;">
             
-            <!-- AGENT BRAND HEADER BANNER (KEPT AS REQUESTED) -->
-            <div style="background-color: #ffffff; border-bottom: 2px solid #e2e8f0; padding: 14px 20px; margin-bottom: 16px;">
-              <table style="width: 100%; border-collapse: collapse;">
+            <!-- AGENT BRAND HEADER BANNER -->
+            <div style="background-color: #ffffff; border-bottom: 2px solid #b3cae8; padding: 12px 20px 16px 20px; margin-bottom: 18px;">
+              <table width="100%" cellpadding="0" cellspacing="0" style="width: 100%; border-collapse: collapse; border: 0;">
                 <tr>
                   <!-- AGENT LOGO IMAGE -->
-                  <td style="width: 110px; vertical-align: middle; padding-right: 12px; text-align: left;">
-                    <div style="width: 105px; height: 75px; display: flex; align-items: center; justify-content: flex-start; overflow: hidden;">
-                      <img src="${agencyLogoSrc}" alt="Logo" style="max-width: 100%; max-height: 100%; object-fit: contain; object-position: left;" />
-                    </div>
+                  <td width="115" style="width: 115px; vertical-align: top; padding-right: 14px; text-align: left; border: 0;" align="left" valign="top">
+                    <img src="${agencyLogoSrc}" alt="Logo" width="95" height="65" style="width: 95px; height: 65px; max-width: 95px; max-height: 65px; display: block; object-fit: contain; object-position: left; border: 0;" />
                   </td>
 
                   <!-- AGENT COMPANY DETAILS -->
-                  <td style="vertical-align: middle; text-align: left;">
-                    <h2 style="margin: 0 0 3px 0; font-size: 20px; font-weight: 800; color: #0f172a; letter-spacing: -0.3px;">
+                  <td style="vertical-align: top; text-align: left; border: 0;" align="left" valign="top">
+                    <h2 style="margin: 0 0 3px 0; font-size: 20px; font-weight: 800; color: #0f172a; font-family: Arial, sans-serif; letter-spacing: -0.3px;">
                       ${companyNameVal}
                     </h2>
-                    <p style="margin: 0 0 4px 0; font-size: 12px; color: #475569; line-height: 1.4;">
+                    <p style="margin: 0 0 4px 0; font-size: 12px; color: #475569; font-family: Arial, sans-serif; line-height: 1.4;">
                       ${companyAddressVal}
                     </p>
-                    <p style="margin: 0; font-size: 12px; font-weight: 600; color: #3252C3;">
-                      ${companyPhoneVal} &nbsp;•&nbsp; ${companyEmailVal}
+                    <p style="margin: 0; font-size: 12px; font-weight: 600; color: #334155; font-family: Arial, sans-serif;">
+                      <strong style="color: #1e293b;">Phone:</strong> <span style="color: #2563eb; font-weight: 700;">${companyPhoneVal}</span> &nbsp;•&nbsp; <strong style="color: #1e293b;">Email:</strong> <span style="color: #2563eb; font-weight: 700;">${companyEmailVal}</span>
                     </p>
                   </td>
                 </tr>
@@ -1259,7 +1117,7 @@ export default function SharePackageModal({
                     <td style="padding: 8px 12px; color: #1e293b; font-weight: 500; background-color: #ffffff; border: 1px solid #b3cae8;">Guest Name</td>
                     <td style="padding: 8px 12px; color: #000000; font-weight: 700; background-color: #ffffff; border: 1px solid #b3cae8;">${clientNameVal}</td>
                     <td style="padding: 8px 12px; color: #1e293b; font-weight: 500; background-color: #ffffff; border: 1px solid #b3cae8;">Guest Ph.</td>
-                    <td style="padding: 8px 12px; color: #000000; font-weight: 600; background-color: #ffffff; border: 1px solid #b3cae8;">${clientPhoneVal}</td>
+                    <td style="padding: 8px 12px; color: #2563eb; font-weight: 700; background-color: #ffffff; border: 1px solid #b3cae8;">${clientPhoneVal}</td>
                   </tr>
                   <tr>
                     <td style="padding: 8px 12px; color: #1e293b; font-weight: 500; background-color: #ffffff; border: 1px solid #b3cae8;">Pax Details</td>
@@ -1533,61 +1391,48 @@ export default function SharePackageModal({
 
           const rawSchedule = Array.isArray(pkgObj?.schedule || pkgObj?.dayWiseItinerary || pkgObj?.itinerary) && (pkgObj.schedule || pkgObj.dayWiseItinerary || pkgObj.itinerary).length > 0
             ? (pkgObj.schedule || pkgObj.dayWiseItinerary || pkgObj.itinerary)
-            : Array.from({ length: Math.max(1, days) }, (_, i) => {
-                const dayNum = i + 1;
-                if (dayNum === 1) {
-                  return {
-                    day: 1,
-                    title: `Day 1: Arrival in ${destination} & Hotel Check-in`,
-                    details: `Arrival at ${destination}. Meet & transfer to hotel. Check-in and relax at leisure.`,
-                  };
-                }
-                if (dayNum === days) {
-                  return {
-                    day: dayNum,
-                    title: `Day ${dayNum}: Check-out & Departure from ${destination}`,
-                    details: `Breakfast at hotel. Complete check-out formalities and transfer for departure with wonderful memories.`,
-                  };
-                }
-                return {
-                  day: dayNum,
-                  title: `Day ${dayNum}: ${destination} Exploration & Leisure`,
-                  details: `Breakfast at hotel. Enjoy leisure time and exploration around ${destination}.`,
-                };
-              });
+            : [];
 
-          const scheduleRowsHtml = rawSchedule.map((d, idx) => {
-            const dayNum = Number(d?.day || (idx + 1));
-            const baseStartObj = query?.startDate && !isNaN(new Date(query.startDate).getTime())
-              ? new Date(query.startDate)
-              : new Date();
-            const dObj = new Date(baseStartObj.getTime() + (dayNum - 1) * 86400000);
+          const scheduleRowsHtml = rawSchedule.length > 0
+            ? rawSchedule.map((d, idx) => {
+                const dayNum = Number(d?.day || (idx + 1));
+                const baseStartObj = query?.startDate && !isNaN(new Date(query.startDate).getTime())
+                  ? new Date(query.startDate)
+                  : new Date();
+                const dObj = new Date(baseStartObj.getTime() + (dayNum - 1) * 86400000);
 
-            const weekDayStr = !isNaN(dObj.getTime())
-              ? dObj.toLocaleDateString("en-GB", { weekday: "long" })
-              : "";
-            const dateFormatted = !isNaN(dObj.getTime())
-              ? dObj.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })
-              : "";
-            const ordinalLabel = `${getOrdinal(dayNum)} Day`;
+                const weekDayStr = !isNaN(dObj.getTime())
+                  ? dObj.toLocaleDateString("en-GB", { weekday: "long" })
+                  : "";
+                const dateFormatted = !isNaN(dObj.getTime())
+                  ? dObj.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })
+                  : "";
+                const ordinalLabel = `${getOrdinal(dayNum)} Day`;
 
-            const titleText = d?.title || d?.dayTitle || `Day ${dayNum}: Itinerary`;
-            const detailsText = d?.details || d?.description || d?.content || "Scheduled activities and sightseeing.";
+                const titleText = d?.title || d?.dayTitle || `Day ${dayNum}: Itinerary`;
+                const detailsText = d?.details || d?.description || d?.content || "Scheduled activities and sightseeing.";
 
-            return `
-              <tr style="${idx % 2 === 1 ? 'background-color: #f8fafc;' : ''}">
-                <td width="24%" style="padding: 10px 12px; border: 1px solid #d1d5db; font-size: 12px; line-height: 1.4; vertical-align: top;">
-                  <div style="color: #0284c7; font-weight: bold; font-size: 12px; margin-bottom: 2px;">${ordinalLabel}</div>
-                  <div style="color: #64748b; font-size: 11px;">${weekDayStr}</div>
-                  <strong style="color: #0f172a; font-size: 12px;">${dateFormatted}</strong>
-                </td>
-                <td width="76%" style="padding: 10px 12px; border: 1px solid #d1d5db; font-size: 12px; color: #1e293b; vertical-align: top; line-height: 1.5;">
-                  <strong style="color: #0f172a; font-size: 13px; text-decoration: underline;">${titleText}</strong>
-                  <p style="margin: 6px 0 0 0; color: #334155; font-size: 12px;">• ${detailsText.startsWith("•") ? detailsText.slice(1).trim() : detailsText}</p>
+                return `
+                  <tr style="${idx % 2 === 1 ? 'background-color: #f8fafc;' : ''}">
+                    <td width="24%" style="padding: 10px 12px; border: 1px solid #d1d5db; font-size: 12px; line-height: 1.4; vertical-align: top;">
+                      <div style="color: #0284c7; font-weight: bold; font-size: 12px; margin-bottom: 2px;">${ordinalLabel}</div>
+                      <div style="color: #64748b; font-size: 11px;">${weekDayStr}</div>
+                      <strong style="color: #0f172a; font-size: 12px;">${dateFormatted}</strong>
+                    </td>
+                    <td width="76%" style="padding: 10px 12px; border: 1px solid #d1d5db; font-size: 12px; color: #1e293b; vertical-align: top; line-height: 1.5;">
+                      <strong style="color: #0f172a; font-size: 13px; text-decoration: underline;">${titleText}</strong>
+                      <p style="margin: 6px 0 0 0; color: #334155; font-size: 12px;">• ${detailsText.startsWith("•") ? detailsText.slice(1).trim() : detailsText}</p>
+                    </td>
+                  </tr>
+                `;
+              }).join("")
+            : `
+              <tr>
+                <td colspan="2" style="padding: 14px 16px; border: 1px solid #d1d5db; font-size: 12px; color: #64748b; font-style: italic; text-align: center; background-color: #f8fafc;">
+                  Day-wise itinerary schedule has not been specified for this package.
                 </td>
               </tr>
             `;
-          }).join("");
 
           const pkgEmailHtml = `
             <div style="font-family: 'Plus Jakarta Sans', Arial, sans-serif; color: #1e293b; width: 100%; padding: 0px; box-sizing: border-box; background: #ffffff;">
@@ -1596,10 +1441,8 @@ export default function SharePackageModal({
                 <table style="width: 100%; border-collapse: collapse;">
                   <tr>
                     ${agencyLogoSrc ? `
-                      <td style="width: 110px; vertical-align: middle; padding-right: 12px; text-align: left;">
-                        <div style="width: 105px; height: 75px; display: flex; align-items: center; justify-content: flex-start; overflow: hidden;">
-                          <img src="${agencyLogoSrc}" alt="Logo" style="max-width: 100%; max-height: 100%; object-fit: contain; object-position: left;" />
-                        </div>
+                      <td width="130" style="width: 130px; max-width: 130px; vertical-align: middle; padding-right: 14px; text-align: left;">
+                        <img src="${agencyLogoSrc}" alt="Logo" width="120" style="width: 120px; max-width: 120px; height: auto; max-height: 80px; display: block; object-fit: contain; object-position: left;" />
                       </td>
                     ` : ""}
                     <td style="vertical-align: middle; text-align: left;">
@@ -2475,37 +2318,36 @@ export default function SharePackageModal({
       lines.push(`📋 *BOOKED SERVICES & CONFIRMATIONS*`);
       lines.push(`----------------------------------------`);
 
-      const rawServices = Array.isArray(quote?.services) && quote.services.length > 0 ? quote.services : [
-        { type: "hotel", title: "Jaypee Residency Manor Mussoorie", confirmationNumber: "CNF-1085-1" },
-        { type: "hotel", title: "The Landour Retreat Mussoorie", confirmationNumber: "CNF-1085-2" },
-        { type: "activity", title: "Mussoorie Paragliding", confirmationNumber: "CNF-1085-3" },
-        { type: "transport", title: "Mussoorie Dehradun Transfer", confirmationNumber: "CNF-1085-4" },
-        { type: "sightseeing", title: "Mussoorie Mall Road & Kempty", confirmationNumber: "CNF-1085-5" }
-      ];
+      const rawServices = Array.isArray(quote?.services) && quote.services.length > 0 ? quote.services : [];
 
-      rawServices.forEach((s) => {
-        const sType = String(s.type || "service").toLowerCase();
-        let icon = "📌";
-        if (sType.includes("hotel")) icon = "🏨";
-        else if (sType.includes("transport") || sType.includes("transfer") || sType.includes("cab")) icon = "🚗";
-        else if (sType.includes("activity") || sType.includes("sightseeing") || sType.includes("tour")) icon = "🪂";
-        else if (sType.includes("flight")) icon = "✈️";
+      if (rawServices.length > 0) {
+        rawServices.forEach((s) => {
+          const sType = String(s.type || "service").toLowerCase();
+          let icon = "📌";
+          if (sType.includes("hotel")) icon = "🏨";
+          else if (sType.includes("transport") || sType.includes("transfer") || sType.includes("cab")) icon = "🚗";
+          else if (sType.includes("activity") || sType.includes("sightseeing") || sType.includes("tour")) icon = "🪂";
+          else if (sType.includes("flight")) icon = "✈️";
 
-        const sTitle = s.title || s.name || "Service";
-        const realCnfNum = s.confirmationNumber || s.cnfNumber || s.supplierConfirmation || s.voucherNumber || (s.confirmation && s.confirmation !== "Confirmed(Confirmed)" && s.confirmation !== "Confirmed" && s.confirmation !== "Pending" ? s.confirmation : null);
-        const cnfNumDisplay = realCnfNum ? String(realCnfNum).trim() : "-";
-        const isPending = (String(s.confirmation || "").toLowerCase().includes("pending") || cnfNumDisplay === "-");
-        const statusText = isPending ? "⏳ *Pending*" : "✅ *Confirmed*";
+          const sTitle = s.title || s.name || "Service";
+          const realCnfNum = s.confirmationNumber || s.cnfNumber || s.supplierConfirmation || s.voucherNumber || (s.confirmation && s.confirmation !== "Confirmed(Confirmed)" && s.confirmation !== "Confirmed" && s.confirmation !== "Pending" ? s.confirmation : null);
+          const cnfNumDisplay = realCnfNum ? String(realCnfNum).trim() : "-";
+          const isPending = (String(s.confirmation || "").toLowerCase().includes("pending") || cnfNumDisplay === "-");
+          const statusText = isPending ? "⏳ *Pending*" : "✅ *Confirmed*";
 
-        lines.push(`${icon} *${sTitle}*`);
-        lines.push(`   └ Status: ${statusText}`);
-        lines.push(`   └ Confirmation No: *${cnfNumDisplay}*`);
+          lines.push(`${icon} *${sTitle}*`);
+          lines.push(`   └ Status: ${statusText}`);
+          lines.push(`   └ Confirmation No: *${cnfNumDisplay}*`);
+          lines.push("");
+        });
+      } else {
+        lines.push(`• *No specific services listed for this voucher.*`);
         lines.push("");
-      });
+      }
 
       let parsedVoucherTerms = [];
-      if (!removeTerms && selectedTermId !== "none") {
-        if (selectedTermId && selectedTermId !== "default") {
+      if (!removeTerms) {
+        if (selectedTermId && selectedTermId !== "default" && selectedTermId !== "none") {
           const matched = availableAgentTerms.find((t) => t.id === selectedTermId);
           if (matched && matched.items?.length > 0) {
             parsedVoucherTerms = matched.items;
@@ -2513,27 +2355,25 @@ export default function SharePackageModal({
         }
         if (parsedVoucherTerms.length === 0) {
           const rawVoucherTerms =
+            query?.voucherDetails?.termsAndConditions ||
+            query?.voucher?.termsAndConditions ||
             query?.termsAndConditions ||
+            quote?.voucherDetails?.termsAndConditions ||
             quote?.termsAndConditions ||
+            query?.activeQuote?.termsAndConditions ||
+            query?.quotation?.termsAndConditions ||
             query?.terms ||
             quote?.terms ||
-            query?.voucher?.termsAndConditions ||
-            quote?.voucher?.termsAndConditions ||
             [];
-          if (Array.isArray(rawVoucherTerms)) {
-            parsedVoucherTerms = rawVoucherTerms.filter((t) => typeof t === "string" && t.trim().length > 0);
+          if (Array.isArray(rawVoucherTerms) && rawVoucherTerms.length > 0) {
+            parsedVoucherTerms = parseAdminTermContent(rawVoucherTerms);
           } else if (typeof rawVoucherTerms === "string" && rawVoucherTerms.trim()) {
-            parsedVoucherTerms = rawVoucherTerms.split("\n").map((t) => t.trim()).filter((t) => t.length > 0);
+            parsedVoucherTerms = parseAdminTermContent(rawVoucherTerms);
           }
-          if (parsedVoucherTerms.length === 0 && availableAgentTerms.length > 0) {
-            const matchedVoucherTerm = availableAgentTerms.find((t) =>
-              t.name.toLowerCase().includes("voucher")
+          if (parsedVoucherTerms.length === 0 && DEFAULT_VOUCHER_TERMS?.length > 0) {
+            parsedVoucherTerms = DEFAULT_VOUCHER_TERMS.map((t) =>
+              t.replace(/Holiday Circuit/g, companyName)
             );
-            if (matchedVoucherTerm && matchedVoucherTerm.items?.length > 0) {
-              parsedVoucherTerms = matchedVoucherTerm.items;
-            } else if (availableAgentTerms[0]?.items?.length > 0) {
-              parsedVoucherTerms = availableAgentTerms[0].items;
-            }
           }
         }
       }
@@ -2671,9 +2511,9 @@ export default function SharePackageModal({
       lines.push("");
     }
 
-    if (!removeTerms && selectedTermId !== "none") {
+    if (!removeTerms) {
       let quoteTerms = [];
-      if (selectedTermId && selectedTermId !== "default") {
+      if (selectedTermId && selectedTermId !== "default" && selectedTermId !== "none") {
         const matched = availableAgentTerms.find((t) => t.id === selectedTermId);
         if (matched && matched.items?.length > 0) {
           quoteTerms = matched.items;
@@ -2742,6 +2582,38 @@ export default function SharePackageModal({
   };
 
   const handleDownloadPDF = async () => {
+    if (shareMode === "VOUCHER") {
+      const voucherHtmlToPrint = emailPreviewHtml;
+      if (voucherHtmlToPrint) {
+        const printWindow = window.open("", "_blank");
+        if (printWindow) {
+          printWindow.document.write(`
+            <!DOCTYPE html>
+            <html>
+              <head>
+                <title>Travel Voucher - ${query?.voucherNumber || tripId}</title>
+                <style>
+                  @page { size: A4; margin: 1cm; }
+                  body { font-family: Arial, sans-serif; margin: 0; padding: 0; background: #fff; }
+                </style>
+              </head>
+              <body>
+                ${voucherHtmlToPrint}
+                <script>
+                  window.onload = function() {
+                    window.print();
+                  };
+                </script>
+              </body>
+            </html>
+          `);
+          printWindow.document.close();
+          return;
+        }
+      }
+      window.print();
+      return;
+    }
     if (getClientPdfUrl && quote?._id) {
       try {
         const url = await getClientPdfUrl(quote._id);
@@ -2762,24 +2634,104 @@ export default function SharePackageModal({
   };
 
   const handleDownloadWord = () => {
+    const isVoucher = shareMode === "VOUCHER";
+    const isPackage = shareMode === "PACKAGE";
     const contentHtml = emailPreviewHtml || emailContentRef.current?.innerHTML;
     if (!contentHtml) return;
+
+    const docType = isVoucher ? "Travel Voucher" : isPackage ? "Package Details" : "Quotation";
+    const cleanClientName = (clientName || "Guest").replace(/[^\w\s-]/g, "").trim().replace(/\s+/g, "_");
+    const voucherNo = query?.voucherNumber || `VCH-${query?.queryId || tripId}`;
+    const safeTripId = isVoucher ? voucherNo : tripId;
+    const downloadFileName = isVoucher
+      ? `Travel_Voucher_${safeTripId}_${cleanClientName}.doc`
+      : isPackage
+      ? `Package_${safeTripId}_${cleanClientName}.doc`
+      : `Quotation_${safeTripId}_${cleanClientName}.doc`;
+
+    let wordHtml = contentHtml;
+    // Fix all logo images specifically for Microsoft Word rendering by locking BOTH width and height
+    wordHtml = wordHtml.replace(
+      /<img([^>]*?)(?:alt=["']Logo["']|src=["'][^"']*logo[^"']*["'])([^>]*?)>/gi,
+      (match) => {
+        const srcMatch = match.match(/src=["']([^"']+)["']/i);
+        const src = srcMatch ? srcMatch[1] : "";
+        if (!src) return match;
+        return `<img src="${src}" alt="Logo" width="95" height="65" style="width: 95px; height: 65px; max-width: 95px; max-height: 65px; display: block; border: 0;" />`;
+      }
+    );
 
     const fullDocHtml = `
       <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
       <head>
         <meta charset='utf-8'>
-        <title>Quotation - ${clientName}</title>
+        <title>${docType} - ${clientName}</title>
+        <!--[if gte mso 9]>
+        <xml>
+          <w:WordDocument>
+            <w:View>Print</w:View>
+            <w:Zoom>100</w:Zoom>
+            <w:DoNotOptimizeForBrowser/>
+          </w:WordDocument>
+        </xml>
+        <![endif]-->
         <style>
-          body { font-family: Arial, sans-serif; font-size: 13px; color: #333; }
-          table { width: 100%; border-collapse: collapse; margin-bottom: 15px; }
-          th, td { border: 1px solid #e2e8f0; padding: 8px; text-align: left; }
-          .header-banner { background-color: #fca5a5; font-weight: bold; text-align: center; padding: 8px; color: #881337; }
-          .yellow-badge { background-color: #fef08a; padding: 3px 6px; font-weight: bold; }
+          @page {
+            size: A4;
+            margin: 1.2cm 1.2cm 1.2cm 1.2cm;
+            mso-page-orientation: portrait;
+          }
+          body {
+            font-family: Arial, 'Helvetica Neue', Helvetica, sans-serif;
+            font-size: 11pt;
+            color: #1e293b;
+            margin: 0;
+            padding: 0;
+            background-color: #ffffff;
+          }
+          table {
+            width: 100% !important;
+            border-collapse: collapse !important;
+            mso-table-lspace: 0pt;
+            mso-table-rspace: 0pt;
+            margin-bottom: 14px;
+          }
+          th, td {
+            font-family: Arial, sans-serif;
+            vertical-align: top;
+            padding: 6px 10px;
+          }
+          img[alt="Logo"], .agency-logo {
+            width: 95px !important;
+            max-width: 95px !important;
+            height: 65px !important;
+            max-height: 65px !important;
+          }
+          img[alt="Footer Banner"], .footer-banner {
+            width: 600px !important;
+            max-width: 600px !important;
+            height: auto !important;
+          }
+          img {
+            max-width: 100%;
+            height: auto;
+          }
+          p {
+            margin: 0 0 6pt 0;
+            line-height: 1.4;
+          }
+          ol, ul {
+            margin-top: 4pt;
+            margin-bottom: 6pt;
+          }
+          li {
+            margin-bottom: 3pt;
+            line-height: 1.4;
+          }
         </style>
       </head>
       <body>
-        ${contentHtml}
+        ${wordHtml}
       </body>
       </html>
     `;
@@ -2791,13 +2743,13 @@ export default function SharePackageModal({
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `Quotation_${tripId}_${clientName.replace(/\s+/g, "_")}.doc`;
+    a.download = downloadFileName;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
 
-    toast.success("Word document downloaded!");
+    toast.success(`${docType} Word document downloaded!`);
   };
 
   if (!isOpen) return null;
@@ -2924,8 +2876,6 @@ export default function SharePackageModal({
                         checked={removeTerms}
                         onChange={(e) => {
                           setRemoveTerms(e.target.checked);
-                          if (e.target.checked) setSelectedTermId("none");
-                          else setSelectedTermId("default");
                         }}
                         className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
                       />
@@ -2960,8 +2910,6 @@ export default function SharePackageModal({
                         checked={removeTerms}
                         onChange={(e) => {
                           setRemoveTerms(e.target.checked);
-                          if (e.target.checked) setSelectedTermId("none");
-                          else setSelectedTermId("default");
                         }}
                         className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
                       />
@@ -3013,22 +2961,16 @@ export default function SharePackageModal({
                     onChange={(e) => {
                       const val = e.target.value;
                       setSelectedTermId(val);
-                      if (val === "none") {
-                        setRemoveTerms(true);
-                      } else {
-                        setRemoveTerms(false);
-                      }
                     }}
                     disabled={loadingTerms}
                     className="text-xs font-semibold bg-white border border-slate-300 rounded px-2 py-0.5 text-slate-800 shadow-2xs focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 outline-none cursor-pointer max-w-[200px] sm:max-w-[240px] truncate disabled:opacity-50"
                   >
-                    <option value="default">Default (OPS / Voucher T&amp;C)</option>
+                    <option value="">Select Term &amp; Condition</option>
                     {availableAgentTerms.map((t) => (
                       <option key={t.id} value={t.id}>
                         {t.name} ({t.items?.length || 0} pts)
                       </option>
                     ))}
-                    <option value="none">None (Exclude Terms)</option>
                   </select>
                 </div>
 
@@ -3075,59 +3017,67 @@ export default function SharePackageModal({
 
                       <div className="mt-4 pt-3 border-t border-emerald-300/60">
                         <p className="font-bold text-black text-xs uppercase tracking-wide">Included Services & Confirmations</p>
-                        <p className="text-slate-400 font-mono text-xs select-none">---------</p>
                         <div className="mt-2 space-y-2.5 text-xs text-slate-900">
-                          {(Array.isArray(quote?.services) && quote.services.length > 0 ? quote.services : [
-                            { type: "hotel", title: "Jaypee Residency Manor Mussoorie", confirmationNumber: "CNF-1085-1" },
-                            { type: "hotel", title: "The Landour Retreat Mussoorie", confirmationNumber: "CNF-1085-2" },
-                            { type: "activity", title: "Mussoorie Paragliding", confirmationNumber: "CNF-1085-3" },
-                            { type: "transport", title: "Mussoorie Dehradun Transfer", confirmationNumber: "CNF-1085-4" },
-                            { type: "sightseeing", title: "Mussoorie Mall Road & Kempty", confirmationNumber: "CNF-1085-5" }
-                          ]).map((s, idx) => {
-                            const sTitle = s.title || s.name || "Service";
-                            const realCnfNum = s.confirmationNumber || s.cnfNumber || s.supplierConfirmation || s.voucherNumber || (s.confirmation && s.confirmation !== "Confirmed(Confirmed)" && s.confirmation !== "Confirmed" && s.confirmation !== "Pending" ? s.confirmation : null);
-                            const cnfNumDisplay = realCnfNum ? String(realCnfNum).trim() : "-";
-                            const isPending = !realCnfNum && String(s.confirmation || "").toLowerCase().includes("pending");
+                          {(() => {
+                            const previewServices = Array.isArray(quote?.services) && quote.services.length > 0 
+                              ? quote.services 
+                              : (Array.isArray(query?.services) && query.services.length > 0
+                                  ? query.services
+                                  : (Array.isArray(query?.voucherServices) && query.voucherServices.length > 0
+                                      ? query.voucherServices
+                                      : []));
+                            if (previewServices.length === 0) {
+                              return <p className="italic text-slate-400">No specific services listed for this voucher.</p>;
+                            }
+                            return previewServices.map((s, idx) => {
+                              const sTitle = s.title || s.name || "Service";
+                              const realCnfNum = s.confirmationNumber || s.cnfNumber || s.supplierConfirmation || s.voucherNumber || (s.confirmation && s.confirmation !== "Confirmed(Confirmed)" && s.confirmation !== "Confirmed" && s.confirmation !== "Pending" ? s.confirmation : null);
+                              const cnfNumDisplay = realCnfNum ? String(realCnfNum).trim() : "-";
+                              const isPending = !realCnfNum && String(s.confirmation || "").toLowerCase().includes("pending");
 
-                            return (
-                              <div key={idx} className="space-y-0.5">
-                                <p className="font-bold text-black">• {sTitle}</p>
-                                <p className="pl-3 text-slate-800">
-                                  Status: <span className={isPending ? "text-amber-800 font-semibold" : "text-emerald-800 font-bold"}>{isPending ? "⏳ Pending" : "✓ Confirmed"}</span> &nbsp;|&nbsp; Confirmation No: <strong>{cnfNumDisplay}</strong>
-                                </p>
-                              </div>
-                            );
-                          })}
+                              return (
+                                <div key={idx} className="space-y-0.5">
+                                  <p className="font-bold text-black">• {sTitle}</p>
+                                  <p className="pl-3 text-slate-800">
+                                    Status: <span className={isPending ? "text-amber-800 font-semibold" : "text-emerald-800 font-bold"}>{isPending ? "⏳ Pending" : "✓ Confirmed"}</span> &nbsp;|&nbsp; Confirmation No: <strong>{cnfNumDisplay}</strong>
+                                  </p>
+                                </div>
+                              );
+                            });
+                          })()}
                         </div>
                       </div>
 
-                      {!removeTerms && selectedTermId !== "none" && (
+                      {!removeTerms && (
                         <div className="mt-4 pt-3 border-t border-emerald-300/60">
                           <p className="font-bold text-black text-xs uppercase tracking-wide">📋 Terms &amp; Conditions</p>
                           <p className="text-slate-400 font-mono text-xs select-none">---------</p>
                           <div className="mt-2 space-y-1 text-xs text-slate-900">
                             {(() => {
                               let termsToShow = [];
-                              if (selectedTermId && selectedTermId !== "default") {
+                              if (selectedTermId && selectedTermId !== "default" && selectedTermId !== "none") {
                                 const matched = availableAgentTerms.find((t) => t.id === selectedTermId);
                                 if (matched && matched.items?.length > 0) termsToShow = matched.items;
                               }
                               if (termsToShow.length === 0) {
-                                const raw = query?.termsAndConditions || quote?.termsAndConditions || query?.terms || quote?.terms || query?.voucher?.termsAndConditions || quote?.voucher?.termsAndConditions || [];
-                                if (Array.isArray(raw)) termsToShow = raw.filter((t) => typeof t === "string" && t.trim().length > 0);
-                                else if (typeof raw === "string" && raw.trim()) termsToShow = raw.split("\n").map(t => t.trim()).filter(Boolean);
+                                const raw =
+                                  query?.voucherDetails?.termsAndConditions ||
+                                  query?.voucher?.termsAndConditions ||
+                                  query?.termsAndConditions ||
+                                  quote?.voucherDetails?.termsAndConditions ||
+                                  quote?.termsAndConditions ||
+                                  query?.activeQuote?.termsAndConditions ||
+                                  query?.quotation?.termsAndConditions ||
+                                  query?.terms ||
+                                  quote?.terms ||
+                                  [];
+                                if (Array.isArray(raw) && raw.length > 0) termsToShow = parseAdminTermContent(raw);
+                                else if (typeof raw === "string" && raw.trim()) termsToShow = parseAdminTermContent(raw);
                               }
-                              if (termsToShow.length === 0 && availableAgentTerms.length > 0) {
-                                const matchedVoucher = availableAgentTerms.find((t) => t.name.toLowerCase().includes("voucher"));
-                                if (matchedVoucher && matchedVoucher.items?.length > 0) termsToShow = matchedVoucher.items;
-                                else if (availableAgentTerms[0]?.items?.length > 0) termsToShow = availableAgentTerms[0].items;
-                              }
-                              if (termsToShow.length === 0) {
-                                termsToShow = [
-                                  "25% non-refundable deposit required to confirm booking.",
-                                  "Standard Check-in: 14:00-15:00, Check-out: 11:00-12:00.",
-                                  "Rates & availability subject to change until confirmed."
-                                ];
+                              if (termsToShow.length === 0 && DEFAULT_VOUCHER_TERMS?.length > 0) {
+                                termsToShow = DEFAULT_VOUCHER_TERMS.map((t) =>
+                                  t.replace(/Holiday Circuit/g, companyName)
+                                );
                               }
                               return termsToShow.map((pt, idx) => (
                                 <p key={idx}>• {pt}</p>
@@ -3566,14 +3516,22 @@ export default function SharePackageModal({
                   </div>
                   <div className="grid grid-cols-2 divide-x divide-slate-200 text-xs sm:text-sm text-slate-800 bg-white">
                     <ul className="p-4 list-disc pl-6 space-y-2">
-                      {inclusions.map((item, idx) => (
-                        <li key={idx}>{item}</li>
-                      ))}
+                      {inclusions.length > 0 ? (
+                        inclusions.map((item, idx) => (
+                          <li key={idx}>{item}</li>
+                        ))
+                      ) : (
+                        <li className="list-none text-slate-500 italic">No specific inclusions specified</li>
+                      )}
                     </ul>
                     <ul className="p-4 list-disc pl-6 space-y-2">
-                      {exclusions.map((item, idx) => (
-                        <li key={idx}>{item}</li>
-                      ))}
+                      {exclusions.length > 0 ? (
+                        exclusions.map((item, idx) => (
+                          <li key={idx}>{item}</li>
+                        ))
+                      ) : (
+                        <li className="list-none text-slate-500 italic">No specific exclusions specified</li>
+                      )}
                       <li className="font-bold text-amber-900 list-none pt-1">
                         NOTE: Anything not mentioned in the inclusions is excluded.
                       </li>
@@ -3587,20 +3545,26 @@ export default function SharePackageModal({
                     Bank Details
                   </div>
                   <div className="overflow-x-auto border border-slate-200 bg-white">
-                    <table className="w-full border-collapse text-xs sm:text-sm">
-                      <tbody className="divide-y divide-slate-200">
-                        {sellerBankDetails.map((b, idx) => (
-                          <tr key={idx} className={idx % 2 === 1 ? "bg-slate-50/50" : ""}>
-                            <td className="py-2.5 px-3 border-r border-slate-200 font-bold text-slate-700 w-1/3 text-xs sm:text-[13px]">
-                              {b.label || b.name || "Detail"}
-                            </td>
-                            <td className="py-2.5 px-3 font-semibold text-slate-900 text-xs sm:text-[13px]">
-                              {b.value || "-"}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                    {sellerBankDetails.length > 0 ? (
+                      <table className="w-full border-collapse text-xs sm:text-sm">
+                        <tbody className="divide-y divide-slate-200">
+                          {sellerBankDetails.map((b, idx) => (
+                            <tr key={idx} className={idx % 2 === 1 ? "bg-slate-50/50" : ""}>
+                              <td className="py-2.5 px-3 border-r border-slate-200 font-bold text-slate-700 w-1/3 text-xs sm:text-[13px]">
+                                {b.label || b.name || "Detail"}
+                              </td>
+                              <td className="py-2.5 px-3 font-semibold text-slate-900 text-xs sm:text-[13px]">
+                                {b.value || "-"}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    ) : (
+                      <div className="p-4 text-center text-slate-500 italic text-xs">
+                        Bank details not specified for this quotation.
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -3611,13 +3575,33 @@ export default function SharePackageModal({
                       Terms and Conditions
                     </div>
                     <div className="pt-4 space-y-4 text-xs sm:text-sm text-slate-800 leading-relaxed bg-white">
-                      <p className="font-bold text-slate-900 text-sm">General Terms and Conditions</p>
-                      {GENERAL_TERMS_AND_CONDITIONS.map((term, idx) => (
-                        <div key={idx} className="space-y-1">
-                          <p className="font-bold text-slate-900">{term.title}</p>
-                          <p className="whitespace-pre-line text-slate-700">{term.text}</p>
-                        </div>
-                      ))}
+                      <p className="font-bold text-slate-900 text-sm">Terms and Conditions</p>
+                      {(() => {
+                        let termsToShow = [];
+                        if (selectedTermId && selectedTermId !== "default" && selectedTermId !== "none") {
+                          const matched = availableAgentTerms.find((t) => t.id === selectedTermId);
+                          if (matched && matched.items?.length > 0) {
+                            termsToShow = matched.items;
+                          }
+                        }
+                        if (termsToShow.length === 0) {
+                          const quoteTerms = quote?.termsAndConditions || quote?.terms || selectedPkg?.termsAndConditions || selectedPkg?.terms || [];
+                          if (Array.isArray(quoteTerms) && quoteTerms.length > 0) {
+                            termsToShow = quoteTerms.map((t) => (typeof t === "object" ? (t.text || t.content || JSON.stringify(t)) : String(t)));
+                          } else if (typeof quoteTerms === "string" && quoteTerms.trim()) {
+                            termsToShow = parseAdminTermContent(quoteTerms);
+                          }
+                        }
+                        if (termsToShow.length > 0) {
+                          return termsToShow.map((termText, idx) => (
+                            <div key={idx} className="space-y-1">
+                              <p className="font-bold text-slate-900">{idx + 1}. Policy / Condition</p>
+                              <p className="whitespace-pre-line text-slate-700">{termText}</p>
+                            </div>
+                          ));
+                        }
+                        return <p className="text-slate-500 italic">No specific terms and conditions specified.</p>;
+                      })()}
                       <p className="font-bold text-slate-900 pt-3 text-center">
                         By booking with {companyName}, you acknowledge that you have read, understood, and agreed to these Terms and Conditions.
                       </p>

@@ -51,8 +51,8 @@ const buildTransportConfig = () => {
     String(process.env.SMTP_PASS || "").trim() ||
     String(process.env.EMAIL_PASS || "").trim();
 
-  const sendTimeout = normalizeTimeout(process.env.MAIL_SEND_TIMEOUT_MS, 15000);
-  const socketTimeout = normalizeTimeout(process.env.MAIL_SOCKET_TIMEOUT_MS, 20000);
+  const sendTimeout = normalizeTimeout(process.env.MAIL_SEND_TIMEOUT_MS, 5000);
+  const socketTimeout = normalizeTimeout(process.env.MAIL_SOCKET_TIMEOUT_MS, 7000);
   const ipFamily = normalizeIpFamily(process.env.SMTP_FAMILY || process.env.EMAIL_FAMILY, 4);
 
   const config = {
@@ -221,8 +221,9 @@ const getOrCreateTransport = async () => {
   cachedTransport = nodemailer.createTransport({
     ...config,
     pool: true,
-    maxConnections: 5,
-    maxMessages: 100,
+    maxConnections: 3,
+    maxMessages: 50,
+    idleTimeout: 10000,
   });
 
   return cachedTransport;

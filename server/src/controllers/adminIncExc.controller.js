@@ -1,4 +1,6 @@
 import AdminIncExc from "../models/adminIncExc.model.js";
+import Auth from "../models/auth.model.js";
+import Notification from "../models/notification.model.js";
 
 // @route   GET /admin/inc-exc-presets
 // @desc    Get all inclusion/exclusion presets (optionally filtered by destination)
@@ -53,17 +55,64 @@ export const createIncExcPreset = async (req, res) => {
       return res.status(400).json({ message: "A preset with this name already exists." });
     }
 
+    const currentUserId = req.user?._id || req.user?.id;
     const newPreset = new AdminIncExc({
       name,
       destinationCategory: destinationCategory || "",
       destination: destination ? destination.trim() : "",
       inclusions: inclusions || [],
       exclusions: exclusions || [],
-      createdBy: req.user?._id || req.user?.id,
-      updatedBy: req.user?._id || req.user?.id,
+      createdBy: currentUserId,
+      updatedBy: currentUserId,
     });
 
     const savedPreset = await newPreset.save();
+
+    // Notify active Admins & Operation Managers
+    try {
+      let creatorName = req.user?.name || "Ops Team";
+      let creatorRole = req.user?.role || "operations";
+
+      if (currentUserId && !req.user?.name) {
+        const creatorDoc = await Auth.findById(currentUserId).select("name role");
+        if (creatorDoc) {
+          creatorName = creatorDoc.name || creatorName;
+          creatorRole = creatorDoc.role || creatorRole;
+        }
+      }
+
+      const targetUsers = await Auth.find({
+        role: { $in: ["admin", "operation_manager"] },
+        _id: { $ne: currentUserId },
+        isDeleted: { $ne: true },
+        accountStatus: { $ne: "Inactive" },
+      }).select("_id role");
+
+      if (targetUsers.length > 0) {
+        const destText = savedPreset.destination ? ` for ${savedPreset.destination}` : "";
+        const notifications = targetUsers.map((targetUser) => ({
+          user: targetUser._id,
+          type: "info",
+          title: "New Preset Saved",
+          message: `${creatorName} saved a new Inclusion & Exclusion preset "${savedPreset.name}"${destText}.`,
+          link: targetUser.role === "admin" ? "/admin/inclusions-exclusions" : "/operationManager/operationManagerDashboard",
+          meta: {
+            kind: "inc_exc_preset_created",
+            presetId: savedPreset._id,
+            presetName: savedPreset.name,
+            destination: savedPreset.destination,
+            createdById: currentUserId,
+            createdByName: creatorName,
+            createdByRole: creatorRole,
+          },
+        }));
+
+        await Notification.insertMany(notifications);
+      }
+    } catch (notifErr) {
+      console.error("Error creating preset notifications:", notifErr);
+    }
+
     res.status(201).json(savedPreset);
   } catch (error) {
     console.error("Error creating preset:", error);

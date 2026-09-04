@@ -437,23 +437,7 @@ additionalNotesText,
 const WHATSAPP_QUOTATION_BRAND = "Holiday Circuit";
 const WHATSAPP_SECTION_DIVIDER = "----------";
 const WHATSAPP_SUBSECTION_DIVIDER = "-------";
-const DEFAULT_WHATSAPP_TERMS = Object.freeze([
-  "Welcome to Leela Travels. These Terms & Conditions govern your travel booking and services.",
-  "Services include travel planning, packages, transfers (Private & Shared - wait up to 30 mins), hotels & visa assistance.",
-  "Booking & Payment: 25% non-refundable advance to confirm. Full payment required 30 days before departure.",
-  "Cancellations: 25% (30 days before), 50% (29-16 days), 75% (15-8 days), 100% (within 7 days). Refunds in 15 days.",
-  "Changes & Modifications: Administrative/service fees apply for client-requested itinerary changes.",
-  "Travel Documents: Passport, visa & health documentation compliance is the client's sole responsibility.",
-  "Health & Safety: Medical conditions must be declared in advance; compliance with safety rules is mandatory.",
-  "Liability: Leela Travels acts as an intermediary for airlines, hotels & transporters.",
-  "Accommodation Policies: Standard check-in 14:00-15:00 Hrs, check-out 11:00-12:00 Hrs.",
-  "Travel Insurance: Highly recommended for medical, cancellation & personal loss coverage.",
-  "Intellectual Property & Privacy: Personal data is protected and used solely for booking purposes.",
-  "Governing Law: All disputes subject to New Delhi Jurisdiction only.",
-  "Force Majeure: Not liable for delays/cancellations due to natural disasters, weather, or emergencies.",
-  "Contact: Leela Travels, KG 3/101, Vikas Puri, New Delhi | ops@leelatravels.com | +91 8851346665.",
-  "By booking with DDLC Company, you acknowledge that you have read, understood, and agreed to these Terms and Conditions.",
-]);
+const DEFAULT_WHATSAPP_TERMS = Object.freeze([]);
 
 const SHOW_SELECTED_HISTORY_COMPARISON = false;
 
@@ -3492,7 +3476,6 @@ const scoreHotelVariantMatch = (variant = {}, nextService = {}, changedField = "
   const [incExcPresets, setIncExcPresets] = useState([]);
   const [selectedIncExcId, setSelectedIncExcId] = useState("");
   const [isIncExcDropdownOpen, setIsIncExcDropdownOpen] = useState(false);
-  const [incExcDestinationFilter, setIncExcDestinationFilter] = useState("ALL");
   const [isSavePresetModalOpen, setIsSavePresetModalOpen] = useState(false);
   const [newPresetName, setNewPresetName] = useState("");
   const [newPresetCategory, setNewPresetCategory] = useState("");
@@ -3718,38 +3701,19 @@ const scoreHotelVariantMatch = (variant = {}, nextService = {}, changedField = "
       applyUpdate((prev) => prev.filter((_, index) => index !== indexToRemove));
       };
 
-      const uniquePresetDestinations = useMemo(() => {
-        const destSet = new Set();
-        incExcPresets.forEach(p => {
-          if (p.destination && p.destination.trim()) {
-            destSet.add(p.destination.trim());
-          }
-        });
-        return Array.from(destSet).sort();
-      }, [incExcPresets]);
-
       const queryDestination = String(order?.destination || order?.destinationName || quotation?.destination || "").trim();
 
       const filteredIncExcPresets = useMemo(() => {
-        if (incExcDestinationFilter === "MATCHED" && queryDestination) {
-          return incExcPresets.filter(p => 
-            p.destination && p.destination.toLowerCase() === queryDestination.toLowerCase()
-          );
+        if (!queryDestination) {
+          return incExcPresets;
         }
-        if (incExcDestinationFilter !== "ALL") {
-          return incExcPresets.filter(p => 
-            p.destination && p.destination.toLowerCase() === incExcDestinationFilter.toLowerCase()
-          );
-        }
-        if (queryDestination) {
-          return [...incExcPresets].sort((a, b) => {
-            const aMatch = a.destination && a.destination.toLowerCase() === queryDestination.toLowerCase() ? 1 : 0;
-            const bMatch = b.destination && b.destination.toLowerCase() === queryDestination.toLowerCase() ? 1 : 0;
-            return bMatch - aMatch;
-          });
-        }
-        return incExcPresets;
-      }, [incExcPresets, incExcDestinationFilter, queryDestination]);
+        const qDest = queryDestination.toLowerCase().trim();
+        return incExcPresets.filter((p) => {
+          if (!p.destination) return false;
+          const pDest = p.destination.toLowerCase().trim();
+          return pDest === qDest || pDest.includes(qDest) || qDest.includes(pDest);
+        });
+      }, [incExcPresets, queryDestination]);
 
       const handleSaveCurrentAsPreset = async () => {
         if (!newPresetName.trim()) {
@@ -7444,106 +7408,94 @@ const renderSelectedServicesModal = () => {
           </div>
         </div>
 
-        {/* DESTINATION FILTER + PRESET DROPDOWN */}
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
-          <div className="md:col-span-4">
-            <label className="block text-[11px] font-semibold text-slate-600 mb-1">Destination Filter</label>
-            <div className="relative">
-              <select
-                value={incExcDestinationFilter}
-                onChange={(e) => setIncExcDestinationFilter(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs text-slate-800 outline-none transition focus:border-[#3E63DD] focus:ring-1 focus:ring-[#3E63DD] cursor-pointer"
-              >
-                <option value="ALL">All Destinations ({incExcPresets.length})</option>
-                {order?.destination && (
-                  <option value="MATCHED">Query Destination ({order.destination})</option>
-                )}
-                {uniquePresetDestinations.map(d => (
-                  <option key={d} value={d}>{d}</option>
-                ))}
-              </select>
-            </div>
+        {/* PRESET DROPDOWN */}
+        <div className="w-full">
+          <div className="flex items-center justify-between mb-1">
+            <label className="block text-[11px] font-semibold text-slate-600">Inclusions & Exclusions Preset</label>
+            {queryDestination && (
+              <span className="text-[10px] text-slate-500 font-medium">
+                Destination: <span className="font-semibold text-blue-600">{queryDestination}</span> ({filteredIncExcPresets.length} preset{filteredIncExcPresets.length === 1 ? "" : "s"})
+              </span>
+            )}
           </div>
-
-          <div className="md:col-span-8">
-            <label className="block text-[11px] font-semibold text-slate-600 mb-1">Inclusions & Exclusions Preset</label>
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setIsIncExcDropdownOpen(!isIncExcDropdownOpen)}
-                className="flex w-full items-center justify-between rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs text-slate-900 outline-none transition focus:border-[#3E63DD] focus:ring-1 focus:ring-[#3E63DD] hover:border-gray-400"
-              >
-                <span className="truncate">
-                  {selectedIncExcId 
-                    ? (() => {
-                        const p = incExcPresets.find(p => p._id === selectedIncExcId);
-                        return p ? `${p.name}${p.destination ? ` (${p.destination})` : ''}` : "Select a preset...";
-                      })()
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setIsIncExcDropdownOpen(!isIncExcDropdownOpen)}
+              className="flex w-full items-center justify-between rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs text-slate-900 outline-none transition focus:border-[#3E63DD] focus:ring-1 focus:ring-[#3E63DD] hover:border-gray-400"
+            >
+              <span className="truncate">
+                {selectedIncExcId 
+                  ? (() => {
+                      const p = incExcPresets.find(p => p._id === selectedIncExcId);
+                      return p ? `${p.name}${p.destination ? ` (${p.destination})` : ''}` : "Select a preset...";
+                    })()
+                  : queryDestination 
+                    ? `Select an Inclusion/Exclusion preset for ${queryDestination}...` 
                     : "Select an Inclusion/Exclusion preset..."}
-                </span>
-                <ChevronDown className={`h-4 w-4 text-gray-500 shrink-0 transition-transform ${isIncExcDropdownOpen ? "rotate-180" : ""}`} />
-              </button>
+              </span>
+              <ChevronDown className={`h-4 w-4 text-gray-500 shrink-0 transition-transform ${isIncExcDropdownOpen ? "rotate-180" : ""}`} />
+            </button>
 
-              {isIncExcDropdownOpen && (
-                <div className="absolute z-30 mt-1 max-h-60 w-full overflow-auto rounded-lg border border-gray-200 bg-white py-1 shadow-xl">
-                  <button
-                    type="button"
-                    className={`w-full px-4 py-2 text-left text-xs hover:bg-gray-50 ${!selectedIncExcId ? "bg-blue-50 text-blue-700 font-medium" : "text-gray-700"}`}
-                    onClick={() => {
-                      setSelectedIncExcId("");
-                      setInclusions([]);
-                      setExclusions([]);
-                      setIsIncExcDropdownOpen(false);
-                    }}
-                  >
-                    -- Clear / Reset Selection --
-                  </button>
-                  {filteredIncExcPresets.map(preset => {
-                    const isMatched = order?.destination && preset.destination && 
-                      preset.destination.toLowerCase() === order.destination.toLowerCase();
-                    return (
-                      <button
-                        key={preset._id}
-                        type="button"
-                        className={`w-full px-4 py-2.5 text-left text-xs hover:bg-slate-50 flex items-center justify-between transition-colors ${
-                          selectedIncExcId === preset._id ? "bg-blue-50 text-blue-700 font-semibold" : "text-gray-700"
-                        }`}
-                        onClick={() => {
-                          setSelectedIncExcId(preset._id);
-                          if (preset) {
-                            const incStrings = (preset.inclusions || []).map(i => i.category ? `<b className='font-semibold'>${i.category}</b>: ${i.description}` : i.description);
-                            const excStrings = (preset.exclusions || []).map(ex => ex.category ? `<b className='font-semibold'>${ex.category}</b>: ${ex.description}` : ex.description);
-                            setInclusions(incStrings);
-                            setExclusions(excStrings);
-                          }
-                          setIsIncExcDropdownOpen(false);
-                        }}
-                      >
-                        <div className="flex items-center gap-2 overflow-hidden">
-                          <span className="truncate">{preset.name}</span>
-                          {preset.destination && (
-                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] bg-slate-100 text-slate-600 border border-slate-200 shrink-0">
-                              <MapPin className="h-2.5 w-2.5 text-slate-400" />
-                              {preset.destination}
-                            </span>
-                          )}
-                        </div>
-                        {isMatched && (
-                          <span className="ml-2 text-[10px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded-lg font-semibold shrink-0">
-                            Query Destination
+            {isIncExcDropdownOpen && (
+              <div className="absolute z-30 mt-1 max-h-60 w-full overflow-auto rounded-lg border border-gray-200 bg-white py-1 shadow-xl">
+                <button
+                  type="button"
+                  className={`w-full px-4 py-2 text-left text-xs hover:bg-gray-50 ${!selectedIncExcId ? "bg-blue-50 text-blue-700 font-medium" : "text-gray-700"}`}
+                  onClick={() => {
+                    setSelectedIncExcId("");
+                    setInclusions([]);
+                    setExclusions([]);
+                    setIsIncExcDropdownOpen(false);
+                  }}
+                >
+                  -- Clear / Reset Selection --
+                </button>
+                {filteredIncExcPresets.map(preset => {
+                  const isMatched = order?.destination && preset.destination && 
+                    preset.destination.toLowerCase() === order.destination.toLowerCase();
+                  return (
+                    <button
+                      key={preset._id}
+                      type="button"
+                      className={`w-full px-4 py-2.5 text-left text-xs hover:bg-slate-50 flex items-center justify-between transition-colors ${
+                        selectedIncExcId === preset._id ? "bg-blue-50 text-blue-700 font-semibold" : "text-gray-700"
+                      }`}
+                      onClick={() => {
+                        setSelectedIncExcId(preset._id);
+                        if (preset) {
+                          const incStrings = (preset.inclusions || []).map(i => i.category ? `<b className='font-semibold'>${i.category}</b>: ${i.description}` : i.description);
+                          const excStrings = (preset.exclusions || []).map(ex => ex.category ? `<b className='font-semibold'>${ex.category}</b>: ${ex.description}` : ex.description);
+                          setInclusions(incStrings);
+                          setExclusions(excStrings);
+                        }
+                        setIsIncExcDropdownOpen(false);
+                      }}
+                    >
+                      <div className="flex items-center gap-2 overflow-hidden">
+                        <span className="truncate font-medium">{preset.name}</span>
+                        {preset.destination && (
+                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] bg-slate-100 text-slate-600 border border-slate-200 shrink-0">
+                            <MapPin className="h-2.5 w-2.5 text-slate-400" />
+                            {preset.destination}
                           </span>
                         )}
-                      </button>
-                    );
-                  })}
-                  {filteredIncExcPresets.length === 0 && (
-                    <div className="px-4 py-3 text-center text-xs text-gray-400">
-                      No presets found for this filter.
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
+                      </div>
+                      {preset.inclusions?.length || preset.exclusions?.length ? (
+                        <span className="text-[10px] text-slate-400 shrink-0">
+                          {preset.inclusions?.length || 0} inc · {preset.exclusions?.length || 0} exc
+                        </span>
+                      ) : null}
+                    </button>
+                  );
+                })}
+                {filteredIncExcPresets.length === 0 && (
+                  <div className="px-4 py-3 text-center text-xs text-gray-400">
+                    {queryDestination ? `No presets found for "${queryDestination}".` : "No presets available."}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
 

@@ -127,7 +127,7 @@ const loadBrandImage = async (source = "") => {
 
   if (/^https?:\/\//i.test(value) && typeof fetch === "function") {
     try {
-      const response = await fetch(value, { signal: AbortSignal.timeout(8000) });
+      const response = await fetch(value, { signal: AbortSignal.timeout(2500) });
       if (!response.ok) return null;
       return await toPdfImage(Buffer.from(await response.arrayBuffer()));
     } catch {
@@ -215,7 +215,8 @@ const resolveHotelMealPlanText = (h = {}) => {
     return "CP ( Breakfast Included )";
   }
 
-  return "EP ( Room Only )";
+  const fallbackRaw = candidates[0] || h.description || h.roomType || "";
+  return fallbackRaw.trim() ? fallbackRaw.trim() : "As per hotel policy";
 };
 
 /* ============================================================================
@@ -960,26 +961,28 @@ export const generateVoucherPdf = async (voucherDetails) => {
   const hotelServices = rawServices.filter((s) => String(s.type || s.category || "").toLowerCase().includes("hotel"));
   const nonHotelServices = rawServices.filter((s) => !String(s.type || s.category || "").toLowerCase().includes("hotel"));
 
-  const displayHotels = hotelServices.length > 0 ? hotelServices : (rawServices.length === 0 ? [
-    {
-      title: `${tripDefaults.destination} Heritage Resort & Spa`,
-      rating: "5 star",
-      address: `${tripDefaults.destination}, India`,
-      confirmation: "97739SG008801",
-      roomType: "Superior King Room",
-      mealPlan: "Breakfast",
-      numberOfRooms: 1,
-      nights,
-    }
-  ] : []);
+  const displayHotels = hotelServices;
 
-  displayHotels.forEach((h) => {
-    y = drawHotelCard(doc, pageCtx, y, h, tripDefaults);
-  });
+  if (displayHotels.length === 0 && nonHotelServices.length === 0) {
+    const emptyH = 28;
+    y = pageCtx.ensureSpace(y, emptyH);
+    drawRect(doc, PAGE.bodyX, y, PAGE.bodyWidth, emptyH, "#f8fafc", BRAND.border, 0.6);
+    doc.font("Helvetica-Oblique").fontSize(8).fillColor(BRAND.textMuted).text(
+      "No specific hotel accommodations or services listed for this voucher.",
+      PAGE.bodyX,
+      y + 9,
+      { width: PAGE.bodyWidth, align: "center" }
+    );
+    y += emptyH + 10;
+  } else {
+    displayHotels.forEach((h) => {
+      y = drawHotelCard(doc, pageCtx, y, h, tripDefaults);
+    });
 
-  nonHotelServices.forEach((s) => {
-    y = drawNonHotelCard(doc, pageCtx, y, s, tripDefaults);
-  });
+    nonHotelServices.forEach((s) => {
+      y = drawNonHotelCard(doc, pageCtx, y, s, tripDefaults);
+    });
+  }
 
   // 3.5 Terms & Conditions Table
   const defaultTermsList = [

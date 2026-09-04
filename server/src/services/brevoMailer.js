@@ -1,4 +1,5 @@
 import "dotenv/config";
+import fs from "fs";
 
 const BREVO_API_URL = "https://api.brevo.com/v3/smtp/email";
 const DEFAULT_SEND_TIMEOUT_MS = 15000;
@@ -81,17 +82,26 @@ const normalizeAttachments = (attachments = []) => {
     .map((attachment) => {
       if (!attachment) return null;
 
-      if (attachment.content === undefined || attachment.content === null) {
+      let contentBuffer = null;
+      if (attachment.content !== undefined && attachment.content !== null) {
+        contentBuffer = Buffer.isBuffer(attachment.content)
+          ? attachment.content
+          : Buffer.from(String(attachment.content));
+      } else if (attachment.path && fs.existsSync(attachment.path)) {
+        try {
+          contentBuffer = fs.readFileSync(attachment.path);
+        } catch (e) {
+          console.warn("[BrevoMailer] Failed to read attachment path:", attachment.path, e);
+          return null;
+        }
+      }
+
+      if (!contentBuffer) {
         return null;
       }
 
-      const content =
-        Buffer.isBuffer(attachment.content)
-          ? attachment.content.toString("base64")
-          : Buffer.from(String(attachment.content)).toString("base64");
-
       return {
-        content,
+        content: contentBuffer.toString("base64"),
         name: String(attachment.filename || "attachment"),
       };
     })
