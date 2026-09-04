@@ -20,7 +20,9 @@ const Terms = () => {
     fetchTerms();
   }, []);
 
+  
   const filteredTerms = terms.filter(t => t.name.toLowerCase().includes(searchQuery.toLowerCase()));
+
 
   return (
     <section className="space-y-5 p-6 font-sans">

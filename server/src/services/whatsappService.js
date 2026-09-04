@@ -44,8 +44,8 @@ const DEFAULT_WHATSAPP_TERMS = Object.freeze([
   "Intellectual Property & Privacy: Personal data is protected and used solely for booking purposes.",
   "Governing Law: All disputes subject to New Delhi Jurisdiction only.",
   "Force Majeure: Not liable for delays/cancellations due to natural disasters, weather, or emergencies.",
-  "Contact: Leela Travels, KG 3/101, Vikas Puri, New Delhi | ops@leelatravels.com | +91 8851346665.",
-  "By booking with DDLC Company, you acknowledge that you have read, understood, and agreed to these Terms and Conditions.",
+  "Contact: Holiday Circuit, 2nd Floor, 632 Block B1, Janakpuri, New Delhi - 110058 | ops@holidaycircuit.com | +91 8851346665.",
+  "By booking with Holiday Circuit, you acknowledge that you have read, understood, and agreed to these Terms and Conditions.",
 ]);
 
 const normalizeSellerBankDetails = (items = []) => {

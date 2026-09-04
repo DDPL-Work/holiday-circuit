@@ -1,5 +1,17 @@
 const DEFAULT_FALLBACK_LOGO = "https://res.cloudinary.com/dszadvuz6/image/upload/e_trim/v1777932524/unzssx1sjkrigbgldg7h.png";
 
+export const DEFAULT_VOUCHER_TERMS = [
+  "Welcome to Holiday Circuit. These Terms and Conditions govern your use of the Holiday Circuit services. When You Make a booking or reservation, you agree to be bound by these Terms.",
+  "Bookings and Reservations",
+  "Booking Process: When you make a booking or reservation through Holiday Circuit, you agree to provide accurate and complete information. Any discrepancies or errors in the information you provide may result in the cancellation of your booking.",
+  "Payment: Payments for bookings are due as specified during the booking process. Failure to make payments on time may result in the cancellation of your booking.",
+  "Cancellations and Refunds: Cancellation and refund policies vary depending on the type of booking. Please refer to the specific cancellation policy provided at the time of booking. Holiday Circuit reserves the right to charge cancellation fees as applicable.",
+  "Intellectual Property",
+  "Ownership: All content, trademarks, logos, and intellectual property on the Holiday Circuit website and app are the property of Holiday Circuit or its licensors. You may not use, reproduce, or distribute our content without prior written permission.",
+  "Changes to Terms and Conditions: We reserve the right to update and modify these Terms and Conditions at any time. Please review them periodically for changes. Your continued use of our services after any modifications indicates your acceptance of the updated Terms.",
+  "By booking with Holiday Circuit, you acknowledge that you have read, understood, and agreed to these Terms and Conditions.",
+];
+
 export const formatServiceTypeLabel = (value = "") => {
   const normalized = String(value || "").trim().toLowerCase();
   if (!normalized) return "Service";
@@ -737,27 +749,20 @@ export const buildVoucherHtml = (data, branding, agentBranding = {}) => {
   } else if (typeof rawTerms === "string" && rawTerms.trim()) {
     termsList = rawTerms.split("\n").map((t) => t.trim()).filter((t) => t.length > 0);
   }
+  if (termsList.length === 0) {
+    termsList = DEFAULT_VOUCHER_TERMS;
+  }
 
   const termsHtml = termsList.length > 0 ? `
     <!-- TERMS & CONDITIONS SECTION -->
-    <table style="width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 13px; border: 1px solid #b3cae8; font-family: Arial, sans-serif;">
-      <thead>
-        <tr style="background-color: #dce8f6;">
-          <th style="padding: 8px 12px; font-size: 13px; font-weight: 800; color: #000000; text-align: left; border: 1px solid #b3cae8; letter-spacing: 0.3px;">
-            Terms &amp; Conditions
-          </th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td style="padding: 12px 16px; background-color: #ffffff; border: 1px solid #b3cae8; color: #1e293b; line-height: 1.6; font-size: 11.5px;">
-            <ol style="margin: 0; padding-left: 20px;">
-              ${termsList.map((t) => `<li style="margin-bottom: 5px;">${t.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</li>`).join("")}
-            </ol>
-          </td>
-        </tr>
-      </tbody>
-    </table>
+    <div style="margin-top: 18px; margin-bottom: 18px; font-family: Arial, sans-serif;">
+      <div style="font-size: 13.5px; font-weight: 800; color: #9a3412; margin-bottom: 8px;">
+        Terms &amp; Conditions:
+      </div>
+      <ol style="margin: 0; padding-left: 20px; font-size: 11.5px; color: #1e293b; line-height: 1.65;">
+        ${termsList.map((t) => `<li style="margin-bottom: 5px;">${t.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</li>`).join("")}
+      </ol>
+    </div>
   ` : "";
 
   return `

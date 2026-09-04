@@ -77,41 +77,16 @@ import {
   buildPublicAssetUrl,
   getOrdinalSuffix,
   getPackageNightCount,
-  buildItineraryDayLabel,
   getRelativeTimeString,
-  formatUsageLabel,
-  formatServiceTypeLabel,
-  getServiceDescriptionBits,
-  SELLER_BANK_DETAILS,
-  QUOTATION_TERMS,
-  CLIENT_SHARE_TERMS,
   formatAmountValue,
-  parseShareDate,
-  formatShareDate,
-  formatShareActivityDate,
-  formatShareItineraryDate,
-  addDaysToShareDate,
-  getShareDateDiff,
   getDurationMeta,
   getClientRecipientName,
   getQueryTravelerCounts,
-  buildClientTravelerSummary,
-  normalizeShareServiceType,
   inferSharingLabel,
-  buildClientServiceQuantityLabel,
-  DEFAULT_SELLER_BANK_DETAILS,
-  TRANSPORT_USAGE_LABELS,
-  TRANSPORT_USAGE_LIMIT_LABELS,
   fetchQuotationsByQuery,
   getSavedAgentBranding,
 } from "./queryDetails/utils/queryDetailsHelpers";
 
-import { ActionPillButton } from "./queryDetails/components/Cards/ActionPillButton";
-import { QuoteInfoListCard } from "./queryDetails/components/Cards/QuoteInfoListCard";
-import { QuoteDayWiseItineraryCard } from "./queryDetails/components/Cards/QuoteDayWiseItineraryCard";
-import { QuoteSellerBankDetailsCard } from "./queryDetails/components/Cards/QuoteSellerBankDetailsCard";
-import { QuoteTermsAndConditionsCard } from "./queryDetails/components/Cards/QuoteTermsAndConditionsCard";
-import { QuoteServiceListCard } from "./queryDetails/components/Cards/QuoteServiceListCard";
 import { QueryHeaderCard } from "./queryDetails/components/Header/QueryHeaderCard";
 import { QueryTabNavigation } from "./queryDetails/components/Navigation/QueryTabNavigation";
 import { RevisionModal } from "./queryDetails/components/Modals/RevisionModal";

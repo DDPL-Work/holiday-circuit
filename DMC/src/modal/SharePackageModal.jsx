@@ -4,7 +4,7 @@ import { X, Copy, RefreshCw, AlertTriangle, FileText, CheckCircle2, Mail, Send }
 import toast from "react-hot-toast";
 import { AnimatePresence, motion } from "framer-motion";
 import API from "../utils/Api";
-import { buildVoucherHtml, parseAdminTermContent } from "../utils/voucherTemplate";
+import { buildVoucherHtml, parseAdminTermContent, DEFAULT_VOUCHER_TERMS } from "../utils/voucherTemplate";
 
 // Clean Dynamic Default Fallbacks
 const DEFAULT_SELLER_BANK_DETAILS = [];
@@ -304,25 +304,34 @@ export default function SharePackageModal({
     const fetchVoucherTerms = async () => {
       try {
         setLoadingTerms(true);
-        let agentList = [];
+        let termList = [];
         try {
-          const res = await API.get("/agent/terms");
-          agentList = Array.isArray(res?.data)
+          const res = await API.get("/admin/terms");
+          termList = Array.isArray(res?.data)
             ? res.data
             : Array.isArray(res?.data?.data)
             ? res.data.data
             : [];
         } catch (e) {
-          console.warn("Could not fetch /agent/terms:", e);
+          try {
+            const res2 = await API.get("/agent/terms");
+            termList = Array.isArray(res2?.data)
+              ? res2.data
+              : Array.isArray(res2?.data?.data)
+              ? res2.data.data
+              : [];
+          } catch (err2) {
+            console.warn("Could not fetch terms:", err2);
+          }
         }
 
-        const parsed = agentList
+        const parsed = termList
           .map((item) => {
             const items = parseAdminTermContent(item.content || "");
             return {
               id: String(item.id || item._id),
               name: item.name || "Terms & Conditions",
-              by: item.by || item.createdBy?.name || "Agent",
+              by: item.by || item.createdBy?.name || "Admin",
               content: item.content || "",
               items,
             };
@@ -333,7 +342,7 @@ export default function SharePackageModal({
           setAvailableAgentTerms(parsed);
         }
       } catch (err) {
-        console.error("Failed to load agent terms for voucher preview:", err);
+        console.error("Failed to load terms for voucher preview:", err);
       } finally {
         if (isMounted) setLoadingTerms(false);
       }
@@ -1049,6 +1058,10 @@ export default function SharePackageModal({
               } else if (availableAgentTerms[0]?.items?.length > 0) {
                 parsedVoucherTerms = availableAgentTerms[0].items;
               }
+            }
+
+            if (parsedVoucherTerms.length === 0 && DEFAULT_VOUCHER_TERMS?.length > 0) {
+              parsedVoucherTerms = DEFAULT_VOUCHER_TERMS;
             }
           }
         }
@@ -2403,6 +2416,9 @@ export default function SharePackageModal({
               parsedVoucherTerms = availableAgentTerms[0].items;
             }
           }
+          if (parsedVoucherTerms.length === 0 && DEFAULT_VOUCHER_TERMS?.length > 0) {
+            parsedVoucherTerms = DEFAULT_VOUCHER_TERMS;
+          }
         }
       }
 
@@ -2994,6 +3010,9 @@ export default function SharePackageModal({
                                 const matchedVoucher = availableAgentTerms.find((t) => t.name.toLowerCase().includes("voucher"));
                                 if (matchedVoucher && matchedVoucher.items?.length > 0) termsToShow = matchedVoucher.items;
                                 else if (availableAgentTerms[0]?.items?.length > 0) termsToShow = availableAgentTerms[0].items;
+                              }
+                              if (termsToShow.length === 0 && DEFAULT_VOUCHER_TERMS?.length > 0) {
+                                termsToShow = DEFAULT_VOUCHER_TERMS;
                               }
                               if (termsToShow.length === 0) {
                                 termsToShow = [

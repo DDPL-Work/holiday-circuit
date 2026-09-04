@@ -2294,7 +2294,6 @@ export const sendAgentClientQuotationMail = async (email, quoteDetails = {}) => 
 };
 
 
-
 export const sendEmailVoucher = async (
   email,
   voucherDetails,
@@ -2323,10 +2322,6 @@ export const sendEmailVoucher = async (
   console.log("VOUCHER EMAIL SENT:", info.response);
   return { status: "sent", email };
 };
-
-
-
-
 
 export const sendEmailFinalInvoice = async (email, invoiceDetails) => {
   const transporter = createTransporter();
@@ -2358,6 +2353,7 @@ export const sendEmailFinalInvoice = async (email, invoiceDetails) => {
     rejected: info.rejected,
   };
 };
+
 
 export const sendDmcPayoutReceiptMail = async (email, receiptDetails = {}) => {
   const transporter = createTransporter();
@@ -2435,6 +2431,8 @@ export const sendDmcPayoutReceiptMail = async (email, receiptDetails = {}) => {
     rejected: info.rejected,
   };
 };
+
+
 
 export const sendAgentPaymentReceiptMail = async (email, receiptDetails = {}) => {
   const transporter = createTransporter();
@@ -2572,6 +2570,8 @@ const buildCouponEmailTemplate = (couponDetails = {}) => {
 };
 
 //-------------------------------- Send Coupon Email Service ------------------------
+
+
 
 export const sendCouponEmail = async (email, couponDetails = {}) => {
   const transporter = createTransporter();

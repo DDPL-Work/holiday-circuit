@@ -37,11 +37,15 @@ const Sidebar = ({ user, mobileOpen = false, onMobileClose = () => {} }) => {
   const navigate = useNavigate();
   const location = useLocation();
 
+
+  
   useEffect(() => {
     if (location.pathname.startsWith("/agent/queries")) {
       setOpenSubmenus((prev) => ({ ...prev, Queries: true }));
     }
   }, [location.pathname]);
+
+
 
   useEffect(() => {
     if (user?.role === "agent") {

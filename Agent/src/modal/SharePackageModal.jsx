@@ -304,19 +304,47 @@ export default function SharePackageModal({
     const fetchVoucherTerms = async () => {
       try {
         setLoadingTerms(true);
-        let agentList = [];
+        let agentTerms = [];
+        let adminTerms = [];
+
+        // 1. Fetch Agent-created Terms & Conditions (created by Agent)
         try {
-          const res = await API.get("/agent/terms");
-          agentList = Array.isArray(res?.data)
-            ? res.data
-            : Array.isArray(res?.data?.data)
-            ? res.data.data
+          const resAgent = await API.get("/agent/terms");
+          agentTerms = Array.isArray(resAgent?.data)
+            ? resAgent.data
+            : Array.isArray(resAgent?.data?.data)
+            ? resAgent.data.data
             : [];
-        } catch (e) {
-          console.warn("Could not fetch /agent/terms:", e);
+        } catch (err) {
+          console.warn("Could not fetch agent terms:", err);
         }
 
-        const parsed = agentList
+        // 2. Fetch Admin Terms & Conditions
+        try {
+          const resAdmin = await API.get("/admin/terms");
+          adminTerms = Array.isArray(resAdmin?.data)
+            ? resAdmin.data
+            : Array.isArray(resAdmin?.data?.data)
+            ? resAdmin.data.data
+            : [];
+        } catch (err) {
+          console.warn("Could not fetch admin terms:", err);
+        }
+
+        // Combine: Agent's created terms first, then Admin terms (deduplicated)
+        const combined = [...agentTerms];
+        const existingIds = new Set(combined.map((t) => String(t.id || t._id)));
+        const existingNames = new Set(combined.map((t) => String(t.name || "").trim().toLowerCase()));
+
+        adminTerms.forEach((item) => {
+          const itemId = String(item.id || item._id);
+          const itemName = String(item.name || "").trim().toLowerCase();
+          if (!existingIds.has(itemId) && !existingNames.has(itemName)) {
+            combined.push(item);
+          }
+        });
+
+        const parsed = combined
           .map((item) => {
             const items = parseAdminTermContent(item.content || "");
             return {
@@ -333,7 +361,7 @@ export default function SharePackageModal({
           setAvailableAgentTerms(parsed);
         }
       } catch (err) {
-        console.error("Failed to load agent terms for voucher preview:", err);
+        console.error("Failed to load terms for voucher preview:", err);
       } finally {
         if (isMounted) setLoadingTerms(false);
       }
@@ -1043,9 +1071,7 @@ export default function SharePackageModal({
               parsedVoucherTerms = parseAdminTermContent(candidateTerms);
             }
             if (parsedVoucherTerms.length === 0 && DEFAULT_VOUCHER_TERMS?.length > 0) {
-              parsedVoucherTerms = DEFAULT_VOUCHER_TERMS.map((t) =>
-                t.replace(/Holiday Circuit/g, companyNameVal)
-              );
+              parsedVoucherTerms = DEFAULT_VOUCHER_TERMS;
             }
           }
         }
@@ -2371,9 +2397,7 @@ export default function SharePackageModal({
             parsedVoucherTerms = parseAdminTermContent(rawVoucherTerms);
           }
           if (parsedVoucherTerms.length === 0 && DEFAULT_VOUCHER_TERMS?.length > 0) {
-            parsedVoucherTerms = DEFAULT_VOUCHER_TERMS.map((t) =>
-              t.replace(/Holiday Circuit/g, companyName)
-            );
+            parsedVoucherTerms = DEFAULT_VOUCHER_TERMS;
           }
         }
       }
@@ -3075,9 +3099,7 @@ export default function SharePackageModal({
                                 else if (typeof raw === "string" && raw.trim()) termsToShow = parseAdminTermContent(raw);
                               }
                               if (termsToShow.length === 0 && DEFAULT_VOUCHER_TERMS?.length > 0) {
-                                termsToShow = DEFAULT_VOUCHER_TERMS.map((t) =>
-                                  t.replace(/Holiday Circuit/g, companyName)
-                                );
+                                termsToShow = DEFAULT_VOUCHER_TERMS;
                               }
                               return termsToShow.map((pt, idx) => (
                                 <p key={idx}>• {pt}</p>
