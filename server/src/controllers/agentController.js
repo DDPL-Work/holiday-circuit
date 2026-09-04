@@ -1966,17 +1966,18 @@ export const sendAgentVoucherEmail = async (req, res, next) => {
     const queryId = req.params.queryId || req.params.id;
     const agentId = getAuthenticatedUserId(req);
 
-    // 1. FETCH DYNAMIC AGENT, QUERY & QUOTATION DATA FROM DATABASE
-    const [agent, query] = await Promise.all([
+    // 1. FETCH DYNAMIC AGENT, QUERY & QUOTATION DATA CONCURRENTLY
+    const [agent, query, quotationDoc] = await Promise.all([
       agentId
         ? Auth.findById(agentId).select(
             "name email companyName phone companyAddress website brandingName brandingLogo voucherFooterImage profileImage avatar companyLogo"
           )
         : null,
       queryId ? TravelQuery.findById(queryId) : null,
+      queryId ? Quotation.findOne({ queryId }).sort({ createdAt: -1 }) : null,
     ]);
 
-    let quotation = query ? await Quotation.findOne({ queryId: query._id }).sort({ createdAt: -1 }) : null;
+    let quotation = quotationDoc;
     if (quotation && query) {
       const [enriched] = await enrichQuotationServicesWithConfirmations([quotation], query);
       quotation = enriched;

@@ -320,7 +320,8 @@ export const buildVoucherHtml = (data, branding, agentBranding = {}) => {
       return "CP ( Breakfast Included )";
     }
 
-    return "EP ( Room Only )";
+    const fallbackRaw = candidates[0] || h.description || h.roomType || "";
+    return fallbackRaw.trim() ? fallbackRaw.trim() : "As per hotel policy";
   };
 
   const startObj = resolvedTravelDate ? new Date(resolvedTravelDate) : new Date();
@@ -362,32 +363,20 @@ export const buildVoucherHtml = (data, branding, agentBranding = {}) => {
   const hotelServices = rawServices.filter((s) => String(s.type || s.category || "").toLowerCase().includes("hotel"));
   const nonHotelServices = rawServices.filter((s) => !String(s.type || s.category || "").toLowerCase().includes("hotel"));
 
-  const displayHotels = hotelServices.length > 0 ? hotelServices : (rawServices.length === 0 ? [
-    {
-      title: `${destinationVal} Heritage Resort & Spa`,
-      rating: "5 star",
-      address: `${destinationVal}, India`,
-      confirmation: "97739SG008801",
-      roomType: "Superior King Room",
-      mealPlan: "Breakfast",
-      numberOfRooms: 1,
-      pax: paxVal,
-      nights: nights,
-    }
-  ] : []);
+  const displayHotels = hotelServices;
 
   let runningHotelDate = startObj && !isNaN(startObj.getTime()) ? new Date(startObj.getTime()) : new Date();
 
-  const hotelsHtml = displayHotels.map((h, idx) => {
+  const hotelsHtml = displayHotels.length > 0 ? displayHotels.map((h, idx) => {
     const rawTitle = String(h.title || "").trim();
     const rawHotelName = String(h.hotelName || h.hotel || "").trim();
     const rawServiceName = String(h.serviceName || h.name || "").trim();
 
-    const hHotelName = rawHotelName || (rawTitle && !rawTitle.toLowerCase().includes("hotel stay") && !rawTitle.toLowerCase().includes("service") ? rawTitle : (rawServiceName || `${destinationVal} Heritage Resort`));
+    const hHotelName = rawHotelName || (rawTitle && !rawTitle.toLowerCase().includes("hotel stay") && !rawTitle.toLowerCase().includes("service") ? rawTitle : (rawServiceName || "Hotel Accommodation"));
     const hServiceName = rawServiceName && rawServiceName !== hHotelName ? rawServiceName : (rawTitle && rawTitle !== hHotelName ? rawTitle : "");
 
-    const hRating = h.rating || h.starRating || h.hotelCategory || h.category || "5 star";
-    const hAddress = h.address || h.hotelAddress || h.location || (h.city ? `${h.city}, ${destinationVal}` : `${destinationVal}, India`);
+    const hRating = h.rating || h.starRating || h.hotelCategory || h.category || "";
+    const hAddress = h.address || h.hotelAddress || h.location || (h.city ? `${h.city}, ${destinationVal}` : (destinationVal ? `${destinationVal}, India` : ""));
     const hDesc = h.description || h.hotelDescription || h.details || "";
 
     const realCnfNum = h.confirmationNumber || h.cnfNumber || h.supplierConfirmation || h.voucherNumber || (h.confirmation && h.confirmation !== "Confirmed(Confirmed)" && h.confirmation !== "Confirmed" && h.confirmation !== "Pending" ? h.confirmation : null);
@@ -519,7 +508,7 @@ export const buildVoucherHtml = (data, branding, agentBranding = {}) => {
         </tbody>
       </table>
     `;
-  }).join("");
+  }).join("") : `<div style="padding: 16px 20px; text-align: center; color: #64748b; font-style: italic; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; margin-bottom: 20px; font-size: 13px;">No specific hotel accommodations listed for this voucher.</div>`;
 
   const nonHotelServicesHtml = nonHotelServices.map((s) => {
     const sTypeRaw = String(s.type || s.category || "Service").toLowerCase();

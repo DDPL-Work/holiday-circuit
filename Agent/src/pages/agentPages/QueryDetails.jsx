@@ -3963,6 +3963,9 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                           </div>
                         );
                       })()}
+
+
+                      
                     </div>
 
 
@@ -5332,15 +5335,16 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                       const defaultPaxVal = Number(query?.numberOfAdults || 2);
                       const roomCat = hotel.roomType || hotel.room_type || hotel.roomCategory || (String(hotel.title || selectedPkg?.title || "").toLowerCase().includes("luxury") ? "Ocean Deluxe Room" : "Standard Room");
 
-                      // Resolved Hotel Name (e.g. "Jaypee Residency Manor Mussoorie")
-                      const displayHotelName = rawHotelName || matchedDmc?.hotelName || (hotel.name && !rawServiceName ? hotel.name : "") || (stars === 3 ? "Citymax Hotel Bur Dubai" : (stars === 5 ? "Jaypee Residency Manor Mussoorie" : "Fortune Resort Grace Mussoorie"));
+                      // Resolved Hotel Name
+                      const displayHotelName = rawHotelName || matchedDmc?.hotelName || (hotel.name && !rawServiceName ? hotel.name : "") || hotel.title || hotel.serviceName || (hotel.category ? `${hotel.category} Hotel` : "Hotel Accommodation");
 
-                      // Resolved Service Name (e.g. "Mussoorie Mall Road Heritage")
+                      // Resolved Service Name
                       const displayHotelTitle = (
                         rawServiceName ||
                         matchedDmc?.serviceName ||
                         (hotel.name && hotel.name !== displayHotelName ? hotel.name : "") ||
-                        (stars === 3 ? "3-Star Deluxe City Center Hotel Stay" : stars === 4 ? "4-Star City Hotel Stay" : "5-Star Luxury Hotel Stay")
+                        hotel.title ||
+                        "Hotel Stay"
                       );
 
                       const savedNightlyRate = Number(
