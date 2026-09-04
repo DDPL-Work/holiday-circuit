@@ -1,10 +1,12 @@
 import "dotenv/config";
 import * as resendMailer from "./resendMailer.js";
 import * as smtpMailer from "./smtpMailer.js";
+import * as brevoMailer from "./brevoMailer.js";
 
 const providerMap = {
   resend: resendMailer,
   smtp: smtpMailer,
+  brevo: brevoMailer,
 };
 
 export const getActiveMailProvider = () => {
