@@ -517,7 +517,7 @@ export default function Dashboard() {
                 ))}
               </div>
             </motion.div>
-            <motion.div variants={sideStackVariants} className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <motion.div variants={sideStackVariants} className="grid gap-3 sm:grid-cols-2 xl:grid-cols-2">
               {summaryCards.map((card, index) => (
                 <StatCard
                   key={card.label}
@@ -529,7 +529,7 @@ export default function Dashboard() {
                 />
               ))}
             </motion.div>
-            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+            {/* <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
               <motion.div
                 variants={sectionRevealVariants}
                 className="overflow-hidden rounded-xl border border-gray-300 bg-white"
@@ -568,7 +568,7 @@ export default function Dashboard() {
                 <div className="flex items-center gap-2 border-b border-gray-200 px-4 py-3 text-sm font-medium text-gray-800"><Activity size={15} className="text-blue-500" />Team Performance</div>
                 <PerformanceBars rows={performance} animate={barsReady} />
               </motion.div>
-            </div>
+            </div> */}
           </motion.div>
         )}
 

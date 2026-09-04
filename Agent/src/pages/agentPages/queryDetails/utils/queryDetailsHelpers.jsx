@@ -117,6 +117,8 @@ export const getServiceDescriptionBits = (description = "") =>
     .map((item) => item.trim())
     .filter(Boolean);
 
+
+
 export const SELLER_BANK_DETAILS = [
   { label: "Bank Name", value: "HDFC Bank" },
   { label: "A/c Holder Name", value: "Holiday Circuit" },
@@ -124,6 +126,8 @@ export const SELLER_BANK_DETAILS = [
   { label: "IFSC", value: "HDFC0004413" },
   { label: "Branch", value: "RAMPHAL CHOWK SEC VII DWARKA" },
 ];
+
+
 
 export const QUOTATION_TERMS = [
   "Welcome to Holiday Circuit. These Terms & Conditions govern your travel booking and services.",
@@ -133,23 +137,19 @@ export const QUOTATION_TERMS = [
   "Changes & Modifications: Administrative/service fees apply for client-requested itinerary changes.",
   "Travel Documents: Passport, visa & health documentation compliance is the client's sole responsibility.",
   "Health & Safety: Medical conditions must be declared in advance; compliance with safety rules is mandatory.",
-  "Liability: Leela Travels acts as an intermediary for airlines, hotels & transporters.",
+  "Liability: Holiday Circuit acts as an intermediary for airlines, hotels & transporters.",
   "Accommodation Policies: Standard check-in 14:00-15:00 Hrs, check-out 11:00-12:00 Hrs.",
   "Travel Insurance: Highly recommended for medical, cancellation & personal loss coverage.",
   "Intellectual Property & Privacy: Personal data is protected and used solely for booking purposes.",
   "Governing Law: All disputes subject to New Delhi Jurisdiction only.",
   "Force Majeure: Not liable for delays/cancellations due to natural disasters, weather, or emergencies.",
-  "Contact: Leela Travels, KG 3/101, Vikas Puri, New Delhi | ops@leelatravels.com | +91 8851346665.",
-  "By booking with DDLC Company, you acknowledge that you have read, understood, and agreed to these Terms and Conditions.",
+  "Contact: Holiday Circuit, 2nd Floor, 632 Block B1, Janakpuri, New Delhi - 110058 | ops@holidaycircuit.com | +91 8851346665.",
+  "By booking with Holiday Circuit, you acknowledge that you have read, understood, and agreed to these Terms and Conditions.",
 ];
 
-export const CLIENT_SHARE_TERMS = [
-  "Rates are subject to availability and confirmation at the time of booking.",
-  "Only the services listed in this quotation are included in the shared amount.",
-  "Any amendment after confirmation may affect availability and final pricing.",
-  "Hotel check-in, check-out, and supplier-specific policies will apply as per service rules.",
-  "Please review and confirm within the validity period to avoid fare or rate changes.",
-];
+
+
+
 
 export const formatAmountValue = (value) =>
   Math.round(Number(value || 0)).toLocaleString("en-IN");
@@ -159,6 +159,8 @@ export const parseShareDate = (value) => {
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 };
+
+
 
 export const formatShareDate = (
   value,
@@ -420,6 +422,42 @@ export const getTransportLimitLabelForQuote = (service = {}) => {
   return "";
 };
 
+export const validateAgentMarkupInput = ({ markupType, markupValue }) => {
+  const normalizedType = String(markupType || "").trim().toUpperCase();
+  const normalizedValue = Number(markupValue);
+
+  if (!Number.isFinite(normalizedValue) || normalizedValue <= 0) {
+    return "Please enter a valid markup value.";
+  }
+
+  if (["PERCENT", "AMOUNT"].includes(normalizedType)) return "";
+
+  return "Please select a valid markup type.";
+};
+
+export const calculateAgentMarkupPreview = ({ markupType, markupValue, opsTotal }) => {
+  const normalizedType = String(markupType || "").trim().toUpperCase();
+  const normalizedValue = Number(markupValue);
+  const normalizedOpsTotal = Math.max(0, Number(opsTotal) || 0);
+
+  if (!Number.isFinite(normalizedValue) || normalizedValue <= 0) {
+    return {
+      markupAmount: 0,
+      finalAmount: normalizedOpsTotal,
+    };
+  }
+
+  const markupAmount =
+    normalizedType === "PERCENT"
+      ? Math.round((normalizedOpsTotal * normalizedValue) / 100)
+      : Math.round(normalizedValue);
+
+  return {
+    markupAmount,
+    finalAmount: normalizedOpsTotal + Math.max(0, markupAmount),
+  };
+};
+
 export const fetchQuotationsByQuery = async (queryId) => {
   const res = await API.get(`/agent/quotations/query/${queryId}`);
   return (res.data.quotations || []).filter(
@@ -427,19 +465,33 @@ export const fetchQuotationsByQuery = async (queryId) => {
   );
 };
 
-export const getSavedAgentBranding = ({ quote = {}, user = null }) => ({
-  name: String(
-    quote?.agentBrandingName ||
+export const getSavedAgentBranding = ({ quote = {}, user = null }) => {
+  const rawName = String(
     user?.brandingName ||
     user?.companyName ||
-    "",
-  ).trim(),
-  logo: String(
+    user?.agencyName ||
+    quote?.agentBrandingName ||
+    quote?.agencyName ||
+    ""
+  ).trim();
+
+  const name = rawName || "Holiday Circuit";
+  const logo = String(
     user?.brandingLogo ||
     user?.brandLogoUrl ||
+    user?.logo ||
     quote?.agentLogo ||
-    "",
-  ).trim(),
-});
+    ""
+  ).trim();
+
+  return {
+    name,
+    logo,
+    phone: String(user?.phone || user?.companyPhone || quote?.agentPhone || "+91-8851346665").trim(),
+    email: String(user?.email || user?.companyEmail || quote?.agentEmail || "ops@holidaycircuit.com").trim(),
+    address: String(user?.companyAddress || user?.address || quote?.agentAddress || "KG 3/69, Ground Floor, Vikas Puri, New Delhi, Near UK Nursing Home, New Delhi, Delhi, India - 110018").trim(),
+  };
+};
+
 
 

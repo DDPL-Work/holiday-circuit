@@ -48,5 +48,4 @@ export const TABS = [
   { id: "hotel", label: "Hotel", icon: Building2, color: "purple" },
   { id: "activity", label: "Activity", icon: Compass, color: "emerald" },
   { id: "transport", label: "Transport", icon: Bus, color: "blue" },
-  { id: "sightseeing", label: "Sightseeing", icon: Eye, color: "amber" },
 ];

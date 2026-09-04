@@ -13,10 +13,14 @@ import Activity from "../models/activityDmc.model.js";
 import Transfer from "../models/transferDmc.model.js";
 import Sightseeing from "../models/sightseeingDmc.model.js";
 import DestinationName from "../models/destinationName.model.js";
+import AgentTerm from "../models/agentTerms.js";
+import Confirmation from "../models/dmcConfirmation.js";
+import Voucher from "../models/voucher.model.js";
 import bcrypt from "bcrypt";
 import crypto from "crypto";
 import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
+import { v2 as cloudinary } from "cloudinary";
 import {
   sendAgentQueryCreatedMail,
   sendAgentRegistrationReceivedMail,
@@ -382,16 +386,45 @@ const getLiveServiceModel = (type = "") => {
   return null;
 };
 
-const getLiveServiceRateSnapshot = (service = {}, typeOverride = "") => {
+const getLiveServiceRateSnapshot = (service = {}, typeOverride = "", quotedService = {}) => {
   const type = normalizeQuotationServiceType(typeOverride || service?.type || service?.serviceCategory);
 
   if (type === "hotel") {
+    let resolvedPrice = Number(service?.price || service?.basePrice || 0);
+    let resolvedAweb = Number(service?.awebRate || 0);
+    let resolvedCweb = Number(service?.cwebRate || 0);
+    let resolvedCwoeb = Number(service?.cwoebRate || 0);
+
+    if (Array.isArray(service?.hotels) && service.hotels.length > 0) {
+      const qHotelTitle = String(quotedService?.title || quotedService?.hotelName || quotedService?.name || "").trim().toLowerCase();
+      const qRoomType = String(quotedService?.roomType || quotedService?.roomCategory || "").trim().toLowerCase();
+
+      let targetHotel = service.hotels.find((h) => {
+        const hName = String(h?.hotelName || "").trim().toLowerCase();
+        return qHotelTitle && (hName.includes(qHotelTitle) || qHotelTitle.includes(hName));
+      }) || service.hotels[0];
+
+      if (targetHotel && Array.isArray(targetHotel?.rooms) && targetHotel.rooms.length > 0) {
+        let targetRoom = targetHotel.rooms.find((r) => {
+          const rType = String(r?.roomType || r?.roomCategory || "").trim().toLowerCase();
+          return qRoomType && (rType.includes(qRoomType) || qRoomType.includes(rType));
+        }) || targetHotel.rooms[0];
+
+        if (targetRoom) {
+          resolvedPrice = Number(targetRoom.price || targetRoom.basePrice || resolvedPrice);
+          resolvedAweb = Number(targetRoom.awebRate || resolvedAweb);
+          resolvedCweb = Number(targetRoom.cwebRate || resolvedCweb);
+          resolvedCwoeb = Number(targetRoom.cwoebRate || resolvedCwoeb);
+        }
+      }
+    }
+
     return {
       currency: normalizeCurrencyCode(service?.currency),
-      price: Number(service?.price || 0),
-      awebRate: Number(service?.awebRate || 0),
-      cwebRate: Number(service?.cwebRate || 0),
-      cwoebRate: Number(service?.cwoebRate || 0),
+      price: resolvedPrice,
+      awebRate: resolvedAweb,
+      cwebRate: resolvedCweb,
+      cwoebRate: resolvedCwoeb,
     };
   }
 
@@ -437,7 +470,7 @@ const buildQuotationRateMismatch = (service = {}, liveService = null) => {
   }
 
   const quoted = getQuotedServiceRateSnapshot(service);
-  const live = getLiveServiceRateSnapshot(liveService, type);
+  const live = getLiveServiceRateSnapshot(liveService, type, service);
   const changedFields = [];
 
   if (quoted.currency !== live.currency) {
@@ -1620,13 +1653,20 @@ const buildQuotationClientEmailPayload = ({ quotation, query, agent }) => {
     return `${baseUrl}${cleanPath}`;
   };
 
+  const isGenericLogo = (str) =>
+    !str ||
+    str.includes("1771279110850") ||
+    str.includes("1771278920287") ||
+    str.includes("1771278816234") ||
+    str.includes("logo img.png");
+
   const rawLogo =
-    resolvedBranding.brandingLogo ||
-    agent?.brandingLogo ||
-    agent?.companyLogo ||
-    agent?.profileImage ||
-    agent?.avatar ||
-    quotation?.agentLogo ||
+    (!isGenericLogo(agent?.brandingLogo) && agent?.brandingLogo) ||
+    (!isGenericLogo(agent?.companyLogo) && agent?.companyLogo) ||
+    (!isGenericLogo(agent?.profileImage) && agent?.profileImage) ||
+    (!isGenericLogo(agent?.avatar) && agent?.avatar) ||
+    (!isGenericLogo(resolvedBranding.brandingLogo) && resolvedBranding.brandingLogo) ||
+    (!isGenericLogo(quotation?.agentLogo) && quotation?.agentLogo) ||
     "";
 
   const rawFooter =
@@ -1643,7 +1683,7 @@ const buildQuotationClientEmailPayload = ({ quotation, query, agent }) => {
     agencyName: agent?.companyName || "",
     agentLogo: getAbsoluteMediaUrl(rawLogo),
     agentFooterImage: getAbsoluteMediaUrl(rawFooter),
-    agentBrandingName: resolvedBranding.brandingName || agent?.brandingName || agent?.companyName || "DDLC Company",
+    agentBrandingName: resolvedBranding.brandingName || agent?.brandingName || agent?.companyName || "Holiday Circuit",
     agentCompanyAddress: agent?.companyAddress || agent?.address || "KG 3/69, Ground Floor, Vikas Puri, New Delhi, Delhi - 110018",
     agentPhone: agent?.phone || "",
     agentEmail: agent?.email || "",
@@ -1856,19 +1896,12 @@ export const generateClientQuotationPdf = async (req, res, next) => {
       return next(new ApiError(401, "Unauthorized"));
     }
 
-    const quotation = await Quotation.findOne({ _id: req.params.id, agent: agentId });
+    const quotation = await Quotation.findById(req.params.id);
     if (!quotation) {
       return next(new ApiError(404, "Quotation not found"));
     }
 
-    if (!["Quote Accepted", "Markup Applied", "Sent to Client"].includes(quotation.status)) {
-      return next(new ApiError(400, "Accept quote first"));
-    }
-
-    if (
-      quotation.status === "Quote Accepted" &&
-      (quotation.clientTotalAmount === undefined || quotation.clientTotalAmount === null)
-    ) {
+    if (quotation.clientTotalAmount === undefined || quotation.clientTotalAmount === null || quotation.clientTotalAmount === 0) {
       quotation.agentMarkup = {
         type: quotation.agentMarkup?.type || "AMOUNT",
         value: Number(quotation.agentMarkup?.value || 0),
@@ -1938,17 +1971,22 @@ export const sendAgentVoucherEmail = async (req, res, next) => {
     const queryId = req.params.queryId || req.params.id;
     const agentId = getAuthenticatedUserId(req);
 
-    // 1. FETCH DYNAMIC AGENT, QUERY & QUOTATION DATA FROM DATABASE
-    const [agent, query] = await Promise.all([
+    // 1. FETCH DYNAMIC AGENT, QUERY & QUOTATION DATA CONCURRENTLY
+    const [agent, query, quotationDoc] = await Promise.all([
       agentId
         ? Auth.findById(agentId).select(
             "name email companyName phone companyAddress website brandingName brandingLogo voucherFooterImage profileImage avatar companyLogo"
           )
         : null,
       queryId ? TravelQuery.findById(queryId) : null,
+      queryId ? Quotation.findOne({ queryId }).sort({ createdAt: -1 }) : null,
     ]);
 
-    const quotation = query ? await Quotation.findOne({ queryId: query._id }).sort({ createdAt: -1 }) : null;
+    let quotation = quotationDoc;
+    if (quotation && query) {
+      const [enriched] = await enrichQuotationServicesWithConfirmations([quotation], query);
+      quotation = enriched;
+    }
 
     // Helper to format relative upload paths into absolute server URLs for email clients
     const getAbsoluteMediaUrl = (urlStr) => {
@@ -1976,11 +2014,25 @@ export const sendAgentVoucherEmail = async (req, res, next) => {
 
     const absoluteLogoUrl = getAbsoluteMediaUrl(rawLogo);
 
-    const companyName = agent?.brandingName || agent?.companyName || "Holiday Circuit Partner Desk";
-    const companyPhone = agent?.phone || "+91 9368825518";
-    const companyEmail = agent?.email || "support@holidaycircuit.com";
-    const companyAddress = agent?.companyAddress || "KG 3/69, Ground Floor, Vikas Puri, New Delhi, Near UK Nursing Home, New Delhi, Delhi, India - 110018";
-    const website = agent?.website || "";
+    const normalizeCompanyName = (name, fallback = "Holiday Circuit") => {
+      const str = String(name || "").trim();
+      if (!str) return fallback;
+      return str;
+    };
+
+    const companyName = normalizeCompanyName(
+      req.body.companyName || agent?.brandingName || agent?.companyName || agent?.name,
+      "Holiday Circuit"
+    );
+    const companyPhone = req.body.companyPhone || agent?.phone || "+91-8851346665";
+    const companyEmail = req.body.companyEmail || agent?.email || "";
+    const companyAddress =
+      req.body.companyAddress ||
+      agent?.companyAddress ||
+      agent?.address ||
+      query?.agentAddress ||
+      "KG 3/69, Ground Floor, Vikas Puri, New Delhi, Near UK Nursing Home, New Delhi, Delhi, India - 110018";
+    const website = req.body.website || agent?.website || "";
 
     const headerLogoCell = absoluteLogoUrl
       ? `<td style="vertical-align: middle; padding-right: 12px; width: 110px; text-align: left;">
@@ -2021,11 +2073,12 @@ export const sendAgentVoucherEmail = async (req, res, next) => {
             ${companyName}
           </p>
           <p style="margin: 0 0 6px 0; font-size: 12px; font-weight: 500; color: #475569; line-height: 1.6;">
-            Phone: ${companyPhone} &bull; Email: ${companyEmail}${website ? ` &bull; Web: ${website}` : ""}
+            Phone: ${companyPhone}${companyEmail ? ` &bull; Email: ${companyEmail}` : ""}${website ? ` &bull; Web: ${website}` : ""}
           </p>
+          ${companyAddress ? `
           <p style="margin: 0; font-size: 11px; font-weight: 400; color: #64748b; line-height: 1.5;">
             ${companyAddress}
-          </p>
+          </p>` : ""}
           <p style="margin: 12px 0 0 0; font-size: 10px; color: #94a3b8; font-style: italic;">
             Thank you for choosing ${companyName}. Have a safe & memorable journey!
           </p>
@@ -2038,79 +2091,90 @@ export const sendAgentVoucherEmail = async (req, res, next) => {
     cleanHtml = cleanHtml.replace(/<img[^>]*src=["']data:image\/[^"']*["'][^>]*>/gi, '');
     cleanHtml = cleanHtml.replace(/<!--\s*AGENT BRAND HEADER BANNER[\s\S]*?<\/table>\s*<\/div>/i, "");
 
-    const voucherOverviewIndex = cleanHtml.search(/TRAVEL\s+VOUCHER\s+OVERVIEW/i);
+    const voucherOverviewIndex = cleanHtml.search(/TRAVEL\s+VOUCHER\s+OVERVIEW|Hotels\s+Confirmation\s+Voucher/i);
     const voucherSectionStart = cleanHtml.lastIndexOf("<div", voucherOverviewIndex);
     
-    // Remove any duplicate company name/address text headers before TRAVEL VOUCHER OVERVIEW
-    const voucherStartIndex = cleanHtml.search(/(?:📋\s*)?(?:TRAVEL\s+)?VOUCHER\s+OVERVIEW|<table/i);
     if (voucherOverviewIndex !== -1) {
       cleanHtml = cleanHtml.substring(voucherSectionStart !== -1 ? voucherSectionStart : voucherOverviewIndex);
     } else {
       cleanHtml = cleanHtml.replace(/<div[^>]*>[^<]*<h2[^>]*>[\s\S]*?<\/h2>[\s\S]*?<\/div>/gi, '');
     }
 
-    const servicesList = quotation?.services || [];
-    const serviceTableRows = servicesList.length > 0
-      ? servicesList.map((s) => `
-          <tr style="border-bottom: 1px solid #e2e8f0;">
-            <td style="padding: 10px 14px; font-weight: 700; color: #1e3a8a; font-size: 11px; text-transform: uppercase; border-right: 1px solid #e2e8f0; width: 110px;">${s.type || s.category || "SERVICE"}</td>
-            <td style="padding: 10px 14px; color: #0f172a; font-size: 12px; font-weight: 600; border-right: 1px solid #e2e8f0;">
-              <div style="font-weight: 700;">${s.title || s.hotelName || s.name || "Service"}</div>
-              ${s.city ? `<div style="font-size: 11px; color: #64748b;">City: ${s.city}</div>` : ""}
-            </td>
-            <td style="padding: 10px 14px; color: #0f172a; font-weight: 600; font-size: 11px; border-right: 1px solid #e2e8f0; width: 150px;">${s.status || (String(s.confirmation || "").toLowerCase().includes("pending") ? "Pending" : "Confirmed")}</td>
-            <td style="padding: 10px 14px; color: #0f172a; font-weight: 600; font-size: 12px; width: 160px;">${s.confirmationNumber || s.confirmationNo || "-"}</td>
-          </tr>
-        `).join("")
-      : `
-          <tr>
-            <td colspan="4" style="padding: 14px; text-align: center; color: #64748b; font-size: 12px;">No specific service line items found.</td>
-          </tr>
-        `;
+    const rawTripNum = req.body.tripId || query?.queryId || query?.queryNumber || voucherNumber || query?.voucherNumber || "1109";
+    const cleanTripNum = String(rawTripNum).replace(/^#\s*/, "").trim();
+    const formattedTripId = cleanTripNum.toUpperCase().startsWith("QRY-")
+      ? cleanTripNum.toUpperCase()
+      : (cleanTripNum.toUpperCase().startsWith("VCH-") ? `QRY-${cleanTripNum.replace(/^VCH-?/i, "")}` : `QRY-${cleanTripNum}`);
+
+    const resolvedGuestName =
+      req.body.guestName ||
+      req.body.clientName ||
+      query?.travelerDetails?.[0]?.fullName ||
+      query?.tourists?.[0]?.name ||
+      query?.clientName ||
+      query?.leadTraveler ||
+      query?.name ||
+      query?.customerName ||
+      query?.guestName ||
+      quotation?.clientName ||
+      quotation?.guestName ||
+      "Valued Client";
+
+    const resolvedGuestPhone =
+      req.body.guestPhone ||
+      req.body.clientPhone ||
+      query?.tourists?.[0]?.phones?.[0]?.number ||
+      query?.travelerDetails?.[0]?.phone ||
+      query?.clientPhone ||
+      query?.phone ||
+      query?.contactNumber ||
+      quotation?.clientPhone ||
+      quotation?.phone ||
+      "-";
+
+    const defaultTripId = formattedTripId;
+    const defaultClient = resolvedGuestName;
+    const defaultPhone = resolvedGuestPhone;
+    const defaultDest = query?.destination || quotation?.destination || "India";
+    const defaultDuration = `${query?.numberOfNights || quotation?.nights || 1} Night${(query?.numberOfNights || quotation?.nights || 1) > 1 ? "s" : ""} / ${(query?.numberOfNights || quotation?.nights || 1) + 1} Days`;
+    const defaultIssuedBy = "Holiday Circuit";
+    const defaultPax = `${query?.numberOfAdults || 2} Adults${(query?.numberOfChildren || 0) > 0 ? `, ${query.numberOfChildren} Children` : ""}`;
 
     const defaultVoucherBodyHtml = `
-      <div style="margin-bottom: 24px;">
-        <div style="background-color: #f1f5f9; border: 1px solid #cbd5e1; padding: 10px 14px; font-weight: 800; color: #1e293b; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em; border-radius: 6px 6px 0 0;">
-          📋 TRAVEL VOUCHER OVERVIEW
-        </div>
-        <table style="width: 100%; border-collapse: collapse; font-size: 12px; border: 1px solid #cbd5e1; border-top: none;">
-          <tbody>
-            <tr style="border-bottom: 1px solid #e2e8f0;">
-              <td style="padding: 9px 14px; color: #475569; font-weight: 600; background-color: #f8fafc; width: 140px; border-right: 1px solid #e2e8f0;">Voucher Number:</td>
-              <td style="padding: 9px 14px; color: #0f172a; font-weight: 800; background-color: #ffffff;">${voucherNumber || query?.voucherNumber || `VCH-${query?.queryId || "1070"}`}</td>
-            </tr>
-            <tr style="border-bottom: 1px solid #e2e8f0;">
-              <td style="padding: 9px 14px; color: #475569; font-weight: 600; background-color: #f8fafc; border-right: 1px solid #e2e8f0;">Guest Details:</td>
-              <td style="padding: 9px 14px; color: #0f172a; font-weight: 700; background-color: #ffffff;">${query?.clientName || "Valued Client"}</td>
-            </tr>
-            <tr style="border-bottom: 1px solid #e2e8f0;">
-              <td style="padding: 9px 14px; color: #475569; font-weight: 600; background-color: #f8fafc; border-right: 1px solid #e2e8f0;">Destination:</td>
-              <td style="padding: 9px 14px; color: #0f172a; font-weight: 700; background-color: #ffffff;">${query?.destination || "Destination"}</td>
-            </tr>
-            <tr style="border-bottom: 1px solid #e2e8f0;">
-              <td style="padding: 9px 14px; color: #475569; font-weight: 600; background-color: #f8fafc; border-right: 1px solid #e2e8f0;">Duration:</td>
-              <td style="padding: 9px 14px; color: #0f172a; font-weight: 700; background-color: #ffffff;">${(query?.numberOfNights || 5)} Nights / ${(query?.numberOfNights || 5) + 1} Days</td>
-            </tr>
-            <tr>
-              <td style="padding: 9px 14px; color: #475569; font-weight: 600; background-color: #f8fafc; border-right: 1px solid #e2e8f0;">Passengers:</td>
-              <td style="padding: 9px 14px; color: #0f172a; font-weight: 700; background-color: #ffffff;">${query?.numberOfAdults || 2} Adults</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      <div style="margin-bottom: 24px;">
-        <table style="width: 100%; border-collapse: collapse; font-size: 12px; border: 1px solid #cbd5e1;">
+      <div style="padding: 0 10px; font-family: Arial, sans-serif;">
+        <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 13px; border: 1px solid #b3cae8;">
           <thead>
-            <tr style="background-color: #ebf5ff; text-align: left; border-bottom: 2px solid #bfdbfe;">
-              <th style="padding: 10px 14px; font-weight: 800; color: #1e3a8a; font-size: 11px; text-transform: uppercase; border-right: 1px solid #bfdbfe; width: 110px;">TYPE</th>
-              <th style="padding: 10px 14px; font-weight: 800; color: #1e3a8a; font-size: 11px; text-transform: uppercase; border-right: 1px solid #bfdbfe;">SERVICE DESCRIPTION</th>
-              <th style="padding: 10px 14px; font-weight: 800; color: #1e3a8a; font-size: 11px; text-transform: uppercase; border-right: 1px solid #bfdbfe; width: 150px;">CONFIRMATION STATUS</th>
-              <th style="padding: 10px 14px; font-weight: 800; color: #1e3a8a; font-size: 11px; text-transform: uppercase; width: 160px;">CONFIRMATION NUMBER</th>
+            <tr style="background-color: #dce8f6;">
+              <th colspan="4" style="padding: 9px 14px; font-size: 13px; font-weight: 800; color: #000000; text-align: center; border: 1px solid #b3cae8; letter-spacing: 0.3px;">
+                Trip ID: ${defaultTripId}
+              </th>
             </tr>
           </thead>
           <tbody>
-            ${serviceTableRows}
+            <tr>
+              <td style="padding: 8px 12px; color: #1e293b; width: 18%; font-weight: 500; border: 1px solid #b3cae8;">Start Date</td>
+              <td style="padding: 8px 12px; color: #000000; width: 32%; font-weight: 700; border: 1px solid #b3cae8;">${query?.startDate || "22 December, 2026"}</td>
+              <td style="padding: 8px 12px; color: #1e293b; width: 20%; font-weight: 500; border: 1px solid #b3cae8;">Trip Duration</td>
+              <td style="padding: 8px 12px; color: #000000; width: 30%; font-weight: 700; border: 1px solid #b3cae8;">${defaultDuration}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 12px; color: #1e293b; font-weight: 500; border: 1px solid #b3cae8;">Destination</td>
+              <td colspan="3" style="padding: 8px 12px; color: #000000; font-weight: 700; border: 1px solid #b3cae8;">${defaultDest}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 12px; color: #1e293b; font-weight: 500; border: 1px solid #b3cae8;">Guest Name</td>
+              <td style="padding: 8px 12px; color: #000000; font-weight: 700; border: 1px solid #b3cae8;">${defaultClient}</td>
+              <td style="padding: 8px 12px; color: #1e293b; font-weight: 500; border: 1px solid #b3cae8;">Guest Ph.</td>
+              <td style="padding: 8px 12px; color: #000000; font-weight: 600; border: 1px solid #b3cae8;">${defaultPhone}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 12px; color: #1e293b; font-weight: 500; border: 1px solid #b3cae8;">Pax Details</td>
+              <td colspan="3" style="padding: 8px 12px; color: #000000; font-weight: 700; border: 1px solid #b3cae8;">${defaultPax}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 12px; color: #000000; font-weight: 700; border: 1px solid #b3cae8;">Issued By</td>
+              <td colspan="3" style="padding: 8px 12px; color: #1e293b; font-weight: 500; border: 1px solid #b3cae8;">${defaultIssuedBy}</td>
+            </tr>
           </tbody>
         </table>
       </div>
@@ -2149,24 +2213,58 @@ export const sendAgentVoucherEmail = async (req, res, next) => {
     const safeQueryId = String(query?.queryId || query?._id?.slice(-7) || "1107").replace(/[^a-zA-Z0-9-_]/g, "");
     const isPackageEmail = String(subject || "").toLowerCase().includes("package") || String(voucherNumber || "").startsWith("PKG");
 
+    const nights = Number(query?.numberOfNights || quotation?.nights || 4);
+    const days = Number(query?.numberOfDays || quotation?.days || (nights + 1));
+
+    const defaultVoucherTerms = [
+      "Welcome to Holiday Circuit. These Terms and Conditions govern your use of the Holiday Circuit services. When You Make a booking or reservation, you agree to be bound by these Terms.",
+      "Bookings and Reservations",
+      "Booking Process: When you make a booking or reservation through Holiday Circuit, you agree to provide accurate and complete information. Any discrepancies or errors in the information you provide may result in the cancellation of your booking.",
+      "Payment: Payments for bookings are due as specified during the booking process. Failure to make payments on time may result in the cancellation of your booking.",
+      "Cancellations and Refunds: Cancellation and refund policies vary depending on the type of booking. Please refer to the specific cancellation policy provided at the time of booking. Holiday Circuit reserves the right to charge cancellation fees as applicable.",
+      "Intellectual Property",
+      "Ownership: All content, trademarks, logos, and intellectual property on the Holiday Circuit website and app are the property of Holiday Circuit or its licensors. You may not use, reproduce, or distribute our content without prior written permission.",
+      "Changes to Terms and Conditions: We reserve the right to update and modify these Terms and Conditions at any time. Please review them periodically for changes. Your continued use of our services after any modifications indicates your acceptance of the updated Terms.",
+      "By booking with Holiday Circuit, you acknowledge that you have read, understood, and agreed to these Terms and Conditions.",
+    ];
+
+    const resolvedTerms =
+      query?.termsAndConditions ||
+      query?.voucherDetails?.termsAndConditions ||
+      quotation?.termsAndConditions ||
+      defaultVoucherTerms;
+
     const voucherDetails = {
       voucherNumber: voucherNumber || query?.voucherNumber || `VCH-${query?.queryId || "1070"}`,
-      query: query?.queryId || "QRY",
-      destination: query?.destination || "Destination",
-      duration: query?.duration || `${(query?.numberOfNights || query?.nights || 5)} Nights / ${(query?.numberOfNights || query?.nights || 5) + 1} Days`,
+      query: formattedTripId,
+      queryId: formattedTripId,
+      tripId: formattedTripId,
+      destination: query?.destination || quotation?.destination || "Destination",
+      duration: query?.duration || `${nights} Nights / ${days} Days`,
       passengers: `${query?.numberOfAdults || 2} Adults${Number(query?.numberOfChildren || 0) ? `, ${query.numberOfChildren} Children` : ""}`,
-      name: query?.clientName || query?.name || query?.customerName || query?.guestName || "Valued Client",
-      guestName: query?.clientName || query?.name || query?.customerName || query?.guestName || "Valued Client",
+      name: resolvedGuestName,
+      guestName: resolvedGuestName,
       travelDate: query?.startDate || query?.travelDates?.from || null,
+      startDate: query?.startDate || query?.travelDates?.from || null,
+      endDate: query?.endDate || query?.travelDates?.to || null,
       adults: query?.numberOfAdults || 2,
       children: query?.numberOfChildren || 0,
       infants: query?.numberOfInfants || 0,
+      nights,
+      days,
+      clientPhone: resolvedGuestPhone,
+      guestPhone: resolvedGuestPhone,
+      phone: resolvedGuestPhone,
+      issuedBy: defaultIssuedBy,
       travelerSummary: `${query?.numberOfAdults || 2} Adults${Number(query?.numberOfChildren || 0) ? `, ${query.numberOfChildren} Children` : ""}`,
       travelDates: query?.travelDates ? `${new Date(query.travelDates.from).toLocaleDateString("en-IN")} to ${new Date(query.travelDates.to).toLocaleDateString("en-IN")}` : "Flexible",
-      services: quotation?.services || [],
+      services: (quotation?.services && quotation.services.length > 0) ? quotation.services : (query?.services || query?.voucherServices || []),
       agentName: companyName,
+      companyName,
       companyPhone,
       companyEmail,
+      termsAndConditions: resolvedTerms,
+      terms: resolvedTerms,
       branding: {
         name: companyName,
         address: companyAddress,
@@ -2277,6 +2375,8 @@ export const sendAgentVoucherEmail = async (req, res, next) => {
           termsAndConditions: (Array.isArray(quotation?.termsAndConditions) && quotation.termsAndConditions.length > 0)
             ? quotation.termsAndConditions
             : defaultPackageTerms,
+          includeSellerBankDetails: false,
+          isClientQuotation: true,
           sellerBankDetails: [
             { label: "Bank Name", value: "HDFC Bank" },
             { label: "A/c Holder Name", value: companyName || "Holiday Circuit" },
@@ -2492,6 +2592,41 @@ export const sendHeartbeat = async (req, res, next) => {
   }
 };
 
+// Helper to upload base64 image strings to Cloudinary and return the secure URL
+const uploadBase64ToCloudinary = async (base64String, folder = "holiday-circuit/profiles") => {
+  if (!base64String || typeof base64String !== "string") return "";
+  const trimmed = base64String.trim();
+  if (!trimmed) return "";
+
+  // If already a remote URL (e.g. https://res.cloudinary.com/...), keep it as is
+  if (/^https?:\/\//i.test(trimmed)) {
+    return trimmed;
+  }
+
+  // If it is a base64 Data URI or raw base64 data, upload to Cloudinary
+  if (trimmed.startsWith("data:") || /^[A-Za-z0-9+/=]{50,}/.test(trimmed)) {
+    cloudinary.config({
+      cloud_name: process.env.CLOUDINARY_NAME,
+      api_key: process.env.CLOUDINARY_API_KEY,
+      api_secret: process.env.CLOUDINARY_API_SECRET,
+    });
+
+    try {
+      const uploadResponse = await cloudinary.uploader.upload(trimmed, {
+        folder,
+        resource_type: "auto",
+      });
+
+      return uploadResponse.secure_url || uploadResponse.url || trimmed;
+    } catch (err) {
+      console.error("Cloudinary upload failed for base64 image:", err);
+      throw new ApiError(500, `Failed to upload image to Cloudinary: ${err?.message || err}`);
+    }
+  }
+
+  return trimmed;
+};
+
 // ========================= Update Profile Controller ==========================
 
 export const updateProfile = async (req, res, next) => {
@@ -2512,7 +2647,6 @@ export const updateProfile = async (req, res, next) => {
     const email = String(req.body?.email || "").trim().toLowerCase();
     const phone = String(req.body?.phone || "").trim();
     const companyName = String(req.body?.companyName || "").trim();
-    const profileImage = String(req.body?.profileImage || "").trim();
     const normalizedPhone = phone || undefined;
 
     if (!name) {
@@ -2550,17 +2684,22 @@ export const updateProfile = async (req, res, next) => {
     user.name = name;
     user.email = email;
     user.phone = normalizedPhone;
+
     if (req.body?.profileImage !== undefined) {
-      user.profileImage = String(req.body.profileImage || "").trim();
+      const raw = String(req.body.profileImage || "").trim();
+      user.profileImage = raw ? await uploadBase64ToCloudinary(raw, "holiday-circuit/profiles") : "";
     }
     if (req.body?.coverImage !== undefined) {
-      user.coverImage = String(req.body.coverImage || "").trim();
+      const raw = String(req.body.coverImage || "").trim();
+      user.coverImage = raw ? await uploadBase64ToCloudinary(raw, "holiday-circuit/covers") : "";
     }
     if (req.body?.brandingLogo !== undefined) {
-      user.brandingLogo = String(req.body.brandingLogo || "").trim();
+      const raw = String(req.body.brandingLogo || "").trim();
+      user.brandingLogo = raw ? await uploadBase64ToCloudinary(raw, "holiday-circuit/branding") : "";
     }
     if (req.body?.voucherFooterImage !== undefined) {
-      user.voucherFooterImage = String(req.body.voucherFooterImage || "").trim();
+      const raw = String(req.body.voucherFooterImage || "").trim();
+      user.voucherFooterImage = raw ? await uploadBase64ToCloudinary(raw, "holiday-circuit/vouchers") : "";
     }
     if (req.body?.brandingName !== undefined) {
       user.brandingName = String(req.body.brandingName || "").trim();
@@ -3875,6 +4014,84 @@ export const submitTravelerDocumentsForVerification = async (req, res, next) => 
 
 /* ========================= VIEW QUOTATION CONTROLLER ========================= */
 
+export const enrichQuotationServicesWithConfirmations = async (quotations, query) => {
+  if (!quotations || !quotations.length) return quotations;
+
+  const queryIds = [
+    query?._id,
+    query?.queryId,
+    String(query?._id || ""),
+    String(query?.queryId || ""),
+  ].filter(Boolean);
+
+  const [confirmation, voucher] = await Promise.all([
+    Confirmation.findOne({ queryId: { $in: queryIds } }).lean().catch(() => null),
+    Voucher.findOne({ query: query?._id }).sort({ createdAt: -1 }).lean().catch(() => null),
+  ]);
+
+  const confirmationServices = confirmation?.services || [];
+  const voucherServices = voucher?.services || [];
+
+  return quotations.map((q) => {
+    const qObj = q.toObject ? q.toObject() : { ...q };
+    if (!Array.isArray(qObj.services) || !qObj.services.length) return qObj;
+
+    qObj.voucherNumber = query?.voucherNumber || voucher?.voucherNumber || qObj.voucherNumber;
+    qObj.voucherStatus = query?.voucherStatus || voucher?.status || qObj.voucherStatus;
+
+    qObj.services = qObj.services.map((service, idx) => {
+      const sObj = { ...service };
+      const rawTitle = sObj.title || sObj.name || sObj.serviceName || sObj.hotelName || "";
+      const normTitle = String(rawTitle).toLowerCase().replace(/[^a-z0-9]/g, "");
+
+      // 1. Try matching with Confirmation services
+      const matchedConf = confirmationServices.find((cs, cIdx) => {
+        if (cs._id && sObj._id && String(cs._id) === String(sObj._id)) return true;
+        if (cs.serviceId && sObj.serviceId && String(cs.serviceId) === String(sObj.serviceId)) return true;
+        const csTitle = String(cs.serviceName || cs.title || cs.name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+        if (csTitle && normTitle && (csTitle === normTitle || csTitle.includes(normTitle) || normTitle.includes(csTitle))) return true;
+        return cIdx === idx;
+      });
+
+      // 2. Try matching with Voucher services
+      const matchedVoucher = voucherServices.find((vs, vIdx) => {
+        if (vs._id && sObj._id && String(vs._id) === String(sObj._id)) return true;
+        const vsTitle = String(vs.name || vs.title || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+        if (vsTitle && normTitle && (vsTitle === normTitle || vsTitle.includes(normTitle) || normTitle.includes(vsTitle))) return true;
+        return vIdx === idx;
+      });
+
+      const realCnf =
+        matchedConf?.confirmationNumber ||
+        matchedConf?.voucherNumber ||
+        (matchedVoucher?.confirmation && matchedVoucher.confirmation !== "Pending" ? matchedVoucher.confirmation : null) ||
+        sObj.confirmationNumber ||
+        sObj.voucherNumber ||
+        (sObj.confirmation && !String(sObj.confirmation).toLowerCase().includes("pending") && sObj.confirmation !== "Confirmed(Confirmed)" && sObj.confirmation !== "Confirmed" ? sObj.confirmation : null);
+
+      const status =
+        matchedConf?.status ||
+        matchedVoucher?.status ||
+        (realCnf ? "Confirmed" : (sObj.status || "Pending"));
+
+      if (realCnf) {
+        sObj.confirmationNumber = realCnf;
+        sObj.voucherNumber = realCnf;
+        sObj.confirmation = realCnf;
+        sObj.status = "Confirmed";
+        sObj.isVoucherGenerated = true;
+      } else if (status && status !== "Pending") {
+        sObj.status = status;
+        sObj.confirmation = status;
+      }
+
+      return sObj;
+    });
+
+    return qObj;
+  });
+};
+
 // Get quotations for a specific TravelQuery
 export const getQuotationsByQuery = async (req, res, next) => {
   try {
@@ -3904,17 +4121,86 @@ export const getQuotationsByQuery = async (req, res, next) => {
       status: { $in: AGENT_VISIBLE_QUOTATION_STATUSES },
     }).sort({ updatedAt: -1, createdAt: -1 });
 
+    const enrichedQuotations = await enrichQuotationServicesWithConfirmations(quotations, query);
+
     res.status(200).json({
       success: true,
-      count: quotations.length,
-      quotations
+      count: enrichedQuotations.length,
+      quotations: enrichedQuotations,
     });
 
   } catch (error) {
     next(error);
   }
 };
+// Update Quotation Terms and Conditions
+export const updateQuotationTermsAndConditions = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { termsAndConditions } = req.body;
 
+    if (!id) {
+      return next(new ApiError(400, "Quotation ID is required"));
+    }
+
+    if (!Array.isArray(termsAndConditions)) {
+      return next(new ApiError(400, "termsAndConditions must be an array of strings"));
+    }
+
+    const quotation = await Quotation.findById(id);
+    if (!quotation) {
+      return next(new ApiError(404, "Quotation not found"));
+    }
+
+    // Verify ownership
+    if (req.user.role === "agent" && quotation.agent.toString() !== req.user.id) {
+      return next(new ApiError(403, "Forbidden: You cannot modify this quotation"));
+    }
+
+    quotation.termsAndConditions = termsAndConditions;
+    await quotation.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Terms and conditions updated successfully for the quotation",
+      quotation
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Update Package Terms and Conditions (DMC Package)
+export const updatePackageTermsAndConditions = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { termsAndConditions } = req.body;
+
+    if (!id) {
+      return next(new ApiError(400, "Package ID is required"));
+    }
+
+    if (!Array.isArray(termsAndConditions)) {
+      return next(new ApiError(400, "termsAndConditions must be an array of strings"));
+    }
+
+    const pkg = await mongoose.model("Dmc_Package").findById(id);
+    if (!pkg) {
+      return next(new ApiError(404, "Package not found"));
+    }
+
+    pkg.termsAndConditions = termsAndConditions;
+    await pkg.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Terms and conditions updated successfully for the package",
+      package: pkg
+    });
+  } catch (error) {
+    next(error);
+  }
+};
 
 //================ Accept Quotation by Agent Controller ======================
 
@@ -4267,7 +4553,7 @@ export const confirmQuotation = async (req, res) => {
     const query = await TravelQuery.findById(quotation.queryId);
     let invoice = null;
     if (query) {
-      query.opsStatus = "Invoice_Requested";
+      query.opsStatus = "Confirmed";
       query.agentStatus = "Client Approved";
       query.quotationStatus = "Sent_To_Agent";
       query.activityLog = query.activityLog || [];
@@ -5080,6 +5366,7 @@ const resolveReceiptClientName = (query = {}) => {
   );
 };
 
+
 const resolveAgentReceiptExpectedAmount = (invoice = {}) => {
   const couponApplication = invoice?.paymentSubmission?.couponApplication || null;
   const couponPayableAmount = Math.round(Number(couponApplication?.payableAmount || 0));
@@ -5570,6 +5857,10 @@ export const updateQuotationBranding = async (req, res, next) => {
   }
 };
 
+
+
+
+
 const getAgentTaskStage = (query = {}) => {
   const status = String(query?.agentStatus || "").trim();
   if (["Confirmed", "Booking Confirmed"].includes(status)) return "BOOKING_CONFIRMED";
@@ -5785,6 +6076,154 @@ export const dismissAgentDueTasks = async (req, res, next) => {
     );
 
     return res.json({ success: true, dismissed: result.modifiedCount || 0 });
+  } catch (error) {
+    next(error);
+  }
+};
+
+
+const formatTermDate = (date) => {
+  const d = new Date(date);
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  let hours = d.getHours();
+  const minutes = d.getMinutes().toString().padStart(2, '0');
+  const ampm = hours >= 12 ? 'PM' : 'AM';
+  hours = hours % 12;
+  hours = hours ? hours : 12; 
+  return `${d.getDate()} ${months[d.getMonth()]}, ${d.getFullYear()} ${hours}:${minutes} ${ampm}`;
+};
+
+export const createTermsAndConditions = async (req, res, next) => {
+  try {
+    const userId = getAuthenticatedUserId(req);
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+    const { name, content } = req.body;
+    if (!name || !content) return res.status(400).json({ message: "Name and content are required" });
+
+    const newTerm = new AgentTerm({
+      name,
+      content,
+      createdBy: userId,
+      revisions: [{
+        content,
+        updatedBy: userId,
+        action: "Created"
+      }]
+    });
+
+    await newTerm.save();
+    await newTerm.populate("createdBy", "name");
+
+    const formattedTerm = {
+      id: newTerm._id,
+      name: newTerm.name,
+      by: newTerm.createdBy?.name || 'Agent',
+      on: formatTermDate(newTerm.createdAt),
+      content: newTerm.content,
+      revisions: newTerm.revisions
+    };
+
+    res.status(201).json(formattedTerm);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateTermsAndConditions = async (req, res, next) => {
+  try {
+    const userId = getAuthenticatedUserId(req);
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+    const { id } = req.params;
+    const { name, content } = req.body;
+    
+    const term = await AgentTerm.findById(id);
+    if (!term) return res.status(404).json({ message: "Term not found" });
+
+    if (content && content !== term.content) {
+      term.revisions.push({
+        content,
+        updatedBy: userId,
+        action: "Updated"
+      });
+      term.content = content;
+    }
+    
+    if (name) term.name = name;
+
+    await term.save();
+    await term.populate("createdBy revisions.updatedBy", "name");
+
+    const formattedTerm = {
+      id: term._id,
+      name: term.name,
+      by: term.createdBy?.name || 'Agent',
+      on: formatTermDate(term.createdAt),
+      content: term.content,
+      revisions: term.revisions
+    };
+
+    res.status(200).json(formattedTerm);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const fetchTermsAndConditions = async (req, res, next) => {
+  try {
+    const terms = await AgentTerm.find().populate("createdBy", "name").sort({ createdAt: -1 });
+    
+    const formattedTerms = terms.map(term => ({
+      id: term._id,
+      name: term.name,
+      by: term.createdBy?.name || 'Agent',
+      on: formatTermDate(term.createdAt),
+      content: term.content
+    }));
+
+    res.status(200).json(formattedTerms);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const fetchByIDTermsAndConditions = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const term = await AgentTerm.findById(id).populate("createdBy revisions.updatedBy", "name");
+    
+    if (!term) return res.status(404).json({ message: "Term not found" });
+
+    const formattedTerm = {
+      id: term._id,
+      name: term.name,
+      by: term.createdBy?.name || 'Agent',
+      on: formatTermDate(term.createdAt),
+      content: term.content,
+      revisions: term.revisions.map(rev => ({
+         _id: rev._id,
+         content: rev.content,
+         action: rev.action,
+         updatedAt: rev.updatedAt,
+         formattedDate: formatTermDate(rev.updatedAt),
+         by: rev.updatedBy?.name || 'Agent'
+      }))
+    };
+
+    res.status(200).json(formattedTerm);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const deleteTermsAndConditions = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const term = await AgentTerm.findByIdAndDelete(id);
+    if (!term) return res.status(404).json({ message: "Term not found" });
+
+    res.status(200).json({ message: "Term deleted successfully" });
   } catch (error) {
     next(error);
   }

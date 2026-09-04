@@ -161,7 +161,7 @@ export const AgentApprovalDeskModal = ({
               </div>
 
               <div style={{ padding: 16, flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 16, flexShrink: 0 }}>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4 shrink-0">
                   {[
                     { title: "Needs Review", value: agentApprovalSummary.pending, tone: { bg: "#eff6ff", border: "#bfdbfe", color: "#1d4ed8" } },
                     { title: "Activated", value: agentApprovalSummary.approved, tone: { bg: "#ecfdf3", border: "#bbf7d0", color: "#15803d" } },
@@ -176,10 +176,10 @@ export const AgentApprovalDeskModal = ({
                   ))}
                 </div>
 
-                <div style={{ flex: 1, display: "grid", gridTemplateColumns: "320px minmax(0, 1fr)", gap: 16, overflow: "hidden", alignItems: "stretch" }}>
+                <div className="flex-1 flex flex-col md:grid md:grid-cols-[320px_minmax(0,1fr)] gap-4 overflow-hidden items-stretch">
                   {/* Left list */}
                   <div style={{ border: "1px solid #e2e8f0", borderRadius: 18, background: "linear-gradient(180deg, #ffffff 0%, #eff6ff 100%)", overflow: "hidden", display: "flex", flexDirection: "column", height: "100%" }}>
-                    <div style={{ padding: 10, borderBottom: "1px solid #e2e8f0", display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6, flexShrink: 0 }}>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 shrink-0 p-2 border-b border-slate-200">
                       {[{ key: "pending", label: "Pending" }, { key: "approve", label: "Approved" }, { key: "rejected", label: "Rejected" }, { key: "all", label: "All" }].map((filter) => {
                         const isActive = agentApprovalFilter === filter.key;
                         const filterGradients = {
@@ -391,7 +391,7 @@ export const AgentApprovalDeskModal = ({
                         </div>
 
                         <div className="custom-scroll" style={{ flex: 1, overflowY: "auto", padding: 18 }}>
-                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
                             {[
                               { label: "Primary contact", value: selectedAgent.name || "-", icon: Users },
                               { label: "Email address", value: selectedAgent.email || "-", icon: Mail },
@@ -422,7 +422,7 @@ export const AgentApprovalDeskModal = ({
                                 {selectedAgent.documents?.length || 0} files
                               </span>
                             </div>
-                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                               {(selectedAgent.documents || []).length ? (selectedAgent.documents || []).map((document) => (
                                 <div key={document.id} style={{ padding: 14, borderRadius: 16, border: "1px solid #dbeafe", background: "#fff", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
                                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>

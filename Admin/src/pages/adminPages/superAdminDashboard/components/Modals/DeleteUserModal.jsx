@@ -47,7 +47,7 @@ export const DeleteUserModal = ({
             <p style={{ margin: "8px 0 0", fontSize: 14, fontWeight: 700, color: "#0f172a" }}>{deleteDialogUser?.name || "User"}</p>
             <p style={{ margin: "2px 0 0", fontSize: 13, color: "#475569" }}>{deleteDialogUser?.email || ""}</p>
           </div>
-          <label style={{ display: "block", fontSize: 13, fontWeight: 700, color: "#0f172a" }}>Deletion reason <span style={{ color: "#dc2626" }}>*</span></label>
+          <label style={{ display: "block", fontSize: 13, fontWeight: 700, color: "#0f172a" }}>Deletion reason (optional)</label>
           <textarea
             value={deleteReason}
             onChange={(e) => setDeleteReason(e.target.value)}
@@ -55,14 +55,14 @@ export const DeleteUserModal = ({
             rows={4}
             style={{ width: "100%", marginTop: 8, padding: "12px", borderRadius: 12, border: "1px solid #e2e8f0", outline: "none", fontSize: 13, color: "#0f172a", resize: "none" }}
           />
-          <p style={{ margin: "8px 0 0", fontSize: 12, color: "#94a3b8" }}>Keep it short and clear. This note will be visible in the admin log and sent to the user.</p>
+          <p style={{ margin: "8px 0 0", fontSize: 12, color: "#94a3b8" }}>Optional note. This will be sent to the user if an email is configured.</p>
         </div>
         <div style={{ padding: 18, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 10, borderTop: "1px solid #f1f5f9" }}>
           <button type="button" onClick={closeDeleteDialog} style={{ height: 40, padding: "0 14px", borderRadius: 12, border: "1px solid #e2e8f0", background: "#fff", cursor: "pointer", fontWeight: 700, color: "#0f172a" }}>Cancel</button>
           <button
             type="button"
             onClick={() => handleDeleteUser(deleteDialogUser.id, deleteReason)}
-            disabled={isBusyAction(deleteDialogUser.id) || !String(deleteReason || "").trim()}
+            disabled={isBusyAction(deleteDialogUser.id)}
             style={{ height: 40, padding: "0 14px", borderRadius: 12, border: "1px solid #fecaca", background: isBusyAction(deleteDialogUser.id) ? "#fee2e2" : "#ef4444", cursor: isBusyAction(deleteDialogUser.id) ? "not-allowed" : "pointer", fontWeight: 800, color: isBusyAction(deleteDialogUser.id) ? "#991b1b" : "#fff" }}
           >
             {isBusyAction(deleteDialogUser.id) ? "Deleting..." : "Delete User"}

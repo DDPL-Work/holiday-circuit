@@ -57,7 +57,7 @@ const menuConfig = {
   ],
   finance_partner: [
     { label: "Finance Dashboard", path: "/finance/dashboard", icon: LayoutGrid },
-    { label: "Advanced Analytics", path: "/finance/advancedAnalytics", icon: VscGraph },
+    // { label: "Advanced Analytics", path: "/finance/advancedAnalytics", icon: VscGraph },
     { label: "Payment Verification", path: "/finance/paymentVerification", icon: MdOutlineVerifiedUser },
     { label: "Internal Invoice", path: "/finance/internalInvoice", icon: FaFileInvoice },
   ],

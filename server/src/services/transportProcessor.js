@@ -16,8 +16,8 @@ const parseExcelDate = (val, fallback = null) => {
   return parsed && !isNaN(parsed.getTime()) ? parsed : fallback;
 };
 
-export const processTransportExcel = async (filePath, ownerId) => {
-  const workbook = XLSX.readFile(filePath);
+export const processTransportExcel = async (filePath, ownerId, providedWorkbook = null, sourceUpload = null) => {
+  const workbook = providedWorkbook || XLSX.readFile(filePath);
   const blackoutDates = parseBlackoutDatesFromWorkbook(workbook);
 
   const sheetName =
@@ -143,6 +143,7 @@ export const processTransportExcel = async (filePath, ownerId) => {
         serviceName: currService || "Transport Service",
         supplierName: currSupplier,
         supplier: ownerId,
+        sourceUpload,
         country: currCountry || "India",
         city: currCity || "New Delhi",
         serviceCategory: "transport",
@@ -268,13 +269,15 @@ export const processTransportExcel = async (filePath, ownerId) => {
     const serviceNames = finalDocs.map((d) => d.serviceName).filter(Boolean);
     if (serviceNames.length > 0) {
       const deleteFilter = { serviceName: { $in: serviceNames } };
-      if (supplierId) {
-        deleteFilter.supplier = supplierId;
+      if (ownerId) {
+        deleteFilter.supplier = ownerId;
       }
       await Transport.deleteMany(deleteFilter);
     }
 
-    const batchSize = 100;
+    // Fewer database round trips for large supplier workbooks, while keeping
+    // each insert safely below MongoDB's command-size limits.
+    const batchSize = 500;
     for (let b = 0; b < finalDocs.length; b += batchSize) {
       const batch = finalDocs.slice(b, b + batchSize);
       await Transport.insertMany(batch, { ordered: false });
@@ -283,4 +286,3 @@ export const processTransportExcel = async (filePath, ownerId) => {
 
   return { records: finalDocs.length, count: finalDocs.length, blackoutDates: blackoutDates || [] };
 };
-

@@ -309,13 +309,22 @@ const QUOTATION_BRAND = Object.freeze({
 });
 
 export const buildAgentClientQuotationTemplate = (quoteDetails = {}) => {
-  const isOps = Boolean(
+  const isClientQuote = Boolean(
+    quoteDetails.isClientQuotation ||
+    quoteDetails.includeSellerBankDetails === false
+  );
+  const isOps = !isClientQuote && Boolean(
     quoteDetails.isOpsQuotation ||
     quoteDetails.fromOpsSide ||
     quoteDetails.agentBrandingName === QUOTATION_BRAND.name ||
     quoteDetails.agentBrandingName === "Holiday Circuit" ||
     quoteDetails.agencyName === "Holiday Circuit"
   );
+  const showBankDetails = !isClientQuote && Boolean(
+    quoteDetails.includeSellerBankDetails ||
+    isOps
+  );
+  const showPriceBreakup = Boolean(quoteDetails.showPriceBreakup);
   const brandName = isOps 
     ? QUOTATION_BRAND.name 
     : (quoteDetails.agentBrandingName || quoteDetails.agencyName || QUOTATION_BRAND.name);
@@ -605,7 +614,7 @@ export const buildAgentClientQuotationTemplate = (quoteDetails = {}) => {
         ${opDays ? `<span style="background-color: #f1f5f9; border: 1px solid #cbd5e1; color: #475569; font-weight: 500; padding: 2px 6px; border-radius: 4px; display: inline-block;">📅 ${opDays}</span>` : ""}
         ${timingsDisplay ? `<span style="background-color: #f1f5f9; border: 1px solid #cbd5e1; color: #475569; font-weight: 500; padding: 2px 6px; border-radius: 4px; display: inline-block;">⌛ ${timingsDisplay}</span>` : ""}
       </div>
-      ${(adultPriceNum > 0 || childPriceNum > 0) ? `
+      ${(showPriceBreakup && (adultPriceNum > 0 || childPriceNum > 0)) ? `
         <div style="margin-top: 4px; font-size: 11px; color: #047857; font-weight: 600;">
           ${adultPriceNum > 0 ? `Adult: ₹${adultPriceNum.toLocaleString("en-IN")}` : ""}${childPriceNum > 0 ? ` | Child: ₹${childPriceNum.toLocaleString("en-IN")}` : ""}
         </div>
@@ -884,6 +893,7 @@ export const buildAgentClientQuotationTemplate = (quoteDetails = {}) => {
       </table>
 
       <!-- 3.1 BANK DETAILS FOR PAYMENT -->
+      ${showBankDetails ? `
       <table width="100%" cellspacing="0" cellpadding="0" style="border-collapse: collapse; margin-bottom: 20px; border: 1px solid #d1d5db;">
         <thead>
           <tr>
@@ -915,6 +925,7 @@ export const buildAgentClientQuotationTemplate = (quoteDetails = {}) => {
           </tr>
         </tbody>
       </table>
+      ` : ""}
 
       <!-- 4. INCLUSIONS & EXCLUSIONS -->
       <table width="100%" cellspacing="0" cellpadding="0" style="border-collapse: collapse; margin-bottom: 20px; border: 1px solid #d1d5db;">
@@ -1176,6 +1187,13 @@ export const buildVoucherTemplate = (voucherDetails, branding = "with") => {
     travelerSummary: voucherDetails.travelerSummary,
     passengers: voucherDetails.passengers,
   });
+
+  const rawTerms = voucherDetails?.termsAndConditions || voucherDetails?.terms || [];
+  const termsList = Array.isArray(rawTerms)
+    ? rawTerms.filter((t) => typeof t === "string" && t.trim().length > 0)
+    : typeof rawTerms === "string"
+    ? rawTerms.split("\n").map((t) => t.trim()).filter((t) => t.length > 0)
+    : [];
 
   const serviceRowsHtml = (voucherDetails.services || [])
     .map((service) => {
@@ -1480,6 +1498,23 @@ export const buildVoucherTemplate = (voucherDetails, branding = "with") => {
               </tbody>
             </table>
 
+            ${termsList.length > 0 ? `
+              <div class="section-heading" style="margin: 24px 0 12px; font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.8px; color: #ffffff; background: linear-gradient(135deg, #020617, #0f172a, #d95508); padding: 10px 14px; font-family: 'Outfit', sans-serif; border-bottom: 2px solid #101b31;">
+                Terms &amp; Conditions
+              </div>
+              <table class="services-table-card" width="100%" style="width: 100%; border-collapse: collapse; border: 1px solid #cfd6de;">
+                <tbody>
+                  ${termsList.map((term, idx) => `
+                    <tr>
+                      <td style="padding: 10px 14px; font-size: 12px; color: #334155; line-height: 1.6; border-bottom: 1px solid #d6dde7; font-family: 'Plus Jakarta Sans', Arial, sans-serif;">
+                        <strong style="color: #0f172a; margin-right: 6px;">${idx + 1}.</strong> ${escapeHtml(term)}
+                      </td>
+                    </tr>
+                  `).join("")}
+                </tbody>
+              </table>
+            ` : ""}
+
             <div class="generated-note" style="text-align: center; font-size: 11px; color: #64748b; margin: 24px 0 0; font-weight: 500; font-family: 'Plus Jakarta Sans', Arial, sans-serif;">
               This is a computer generated document. No signature/stamp required.
             </div>
@@ -1643,6 +1678,9 @@ const getTransportLimitLabelForQuote = (service = {}) => {
   return explicitLimitLabel || TRANSPORT_USAGE_LIMIT_LABELS[optionKey] || "";
 };
 
+
+
+
 const buildServiceQuantityLabel = (service = {}, fallbackPax = 0) => {
   const normalizedType = String(service?.type || "").trim().toLowerCase();
   const details = [];
@@ -1676,6 +1714,7 @@ const buildServiceQuantityLabel = (service = {}, fallbackPax = 0) => {
   return details.join(" | ");
 };
 
+
 const buildTransportQuotationNotes = (service = {}) => {
   const optionKey = normalizeTransportUsageOptionKeyForQuote(
     service?.transportUsageOptionKey ||
@@ -1700,6 +1739,8 @@ const buildTransportQuotationNotes = (service = {}) => {
 
   return notes;
 };
+
+
 
 export const buildFinalInvoiceTemplate = (invoiceDetails = {}) => {
   const currency = invoiceDetails.currency || "INR";
@@ -2113,6 +2154,7 @@ export const buildFinalInvoiceTemplate = (invoiceDetails = {}) => {
   `;
 };
 
+
 const processInlineCidImages = (rawHtml = "") => {
   const inlineAttachments = [];
   let cidCounter = 0;
@@ -2137,6 +2179,8 @@ const processInlineCidImages = (rawHtml = "") => {
 
   return { html: cleanHtml, inlineAttachments };
 };
+
+
 
 export const sendEmailQuote = async (email, quoteDetails) => {
   const transporter = createTransporter();
@@ -2250,7 +2294,6 @@ export const sendAgentClientQuotationMail = async (email, quoteDetails = {}) => 
 };
 
 
-
 export const sendEmailVoucher = async (
   email,
   voucherDetails,
@@ -2279,9 +2322,6 @@ export const sendEmailVoucher = async (
   console.log("VOUCHER EMAIL SENT:", info.response);
   return { status: "sent", email };
 };
-
-
-
 
 export const sendEmailFinalInvoice = async (email, invoiceDetails) => {
   const transporter = createTransporter();
@@ -2313,6 +2353,7 @@ export const sendEmailFinalInvoice = async (email, invoiceDetails) => {
     rejected: info.rejected,
   };
 };
+
 
 export const sendDmcPayoutReceiptMail = async (email, receiptDetails = {}) => {
   const transporter = createTransporter();
@@ -2390,6 +2431,8 @@ export const sendDmcPayoutReceiptMail = async (email, receiptDetails = {}) => {
     rejected: info.rejected,
   };
 };
+
+
 
 export const sendAgentPaymentReceiptMail = async (email, receiptDetails = {}) => {
   const transporter = createTransporter();
@@ -2527,6 +2570,8 @@ const buildCouponEmailTemplate = (couponDetails = {}) => {
 };
 
 //-------------------------------- Send Coupon Email Service ------------------------
+
+
 
 export const sendCouponEmail = async (email, couponDetails = {}) => {
   const transporter = createTransporter();

@@ -79,7 +79,7 @@ export default function VoucherManagement() {
     }
   };
 
-  const handleSendVoucher = async (id, branding = "with", dispatchChannel = "EMAIL", recipientEmail = "", recipientPhone = "") => {
+  const handleSendVoucher = async (id, branding = "with", dispatchChannel = "EMAIL", recipientEmail = "", recipientPhone = "", terms = null) => {
     try {
       setSendingVoucher(true);
       const { data } = await API.patch(`/ops/vouchers/${id}/send`, {
@@ -87,6 +87,7 @@ export default function VoucherManagement() {
         dispatchChannel,
         email: recipientEmail,
         phone: recipientPhone,
+        termsAndConditions: terms,
       });
       toast.success(data?.message || "Voucher sent successfully");
       setShowPreview(false);
@@ -105,13 +106,14 @@ export default function VoucherManagement() {
     setShowPreview(true);
   };
 
-  const handleDownloadVoucher = (voucher, branding = "with") => {
+  const handleDownloadVoucher = (voucher, branding = "with", terms = null) => {
     try {
       const agentBranding = {
-        name: voucher.agentBrandingName || voucher.agentName || "",
+        name: voucher.agentBrandingName || voucher.agentName || "Holiday Circuit",
         logo: voucher.agentLogo || "",
       };
-      const html = buildVoucherHtml(voucher, branding, agentBranding);
+      const enrichedVoucher = terms ? { ...voucher, termsAndConditions: terms } : voucher;
+      const html = buildVoucherHtml(enrichedVoucher, branding, agentBranding);
       const blob = new Blob([html], { type: "text/html;charset=utf-8" });
       const url = URL.createObjectURL(blob);
 
@@ -277,8 +279,8 @@ export default function VoucherManagement() {
           data={selectedVoucher}
           mode={modalMode}
           loading={sendingVoucher}
-          onSend={(branding, dispatchChannel, recipientEmail, recipientPhone) =>
-            handleSendVoucher(selectedVoucher.id, branding, dispatchChannel, recipientEmail, recipientPhone)
+          onSend={(branding, dispatchChannel, recipientEmail, recipientPhone, terms) =>
+            handleSendVoucher(selectedVoucher.id, branding, dispatchChannel, recipientEmail, recipientPhone, terms)
           }
           onDownload={handleDownloadVoucher}
           onClose={() => setShowPreview(false)}

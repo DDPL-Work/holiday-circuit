@@ -26,7 +26,7 @@ export const DashboardCharts = ({
     <div style={{ padding: "0 16px" }}>
       <div id="finance-dashboard" className="scroll-mt-5" />
       <div id="advanced-analytics" className="scroll-mt-5" />
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginTop: 16 }}>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mt-4">
         {/* Agent Performance */}
         <div
           style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 16, padding: 20 }}

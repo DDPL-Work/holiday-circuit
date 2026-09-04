@@ -10,6 +10,7 @@ import {
   Box,
   TicketPercent,
   PackagePlus,
+  LucideSheet,
 } from "lucide-react";
 import { MdOutlineDashboardCustomize, MdOutlineVerifiedUser } from "react-icons/md";
 import { GrUserManager } from "react-icons/gr";
@@ -41,6 +42,8 @@ const menuConfig = {
     { label: "Booking Confirmation", path: "/dmc/confirmation", icon: CircleCheckBig },
     { label: "Payment Verification", path: "/finance/paymentVerification", icon: CircleCheckBig },
     { label: "Internal Invoice", path: "/finance/internalInvoice", icon: FilePlus2 },
+    { label: "Terms & Conditions", path: "/admin/terms-conditions", icon: LucideSheet },
+    { label: "Incl & Excl", path: "/admin/inc-exc-presets", icon: LucideSheet },
   ],
   operations: [
     { label: "OPS Dashboard", path: "/ops/dashboard", icon: LayoutGrid },

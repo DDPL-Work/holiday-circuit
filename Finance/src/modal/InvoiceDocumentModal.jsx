@@ -9,6 +9,7 @@ import {
   formatRoundedAmount,
   formatIntegerInput,
   amountsMatch,
+  getItemSubtotal,
   getExpectedInvoiceSummary,
   getUploadedInvoiceSummary,
   referenceMatchesSelectedBank,
@@ -35,7 +36,20 @@ const InvoiceDocumentModal = ({ invoice, onClose, onInvoiceUpdated, sidePanelOpe
   const [dateInput, setDateInput] = useState('');
   const [sourceBank, setSourceBank] = useState('');
 
-  const payoutInstallments = invoice.payoutInstallments || [];
+  const payoutInstallments =
+    Array.isArray(invoice.payoutInstallments) && invoice.payoutInstallments.length > 0
+      ? invoice.payoutInstallments
+      : Number(invoice.payoutAmount || 0) > 0
+        ? [
+            {
+              amount: Number(invoice.payoutAmount),
+              utrNumber: invoice.payoutReference || invoice.utr || "Recorded",
+              bankName: invoice.payoutBank || invoice.bank || "Bank Transfer",
+              paymentDate: invoice.payoutDate || invoice.date || "Settled",
+            },
+          ]
+        : [];
+
   const cumulativePaid = payoutInstallments.reduce(
     (sum, inst) => sum + Number(inst.amount || 0),
     0
@@ -44,9 +58,58 @@ const InvoiceDocumentModal = ({ invoice, onClose, onInvoiceUpdated, sidePanelOpe
   const remainingBalance = Math.max(0, expectedPayoutAmount - cumulativePaid);
   const roundedRemainingBalance = Math.round(remainingBalance);
 
+  const invoiceItems = Array.isArray(invoice.items) && invoice.items.length > 0
+    ? invoice.items
+    : Array.isArray(invoice.services) && invoice.services.length > 0
+      ? invoice.services
+      : [];
+
+  const [selectedItemIndices, setSelectedItemIndices] = useState([]);
+
   const [transferAmount, setTransferAmount] = useState(
-    remainingBalance > 0 ? formatIntegerInput(Math.round(remainingBalance)) : ""
+    invoiceItems.length > 0
+      ? ""
+      : remainingBalance > 0
+        ? formatIntegerInput(Math.round(remainingBalance))
+        : ""
   );
+
+  const getItemTotal = (item) => getItemSubtotal(item);
+
+  const calculateTransferAmountFromIndices = (indices) => {
+    if (!invoiceItems.length) return;
+    const subtotal = invoiceItems.reduce((sum, item) => sum + getItemTotal(item), 0) || 1;
+    const selectedSubtotal = invoiceItems.reduce(
+      (sum, item, idx) => (indices.includes(idx) ? sum + getItemTotal(item) : sum),
+      0,
+    );
+    const expectedSum = getExpectedInvoiceSummary(invoice);
+    const ratio = subtotal > 0 ? selectedSubtotal / subtotal : 0;
+    const computedTotal = Math.round((expectedSum.grandTotal || remainingBalance) * ratio);
+    setTransferAmount(computedTotal > 0 ? formatIntegerInput(computedTotal) : "");
+  };
+
+  const handleToggleItem = (index) => {
+    setSelectedItemIndices((prev) => {
+      const next = prev.includes(index)
+        ? prev.filter((i) => i !== index)
+        : [...prev, index];
+      calculateTransferAmountFromIndices(next);
+      return next;
+    });
+  };
+
+  const handleSelectAllItems = () => {
+    const all = invoiceItems.map((_, idx) => idx);
+    setSelectedItemIndices(all);
+    calculateTransferAmountFromIndices(all);
+  };
+
+  const handleDeselectAllItems = () => {
+    setSelectedItemIndices([]);
+    setTransferAmount("");
+  };
+
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [showDispatchModal, setShowDispatchModal] = useState(false);
   const [selectedDispatchChannel, setSelectedDispatchChannel] = useState('EMAIL');
@@ -585,6 +648,7 @@ const InvoiceDocumentModal = ({ invoice, onClose, onInvoiceUpdated, sidePanelOpe
                   bankOptions={bankOptions}
                   bankReferenceMatched={bankReferenceMatched}
                   payoutReferenceDetailsComplete={payoutReferenceDetailsComplete}
+                  payoutDetailsComplete={payoutDetailsComplete}
                   transferAmount={transferAmount}
                   setTransferAmount={setTransferAmount}
                   formatIntegerInput={formatIntegerInput}
@@ -596,6 +660,11 @@ const InvoiceDocumentModal = ({ invoice, onClose, onInvoiceUpdated, sidePanelOpe
                   handleReject={handleReject}
                   handleConfirm={handleConfirm}
                   isSubmitting={isSubmitting}
+                  invoiceItems={invoiceItems}
+                  selectedItemIndices={selectedItemIndices}
+                  handleToggleItem={handleToggleItem}
+                  handleSelectAllItems={handleSelectAllItems}
+                  handleDeselectAllItems={handleDeselectAllItems}
                 />
               </div>
             </motion.div>

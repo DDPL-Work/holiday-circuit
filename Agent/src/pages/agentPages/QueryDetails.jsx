@@ -51,6 +51,10 @@ import {
   Navigation,
   Luggage,
   Briefcase,
+  Clock,
+  Timer,
+  Hourglass,
+  Compass,
 } from "lucide-react";
 import React, { useEffect, useState, useMemo, useRef, Fragment } from "react";
 import { useNavigate } from "react-router-dom";
@@ -77,45 +81,50 @@ import {
   buildPublicAssetUrl,
   getOrdinalSuffix,
   getPackageNightCount,
-  buildItineraryDayLabel,
   getRelativeTimeString,
-  formatUsageLabel,
-  formatServiceTypeLabel,
-  getServiceDescriptionBits,
-  SELLER_BANK_DETAILS,
-  QUOTATION_TERMS,
-  CLIENT_SHARE_TERMS,
   formatAmountValue,
-  parseShareDate,
-  formatShareDate,
-  formatShareActivityDate,
-  formatShareItineraryDate,
-  addDaysToShareDate,
-  getShareDateDiff,
   getDurationMeta,
   getClientRecipientName,
   getQueryTravelerCounts,
-  buildClientTravelerSummary,
-  normalizeShareServiceType,
   inferSharingLabel,
-  buildClientServiceQuantityLabel,
-  DEFAULT_SELLER_BANK_DETAILS,
-  TRANSPORT_USAGE_LABELS,
-  TRANSPORT_USAGE_LIMIT_LABELS,
   fetchQuotationsByQuery,
   getSavedAgentBranding,
+  calculateAgentMarkupPreview,
+  validateAgentMarkupInput,
 } from "./queryDetails/utils/queryDetailsHelpers";
 
-import { ActionPillButton } from "./queryDetails/components/Cards/ActionPillButton";
-import { QuoteInfoListCard } from "./queryDetails/components/Cards/QuoteInfoListCard";
-import { QuoteDayWiseItineraryCard } from "./queryDetails/components/Cards/QuoteDayWiseItineraryCard";
-import { QuoteSellerBankDetailsCard } from "./queryDetails/components/Cards/QuoteSellerBankDetailsCard";
-import { QuoteTermsAndConditionsCard } from "./queryDetails/components/Cards/QuoteTermsAndConditionsCard";
-import { QuoteServiceListCard } from "./queryDetails/components/Cards/QuoteServiceListCard";
 import { QueryHeaderCard } from "./queryDetails/components/Header/QueryHeaderCard";
 import { QueryTabNavigation } from "./queryDetails/components/Navigation/QueryTabNavigation";
 import { RevisionModal } from "./queryDetails/components/Modals/RevisionModal";
 import { SendSuccessModal } from "./queryDetails/components/Modals/SendSuccessModal";
+import { InlineTermsEditor } from "./queryDetails/components/InlineEditors/InlineTermsEditor";
+
+function renderItemDescription(description) {
+  if (!description) return null;
+  const text = String(description).trim();
+  if (!text) return null;
+  const parts = text.split(/\s*\|\s*/).filter(Boolean);
+  if (parts.length <= 3) {
+    return <p className="text-xs text-slate-500 font-normal mt-1 leading-relaxed">{text}</p>;
+  }
+  let breakIdx = 4;
+  for (let i = 0; i < parts.length; i++) {
+    const p = parts[i].toLowerCase();
+    if (p.includes("hours") || p.includes("full day") || p.includes("half day")) {
+      breakIdx = i + 1;
+      break;
+    }
+  }
+  if (breakIdx >= parts.length) breakIdx = Math.ceil(parts.length / 2);
+  const descLine1 = parts.slice(0, breakIdx).join(" | ") + " |";
+  const descLine2 = parts.slice(breakIdx).join(" | ");
+  return (
+    <div className="text-xs text-slate-500 font-normal mt-1 leading-relaxed space-y-0.5">
+      <p>{descLine1}</p>
+      <p>{descLine2}</p>
+    </div>
+  );
+}
 
 const QueryDetails = ({ query, onClose, onRefresh }) => {
   const dispatch = useDispatch();
@@ -132,6 +141,11 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
   const [activeQuoteId, setActiveQuoteId] = useState(null);
   const [markupTargetMode, setMarkupTargetMode] = useState("QUOTATION");
   const [markupTargetItem, setMarkupTargetItem] = useState(null);
+  const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
+  const [rejectNote, setRejectNote] = useState("");
+  const [rejecting, setRejecting] = useState(false);
+
+  const inlineTermsRefs = useRef({});
   const [isRevisionModalOpen, setIsRevisionModalOpen] = useState(false);
   const [revisionQuoteId, setRevisionQuoteId] = useState(null);
   const [revisionReason, setRevisionReason] = useState("");
@@ -146,6 +160,8 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
   const [sendSubmittingId, setSendSubmittingId] = useState(null);
   const [sendSuccessMeta, setSendSuccessMeta] = useState(null);
   const [isSendModalOpen, setIsSendModalOpen] = useState(false);
+  const [isVoucherPreviewModalOpen, setIsVoucherPreviewModalOpen] = useState(false);
+  const [voucherPreviewHtml, setVoucherPreviewHtml] = useState("");
   const [sendQuoteId, setSendQuoteId] = useState(null);
   const [sendShareMode, setSendShareMode] = useState("QUOTATION");
   const [sendRecipientEmail, setSendRecipientEmail] = useState("");
@@ -1014,36 +1030,118 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
     const targetQuote = activeQuote || quotes[0] || {};
     const rawServices = Array.isArray(targetQuote?.services) && targetQuote.services.length > 0
       ? targetQuote.services
-      : Array.isArray(query?.services)
-      ? query.services
-      : [];
+      : (Array.isArray(query?.services) && query.services.length > 0
+          ? query.services
+          : (Array.isArray(query?.voucherServices) && query.voucherServices.length > 0
+              ? query.voucherServices
+              : []));
 
-    const nights = query?.nights || targetQuote?.nights || 4;
-    const days = query?.days || targetQuote?.days || (nights + 1);
+    const nights = Number(query?.nights || query?.numberOfNights || targetQuote?.nights || 4);
+    const days = Number(query?.days || query?.numberOfDays || targetQuote?.days || (nights + 1));
+
+    const targetQueryId = query?._id || query?.queryId || targetQuote?.queryId;
+    let savedTourists = null;
+    if (typeof window !== "undefined" && targetQueryId) {
+      try {
+        const rawSaved =
+          localStorage.getItem(`trip_tourists_${targetQueryId}`) ||
+          localStorage.getItem(`trip_tourists_${String(targetQueryId).replace(/^#\s*/, "")}`);
+        if (rawSaved) savedTourists = JSON.parse(rawSaved);
+      } catch (e) {}
+    }
+    const primaryTourist = Array.isArray(savedTourists) && savedTourists.length > 0
+      ? (savedTourists.find((t) => t.isFlagged) || savedTourists[0])
+      : null;
+    const touristName = primaryTourist ? [primaryTourist.salutation, primaryTourist.name].filter(Boolean).join(" ").trim() : "";
+    const primaryPhoneObj = primaryTourist?.phones?.find((p) => p.isPrimary) || primaryTourist?.phones?.[0];
+    const touristPhoneRaw = primaryPhoneObj?.number ? String(primaryPhoneObj.number).trim() : "";
+    const touristPhoneCode = primaryPhoneObj?.countryCode ? `+${primaryPhoneObj.countryCode.split("-")[0]}-` : "+91-";
+    const touristPhone = touristPhoneRaw ? (touristPhoneRaw.startsWith("+") ? touristPhoneRaw : `${touristPhoneCode}${touristPhoneRaw}`) : "";
+
+    const travelerDetailsPhone = query?.travelerDetails?.[0]?.phone || targetQuote?.travelerDetails?.[0]?.phone || "";
+    const travelerDetailsName = query?.travelerDetails?.[0]?.fullName || targetQuote?.travelerDetails?.[0]?.fullName || "";
+
+    const resolvedGuestName =
+      touristName ||
+      travelerDetailsName ||
+      query?.clientName ||
+      query?.leadTraveler ||
+      query?.name ||
+      query?.customerName ||
+      query?.guestName ||
+      targetQuote?.clientName ||
+      targetQuote?.guestName ||
+      "Valued Client";
+
+    const resolvedGuestPhone =
+      touristPhone ||
+      query?.clientPhone ||
+      query?.phone ||
+      query?.contactNumber ||
+      travelerDetailsPhone ||
+      targetQuote?.clientPhone ||
+      targetQuote?.phone ||
+      "-";
+
+    const cleanGuestPhone = (!resolvedGuestPhone || String(resolvedGuestPhone).includes("8287725270")) ? "-" : resolvedGuestPhone;
+
+    const queryNum = query?.queryId || query?.queryNumber || targetQuote?.queryId || "";
+    const cleanQueryNum = String(queryNum).replace(/^#\s*/, "").trim();
+    const formattedTripId = cleanQueryNum ? (cleanQueryNum.toUpperCase().startsWith("QRY-") ? cleanQueryNum.toUpperCase() : `QRY-${cleanQueryNum}`) : (query?._id || "4304633");
+    const formattedVoucherNo = query?.voucherNumber || targetQuote?.voucherNumber || (cleanQueryNum ? `VCH-${cleanQueryNum.replace(/^QRY-?/i, "")}` : "VCH-001");
+
+    const candidateTerms =
+      query?.voucherDetails?.termsAndConditions ||
+      query?.voucher?.termsAndConditions ||
+      query?.termsAndConditions ||
+      query?.voucherTerms ||
+      query?.voucherDetails?.terms ||
+      query?.voucher?.terms ||
+      targetQuote?.voucherDetails?.termsAndConditions ||
+      targetQuote?.voucher?.termsAndConditions ||
+      targetQuote?.termsAndConditions ||
+      targetQuote?.voucherTerms ||
+      targetQuote?.voucherDetails?.terms ||
+      targetQuote?.voucher?.terms ||
+      query?.activeQuote?.termsAndConditions ||
+      query?.quotation?.termsAndConditions ||
+      query?.terms ||
+      targetQuote?.terms;
 
     return {
       _id: query?._id,
-      query: query?.queryId || query?._id,
-      voucherNumber: query?.voucherNumber || `VCH-${query?.queryId || "001"}`,
-      name: query?.name || query?.clientName || query?.customerName || query?.guestName || "Valued Client",
-      guestName: query?.name || query?.clientName || query?.customerName || query?.guestName || "Valued Client",
-      destination: query?.destination || "Destination",
-      travelDate: query?.startDate || null,
-      passengers: `${(query?.numberOfAdults || 1)} Adults${query?.numberOfChildren > 0 ? `, ${query.numberOfChildren} Children` : ""}`,
-      duration: query?.duration || targetQuote?.duration || `${nights}N / ${days}D`,
-      adults: query?.numberOfAdults || 1,
-      children: query?.numberOfChildren || 0,
+      query: formattedTripId,
+      queryId: formattedTripId,
+      tripId: formattedTripId,
+      voucherNumber: formattedVoucherNo,
+      name: resolvedGuestName,
+      guestName: resolvedGuestName,
+      destination: query?.destination || targetQuote?.destination || "Destination",
+      travelDate: query?.startDate || targetQuote?.startDate || null,
+      startDate: query?.startDate || targetQuote?.startDate || null,
+      endDate: query?.endDate || targetQuote?.endDate || null,
+      passengers: `${(query?.numberOfAdults || targetQuote?.numberOfAdults || 2)} Adults${(query?.numberOfChildren || targetQuote?.numberOfChildren) > 0 ? `, ${query?.numberOfChildren || targetQuote?.numberOfChildren} Child${(query?.numberOfChildren || targetQuote?.numberOfChildren) > 1 ? "ren" : ""}` : ""}`,
+      duration: query?.duration || targetQuote?.duration || `${nights} Night${nights > 1 ? "s" : ""} / ${days} Days`,
+      adults: query?.numberOfAdults || targetQuote?.numberOfAdults || 2,
+      children: query?.numberOfChildren || targetQuote?.numberOfChildren || 0,
+      nights,
+      days,
       services: rawServices.map((s) => ({
-        type: s.type || "service",
-        title: s.title || s.name || s.description || "Service details",
-        name: s.title || s.name || s.description || "Service details",
-        status: s.confirmationNumber || s.status ? "Confirmed" : "Pending",
-        confirmation: s.confirmationNumber || s.status || "Pending",
+        ...s,
+        type: s.type || s.category || "service",
+        title: s.title || s.name || s.hotelName || s.serviceName || s.description || "Service details",
+        name: s.title || s.name || s.hotelName || s.serviceName || s.description || "Service details",
       })),
+      clientPhone: cleanGuestPhone,
+      guestPhone: cleanGuestPhone,
+      phone: cleanGuestPhone,
+      issuedBy: query?.voucherDetails?.issuedBy || query?.issuedBy || "Holiday Circuit",
       agencyPhone: currentUser?.phone || "+91 8851346665",
       agencyEmail: currentUser?.email || "ops@holidaycircuit.com",
-      agencyAddress: currentUser?.companyAddress || currentUser?.address || "2nd Floor, 632 Block B1, Janakpuri, New Delhi - 110058",
+      agencyAddress: currentUser?.companyAddress || currentUser?.address || "KG 3/69, Ground Floor, Vikas Puri, New Delhi, Near UK Nursing Home, New Delhi, Delhi, India - 110018",
       voucherFooterImage: currentUser?.voucherFooterImage || currentUser?.footerBanner || currentUser?.pdfFooterImage || "",
+      termsAndConditions: candidateTerms || [],
+      terms: candidateTerms || [],
     };
   };
 
@@ -1053,16 +1151,23 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
       const targetQuote = activeQuote || quotes[0] || {};
       const agentBranding = getSavedAgentBranding({ quote: targetQuote, user: currentUser });
       const htmlContent = buildVoucherHtml(vData, "with", agentBranding);
+
       const win = window.open("", "_blank");
       if (win && win.document) {
+        win.document.open();
         win.document.write(htmlContent);
         win.document.close();
       } else {
-        handleOpenSendModal(activeQuote || quotes[0], "VOUCHER");
+        const blob = new Blob(["\ufeff", htmlContent], { type: "text/html" });
+        const url = URL.createObjectURL(blob);
+        const fallbackWin = window.open(url, "_blank");
+        if (!fallbackWin) {
+          toast.error("Please allow popups in your browser to view the voucher.");
+        }
       }
     } catch (err) {
       console.error("Voucher preview error:", err);
-      handleOpenSendModal(activeQuote || quotes[0], "VOUCHER");
+      toast.error("Failed to generate voucher preview.");
     }
   };
 
@@ -1096,6 +1201,29 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
       mainElement.scrollTo({ top: 0, left: 0, behavior: "auto" });
     }
     window.scrollTo(0, 0);
+
+    const fetchAdminVoucherTerms = async () => {
+      try {
+        let res = null;
+        try {
+          res = await API.get("/admin/terms");
+        } catch (e) {
+          res = await API.get("/agent/terms");
+        }
+        const list = Array.isArray(res?.data)
+          ? res.data
+          : Array.isArray(res?.data?.data)
+          ? res.data.data
+          : [];
+        const matched = list.find((t) =>
+          String(t?.name || "").toLowerCase().includes("voucher")
+        ) || list[0];
+        if (matched?.content) {
+          localStorage.setItem("voucher_admin_terms_cached", JSON.stringify(matched.content));
+        }
+      } catch (e) {}
+    };
+    fetchAdminVoucherTerms();
   }, []);
 
   useEffect(() => {
@@ -1516,15 +1644,20 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
   };
 
   const getClientPdfUrl = async (quoteId) => {
-    const { data } = await API.get(`/agent/quotations/${quoteId}/client-pdf`);
-    const publicUrl = buildPublicAssetUrl(data?.pdf?.publicFilePath);
+    try {
+      const { data } = await API.get(`/agent/quotations/${quoteId}/client-pdf`);
+      const publicUrl = buildPublicAssetUrl(data?.pdf?.publicFilePath || data?.pdfUrl || data?.publicUrl || data?.url);
 
-    if (!publicUrl) {
-      throw new Error("Unable to prepare client PDF");
+      if (!publicUrl) {
+        return null;
+      }
+
+      const separator = publicUrl.includes("?") ? "&" : "?";
+      return `${publicUrl}${separator}v=${Date.now()}`;
+    } catch (err) {
+      console.warn("Client PDF API error, fallback to client window print", err);
+      return null;
     }
-
-    const separator = publicUrl.includes("?") ? "&" : "?";
-    return `${publicUrl}${separator}v=${Date.now()}`;
   };
 
   const openRevisionModal = (quoteId) => {
@@ -1920,7 +2053,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
             setIsCreatingProforma(false);
             toast.success("Proforma Invoice saved successfully");
           }}
-          queryData={query}
+          queryData={{ ...query, activeQuote, quotes, headerPackageAmount, headerLeadTraveler }}
         />
       </div>
     );
@@ -2305,7 +2438,14 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
               const isValidRemark = (text) => {
                 const str = String(text || "").trim();
                 if (str.length < 4) return false;
+
+                const alphaOnly = str.replace(/[^a-zA-Z]/g, "").toLowerCase();
+                if (!alphaOnly || alphaOnly.length < 3) return false;
+                if (/[bcdfghjklmnpqrstvwxyz]{5,}/i.test(alphaOnly)) return false;
+                const vowels = alphaOnly.match(/[aeiou]/gi) || [];
+                if (alphaOnly.length > 5 && vowels.length / alphaOnly.length < 0.15) return false;
                 if (/^[a-z]\s+[a-z]\s+[a-z]+/i.test(str)) return false;
+
                 return true;
               };
 
@@ -2612,16 +2752,92 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                                 {showThreeDotsMenu && (
                                   <div className="absolute right-0 top-full mt-2 w-48 rounded-xl bg-white border border-slate-200 shadow-2xs py-1.5 z-[100] text-xs font-semibold text-slate-700">
                                     <button
-                                      type="button"
-                                      onClick={async () => {
-                                        setShowThreeDotsMenu(false);
-                                        try {
-                                          const url = await getClientPdfUrl(quote._id);
-                                          if (url) window.open(url, "_blank");
-                                        } catch (err) {
-                                          toast.error("Unable to download PDF");
-                                        }
-                                      }}
+                                       type="button"
+                                       onClick={async () => {
+                                         setShowThreeDotsMenu(false);
+                                         const printWindow = window.open("", "_blank");
+                                         if (printWindow) {
+                                           printWindow.document.write(`
+                                             <!DOCTYPE html>
+                                             <html>
+                                               <head><title>Preparing PDF...</title></head>
+                                               <body style="font-family: system-ui, sans-serif; display: flex; align-items: center; justify-content: center; height: 90vh; margin: 0; background: #f8fafc; color: #334155;">
+                                                 <div style="text-align: center;">
+                                                   <div style="font-size: 18px; font-weight: 600; margin-bottom: 8px;">Generating Quotation PDF...</div>
+                                                   <div style="font-size: 13px; color: #64748b;">Please wait a moment.</div>
+                                                 </div>
+                                               </body>
+                                             </html>
+                                           `);
+                                           printWindow.document.close();
+                                         }
+
+                                         try {
+                                           const targetQuote = quote || activeQuote || quotes[0];
+                                           let url = null;
+                                           if (targetQuote?._id) {
+                                             url = await getClientPdfUrl(targetQuote._id);
+                                           }
+
+                                           if (url && printWindow) {
+                                             printWindow.location.href = url;
+                                           } else {
+                                             const clientName = cleanLeadName || headerLeadTraveler || "Client";
+                                             const quoteNum = targetQuote?.quotationNumber || query?.queryId || "QRY-1093";
+                                             const dest = query?.destination || "Goa";
+                                             const priceVal = Math.round(activeQuotePrice || targetQuote?.clientTotalAmount || targetQuote?.totalAmount || 0);
+                                             const priceStr = priceVal > 0 ? priceVal.toLocaleString("en-IN") : "Price on Request";
+                                             const company = headerCompany || "Holiday Circuit";
+
+                                             const fallbackHtml = `
+                                               <!DOCTYPE html>
+                                               <html>
+                                                 <head>
+                                                   <title>${quoteNum} - ${clientName}</title>
+                                                   <style>
+                                                     body { font-family: system-ui, -apple-system, sans-serif; padding: 32px; color: #0f172a; line-height: 1.5; background: #ffffff; }
+                                                     .header { border-bottom: 2px solid #3b82f6; padding-bottom: 16px; margin-bottom: 24px; }
+                                                     .title { font-size: 22px; font-weight: 800; color: #0f172a; margin: 0; }
+                                                     .subtitle { font-size: 13px; color: #64748b; margin-top: 6px; }
+                                                     .card { background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 12px; padding: 20px; margin-top: 20px; }
+                                                     .price-tag { font-size: 26px; font-weight: 800; color: #0284c7; }
+                                                     @media print { body { padding: 0; } }
+                                                   </style>
+                                                 </head>
+                                                 <body>
+                                                   <div class="header">
+                                                     <h1 class="title">${company} - Travel Quotation</h1>
+                                                     <p class="subtitle">Quotation Ref: <strong>#${quoteNum}</strong> &bull; Lead Traveler: <strong>${clientName}</strong> &bull; Destination: <strong>${dest}</strong></p>
+                                                   </div>
+                                                   <div class="card">
+                                                     <div style="font-size:12px; font-weight:600; color:#64748b; margin-bottom:4px;">Package Quote Price</div>
+                                                     <div class="price-tag">₹ ${priceStr} <span style="font-size:13px; font-weight:500; color:#475569;">(inc. GST & Taxes)</span></div>
+                                                   </div>
+                                                   <script>
+                                                     window.onload = function() {
+                                                       setTimeout(function() { window.print(); }, 200);
+                                                     };
+                                                   </script>
+                                                 </body>
+                                               </html>
+                                             `;
+
+                                             if (printWindow) {
+                                               printWindow.document.open();
+                                               printWindow.document.write(fallbackHtml);
+                                               printWindow.document.close();
+                                             } else {
+                                               const blob = new Blob([fallbackHtml], { type: "text/html" });
+                                               const blobUrl = URL.createObjectURL(blob);
+                                               window.open(blobUrl, "_blank");
+                                             }
+                                           }
+                                         } catch (err) {
+                                           console.error("Download PDF error:", err);
+                                           if (printWindow) printWindow.close();
+                                           toast.error("Unable to generate PDF preview");
+                                         }
+                                       }}
                                       className="w-full text-left px-3.5 py-2.5 hover:bg-slate-50 flex items-center gap-2.5 cursor-pointer text-slate-700 font-medium transition-colors"
                                     >
                                       <FileText size={15} className="text-slate-500" />
@@ -2647,6 +2863,8 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                           </div>
                         </div>
 
+
+
                         {/* TRIP SUMMARY PILL BOX AT BOTTOM OF QUOTE CARD */}
                         <div className="rounded-lg border border-slate-200/90 bg-white px-3.5 py-2.5 text-xs font-medium text-slate-700 flex flex-wrap items-center gap-2.5 shadow-2xs">
                           <div className="flex items-center gap-1.5">
@@ -2665,6 +2883,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                         </div>
                       </div>
                     </div>
+                    
 
                     {/* 2. SERVICES SECTION */}
                     <div className="pt-2 space-y-4">
@@ -2781,19 +3000,25 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                                       if (hChildren > 0) hPaxParts.push(`${hChildren} Child${hChildren > 1 ? 'ren' : ''}`);
                                       const hPaxDisplay = hPaxParts.length > 0 ? `${hTotalPax} Pax (${hPaxParts.join(", ")})` : `${hTotalPax} Pax`;
 
-                                      let itemPrice = Number(s.price || s.total || s.totalInInr || s.rate || 0);
                                       const rCount = Number(s.rooms || 1);
+                                      const directRoomNightRate = Number(s.roomPrice || s.unitPrice || s.ratePerNight || s.roomRate || s.pricePerNight || s.nightlyRate || 0);
+                                      const explicitTotalPrice = Number(s.total || s.totalInInr || s.totalPrice || (s.isTotalPrice || s.isTotal ? s.price : 0));
 
-                                      const directRoomNightRate = Number(s.roomPrice || s.unitPrice || s.ratePerNight || s.roomRate || 0);
-                                      let unitRoomNightRate = directRoomNightRate > 0
-                                        ? directRoomNightRate
-                                        : (itemPrice > 0 ? Math.round(itemPrice / (nVal * rCount)) : 0);
+                                      let unitRoomNightRate = 0;
+                                      let itemPrice = 0;
 
-                                      if (itemPrice === 0 && unitRoomNightRate > 0) {
+                                      if (directRoomNightRate > 0) {
+                                        unitRoomNightRate = directRoomNightRate;
+                                        itemPrice = explicitTotalPrice > 0 ? explicitTotalPrice : (unitRoomNightRate * rCount * nVal);
+                                      } else if (explicitTotalPrice > 0) {
+                                        itemPrice = explicitTotalPrice;
+                                        unitRoomNightRate = Math.round(itemPrice / (nVal * rCount));
+                                      } else {
+                                        unitRoomNightRate = Number(s.price || s.rate || 0);
                                         itemPrice = unitRoomNightRate * rCount * nVal;
                                       }
 
-                                      const unitNightRate = itemPrice > 0 ? Math.round(itemPrice / nVal) : 0;
+                                      const unitNightRate = itemPrice > 0 ? Math.round(itemPrice / nVal) : (unitRoomNightRate * rCount);
 
                                       let nightlyRateLabel = "/ Night";
                                       let breakdownDetailLabel = "";
@@ -2801,16 +3026,16 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                                       if (itemPrice > 0) {
                                         if (nVal > 1 && rCount > 1) {
                                           nightlyRateLabel = `₹${unitNightRate.toLocaleString("en-IN")} / Night`;
-                                          breakdownDetailLabel = `(₹${unitRoomNightRate.toLocaleString("en-IN")} / Room / Night × ${rCount} Rooms × ${nVal} Nights)`;
+                                          breakdownDetailLabel = `([₹ ${unitRoomNightRate.toLocaleString("en-IN")} / Room / Night] × ${rCount} Rooms × ${nVal} Nights)`;
                                         } else if (nVal > 1) {
                                           nightlyRateLabel = `₹${unitNightRate.toLocaleString("en-IN")} / Night`;
-                                          breakdownDetailLabel = `(₹${unitRoomNightRate.toLocaleString("en-IN")} / Room / Night × ${rCount} Room${rCount > 1 ? "s" : ""} × ${nVal} Nights)`;
+                                          breakdownDetailLabel = `([₹ ${unitRoomNightRate.toLocaleString("en-IN")} / Room / Night] × ${rCount} Room${rCount > 1 ? "s" : ""} × ${nVal} Nights)`;
                                         } else if (rCount > 1) {
                                           nightlyRateLabel = `₹${unitRoomNightRate.toLocaleString("en-IN")} / Room / Night`;
-                                          breakdownDetailLabel = `(₹${unitRoomNightRate.toLocaleString("en-IN")} / Room / Night × ${rCount} Rooms × 1 Night)`;
+                                          breakdownDetailLabel = `([₹ ${unitRoomNightRate.toLocaleString("en-IN")} / Room / Night] × ${rCount} Rooms × 1 Night)`;
                                         } else {
                                           nightlyRateLabel = `₹${unitNightRate.toLocaleString("en-IN")} / Night`;
-                                          breakdownDetailLabel = `(₹${unitRoomNightRate.toLocaleString("en-IN")} / Room / Night × 1 Room × 1 Night)`;
+                                          breakdownDetailLabel = `([₹ ${unitRoomNightRate.toLocaleString("en-IN")} / Room / Night] × 1 Room × 1 Night)`;
                                         }
                                       }
 
@@ -2944,6 +3169,8 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                           </div>
                         </div>
 
+
+
                         {/* Accommodation Footer Total (Standalone under table) */}
                         <div className="mt-3 flex justify-end">
                           <div className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-800 shadow-2xs">
@@ -2951,13 +3178,29 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                             <span className="font-bold text-slate-900 text-sm">
                               {Math.round(
                                 hotelServices.length > 0
-                                  ? hotelServices.reduce((acc, s) => acc + (Number(s.price) || 0), 0)
+                                  ? hotelServices.reduce((acc, s) => {
+                                      const nVal = Number(s.nights || query?.numberOfNights || 1);
+                                      const rCount = Number(s.rooms || 1);
+                                      const directRoomNightRate = Number(s.roomPrice || s.unitPrice || s.ratePerNight || s.roomRate || s.pricePerNight || s.nightlyRate || 0);
+                                      const explicitTotalPrice = Number(s.total || s.totalInInr || s.totalPrice || (s.isTotalPrice || s.isTotal ? s.price : 0));
+                                      let calcItemPrice = 0;
+                                      if (directRoomNightRate > 0) {
+                                        calcItemPrice = explicitTotalPrice > 0 ? explicitTotalPrice : (directRoomNightRate * rCount * nVal);
+                                      } else if (explicitTotalPrice > 0) {
+                                        calcItemPrice = explicitTotalPrice;
+                                      } else {
+                                        calcItemPrice = Number(s.price || s.rate || 0) * rCount * nVal;
+                                      }
+                                      return acc + calcItemPrice;
+                                    }, 0)
                                   : 14500
                               ).toLocaleString("en-IN")}
                             </span>
                           </div>
                         </div>
                       </div>
+
+
 
                       {/* 1. TRANSFERS / TRANSPORTATION CARD */}
                       {(() => {
@@ -3118,24 +3361,24 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                                                 </div>
                                               );
                                             })()}
-                                            <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
-                                              {item.pickupTime && (
-                                                <span className="inline-flex items-center gap-1 rounded bg-amber-50 px-2 py-0.5 font-semibold text-amber-800 border border-amber-200">
-                                                  ⏰ Pickup Time: {item.pickupTime}
-                                                </span>
-                                              )}
-                                              {item.passengerCap && (
-                                                <span className="inline-flex items-center gap-1 rounded bg-slate-100 px-2 py-0.5 font-medium text-slate-700 border border-slate-200">
-                                                  👥 Max Pax: {item.passengerCap} Passengers
-                                                </span>
-                                              )}
-                                              {item.luggageCap && (
-                                                <span className="inline-flex items-center gap-1 rounded bg-slate-100 px-2 py-0.5 font-medium text-slate-700 border border-slate-200">
-                                                  🧳 Luggage: {item.luggageCap} Bags
-                                                </span>
-                                              )}
-                                            </div>
-                                          </div>
+                                        <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
+                                          {item.pickupTime && (
+                                            <span className="inline-flex items-center gap-1.5 rounded bg-amber-50 px-2.5 py-0.5 font-semibold text-amber-800 border border-amber-200">
+                                              <Clock size={12} className="text-amber-700 shrink-0" /> Pickup Time: {item.pickupTime}
+                                            </span>
+                                          )}
+                                          {item.passengerCap && (
+                                            <span className="inline-flex items-center gap-1.5 rounded bg-slate-100 px-2.5 py-0.5 font-medium text-slate-700 border border-slate-200">
+                                              <Users size={12} className="text-slate-600 shrink-0" /> Max Pax: {item.passengerCap} Passengers
+                                            </span>
+                                          )}
+                                          {item.luggageCap && (
+                                            <span className="inline-flex items-center gap-1.5 rounded bg-slate-100 px-2.5 py-0.5 font-medium text-slate-700 border border-slate-200">
+                                              <Luggage size={12} className="text-slate-600 shrink-0" /> Luggage: {item.luggageCap} Bags
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
 
                                           {/* Middle: QTY Column (Center Aligned, Fixed Width) */}
                                           <div className="text-left sm:text-center shrink-0 w-44 sm:w-56">
@@ -3177,6 +3420,8 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                           </div>
                         );
                       })()}
+
+
 
                       {/* 2. ACTIVITIES & SIGHTSEEING CARD */}
                       {(() => {
@@ -3381,28 +3626,28 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                                             {/* Rich Info Badges for Activities */}
                                             <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
                                               {item.tourType && (
-                                                <span className="inline-flex items-center gap-1 rounded bg-blue-50 px-2 py-0.5 font-semibold text-blue-700 border border-blue-200">
-                                                  ● {item.tourType}
+                                                <span className="inline-flex items-center gap-1.5 rounded bg-blue-50 px-2.5 py-0.5 font-semibold text-blue-700 border border-blue-200">
+                                                  <Compass size={12} className="text-blue-600 shrink-0" /> {item.tourType}
                                                 </span>
                                               )}
                                               {item.selectedSlot && (
-                                                <span className="inline-flex items-center gap-1 rounded bg-amber-50 px-2 py-0.5 font-semibold text-amber-800 border border-amber-200">
-                                                  ⏰ Slot: {item.selectedSlot}
+                                                <span className="inline-flex items-center gap-1.5 rounded bg-amber-50 px-2.5 py-0.5 font-semibold text-amber-800 border border-amber-200">
+                                                  <Clock size={12} className="text-amber-700 shrink-0" /> Slot: {item.selectedSlot}
                                                 </span>
                                               )}
                                               {item.duration && (
-                                                <span className="inline-flex items-center gap-1 rounded bg-purple-50 px-2 py-0.5 font-semibold text-purple-800 border border-purple-200">
-                                                  ⏱️ Duration: {item.duration}
+                                                <span className="inline-flex items-center gap-1.5 rounded bg-purple-50 px-2.5 py-0.5 font-semibold text-purple-800 border border-purple-200">
+                                                  <Timer size={12} className="text-purple-700 shrink-0" /> Duration: {item.duration}
                                                 </span>
                                               )}
                                               {item.operatingDays && (
-                                                <span className="inline-flex items-center gap-1 rounded bg-slate-100 px-2 py-0.5 font-medium text-slate-700 border border-slate-200">
-                                                  📅 {item.operatingDays}
+                                                <span className="inline-flex items-center gap-1.5 rounded bg-slate-100 px-2.5 py-0.5 font-medium text-slate-700 border border-slate-200">
+                                                  <CalendarDays size={12} className="text-slate-600 shrink-0" /> {item.operatingDays}
                                                 </span>
                                               )}
                                               {item.timings && (
-                                                <span className="inline-flex items-center gap-1 rounded bg-slate-100 px-2 py-0.5 font-medium text-slate-700 border border-slate-200">
-                                                  ⌛ {item.timings}
+                                                <span className="inline-flex items-center gap-1.5 rounded bg-slate-100 px-2.5 py-0.5 font-medium text-slate-700 border border-slate-200">
+                                                  <Hourglass size={12} className="text-slate-600 shrink-0" /> {item.timings}
                                                 </span>
                                               )}
                                             </div>
@@ -3480,6 +3725,8 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                       })()}
                     </div>
 
+
+
                     {/* 4. INCLUSIONS & EXCLUSIONS SECTION */}
                     <div className="border-t border-slate-200 pt-3">
                       <button
@@ -3543,6 +3790,8 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                         </div>
                       )}
                     </div>
+
+
 
                     {/* 5. DAY-WISE SCHEDULE SECTION */}
                     <div className="border-t border-slate-200 pt-3">
@@ -3676,9 +3925,10 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                                         {evt.title}
                                       </h4>
                                       {evt.description && (
-                                        <p className="text-slate-600 text-xs sm:text-sm font-normal leading-relaxed whitespace-pre-line">
-                                          {evt.description}
-                                        </p>
+                                        <div 
+                                          className="text-slate-600 text-xs sm:text-sm font-normal leading-relaxed rte-content"
+                                          dangerouslySetInnerHTML={{ __html: evt.description }}
+                                        />
                                       )}
                                     </div>
                                   ))}
@@ -3688,147 +3938,58 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                           </div>
                         );
                       })()}
+
+
+                      
                     </div>
+
+
 
                     {/* 6. TERMS AND CONDITIONS SECTION */}
                     <div className="border-t border-slate-200 pt-3">
-                      <div className="flex items-center gap-2.5">
-                        <button
-                          type="button"
-                          onClick={() => setIsTermsExpanded(!isTermsExpanded)}
-                          className="flex items-center gap-2.5 text-base sm:text-[17px] font-bold text-slate-900 cursor-pointer py-2.5 text-left"
-                        >
-                          <ChevronRight size={18} className={`transition-transform duration-200 ${isTermsExpanded ? "rotate-90" : ""}`} />
-                          <span>Terms and Conditions</span>
-                        </button>
-                        <span className="rounded bg-amber-100 text-amber-800 text-[10px] font-bold px-2 py-0.5">
-                          Archived
-                        </span>
+                      <div className="flex items-center justify-between gap-2.5">
+                        <div className="flex items-center gap-2.5">
+                          <button
+                            type="button"
+                            onClick={() => setIsTermsExpanded(!isTermsExpanded)}
+                            className="flex items-center gap-2.5 text-base sm:text-[17px] font-bold text-slate-900 cursor-pointer py-2.5 text-left"
+                          >
+                            <ChevronRight size={18} className={`transition-transform duration-200 ${isTermsExpanded ? "rotate-90" : ""}`} />
+                            <span>Terms and Conditions</span>
+                          </button>
+                          <span className="rounded bg-amber-100 text-amber-800 text-[10px] font-bold px-2 py-0.5">
+                            Archived
+                          </span>
+                        </div>
+                        
+                        {isTermsExpanded && quote?._id && (
+                          <button
+                            onClick={() => inlineTermsRefs.current[quote?._id]?.startEditing()}
+                            className="text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors mr-6"
+                          >
+                            <Pencil size={14} />
+                            Edit Terms
+                          </button>
+                        )}
                       </div>
 
                       {isTermsExpanded && (
                         <div className="pt-3 pl-6 font-sans text-xs sm:text-sm text-slate-800 leading-relaxed space-y-4">
-                          {quote.termsAndConditions && Array.isArray(quote.termsAndConditions) && quote.termsAndConditions.length > 0 ? (
-                            <ul className="list-disc pl-5 space-y-2">
-                              {quote.termsAndConditions.map((term, tIdx) => (
-                                <li key={tIdx}>{term}</li>
-                              ))}
-                            </ul>
-                          ) : (
-                            <>
-                              <p>
-                                Welcome to <strong className="font-bold text-slate-900">Holiday Circuit</strong>. These Terms and Conditions govern your use of the <strong className="font-bold text-slate-900">Holiday Circuit</strong> services. When You Make a booking or reservation, you agree to be bound by these Terms.
-                              </p>
-
-                              <div className="space-y-2">
-                                <h4 className="font-bold text-slate-900 text-sm sm:text-base">Bookings and Reservations</h4>
-                                <ul className="list-disc pl-5 space-y-2">
-                                  <li>
-                                    <strong className="font-bold text-slate-900">Booking Process:</strong> When you make a booking or reservation through <strong className="font-bold text-slate-900">Holiday Circuit</strong>, you agree to provide accurate and complete information. Any discrepancies or errors in the information you provide may result in the cancellation of your booking.
-                                  </li>
-                                </ul>
-                              </div>
-
-                              <div className="space-y-2">
-                                <p>
-                                  <strong className="font-bold text-slate-900">Payment:</strong> Payments for bookings are due as specified during the booking process. Failure to make payments on time may result in the cancellation of your booking.
-                                </p>
-
-                                <ol className="list-none space-y-2 font-bold text-slate-900">
-                                  <li>1. Minimum 50% of the booking amount is required at the time of booking confirmation.</li>
-                                  <li>2. Remaining 50% in 2 parts i.e. 25% of total booking amount within 30 Days prior to departure and 25% within 20 days prior to departure.</li>
-                                  <li>3. In Case of Airline booking/Train Tickets, 100% ticket cost to be paid at the time of confirmation.</li>
-                                  <li>4. In Case a booking is under 100% cancellation period, then 100% booking amount is required at the time of booking confirmation.</li>
-                                </ol>
-                              </div>
-
-                              <p>
-                                <strong className="font-bold text-slate-900">Confirmation:</strong> Your booking is considered confirmed only upon receipt of payment and confirmation from <strong className="font-bold text-slate-900">Holiday Circuit</strong>. Please review all booking details carefully to ensure accuracy.
-                              </p>
-
-                              <p className="font-bold text-slate-900">
-                                Booking will be auto cancelled in case of non-payment within stipulated time
-                              </p>
-
-                              <p>
-                                <strong className="font-bold text-slate-900">Credit Card:</strong> We accept payments through Credit Cards which may attract an additional charge from 3% to 5% depends upon the card type. Card charges shall be over and above the actual service/package cost.
-                              </p>
-
-                              <p>
-                                <strong className="font-bold text-slate-900">Confirmation Vouchers:</strong> The service will be confirmed once the advance payment is made. However, the confirmation vouchers will only be provided 7 days before the arrival date.
-                              </p>
-
-                              <p>
-                                <strong className="font-bold text-slate-900">Airport Transfers & Tour Pick Ups:</strong> The service includes 60 minutes of waiting time for Airport pick-ups. If you are delayed at immigration or luggage claim, please call the emergency number to extend the waiting time. Additional parking and waiting time charges may apply. For all other pick-ups, the driver will wait for 10 mins at the meeting point i.e. Hotel Lobby or Reception or any other fixed meeting point.
-                              </p>
-
-                              <p>
-                                <strong className="font-bold text-slate-900">Taxes:</strong> In case of any changes in taxes (such as GST/Government Tax/TCS) at the time of confirmation, the price will be adjusted accordingly and shall be charged as per the prevailing law. This means that if there is an increase or decrease in applicable taxes between the time of booking confirmation and the actual provision of services, the final price will be adjusted to reflect these changes in accordance with the relevant tax regulations.
-                              </p>
-
-                              <p>
-                                <strong className="font-bold text-slate-900">Changes and Cancellations:</strong> Changes to bookings or cancellations may be subject to fees or penalties, as determined by the service providers (e.g., airlines, hotels, tour operators) and <strong className="font-bold text-slate-900">Holiday Circuit</strong>. These fees and penalties may vary depending on the service and the timing of the change or cancellation.
-                              </p>
-
-                              <div className="space-y-2">
-                                <h4 className="font-bold text-slate-900 text-sm sm:text-base">Travel Documents and Requirements</h4>
-                                <ul className="list-disc pl-5 space-y-2">
-                                  <li>
-                                    <strong className="font-bold text-slate-900">Valid Id Proof:</strong> It is your responsibility to ensure that you have a valid ID as per destination entry requirements and any required visas or travel documents for your trip. <strong className="font-bold text-slate-900">Holiday Circuit</strong> is not responsible for any issues arising from the lack of proper travel documents. <strong className="font-bold text-slate-900">(To Enter Nepal by Air- Valid Passport or Election Card is Mandatory. Aadhar Card is not valid for Travel)</strong>
-                                  </li>
-                                  <li>
-                                    <strong className="font-bold text-slate-900">Health and Vaccinations:</strong> You are responsible for ensuring that you meet all health and vaccination requirements for your travel destinations.
-                                  </li>
-                                  <li>
-                                    <strong className="font-bold text-slate-900">Travel Insurance:</strong> We strongly recommend that you purchase travel insurance to protect against unexpected events such as trip cancellations, delays, or emergencies during your travel. <strong className="font-bold text-slate-900">Holiday Circuit</strong> can assist you in obtaining travel insurance, but the decision to purchase it is ultimately yours.
-                                  </li>
-                                </ul>
-                              </div>
-
-                              <div className="space-y-2">
-                                <h4 className="font-bold text-slate-900 text-sm sm:text-base">Changes to Itineraries</h4>
-                                <ul className="list-disc pl-5 space-y-2">
-                                  <li>
-                                    <strong className="font-bold text-slate-900">By Holiday Circuit:</strong> We reserve the right to make changes to your itinerary or accommodations due to unforeseen circumstances. We will make every effort to inform you of such changes as soon as possible.
-                                  </li>
-                                  <li>
-                                    <strong className="font-bold text-slate-900">By You:</strong> Any changes requested by you to your itinerary may be subject to fees or penalties, as determined by the service providers and <strong className="font-bold text-slate-900">Holiday Circuit</strong>.
-                                  </li>
-                                </ul>
-                              </div>
-
-                              <div className="space-y-2">
-                                <h4 className="font-bold text-slate-900 text-sm sm:text-base">Liability</h4>
-                                <ul className="list-disc pl-5 space-y-2">
-                                  <li>
-                                    <strong className="font-bold text-slate-900">Service Providers: Holiday Circuit</strong> acts as an intermediary between you and service providers such as airlines, hotels, and tour operators. We are not liable for any actions, omissions, or negligence on the part of these service providers.
-                                  </li>
-                                  <li>
-                                    <strong className="font-bold text-slate-900">Force Majeure: Holiday Circuit</strong> is not liable for any disruptions, cancellations, or delays caused by circumstances beyond our control, including natural disasters, strikes, political unrest, or other force majeure events.
-                                  </li>
-                                </ul>
-                              </div>
-
-                              <p>
-                                <strong className="font-bold text-slate-900">Governing Law and Jurisdiction:</strong> These Terms and your use of <strong className="font-bold text-slate-900">Holiday Circuit</strong> services are governed by the laws of New Delhi Jurisdiction, and any disputes shall be resolved in the courts of New Delhi Jurisdiction.
-                              </p>
-
-                              <p>
-                                <strong className="font-bold text-slate-900">Changes to Terms and Conditions:</strong> We reserve the right to update and modify these Terms and Conditions at any time. Please review them periodically for changes. Your continued use of our services after any modifications indicates your acceptance of the updated Terms.
-                              </p>
-
-                              <p>
-                                <strong className="font-bold text-slate-900">Contact Information:</strong> For any inquiries, please contact us at: <strong className="font-bold text-slate-900">Holiday Circuit</strong> KG 3/69, Ground Floor, Vikas Puri, New Delhi -110018, Near UK Nursing Home , Email id - <a href="mailto:varun@holidaycircuit.com" className="text-blue-600 underline hover:text-blue-800">varun@holidaycircuit.com</a> +91 8851346665, +91 9971706003
-                              </p>
-
-                              <p className="italic font-bold text-slate-900 pt-2">
-                                By booking with Holiday Circuit, you acknowledge that you have read, understood, and agreed to these Terms and Conditions.
-                              </p>
-                            </>
-                          )}
+                          <InlineTermsEditor
+                            ref={el => inlineTermsRefs.current[quote._id] = el}
+                            initialTerms={quote.termsAndConditions}
+                            quotationId={quote._id}
+                            isPackageTemplate={false}
+                            onUpdate={(newTerms) => {
+                              setQuotes(prevQuotes => prevQuotes.map(q => 
+                                q._id === quote._id ? { ...q, termsAndConditions: newTerms } : q
+                              ));
+                            }}
+                          />
                         </div>
                       )}
                     </div>
+
 
 
 
@@ -3838,6 +3999,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                   {/* RIGHT COLUMN SIDEBAR (Only in Basic Details) */}
                   {(activeTab === "basic" || !activeTab) && (
                     <div className="w-full lg:w-[280px] shrink-0 space-y-3.5">
+
                       {/* TASKS & COMMENTS */}
                       <div className="border border-slate-200 shadow-2xs rounded-xl overflow-hidden bg-white">
                         <div className="px-4 py-3 border-b border-slate-200 bg-[#f8fafc]">
@@ -3987,6 +4149,8 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                         </div>
                       </div>
 
+
+
                       {/* REQUIREMENTS */}
                       <div className="border border-slate-200 shadow-2xs rounded-xl overflow-hidden bg-white font-sans">
                         <div className="px-4.5 py-3.5 border-b border-slate-200 bg-[#f8fafc]">
@@ -4044,7 +4208,11 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
           </div>
         )}
 
+
+
+
         {/* TAB VIEW: SERVICES BOOKINGS */}
+
         {activeTab === "services" && (
           <motion.div
             initial={{ opacity: 0, y: 10 }}
@@ -4063,6 +4231,8 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
             />
           </motion.div>
         )}
+
+
 
         {/* TAB VIEW: ACCOUNTING & FINANCIALS (Matches Image Design 1-to-1) */}
         {activeTab === "accounting" && (() => {
@@ -4583,7 +4753,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
             transition={{ duration: 0.2 }}
             className="space-y-4 xl:col-span-3 font-sans"
           >
-            <div className="rounded-xl border border-slate-200 bg-white p-5 sm:p-6 shadow-2xs">
+            <div className="rounded-xl border border-slate-200 bg-white p-5 sm:p-6 shadow-2xs ">
               <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <h3 className="text-base sm:text-lg font-bold text-slate-900">Documents & Shareable Assets</h3>
@@ -4607,9 +4777,55 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                           <p className="text-xs font-medium text-slate-600 mt-0.5 font-sans whitespace-nowrap">PAN Card / Passport copy</p>
                         </div>
                       </div>
-                      <span className="shrink-0 rounded-lg bg-amber-100 border border-amber-200 px-2.5 py-0.5 text-[10px] font-bold text-amber-800 shadow-2xs font-sans whitespace-nowrap">
-                        Pending Upload
-                      </span>
+                      {(() => {
+                        const docVerificationStatus = String(query?.travelerDocumentVerification?.status || "").trim();
+                        const travelers = Array.isArray(query?.travelerDetails) ? query.travelerDetails : [];
+                        
+                        let uploadedDocCount = 0;
+                        travelers.forEach((t) => {
+                          if (t?.documents?.passport?.url) uploadedDocCount++;
+                          if (t?.documents?.governmentId?.url || t?.documents?.govtId?.url || (!t?.documents?.passport?.url && t?.document?.url)) uploadedDocCount++;
+                          else if (t?.documents?.passport?.url && t?.document?.url) uploadedDocCount++;
+                        });
+
+                        if (docVerificationStatus === "Verified") {
+                          return (
+                            <span className="shrink-0 rounded-lg bg-emerald-100 border border-emerald-200 px-2.5 py-0.5 text-[10px] font-bold text-emerald-800 shadow-2xs font-sans whitespace-nowrap">
+                              ✓ Documents Verified
+                            </span>
+                          );
+                        }
+
+                        if (docVerificationStatus === "Rejected") {
+                          return (
+                            <span className="shrink-0 rounded-lg bg-rose-100 border border-rose-200 px-2.5 py-0.5 text-[10px] font-bold text-rose-800 shadow-2xs font-sans whitespace-nowrap">
+                              ⚠ Correction Required
+                            </span>
+                          );
+                        }
+
+                        if (docVerificationStatus === "Pending") {
+                          return (
+                            <span className="shrink-0 rounded-lg bg-blue-100 border border-blue-200 px-2.5 py-0.5 text-[10px] font-bold text-blue-800 shadow-2xs font-sans whitespace-nowrap">
+                              ⏳ Under Review
+                            </span>
+                          );
+                        }
+
+                        if (uploadedDocCount > 0) {
+                          return (
+                            <span className="shrink-0 rounded-lg bg-sky-100 border border-sky-200 px-2.5 py-0.5 text-[10px] font-bold text-sky-800 shadow-2xs font-sans whitespace-nowrap">
+                              Uploads Ready
+                            </span>
+                          );
+                        }
+
+                        return (
+                          <span className="shrink-0 rounded-lg bg-amber-100 border border-amber-200 px-2.5 py-0.5 text-[10px] font-bold text-amber-800 shadow-2xs font-sans whitespace-nowrap">
+                            Pending Upload
+                          </span>
+                        );
+                      })()}
                     </div>
                   </div>
 
@@ -5094,15 +5310,16 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                       const defaultPaxVal = Number(query?.numberOfAdults || 2);
                       const roomCat = hotel.roomType || hotel.room_type || hotel.roomCategory || (String(hotel.title || selectedPkg?.title || "").toLowerCase().includes("luxury") ? "Ocean Deluxe Room" : "Standard Room");
 
-                      // Resolved Hotel Name (e.g. "Jaypee Residency Manor Mussoorie")
-                      const displayHotelName = rawHotelName || matchedDmc?.hotelName || (hotel.name && !rawServiceName ? hotel.name : "") || (stars === 3 ? "Citymax Hotel Bur Dubai" : (stars === 5 ? "Jaypee Residency Manor Mussoorie" : "Fortune Resort Grace Mussoorie"));
+                      // Resolved Hotel Name
+                      const displayHotelName = rawHotelName || matchedDmc?.hotelName || (hotel.name && !rawServiceName ? hotel.name : "") || hotel.title || hotel.serviceName || (hotel.category ? `${hotel.category} Hotel` : "Hotel Accommodation");
 
-                      // Resolved Service Name (e.g. "Mussoorie Mall Road Heritage")
+                      // Resolved Service Name
                       const displayHotelTitle = (
                         rawServiceName ||
                         matchedDmc?.serviceName ||
                         (hotel.name && hotel.name !== displayHotelName ? hotel.name : "") ||
-                        (stars === 3 ? "3-Star Deluxe City Center Hotel Stay" : stars === 4 ? "4-Star City Hotel Stay" : "5-Star Luxury Hotel Stay")
+                        hotel.title ||
+                        "Hotel Stay"
                       );
 
                       const savedNightlyRate = Number(
@@ -10128,7 +10345,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                                 ]).map((inc, i) => (
                                   <li key={i} className="flex items-start gap-2.5 text-xs text-slate-700 font-medium leading-relaxed">
                                     <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0 mt-1.5" />
-                                    <span>{inc}</span>
+                                    <div className="rte-content text-slate-700" dangerouslySetInnerHTML={{ __html: inc }} />
                                   </li>
                                 ))}
                               </ul>
@@ -10150,7 +10367,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                                 ]).map((exc, i) => (
                                   <li key={i} className="flex items-start gap-2.5 text-xs text-slate-700 font-medium leading-relaxed">
                                     <span className="w-2 h-2 rounded-full bg-rose-400 shrink-0 mt-1.5" />
-                                    <span>{exc}</span>
+                                    <div className="rte-content text-slate-700" dangerouslySetInnerHTML={{ __html: exc }} />
                                   </li>
                                 ))}
                               </ul>
@@ -10296,9 +10513,10 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                                           {evt.title}
                                         </h4>
                                         {evt.description && (
-                                          <p className="text-slate-600 text-xs sm:text-sm font-normal leading-relaxed whitespace-pre-line">
-                                            {evt.description}
-                                          </p>
+                                          <div 
+                                            className="text-slate-600 text-xs sm:text-sm font-normal leading-relaxed rte-content"
+                                            dangerouslySetInnerHTML={{ __html: evt.description }}
+                                          />
                                         )}
                                       </div>
                                     ))}
@@ -10312,136 +10530,53 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
 
                       {/* ACCORDION 3: TERMS AND CONDITIONS */}
                       <div className="border-t border-slate-200 pt-3">
-                        <button
-                          type="button"
-                          onClick={() => setPackageAccordions(prev => ({ ...prev, terms: !prev.terms }))}
-                          className="flex items-center gap-2.5 text-base sm:text-[17px] font-bold text-slate-900 cursor-pointer py-2.5 w-full text-left font-sans"
-                        >
-                          <ChevronRight size={18} className={`transition-transform duration-200 ${packageAccordions.terms ? "rotate-90" : ""}`} />
-                          <span>Terms and Conditions</span>
-                          <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded font-semibold ml-2">Archived</span>
-                        </button>
+                        <div className="flex items-center justify-between py-2.5 w-full">
+                          <button
+                            onClick={() => setPackageAccordions(prev => ({ ...prev, terms: !prev.terms }))}
+                            className="flex items-center gap-2.5 text-base sm:text-[17px] font-bold text-slate-900 cursor-pointer text-left font-sans"
+                          >
+                            <ChevronRight size={18} className={`transition-transform duration-200 ${packageAccordions.terms ? "rotate-90" : ""}`} />
+                            <span>Terms and Conditions</span>
+                            <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded font-semibold ml-2">Archived</span>
+                          </button>
+                          
+                          {packageAccordions.terms && selectedPkg?._id && (
+                            <button
+                              onClick={() => inlineTermsRefs.current[selectedPkg?._id]?.startEditing()}
+                              className="text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors mr-6"
+                            >
+                              <Pencil size={14} />
+                              Edit Terms
+                            </button>
+                          )}
+                        </div>
 
                         {packageAccordions.terms && (
                           <div className="pt-3 pl-6 font-sans text-xs sm:text-sm text-slate-800 leading-relaxed space-y-4">
-                            {selectedPkg?.termsAndConditions && Array.isArray(selectedPkg.termsAndConditions) && selectedPkg.termsAndConditions.length > 0 ? (
-                              <ul className="list-disc pl-5 space-y-2">
-                                {selectedPkg.termsAndConditions.map((term, tIdx) => (
-                                  <li key={tIdx}>{term}</li>
-                                ))}
-                              </ul>
-                            ) : (
-                              <>
-                                <p>
-                                  Welcome to <strong className="font-bold text-slate-900">Holiday Circuit</strong>. These Terms and Conditions govern your use of the <strong className="font-bold text-slate-900">Holiday Circuit</strong> services. When You Make a booking or reservation, you agree to be bound by these Terms.
-                                </p>
-
-                                <div className="space-y-2">
-                                  <h4 className="font-bold text-slate-900 text-sm sm:text-base">Bookings and Reservations</h4>
-                                  <ul className="list-disc pl-5 space-y-2">
-                                    <li>
-                                      <strong className="font-bold text-slate-900">Booking Process:</strong> When you make a booking or reservation through <strong className="font-bold text-slate-900">Holiday Circuit</strong>, you agree to provide accurate and complete information. Any discrepancies or errors in the information you provide may result in the cancellation of your booking.
-                                    </li>
-                                  </ul>
-                                </div>
-
-                                <div className="space-y-2">
-                                  <p>
-                                    <strong className="font-bold text-slate-900">Payment:</strong> Payments for bookings are due as specified during the booking process. Failure to make payments on time may result in the cancellation of your booking.
-                                  </p>
-
-                                  <ol className="list-none space-y-2 font-bold text-slate-900">
-                                    <li>1. Minimum 50% of the booking amount is required at the time of booking confirmation.</li>
-                                    <li>2. Remaining 50% in 2 parts i.e. 25% of total booking amount within 30 Days prior to departure and 25% within 20 days prior to departure.</li>
-                                    <li>3. In Case of Airline booking/Train Tickets, 100% ticket cost to be paid at the time of confirmation.</li>
-                                    <li>4. In Case a booking is under 100% cancellation period, then 100% booking amount is required at the time of booking confirmation.</li>
-                                  </ol>
-                                </div>
-
-                                <p>
-                                  <strong className="font-bold text-slate-900">Confirmation:</strong> Your booking is considered confirmed only upon receipt of payment and confirmation from <strong className="font-bold text-slate-900">Holiday Circuit</strong>. Please review all booking details carefully to ensure accuracy.
-                                </p>
-
-                                <p className="font-bold text-slate-900">
-                                  Booking will be auto cancelled in case of non-payment within stipulated time
-                                </p>
-
-                                <p>
-                                  <strong className="font-bold text-slate-900">Credit Card:</strong> We accept payments through Credit Cards which may attract an additional charge from 3% to 5% depends upon the card type. Card charges shall be over and above the actual service/package cost.
-                                </p>
-
-                                <p>
-                                  <strong className="font-bold text-slate-900">Confirmation Vouchers:</strong> The service will be confirmed once the advance payment is made. However, the confirmation vouchers will only be provided 7 days before the arrival date.
-                                </p>
-
-                                <p>
-                                  <strong className="font-bold text-slate-900">Airport Transfers & Tour Pick Ups:</strong> The service includes 60 minutes of waiting time for Airport pick-ups. If you are delayed at immigration or luggage claim, please call the emergency number to extend the waiting time. Additional parking and waiting time charges may apply. For all other pick-ups, the driver will wait for 10 mins at the meeting point i.e. Hotel Lobby or Reception or any other fixed meeting point.
-                                </p>
-
-                                <p>
-                                  <strong className="font-bold text-slate-900">Taxes:</strong> In case of any changes in taxes (such as GST/Government Tax/TCS) at the time of confirmation, the price will be adjusted accordingly and shall be charged as per the prevailing law. This means that if there is an increase or decrease in applicable taxes between the time of booking confirmation and the actual provision of services, the final price will be adjusted to reflect these changes in accordance with the relevant tax regulations.
-                                </p>
-
-                                <p>
-                                  <strong className="font-bold text-slate-900">Changes and Cancellations:</strong> Changes to bookings or cancellations may be subject to fees or penalties, as determined by the service providers (e.g., airlines, hotels, tour operators) and <strong className="font-bold text-slate-900">Holiday Circuit</strong>. These fees and penalties may vary depending on the service and the timing of the change or cancellation.
-                                </p>
-
-                                <div className="space-y-2">
-                                  <h4 className="font-bold text-slate-900 text-sm sm:text-base">Travel Documents and Requirements</h4>
-                                  <ul className="list-disc pl-5 space-y-2">
-                                    <li>
-                                      <strong className="font-bold text-slate-900">Valid Id Proof:</strong> It is your responsibility to ensure that you have a valid ID as per destination entry requirements and any required visas or travel documents for your trip. <strong className="font-bold text-slate-900">Holiday Circuit</strong> is not responsible for any issues arising from the lack of proper travel documents. <strong className="font-bold text-slate-900">(To Enter Nepal by Air- Valid Passport or Election Card is Mandatory. Aadhar Card is not valid for Travel)</strong>
-                                    </li>
-                                    <li>
-                                      <strong className="font-bold text-slate-900">Health and Vaccinations:</strong> You are responsible for ensuring that you meet all health and vaccination requirements for your travel destinations.
-                                    </li>
-                                    <li>
-                                      <strong className="font-bold text-slate-900">Travel Insurance:</strong> We strongly recommend that you purchase travel insurance to protect against unexpected events such as trip cancellations, delays, or emergencies during your travel. <strong className="font-bold text-slate-900">Holiday Circuit</strong> can assist you in obtaining travel insurance, but the decision to purchase it is ultimately yours.
-                                    </li>
-                                  </ul>
-                                </div>
-
-                                <div className="space-y-2">
-                                  <h4 className="font-bold text-slate-900 text-sm sm:text-base">Changes to Itineraries</h4>
-                                  <ul className="list-disc pl-5 space-y-2">
-                                    <li>
-                                      <strong className="font-bold text-slate-900">By Holiday Circuit:</strong> We reserve the right to make changes to your itinerary or accommodations due to unforeseen circumstances. We will make every effort to inform you of such changes as soon as possible.
-                                    </li>
-                                    <li>
-                                      <strong className="font-bold text-slate-900">By You:</strong> Any changes requested by you to your itinerary may be subject to fees or penalties, as determined by the service providers and <strong className="font-bold text-slate-900">Holiday Circuit</strong>.
-                                    </li>
-                                  </ul>
-                                </div>
-
-                                <div className="space-y-2">
-                                  <h4 className="font-bold text-slate-900 text-sm sm:text-base">Liability</h4>
-                                  <ul className="list-disc pl-5 space-y-2">
-                                    <li>
-                                      <strong className="font-bold text-slate-900">Service Providers: Holiday Circuit</strong> acts as an intermediary between you and service providers such as airlines, hotels, and tour operators. We are not liable for any actions, omissions, or negligence on the part of these service providers.
-                                    </li>
-                                    <li>
-                                      <strong className="font-bold text-slate-900">Force Majeure: Holiday Circuit</strong> is not liable for any disruptions, cancellations, or delays caused by circumstances beyond our control, including natural disasters, strikes, political unrest, or other force majeure events.
-                                    </li>
-                                  </ul>
-                                </div>
-
-                                <p>
-                                  <strong className="font-bold text-slate-900">Governing Law and Jurisdiction:</strong> These Terms and your use of <strong className="font-bold text-slate-900">Holiday Circuit</strong> services are governed by the laws of New Delhi Jurisdiction, and any disputes shall be resolved in the courts of New Delhi Jurisdiction.
-                                </p>
-
-                                <p>
-                                  <strong className="font-bold text-slate-900">Changes to Terms and Conditions:</strong> We reserve the right to update and modify these Terms and Conditions at any time. Please review them periodically for changes. Your continued use of our services after any modifications indicates your acceptance of the updated Terms.
-                                </p>
-
-                                <p>
-                                  <strong className="font-bold text-slate-900">Contact Information:</strong> For any inquiries, please contact us at: <strong className="font-bold text-slate-900">Holiday Circuit</strong> KG 3/69, Ground Floor, Vikas Puri, New Delhi -110018, Near UK Nursing Home , Email id - <a href="mailto:varun@holidaycircuit.com" className="text-blue-600 underline hover:text-blue-800">varun@holidaycircuit.com</a> +91 8851346665, +91 9971706003
-                                </p>
-
-                                <p className="italic font-bold text-slate-900 pt-2">
-                                  By booking with Holiday Circuit, you acknowledge that you have read, understood, and agreed to these Terms and Conditions.
-                                </p>
-                              </>
-                            )}
+                            <InlineTermsEditor
+                            ref={el => inlineTermsRefs.current[selectedPkg?._id] = el}
+                              initialTerms={selectedPkg?.termsAndConditions}
+                              quotationId={selectedPkg?._id}
+                              isPackageTemplate={activeTab === "packages"}
+                              onUpdate={(newTerms) => {
+                                if (activeTab === "packages") {
+                                  setAgentPackages(prev => prev.map(p => 
+                                    p._id === selectedPkg?._id ? { ...p, termsAndConditions: newTerms } : p
+                                  ));
+                                } else {
+                                  setQuotes(prev => prev.map(q => 
+                                    q._id === selectedQuoteId 
+                                      ? {
+                                          ...q,
+                                          packages: q.packages.map(p => 
+                                            p._id === selectedPkg?._id ? { ...p, termsAndConditions: newTerms } : p
+                                          )
+                                        }
+                                      : q
+                                  ));
+                                }
+                              }}
+                            />
                           </div>
                         )}
                       </div>
@@ -10635,6 +10770,93 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
         )}
       </AnimatePresence>
 
+      {/* VOUCHER PREVIEW / VIEW MODAL */}
+      {isVoucherPreviewModalOpen && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/70 backdrop-blur-xs p-2 sm:p-4 md:p-6">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: 15 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 15 }}
+            transition={{ duration: 0.2 }}
+            className="w-full max-w-4xl max-h-[92vh] flex flex-col bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden font-sans"
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-200 bg-slate-50/80">
+              <div className="flex items-center gap-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-xs">
+                  <Eye size={18} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 leading-tight">
+                    Travel Voucher Preview
+                  </h3>
+                  <p className="text-[11px] font-medium text-slate-500">
+                    {query?.queryId || query?._id} • {query?.destination || "Destination"} • {query?.name || "Valued Client"}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const blob = new Blob(["\ufeff", voucherPreviewHtml], { type: "text/html" });
+                    const url = URL.createObjectURL(blob);
+                    window.open(url, "_blank");
+                  }}
+                  className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-100 border border-slate-300 rounded-lg shadow-2xs transition cursor-pointer"
+                  title="Open in new window"
+                >
+                  <Maximize2 size={13} />
+                  <span>Open in Tab</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleDownloadVoucher}
+                  className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 rounded-lg shadow-2xs transition cursor-pointer"
+                  title="Download Voucher"
+                >
+                  <Download size={13} />
+                  <span>Download</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setIsVoucherPreviewModalOpen(false)}
+                  className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 rounded-lg transition cursor-pointer ml-1"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+            </div>
+
+            {/* Iframe View */}
+            <div className="flex-1 overflow-hidden bg-slate-100 p-2 sm:p-4">
+              <iframe
+                title="Voucher Preview"
+                srcDoc={voucherPreviewHtml}
+                className="w-full h-[70vh] bg-white rounded-xl border border-slate-200 shadow-xs"
+              />
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-between px-5 py-3 border-t border-slate-200 bg-white">
+              <span className="text-xs text-slate-500">
+                Official travel service voucher
+              </span>
+              <button
+                type="button"
+                onClick={() => setIsVoucherPreviewModalOpen(false)}
+                className="px-4 py-1.5 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition cursor-pointer"
+              >
+                Close Preview
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
       {/* SHARE PACKAGE MODAL */}
       <SharePackageModal
         isOpen={isSendModalOpen}
@@ -10649,6 +10871,8 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
         getClientPdfUrl={getClientPdfUrl}
         shareMode={sendShareMode}
       />
+
+
 
       {/* TOP-LEVEL MARKUP MODAL */}
       {isMarkupModalOpen && (() => {
@@ -10878,6 +11102,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
         query={query}
       />
 
+
       <RevisionModal
         isOpen={isRevisionModalOpen}
         onClose={() => {
@@ -10890,6 +11115,8 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
         handleRequestRevision={handleRequestRevision}
         revisionSubmitting={revisionSubmitting}
       />
+
+
     </motion.div>
   );
 };

@@ -17,6 +17,7 @@ import {
 
 import { SuperAdminHeader } from "./superAdminDashboard/components/SuperAdminHeader";
 import { StatCardsGrid } from "./superAdminDashboard/components/StatCardsGrid";
+import { BookingTrendsCard } from "./superAdminDashboard/components/BookingTrendsCard";
 import { DashboardCharts } from "./superAdminDashboard/components/DashboardCharts";
 import { AgentApprovalDeskModal } from "./superAdminDashboard/components/AgentApprovalDeskModal";
 import { AdminEscalationDesk } from "./superAdminDashboard/components/AdminEscalationDesk";
@@ -28,6 +29,7 @@ import { DeleteUserModal } from "./superAdminDashboard/components/Modals/DeleteU
 import { AgentRejectModal } from "./superAdminDashboard/components/Modals/AgentRejectModal";
 import { EscalationReplyModal } from "./superAdminDashboard/components/Modals/EscalationReplyModal";
 import { OverrideResolutionModal } from "./superAdminDashboard/components/Modals/OverrideResolutionModal";
+import { BookingTrendsModal } from "./superAdminDashboard/components/Modals/BookingTrendsModal";
 
 export default function SuperAdminDashboard() {
   const navigate = useNavigate();
@@ -35,6 +37,7 @@ export default function SuperAdminDashboard() {
   const currentUser = useSelector((state) => state.auth.user);
 
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
+  const [isBookingTrendsModalOpen, setIsBookingTrendsModalOpen] = useState(false);
   const [showHeader, setShowHeader] = useState(true);
   const [agentApprovalRows, setAgentApprovalRows] = useState([]);
   const [agentApprovalSummary, setAgentApprovalSummary] = useState({ pending: 0, approved: 0, rejected: 0 });
@@ -291,13 +294,8 @@ export default function SuperAdminDashboard() {
     try {
       setUserActionId(id);
       const reason = String(reasonInput ?? deleteReason ?? "").trim();
-      if (!reason) { toast.error("Please add the deletion reason."); return; }
       const { data } = await API.delete(`/admin/managed-users/${id}`, { data: { reason } });
-      if (data?.user) {
-        setUserList((prev) =>
-          prev.map((user) => (user.id === id ? mapApiUserToRow(data.user) : user)),
-        );
-      }
+      setUserList((prev) => prev.filter((user) => user.id !== id));
       fetchDashboardData();
       toast.success(data?.message || "User deleted successfully");
       closeDeleteDialog();
@@ -408,6 +406,7 @@ export default function SuperAdminDashboard() {
   const selectedAgentStatusMeta = getAgentReviewStatusMeta(selectedAgent?.status);
   const superAdminData = dashboardData?.superAdmin || {};
   const statCards = superAdminData.statCards || [];
+  const bookingTrends = superAdminData.bookingTrends || null;
   const agentPerformanceData = superAdminData.agentPerformance || [];
   const teamEfficiencyData = superAdminData.teamEfficiency || [];
   const bookingRows = superAdminData.masterBookings || [];
@@ -465,6 +464,12 @@ export default function SuperAdminDashboard() {
         <StatCardsGrid
           statCards={statCards}
           isDashboardLoading={isDashboardLoading}
+        />
+
+        <BookingTrendsCard
+          bookingTrends={bookingTrends}
+          isLoading={isDashboardLoading}
+          onOpenDetails={() => setIsBookingTrendsModalOpen(true)}
         />
 
         <DashboardCharts
@@ -591,6 +596,14 @@ export default function SuperAdminDashboard() {
             closeDeleteDialog={closeDeleteDialog}
             handleDeleteUser={handleDeleteUser}
             isBusyAction={isBusyAction}
+          />
+        ) : null}
+
+        {isBookingTrendsModalOpen ? (
+          <BookingTrendsModal
+            isOpen={isBookingTrendsModalOpen}
+            onClose={() => setIsBookingTrendsModalOpen(false)}
+            bookingTrends={bookingTrends}
           />
         ) : null}
       </AnimatePresence>

@@ -1,11 +1,61 @@
 import React, { useMemo, useState, useEffect } from "react";
-import { X, Download, Send, Mail, MessageCircle } from "lucide-react";
+import { X, Download, Send, Mail, MessageCircle, FileText, ChevronDown } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
+import API from "../utils/Api";
 import {
   buildVoucherHtml,
   formatServiceTypeLabel,
   getVoucherStatusNote,
 } from "../utils/voucherTemplate";
+
+const parseAdminTermContent = (rawContent) => {
+  if (!rawContent) return [];
+  if (Array.isArray(rawContent)) {
+    return rawContent.map((t) => String(t || "").trim()).filter(Boolean);
+  }
+  if (typeof rawContent !== "string") return [];
+
+  if (/<[a-z][\s\S]*>/i.test(rawContent)) {
+    try {
+      const doc = new DOMParser().parseFromString(rawContent, "text/html");
+      const lines = [];
+      const processNode = (node) => {
+        if (!node) return;
+        if (node.nodeType === Node.ELEMENT_NODE) {
+          const tag = node.tagName.toLowerCase();
+          if (["ul", "ol"].includes(tag)) {
+            Array.from(node.childNodes).forEach(processNode);
+          } else if (["p", "h1", "h2", "h3", "h4", "h5", "h6", "li", "blockquote", "div"].includes(tag)) {
+            const text = (node.textContent || "").replace(/^\d+[\.\)]\s*/, "").trim();
+            if (text && !lines.includes(text)) {
+              lines.push(text);
+            }
+          } else {
+            Array.from(node.childNodes).forEach(processNode);
+          }
+        }
+      };
+      Array.from(doc.body.childNodes).forEach(processNode);
+      if (lines.length > 0) return lines;
+      const plain = (doc.body.textContent || "").trim();
+      return plain.split("\n").map((l) => l.replace(/^\d+[\.\)]\s*/, "").trim()).filter(Boolean);
+    } catch (e) {
+      return rawContent
+        .replace(/<br\s*[\/]?>/gi, "\n")
+        .replace(/<\/p>/gi, "\n")
+        .replace(/<\/li>/gi, "\n")
+        .replace(/<[^>]+>/g, "")
+        .split("\n")
+        .map((t) => t.replace(/^\d+[\.\)]\s*/, "").trim())
+        .filter(Boolean);
+    }
+  }
+
+  return rawContent
+    .split("\n")
+    .map((t) => t.replace(/^\d+[\.\)]\s*/, "").trim())
+    .filter(Boolean);
+};
 
 const voucherDispatchOptions = [
   {
@@ -253,11 +303,81 @@ const VoucherPreviewModal = ({
   const [selectedDispatchChannel, setSelectedDispatchChannel] = useState("EMAIL");
   const [dispatchRecipientEmail, setDispatchRecipientEmail] = useState(data?.agentEmail || "agent@holidaycircuit.com");
   const [dispatchRecipientPhone, setDispatchRecipientPhone] = useState(data?.agentPhone || "9876543210");
+  const [availableTerms, setAvailableTerms] = useState([]);
+  const [selectedTermKey, setSelectedTermKey] = useState("");
+  const [showTermsPreview, setShowTermsPreview] = useState(false);
+  const [loadingTerms, setLoadingTerms] = useState(true);
 
   useEffect(() => {
     if (data) {
       setDispatchRecipientEmail(data.agentEmail || "agent@holidaycircuit.com");
       setDispatchRecipientPhone(data.agentPhone || "9876543210");
+
+      const fetchAdminTerms = async () => {
+        try {
+          setLoadingTerms(true);
+          let res = null;
+          try {
+            res = await API.get("/admin/terms");
+          } catch (e) {
+            res = await API.get("/agent/terms");
+          }
+
+          const list = Array.isArray(res?.data)
+            ? res.data
+            : Array.isArray(res?.data?.data)
+            ? res.data.data
+            : [];
+
+          const adminTermsList = list
+            .map((item) => {
+              const items = parseAdminTermContent(item.content || "");
+              return {
+                id: String(item.id || item._id),
+                name: item.name || "Terms & Conditions",
+                items,
+              };
+            })
+            .filter((t) => t.items.length > 0);
+
+          const termsOptions = [...adminTermsList];
+
+          // Add None option
+          termsOptions.push({
+            id: "none",
+            name: "None (Exclude Terms & Conditions)",
+            items: [],
+          });
+
+          setAvailableTerms(termsOptions);
+
+          // Auto-select:
+          // 1. Term containing "voucher" (case-insensitive)
+          // 2. First admin term
+          // 3. "none"
+          const voucherMatchedTerm = adminTermsList.find((t) =>
+            t.name.toLowerCase().includes("voucher")
+          );
+
+          if (voucherMatchedTerm) {
+            setSelectedTermKey(voucherMatchedTerm.id);
+          } else if (adminTermsList.length > 0) {
+            setSelectedTermKey(adminTermsList[0].id);
+          } else {
+            setSelectedTermKey("none");
+          }
+        } catch (err) {
+          console.error("Failed to load admin terms:", err);
+          setAvailableTerms([
+            { id: "none", name: "None (Exclude Terms & Conditions)", items: [] },
+          ]);
+          setSelectedTermKey("none");
+        } finally {
+          setLoadingTerms(false);
+        }
+      };
+
+      fetchAdminTerms();
     }
   }, [data]);
 
@@ -269,24 +389,36 @@ const VoucherPreviewModal = ({
     () => getVoucherStatusNote(data?.services || [], data?.status === "sent" || isSentView),
     [data?.services, data?.status, isSentView],
   );
+
+  const selectedTermsList = useMemo(() => {
+    const selected = availableTerms.find((t) => t.id === selectedTermKey);
+    return selected?.items || [];
+  }, [availableTerms, selectedTermKey]);
+
   const footerText = useMemo(
-    () => `Voucher will ${branding === "with" ? "include" : "not include"} branding`,
-    [branding],
+    () => `Voucher will ${branding === "with" ? "include" : "not include"} branding${selectedTermsList.length ? ` • ${selectedTermsList.length} terms applied` : " • No terms applied"}`,
+    [branding, selectedTermsList],
   );
 
   if (!data) return null;
 
   const handleDownload = () => {
+    const enrichedData = {
+      ...data,
+      termsAndConditions: selectedTermsList,
+      terms: selectedTermsList,
+    };
+
     if (onDownload) {
-      onDownload(data, branding);
+      onDownload(enrichedData, branding, selectedTermsList);
       return;
     }
 
-    const agentBranding = {
-      name: data?.agentBrandingName || data?.agentName || "",
-      logo: data?.agentLogo || "",
+    const opsBranding = {
+      name: "Holiday Circuit",
+      logo: "",
     };
-    const html = buildVoucherHtml(data, branding, agentBranding);
+    const html = buildVoucherHtml(enrichedData, branding, opsBranding);
     const blob = new Blob([html], { type: "text/html;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -314,7 +446,8 @@ const VoucherPreviewModal = ({
           branding,
           selectedDispatchChannel,
           dispatchRecipientEmail,
-          dispatchRecipientPhone
+          dispatchRecipientPhone,
+          selectedTermsList
         );
       }
 
@@ -363,7 +496,7 @@ const VoucherPreviewModal = ({
 
           <div className="custom-scroll flex-1 overflow-y-auto px-4 py-3">
             <div className="rounded-[18px] bg-gradient-to-r from-blue-600 to-blue-800 py-4 text-center text-white">
-              <h1 className="text-base font-semibold">{branding === "with" ? (data?.agentBrandingName || data?.agentName || "Holiday Circuit") : "Travel Voucher"}</h1>
+              <h1 className="text-base font-semibold">{branding === "with" ? "Holiday Circuit" : "Travel Voucher"}</h1>
               <p className="mt-1 text-[10px]">{branding === "with" ? "Travel Voucher" : "Clean Voucher Copy"}</p>
 
               <div className="mt-2 inline-block rounded-xl bg-white/20 px-6 py-1.5">
@@ -420,6 +553,58 @@ const VoucherPreviewModal = ({
                   </div>
                 ))}
               </div>
+            </div>
+
+            {/* Terms and Conditions Dropdown Section */}
+            <div className="mt-3">
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="flex items-center gap-1.5 text-xs font-semibold text-gray-900">
+                  <FileText size={13} className="text-blue-600" />
+                  Terms &amp; Conditions
+                </label>
+                {selectedTermsList.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setShowTermsPreview((prev) => !prev)}
+                    className="text-[10px] font-medium text-blue-600 hover:text-blue-800 hover:underline flex items-center gap-0.5 cursor-pointer"
+                  >
+                    {showTermsPreview ? "Hide Preview" : `Preview (${selectedTermsList.length} items)`}
+                  </button>
+                )}
+              </div>
+
+              <div className="relative">
+                <select
+                  value={selectedTermKey}
+                  onChange={(e) => setSelectedTermKey(e.target.value)}
+                  disabled={isSentView || loadingTerms}
+                  className="w-full appearance-none rounded-[12px] border border-gray-200 bg-white px-3 py-2 pr-8 text-xs font-medium text-gray-800 shadow-xs outline-none transition hover:border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 cursor-pointer disabled:bg-gray-50 disabled:cursor-not-allowed"
+                >
+                  {loadingTerms ? (
+                    <option value="">Loading Admin Terms...</option>
+                  ) : availableTerms.length === 0 ? (
+                    <option value="none">No Admin Terms Found</option>
+                  ) : (
+                    availableTerms.map((opt) => (
+                      <option key={opt.id} value={opt.id}>
+                        {opt.name} {opt.items?.length ? `(${opt.items.length} points)` : ""}
+                      </option>
+                    ))
+                  )}
+                </select>
+                <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              </div>
+
+              {/* Collapsible Terms Preview Box */}
+              {showTermsPreview && selectedTermsList.length > 0 && (
+                <div className="mt-2 max-h-36 overflow-y-auto rounded-[12px] border border-blue-100 bg-blue-50/50 p-2.5 text-[10.5px] text-gray-700 custom-scroll">
+                  <ol className="list-decimal pl-4 space-y-1">
+                    {selectedTermsList.map((item, idx) => (
+                      <li key={idx} className="leading-relaxed">{item}</li>
+                    ))}
+                  </ol>
+                </div>
+              )}
             </div>
 
             <div className="mt-3">

@@ -30,6 +30,7 @@ import {
   Wallet,
   Coins,
   X,
+  Pencil,
 } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import API from "../../utils/Api";
@@ -1721,6 +1722,7 @@ export default function ActiveBookingDetails({ onClose, booking, onBookingUpdate
               <UserSquare2 size={15} className="text-emerald-500 shrink-0" />
               <span>{headerClientName}</span>
               <span className="text-slate-900 font-bold">({headerAdultCount || 2}A)</span>
+              <Pencil size={14} className="text-slate-400 hover:text-slate-600 cursor-pointer transition-colors" />
             </div>
 
             {/* Line 4: Arrow Agency Contact (DDLC Company) */}

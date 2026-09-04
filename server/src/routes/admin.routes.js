@@ -4,6 +4,9 @@ import { getPendingAgents, approveAgent, getAllUsers, createRateContract, deacti
 import { createCoupon, deleteCoupon, generateCouponCode, getAdminCoupons, sendCouponToAgent, updateCoupon } from "../controllers/couponController.js";
 import { getMyNotifications, markAllNotificationsRead, deleteNotification } from "../controllers/agentController.js";
 import { getOperationManagerQueryQuotations } from "../controllers/opsManagerController.js";
+import { getVoucheredQueries, getQueryDetails } from "../controllers/admin.bookingStatistics.controller.js";
+import { createTermsAndConditions, updateTermsAndConditions, fetchTermsAndConditions, fetchByIDTermsAndConditions, deleteTermsAndConditions } from "../controllers/adminTerms.controller.js";
+import { getIncExcPresets, getIncExcPresetById, createIncExcPreset, updateIncExcPreset, deleteIncExcPreset } from "../controllers/adminIncExc.controller.js";
 import multer from "multer";
 
 const routers = express.Router();
@@ -46,6 +49,10 @@ routers.get("/stats", isAuthenticated , getSystemStats);
 routers.get("/dashboard", isAuthenticated, getAdminDashboardData);
 routers.get("/queries/:queryId/quotations", isAuthenticated, getOperationManagerQueryQuotations);
 routers.patch("/queries/:id/reply-to-ops", isAuthenticated, replyToOpsEscalation);
+
+routers.get("/booking-statistics/vouchered", isAuthenticated, getVoucheredQueries);
+routers.get("/booking-statistics/query/:id", isAuthenticated, getQueryDetails);
+
 routers.patch("/override-cases/:targetType/:id/resolve", isAuthenticated, resolveAdminOverrideCase);
 routers.get("/payments", getAllPayments);
 routers.get("/payment-verifications", isAuthenticated, getPaymentVerifications);
@@ -73,5 +80,17 @@ routers.patch("/internal-invoices/:id/status", isAuthenticated, updateInternalIn
 routers.get("/notifications", isAuthenticated, getMyNotifications);
 routers.patch("/notifications/read-all", isAuthenticated, markAllNotificationsRead);
 routers.delete("/notifications/:id", isAuthenticated, deleteNotification);
+
+routers.get("/terms", isAuthenticated, fetchTermsAndConditions);
+routers.post("/terms", isAuthenticated, createTermsAndConditions);
+routers.get("/terms/:id", isAuthenticated, fetchByIDTermsAndConditions);
+routers.put("/terms/:id", isAuthenticated, updateTermsAndConditions);
+routers.delete("/terms/:id", isAuthenticated, deleteTermsAndConditions);
+
+routers.get("/inc-exc-presets", isAuthenticated, getIncExcPresets);
+routers.get("/inc-exc-presets/:id", isAuthenticated, getIncExcPresetById);
+routers.post("/inc-exc-presets", isAuthenticated, createIncExcPreset);
+routers.put("/inc-exc-presets/:id", isAuthenticated, updateIncExcPreset);
+routers.delete("/inc-exc-presets/:id", isAuthenticated, deleteIncExcPreset);
 
 export default routers;

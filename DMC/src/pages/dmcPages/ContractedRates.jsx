@@ -75,9 +75,15 @@ export default function ContractedRates() {
     setCurrentPage(1);
   }, [activeTab]);
 
+  const normalizeCategory = (cat) => {
+    const c = String(cat || "").toLowerCase().trim();
+    if (c === "sightseeing") return "activity";
+    return c;
+  };
+
   const filteredUploads = useMemo(() => {
     if (activeTab === "all") return uploads;
-    return uploads.filter((item) => String(item.category || "").toLowerCase() === activeTab.toLowerCase());
+    return uploads.filter((item) => normalizeCategory(item.category) === activeTab.toLowerCase());
   }, [uploads, activeTab]);
 
   // Resolve current active sheet data
@@ -370,6 +376,12 @@ export default function ContractedRates() {
     fetchUploads();
   }, []);
 
+  useEffect(() => {
+    if (!uploads.some((upload) => upload.status === "processing")) return undefined;
+    const intervalId = setInterval(fetchUploads, 5000);
+    return () => clearInterval(intervalId);
+  }, [uploads]);
+
   const fetchUploads = async () => {
     try {
       const res = await API.get("/dmc/bulk-upload-history");
@@ -402,12 +414,12 @@ export default function ContractedRates() {
     if (!result.isConfirmed) return;
 
     try {
-      await API.delete(`/dmc/upload/${id}`);
+      const deleteResponse = await API.delete(`/dmc/upload/${id}`);
       setUploads((prev) => prev.filter((item) => item._id !== id));
 
       Swal.fire({
         title: "Deleted!",
-        text: "Upload has been removed successfully.",
+        text: deleteResponse.data?.message || "Upload has been removed successfully.",
         icon: "success",
         iconColor: "#107c41",
         timer: 1500,
@@ -476,7 +488,7 @@ export default function ContractedRates() {
 
   const getTabCount = (tabId) => {
     if (tabId === "all") return uploads.length;
-    return uploads.filter((item) => String(item.category || "").toLowerCase() === tabId.toLowerCase()).length;
+    return uploads.filter((item) => normalizeCategory(item.category) === tabId.toLowerCase()).length;
   };
 
   return (
@@ -529,7 +541,11 @@ export default function ContractedRates() {
         </div>
       </div>
 
-      <DmcBulkUploadModal isOpen={showBulkUploadModal} onClose={() => setShowBulkUploadModal(false)}/>
+      <DmcBulkUploadModal
+        isOpen={showBulkUploadModal}
+        onClose={() => setShowBulkUploadModal(false)}
+        onUploadStarted={fetchUploads}
+      />
 
       {/* EXCEL SHEET VIEWER MODAL */}
       <AnimatePresence>

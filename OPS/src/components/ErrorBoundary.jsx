@@ -2,8 +2,7 @@ import React from "react";
 import { useRouteError } from "react-router-dom";
 import { AlertTriangle, RotateCcw, Home, ArrowLeft, Copy, Check } from "lucide-react";
 
-export function RouteErrorFallback() {
-  const error = useRouteError();
+export function ErrorFallbackUI({ error }) {
   const [copied, setCopied] = React.useState(false);
 
   const errorMessage =
@@ -85,6 +84,11 @@ export function RouteErrorFallback() {
   );
 }
 
+export function RouteErrorFallback() {
+  const error = useRouteError();
+  return <ErrorFallbackUI error={error} />;
+}
+
 export default class ErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
@@ -102,7 +106,7 @@ export default class ErrorBoundary extends React.Component {
   render() {
     if (this.state.hasError) {
       return (
-        <RouteErrorFallback />
+        <ErrorFallbackUI error={this.state.error} />
       );
     }
     return this.props.children;

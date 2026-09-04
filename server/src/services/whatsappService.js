@@ -44,18 +44,18 @@ const DEFAULT_WHATSAPP_TERMS = Object.freeze([
   "Intellectual Property & Privacy: Personal data is protected and used solely for booking purposes.",
   "Governing Law: All disputes subject to New Delhi Jurisdiction only.",
   "Force Majeure: Not liable for delays/cancellations due to natural disasters, weather, or emergencies.",
-  "Contact: Leela Travels, KG 3/101, Vikas Puri, New Delhi | ops@leelatravels.com | +91 8851346665.",
-  "By booking with DDLC Company, you acknowledge that you have read, understood, and agreed to these Terms and Conditions.",
+  "Contact: Holiday Circuit, 2nd Floor, 632 Block B1, Janakpuri, New Delhi - 110058 | ops@holidaycircuit.com | +91 8851346665.",
+  "By booking with Holiday Circuit, you acknowledge that you have read, understood, and agreed to these Terms and Conditions.",
 ]);
 
 const normalizeSellerBankDetails = (items = []) => {
   const normalizedItems = Array.isArray(items)
     ? items
-        .map((item) => ({
-          label: String(item?.label || "").trim(),
-          value: String(item?.value || "").trim(),
-        }))
-        .filter((item) => item.label && item.value)
+      .map((item) => ({
+        label: String(item?.label || "").trim(),
+        value: String(item?.value || "").trim(),
+      }))
+      .filter((item) => item.label && item.value)
     : [];
 
   return normalizedItems.length ? normalizedItems : [...DEFAULT_SELLER_BANK_DETAILS];
@@ -75,13 +75,13 @@ const buildWhatsappMessage = (quoteDetails = {}) => {
   const termsAndConditions = normalizeTermsAndConditions(quoteDetails?.termsAndConditions);
   const sellerBankSection = includeSellerBankDetails && sellerBankDetails.length
     ? `\n\nSeller Bank Details\n----------\n${sellerBankDetails
-        .map((item) => `${item.label}: ${item.value}`)
-        .join("\n")}`
+      .map((item) => `${item.label}: ${item.value}`)
+      .join("\n")}`
     : "";
   const termsSection = termsAndConditions.length
     ? `\n\nTerms and Conditions\n----------\n${termsAndConditions
-        .map((item, index) => `${index + 1}. ${item}`)
-        .join("\n")}`
+      .map((item, index) => `${index + 1}. ${item}`)
+      .join("\n")}`
     : "";
 
   return `

@@ -39,12 +39,23 @@ const InternalInvoice = lazy(
 const AdvancedAnalytics = lazy(
   () => import("../pages/financePages/AdvancedAnalytics"),
 );
+const BookingStatistics = lazy(
+  () => import("../pages/financePages/BookingStatistics"),
+);
 const Dashboard = lazy(() => import("../pages/adminPages/Dashboard"));
 const SuperAdminDashboard = lazy(
   () => import("../pages/adminPages/SuperAdminDashboard"),
 );
 const Discount = lazy(() => import("../pages/adminPages/Discount"));
 const UserManagement = lazy(() => import("../pages/adminPages/UserManagement"));
+const Terms = lazy(() => import("../pages/adminPages/Terms"));
+const CreateTerm = lazy(() => import("../pages/adminPages/CreateTerm"));
+const TermDetails = lazy(() => import("../pages/adminPages/TermDetails"));
+const EditTerm = lazy(() => import("../pages/adminPages/EditTerm"));
+const IncExcList = lazy(() => import("../pages/adminPages/incExc/IncExcList"));
+const IncExcCreate = lazy(() => import("../pages/adminPages/incExc/IncExcCreate"));
+const IncExcDetails = lazy(() => import("../pages/adminPages/incExc/IncExcDetails"));
+const IncExcEdit = lazy(() => import("../pages/adminPages/incExc/IncExcEdit"));
 
 const routeFallbackElement = (
   <div className="absolute inset-0 bg-black/25 backdrop-blur-[5px] flex items-center justify-center z-50 select-none pointer-events-none w-full h-full min-h-[30vh]">
@@ -93,6 +104,14 @@ export const appRouter = createBrowserRouter([
             element: lazyPage(BookingManagementHub),
           },
           { path: "/admin/user-management", element: lazyPage(UserManagement) },
+          
+          { path: "/admin/terms-conditions/create", element: lazyPage(CreateTerm)},
+          { path: "/admin/terms-conditions/:id/edit", element: lazyPage(EditTerm)},
+          
+          { path: "/admin/inc-exc-presets", element: lazyPage(IncExcList)},
+          { path: "/admin/inc-exc-presets/create", element: lazyPage(IncExcCreate)},
+          { path: "/admin/inc-exc-presets/:id", element: lazyPage(IncExcDetails)},
+          { path: "/admin/inc-exc-presets/:id/edit", element: lazyPage(IncExcEdit)},
         ],
       },
     ],
@@ -123,6 +142,9 @@ export const appRouter = createBrowserRouter([
             path: "/ops/voucher-management",
             element: lazyPage(VoucherManagement),
           },
+          { path: "/admin/terms-conditions", element: lazyPage(Terms)},
+          { path: "/admin/terms-conditions/:id", element: lazyPage(TermDetails)},
+
         ],
       },
     ],
@@ -157,6 +179,10 @@ export const appRouter = createBrowserRouter([
           {
             path: "/finance/advancedAnalytics",
             element: lazyPage(AdvancedAnalytics),
+          },
+          {
+            path: "/finance/bookingStatistics",
+            element: lazyPage(BookingStatistics),
           },
           {
             path: "/finance/paymentVerification",

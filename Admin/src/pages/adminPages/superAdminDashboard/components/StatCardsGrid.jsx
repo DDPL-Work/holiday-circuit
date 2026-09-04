@@ -9,7 +9,7 @@ import {
 
 export const StatCardsGrid = ({ statCards = [], isDashboardLoading = false }) => {
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 20, marginTop: 28, padding: "0 16px" }}>
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 mt-7 px-4">
       {statCards.map((s) => {
         const meta = statCardMeta[s.iconKey] || statCardMeta.users;
         const tone = statCardToneMap[s.iconKey] || statCardToneMap.users;

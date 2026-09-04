@@ -8,6 +8,7 @@ import {
   FileText,
   MapPin,
   User,
+  ChevronDown,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useSelector } from "react-redux";
@@ -144,7 +145,20 @@ export default function BookingManagementHub() {
   const [loading, setLoading] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState(null);
   const [selectedDocumentBooking, setSelectedDocumentBooking] = useState(null);
+  const [mobileDropdownOpen, setMobileDropdownOpen] = useState(false);
   const itemsPerPage = 8;
+  
+  const statusTabs = [
+    { id: "All", label: "All Status" },
+    { id: "New_Query", label: "New Query" },
+    { id: "Received_Query", label: "Received Query" },
+    { id: "Pending_Accept", label: "Pending" },
+    { id: "Booking_Accepted", label: "Query Accepted" },
+    { id: "Invoice_Requested", label: "Amount/Docs Pending" },
+    { id: "Confirmed", label: "Confirmed" },
+    { id: "Vouchered", label: "Vouchered" },
+    { id: "Revision_Requested", label: "Quotation Rejected" },
+  ];
 
   const activeAdvancedFiltersCount =
     (docReviewFilter !== "All" ? 1 : 0) +
@@ -326,6 +340,54 @@ export default function BookingManagementHub() {
           <p className="text-sm text-gray-500">Central hub for all agent requests and bookings</p>
         </div>
 
+        <div className="mb-4">
+          <div className="md:hidden relative">
+            <button
+              onClick={() => setMobileDropdownOpen(!mobileDropdownOpen)}
+              className="flex w-full items-center justify-between rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 cursor-pointer shadow-sm"
+            >
+              <span>{statusTabs.find(t => t.id === statusFilter)?.label || "All Status"}</span>
+              <ChevronDown className={`h-4 w-4 text-gray-500 transition-transform ${mobileDropdownOpen ? "rotate-180" : ""}`} />
+            </button>
+            
+            {mobileDropdownOpen && (
+              <div className="absolute z-10 mt-2 w-full rounded-xl border border-gray-100 bg-white shadow-lg overflow-hidden py-1 max-h-64 overflow-y-auto custom-scroll">
+                {statusTabs.map((tab) => (
+                  <button
+                    key={tab.id}
+                    onClick={() => {
+                      setStatusFilter(tab.id);
+                      setMobileDropdownOpen(false);
+                    }}
+                    className={`block w-full text-left px-4 py-2 text-sm transition-colors ${
+                      statusFilter === tab.id
+                        ? "bg-blue-50 text-blue-700 font-medium"
+                        : "text-gray-700 hover:bg-gray-50"
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="hidden md:flex gap-6 overflow-x-auto border-b border-gray-200 pb-px thin-scrollbar">
+            {statusTabs.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setStatusFilter(tab.id)}
+                className={`whitespace-nowrap border-b-2 px-1 py-2 text-sm font-medium transition-colors cursor-pointer ${
+                  statusFilter === tab.id
+                    ? "border-blue-600 text-blue-600"
+                    : "border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700"
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <motion.div
           whileHover={{ scale: 1.002 }}
           className="mb-3 flex flex-col gap-3 rounded-xl border border-gray-200 bg-[#F8FAFC] p-4 lg:flex-row lg:items-center lg:justify-between"
@@ -340,46 +402,33 @@ export default function BookingManagementHub() {
             />
           </div>
 
-          <select
-            className="cursor-pointer rounded-xl border border-gray-300 bg-white px-2 py-2 text-xs outline-none"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-          >
-            <option value="All">All Status</option>
-            <option value="Received_Query">Received Query</option>
-            <option value="Pending_Accept">Pending</option>
-            <option value="Revision_Requested">Quotation Rejected</option>
-            <option value="Booking_Accepted">Query Accepted</option>
-            <option value="Invoice_Requested">Amount/Docs Pending</option>
-            <option value="Confirmed">Confirmed</option>
-            <option value="Vouchered">Vouchered</option>
-          </select>
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+            <div className="flex items-center gap-2 rounded-xl border border-gray-300 bg-white px-3 py-2 text-xs hover:bg-gray-50">
+              <input
+                type="date"
+                value={dateFilter}
+                onChange={(e) => setDateFilter(e.target.value)}
+                className="cursor-pointer text-xs outline-none"
+              />
+            </div>
 
-          <div className="flex items-center gap-2 rounded-xl border border-gray-300 bg-white px-3 py-2 text-xs hover:bg-gray-50">
-            <input
-              type="date"
-              value={dateFilter}
-              onChange={(e) => setDateFilter(e.target.value)}
-              className="cursor-pointer text-xs outline-none"
-            />
+            <button
+              onClick={() => setShowMoreFilters((prev) => !prev)}
+              className={`flex items-center justify-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition cursor-pointer ${
+                showMoreFilters || activeAdvancedFiltersCount > 0
+                  ? "border-blue-500 bg-blue-50 text-blue-700"
+                  : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+              }`}
+            >
+              <Filter className="h-4 w-4" />
+              More Filters
+              {activeAdvancedFiltersCount > 0 && (
+                <span className="flex h-4 w-4 items-center justify-center rounded-full bg-blue-600 text-[10px] font-bold text-white">
+                  {activeAdvancedFiltersCount}
+                </span>
+              )}
+            </button>
           </div>
-
-          <button
-            onClick={() => setShowMoreFilters((prev) => !prev)}
-            className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition cursor-pointer ${
-              showMoreFilters || activeAdvancedFiltersCount > 0
-                ? "border-blue-500 bg-blue-50 text-blue-700"
-                : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
-            }`}
-          >
-            <Filter className="h-4 w-4" />
-            More Filters
-            {activeAdvancedFiltersCount > 0 && (
-              <span className="flex h-4 w-4 items-center justify-center rounded-full bg-blue-600 text-[10px] font-bold text-white">
-                {activeAdvancedFiltersCount}
-              </span>
-            )}
-          </button>
         </motion.div>
 
         {showMoreFilters && (

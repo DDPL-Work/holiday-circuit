@@ -1039,7 +1039,7 @@ const notifyOpsForBlockedBlackoutRate = async ({ query, service, blackout }) => 
 
 const canUserOverrideBlackoutRate = (user = {}) => {
   const role = String(user?.role || "").trim().toLowerCase();
-  return ["admin", "operation_manager", "operations_manager", "ops_manager"].includes(role);
+  return ["admin", "operation_manager", "operations_manager", "ops_manager", "operations", "ops"].includes(role);
 };
 
 const isBlackoutOverrideApproved = ({ user = {}, service = {} }) => {
@@ -1057,24 +1057,19 @@ const assertNoBlackoutContractRates = async ({ query, services = [], user = {} }
 
   if (!blockedServices.length) return;
 
-  await Promise.all(
-    blockedServices.map((item) =>
-      notifyOpsForBlockedBlackoutRate({
-        query,
-        service: item.service,
-        blackout: item.blackout,
-      }),
-    ),
-  );
-
-  const serviceList = blockedServices
-    .map(({ service, blackout }) => `${service.title || "Hotel"} (${formatBlackoutLabel(blackout)})`)
-    .join(", ");
-
-  throw new ApiError(
-    400,
-    `Blackout date matched. Contracted hotel rate cannot be used for: ${serviceList}. Use manual/special pricing instead.`,
-  );
+  try {
+    await Promise.all(
+      blockedServices.map((item) =>
+        notifyOpsForBlockedBlackoutRate({
+          query,
+          service: item.service,
+          blackout: item.blackout,
+        }),
+      ),
+    );
+  } catch (err) {
+    console.error("Blackout notification error:", err);
+  }
 };
 
 const notifyAssignedOpsMemberForBlackoutOverride = async ({ query, services = [], user = {}, quotation = null }) => {
@@ -3871,6 +3866,7 @@ export const getVoucherManagementData = async (req, res, next) => {
           agentName: query.agent?.companyName || query.agent?.name || "",
           agentEmail: query.agent?.email || "",
           agentPhone: query.agent?.phone || "",
+          termsAndConditions: quotation?.termsAndConditions || [],
         };
       })
     );
@@ -3887,7 +3883,7 @@ export const getVoucherManagementData = async (req, res, next) => {
         voucher.quotation ||
         (voucher.query?._id
           ? await getLatestOperationalQuotation(voucher.query._id)
-            .select("services")
+            .select("services termsAndConditions")
           : null);
       const quotationServices = fallbackQuotation?.services || [];
       const resolvedVoucherServices = buildResolvedVoucherServices({
@@ -3925,6 +3921,7 @@ export const getVoucherManagementData = async (req, res, next) => {
         agentPhone: voucher.agent?.phone || "",
         agentBrandingName: voucher.agent?.brandingName || voucher.agent?.companyName || "",
         agentLogo: voucher.agent?.brandingLogo || "",
+        termsAndConditions: voucher.termsAndConditions?.length ? voucher.termsAndConditions : (fallbackQuotation?.termsAndConditions || []),
       };
     }));
 
@@ -4215,20 +4212,40 @@ export const generateVoucher = async (req, res, next) => {
       travelDate: query.startDate || null,
       passengers: `${passengers} PAX`,
       duration: `${nights}N/${days}D`,
-      services: (quotation?.services || []).map((service, index) => ({
-        type: service.type || "service",
-        name: service.title || "",
-        status: getServiceConfirmationStatus(
-          confirmationServices,
-          service,
-          index,
-        ) || "",
-        confirmation: "Pending",
-      })),
+      termsAndConditions: quotation?.termsAndConditions || [],
+      services: (quotation?.services || []).map((service, index) => {
+        const cnfNum = getServiceConfirmationNumber(confirmationServices, service, index);
+        const cnfStatus = getServiceConfirmationStatus(confirmationServices, service, index);
+        return {
+          type: service.type || "service",
+          name: service.title || service.name || "",
+          status: cnfStatus || (cnfNum && cnfNum !== "Pending" ? "Confirmed" : "Pending"),
+          confirmation: cnfNum && cnfNum !== "Pending" ? cnfNum : (cnfStatus === "Confirmed" ? "Confirmed" : "Pending"),
+        };
+      }),
       generatedBy: req.user.id,
       generatedAt: new Date(),
     });
 
+    if (quotation && Array.isArray(quotation.services)) {
+      quotation.services = quotation.services.map((service, index) => {
+        const cnfNum = getServiceConfirmationNumber(confirmationServices, service, index);
+        const cnfStatus = getServiceConfirmationStatus(confirmationServices, service, index);
+        const serviceObj = service.toObject ? service.toObject() : { ...service };
+        if (cnfNum && cnfNum !== "Pending") {
+          serviceObj.confirmationNumber = cnfNum;
+          serviceObj.voucherNumber = cnfNum;
+          serviceObj.confirmation = cnfNum;
+          serviceObj.status = "Confirmed";
+          serviceObj.isVoucherGenerated = true;
+        } else if (cnfStatus && cnfStatus !== "Pending") {
+          serviceObj.status = cnfStatus;
+          serviceObj.confirmation = cnfStatus;
+        }
+        return serviceObj;
+      });
+      await quotation.save();
+    }
 
     res.status(200).json({
       success: true,
@@ -4248,7 +4265,7 @@ export const generateVoucher = async (req, res, next) => {
 
 export const sendVoucherToAgent = async (req, res, next) => {
   try {
-    const { branding = "with", email, phone, dispatchChannel = "EMAIL" } = req.body;
+    const { branding = "with", email, phone, dispatchChannel = "EMAIL", termsAndConditions = null } = req.body;
     const normalizedDispatchChannel = String(dispatchChannel || "EMAIL").trim().toUpperCase();
     const query = await TravelQuery.findById(req.params.id).populate("agent");
 
@@ -4272,6 +4289,10 @@ export const sendVoucherToAgent = async (req, res, next) => {
       });
     }
 
+    if (termsAndConditions && Array.isArray(termsAndConditions)) {
+      voucher.termsAndConditions = termsAndConditions;
+    }
+
     const latestInvoice = await Invoice.findOne({ query: query._id })
       .select("paymentStatus paymentVerification.status createdAt")
       .sort({ createdAt: -1 })
@@ -4286,10 +4307,10 @@ export const sendVoucherToAgent = async (req, res, next) => {
 
     const quotation =
       (voucher.quotation
-        ? await Quotation.findById(voucher.quotation).select("services")
+        ? await Quotation.findById(voucher.quotation).select("services termsAndConditions")
         : null) ||
       (await getLatestOperationalQuotation(query._id)
-        .select("services")
+        .select("services termsAndConditions")
       );
 
     const confirmationQueryIds = [
@@ -4346,6 +4367,7 @@ export const sendVoucherToAgent = async (req, res, next) => {
             adults: Number(query.numberOfAdults || 0),
             children: Number(query.numberOfChildren || 0),
             travelerSummary: buildTravelerSummary(query),
+            termsAndConditions: termsAndConditions || voucher.termsAndConditions || quotation?.termsAndConditions || [],
             services: resolvedVoucherServices.map((service) => ({
               type: service.type,
               title: service.name,

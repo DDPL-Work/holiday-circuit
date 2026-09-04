@@ -1,4 +1,4 @@
-import { createElement, lazy, Suspense } from "react";
+import  React ,{ createElement, lazy, Suspense } from "react";
 import { createBrowserRouter } from "react-router-dom";
 import ProtectedRoute from "./ProtectedRoute";
 import Layout from "../layout/Layout";
@@ -11,6 +11,10 @@ const DocumentPortal = lazy(() => import("../pages/agentPages/DocumentPortal"));
 const AssetLibrary = lazy(() => import("../pages/agentPages/AssetLibrary"));
 const Login = lazy(() => import("../auth/login/Login"));
 const Register = lazy(() => import("../auth/register/Register"));
+const Terms = lazy(() => import("../pages/agentPages/Terms"));
+const CreateTerm = lazy(() => import("../pages/agentPages/CreateTerm"));
+const TermDetails = lazy(() => import("../pages/agentPages/TermDetails"));
+const EditTerm = lazy(() => import("../pages/agentPages/EditTerm"));
 
 
 const routeFallbackElement = (
@@ -55,6 +59,10 @@ export const appRouter = createBrowserRouter([
           { path: "/agent/documents", element: lazyPage(DocumentPortal)},
           { path: "/agent/finance", element: lazyPage(Finance)},
           { path: "/agent/assets", element: lazyPage(AssetLibrary)},
+          { path: "/agent/terms", element: lazyPage(Terms)},
+          { path: "/agent/terms/create", element: lazyPage(CreateTerm)},
+          { path: "/agent/terms/:id", element: lazyPage(TermDetails)},
+          { path: "/agent/terms/:id/edit", element: lazyPage(EditTerm)},
         ],
       },
     ],

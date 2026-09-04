@@ -1235,26 +1235,64 @@ export const deletePackage = async (req, res, next) => {
 
 export const deleteUpload = async (req, res) => {
   try {
-    const { id } = req.params
+    const { id } = req.params;
+    const ownerFilter = req.user?.role === "admin" ? {} : { uploadedAuth: req.user?.id };
 
-    const file = await UploadHistory.findById(id)
+    const file = await UploadHistory.findOne({ _id: id, ...ownerFilter });
 
     if (!file) {
-      return res.status(404).json({ message: "File not found" })
+      return res.status(404).json({ message: "File not found" });
     }
 
-    // server se file delete
+    if (file.status === "processing") {
+      return res.status(409).json({ message: "This upload is still processing and cannot be deleted yet." });
+    }
+
+    // We now allow deletion of legacy uploads. 
+    // The inventoryFilter below ensures we don't accidentally delete all inventory,
+    // as it specifically requires `sourceUpload: file._id`, which legacy records lack.
+
+    // Only inventory tagged with this exact upload is deleted. Records from
+    // older uploads without sourceUpload are intentionally left untouched.
+    const inventoryFilter = { sourceUpload: file._id };
+    let inventoryDeleteResult;
+    switch (String(file.category || "").toLowerCase()) {
+      case "hotel":
+        inventoryDeleteResult = await Hotel.deleteMany(inventoryFilter);
+        break;
+      case "transport":
+        inventoryDeleteResult = await Transfer.deleteMany(inventoryFilter);
+        break;
+      case "activity":
+      case "sightseeing": {
+        const [activityResult, sightseeingResult] = await Promise.all([
+          Activity.deleteMany(inventoryFilter),
+          Sightseeing.deleteMany(inventoryFilter),
+        ]);
+        inventoryDeleteResult = { deletedCount: activityResult.deletedCount + sightseeingResult.deletedCount };
+        break;
+      }
+      case "package":
+        inventoryDeleteResult = await Package.deleteMany(inventoryFilter);
+        break;
+      default:
+        inventoryDeleteResult = { deletedCount: 0 };
+    }
+
+    // Delete the original Excel file from the server.
     if (file.filePath && fs.existsSync("." + file.filePath)) {
-      fs.unlinkSync("." + file.filePath)
+      fs.unlinkSync("." + file.filePath);
     }
 
-    // DB se delete
-    await UploadHistory.findByIdAndDelete(id)
+    await UploadHistory.findByIdAndDelete(id);
 
-    res.json({ message: "Deleted successfully" })
+    return res.json({
+      message: `Deleted upload and ${Number(inventoryDeleteResult?.deletedCount || 0)} linked inventory record(s).`,
+      deletedInventoryRecords: Number(inventoryDeleteResult?.deletedCount || 0),
+    });
 
   } catch (error) {
-    res.status(500).json({ error: error.message })
+    return res.status(500).json({ error: error.message });
   }
 }
 
@@ -3206,11 +3244,11 @@ const getDmcVisibleQueriesData = async (req) => {
       checkInDate: schedule?.checkInDate || "",
       checkOutDate: schedule?.checkOutDate || "",
       checkInTime: alignedService.checkInTime || alignedService.hotelCheckInTime || "",
-      checkOutTime: alignedService.checkOutTime || alignedService.hotelCheckOutTime || "",
-      status: "Confirmed",
-      confirmationNumber: "",
-      voucherNumber: "",
-      emergency: "",
+      status: alignedService.status || "Confirmed",
+      confirmationNumber: alignedService.confirmationNumber || alignedService.voucherNumber || "",
+      voucherNumber: alignedService.voucherNumber || "",
+      emergency: alignedService.emergency || "",
+      isVoucherGenerated: Boolean(alignedService.voucherNumber || alignedService.confirmationNumber || alignedService.isVoucherGenerated),
       city: alignedService.city || "",
       country: alignedService.country || "",
       supplierId: alignedService.supplierId || alignedService.dmcId || "",
@@ -3248,8 +3286,7 @@ const getDmcVisibleQueriesData = async (req) => {
       service?.supplierId?.toString?.() ||
       service?.supplierId;
 
-    if (serviceSupplierId) {
-      if (serviceSupplierId !== currentDmcId) return null;
+    if (serviceSupplierId && serviceSupplierId === currentDmcId) {
       return mapQuotationServiceReference(service, schedule, alignedTotal, index);
     }
 
@@ -3257,26 +3294,21 @@ const getDmcVisibleQueriesData = async (req) => {
       return mapQuotationServiceReference(service, schedule, alignedTotal, index);
     }
 
-    if (!service?.serviceId) {
-      const ownedByDetails = await serviceBelongsToCurrentDmcByDetails(service);
-      return ownedByDetails
-        ? mapQuotationServiceReference(service, schedule, alignedTotal, index)
-        : null;
-    }
+    if (service?.serviceId) {
+      const ServiceModel = getServiceModel(service.type);
+      if (ServiceModel) {
+        const sourceServiceKey = `${String(service.type || "").trim().toLowerCase()}:${service.serviceId}`;
+        if (!sourceServiceSupplierByKey.has(sourceServiceKey)) {
+          const sourceService = await ServiceModel.findById(service.serviceId)
+            .select("supplier")
+            .lean();
+          sourceServiceSupplierByKey.set(sourceServiceKey, sourceService?.supplier?.toString() || "");
+        }
 
-    const ServiceModel = getServiceModel(service.type);
-    if (!ServiceModel) return null;
-
-    const sourceServiceKey = `${String(service.type || "").trim().toLowerCase()}:${service.serviceId}`;
-    if (!sourceServiceSupplierByKey.has(sourceServiceKey)) {
-      const sourceService = await ServiceModel.findById(service.serviceId)
-        .select("supplier")
-        .lean();
-      sourceServiceSupplierByKey.set(sourceServiceKey, sourceService?.supplier?.toString() || "");
-    }
-
-    if (sourceServiceSupplierByKey.get(sourceServiceKey) === currentDmcId) {
-      return mapQuotationServiceReference(service, schedule, alignedTotal, index);
+        if (sourceServiceSupplierByKey.get(sourceServiceKey) === currentDmcId) {
+          return mapQuotationServiceReference(service, schedule, alignedTotal, index);
+        }
+      }
     }
 
     const ownedByDetails = await serviceBelongsToCurrentDmcByDetails(service);
@@ -3429,6 +3461,28 @@ const getDmcVisibleQueriesData = async (req) => {
           vouchers: vouchersByQueryId.get(queryKey) || [],
         },
       );
+
+      if (Array.isArray(confirmation?.services) && confirmation.services.length > 0) {
+        quotationServices.forEach((qs, qIdx) => {
+          const qsTitle = normalizeText(qs.title || qs.serviceName || qs.hotelName || qs.name || "");
+          const matchedConf = confirmation.services.find((cs, cIdx) => {
+            if (cs._id && qs._id && String(cs._id) === String(qs._id)) return true;
+            if (cs.serviceId && qs.serviceId && String(cs.serviceId) === String(qs.serviceId)) return true;
+            const csTitle = normalizeText(cs.serviceName || cs.title || cs.name || "");
+            if (csTitle && qsTitle && (csTitle === qsTitle || csTitle.includes(qsTitle) || qsTitle.includes(csTitle))) return true;
+            return cIdx === qIdx;
+          });
+
+          if (matchedConf) {
+            if (matchedConf.confirmationNumber) qs.confirmationNumber = matchedConf.confirmationNumber;
+            if (matchedConf.voucherNumber) qs.voucherNumber = matchedConf.voucherNumber;
+            if (matchedConf.status) qs.status = matchedConf.status;
+            if (matchedConf.emergency) qs.emergency = matchedConf.emergency;
+            if (matchedConf.serviceDate) qs.serviceDate = matchedConf.serviceDate;
+            qs.isVoucherGenerated = Boolean(matchedConf.voucherNumber || matchedConf.confirmationNumber || matchedConf.isVoucherGenerated);
+          }
+        });
+      }
       const derivedServiceSchedule = deriveQuotationServiceSchedule(
         quotationServices,
         query.startDate,

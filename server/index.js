@@ -23,6 +23,18 @@ app.use(cors());
 app.use(express.json({ limit: REQUEST_BODY_LIMIT }));
 app.use(express.urlencoded({ extended: true, limit: REQUEST_BODY_LIMIT }));
 app.use(morgan("dev"));
+import { pdfMemoryCache } from "./src/utils/pdfCache.js";
+
+// Intercept /uploads requests to serve from memory cache if available
+app.use("/uploads", (req, res, next) => {
+  const cacheKey = `/uploads${req.path}`;
+  if (pdfMemoryCache.has(cacheKey)) {
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", "inline");
+    return res.send(pdfMemoryCache.get(cacheKey));
+  }
+  next();
+});
 app.use("/uploads", express.static("uploads"))
 
 // ====================== SAMPLE API ROUTE ======================

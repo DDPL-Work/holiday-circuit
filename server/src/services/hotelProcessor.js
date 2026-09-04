@@ -50,8 +50,8 @@ const parseExcelDate = (val, fallback = new Date("2026-04-01")) => {
   return parsed && !isNaN(parsed.getTime()) ? parsed : fallback;
 };
 
-export const processHotelExcel = async (filePath, ownerId) => {
-  const workbook = XLSX.readFile(filePath);
+export const processHotelExcel = async (filePath, ownerId, providedWorkbook = null, sourceUpload = null) => {
+  const workbook = providedWorkbook || XLSX.readFile(filePath);
   const sheetName = workbook.SheetNames.find((s) => s.toLowerCase().includes("hotel")) || workbook.SheetNames[0];
   const sheet = workbook.Sheets[sheetName];
   const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
@@ -151,6 +151,7 @@ export const processHotelExcel = async (filePath, ownerId) => {
         serviceName: currService || currHotel,
         supplierName: currSupplier,
         supplier: ownerId,
+        sourceUpload,
         country: currCountry || "India",
         city: currCity || "New Delhi",
         serviceCategory: "hotel",
@@ -244,7 +245,9 @@ export const processHotelExcel = async (filePath, ownerId) => {
   });
 
   if (finalServiceDocs.length > 0) {
-    const batchSize = 100;
+    // Fewer database round trips for large supplier workbooks, while keeping
+    // each insert safely below MongoDB's command-size limits.
+    const batchSize = 500;
     for (let b = 0; b < finalServiceDocs.length; b += batchSize) {
       const batch = finalServiceDocs.slice(b, b + batchSize);
       await Hotel.insertMany(batch, { ordered: false });
@@ -257,4 +260,3 @@ export const processHotelExcel = async (filePath, ownerId) => {
     blackoutDates,
   };
 };
-

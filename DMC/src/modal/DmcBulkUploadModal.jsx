@@ -4,7 +4,7 @@ import { RotatingLines } from "react-loader-spinner";
 import API from "../utils/Api.js";
 import Swal from "sweetalert2";
 
-const DmcBulkUploadModal = ({ isOpen, onClose }) => {
+const DmcBulkUploadModal = ({ isOpen, onClose, onUploadStarted }) => {
   const [show, setShow] = useState(false);
   const [render, setRender] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -65,10 +65,40 @@ const DmcBulkUploadModal = ({ isOpen, onClose }) => {
         headers: { "Content-Type": "multipart/form-data" },
       });
 
+      const uploadId = response.data?.uploadId;
+      if (!uploadId) throw new Error("Upload job was not created");
+
+      /* The status polling UI is no longer needed: processing continues in
+      the worker after this request returns, so the modal can close at once.
+      Swal.update({
+        title: "Processing upload...",
+        text: "Your file is being imported safely in the background. Please keep this window open.",
+      });
+
+      let completedUpload = null;
+      for (let attempt = 0; attempt < 180; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        const statusResponse = await API.get(`/dmc/bulk-upload/${uploadId}/status`);
+        const upload = statusResponse.data?.upload;
+
+        if (upload?.status === "success") {
+          completedUpload = upload;
+          break;
+        }
+        if (upload?.status === "failed") {
+          throw new Error("The file could not be processed. Please verify the Excel format and try again.");
+        }
+      }
+
+      if (!completedUpload) {
+        throw new Error("Processing is taking longer than expected. Check Bulk Upload History for the final status.");
+      }
+
       // 🟢 Success popup
+      */
       Swal.fire({
-        title: "Upload Successful!",
-        text: `Uploaded By: ${response.data.uploadedBy}`,
+        title: "Upload Started",
+        text: `Uploaded By: ${response.data.uploadedBy}. You can continue working; the final result will appear in Upload Records.`,
         icon: "success",
         iconColor: "#107c41",
         background: "#ffffff",
@@ -81,6 +111,7 @@ const DmcBulkUploadModal = ({ isOpen, onClose }) => {
 
       setFile(null);
       setFileName("");
+      onUploadStarted?.();
       onClose();
 
     } catch (err) {

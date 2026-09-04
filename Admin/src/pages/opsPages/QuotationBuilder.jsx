@@ -279,6 +279,30 @@ return parts.join(", ") || "Traveler details pending";
 const getQueryPassengerCount = (query = {}) =>
 Number(query?.numberOfAdults || 0) + Number(query?.numberOfChildren || 0);
 
+const formatServiceDuration = (serv = {}, tourObj = {}) => {
+  let dur = serv.duration || tourObj.duration || "";
+
+  if (!dur) {
+    const descText = `${tourObj.description || ""} ${serv.description || ""} ${serv.desc || ""}`;
+    const minMatch = descText.match(/(\d+)\s*(?:mins?|minutes?)/i);
+    const hrMatch = descText.match(/(\d+(?:\.\d+)?)\s*(?:hours?|hrs?)/i);
+    if (minMatch) {
+      dur = minMatch[1];
+    } else if (hrMatch) {
+      dur = Math.round(parseFloat(hrMatch[1]) * 60);
+    }
+  }
+
+  if (!dur) dur = "60";
+
+  const num = Number(String(dur).replace(/[^\d.]/g, ""));
+  if (!isNaN(num) && num > 0) {
+    return `${num} Mins`;
+  }
+
+  return String(dur);
+};
+
 const buildShareServiceQuantityLabel = (service = {}, fallbackPax = 0) => {
 const normalizedType = normalizeServiceFilterType(service?.type);
 const details = [];
@@ -388,21 +412,21 @@ const WHATSAPP_QUOTATION_BRAND = "Holiday Circuit";
 const WHATSAPP_SECTION_DIVIDER = "----------";
 const WHATSAPP_SUBSECTION_DIVIDER = "-------";
 const DEFAULT_WHATSAPP_TERMS = Object.freeze([
-  "Welcome to Leela Travels. These Terms & Conditions govern your travel booking and services.",
+  "Welcome to Holiday Circuit. These Terms & Conditions govern your travel booking and services.",
   "Services include travel planning, packages, transfers (Private & Shared - wait up to 30 mins), hotels & visa assistance.",
   "Booking & Payment: 25% non-refundable advance to confirm. Full payment required 30 days before departure.",
   "Cancellations: 25% (30 days before), 50% (29-16 days), 75% (15-8 days), 100% (within 7 days). Refunds in 15 days.",
   "Changes & Modifications: Administrative/service fees apply for client-requested itinerary changes.",
   "Travel Documents: Passport, visa & health documentation compliance is the client's sole responsibility.",
   "Health & Safety: Medical conditions must be declared in advance; compliance with safety rules is mandatory.",
-  "Liability: Leela Travels acts as an intermediary for airlines, hotels & transporters.",
+  "Liability: Holiday Circuit acts as an intermediary for airlines, hotels & transporters.",
   "Accommodation Policies: Standard check-in 14:00-15:00 Hrs, check-out 11:00-12:00 Hrs.",
   "Travel Insurance: Highly recommended for medical, cancellation & personal loss coverage.",
   "Intellectual Property & Privacy: Personal data is protected and used solely for booking purposes.",
   "Governing Law: All disputes subject to New Delhi Jurisdiction only.",
   "Force Majeure: Not liable for delays/cancellations due to natural disasters, weather, or emergencies.",
-  "Contact: Leela Travels, KG 3/101, Vikas Puri, New Delhi | ops@leelatravels.com | +91 8851346665.",
-  "By booking with DDLC Company, you acknowledge that you have read, understood, and agreed to these Terms and Conditions.",
+  "Contact: Holiday Circuit, 2nd Floor, 632 Block B1, Janakpuri, New Delhi - 110058 | ops@holidaycircuit.com | +91 8851346665.",
+  "By booking with Holiday Circuit, you acknowledge that you have read, understood, and agreed to these Terms and Conditions.",
 ]);
 
 const SHOW_SELECTED_HISTORY_COMPARISON = false;
@@ -993,6 +1017,8 @@ const buildWhatsAppTermsSection = (items = []) => {
   const baseUrl = API.defaults.baseURL || browserOrigin;
   return new URL(baseUrl, browserOrigin).origin;
   };
+
+  
 
   const createPublicAssetUrl = (filePath = "") => {
   if (!filePath) return "";
@@ -1746,7 +1772,12 @@ const resolveActivitySmartRate = (service = {}, targetDate = "", tourTypeName = 
   const selectedTour = tourList.find((t) => t.tourType === (tourTypeName || service.tourType)) || tourList[0] || {};
   const basePrice = selectedTour.adultPrice !== undefined ? Number(selectedTour.adultPrice) : (selectedTour.price !== undefined ? Number(selectedTour.price) : Number(service.price || service.rate || 0));
   const childPrice = selectedTour.childPrice !== undefined ? Number(selectedTour.childPrice) : Number(service.childPrice || 0);
-  const seasons = Array.isArray(selectedTour.seasons) ? selectedTour.seasons : [];
+  const seasons =
+    Array.isArray(selectedTour.seasons) && selectedTour.seasons.length > 0
+      ? selectedTour.seasons
+      : Array.isArray(service.seasons)
+        ? service.seasons
+        : [];
   const blackoutDates = Array.isArray(service.blackoutDates) ? service.blackoutDates : [];
 
   const smartAdult = resolveSmartSeasonAndBlackoutPrice(basePrice, seasons, blackoutDates, targetDate);
@@ -2259,8 +2290,8 @@ const getHotelBaseRateDisplayValue = (service = {}) => {
 };
 
 const getInferredHotelMaxOccupancy = (room = {}, service = {}) => {
-  const roomCat = String(room.roomCategory || service.roomCategory || "").toLowerCase().trim();
-  const roomTyp = String(room.roomType || service.roomType || "").toLowerCase().trim();
+  const roomCat = String(service.roomCategory || room.roomCategory || "").toLowerCase().trim();
+  const roomTyp = String(service.roomType || room.roomType || "").toLowerCase().trim();
 
   let defaultAdults = 2;
   let defaultChildren = 1;
@@ -2268,9 +2299,6 @@ const getInferredHotelMaxOccupancy = (room = {}, service = {}) => {
   if (roomCat.includes("single") || roomTyp.includes("single")) {
     defaultAdults = 1;
     defaultChildren = 0;
-  } else if (roomCat.includes("triple") || roomTyp.includes("triple")) {
-    defaultAdults = 3;
-    defaultChildren = 1;
   } else if (
     roomCat.includes("quad") ||
     roomCat.includes("family") ||
@@ -2280,6 +2308,9 @@ const getInferredHotelMaxOccupancy = (room = {}, service = {}) => {
   ) {
     defaultAdults = 4;
     defaultChildren = 2;
+  } else if (roomCat.includes("triple") || roomTyp.includes("triple")) {
+    defaultAdults = 3;
+    defaultChildren = 1;
   }
 
   const rawAdults = room.maxAdults !== undefined ? Number(room.maxAdults) : (service.maxAdults !== undefined ? Number(service.maxAdults) : undefined);
@@ -2352,18 +2383,7 @@ const getHotelVariantOptions = (services = [], service = {}) => {
             ),
           );
 
-    const uniqueExtraBedTypes = Array.from(
-      new Set(
-        [
-          "None",
-          "Rollaway Bed",
-          "Sofa Bed",
-          "Mattress",
-          ...hotelDocRooms.map((r) => r.extraBedType).filter(Boolean),
-          service.extraBedType,
-        ].filter(Boolean),
-      ),
-    );
+    const uniqueExtraBedTypes = ["None", "Single Bed"];
 
     return {
       roomCategories,
@@ -2423,9 +2443,7 @@ const getHotelVariantOptions = (services = [], service = {}) => {
     })),
     extraBedTypes: [
       { value: "None", label: "None" },
-      { value: "Rollaway Bed", label: "Rollaway Bed" },
-      { value: "Sofa Bed", label: "Sofa Bed" },
-      { value: "Mattress", label: "Mattress" },
+      { value: "Single Bed", label: "Single Bed" },
     ],
   };
 };
@@ -2494,7 +2512,7 @@ const scoreHotelVariantMatch = (variant = {}, nextService = {}, changedField = "
 
     if (matchedRoom) {
       const baseRoomPrice = matchedRoom.price !== undefined ? Number(matchedRoom.price) : Number(service.price || service.rate || 0);
-      const targetDate = service.serviceDate || formatDateInput(order?.startDate);
+      const targetDate = service.serviceDate || "";
       const smart = resolveSmartSeasonAndBlackoutPrice(baseRoomPrice, matchedRoom.seasons, service.blackoutDates, targetDate);
       const nextPrice = smart.rate;
       const occupancy = getInferredHotelMaxOccupancy(matchedRoom, {
@@ -4596,83 +4614,100 @@ setDraftValidTill("");
       )
       : roundCurrencyAmount(service.rate || 0);
 
-      return ({
-      draftServiceId: service.dbServiceId || "",
-      serviceId: service.custom
-      ? service.serviceId || ""
-      : service.transportUsageServiceIds?.[getTransportUsageOptionKey(service)] || service.serviceId || service.id,
-      dmcId: resolveDmcOwner(service).dmcId,
-      dmcName: resolveDmcOwner(service).dmcName,
-      supplierId: service.supplierId || "",
-      supplierName: service.supplierName || "",
-      type: normalizedServiceType,
-      title: service.title,
-      city: service.city || "",
-      country: service.country || "",
-      description: service.desc || service.description || "",
-      serviceDate: service.serviceDate || "",
-      roomCategory: service.roomCategory || "",
-      roomType: service.roomType || "",
-      hotelCategory: service.hotelCategory || "",
-      bedType: normalizeBedTypeValue(service.bedType),
-      adults: Number(service.adults || 0),
-      children: Number(service.children || 0),
-      infants: Number(service.infants || 0),
-      rooms: Number(service.rooms || 1),
-      nights: Number(service.nights || 0),
-      vehicleType: service.vehicleType || "",
-      passengerCapacity: Number(service.passengerCapacity || 0),
-      luggageCapacity: Number(service.luggageCapacity || 0),
-      usageType: service.usageType || "",
-      transportUsageOptionKey: service.transportUsageOptionKey || getTransportUsageOptionKey(service),
-      transportUsageLabel: service.transportUsageLabel || getSelectedTransportUsageOptionLabels(service)[0] || "",
-      transportUsageLimitOptionKey: service.transportUsageLimitOptionKey || "",
-      extraPerKmRate: Number(service.extraPerKmRate || 0),
-      fullDayExtraPerKmRate: Number(service.fullDayExtraPerKmRate || 0),
-      halfDayExtraPerKmRate: Number(service.halfDayExtraPerKmRate || 0),
-      days: Number(service.days || 1),
-      pax: servicePax,
-      tourType: service.tourType || "",
-      tourTypes: Array.isArray(service.tourTypes) ? service.tourTypes : [],
-      pricingBasis: service.pricingBasis || "",
-      maxPax: service.maxPax || "",
-      currency: normalizeCurrencyCode(service.currency || "INR"),
-      price: serviceUnitRate,
-      hotelRateMode: "unit-rate",
-      manualRateOverride: Boolean(service.manualRateOverride),
-      quoteBaseRate: normalizedServiceType === "hotel" ? serviceUnitRate : 0,
-      roomTypeOptionRate: normalizedServiceType === "hotel"
-      ? roundCurrencyAmount(service.roomTypeOptionRate || serviceUnitRate || 0)
-      : 0,
-      roomTypeOptionCurrency: normalizedServiceType === "hotel"
-      ? normalizeCurrencyCode(service.roomTypeOptionCurrency || service.currency || "INR")
-      : "",
-      exchangeRate: Number(service.exchangeRate || getExchangeRateForCurrency(service.currency, exchangeRates)),
-      priceInInr: roundCurrencyAmount(
-      convertAmountToInr(
-      serviceUnitRate,
-      service.currency,
-      exchangeRates,
-      ),
-      ),
-      extraAdult: Boolean(service.extraAdult),
-      childWithBed: Boolean(service.childWithBed),
-      childWithoutBed: Boolean(service.childWithoutBed),
-      awebRate: roundCurrencyAmount(service.awebRate || 0),
-      cwebRate: roundCurrencyAmount(service.cwebRate || 0),
-      cwoebRate: roundCurrencyAmount(service.cwoebRate || 0),
-      blackoutDates: Array.isArray(service.blackoutDates) ? service.blackoutDates : [],
-      blackout: service.blackout || { isBlackout: false },
-      blackoutOverride: service.blackoutOverride || (service.blackout?.isBlackout
-      ? {
-      approved: true,
-      source: "ops_manager_special_rate",
-      reason: service.blackout.label || service.blackout.reason || "Blackout date special pricing",
+      const payloadObj = {
+        draftServiceId: service.dbServiceId || "",
+        serviceId: service.custom
+          ? service.serviceId || ""
+          : service.transportUsageServiceIds?.[getTransportUsageOptionKey(service)] || service.serviceId || service.id,
+        dmcId: resolveDmcOwner(service).dmcId,
+        dmcName: resolveDmcOwner(service).dmcName,
+        supplierId: service.supplierId || "",
+        supplierName: service.supplierName || "",
+        type: normalizedServiceType,
+        title: service.title,
+        city: service.city || "",
+        country: service.country || "",
+        description: service.desc || service.description || "",
+        serviceDate: service.serviceDate || "",
+        adults: Number(service.adults || 0),
+        children: Number(service.children || 0),
+        infants: Number(service.infants || 0),
+        currency: normalizeCurrencyCode(service.currency || "INR"),
+        price: serviceUnitRate,
+        exchangeRate: Number(service.exchangeRate || getExchangeRateForCurrency(service.currency, exchangeRates)),
+        priceInInr: roundCurrencyAmount(
+          convertAmountToInr(
+            serviceUnitRate,
+            service.currency,
+            exchangeRates,
+          ),
+        ),
+        total: serviceTotal,
+        totalInInr: serviceTotalInInr,
+      };
+
+      if (normalizedServiceType === "hotel") {
+        payloadObj.hotelName = service.hotelName || service.title || "";
+        payloadObj.roomCategory = service.roomCategory || "";
+        payloadObj.roomType = service.roomType || "";
+        payloadObj.hotelCategory = service.hotelCategory || "";
+        payloadObj.bedType = normalizeBedTypeValue(service.bedType);
+        payloadObj.rooms = Number(service.rooms || 1);
+        payloadObj.nights = Number(service.nights || 0);
+        payloadObj.hotelRateMode = "unit-rate";
+        payloadObj.manualRateOverride = Boolean(service.manualRateOverride);
+        payloadObj.quoteBaseRate = serviceUnitRate;
+        payloadObj.roomTypeOptionRate = roundCurrencyAmount(service.roomTypeOptionRate || serviceUnitRate || 0);
+        payloadObj.roomTypeOptionCurrency = normalizeCurrencyCode(service.roomTypeOptionCurrency || service.currency || "INR");
+        payloadObj.extraAdult = Boolean(service.extraAdult);
+        payloadObj.childWithBed = Boolean(service.childWithBed);
+        payloadObj.childWithoutBed = Boolean(service.childWithoutBed);
+        payloadObj.awebRate = roundCurrencyAmount(service.awebRate || 0);
+        payloadObj.cwebRate = roundCurrencyAmount(service.cwebRate || 0);
+        payloadObj.cwoebRate = roundCurrencyAmount(service.cwoebRate || 0);
+      } else if (["transfer", "transport", "car"].includes(normalizedServiceType)) {
+        payloadObj.vehicleType = service.vehicleType || "";
+        payloadObj.pickupTime = service.pickupTime || service.time || "";
+        payloadObj.time = service.pickupTime || service.time || "";
+        payloadObj.passengerCapacity = Number(service.passengerCapacity || 0);
+        payloadObj.luggageCapacity = Number(service.luggageCapacity || 0);
+        payloadObj.usageType = service.usageType || "";
+        payloadObj.transportUsageOptionKey = service.transportUsageOptionKey || getTransportUsageOptionKey(service);
+        payloadObj.transportUsageLabel = service.transportUsageLabel || getSelectedTransportUsageOptionLabels(service)[0] || "";
+        payloadObj.transportUsageLimitOptionKey = service.transportUsageLimitOptionKey || "";
+        payloadObj.extraPerKmRate = Number(service.extraPerKmRate || 0);
+        payloadObj.fullDayExtraPerKmRate = Number(service.fullDayExtraPerKmRate || 0);
+        payloadObj.halfDayExtraPerKmRate = Number(service.halfDayExtraPerKmRate || 0);
+        payloadObj.days = Number(service.days || 1);
+        payloadObj.pax = servicePax;
+      } else if (["activity", "sightseeing"].includes(normalizedServiceType)) {
+        const tourTypesList = Array.isArray(service.tourTypes) && service.tourTypes.length > 0 ? service.tourTypes : [];
+        const currentTourObj = tourTypesList.find(t => String(t.tourType || "").trim().toLowerCase() === String(service.tourType || "").trim().toLowerCase()) || tourTypesList[0] || {};
+
+        payloadObj.tourType = service.tourType || currentTourObj.tourType || "Sharing Tour";
+        payloadObj.tourTypes = tourTypesList;
+        payloadObj.pricingBasis = service.pricingBasis || currentTourObj.pricingBasis || "";
+        payloadObj.maxPax = service.maxPax || currentTourObj.maxPax || "";
+        payloadObj.adultPrice = Number(service.adultPrice !== undefined ? service.adultPrice : (service.price || service.rate || 0));
+        payloadObj.childPrice = Number(service.childPrice !== undefined ? service.childPrice : 0);
+        payloadObj.duration = service.duration || currentTourObj.duration || formatServiceDuration(service, currentTourObj) || "";
+        payloadObj.slots = service.slots || "";
+        payloadObj.selectedSlot = service.selectedSlot || service.slot || (String(service.slots || "").split(",")[0]?.trim()) || service.openingTime || "08:00";
+        payloadObj.operatingDays = service.operatingDays || "Mon-Sun";
+        payloadObj.openingTime = service.openingTime || "08:00";
+        payloadObj.closingTime = service.closingTime || "18:00";
+        payloadObj.days = Number(service.days || 1);
+        payloadObj.pax = servicePax;
+      } else {
+        payloadObj.days = Number(service.days || 1);
+        payloadObj.pax = servicePax;
       }
-      : undefined),
-      total: serviceTotal,
-      totalInInr: serviceTotalInInr,
-      });
+
+      if (service.blackoutDates) payloadObj.blackoutDates = Array.isArray(service.blackoutDates) ? service.blackoutDates : [];
+      if (service.blackout) payloadObj.blackout = service.blackout;
+      if (service.blackoutOverride) payloadObj.blackoutOverride = service.blackoutOverride;
+
+      return payloadObj;
       };
 
       const mergeRefreshedContractedServices = (previousServices = [], refreshedServices = []) => {
@@ -5598,44 +5633,11 @@ return true;
       return data?.quotation || null;
       };
 
+      // Background auto-save disabled per user directive to prevent automatic screen refreshes & item resets while building quotes.
+      // Drafts will be saved to DB when user explicitly clicks save or convert actions.
       useEffect(() => {
-      if (!quotationId || !draftHydrated || servicesLoading || isInvoiceRequestedStage) {
-      draftServicesAutosaveRef.current = { ready: false, signature: "" };
-      return undefined;
-      }
-
-      if (!draftServicesAutosaveRef.current.ready) {
-      draftServicesAutosaveRef.current = {
-      ready: true,
-      signature: selectedServicesDraftSignature,
-      };
-      return undefined;
-      }
-
-      if (draftServicesAutosaveRef.current.signature === selectedServicesDraftSignature) {
-      return undefined;
-      }
-
-      const timer = window.setTimeout(async () => {
-      try {
-      await persistQuotationDraft();
-      draftServicesAutosaveRef.current.signature = selectedServicesDraftSignature;
-      } catch (error) {
-      console.error("Failed to auto-save quotation services", error);
-      }
-      }, 300);
-
-      return () => window.clearTimeout(timer);
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-      }, [
-      currentAppliedTaxTotal,
-      draftHydrated,
-      isInvoiceRequestedStage,
-      quotationId,
-      selectedServicesDraftSignature,
-      servicesLoading,
-      totalAmount,
-      ]);
+        draftServicesAutosaveRef.current = { ready: false, signature: "" };
+      }, []);
 
       const resolveQuotationQueryId = (quotation) => {
       const quotationQueryId = quotation?.queryId;
@@ -5654,6 +5656,12 @@ return true;
       const queryPax = getQueryPassengerCount(order);
 
       return {
+      isOpsQuotation: true,
+      agentBrandingName: "Holiday Circuit",
+      agentLogo: "https://res.cloudinary.com/dszadvuz6/image/upload/e_trim/v1777932524/unzssx1sjkrigbgldg7h.png",
+      agentCompanyAddress: "2nd Floor, 632 Block B1, Janakpuri, New Delhi - 110058",
+      agentPhone: "+91 8851346665, +91 9971706003",
+      agentEmail: "ops@leelatravels.com",
       recipientName:
       order?.agent?.name ||
       order?.agentName ||
@@ -6202,31 +6210,7 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
       return;
       }
 
-      if (normalizedTargetType === "hotel" && nextChecked && totalPassengers > 0) {
-        const occupancy = getInferredHotelMaxOccupancy(
-          (targetService?.hotels?.[0]?.rooms?.[0]) || {},
-          targetService || {}
-        );
-        const maxAdultsPerRoom = Number(occupancy.maxAdults || targetService?.maxAdults || 2);
-        const currentRooms = Math.max(1, Number(targetService?.rooms || 1));
-        const totalCap = currentRooms * (maxAdultsPerRoom + (targetService?.extraAdult ? 1 : 0));
-        const neededRooms = Math.max(1, Math.ceil(totalPassengers / maxAdultsPerRoom));
 
-        if (totalPassengers > totalCap) {
-          toast(
-            `Room Suggestion: For ${totalPassengers} passengers, ${neededRooms} rooms are recommended based on ${targetService?.roomCategory || targetService?.roomType || "room"} capacity (${maxAdultsPerRoom} Pax/room). Currently ${currentRooms} room selected.`,
-            {
-              id: `hotel-pax-suggest-${id}`,
-              duration: 5500,
-              style: {
-                border: "1px solid rgba(250, 204, 21, 0.4)",
-                background: "#141414",
-                color: "#fef08a",
-              },
-            }
-          );
-        }
-      }
 
       if (
       normalizedTargetType === "hotel" &&
@@ -6395,19 +6379,26 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
       ["roomCategory", "roomType", "bedType", "extraBedType"].includes(field)
       ) {
         const resolved = resolveHotelVariantSelection(prev, service, field, value);
-        if (totalPassengers > 0) {
+        if (adultPassengers > 0) {
+          const roomsList = Array.isArray(resolved.hotels?.[0]?.rooms) ? resolved.hotels[0].rooms : [];
+          const matchedRoom =
+            roomsList.find((r) => r.roomType === resolved.roomType) ||
+            roomsList.find((r) => r.roomCategory === resolved.roomCategory) ||
+            roomsList[0] ||
+            {};
           const occupancy = getInferredHotelMaxOccupancy(
-            (resolved.hotels?.[0]?.rooms?.[0]) || {},
+            matchedRoom,
             resolved
           );
           const maxAdultsPerRoom = Number(occupancy.maxAdults || resolved.maxAdults || 2);
           const currentRooms = Math.max(1, Number(resolved.rooms || 1));
-          const totalCap = currentRooms * (maxAdultsPerRoom + (resolved.extraAdult ? 1 : 0));
-          const neededRooms = Math.max(1, Math.ceil(totalPassengers / maxAdultsPerRoom));
+          const hasExtraBed = resolved.extraAdult || (resolved.extraBedType && resolved.extraBedType !== "None");
+          const totalCap = currentRooms * (maxAdultsPerRoom + (hasExtraBed ? 1 : 0));
+          const neededRooms = Math.max(1, Math.ceil(adultPassengers / maxAdultsPerRoom));
 
-          if (totalPassengers > totalCap) {
+          if (adultPassengers > totalCap) {
             toast(
-              `Room Suggestion: For ${totalPassengers} passengers, ${neededRooms} rooms are recommended based on ${resolved.roomCategory || resolved.roomType || "room"} capacity (${maxAdultsPerRoom} Pax/room). Currently ${currentRooms} room selected.`,
+              `Room Suggestion: For ${adultPassengers} Adult${adultPassengers > 1 ? "s" : ""}, ${neededRooms} room${neededRooms > 1 ? "s are" : " is"} recommended based on ${resolved.roomCategory || resolved.roomType || "room"} capacity (${maxAdultsPerRoom} Adult${maxAdultsPerRoom > 1 ? "s" : ""}/room). Currently ${currentRooms} room selected.`,
               {
                 id: `hotel-pax-suggest-${id}`,
                 duration: 5000,
@@ -6689,407 +6680,427 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
         const isSingleServiceModalView =
         selectedServicesModalScope === "single" && servicesToRender.length === 1;
 
-        const Chip = ({ icon, label, value, accent = "text-slate-300", iconColor = "text-slate-500" }) => (
-        <div
-          className="inline-flex items-center gap-1.5 rounded-lg border border-[#212f45] bg-[#0a1018] px-2.5 py-[5px]">
-          {icon && (
-          <span className={`flex-shrink-0 ${iconColor}`} style={{ lineHeight: 0 }}>
-            {icon}
-          </span>
-          )}
-          {label && (
-          <span className="flex-shrink-0 text-[10px] font-medium text-slate-500">{label}:</span>
-          )}
-          <span className={`max-w-[120px] truncate text-[10px] font-semibold leading-none ${accent}`}>
-            {value}
-          </span>
-        </div>
+        const Chip = ({ icon, label, value, accent = "text-slate-700", iconColor = "text-slate-500" }) => (
+          <div className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-[5px]">
+            {icon && (
+              <span className={`flex-shrink-0 ${iconColor}`} style={{ lineHeight: 0 }}>
+                {icon}
+              </span>
+            )}
+            {label && (
+              <span className="flex-shrink-0 text-[10px] font-medium text-slate-500">{label}:</span>
+            )}
+            <span className={`max-w-[120px] truncate text-[10px] font-semibold leading-none ${accent}`}>
+              {value}
+            </span>
+          </div>
         );
 
         const typeAccent =
-        service.type === "hotel"
-        ? { bg: "bg-indigo-500/10", border: "border-indigo-500/20", text: "text-indigo-200" }
-        : service.type === "activity"
-        ? { bg: "bg-emerald-500/10", border: "border-emerald-500/20", text: "text-emerald-200" }
-        : service.type === "transfer" || service.type === "car"
-        ? { bg: "bg-violet-500/10", border: "border-violet-500/20", text: "text-violet-200" }
-        : { bg: "bg-blue-500/10", border: "border-blue-500/20", text: "text-blue-200" };
+          service.type === "hotel"
+            ? { bg: "bg-indigo-50", border: "border-indigo-200", text: "text-indigo-800 font-semibold" }
+            : service.type === "activity"
+              ? { bg: "bg-emerald-50", border: "border-emerald-200", text: "text-emerald-800 font-semibold" }
+              : service.type === "transfer" || service.type === "car"
+                ? { bg: "bg-violet-50", border: "border-violet-200", text: "text-violet-800 font-semibold" }
+                : { bg: "bg-blue-50", border: "border-blue-200", text: "text-blue-800 font-semibold" };
         const isTargetedService = selectedServicesModalTargetId === service.id;
 
         return (
-        <div key={`selected-${service.id}`} id={getSelectedServiceSummaryDomId(service.id)} className={`rounded-[24px]
-          border bg-[#050505] p-3 transition-all duration-200 ${ isTargetedService
-          ? "border-sky-400/60 shadow-[0_0_0_1px_rgba(56,189,248,0.35)]" : "border-[#22314a]" }
-          ${isSingleServiceModalView ? "mx-auto w-full max-w-2xl" : "" }`}>
-          <div className="rounded-[18px] border border-[#162233] bg-[#08111c] px-3 py-3">
-            <div className={`flex items-start gap-2.5 ${isSingleServiceModalView ? "flex-col" : "" }`}>
-              <div
-                className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full border border-[#27436d] bg-[#0b1627]">
-                {renderSelectedServiceSummaryIcon(service)}
-              </div>
+          <div
+            key={`selected-${service.id}`}
+            id={getSelectedServiceSummaryDomId(service.id)}
+            className={`rounded-xl border bg-white p-3 shadow-2xs transition-all duration-200 ${
+              isTargetedService
+                ? "border-sky-400 shadow-[0_0_0_2px_rgba(56,189,248,0.35)]"
+                : "border-gray-200"
+            } ${isSingleServiceModalView ? "mx-auto w-full max-w-2xl" : ""}`}
+          >
+            <div className="rounded-lg border border-gray-200 bg-slate-50 px-3 py-3">
+              <div className={`flex items-start gap-2.5 ${isSingleServiceModalView ? "flex-col" : ""}`}>
+                <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full border border-gray-200 bg-white shadow-2xs">
+                  {renderSelectedServiceSummaryIcon(service)}
+                </div>
 
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="truncate text-[13px] font-semibold leading-tight text-white">
-                    {service.title}
-                  </p>
-                  {isTargetedService && (
-                  <span
-                    className="rounded-full border border-sky-500/30 bg-sky-500/10 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-sky-300">
-                    Active
-                  </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="truncate text-[13px] font-semibold leading-tight text-slate-900">
+                      {service.title}
+                    </p>
+                    {isTargetedService && (
+                      <span className="rounded-full border border-sky-300 bg-sky-50 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-sky-800">
+                        Active
+                      </span>
+                    )}
+                  </div>
+                  {(service.city || service.country) && (
+                    <p className="mt-0.5 truncate text-[10px] text-slate-500">
+                      {[service.city, service.country].filter(Boolean).join(", ")}
+                    </p>
                   )}
                 </div>
-                {(service.city || service.country) && (
-                <p className="mt-0.5 truncate text-[10px] text-slate-500">
-                  {[service.city, service.country].filter(Boolean).join(", ")}
-                </p>
-                )}
+
+                <div
+                  className={`${
+                    isSingleServiceModalView ? "w-full pl-[46px] text-left" : "flex-shrink-0 pl-1 text-right"
+                  }`}
+                >
+                  <p className="whitespace-nowrap text-[12px] font-bold leading-tight text-amber-700">
+                    {formatCurrencyValue(service.originalTotal || 0, service.currency)}
+                  </p>
+                  {service.isForeignCurrency && (
+                    <p className="mt-0.5 whitespace-nowrap text-[10px] text-sky-700">
+                      ₹ {formatAmountValue(service.totalInInr || 0)}
+                    </p>
+                  )}
+                </div>
               </div>
 
-              <div className={`${isSingleServiceModalView ? "w-full pl-[46px] text-left"
-                : "flex-shrink-0 pl-1 text-right" }`}>
-                <p className="whitespace-nowrap text-[12px] font-semibold leading-tight text-yellow-300">
-                  {formatCurrencyValue(service.originalTotal || 0, service.currency)}
-                </p>
-                {service.isForeignCurrency && (
-                <p className="mt-0.5 whitespace-nowrap text-[10px] text-sky-300">
-                  ₹ {formatAmountValue(service.totalInInr || 0)}
-                </p>
-                )}
-              </div>
-            </div>
+              <div className="mt-2.5 flex flex-wrap gap-1.5">
+                <div className={`inline-flex items-center rounded-lg border px-2.5 py-[5px] ${typeAccent.bg} ${typeAccent.border}`}>
+                  <span className={`text-[10px] font-semibold leading-none ${typeAccent.text}`}>
+                    {getServiceTypeLabel(service.type)}
+                  </span>
+                </div>
 
-            <div className="mt-2.5 flex flex-wrap gap-1.5">
-              <div className={`inline-flex items-center rounded-lg border px-2.5 py-[5px] ${typeAccent.bg}
-                ${typeAccent.border}`}>
-                <span className={`text-[10px] font-semibold leading-none ${typeAccent.text}`}>
-                  {getServiceTypeLabel(service.type)}
-                </span>
-              </div>
-
-              {service.serviceDate && (
-              <Chip icon={( <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="3" y="4" width="18" height="18" rx="2" />
-                <line x1="16" y1="2" x2="16" y2="6" />
-                <line x1="8" y1="2" x2="8" y2="6" />
-                <line x1="3" y1="10" x2="21" y2="10" />
-                </svg>
-                )}
-                value={formatServiceDateLabel(service.serviceDate)}
-                />
+                {service.serviceDate && (
+                  <Chip
+                    icon={
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <rect x="3" y="4" width="18" height="18" rx="2" />
+                        <line x1="16" y1="2" x2="16" y2="6" />
+                        <line x1="8" y1="2" x2="8" y2="6" />
+                        <line x1="3" y1="10" x2="21" y2="10" />
+                      </svg>
+                    }
+                    value={formatServiceDateLabel(service.serviceDate)}
+                  />
                 )}
 
                 {service.type === "hotel" && Number(service.nights || 0) > 0 && (
-                <Chip icon={( <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                  strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M2 4v16" />
-                  <path d="M2 8h18a2 2 0 0 1 2 2v10" />
-                  <path d="M2 17h20" />
-                  <path d="M6 8v9" />
-                  </svg>
-                  )}
-                  value={`${service.nights} night${Number(service.nights) > 1 ? "s" : ""}`}
-                  accent="text-sky-200"
-                  />
-                  )}
-
-                  {service.type === "hotel" && Number(service.rooms || 0) > 0 && (
-                  <Chip icon={( <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                    strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-                    <polyline points="9 22 9 12 15 12 15 22" />
-                    </svg>
-                    )}
-                    value={`${service.rooms} room${Number(service.rooms) > 1 ? "s" : ""}`}
-                    />
-                    )}
-
-                    {service.type === "hotel" && service.bedType && (
-                    <Chip icon={( <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                      strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M2 9V4a1 1 0 0 1 1-1h18a1 1 0 0 1 1 1v5" />
-                      <path d="M2 20v-4a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v4" />
-                      <path d="M2 14h20" />
-                      <path d="M7 14v2" />
-                      <path d="M17 14v2" />
+                  <Chip
+                    icon={
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M2 4v16" />
+                        <path d="M2 8h18a2 2 0 0 1 2 2v10" />
+                        <path d="M2 17h20" />
+                        <path d="M6 8v9" />
                       </svg>
-                      )}
-                      value={getBedTypeOptionLabel(service.bedType)}
-                      accent="text-amber-200"
-                      iconColor="text-amber-400"
-                      />
-                      )}
+                    }
+                    value={`${service.nights} night${Number(service.nights) > 1 ? "s" : ""}`}
+                    accent="text-sky-700"
+                  />
+                )}
 
-                      {selectedTransportUsageLabels.map((label) => (
-                      <Chip
-                        key={`${service.id}-usage-${label}`}
-                        icon={( <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                          strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M10 17h4V5H2v12h3" />
-                          <path d="M20 17h2v-5l-3-4h-5v9h1" />
-                          <circle cx="7.5" cy="17.5" r="2.5" />
-                          <circle cx="17.5" cy="17.5" r="2.5" />
-                          </svg>
-                          )}
-                        value={label}
-                        accent="text-violet-200"
-                        iconColor="text-violet-400"
-                        />
-                        ))}
+                {service.type === "hotel" && Number(service.rooms || 0) > 0 && (
+                  <Chip
+                    icon={
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                        <polyline points="9 22 9 12 15 12 15 22" />
+                      </svg>
+                    }
+                    value={`${service.rooms} room${Number(service.rooms) > 1 ? "s" : ""}`}
+                  />
+                )}
 
-                      {selectedTransportUsageLimitLabels.map((label) => (
-                      <Chip
-                        key={`${service.id}-limit-${label}`}
-                        icon={( <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                          strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M4 19.5V4.5" />
-                          <path d="M8 19.5V4.5" />
-                          <path d="M12 19.5V4.5" />
-                          <path d="M16 19.5V4.5" />
-                          <path d="M20 19.5V4.5" />
-                          </svg>
-                          )}
-                        value={label}
-                        accent="text-amber-200"
-                        iconColor="text-amber-400"
-                        />
-                        ))}
+                {service.type === "hotel" && service.bedType && (
+                  <Chip
+                    icon={
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M2 9V4a1 1 0 0 1 1-1h18a1 1 0 0 1 1 1v5" />
+                        <path d="M2 20v-4a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v4" />
+                        <path d="M2 14h20" />
+                        <path d="M7 14v2" />
+                        <path d="M17 14v2" />
+                      </svg>
+                    }
+                    value={getBedTypeOptionLabel(service.bedType)}
+                    accent="text-amber-800"
+                    iconColor="text-amber-600"
+                  />
+                )}
 
-                      {(service.type === "transfer" || service.type === "car") && Number(service.days || 0) > 0 && (
-                      <Chip icon={( <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                        strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                {selectedTransportUsageLabels.map((label) => (
+                  <Chip
+                    key={`${service.id}-usage-${label}`}
+                    icon={
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M10 17h4V5H2v12h3" />
+                        <path d="M20 17h2v-5l-3-4h-5v9h1" />
+                        <circle cx="7.5" cy="17.5" r="2.5" />
+                        <circle cx="17.5" cy="17.5" r="2.5" />
+                      </svg>
+                    }
+                    value={label}
+                    accent="text-violet-800"
+                    iconColor="text-violet-600"
+                  />
+                ))}
+
+                {selectedTransportUsageLimitLabels.map((label) => (
+                  <Chip
+                    key={`${service.id}-limit-${label}`}
+                    icon={
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M4 19.5V4.5" />
+                        <path d="M8 19.5V4.5" />
+                        <path d="M12 19.5V4.5" />
+                        <path d="M16 19.5V4.5" />
+                        <path d="M20 19.5V4.5" />
+                      </svg>
+                    }
+                    value={label}
+                    accent="text-amber-800"
+                    iconColor="text-amber-600"
+                  />
+                ))}
+
+                {(service.type === "transfer" || service.type === "car") && Number(service.days || 0) > 0 && (
+                  <Chip
+                    icon={
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                         <circle cx="12" cy="12" r="10" />
                         <polyline points="12 6 12 12 16 14" />
-                        </svg>
-                        )}
-                        value={`${service.days} day${Number(service.days) > 1 ? "s" : ""}`}
-                        accent="text-violet-200"
-                        iconColor="text-violet-400"
-                        />
-                        )}
+                      </svg>
+                    }
+                    value={`${service.days} day${Number(service.days) > 1 ? "s" : ""}`}
+                    accent="text-violet-800"
+                    iconColor="text-violet-600"
+                  />
+                )}
 
-                      {(service.pickupTime || service.time) && (
+                {(service.pickupTime || service.time) && (
+                  <Chip
+                    icon={<Clock size={10} />}
+                    value={`Pickup: ${service.pickupTime || service.time}`}
+                    accent="text-amber-800"
+                    iconColor="text-amber-600"
+                  />
+                )}
+
+                {service.type === "activity" && (
+                  <>
+                    {service.tourType && (
                       <Chip
-                        icon={<Clock size={10} />}
-                        value={`Pickup: ${service.pickupTime || service.time}`}
-                        accent="text-yellow-200"
-                        iconColor="text-yellow-400"
+                        icon={
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <circle cx="12" cy="12" r="10" />
+                            <polygon points="12 8 8 12 12 16 16 12 12 8" />
+                          </svg>
+                        }
+                        value={service.tourType}
+                        accent="text-emerald-800"
+                        iconColor="text-emerald-600"
                       />
-                      )}
+                    )}
+                    {service.pricingBasis && (
+                      <Chip
+                        icon={
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+                          </svg>
+                        }
+                        value={service.pricingBasis}
+                        accent="text-emerald-800"
+                        iconColor="text-emerald-600"
+                      />
+                    )}
+                    {Number(service.pax || 0) > 0 && (
+                      <Chip
+                        icon={
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                            <circle cx="9" cy="7" r="4" />
+                            <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                            <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                          </svg>
+                        }
+                        value={`${service.pax} pax`}
+                        accent="text-emerald-800"
+                        iconColor="text-emerald-600"
+                      />
+                    )}
+                    {service.maxPax && (
+                      <Chip
+                        icon={
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                            <circle cx="9" cy="7" r="4" />
+                            <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+                            <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                          </svg>
+                        }
+                        value={service.maxPax.includes("Max") ? service.maxPax : `Max: ${service.maxPax}`}
+                        accent="text-purple-800"
+                        iconColor="text-purple-600"
+                      />
+                    )}
+                  </>
+                )}
 
-                        {service.type === "activity" && (
-                          <>
-                            {service.tourType && (
-                              <Chip
-                                icon={
-                                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                    <circle cx="12" cy="12" r="10" /><polygon points="12 8 8 12 12 16 16 12 12 8" />
-                                  </svg>
-                                }
-                                value={service.tourType}
-                                accent="text-emerald-200"
-                                iconColor="text-emerald-400"
-                              />
-                            )}
-                            {service.pricingBasis && (
-                              <Chip
-                                icon={
-                                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                    <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
-                                  </svg>
-                                }
-                                value={service.pricingBasis}
-                                accent="text-emerald-200"
-                                iconColor="text-emerald-400"
-                              />
-                            )}
-                            {Number(service.pax || 0) > 0 && (
-                              <Chip
-                                icon={
-                                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-                                    <circle cx="9" cy="7" r="4" />
-                                    <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-                                    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-                                  </svg>
-                                }
-                                value={`${service.pax} pax`}
-                                accent="text-emerald-200"
-                                iconColor="text-emerald-400"
-                              />
-                            )}
-                            {service.maxPax && (
-                              <Chip
-                                icon={
-                                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                                    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" />
-                                  </svg>
-                                }
-                                value={service.maxPax.includes("Max") ? service.maxPax : `Max: ${service.maxPax}`}
-                                accent="text-purple-200"
-                                iconColor="text-purple-400"
-                              />
-                            )}
-                          </>
-                        )}
+                {service.type === "sightseeing" && (
+                  <>
+                    {service.tourType && (
+                      <Chip
+                        icon={
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <circle cx="12" cy="12" r="10" />
+                            <polygon points="12 8 8 12 12 16 16 12 12 8" />
+                          </svg>
+                        }
+                        value={service.tourType}
+                        accent="text-sky-800"
+                        iconColor="text-sky-600"
+                      />
+                    )}
+                    {service.pricingBasis && (
+                      <Chip
+                        icon={
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+                          </svg>
+                        }
+                        value={service.pricingBasis}
+                        accent="text-emerald-800"
+                        iconColor="text-emerald-600"
+                      />
+                    )}
+                    {Number(service.pax || 0) > 0 && (
+                      <Chip
+                        icon={
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                            <circle cx="9" cy="7" r="4" />
+                          </svg>
+                        }
+                        value={`${service.pax} pax`}
+                        accent="text-blue-800"
+                        iconColor="text-blue-600"
+                      />
+                    )}
+                    {service.maxPax && (
+                      <Chip
+                        icon={
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                            <circle cx="9" cy="7" r="4" />
+                            <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+                            <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                          </svg>
+                        }
+                        value={service.maxPax.includes("Max") ? service.maxPax : `Max: ${service.maxPax}`}
+                        accent="text-purple-800"
+                        iconColor="text-purple-600"
+                      />
+                    )}
+                  </>
+                )}
+              </div>
 
-                          {service.type === "sightseeing" && (
-                          <>
-                            {service.tourType && (
-                            <Chip icon={( <svg width="10" height="10" viewBox="0 0 24 24" fill="none"
-                              stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                              <circle cx="12" cy="12" r="10" />
-                              <polygon points="12 8 8 12 12 16 16 12 12 8" />
-                              </svg>
-                              )}
-                              value={service.tourType}
-                              accent="text-sky-200"
-                              iconColor="text-sky-400"
-                              />
-                              )}
-                            {service.pricingBasis && (
-                            <Chip icon={( <svg width="10" height="10" viewBox="0 0 24 24" fill="none"
-                              stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                              <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
-                              </svg>
-                              )}
-                              value={service.pricingBasis}
-                              accent="text-emerald-200"
-                              iconColor="text-emerald-400"
-                              />
-                              )}
-                            {Number(service.pax || 0) > 0 && (
-                            <Chip icon={( <svg width="10" height="10" viewBox="0 0 24 24" fill="none"
-                              stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-                              <circle cx="9" cy="7" r="4" />
-                              </svg>
-                              )}
-                              value={`${service.pax} pax`}
-                              accent="text-blue-200"
-                              iconColor="text-blue-400"
-                              />
-                              )}
-                            {service.maxPax && (
-                            <Chip icon={( <svg width="10" height="10" viewBox="0 0 24 24" fill="none"
-                              stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                              <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-                              <circle cx="9" cy="7" r="4" />
-                              <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
-                              <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-                              </svg>
-                              )}
-                              value={service.maxPax.includes("Max") ? service.maxPax : `Max: ${service.maxPax}`}
-                              accent="text-purple-200"
-                              iconColor="text-purple-400"
-                              />
-                              )}
-                          </>
-                          )}
+              {serviceIncludedItems.length > 0 && (
+                <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50/70 px-3 py-2.5">
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <p className="text-[8px] font-semibold uppercase tracking-[0.18em] text-emerald-800">
+                      Included In Service
+                    </p>
+                    <span className="rounded-full border border-emerald-300 bg-emerald-100 px-2 py-0.5 text-[7px] font-semibold text-emerald-800">
+                      {serviceIncludedItems.length} item{serviceIncludedItems.length === 1 ? "" : "s"}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {serviceIncludedItems.map((item, itemIndex) => (
+                      <span
+                        key={`${service.id}-include-${itemIndex}`}
+                        className="inline-flex items-center rounded-md border border-emerald-300 bg-white px-2.5 py-[5px] text-[10px] font-medium leading-none text-emerald-900"
+                      >
+                        {item}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {serviceEdits.length > 0 && (
+                <div className="mt-3 rounded-lg border border-sky-200 bg-sky-50/70 px-3 py-2.5">
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <p className="text-[8px] font-semibold uppercase tracking-[0.18em] text-sky-800">
+                      Quotation Edits
+                    </p>
+                    <span className="rounded-full border border-sky-300 bg-sky-100 px-2 py-0.5 text-[7px] font-semibold text-sky-800">
+                      {serviceEdits.length} update{serviceEdits.length === 1 ? "" : "s"}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {serviceEdits.map((edit) => {
+                      const toneClasses =
+                        edit.variant === "success"
+                          ? "border-emerald-300 bg-white text-emerald-800"
+                          : edit.variant === "warning"
+                            ? "border-amber-300 bg-white text-amber-900"
+                            : edit.variant === "danger"
+                              ? "border-red-300 bg-white text-red-800"
+                              : "border-sky-300 bg-white text-sky-900";
+                      const iconClasses =
+                        edit.variant === "success"
+                          ? "text-emerald-600"
+                          : edit.variant === "warning"
+                            ? "text-amber-600"
+                            : edit.variant === "danger"
+                              ? "text-red-600"
+                              : "text-sky-600";
+
+                      return (
+                        <span
+                          key={`${service.id}-${edit.key}-${edit.label}`}
+                          className={`inline-flex items-center gap-1 rounded-md border px-2.5 py-[5px] text-[10px] font-medium leading-none ${toneClasses}`}
+                        >
+                          <CheckCircle2 size={11} className={`shrink-0 ${iconClasses}`} />
+                          <span className="font-semibold">{edit.label}</span>
+                          <span className="opacity-40">:</span>
+                          <span>{edit.value}</span>
+                        </span>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
 
-            {serviceIncludedItems.length > 0 && (
-            <div className="mt-3 rounded-[14px] border border-emerald-500/18 bg-[#07150f] px-3 py-2.5">
-              <div className="mb-2 flex items-center justify-between gap-2">
-                <p className="text-[8px] font-semibold uppercase tracking-[0.18em] text-emerald-200/80">
-                  Included In Service
-                </p>
-                <span className="rounded-full border border-emerald-400/25 bg-emerald-500/10 px-2 py-0.5 text-[7px] font-semibold text-emerald-200">
-                  {serviceIncludedItems.length} item{serviceIncludedItems.length === 1 ? "" : "s"}
-                </span>
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {serviceIncludedItems.map((item, itemIndex) => (
-                <span
-                  key={`${service.id}-include-${itemIndex}`}
-                  className="inline-flex items-center rounded-[8px] border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-[5px] text-[10px] font-medium leading-none text-emerald-100"
+            <div className="mt-2.5 flex items-center justify-between gap-3 px-0.5">
+              <p className="text-[10px] font-medium text-slate-500">Quick Actions</p>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => handleSelectedServiceEditAction(service)}
+                  className="cursor-pointer rounded-xl border border-blue-200 bg-blue-50 px-3.5 py-1.5 text-[11px] font-semibold text-blue-700 transition hover:bg-blue-100 hover:border-blue-300 shadow-2xs"
                 >
-                  {item}
-                </span>
-                ))}
-              </div>
-            </div>
-            )}
-
-            {serviceEdits.length > 0 && (
-            <div className="mt-3 rounded-[14px] border border-sky-500/20 bg-[#071420] px-3 py-2.5">
-              <div className="mb-2 flex items-center justify-between gap-2">
-                <p className="text-[8px] font-semibold uppercase tracking-[0.18em] text-sky-200/80">
-                  Quotation Edits
-                </p>
-                <span
-                  className="rounded-full border border-sky-400/25 bg-sky-500/10 px-2 py-0.5 text-[7px] font-semibold text-sky-200">
-                  {serviceEdits.length} update{serviceEdits.length === 1 ? "" : "s"}
-                </span>
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {serviceEdits.map((edit) => {
-                const toneClasses =
-                edit.variant === "success"
-                ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-200"
-                : edit.variant === "warning"
-                ? "border-yellow-500/25 bg-yellow-500/10 text-yellow-100"
-                : edit.variant === "danger"
-                ? "border-red-500/25 bg-red-500/10 text-red-200"
-                : "border-sky-500/20 bg-sky-500/10 text-sky-100";
-                const iconClasses =
-                edit.variant === "success"
-                ? "text-emerald-300"
-                : edit.variant === "warning"
-                ? "text-yellow-300"
-                : edit.variant === "danger"
-                ? "text-red-300"
-                : "text-sky-300";
-
-                return (
-                <span key={`${service.id}-${edit.key}-${edit.label}`} className={`inline-flex items-center gap-1
-                  rounded-[8px] border px-2.5 py-[5px] text-[10px] font-medium leading-none ${toneClasses}`}>
-                  <CheckCircle2 size={11} className={`shrink-0 ${iconClasses}`} />
-                  <span className="font-semibold">{edit.label}</span>
-                  <span className="opacity-40">:</span>
-                  <span>{edit.value}</span>
-                </span>
-                );
-                })}
-              </div>
-            </div>
-            )}
-          </div>
-
-          <div className="mt-2.5 flex items-center justify-between gap-3 px-0.5">
-            <p className="text-[10px] font-medium text-slate-400">Quick Actions</p>
-            <div className="flex items-center gap-1.5">
-              <button type="button" onClick={()=> handleSelectedServiceEditAction(service)}
-                className="cursor-pointer rounded-xl border border-sky-400/35 bg-sky-500/10 px-3.5 py-1.5 text-[11px]
-                font-medium text-sky-200 transition hover:border-sky-300/50 hover:bg-sky-500/15"
+                  {editingServiceCardId === service.id ? "Save" : "Edit"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSelectedServiceDelete(service)}
+                  className="cursor-pointer rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-1.5 text-[11px] font-semibold text-rose-700 transition hover:bg-rose-100 hover:border-rose-300 shadow-2xs"
                 >
-                {editingServiceCardId === service.id ? "Save" : "Edit"}
-              </button>
-              <button type="button" onClick={()=> handleSelectedServiceDelete(service)}
-                className="cursor-pointer rounded-xl border border-red-400/25 bg-red-500/10 px-3.5 py-1.5 text-[11px]
-                font-medium text-red-200 transition hover:border-red-300/50 hover:bg-red-500/15"
-                >
-                Delete
-              </button>
+                  Delete
+                </button>
+              </div>
             </div>
           </div>
-        </div>
         );
-        })}
-      </div>
-      ) : (
-      <div className="rounded-2xl border border-dashed border-[#28303d] bg-[#090909] px-4 py-8 text-center">
-        <p className="text-sm font-medium text-white">No services selected yet</p>
-        <p className="mt-1 text-xs text-slate-400">
-          Pick services from the section above and they will appear here automatically.
-        </p>
-      </div>
-      )
-      );
+      })}
+    </div>
+  ) : (
+    <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center">
+      <p className="text-sm font-semibold text-slate-800">No services selected yet</p>
+      <p className="mt-1 text-xs text-slate-500">
+        Pick services from the section above and they will appear here automatically.
+      </p>
+    </div>
+  )
+);
 
-      const renderSelectedServicesModal = () => {
+const renderSelectedServicesModal = () => {
       if (typeof document === "undefined") {
       return null;
       }
@@ -7103,7 +7114,7 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
           onClick={closeSelectedServicesModal}>
           <motion.div initial={{ opacity: 0, y: 24, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 18, scale: 0.98 }} transition={{ duration: 0.24, ease: "easeOut" }} className={`flex
-            w-full flex-col overflow-hidden rounded-[28px] border border-gray-200 bg-white
+            w-full flex-col overflow-hidden rounded-xl border border-gray-200 bg-white
             shadow-2xl ${ selectedServicesModalScope==="single" ? "max-h-[90vh] max-w-3xl"
             : "h-[min(90vh,960px)] max-w-5xl" }`} onClick={(event)=> event.stopPropagation()}
             role="dialog"
@@ -7358,7 +7369,7 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 18, scale: 0.98 }}
               transition={{ duration: 0.24, ease: "easeOut" }}
-            className="flex h-[min(90vh,960px)] w-full max-w-5xl flex-col overflow-hidden rounded-[28px] border border-gray-200 bg-white shadow-2xl"
+            className="flex h-[min(90vh,960px)] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl"
             onClick={(event) => event.stopPropagation()}
             role="dialog"
             aria-modal="true"
@@ -7647,34 +7658,34 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                     )}
 
                     {selectedHistoryQuotation && !quotationHistoryLoading && !quotationHistoryLoadError && (
-                      <div className="mt-3 rounded-2xl border border-sky-400/20 bg-[#0b1220] p-3">
+                      <div className="mt-3 rounded-xl border border-blue-200/80 bg-slate-50 p-3 text-slate-900">
                         <div className="flex items-start justify-between gap-3">
                           <div>
-                            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-sky-300">
+                            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-blue-700">
                               Selected History
                             </p>
-                            <p className="mt-1 text-sm font-semibold text-white">
+                            <p className="mt-1 text-sm font-bold text-slate-900">
                               {selectedHistoryQuotation.quotationNumber || `Quotation ${selectedHistoryQuotation.attemptNumber}`}
                             </p>
-                            <p className="mt-1 text-[11px] text-slate-400">
+                            <p className="mt-1 text-[11px] font-medium text-slate-500">
                               {selectedHistoryQuotation.status} • {selectedHistoryQuotation.createdAtLabel || "Date unavailable"}
                             </p>
                           </div>
-                          <span className="rounded-full border border-emerald-400/30 bg-emerald-500/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-300">
+                          <span className="rounded-full border border-emerald-300 bg-emerald-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.14em] text-emerald-800">
                             Preview
                           </span>
                         </div>
 
                         <div className="mt-3 grid grid-cols-2 gap-2">
-                          <div className="rounded-xl border border-slate-800 bg-[#111827] px-3 py-2">
-                            <p className="text-[10px] uppercase tracking-[0.14em] text-slate-500">OPS Total</p>
-                            <p className="mt-1 text-xs font-semibold text-white">
+                          <div className="rounded-lg border border-gray-200 bg-white px-3 py-2 shadow-2xs">
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">OPS Total</p>
+                            <p className="mt-1 text-xs font-bold text-slate-900">
                               {formatCurrencyValue(selectedHistoryQuotation.opsTotalAmount || 0, selectedHistoryQuotation.pricing?.currency || "INR")}
                             </p>
                           </div>
-                          <div className="rounded-xl border border-slate-800 bg-[#111827] px-3 py-2">
-                            <p className="text-[10px] uppercase tracking-[0.14em] text-slate-500">Services Total</p>
-                            <p className="mt-1 text-xs font-semibold text-sky-300">
+                          <div className="rounded-lg border border-gray-200 bg-white px-3 py-2 shadow-2xs">
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Services Total</p>
+                            <p className="mt-1 text-xs font-bold text-blue-700">
                               {formatCurrencyValue(
                                 Number(selectedHistoryQuotation.pricing?.subTotal || 0) ||
                                 (selectedHistoryQuotation.services || []).reduce(
@@ -7685,39 +7696,39 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                               )}
                             </p>
                           </div>
-                          <div className="rounded-xl border border-slate-800 bg-[#111827] px-3 py-2">
-                            <p className="text-[10px] uppercase tracking-[0.14em] text-slate-500">Services</p>
-                            <p className="mt-1 text-xs font-semibold text-sky-300">
+                          <div className="rounded-lg border border-gray-200 bg-white px-3 py-2 shadow-2xs">
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Services</p>
+                            <p className="mt-1 text-xs font-semibold text-blue-700">
                               {selectedHistoryQuotation.serviceCount || 0} item{selectedHistoryQuotation.serviceCount === 1 ? "" : "s"}
                             </p>
                           </div>
-                          <div className="rounded-xl border border-slate-800 bg-[#111827] px-3 py-2">
-                            <p className="text-[10px] uppercase tracking-[0.14em] text-slate-500">Taxes</p>
-                            <p className="mt-1 text-xs font-semibold text-emerald-300">
+                          <div className="rounded-lg border border-gray-200 bg-white px-3 py-2 shadow-2xs">
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Taxes</p>
+                            <p className="mt-1 text-xs font-bold text-emerald-700">
                               {formatCurrencyValue(selectedHistoryQuotation.pricing?.tax?.totalTax || 0, selectedHistoryQuotation.pricing?.currency || "INR")}
                             </p>
                           </div>
                         </div>
 
                         {selectedHistoryQuotation.agentRevisionRemark && (
-                          <div className="mt-3 rounded-xl border border-rose-400/20 bg-rose-500/8 px-3 py-2">
-                            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-rose-300">
+                          <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2">
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-rose-700">
                               Revision Remark
                             </p>
-                            <p className="mt-1 text-xs leading-5 text-rose-100">
+                            <p className="mt-1 text-xs font-medium leading-5 text-rose-900">
                               {selectedHistoryQuotation.agentRevisionRemark}
                             </p>
                           </div>
                         )}
 
                         <div className="mt-3 flex flex-wrap gap-2">
-                          <span className="rounded-full border border-slate-700 bg-[#111827] px-2.5 py-1 text-[10px] font-medium text-slate-300">
+                          <span className="rounded-full border border-gray-200 bg-white px-2.5 py-1 text-[10px] font-semibold text-slate-700 shadow-2xs">
                             Inclusions {selectedHistoryQuotation.inclusions?.length || 0}
                           </span>
-                          <span className="rounded-full border border-slate-700 bg-[#111827] px-2.5 py-1 text-[10px] font-medium text-slate-300">
+                          <span className="rounded-full border border-gray-200 bg-white px-2.5 py-1 text-[10px] font-semibold text-slate-700 shadow-2xs">
                             Exclusions {selectedHistoryQuotation.exclusions?.length || 0}
                           </span>
-                          <span className="rounded-full border border-slate-700 bg-[#111827] px-2.5 py-1 text-[10px] font-medium text-slate-300">
+                          <span className="rounded-full border border-gray-200 bg-white px-2.5 py-1 text-[10px] font-semibold text-slate-700 shadow-2xs">
                             Notes {selectedHistoryQuotation.additionalNotes?.length || 0}
                           </span>
                         </div>
@@ -7735,10 +7746,10 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                               setDraftSourceReloadRequest((value) => value + 1);
                               setIsQuotationHistoryOpen(false);
                             }}
-                            className={`rounded-xl px-3 py-2 text-xs font-semibold transition ${
+                            className={`rounded-lg px-3 py-2 text-xs font-bold transition cursor-pointer ${
                               editingTargetQuotationId === selectedHistoryQuotation.id
-                                ? "border border-emerald-400/40 bg-emerald-500/15 text-emerald-200"
-                                : "border border-sky-400/30 bg-sky-500/10 text-sky-200 hover:border-sky-300/50 hover:bg-sky-500/15"
+                                ? "border border-emerald-500 bg-emerald-500 text-white shadow-xs"
+                                : "border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 shadow-2xs"
                             }`}
                           >
                             Edit This Quotation
@@ -7756,10 +7767,10 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                               setSelectedHistoryQuotationId("");
                               setIsQuotationHistoryOpen(false);
                             }}
-                            className={`rounded-xl border px-3 py-2 text-xs font-semibold transition ${
+                            className={`rounded-lg border px-3 py-2 text-xs font-semibold transition cursor-pointer ${
                               !isEditingHistoricalQuotation
-                                ? "border-yellow-400/40 bg-yellow-500/12 text-yellow-200"
-                                : "border-slate-700 bg-[#111827] text-slate-200 hover:border-slate-500 hover:text-white"
+                                ? "border-amber-500 bg-amber-500 text-white font-bold shadow-xs"
+                                : "border-gray-300 bg-white text-slate-700 hover:bg-gray-50 shadow-2xs"
                             }`}
                           >
                             Start Fresh Draft
@@ -8253,6 +8264,7 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                         tripStartDate={formatDateInput(order?.startDate)}
                         tripEndDate={formatDateInput(order?.endDate)}
                         totalPassengers={totalPassengers}
+                        adultPassengers={adultPassengers}
                       />
                     ))
                   ) : (
@@ -8991,7 +9003,7 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
       {/* ======================== POPUP Ops Charges ======================== */}
       {showOpsPopup && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-3 backdrop-blur-xs sm:p-4">
-          <div className="relative my-auto flex h-[calc(100vh-16px)] w-full max-w-6xl flex-col overflow-hidden rounded-[30px] border border-gray-200 bg-white shadow-2xl animate-slideDown sm:h-[calc(100vh-24px)] text-slate-900">
+          <div className="relative my-auto flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl animate-slideDown text-slate-900 font-sans">
 
             {/* ===== HEADER (title + close only) ===== */}
             <div className="relative border-b border-gray-200 bg-slate-50 px-5 py-4 sm:px-6">
@@ -9008,8 +9020,9 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                   </p>
                 </div>
                 <button
+                  type="button"
                   onClick={() => setShowOpsPopup(false)}
-                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-gray-300 bg-white text-slate-500 transition hover:bg-gray-100 hover:text-slate-900 cursor-pointer shadow-2xs"
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-gray-300 bg-white text-slate-500 transition hover:bg-gray-100 hover:text-slate-900 cursor-pointer shadow-2xs"
                 >
                   ✕
                 </button>
@@ -9018,8 +9031,8 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
 
             {/* ===== STICKY SUMMARY CARDS (won't scroll) ===== */}
             <div className="border-b border-gray-200 bg-slate-50 px-5 pt-3 pb-3 sm:px-6">
-              <div className="grid grid-cols-3 gap-2">
-                <div className="rounded-2xl border border-gray-200 bg-white px-3.5 py-2.5 shadow-2xs">
+              <div className="grid grid-cols-3 gap-2.5">
+                <div className="rounded-lg border border-gray-200 bg-white px-3.5 py-2.5 shadow-2xs">
                   <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
                     Ops Charges
                   </p>
@@ -9030,7 +9043,7 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                   </p>
                   <p className="mt-0.5 text-[11px] text-slate-500">Service + handling setup</p>
                 </div>
-                <div className="rounded-2xl border border-gray-200 bg-white px-3.5 py-2.5 shadow-2xs">
+                <div className="rounded-lg border border-gray-200 bg-white px-3.5 py-2.5 shadow-2xs">
                   <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
                     Tax Preview
                   </p>
@@ -9039,7 +9052,7 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                   </p>
                   <p className="mt-0.5 text-[11px] text-slate-500">Live GST, TCS and tourism total</p>
                 </div>
-                <div className="rounded-2xl border border-gray-200 bg-white px-3.5 py-2.5 shadow-2xs">
+                <div className="rounded-lg border border-gray-200 bg-white px-3.5 py-2.5 shadow-2xs">
                   <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
                     Quote Validity
                   </p>
@@ -9058,7 +9071,7 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-[0.9fr_1.1fr]">
 
                 {/* ======= OPS CHARGES ======= */}
-                <div className="rounded-[24px] border border-gray-200 bg-white p-4 shadow-2xs">
+                <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-2xs">
                   <div className="mb-3 flex items-start justify-between gap-3">
                     <div>
                       <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-amber-700">
@@ -9066,7 +9079,7 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                       </p>
                       <h3 className="mt-1 text-lg font-bold text-slate-900">OPS Charges</h3>
                     </div>
-                    <div className="rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-[11px] font-semibold text-amber-800">
+                    <div className="rounded-md border border-amber-300 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-800">
                       {taxSetupMode === "auto" ? "Auto Ready" : "Manual Setup"}
                     </div>
                   </div>
@@ -9079,7 +9092,7 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                       type="number"
                       value={draftServiceCharge}
                       onChange={(e) => setDraftServiceCharge(roundCurrencyAmount(e.target.value))}
-                      className="mt-1.5 w-full rounded-2xl border border-gray-300 bg-white px-4 py-2.5 text-sm text-slate-900 placeholder:text-gray-400 outline-none transition focus:border-[#3E63DD] shadow-2xs font-semibold"
+                      className="mt-1.5 w-full rounded-lg border border-gray-300 bg-white px-3.5 py-2 text-sm text-slate-900 placeholder:text-gray-400 outline-none transition focus:border-[#3E63DD] focus:ring-1 focus:ring-[#3E63DD] shadow-2xs font-semibold"
                     />
                   </div>
 
@@ -9091,7 +9104,7 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                       type="number"
                       value={draftHandlingFee}
                       onChange={(e) => setDraftHandlingFee(roundCurrencyAmount(e.target.value))}
-                      className="mt-1.5 w-full rounded-2xl border border-gray-300 bg-white px-4 py-2.5 text-sm text-slate-900 placeholder:text-gray-400 outline-none transition focus:border-[#3E63DD] shadow-2xs font-semibold"
+                      className="mt-1.5 w-full rounded-lg border border-gray-300 bg-white px-3.5 py-2 text-sm text-slate-900 placeholder:text-gray-400 outline-none transition focus:border-[#3E63DD] focus:ring-1 focus:ring-[#3E63DD] shadow-2xs font-semibold"
                     />
                   </div>
 
@@ -9103,17 +9116,17 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                       type="date"
                       value={draftValidTill}
                       onChange={(e) => setDraftValidTill(e.target.value)}
-                      className="mt-1.5 w-full rounded-2xl border border-gray-300 bg-white px-4 py-2.5 pr-10 text-sm text-slate-900 outline-none transition focus:border-[#3E63DD] shadow-2xs font-semibold"
+                      className="mt-1.5 w-full rounded-lg border border-gray-300 bg-white px-3.5 py-2 pr-10 text-sm text-slate-900 outline-none transition focus:border-[#3E63DD] focus:ring-1 focus:ring-[#3E63DD] shadow-2xs font-semibold"
                     />
                   </div>
 
-                  <div className="mt-4 rounded-2xl border border-gray-200 bg-slate-50 px-4 py-3 text-xs leading-5 text-slate-600">
+                  <div className="mt-4 rounded-lg border border-gray-200 bg-slate-50 px-3.5 py-2.5 text-xs leading-5 text-slate-600">
                     These charges stay outside the service cards and shape the final commercial quote only.
                   </div>
                 </div>
 
                 {/* ======= TAXATION ======= */}
-                <div className="rounded-[24px] border border-gray-200 bg-white p-4 shadow-2xs">
+                <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-2xs">
                   <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
                     <div>
                       <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-sky-700">
@@ -9128,7 +9141,7 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                       <button
                         type="button"
                         onClick={applyAutoTaxPreset}
-                        className={`rounded-full px-3 py-1.5 text-[11px] font-semibold transition cursor-pointer ${
+                        className={`rounded-lg px-3 py-1.5 text-[11px] font-semibold transition cursor-pointer ${
                           taxSetupMode === "auto"
                             ? "border border-emerald-300 bg-emerald-50 text-emerald-800 shadow-2xs"
                             : "border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
@@ -9139,7 +9152,7 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                       <button
                         type="button"
                         onClick={() => setTaxSetupMode("manual")}
-                        className={`rounded-full px-3 py-1.5 text-[11px] font-semibold transition cursor-pointer ${
+                        className={`rounded-lg px-3 py-1.5 text-[11px] font-semibold transition cursor-pointer ${
                           taxSetupMode === "manual"
                             ? "border border-amber-300 bg-amber-50 text-amber-900 shadow-2xs"
                             : "border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
@@ -9151,7 +9164,7 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                   </div>
 
                   {/* GST */}
-                  <div className="mb-3 flex flex-col justify-between rounded-2xl border border-gray-200 bg-slate-50 p-3">
+                  <div className="mb-3 flex flex-col justify-between rounded-lg border border-gray-200 bg-slate-50 p-3">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <label className="flex items-center gap-2 text-sm font-semibold text-slate-900 cursor-pointer">
                         <input
@@ -9173,7 +9186,7 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                             setTaxSetupMode("manual");
                             setDraftGstPercent(Number(e.target.value || 0));
                           }}
-                          className="w-18 rounded-xl border border-gray-300 bg-white px-3 py-1.5 text-center text-xs font-semibold text-slate-900 outline-none focus:border-[#3E63DD] shadow-2xs"
+                          className="w-18 rounded-md border border-gray-300 bg-white px-2.5 py-1 text-center text-xs font-semibold text-slate-900 outline-none focus:border-[#3E63DD] shadow-2xs"
                         />
                         <span className="text-blue-700 text-xs font-bold">%</span>
                       </div>
@@ -9185,7 +9198,7 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                   </div>
 
                   {/* TCS */}
-                  <div className="mb-3 flex flex-col justify-between rounded-2xl border border-gray-200 bg-slate-50 p-3">
+                  <div className="mb-3 flex flex-col justify-between rounded-lg border border-gray-200 bg-slate-50 p-3">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <label className="flex items-center gap-2 text-sm font-semibold text-slate-900 cursor-pointer">
                         <input
@@ -9207,7 +9220,7 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                             setTaxSetupMode("manual");
                             setDraftTcsPercent(Number(e.target.value || 0));
                           }}
-                          className="w-18 rounded-xl border border-gray-300 bg-white px-3 py-1.5 text-center text-xs font-semibold text-slate-900 outline-none focus:border-[#3E63DD] shadow-2xs"
+                          className="w-18 rounded-md border border-gray-300 bg-white px-2.5 py-1 text-center text-xs font-semibold text-slate-900 outline-none focus:border-[#3E63DD] shadow-2xs"
                         />
                         <span className="text-blue-700 text-xs font-bold">%</span>
                       </div>
@@ -9219,7 +9232,7 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                   </div>
 
                   {/* Tourism Fees */}
-                  <div className="mb-3 flex flex-col justify-end rounded-2xl border border-gray-200 bg-slate-50 p-3">
+                  <div className="mb-3 flex flex-col justify-end rounded-lg border border-gray-200 bg-slate-50 p-3">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <label className="flex items-center gap-2 text-sm font-semibold text-slate-900 cursor-pointer">
                         <input
@@ -9243,13 +9256,13 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                           setTaxSetupMode("manual");
                           setDraftTourismAmount(roundCurrencyAmount(e.target.value || 0));
                         }}
-                        className="mt-3 w-full rounded-2xl border border-gray-300 bg-white px-4 py-2.5 text-sm text-slate-900 placeholder:text-gray-400 focus:border-[#3E63DD] outline-none font-semibold shadow-2xs"
+                        className="mt-3 w-full rounded-lg border border-gray-300 bg-white px-3.5 py-2 text-sm text-slate-900 placeholder:text-gray-400 focus:border-[#3E63DD] outline-none font-semibold shadow-2xs"
                       />
                     )}
                   </div>
 
                   {/* Total Tax */}
-                  <div className="mt-4 flex justify-between rounded-2xl border border-gray-200 bg-slate-100 px-4 py-3">
+                  <div className="mt-4 flex justify-between rounded-lg border border-gray-200 bg-slate-100 px-4 py-2.5">
                     <span className="text-sm font-semibold text-slate-700">Total Tax Amount</span>
                     <span className="text-lg font-bold text-slate-900">
                       ₹{formatAmountValue(draftTaxationTotal)}
@@ -9267,12 +9280,14 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
               </p>
               <div className="flex flex-wrap justify-end gap-3">
                 <button
+                  type="button"
                   onClick={() => setShowOpsPopup(false)}
-                  className="px-5 py-2 text-sm border border-gray-300 rounded-full text-slate-700 hover:bg-gray-50 font-semibold cursor-pointer transition shadow-2xs"
+                  className="px-5 py-1.5 text-xs border border-gray-300 rounded-lg text-slate-700 hover:bg-gray-50 font-semibold cursor-pointer transition shadow-2xs"
                 >
                   Cancel
                 </button>
                 <button
+                  type="button"
                   onClick={() => {
                     setServiceCharge(roundCurrencyAmount(draftServiceCharge));
                     setHandlingFee(roundCurrencyAmount(draftHandlingFee));
@@ -9291,7 +9306,7 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
                       toast.success("Charges & taxation applied");
                     }, 200);
                   }}
-                  className="px-6 py-2 text-sm bg-amber-500 text-white rounded-full font-bold hover:bg-amber-600 cursor-pointer shadow-xs transition"
+                  className="px-6 py-1.5 text-xs bg-[#3E63DD] text-white rounded-lg font-bold hover:bg-[#3252c4] cursor-pointer shadow-xs transition"
                 >
                   Apply
                 </button>
@@ -9316,7 +9331,7 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 18, scale: 0.96 }}
               transition={{ duration: 0.24, ease: "easeOut" }}
-              className="w-full max-w-sm rounded-[28px] border border-gray-200 bg-white p-6 shadow-2xl text-slate-900"
+              className="w-full max-w-sm rounded-xl border border-gray-200 bg-white p-6 shadow-2xl text-slate-900"
             >
             <div className="flex items-start justify-between gap-4">
               <div>
@@ -9427,7 +9442,7 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
       {/*======================== ✅ POPUP Success final Charges =============================================*/}
       {showFinanceInvoiceConfirm && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/60 px-4 backdrop-blur-xs">
-          <div className="w-full max-w-sm rounded-[28px] border border-gray-200 bg-white p-6 shadow-2xl text-slate-900">
+          <div className="w-full max-w-sm rounded-xl border border-gray-200 bg-white p-6 shadow-2xl text-slate-900">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-amber-700">
@@ -9473,7 +9488,7 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
       {successPopup.open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs">
 
-          <div className="bg-white border border-gray-200 rounded-3xl p-6 w-100 text-center shadow-2xl animate-scaleIn text-slate-900">
+          <div className="bg-white border border-gray-200 rounded-xl p-6 w-100 text-center shadow-2xl animate-scaleIn text-slate-900">
 
             {/* ICON */}
             <div className="flex justify-center mb-4">
@@ -9645,6 +9660,7 @@ const Service = ({
   tripStartDate,
   tripEndDate,
   totalPassengers = 0,
+  adultPassengers = 0,
 }) => {
   const isBlackoutService = Boolean(service?.blackout?.isBlackout);
   const blackoutLabel = service?.blackout?.label || service?.blackout?.reason || "Blackout date";
@@ -9717,12 +9733,31 @@ const Service = ({
       : selectedTransportUsageKey === "half-day"
         ? "Half Day"
         : "";
+  const isHotelService = service.type === "hotel";
+
+  const hotelAmenities = useMemo(() => {
+    if (!isHotelService) return rawAmenities;
+
+    const activeCategory = service.roomType || service.roomCategory || "";
+    if (!activeCategory) return rawAmenities;
+
+    const roomPattern = /room|suite|villa|cottage|standard|deluxe|executive|family|luxury|penthouse/i;
+    const filtered = rawAmenities.filter((tag, idx) => {
+      if (idx === 0 && roomPattern.test(tag)) return false;
+      return true;
+    });
+
+    return [activeCategory, ...filtered];
+  }, [isHotelService, service.roomType, service.roomCategory, rawAmenities]);
+
   const amenities = isTransportService
     ? [
       ...rawAmenities.filter((item) => !normalizeTransportUsageOptionKey(item)),
       ...selectedTransportUsageLabels,
       ...selectedTransportUsageLimitLabels,
     ]
+    : isHotelService
+    ? hotelAmenities
     : rawAmenities;
 
   /* ── shared micro-styles ── */
@@ -9879,18 +9914,13 @@ const Service = ({
       initial="hidden"
       animate="visible"
       variants={serviceCardVariants}
-      className={`scroll-mt-28 mb-3 rounded-2xl border transition-all duration-200 text-slate-900
+      className={`scroll-mt-28 mb-3 rounded-xl border transition-all duration-200 text-slate-900
         ${isEditorFocused ? "ring-2 ring-sky-500 ring-offset-2 ring-offset-slate-50" : ""}
         ${service.checked
           ? "border-amber-400 bg-amber-50/40 shadow-xs"
           : "border-gray-200 bg-white hover:border-gray-300 shadow-2xs"
         }`}
     >
-      {/* ── TOP ACCENT ── */}
-      {service.checked && (
-        <div className="h-[2px] bg-[#3E63DD]" />
-      )}
-
       {/* ════════════════════════════════════════════
           SECTION 1 — HEADER  (identity + status)
       ════════════════════════════════════════════ */}
@@ -10208,16 +10238,16 @@ const Service = ({
           {/* ── TRANSFER: USAGE + DAYS ── */}
           {(service.type === "transfer" || service.type === "car") && (
             <div className="rounded-xl border border-gray-200 bg-white px-3 py-3 space-y-2.5 shadow-2xs">
-              <p className="text-[9px] font-semibold uppercase tracking-[0.18em] text-slate-500">Transfer Setup</p>
+              <p className="text-[11px] font-bold uppercase tracking-[0.15em] text-slate-600">Transfer Setup</p>
 
               <div className="flex flex-wrap gap-x-4 gap-y-1 font-semibold">
                 {transportStartDate && (
-                  <span className="text-[10px] text-emerald-700">
+                  <span className="text-xs font-semibold text-emerald-700">
                     Up to {maxTransportDays} day{maxTransportDays > 1 ? "s" : ""} from selected date
                   </span>
                 )}
                 {transportStartDate && transportEndDate && (
-                  <span className="text-[10px] text-sky-700">
+                  <span className="text-xs font-semibold text-sky-700">
                     {transportStartDate === transportEndDate
                       ? formatDisplayDate(transportStartDate)
                       : `${formatDisplayDate(transportStartDate)} → ${formatDisplayDate(transportEndDate)}`}
@@ -10227,7 +10257,7 @@ const Service = ({
 
               {transportDateOptions.length > 1 && (
                 <div>
-                  <p className="mb-1.5 text-[9px] font-semibold text-slate-500">Start Day</p>
+                  <p className="mb-1.5 text-xs font-semibold text-slate-600">Start Day</p>
                   <div className="flex flex-wrap gap-2">
                     {transportDateOptions.map((dateValue) => {
                       const isActive = dateValue === transportStartDate;
@@ -10236,7 +10266,7 @@ const Service = ({
                           key={dateValue}
                           type="button"
                           onClick={() => updateField(service.id, "serviceDate", dateValue)}
-                          className={`cursor-pointer rounded-full border px-3 py-1.5 text-[10px] font-semibold transition ${
+                          className={`cursor-pointer rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
                             isActive
                               ? "border-amber-400 bg-amber-50 text-amber-900 shadow-2xs"
                               : "border-gray-200 bg-white text-slate-700 hover:bg-slate-50"
@@ -10247,7 +10277,7 @@ const Service = ({
                       );
                     })}
                   </div>
-                  <p className="mt-2 text-[10px] text-slate-500">
+                  <p className="mt-2 text-[11px] font-medium text-slate-600">
                     Choose any trip day first, then select `1 Day`, `2 Days`, or more from that date.
                   </p>
                 </div>
@@ -10259,13 +10289,13 @@ const Service = ({
               <div className="flex flex-wrap items-center justify-between gap-2 pb-1">
                 <div className="flex flex-wrap items-center gap-2">
                   {service.vehicleType && (
-                    <span className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-slate-50 px-2.5 py-1 text-[10px] text-slate-700 font-medium">
+                    <span className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-slate-50 px-2.5 py-1 text-xs text-slate-700 font-medium">
                       <FaCarSide className="text-amber-600" />
                       <span className="text-slate-500">Vehicle:</span> {service.vehicleType}
                     </span>
                   )}
                   {Number(service.passengerCapacity || 0) > 0 && (
-                    <span className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[10px] font-semibold ${
+                    <span className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-semibold ${
                       totalPassengers > Number(service.passengerCapacity || 0)
                         ? "border-red-300 bg-red-50 text-red-800"
                         : "border-gray-200 bg-slate-50 text-slate-700"
@@ -10273,23 +10303,23 @@ const Service = ({
                       <BsPeople className={totalPassengers > Number(service.passengerCapacity || 0) ? "text-red-600" : "text-emerald-600"} />
                       <span className={totalPassengers > Number(service.passengerCapacity || 0) ? "text-red-600" : "text-slate-500"}>Capacity:</span> {service.passengerCapacity} Pax
                       {totalPassengers > Number(service.passengerCapacity || 0) && (
-                        <span className="text-[9px] text-red-600 font-normal">({totalPassengers} Pax Query - Insufficient)</span>
+                        <span className="text-[10px] text-red-600 font-normal">({totalPassengers} Pax Query - Insufficient)</span>
                       )}
                     </span>
                   )}
                   {Number(service.luggageCapacity || 0) > 0 && (
-                    <span className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-slate-50 px-2.5 py-1 text-[10px] text-slate-700 font-medium">
+                    <span className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-slate-50 px-2.5 py-1 text-xs text-slate-700 font-medium">
                       <HiOutlineBriefcase className="text-blue-600" />
                       <span className="text-slate-500">Luggage:</span> {service.luggageCapacity} Bags
                     </span>
                   )}
                   {totalPassengers > 0 && totalPassengers <= 4 && Number(service.passengerCapacity || 0) >= 6 && (
-                    <span className="flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1 text-[10px] text-amber-900 font-semibold">
+                    <span className="flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs text-amber-900 font-semibold">
                       💡 <span>Suggestion: For {totalPassengers} Pax, a <b>Sedan</b> (3–4 Pax, 2–3 Bags) is more economical.</span>
                     </span>
                   )}
                   {service.description && (
-                    <span className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-slate-50 px-2.5 py-1 text-[10px] text-slate-700 font-medium">
+                    <span className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-slate-50 px-2.5 py-1 text-xs text-slate-700 font-medium">
                       <span className="text-slate-500">Info:</span> {service.description}
                     </span>
                   )}
@@ -10297,7 +10327,7 @@ const Service = ({
 
                 {/* Pickup / Transfer Time Selection on Top Right */}
                 <div className="flex items-center gap-1.5 ml-auto">
-                  <span className="text-[10px] font-semibold text-slate-500 flex items-center gap-1">
+                  <span className="text-xs font-semibold text-slate-500 flex items-center gap-1">
                     <Clock size={12} className="text-amber-600" />
                     Pickup Time:
                   </span>
@@ -10407,7 +10437,7 @@ const Service = ({
                   transition={{ duration: 0.18, ease: "easeOut" }}
                   className="overflow-hidden"
                 >
-                <div className="space-y-1 text-[11px] italic font-semibold text-amber-800">
+                <div className="space-y-1 text-[11px] font-semibold text-amber-800">
                   {selectedTransportExtraKmRate > 0 && (
                     <p>Extra km rate: {formatCurrencyValue(selectedTransportExtraKmRate, currencyCode)}/km.</p>
                   )}
@@ -10496,10 +10526,69 @@ const Service = ({
 
                 {/* Description shifted to the top */}
                 {(currentTourObj.description || service.description || service.desc) && (
-                  <p className="text-[10.5px] text-slate-500 font-normal italic leading-relaxed pt-0.5 border-t border-gray-100">
+                  <p className="text-[10.5px] text-slate-500 font-normal leading-relaxed pt-0.5 border-t border-gray-100">
                     {currentTourObj.description || service.description || service.desc}
                   </p>
                 )}
+
+                {/* ── Smart Day Hours Remaining & Service Suggestion Banner ── */}
+                {(() => {
+                  const currentDayDate = service.serviceDate || service.date;
+                  if (!currentDayDate) return null;
+
+                  const sameDayServices = (Array.isArray(allServices) ? allServices : []).filter(s => 
+                    s.checked && 
+                    (s.serviceDate || s.date) === currentDayDate &&
+                    ["activity", "sightseeing", "transfer", "transport"].includes(String(s.type || s.category || "").toLowerCase())
+                  );
+
+                  let totalMinsScheduled = 0;
+                  sameDayServices.forEach(s => {
+                    let durStr = s.duration || s.dur || "";
+                    if (!durStr && s.description) {
+                      const minM = String(s.description).match(/(\d+)\s*(?:mins?|minutes?)/i);
+                      const hrM = String(s.description).match(/(\d+(?:\.\d+)?)\s*(?:hours?|hrs?)/i);
+                      if (minM) durStr = minM[1];
+                      else if (hrM) durStr = String(Math.round(parseFloat(hrM[1]) * 60));
+                    }
+                    const mins = Number(String(durStr || "60").replace(/[^\d.]/g, "")) || 60;
+                    totalMinsScheduled += mins;
+                  });
+
+                  const maxDayMins = 600;
+                  const remainingMins = maxDayMins - totalMinsScheduled;
+
+                  const usedHrs = (totalMinsScheduled / 60).toFixed(1);
+                  const remHrs = (remainingMins / 60).toFixed(1);
+
+                  if (remainingMins >= 60 && totalMinsScheduled > 0 && totalMinsScheduled < maxDayMins) {
+                    return (
+                      <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200/80 bg-amber-50/70 p-2.5 text-xs text-amber-900 shadow-2xs">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm shrink-0">💡</span>
+                          <span>
+                            <b>Day Schedule ({formatDisplayDate(currentDayDate)}):</b> {usedHrs} hrs utilized out of 10 hrs daylight limit. You have ~<b>{remHrs} hrs remaining</b> to add another activity or sightseeing.
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  if (totalMinsScheduled > maxDayMins) {
+                    return (
+                      <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-red-200/80 bg-red-50/70 p-2.5 text-xs text-red-900 shadow-2xs">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm shrink-0">⚠️</span>
+                          <span>
+                            <b>Day Schedule Warning ({formatDisplayDate(currentDayDate)}):</b> {usedHrs} hrs scheduled (exceeds recommended 10 hrs limit). Consider shifting some activities to another day.
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  return null;
+                })()}
 
                 {/* Configuration Grid: Adult Price | Child Price | Adults | Children | Slot | Total */}
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 pt-0.5">
@@ -10672,7 +10761,7 @@ const Service = ({
 
                 {/* Description shifted to the top */}
                 {(currentTourObj.description || service.description || service.desc) && (
-                  <p className="text-[10.5px] text-slate-500 font-normal italic leading-relaxed pt-0.5 border-t border-gray-100">
+                  <p className="text-[10.5px] text-slate-500 font-normal leading-relaxed pt-0.5 border-t border-gray-100">
                     {currentTourObj.description || service.description || service.desc}
                   </p>
                 )}
@@ -10822,23 +10911,31 @@ const Service = ({
               </div>
 
               {/* Smart Hotel Room Capacity Suggestion Banner */}
-              {totalPassengers > 0 && totalPassengers > (Math.max(1, Number(service.rooms || 1)) * (Number(hotelOccupancy.maxAdults || 2) + (service.extraAdult ? 1 : 0))) && (
-                <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-300 bg-amber-50 p-2.5 text-[11px] text-amber-900 shadow-2xs">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm">💡</span>
-                    <span>
-                      For <b>{totalPassengers} Passengers</b>, at least <b>{Math.max(1, Math.ceil(totalPassengers / Number(hotelOccupancy.maxAdults || 2)))} Rooms</b> are recommended based on {service.roomCategory || service.roomType || "room"} capacity ({hotelOccupancy.maxAdults || 2} Pax/room). Currently <b>{Number(service.rooms || 1)} Room{Number(service.rooms || 1) > 1 ? "s" : ""}</b> selected.
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => updateField(service.id, "rooms", Math.max(1, Math.ceil(totalPassengers / Number(hotelOccupancy.maxAdults || 2))))}
-                    className="cursor-pointer rounded-lg border border-amber-400 bg-amber-100 px-2.5 py-1 text-[10px] font-bold text-amber-900 transition hover:bg-amber-200 shadow-2xs"
-                  >
-                    Auto-Set {Math.max(1, Math.ceil(totalPassengers / Number(hotelOccupancy.maxAdults || 2)))} Rooms
-                  </button>
-                </div>
-              )}
+              {(() => {
+                const effectiveAdults = Number(adultPassengers !== undefined && adultPassengers > 0 ? adultPassengers : totalPassengers);
+                const hasExtraBed = service.extraAdult || (service.extraBedType && service.extraBedType !== "None");
+                if (effectiveAdults > 0 && effectiveAdults > Math.max(1, Number(service.rooms || 1)) * (Number(hotelOccupancy.maxAdults || 2) + (hasExtraBed ? 1 : 0))) {
+                  const needed = Math.max(1, Math.ceil(effectiveAdults / Number(hotelOccupancy.maxAdults || 2)));
+                  return (
+                    <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-300 bg-amber-50 p-2.5 text-[11px] text-amber-900 shadow-2xs">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm">💡</span>
+                        <span>
+                          For <b>{effectiveAdults} Adult{effectiveAdults > 1 ? "s" : ""}</b>, at least <b>{needed} Room{needed > 1 ? "s are" : " is"}</b> recommended based on {service.roomCategory || service.roomType || "room"} capacity ({hotelOccupancy.maxAdults || 2} Adult{Number(hotelOccupancy.maxAdults || 2) > 1 ? "s" : ""}/room). Currently <b>{Number(service.rooms || 1)} Room{Number(service.rooms || 1) > 1 ? "s" : ""}</b> selected.
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => updateField(service.id, "rooms", needed)}
+                        className="cursor-pointer rounded-lg border border-amber-400 bg-amber-100 px-2.5 py-1 text-[10px] font-bold text-amber-900 transition hover:bg-amber-200 shadow-2xs"
+                      >
+                        Auto-Set {needed} Rooms
+                      </button>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
 
               {isEditMode && (
                 <div className="grid grid-cols-1 gap-3 rounded-xl border border-gray-200 bg-white px-3 py-3 md:grid-cols-2 lg:grid-cols-5 shadow-2xs">
@@ -10924,9 +11021,7 @@ const Service = ({
                     >
                       {(hotelVariantOptions.extraBedTypes || [
                         { value: "None", label: "None" },
-                        { value: "Rollaway Bed", label: "Rollaway Bed" },
-                        { value: "Sofa Bed", label: "Sofa Bed" },
-                        { value: "Mattress", label: "Mattress" },
+                        { value: "Single Bed", label: "Single Bed" },
                       ]).map((option) => (
                         <option key={option.value} value={option.value}>
                           {option.label}

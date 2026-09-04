@@ -3,6 +3,7 @@ import fs from "fs";
 import path from "path";
 import https from "https";
 import http from "http";
+import { pdfMemoryCache } from "../utils/pdfCache.js";
 
 const getLogoBuffer = (inputPathOrUrl) => {
   return new Promise((resolve) => {
@@ -13,7 +14,12 @@ const getLogoBuffer = (inputPathOrUrl) => {
       }
 
       let cleanPath = inputPathOrUrl.trim();
-      if (!cleanPath) {
+      if (
+        !cleanPath ||
+        cleanPath.includes("1771279110850") ||
+        cleanPath.includes("1771278920287") ||
+        cleanPath.includes("1771278816234")
+      ) {
         resolve(null);
         return;
       }
@@ -373,9 +379,6 @@ const formatAmountInWords = (value) => {
 const resolveBrandLogoPath = () => {
   const candidates = [
     path.join(process.cwd(), "..", "client", "src", "assets", "logo img.png"),
-    path.join(process.cwd(), "uploads", "1771279110850-logo img.png"),
-    path.join(process.cwd(), "uploads", "1771278920287-logo img.png"),
-    path.join(process.cwd(), "uploads", "1771278816234-logo img.png"),
   ];
 
   return candidates.find((candidate) => fs.existsSync(candidate)) || "";
@@ -1371,15 +1374,18 @@ const getInclusionsExclusionsSectionHeight = (doc, inclusions = [], exclusions =
   + getBulletListSectionHeight(doc, exclusions, "No exclusions provided.");
 
 export const generatePDF = async (quoteDetails = {}) => {
-  const uploadsDir = path.join(process.cwd(), "uploads", "quotations");
-  ensureDirectory(uploadsDir);
+  // [LOCAL] Disk write disabled — no files saved to uploads/quotations/
+  // const uploadsDir = path.join(process.cwd(), "uploads", "quotations");
+  // ensureDirectory(uploadsDir);
+  const uploadsDir = "";
 
   const fileToken = sanitizeFileToken(
     quoteDetails?.quotationNumber || quoteDetails?.queryId || quoteDetails?.destination,
   );
   const fileVariantSuffix = quoteDetails?.includeSellerBankDetails === false ? "_client" : "";
   const fileName = `quotation_${fileToken}${fileVariantSuffix}.pdf`;
-  const filePath = path.join(uploadsDir, fileName);
+  // const filePath = path.join(uploadsDir, fileName); // [LOCAL] disk write disabled
+  const filePath = "";
   const publicFilePath = `/uploads/quotations/${fileName}`;
 
   const brandName = quoteDetails.agentBrandingName || BRAND.name;
@@ -1420,8 +1426,19 @@ export const generatePDF = async (quoteDetails = {}) => {
   // Set the default font
   doc.font(doc.fontRegular);
 
-  const stream = fs.createWriteStream(filePath);
-  doc.pipe(stream);
+  const chunks = [];
+  doc.on("data", (chunk) => chunks.push(chunk));
+
+  const pdfPromise = new Promise((resolve, reject) => {
+    doc.on("end", () => {
+      const buffer = Buffer.concat(chunks);
+      pdfMemoryCache.set(publicFilePath, buffer);
+      // Clean up memory after 15 minutes
+      setTimeout(() => pdfMemoryCache.delete(publicFilePath), 15 * 60 * 1000);
+      resolve();
+    });
+    doc.on("error", reject);
+  });
 
   let logoPath = null;
   if (quoteDetails.agentLogo) {
@@ -1673,10 +1690,7 @@ export const generatePDF = async (quoteDetails = {}) => {
 
   doc.end();
 
-  await new Promise((resolve, reject) => {
-    stream.on("finish", resolve);
-    stream.on("error", reject);
-  });
+  await pdfPromise;
 
   return { filePath, publicFilePath, fileName };
 };

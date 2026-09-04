@@ -37,11 +37,15 @@ const Sidebar = ({ user, mobileOpen = false, onMobileClose = () => {} }) => {
   const navigate = useNavigate();
   const location = useLocation();
 
+
+  
   useEffect(() => {
     if (location.pathname.startsWith("/agent/queries")) {
       setOpenSubmenus((prev) => ({ ...prev, Queries: true }));
     }
   }, [location.pathname]);
+
+
 
   useEffect(() => {
     if (user?.role === "agent") {
@@ -473,7 +477,7 @@ const Sidebar = ({ user, mobileOpen = false, onMobileClose = () => {} }) => {
 
 
 
-        {/* PROFILE SECTION */}
+        {/*====================== PROFILE SECTION ================================== */}
         <motion.div
           className="border-t border-gray-800/90 bg-transparent p-3"
           initial={{ opacity: 0, y: 10 }}
@@ -541,6 +545,11 @@ const Sidebar = ({ user, mobileOpen = false, onMobileClose = () => {} }) => {
             </div>
           </button>
 
+
+
+
+
+
           <motion.button
             onClick={() => setShowLogoutConfirm(true)}
             title={effectiveCollapsed ? "Log Out" : undefined}
@@ -560,6 +569,10 @@ const Sidebar = ({ user, mobileOpen = false, onMobileClose = () => {} }) => {
                 Log Out
               </motion.span>
             )}
+
+
+
+
           </motion.button>
         </motion.div>
       </motion.aside>
@@ -568,7 +581,11 @@ const Sidebar = ({ user, mobileOpen = false, onMobileClose = () => {} }) => {
 
       
 
-      {/* Custom Premium Log Out Confirmation Modal */}
+
+
+
+
+      {/* ======================Custom Premium Log Out Confirmation Modal ===============================*/}
       <AnimatePresence>
         {showLogoutConfirm && (
           <motion.div

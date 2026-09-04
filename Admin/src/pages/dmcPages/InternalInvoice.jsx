@@ -66,22 +66,35 @@ const TEMPLATE_OPTIONS = [
 ];
 
 const normalizeTemplateVariant = (value) =>
-  TEMPLATE_OPTIONS.some((option) => option.value === value) ? value : "aurora-ledger";
+  TEMPLATE_OPTIONS.some((option) => option.value === value)
+    ? value
+    : "aurora-ledger";
 
 const normalizeCreditPeriodDays = (value, options = [7, 15]) => {
   const numericValue = Number(value);
-  return options.includes(numericValue) ? numericValue : (options[0] !== undefined ? options[0] : 7);
+  return options.includes(numericValue)
+    ? numericValue
+    : options[0] !== undefined
+      ? options[0]
+      : 7;
 };
 
 const getCreditPeriodFromDates = (invoiceDate, dueDate, options = [7, 15]) => {
-  if (!invoiceDate || !dueDate) return options[0] !== undefined ? options[0] : 7;
+  if (!invoiceDate || !dueDate)
+    return options[0] !== undefined ? options[0] : 7;
   const parsedInvoiceDate = new Date(invoiceDate);
   const parsedDueDate = new Date(dueDate);
-  if (Number.isNaN(parsedInvoiceDate.getTime()) || Number.isNaN(parsedDueDate.getTime())) return options[0] !== undefined ? options[0] : 7;
+  if (
+    Number.isNaN(parsedInvoiceDate.getTime()) ||
+    Number.isNaN(parsedDueDate.getTime())
+  )
+    return options[0] !== undefined ? options[0] : 7;
 
   parsedInvoiceDate.setHours(0, 0, 0, 0);
   parsedDueDate.setHours(0, 0, 0, 0);
-  const diffDays = Math.round((parsedDueDate - parsedInvoiceDate) / (1000 * 60 * 60 * 24));
+  const diffDays = Math.round(
+    (parsedDueDate - parsedInvoiceDate) / (1000 * 60 * 60 * 24),
+  );
   return normalizeCreditPeriodDays(diffDays, options);
 };
 
@@ -129,25 +142,41 @@ const getServiceInvoiceQuantity = (service = {}) => {
   const normalizedType = normalizeServiceType(service.type);
   const explicitBillableQuantity = Number(service.billableQuantityValue || 0);
 
-  if (Number.isFinite(explicitBillableQuantity) && explicitBillableQuantity > 0) {
+  if (
+    Number.isFinite(explicitBillableQuantity) &&
+    explicitBillableQuantity > 0
+  ) {
     return explicitBillableQuantity;
   }
 
   if (normalizedType === "Hotel") {
     const roomCount = Math.max(
       1,
-      Number(service.roomCount || service.rooms || service.quantityValue || extractLeadingNumber(service.quantityLabel) || 1),
+      Number(
+        service.roomCount ||
+          service.rooms ||
+          service.quantityValue ||
+          extractLeadingNumber(service.quantityLabel) ||
+          1,
+      ),
     );
     const nightCount = Math.max(
       1,
-      Number(service.nightCount || service.nights || extractLeadingNumber(service.stayLabel) || 1),
+      Number(
+        service.nightCount ||
+          service.nights ||
+          extractLeadingNumber(service.stayLabel) ||
+          1,
+      ),
     );
 
     return roomCount * nightCount;
   }
 
   const quantityValue = Number(service.quantityValue || 1);
-  return Number.isFinite(quantityValue) && quantityValue > 0 ? quantityValue : 1;
+  return Number.isFinite(quantityValue) && quantityValue > 0
+    ? quantityValue
+    : 1;
 };
 
 const getResolvedMappedServiceSubtotal = (service = {}) => {
@@ -165,7 +194,11 @@ const createItemFromService = (service = {}) => ({
   ...(function buildResolvedItem() {
     const qty = getServiceInvoiceQuantity(service);
     const subtotal = getResolvedMappedServiceSubtotal(service);
-    const resolvedRate = Number(service.billableUnitRate || (qty > 0 ? subtotal / qty : service.rate) || 0);
+    const resolvedRate = Number(
+      service.billableUnitRate ||
+        (qty > 0 ? subtotal / qty : service.rate) ||
+        0,
+    );
 
     return {
       type: normalizeServiceType(service.type),
@@ -180,13 +213,14 @@ const createItemFromService = (service = {}) => ({
   })(),
 });
 
-const getDraftStorageKey = (queryId) => `dmc-internal-invoice-${queryId || "default"}`;
+const getDraftStorageKey = (queryId) =>
+  `dmc-internal-invoice-${queryId || "default"}`;
 
 const applyDerivedItemValues = (item, gstRate) => {
   const qty = Number(item.qty || 0);
   const rate = Number(item.rate || 0);
   const addonTotal = Number(item.addonTotal || 0);
-  const subtotal = (qty * rate) + addonTotal;
+  const subtotal = qty * rate + addonTotal;
   const tax = (subtotal * Number(gstRate || 0)) / 100;
 
   return {
@@ -200,8 +234,11 @@ const applyDerivedItemValues = (item, gstRate) => {
 };
 
 const normalizeServiceType = (value = "") => {
-  const normalized = String(value || "").trim().toLowerCase();
-  if (normalized === "transport" || normalized === "transfer") return "Transport";
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase();
+  if (normalized === "transport" || normalized === "transfer")
+    return "Transport";
   if (normalized === "activity") return "Activity";
   if (normalized === "sightseeing") return "Sightseeing";
   return "Hotel";
@@ -227,9 +264,14 @@ const doItemsMatchMappedServices = (items = [], mappedItems = []) =>
     const mappedItem = mappedItems[index];
 
     return (
-      normalizeServiceType(item.type) === normalizeServiceType(mappedItem?.type) &&
-      String(item.service || "").trim().toLowerCase() ===
-      String(mappedItem?.service || "").trim().toLowerCase()
+      normalizeServiceType(item.type) ===
+        normalizeServiceType(mappedItem?.type) &&
+      String(item.service || "")
+        .trim()
+        .toLowerCase() ===
+        String(mappedItem?.service || "")
+          .trim()
+          .toLowerCase()
     );
   });
 
@@ -242,7 +284,9 @@ const getServiceTypeIcon = (type = "") => {
 };
 
 const getCurrencyIcon = (currency = "") => {
-  const normalizedCurrency = String(currency || "").trim().toUpperCase();
+  const normalizedCurrency = String(currency || "")
+    .trim()
+    .toUpperCase();
   if (normalizedCurrency === "USD") return DollarSign;
   if (normalizedCurrency === "EUR") return Landmark;
   if (normalizedCurrency === "AED") return Receipt;
@@ -266,21 +310,32 @@ const FieldShell = ({
 );
 
 export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
-  const storedUser = typeof window !== "undefined" ? (() => {
-    try {
-      return JSON.parse(window.sessionStorage.getItem("user") || "{}");
-    } catch {
-      return {};
-    }
-  })() : null;
+  const storedUser =
+    typeof window !== "undefined"
+      ? (() => {
+          try {
+            return JSON.parse(window.sessionStorage.getItem("user") || "{}");
+          } catch {
+            return {};
+          }
+        })()
+      : null;
 
   const reduxUser = useSelector((state) => state.auth?.user);
 
   const resolvedCreditDays = useMemo(() => {
-    if (reduxUser && Array.isArray(reduxUser.creditDays) && reduxUser.creditDays.length > 0) {
+    if (
+      reduxUser &&
+      Array.isArray(reduxUser.creditDays) &&
+      reduxUser.creditDays.length > 0
+    ) {
       return reduxUser.creditDays.map(Number);
     }
-    if (storedUser && Array.isArray(storedUser.creditDays) && storedUser.creditDays.length > 0) {
+    if (
+      storedUser &&
+      Array.isArray(storedUser.creditDays) &&
+      storedUser.creditDays.length > 0
+    ) {
       return storedUser.creditDays.map(Number);
     }
     if (storedUser && storedUser.creditDays !== undefined) {
@@ -298,7 +353,14 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
   const isBulkSettled = selectedQuery?.isBulkSettled || false;
   const bulkBatchNumber = selectedQuery?.bulkBatchNumber || "";
   const isLocked = isFinanceVerified;
-  console.log("INTERNAL INVOICE DEBUG: selectedQuery ID =", selectedQuery?._id, "isBulkSettled =", isBulkSettled, "bulkBatchNumber =", bulkBatchNumber);
+  console.log(
+    "INTERNAL INVOICE DEBUG: selectedQuery ID =",
+    selectedQuery?._id,
+    "isBulkSettled =",
+    isBulkSettled,
+    "bulkBatchNumber =",
+    bulkBatchNumber,
+  );
   const mappedQueryItems = queryServices.length
     ? queryServices.map(createItemFromService)
     : [];
@@ -306,13 +368,13 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
   const existingDraft =
     typeof window !== "undefined"
       ? (() => {
-        try {
-          const raw = window.localStorage.getItem(draftStorageKey);
-          return raw ? JSON.parse(raw) : null;
-        } catch {
-          return null;
-        }
-      })()
+          try {
+            const raw = window.localStorage.getItem(draftStorageKey);
+            return raw ? JSON.parse(raw) : null;
+          } catch {
+            return null;
+          }
+        })()
       : null;
 
   const initialGstRate =
@@ -331,13 +393,13 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
     doItemsMatchMappedServices(existingDraft.items, mappedQueryItems);
   const syncedExistingInvoiceItems = existingInvoiceMatchesQueryServices
     ? existingInvoice.items.map((item, index) =>
-      syncDraftItemWithMappedService(item, mappedQueryItems[index]),
-    )
+        syncDraftItemWithMappedService(item, mappedQueryItems[index]),
+      )
     : existingInvoice?.items || [];
   const draftItemsWithMappedQuantities = draftMatchesQueryServices
     ? existingDraft.items.map((item, index) =>
-      syncDraftItemWithMappedService(item, mappedQueryItems[index]),
-    )
+        syncDraftItemWithMappedService(item, mappedQueryItems[index]),
+      )
     : existingDraft?.items || [];
   const initialItems = (
     existingInvoice?.items?.length
@@ -358,9 +420,13 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
     "";
   const initialCreditPeriodDays = normalizeCreditPeriodDays(
     existingInvoice?.creditPeriodDays ||
-    existingDraft?.invoiceMeta?.creditPeriodDays ||
-    getCreditPeriodFromDates(initialInvoiceDate, initialDueDate, resolvedCreditDays),
-    resolvedCreditDays
+      existingDraft?.invoiceMeta?.creditPeriodDays ||
+      getCreditPeriodFromDates(
+        initialInvoiceDate,
+        initialDueDate,
+        resolvedCreditDays,
+      ),
+    resolvedCreditDays,
   );
 
   const [invoiceMeta, setInvoiceMeta] = useState({
@@ -379,12 +445,15 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
     dueDate: addDaysToDate(initialInvoiceDate, initialCreditPeriodDays),
     templateVariant: normalizeTemplateVariant(
       existingInvoice?.templateVariant ||
-      existingDraft?.invoiceMeta?.templateVariant,
+        existingDraft?.invoiceMeta?.templateVariant,
     ),
   });
 
   useEffect(() => {
-    if (resolvedCreditDays.length > 0 && !resolvedCreditDays.includes(invoiceMeta.creditPeriodDays)) {
+    if (
+      resolvedCreditDays.length > 0 &&
+      !resolvedCreditDays.includes(invoiceMeta.creditPeriodDays)
+    ) {
       const defaultVal = resolvedCreditDays[0];
       setInvoiceMeta((prev) => ({
         ...prev,
@@ -398,22 +467,29 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
     gstRate: initialGstRate,
     tcsRate:
       existingInvoice?.taxConfig?.tcsRate ??
-      existingDraft?.taxConfig?.tcsRate ?? 0,
+      existingDraft?.taxConfig?.tcsRate ??
+      0,
     otherTax:
       existingInvoice?.taxConfig?.otherTax ??
       existingDraft?.taxConfig?.otherTax ??
       0,
   });
   const [invoiceSource, setInvoiceSource] = useState(
-    existingInvoice?.invoiceSource || existingDraft?.invoiceSource || "system_template",
+    existingInvoice?.invoiceSource ||
+      existingDraft?.invoiceSource ||
+      "system_template",
   );
   const [uploadedInvoiceFile, setUploadedInvoiceFile] = useState(null);
   const [isFileUploading, setIsFileUploading] = useState(false);
   const [invoiceExtraction, setInvoiceExtraction] = useState(
-    existingInvoice?.invoiceExtraction || existingDraft?.invoiceExtraction || null,
+    existingInvoice?.invoiceExtraction ||
+      existingDraft?.invoiceExtraction ||
+      null,
   );
   const [isExtractionOpen, setIsExtractionOpen] = useState(
-    Boolean(existingInvoice?.invoiceExtraction || existingDraft?.invoiceExtraction),
+    Boolean(
+      existingInvoice?.invoiceExtraction || existingDraft?.invoiceExtraction,
+    ),
   );
   const [claimedSummary, setClaimedSummary] = useState(() => {
     if (existingInvoice?.claimedSummary) {
@@ -456,7 +532,7 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
           repeat: -1,
           yoyo: true,
           ease: "power1.inOut",
-        }
+        },
       );
     }
     return () => {
@@ -468,7 +544,9 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
     setActionPopup({ title, message });
     setTimeout(() => {
       setActionPopup((current) =>
-        current?.title === title && current?.message === message ? null : current,
+        current?.title === title && current?.message === message
+          ? null
+          : current,
       );
     }, 2400);
   };
@@ -484,7 +562,10 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
       }
 
       if (field === "creditPeriodDays") {
-        const creditPeriodDays = normalizeCreditPeriodDays(value, resolvedCreditDays);
+        const creditPeriodDays = normalizeCreditPeriodDays(
+          value,
+          resolvedCreditDays,
+        );
         return {
           ...prev,
           creditPeriodDays,
@@ -512,26 +593,40 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
       const formData = new FormData();
       formData.append("uploadedInvoice", file);
       formData.append("claimedSummary", JSON.stringify(claimedSummary));
-      formData.append("expectedSummary", JSON.stringify({
-        ...summary,
-        currency: items[0]?.currency || "INR",
-      }));
+      formData.append(
+        "expectedSummary",
+        JSON.stringify({
+          ...summary,
+          currency: items[0]?.currency || "INR",
+        }),
+      );
 
-      const { data } = await API.post("/dmc/internal-invoice/parse-upload", formData, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
+      const { data } = await API.post(
+        "/dmc/internal-invoice/parse-upload",
+        formData,
+        {
+          headers: { "Content-Type": "multipart/form-data" },
+        },
+      );
 
       const extraction = data?.data || null;
       const fields = extraction?.fields || {};
       setInvoiceExtraction(extraction);
       setIsExtractionOpen(true);
 
-      if (fields.invoiceNumber || fields.invoiceDate || fields.dueDate || fields.supplierName) {
+      if (
+        fields.invoiceNumber ||
+        fields.invoiceDate ||
+        fields.dueDate ||
+        fields.supplierName
+      ) {
         setInvoiceMeta((prev) => {
           const nextInvoiceDate = fields.invoiceDate || prev.invoiceDate;
           const nextDueDate =
             fields.dueDate ||
-            (fields.invoiceDate ? addDaysToDate(fields.invoiceDate, prev.creditPeriodDays) : prev.dueDate);
+            (fields.invoiceDate
+              ? addDaysToDate(fields.invoiceDate, prev.creditPeriodDays)
+              : prev.dueDate);
 
           return {
             ...prev,
@@ -539,7 +634,11 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
             invoiceNumber: fields.invoiceNumber || prev.invoiceNumber,
             invoiceDate: nextInvoiceDate,
             dueDate: nextDueDate,
-            creditPeriodDays: getCreditPeriodFromDates(nextInvoiceDate, nextDueDate, resolvedCreditDays),
+            creditPeriodDays: getCreditPeriodFromDates(
+              nextInvoiceDate,
+              nextDueDate,
+              resolvedCreditDays,
+            ),
           };
         });
       }
@@ -555,10 +654,15 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
       setInvoiceExtraction({
         status: "failed",
         source: "upload",
-        error: error?.response?.data?.message || "Unable to parse this invoice automatically.",
+        error:
+          error?.response?.data?.message ||
+          "Unable to parse this invoice automatically.",
       });
       setIsExtractionOpen(true);
-      toast.error(error?.response?.data?.message || "Invoice uploaded, parser needs manual review");
+      toast.error(
+        error?.response?.data?.message ||
+          "Invoice uploaded, parser needs manual review",
+      );
     } finally {
       setIsFileUploading(false);
       event.target.value = "";
@@ -605,7 +709,10 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
       (sum, item) => sum + Number(item.subtotal || 0),
       0,
     );
-    const gstAmount = items.reduce((sum, item) => sum + Number(item.tax || 0), 0);
+    const gstAmount = items.reduce(
+      (sum, item) => sum + Number(item.tax || 0),
+      0,
+    );
     const tcsAmount = (subtotal * Number(taxConfig.tcsRate || 0)) / 100;
     const otherTaxAmount = Number(taxConfig.otherTax || 0);
     const totalTax = gstAmount + tcsAmount + otherTaxAmount;
@@ -700,18 +807,29 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
         return;
       }
 
-      const subtotalMismatch = Math.round(Number(claimedSummary.subtotal || 0)) !== Math.round(Number(summary.subtotal || 0));
-      const taxMismatch = Math.round(Number(claimedSummary.taxAmount || 0)) !== Math.round(Number(summary.totalTax || 0));
-      const totalMismatch = Math.round(Number(claimedSummary.grandTotal || 0)) !== Math.round(Number(summary.grandTotal || 0));
+      const subtotalMismatch =
+        Math.round(Number(claimedSummary.subtotal || 0)) !==
+        Math.round(Number(summary.subtotal || 0));
+      const taxMismatch =
+        Math.round(Number(claimedSummary.taxAmount || 0)) !==
+        Math.round(Number(summary.totalTax || 0));
+      const totalMismatch =
+        Math.round(Number(claimedSummary.grandTotal || 0)) !==
+        Math.round(Number(summary.grandTotal || 0));
 
       if (subtotalMismatch || taxMismatch || totalMismatch) {
-        toast.error("Amount Mismatch: Uploaded amounts do not match system reference.");
+        toast.error(
+          "Amount Mismatch: Uploaded amounts do not match system reference.",
+        );
         return;
       }
     }
 
     const hasInvalidItem = items.some(
-      (item) => !item.service || Number(item.qty || 0) <= 0 || Number(item.rate || 0) < 0,
+      (item) =>
+        !item.service ||
+        Number(item.qty || 0) <= 0 ||
+        Number(item.rate || 0) < 0,
     );
 
     if (hasInvalidItem) {
@@ -729,15 +847,28 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
     try {
       if (invoiceSource === "uploaded_invoice") {
         const formData = new FormData();
-        formData.append("queryId", selectedQuery?.queryId || selectedQuery?._id);
+        formData.append(
+          "queryId",
+          selectedQuery?.queryId || selectedQuery?._id,
+        );
         formData.append("invoiceSource", invoiceSource);
-        formData.append("invoiceMeta", JSON.stringify({ ...invoiceMeta, invoiceSource, templateVariant: "" }));
+        formData.append(
+          "invoiceMeta",
+          JSON.stringify({
+            ...invoiceMeta,
+            invoiceSource,
+            templateVariant: "",
+          }),
+        );
         formData.append("items", JSON.stringify(items));
         formData.append("taxConfig", JSON.stringify(taxConfig));
-        formData.append("summary", JSON.stringify({
-          ...summary,
-          currency: items[0]?.currency || "INR",
-        }));
+        formData.append(
+          "summary",
+          JSON.stringify({
+            ...summary,
+            currency: items[0]?.currency || "INR",
+          }),
+        );
         formData.append("claimedSummary", JSON.stringify(claimedSummary));
         if (uploadedInvoiceFile) {
           formData.append("uploadedInvoice", uploadedInvoiceFile);
@@ -772,8 +903,8 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
     } catch (error) {
       toast.error(
         error?.response?.data?.message ||
-        error?.response?.data?.error ||
-        "Failed to send internal invoice to finance team",
+          error?.response?.data?.error ||
+          "Failed to send internal invoice to finance team",
       );
     } finally {
       setTimeout(() => {
@@ -797,7 +928,13 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
               <div className="flex items-center gap-2">
                 <AlertCircle size={14} className="text-rose-600 shrink-0" />
                 <span className="leading-relaxed">
-                  <strong>Bulk Settlement Lock:</strong> This booking has already been submitted to the finance team in bulk settlement batch <span className="font-mono font-bold text-rose-700 bg-rose-100/60 px-1.5 py-0.5 rounded">{bulkBatchNumber}</span>. A single invoice cannot be sent.
+                  <strong>Bulk Settlement Lock:</strong> This booking has
+                  already been submitted to the finance team in bulk settlement
+                  batch{" "}
+                  <span className="font-mono font-bold text-rose-700 bg-rose-100/60 px-1.5 py-0.5 rounded">
+                    {bulkBatchNumber}
+                  </span>
+                  . A single invoice cannot be sent.
                 </span>
               </div>
               <button
@@ -826,11 +963,12 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
                 Internal Invoice Details (DMC to System)
               </h2>
               <p className="mt-1 text-xs text-slate-500 font-medium">
-                Invoice rows are auto-filled from booked services and remain fully editable.
+                Invoice rows are auto-filled from booked services and remain
+                fully editable.
               </p>
             </div>
           </div>
-          
+
           <div className="flex items-center gap-2 self-start sm:self-center">
             <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 border border-blue-100 px-3 py-1 text-xs font-semibold text-blue-700 shadow-sm">
               <span className="h-1.5 w-1.5 rounded-full bg-blue-600 animate-ping" />
@@ -887,22 +1025,24 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
 
         {existingInvoice?.status ? (
           <div
-            className={`mt-4 rounded-2xl border px-4 py-3 ${isFinanceVerified
+            className={`mt-4 rounded-2xl border px-4 py-3 ${
+              isFinanceVerified
                 ? "border-emerald-200 bg-emerald-50"
                 : existingInvoice.status === "Rejected"
                   ? "border-rose-200 bg-rose-50"
                   : "border-sky-200 bg-sky-50"
-              }`}
+            }`}
           >
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div className="min-w-0">
                 <p
-                  className={`text-[11px] font-semibold uppercase tracking-[0.22em] ${isFinanceVerified
+                  className={`text-[11px] font-semibold uppercase tracking-[0.22em] ${
+                    isFinanceVerified
                       ? "text-emerald-700"
                       : existingInvoice.status === "Rejected"
                         ? "text-rose-700"
                         : "text-sky-700"
-                    }`}
+                  }`}
                 >
                   Finance Update
                 </p>
@@ -958,10 +1098,15 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
             <label className="text-xs font-semibold text-slate-600 block mb-1">
               Supplier Name <span className="text-red-600">*</span>
             </label>
-            <FieldShell icon={Briefcase} iconWrapClassName="bg-gradient-to-tr from-blue-50 to-indigo-50 border border-blue-100 text-blue-600 shadow-sm">
+            <FieldShell
+              icon={Briefcase}
+              iconWrapClassName="bg-gradient-to-tr from-blue-50 to-indigo-50 border border-blue-100 text-blue-600 shadow-sm"
+            >
               <input
                 value={invoiceMeta.supplierName}
-                onChange={(e) => handleMetaChange("supplierName", e.target.value)}
+                onChange={(e) =>
+                  handleMetaChange("supplierName", e.target.value)
+                }
                 className="w-full rounded-xl border border-gray-300 bg-blue-50/20 py-2 pl-11 pr-3 text-sm text-slate-800 shadow-sm focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none transition-all"
                 placeholder="DMC Company Name"
               />
@@ -972,10 +1117,15 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
             <label className="text-xs font-semibold text-slate-600 block mb-1">
               Invoice Number <span className="text-red-600">*</span>
             </label>
-            <FieldShell icon={Hash} iconWrapClassName="bg-gradient-to-tr from-sky-50 to-cyan-50 border border-sky-100 text-sky-600 shadow-sm">
+            <FieldShell
+              icon={Hash}
+              iconWrapClassName="bg-gradient-to-tr from-sky-50 to-cyan-50 border border-sky-100 text-sky-600 shadow-sm"
+            >
               <input
                 value={invoiceMeta.invoiceNumber}
-                onChange={(e) => handleMetaChange("invoiceNumber", e.target.value)}
+                onChange={(e) =>
+                  handleMetaChange("invoiceNumber", e.target.value)
+                }
                 className="w-full rounded-xl border border-gray-300 bg-sky-50/20 py-2 pl-11 pr-3 text-sm text-slate-800 shadow-sm focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none transition-all"
                 placeholder="INV-2026-0001"
               />
@@ -986,11 +1136,16 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
             <label className="text-xs font-semibold text-slate-600 block mb-1">
               Invoice Date <span className="text-red-600">*</span>
             </label>
-            <FieldShell icon={Calendar} iconWrapClassName="bg-gradient-to-tr from-orange-50 to-amber-50 border border-orange-100 text-orange-600 shadow-sm">
+            <FieldShell
+              icon={Calendar}
+              iconWrapClassName="bg-gradient-to-tr from-orange-50 to-amber-50 border border-orange-100 text-orange-600 shadow-sm"
+            >
               <input
                 type="date"
                 value={invoiceMeta.invoiceDate}
-                onChange={(e) => handleMetaChange("invoiceDate", e.target.value)}
+                onChange={(e) =>
+                  handleMetaChange("invoiceDate", e.target.value)
+                }
                 className="w-full rounded-xl border border-gray-300 bg-orange-50/20 py-2 pl-11 pr-3 text-sm text-slate-800 shadow-sm focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none transition-all"
               />
             </FieldShell>
@@ -1000,15 +1155,22 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
             <label className="text-xs font-semibold text-slate-600 block mb-1">
               Credit Period <span className="text-red-600">*</span>
             </label>
-            <FieldShell icon={Clock} iconWrapClassName="bg-gradient-to-tr from-emerald-50 to-teal-50 border border-emerald-100 text-emerald-600 shadow-sm">
+            <FieldShell
+              icon={Clock}
+              iconWrapClassName="bg-gradient-to-tr from-emerald-50 to-teal-50 border border-emerald-100 text-emerald-600 shadow-sm"
+            >
               <select
                 value={invoiceMeta.creditPeriodDays}
-                onChange={(e) => handleMetaChange("creditPeriodDays", e.target.value)}
+                onChange={(e) =>
+                  handleMetaChange("creditPeriodDays", e.target.value)
+                }
                 className="w-full rounded-xl border border-gray-300 bg-emerald-50/15 py-2 pl-11 pr-3 text-sm text-slate-800 shadow-sm focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none transition-all cursor-pointer"
               >
                 {resolvedCreditDays.map((days) => (
                   <option key={days} value={days}>
-                    {Number(days) === 0 ? "Immediate (0-day credit)" : `${days}-day credit`}
+                    {Number(days) === 0
+                      ? "Immediate (0-day credit)"
+                      : `${days}-day credit`}
                   </option>
                 ))}
               </select>
@@ -1019,7 +1181,10 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
             <label className="text-xs font-semibold text-slate-600 block mb-1">
               Due Date <span className="text-red-600">*</span>
             </label>
-            <FieldShell icon={CalendarDays} iconWrapClassName="bg-gradient-to-tr from-rose-50 to-red-50 border border-rose-100 text-rose-600 shadow-sm">
+            <FieldShell
+              icon={CalendarDays}
+              iconWrapClassName="bg-gradient-to-tr from-rose-50 to-red-50 border border-rose-100 text-rose-600 shadow-sm"
+            >
               <input
                 type="date"
                 value={invoiceMeta.dueDate}
@@ -1034,10 +1199,15 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
               <label className="text-xs font-semibold text-slate-600 block mb-1">
                 Template <span className="text-red-600">*</span>
               </label>
-              <FieldShell icon={FileText} iconWrapClassName="bg-gradient-to-tr from-violet-50 to-indigo-50 border border-violet-100 text-violet-600 shadow-sm">
+              <FieldShell
+                icon={FileText}
+                iconWrapClassName="bg-gradient-to-tr from-violet-50 to-indigo-50 border border-violet-100 text-violet-600 shadow-sm"
+              >
                 <select
                   value={invoiceMeta.templateVariant}
-                  onChange={(e) => handleMetaChange("templateVariant", e.target.value)}
+                  onChange={(e) =>
+                    handleMetaChange("templateVariant", e.target.value)
+                  }
                   className="w-full rounded-xl border border-gray-300 bg-violet-50/20 py-2 pl-11 pr-3 text-sm text-slate-800 shadow-sm focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none transition-all cursor-pointer"
                 >
                   {TEMPLATE_OPTIONS.map((option) => (
@@ -1062,12 +1232,20 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
                   Upload DMC Invoice
                 </h3>
                 <p className="mt-1.5 text-xs leading-relaxed text-slate-500">
-                  Upload your PDF or Word invoice. This exact file will be sent to finance; no company template PDF will be generated in this mode.
+                  Upload your PDF or Word invoice. This exact file will be sent
+                  to finance; no company template PDF will be generated in this
+                  mode.
                 </p>
-                {existingInvoice?.uploadedInvoice?.name && !uploadedInvoiceFile ? (
+                {existingInvoice?.uploadedInvoice?.name &&
+                !uploadedInvoiceFile ? (
                   <div className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-blue-50/70 border border-blue-100/80 px-2.5 py-1 text-[11px] font-medium text-blue-700">
-                    <CheckCircle2 size={12} className="text-blue-500 animate-pulse" />
-                    <span>Existing: {existingInvoice.uploadedInvoice.name}</span>
+                    <CheckCircle2
+                      size={12}
+                      className="text-blue-500 animate-pulse"
+                    />
+                    <span>
+                      Existing: {existingInvoice.uploadedInvoice.name}
+                    </span>
                   </div>
                 ) : null}
               </div>
@@ -1081,14 +1259,14 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
                       <div className="h-1 w-6 bg-emerald-500 rounded" />
                       <div className="h-1 w-8 bg-sky-200 rounded" />
                       <div className="h-1.5 w-7 bg-emerald-100 rounded" />
-                      
+
                       {/* Laser Bar */}
-                      <div 
+                      <div
                         ref={laserRef}
-                        className="absolute left-0 right-0 h-0.5 bg-cyan-500 shadow-[0_0_8px_#06b6d4,0_0_12px_#06b6d4] z-10" 
+                        className="absolute left-0 right-0 h-0.5 bg-cyan-500 shadow-[0_0_8px_#06b6d4,0_0_12px_#06b6d4] z-10"
                       />
                     </div>
-                    
+
                     <div className="flex flex-col items-start ml-4 text-left">
                       <span className="text-xs font-bold text-slate-800 animate-pulse">
                         Scanning Invoice...
@@ -1114,22 +1292,29 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
                       <X size={12} />
                     </button>
 
-
-                    <CheckCircle2 size={24} className="mb-1.5 text-emerald-600 animate-scale-in" />
+                    <CheckCircle2
+                      size={24}
+                      className="mb-1.5 text-emerald-600 animate-scale-in"
+                    />
                     <span className="max-w-[200px] truncate text-xs font-bold text-slate-800">
                       {uploadedInvoiceFile.name}
                     </span>
                     <span className="mt-0.5 text-[10px] text-emerald-600 font-semibold">
                       Successfully processed
                     </span>
-
-
                   </div>
                 ) : (
                   <label className="flex min-h-[96px] cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-blue-200 bg-white px-4 py-3 text-center text-sm font-semibold text-slate-700 shadow-sm transition hover:border-blue-400 hover:bg-blue-50/30 group">
-                    <Upload size={20} className="mb-1.5 text-blue-500 transition-transform group-hover:-translate-y-0.5 duration-200" />
-                    <span className="text-xs font-bold text-slate-700">Choose Invoice</span>
-                    <span className="mt-1 text-[10px] font-normal text-slate-400">PDF, DOCX, JPG, PNG up to 10MB</span>
+                    <Upload
+                      size={20}
+                      className="mb-1.5 text-blue-500 transition-transform group-hover:-translate-y-0.5 duration-200"
+                    />
+                    <span className="text-xs font-bold text-slate-700">
+                      Choose Invoice
+                    </span>
+                    <span className="mt-1 text-[10px] font-normal text-slate-400">
+                      PDF, DOCX, JPG, PNG up to 10MB
+                    </span>
                     <input
                       type="file"
                       accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.webp,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/*"
@@ -1141,180 +1326,253 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
               </div>
             </div>
 
-            {invoiceExtraction ? (
-              (() => {
-                const extractionPassed =
-                  invoiceExtraction.status === "parsed" &&
-                  invoiceExtraction.verification?.passed !== false &&
-                  !invoiceExtraction.verification?.warnings?.length;
-                const extractionFailed =
-                  invoiceExtraction.status === "parsed" && !extractionPassed;
-                const fields = invoiceExtraction.fields || {};
-                const amountMatches = (extracted, expected) =>
-                  Number(expected || 0) === 0
-                    ? Math.round(Number(extracted || 0)) === 0
-                    : Number(extracted || 0) > 0 &&
-                      Math.round(Number(extracted || 0)) === Math.round(Number(expected || 0));
-                 const getCurrencySymbol = (currency) => {
-                   const cur = String(currency || '').trim().toUpperCase();
-                   if (cur === 'INR') return '₹';
-                   if (cur === 'USD') return '$';
-                   if (cur === 'EUR') return '€';
-                   if (cur === 'GBP') return '£';
-                   if (cur === 'THB') return '฿';
-                   return cur;
-                 };
+            {invoiceExtraction
+              ? (() => {
+                  const extractionPassed =
+                    invoiceExtraction.status === "parsed" &&
+                    invoiceExtraction.verification?.passed !== false &&
+                    !invoiceExtraction.verification?.warnings?.length;
+                  const extractionFailed =
+                    invoiceExtraction.status === "parsed" && !extractionPassed;
+                  const fields = invoiceExtraction.fields || {};
+                  const amountMatches = (extracted, expected) =>
+                    Number(expected || 0) === 0
+                      ? Math.round(Number(extracted || 0)) === 0
+                      : Number(extracted || 0) > 0 &&
+                        Math.round(Number(extracted || 0)) ===
+                          Math.round(Number(expected || 0));
+                  const getCurrencySymbol = (currency) => {
+                    const cur = String(currency || "")
+                      .trim()
+                      .toUpperCase();
+                    if (cur === "INR") return "₹";
+                    if (cur === "USD") return "$";
+                    if (cur === "EUR") return "€";
+                    if (cur === "GBP") return "£";
+                    if (cur === "THB") return "฿";
+                    return cur;
+                  };
 
-                 const getFieldCheckDetails = (label, key, expectedValue, isAmount = false) => {
-                   const matched = isAmount 
-                     ? amountMatches(fields[key], expectedValue) 
-                     : Boolean(fields[key]);
-                   
-                   let primaryValue = fields[key] || "-";
-                   let secondaryValue = null;
+                  const getFieldCheckDetails = (
+                    label,
+                    key,
+                    expectedValue,
+                    isAmount = false,
+                  ) => {
+                    const matched = isAmount
+                      ? amountMatches(fields[key], expectedValue)
+                      : Boolean(fields[key]);
 
-                   if (isAmount) {
-                     const amount = Number(fields[key] || 0).toLocaleString("en-IN");
-                     const currency = fields.currency || "INR";
-                     primaryValue = `${getCurrencySymbol(currency)} ${amount}`;
-                     
-                     const originalValue = fields.originalAmounts?.[key];
-                     if (fields.conversionApplied && Number(originalValue || 0) > 0) {
-                       secondaryValue = `from ${getCurrencySymbol(fields.originalCurrency)} ${Number(originalValue || 0).toLocaleString("en-IN")}`;
-                     }
-                   }
+                    let primaryValue = fields[key] || "-";
+                    let secondaryValue = null;
 
-                   return { label, primaryValue, secondaryValue, matched };
-                 };
+                    if (isAmount) {
+                      const amount = Number(fields[key] || 0).toLocaleString(
+                        "en-IN",
+                      );
+                      const currency = fields.currency || "INR";
+                      primaryValue = `${getCurrencySymbol(currency)} ${amount}`;
 
-                 const fieldChecks = [
-                   { label: "Invoice", primaryValue: fields.invoiceNumber || "-", secondaryValue: null, matched: Boolean(fields.invoiceNumber) },
-                   { label: "Date", primaryValue: fields.invoiceDate || "-", secondaryValue: null, matched: Boolean(fields.invoiceDate) },
-                   getFieldCheckDetails("Subtotal", "subtotal", summary.subtotal, true),
-                   getFieldCheckDetails("Tax", "taxAmount", summary.totalTax, true),
-                   getFieldCheckDetails("Total", "grandTotal", summary.grandTotal, true),
-                 ];
-                 return (
+                      const originalValue = fields.originalAmounts?.[key];
+                      if (
+                        fields.conversionApplied &&
+                        Number(originalValue || 0) > 0
+                      ) {
+                        secondaryValue = `from ${getCurrencySymbol(fields.originalCurrency)} ${Number(originalValue || 0).toLocaleString("en-IN")}`;
+                      }
+                    }
 
-             <div
-  className={`mt-4 overflow-hidden rounded-xl border text-xs shadow-sm transition-colors ${
-    extractionPassed
-      ? "border-emerald-200 bg-emerald-50/70 text-emerald-900"
-      : extractionFailed
-        ? "border-rose-200 bg-rose-50/80 text-rose-900"
-        : "border-amber-200 bg-amber-50/80 text-amber-900"
-  }`}
->
-  <button
-    type="button"
-    onClick={() => setIsExtractionOpen((prev) => !prev)}
-    className="flex w-full flex-wrap items-center justify-between gap-2 px-4 py-3.5 text-left transition-colors hover:bg-white/40"
-    aria-expanded={isExtractionOpen}
-  >
-    <p className="flex items-center gap-2 font-bold uppercase tracking-[0.16em]">
-      {extractionPassed ? (
-        <CheckCircle2 size={14} className="text-emerald-600" />
-      ) : extractionFailed ? (
-        <XCircle size={14} className="text-rose-600" />
-      ) : (
-        <AlertCircle size={14} className="text-amber-600" />
-      )}
-      Parser / OCR Check
-    </p>
-    <span className="inline-flex items-center gap-2 rounded-full bg-white/90 px-3 py-1 font-semibold shadow-sm">
-      {(invoiceExtraction.source || "parser").replace(/_/g, " ")} · {invoiceExtraction.confidence || 0}% confidence
-      <ChevronDown
-        size={14}
-        className={`transition-transform duration-300 ${isExtractionOpen ? "rotate-180" : ""}`}
-      />
-    </span>
-  </button>
+                    return { label, primaryValue, secondaryValue, matched };
+                  };
 
-  <AnimatePresence initial={false}>
-    {isExtractionOpen ? (
-      <motion.div
-        initial={{ height: 0, opacity: 0 }}
-        animate={{ height: "auto", opacity: 1 }}
-        exit={{ height: 0, opacity: 0 }}
-        transition={{ duration: 0.24, ease: "easeInOut" }}
-        className="overflow-hidden"
-      >
-        <div className="border-t border-white/70 px-4 pb-4 pt-4">
-          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-5">
-            {fieldChecks.map((field) => (
-              <div
-                key={field.label}
-                className={`flex flex-col justify-between rounded-xl border p-3 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${
-                  field.matched
-                    ? "border-emerald-200/70 bg-emerald-500/10 text-emerald-950"
-                    : "border-rose-200/70 bg-rose-500/10 text-rose-950"
-                }`}
-              >
-                <div className="mb-2 flex items-center justify-between gap-2">
-                  <span className="text-[10px] font-extrabold uppercase tracking-wider opacity-60">
-                    {field.label}
-                  </span>
-                  {field.matched ? (
-                    <CheckCircle2 size={14} className="shrink-0 text-emerald-600" />
-                  ) : (
-                    <XCircle size={14} className="shrink-0 text-rose-600" />
-                  )}
-                </div>
-                <span className="text-[12.5px] font-extrabold leading-tight">
-                  {field.primaryValue}
-                </span>
-                {field.secondaryValue && (
-                  <span className="mt-1 text-[10px] font-medium leading-normal text-slate-500/80">
-                    {field.secondaryValue}
-                  </span>
-                )}
-              </div>
-            ))}
-          </div>
+                  const fieldChecks = [
+                    {
+                      label: "Invoice",
+                      primaryValue: fields.invoiceNumber || "-",
+                      secondaryValue: null,
+                      matched: Boolean(fields.invoiceNumber),
+                    },
+                    {
+                      label: "Date",
+                      primaryValue: fields.invoiceDate || "-",
+                      secondaryValue: null,
+                      matched: Boolean(fields.invoiceDate),
+                    },
+                    getFieldCheckDetails(
+                      "Subtotal",
+                      "subtotal",
+                      summary.subtotal,
+                      true,
+                    ),
+                    getFieldCheckDetails(
+                      "Tax",
+                      "taxAmount",
+                      summary.totalTax,
+                      true,
+                    ),
+                    getFieldCheckDetails(
+                      "Total",
+                      "grandTotal",
+                      summary.grandTotal,
+                      true,
+                    ),
+                  ];
+                  return (
+                    <div
+                      className={`mt-4 overflow-hidden rounded-xl border text-xs shadow-sm transition-colors ${
+                        extractionPassed
+                          ? "border-emerald-200 bg-emerald-50/70 text-emerald-900"
+                          : extractionFailed
+                            ? "border-rose-200 bg-rose-50/80 text-rose-900"
+                            : "border-amber-200 bg-amber-50/80 text-amber-900"
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => setIsExtractionOpen((prev) => !prev)}
+                        className="flex w-full flex-wrap items-center justify-between gap-2 px-4 py-3.5 text-left transition-colors hover:bg-white/40"
+                        aria-expanded={isExtractionOpen}
+                      >
+                        <p className="flex items-center gap-2 font-bold uppercase tracking-[0.16em]">
+                          {extractionPassed ? (
+                            <CheckCircle2
+                              size={14}
+                              className="text-emerald-600"
+                            />
+                          ) : extractionFailed ? (
+                            <XCircle size={14} className="text-rose-600" />
+                          ) : (
+                            <AlertCircle size={14} className="text-amber-600" />
+                          )}
+                          Parser / OCR Check
+                        </p>
+                        <span className="inline-flex items-center gap-2 rounded-full bg-white/90 px-3 py-1 font-semibold shadow-sm">
+                          {(invoiceExtraction.source || "parser").replace(
+                            /_/g,
+                            " ",
+                          )}{" "}
+                          · {invoiceExtraction.confidence || 0}% confidence
+                          <ChevronDown
+                            size={14}
+                            className={`transition-transform duration-300 ${isExtractionOpen ? "rotate-180" : ""}`}
+                          />
+                        </span>
+                      </button>
 
-          {invoiceExtraction.verification?.warnings?.length ? (
-            <div className="mt-3.5 flex items-start gap-2.5 rounded-xl border border-rose-200/50 bg-rose-500/10 p-3.5 text-xs leading-relaxed text-rose-950 shadow-sm">
-              <AlertCircle size={16} className="mt-0.5 shrink-0 text-rose-600" />
-              <span>{invoiceExtraction.verification.warnings.join(" ")}</span>
-            </div>
-          ) : null}
+                      <AnimatePresence initial={false}>
+                        {isExtractionOpen ? (
+                          <motion.div
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: "auto", opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            transition={{ duration: 0.24, ease: "easeInOut" }}
+                            className="overflow-hidden"
+                          >
+                            <div className="border-t border-white/70 px-4 pb-4 pt-4">
+                              <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-5">
+                                {fieldChecks.map((field) => (
+                                  <div
+                                    key={field.label}
+                                    className={`flex flex-col justify-between rounded-xl border p-3 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${
+                                      field.matched
+                                        ? "border-emerald-200/70 bg-emerald-500/10 text-emerald-950"
+                                        : "border-rose-200/70 bg-rose-500/10 text-rose-950"
+                                    }`}
+                                  >
+                                    <div className="mb-2 flex items-center justify-between gap-2">
+                                      <span className="text-[10px] font-extrabold uppercase tracking-wider opacity-60">
+                                        {field.label}
+                                      </span>
+                                      {field.matched ? (
+                                        <CheckCircle2
+                                          size={14}
+                                          className="shrink-0 text-emerald-600"
+                                        />
+                                      ) : (
+                                        <XCircle
+                                          size={14}
+                                          className="shrink-0 text-rose-600"
+                                        />
+                                      )}
+                                    </div>
+                                    <span className="text-[12.5px] font-extrabold leading-tight">
+                                      {field.primaryValue}
+                                    </span>
+                                    {field.secondaryValue && (
+                                      <span className="mt-1 text-[10px] font-medium leading-normal text-slate-500/80">
+                                        {field.secondaryValue}
+                                      </span>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
 
-          {invoiceExtraction.verification?.notes?.length ? (
-            <div className="mt-3.5 flex items-start gap-2.5 rounded-xl border border-blue-200/50 bg-blue-500/10 p-3.5 text-xs leading-relaxed text-blue-950 shadow-sm">
-              <Info size={16} className="mt-0.5 shrink-0 text-blue-600" />
-              <span>{invoiceExtraction.verification.notes.join(" ")}</span>
-            </div>
-          ) : null}
+                              {invoiceExtraction.verification?.warnings
+                                ?.length ? (
+                                <div className="mt-3.5 flex items-start gap-2.5 rounded-xl border border-rose-200/50 bg-rose-500/10 p-3.5 text-xs leading-relaxed text-rose-950 shadow-sm">
+                                  <AlertCircle
+                                    size={16}
+                                    className="mt-0.5 shrink-0 text-rose-600"
+                                  />
+                                  <span>
+                                    {invoiceExtraction.verification.warnings.join(
+                                      " ",
+                                    )}
+                                  </span>
+                                </div>
+                              ) : null}
 
-          {invoiceExtraction.error ? (
-            <div className="mt-3.5 flex items-start gap-2.5 rounded-xl border border-rose-200/50 bg-rose-500/10 p-3.5 text-xs leading-relaxed text-rose-950 shadow-sm">
-              <AlertCircle size={16} className="mt-0.5 shrink-0 text-rose-700" />
-              <span>{invoiceExtraction.error}</span>
-            </div>
-          ) : null}
-        </div>
-      </motion.div>
-    ) : null}
-  </AnimatePresence>
-</div>
+                              {invoiceExtraction.verification?.notes?.length ? (
+                                <div className="mt-3.5 flex items-start gap-2.5 rounded-xl border border-blue-200/50 bg-blue-500/10 p-3.5 text-xs leading-relaxed text-blue-950 shadow-sm">
+                                  <Info
+                                    size={16}
+                                    className="mt-0.5 shrink-0 text-blue-600"
+                                  />
+                                  <span>
+                                    {invoiceExtraction.verification.notes.join(
+                                      " ",
+                                    )}
+                                  </span>
+                                </div>
+                              ) : null}
 
-                );
-              })()
-            ) : null}
+                              {invoiceExtraction.error ? (
+                                <div className="mt-3.5 flex items-start gap-2.5 rounded-xl border border-rose-200/50 bg-rose-500/10 p-3.5 text-xs leading-relaxed text-rose-950 shadow-sm">
+                                  <AlertCircle
+                                    size={16}
+                                    className="mt-0.5 shrink-0 text-rose-700"
+                                  />
+                                  <span>{invoiceExtraction.error}</span>
+                                </div>
+                              ) : null}
+                            </div>
+                          </motion.div>
+                        ) : null}
+                      </AnimatePresence>
+                    </div>
+                  );
+                })()
+              : null}
 
             <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-3">
               <div>
                 <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500 block mb-1.5">
                   Uploaded Invoice Subtotal
                 </label>
-                <FieldShell icon={DollarSign} iconWrapClassName="bg-gradient-to-tr from-blue-50 to-indigo-50 border border-blue-100 text-blue-600 shadow-sm">
+                <FieldShell
+                  icon={DollarSign}
+                  iconWrapClassName="bg-gradient-to-tr from-blue-50 to-indigo-50 border border-blue-100 text-blue-600 shadow-sm"
+                >
                   <input
                     type="number"
                     value={claimedSummary.subtotal ?? ""}
                     onChange={(event) =>
                       setClaimedSummary((prev) => ({
                         ...prev,
-                        subtotal: event.target.value === "" ? "" : Number(event.target.value),
+                        subtotal:
+                          event.target.value === ""
+                            ? ""
+                            : Number(event.target.value),
                       }))
                     }
                     placeholder="Enter subtotal"
@@ -1327,14 +1585,20 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
                 <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500 block mb-1.5">
                   Uploaded Invoice Tax
                 </label>
-                <FieldShell icon={Receipt} iconWrapClassName="bg-gradient-to-tr from-rose-50 to-red-50 border border-rose-100 text-rose-600 shadow-sm">
+                <FieldShell
+                  icon={Receipt}
+                  iconWrapClassName="bg-gradient-to-tr from-rose-50 to-red-50 border border-rose-100 text-rose-600 shadow-sm"
+                >
                   <input
                     type="number"
                     value={claimedSummary.taxAmount ?? ""}
                     onChange={(event) =>
                       setClaimedSummary((prev) => ({
                         ...prev,
-                        taxAmount: event.target.value === "" ? "" : Number(event.target.value),
+                        taxAmount:
+                          event.target.value === ""
+                            ? ""
+                            : Number(event.target.value),
                       }))
                     }
                     placeholder="Enter tax"
@@ -1347,14 +1611,20 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
                 <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500 block mb-1.5">
                   Uploaded Invoice Grand Total
                 </label>
-                <FieldShell icon={Coins} iconWrapClassName="bg-gradient-to-tr from-emerald-50 to-teal-50 border border-emerald-100 text-emerald-600 shadow-sm">
+                <FieldShell
+                  icon={Coins}
+                  iconWrapClassName="bg-gradient-to-tr from-emerald-50 to-teal-50 border border-emerald-100 text-emerald-600 shadow-sm"
+                >
                   <input
                     type="number"
                     value={claimedSummary.grandTotal ?? ""}
                     onChange={(event) =>
                       setClaimedSummary((prev) => ({
                         ...prev,
-                        grandTotal: event.target.value === "" ? "" : Number(event.target.value),
+                        grandTotal:
+                          event.target.value === ""
+                            ? ""
+                            : Number(event.target.value),
                       }))
                     }
                     placeholder="Enter total"
@@ -1368,7 +1638,9 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
 
         <div className="mb-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm hover:shadow-md transition-all duration-300">
           <div className="flex items-center justify-between border-b border-slate-200 bg-gradient-to-r from-slate-50 via-blue-50/10 to-slate-50 p-4">
-            <p className="text-sm font-bold text-slate-800 tracking-wide uppercase">Itemized Service Table</p>
+            <p className="text-sm font-bold text-slate-800 tracking-wide uppercase">
+              Itemized Service Table
+            </p>
           </div>
 
           <div className="custom-scroll overflow-x-auto pb-2">
@@ -1430,7 +1702,10 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
                     </select>
                   </FieldShell>
 
-                  <FieldShell icon={Hash} iconWrapClassName="bg-gradient-to-tr from-sky-50 to-cyan-50 border border-sky-100 text-sky-600 shadow-sm">
+                  <FieldShell
+                    icon={Hash}
+                    iconWrapClassName="bg-gradient-to-tr from-sky-50 to-cyan-50 border border-sky-100 text-sky-600 shadow-sm"
+                  >
                     <input
                       className="w-full rounded-xl border border-gray-300 bg-sky-50/20 py-2 pl-11 pr-2 text-sm text-slate-700 outline-none"
                       value={item.qty}
@@ -1452,7 +1727,10 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
                     />
                   </FieldShell>
 
-                  <FieldShell icon={FileText} iconWrapClassName="bg-gradient-to-tr from-violet-50 to-indigo-50 border border-violet-100 text-violet-600 shadow-sm">
+                  <FieldShell
+                    icon={FileText}
+                    iconWrapClassName="bg-gradient-to-tr from-violet-50 to-indigo-50 border border-violet-100 text-violet-600 shadow-sm"
+                  >
                     <input
                       className="w-full rounded-xl border border-gray-300 bg-violet-50/30 py-2 pl-11 pr-2 text-sm outline-none text-slate-800 font-semibold"
                       value={item.subtotal}
@@ -1471,7 +1749,6 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
                       readOnly
                     />
                   </FieldShell>
-
                 </div>
               ))}
             </div>
@@ -1480,13 +1757,20 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
 
         <div className="grid grid-cols-2 gap-6">
           <div>
-            <p className="mb-3 text-sm font-bold text-slate-700">Tax Configuration</p>
+            <p className="mb-3 text-sm font-bold text-slate-700">
+              Tax Configuration
+            </p>
 
             <div className="space-y-3">
               <div className="flex items-center gap-3">
-                <label className="w-28 text-xs font-semibold text-slate-600">GST Rate (%)</label>
+                <label className="w-28 text-xs font-semibold text-slate-600">
+                  GST Rate (%)
+                </label>
 
-                <FieldShell icon={IndianRupee} iconWrapClassName="bg-gradient-to-tr from-blue-50 to-indigo-50 border border-blue-100 text-blue-600 shadow-sm">
+                <FieldShell
+                  icon={IndianRupee}
+                  iconWrapClassName="bg-gradient-to-tr from-blue-50 to-indigo-50 border border-blue-100 text-blue-600 shadow-sm"
+                >
                   <input
                     className="w-24 rounded-xl border border-gray-300 bg-blue-50/20 py-2 pl-11 pr-2 text-sm text-slate-800 shadow-sm focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none transition-all"
                     value={taxConfig.gstRate}
@@ -1500,9 +1784,14 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
               </div>
 
               <div className="flex items-center gap-3">
-                <label className="w-28 text-xs font-semibold text-slate-600">TCS Rate (%)</label>
+                <label className="w-28 text-xs font-semibold text-slate-600">
+                  TCS Rate (%)
+                </label>
 
-                <FieldShell icon={Receipt} iconWrapClassName="bg-gradient-to-tr from-violet-50 to-purple-50 border border-violet-100 text-violet-600 shadow-sm">
+                <FieldShell
+                  icon={Receipt}
+                  iconWrapClassName="bg-gradient-to-tr from-violet-50 to-purple-50 border border-violet-100 text-violet-600 shadow-sm"
+                >
                   <input
                     className="w-24 rounded-xl border border-gray-300 bg-violet-50/20 py-2 pl-11 pr-2 text-sm text-slate-800 shadow-sm focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none transition-all"
                     value={taxConfig.tcsRate}
@@ -1516,28 +1805,40 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
               </div>
 
               <div className="flex items-center gap-3">
-                <label className="w-28 text-xs font-semibold text-slate-600">Other Tax</label>
+                <label className="w-28 text-xs font-semibold text-slate-600">
+                  Other Tax
+                </label>
 
-                <FieldShell icon={IndianRupee} iconWrapClassName="bg-gradient-to-tr from-amber-50 to-orange-50 border border-amber-100 text-amber-600 shadow-sm">
+                <FieldShell
+                  icon={IndianRupee}
+                  iconWrapClassName="bg-gradient-to-tr from-amber-50 to-orange-50 border border-amber-100 text-amber-600 shadow-sm"
+                >
                   <input
                     className="w-24 rounded-xl border border-gray-300 bg-amber-50/20 py-2 pl-11 pr-2 text-sm text-slate-800 shadow-sm focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none transition-all"
                     value={taxConfig.otherTax}
-                    onChange={(e) => handleTaxChange("otherTax", e.target.value)}
+                    onChange={(e) =>
+                      handleTaxChange("otherTax", e.target.value)
+                    }
                   />
                 </FieldShell>
 
-                <span className="text-xs text-gray-500 font-medium">Fixed amount</span>
+                <span className="text-xs text-gray-500 font-medium">
+                  Fixed amount
+                </span>
               </div>
             </div>
           </div>
 
           <div className="rounded-xl border border-gray-300 bg-sky-50 p-4">
             <p className="mb-2 text-sm font-medium">
-              {invoiceSource === "uploaded_invoice" ? "System Reference Summary" : "Invoice Summary"}
+              {invoiceSource === "uploaded_invoice"
+                ? "System Reference Summary"
+                : "Invoice Summary"}
             </p>
             {invoiceSource === "uploaded_invoice" ? (
               <p className="mb-4 text-xs leading-5 text-slate-500">
-                Finance will compare this system total with the uploaded invoice amount above.
+                Finance will compare this system total with the uploaded invoice
+                amount above.
               </p>
             ) : null}
 
@@ -1587,7 +1888,10 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
               : "cursor-pointer bg-gradient-to-r from-white to-slate-50 text-slate-700 hover:from-slate-50 hover:to-slate-100 hover:text-slate-900 hover:border-slate-400"
           }`}
         >
-          <FileText size={15} className={isLocked ? "text-slate-400" : "text-slate-500"} />
+          <FileText
+            size={15}
+            className={isLocked ? "text-slate-400" : "text-slate-500"}
+          />
           Save as Draft
         </button>
 
@@ -1602,9 +1906,25 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
           }`}
         >
           {isGenerating ? (
-            <svg className="animate-spin -ml-1 mr-2.5 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            <svg
+              className="animate-spin -ml-1 mr-2.5 h-4 w-4 text-white"
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+            >
+              <circle
+                className="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                strokeWidth="4"
+              ></circle>
+              <path
+                className="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+              ></path>
             </svg>
           ) : (
             <CheckCircle2 size={15} />
@@ -1615,7 +1935,9 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
               ? "Submitted in Bulk Settlement (Locked)"
               : isGenerating
                 ? "Sending..."
-                : existingInvoice?.status === "Rejected" || existingInvoice?.status === "Submitted" || existingInvoice?.status === "In Review"
+                : existingInvoice?.status === "Rejected" ||
+                    existingInvoice?.status === "Submitted" ||
+                    existingInvoice?.status === "In Review"
                   ? invoiceSource === "uploaded_invoice"
                     ? "Update Uploaded Invoice & Send"
                     : "Update & Resend to Finance"
@@ -1641,7 +1963,11 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
                   <motion.div
                     initial={{ rotate: -10, scale: 0.88 }}
                     animate={{ rotate: 0, scale: 1 }}
-                    transition={{ delay: 0.08, duration: 0.24, ease: "easeOut" }}
+                    transition={{
+                      delay: 0.08,
+                      duration: 0.24,
+                      ease: "easeOut",
+                    }}
                     className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-500 to-cyan-500 text-white shadow-lg"
                   >
                     <CheckCircle2 size={22} />
@@ -1695,7 +2021,7 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
               className="relative w-full max-w-md overflow-hidden rounded-[24px] border border-slate-200 bg-white p-6 shadow-2xl z-10"
             >
               <div className="absolute inset-x-0 top-0 h-1.5 bg-amber-500" />
-              
+
               <div className="mt-2 flex items-start gap-4">
                 <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-amber-50 border border-amber-100 text-amber-600 shadow-sm">
                   <AlertCircle size={22} />
@@ -1706,7 +2032,9 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
                     Invoice Already Submitted
                   </h3>
                   <p className="mt-2 text-xs leading-relaxed text-slate-500">
-                    A version of this internal invoice was already submitted to the Finance team. Resubmitting will overwrite the existing file and state in their workflow.
+                    A version of this internal invoice was already submitted to
+                    the Finance team. Resubmitting will overwrite the existing
+                    file and state in their workflow.
                   </p>
                   <p className="mt-2.5 text-xs font-semibold text-slate-700">
                     Are you sure you want to proceed and send it again?
@@ -1770,10 +2098,17 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
                 {/* Body Text */}
                 <div className="mt-2 text-xs leading-relaxed text-slate-500">
                   <p>
-                    This booking has already been submitted to the finance team in bulk settlement batch <span className="font-semibold text-slate-700">{bulkBatchNumber}</span>.
+                    This booking has already been submitted to the finance team
+                    in bulk settlement batch{" "}
+                    <span className="font-semibold text-slate-700">
+                      {bulkBatchNumber}
+                    </span>
+                    .
                   </p>
                   <p className="mt-2">
-                    A single invoice cannot be sent because this booking's services are already claimed and locked in a bulk settlement.
+                    A single invoice cannot be sent because this booking's
+                    services are already claimed and locked in a bulk
+                    settlement.
                   </p>
                 </div>
               </div>
