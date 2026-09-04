@@ -295,7 +295,7 @@ export default function SharePackageModal({
   const [similarHotelWord, setSimilarHotelWord] = useState(true);
   const [availableAdminTerms, setAvailableAdminTerms] = useState([]);
   const [availableAgentTerms, setAvailableAgentTerms] = useState([]);
-  const [selectedTermId, setSelectedTermId] = useState("default");
+  const [selectedTermId, setSelectedTermId] = useState("");
   const [loadingTerms, setLoadingTerms] = useState(false);
 
   useEffect(() => {
@@ -304,34 +304,53 @@ export default function SharePackageModal({
     const fetchVoucherTerms = async () => {
       try {
         setLoadingTerms(true);
-        let termList = [];
+        let agentTerms = [];
+        let adminTerms = [];
+
+        // 1. Fetch Agent-created Terms & Conditions (created by Agent)
         try {
-          const res = await API.get("/admin/terms");
-          termList = Array.isArray(res?.data)
-            ? res.data
-            : Array.isArray(res?.data?.data)
-            ? res.data.data
+          const resAgent = await API.get("/agent/terms");
+          agentTerms = Array.isArray(resAgent?.data)
+            ? resAgent.data
+            : Array.isArray(resAgent?.data?.data)
+            ? resAgent.data.data
             : [];
-        } catch (e) {
-          try {
-            const res2 = await API.get("/agent/terms");
-            termList = Array.isArray(res2?.data)
-              ? res2.data
-              : Array.isArray(res2?.data?.data)
-              ? res2.data.data
-              : [];
-          } catch (err2) {
-            console.warn("Could not fetch terms:", err2);
-          }
+        } catch (err) {
+          console.warn("Could not fetch agent terms:", err);
         }
 
-        const parsed = termList
+        // 2. Fetch Admin Terms & Conditions
+        try {
+          const resAdmin = await API.get("/admin/terms");
+          adminTerms = Array.isArray(resAdmin?.data)
+            ? resAdmin.data
+            : Array.isArray(resAdmin?.data?.data)
+            ? resAdmin.data.data
+            : [];
+        } catch (err) {
+          console.warn("Could not fetch admin terms:", err);
+        }
+
+        // Combine: Agent's created terms first, then Admin terms (deduplicated)
+        const combined = [...agentTerms];
+        const existingIds = new Set(combined.map((t) => String(t.id || t._id)));
+        const existingNames = new Set(combined.map((t) => String(t.name || "").trim().toLowerCase()));
+
+        adminTerms.forEach((item) => {
+          const itemId = String(item.id || item._id);
+          const itemName = String(item.name || "").trim().toLowerCase();
+          if (!existingIds.has(itemId) && !existingNames.has(itemName)) {
+            combined.push(item);
+          }
+        });
+
+        const parsed = combined
           .map((item) => {
             const items = parseAdminTermContent(item.content || "");
             return {
               id: String(item.id || item._id),
               name: item.name || "Terms & Conditions",
-              by: item.by || item.createdBy?.name || "Admin",
+              by: item.by || item.createdBy?.name || "Agent",
               content: item.content || "",
               items,
             };
@@ -371,7 +390,11 @@ export default function SharePackageModal({
 
   // Always open on the same quotation email format received from Operations.
   useEffect(() => {
-    if (isOpen) setActiveTab("email");
+    if (isOpen) {
+      setActiveTab("email");
+      setSelectedTermId("");
+      setRemoveTerms(false);
+    }
   }, [isOpen]);
 
   useEffect(() => {
@@ -771,6 +794,7 @@ export default function SharePackageModal({
                 </tr>
               </tbody>
             </table>
+          `;
         }).join("") : `<div style="padding: 16px 20px; text-align: center; color: #64748b; font-style: italic; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; margin-bottom: 20px; font-size: 13px;">No specific hotel accommodations listed for this voucher.</div>`;
 
         const nonHotelServicesHtml = nonHotelServices.map((s) => {
@@ -1035,8 +1059,8 @@ export default function SharePackageModal({
           selectedPkg?.terms;
 
         let parsedVoucherTerms = [];
-        if (!removeTerms && selectedTermId !== "none") {
-          if (selectedTermId && selectedTermId !== "default") {
+        if (!removeTerms) {
+          if (selectedTermId && selectedTermId !== "default" && selectedTermId !== "none") {
             const matchedCustomTerm = availableAgentTerms.find((t) => t.id === selectedTermId);
             if (matchedCustomTerm && matchedCustomTerm.items?.length > 0) {
               parsedVoucherTerms = matchedCustomTerm.items;
@@ -1046,26 +1070,13 @@ export default function SharePackageModal({
             if (candidateTerms && (!Array.isArray(candidateTerms) || candidateTerms.length > 0)) {
               parsedVoucherTerms = parseAdminTermContent(candidateTerms);
             }
-
-            // Fallback to voucher template matching "voucher" from availableAgentTerms (e.g. "voucher T&C (9 points)" selected by OPS)
-            if (parsedVoucherTerms.length === 0 && availableAgentTerms.length > 0) {
-              const matchedVoucherTerm = availableAgentTerms.find((t) =>
-                t.name.toLowerCase().includes("voucher")
-              );
-              if (matchedVoucherTerm && matchedVoucherTerm.items?.length > 0) {
-                parsedVoucherTerms = matchedVoucherTerm.items;
-              } else if (availableAgentTerms[0]?.items?.length > 0) {
-                parsedVoucherTerms = availableAgentTerms[0].items;
-              }
-            }
-
             if (parsedVoucherTerms.length === 0 && DEFAULT_VOUCHER_TERMS?.length > 0) {
               parsedVoucherTerms = DEFAULT_VOUCHER_TERMS;
             }
           }
         }
 
-        const voucherTermsHtml = (!removeTerms && selectedTermId !== "none" && parsedVoucherTerms.length > 0) ? `
+        const voucherTermsHtml = (!removeTerms && parsedVoucherTerms.length > 0) ? `
           <!-- TERMS & CONDITIONS SECTION -->
           <div style="margin-top: 18px; margin-bottom: 18px; font-family: Arial, sans-serif;">
             <div style="font-size: 13.5px; font-weight: 800; color: #9a3412; margin-bottom: 8px;">
@@ -1080,27 +1091,25 @@ export default function SharePackageModal({
         const emailVoucherHtml = `
           <div style="font-family: 'Plus Jakarta Sans', Arial, sans-serif; color: #1e293b; width: 100%; padding: 0px; box-sizing: border-box; background: #ffffff;">
             
-            <!-- AGENT BRAND HEADER BANNER (KEPT AS REQUESTED) -->
-            <div style="background-color: #ffffff; border-bottom: 2px solid #e2e8f0; padding: 14px 20px; margin-bottom: 16px;">
-              <table style="width: 100%; border-collapse: collapse;">
+            <!-- AGENT BRAND HEADER BANNER -->
+            <div style="background-color: #ffffff; border-bottom: 2px solid #b3cae8; padding: 12px 20px 16px 20px; margin-bottom: 18px;">
+              <table width="100%" cellpadding="0" cellspacing="0" style="width: 100%; border-collapse: collapse; border: 0;">
                 <tr>
                   <!-- AGENT LOGO IMAGE -->
-                  <td style="width: 110px; vertical-align: middle; padding-right: 12px; text-align: left;">
-                    <div style="width: 105px; height: 75px; display: flex; align-items: center; justify-content: flex-start; overflow: hidden;">
-                      <img src="${agencyLogoSrc}" alt="Logo" style="max-width: 100%; max-height: 100%; object-fit: contain; object-position: left;" />
-                    </div>
+                  <td width="115" style="width: 115px; vertical-align: top; padding-right: 14px; text-align: left; border: 0;" align="left" valign="top">
+                    <img src="${agencyLogoSrc}" alt="Logo" width="95" height="65" style="width: 95px; height: 65px; max-width: 95px; max-height: 65px; display: block; object-fit: contain; object-position: left; border: 0;" />
                   </td>
 
                   <!-- AGENT COMPANY DETAILS -->
-                  <td style="vertical-align: middle; text-align: left;">
-                    <h2 style="margin: 0 0 3px 0; font-size: 20px; font-weight: 800; color: #0f172a; letter-spacing: -0.3px;">
+                  <td style="vertical-align: top; text-align: left; border: 0;" align="left" valign="top">
+                    <h2 style="margin: 0 0 3px 0; font-size: 20px; font-weight: 800; color: #0f172a; font-family: Arial, sans-serif; letter-spacing: -0.3px;">
                       ${companyNameVal}
                     </h2>
-                    <p style="margin: 0 0 4px 0; font-size: 12px; color: #475569; line-height: 1.4;">
+                    <p style="margin: 0 0 4px 0; font-size: 12px; color: #475569; font-family: Arial, sans-serif; line-height: 1.4;">
                       ${companyAddressVal}
                     </p>
-                    <p style="margin: 0; font-size: 12px; font-weight: 600; color: #3252C3;">
-                      ${companyPhoneVal} &nbsp;•&nbsp; ${companyEmailVal}
+                    <p style="margin: 0; font-size: 12px; font-weight: 600; color: #334155; font-family: Arial, sans-serif;">
+                      <strong style="color: #1e293b;">Phone:</strong> <span style="color: #2563eb; font-weight: 700;">${companyPhoneVal}</span> &nbsp;•&nbsp; <strong style="color: #1e293b;">Email:</strong> <span style="color: #2563eb; font-weight: 700;">${companyEmailVal}</span>
                     </p>
                   </td>
                 </tr>
@@ -1134,7 +1143,7 @@ export default function SharePackageModal({
                     <td style="padding: 8px 12px; color: #1e293b; font-weight: 500; background-color: #ffffff; border: 1px solid #b3cae8;">Guest Name</td>
                     <td style="padding: 8px 12px; color: #000000; font-weight: 700; background-color: #ffffff; border: 1px solid #b3cae8;">${clientNameVal}</td>
                     <td style="padding: 8px 12px; color: #1e293b; font-weight: 500; background-color: #ffffff; border: 1px solid #b3cae8;">Guest Ph.</td>
-                    <td style="padding: 8px 12px; color: #000000; font-weight: 600; background-color: #ffffff; border: 1px solid #b3cae8;">${clientPhoneVal}</td>
+                    <td style="padding: 8px 12px; color: #2563eb; font-weight: 700; background-color: #ffffff; border: 1px solid #b3cae8;">${clientPhoneVal}</td>
                   </tr>
                   <tr>
                     <td style="padding: 8px 12px; color: #1e293b; font-weight: 500; background-color: #ffffff; border: 1px solid #b3cae8;">Pax Details</td>
@@ -1408,61 +1417,48 @@ export default function SharePackageModal({
 
           const rawSchedule = Array.isArray(pkgObj?.schedule || pkgObj?.dayWiseItinerary || pkgObj?.itinerary) && (pkgObj.schedule || pkgObj.dayWiseItinerary || pkgObj.itinerary).length > 0
             ? (pkgObj.schedule || pkgObj.dayWiseItinerary || pkgObj.itinerary)
-            : Array.from({ length: Math.max(1, days) }, (_, i) => {
-                const dayNum = i + 1;
-                if (dayNum === 1) {
-                  return {
-                    day: 1,
-                    title: `Day 1: Arrival in ${destination} & Hotel Check-in`,
-                    details: `Arrival at ${destination}. Meet & transfer to hotel. Check-in and relax at leisure.`,
-                  };
-                }
-                if (dayNum === days) {
-                  return {
-                    day: dayNum,
-                    title: `Day ${dayNum}: Check-out & Departure from ${destination}`,
-                    details: `Breakfast at hotel. Complete check-out formalities and transfer for departure with wonderful memories.`,
-                  };
-                }
-                return {
-                  day: dayNum,
-                  title: `Day ${dayNum}: ${destination} Exploration & Leisure`,
-                  details: `Breakfast at hotel. Enjoy leisure time and exploration around ${destination}.`,
-                };
-              });
+            : [];
 
-          const scheduleRowsHtml = rawSchedule.map((d, idx) => {
-            const dayNum = Number(d?.day || (idx + 1));
-            const baseStartObj = query?.startDate && !isNaN(new Date(query.startDate).getTime())
-              ? new Date(query.startDate)
-              : new Date();
-            const dObj = new Date(baseStartObj.getTime() + (dayNum - 1) * 86400000);
+          const scheduleRowsHtml = rawSchedule.length > 0
+            ? rawSchedule.map((d, idx) => {
+                const dayNum = Number(d?.day || (idx + 1));
+                const baseStartObj = query?.startDate && !isNaN(new Date(query.startDate).getTime())
+                  ? new Date(query.startDate)
+                  : new Date();
+                const dObj = new Date(baseStartObj.getTime() + (dayNum - 1) * 86400000);
 
-            const weekDayStr = !isNaN(dObj.getTime())
-              ? dObj.toLocaleDateString("en-GB", { weekday: "long" })
-              : "";
-            const dateFormatted = !isNaN(dObj.getTime())
-              ? dObj.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })
-              : "";
-            const ordinalLabel = `${getOrdinal(dayNum)} Day`;
+                const weekDayStr = !isNaN(dObj.getTime())
+                  ? dObj.toLocaleDateString("en-GB", { weekday: "long" })
+                  : "";
+                const dateFormatted = !isNaN(dObj.getTime())
+                  ? dObj.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })
+                  : "";
+                const ordinalLabel = `${getOrdinal(dayNum)} Day`;
 
-            const titleText = d?.title || d?.dayTitle || `Day ${dayNum}: Itinerary`;
-            const detailsText = d?.details || d?.description || d?.content || "Scheduled activities and sightseeing.";
+                const titleText = d?.title || d?.dayTitle || `Day ${dayNum}: Itinerary`;
+                const detailsText = d?.details || d?.description || d?.content || "Scheduled activities and sightseeing.";
 
-            return `
-              <tr style="${idx % 2 === 1 ? 'background-color: #f8fafc;' : ''}">
-                <td width="24%" style="padding: 10px 12px; border: 1px solid #d1d5db; font-size: 12px; line-height: 1.4; vertical-align: top;">
-                  <div style="color: #0284c7; font-weight: bold; font-size: 12px; margin-bottom: 2px;">${ordinalLabel}</div>
-                  <div style="color: #64748b; font-size: 11px;">${weekDayStr}</div>
-                  <strong style="color: #0f172a; font-size: 12px;">${dateFormatted}</strong>
-                </td>
-                <td width="76%" style="padding: 10px 12px; border: 1px solid #d1d5db; font-size: 12px; color: #1e293b; vertical-align: top; line-height: 1.5;">
-                  <strong style="color: #0f172a; font-size: 13px; text-decoration: underline;">${titleText}</strong>
-                  <p style="margin: 6px 0 0 0; color: #334155; font-size: 12px;">• ${detailsText.startsWith("•") ? detailsText.slice(1).trim() : detailsText}</p>
+                return `
+                  <tr style="${idx % 2 === 1 ? 'background-color: #f8fafc;' : ''}">
+                    <td width="24%" style="padding: 10px 12px; border: 1px solid #d1d5db; font-size: 12px; line-height: 1.4; vertical-align: top;">
+                      <div style="color: #0284c7; font-weight: bold; font-size: 12px; margin-bottom: 2px;">${ordinalLabel}</div>
+                      <div style="color: #64748b; font-size: 11px;">${weekDayStr}</div>
+                      <strong style="color: #0f172a; font-size: 12px;">${dateFormatted}</strong>
+                    </td>
+                    <td width="76%" style="padding: 10px 12px; border: 1px solid #d1d5db; font-size: 12px; color: #1e293b; vertical-align: top; line-height: 1.5;">
+                      <strong style="color: #0f172a; font-size: 13px; text-decoration: underline;">${titleText}</strong>
+                      <p style="margin: 6px 0 0 0; color: #334155; font-size: 12px;">• ${detailsText.startsWith("•") ? detailsText.slice(1).trim() : detailsText}</p>
+                    </td>
+                  </tr>
+                `;
+              }).join("")
+            : `
+              <tr>
+                <td colspan="2" style="padding: 14px 16px; border: 1px solid #d1d5db; font-size: 12px; color: #64748b; font-style: italic; text-align: center; background-color: #f8fafc;">
+                  Day-wise itinerary schedule has not been specified for this package.
                 </td>
               </tr>
             `;
-          }).join("");
 
           const pkgEmailHtml = `
             <div style="font-family: 'Plus Jakarta Sans', Arial, sans-serif; color: #1e293b; width: 100%; padding: 0px; box-sizing: border-box; background: #ffffff;">
@@ -1471,10 +1467,8 @@ export default function SharePackageModal({
                 <table style="width: 100%; border-collapse: collapse;">
                   <tr>
                     ${agencyLogoSrc ? `
-                      <td style="width: 110px; vertical-align: middle; padding-right: 12px; text-align: left;">
-                        <div style="width: 105px; height: 75px; display: flex; align-items: center; justify-content: flex-start; overflow: hidden;">
-                          <img src="${agencyLogoSrc}" alt="Logo" style="max-width: 100%; max-height: 100%; object-fit: contain; object-position: left;" />
-                        </div>
+                      <td width="130" style="width: 130px; max-width: 130px; vertical-align: middle; padding-right: 14px; text-align: left;">
+                        <img src="${agencyLogoSrc}" alt="Logo" width="120" style="width: 120px; max-width: 120px; height: auto; max-height: 80px; display: block; object-fit: contain; object-position: left;" />
                       </td>
                     ` : ""}
                     <td style="vertical-align: middle; text-align: left;">
@@ -2350,18 +2344,9 @@ export default function SharePackageModal({
       lines.push(`📋 *BOOKED SERVICES & CONFIRMATIONS*`);
       lines.push(`----------------------------------------`);
 
-      const rawServices = Array.isArray(quote?.services) && quote.services.length > 0 
-        ? quote.services 
-        : (Array.isArray(query?.services) && query.services.length > 0
-            ? query.services
-            : (Array.isArray(query?.voucherServices) && query.voucherServices.length > 0
-                ? query.voucherServices
-                : []));
+      const rawServices = Array.isArray(quote?.services) && quote.services.length > 0 ? quote.services : [];
 
-      if (rawServices.length === 0) {
-        lines.push("_No specific services listed for this voucher._");
-        lines.push("");
-      } else {
+      if (rawServices.length > 0) {
         rawServices.forEach((s) => {
           const sType = String(s.type || "service").toLowerCase();
           let icon = "📌";
@@ -2381,11 +2366,14 @@ export default function SharePackageModal({
           lines.push(`   └ Confirmation No: *${cnfNumDisplay}*`);
           lines.push("");
         });
+      } else {
+        lines.push(`• *No specific services listed for this voucher.*`);
+        lines.push("");
       }
 
       let parsedVoucherTerms = [];
-      if (!removeTerms && selectedTermId !== "none") {
-        if (selectedTermId && selectedTermId !== "default") {
+      if (!removeTerms) {
+        if (selectedTermId && selectedTermId !== "default" && selectedTermId !== "none") {
           const matched = availableAgentTerms.find((t) => t.id === selectedTermId);
           if (matched && matched.items?.length > 0) {
             parsedVoucherTerms = matched.items;
@@ -2393,27 +2381,20 @@ export default function SharePackageModal({
         }
         if (parsedVoucherTerms.length === 0) {
           const rawVoucherTerms =
+            query?.voucherDetails?.termsAndConditions ||
+            query?.voucher?.termsAndConditions ||
             query?.termsAndConditions ||
+            quote?.voucherDetails?.termsAndConditions ||
             quote?.termsAndConditions ||
+            query?.activeQuote?.termsAndConditions ||
+            query?.quotation?.termsAndConditions ||
             query?.terms ||
             quote?.terms ||
-            query?.voucher?.termsAndConditions ||
-            quote?.voucher?.termsAndConditions ||
             [];
-          if (Array.isArray(rawVoucherTerms)) {
-            parsedVoucherTerms = rawVoucherTerms.filter((t) => typeof t === "string" && t.trim().length > 0);
+          if (Array.isArray(rawVoucherTerms) && rawVoucherTerms.length > 0) {
+            parsedVoucherTerms = parseAdminTermContent(rawVoucherTerms);
           } else if (typeof rawVoucherTerms === "string" && rawVoucherTerms.trim()) {
-            parsedVoucherTerms = rawVoucherTerms.split("\n").map((t) => t.trim()).filter((t) => t.length > 0);
-          }
-          if (parsedVoucherTerms.length === 0 && availableAgentTerms.length > 0) {
-            const matchedVoucherTerm = availableAgentTerms.find((t) =>
-              t.name.toLowerCase().includes("voucher")
-            );
-            if (matchedVoucherTerm && matchedVoucherTerm.items?.length > 0) {
-              parsedVoucherTerms = matchedVoucherTerm.items;
-            } else if (availableAgentTerms[0]?.items?.length > 0) {
-              parsedVoucherTerms = availableAgentTerms[0].items;
-            }
+            parsedVoucherTerms = parseAdminTermContent(rawVoucherTerms);
           }
           if (parsedVoucherTerms.length === 0 && DEFAULT_VOUCHER_TERMS?.length > 0) {
             parsedVoucherTerms = DEFAULT_VOUCHER_TERMS;
@@ -2554,9 +2535,9 @@ export default function SharePackageModal({
       lines.push("");
     }
 
-    if (!removeTerms && selectedTermId !== "none") {
+    if (!removeTerms) {
       let quoteTerms = [];
-      if (selectedTermId && selectedTermId !== "default") {
+      if (selectedTermId && selectedTermId !== "default" && selectedTermId !== "none") {
         const matched = availableAgentTerms.find((t) => t.id === selectedTermId);
         if (matched && matched.items?.length > 0) {
           quoteTerms = matched.items;
@@ -2625,6 +2606,38 @@ export default function SharePackageModal({
   };
 
   const handleDownloadPDF = async () => {
+    if (shareMode === "VOUCHER") {
+      const voucherHtmlToPrint = emailPreviewHtml;
+      if (voucherHtmlToPrint) {
+        const printWindow = window.open("", "_blank");
+        if (printWindow) {
+          printWindow.document.write(`
+            <!DOCTYPE html>
+            <html>
+              <head>
+                <title>Travel Voucher - ${query?.voucherNumber || tripId}</title>
+                <style>
+                  @page { size: A4; margin: 1cm; }
+                  body { font-family: Arial, sans-serif; margin: 0; padding: 0; background: #fff; }
+                </style>
+              </head>
+              <body>
+                ${voucherHtmlToPrint}
+                <script>
+                  window.onload = function() {
+                    window.print();
+                  };
+                </script>
+              </body>
+            </html>
+          `);
+          printWindow.document.close();
+          return;
+        }
+      }
+      window.print();
+      return;
+    }
     if (getClientPdfUrl && quote?._id) {
       try {
         const url = await getClientPdfUrl(quote._id);
@@ -2645,24 +2658,104 @@ export default function SharePackageModal({
   };
 
   const handleDownloadWord = () => {
+    const isVoucher = shareMode === "VOUCHER";
+    const isPackage = shareMode === "PACKAGE";
     const contentHtml = emailPreviewHtml || emailContentRef.current?.innerHTML;
     if (!contentHtml) return;
+
+    const docType = isVoucher ? "Travel Voucher" : isPackage ? "Package Details" : "Quotation";
+    const cleanClientName = (clientName || "Guest").replace(/[^\w\s-]/g, "").trim().replace(/\s+/g, "_");
+    const voucherNo = query?.voucherNumber || `VCH-${query?.queryId || tripId}`;
+    const safeTripId = isVoucher ? voucherNo : tripId;
+    const downloadFileName = isVoucher
+      ? `Travel_Voucher_${safeTripId}_${cleanClientName}.doc`
+      : isPackage
+      ? `Package_${safeTripId}_${cleanClientName}.doc`
+      : `Quotation_${safeTripId}_${cleanClientName}.doc`;
+
+    let wordHtml = contentHtml;
+    // Fix all logo images specifically for Microsoft Word rendering by locking BOTH width and height
+    wordHtml = wordHtml.replace(
+      /<img([^>]*?)(?:alt=["']Logo["']|src=["'][^"']*logo[^"']*["'])([^>]*?)>/gi,
+      (match) => {
+        const srcMatch = match.match(/src=["']([^"']+)["']/i);
+        const src = srcMatch ? srcMatch[1] : "";
+        if (!src) return match;
+        return `<img src="${src}" alt="Logo" width="95" height="65" style="width: 95px; height: 65px; max-width: 95px; max-height: 65px; display: block; border: 0;" />`;
+      }
+    );
 
     const fullDocHtml = `
       <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
       <head>
         <meta charset='utf-8'>
-        <title>Quotation - ${clientName}</title>
+        <title>${docType} - ${clientName}</title>
+        <!--[if gte mso 9]>
+        <xml>
+          <w:WordDocument>
+            <w:View>Print</w:View>
+            <w:Zoom>100</w:Zoom>
+            <w:DoNotOptimizeForBrowser/>
+          </w:WordDocument>
+        </xml>
+        <![endif]-->
         <style>
-          body { font-family: Arial, sans-serif; font-size: 13px; color: #333; }
-          table { width: 100%; border-collapse: collapse; margin-bottom: 15px; }
-          th, td { border: 1px solid #e2e8f0; padding: 8px; text-align: left; }
-          .header-banner { background-color: #fca5a5; font-weight: bold; text-align: center; padding: 8px; color: #881337; }
-          .yellow-badge { background-color: #fef08a; padding: 3px 6px; font-weight: bold; }
+          @page {
+            size: A4;
+            margin: 1.2cm 1.2cm 1.2cm 1.2cm;
+            mso-page-orientation: portrait;
+          }
+          body {
+            font-family: Arial, 'Helvetica Neue', Helvetica, sans-serif;
+            font-size: 11pt;
+            color: #1e293b;
+            margin: 0;
+            padding: 0;
+            background-color: #ffffff;
+          }
+          table {
+            width: 100% !important;
+            border-collapse: collapse !important;
+            mso-table-lspace: 0pt;
+            mso-table-rspace: 0pt;
+            margin-bottom: 14px;
+          }
+          th, td {
+            font-family: Arial, sans-serif;
+            vertical-align: top;
+            padding: 6px 10px;
+          }
+          img[alt="Logo"], .agency-logo {
+            width: 95px !important;
+            max-width: 95px !important;
+            height: 65px !important;
+            max-height: 65px !important;
+          }
+          img[alt="Footer Banner"], .footer-banner {
+            width: 600px !important;
+            max-width: 600px !important;
+            height: auto !important;
+          }
+          img {
+            max-width: 100%;
+            height: auto;
+          }
+          p {
+            margin: 0 0 6pt 0;
+            line-height: 1.4;
+          }
+          ol, ul {
+            margin-top: 4pt;
+            margin-bottom: 6pt;
+          }
+          li {
+            margin-bottom: 3pt;
+            line-height: 1.4;
+          }
         </style>
       </head>
       <body>
-        ${contentHtml}
+        ${wordHtml}
       </body>
       </html>
     `;
@@ -2674,13 +2767,13 @@ export default function SharePackageModal({
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `Quotation_${tripId}_${clientName.replace(/\s+/g, "_")}.doc`;
+    a.download = downloadFileName;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
 
-    toast.success("Word document downloaded!");
+    toast.success(`${docType} Word document downloaded!`);
   };
 
   if (!isOpen) return null;
@@ -2807,8 +2900,6 @@ export default function SharePackageModal({
                         checked={removeTerms}
                         onChange={(e) => {
                           setRemoveTerms(e.target.checked);
-                          if (e.target.checked) setSelectedTermId("none");
-                          else setSelectedTermId("default");
                         }}
                         className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
                       />
@@ -2843,8 +2934,6 @@ export default function SharePackageModal({
                         checked={removeTerms}
                         onChange={(e) => {
                           setRemoveTerms(e.target.checked);
-                          if (e.target.checked) setSelectedTermId("none");
-                          else setSelectedTermId("default");
                         }}
                         className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
                       />
@@ -2896,22 +2985,16 @@ export default function SharePackageModal({
                     onChange={(e) => {
                       const val = e.target.value;
                       setSelectedTermId(val);
-                      if (val === "none") {
-                        setRemoveTerms(true);
-                      } else {
-                        setRemoveTerms(false);
-                      }
                     }}
                     disabled={loadingTerms}
                     className="text-xs font-semibold bg-white border border-slate-300 rounded px-2 py-0.5 text-slate-800 shadow-2xs focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 outline-none cursor-pointer max-w-[200px] sm:max-w-[240px] truncate disabled:opacity-50"
                   >
-                    <option value="default">Default (OPS / Voucher T&amp;C)</option>
+                    <option value="">Select Term &amp; Condition</option>
                     {availableAgentTerms.map((t) => (
                       <option key={t.id} value={t.id}>
                         {t.name} ({t.items?.length || 0} pts)
                       </option>
                     ))}
-                    <option value="none">None (Exclude Terms)</option>
                   </select>
                 </div>
 
@@ -2989,36 +3072,34 @@ export default function SharePackageModal({
                         </div>
                       </div>
 
-                      {!removeTerms && selectedTermId !== "none" && (
+                      {!removeTerms && (
                         <div className="mt-4 pt-3 border-t border-emerald-300/60">
                           <p className="font-bold text-black text-xs uppercase tracking-wide">📋 Terms &amp; Conditions</p>
                           <p className="text-slate-400 font-mono text-xs select-none">---------</p>
                           <div className="mt-2 space-y-1 text-xs text-slate-900">
                             {(() => {
                               let termsToShow = [];
-                              if (selectedTermId && selectedTermId !== "default") {
+                              if (selectedTermId && selectedTermId !== "default" && selectedTermId !== "none") {
                                 const matched = availableAgentTerms.find((t) => t.id === selectedTermId);
                                 if (matched && matched.items?.length > 0) termsToShow = matched.items;
                               }
                               if (termsToShow.length === 0) {
-                                const raw = query?.termsAndConditions || quote?.termsAndConditions || query?.terms || quote?.terms || query?.voucher?.termsAndConditions || quote?.voucher?.termsAndConditions || [];
-                                if (Array.isArray(raw)) termsToShow = raw.filter((t) => typeof t === "string" && t.trim().length > 0);
-                                else if (typeof raw === "string" && raw.trim()) termsToShow = raw.split("\n").map(t => t.trim()).filter(Boolean);
-                              }
-                              if (termsToShow.length === 0 && availableAgentTerms.length > 0) {
-                                const matchedVoucher = availableAgentTerms.find((t) => t.name.toLowerCase().includes("voucher"));
-                                if (matchedVoucher && matchedVoucher.items?.length > 0) termsToShow = matchedVoucher.items;
-                                else if (availableAgentTerms[0]?.items?.length > 0) termsToShow = availableAgentTerms[0].items;
+                                const raw =
+                                  query?.voucherDetails?.termsAndConditions ||
+                                  query?.voucher?.termsAndConditions ||
+                                  query?.termsAndConditions ||
+                                  quote?.voucherDetails?.termsAndConditions ||
+                                  quote?.termsAndConditions ||
+                                  query?.activeQuote?.termsAndConditions ||
+                                  query?.quotation?.termsAndConditions ||
+                                  query?.terms ||
+                                  quote?.terms ||
+                                  [];
+                                if (Array.isArray(raw) && raw.length > 0) termsToShow = parseAdminTermContent(raw);
+                                else if (typeof raw === "string" && raw.trim()) termsToShow = parseAdminTermContent(raw);
                               }
                               if (termsToShow.length === 0 && DEFAULT_VOUCHER_TERMS?.length > 0) {
                                 termsToShow = DEFAULT_VOUCHER_TERMS;
-                              }
-                              if (termsToShow.length === 0) {
-                                termsToShow = [
-                                  "25% non-refundable deposit required to confirm booking.",
-                                  "Standard Check-in: 14:00-15:00, Check-out: 11:00-12:00.",
-                                  "Rates & availability subject to change until confirmed."
-                                ];
                               }
                               return termsToShow.map((pt, idx) => (
                                 <p key={idx}>• {pt}</p>
@@ -3457,14 +3538,22 @@ export default function SharePackageModal({
                   </div>
                   <div className="grid grid-cols-2 divide-x divide-slate-200 text-xs sm:text-sm text-slate-800 bg-white">
                     <ul className="p-4 list-disc pl-6 space-y-2">
-                      {inclusions.map((item, idx) => (
-                        <li key={idx}>{item}</li>
-                      ))}
+                      {inclusions.length > 0 ? (
+                        inclusions.map((item, idx) => (
+                          <li key={idx}>{item}</li>
+                        ))
+                      ) : (
+                        <li className="list-none text-slate-500 italic">No specific inclusions specified</li>
+                      )}
                     </ul>
                     <ul className="p-4 list-disc pl-6 space-y-2">
-                      {exclusions.map((item, idx) => (
-                        <li key={idx}>{item}</li>
-                      ))}
+                      {exclusions.length > 0 ? (
+                        exclusions.map((item, idx) => (
+                          <li key={idx}>{item}</li>
+                        ))
+                      ) : (
+                        <li className="list-none text-slate-500 italic">No specific exclusions specified</li>
+                      )}
                       <li className="font-bold text-amber-900 list-none pt-1">
                         NOTE: Anything not mentioned in the inclusions is excluded.
                       </li>
@@ -3478,20 +3567,26 @@ export default function SharePackageModal({
                     Bank Details
                   </div>
                   <div className="overflow-x-auto border border-slate-200 bg-white">
-                    <table className="w-full border-collapse text-xs sm:text-sm">
-                      <tbody className="divide-y divide-slate-200">
-                        {sellerBankDetails.map((b, idx) => (
-                          <tr key={idx} className={idx % 2 === 1 ? "bg-slate-50/50" : ""}>
-                            <td className="py-2.5 px-3 border-r border-slate-200 font-bold text-slate-700 w-1/3 text-xs sm:text-[13px]">
-                              {b.label || b.name || "Detail"}
-                            </td>
-                            <td className="py-2.5 px-3 font-semibold text-slate-900 text-xs sm:text-[13px]">
-                              {b.value || "-"}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                    {sellerBankDetails.length > 0 ? (
+                      <table className="w-full border-collapse text-xs sm:text-sm">
+                        <tbody className="divide-y divide-slate-200">
+                          {sellerBankDetails.map((b, idx) => (
+                            <tr key={idx} className={idx % 2 === 1 ? "bg-slate-50/50" : ""}>
+                              <td className="py-2.5 px-3 border-r border-slate-200 font-bold text-slate-700 w-1/3 text-xs sm:text-[13px]">
+                                {b.label || b.name || "Detail"}
+                              </td>
+                              <td className="py-2.5 px-3 font-semibold text-slate-900 text-xs sm:text-[13px]">
+                                {b.value || "-"}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    ) : (
+                      <div className="p-4 text-center text-slate-500 italic text-xs">
+                        Bank details not specified for this quotation.
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -3502,13 +3597,33 @@ export default function SharePackageModal({
                       Terms and Conditions
                     </div>
                     <div className="pt-4 space-y-4 text-xs sm:text-sm text-slate-800 leading-relaxed bg-white">
-                      <p className="font-bold text-slate-900 text-sm">General Terms and Conditions</p>
-                      {GENERAL_TERMS_AND_CONDITIONS.map((term, idx) => (
-                        <div key={idx} className="space-y-1">
-                          <p className="font-bold text-slate-900">{term.title}</p>
-                          <p className="whitespace-pre-line text-slate-700">{term.text}</p>
-                        </div>
-                      ))}
+                      <p className="font-bold text-slate-900 text-sm">Terms and Conditions</p>
+                      {(() => {
+                        let termsToShow = [];
+                        if (selectedTermId && selectedTermId !== "default" && selectedTermId !== "none") {
+                          const matched = availableAgentTerms.find((t) => t.id === selectedTermId);
+                          if (matched && matched.items?.length > 0) {
+                            termsToShow = matched.items;
+                          }
+                        }
+                        if (termsToShow.length === 0) {
+                          const quoteTerms = quote?.termsAndConditions || quote?.terms || selectedPkg?.termsAndConditions || selectedPkg?.terms || [];
+                          if (Array.isArray(quoteTerms) && quoteTerms.length > 0) {
+                            termsToShow = quoteTerms.map((t) => (typeof t === "object" ? (t.text || t.content || JSON.stringify(t)) : String(t)));
+                          } else if (typeof quoteTerms === "string" && quoteTerms.trim()) {
+                            termsToShow = parseAdminTermContent(quoteTerms);
+                          }
+                        }
+                        if (termsToShow.length > 0) {
+                          return termsToShow.map((termText, idx) => (
+                            <div key={idx} className="space-y-1">
+                              <p className="font-bold text-slate-900">{idx + 1}. Policy / Condition</p>
+                              <p className="whitespace-pre-line text-slate-700">{termText}</p>
+                            </div>
+                          ));
+                        }
+                        return <p className="text-slate-500 italic">No specific terms and conditions specified.</p>;
+                      })()}
                       <p className="font-bold text-slate-900 pt-3 text-center">
                         By booking with {companyName}, you acknowledge that you have read, understood, and agreed to these Terms and Conditions.
                       </p>
