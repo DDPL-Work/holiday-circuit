@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
+import * as XLSX from "xlsx";
 import { motion, AnimatePresence } from "framer-motion";
 import API from "../../../../utils/Api";
 import {
@@ -10,6 +11,7 @@ import {
   FileText,
   MapPin,
   ChevronDown,
+  Download,
 } from "lucide-react";
 
 
@@ -192,9 +194,11 @@ export default function RevenueAnalyticsModal({
 
   const [basePeriod,       setBasePeriod]       = useState("");
   const [baseData,         setBaseData]          = useState(null);
+  const [baseDestinationProfit, setBaseDestinationProfit] = useState(null);
   const [baseLoading,      setBaseLoading]       = useState(false);
   const [comparisonPeriod, setComparisonPeriod]  = useState("");
   const [comparedData,     setComparedData]      = useState(null);
+  const [comparedDestinationProfit, setComparedDestinationProfit] = useState(null);
   const [comparisonLoading, setComparisonLoading] = useState(false);
 
   // Keep basePeriod in sync with active page period when modal opens
@@ -226,28 +230,43 @@ export default function RevenueAnalyticsModal({
   useEffect(() => {
     if (!basePeriod || basePeriod === defaultBase) {
       setBaseData(null);   // use revenueSummaryCards from props (page already fetched it)
+      setBaseDestinationProfit(null);
       return;
     }
     const fetch = async () => {
       try {
         setBaseLoading(true);
         const { data } = await API.get("/admin/advanced-analytics", { params: periodToParams(period, basePeriod) });
-        setBaseData(data?.data?.customReports?.revenue?.summaryCards || []);
-      } catch { setBaseData([]); }
+        const rev = data?.data?.customReports?.revenue || data?.data?.reports?.revenue || {};
+        setBaseData(rev.summaryCards || []);
+        setBaseDestinationProfit(rev.destinationProfitability || []);
+      } catch { 
+        setBaseData([]); 
+        setBaseDestinationProfit([]);
+      }
       finally { setBaseLoading(false); }
     };
     fetch();
-  }, [basePeriod, period]);
+  }, [basePeriod, period, defaultBase]);
 
   // Fetch comparison-side data
   useEffect(() => {
-    if (!comparisonPeriod) { setComparedData(null); return; }
+    if (!comparisonPeriod) { 
+      setComparedData(null); 
+      setComparedDestinationProfit(null);
+      return; 
+    }
     const fetch = async () => {
       try {
         setComparisonLoading(true);
         const { data } = await API.get("/admin/advanced-analytics", { params: periodToParams(period, comparisonPeriod) });
-        setComparedData(data?.data?.customReports?.revenue?.summaryCards || []);
-      } catch { setComparedData([]); }
+        const rev = data?.data?.customReports?.revenue || data?.data?.reports?.revenue || {};
+        setComparedData(rev.summaryCards || []);
+        setComparedDestinationProfit(rev.destinationProfitability || []);
+      } catch { 
+        setComparedData([]); 
+        setComparedDestinationProfit([]);
+      }
       finally { setComparisonLoading(false); }
     };
     fetch();
@@ -256,6 +275,449 @@ export default function RevenueAnalyticsModal({
   // Which card array is the "current" (left) side
   const effectiveBaseCards = baseData ?? revenueSummaryCards;
   const effectiveBaseLoading = basePeriod !== defaultBase ? baseLoading : loading;
+  const effectiveDestinationProfitRows = baseDestinationProfit ?? destinationProfitRows;
+
+  const displayProfitRows = useMemo(() => {
+    if (baseDestinationProfit) {
+      return baseDestinationProfit.slice(startProfitIdx, endProfitIdx);
+    }
+    return paginatedProfitRows;
+  }, [baseDestinationProfit, paginatedProfitRows, startProfitIdx, endProfitIdx]);
+
+  const handleExcelExport = () => {
+    try {
+      const workbook = XLSX.utils.book_new();
+
+      // Resolve period strings and display labels
+      let currentPeriodStr = "";
+      let pastPeriodStrDefault = "";
+      let upcomingPeriodStrDefault = "";
+
+      if (period === "monthly") {
+        const [selectedYear, selectedMonth] = (effectiveSelectedTaxMonth || "").split("-").map(Number);
+        currentPeriodStr = effectiveSelectedTaxMonth;
+        if (selectedYear && selectedMonth) {
+          const pastMonthDate = new Date(selectedYear, selectedMonth - 2, 1);
+          const upcomingMonthDate = new Date(selectedYear, selectedMonth, 1);
+          pastPeriodStrDefault = `${pastMonthDate.getFullYear()}-${String(pastMonthDate.getMonth() + 1).padStart(2, "0")}`;
+          upcomingPeriodStrDefault = `${upcomingMonthDate.getFullYear()}-${String(upcomingMonthDate.getMonth() + 1).padStart(2, "0")}`;
+        }
+      } else if (period === "quarterly") {
+        currentPeriodStr = effectiveSelectedTaxQuarter;
+        const [yStr, qStr] = (effectiveSelectedTaxQuarter || "").split("-Q");
+        const y = Number(yStr);
+        const q = Number(qStr);
+        if (y && q) {
+          const pQ = q === 1 ? 4 : q - 1;
+          const pY = q === 1 ? y - 1 : y;
+          pastPeriodStrDefault = `${pY}-Q${pQ}`;
+          const uQ = q === 4 ? 1 : q + 1;
+          const uY = q === 4 ? y + 1 : y;
+          upcomingPeriodStrDefault = `${uY}-Q${uQ}`;
+        }
+      } else if (period === "yearly") {
+        currentPeriodStr = String(effectiveSelectedTaxYear);
+        const y = Number(currentPeriodStr);
+        if (y) {
+          pastPeriodStrDefault = String(y - 1);
+          upcomingPeriodStrDefault = String(y + 1);
+        }
+      }
+
+      const pastPeriodStr = selectedPastMonthOverride || pastPeriodStrDefault;
+      const upcomingPeriodStr = selectedUpcomingMonthOverride || upcomingPeriodStrDefault;
+
+      const formatPeriodLabel = (str) => {
+        if (!str) return "-";
+        if (period === "monthly") {
+          const [y, m] = str.split("-").map(Number);
+          if (y && m) return new Date(y, m - 1, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" });
+        } else if (period === "quarterly") {
+          const [y, q] = str.split("-");
+          return `${q} ${y}`;
+        } else if (period === "yearly") {
+          return `Year ${str}`;
+        }
+        return str;
+      };
+
+      const activePeriodLabel = formatPeriodLabel(basePeriod || defaultBase);
+
+      const calculateGroupTotals = (list = []) => {
+        return (list || []).reduce(
+          (acc, invoice) => {
+            const m = invoice.computedMetrics || {};
+            acc.incoming += Number(m.incoming || 0);
+            acc.incomingPaid += Number(m.incomingPaid || 0);
+            acc.dueAgent += Number(m.dueAgent || 0);
+            acc.outgoing += Number(m.outgoing || 0);
+            acc.outgoingPaid += Number(m.outgoingPaid || 0);
+            acc.upcomingDmc += Number(m.upcomingDmc || 0);
+            acc.grossProfit += Number(m.grossProfit || 0);
+            return acc;
+          },
+          {
+            incoming: 0,
+            incomingPaid: 0,
+            dueAgent: 0,
+            outgoing: 0,
+            outgoingPaid: 0,
+            upcomingDmc: 0,
+            grossProfit: 0,
+          }
+        );
+      };
+
+      const autoFitColumns = (rows) => {
+        const colWidths = [];
+        rows.forEach((r) => {
+          if (Array.isArray(r)) {
+            r.forEach((cell, idx) => {
+              const len = cell !== null && cell !== undefined ? String(cell).length : 0;
+              colWidths[idx] = Math.max(colWidths[idx] || 10, Math.min(len + 3, 45));
+            });
+          }
+        });
+        return colWidths.map((w) => ({ wch: w }));
+      };
+
+      // ───────────────────────────────────────────
+      // 1. Overview Sheet
+      // ───────────────────────────────────────────
+      const overviewRows = [
+        ["REVENUE ANALYTICS OVERVIEW"],
+        ["DATA FOR PERIOD", activePeriodLabel],
+        ["Applied Base Period Filter", activePeriodLabel + ` (${basePeriod || defaultBase || "All"})`],
+        ["Comparison Period Filter", comparisonPeriod ? formatPeriodLabel(comparisonPeriod) + ` (${comparisonPeriod})` : "None"],
+        ["Report Generated On", new Date().toLocaleString()],
+        [],
+        [`OVERVIEW METRICS (DATA FOR: ${activePeriodLabel})`],
+        [
+          "Applied Filter Period",
+          "Metric",
+          `Base Value (${activePeriodLabel})`,
+          comparisonPeriod ? `Comparison Value (${formatPeriodLabel(comparisonPeriod)})` : "Comparison Value",
+          "Status / Note"
+        ]
+      ];
+
+      if (effectiveBaseCards && effectiveBaseCards.length > 0) {
+        effectiveBaseCards.forEach((item) => {
+          const labelUpper = (item.styleKey || item.label || "").toUpperCase();
+          const comparedItem = comparedData?.find((c) => (c.styleKey || c.label || "").toUpperCase() === labelUpper);
+          overviewRows.push([
+            activePeriodLabel,
+            item.label || "",
+            item.value || "0",
+            comparedItem ? comparedItem.value || "0" : "-",
+            comparedItem && comparedItem.sub ? comparedItem.sub : (item.sub || "")
+          ]);
+        });
+      }
+      const overviewSheet = XLSX.utils.aoa_to_sheet(overviewRows);
+      overviewSheet["!cols"] = autoFitColumns(overviewRows);
+      XLSX.utils.book_append_sheet(workbook, overviewSheet, "Overview");
+
+      // ───────────────────────────────────────────
+      // 2. Verified Payment Revenue Sheet (Full Summary & All Filtered Bookings)
+      // ───────────────────────────────────────────
+      const periodBuckets = [
+        { key: "past", label: "Past", periodVal: pastPeriodStr },
+        { key: "current", label: "Present", periodVal: currentPeriodStr },
+        { key: "upcoming", label: "Upcoming", periodVal: upcomingPeriodStr },
+      ];
+
+      const bucketTotals = {
+        past: calculateGroupTotals(checklistData?.past || []),
+        current: calculateGroupTotals(checklistData?.current || []),
+        upcoming: calculateGroupTotals(checklistData?.upcoming || []),
+      };
+
+      const checklistRows = [
+        ["VERIFIED PAYMENT REVENUE REPORT"],
+        ["DATA FOR PERIOD", activePeriodLabel],
+        ["Applied Base Filter", `${activePeriodLabel} (${currentPeriodStr})`],
+        ["Period Filter Type", (period || "monthly").toUpperCase()],
+        ["Present Period Filter", `${formatPeriodLabel(currentPeriodStr)} (${currentPeriodStr})`],
+        ["Past Period Filter", `${formatPeriodLabel(pastPeriodStr)} (${pastPeriodStr})`],
+        ["Upcoming Period Filter", `${formatPeriodLabel(upcomingPeriodStr)} (${upcomingPeriodStr})`],
+        ["Report Generated On", new Date().toLocaleString()],
+        [],
+        [`SECTION 1: PERIOD LEVEL FINANCIAL SUMMARY (DATA FOR: ${activePeriodLabel})`],
+        [
+          "Applied Filter Period",
+          "Period Bucket",
+          "Target Period",
+          "Total Bookings",
+          "Total Billed / Revenue (₹)",
+          "Payment Received (₹)",
+          "Pending Payment to Collect (₹)",
+          "Total DMC Cost (₹)",
+          "Paid to DMC (₹)",
+          "Pending Payment to DMC (₹)",
+          "Gross Profit (₹)",
+          "Profit Margin (%)"
+        ]
+      ];
+
+      let grandTotalBookings = 0;
+      let grandIncoming = 0;
+      let grandIncomingPaid = 0;
+      let grandDueAgent = 0;
+      let grandOutgoing = 0;
+      let grandOutgoingPaid = 0;
+      let grandUpcomingDmc = 0;
+      let grandGrossProfit = 0;
+
+      periodBuckets.forEach((b) => {
+        const count = checklistData?.[b.key]?.length || 0;
+        const tot = bucketTotals[b.key];
+        const margin = tot.incoming > 0 ? ((tot.grossProfit / tot.incoming) * 100).toFixed(1) + "%" : "0.0%";
+
+        grandTotalBookings += count;
+        grandIncoming += tot.incoming;
+        grandIncomingPaid += tot.incomingPaid;
+        grandDueAgent += tot.dueAgent;
+        grandOutgoing += tot.outgoing;
+        grandOutgoingPaid += tot.outgoingPaid;
+        grandUpcomingDmc += tot.upcomingDmc;
+        grandGrossProfit += tot.grossProfit;
+
+        checklistRows.push([
+          formatPeriodLabel(b.periodVal) || b.periodVal || "-",
+          b.label,
+          b.periodVal || "-",
+          count,
+          tot.incoming,
+          tot.incomingPaid,
+          tot.dueAgent,
+          tot.outgoing,
+          tot.outgoingPaid,
+          tot.upcomingDmc,
+          tot.grossProfit,
+          margin
+        ]);
+      });
+
+      const grandMargin = grandIncoming > 0 ? ((grandGrossProfit / grandIncoming) * 100).toFixed(1) + "%" : "0.0%";
+      checklistRows.push([
+        "All Combined",
+        "Grand Total",
+        "All Combined Periods",
+        grandTotalBookings,
+        grandIncoming,
+        grandIncomingPaid,
+        grandDueAgent,
+        grandOutgoing,
+        grandOutgoingPaid,
+        grandUpcomingDmc,
+        grandGrossProfit,
+        grandMargin
+      ]);
+
+      checklistRows.push([]);
+      checklistRows.push([`SECTION 2: DETAILED BOOKINGS & INVOICES (DATA FOR: ${activePeriodLabel})`]);
+      checklistRows.push([
+        "Applied Filter Period",
+        "Period Bucket",
+        "Target Period",
+        "Booking / Query ID",
+        "Invoice / Quotation #",
+        "Client / Agent Name",
+        "Destination",
+        "Travel Date",
+        "Payment Status",
+        "Total Billed (₹)",
+        "Payment Received (₹)",
+        "Pending Collection (₹)",
+        "Total DMC Cost (₹)",
+        "Paid to DMC (₹)",
+        "Pending to DMC (₹)",
+        "Gross Profit (₹)",
+        "Profit Margin (%)"
+      ]);
+
+      let hasBookings = false;
+      periodBuckets.forEach((b) => {
+        const list = checklistData?.[b.key] || [];
+        if (list.length > 0) {
+          hasBookings = true;
+          list.forEach((inv) => {
+            const m = inv.computedMetrics || {};
+            const queryId =
+              inv.queryId?.queryId ||
+              inv.query?.queryId ||
+              inv.tripSnapshot?.queryId ||
+              (typeof inv.query === "string" ? inv.query : "") ||
+              inv.queryCode ||
+              "-";
+            const invNumber = inv.invoiceNumber || inv.quotationNumber || inv.id || inv._id || "-";
+            const clientOrAgent =
+              inv.agency?.name ||
+              inv.agencyName ||
+              inv.clientName ||
+              inv.client?.name ||
+              inv.query?.agentName ||
+              inv.query?.clientName ||
+              inv.guestName ||
+              "-";
+            const destination = inv.tripSnapshot?.destination || inv.destination || inv.query?.destination || "-";
+            const travelDate = inv.tripSnapshot?.startDate
+              ? new Date(inv.tripSnapshot.startDate).toLocaleDateString()
+              : (inv.travelDate || inv.date || "-");
+            const status = inv.paymentStatus || inv.status || (inv.isVerified ? "Verified" : "Pending");
+
+            const incoming = Number(m.incoming ?? inv.totalAmount ?? 0);
+            const incomingPaid = Number(m.incomingPaid ?? 0);
+            const dueAgent = Number(m.dueAgent ?? Math.max(0, incoming - incomingPaid));
+            const outgoing = Number(m.outgoing ?? 0);
+            const outgoingPaid = Number(m.outgoingPaid ?? 0);
+            const upcomingDmc = Number(m.upcomingDmc ?? Math.max(0, outgoing - outgoingPaid));
+            const grossProfit = Number(m.grossProfit ?? (incoming - outgoing));
+            const margin = incoming > 0 ? Number(((grossProfit / incoming) * 100).toFixed(1)) : 0;
+
+            checklistRows.push([
+              formatPeriodLabel(b.periodVal) || b.periodVal || "-",
+              b.label,
+              b.periodVal || "-",
+              queryId,
+              invNumber,
+              clientOrAgent,
+              destination,
+              travelDate,
+              status,
+              incoming,
+              incomingPaid,
+              dueAgent,
+              outgoing,
+              outgoingPaid,
+              upcomingDmc,
+              grossProfit,
+              `${margin}%`
+            ]);
+          });
+        }
+      });
+
+      if (!hasBookings) {
+        checklistRows.push([activePeriodLabel, "No booking records found for the applied period filters."]);
+      }
+
+      const checklistSheet = XLSX.utils.aoa_to_sheet(checklistRows);
+      checklistSheet["!cols"] = autoFitColumns(checklistRows);
+      XLSX.utils.book_append_sheet(workbook, checklistSheet, "Verified Payment Revenue");
+
+      // ───────────────────────────────────────────
+      // 3. Destination Profitability Sheet
+      // ───────────────────────────────────────────
+      const profitRows = [
+        ["DESTINATION PROFITABILITY REPORT"],
+        ["DATA FOR PERIOD", activePeriodLabel],
+        ["Applied Base Period Filter", activePeriodLabel + ` (${basePeriod || defaultBase || "All"})`],
+        ["Comparison Period Filter", comparisonPeriod ? formatPeriodLabel(comparisonPeriod) + ` (${comparisonPeriod})` : "None"],
+        ["Report Generated On", new Date().toLocaleString()],
+        [],
+        [`SECTION 1: BASE PERIOD DESTINATION PROFITABILITY (DATA FOR: ${activePeriodLabel})`],
+        [
+          "Applied Filter Period",
+          "Destination",
+          "Total Amount / Gross Revenue (₹)",
+          "Realized Revenue (₹)",
+          "Pending Review (₹)",
+          "Offer / Discount (₹)",
+          "Offer Details / Promo",
+          "DMC Cost (₹)",
+          "Gross Profit (₹)",
+          "Profit Margin (%)",
+          "Bookings Count"
+        ]
+      ];
+
+      const effectiveRows = effectiveDestinationProfitRows || [];
+      if (effectiveRows.length > 0) {
+        effectiveRows.forEach((row) => {
+          const grossRev = Number(row.grossRevenue || row.revenue || 0);
+          const rev = Number(row.revenue || 0);
+          const pending = Number(row.pendingRevenue || 0);
+          const discount = Number(row.offerDiscount || 0);
+          const promo = row.offerLabel || "-";
+          const cost = Number(row.cost || 0);
+          const profit = Number(row.profit !== undefined ? row.profit : (rev - cost));
+          const margin = Number(row.marginPercent !== undefined ? row.marginPercent : (grossRev > 0 ? (profit / grossRev) * 100 : 0));
+          const bookings = Number(row.bookings || row.packageCount || row.totalPackages || 0);
+
+          profitRows.push([
+            activePeriodLabel,
+            row.destination || "Unknown",
+            grossRev,
+            rev,
+            pending,
+            discount,
+            promo,
+            cost,
+            profit,
+            `${margin.toFixed(1)}%`,
+            bookings
+          ]);
+        });
+      } else {
+        profitRows.push([activePeriodLabel, "No destination profitability data available for the selected period."]);
+      }
+
+      if (comparisonPeriod && comparedDestinationProfit && comparedDestinationProfit.length > 0) {
+        const compLabel = formatPeriodLabel(comparisonPeriod);
+        profitRows.push([]);
+        profitRows.push([`SECTION 2: COMPARISON PERIOD DESTINATION PROFITABILITY (DATA FOR: ${compLabel})`]);
+        profitRows.push([
+          "Applied Filter Period",
+          "Destination",
+          "Total Amount / Gross Revenue (₹)",
+          "Realized Revenue (₹)",
+          "Pending Review (₹)",
+          "Offer / Discount (₹)",
+          "Offer Details / Promo",
+          "DMC Cost (₹)",
+          "Gross Profit (₹)",
+          "Profit Margin (%)",
+          "Bookings Count"
+        ]);
+        comparedDestinationProfit.forEach((row) => {
+          const grossRev = Number(row.grossRevenue || row.revenue || 0);
+          const rev = Number(row.revenue || 0);
+          const pending = Number(row.pendingRevenue || 0);
+          const discount = Number(row.offerDiscount || 0);
+          const promo = row.offerLabel || "-";
+          const cost = Number(row.cost || 0);
+          const profit = Number(row.profit !== undefined ? row.profit : (rev - cost));
+          const margin = Number(row.marginPercent !== undefined ? row.marginPercent : (grossRev > 0 ? (profit / grossRev) * 100 : 0));
+          const bookings = Number(row.bookings || row.packageCount || row.totalPackages || 0);
+
+          profitRows.push([
+            compLabel,
+            row.destination || "Unknown",
+            grossRev,
+            rev,
+            pending,
+            discount,
+            promo,
+            cost,
+            profit,
+            `${margin.toFixed(1)}%`,
+            bookings
+          ]);
+        });
+      }
+
+      const profitSheet = XLSX.utils.aoa_to_sheet(profitRows);
+      profitSheet["!cols"] = autoFitColumns(profitRows);
+      XLSX.utils.book_append_sheet(workbook, profitSheet, "Destination Profitability");
+
+      const exportFileName = `Revenue_Analytics_Report_${basePeriod || defaultBase || "export"}.xlsx`;
+      XLSX.writeFile(workbook, exportFileName);
+    } catch (error) {
+      console.error("Error exporting to Excel:", error);
+    }
+  };
 
   if (!showRevenueModal) return null;
 
@@ -294,11 +756,11 @@ export default function RevenueAnalyticsModal({
         {/* Modal Body */}
         <div className="flex-1 min-h-0 overflow-y-auto p-6 space-y-6 thin-scrollbar bg-slate-50/50">
           
-          {/* Comparison Filter */}
+          {/* Comparison Filter and Export Button */}
           {(period === "monthly" || period === "quarterly" || period === "yearly") && (
-            <div className="flex items-center gap-3 bg-white p-3 rounded-2xl shadow-sm border border-slate-100 flex-wrap">
-              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider shrink-0">Compare:</span>
+            <div className="flex items-center justify-between gap-3 bg-white p-3 rounded-2xl shadow-sm border border-slate-100 flex-wrap">
               <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider shrink-0 mr-1">Compare:</span>
                 {/* LEFT side — editable base period */}
                 <div className="flex items-center gap-1.5">
                   <ComparisonDropdown
@@ -337,6 +799,16 @@ export default function RevenueAnalyticsModal({
                   )}
                 </div>
               </div>
+              
+              {/* EXPORT BUTTON */}
+              <button
+                type="button"
+                onClick={handleExcelExport}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border border-emerald-200 transition-colors cursor-pointer text-xs font-bold shadow-sm shrink-0"
+              >
+                <Download size={14} />
+                Export Data
+              </button>
             </div>
           )}
 
@@ -450,16 +922,16 @@ export default function RevenueAnalyticsModal({
                   <MapPin size={14} className="text-teal-500" />
                   Destination Profitability
                 </h3>
-                <ReportTable columns={destinationProfitColumns} rows={paginatedProfitRows} loading={loading} />
+                <ReportTable columns={destinationProfitColumns} rows={displayProfitRows} loading={effectiveBaseLoading} />
               </div>
 
               {/* Pagination */}
-              {!loading && destinationProfitRows.length > itemsPerPage && (
+              {!effectiveBaseLoading && effectiveDestinationProfitRows.length > itemsPerPage && (
                 <div className="mt-4 flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-slate-100 pt-3 text-[11px] font-semibold text-slate-500">
                   <span>
                     Showing <span className="text-slate-800 font-bold">{startProfitIdx + 1}</span> to{' '}
-                    <span className="text-slate-800 font-bold">{Math.min(endProfitIdx, destinationProfitRows.length)}</span> of{' '}
-                    <span className="text-slate-800 font-bold">{destinationProfitRows.length}</span> entries
+                    <span className="text-slate-800 font-bold">{Math.min(endProfitIdx, effectiveDestinationProfitRows.length)}</span> of{' '}
+                    <span className="text-slate-800 font-bold">{effectiveDestinationProfitRows.length}</span> entries
                   </span>
                   <div className="flex items-center justify-center gap-1.5 flex-wrap">
                     <button

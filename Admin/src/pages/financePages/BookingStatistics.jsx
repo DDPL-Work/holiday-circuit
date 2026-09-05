@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
+import * as XLSX from "xlsx";
 import { motion, AnimatePresence } from "framer-motion";
 import API from "../../utils/Api";
-import { X, Search, Briefcase, Eye, Calendar, MapPin, Users, Plane, Hotel, Car, RotateCcw, ChevronLeft, ChevronRight, BarChart2, List, ChevronDown } from "lucide-react";
+import { X, Search, Briefcase, Eye, Calendar, MapPin, Users, Plane, Hotel, Car, RotateCcw, ChevronLeft, ChevronRight, BarChart2, List, ChevronDown, Download } from "lucide-react";
 import ReportSummaryCard from "./AdvancedAnalyticsComponents/Cards/ReportSummaryCard";
-import BookingChart from "./AdvancedAnalyticsComponents/Charts/BookingChart";
+import BookingChart, { buildChartData, formatTaxMonth } from "./AdvancedAnalyticsComponents/Charts/BookingChart";
 
 
 const CustomDropdown = ({ value, onChange, options, defaultLabel }) => {
@@ -80,6 +81,16 @@ export default function BookingStatistics() {
   const [travelToDate, setTravelToDate] = useState("");
   const [selectedQuery, setSelectedQuery] = useState(null);
   const [viewMode, setViewMode] = useState("table"); // "table" | "chart"
+  
+  // Chart separate filters (independent from table filters)
+  const now = useMemo(() => new Date(), []);
+  const [chartType, setChartType] = useState("agent");
+  const [chartPeriod, setChartPeriod] = useState("monthly");
+  const [chartMonth, setChartMonth] = useState(formatTaxMonth(now));
+  const [chartQuarter, setChartQuarter] = useState(`${now.getFullYear()}-Q${Math.floor(now.getMonth() / 3) + 1}`);
+  const [chartYear, setChartYear] = useState(String(now.getFullYear()));
+  const [chartCustomFrom, setChartCustomFrom] = useState("");
+  const [chartCustomTo, setChartCustomTo] = useState("");
   
   const [currentPage, setCurrentPage] = useState(1);
   const entriesPerPage = 10;
@@ -232,6 +243,659 @@ export default function BookingStatistics() {
     return [...dmcSet].sort();
   }, [bookingData]);
 
+  const handleExcelExport = () => {
+    try {
+      const workbook = XLSX.utils.book_new();
+
+      const autoFitColumns = (rows) => {
+        const colWidths = [];
+        rows.forEach((r) => {
+          if (Array.isArray(r)) {
+            r.forEach((cell, idx) => {
+              const len = cell !== null && cell !== undefined ? String(cell).length : 0;
+              colWidths[idx] = Math.max(colWidths[idx] || 10, Math.min(len + 3, 50));
+            });
+          }
+        });
+        return colWidths.map((w) => ({ wch: w }));
+      };
+
+      const formatPeriodLabelFromDates = (from, to, defaultLabel) => {
+        if (!from && !to) return defaultLabel;
+        if (from && to) {
+          const d1 = new Date(from);
+          const d2 = new Date(to);
+          if (!isNaN(d1) && !isNaN(d2)) {
+            if (d1.getFullYear() === d2.getFullYear() && d1.getMonth() === d2.getMonth()) {
+              const monthYear = d1.toLocaleString("en-US", { month: "long", year: "numeric" });
+              return `${monthYear} (${from} to ${to})`;
+            }
+          }
+          return `${from} to ${to}`;
+        }
+        if (from) return `From ${from}`;
+        if (to) return `Up to ${to}`;
+        return defaultLabel;
+      };
+
+      const travelPeriodLabel = formatPeriodLabelFromDates(travelFromDate, travelToDate, "All Travel Dates");
+      const bookingPeriodLabel = formatPeriodLabelFromDates(bookingFromDate, bookingToDate, "All Booking Dates");
+
+      const primaryDataPeriod = travelFromDate || travelToDate
+        ? `Travel Dates: ${travelPeriodLabel}`
+        : bookingFromDate || bookingToDate
+        ? `Booking Dates: ${bookingPeriodLabel}`
+        : "All Available Dates";
+
+      const activeFilterSummary = [
+        travelFromDate || travelToDate ? `Travel: ${travelPeriodLabel}` : null,
+        bookingFromDate || bookingToDate ? `Booking: ${bookingPeriodLabel}` : null,
+        destinationFilter ? `Destination: ${destinationFilter}` : null,
+        agentFilter ? `Agent: ${agentFilter}` : null,
+        dmcFilter ? `DMC: ${dmcFilter}` : null,
+        opsFilter ? `OPS: ${opsFilter}` : null,
+        searchTerm ? `Search: "${searchTerm}"` : null,
+      ].filter(Boolean).join(" | ") || "All Data (No Filters)";
+
+      const totalBookings = filteredData.length;
+      const totalPax = filteredData.reduce((acc, r) => acc + (Number(r.pax) || 0), 0);
+
+      // Resolve Chart Period Display Label (Independent from table filters)
+      let chartPeriodLabel = "";
+      if (chartPeriod === "monthly") {
+        const [yr, mn] = (chartMonth || "").split("-").map(Number);
+        if (yr && mn) {
+          chartPeriodLabel = new Date(yr, mn - 1, 1).toLocaleString("en-US", { month: "long", year: "numeric" });
+        } else {
+          chartPeriodLabel = chartMonth || "Current Month";
+        }
+      } else if (chartPeriod === "quarterly") {
+        const [yr, q] = (chartQuarter || "").split("-Q");
+        chartPeriodLabel = `Q${q} ${yr}`;
+      } else if (chartPeriod === "yearly") {
+        chartPeriodLabel = `Year ${chartYear}`;
+      } else if (chartPeriod === "custom") {
+        chartPeriodLabel = chartCustomFrom && chartCustomTo
+          ? `${chartCustomFrom} to ${chartCustomTo}`
+          : "Custom Date Range";
+      }
+
+      // Pre-compute independent chart data for all 4 dimensions from bookingData
+      const agentChartPayload = buildChartData(
+        bookingData,
+        "agent",
+        chartPeriod,
+        chartMonth,
+        chartQuarter,
+        chartYear,
+        chartCustomFrom,
+        chartCustomTo
+      );
+      const dmcChartPayload = buildChartData(
+        bookingData,
+        "dmc",
+        chartPeriod,
+        chartMonth,
+        chartQuarter,
+        chartYear,
+        chartCustomFrom,
+        chartCustomTo
+      );
+      const opsChartPayload = buildChartData(
+        bookingData,
+        "ops",
+        chartPeriod,
+        chartMonth,
+        chartQuarter,
+        chartYear,
+        chartCustomFrom,
+        chartCustomTo
+      );
+      const destChartPayload = buildChartData(
+        bookingData,
+        "destination",
+        chartPeriod,
+        chartMonth,
+        chartQuarter,
+        chartYear,
+        chartCustomFrom,
+        chartCustomTo
+      );
+
+      // ───────────────────────────────────────────
+      // SHEET 1: Overview
+      // ───────────────────────────────────────────
+      const overviewRows = [
+        ["BOOKING STATISTICS OVERVIEW"],
+        ["DATA FOR TABLE PERIOD", primaryDataPeriod],
+        ["DATA FOR CHART PERIOD", chartPeriodLabel],
+        ["Report Generated On", new Date().toLocaleString()],
+        [],
+        ["1. APPLIED TABLE FILTERS (FOR TABLE DATA & TABLE SECTIONS)"],
+        ["Filter Dimension", "Applied Filter Value", "Filter Description"],
+        ["Travel Date Period", travelPeriodLabel, "Filter applied to client travel dates"],
+        ["Booking Date Period", bookingPeriodLabel, "Filter applied to booking creation dates"],
+        ["Destination Filter", destinationFilter || "All Destinations", "Filtered destination region"],
+        ["Agent Filter", agentFilter || "All Agents", "Filtered travel agent / agency"],
+        ["OPS Member Filter", opsFilter || "All OPS", "Filtered operations staff member"],
+        ["DMC Partner Filter", dmcFilter || "All DMCs", "Filtered Destination Management Company"],
+        ["Search Keyword", searchTerm || "None", "Keyword filter across ID, city, hotel, booking type"],
+        [],
+        ["2. APPLIED CHART FILTERS (FOR CHART TIME-SERIES SECTIONS - INDEPENDENT)"],
+        ["Chart Dimension", "Applied Chart Value", "Description"],
+        ["Chart Period Mode", (chartPeriod || "monthly").toUpperCase(), "Aggregation mode (monthly, quarterly, yearly, custom)"],
+        ["Chart Target Period", chartPeriodLabel, "Target period selected on chart view"],
+        ["Chart Filter Independence", "INDEPENDENT", "Chart data reflects all bookings for this period without table filter constraints"],
+        [],
+        [`3. TABLE KEY METRICS SUMMARY (DATA FOR: ${primaryDataPeriod})`],
+        ["Applied Period / Filter", "Metric", "Value", "Notes"],
+        [primaryDataPeriod, "Total Bookings", totalBookings, "Filtered count"],
+        [primaryDataPeriod, "Total Passengers (Pax)", totalPax, "Total Pax"],
+        [primaryDataPeriod, "Active Destinations", new Set(filteredData.map((r) => r.destination).filter(Boolean)).size, "Unique destinations in period"],
+        [primaryDataPeriod, "Active Agents", new Set(filteredData.map((r) => r.agent).filter((a) => a && a !== "Unassigned")).size, "Unique agents in period"],
+        [primaryDataPeriod, "Active DMCs", new Set(filteredData.flatMap((r) => (r.dmc && r.dmc !== "N/A" ? r.dmc.split(",").map((d) => d.trim()) : []))).size, "Unique DMCs in period"],
+        [primaryDataPeriod, "Active OPS Members", new Set(filteredData.map((r) => r.ops).filter((o) => o && o !== "Unassigned")).size, "Unique OPS members in period"],
+        [],
+        [`4. CHART SUMMARY (DATA FOR: ${chartPeriodLabel})`],
+        ["Chart Target Period", "Metric", "Value", "Notes"],
+        [chartPeriodLabel, "Total Chart Bookings in Period", agentChartPayload.count, "Total bookings matching chart date bounds"],
+        [chartPeriodLabel, "Active Chart Agents", agentChartPayload.entities.length, "Unique agents in chart period"],
+        [chartPeriodLabel, "Active Chart DMCs", dmcChartPayload.entities.length, "Unique DMCs in chart period"],
+        [chartPeriodLabel, "Active Chart OPS Members", opsChartPayload.entities.length, "Unique OPS in chart period"],
+        [chartPeriodLabel, "Active Chart Destinations", destChartPayload.entities.length, "Unique destinations in chart period"],
+      ];
+      const overviewSheet = XLSX.utils.aoa_to_sheet(overviewRows);
+      overviewSheet["!cols"] = autoFitColumns(overviewRows);
+      XLSX.utils.book_append_sheet(workbook, overviewSheet, "Overview");
+
+      // ───────────────────────────────────────────
+      // SHEET 2: Table Data
+      // ───────────────────────────────────────────
+      const tableRows = [
+        [`DETAILED BOOKINGS TABLE DATA (DATA FOR: ${primaryDataPeriod})`],
+        ["DATA FOR", primaryDataPeriod],
+        ["APPLIED FILTERS", activeFilterSummary],
+        ["Applied Travel Period Filter", travelPeriodLabel],
+        ["Applied Booking Period Filter", bookingPeriodLabel],
+        ["Active Entity Filters", `Destination: ${destinationFilter || "All"} | Agent: ${agentFilter || "All"} | DMC: ${dmcFilter || "All"} | OPS: ${opsFilter || "All"}${searchTerm ? ` | Keyword: ${searchTerm}` : ""}`],
+        ["Total Records", totalBookings],
+        [],
+        [
+          "Applied Filter Period",
+          "Query ID",
+          "Booking Type",
+          "Destination",
+          "OPS Member",
+          "Agent",
+          "DMC Partner",
+          "Booking Date",
+          "Travel Date",
+          "Duration (Nights)",
+          "Country",
+          "City",
+          "Hotels",
+          "Passengers (Pax)",
+          "Total Value (₹)",
+        ],
+      ];
+
+      filteredData.forEach((row) => {
+        tableRows.push([
+          primaryDataPeriod,
+          row.id || "-",
+          row.bookingType || "-",
+          row.destination || "-",
+          row.ops || "-",
+          row.agent || "-",
+          row.dmc || "-",
+          row.bookingDate || "-",
+          row.travelDate || "-",
+          Number(row.duration || 0),
+          row.country || "-",
+          row.city || "-",
+          row.hotels || "-",
+          Number(row.pax || 0),
+          row.amount || "-",
+        ]);
+      });
+
+      if (filteredData.length === 0) {
+        tableRows.push([primaryDataPeriod, "No bookings found matching the selected period and filters."]);
+      }
+
+      const tableSheet = XLSX.utils.aoa_to_sheet(tableRows);
+      tableSheet["!cols"] = autoFitColumns(tableRows);
+      XLSX.utils.book_append_sheet(workbook, tableSheet, "Table Data");
+
+      // ───────────────────────────────────────────
+      // SHEET 3: Agent (Table + Chart both)
+      // ───────────────────────────────────────────
+      const agentRows = [
+        ["AGENT ANALYTICS (TABLE FILTERS + CHART TIME-SERIES)"],
+        ["DATA FOR TABLE PERIOD", primaryDataPeriod],
+        ["DATA FOR CHART PERIOD", chartPeriodLabel],
+        ["Report Generated On", new Date().toLocaleString()],
+        [],
+        [`SECTION 1: AGENT TABLE BREAKDOWN (DATA FOR: ${primaryDataPeriod})`],
+        ["Applied Table Filters", activeFilterSummary],
+        ["Total Filtered Bookings", totalBookings],
+        [],
+        [
+          "Applied Filter Period",
+          "Agent Name",
+          "Applied Travel Period Filter",
+          "Applied Booking Period Filter",
+          "First Travel Date in Period",
+          "Last Travel Date in Period",
+          "Total Bookings",
+          "Total Passengers (Pax)",
+          "% Share of Bookings",
+        ],
+      ];
+
+      const agentMap = {};
+      filteredData.forEach((r) => {
+        const a = r.agent || "Unassigned";
+        if (!agentMap[a]) agentMap[a] = { bookings: 0, pax: 0, travelDates: [] };
+        agentMap[a].bookings += 1;
+        agentMap[a].pax += Number(r.pax || 0);
+        if (r.travelDate) agentMap[a].travelDates.push(r.travelDate);
+      });
+
+      Object.entries(agentMap)
+        .sort((a, b) => b[1].bookings - a[1].bookings)
+        .forEach(([agent, data]) => {
+          const sortedDates = data.travelDates.sort();
+          const firstDate = sortedDates[0] || "-";
+          const lastDate = sortedDates[sortedDates.length - 1] || "-";
+          const share = totalBookings > 0 ? ((data.bookings / totalBookings) * 100).toFixed(1) + "%" : "0%";
+          agentRows.push([
+            primaryDataPeriod,
+            agent,
+            travelPeriodLabel,
+            bookingPeriodLabel,
+            firstDate,
+            lastDate,
+            data.bookings,
+            data.pax,
+            share,
+          ]);
+        });
+
+      if (Object.keys(agentMap).length === 0) {
+        agentRows.push([primaryDataPeriod, "No agents found matching table filters."]);
+      }
+
+      // Section 2: Chart Time-Series Breakdown
+      agentRows.push([]);
+      agentRows.push([]);
+      agentRows.push([`SECTION 2: AGENT CHART TIME-SERIES BREAKDOWN (DATA FOR: ${chartPeriodLabel})`]);
+      agentRows.push(["Applied Chart Period Filter", `${chartPeriodLabel} (${chartPeriod.toUpperCase()})`]);
+      agentRows.push(["Total Bookings in Chart Period", agentChartPayload.count]);
+      agentRows.push(["Filter Independence Note", `This chart data is independent of table filters and reflects all vouchered bookings for ${chartPeriodLabel}`]);
+      agentRows.push([]);
+      agentRows.push([
+        "Applied Chart Period",
+        "Agent Name",
+        ...agentChartPayload.dates,
+        "Total Bookings in Period",
+        "% Share of Period",
+      ]);
+
+      const agentChartTotal = agentChartPayload.count || 0;
+      agentChartPayload.entities.forEach((agent) => {
+        const rowCounts = agentChartPayload.dates.map((d) => agentChartPayload.entityMap[agent]?.[d] || 0);
+        const entityTotal = rowCounts.reduce((sum, v) => sum + v, 0);
+        const share = agentChartTotal > 0 ? ((entityTotal / agentChartTotal) * 100).toFixed(1) + "%" : "0%";
+        agentRows.push([
+          chartPeriodLabel,
+          agent,
+          ...rowCounts,
+          entityTotal,
+          share,
+        ]);
+      });
+
+      const agentDateTotals = agentChartPayload.dates.map((d) => {
+        return agentChartPayload.entities.reduce((sum, entity) => sum + (agentChartPayload.entityMap[entity]?.[d] || 0), 0);
+      });
+
+      agentRows.push([
+        chartPeriodLabel,
+        "Grand Total (All Agents)",
+        ...agentDateTotals,
+        agentChartTotal,
+        "100.0%",
+      ]);
+
+      const agentSheet = XLSX.utils.aoa_to_sheet(agentRows);
+      agentSheet["!cols"] = autoFitColumns(agentRows);
+      XLSX.utils.book_append_sheet(workbook, agentSheet, "Agent");
+
+      // ───────────────────────────────────────────
+      // SHEET 4: DMC (Table + Chart both)
+      // ───────────────────────────────────────────
+      const dmcRows = [
+        ["DMC PARTNER ANALYTICS (TABLE FILTERS + CHART TIME-SERIES)"],
+        ["DATA FOR TABLE PERIOD", primaryDataPeriod],
+        ["DATA FOR CHART PERIOD", chartPeriodLabel],
+        ["Report Generated On", new Date().toLocaleString()],
+        [],
+        [`SECTION 1: DMC PARTNER TABLE BREAKDOWN (DATA FOR: ${primaryDataPeriod})`],
+        ["Applied Table Filters", activeFilterSummary],
+        ["Total Filtered Bookings", totalBookings],
+        [],
+        [
+          "Applied Filter Period",
+          "DMC Partner",
+          "Applied Travel Period Filter",
+          "Applied Booking Period Filter",
+          "First Travel Date in Period",
+          "Last Travel Date in Period",
+          "Total Bookings",
+          "Total Passengers (Pax)",
+          "% Share of Bookings",
+        ],
+      ];
+
+      const dmcMap = {};
+      filteredData.forEach((r) => {
+        const dmcs = r.dmc && r.dmc !== "N/A" ? r.dmc.split(",").map((s) => s.trim()) : ["N/A"];
+        dmcs.forEach((d) => {
+          if (!dmcMap[d]) dmcMap[d] = { bookings: 0, pax: 0, travelDates: [] };
+          dmcMap[d].bookings += 1;
+          dmcMap[d].pax += Number(r.pax || 0);
+          if (r.travelDate) dmcMap[d].travelDates.push(r.travelDate);
+        });
+      });
+
+      Object.entries(dmcMap)
+        .sort((a, b) => b[1].bookings - a[1].bookings)
+        .forEach(([dmc, data]) => {
+          const sortedDates = data.travelDates.sort();
+          const firstDate = sortedDates[0] || "-";
+          const lastDate = sortedDates[sortedDates.length - 1] || "-";
+          const share = totalBookings > 0 ? ((data.bookings / totalBookings) * 100).toFixed(1) + "%" : "0%";
+          dmcRows.push([
+            primaryDataPeriod,
+            dmc,
+            travelPeriodLabel,
+            bookingPeriodLabel,
+            firstDate,
+            lastDate,
+            data.bookings,
+            data.pax,
+            share,
+          ]);
+        });
+
+      if (Object.keys(dmcMap).length === 0) {
+        dmcRows.push([primaryDataPeriod, "No DMCs found matching table filters."]);
+      }
+
+      // Section 2: Chart Time-Series Breakdown
+      dmcRows.push([]);
+      dmcRows.push([]);
+      dmcRows.push([`SECTION 2: DMC PARTNER CHART TIME-SERIES BREAKDOWN (DATA FOR: ${chartPeriodLabel})`]);
+      dmcRows.push(["Applied Chart Period Filter", `${chartPeriodLabel} (${chartPeriod.toUpperCase()})`]);
+      dmcRows.push(["Total Bookings in Chart Period", dmcChartPayload.count]);
+      dmcRows.push(["Filter Independence Note", `This chart data is independent of table filters and reflects all vouchered bookings for ${chartPeriodLabel}`]);
+      dmcRows.push([]);
+      dmcRows.push([
+        "Applied Chart Period",
+        "DMC Partner",
+        ...dmcChartPayload.dates,
+        "Total Bookings in Period",
+        "% Share of Period",
+      ]);
+
+      const dmcChartTotal = dmcChartPayload.count || 0;
+      dmcChartPayload.entities.forEach((dmc) => {
+        const rowCounts = dmcChartPayload.dates.map((d) => dmcChartPayload.entityMap[dmc]?.[d] || 0);
+        const entityTotal = rowCounts.reduce((sum, v) => sum + v, 0);
+        const share = dmcChartTotal > 0 ? ((entityTotal / dmcChartTotal) * 100).toFixed(1) + "%" : "0%";
+        dmcRows.push([
+          chartPeriodLabel,
+          dmc,
+          ...rowCounts,
+          entityTotal,
+          share,
+        ]);
+      });
+
+      const dmcDateTotals = dmcChartPayload.dates.map((d) => {
+        return dmcChartPayload.entities.reduce((sum, entity) => sum + (dmcChartPayload.entityMap[entity]?.[d] || 0), 0);
+      });
+
+      dmcRows.push([
+        chartPeriodLabel,
+        "Grand Total (All DMCs)",
+        ...dmcDateTotals,
+        dmcChartTotal,
+        "100.0%",
+      ]);
+
+      const dmcSheet = XLSX.utils.aoa_to_sheet(dmcRows);
+      dmcSheet["!cols"] = autoFitColumns(dmcRows);
+      XLSX.utils.book_append_sheet(workbook, dmcSheet, "DMC");
+
+      // ───────────────────────────────────────────
+      // SHEET 5: OPS (Table + Chart both)
+      // ───────────────────────────────────────────
+      const opsRows = [
+        ["OPS MEMBER ANALYTICS (TABLE FILTERS + CHART TIME-SERIES)"],
+        ["DATA FOR TABLE PERIOD", primaryDataPeriod],
+        ["DATA FOR CHART PERIOD", chartPeriodLabel],
+        ["Report Generated On", new Date().toLocaleString()],
+        [],
+        [`SECTION 1: OPS MEMBER TABLE BREAKDOWN (DATA FOR: ${primaryDataPeriod})`],
+        ["Applied Table Filters", activeFilterSummary],
+        ["Total Filtered Bookings", totalBookings],
+        [],
+        [
+          "Applied Filter Period",
+          "OPS Member",
+          "Applied Travel Period Filter",
+          "Applied Booking Period Filter",
+          "First Travel Date in Period",
+          "Last Travel Date in Period",
+          "Total Bookings",
+          "Total Passengers (Pax)",
+          "% Share of Bookings",
+        ],
+      ];
+
+      const opsMap = {};
+      filteredData.forEach((r) => {
+        const o = r.ops || "Unassigned";
+        if (!opsMap[o]) opsMap[o] = { bookings: 0, pax: 0, travelDates: [] };
+        opsMap[o].bookings += 1;
+        opsMap[o].pax += Number(r.pax || 0);
+        if (r.travelDate) opsMap[o].travelDates.push(r.travelDate);
+      });
+
+      Object.entries(opsMap)
+        .sort((a, b) => b[1].bookings - a[1].bookings)
+        .forEach(([ops, data]) => {
+          const sortedDates = data.travelDates.sort();
+          const firstDate = sortedDates[0] || "-";
+          const lastDate = sortedDates[sortedDates.length - 1] || "-";
+          const share = totalBookings > 0 ? ((data.bookings / totalBookings) * 100).toFixed(1) + "%" : "0%";
+          opsRows.push([
+            primaryDataPeriod,
+            ops,
+            travelPeriodLabel,
+            bookingPeriodLabel,
+            firstDate,
+            lastDate,
+            data.bookings,
+            data.pax,
+            share,
+          ]);
+        });
+
+      if (Object.keys(opsMap).length === 0) {
+        opsRows.push([primaryDataPeriod, "No OPS members found matching table filters."]);
+      }
+
+      // Section 2: Chart Time-Series Breakdown
+      opsRows.push([]);
+      opsRows.push([]);
+      opsRows.push([`SECTION 2: OPS MEMBER CHART TIME-SERIES BREAKDOWN (DATA FOR: ${chartPeriodLabel})`]);
+      opsRows.push(["Applied Chart Period Filter", `${chartPeriodLabel} (${chartPeriod.toUpperCase()})`]);
+      opsRows.push(["Total Bookings in Chart Period", opsChartPayload.count]);
+      opsRows.push(["Filter Independence Note", `This chart data is independent of table filters and reflects all vouchered bookings for ${chartPeriodLabel}`]);
+      opsRows.push([]);
+      opsRows.push([
+        "Applied Chart Period",
+        "OPS Member",
+        ...opsChartPayload.dates,
+        "Total Bookings in Period",
+        "% Share of Period",
+      ]);
+
+      const opsChartTotal = opsChartPayload.count || 0;
+      opsChartPayload.entities.forEach((ops) => {
+        const rowCounts = opsChartPayload.dates.map((d) => opsChartPayload.entityMap[ops]?.[d] || 0);
+        const entityTotal = rowCounts.reduce((sum, v) => sum + v, 0);
+        const share = opsChartTotal > 0 ? ((entityTotal / opsChartTotal) * 100).toFixed(1) + "%" : "0%";
+        opsRows.push([
+          chartPeriodLabel,
+          ops,
+          ...rowCounts,
+          entityTotal,
+          share,
+        ]);
+      });
+
+      const opsDateTotals = opsChartPayload.dates.map((d) => {
+        return opsChartPayload.entities.reduce((sum, entity) => sum + (opsChartPayload.entityMap[entity]?.[d] || 0), 0);
+      });
+
+      opsRows.push([
+        chartPeriodLabel,
+        "Grand Total (All OPS)",
+        ...opsDateTotals,
+        opsChartTotal,
+        "100.0%",
+      ]);
+
+      const opsSheet = XLSX.utils.aoa_to_sheet(opsRows);
+      opsSheet["!cols"] = autoFitColumns(opsRows);
+      XLSX.utils.book_append_sheet(workbook, opsSheet, "OPS");
+
+      // ───────────────────────────────────────────
+      // SHEET 6: Destination (Table + Chart both)
+      // ───────────────────────────────────────────
+      const destRows = [
+        ["DESTINATION ANALYTICS (TABLE FILTERS + CHART TIME-SERIES)"],
+        ["DATA FOR TABLE PERIOD", primaryDataPeriod],
+        ["DATA FOR CHART PERIOD", chartPeriodLabel],
+        ["Report Generated On", new Date().toLocaleString()],
+        [],
+        [`SECTION 1: DESTINATION TABLE BREAKDOWN (DATA FOR: ${primaryDataPeriod})`],
+        ["Applied Table Filters", activeFilterSummary],
+        ["Total Filtered Bookings", totalBookings],
+        [],
+        [
+          "Applied Filter Period",
+          "Destination",
+          "Applied Travel Period Filter",
+          "Applied Booking Period Filter",
+          "First Travel Date in Period",
+          "Last Travel Date in Period",
+          "Total Bookings",
+          "Total Passengers (Pax)",
+          "% Share of Bookings",
+        ],
+      ];
+
+      const destMap = {};
+      filteredData.forEach((r) => {
+        const d = r.destination || "Unknown";
+        if (!destMap[d]) destMap[d] = { bookings: 0, pax: 0, travelDates: [] };
+        destMap[d].bookings += 1;
+        destMap[d].pax += Number(r.pax || 0);
+        if (r.travelDate) destMap[d].travelDates.push(r.travelDate);
+      });
+
+      Object.entries(destMap)
+        .sort((a, b) => b[1].bookings - a[1].bookings)
+        .forEach(([dest, data]) => {
+          const sortedDates = data.travelDates.sort();
+          const firstDate = sortedDates[0] || "-";
+          const lastDate = sortedDates[sortedDates.length - 1] || "-";
+          const share = totalBookings > 0 ? ((data.bookings / totalBookings) * 100).toFixed(1) + "%" : "0%";
+          destRows.push([
+            primaryDataPeriod,
+            dest,
+            travelPeriodLabel,
+            bookingPeriodLabel,
+            firstDate,
+            lastDate,
+            data.bookings,
+            data.pax,
+            share,
+          ]);
+        });
+
+      if (Object.keys(destMap).length === 0) {
+        destRows.push([primaryDataPeriod, "No destinations found matching table filters."]);
+      }
+
+      // Section 2: Chart Time-Series Breakdown
+      destRows.push([]);
+      destRows.push([]);
+      destRows.push([`SECTION 2: DESTINATION CHART TIME-SERIES BREAKDOWN (DATA FOR: ${chartPeriodLabel})`]);
+      destRows.push(["Applied Chart Period Filter", `${chartPeriodLabel} (${chartPeriod.toUpperCase()})`]);
+      destRows.push(["Total Bookings in Chart Period", destChartPayload.count]);
+      destRows.push(["Filter Independence Note", `This chart data is independent of table filters and reflects all vouchered bookings for ${chartPeriodLabel}`]);
+      destRows.push([]);
+      destRows.push([
+        "Applied Chart Period",
+        "Destination",
+        ...destChartPayload.dates,
+        "Total Bookings in Period",
+        "% Share of Period",
+      ]);
+
+      const destChartTotal = destChartPayload.count || 0;
+      destChartPayload.entities.forEach((dest) => {
+        const rowCounts = destChartPayload.dates.map((d) => destChartPayload.entityMap[dest]?.[d] || 0);
+        const entityTotal = rowCounts.reduce((sum, v) => sum + v, 0);
+        const share = destChartTotal > 0 ? ((entityTotal / destChartTotal) * 100).toFixed(1) + "%" : "0%";
+        destRows.push([
+          chartPeriodLabel,
+          dest,
+          ...rowCounts,
+          entityTotal,
+          share,
+        ]);
+      });
+
+      const destDateTotals = destChartPayload.dates.map((d) => {
+        return destChartPayload.entities.reduce((sum, entity) => sum + (destChartPayload.entityMap[entity]?.[d] || 0), 0);
+      });
+
+      destRows.push([
+        chartPeriodLabel,
+        "Grand Total (All Destinations)",
+        ...destDateTotals,
+        destChartTotal,
+        "100.0%",
+      ]);
+
+      const destSheet = XLSX.utils.aoa_to_sheet(destRows);
+      destSheet["!cols"] = autoFitColumns(destRows);
+      XLSX.utils.book_append_sheet(workbook, destSheet, "Destination");
+
+      const exportFileName = `Booking_Statistics_Report_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      XLSX.writeFile(workbook, exportFileName);
+    } catch (error) {
+      console.error("Error exporting Booking Statistics to Excel:", error);
+    }
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 15 }}
@@ -249,29 +913,43 @@ export default function BookingStatistics() {
             Detailed overview of all bookings and operations
           </p>
         </div>
-        {/* View Mode Toggle */}
-        <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200">
+        
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* View Mode Toggle */}
+          <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200">
+            <button
+              onClick={() => setViewMode("table")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                viewMode === "table"
+                  ? "bg-white text-indigo-600 shadow-sm border border-slate-200"
+                  : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              <List size={14} />
+              Table View
+            </button>
+            <button
+              onClick={() => setViewMode("chart")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                viewMode === "chart"
+                  ? "bg-white text-indigo-600 shadow-sm border border-slate-200"
+                  : "text-slate-500 hover:text-slate-700"
+              }`}
+            >
+              <BarChart2 size={14} />
+              Chart View
+            </button>
+          </div>
+
+          {/* Export Button */}
           <button
-            onClick={() => setViewMode("table")}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-              viewMode === "table"
-                ? "bg-white text-indigo-600 shadow-sm border border-slate-200"
-                : "text-slate-500 hover:text-slate-700"
-            }`}
+            type="button"
+            onClick={handleExcelExport}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 transition-all font-semibold text-xs shadow-sm cursor-pointer"
+            title="Export filtered table and chart analytics data to Excel"
           >
-            <List size={14} />
-            Table View
-          </button>
-          <button
-            onClick={() => setViewMode("chart")}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-              viewMode === "chart"
-                ? "bg-white text-indigo-600 shadow-sm border border-slate-200"
-                : "text-slate-500 hover:text-slate-700"
-            }`}
-          >
-            <BarChart2 size={14} />
-            Chart View
+            <Download size={14} />
+            Export Data
           </button>
         </div>
       </div>
@@ -513,7 +1191,24 @@ export default function BookingStatistics() {
                 exit={{ opacity: 0, x: -24 }}
                 transition={{ duration: 0.3, ease: "easeInOut" }}
               >
-                <BookingChart bookingData={bookingData} />
+                <BookingChart
+                  bookingData={bookingData}
+                  chartType={chartType}
+                  setChartType={setChartType}
+                  period={chartPeriod}
+                  setPeriod={setChartPeriod}
+                  selectedTaxMonth={chartMonth}
+                  setSelectedTaxMonth={setChartMonth}
+                  selectedTaxQuarter={chartQuarter}
+                  setSelectedTaxQuarter={setChartQuarter}
+                  selectedTaxYear={chartYear}
+                  setSelectedTaxYear={setChartYear}
+                  customFrom={chartCustomFrom}
+                  setCustomFrom={setChartCustomFrom}
+                  customTo={chartCustomTo}
+                  setCustomTo={setChartCustomTo}
+                  onExportChart={handleExcelExport}
+                />
               </motion.div>
             )}
           </AnimatePresence>

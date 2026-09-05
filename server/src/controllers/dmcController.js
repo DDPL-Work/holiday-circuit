@@ -2221,6 +2221,7 @@ export const submitInternalInvoice = async (req, res, next) => {
     );
     const invoiceSource = normalizeInvoiceSource(req.body?.invoiceSource || invoiceMeta?.invoiceSource);
     const templateVariant = req.body?.templateVariant || invoiceMeta?.templateVariant || "aurora-ledger";
+    const dmcRemarks = String(req.body?.dmcRemarks || invoiceMeta?.dmcRemarks || "").trim();
 
     if (!queryId) {
       return next(new ApiError(400, "Query is required"));
@@ -2402,7 +2403,11 @@ export const submitInternalInvoice = async (req, res, next) => {
       dmcName: dmc?.companyName || dmc?.name || "",
       destination: query.destination || "",
       supplierName: String(invoiceMeta.supplierName || "").trim(),
-      invoiceNumber: String(invoiceMeta.invoiceNumber || "").trim(),
+      invoiceNumber: query.queryId
+        ? `INV-${String(query.queryId).replace(/^INV-/, "")}`
+        : (String(invoiceMeta.invoiceNumber || "").trim().startsWith("INV-")
+          ? String(invoiceMeta.invoiceNumber || "").trim()
+          : `INV-${String(invoiceMeta.invoiceNumber || "0001").trim()}`),
       invoiceDate: new Date(invoiceMeta.invoiceDate),
       dueDate: calculatedDueDate,
       creditPeriodDays,
@@ -2442,6 +2447,7 @@ export const submitInternalInvoice = async (req, res, next) => {
       reviewedByName: "",
       reviewedAt: null,
       financeNotes: "",
+      dmcRemarks,
       submittedBy: req.user.id,
       submittedAt: new Date(),
     };
@@ -2733,6 +2739,7 @@ export const submitDmcSettlementBatch = async (req, res, next) => {
     );
     const invoiceSource = normalizeInvoiceSource(req.body?.invoiceSource || invoiceMeta?.invoiceSource);
     const templateVariant = req.body?.templateVariant || invoiceMeta?.templateVariant || "aurora-ledger";
+    const dmcRemarks = String(req.body?.dmcRemarks || invoiceMeta?.dmcRemarks || req.body?.remarks || "").trim();
 
     const normalizedServiceRefs = Array.isArray(serviceRefs)
       ? serviceRefs.map((item) => String(item || "").trim()).filter(Boolean)
@@ -2910,6 +2917,7 @@ export const submitDmcSettlementBatch = async (req, res, next) => {
       taxConfig: normalizedTaxConfig,
       summary: effectiveSummary,
       templateVariant: normalizedTemplateVariant,
+      dmcRemarks,
       status: "Submitted",
       submittedBy: req.user.id,
       submittedAt: new Date(),

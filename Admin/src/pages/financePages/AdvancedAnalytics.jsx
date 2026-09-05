@@ -2947,37 +2947,63 @@ const AdvancedAnalytics = () => {
     setActiveExport(exportKey);
     try {
       const workbook = XLSX.utils.book_new();
+
+      let activePeriodFilterDisplay = "";
+      if (period === "monthly") {
+        if (effectiveSelectedTaxMonth) {
+          const [yr, mn] = effectiveSelectedTaxMonth.split("-").map(Number);
+          if (yr && mn) {
+            activePeriodFilterDisplay = new Date(yr, mn - 1, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" });
+          } else {
+            activePeriodFilterDisplay = effectiveSelectedTaxMonth;
+          }
+        } else {
+          activePeriodFilterDisplay = selectedMonthLabel || "Current Month";
+        }
+      } else if (period === "quarterly") {
+        activePeriodFilterDisplay = selectedQuarterLabel || effectiveSelectedTaxQuarter || "Quarterly";
+      } else if (period === "yearly") {
+        activePeriodFilterDisplay = selectedYearLabel ? `Year ${selectedYearLabel}` : (effectiveSelectedTaxYear ? `Year ${effectiveSelectedTaxYear}` : "Yearly");
+      } else {
+        activePeriodFilterDisplay = "Custom Period";
+      }
+
       const summaryRows = [
         ["Holiday Circuit Analytics Report"],
         [
           "Report Type",
-          `${periodLabel} ${mode === "audit" ? "Audit" : "Analytics"}`,
+          `${activePeriodFilterDisplay} ${mode === "audit" ? "Audit" : "Analytics"}`,
         ],
+        ["DATA FOR PERIOD", activePeriodFilterDisplay],
+        ["Applied Period Filter", `${activePeriodFilterDisplay} (${period.toUpperCase()})`],
         ["Generated On", generatedOnLabel],
         [],
-        ["Financial Metrics"],
-        ["Metric", "Value", "Change"],
-        ...metricReportRows.map((row) => [row.metric, row.value, row.change]),
+        [`Financial Metrics (Data for: ${activePeriodFilterDisplay})`],
+        ["Applied Filter Period", "Metric", "Value", "Change"],
+        ...metricReportRows.map((row) => [activePeriodFilterDisplay, row.metric, row.value, row.change]),
         [],
-        ["Query Summary"],
-        ["Metric", "Value", "Note"],
+        [`Query Summary (Data for: ${activePeriodFilterDisplay})`],
+        ["Applied Filter Period", "Metric", "Value", "Note"],
         ...querySummaryCards.map((item) => [
+          activePeriodFilterDisplay,
           item.label,
           item.value,
           item.sub || "",
         ]),
         [],
-        ["Revenue Summary"],
-        ["Metric", "Value", "Note"],
+        [`Revenue Summary (Data for: ${activePeriodFilterDisplay})`],
+        ["Applied Filter Period", "Metric", "Value", "Note"],
         ...revenueSummaryCards.map((item) => [
+          activePeriodFilterDisplay,
           item.label,
           item.value,
           item.sub || "",
         ]),
         [],
-        ["Tax Summary"],
-        ["Section", "Total", "Status", "Note"],
+        [`Tax Summary (Data for: ${activePeriodFilterDisplay})`],
+        ["Applied Filter Period", "Section", "Total", "Status", "Note"],
         ...taxSummaryRows.map((row) => [
+          activePeriodFilterDisplay,
           row.section,
           row.total,
           row.status,
@@ -2991,6 +3017,7 @@ const AdvancedAnalytics = () => {
         workbook,
         "Financial Metrics",
         metricReportRows.map((row) => ({
+          AppliedFilterPeriod: activePeriodFilterDisplay,
           Metric: row.metric,
           Value: row.value,
           Change: row.change,
@@ -3000,6 +3027,7 @@ const AdvancedAnalytics = () => {
         workbook,
         "Revenue Trend",
         revenueTrendRows.map((row) => ({
+          AppliedFilterPeriod: activePeriodFilterDisplay,
           Period: row.period,
           Inward: row.inward,
           InwardLabel: row.inwardLabel,
@@ -3011,6 +3039,7 @@ const AdvancedAnalytics = () => {
         workbook,
         "Query Summary",
         querySummaryCards.map((item) => ({
+          AppliedFilterPeriod: activePeriodFilterDisplay,
           Metric: item.label,
           Value: item.value,
           Note: item.sub || "",
@@ -3020,6 +3049,7 @@ const AdvancedAnalytics = () => {
         workbook,
         "Monthly Queries",
         monthlyQueryRows.map((row) => ({
+          AppliedFilterPeriod: activePeriodFilterDisplay,
           Month: row.label,
           Queries: Number(row.queries || 0),
           Confirmed: Number(row.confirmed || 0),
@@ -3030,6 +3060,7 @@ const AdvancedAnalytics = () => {
         workbook,
         "Destination Queries",
         destinationQueryRows.map((row) => ({
+          AppliedFilterPeriod: activePeriodFilterDisplay,
           Destination: row.destination,
           Queries: Number(row.queries || 0),
           Confirmed: Number(row.confirmed || 0),
@@ -3041,6 +3072,7 @@ const AdvancedAnalytics = () => {
         workbook,
         "Confirmation Trends",
         confirmationTrendRows.map((row) => ({
+          AppliedFilterPeriod: activePeriodFilterDisplay,
           Month: row.label,
           Confirmed: Number(row.confirmed || 0),
           Cancelled: Number(row.cancelled || 0),
@@ -3051,15 +3083,211 @@ const AdvancedAnalytics = () => {
         workbook,
         "Revenue Summary",
         revenueSummaryCards.map((item) => ({
+          AppliedFilterPeriod: activePeriodFilterDisplay,
           Metric: item.label,
           Value: item.value,
           Note: item.sub || "",
         })),
       );
+      // Verified Payment Revenue breakdown with applied filters
+      let exportCurrentPeriodStr = "";
+      let exportPastPeriodStrDefault = "";
+      let exportUpcomingPeriodStrDefault = "";
+
+      if (period === "monthly") {
+        const [selectedYear, selectedMonth] = (effectiveSelectedTaxMonth || "").split("-").map(Number);
+        exportCurrentPeriodStr = effectiveSelectedTaxMonth;
+        if (selectedYear && selectedMonth) {
+          const pastMonthDate = new Date(selectedYear, selectedMonth - 2, 1);
+          const upcomingMonthDate = new Date(selectedYear, selectedMonth, 1);
+          exportPastPeriodStrDefault = `${pastMonthDate.getFullYear()}-${String(pastMonthDate.getMonth() + 1).padStart(2, "0")}`;
+          exportUpcomingPeriodStrDefault = `${upcomingMonthDate.getFullYear()}-${String(upcomingMonthDate.getMonth() + 1).padStart(2, "0")}`;
+        }
+      } else if (period === "quarterly") {
+        exportCurrentPeriodStr = effectiveSelectedTaxQuarter;
+        const [yStr, qStr] = (effectiveSelectedTaxQuarter || "").split("-Q");
+        const y = Number(yStr);
+        const q = Number(qStr);
+        if (y && q) {
+          const pQ = q === 1 ? 4 : q - 1;
+          const pY = q === 1 ? y - 1 : y;
+          exportPastPeriodStrDefault = `${pY}-Q${pQ}`;
+          const uQ = q === 4 ? 1 : q + 1;
+          const uY = q === 4 ? y + 1 : y;
+          exportUpcomingPeriodStrDefault = `${uY}-Q${uQ}`;
+        }
+      } else if (period === "yearly") {
+        exportCurrentPeriodStr = String(effectiveSelectedTaxYear);
+        const y = Number(exportCurrentPeriodStr);
+        if (y) {
+          exportPastPeriodStrDefault = String(y - 1);
+          exportUpcomingPeriodStrDefault = String(y + 1);
+        }
+      }
+
+      const exportPastPeriodStr = selectedPastMonthOverride || exportPastPeriodStrDefault;
+      const exportUpcomingPeriodStr = selectedUpcomingMonthOverride || exportUpcomingPeriodStrDefault;
+
+      const formatExportPeriodLabel = (str) => {
+        if (!str) return "-";
+        if (period === "monthly") {
+          const [y, m] = str.split("-").map(Number);
+          if (y && m) return new Date(y, m - 1, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" });
+        } else if (period === "quarterly") {
+          const [y, q] = str.split("-");
+          return `${q} ${y}`;
+        } else if (period === "yearly") {
+          return `Year ${str}`;
+        }
+        return str;
+      };
+
+      const calculateExportGroupTotals = (list = []) => {
+        return (list || []).reduce(
+          (acc, invoice) => {
+            const m = invoice.computedMetrics || {};
+            acc.incoming += Number(m.incoming || 0);
+            acc.incomingPaid += Number(m.incomingPaid || 0);
+            acc.dueAgent += Number(m.dueAgent || 0);
+            acc.outgoing += Number(m.outgoing || 0);
+            acc.outgoingPaid += Number(m.outgoingPaid || 0);
+            acc.upcomingDmc += Number(m.upcomingDmc || 0);
+            acc.grossProfit += Number(m.grossProfit || 0);
+            return acc;
+          },
+          {
+            incoming: 0,
+            incomingPaid: 0,
+            dueAgent: 0,
+            outgoing: 0,
+            outgoingPaid: 0,
+            upcomingDmc: 0,
+            grossProfit: 0,
+          }
+        );
+      };
+
+      const verifiedSummaryRows = [
+        {
+          AppliedFilterPeriod: activePeriodFilterDisplay,
+          Period: `Present (${formatExportPeriodLabel(exportCurrentPeriodStr)} / ${exportCurrentPeriodStr})`,
+          Bookings: checklistData?.current?.length || 0,
+          TotalBilled: calculateExportGroupTotals(checklistData?.current).incoming,
+          PaymentReceived: calculateExportGroupTotals(checklistData?.current).incomingPaid,
+          PendingCollect: calculateExportGroupTotals(checklistData?.current).dueAgent,
+          DMCCost: calculateExportGroupTotals(checklistData?.current).outgoing,
+          PaidDMC: calculateExportGroupTotals(checklistData?.current).outgoingPaid,
+          PendingDMC: calculateExportGroupTotals(checklistData?.current).upcomingDmc,
+          GrossProfit: calculateExportGroupTotals(checklistData?.current).grossProfit,
+          MarginPercent: calculateExportGroupTotals(checklistData?.current).incoming > 0 
+            ? Number(((calculateExportGroupTotals(checklistData?.current).grossProfit / calculateExportGroupTotals(checklistData?.current).incoming) * 100).toFixed(1)) 
+            : 0,
+        },
+        {
+          AppliedFilterPeriod: activePeriodFilterDisplay,
+          Period: `Past (${formatExportPeriodLabel(exportPastPeriodStr)} / ${exportPastPeriodStr})`,
+          Bookings: checklistData?.past?.length || 0,
+          TotalBilled: calculateExportGroupTotals(checklistData?.past).incoming,
+          PaymentReceived: calculateExportGroupTotals(checklistData?.past).incomingPaid,
+          PendingCollect: calculateExportGroupTotals(checklistData?.past).dueAgent,
+          DMCCost: calculateExportGroupTotals(checklistData?.past).outgoing,
+          PaidDMC: calculateExportGroupTotals(checklistData?.past).outgoingPaid,
+          PendingDMC: calculateExportGroupTotals(checklistData?.past).upcomingDmc,
+          GrossProfit: calculateExportGroupTotals(checklistData?.past).grossProfit,
+          MarginPercent: calculateExportGroupTotals(checklistData?.past).incoming > 0 
+            ? Number(((calculateExportGroupTotals(checklistData?.past).grossProfit / calculateExportGroupTotals(checklistData?.past).incoming) * 100).toFixed(1)) 
+            : 0,
+        },
+        {
+          AppliedFilterPeriod: activePeriodFilterDisplay,
+          Period: `Upcoming (${formatExportPeriodLabel(exportUpcomingPeriodStr)} / ${exportUpcomingPeriodStr})`,
+          Bookings: checklistData?.upcoming?.length || 0,
+          TotalBilled: calculateExportGroupTotals(checklistData?.upcoming).incoming,
+          PaymentReceived: calculateExportGroupTotals(checklistData?.upcoming).incomingPaid,
+          PendingCollect: calculateExportGroupTotals(checklistData?.upcoming).dueAgent,
+          DMCCost: calculateExportGroupTotals(checklistData?.upcoming).outgoing,
+          PaidDMC: calculateExportGroupTotals(checklistData?.upcoming).outgoingPaid,
+          PendingDMC: calculateExportGroupTotals(checklistData?.upcoming).upcomingDmc,
+          GrossProfit: calculateExportGroupTotals(checklistData?.upcoming).grossProfit,
+          MarginPercent: calculateExportGroupTotals(checklistData?.upcoming).incoming > 0 
+            ? Number(((calculateExportGroupTotals(checklistData?.upcoming).grossProfit / calculateExportGroupTotals(checklistData?.upcoming).incoming) * 100).toFixed(1)) 
+            : 0,
+        }
+      ];
+
+      const verifiedBookingRows = [];
+      const periodMap = [
+        { key: "past", label: "Past", val: exportPastPeriodStr },
+        { key: "current", label: "Present", val: exportCurrentPeriodStr },
+        { key: "upcoming", label: "Upcoming", val: exportUpcomingPeriodStr },
+      ];
+      periodMap.forEach((b) => {
+        (checklistData?.[b.key] || []).forEach((inv) => {
+          const m = inv.computedMetrics || {};
+          const incoming = Number(m.incoming ?? inv.totalAmount ?? 0);
+          const incomingPaid = Number(m.incomingPaid ?? 0);
+          const dueAgent = Number(m.dueAgent ?? Math.max(0, incoming - incomingPaid));
+          const outgoing = Number(m.outgoing ?? 0);
+          const outgoingPaid = Number(m.outgoingPaid ?? 0);
+          const upcomingDmc = Number(m.upcomingDmc ?? Math.max(0, outgoing - outgoingPaid));
+          const grossProfit = Number(m.grossProfit ?? (incoming - outgoing));
+          const margin = incoming > 0 ? Number(((grossProfit / incoming) * 100).toFixed(1)) : 0;
+
+          verifiedBookingRows.push({
+            AppliedFilterPeriod: activePeriodFilterDisplay,
+            PeriodBucket: b.label,
+            TargetPeriod: `${formatExportPeriodLabel(b.val)} (${b.val})`,
+            QueryId:
+              inv.queryId?.queryId ||
+              inv.query?.queryId ||
+              inv.tripSnapshot?.queryId ||
+              (typeof inv.query === "string" ? inv.query : "") ||
+              inv.queryCode ||
+              "-",
+            InvoiceOrQuotation: inv.invoiceNumber || inv.quotationNumber || inv.id || inv._id || "-",
+            ClientOrAgent:
+              inv.agency?.name ||
+              inv.agencyName ||
+              inv.clientName ||
+              inv.client?.name ||
+              inv.query?.agentName ||
+              inv.query?.clientName ||
+              inv.guestName ||
+              "-",
+            Destination: inv.tripSnapshot?.destination || inv.destination || inv.query?.destination || "-",
+            TravelDate: inv.tripSnapshot?.startDate
+              ? new Date(inv.tripSnapshot.startDate).toLocaleDateString()
+              : (inv.travelDate || inv.date || "-"),
+            Status: inv.paymentStatus || inv.status || (inv.isVerified ? "Verified" : "Pending"),
+            TotalBilled: incoming,
+            PaymentReceived: incomingPaid,
+            PendingCollection: dueAgent,
+            DMCCost: outgoing,
+            PaidToDMC: outgoingPaid,
+            PendingToDMC: upcomingDmc,
+            GrossProfit: grossProfit,
+            MarginPercent: margin,
+          });
+        });
+      });
+
+      addJsonSheet(
+        workbook,
+        "Verified Revenue Summary",
+        verifiedSummaryRows
+      );
+      if (verifiedBookingRows.length > 0) {
+        addJsonSheet(
+          workbook,
+          "Verified Revenue Bookings",
+          verifiedBookingRows
+        );
+      }
       addJsonSheet(
         workbook,
         "Verified Payment Revenue",
         travelDateRevenueRows.map((row) => ({
+          AppliedFilterPeriod: activePeriodFilterDisplay,
           Month: row.label,
           Revenue: Number(row.revenue || 0),
           RevenueLabel: row.revenueLabel || formatCompactCurrency(row.revenue),
@@ -3070,6 +3298,7 @@ const AdvancedAnalytics = () => {
         workbook,
         "Monthly Bookings",
         monthlyBookingRows.map((row) => ({
+          AppliedFilterPeriod: activePeriodFilterDisplay,
           Month: row.label,
           Bookings: Number(row.bookings || 0),
         })),
@@ -3078,6 +3307,7 @@ const AdvancedAnalytics = () => {
         workbook,
         "Destination Profit",
         destinationProfitRows.map((row) => ({
+          AppliedFilterPeriod: activePeriodFilterDisplay,
           Destination: row.destination,
           TotalAmount: Number(row.grossRevenue || row.revenue || 0),
           TotalAmountLabel:
@@ -3108,6 +3338,7 @@ const AdvancedAnalytics = () => {
         workbook,
         "Tax Summary",
         taxSummaryRows.map((row) => ({
+          AppliedFilterPeriod: activePeriodFilterDisplay,
           Section: row.section,
           Total: row.total,
           Status: row.status,

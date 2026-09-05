@@ -94,7 +94,7 @@ const EMPTY_CLAIMED_SUMMARY = {
 const normalizeClaimedInputValue = (value) => {
   if (value === undefined || value === null || value === "") return "";
   const numericValue = Number(value);
-  return Number.isFinite(numericValue) ? numericValue : "";
+  return Number.isFinite(numericValue) ? Math.round(numericValue) : "";
 };
 
 const buildClaimedSummaryFromFields = (fields = {}) => ({
@@ -186,8 +186,8 @@ const applyDerivedItemValues = (item, gstRate) => {
   const qty = Number(item.qty || 0);
   const rate = Number(item.rate || 0);
   const addonTotal = Number(item.addonTotal || 0);
-  const subtotal = (qty * rate) + addonTotal;
-  const tax = (subtotal * Number(gstRate || 0)) / 100;
+  const subtotal = Math.round((qty * rate) + addonTotal);
+  const tax = Math.round((subtotal * Number(gstRate || 0)) / 100);
 
   return {
     ...item,
@@ -195,7 +195,7 @@ const applyDerivedItemValues = (item, gstRate) => {
     rate,
     addonTotal,
     subtotal,
-    tax: Number(tax.toFixed(2)),
+    tax,
   };
 };
 
@@ -623,10 +623,7 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
 
   const currencyPrefix = items[0]?.currency || "INR";
   const formatMoney = (value) =>
-    `${currencyPrefix} ${Number(value || 0).toLocaleString("en-IN", {
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 2,
-    })}`;
+    `${currencyPrefix} ${Math.round(Number(value || 0)).toLocaleString("en-IN")}`;
 
   const handleSaveDraft = ({ silent = false } = {}) => {
     if (typeof window === "undefined") return;
@@ -700,12 +697,17 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
         return;
       }
 
-      const subtotalMismatch = Math.round(Number(claimedSummary.subtotal || 0)) !== Math.round(Number(summary.subtotal || 0));
-      const taxMismatch = Math.round(Number(claimedSummary.taxAmount || 0)) !== Math.round(Number(summary.totalTax || 0));
-      const totalMismatch = Math.round(Number(claimedSummary.grandTotal || 0)) !== Math.round(Number(summary.grandTotal || 0));
+      const subtotalMismatch = Math.abs(Math.round(Number(claimedSummary.subtotal || 0)) - Math.round(Number(summary.subtotal || 0))) > 1;
+      const taxMismatch = Math.abs(Math.round(Number(claimedSummary.taxAmount || 0)) - Math.round(Number(summary.totalTax || 0))) > 1;
+      const totalMismatch = Math.abs(Math.round(Number(claimedSummary.grandTotal || 0)) - Math.round(Number(summary.grandTotal || 0))) > 1;
+      const hasMismatch = subtotalMismatch || taxMismatch || totalMismatch;
 
-      if (subtotalMismatch || taxMismatch || totalMismatch) {
-        toast.error("Amount Mismatch: Uploaded amounts do not match system reference.");
+      if (!dmcRemarks || !String(dmcRemarks).trim()) {
+        toast.error(
+          hasMismatch
+            ? "Rate mismatch detected. Please enter mandatory remarks/justification explaining why the uploaded amount differs before sending to Finance."
+            : "Please enter mandatory DMC invoice remarks before sending to Finance."
+        );
         return;
       }
     }
@@ -731,7 +733,8 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
         const formData = new FormData();
         formData.append("queryId", selectedQuery?.queryId || selectedQuery?._id);
         formData.append("invoiceSource", invoiceSource);
-        formData.append("invoiceMeta", JSON.stringify({ ...invoiceMeta, invoiceSource, templateVariant: "" }));
+        formData.append("invoiceMeta", JSON.stringify({ ...invoiceMeta, invoiceSource, dmcRemarks: String(dmcRemarks || "").trim(), templateVariant: "" }));
+        formData.append("dmcRemarks", String(dmcRemarks || "").trim());
         formData.append("items", JSON.stringify(items));
         formData.append("taxConfig", JSON.stringify(taxConfig));
         formData.append("summary", JSON.stringify({
@@ -750,7 +753,8 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
         await API.post("/dmc/internal-invoice", {
           queryId: selectedQuery?.queryId || selectedQuery?._id,
           invoiceSource,
-          invoiceMeta: { ...invoiceMeta, invoiceSource },
+          invoiceMeta: { ...invoiceMeta, invoiceSource, dmcRemarks: String(dmcRemarks || "").trim() },
+          dmcRemarks: String(dmcRemarks || "").trim(),
           items,
           taxConfig,
           summary: {
@@ -812,38 +816,38 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
         )}
       </AnimatePresence>
 
-      <div className="border-b border-slate-200 bg-gradient-to-br from-slate-50 via-white to-slate-50/50 p-6">
+      <div className="border-b border-slate-200 bg-gradient-to-br from-slate-50 via-white to-slate-50/50 p-5">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div className="flex items-center gap-3.5">
-            <div className="relative flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-tr from-[#1e3a8a] via-[#111827] to-slate-900 text-white shadow-lg ring-4 ring-blue-50">
-              <FileText size={22} className="animate-pulse" />
-              <span className="absolute -bottom-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500 text-[9px] font-bold text-white ring-2 ring-white">
+          <div className="flex items-center gap-3">
+            <div className="relative flex h-10 w-10 items-center justify-center rounded-md bg-gradient-to-tr from-[#1e3a8a] via-[#111827] to-slate-900 text-white shadow-sm ring-1 ring-slate-200">
+              <FileText size={18} />
+              <span className="absolute -bottom-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-emerald-500 text-[8px] font-bold text-white ring-1 ring-white">
                 ✓
               </span>
             </div>
             <div>
-              <h2 className="text-lg font-bold text-slate-800 tracking-tight">
+              <h2 className="text-base font-bold text-slate-800 tracking-tight">
                 Internal Invoice Details (DMC to System)
               </h2>
-              <p className="mt-1 text-xs text-slate-500 font-medium">
+              <p className="mt-0.5 text-xs text-slate-500 font-medium">
                 Invoice rows are auto-filled from booked services and remain fully editable.
               </p>
             </div>
           </div>
           
           <div className="flex items-center gap-2 self-start sm:self-center">
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 border border-blue-100 px-3 py-1 text-xs font-semibold text-blue-700 shadow-sm">
+            <span className="inline-flex items-center gap-1.5 rounded-md bg-blue-50 border border-blue-200 px-2.5 py-1 text-xs font-semibold text-blue-700 shadow-2xs">
               <span className="h-1.5 w-1.5 rounded-full bg-blue-600 animate-ping" />
               Finance Integrated
             </span>
           </div>
         </div>
 
-        <div className="relative mt-5 flex items-center overflow-hidden rounded-2xl bg-slate-100 border border-slate-200 p-1.5 text-xs shadow-inner">
+        <div className="relative mt-4 flex items-center overflow-hidden rounded-md bg-slate-100 border border-slate-200 p-1 text-xs shadow-inner">
           <button
             type="button"
             onClick={() => setInvoiceSource("system_template")}
-            className={`relative z-10 flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl py-2.5 transition-all duration-300 ${
+            className={`relative z-10 flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-md py-2 transition-all duration-300 ${
               invoiceSource === "system_template"
                 ? "font-bold text-white"
                 : "text-slate-600 hover:text-slate-900 font-medium"
@@ -852,7 +856,7 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
             {invoiceSource === "system_template" && (
               <motion.span
                 layoutId="invoice-source-tab-pill"
-                className="absolute inset-0 rounded-xl bg-gradient-to-r from-[#1e3a8a] via-[#111827] to-black shadow-md"
+                className="absolute inset-0 rounded-md bg-gradient-to-r from-[#1e3a8a] via-[#111827] to-black shadow-sm"
                 transition={{ type: "spring", stiffness: 380, damping: 32 }}
               />
             )}
@@ -865,7 +869,7 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
           <button
             type="button"
             onClick={() => setInvoiceSource("uploaded_invoice")}
-            className={`relative z-10 flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl py-2.5 transition-all duration-300 ${
+            className={`relative z-10 flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-md py-2 transition-all duration-300 ${
               invoiceSource === "uploaded_invoice"
                 ? "font-bold text-white"
                 : "text-slate-600 hover:text-slate-900 font-medium"
@@ -874,7 +878,7 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
             {invoiceSource === "uploaded_invoice" && (
               <motion.span
                 layoutId="invoice-source-tab-pill"
-                className="absolute inset-0 rounded-xl bg-gradient-to-r from-[#1e3a8a] via-[#111827] to-black shadow-md"
+                className="absolute inset-0 rounded-md bg-gradient-to-r from-[#1e3a8a] via-[#111827] to-black shadow-sm"
                 transition={{ type: "spring", stiffness: 380, damping: 32 }}
               />
             )}
@@ -887,11 +891,11 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
 
         {existingInvoice?.status ? (
           <div
-            className={`mt-4 rounded-2xl border px-4 py-3 ${isFinanceVerified
-                ? "border-emerald-200 bg-emerald-50"
+            className={`mt-4 rounded-md border px-4 py-3 ${isFinanceVerified
+                ? "border-emerald-200 bg-emerald-50/80"
                 : existingInvoice.status === "Rejected"
-                  ? "border-rose-200 bg-rose-50"
-                  : "border-sky-200 bg-sky-50"
+                  ? "border-rose-200 bg-rose-50/80"
+                  : "border-sky-200 bg-sky-50/80"
               }`}
           >
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -928,21 +932,21 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
               </div>
 
               <div className="flex flex-wrap gap-2 text-xs">
-                <span className="rounded-full border border-white/70 bg-white px-3 py-1.5 font-medium text-slate-700">
+                <span className="rounded-md border border-slate-200 bg-white px-2.5 py-1 font-semibold text-slate-700 shadow-2xs">
                   Status: {existingInvoice.status}
                 </span>
                 {existingInvoice.submittedAt ? (
-                  <span className="rounded-full border border-white/70 bg-white px-3 py-1.5 font-medium text-slate-700">
+                  <span className="rounded-md border border-slate-200 bg-white px-2.5 py-1 font-semibold text-slate-700 shadow-2xs">
                     Submitted: {formatDisplayDate(existingInvoice.submittedAt)}
                   </span>
                 ) : null}
                 {existingInvoice.payoutDate ? (
-                  <span className="rounded-full border border-white/70 bg-white px-3 py-1.5 font-medium text-slate-700">
+                  <span className="rounded-md border border-slate-200 bg-white px-2.5 py-1 font-semibold text-slate-700 shadow-2xs">
                     Paid: {formatDisplayDate(existingInvoice.payoutDate)}
                   </span>
                 ) : null}
                 {existingInvoice.payoutReference ? (
-                  <span className="rounded-full border border-white/70 bg-white px-3 py-1.5 font-medium text-slate-700">
+                  <span className="rounded-md border border-slate-200 bg-white px-2.5 py-1 font-semibold text-slate-700 shadow-2xs">
                     Ref: {existingInvoice.payoutReference}
                   </span>
                 ) : null}
@@ -962,7 +966,7 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
               <input
                 value={invoiceMeta.supplierName}
                 onChange={(e) => handleMetaChange("supplierName", e.target.value)}
-                className="w-full rounded-xl border border-gray-300 bg-blue-50/20 py-2 pl-11 pr-3 text-sm text-slate-800 shadow-sm focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none transition-all"
+                className="w-full rounded-md border border-slate-300 bg-blue-50/20 py-2 pl-10 pr-3 text-sm text-slate-800 shadow-2xs focus:border-blue-400 focus:ring-1 focus:ring-blue-100 outline-none transition-all"
                 placeholder="DMC Company Name"
               />
             </FieldShell>
@@ -976,7 +980,7 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
               <input
                 value={invoiceMeta.invoiceNumber}
                 onChange={(e) => handleMetaChange("invoiceNumber", e.target.value)}
-                className="w-full rounded-xl border border-gray-300 bg-sky-50/20 py-2 pl-11 pr-3 text-sm text-slate-800 shadow-sm focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none transition-all"
+                className="w-full rounded-md border border-slate-300 bg-sky-50/20 py-2 pl-10 pr-3 text-sm text-slate-800 shadow-2xs focus:border-blue-400 focus:ring-1 focus:ring-blue-100 outline-none transition-all"
                 placeholder="INV-2026-0001"
               />
             </FieldShell>
@@ -991,7 +995,7 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
                 type="date"
                 value={invoiceMeta.invoiceDate}
                 onChange={(e) => handleMetaChange("invoiceDate", e.target.value)}
-                className="w-full rounded-xl border border-gray-300 bg-orange-50/20 py-2 pl-11 pr-3 text-sm text-slate-800 shadow-sm focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none transition-all"
+                className="w-full rounded-md border border-slate-300 bg-orange-50/20 py-2 pl-10 pr-3 text-sm text-slate-800 shadow-2xs focus:border-blue-400 focus:ring-1 focus:ring-blue-100 outline-none transition-all"
               />
             </FieldShell>
           </div>
@@ -1004,7 +1008,7 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
               <select
                 value={invoiceMeta.creditPeriodDays}
                 onChange={(e) => handleMetaChange("creditPeriodDays", e.target.value)}
-                className="w-full rounded-xl border border-gray-300 bg-emerald-50/15 py-2 pl-11 pr-3 text-sm text-slate-800 shadow-sm focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none transition-all cursor-pointer"
+                className="w-full rounded-md border border-slate-300 bg-emerald-50/15 py-2 pl-10 pr-3 text-sm text-slate-800 shadow-2xs focus:border-blue-400 focus:ring-1 focus:ring-blue-100 outline-none transition-all cursor-pointer"
               >
                 {resolvedCreditDays.map((days) => (
                   <option key={days} value={days}>
@@ -1024,7 +1028,7 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
                 type="date"
                 value={invoiceMeta.dueDate}
                 readOnly
-                className="w-full rounded-xl border border-gray-300 bg-rose-50/15 py-2 pl-11 pr-3 text-sm text-slate-700 shadow-sm outline-none cursor-not-allowed"
+                className="w-full rounded-md border border-slate-300 bg-rose-50/15 py-2 pl-10 pr-3 text-sm text-slate-700 shadow-2xs outline-none cursor-not-allowed"
               />
             </FieldShell>
           </div>
@@ -1038,7 +1042,7 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
                 <select
                   value={invoiceMeta.templateVariant}
                   onChange={(e) => handleMetaChange("templateVariant", e.target.value)}
-                  className="w-full rounded-xl border border-gray-300 bg-violet-50/20 py-2 pl-11 pr-3 text-sm text-slate-800 shadow-sm focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none transition-all cursor-pointer"
+                  className="w-full rounded-md border border-slate-300 bg-violet-50/20 py-2 pl-10 pr-3 text-sm text-slate-800 shadow-2xs focus:border-blue-400 focus:ring-1 focus:ring-blue-100 outline-none transition-all cursor-pointer"
                 >
                   {TEMPLATE_OPTIONS.map((option) => (
                     <option key={option.value} value={option.value}>
@@ -1052,20 +1056,20 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
         </div>
 
         {invoiceSource === "uploaded_invoice" ? (
-          <div className="mb-6 rounded-2xl border border-blue-100 bg-gradient-to-br from-white via-blue-50/50 to-cyan-50/50 p-5 shadow-sm">
-            <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between border-b border-blue-100/50 pb-5">
+          <div className="mb-6 rounded-md border border-slate-200 bg-slate-50/50 p-4 shadow-2xs">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between border-b border-slate-200/80 pb-4">
               <div className="max-w-xl">
                 <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                  <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-blue-100 text-blue-600">
+                  <span className="flex h-6 w-6 items-center justify-center rounded-md bg-blue-100 text-blue-600">
                     <FileText size={14} />
                   </span>
                   Upload DMC Invoice
                 </h3>
-                <p className="mt-1.5 text-xs leading-relaxed text-slate-500">
+                <p className="mt-1 text-xs leading-relaxed text-slate-500">
                   Upload your PDF or Word invoice. This exact file will be sent to finance; no company template PDF will be generated in this mode.
                 </p>
                 {existingInvoice?.uploadedInvoice?.name && !uploadedInvoiceFile ? (
-                  <div className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-blue-50/70 border border-blue-100/80 px-2.5 py-1 text-[11px] font-medium text-blue-700">
+                  <div className="mt-2.5 inline-flex items-center gap-1.5 rounded-md bg-blue-50 border border-blue-200 px-2.5 py-1 text-[11px] font-medium text-blue-700">
                     <CheckCircle2 size={12} className="text-blue-500 animate-pulse" />
                     <span>Existing: {existingInvoice.uploadedInvoice.name}</span>
                   </div>
@@ -1074,13 +1078,13 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
 
               <div className="shrink-0 w-full lg:w-72">
                 {isFileUploading ? (
-                  <div className="flex min-h-[96px] items-center justify-center rounded-2xl border border-dashed border-blue-300 bg-gradient-to-br from-white via-blue-50/20 to-cyan-50/15 p-4 text-center shadow-inner relative w-full lg:w-72 overflow-hidden">
-                    <div className="relative w-12 h-16 bg-white border border-slate-200 rounded-lg shadow-sm flex flex-col justify-around p-2 overflow-hidden shrink-0">
-                      <div className="h-1 w-8 bg-sky-200 rounded" />
-                      <div className="h-1 w-9 bg-sky-100 rounded" />
-                      <div className="h-1 w-6 bg-emerald-500 rounded" />
-                      <div className="h-1 w-8 bg-sky-200 rounded" />
-                      <div className="h-1.5 w-7 bg-emerald-100 rounded" />
+                  <div className="flex min-h-[86px] items-center justify-center rounded-md border border-dashed border-blue-300 bg-white p-3.5 text-center shadow-2xs relative w-full lg:w-72 overflow-hidden">
+                    <div className="relative w-11 h-14 bg-white border border-slate-200 rounded-md shadow-sm flex flex-col justify-around p-2 overflow-hidden shrink-0">
+                      <div className="h-1 w-7 bg-sky-200 rounded" />
+                      <div className="h-1 w-8 bg-sky-100 rounded" />
+                      <div className="h-1 w-5 bg-emerald-500 rounded" />
+                      <div className="h-1 w-7 bg-sky-200 rounded" />
+                      <div className="h-1.5 w-6 bg-emerald-100 rounded" />
                       
                       {/* Laser Bar */}
                       <div 
@@ -1089,7 +1093,7 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
                       />
                     </div>
                     
-                    <div className="flex flex-col items-start ml-4 text-left">
+                    <div className="flex flex-col items-start ml-3.5 text-left">
                       <span className="text-xs font-bold text-slate-800 animate-pulse">
                         Scanning Invoice...
                       </span>
@@ -1099,7 +1103,7 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
                     </div>
                   </div>
                 ) : uploadedInvoiceFile ? (
-                  <div className="relative flex min-h-[96px] flex-col items-center justify-center rounded-2xl border border-emerald-200 bg-emerald-50/80 p-4 text-center shadow-sm group hover:border-emerald-300 transition-all duration-300">
+                  <div className="relative flex min-h-[86px] flex-col items-center justify-center rounded-md border border-emerald-200 bg-emerald-50/80 p-3.5 text-center shadow-2xs group hover:border-emerald-300 transition-all duration-300">
                     <button
                       type="button"
                       onClick={() => {
@@ -1108,28 +1112,25 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
                         setIsExtractionOpen(false);
                         setClaimedSummary(EMPTY_CLAIMED_SUMMARY);
                       }}
-                      className="absolute top-2 right-2 flex h-6 w-6 items-center justify-center rounded-full bg-white text-rose-500 shadow-sm border border-emerald-100 hover:bg-rose-50 hover:text-rose-700 transition"
+                      className="absolute top-2 right-2 flex h-5 w-5 items-center justify-center rounded-md bg-white text-rose-500 shadow-2xs border border-emerald-100 hover:bg-rose-50 hover:text-rose-700 transition"
                       title="Remove Invoice"
                     >
-                      <X size={12} />
+                      <X size={11} />
                     </button>
 
-
-                    <CheckCircle2 size={24} className="mb-1.5 text-emerald-600 animate-scale-in" />
+                    <CheckCircle2 size={22} className="mb-1 text-emerald-600 animate-scale-in" />
                     <span className="max-w-[200px] truncate text-xs font-bold text-slate-800">
                       {uploadedInvoiceFile.name}
                     </span>
                     <span className="mt-0.5 text-[10px] text-emerald-600 font-semibold">
                       Successfully processed
                     </span>
-
-
                   </div>
                 ) : (
-                  <label className="flex min-h-[96px] cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-blue-200 bg-white px-4 py-3 text-center text-sm font-semibold text-slate-700 shadow-sm transition hover:border-blue-400 hover:bg-blue-50/30 group">
-                    <Upload size={20} className="mb-1.5 text-blue-500 transition-transform group-hover:-translate-y-0.5 duration-200" />
+                  <label className="flex min-h-[86px] cursor-pointer flex-col items-center justify-center rounded-md border border-dashed border-slate-300 bg-white px-4 py-3 text-center text-sm font-semibold text-slate-700 shadow-2xs transition hover:border-blue-400 hover:bg-blue-50/30 group">
+                    <Upload size={18} className="mb-1 text-blue-500 transition-transform group-hover:-translate-y-0.5 duration-200" />
                     <span className="text-xs font-bold text-slate-700">Choose Invoice</span>
-                    <span className="mt-1 text-[10px] font-normal text-slate-400">PDF, DOCX, JPG, PNG up to 10MB</span>
+                    <span className="mt-0.5 text-[10px] font-normal text-slate-400">PDF, DOCX, JPG, PNG up to 10MB</span>
                     <input
                       type="file"
                       accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.webp,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/*"
@@ -1155,149 +1156,147 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
                     ? Math.round(Number(extracted || 0)) === 0
                     : Number(extracted || 0) > 0 &&
                       Math.round(Number(extracted || 0)) === Math.round(Number(expected || 0));
-                 const getCurrencySymbol = (currency) => {
-                   const cur = String(currency || '').trim().toUpperCase();
-                   if (cur === 'INR') return '₹';
-                   if (cur === 'USD') return '$';
-                   if (cur === 'EUR') return '€';
-                   if (cur === 'GBP') return '£';
-                   if (cur === 'THB') return '฿';
-                   return cur;
-                 };
+                const getCurrencySymbol = (currency) => {
+                  const cur = String(currency || '').trim().toUpperCase();
+                  if (cur === 'INR') return '₹';
+                  if (cur === 'USD') return '$';
+                  if (cur === 'EUR') return '€';
+                  if (cur === 'GBP') return '£';
+                  if (cur === 'THB') return '฿';
+                  return cur;
+                };
 
-                 const getFieldCheckDetails = (label, key, expectedValue, isAmount = false) => {
-                   const matched = isAmount 
-                     ? amountMatches(fields[key], expectedValue) 
-                     : Boolean(fields[key]);
-                   
-                   let primaryValue = fields[key] || "-";
-                   let secondaryValue = null;
+                const getFieldCheckDetails = (label, key, expectedValue, isAmount = false) => {
+                  const matched = isAmount 
+                    ? amountMatches(fields[key], expectedValue) 
+                    : Boolean(fields[key]);
+                  
+                  let primaryValue = fields[key] || "-";
+                  let secondaryValue = null;
 
-                   if (isAmount) {
-                     const amount = Number(fields[key] || 0).toLocaleString("en-IN");
-                     const currency = fields.currency || "INR";
-                     primaryValue = `${getCurrencySymbol(currency)} ${amount}`;
-                     
-                     const originalValue = fields.originalAmounts?.[key];
-                     if (fields.conversionApplied && Number(originalValue || 0) > 0) {
-                       secondaryValue = `from ${getCurrencySymbol(fields.originalCurrency)} ${Number(originalValue || 0).toLocaleString("en-IN")}`;
-                     }
-                   }
+                  if (isAmount) {
+                    const amount = Math.round(Number(fields[key] || 0)).toLocaleString("en-IN");
+                    const currency = fields.currency || "INR";
+                    primaryValue = `${getCurrencySymbol(currency)} ${amount}`;
+                    
+                    const originalValue = fields.originalAmounts?.[key];
+                    if (fields.conversionApplied && Number(originalValue || 0) > 0) {
+                      secondaryValue = `from ${getCurrencySymbol(fields.originalCurrency)} ${Math.round(Number(originalValue || 0)).toLocaleString("en-IN")}`;
+                    }
+                  }
 
-                   return { label, primaryValue, secondaryValue, matched };
-                 };
+                  return { label, primaryValue, secondaryValue, matched };
+                };
 
-                 const fieldChecks = [
-                   { label: "Invoice", primaryValue: fields.invoiceNumber || "-", secondaryValue: null, matched: Boolean(fields.invoiceNumber) },
-                   { label: "Date", primaryValue: fields.invoiceDate || "-", secondaryValue: null, matched: Boolean(fields.invoiceDate) },
-                   getFieldCheckDetails("Subtotal", "subtotal", summary.subtotal, true),
-                   getFieldCheckDetails("Tax", "taxAmount", summary.totalTax, true),
-                   getFieldCheckDetails("Total", "grandTotal", summary.grandTotal, true),
-                 ];
-                 return (
+                const fieldChecks = [
+                  { label: "Invoice", primaryValue: fields.invoiceNumber || "-", secondaryValue: null, matched: Boolean(fields.invoiceNumber) },
+                  { label: "Date", primaryValue: fields.invoiceDate || "-", secondaryValue: null, matched: Boolean(fields.invoiceDate) },
+                  getFieldCheckDetails("Subtotal", "subtotal", summary.subtotal, true),
+                  getFieldCheckDetails("Tax", "taxAmount", summary.totalTax, true),
+                  getFieldCheckDetails("Total", "grandTotal", summary.grandTotal, true),
+                ];
+                return (
+                  <div
+                    className={`mt-4 overflow-hidden rounded-md border text-xs shadow-2xs transition-colors ${
+                      extractionPassed
+                        ? "border-emerald-200 bg-emerald-50/70 text-emerald-900"
+                        : extractionFailed
+                          ? "border-rose-200 bg-rose-50/80 text-rose-900"
+                          : "border-amber-200 bg-amber-50/80 text-amber-900"
+                    }`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setIsExtractionOpen((prev) => !prev)}
+                      className="flex w-full flex-wrap items-center justify-between gap-2 px-4 py-3 text-left transition-colors hover:bg-white/40 cursor-pointer"
+                      aria-expanded={isExtractionOpen}
+                    >
+                      <p className="flex items-center gap-2 font-bold uppercase tracking-[0.16em]">
+                        {extractionPassed ? (
+                          <CheckCircle2 size={14} className="text-emerald-600" />
+                        ) : extractionFailed ? (
+                          <XCircle size={14} className="text-rose-600" />
+                        ) : (
+                          <AlertCircle size={14} className="text-amber-600" />
+                        )}
+                        Parser / OCR Check
+                      </p>
+                      <span className="inline-flex items-center gap-2 rounded-md bg-white border border-slate-200 px-2.5 py-0.5 font-semibold text-slate-700 shadow-2xs">
+                        {(invoiceExtraction.source || "parser").replace(/_/g, " ")} · {invoiceExtraction.confidence || 0}% confidence
+                        <ChevronDown
+                          size={14}
+                          className={`transition-transform duration-300 ${isExtractionOpen ? "rotate-180" : ""}`}
+                        />
+                      </span>
+                    </button>
 
-             <div
-  className={`mt-4 overflow-hidden rounded-xl border text-xs shadow-sm transition-colors ${
-    extractionPassed
-      ? "border-emerald-200 bg-emerald-50/70 text-emerald-900"
-      : extractionFailed
-        ? "border-rose-200 bg-rose-50/80 text-rose-900"
-        : "border-amber-200 bg-amber-50/80 text-amber-900"
-  }`}
->
-  <button
-    type="button"
-    onClick={() => setIsExtractionOpen((prev) => !prev)}
-    className="flex w-full flex-wrap items-center justify-between gap-2 px-4 py-3.5 text-left transition-colors hover:bg-white/40"
-    aria-expanded={isExtractionOpen}
-  >
-    <p className="flex items-center gap-2 font-bold uppercase tracking-[0.16em]">
-      {extractionPassed ? (
-        <CheckCircle2 size={14} className="text-emerald-600" />
-      ) : extractionFailed ? (
-        <XCircle size={14} className="text-rose-600" />
-      ) : (
-        <AlertCircle size={14} className="text-amber-600" />
-      )}
-      Parser / OCR Check
-    </p>
-    <span className="inline-flex items-center gap-2 rounded-full bg-white/90 px-3 py-1 font-semibold shadow-sm">
-      {(invoiceExtraction.source || "parser").replace(/_/g, " ")} · {invoiceExtraction.confidence || 0}% confidence
-      <ChevronDown
-        size={14}
-        className={`transition-transform duration-300 ${isExtractionOpen ? "rotate-180" : ""}`}
-      />
-    </span>
-  </button>
+                    <AnimatePresence initial={false}>
+                      {isExtractionOpen ? (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: "auto", opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{ duration: 0.24, ease: "easeInOut" }}
+                          className="overflow-hidden"
+                        >
+                          <div className="border-t border-slate-200/60 px-4 pb-4 pt-4">
+                            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-5">
+                              {fieldChecks.map((field) => (
+                                <div
+                                  key={field.label}
+                                  className={`flex flex-col justify-between rounded-md border p-2.5 shadow-2xs transition-all duration-200 hover:-translate-y-0.5 hover:shadow-sm ${
+                                    field.matched
+                                      ? "border-emerald-200/80 bg-emerald-500/10 text-emerald-950"
+                                      : "border-rose-200/80 bg-rose-500/10 text-rose-950"
+                                  }`}
+                                >
+                                  <div className="mb-1.5 flex items-center justify-between gap-2">
+                                    <span className="text-[10px] font-extrabold uppercase tracking-wider opacity-60">
+                                      {field.label}
+                                    </span>
+                                    {field.matched ? (
+                                      <CheckCircle2 size={13} className="shrink-0 text-emerald-600" />
+                                    ) : (
+                                      <XCircle size={13} className="shrink-0 text-rose-600" />
+                                    )}
+                                  </div>
+                                  <span className="text-xs font-extrabold leading-tight">
+                                    {field.primaryValue}
+                                  </span>
+                                  {field.secondaryValue && (
+                                    <span className="mt-1 text-[10px] font-medium leading-normal text-slate-500/80">
+                                      {field.secondaryValue}
+                                    </span>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
 
-  <AnimatePresence initial={false}>
-    {isExtractionOpen ? (
-      <motion.div
-        initial={{ height: 0, opacity: 0 }}
-        animate={{ height: "auto", opacity: 1 }}
-        exit={{ height: 0, opacity: 0 }}
-        transition={{ duration: 0.24, ease: "easeInOut" }}
-        className="overflow-hidden"
-      >
-        <div className="border-t border-white/70 px-4 pb-4 pt-4">
-          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-5">
-            {fieldChecks.map((field) => (
-              <div
-                key={field.label}
-                className={`flex flex-col justify-between rounded-xl border p-3 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${
-                  field.matched
-                    ? "border-emerald-200/70 bg-emerald-500/10 text-emerald-950"
-                    : "border-rose-200/70 bg-rose-500/10 text-rose-950"
-                }`}
-              >
-                <div className="mb-2 flex items-center justify-between gap-2">
-                  <span className="text-[10px] font-extrabold uppercase tracking-wider opacity-60">
-                    {field.label}
-                  </span>
-                  {field.matched ? (
-                    <CheckCircle2 size={14} className="shrink-0 text-emerald-600" />
-                  ) : (
-                    <XCircle size={14} className="shrink-0 text-rose-600" />
-                  )}
-                </div>
-                <span className="text-[12.5px] font-extrabold leading-tight">
-                  {field.primaryValue}
-                </span>
-                {field.secondaryValue && (
-                  <span className="mt-1 text-[10px] font-medium leading-normal text-slate-500/80">
-                    {field.secondaryValue}
-                  </span>
-                )}
-              </div>
-            ))}
-          </div>
+                            {invoiceExtraction.verification?.warnings?.length ? (
+                              <div className="mt-3.5 flex items-start gap-2.5 rounded-md border border-rose-200/60 bg-rose-500/10 p-3 text-xs leading-relaxed text-rose-950 shadow-2xs">
+                                <AlertCircle size={15} className="mt-0.5 shrink-0 text-rose-600" />
+                                <span>{invoiceExtraction.verification.warnings.join(" ")}</span>
+                              </div>
+                            ) : null}
 
-          {invoiceExtraction.verification?.warnings?.length ? (
-            <div className="mt-3.5 flex items-start gap-2.5 rounded-xl border border-rose-200/50 bg-rose-500/10 p-3.5 text-xs leading-relaxed text-rose-950 shadow-sm">
-              <AlertCircle size={16} className="mt-0.5 shrink-0 text-rose-600" />
-              <span>{invoiceExtraction.verification.warnings.join(" ")}</span>
-            </div>
-          ) : null}
+                            {invoiceExtraction.verification?.notes?.length ? (
+                              <div className="mt-3.5 flex items-start gap-2.5 rounded-md border border-blue-200/60 bg-blue-500/10 p-3 text-xs leading-relaxed text-blue-950 shadow-2xs">
+                                <Info size={15} className="mt-0.5 shrink-0 text-blue-600" />
+                                <span>{invoiceExtraction.verification.notes.join(" ")}</span>
+                              </div>
+                            ) : null}
 
-          {invoiceExtraction.verification?.notes?.length ? (
-            <div className="mt-3.5 flex items-start gap-2.5 rounded-xl border border-blue-200/50 bg-blue-500/10 p-3.5 text-xs leading-relaxed text-blue-950 shadow-sm">
-              <Info size={16} className="mt-0.5 shrink-0 text-blue-600" />
-              <span>{invoiceExtraction.verification.notes.join(" ")}</span>
-            </div>
-          ) : null}
-
-          {invoiceExtraction.error ? (
-            <div className="mt-3.5 flex items-start gap-2.5 rounded-xl border border-rose-200/50 bg-rose-500/10 p-3.5 text-xs leading-relaxed text-rose-950 shadow-sm">
-              <AlertCircle size={16} className="mt-0.5 shrink-0 text-rose-700" />
-              <span>{invoiceExtraction.error}</span>
-            </div>
-          ) : null}
-        </div>
-      </motion.div>
-    ) : null}
-  </AnimatePresence>
-</div>
-
+                            {invoiceExtraction.error ? (
+                              <div className="mt-3.5 flex items-start gap-2.5 rounded-md border border-rose-200/60 bg-rose-500/10 p-3 text-xs leading-relaxed text-rose-950 shadow-2xs">
+                                <AlertCircle size={15} className="mt-0.5 shrink-0 text-rose-700" />
+                                <span>{invoiceExtraction.error}</span>
+                              </div>
+                            ) : null}
+                          </div>
+                        </motion.div>
+                      ) : null}
+                    </AnimatePresence>
+                  </div>
                 );
               })()
             ) : null}
@@ -1310,15 +1309,17 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
                 <FieldShell icon={DollarSign} iconWrapClassName="bg-gradient-to-tr from-blue-50 to-indigo-50 border border-blue-100 text-blue-600 shadow-sm">
                   <input
                     type="number"
-                    value={claimedSummary.subtotal ?? ""}
-                    onChange={(event) =>
+                    step="1"
+                    value={claimedSummary.subtotal !== "" && claimedSummary.subtotal !== undefined && claimedSummary.subtotal !== null ? Math.round(Number(claimedSummary.subtotal)) : ""}
+                    onChange={(event) => {
+                      const val = event.target.value;
                       setClaimedSummary((prev) => ({
                         ...prev,
-                        subtotal: event.target.value === "" ? "" : Number(event.target.value),
-                      }))
-                    }
+                        subtotal: val === "" ? "" : Math.round(Number(val)),
+                      }));
+                    }}
                     placeholder="Enter subtotal"
-                    className="w-full rounded-xl border border-gray-300 bg-blue-50/20 py-2 pl-11 pr-3 text-sm text-slate-900 shadow-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all"
+                    className="w-full rounded-md border border-slate-300 bg-blue-50/20 py-2 pl-10 pr-3 text-sm text-slate-900 shadow-2xs outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 transition-all font-medium"
                   />
                 </FieldShell>
               </div>
@@ -1330,15 +1331,17 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
                 <FieldShell icon={Receipt} iconWrapClassName="bg-gradient-to-tr from-rose-50 to-red-50 border border-rose-100 text-rose-600 shadow-sm">
                   <input
                     type="number"
-                    value={claimedSummary.taxAmount ?? ""}
-                    onChange={(event) =>
+                    step="1"
+                    value={claimedSummary.taxAmount !== "" && claimedSummary.taxAmount !== undefined && claimedSummary.taxAmount !== null ? Math.round(Number(claimedSummary.taxAmount)) : ""}
+                    onChange={(event) => {
+                      const val = event.target.value;
                       setClaimedSummary((prev) => ({
                         ...prev,
-                        taxAmount: event.target.value === "" ? "" : Number(event.target.value),
-                      }))
-                    }
+                        taxAmount: val === "" ? "" : Math.round(Number(val)),
+                      }));
+                    }}
                     placeholder="Enter tax"
-                    className="w-full rounded-xl border border-gray-300 bg-rose-50/20 py-2 pl-11 pr-3 text-sm text-slate-900 shadow-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all"
+                    className="w-full rounded-md border border-slate-300 bg-rose-50/20 py-2 pl-10 pr-3 text-sm text-slate-900 shadow-2xs outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 transition-all font-medium"
                   />
                 </FieldShell>
               </div>
@@ -1350,15 +1353,17 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
                 <FieldShell icon={Coins} iconWrapClassName="bg-gradient-to-tr from-emerald-50 to-teal-50 border border-emerald-100 text-emerald-600 shadow-sm">
                   <input
                     type="number"
-                    value={claimedSummary.grandTotal ?? ""}
-                    onChange={(event) =>
+                    step="1"
+                    value={claimedSummary.grandTotal !== "" && claimedSummary.grandTotal !== undefined && claimedSummary.grandTotal !== null ? Math.round(Number(claimedSummary.grandTotal)) : ""}
+                    onChange={(event) => {
+                      const val = event.target.value;
                       setClaimedSummary((prev) => ({
                         ...prev,
-                        grandTotal: event.target.value === "" ? "" : Number(event.target.value),
-                      }))
-                    }
+                        grandTotal: val === "" ? "" : Math.round(Number(val)),
+                      }));
+                    }}
                     placeholder="Enter total"
-                    className="w-full rounded-xl border border-gray-300 bg-emerald-50/20 py-2 pl-11 pr-3 text-sm text-slate-900 shadow-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all font-bold"
+                    className="w-full rounded-md border border-slate-300 bg-emerald-50/20 py-2 pl-10 pr-3 text-sm text-slate-900 shadow-2xs outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 transition-all font-bold"
                   />
                 </FieldShell>
               </div>
@@ -1366,14 +1371,14 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
           </div>
         ) : null}
 
-        <div className="mb-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm hover:shadow-md transition-all duration-300">
-          <div className="flex items-center justify-between border-b border-slate-200 bg-gradient-to-r from-slate-50 via-blue-50/10 to-slate-50 p-4">
-            <p className="text-sm font-bold text-slate-800 tracking-wide uppercase">Itemized Service Table</p>
+        <div className="mb-6 overflow-hidden rounded-md border border-slate-200 bg-white shadow-2xs">
+          <div className="flex items-center justify-between border-b border-slate-200 bg-slate-100 p-3">
+            <p className="text-xs font-bold text-slate-800 tracking-wide uppercase">Itemized Service Table</p>
           </div>
 
           <div className="custom-scroll overflow-x-auto pb-2">
             <div className="min-w-[1080px]">
-              <div className="grid grid-cols-[130px_1.8fr_110px_100px_130px_130px_130px] items-center gap-3 border-b border-slate-200 bg-slate-50/60 p-3.5 text-center font-bold text-xs text-slate-600 tracking-wider uppercase">
+              <div className="grid grid-cols-[130px_1.8fr_110px_100px_130px_130px_130px] items-center gap-3 border-b border-slate-200 bg-slate-50/60 p-3 text-center font-bold text-xs text-slate-600 tracking-wider uppercase">
                 <span>Type</span>
                 <span>Service Name</span>
                 <span>Currency</span>
@@ -1386,14 +1391,14 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
               {items.map((item, index) => (
                 <div
                   key={`invoice-item-${index}`}
-                  className="grid grid-cols-[130px_1.8fr_110px_100px_130px_130px_130px] items-center gap-3 border-b border-slate-100 p-4 last:border-b-0 hover:bg-slate-50/30 transition-colors"
+                  className="grid grid-cols-[130px_1.8fr_110px_100px_130px_130px_130px] items-center gap-3 border-b border-slate-100 p-3 last:border-b-0 hover:bg-slate-50/30 transition-colors"
                 >
                   <FieldShell
                     icon={getServiceTypeIcon(item.type)}
                     iconWrapClassName="bg-gradient-to-tr from-indigo-50 to-blue-50 border border-blue-100 text-blue-600 shadow-sm"
                   >
                     <input
-                      className="w-full rounded-xl border border-gray-300 bg-blue-50/20 py-2 pl-11 pr-2 text-sm text-slate-700 outline-none"
+                      className="w-full rounded-md border border-slate-300 bg-blue-50/20 py-1.5 pl-10 pr-2 text-sm text-slate-700 outline-none"
                       value={item.type}
                       readOnly
                     />
@@ -1404,7 +1409,7 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
                     iconWrapClassName="bg-gradient-to-tr from-emerald-50 to-teal-50 border border-emerald-100 text-emerald-600 shadow-sm"
                   >
                     <input
-                      className="w-full rounded-xl border border-gray-300 bg-emerald-50/15 py-2 pl-11 pr-2 text-xs text-slate-700 outline-none"
+                      className="w-full rounded-md border border-slate-300 bg-emerald-50/15 py-1.5 pl-10 pr-2 text-xs text-slate-700 outline-none"
                       placeholder="Service name"
                       value={item.service}
                       readOnly
@@ -1416,7 +1421,7 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
                     iconWrapClassName="bg-gradient-to-tr from-fuchsia-50 to-pink-50 border border-fuchsia-100 text-fuchsia-600 shadow-sm"
                   >
                     <select
-                      className="w-full rounded-xl border border-gray-300 py-2 pl-11 pr-2 text-sm outline-none bg-fuchsia-50/20 shadow-sm focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all cursor-pointer"
+                      className="w-full rounded-md border border-slate-300 py-1.5 pl-10 pr-2 text-sm outline-none bg-fuchsia-50/20 shadow-2xs focus:border-blue-400 focus:ring-1 focus:ring-blue-100 transition-all cursor-pointer"
                       value={item.currency}
                       onChange={(e) =>
                         handleItemChange(index, "currency", e.target.value)
@@ -1432,7 +1437,7 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
 
                   <FieldShell icon={Hash} iconWrapClassName="bg-gradient-to-tr from-sky-50 to-cyan-50 border border-sky-100 text-sky-600 shadow-sm">
                     <input
-                      className="w-full rounded-xl border border-gray-300 bg-sky-50/20 py-2 pl-11 pr-2 text-sm text-slate-700 outline-none"
+                      className="w-full rounded-md border border-slate-300 bg-sky-50/20 py-1.5 pl-10 pr-2 text-sm text-slate-700 outline-none"
                       value={item.qty}
                       type="number"
                       readOnly
@@ -1444,8 +1449,8 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
                     iconWrapClassName="bg-gradient-to-tr from-orange-50 to-amber-50 border border-orange-100 text-orange-600 shadow-sm"
                   >
                     <input
-                      className="w-full rounded-xl border border-gray-300 bg-orange-50/20 py-2 pl-11 pr-2 text-sm text-slate-700 outline-none"
-                      placeholder="0.00"
+                      className="w-full rounded-md border border-slate-300 bg-orange-50/20 py-1.5 pl-10 pr-2 text-sm text-slate-700 outline-none"
+                      placeholder="0"
                       value={item.rate}
                       type="number"
                       readOnly
@@ -1454,7 +1459,7 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
 
                   <FieldShell icon={FileText} iconWrapClassName="bg-gradient-to-tr from-violet-50 to-indigo-50 border border-violet-100 text-violet-600 shadow-sm">
                     <input
-                      className="w-full rounded-xl border border-gray-300 bg-violet-50/30 py-2 pl-11 pr-2 text-sm outline-none text-slate-800 font-semibold"
+                      className="w-full rounded-md border border-slate-300 bg-violet-50/30 py-1.5 pl-10 pr-2 text-sm outline-none text-slate-800 font-semibold"
                       value={item.subtotal}
                       readOnly
                     />
@@ -1465,20 +1470,19 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
                     iconWrapClassName="bg-gradient-to-tr from-rose-50 to-red-50 border border-rose-100 text-rose-600 shadow-sm"
                   >
                     <input
-                      className="w-full rounded-xl border border-gray-300 bg-emerald-50/30 py-2 pl-11 pr-2 text-sm text-emerald-700 outline-none font-medium"
-                      placeholder="0.00"
+                      className="w-full rounded-md border border-slate-300 bg-emerald-50/30 py-1.5 pl-10 pr-2 text-sm text-emerald-700 outline-none font-medium"
+                      placeholder="0"
                       value={item.tax}
                       readOnly
                     />
                   </FieldShell>
-
                 </div>
               ))}
             </div>
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
             <p className="mb-3 text-sm font-bold text-slate-700">Tax Configuration</p>
 
@@ -1488,7 +1492,7 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
 
                 <FieldShell icon={IndianRupee} iconWrapClassName="bg-gradient-to-tr from-blue-50 to-indigo-50 border border-blue-100 text-blue-600 shadow-sm">
                   <input
-                    className="w-24 rounded-xl border border-gray-300 bg-blue-50/20 py-2 pl-11 pr-2 text-sm text-slate-800 shadow-sm focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none transition-all"
+                    className="w-24 rounded-md border border-slate-300 bg-blue-50/20 py-1.5 pl-10 pr-2 text-sm text-slate-800 shadow-2xs focus:border-blue-400 focus:ring-1 focus:ring-blue-100 outline-none transition-all"
                     value={taxConfig.gstRate}
                     onChange={(e) => handleTaxChange("gstRate", e.target.value)}
                   />
@@ -1504,7 +1508,7 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
 
                 <FieldShell icon={Receipt} iconWrapClassName="bg-gradient-to-tr from-violet-50 to-purple-50 border border-violet-100 text-violet-600 shadow-sm">
                   <input
-                    className="w-24 rounded-xl border border-gray-300 bg-violet-50/20 py-2 pl-11 pr-2 text-sm text-slate-800 shadow-sm focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none transition-all"
+                    className="w-24 rounded-md border border-slate-300 bg-violet-50/20 py-1.5 pl-10 pr-2 text-sm text-slate-800 shadow-2xs focus:border-blue-400 focus:ring-1 focus:ring-blue-100 outline-none transition-all"
                     value={taxConfig.tcsRate}
                     onChange={(e) => handleTaxChange("tcsRate", e.target.value)}
                   />
@@ -1520,7 +1524,7 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
 
                 <FieldShell icon={IndianRupee} iconWrapClassName="bg-gradient-to-tr from-amber-50 to-orange-50 border border-amber-100 text-amber-600 shadow-sm">
                   <input
-                    className="w-24 rounded-xl border border-gray-300 bg-amber-50/20 py-2 pl-11 pr-2 text-sm text-slate-800 shadow-sm focus:border-blue-400 focus:ring-2 focus:ring-blue-100 outline-none transition-all"
+                    className="w-24 rounded-md border border-slate-300 bg-amber-50/20 py-1.5 pl-10 pr-2 text-sm text-slate-800 shadow-2xs focus:border-blue-400 focus:ring-1 focus:ring-blue-100 outline-none transition-all"
                     value={taxConfig.otherTax}
                     onChange={(e) => handleTaxChange("otherTax", e.target.value)}
                   />
@@ -1531,63 +1535,63 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
             </div>
           </div>
 
-          <div className="rounded-xl border border-gray-300 bg-sky-50 p-4">
-            <p className="mb-2 text-sm font-medium">
+          <div className="rounded-md border border-slate-200 bg-slate-50 p-4 shadow-2xs">
+            <p className="mb-2 text-sm font-bold text-slate-800">
               {invoiceSource === "uploaded_invoice" ? "System Reference Summary" : "Invoice Summary"}
             </p>
             {invoiceSource === "uploaded_invoice" ? (
-              <p className="mb-4 text-xs leading-5 text-slate-500">
+              <p className="mb-4 text-xs leading-5 text-slate-500 font-medium">
                 Finance will compare this system total with the uploaded invoice amount above.
               </p>
             ) : null}
 
             <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
+              <div className="flex justify-between font-medium text-slate-600">
                 <span>Subtotal</span>
-                <span>{formatMoney(summary.subtotal)}</span>
+                <span className="text-slate-900 font-bold">{formatMoney(summary.subtotal)}</span>
               </div>
 
-              <div className="flex justify-between text-blue-600">
+              <div className="flex justify-between text-blue-600 font-medium">
                 <span>GST ({taxConfig.gstRate}%)</span>
                 <span>+ {formatMoney(summary.gstAmount)}</span>
               </div>
 
-              <div className="flex justify-between text-blue-600">
+              <div className="flex justify-between text-blue-600 font-medium">
                 <span>TCS ({taxConfig.tcsRate}%)</span>
                 <span>+ {formatMoney(summary.tcsAmount)}</span>
               </div>
 
-              <div className="flex justify-between text-blue-600">
+              <div className="flex justify-between text-blue-600 font-medium">
                 <span>Other Tax</span>
                 <span>+ {formatMoney(summary.otherTaxAmount)}</span>
               </div>
 
-              <div className="flex justify-between border-t pt-2 font-medium">
+              <div className="flex justify-between border-t border-slate-200 pt-2 font-semibold text-slate-700">
                 <span>Total Tax</span>
                 <span>{formatMoney(summary.totalTax)}</span>
               </div>
 
-              <div className="flex justify-between border-t pt-2 font-semibold">
+              <div className="flex justify-between border-t border-slate-200 pt-2 font-bold text-base text-slate-900">
                 <span>Grand Total</span>
-                <span>{formatMoney(summary.grandTotal)}</span>
+                <span className="text-emerald-700">{formatMoney(summary.grandTotal)}</span>
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="flex justify-end gap-3 border-t border-slate-200 bg-slate-50/50 px-6 py-4 rounded-b-2xl">
+      <div className="flex justify-end gap-3 border-t border-slate-200 bg-slate-50/60 px-6 py-4 rounded-b-md">
         <button
           type="button"
           onClick={handleSaveDraft}
           disabled={isLocked}
-          className={`inline-flex items-center justify-center gap-2 rounded-xl border px-5 py-2.5 text-sm font-semibold transition-all duration-300 shadow-sm active:scale-[0.98] ${
+          className={`inline-flex items-center justify-center gap-2 rounded-md border px-4 py-2 text-xs sm:text-sm font-semibold transition-all duration-300 shadow-2xs active:scale-[0.98] ${
             isLocked
               ? "cursor-not-allowed bg-slate-100 text-slate-400 opacity-60 border-slate-200"
-              : "cursor-pointer bg-gradient-to-r from-white to-slate-50 text-slate-700 hover:from-slate-50 hover:to-slate-100 hover:text-slate-900 hover:border-slate-400"
+              : "cursor-pointer bg-white text-slate-700 hover:bg-slate-50 hover:text-slate-900 border-slate-300 hover:border-slate-400"
           }`}
         >
-          <FileText size={15} className={isLocked ? "text-slate-400" : "text-slate-500"} />
+          <FileText size={14} className={isLocked ? "text-slate-400" : "text-slate-500"} />
           Save as Draft
         </button>
 
@@ -1595,19 +1599,19 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
           type="button"
           onClick={handleGenerateInvoice}
           disabled={isGenerating || isLocked}
-          className={`inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold text-white transition-all duration-500 ease-in-out ${
+          className={`inline-flex items-center justify-center gap-2 rounded-md px-5 py-2 text-xs sm:text-sm font-semibold text-white transition-all duration-300 ease-in-out shadow-sm ${
             isGenerating || isLocked
               ? "cursor-not-allowed bg-slate-400 shadow-none opacity-60"
-              : "cursor-pointer bg-gradient-to-r from-blue-900 to-emerald-600 hover:from-blue-950 hover:to-emerald-700 hover:shadow-[0_4px_14px_rgba(16,185,129,0.35)] active:scale-[0.98]"
+              : "cursor-pointer bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98]"
           }`}
         >
           {isGenerating ? (
-            <svg className="animate-spin -ml-1 mr-2.5 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <svg className="animate-spin -ml-1 mr-2 h-3.5 w-3.5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
             </svg>
           ) : (
-            <CheckCircle2 size={15} />
+            <CheckCircle2 size={14} />
           )}
           {isFinanceVerified
             ? "Verified by Finance"
@@ -1634,30 +1638,25 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
             transition={{ duration: 0.28, ease: "easeOut" }}
             className="pointer-events-none fixed top-6 right-6 z-50"
           >
-            <div className="pointer-events-auto relative w-[360px] overflow-hidden rounded-[26px] border border-white/60 bg-white/95 shadow-[0_24px_80px_rgba(15,23,42,0.24)] backdrop-blur-xl">
-              <div className="absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-emerald-400 via-cyan-500 to-blue-500" />
-              <div className="px-5 pb-4 pt-5">
+            <div className="pointer-events-auto relative w-[360px] overflow-hidden rounded-lg border border-slate-200 bg-white shadow-xl">
+              <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-emerald-500 to-blue-600" />
+              <div className="p-4">
                 <div className="flex items-start gap-3">
-                  <motion.div
-                    initial={{ rotate: -10, scale: 0.88 }}
-                    animate={{ rotate: 0, scale: 1 }}
-                    transition={{ delay: 0.08, duration: 0.24, ease: "easeOut" }}
-                    className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-500 to-cyan-500 text-white shadow-lg"
-                  >
-                    <CheckCircle2 size={22} />
-                  </motion.div>
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-emerald-50 border border-emerald-100 text-emerald-600 shadow-2xs">
+                    <CheckCircle2 size={20} />
+                  </div>
 
                   <div className="min-w-0 flex-1">
-                    <p className="text-[11px] uppercase tracking-[0.24em] text-emerald-600/80">
+                    <p className="text-[11px] uppercase tracking-wider font-semibold text-emerald-700">
                       Internal Invoice
                     </p>
-                    <p className="mt-1 text-base font-semibold text-slate-900">
+                    <p className="mt-0.5 text-sm font-bold text-slate-900">
                       {actionPopup.title}
                     </p>
-                    <p className="mt-1 text-xs leading-5 text-slate-600">
+                    <p className="mt-1 text-xs leading-relaxed text-slate-600">
                       {actionPopup.message}
                     </p>
-                    <div className="mt-3 inline-flex rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1 text-[11px] font-medium text-emerald-700">
+                    <div className="mt-2.5 inline-flex rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700">
                       {selectedQuery?.queryId || "Current booking"} ready
                     </div>
                   </div>
@@ -1665,7 +1664,7 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
                   <button
                     type="button"
                     onClick={() => setActionPopup(null)}
-                    className="rounded-full bg-slate-100 p-1.5 text-slate-500 transition hover:bg-slate-200 hover:text-slate-700"
+                    className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 cursor-pointer transition"
                   >
                     <X size={14} />
                   </button>
@@ -1692,33 +1691,31 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 16 }}
               transition={{ duration: 0.25, ease: "easeOut" }}
-              className="relative w-full max-w-md overflow-hidden rounded-[24px] border border-slate-200 bg-white p-6 shadow-2xl z-10"
+              className="relative w-full max-w-md overflow-hidden rounded-lg border border-slate-200 bg-white p-5 shadow-2xl z-10"
             >
-              <div className="absolute inset-x-0 top-0 h-1.5 bg-amber-500" />
-              
-              <div className="mt-2 flex items-start gap-4">
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-amber-50 border border-amber-100 text-amber-600 shadow-sm">
-                  <AlertCircle size={22} />
+              <div className="flex items-start gap-3.5">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-amber-50 border border-amber-200 text-amber-600 shadow-2xs">
+                  <AlertCircle size={20} />
                 </div>
 
                 <div className="min-w-0 flex-1">
-                  <h3 className="text-base font-bold text-slate-900">
+                  <h3 className="text-sm font-bold text-slate-900">
                     Invoice Already Submitted
                   </h3>
-                  <p className="mt-2 text-xs leading-relaxed text-slate-500">
+                  <p className="mt-1.5 text-xs leading-relaxed text-slate-500">
                     A version of this internal invoice was already submitted to the Finance team. Resubmitting will overwrite the existing file and state in their workflow.
                   </p>
-                  <p className="mt-2.5 text-xs font-semibold text-slate-700">
+                  <p className="mt-2 text-xs font-semibold text-slate-700">
                     Are you sure you want to proceed and send it again?
                   </p>
                 </div>
               </div>
 
-              <div className="mt-6 flex justify-end gap-3">
+              <div className="mt-5 flex justify-end gap-2.5">
                 <button
                   type="button"
                   onClick={() => setShowReuploadConfirm(false)}
-                  className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 hover:border-slate-300 cursor-pointer"
+                  className="rounded-md border border-slate-300 bg-white px-3.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 cursor-pointer"
                 >
                   Cancel
                 </button>
@@ -1728,7 +1725,7 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
                     setShowReuploadConfirm(false);
                     handleGenerateInvoice(true);
                   }}
-                  className="rounded-xl bg-gradient-to-r from-blue-900 to-emerald-600 hover:from-[#0f2d5a] hover:to-[#0a0f1d] px-4 py-2 text-xs font-semibold text-white transition hover:shadow-lg cursor-pointer"
+                  className="rounded-md bg-emerald-600 hover:bg-emerald-700 px-4 py-1.5 text-xs font-semibold text-white transition hover:shadow-sm cursor-pointer"
                 >
                   Confirm & Resend
                 </button>
@@ -1754,43 +1751,41 @@ export default function InternalInvoice({ selectedQuery, queryServices = [] }) {
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 16 }}
               transition={{ duration: 0.25, ease: "easeOut" }}
-              className="relative w-full max-w-md overflow-hidden rounded-[24px] border border-slate-200 bg-white p-6 shadow-2xl z-10"
+              className="relative w-full max-w-md overflow-hidden rounded-lg border border-slate-200 bg-white p-5 shadow-2xl z-10"
             >
-              <div className="flex flex-col items-start">
-                {/* Amber Circle Icon */}
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-50 text-amber-600 border border-amber-100 shadow-sm">
-                  <AlertCircle size={22} className="stroke-[2.5]" />
+              <div className="flex items-start gap-3.5">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-amber-50 text-amber-600 border border-amber-200 shadow-2xs">
+                  <AlertCircle size={20} className="stroke-[2.5]" />
                 </div>
 
-                {/* Title */}
-                <h3 className="mt-4 text-base font-bold text-slate-900">
-                  Bulk Settlement Locked
-                </h3>
+                <div className="min-w-0 flex-1">
+                  <h3 className="text-sm font-bold text-slate-900">
+                    Bulk Settlement Locked
+                  </h3>
 
-                {/* Body Text */}
-                <div className="mt-2 text-xs leading-relaxed text-slate-500">
-                  <p>
-                    This booking has already been submitted to the finance team in bulk settlement batch <span className="font-semibold text-slate-700">{bulkBatchNumber}</span>.
-                  </p>
-                  <p className="mt-2">
-                    A single invoice cannot be sent because this booking's services are already claimed and locked in a bulk settlement.
-                  </p>
+                  <div className="mt-1.5 text-xs leading-relaxed text-slate-500">
+                    <p>
+                      This booking has already been submitted to the finance team in bulk settlement batch <span className="font-semibold text-slate-700">{bulkBatchNumber}</span>.
+                    </p>
+                    <p className="mt-1.5">
+                      A single invoice cannot be sent because this booking's services are already claimed and locked in a bulk settlement.
+                    </p>
+                  </div>
                 </div>
               </div>
 
-              {/* Action Buttons */}
-              <div className="mt-6 flex justify-end gap-3">
+              <div className="mt-5 flex justify-end gap-2.5">
                 <button
                   type="button"
                   onClick={() => setShowBulkLockModal(false)}
-                  className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition cursor-pointer"
+                  className="rounded-md border border-slate-300 bg-white px-3.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition cursor-pointer"
                 >
                   Close
                 </button>
                 <button
                   type="button"
                   onClick={() => setShowBulkLockModal(false)}
-                  className="rounded-xl bg-red-600 hover:bg-red-700 px-4 py-2 text-xs font-semibold text-white transition hover:shadow-lg cursor-pointer"
+                  className="rounded-md bg-red-600 hover:bg-red-700 px-4 py-1.5 text-xs font-semibold text-white transition hover:shadow-sm cursor-pointer"
                 >
                   Ok, Understood
                 </button>

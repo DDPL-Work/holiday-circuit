@@ -1001,3 +1001,6 @@ export const buildVoucherHtml = (data, branding, agentBranding = {}) => {
     </html>
   `;
 };
+
+export { exportVoucherAsPdf } from "./voucherPdf";
+

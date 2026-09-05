@@ -9,7 +9,11 @@ export const getIncExcPresets = async (req, res) => {
   try {
     const filter = {};
     if (req.query.destination) {
-      filter.destination = { $regex: req.query.destination.trim(), $options: "i" };
+      const destRegex = { $regex: req.query.destination.trim(), $options: "i" };
+      filter.$or = [
+        { destination: destRegex },
+        { destinations: destRegex }
+      ];
     }
 
     const presets = await AdminIncExc.find(filter)
@@ -47,7 +51,7 @@ export const getIncExcPresetById = async (req, res) => {
 // @access  Private (Admin)
 export const createIncExcPreset = async (req, res) => {
   try {
-    const { name, destinationCategory, destination, inclusions, exclusions } = req.body;
+    const { name, destinationCategory, destination, destinations, inclusions, exclusions } = req.body;
 
     // Check if preset with same name exists
     const existingPreset = await AdminIncExc.findOne({ name });
@@ -55,11 +59,24 @@ export const createIncExcPreset = async (req, res) => {
       return res.status(400).json({ message: "A preset with this name already exists." });
     }
 
+    // Normalize destinations array and destination string
+    let destList = [];
+    if (Array.isArray(destinations)) {
+      destList = destinations.map(d => String(d).trim()).filter(Boolean);
+    } else if (Array.isArray(destination)) {
+      destList = destination.map(d => String(d).trim()).filter(Boolean);
+    } else if (typeof destination === "string" && destination.trim()) {
+      destList = destination.split(",").map(d => d.trim()).filter(Boolean);
+    }
+
+    const destinationStr = destList.length > 0 ? destList.join(", ") : (typeof destination === "string" ? destination.trim() : "");
+
     const currentUserId = req.user?._id || req.user?.id;
     const newPreset = new AdminIncExc({
       name,
       destinationCategory: destinationCategory || "",
-      destination: destination ? destination.trim() : "",
+      destination: destinationStr,
+      destinations: destList,
       inclusions: inclusions || [],
       exclusions: exclusions || [],
       createdBy: currentUserId,
@@ -101,6 +118,7 @@ export const createIncExcPreset = async (req, res) => {
             presetId: savedPreset._id,
             presetName: savedPreset.name,
             destination: savedPreset.destination,
+            destinations: savedPreset.destinations,
             createdById: currentUserId,
             createdByName: creatorName,
             createdByRole: creatorRole,
@@ -125,7 +143,7 @@ export const createIncExcPreset = async (req, res) => {
 // @access  Private (Admin)
 export const updateIncExcPreset = async (req, res) => {
   try {
-    const { name, destinationCategory, destination, inclusions, exclusions } = req.body;
+    const { name, destinationCategory, destination, destinations, inclusions, exclusions } = req.body;
 
     const preset = await AdminIncExc.findById(req.params.id);
     if (!preset) {
@@ -142,7 +160,20 @@ export const updateIncExcPreset = async (req, res) => {
     }
 
     if (destinationCategory !== undefined) preset.destinationCategory = destinationCategory || "";
-    if (destination !== undefined) preset.destination = destination ? destination.trim() : "";
+    
+    if (destinations !== undefined || destination !== undefined) {
+      let destList = [];
+      if (Array.isArray(destinations)) {
+        destList = destinations.map(d => String(d).trim()).filter(Boolean);
+      } else if (Array.isArray(destination)) {
+        destList = destination.map(d => String(d).trim()).filter(Boolean);
+      } else if (typeof destination === "string" && destination.trim()) {
+        destList = destination.split(",").map(d => d.trim()).filter(Boolean);
+      }
+      preset.destinations = destList;
+      preset.destination = destList.length > 0 ? destList.join(", ") : (typeof destination === "string" ? destination.trim() : "");
+    }
+
     if (inclusions) preset.inclusions = inclusions;
     if (exclusions) preset.exclusions = exclusions;
     preset.updatedBy = req.user?._id || req.user?.id;

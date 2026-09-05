@@ -1,5 +1,5 @@
 import React from 'react';
-import { FileText, Eye, Download, CheckCircle, ChevronDown, CheckSquare, Square, Coins } from 'lucide-react';
+import { FileText, Eye, Download, CheckCircle, ChevronDown, CheckSquare, Square, MessageSquare } from 'lucide-react';
 import {
   formatRoundedAmount,
   getDocumentMeta,
@@ -51,9 +51,16 @@ export const PaymentDetailsSection = ({
     propPayoutDetailsComplete ??
     Boolean(payoutReferenceDetailsComplete && bankReferenceMatched);
 
+  const dmcRemarksText =
+    invoice.dmcRemarks ||
+    invoice.remarks ||
+    invoice.invoiceMeta?.dmcRemarks ||
+    invoice.dmcRemark ||
+    "";
+
   return (
     <>
-      <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+      <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
         <h3 className="mb-2 text-[10.5px] font-bold text-slate-800">Payment Details</h3>
         <div className="grid grid-cols-2 gap-x-4 gap-y-2">
           <div className="min-w-0">
@@ -77,7 +84,57 @@ export const PaymentDetailsSection = ({
         </div>
       </div>
 
-      <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+      {Boolean(dmcRemarksText) ? (
+        <div className={`rounded-lg border p-3 shadow-xs ${
+          !ratesMatch
+            ? "border-amber-300 bg-amber-50/85 ring-1 ring-amber-400/20"
+            : "border-amber-200/90 bg-amber-50/70"
+        }`}>
+          <div className="flex items-center justify-between gap-2 mb-1.5 flex-wrap">
+            <div className="flex items-center gap-1.5">
+              <MessageSquare className={`h-3.5 w-3.5 shrink-0 ${!ratesMatch ? "text-amber-800" : "text-amber-700"}`} />
+              <h3 className={`text-[10.5px] font-bold uppercase tracking-[0.1em] ${
+                !ratesMatch ? "text-amber-950" : "text-amber-900"
+              }`}>
+                DMC Remark / Justification
+              </h3>
+            </div>
+            <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[8.5px] font-bold shrink-0 ${
+              !ratesMatch
+                ? "border-amber-300 bg-amber-200/80 text-amber-900"
+                : "border-amber-200 bg-amber-100 text-amber-800"
+            }`}>
+              {!ratesMatch ? "Reason for Rate Difference" : "Note from DMC"}
+            </span>
+          </div>
+
+          {!ratesMatch && (
+            <p className="text-[9.5px] text-amber-800 font-semibold mb-1.5 leading-snug">
+              DMC provided the following justification for why the uploaded invoice amount differs from Ops quotation:
+            </p>
+          )}
+
+          <div className="rounded-md border border-amber-200/80 bg-white p-2.5 shadow-2xs">
+            <p className="whitespace-pre-wrap text-[11px] leading-relaxed text-slate-800 font-medium italic">
+              "{dmcRemarksText}"
+            </p>
+          </div>
+        </div>
+      ) : !ratesMatch ? (
+        <div className="rounded-lg border border-rose-200 bg-rose-50/80 p-3 shadow-xs">
+          <div className="flex items-center gap-1.5 mb-1">
+            <MessageSquare className="h-3.5 w-3.5 text-rose-600 shrink-0" />
+            <h3 className="text-[10.5px] font-bold uppercase tracking-[0.1em] text-rose-900">
+              DMC Remark Missing
+            </h3>
+          </div>
+          <p className="text-[10px] text-rose-800 font-medium leading-relaxed">
+            ⚠ No remark was provided by DMC for this rate discrepancy. Please verify with DMC before approving payout.
+          </p>
+        </div>
+      ) : null}
+
+      <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
         <div className="mb-2">
           <h3 className="text-[10.5px] font-bold text-slate-800">Uploaded Documents</h3>
           <p className="mt-0.5 text-[9.5px] font-medium text-slate-500">
@@ -88,7 +145,7 @@ export const PaymentDetailsSection = ({
           {documentList.map((doc) => (
             <div
               key={doc.name}
-              className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-2.5 py-2"
+              className="flex items-center justify-between rounded-md border border-slate-200 bg-white px-2.5 py-2"
             >
               <div className="flex min-w-0 items-center gap-2">
                 <FileText className="h-4 w-4 shrink-0 text-slate-400" />
@@ -101,7 +158,7 @@ export const PaymentDetailsSection = ({
                 <button
                   type="button"
                   onClick={() => handlePreviewDocument(doc)}
-                  className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-2.5 py-1 text-[9.5px] font-bold text-slate-600 transition-colors hover:bg-slate-50 cursor-pointer"
+                  className="inline-flex items-center gap-1 rounded border border-slate-200 px-2.5 py-1 text-[9.5px] font-bold text-slate-600 transition-colors hover:bg-slate-50 cursor-pointer"
                 >
                   <Eye className="h-3 w-3" />
                   Preview
@@ -109,7 +166,7 @@ export const PaymentDetailsSection = ({
                 <button
                   type="button"
                   onClick={() => handleDownloadDocument(doc)}
-                  className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-2.5 py-1 text-[9.5px] font-bold text-slate-600 transition-colors hover:bg-slate-50 cursor-pointer"
+                  className="inline-flex items-center gap-1 rounded border border-slate-200 px-2.5 py-1 text-[9.5px] font-bold text-slate-600 transition-colors hover:bg-slate-50 cursor-pointer"
                 >
                   <Download className="h-3 w-3" />
                   Download
@@ -121,7 +178,7 @@ export const PaymentDetailsSection = ({
       </div>
 
       {payoutInstallments.length > 0 && (
-        <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
           <div className="mb-2 flex items-center justify-between">
             <h3 className="text-[10.5px] font-bold uppercase tracking-[0.08em] text-slate-800">DMC Payout Statement</h3>
             <span className="text-[9.5px] font-bold text-slate-600">
@@ -132,7 +189,7 @@ export const PaymentDetailsSection = ({
             {payoutInstallments.map((inst, index) => (
               <div
                 key={inst.id || index}
-                className="flex items-center justify-between rounded-lg border border-slate-100 bg-white px-2.5 py-2 text-xs"
+                className="flex items-center justify-between rounded-md border border-slate-100 bg-white px-2.5 py-2 text-xs"
               >
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5">
@@ -155,7 +212,7 @@ export const PaymentDetailsSection = ({
       )}
 
       {isPaid ? (
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
           <div className="mb-2.5 flex items-center gap-1.5">
             <CheckCircle className="h-3.5 w-3.5 text-emerald-600" />
             <span className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-emerald-700">
@@ -164,23 +221,23 @@ export const PaymentDetailsSection = ({
           </div>
 
           <div className="grid grid-cols-2 gap-2">
-            <div className="rounded-lg border border-emerald-100 bg-white px-2.5 py-2">
+            <div className="rounded-md border border-emerald-100 bg-white px-2.5 py-2">
               <p className="text-[9.5px] font-medium text-slate-500">Settled Amount</p>
               <p className="mt-1 text-xs font-bold text-emerald-700">{settledAmount}</p>
             </div>
-            <div className="rounded-lg border border-emerald-100 bg-white px-2.5 py-2">
+            <div className="rounded-md border border-emerald-100 bg-white px-2.5 py-2">
               <p className="text-[9.5px] font-medium text-slate-500">Source Bank</p>
               <p className="mt-1 text-xs font-bold text-slate-800">
                 {invoice.payoutBank || 'Recorded'}
               </p>
             </div>
-            <div className="rounded-lg border border-emerald-100 bg-white px-2.5 py-2">
+            <div className="rounded-md border border-emerald-100 bg-white px-2.5 py-2">
               <p className="text-[9.5px] font-medium text-slate-500">Payout Reference</p>
               <p className="mt-1 truncate text-xs font-bold font-mono text-slate-800">
                 {invoice.payoutReference || invoice.paymentRef || 'Settled'}
               </p>
             </div>
-            <div className="rounded-lg border border-emerald-100 bg-white px-2.5 py-2">
+            <div className="rounded-md border border-emerald-100 bg-white px-2.5 py-2">
               <p className="text-[9.5px] font-medium text-slate-500">Settlement Date</p>
               <p className="mt-1 text-xs font-bold text-slate-800">{settledDate || invoice.date}</p>
             </div>
@@ -190,7 +247,7 @@ export const PaymentDetailsSection = ({
         <>
           {/* SERVICE SELECTION CHECKLIST FOR SMART PAYOUT */}
           {invoiceItems && invoiceItems.length > 0 && (
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-2">
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-2">
               <div className="flex items-center justify-between">
                 <div>
                   <h3 className="text-[10.5px] font-bold text-slate-800 flex items-center gap-1.5">
@@ -240,7 +297,7 @@ export const PaymentDetailsSection = ({
                     <div
                       key={idx}
                       onClick={() => handleToggleItem && handleToggleItem(idx)}
-                      className={`flex items-center justify-between p-2 rounded-lg border transition-all cursor-pointer ${
+                      className={`flex items-center justify-between p-2 rounded-md border transition-all cursor-pointer ${
                         isSelected
                           ? "bg-blue-50/80 border-blue-200 text-slate-900 shadow-2xs"
                           : "bg-white border-slate-200 text-slate-500 hover:bg-slate-100/60"
@@ -284,7 +341,7 @@ export const PaymentDetailsSection = ({
             </div>
           )}
 
-          <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+          <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
           <div>
             <div className="flex items-center justify-between">
               <h3 className="text-[10.5px] font-bold text-slate-800">Bank Transfer Details</h3>
@@ -317,7 +374,7 @@ export const PaymentDetailsSection = ({
               value={utrInput}
               onChange={(e) => setUtrInput(e.target.value)}
               placeholder="e.g. HDFC000123456789 or UTR98765432"
-              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-800 outline-none transition-all focus:border-blue-500"
+              className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-800 outline-none transition-all focus:border-blue-500"
             />
           </div>
 
@@ -331,7 +388,7 @@ export const PaymentDetailsSection = ({
                 value={dateInput}
                 onChange={(e) => setDateInput(e.target.value)}
                 style={{ colorScheme: 'light' }}
-                className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs font-semibold text-slate-800 outline-none transition-all focus:border-blue-500 cursor-pointer [color-scheme:light]"
+                className="w-full rounded-md border border-slate-200 bg-white px-2.5 py-2 text-xs font-semibold text-slate-800 outline-none transition-all focus:border-blue-500 cursor-pointer [color-scheme:light]"
               />
             </div>
 
@@ -342,7 +399,7 @@ export const PaymentDetailsSection = ({
               <button
                 type="button"
                 onClick={() => setIsBankDropdownOpen(!isBankDropdownOpen)}
-                className="flex h-[34px] w-full items-center justify-between rounded-lg border border-slate-200 bg-white px-2.5 text-xs text-slate-800 outline-none focus:border-blue-500 cursor-pointer"
+                className="flex h-[34px] w-full items-center justify-between rounded-md border border-slate-200 bg-white px-2.5 text-xs text-slate-800 outline-none focus:border-blue-500 cursor-pointer"
               >
                 <span className="flex items-center gap-1.5 truncate font-semibold">
                   {sourceBank ? (
@@ -363,7 +420,7 @@ export const PaymentDetailsSection = ({
                     className="fixed inset-0 z-20 bg-transparent"
                     onClick={() => setIsBankDropdownOpen(false)}
                   />
-                  <div className="absolute left-0 right-0 top-full z-30 mt-1 max-h-40 overflow-y-auto rounded-lg border border-slate-200 bg-white p-1 shadow-lg hide-scrollbar">
+                  <div className="absolute left-0 right-0 top-full z-30 mt-1 max-h-40 overflow-y-auto rounded-md border border-slate-200 bg-white p-1 shadow-lg hide-scrollbar">
                     {bankOptions.map((bank) => (
                       <button
                         key={bank}
@@ -406,7 +463,7 @@ export const PaymentDetailsSection = ({
                 value={transferAmount}
                 onChange={(e) => setTransferAmount(formatIntegerInput(e.target.value))}
                 placeholder="Enter transfer amount"
-                className="w-full rounded-lg border border-slate-200 bg-white pl-7 pr-3 py-2 text-xs font-extrabold text-slate-900 outline-none transition-all focus:border-blue-500"
+                className="w-full rounded-md border border-slate-200 bg-white pl-7 pr-3 py-2 text-xs font-extrabold text-slate-900 outline-none transition-all focus:border-blue-500"
               />
             </div>
           </div>
@@ -415,7 +472,7 @@ export const PaymentDetailsSection = ({
             <button
               type="button"
               onClick={handleReject}
-              className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-xs font-bold text-rose-700 hover:bg-rose-100 transition cursor-pointer"
+              className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2.5 text-xs font-bold text-rose-700 hover:bg-rose-100 transition cursor-pointer"
             >
               Reject Invoice
             </button>
@@ -423,7 +480,7 @@ export const PaymentDetailsSection = ({
               type="button"
               onClick={handleConfirm}
               disabled={isSubmitting}
-              className={`rounded-xl px-3 py-2.5 text-xs font-bold text-white shadow-sm transition cursor-pointer ${
+              className={`rounded-lg px-3 py-2.5 text-xs font-bold text-white shadow-sm transition cursor-pointer ${
                 ratesMatch && payoutDetailsComplete && payoutAmountMatches && allChecksPassed
                   ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700'
                   : 'bg-slate-400 cursor-not-allowed'
