@@ -67,6 +67,7 @@ const internalInvoiceDocumentSchema = new mongoose.Schema(
 
 
 
+
 const internalInvoiceSchema = new mongoose.Schema(
   {
     query: {

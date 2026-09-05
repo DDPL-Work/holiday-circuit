@@ -128,7 +128,11 @@ export default function BookingDirectoryList({
               ) : (
                 filteredQueries.map((query) => {
                   const isSelected = selectedQueryId === query._id;
-                  const badge = getOpsStatusBadge(query.opsStatus, query);
+                  const badge = getOpsStatusBadge(
+                    query.opsStatus,
+                    query,
+                    selectedStatusTab,
+                  );
                   const leadGuest =
                     query.travelerDetails?.[0]?.fullName ||
                     query.agentName ||
@@ -232,11 +236,18 @@ export default function BookingDirectoryList({
                       </td>
                       {/* Status Column */}
                       <td className="py-3.5 px-4 whitespace-nowrap">
-                        <span
-                          className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10.5px] border ${badge.bgClass}`}
-                        >
-                          <span>{badge.icon}</span>
-                        </span>
+                        <div className="flex flex-col items-start">
+                          <span
+                            className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-[11px] font-medium border ${badge.bgClass}`}
+                          >
+                            <span>{badge.icon}</span>
+                          </span>
+                          {badge.voucherSubtitle && (
+                            <span className="text-[11px] font-medium text-slate-500 tracking-tight mt-1 pl-0.5">
+                              {badge.voucherSubtitle}
+                            </span>
+                          )}
+                        </div>
                       </td>
                       {/* Actions Column */}
                       <td className="py-3.5 px-4 whitespace-nowrap text-end">

@@ -336,6 +336,48 @@ export const getQueryCalculatedTotal = (query) => {
       0,
   );
 };
+export const isQueryVoucherSent = (query) => {
+  if (!query) return false;
+  const status = String(query.opsStatus || "").trim().toLowerCase();
+  if (status === "vouchered") return true;
+  if (
+    query.isVoucherGenerated ||
+    query.isVouchered ||
+    query.voucherGenerated ||
+    query.voucherSent ||
+    query.voucherUrl ||
+    query.voucherPdfUrl ||
+    query.voucher
+  ) {
+    return true;
+  }
+  if (
+    Array.isArray(query.documents) &&
+    query.documents.some((d) => {
+      const kind = String(d?.kind || d?.type || "").toLowerCase();
+      const name = String(d?.name || d?.fileName || d?.filePath || "").toLowerCase();
+      return kind.includes("voucher") || name.includes("voucher");
+    })
+  ) {
+    return true;
+  }
+  if (
+    Array.isArray(query.services) &&
+    query.services.length > 0 &&
+    query.services.some(
+      (s) =>
+        s?.isVoucherGenerated ||
+        s?.voucherNumber ||
+        s?.voucherReference ||
+        (s?.confirmationNumber &&
+          s.confirmationNumber !== "Pending" &&
+          s.confirmationNumber !== "N/A"),
+    )
+  ) {
+    return true;
+  }
+  return false;
+};
 export const getQueryCalculatedPaid = (query) => {
   const visibleServicesPaid = (query?.services || []).reduce((sum, s) => {
     const total = Number(
@@ -351,18 +393,39 @@ export const getQueryCalculatedPaid = (query) => {
     );
     return sum + Math.min(paid, total > 0 ? total : paid);
   }, 0);
+  const internalInvoicePaid = Number(
+    query?.internalInvoice?.payoutAmount ||
+      (Array.isArray(query?.internalInvoice?.payoutInstallments)
+        ? query.internalInvoice.payoutInstallments.reduce(
+            (sum, inst) => sum + Number(inst?.amount || 0),
+            0,
+          )
+        : 0),
+  );
   const directPaid = Number(
     query?.paidAmount ?? query?.amountPaid ?? query?.payoutAmount ?? 0,
   );
-  return Math.max(directPaid, visibleServicesPaid);
+  return Math.max(directPaid, visibleServicesPaid, internalInvoicePaid);
 };
 export const getOpsStatusBadge = (status, query = null) => {
   const norm = String(status || "").trim();
+  const total = getQueryCalculatedTotal(query);
+  const paid = getQueryCalculatedPaid(query);
+  const hasVoucher = isQueryVoucherSent(query);
+  const voucherSubText = hasVoucher ? "Voucher Sent" : "Voucher Pending";
+  const voucherSubClass = hasVoucher
+    ? "text-emerald-700 font-semibold"
+    : "text-amber-700 font-semibold";
+  const voucherSubIcon = hasVoucher ? "✓" : "⏳";
   if (norm === "Confirmed") {
     return {
       label: "New Booking",
       bgClass: "bg-emerald-50 text-emerald-700 border-emerald-300 font-bold",
       icon: "✓ New Booking",
+      voucherSubText,
+      voucherSubClass,
+      voucherSubIcon,
+      hasVoucher,
     };
   }
   if (norm === "Vouchered") {
@@ -370,11 +433,13 @@ export const getOpsStatusBadge = (status, query = null) => {
       label: "Voucher Sent",
       bgClass: "bg-emerald-50 text-emerald-700 border-emerald-300 font-bold",
       icon: "✓ Voucher Sent",
+      voucherSubText: "Voucher Sent",
+      voucherSubClass: "text-emerald-700 font-semibold",
+      voucherSubIcon: "✓",
+      hasVoucher: true,
     };
   }
-  if (norm === "Payment_Completed") {
-    const total = getQueryCalculatedTotal(query);
-    const paid = getQueryCalculatedPaid(query);
+  if (norm === "Payment_Completed" || paid > 0) {
     if (paid > 0 && total > 0 && paid < total && total - paid > 10) {
       const percentage = Math.min(99, Math.round((paid / total) * 100));
       return {
@@ -382,6 +447,12 @@ export const getOpsStatusBadge = (status, query = null) => {
         bgClass:
           "bg-amber-100 text-amber-900 border-amber-400 font-extrabold shadow-2xs",
         icon: `⏳ Partial Paid (${percentage}%)`,
+        voucherSubText,
+        voucherSubClass,
+        voucherSubIcon,
+        hasVoucher,
+        isPartialPaid: true,
+        percentage,
       };
     }
     return {
@@ -389,6 +460,11 @@ export const getOpsStatusBadge = (status, query = null) => {
       bgClass:
         "bg-emerald-100 text-emerald-800 border-emerald-400 font-extrabold shadow-2xs",
       icon: "✓ Full Paid",
+      voucherSubText,
+      voucherSubClass,
+      voucherSubIcon,
+      hasVoucher,
+      isFullPaid: true,
     };
   }
   if (norm === "Invoice_Requested") {
@@ -396,12 +472,20 @@ export const getOpsStatusBadge = (status, query = null) => {
       label: "Invoice Sent",
       bgClass: "bg-indigo-50 text-indigo-700 border-indigo-300 font-bold",
       icon: "✓ Invoice Sent",
+      voucherSubText,
+      voucherSubClass,
+      voucherSubIcon,
+      hasVoucher,
     };
   }
   return {
     label: norm || "New Booking",
     bgClass: "bg-slate-100 text-slate-700 border-slate-200",
     icon: "• " + (norm || "New Booking"),
+    voucherSubText,
+    voucherSubClass,
+    voucherSubIcon,
+    hasVoucher,
   };
 };
 export const getServicePaymentStatusDisplay = (service, selectedQuery) => {
