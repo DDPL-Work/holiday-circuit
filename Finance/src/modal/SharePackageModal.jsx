@@ -396,10 +396,11 @@ export default function SharePackageModal({
           return str;
         };
 
-        const companyNameVal = normalizeCompanyName(effectiveUser?.brandingName || effectiveUser?.companyName || effectiveUser?.agencyName, "Holiday Circuit");
-        const rawIssued = query?.voucherDetails?.issuedBy || query?.issuedBy || quote?.issuedBy;
-        const isUserName = rawIssued && ["valued client", "joy root"].includes(String(rawIssued).trim().toLowerCase());
-        const issuedByVal = (!rawIssued || isUserName || rawIssued === companyNameVal || String(rawIssued).toLowerCase().includes("ddlc")) ? "Holiday Circuit" : normalizeCompanyName(rawIssued, "Holiday Circuit");
+        const companyNameVal = normalizeCompanyName(
+          effectiveUser?.brandingName || effectiveUser?.companyName || effectiveUser?.agencyName || currentUser?.brandingName || currentUser?.companyName,
+          "DDLC Company"
+        );
+        const issuedByVal = "Holiday Circuit";
         const targetQueryId = query?._id || query?.queryId || quote?.queryId;
         let savedTourists = null;
         if (typeof window !== "undefined" && targetQueryId) {

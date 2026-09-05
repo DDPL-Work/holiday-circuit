@@ -1429,13 +1429,14 @@ export const generatePDF = async (quoteDetails = {}) => {
   const chunks = [];
   doc.on("data", (chunk) => chunks.push(chunk));
 
+  let generatedBuffer = null;
   const pdfPromise = new Promise((resolve, reject) => {
     doc.on("end", () => {
-      const buffer = Buffer.concat(chunks);
-      pdfMemoryCache.set(publicFilePath, buffer);
+      generatedBuffer = Buffer.concat(chunks);
+      pdfMemoryCache.set(publicFilePath, generatedBuffer);
       // Clean up memory after 15 minutes
       setTimeout(() => pdfMemoryCache.delete(publicFilePath), 15 * 60 * 1000);
-      resolve();
+      resolve(generatedBuffer);
     });
     doc.on("error", reject);
   });
@@ -1692,5 +1693,5 @@ export const generatePDF = async (quoteDetails = {}) => {
 
   await pdfPromise;
 
-  return { filePath, publicFilePath, fileName };
+  return { filePath, publicFilePath, fileName, buffer: generatedBuffer };
 };

@@ -1,6 +1,8 @@
+import fs from "fs";
 import { createTransporter, MAIL_FROM_ADDRESS, MAIL_REPLY_TO_ADDRESS, } from "./mailer.js";
 import { generateVoucherPdf } from "./voucherPdfService.js";
 import { generatePDF } from "./pdfService.js";
+import { pdfMemoryCache } from "../utils/pdfCache.js";
 
 const INR_SYMBOL = "\u20B9";
 
@@ -826,7 +828,7 @@ export const buildAgentClientQuotationTemplate = (quoteDetails = {}) => {
       `}
 
       <!-- 2.1 TRANSFERS & TRANSPORT (IF ANY) -->
-      ${transferRowsHtml ? `
+      ${!quoteDetails.removeTransport && transferRowsHtml ? `
       <table width="100%" cellspacing="0" cellpadding="0" style="border-collapse: collapse; margin-bottom: 20px; border: 1px solid #d1d5db;">
         <thead>
           <tr>
@@ -848,7 +850,7 @@ export const buildAgentClientQuotationTemplate = (quoteDetails = {}) => {
       ` : ""}
 
       <!-- 2.2 ACTIVITIES & SIGHTSEEING (IF ANY) -->
-      ${activityRowsHtml ? `
+      ${!quoteDetails.removeTransport && activityRowsHtml ? `
       <table width="100%" cellspacing="0" cellpadding="0" style="border-collapse: collapse; margin-bottom: 20px; border: 1px solid #d1d5db;">
         <thead>
           <tr>
@@ -959,11 +961,12 @@ export const buildAgentClientQuotationTemplate = (quoteDetails = {}) => {
       </table>
 
       <!-- 5. TERMS AND CONDITIONS -->
+      ${!quoteDetails.removeTerms ? `
       <table width="100%" cellspacing="0" cellpadding="0" style="border-collapse: collapse; margin-bottom: 20px; border: 1px solid #d1d5db;">
         <thead>
           <tr>
             <th style="background-color: #ecfeff; color: #0f766e; padding: 8px 12px; font-size: 13px; font-weight: bold; text-align: center; border: 1px solid #7dd3c7;">
-              Terms and Conditions
+              ${escapeHtml(quoteDetails.termsTitle || "Terms and Conditions")}
             </th>
           </tr>
         </thead>
@@ -976,63 +979,72 @@ export const buildAgentClientQuotationTemplate = (quoteDetails = {}) => {
                   ${quoteDetails.additionalNotes.filter(Boolean).map(item => `<li style="margin-bottom:6px;">${escapeHtml(item)}</li>`).join("")}
                 </ol>
               ` : ""}
-              <p style="font-weight: bold; font-size: 13px; margin: 0 0 10px 0; color: #0f172a; border-bottom: 1px dashed #cbd5e1; padding-bottom: 6px;">Holiday Circuit Official Terms and Conditions</p>
-              <p style="font-size: 11.5px; color: #334155; margin-0 0 10px 0;">Welcome to <strong>Holiday Circuit</strong>. These Terms and Conditions govern your use of the Holiday Circuit services. When You Make a booking or reservation, you agree to be bound by these Terms.</p>
-              
-              <ol style="margin: 0; padding-left: 18px; color: #334155; font-size: 11.5px; line-height: 1.65;">
-                <li style="margin-bottom: 10px;">
-                  <strong style="color: #0f172a;">Bookings and Reservations:</strong>
-                  <ul style="margin: 4px 0 0 0; padding-left: 16px; list-style-type: disc;">
-                    <li style="margin-bottom: 4px;"><strong>Booking Process:</strong> When you make a booking through Holiday Circuit, you agree to provide accurate and complete information. Any discrepancies may result in cancellation.</li>
-                    <li style="margin-bottom: 6px;">
-                      <strong>Payment Terms:</strong> Payments are due as specified during booking. Failure to pay on time may result in cancellation.
-                      <ol style="margin: 4px 0 4px 0; padding-left: 16px; color: #1e293b;">
-                        <li style="margin-bottom: 3px;"><span style="color: #b91c1c; font-weight: 700; background-color: #fef2f2; padding: 1px 4px; border-radius: 3px;">Minimum 50%</span> of the booking amount is required at the time of booking confirmation.</li>
-                        <li style="margin-bottom: 3px;">Remaining 50% in 2 parts: <span style="color: #c2410c; font-weight: 600;">25% within 30 Days prior to departure</span> and <span style="color: #c2410c; font-weight: 600;">25% within 20 days prior to departure</span>.</li>
-                        <li style="margin-bottom: 3px;">In Case of Airline booking/Train Tickets, <span style="color: #b91c1c; font-weight: 700;">100% ticket cost</span> to be paid at confirmation.</li>
-                        <li style="margin-bottom: 3px;">If a booking is under 100% cancellation period, <span style="color: #b91c1c; font-weight: 700;">100% booking amount</span> is required at confirmation.</li>
-                      </ol>
-                    </li>
-                    <li style="margin-bottom: 4px;"><strong>Confirmation:</strong> Booking is confirmed only upon receipt of payment. <span style="color: #dc2626; font-weight: 700; background-color: #fef2f2; padding: 1px 5px; border-radius: 3px;">*Booking will be auto cancelled in case of non-payment within stipulated time.*</span></li>
-                    <li style="margin-bottom: 4px;"><strong>Credit Card:</strong> Credit Card payments may attract an additional charge from <span style="color: #d97706; font-weight: 700;">3% to 5%</span> depending on card type (charged over & above actual package cost).</li>
-                    <li style="margin-bottom: 4px;"><strong>Confirmation Vouchers:</strong> Vouchers will only be provided <span style="color: #2563eb; font-weight: 700;">7 days before the arrival date</span>.</li>
-                    <li style="margin-bottom: 4px;"><strong>Airport Transfers & Tour Pick Ups:</strong> Includes <span style="color: #d97706; font-weight: 700; background-color: #fffbeb; padding: 1px 4px; border-radius: 3px;">60 minutes waiting time</span> for Airport pick-ups. Delayed at immigration/luggage requires calling emergency number to extend. For all other pick-ups, driver will wait for <span style="color: #d97706; font-weight: 700; background-color: #fffbeb; padding: 1px 4px; border-radius: 3px;">10 minutes</span> at Hotel Lobby / Reception.</li>
-                    <li style="margin-bottom: 4px;"><strong>Taxes:</strong> Any changes in taxes (GST/TCS/Government Tax) at confirmation will be adjusted as per prevailing tax regulations.</li>
-                    <li style="margin-bottom: 4px;"><strong>Changes & Cancellations:</strong> Subject to fees or penalties determined by service providers and Holiday Circuit.</li>
-                  </ul>
-                </li>
 
-                <li style="margin-bottom: 10px;">
-                  <strong style="color: #0f172a;">Travel Documents and Requirements:</strong>
-                  <ul style="margin: 4px 0 0 0; padding-left: 16px; list-style-type: disc;">
-                    <li style="margin-bottom: 4px;"><strong>Valid ID Proof:</strong> Responsibility of guest to possess valid ID/Visas. <span style="color: #b91c1c; font-weight: 700; background-color: #fef2f2; padding: 2px 6px; border-radius: 3px; display: inline-block; margin-top: 2px;">⚠️ To Enter Nepal by Air: Valid Passport or Election Card is Mandatory. Aadhar Card is NOT valid for Travel.</span></li>
-                    <li style="margin-bottom: 4px;"><strong>Health & Vaccinations:</strong> Guest is responsible for meeting health and vaccination requirements.</li>
-                    <li style="margin-bottom: 4px;"><strong>Travel Insurance:</strong> We strongly recommend purchasing travel insurance to protect against unexpected events or emergencies.</li>
-                  </ul>
-                </li>
+              ${Array.isArray(quoteDetails.customTerms) && quoteDetails.customTerms.length > 0 ? `
+                <p style="font-size: 11.5px; color: #334155; margin: 0 0 10px 0;">Welcome to <strong>${escapeHtml(brandName)}</strong>. These Terms and Conditions govern your booking:</p>
+                <ol style="margin: 0; padding-left: 18px; color: #334155; font-size: 11.5px; line-height: 1.65;">
+                  ${quoteDetails.customTerms.map(item => `<li style="margin-bottom:6px;">${escapeHtml(item)}</li>`).join("")}
+                </ol>
+              ` : `
+                <p style="font-weight: bold; font-size: 13px; margin: 0 0 10px 0; color: #0f172a; border-bottom: 1px dashed #cbd5e1; padding-bottom: 6px;">${escapeHtml(brandName)} Official Terms and Conditions</p>
+                <p style="font-size: 11.5px; color: #334155; margin: 0 0 10px 0;">Welcome to <strong>${escapeHtml(brandName)}</strong>. These Terms and Conditions govern your use of the ${escapeHtml(brandName)} services. When You Make a booking or reservation, you agree to be bound by these Terms.</p>
+                
+                <ol style="margin: 0; padding-left: 18px; color: #334155; font-size: 11.5px; line-height: 1.65;">
+                  <li style="margin-bottom: 10px;">
+                    <strong style="color: #0f172a;">Bookings and Reservations:</strong>
+                    <ul style="margin: 4px 0 0 0; padding-left: 16px; list-style-type: disc;">
+                      <li style="margin-bottom: 4px;"><strong>Booking Process:</strong> When you make a booking through ${escapeHtml(brandName)}, you agree to provide accurate and complete information. Any discrepancies may result in cancellation.</li>
+                      <li style="margin-bottom: 6px;">
+                        <strong>Payment Terms:</strong> Payments are due as specified during booking. Failure to pay on time may result in cancellation.
+                        <ol style="margin: 4px 0 4px 0; padding-left: 16px; color: #1e293b;">
+                          <li style="margin-bottom: 3px;"><span style="color: #b91c1c; font-weight: 700; background-color: #fef2f2; padding: 1px 4px; border-radius: 3px;">Minimum 50%</span> of the booking amount is required at the time of booking confirmation.</li>
+                          <li style="margin-bottom: 3px;">Remaining 50% in 2 parts: <span style="color: #c2410c; font-weight: 600;">25% within 30 Days prior to departure</span> and <span style="color: #c2410c; font-weight: 600;">25% within 20 days prior to departure</span>.</li>
+                          <li style="margin-bottom: 3px;">In Case of Airline booking/Train Tickets, <span style="color: #b91c1c; font-weight: 700;">100% ticket cost</span> to be paid at confirmation.</li>
+                          <li style="margin-bottom: 3px;">If a booking is under 100% cancellation period, <span style="color: #b91c1c; font-weight: 700;">100% booking amount</span> is required at confirmation.</li>
+                        </ol>
+                      </li>
+                      <li style="margin-bottom: 4px;"><strong>Confirmation:</strong> Booking is confirmed only upon receipt of payment. <span style="color: #dc2626; font-weight: 700; background-color: #fef2f2; padding: 1px 5px; border-radius: 3px;">*Booking will be auto cancelled in case of non-payment within stipulated time.*</span></li>
+                      <li style="margin-bottom: 4px;"><strong>Credit Card:</strong> Credit Card payments may attract an additional charge from <span style="color: #d97706; font-weight: 700;">3% to 5%</span> depending on card type (charged over & above actual package cost).</li>
+                      <li style="margin-bottom: 4px;"><strong>Confirmation Vouchers:</strong> Vouchers will only be provided <span style="color: #2563eb; font-weight: 700;">7 days before the arrival date</span>.</li>
+                      <li style="margin-bottom: 4px;"><strong>Airport Transfers & Tour Pick Ups:</strong> Includes <span style="color: #d97706; font-weight: 700; background-color: #fffbeb; padding: 1px 4px; border-radius: 3px;">60 minutes waiting time</span> for Airport pick-ups. Delayed at immigration/luggage requires calling emergency number to extend. For all other pick-ups, driver will wait for <span style="color: #d97706; font-weight: 700; background-color: #fffbeb; padding: 1px 4px; border-radius: 3px;">10 minutes</span> at Hotel Lobby / Reception.</li>
+                      <li style="margin-bottom: 4px;"><strong>Taxes:</strong> Any changes in taxes (GST/TCS/Government Tax) at confirmation will be adjusted as per prevailing tax regulations.</li>
+                      <li style="margin-bottom: 4px;"><strong>Changes & Cancellations:</strong> Subject to fees or penalties determined by service providers and ${escapeHtml(brandName)}.</li>
+                    </ul>
+                  </li>
 
-                <li style="margin-bottom: 10px;">
-                  <strong style="color: #0f172a;">Changes to Itineraries & Liability:</strong>
-                  <ul style="margin: 4px 0 0 0; padding-left: 16px; list-style-type: disc;">
-                    <li style="margin-bottom: 4px;"><strong>Changes by Holiday Circuit:</strong> Right reserved to modify itinerary/accommodations due to unforeseen circumstances with prompt notice.</li>
-                    <li style="margin-bottom: 4px;"><strong>Service Providers Liability:</strong> Intermediary role; not liable for third-party service provider negligence or omissions.</li>
-                    <li style="margin-bottom: 4px;"><strong>Force Majeure:</strong> Not liable for disruptions, cancellations, or delays caused by natural disasters, strikes, political unrest, or force majeure.</li>
-                    <li style="margin-bottom: 4px;"><strong>Governing Law:</strong> Governed by the laws of <span style="color: #0f172a; font-weight: 700;">New Delhi Jurisdiction</span>.</li>
-                  </ul>
-                </li>
+                  <li style="margin-bottom: 10px;">
+                    <strong style="color: #0f172a;">Travel Documents and Requirements:</strong>
+                    <ul style="margin: 4px 0 0 0; padding-left: 16px; list-style-type: disc;">
+                      <li style="margin-bottom: 4px;"><strong>Valid ID Proof:</strong> Responsibility of guest to possess valid ID/Visas. <span style="color: #b91c1c; font-weight: 700; background-color: #fef2f2; padding: 2px 6px; border-radius: 3px; display: inline-block; margin-top: 2px;">⚠️ To Enter Nepal by Air: Valid Passport or Election Card is Mandatory. Aadhar Card is NOT valid for Travel.</span></li>
+                      <li style="margin-bottom: 4px;"><strong>Health & Vaccinations:</strong> Guest is responsible for meeting health and vaccination requirements.</li>
+                      <li style="margin-bottom: 4px;"><strong>Travel Insurance:</strong> We strongly recommend purchasing travel insurance to protect against unexpected events or emergencies.</li>
+                    </ul>
+                  </li>
 
-                <li style="margin-bottom: 6px;">
-                  <strong style="color: #0f172a;">Contact Information:</strong><br/>
-                  <span style="color: #475569; font-size: 11px;">
-                    Holiday Circuit: KG 3/69, Ground Floor, Vikas Puri, New Delhi - 110018 (Near UK Nursing Home)<br/>
-                    Email: <a href="mailto:varun@holidaycircuit.com" style="color: #2563eb; text-decoration: underline;">varun@holidaycircuit.com</a> | Phone: +91 8851346665, +91 9971706003
-                  </span>
-                </li>
-              </ol>
+                  <li style="margin-bottom: 10px;">
+                    <strong style="color: #0f172a;">Changes to Itineraries & Liability:</strong>
+                    <ul style="margin: 4px 0 0 0; padding-left: 16px; list-style-type: disc;">
+                      <li style="margin-bottom: 4px;"><strong>Changes by ${escapeHtml(brandName)}:</strong> Right reserved to modify itinerary/accommodations due to unforeseen circumstances with prompt notice.</li>
+                      <li style="margin-bottom: 4px;"><strong>Service Providers Liability:</strong> Intermediary role; not liable for third-party service provider negligence or omissions.</li>
+                      <li style="margin-bottom: 4px;"><strong>Force Majeure:</strong> Not liable for disruptions, cancellations, or delays caused by natural disasters, strikes, political unrest, or force majeure.</li>
+                      <li style="margin-bottom: 4px;"><strong>Governing Law:</strong> Governed by the laws of <span style="color: #0f172a; font-weight: 700;">New Delhi Jurisdiction</span>.</li>
+                    </ul>
+                  </li>
+
+                  <li style="margin-bottom: 6px;">
+                    <strong style="color: #0f172a;">Contact Information:</strong><br/>
+                    <span style="color: #475569; font-size: 11px;">
+                      ${escapeHtml(brandName)}: ${escapeHtml(companyAddress)}<br/>
+                      ${agentEmail ? `Email: <a href="mailto:${escapeHtml(agentEmail)}" style="color: #2563eb; text-decoration: underline;">${escapeHtml(agentEmail)}</a>` : ""}${agentEmail && agentPhone ? ` | ` : ""}${agentPhone ? `Phone: ${escapeHtml(agentPhone)}` : ""}
+                    </span>
+                  </li>
+                </ol>
+              `}
             </td>
           </tr>
         </tbody>
       </table>
+      ` : ""}
 
       <!-- 6. AGENT BRAND FOOTER BANNER -->
       ${footerUrl
@@ -2219,10 +2231,18 @@ export const sendEmailQuote = async (email, quoteDetails) => {
   let attachments = [...inlineAttachments];
   try {
     const pdfResult = await generatePDF(opsQuoteDetails);
-    if (pdfResult && pdfResult.filePath) {
+    const pdfBuffer = pdfResult?.buffer || (pdfResult?.publicFilePath ? pdfMemoryCache.get(pdfResult.publicFilePath) : null);
+    if (pdfBuffer) {
+      attachments.push({
+        filename: pdfResult.fileName || `Quotation_${quoteDetails.quotationNumber || "Details"}.pdf`,
+        content: pdfBuffer,
+        contentType: "application/pdf",
+      });
+    } else if (pdfResult && pdfResult.filePath && fs.existsSync(pdfResult.filePath)) {
       attachments.push({
         filename: pdfResult.fileName || `Quotation_${quoteDetails.quotationNumber || "Details"}.pdf`,
         path: pdfResult.filePath,
+        contentType: "application/pdf",
       });
     }
   } catch (pdfError) {
@@ -2255,10 +2275,18 @@ export const sendAgentClientQuotationMail = async (email, quoteDetails = {}) => 
   let attachments = [...inlineAttachments];
   try {
     const pdfResult = await generatePDF(quoteDetails);
-    if (pdfResult && pdfResult.filePath) {
+    const pdfBuffer = pdfResult?.buffer || (pdfResult?.publicFilePath ? pdfMemoryCache.get(pdfResult.publicFilePath) : null);
+    if (pdfBuffer) {
+      attachments.push({
+        filename: pdfResult.fileName || `Quotation_${quoteDetails.quotationNumber || "Details"}.pdf`,
+        content: pdfBuffer,
+        contentType: "application/pdf",
+      });
+    } else if (pdfResult && pdfResult.filePath && fs.existsSync(pdfResult.filePath)) {
       attachments.push({
         filename: pdfResult.fileName || `Quotation_${quoteDetails.quotationNumber || "Details"}.pdf`,
         path: pdfResult.filePath,
+        contentType: "application/pdf",
       });
     }
   } catch (pdfError) {
@@ -2303,11 +2331,19 @@ export const sendEmailVoucher = async (
   const transporter = createTransporter();
   const html = buildVoucherTemplate(voucherDetails, branding);
   const pdfResult = await generateVoucherPdf(voucherDetails);
+  const voucherBuffer = pdfResult?.buffer || (pdfResult?.publicFilePath ? pdfMemoryCache.get(pdfResult.publicFilePath) : null);
   const attachments = [
-    {
-      filename: pdfResult.fileName,
-      path: pdfResult.absoluteFilePath,
-    },
+    voucherBuffer
+      ? {
+          filename: pdfResult.fileName || `Travel-Voucher-${voucherDetails.voucherNumber || "Voucher"}.pdf`,
+          content: voucherBuffer,
+          contentType: "application/pdf",
+        }
+      : {
+          filename: pdfResult.fileName || `Travel-Voucher-${voucherDetails.voucherNumber || "Voucher"}.pdf`,
+          path: pdfResult.absoluteFilePath,
+          contentType: "application/pdf",
+        },
     ...supportingAttachments,
   ];
 

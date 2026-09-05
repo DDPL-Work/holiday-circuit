@@ -84,8 +84,13 @@ const TABS = [
   { id: "hotel", label: "Hotel", icon: Building2, color: "purple" },
   { id: "activity", label: "Activity", icon: Compass, color: "emerald" },
   { id: "transport", label: "Transport", icon: Bus, color: "blue" },
-  { id: "sightseeing", label: "Sightseeing", icon: Eye, color: "amber" },
 ];
+
+const normalizeCategory = (cat) => {
+  const c = String(cat || "").toLowerCase().trim();
+  if (c === "sightseeing") return "activity";
+  return c;
+};
 
 export default function ContractedRates() {
   const [showBulkUploadModal, setShowBulkUploadModal] = useState(false);
@@ -143,7 +148,7 @@ export default function ContractedRates() {
 
   const filteredUploads = useMemo(() => {
     if (activeTab === "all") return uploads;
-    return uploads.filter((item) => String(item.category || "").toLowerCase() === activeTab.toLowerCase());
+    return uploads.filter((item) => normalizeCategory(item.category) === activeTab.toLowerCase());
   }, [uploads, activeTab]);
 
   // Resolve current active sheet data
@@ -542,7 +547,7 @@ const availableSheets = selectedSheet?.sheetNames?.length ? selectedSheet.sheetN
 
 const getTabCount = (tabId) => {
   if (tabId === "all") return uploads.length;
-  return uploads.filter((item) => String(item.category || "").toLowerCase() === tabId.toLowerCase()).length;
+  return uploads.filter((item) => normalizeCategory(item.category) === tabId.toLowerCase()).length;
 };
 
 const tabColorClasses = {

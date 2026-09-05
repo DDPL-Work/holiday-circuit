@@ -352,12 +352,9 @@ export const buildVoucherHtml = (data, branding, agentBranding = {}) => {
   const guestPhoneVal = isDummyPhone ? "-" : String(rawPhone).trim();
 
   const paxVal = data?.passengers || data?.travelerSummary || `${data?.adults || 2} Adults${Number(data?.children || 0) > 0 ? `, ${data.children} Children` : ""}`;
-  const fallbackIssuedBy = "Holiday Circuit";
-  const rawIssuedBy = data?.issuedBy || "Holiday Circuit";
-  const isUserName = rawIssuedBy && (rawIssuedBy.toLowerCase().includes("user") || rawIssuedBy.toLowerCase().includes("guest") || rawIssuedBy.toLowerCase().includes("ddlc"));
-  const issuedByVal = (!rawIssuedBy || isUserName || rawIssuedBy === agentCompanyName) ? fallbackIssuedBy : normalizeCompanyName(rawIssuedBy, fallbackIssuedBy);
-  const helplinePhone = data?.agencyPhone || "+91-8851346665";
-  const helplineCompany = "Holiday Circuit";
+  const issuedByVal = agentCompanyName || "DDLC Company";
+  const helplinePhone = data?.agencyPhone || data?.companyPhone || data?.phone || "+91-8851346665";
+  const helplineCompany = agentCompanyName || "DDLC Company";
 
   const rawServices = Array.isArray(data?.services) && data.services.length > 0 ? data.services : [];
   const hotelServices = rawServices.filter((s) => String(s.type || s.category || "").toLowerCase().includes("hotel"));
@@ -983,9 +980,9 @@ export const buildVoucherHtml = (data, branding, agentBranding = {}) => {
               </thead>
               <tbody>
                 <tr>
-                  <td style="padding: 9px 12px; color: #000000; font-weight: 600; width: 34%; border: 1px solid #b3cae8;">Holiday Circuit</td>
+                  <td style="padding: 9px 12px; color: #000000; font-weight: 600; width: 34%; border: 1px solid #b3cae8;">${helplineCompany}</td>
                   <td style="padding: 9px 12px; color: #000000; font-weight: 500; width: 33%; border: 1px solid #b3cae8;">24x7 Operational</td>
-                  <td style="padding: 9px 12px; color: #000000; font-weight: 700; width: 33%; border: 1px solid #b3cae8;">+91-8851346665</td>
+                  <td style="padding: 9px 12px; color: #000000; font-weight: 700; width: 33%; border: 1px solid #b3cae8;">${helplinePhone}</td>
                 </tr>
               </tbody>
             </table>
