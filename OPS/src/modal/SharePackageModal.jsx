@@ -1206,7 +1206,7 @@ export default function SharePackageModal({
               `
             }
           </div>
-        `;
+        ;
 
         setEmailPreviewHtml(emailVoucherHtml);
       } catch (error) {

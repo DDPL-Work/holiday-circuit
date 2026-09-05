@@ -27,18 +27,34 @@ const IncExcList = () => {
   const uniqueDestinations = useMemo(() => {
     const destSet = new Set();
     presets.forEach(p => {
-      if (p.destination && p.destination.trim()) {
-        destSet.add(p.destination.trim());
+      if (Array.isArray(p.destinations) && p.destinations.length > 0) {
+        p.destinations.forEach(d => {
+          if (d && d.trim()) destSet.add(d.trim());
+        });
+      } else if (p.destination && p.destination.trim()) {
+        p.destination.split(',').forEach(d => {
+          if (d && d.trim()) destSet.add(d.trim());
+        });
       }
     });
     return Array.from(destSet).sort();
   }, [presets]);
 
   const filteredPresets = presets.filter(p => {
-    const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (p.destination && p.destination.toLowerCase().includes(searchQuery.toLowerCase()));
+    const destList = Array.isArray(p.destinations) && p.destinations.length > 0
+      ? p.destinations
+      : (p.destination ? p.destination.split(',').map(s => s.trim()).filter(Boolean) : []);
+
+    const q = searchQuery.toLowerCase().trim();
+    const matchesSearch = !q ||
+      p.name.toLowerCase().includes(q) ||
+      (p.destination && p.destination.toLowerCase().includes(q)) ||
+      destList.some(d => d.toLowerCase().includes(q));
+
     const matchesDest = selectedDestination === 'ALL' || 
-      (p.destination && p.destination.toLowerCase() === selectedDestination.toLowerCase());
+      destList.some(d => d.toLowerCase() === selectedDestination.toLowerCase()) ||
+      (p.destination && p.destination.toLowerCase().includes(selectedDestination.toLowerCase()));
+
     return matchesSearch && matchesDest;
   });
 
@@ -102,7 +118,7 @@ const IncExcList = () => {
             <thead className="border-b border-b-gray-200 bg-white text-gray-700">
               <tr>
                 <th className="px-4 py-3 text-left font-semibold">Preset Name</th>
-                <th className="px-4 py-3 text-left font-semibold">Destination</th>
+                <th className="px-4 py-3 text-left font-semibold">Destinations</th>
                 <th className="px-4 py-3 text-left font-semibold">Items</th>
                 <th className="px-4 py-3 text-left font-semibold">Created By</th>
                 <th className="px-4 py-3 text-left font-semibold">Created On</th>
@@ -116,45 +132,64 @@ const IncExcList = () => {
                  </td>
                </tr>
               ) : filteredPresets.length > 0 ? (
-                filteredPresets.map((preset) => (
-                  <tr 
-                    key={preset._id} 
-                    className="transition-colors hover:bg-slate-50 cursor-pointer"
-                    onClick={() => navigate(`/admin/inc-exc-presets/${preset._id}`)}
-                  >
-                    <td className="px-4 py-4 font-medium text-[#007b9a]">
-                      {preset.name}
-                    </td>
-                    <td className="px-4 py-4">
-                      {preset.destination ? (
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          {preset.destinationCategory && (
-                            <span className="text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200">
-                              {preset.destinationCategory}
-                            </span>
-                          )}
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-blue-50 text-blue-700 border border-blue-200">
-                            <MapPin className="h-3 w-3 text-blue-500 shrink-0" />
-                            {preset.destination}
-                          </span>
-                        </div>
-                      ) : (
-                        <span className="text-gray-400 italic text-xs">General / All</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-4 text-gray-600 font-medium">
-                      <span className="text-emerald-700 font-semibold">{preset.inclusions?.length || 0} Inc</span>
-                      {' • '}
-                      <span className="text-rose-700 font-semibold">{preset.exclusions?.length || 0} Exc</span>
-                    </td>
-                    <td className="px-4 py-4 text-gray-600 font-medium">
-                      {preset.createdBy?.name || "Admin"}
-                    </td>
-                    <td className="px-4 py-4 text-gray-600">
-                      on {new Date(preset.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
-                    </td>
-                  </tr>
-                ))
+                filteredPresets.map((preset) => {
+                  const destList = Array.isArray(preset.destinations) && preset.destinations.length > 0
+                    ? preset.destinations
+                    : (preset.destination ? preset.destination.split(',').map(s => s.trim()).filter(Boolean) : []);
+
+                  return (
+                    <tr 
+                      key={preset._id} 
+                      className="transition-colors hover:bg-slate-50 cursor-pointer"
+                      onClick={() => navigate(`/admin/inc-exc-presets/${preset._id}`)}
+                    >
+                      <td className="px-4 py-4 font-medium text-[#007b9a]">
+                        {preset.name}
+                      </td>
+                      <td className="px-4 py-4">
+                        {destList.length > 0 ? (
+                          <div className="flex items-center gap-1.5 flex-wrap max-w-md">
+                            {preset.destinationCategory && (
+                              <span className="text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200">
+                                {preset.destinationCategory}
+                              </span>
+                            )}
+                            {destList.slice(0, 3).map((dest, i) => (
+                              <span 
+                                key={i}
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-blue-50 text-blue-700 border border-blue-200"
+                              >
+                                <MapPin className="h-3 w-3 text-blue-500 shrink-0" />
+                                {dest}
+                              </span>
+                            ))}
+                            {destList.length > 3 && (
+                              <span 
+                                title={destList.slice(3).join(', ')}
+                                className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-gray-100 text-gray-700 border border-gray-200"
+                              >
+                                +{destList.length - 3} more
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-gray-400 italic text-xs">General / All</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-4 text-gray-600 font-medium">
+                        <span className="text-emerald-700 font-semibold">{preset.inclusions?.length || 0} Inc</span>
+                        {' • '}
+                        <span className="text-rose-700 font-semibold">{preset.exclusions?.length || 0} Exc</span>
+                      </td>
+                      <td className="px-4 py-4 text-gray-600 font-medium">
+                        {preset.createdBy?.name || "Admin"}
+                      </td>
+                      <td className="px-4 py-4 text-gray-600">
+                        on {new Date(preset.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      </td>
+                    </tr>
+                  );
+                })
               ) : (
                 <tr>
                   <td colSpan="5" className="px-6 py-12 text-center text-sm text-gray-400">

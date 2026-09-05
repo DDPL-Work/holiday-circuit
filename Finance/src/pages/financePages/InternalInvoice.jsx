@@ -57,6 +57,8 @@ const amountColor = {
   Approved: "text-green-500",
   Rejected: "text-red-500",
   "Partially Paid": "text-amber-500",
+  "Passed to Manager": "text-purple-600",
+  "Pass to Manager": "text-purple-600",
 };
 
 const formatCurrency = (value, currency = "INR") =>
@@ -146,6 +148,8 @@ const StatusBadge = ({ status, method }) => {
     Approved: "bg-green-50 text-green-600 border-green-200",
     Rejected: "bg-red-50 text-red-600 border-red-200",
     "Partially Paid": "bg-orange-50 text-orange-600 border-orange-200",
+    "Passed to Manager": "bg-purple-50 text-purple-700 border-purple-200",
+    "Pass to Manager": "bg-purple-50 text-purple-700 border-purple-200",
   };
   return (
     <div className="flex flex-col items-start">
@@ -201,6 +205,7 @@ const getInvoiceDisplayStatus = (status, dueDateValue) => {
   if (status === "Paid") return "Paid";
   if (status === "Partially Paid") return "Partially Paid";
   if (status === "Rejected") return "Rejected";
+  if (status === "Passed to Manager" || status === "Pass to Manager") return "Passed to Manager";
   return isDatePast(dueDateValue) ? "Overdue" : "Pending";
 };
 
@@ -278,9 +283,16 @@ const InternalInvoice = () => {
         const cumulativePaid = payoutInstallments.reduce((sum, inst) => sum + Number(inst.amount || 0), 0);
         const remainingAmount = Math.max(0, Number(invoice.amount || 0) - cumulativePaid);
 
+        const normalizedInvoiceNumber =
+          invoice.invoiceNumber && invoice.invoiceNumber.startsWith("INV-")
+            ? invoice.invoiceNumber
+            : (invoice.queryId && invoice.queryId !== "-"
+              ? `INV-${String(invoice.queryId).replace(/^INV-/, "")}`
+              : (invoice.invoiceNumber ? `INV-${invoice.invoiceNumber}` : "INV-0001"));
+
         return {
           _id: invoice.id,
-          id: invoice.invoiceNumber,
+          id: normalizedInvoiceNumber,
           isDmc: true,
           ref: invoice.queryId,
           party: invoice.dmcName,
@@ -328,6 +340,9 @@ const InternalInvoice = () => {
           quotationNumber: invoice.quotationNumber,
           items: invoice.items || [],
           documents: invoice.documents || [],
+          dmcRemarks: invoice.dmcRemarks || invoice.remarks || invoice.invoiceMeta?.dmcRemarks || "",
+          invoiceExtraction: invoice.invoiceExtraction || {},
+          financeNotes: invoice.financeNotes || "",
         };
       }),
     [invoiceData.invoices],
@@ -615,6 +630,7 @@ const InternalInvoice = () => {
               <option value="All Status">All Status</option>
               <option value="Pending">Pending</option>
               <option value="Overdue">Overdue</option>
+              <option value="Passed to Manager">Passed to Manager</option>
               <option value="Rejected">Rejected</option>
               <option value="Paid">Paid</option>
             </select>

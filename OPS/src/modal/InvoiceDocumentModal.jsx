@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { FileText, Eye, Download, Info, X } from 'lucide-react';
+import { Info, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import API from '../utils/Api';
 
@@ -151,22 +151,34 @@ const InvoiceDocumentModal = ({ invoice, onClose, onInvoiceUpdated, sidePanelOpe
     return () => clearTimeout(timer);
   }, [invoice?._id]);
 
+  const expectedSummary = getExpectedInvoiceSummary(invoice);
+  const uploadedSummary = getUploadedInvoiceSummary(invoice);
+
   const agreedRate =
     invoice.agreedRate ||
     invoice.opsServicesTotal ||
-    'Rs 1,15,000';
+    formatRoundedAmount(expectedSummary.subtotal);
   const invoicedAmount =
-    invoice.dmcInvoiceAmount ||
-    invoice.internalInvoiceServicesTotal ||
-    'Rs 1,25,000';
-  const taxAmount = invoice.tax || 'Rs 10,000';
+    invoice.invoiceSource === "uploaded_invoice"
+      ? formatRoundedAmount(uploadedSummary.subtotal)
+      : (invoice.dmcInvoiceAmount || invoice.internalInvoiceServicesTotal || formatRoundedAmount(invoice.dmcServicesTotal || 0));
+  const taxAmount =
+    invoice.invoiceSource === "uploaded_invoice"
+      ? formatRoundedAmount(uploadedSummary.taxAmount)
+      : (invoice.tax || formatRoundedAmount(expectedSummary.totalTax));
   const roundedAgreedRate = formatRoundedAmount(
-    invoice.agreedRateValue ?? invoice.opsServicesTotal ?? agreedRate,
+    invoice.agreedRateValue ?? invoice.opsServicesTotal ?? expectedSummary.subtotal,
   );
   const roundedInvoicedAmount = formatRoundedAmount(
-    invoice.dmcInvoiceAmountValue ?? invoice.internalInvoiceServicesTotal ?? invoicedAmount,
+    invoice.invoiceSource === "uploaded_invoice"
+      ? uploadedSummary.subtotal
+      : (invoice.dmcInvoiceAmountValue ?? invoice.internalInvoiceServicesTotal ?? invoicedAmount),
   );
-  const roundedTaxAmount = formatRoundedAmount(invoice.taxValue ?? invoice.tax ?? taxAmount);
+  const roundedTaxAmount = formatRoundedAmount(
+    invoice.invoiceSource === "uploaded_invoice"
+      ? uploadedSummary.taxAmount
+      : (invoice.taxValue ?? invoice.tax ?? taxAmount),
+  );
   const isUploadedInvoice = invoice.invoiceSource === "uploaded_invoice";
   const showManualChecks = isUploadedInvoice || (invoice.documents && invoice.documents.length > 0);
   const invoiceExtraction = invoice.invoiceExtraction || {};
@@ -178,8 +190,6 @@ const InvoiceDocumentModal = ({ invoice, onClose, onInvoiceUpdated, sidePanelOpe
     invoiceExtraction.verification?.passed !== false &&
     !extractionWarnings.length;
   const extractionFailed = invoiceExtraction.status === "parsed" && !extractionPassed;
-  const expectedSummary = getExpectedInvoiceSummary(invoice);
-  const uploadedSummary = getUploadedInvoiceSummary(invoice);
 
   const getExtractionFieldCheckDetails = (key, label, expectedValue, isAmount = false) => {
     const matched = isAmount 
@@ -389,6 +399,48 @@ const InvoiceDocumentModal = ({ invoice, onClose, onInvoiceUpdated, sidePanelOpe
     }
   };
 
+  const handlePassToManager = async (reason) => {
+    if (isSubmitting) return;
+
+    try {
+      setIsSubmitting(true);
+      const targetQueryId = invoice?.query?._id || invoice?.queryId || invoice?.query;
+      if (targetQueryId) {
+        await API.patch(`/ops/queries/pass-admin/${targetQueryId}`, {
+          note: `Finance Escalation (Invoice #${invoice?.id || invoice?.invoiceNumber || ''}): ${reason}`,
+        }).catch(() => {});
+      }
+
+      const { data } = await API.patch(`/admin/internal-invoices/${invoice._id}/status`, {
+        status: 'Passed to Manager',
+        reason: reason,
+        notifyAdmin: true,
+        adminMessage: `Finance Escalation: ${reason}`,
+      });
+
+      onInvoiceUpdated?.(data?.data);
+      setShowRejectModal(false);
+      showFeedback(
+        'success',
+        'Passed to Manager',
+        'Invoice and remark have been passed to Manager for review.',
+      );
+      window.setTimeout(() => {
+        handleClose();
+      }, 1100);
+    } catch (error) {
+      showFeedback(
+        'error',
+        'Unable to Pass to Manager',
+        error?.response?.data?.message ||
+        error?.response?.data?.error ||
+        'Failed to pass invoice to manager',
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const handleDispatchSuccess = async (dispatch = {}, receiptDocument = null) => {
     if (selectedDispatchChannel === 'PDF' && receiptDocument?.filePath) {
       const receiptUrl = getFileUrl(receiptDocument.filePath);
@@ -427,20 +479,13 @@ const InvoiceDocumentModal = ({ invoice, onClose, onInvoiceUpdated, sidePanelOpe
       return;
     }
 
-    if (!ratesMatch) {
-      showFeedback(
-        'warning',
-        'Rate Validation Failed',
-        'Ops total and DMC invoice total should match before finance settles the payout.',
-      );
-      return;
-    }
-
     if (!allChecksPassed) {
       showFeedback(
         'warning',
         'Verification Checklist Pending',
-        'Please manually verify and pass all checklist items under Uploaded Amount Check before confirming payout.',
+        !ratesMatch
+          ? 'Rate mismatch detected. Please review DMC remarks and verify/pass all checklist items under Uploaded Amount Check before confirming payout.'
+          : 'Please manually verify and pass all checklist items under Uploaded Amount Check before confirming payout.',
       );
       return;
     }
@@ -556,17 +601,17 @@ const InvoiceDocumentModal = ({ invoice, onClose, onInvoiceUpdated, sidePanelOpe
             </div>
           )}
 
-          <div className="relative my-auto">
+          <div className="relative my-auto w-full max-w-4xl lg:max-w-5xl">
             <motion.div
               initial={{ opacity: 0, y: 18 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 14 }}
               transition={{ duration: 0.24, ease: 'easeOut' }}
-              className={`relative my-auto flex max-h-[calc(100vh-24px)] w-full max-w-[490px] flex-col overflow-hidden rounded-[18px] border border-slate-200 bg-white shadow-[0_24px_60px_rgba(15,23,42,0.22)] sm:max-h-[calc(100vh-32px)] ${
+              className={`relative my-auto flex max-h-[calc(100vh-24px)] w-full flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_24px_60px_rgba(15,23,42,0.22)] sm:max-h-[calc(100vh-32px)] ${
                 (showDispatchModal || showRejectModal) ? 'hidden' : ''
               }`}
             >
-              <div className="flex items-start justify-between border-b border-slate-100 px-4 py-3">
+              <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50/70 px-5 py-3.5">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
                     <h2 className="text-sm font-bold text-slate-900">Internal Invoice View</h2>
@@ -576,96 +621,104 @@ const InvoiceDocumentModal = ({ invoice, onClose, onInvoiceUpdated, sidePanelOpe
                       </span>
                     )}
                   </div>
-                  <p className="mt-0.5 truncate text-[10.5px] text-slate-500 font-medium">
-                    {invoice.id} | {invoice.ref}
-                  </p>
-                  <span className="mt-1 inline-flex rounded-full border border-blue-100 bg-blue-50 px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] text-blue-700">
-                    Invoice Source: {invoiceSourceLabel}
-                  </span>
+                  <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                    <p className="truncate text-[10.5px] text-slate-500 font-medium">
+                      {invoice.id} | {invoice.ref}
+                    </p>
+                    <span className="inline-flex rounded-full border border-blue-100 bg-blue-50 px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] text-blue-700">
+                      Invoice Source: {invoiceSourceLabel}
+                    </span>
+                  </div>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
                   <button
                     onClick={() => setShowHelpPanel(!showHelpPanel)}
-                    className={`rounded-full p-1 transition-colors cursor-pointer ${
+                    className={`rounded-full p-1.5 transition-colors cursor-pointer ${
                       showHelpPanel ? "bg-blue-50 text-blue-600 hover:bg-blue-100" : "text-slate-400 hover:bg-slate-100 hover:text-slate-700"
                     }`}
                     title="Toggle Process Guidelines"
                   >
-                    <Info className="h-3.5 w-3.5" />
+                    <Info className="h-4 w-4" />
                   </button>
                   <button
                     onClick={handleClose}
-                    className="rounded-full p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 cursor-pointer"
+                    className="rounded-full p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 cursor-pointer"
                   >
-                    <X className="h-3.5 w-3.5" />
+                    <X className="h-4 w-4" />
                   </button>
                 </div>
               </div>
 
-              <div className="hide-scrollbar flex-1 space-y-3 overflow-y-auto px-3.5 py-3.5">
-                <RateValidationCard
-                  financeValidationPassed={financeValidationPassed}
-                  roundedAgreedRate={roundedAgreedRate}
-                  roundedInvoicedAmount={roundedInvoicedAmount}
-                  ratesMatch={ratesMatch}
-                  roundedTaxAmount={roundedTaxAmount}
-                  showManualChecks={showManualChecks}
-                  invoiceExtraction={invoiceExtraction}
-                  extractionPassed={extractionPassed}
-                  extractionFailed={extractionFailed}
-                  extractionFieldChecks={extractionFieldChecks}
-                  extractionWarnings={extractionWarnings}
-                  extractionNotes={extractionNotes}
-                  manualVerificationStatus={manualVerificationStatus}
-                  amountValidationRows={amountValidationRows}
-                  manualChecks={manualChecks}
-                  setManualChecks={setManualChecks}
-                  handleVerifyPass={handleVerifyPass}
-                  uploadedSummary={uploadedSummary}
-                  expectedSummary={expectedSummary}
-                  allChecksPassed={allChecksPassed}
-                />
+              <div className="hide-scrollbar flex-1 overflow-y-auto p-4 sm:p-5">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+                  <div className="space-y-3">
+                    <RateValidationCard
+                      financeValidationPassed={financeValidationPassed}
+                      roundedAgreedRate={roundedAgreedRate}
+                      roundedInvoicedAmount={roundedInvoicedAmount}
+                      ratesMatch={ratesMatch}
+                      roundedTaxAmount={roundedTaxAmount}
+                      showManualChecks={showManualChecks}
+                      invoiceExtraction={invoiceExtraction}
+                      extractionPassed={extractionPassed}
+                      extractionFailed={extractionFailed}
+                      extractionFieldChecks={extractionFieldChecks}
+                      extractionWarnings={extractionWarnings}
+                      extractionNotes={extractionNotes}
+                      manualVerificationStatus={manualVerificationStatus}
+                      amountValidationRows={amountValidationRows}
+                      manualChecks={manualChecks}
+                      setManualChecks={setManualChecks}
+                      handleVerifyPass={handleVerifyPass}
+                      uploadedSummary={uploadedSummary}
+                      expectedSummary={expectedSummary}
+                      allChecksPassed={allChecksPassed}
+                    />
+                  </div>
 
-                <PaymentDetailsSection
-                  invoice={invoice}
-                  documentList={documentList}
-                  handlePreviewDocument={handlePreviewDocument}
-                  handleDownloadDocument={handleDownloadDocument}
-                  payoutInstallments={payoutInstallments}
-                  cumulativePaid={cumulativePaid}
-                  expectedPayoutAmount={expectedPayoutAmount}
-                  isPaid={isPaid}
-                  settledAmount={settledAmount}
-                  settledDate={settledDate}
-                  remainingBalance={remainingBalance}
-                  roundedRemainingBalance={roundedRemainingBalance}
-                  utrInput={utrInput}
-                  setUtrInput={setUtrInput}
-                  dateInput={dateInput}
-                  setDateInput={setDateInput}
-                  sourceBank={sourceBank}
-                  setSourceBank={setSourceBank}
-                  bankOptions={bankOptions}
-                  bankReferenceMatched={bankReferenceMatched}
-                  payoutReferenceDetailsComplete={payoutReferenceDetailsComplete}
-                  payoutDetailsComplete={payoutDetailsComplete}
-                  transferAmount={transferAmount}
-                  setTransferAmount={setTransferAmount}
-                  formatIntegerInput={formatIntegerInput}
-                  payoutAmountMatches={payoutAmountMatches}
-                  isBankDropdownOpen={isBankDropdownOpen}
-                  setIsBankDropdownOpen={setIsBankDropdownOpen}
-                  ratesMatch={ratesMatch}
-                  allChecksPassed={allChecksPassed}
-                  handleReject={handleReject}
-                  handleConfirm={handleConfirm}
-                  isSubmitting={isSubmitting}
-                  invoiceItems={invoiceItems}
-                  selectedItemIndices={selectedItemIndices}
-                  handleToggleItem={handleToggleItem}
-                  handleSelectAllItems={handleSelectAllItems}
-                  handleDeselectAllItems={handleDeselectAllItems}
-                />
+                  <div className="space-y-3">
+                    <PaymentDetailsSection
+                      invoice={invoice}
+                      documentList={documentList}
+                      handlePreviewDocument={handlePreviewDocument}
+                      handleDownloadDocument={handleDownloadDocument}
+                      payoutInstallments={payoutInstallments}
+                      cumulativePaid={cumulativePaid}
+                      expectedPayoutAmount={expectedPayoutAmount}
+                      isPaid={isPaid}
+                      settledAmount={settledAmount}
+                      settledDate={settledDate}
+                      remainingBalance={remainingBalance}
+                      roundedRemainingBalance={roundedRemainingBalance}
+                      utrInput={utrInput}
+                      setUtrInput={setUtrInput}
+                      dateInput={dateInput}
+                      setDateInput={setDateInput}
+                      sourceBank={sourceBank}
+                      setSourceBank={setSourceBank}
+                      bankOptions={bankOptions}
+                      bankReferenceMatched={bankReferenceMatched}
+                      payoutReferenceDetailsComplete={payoutReferenceDetailsComplete}
+                      payoutDetailsComplete={payoutDetailsComplete}
+                      transferAmount={transferAmount}
+                      setTransferAmount={setTransferAmount}
+                      formatIntegerInput={formatIntegerInput}
+                      payoutAmountMatches={payoutAmountMatches}
+                      isBankDropdownOpen={isBankDropdownOpen}
+                      setIsBankDropdownOpen={setIsBankDropdownOpen}
+                      ratesMatch={ratesMatch}
+                      allChecksPassed={allChecksPassed}
+                      handleReject={handleReject}
+                      handleConfirm={handleConfirm}
+                      isSubmitting={isSubmitting}
+                      invoiceItems={invoiceItems}
+                      selectedItemIndices={selectedItemIndices}
+                      handleToggleItem={handleToggleItem}
+                      handleSelectAllItems={handleSelectAllItems}
+                      handleDeselectAllItems={handleDeselectAllItems}
+                    />
+                  </div>
+                </div>
               </div>
             </motion.div>
 
@@ -674,6 +727,8 @@ const InvoiceDocumentModal = ({ invoice, onClose, onInvoiceUpdated, sidePanelOpe
                 invoice={invoice}
                 onClose={() => setShowRejectModal(false)}
                 onConfirm={handleRejectConfirm}
+                onPassToManager={handlePassToManager}
+                isSubmitting={isSubmitting}
               />
             )}
 

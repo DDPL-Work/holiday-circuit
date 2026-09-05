@@ -1,65 +1,36 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, X, MapPin, ChevronDown, Check } from 'lucide-react';
+import { ArrowLeft, X, MapPin, ChevronDown } from 'lucide-react';
 import API from '../../../utils/Api';
 import toast from 'react-hot-toast';
 
 const PREDEFINED_DESTINATIONS = {
   Domestic: [
-    { label: "Hotels Only", city: "Hotels Only", country: "India" },
-    { label: "Jammu & Kashmir", city: "Jammu & Kashmir", country: "India" },
-    { label: "North East", city: "North East", country: "India" },
-    { label: "Goa", city: "Goa", country: "India" },
-    { label: "Andamans", city: "Andamans", country: "India" },
-    { label: "Kerala", city: "Kerala", country: "India" },
+    "Hotels Only",
+    "Jammu & Kashmir",
+    "North East",
+    "Goa",
+    "Andamans",
+    "Kerala",
   ],
   International: [
-    { label: "Thailand", city: "Thailand", country: "Thailand" },
-    { label: "UAE", city: "UAE", country: "United Arab Emirates" },
-    { label: "Indonesia", city: "Indonesia", country: "Indonesia" },
-    { label: "Sri Lanka", city: "Sri Lanka", country: "Sri Lanka" },
-    { label: "Nepal", city: "Nepal", country: "Nepal" },
-    { label: "Singapore", city: "Singapore", country: "Singapore" },
-    { label: "Malaysia", city: "Malaysia", country: "Malaysia" },
-    { label: "Vietnam", city: "Vietnam", country: "Vietnam" },
-    { label: "Europe", city: "Europe", country: "Europe" },
+    "Thailand",
+    "UAE",
+    "Indonesia",
+    "Sri Lanka",
+    "Nepal",
+    "Singapore",
+    "Malaysia",
+    "Vietnam",
+    "Europe",
   ],
-};
-
-const normalizeCountryName = (value = "") =>
-  String(value || "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/&/g, "and")
-    .replace(/[^a-z0-9]+/gi, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .toLowerCase();
-
-const countryAliasCodes = {
-  america: "US", britain: "GB", england: "GB", holland: "NL",
-  korea: "KR", laos: "LA", maldives: "MV", russia: "RU",
-  scotland: "GB", taiwan: "TW", tanzania: "TZ", uae: "AE",
-  "u a e": "AE", uk: "GB", "u k": "GB", "united kingdom": "GB",
-  "united states": "US", usa: "US", "u s a": "US", vietnam: "VN",
-  india: "IN", thailand: "TH", indonesia: "ID", "sri lanka": "LK",
-  nepal: "NP", singapore: "SG", malaysia: "MY", "united arab emirates": "AE",
-  france: "FR", italy: "IT", switzerland: "CH", spain: "ES", germany: "DE",
-  turkey: "TR", egypt: "EG", japan: "JP", australia: "AU",
-};
-
-const getCountryFlagUrl = (country = "") => {
-  const norm = normalizeCountryName(country);
-  const code = countryAliasCodes[norm] || "";
-  if (code) return `https://animated-country-flags.malith.dev/webp/${code.toUpperCase()}.webp`;
-  return "";
 };
 
 const IncExcCreate = () => {
   const navigate = useNavigate();
   const [name, setName] = useState('');
   const [destinationCategory, setDestinationCategory] = useState('');
-  const [destination, setDestination] = useState('');
+  const [selectedDestinations, setSelectedDestinations] = useState([]);
   const [destinationSearch, setDestinationSearch] = useState('');
   const [destinationOptions, setDestinationOptions] = useState([]);
   const [isDestDropdownOpen, setIsDestDropdownOpen] = useState(false);
@@ -125,10 +96,61 @@ const IncExcCreate = () => {
     setExclusions(newExclusions);
   };
 
-  const filteredDestinations = destinationOptions.filter((opt) => {
-    const label = opt?.label || `${opt?.city || ''}, ${opt?.country || ''}`;
-    return label.toLowerCase().includes(destinationSearch.toLowerCase());
-  });
+  // Compile available destination options based on selected category (Only city names, no countries)
+  const availableDestinations = useMemo(() => {
+    if (destinationCategory === 'Domestic') {
+      return PREDEFINED_DESTINATIONS.Domestic;
+    } else if (destinationCategory === 'International') {
+      return PREDEFINED_DESTINATIONS.International;
+    } else {
+      // Other or custom
+      const uniqueNames = new Set();
+      destinationOptions.forEach(opt => {
+        const cityName = opt?.city || opt?.label;
+        if (cityName && typeof cityName === 'string' && cityName.trim()) {
+          uniqueNames.add(cityName.trim());
+        }
+      });
+      return Array.from(uniqueNames);
+    }
+  }, [destinationCategory, destinationOptions]);
+
+  const filteredDestinations = useMemo(() => {
+    if (!destinationSearch.trim()) return availableDestinations;
+    const q = destinationSearch.toLowerCase().trim();
+    return availableDestinations.filter((name) =>
+      name.toLowerCase().includes(q)
+    );
+  }, [availableDestinations, destinationSearch]);
+
+  const toggleDestination = (destName) => {
+    const trimmed = destName.trim();
+    if (!trimmed) return;
+    if (selectedDestinations.includes(trimmed)) {
+      setSelectedDestinations(selectedDestinations.filter(d => d !== trimmed));
+    } else {
+      setSelectedDestinations([...selectedDestinations, trimmed]);
+    }
+  };
+
+  const handleSelectAll = () => {
+    const newSet = new Set([...selectedDestinations, ...filteredDestinations]);
+    setSelectedDestinations(Array.from(newSet));
+  };
+
+  const handleDeselectAll = () => {
+    const removeSet = new Set(filteredDestinations.map(d => d.toLowerCase()));
+    setSelectedDestinations(selectedDestinations.filter(d => !removeSet.has(d.toLowerCase())));
+  };
+
+  const handleAddCustomDestination = () => {
+    if (!destinationSearch.trim()) return;
+    const custom = destinationSearch.trim();
+    if (!selectedDestinations.includes(custom)) {
+      setSelectedDestinations([...selectedDestinations, custom]);
+    }
+    setDestinationSearch('');
+  };
 
   const handleSave = async () => {
     if (!name.trim()) {
@@ -143,9 +165,10 @@ const IncExcCreate = () => {
     setLoading(true);
     try {
       await API.post('/admin/inc-exc-presets', {
-        name,
+        name: name.trim(),
         destinationCategory: destinationCategory || '',
-        destination: destination.trim(),
+        destinations: selectedDestinations,
+        destination: selectedDestinations.join(', '),
         inclusions: validInclusions,
         exclusions: validExclusions
       });
@@ -199,7 +222,7 @@ const IncExcCreate = () => {
                   onChange={(e) => {
                     const category = e.target.value;
                     setDestinationCategory(category);
-                    setDestination('');
+                    setSelectedDestinations([]);
                     setDestinationSearch('');
                   }}
                   className="w-full appearance-none rounded-lg border border-gray-300 bg-white px-4 py-2 pr-9 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
@@ -213,119 +236,149 @@ const IncExcCreate = () => {
               </div>
             </div>
 
-            {/* Destination Dropdown based on Category */}
-            <div>
+            {/* Destination Multi-Select Dropdown with matching UI */}
+            <div className="relative" ref={destDropdownRef}>
               <label className="mb-1.5 block text-sm font-semibold text-gray-700 flex items-center justify-between">
                 <span>Destination</span>
-                {destination && (
+                {selectedDestinations.length > 0 && (
                   <button
                     type="button"
-                    onClick={() => { setDestination(''); setDestinationSearch(''); }}
-                    className="text-xs text-blue-600 hover:underline font-normal"
+                    onClick={() => setSelectedDestinations([])}
+                    className="text-xs text-blue-600 hover:underline font-normal cursor-pointer"
                   >
-                    Clear
+                    Clear ({selectedDestinations.length})
                   </button>
                 )}
               </label>
 
-              {destinationCategory === "Domestic" || destinationCategory === "International" ? (
-                <div className="relative">
-                  <MapPin size={16} className="absolute left-3 top-1/2 z-10 -translate-y-1/2 text-gray-400" />
-                  <select
-                    value={destination}
-                    onChange={(e) => setDestination(e.target.value)}
-                    className="w-full appearance-none rounded-lg border border-gray-300 bg-white py-2 pl-9 pr-9 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer"
-                  >
-                    <option value="">Select destination</option>
-                    {(PREDEFINED_DESTINATIONS[destinationCategory] || []).map((dest) => (
-                      <option key={dest.label} value={dest.label}>{dest.label}</option>
-                    ))}
-                  </select>
-                  <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              {/* Trigger Input matching Category dropdown */}
+              <div className="relative">
+                <MapPin size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 z-10" />
+                
+                <div
+                  onClick={() => setIsDestDropdownOpen(!isDestDropdownOpen)}
+                  className="w-full h-[38px] rounded-lg border border-gray-300 bg-white py-2 pl-9 pr-9 text-sm cursor-pointer flex items-center overflow-hidden hover:border-gray-400 focus-within:border-blue-500 focus-within:ring-1 focus-within:ring-blue-500"
+                >
+                  {selectedDestinations.length === 0 ? (
+                    <span className="text-gray-500 truncate">Select destination</span>
+                  ) : (
+                    <span className="text-gray-900 font-medium truncate">
+                      {selectedDestinations.join(', ')}
+                    </span>
+                  )}
                 </div>
-              ) : (
-                <div className="relative" ref={destDropdownRef}>
-                  <div 
-                    onClick={() => setIsDestDropdownOpen(!isDestDropdownOpen)}
-                    className="flex w-full items-center justify-between rounded-lg border border-gray-300 bg-white px-3.5 py-2 text-sm cursor-pointer hover:border-gray-400 focus-within:border-blue-500 focus-within:ring-1 focus-within:ring-blue-500"
-                  >
-                    <div className="flex items-center gap-2 overflow-hidden">
-                      {destination && getCountryFlagUrl(destination) ? (
-                        <img src={getCountryFlagUrl(destination)} alt="" className="h-[13px] w-[20px] object-contain shrink-0" />
-                      ) : (
-                        <MapPin className="h-4 w-4 text-slate-400 shrink-0" />
-                      )}
-                      <span className={destination ? "text-slate-900 font-medium truncate" : "text-gray-400 truncate"}>
-                        {destination || "Select or search destination..."}
-                      </span>
-                    </div>
-                    <ChevronDown className={`h-4 w-4 text-gray-400 transition-transform ${isDestDropdownOpen ? "rotate-180" : ""}`} />
-                  </div>
 
-                  {isDestDropdownOpen && (
-                    <div className="absolute z-20 mt-1 w-full rounded-xl border border-gray-200 bg-white p-2 shadow-xl">
+                <ChevronDown 
+                  size={16} 
+                  className={`pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 transition-transform ${
+                    isDestDropdownOpen ? "rotate-180" : ""
+                  }`} 
+                />
+              </div>
+
+              {/* Dropdown Options matching screenshot UI */}
+              {isDestDropdownOpen && (
+                <div className="absolute z-30 mt-1 w-full rounded-lg border border-gray-200 bg-white shadow-lg overflow-hidden animate-in fade-in zoom-in-95 duration-100">
+                  {/* Search for Other or when list is long */}
+                  {destinationCategory === 'Other' && (
+                    <div className="p-2 border-b border-gray-100">
                       <input
                         type="text"
-                        placeholder="Search or enter custom destination..."
+                        placeholder="Search or add custom city..."
                         value={destinationSearch}
                         onChange={(e) => setDestinationSearch(e.target.value)}
                         onClick={(e) => e.stopPropagation()}
-                        className="w-full rounded-lg border border-gray-300 px-3 py-1.5 text-xs focus:border-blue-500 focus:outline-none"
+                        className="w-full rounded border border-gray-300 px-2.5 py-1.5 text-xs focus:border-blue-500 focus:outline-none"
                         autoFocus
                       />
-                      
-                      <div className="mt-2 max-h-48 overflow-y-auto space-y-0.5 text-xs">
-                        {destinationSearch.trim() && !filteredDestinations.some(d => (d.label || d.city || '').toLowerCase() === destinationSearch.trim().toLowerCase()) && (
-                          <div
-                            onClick={() => {
-                              setDestination(destinationSearch.trim());
-                              setIsDestDropdownOpen(false);
-                            }}
-                            className="flex items-center justify-between px-3 py-2 rounded-lg hover:bg-blue-50 text-blue-600 cursor-pointer font-medium"
-                          >
-                            <span>Use "{destinationSearch.trim()}"</span>
-                            <span className="text-[10px] bg-blue-100 px-2 py-0.5 rounded text-blue-700">Custom</span>
-                          </div>
-                        )}
-                        
-                        {filteredDestinations.map((opt, idx) => {
-                          const label = opt?.label || `${opt?.city || ''}, ${opt?.country || ''}`;
-                          const country = opt?.country || '';
-                          const flag = getCountryFlagUrl(country);
-                          const isSelected = destination.toLowerCase() === label.toLowerCase() || destination.toLowerCase() === (opt.city || '').toLowerCase();
-                          return (
-                            <div
-                              key={idx}
-                              onClick={() => {
-                                setDestination(opt.city || opt.label || label);
-                                setDestinationSearch('');
-                                setIsDestDropdownOpen(false);
-                              }}
-                              className={`flex items-center justify-between px-3 py-2 rounded-lg cursor-pointer transition-colors ${
-                                isSelected ? "bg-blue-50 text-blue-700 font-semibold" : "hover:bg-slate-50 text-slate-700"
-                              }`}
-                            >
-                              <div className="flex items-center gap-2">
-                                {flag ? (
-                                  <img src={flag} alt="" className="h-[13px] w-[20px] object-contain shrink-0" />
-                                ) : (
-                                  <MapPin className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                                )}
-                                <span>{label}</span>
-                              </div>
-                              {isSelected && <Check className="h-4 w-4 text-blue-600" />}
-                            </div>
-                          );
-                        })}
+                    </div>
+                  )}
 
-                        {filteredDestinations.length === 0 && !destinationSearch.trim() && (
-                          <div className="px-3 py-3 text-center text-gray-400 text-xs">
-                            No destinations available
-                          </div>
-                        )}
+                  {/* Select All / Deselect All header */}
+                  {availableDestinations.length > 1 && (
+                    <div className="flex items-center justify-between px-3.5 py-1.5 bg-slate-50 border-b border-gray-100 text-xs">
+                      <span className="text-[11px] text-gray-500">
+                        {selectedDestinations.length} selected
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleSelectAll();
+                          }}
+                          className="text-[11px] font-medium text-blue-600 hover:underline cursor-pointer"
+                        >
+                          Select All
+                        </button>
+                        <span className="text-gray-300">|</span>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeselectAll();
+                          }}
+                          className="text-[11px] font-medium text-gray-500 hover:underline cursor-pointer"
+                        >
+                          Deselect All
+                        </button>
                       </div>
                     </div>
                   )}
+
+                  {/* List of cities with checkboxes */}
+                  <div 
+                    className="max-h-56 overflow-y-auto [scrollbar-width:thin] [scrollbar-color:#cbd5e1_transparent] [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-slate-400"
+                    style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 transparent' }}
+                  >
+                    {destinationSearch.trim() &&
+                      !availableDestinations.some(
+                        (d) => d.toLowerCase() === destinationSearch.trim().toLowerCase()
+                      ) && (
+                        <div
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleAddCustomDestination();
+                          }}
+                          className="flex items-center justify-between px-3.5 py-2 hover:bg-blue-50 text-blue-600 text-sm cursor-pointer font-medium border-b border-gray-100"
+                        >
+                          <span>+ Add "{destinationSearch.trim()}"</span>
+                        </div>
+                      )}
+
+                    {filteredDestinations.map((destName, idx) => {
+                      const isChecked = selectedDestinations.includes(destName);
+
+                      return (
+                        <div
+                          key={idx}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleDestination(destName);
+                          }}
+                          className={`flex items-center gap-2.5 px-3.5 py-2 text-sm cursor-pointer transition-colors select-none ${
+                            isChecked
+                              ? "bg-blue-50 text-blue-700 font-medium"
+                              : "hover:bg-slate-50 text-gray-700"
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => {}}
+                            className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer accent-blue-600 shrink-0"
+                          />
+                          <span>{destName}</span>
+                        </div>
+                      );
+                    })}
+
+                    {filteredDestinations.length === 0 && !destinationSearch.trim() && (
+                      <div className="px-3.5 py-3 text-center text-gray-400 text-xs">
+                        No destinations available
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </div>

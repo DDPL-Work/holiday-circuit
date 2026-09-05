@@ -18,6 +18,9 @@ import {
   Info,
   RefreshCw,
   Send,
+  Edit3,
+  Wand2,
+  Sparkles,
 } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { RotatingLines } from "react-loader-spinner";
@@ -308,19 +311,58 @@ export const BulkInvoiceSettlementForm = ({
 
           {invoiceExtraction ? (
             (() => {
-              const extractionPassed =
-                invoiceExtraction.status === "parsed" &&
-                invoiceExtraction.verification?.passed !== false &&
-                !invoiceExtraction.verification?.warnings?.length;
-              const extractionFailed =
-                invoiceExtraction.status === "parsed" && !extractionPassed;
-              const fields = invoiceExtraction.fields || {};
+              const rawOcrFields = invoiceExtraction.fields || {};
               const expectedTax = selectedGst + selectedTcs + Number(taxConfig.otherTax || 0);
-              const amountMatches = (extracted, expected) =>
-                Number(expected || 0) === 0
-                  ? Math.round(Number(extracted || 0)) === 0
-                  : Number(extracted || 0) > 0 &&
-                    Math.round(Number(extracted || 0)) === Math.round(Number(expected || 0));
+
+              const activeInvoiceNumber = invoiceMeta.invoiceNumber || rawOcrFields.invoiceNumber || "";
+              const activeInvoiceDate = invoiceMeta.invoiceDate || rawOcrFields.invoiceDate || "";
+              const activeSubtotal =
+                claimedSummary.subtotal !== "" && claimedSummary.subtotal !== undefined && claimedSummary.subtotal !== null
+                  ? Number(claimedSummary.subtotal)
+                  : (rawOcrFields.subtotal !== undefined ? Number(rawOcrFields.subtotal) : null);
+              const activeTaxAmount =
+                claimedSummary.taxAmount !== "" && claimedSummary.taxAmount !== undefined && claimedSummary.taxAmount !== null
+                  ? Number(claimedSummary.taxAmount)
+                  : (rawOcrFields.taxAmount !== undefined ? Number(rawOcrFields.taxAmount) : null);
+              const activeGrandTotal =
+                claimedSummary.grandTotal !== "" && claimedSummary.grandTotal !== undefined && claimedSummary.grandTotal !== null
+                  ? Number(claimedSummary.grandTotal)
+                  : (rawOcrFields.grandTotal !== undefined ? Number(rawOcrFields.grandTotal) : null);
+
+              const isFieldManuallyEdited = (key) => {
+                if (key === "subtotal" || key === "taxAmount" || key === "grandTotal") {
+                  if (claimedSummary[key] === "" || claimedSummary[key] === undefined || claimedSummary[key] === null) return false;
+                  if (rawOcrFields[key] === undefined || rawOcrFields[key] === null) return true;
+                  return Math.round(Number(claimedSummary[key])) !== Math.round(Number(rawOcrFields[key] || 0));
+                }
+                if (key === "invoiceNumber" || key === "invoiceDate") {
+                  return Boolean(invoiceMeta[key] && rawOcrFields[key] && invoiceMeta[key] !== rawOcrFields[key]);
+                }
+                return false;
+              };
+
+              const amountMatches = (val, expected) => {
+                if (val === null || val === undefined || val === "") return false;
+                const numVal = Math.round(Number(val));
+                const numExp = Math.round(Number(expected || 0));
+                if (numExp === 0) return numVal === 0;
+                return numVal > 0 && Math.abs(numVal - numExp) <= 1;
+              };
+
+              const subtotalMatches = amountMatches(activeSubtotal, selectedSubtotal);
+              const taxMatches = amountMatches(activeTaxAmount, expectedTax);
+              const totalMatches = amountMatches(activeGrandTotal, selectedTotal);
+              const invoiceMatches = Boolean(activeInvoiceNumber);
+              const dateMatches = Boolean(activeInvoiceDate);
+
+              const allCardsMatch = invoiceMatches && dateMatches && subtotalMatches && taxMatches && totalMatches;
+              const hasManualCorrections =
+                isFieldManuallyEdited("subtotal") ||
+                isFieldManuallyEdited("taxAmount") ||
+                isFieldManuallyEdited("grandTotal") ||
+                isFieldManuallyEdited("invoiceNumber") ||
+                isFieldManuallyEdited("invoiceDate");
+
               const getCurrencySymbol = (currency) => {
                 const cur = String(currency || '').trim().toUpperCase();
                 if (cur === 'INR') return '₹';
@@ -331,42 +373,54 @@ export const BulkInvoiceSettlementForm = ({
                 return cur;
               };
 
-              const getFieldCheckDetails = (label, key, expectedValue, isAmount = false) => {
-                const matched = isAmount 
-                  ? amountMatches(fields[key], expectedValue) 
-                  : Boolean(fields[key]);
-                
-                let primaryValue = fields[key] || "-";
+              const getFieldCheckDetails = (label, key, activeVal, expectedVal, isAmount = false) => {
+                const matched = isAmount ? amountMatches(activeVal, expectedVal) : Boolean(activeVal);
+                const isManual = isFieldManuallyEdited(key);
+                const currency = rawOcrFields.currency || selectedCurrency || "INR";
+                let primaryValue = "-";
                 let secondaryValue = null;
 
                 if (isAmount) {
-                  const amount = Number(fields[key] || 0).toLocaleString("en-IN");
-                  const currency = fields.currency || selectedCurrency || "INR";
-                  primaryValue = `${getCurrencySymbol(currency)} ${amount}`;
-                  
-                  const originalValue = fields.originalAmounts?.[key];
-                  if (fields.conversionApplied && Number(originalValue || 0) > 0) {
-                    secondaryValue = `from ${getCurrencySymbol(fields.originalCurrency)} ${Number(originalValue || 0).toLocaleString("en-IN")}`;
+                  if (activeVal !== null && activeVal !== undefined && activeVal !== "") {
+                    primaryValue = `${getCurrencySymbol(currency)} ${Math.round(Number(activeVal)).toLocaleString("en-IN")}`;
+                  } else {
+                    primaryValue = "-";
+                  }
+
+                  if (isManual && rawOcrFields[key] !== undefined && rawOcrFields[key] !== null) {
+                    const ocrNum = Math.round(Number(rawOcrFields[key] || 0)).toLocaleString("en-IN");
+                    if (rawOcrFields.conversionApplied && rawOcrFields.originalAmounts?.[key]) {
+                      const origNum = Math.round(Number(rawOcrFields.originalAmounts[key] || 0)).toLocaleString("en-IN");
+                      secondaryValue = `OCR: ${getCurrencySymbol(currency)} ${ocrNum} (from ${getCurrencySymbol(rawOcrFields.originalCurrency)} ${origNum})`;
+                    } else {
+                      secondaryValue = `OCR: ${getCurrencySymbol(currency)} ${ocrNum}`;
+                    }
+                  } else if (rawOcrFields.conversionApplied && Number(rawOcrFields.originalAmounts?.[key] || 0) > 0) {
+                    secondaryValue = `from ${getCurrencySymbol(rawOcrFields.originalCurrency)} ${Math.round(Number(rawOcrFields.originalAmounts[key] || 0)).toLocaleString("en-IN")}`;
+                  }
+                } else {
+                  primaryValue = activeVal || "-";
+                  if (isManual && rawOcrFields[key] && rawOcrFields[key] !== activeVal) {
+                    secondaryValue = `OCR: ${rawOcrFields[key]}`;
                   }
                 }
 
-                return { label, primaryValue, secondaryValue, matched };
+                return { label, primaryValue, secondaryValue, matched, isManual };
               };
 
               const fieldChecks = [
-                { label: "Invoice", primaryValue: fields.invoiceNumber || "-", secondaryValue: null, matched: Boolean(fields.invoiceNumber) },
-                { label: "Date", primaryValue: fields.invoiceDate || "-", secondaryValue: null, matched: Boolean(fields.invoiceDate) },
-                getFieldCheckDetails("Subtotal", "subtotal", selectedSubtotal, true),
-                getFieldCheckDetails("Tax", "taxAmount", expectedTax, true),
-                getFieldCheckDetails("Total", "grandTotal", selectedTotal, true),
+                getFieldCheckDetails("Invoice", "invoiceNumber", activeInvoiceNumber, null, false),
+                getFieldCheckDetails("Date", "invoiceDate", activeInvoiceDate, null, false),
+                getFieldCheckDetails("Subtotal", "subtotal", activeSubtotal, selectedSubtotal, true),
+                getFieldCheckDetails("Tax", "taxAmount", activeTaxAmount, expectedTax, true),
+                getFieldCheckDetails("Total", "grandTotal", activeGrandTotal, selectedTotal, true),
               ];
+
               return (
                 <div className={`mb-3 overflow-hidden rounded-2xl border text-xs shadow-sm ${
-                  extractionPassed
+                  allCardsMatch
                     ? "border-emerald-200 bg-emerald-50/70 text-emerald-900"
-                    : extractionFailed
-                      ? "border-rose-200 bg-rose-50/80 text-rose-900"
-                    : "border-amber-200 bg-amber-50/80 text-amber-900"
+                    : "border-rose-200 bg-rose-50/80 text-rose-900"
                 }`}>
                   <button
                     type="button"
@@ -374,9 +428,17 @@ export const BulkInvoiceSettlementForm = ({
                     className="flex w-full flex-wrap items-center justify-between gap-2 px-4 py-3 text-left transition-colors hover:bg-white/30"
                     aria-expanded={isExtractionOpen}
                   >
-                    <p className="font-bold uppercase tracking-[0.16em]">
-                      Parser / OCR Check
-                    </p>
+                    <div className="flex items-center gap-2">
+                      {allCardsMatch ? (
+                        <CheckCircle2 size={15} className="text-emerald-600 shrink-0" />
+                      ) : (
+                        <XCircle size={15} className="text-rose-600 shrink-0" />
+                      )}
+                      <span className="font-bold uppercase tracking-[0.16em]">
+                        {allCardsMatch ? "Parser / OCR Check · Verified" : "Parser / OCR Check · Review Needed"}
+                      </span>
+                    </div>
+
                     <span className="inline-flex items-center gap-2 rounded-full bg-white/80 px-2.5 py-1 font-semibold">
                       {(invoiceExtraction.source || "parser").replace(/_/g, " ")} · {invoiceExtraction.confidence || 0}% confidence
                       <ChevronDown
@@ -401,25 +463,27 @@ export const BulkInvoiceSettlementForm = ({
                                 key={field.label}
                                 className={`flex flex-col justify-between p-3 rounded-2xl border shadow-sm transition-all duration-200 hover:shadow-md cursor-default ${
                                   field.matched 
-                                    ? "bg-emerald-500/10 border-emerald-250/60 text-emerald-950" 
+                                    ? "bg-emerald-500/10 border-emerald-300 text-emerald-950 ring-1 ring-emerald-400/20" 
                                     : "bg-rose-500/10 border-rose-250/60 text-rose-950"
                                 }`}
                               >
-                                <div className="flex items-center justify-between gap-2 mb-2">
+                                <div className="flex items-center justify-between gap-1 mb-2 flex-wrap">
                                   <span className="text-[10px] font-extrabold uppercase tracking-wider opacity-60">
                                     {field.label}
                                   </span>
-                                  {field.matched ? (
-                                    <CheckCircle2 size={14} className="text-emerald-600 shrink-0" />
-                                  ) : (
-                                    <XCircle size={14} className="text-rose-600 shrink-0" />
-                                  )}
+                                  <div className="flex items-center gap-1">
+                                    {field.matched ? (
+                                      <CheckCircle2 size={14} className="text-emerald-600 shrink-0" />
+                                    ) : (
+                                      <XCircle size={14} className="text-rose-600 shrink-0" />
+                                    )}
+                                  </div>
                                 </div>
                                 <span className="font-extrabold text-[12.5px] leading-tight">
                                   {field.primaryValue}
                                 </span>
                                 {field.secondaryValue && (
-                                  <span className="mt-1 text-[10px] font-medium text-slate-500/80 leading-normal">
+                                  <span className="mt-1 text-[10px] font-medium text-slate-500/80 leading-normal truncate" title={field.secondaryValue}>
                                     {field.secondaryValue}
                                   </span>
                                 )}
@@ -427,22 +491,34 @@ export const BulkInvoiceSettlementForm = ({
                             ))}
                           </div>
 
-                          {invoiceExtraction.verification?.warnings?.length ? (
+                          {allCardsMatch ? (
+                            <div className="mt-3.5 flex items-start gap-2.5 rounded-2xl bg-emerald-500/10 border border-emerald-200 p-3.5 text-xs leading-relaxed text-emerald-950 shadow-sm">
+                              <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-emerald-600" />
+                              <div>
+                                <span className="font-bold block">✓ All Invoice Values Verified Against System Reference</span>
+                                <span className="text-[11px] text-emerald-800">
+                                  Uploaded invoice amounts match system reference totals ({formatMoney(selectedTotal, selectedCurrency)}). {hasManualCorrections ? "Manual corrections verified." : "Extracted values verified."}
+                                </span>
+                              </div>
+                            </div>
+                          ) : (
                             <div className="mt-3.5 flex items-start gap-2.5 rounded-2xl bg-rose-500/10 border border-rose-200/50 p-3.5 text-xs leading-relaxed text-rose-950 shadow-sm">
                               <AlertCircle size={16} className="mt-0.5 shrink-0 text-rose-600" />
-                              <span>{invoiceExtraction.verification.warnings.join(" ")}</span>
+                              <span>
+                                Amount discrepancy detected: Uploaded Subtotal {formatMoney(activeSubtotal || 0, selectedCurrency)} (expected {formatMoney(selectedSubtotal, selectedCurrency)}), Tax {formatMoney(activeTaxAmount || 0, selectedCurrency)} (expected {formatMoney(expectedTax, selectedCurrency)}), Total {formatMoney(activeGrandTotal || 0, selectedCurrency)} (expected {formatMoney(selectedTotal, selectedCurrency)}).
+                              </span>
                             </div>
-                          ) : null}
+                          )}
 
-                          {invoiceExtraction.verification?.notes?.length ? (
-                            <div className="mt-3.5 flex items-start gap-2.5 rounded-2xl bg-blue-500/10 border border-blue-200/50 p-3.5 text-xs leading-relaxed text-blue-950 shadow-sm">
+                          {rawOcrFields.conversionApplied ? (
+                            <div className="mt-2.5 flex items-start gap-2.5 rounded-2xl bg-blue-500/10 border border-blue-200/50 p-2.5 text-xs leading-relaxed text-blue-950 shadow-sm">
                               <Info size={16} className="mt-0.5 shrink-0 text-blue-600" />
-                              <span>{invoiceExtraction.verification.notes.join(" ")}</span>
+                              <span>Converted uploaded invoice from {rawOcrFields.originalCurrency} to {rawOcrFields.currency || selectedCurrency || "INR"} for comparison.</span>
                             </div>
                           ) : null}
 
                           {invoiceExtraction.error ? (
-                            <div className="mt-3.5 flex items-start gap-2.5 rounded-2xl bg-rose-500/10 border border-rose-200/50 p-3.5 text-xs leading-relaxed text-rose-950 shadow-sm">
+                            <div className="mt-2.5 flex items-start gap-2.5 rounded-2xl bg-rose-500/10 border border-rose-200/50 p-2.5 text-xs leading-relaxed text-rose-950 shadow-sm">
                               <AlertCircle size={16} className="mt-0.5 shrink-0 text-rose-700" />
                               <span>{invoiceExtraction.error}</span>
                             </div>
@@ -456,57 +532,110 @@ export const BulkInvoiceSettlementForm = ({
             })()
           ) : null}
 
-          <div className="grid grid-cols-3 gap-2">
-            <div>
-              <label className="text-[9px] font-bold uppercase tracking-wider text-slate-500 block mb-1">Subtotal</label>
-              <FieldShell icon={IndianRupee} iconWrapClassName="bg-gradient-to-tr from-blue-50 to-indigo-50 border border-blue-100 text-blue-600 shadow-sm">
-                <input
-                  type="number"
-                  value={claimedSummary.subtotal ?? ""}
-                  onChange={(event) =>
-                    setClaimedSummary((prev) => ({
-                      ...prev,
-                      subtotal: event.target.value === "" ? "" : Number(event.target.value),
-                    }))
-                  }
-                  placeholder="Enter subtotal"
-                  className="w-full rounded-xl border border-gray-300 bg-blue-50/20 py-2 pl-11 pr-2 text-xs text-slate-900 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all"
-                />
-              </FieldShell>
+          <div className="mt-2">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-600">Manual Amount Inputs</span>
             </div>
-            <div>
-              <label className="text-[9px] font-bold uppercase tracking-wider text-slate-500 block mb-1">Tax</label>
-              <FieldShell icon={Receipt} iconWrapClassName="bg-gradient-to-tr from-rose-50 to-red-50 border border-rose-100 text-rose-600 shadow-sm">
-                <input
-                  type="number"
-                  value={claimedSummary.taxAmount ?? ""}
-                  onChange={(event) =>
-                    setClaimedSummary((prev) => ({
-                      ...prev,
-                      taxAmount: event.target.value === "" ? "" : Number(event.target.value),
-                    }))
-                  }
-                  placeholder="Enter tax"
-                  className="w-full rounded-xl border border-gray-300 bg-rose-50/20 py-2 pl-11 pr-2 text-xs text-slate-900 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all"
-                />
-              </FieldShell>
+
+            <div className="grid grid-cols-3 gap-2">
+              <div>
+                <label className="text-[9px] font-bold uppercase tracking-wider text-slate-500 block mb-1">Subtotal</label>
+                <FieldShell icon={IndianRupee} iconWrapClassName="bg-gradient-to-tr from-blue-50 to-indigo-50 border border-blue-100 text-blue-600 shadow-sm">
+                  <input
+                    type="number"
+                    value={claimedSummary.subtotal ?? ""}
+                    onChange={(event) =>
+                      setClaimedSummary((prev) => ({
+                        ...prev,
+                        subtotal: event.target.value === "" ? "" : Number(event.target.value),
+                      }))
+                    }
+                    placeholder="Enter subtotal"
+                    className={`w-full rounded-xl border py-2 pl-11 pr-2 text-xs text-slate-900 outline-none transition-all ${
+                      claimedSummary.subtotal !== "" && Math.abs(Math.round(Number(claimedSummary.subtotal)) - Math.round(Number(selectedSubtotal || 0))) <= 1
+                        ? "border-emerald-300 bg-emerald-50/25 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+                        : "border-gray-300 bg-blue-50/20 focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                    }`}
+                  />
+                </FieldShell>
+              </div>
+              <div>
+                <label className="text-[9px] font-bold uppercase tracking-wider text-slate-500 block mb-1">Tax</label>
+                <FieldShell icon={Receipt} iconWrapClassName="bg-gradient-to-tr from-rose-50 to-red-50 border border-rose-100 text-rose-600 shadow-sm">
+                  <input
+                    type="number"
+                    value={claimedSummary.taxAmount ?? ""}
+                    onChange={(event) =>
+                      setClaimedSummary((prev) => ({
+                        ...prev,
+                        taxAmount: event.target.value === "" ? "" : Number(event.target.value),
+                      }))
+                    }
+                    placeholder="Enter tax"
+                    className={`w-full rounded-xl border py-2 pl-11 pr-2 text-xs text-slate-900 outline-none transition-all ${
+                      claimedSummary.taxAmount !== "" && Math.abs(Math.round(Number(claimedSummary.taxAmount)) - Math.round(Number(selectedGst + selectedTcs + Number(taxConfig.otherTax || 0)))) <= 1
+                        ? "border-emerald-300 bg-emerald-50/25 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+                        : "border-gray-300 bg-rose-50/20 focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                    }`}
+                  />
+                </FieldShell>
+              </div>
+              <div>
+                <label className="text-[9px] font-bold uppercase tracking-wider text-slate-500 block mb-1">Total</label>
+                <FieldShell icon={IndianRupee} iconWrapClassName="bg-gradient-to-tr from-emerald-50 to-teal-50 border border-emerald-100 text-emerald-600 shadow-sm">
+                  <input
+                    type="number"
+                    value={claimedSummary.grandTotal ?? ""}
+                    onChange={(event) =>
+                      setClaimedSummary((prev) => ({
+                        ...prev,
+                        grandTotal: event.target.value === "" ? "" : Number(event.target.value),
+                      }))
+                    }
+                    placeholder="Enter total"
+                    className={`w-full rounded-xl border py-2 pl-11 pr-2 text-xs text-slate-900 outline-none font-bold transition-all ${
+                      claimedSummary.grandTotal !== "" && Math.abs(Math.round(Number(claimedSummary.grandTotal)) - Math.round(Number(selectedTotal || 0))) <= 1
+                        ? "border-emerald-300 bg-emerald-50/25 text-emerald-950 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+                        : "border-gray-300 bg-emerald-50/20 focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                    }`}
+                  />
+                </FieldShell>
+              </div>
             </div>
-            <div>
-              <label className="text-[9px] font-bold uppercase tracking-wider text-slate-500 block mb-1">Total</label>
-              <FieldShell icon={IndianRupee} iconWrapClassName="bg-gradient-to-tr from-emerald-50 to-teal-50 border border-emerald-100 text-emerald-600 shadow-sm">
-                <input
-                  type="number"
-                  value={claimedSummary.grandTotal ?? ""}
-                  onChange={(event) =>
-                    setClaimedSummary((prev) => ({
-                      ...prev,
-                      grandTotal: event.target.value === "" ? "" : Number(event.target.value),
-                    }))
-                  }
-                  placeholder="Enter total"
-                  className="w-full rounded-xl border border-gray-300 bg-emerald-50/20 py-2 pl-11 pr-2 text-xs text-slate-900 outline-none font-bold focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all"
+
+            <div className="mt-3">
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-[9px] font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1">
+                  <span>DMC Remark / Justification</span>
+                  <span className="text-red-500 font-bold">*</span>
+                </label>
+                {invoiceMeta.dmcRemarks && String(invoiceMeta.dmcRemarks).trim().length > 0 ? (
+                  <span className="text-[9px] font-semibold text-emerald-600 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-full">
+                    ✓ Added
+                  </span>
+                ) : (
+                  <span className="text-[9px] font-semibold text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full">
+                    Required for Finance
+                  </span>
+                )}
+              </div>
+              <div className="relative">
+                <textarea
+                  rows={2}
+                  value={invoiceMeta.dmcRemarks || ""}
+                  onChange={(e) => handleMetaChange("dmcRemarks", e.target.value)}
+                  placeholder="Explain rate differences, extra services, taxes or payment notes for Finance team..."
+                  className={`w-full rounded-xl border p-2.5 text-xs text-slate-800 outline-none transition-all resize-none shadow-sm ${
+                    invoiceMeta.dmcRemarks && String(invoiceMeta.dmcRemarks).trim().length > 0
+                      ? "border-emerald-300 bg-white focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+                      : "border-amber-200 bg-amber-50/20 focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
+                  }`}
                 />
-              </FieldShell>
+              </div>
+              <div className="mt-1 flex items-center justify-between text-[8.5px] text-slate-400">
+                <span>This note will be visible to Finance in Internal Invoice View modal</span>
+                <span>{String(invoiceMeta.dmcRemarks || "").trim().length} characters</span>
+              </div>
             </div>
           </div>
         </div>

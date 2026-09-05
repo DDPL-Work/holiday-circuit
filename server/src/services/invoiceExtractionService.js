@@ -47,94 +47,140 @@ const normalizeCurrency = (value = "") => {
 const amountsMatch = (left, right) =>
   Math.abs(Number(left || 0) - Number(right || 0)) <= MONEY_TOLERANCE;
 
-const formatAmount = (value) => Number(value || 0).toLocaleString("en-IN");
+const formatAmount = (value) => Math.round(Number(value || 0)).toLocaleString("en-IN");
 const formatMoney = (value, currency = BASE_CURRENCY) =>
   `${normalizeCurrency(currency) || BASE_CURRENCY} ${formatAmount(value)}`;
 
 const parseDateToIso = (value = "") => {
-  const raw = String(value || "").trim();
+  const raw = String(value || "")
+    .replace(/^[^\d\w]+|[^\d\w]+$/g, "")
+    .trim();
   if (!raw) return "";
 
+  // 1. YYYY-MM-DD or YYYY/MM/DD or YYYY.MM.DD
   const ymd = raw.match(/\b(20\d{2}|19\d{2})[-/.](\d{1,2})[-/.](\d{1,2})\b/);
   if (ymd) {
     const [, year, month, day] = ymd;
-    return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    const m = Number(month);
+    const d = Number(day);
+    if (m >= 1 && m <= 12 && d >= 1 && d <= 31) {
+      return `${year}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+    }
   }
 
-  const dmy = raw.match(/\b(\d{1,2})[-/.](\d{1,2})[-/.](20\d{2}|19\d{2})\b/);
-  if (dmy) {
-    const [, firstPart, secondPart, year] = dmy;
+  // 2. DD-MM-YYYY or MM-DD-YYYY with 4-digit year (e.g. 10-01-2025 or 4/9/2026)
+  const dmy4 = raw.match(/\b(\d{1,2})[-/.](\d{1,2})[-/.](20\d{2}|19\d{2})\b/);
+  if (dmy4) {
+    const [, firstPart, secondPart, year] = dmy4;
     const first = Number(firstPart);
     const second = Number(secondPart);
-    const month = first <= 12 && second > 12 ? firstPart : secondPart;
-    const day = first <= 12 && second > 12 ? secondPart : firstPart;
-    if (Number(month) >= 1 && Number(month) <= 12 && Number(day) >= 1 && Number(day) <= 31) {
+    const month = first <= 12 && second > 12 ? first : second;
+    const day = first <= 12 && second > 12 ? second : first;
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
       return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
     }
   }
 
-  const named = raw.match(/\b(\d{1,2})\s+([A-Za-z]{3,9})\s*,?\s*(20\d{2}|19\d{2})\b/);
-  if (named) {
-    const [, day, monthName, year] = named;
-    const monthIndex = [
-      "jan",
-      "feb",
-      "mar",
-      "apr",
-      "may",
-      "jun",
-      "jul",
-      "aug",
-      "sep",
-      "oct",
-      "nov",
-      "dec",
-    ].indexOf(monthName.slice(0, 3).toLowerCase());
-    if (monthIndex >= 0) {
-      return `${year}-${String(monthIndex + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  // 3. 2-Digit Year: DD-MM-YY or MM-DD-YY (e.g. 10-01-25 or 4/9/26 or 10/01/25)
+  const dmy2 = raw.match(/\b(\d{1,2})[-/.](\d{1,2})[-/.](\d{2})\b/);
+  if (dmy2) {
+    const [, firstPart, secondPart, shortYear] = dmy2;
+    const first = Number(firstPart);
+    const second = Number(secondPart);
+    const yNum = Number(shortYear);
+    const fullYear = yNum <= 50 ? 2000 + yNum : 1900 + yNum;
+    const month = first <= 12 && second > 12 ? first : second;
+    const day = first <= 12 && second > 12 ? second : first;
+    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      return `${fullYear}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
     }
   }
 
-  const namedMonthFirst = raw.match(/\b([A-Za-z]{3,9})\s+(\d{1,2})(?:st|nd|rd|th)?\s*,?\s*(20\d{2}|19\d{2})\b/);
-  if (namedMonthFirst) {
-    const [, monthName, day, year] = namedMonthFirst;
+  // 4. Named Month: 10 Jan 2025 / 10-Jan-25 / 10 January 2025 / 4th Sep 2026
+  const named = raw.match(/\b(\d{1,2})(?:st|nd|rd|th)?\s*[-/,\s]\s*([A-Za-z]{3,9})\s*[-/,\s]\s*(20\d{2}|19\d{2}|\d{2})\b/i);
+  if (named) {
+    const [, day, monthName, yearPart] = named;
     const monthIndex = [
-      "jan",
-      "feb",
-      "mar",
-      "apr",
-      "may",
-      "jun",
-      "jul",
-      "aug",
-      "sep",
-      "oct",
-      "nov",
-      "dec",
+      "jan", "feb", "mar", "apr", "may", "jun",
+      "jul", "aug", "sep", "oct", "nov", "dec",
     ].indexOf(monthName.slice(0, 3).toLowerCase());
     if (monthIndex >= 0) {
-      return `${year}-${String(monthIndex + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+      const yNum = Number(yearPart);
+      const fullYear = yearPart.length === 2 ? (yNum <= 50 ? 2000 + yNum : 1900 + yNum) : yNum;
+      const d = Number(day);
+      if (d >= 1 && d <= 31) {
+        return `${fullYear}-${String(monthIndex + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+      }
+    }
+  }
+
+  // 5. Month First: Jan 10, 2025 / January 10 2025 / Jan 10 25
+  const namedMonthFirst = raw.match(/\b([A-Za-z]{3,9})\s*[-/,\s]\s*(\d{1,2})(?:st|nd|rd|th)?\s*[-/,\s]\s*(20\d{2}|19\d{2}|\d{2})\b/i);
+  if (namedMonthFirst) {
+    const [, monthName, day, yearPart] = namedMonthFirst;
+    const monthIndex = [
+      "jan", "feb", "mar", "apr", "may", "jun",
+      "jul", "aug", "sep", "oct", "nov", "dec",
+    ].indexOf(monthName.slice(0, 3).toLowerCase());
+    if (monthIndex >= 0) {
+      const yNum = Number(yearPart);
+      const fullYear = yearPart.length === 2 ? (yNum <= 50 ? 2000 + yNum : 1900 + yNum) : yNum;
+      const d = Number(day);
+      if (d >= 1 && d <= 31) {
+        return `${fullYear}-${String(monthIndex + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+      }
     }
   }
 
   return "";
 };
 
-const extractDateAfterLabels = (text, labels = []) => {
-  const datePattern =
-    "((?:\\d{1,2}[-/.]\\d{1,2}[-/.]\\d{2,4})|" +
-    "(?:\\d{4}[-/.]\\d{1,2}[-/.]\\d{1,2})|" +
-    "(?:\\d{1,2}\\s+[A-Za-z]{3,9}\\s*,?\\s*\\d{4})|" +
-    "(?:[A-Za-z]{3,9}\\s+\\d{1,2}(?:st|nd|rd|th)?\\s*,?\\s*\\d{4}))";
+const extractDateAfterLabels = (text = "", labels = []) => {
+  const normalized = normalizeText(text);
+  const lines = splitInvoiceTextLines(normalized);
 
+  const DATE_REGEX =
+    /(?:\b\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4}\b|\b\d{4}[-/.]\d{1,2}[-/.]\d{1,2}\b|\b\d{1,2}(?:st|nd|rd|th)?\s+[-/,\s]?[A-Za-z]{3,9}\s*[-/,\s]?\s*\d{2,4}\b|\b[A-Za-z]{3,9}\s+[-/,\s]?\d{1,2}(?:st|nd|rd|th)?\s*[-/,\s]?\s*\d{2,4}\b)/i;
+
+  // Phase 1: Search labeled lines (same line and next line for 2-column/block layouts)
   for (const label of labels) {
-    const pattern = new RegExp(
-      `${label}\\s*(?:date)?\\s*[:#-]?\\s*${datePattern}`,
-      "i",
-    );
-    const match = text.match(pattern);
-    const parsed = parseDateToIso(match?.[1]);
-    if (parsed) return parsed;
+    const labelPattern = new RegExp(`(?:#\\s*)?\\b${label}\\b`, "i");
+
+    for (let index = 0; index < lines.length; index += 1) {
+      const line = lines[index];
+      if (!labelPattern.test(line)) continue;
+
+      const labelMatch = line.match(labelPattern);
+      const textAfter = line.slice(labelMatch.index + labelMatch[0].length);
+      const sameLineParsed = parseDateToIso(textAfter);
+      if (sameLineParsed) return sameLineParsed;
+
+      const anySameLineMatch = line.match(DATE_REGEX);
+      if (anySameLineMatch) {
+        const parsed = parseDateToIso(anySameLineMatch[0]);
+        if (parsed) return parsed;
+      }
+
+      const nextLine = lines[index + 1] || "";
+      if (nextLine) {
+        const nextLineMatch = nextLine.match(DATE_REGEX);
+        if (nextLineMatch) {
+          const parsed = parseDateToIso(nextLineMatch[0]);
+          if (parsed) return parsed;
+        }
+      }
+    }
+  }
+
+  // Phase 2: Fallback - Search first 25 header lines for any valid date
+  for (let i = 0; i < Math.min(lines.length, 25); i += 1) {
+    const line = lines[i];
+    if (/phone|contact|mobile|gstin|pan|pincode|pin|tel|hsn/i.test(line)) continue;
+    const match = line.match(DATE_REGEX);
+    if (match) {
+      const parsed = parseDateToIso(match[0]);
+      if (parsed) return parsed;
+    }
   }
 
   return "";
@@ -221,9 +267,9 @@ const inferLooseInvoiceAmounts = (text = "") => {
   const frequentAmount = Array.from(frequencyByAmount.values())
     .sort((left, right) => right.count - left.count || right.lastLineIndex - left.lastLineIndex)[0]?.amount;
   const maxAmount = Math.max(...positiveTokens.map((token) => token.amount));
-  const grandTotal = Number((frequentAmount || positiveTokens[positiveTokens.length - 1].amount || maxAmount).toFixed(2));
-  const subtotal = Number((maxAmount > grandTotal ? maxAmount : grandTotal).toFixed(2));
-  const taxAmount = subtotal < grandTotal ? Number((grandTotal - subtotal).toFixed(2)) : 0;
+  const grandTotal = Math.round(frequentAmount || positiveTokens[positiveTokens.length - 1].amount || maxAmount);
+  const subtotal = Math.round(maxAmount > grandTotal ? maxAmount : grandTotal);
+  const taxAmount = subtotal < grandTotal ? Math.round(grandTotal - subtotal) : 0;
 
   return {
     subtotal,
@@ -265,14 +311,17 @@ const findMoneyAfterLabels = (text, labels = []) => {
 
 const inferInvoiceCurrency = (text = "", moneyTokens = []) => {
   const explicitCurrency = moneyTokens.find((token) => token.currency)?.currency;
-  if (explicitCurrency) return explicitCurrency;
+  if (explicitCurrency && explicitCurrency !== "USD") return explicitCurrency;
 
   const raw = String(text || "");
-  if (/\$/.test(raw)) return "USD";
-  if (/â‚¹|Ã¢â€šÂ¹|Rs\.?|INR/i.test(raw)) return "INR";
-  if (/AED/i.test(raw)) return "AED";
-  if (/EUR/i.test(raw)) return "EUR";
-  if (/GBP/i.test(raw)) return "GBP";
+  const hasIndianContext = /gstin|cgst|sgst|igst|hsn|pincode|state\s*code|india|delhi|mumbai|pune|bengaluru|jaipur|₹|â‚¹|Ã¢â€šÂ¹|Rs\.?|INR/i.test(raw);
+  if (hasIndianContext) return "INR";
+
+  if (explicitCurrency) return explicitCurrency;
+  if (/\b(?:USD|US\$)\b|\$/.test(raw)) return "USD";
+  if (/\bAED\b|د\.إ/i.test(raw)) return "AED";
+  if (/\bEUR\b|€/i.test(raw)) return "EUR";
+  if (/\bGBP\b|£/i.test(raw)) return "GBP";
   return BASE_CURRENCY;
 };
 
@@ -400,9 +449,9 @@ const convertFieldsToExpectedCurrency = async (fields = {}, expectedSummary = {}
   }
 
   const convertedAmounts = {
-    subtotal: Number((originalAmounts.subtotal * exchangeRate).toFixed(2)),
-    taxAmount: Number((originalAmounts.taxAmount * exchangeRate).toFixed(2)),
-    grandTotal: Number((originalAmounts.grandTotal * exchangeRate).toFixed(2)),
+    subtotal: Math.round(originalAmounts.subtotal * exchangeRate),
+    taxAmount: Math.round(originalAmounts.taxAmount * exchangeRate),
+    grandTotal: Math.round(originalAmounts.grandTotal * exchangeRate),
   };
 
   return {
@@ -473,16 +522,118 @@ const sumAmountsAfterLabels = (text, labels = []) => {
   return total || sumAmountsAfterLabelsLegacy(text, labels);
 };
 
-const extractInvoiceNumber = (text) => {
-  const patterns = [
-    /(?:invoice|inv|bill)\s*(?:number|no\.?|#)\s*[:#.-]?\s*([A-Z0-9][A-Z0-9/_-]{2,})/i,
-    /(?:invoice|inv|bill)\s*(?:number|no\.?|#)\.?\s*\n\s*([A-Z0-9][A-Z0-9/_-]{2,})/i,
-    /\b(INV[-/_][A-Z0-9][A-Z0-9/_-]{2,})\b/i,
-  ];
+const INVALID_INVOICE_WORDS = new Set([
+  "service",
+  "services",
+  "sightseeing",
+  "hotel",
+  "hotels",
+  "transfer",
+  "transfers",
+  "activity",
+  "activities",
+  "transport",
+  "location",
+  "details",
+  "date",
+  "dates",
+  "invoice",
+  "invoices",
+  "bill",
+  "bills",
+  "tax",
+  "taxes",
+  "gst",
+  "vat",
+  "customer",
+  "client",
+  "supplier",
+  "vendor",
+  "travel",
+  "receipt",
+  "payment",
+  "payout",
+  "note",
+  "notes",
+  "credit",
+  "debit",
+  "due",
+  "terms",
+  "description",
+  "amount",
+  "amounts",
+  "total",
+  "subtotal",
+  "page",
+  "original",
+  "duplicate",
+  "copy",
+  "reference",
+  "summary",
+  "summery",
+  "declaration",
+  "signature",
+  "contact",
+  "phone",
+  "email",
+  "address",
+  "name",
+  "state",
+]);
 
-  for (const pattern of patterns) {
-    const match = text.match(pattern);
-    if (match?.[1]) return match[1].replace(/[.,;:]+$/, "").trim();
+const isValidInvoiceNumberCandidate = (candidate = "") => {
+  const cleaned = String(candidate || "")
+    .replace(/^[#:\s,.-]+|[#:\s,.-]+$/g, "")
+    .trim();
+  if (!cleaned || cleaned.length < 1 || cleaned.length > 40) return false;
+  const lower = cleaned.toLowerCase();
+  if (INVALID_INVOICE_WORDS.has(lower)) return false;
+  const hasDigit = /\d/.test(cleaned);
+  const hasInvoicePrefix = /^(?:inv|bill|hc|tax|cn|dn)[-_#]/i.test(cleaned);
+  return hasDigit || hasInvoicePrefix;
+};
+
+const extractInvoiceNumber = (text) => {
+  const lines = splitInvoiceTextLines(text);
+
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i];
+    const labelMatch = line.match(/(?:#\s*)?\b(?:invoice|inv|bill)\b(?:\s*(?:number|no\.?|#))?/i);
+    if (!labelMatch) continue;
+
+    // Check same line
+    const textAfter = line.slice(labelMatch.index + labelMatch[0].length).trim();
+    if (textAfter) {
+      const tokens = textAfter.split(/\s+/);
+      for (const token of tokens) {
+        const cleaned = token.replace(/^[#:\s,.-]+|[#:\s,.-]+$/g, "");
+        if (isValidInvoiceNumberCandidate(cleaned)) {
+          return cleaned;
+        }
+      }
+    }
+
+    // Check next line for vertical / block layouts (e.g. INVOICE \n 1045)
+    const nextLine = lines[i + 1] || "";
+    if (nextLine) {
+      const nextTokens = nextLine.split(/\s+/);
+      for (const token of nextTokens) {
+        const cleaned = token.replace(/^[#:\s,.-]+|[#:\s,.-]+$/g, "");
+        if (isValidInvoiceNumberCandidate(cleaned)) {
+          return cleaned;
+        }
+      }
+    }
+  }
+
+  // Fallback pattern search
+  const fallbackMatches = text.match(/\b(?:INV|BILL|HC)[-_/][A-Z0-9-_/]{1,30}\b/gi);
+  if (fallbackMatches && fallbackMatches.length > 0) {
+    for (const match of fallbackMatches) {
+      if (isValidInvoiceNumberCandidate(match)) {
+        return match.trim();
+      }
+    }
   }
 
   return "";
@@ -536,7 +687,12 @@ export const extractInvoiceFieldsFromText = (text = "") => {
   ];
   const grandTotalLabels = [
     "grand\\s*total",
-    "(?<!line\\s+)(?<!sub\\s*)total",
+    "total\\s*value(?:\\s*\\([^)]*\\))?",
+    "credits\\s*available",
+    "credits\\s*total",
+    "final\\s*amount",
+    "net\\s*total",
+    "(?<!line\\s+)(?<!sub\\s*)(?<!@\\s*\\d+%\\s*)total(?!\s*@)",
     "total\\s*due",
     "payment\\s*status",
     "total\\s*amount\\s*paid",
@@ -583,6 +739,10 @@ export const extractInvoiceFieldsFromText = (text = "") => {
     { currency: looseAmounts.currency, amount: looseAmounts.grandTotal },
   ]);
 
+  const resolvedSubtotal = Math.round(subtotal || looseAmounts.subtotal || (grandTotal && taxAmount ? Math.max(0, grandTotal - taxAmount) : 0));
+  const resolvedTax = Math.round(taxAmount);
+  const resolvedGrandTotal = Math.round(grandTotal);
+
   return {
     supplierName: extractSupplierName(normalized),
     invoiceNumber: extractInvoiceNumber(normalized),
@@ -597,9 +757,9 @@ export const extractInvoiceFieldsFromText = (text = "") => {
       "date",
     ]),
     dueDate: extractDateAfterLabels(normalized, ["due"]),
-    subtotal: subtotal || looseAmounts.subtotal || (grandTotal && taxAmount ? Math.max(0, grandTotal - taxAmount) : 0),
-    taxAmount,
-    grandTotal,
+    subtotal: resolvedSubtotal,
+    taxAmount: resolvedTax,
+    grandTotal: resolvedGrandTotal,
     currency,
   };
 };

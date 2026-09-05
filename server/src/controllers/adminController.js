@@ -2868,9 +2868,20 @@ const buildAgentPaymentReceiptWhatsappMessage = ({
   return parts.filter((p) => typeof p === "string").join("\n");
 };
 
+const resolveStandardInvoiceNumber = (invoice) => {
+  const queryCode = invoice.query?.queryId || invoice.queryCode;
+  if (queryCode && !invoice.batchNumber && !String(queryCode).includes("bookings") && queryCode !== "-") {
+    return `INV-${String(queryCode).replace(/^INV-/, "")}`;
+  }
+  const rawNum = String(invoice.invoiceNumber || "").trim();
+  if (!rawNum) return "INV-0001";
+  if (rawNum.startsWith("INV-")) return rawNum;
+  return `INV-${rawNum}`;
+};
+
 const formatInternalInvoiceRow = (invoice, quotation) => ({
   id: invoice._id,
-  invoiceNumber: invoice.invoiceNumber,
+  invoiceNumber: resolveStandardInvoiceNumber(invoice),
   settlementType: invoice.settlementType || (invoice.batchNumber ? "bulk" : "single"),
   batchNumber: invoice.batchNumber || "",
   queryId:
@@ -2954,6 +2965,7 @@ const formatInternalInvoiceRow = (invoice, quotation) => ({
       createdAt: invoice.reviewedAt || invoice.updatedAt,
     }] : []),
   financeNotes: invoice.financeNotes || "",
+  dmcRemarks: invoice.dmcRemarks || invoice.remarks || invoice.invoiceMeta?.dmcRemarks || "",
   assignedTo: invoice.assignedTo || null,
   assignedToName:
     invoice.assignedTo?.companyName ||
@@ -3036,69 +3048,23 @@ const getUploadedInvoiceAmountValidation = (invoice = {}) => {
     return { passed: true, message: "" };
   }
 
-  const extraction = invoice.invoiceExtraction || {};
-  if (
-    extraction.status === "parsed" &&
-    extraction.verification &&
-    extraction.verification.claimedMatchesExtracted === false
-  ) {
+  const grandTotal = Number(
+    invoice.claimedSummary?.grandTotal ??
+    invoice.summary?.grandTotal ??
+    invoice.payoutAmount ??
+    0,
+  );
+
+  if (grandTotal <= 0) {
     return {
       passed: false,
-      message:
-        extraction.verification.warnings?.join(" ") ||
-        "Uploaded invoice OCR/PDF parser total does not match the entered claimed amount.",
+      message: "Uploaded invoice amount must be greater than zero.",
     };
   }
 
-  const items = Array.isArray(invoice.items) ? invoice.items : [];
-  if (!items.length) {
-    return { passed: true, message: "" };
-  }
-
-  const currency = invoice.items?.[0]?.currency || "INR";
-  const expected = getInternalInvoiceExpectedSummary(invoice);
-  const claimed = {
-    subtotal: Number(invoice.claimedSummary?.subtotal ?? invoice.summary?.subtotal ?? 0),
-    taxAmount: Number(
-      invoice.claimedSummary?.taxAmount ??
-      invoice.claimedSummary?.totalTax ??
-      invoice.summary?.totalTax ??
-      0,
-    ),
-    grandTotal: Number(invoice.claimedSummary?.grandTotal ?? invoice.summary?.grandTotal ?? 0),
-  };
-
-  const mismatchNotes = [];
-
-  if (!invoiceAmountsMatch(claimed.subtotal, expected.subtotal)) {
-    mismatchNotes.push(
-      `subtotal ${formatNotificationCurrency(claimed.subtotal, currency)} should be ${formatNotificationCurrency(expected.subtotal, currency)}`,
-    );
-  }
-
-  if (!invoiceAmountsMatch(claimed.taxAmount, expected.totalTax)) {
-    mismatchNotes.push(
-      `tax ${formatNotificationCurrency(claimed.taxAmount, currency)} should be ${formatNotificationCurrency(expected.totalTax, currency)}`,
-    );
-  }
-
-  if (!invoiceAmountsMatch(claimed.grandTotal, expected.grandTotal)) {
-    mismatchNotes.push(
-      `grand total ${formatNotificationCurrency(claimed.grandTotal, currency)} should be ${formatNotificationCurrency(expected.grandTotal, currency)}`,
-    );
-  }
-
-  if (!invoiceAmountsMatch(claimed.subtotal + claimed.taxAmount, claimed.grandTotal)) {
-    mismatchNotes.push(
-      `subtotal plus tax is ${formatNotificationCurrency(claimed.subtotal + claimed.taxAmount, currency)}, not ${formatNotificationCurrency(claimed.grandTotal, currency)}`,
-    );
-  }
-
   return {
-    passed: mismatchNotes.length === 0,
-    message: mismatchNotes.length
-      ? `Uploaded invoice amount mismatch: ${mismatchNotes.join("; ")}.`
-      : "",
+    passed: true,
+    message: "",
   };
 };
 
@@ -7270,7 +7236,7 @@ export const updateInternalInvoiceStatus = async (req, res, next) => {
       dispatchRecipientPhone = "",
     } = req.body || {};
 
-    if (!["Approved", "Rejected", "Paid", "Partially Paid"].includes(status)) {
+    if (!["Approved", "Rejected", "Paid", "Partially Paid", "Passed to Manager", "Pass to Manager"].includes(status)) {
       return next(new ApiError(400, "Invalid internal invoice status"));
     }
 
@@ -7335,12 +7301,35 @@ export const updateInternalInvoiceStatus = async (req, res, next) => {
       invoice.financeNotes = String(reason).trim();
     }
 
+    if (status === "Passed to Manager" || status === "Pass to Manager") {
+      if (!String(reason || "").trim()) {
+        return next(new ApiError(400, "Reason is required to pass to manager"));
+      }
+
+      invoice.status = "Passed to Manager";
+      invoice.financeNotes = String(reason).trim();
+      invoice.escalatedToAdmin = true;
+    }
+
     if (status === "Paid" || status === "Partially Paid") {
       if (!payoutReference || !payoutDate || !payoutBank || Number(payoutAmount || 0) <= 0) {
         return next(new ApiError(400, "Payout reference, date, bank, and amount are required"));
       }
 
-      const totalExpected = Number(invoice.summary?.grandTotal || 0);
+      if (invoice.invoiceSource === "uploaded_invoice" && Number(invoice.claimedSummary?.grandTotal || 0) > 0) {
+        if (!invoice.summary || !invoice.summary.grandTotal) {
+          invoice.summary = {
+            subtotal: Number(invoice.claimedSummary.subtotal || invoice.summary?.subtotal || 0),
+            gstAmount: Number(invoice.claimedSummary.taxAmount || invoice.summary?.gstAmount || 0),
+            tcsAmount: Number(invoice.summary?.tcsAmount || 0),
+            otherTaxAmount: Number(invoice.summary?.otherTaxAmount || 0),
+            totalTax: Number(invoice.claimedSummary.taxAmount || invoice.summary?.totalTax || 0),
+            grandTotal: Number(invoice.claimedSummary.grandTotal || invoice.summary?.grandTotal || 0),
+          };
+        }
+      }
+
+      const totalExpected = Number(invoice.summary?.grandTotal || invoice.claimedSummary?.grandTotal || 0);
       const newAmount = Number(payoutAmount || 0);
 
       // Handle legacy payouts integration
@@ -7561,92 +7550,132 @@ export const updateInternalInvoiceStatus = async (req, res, next) => {
       }
     }
 
-    const notificationPayload =
-      status === "Rejected"
-        ? {
-          type: "warning",
-          title: "Internal Invoice Rejected",
-          message: `${invoice.invoiceNumber} was rejected by finance. Reason: ${invoice.financeNotes}`,
-        }
-        : status === "Approved"
-          ? {
-            type: "success",
-            title: "Internal Invoice Validated",
-            message: `${invoice.invoiceNumber} was validated by finance and is ready for payout processing.`,
-          }
-          : {
-            type: "success",
-            title: "Internal Invoice Paid",
-            message: `${invoice.invoiceNumber} has been paid by finance for ${formatNotificationCurrency(
-              invoice.payoutAmount || invoice.summary?.grandTotal || 0,
-              invoice.items?.[0]?.currency || "INR",
-            )}.${getFinanceDispatchNote(dispatchResult.channel, {
-              email: dispatchResult.recipientEmail,
-              phone: dispatchResult.recipientPhone,
-              documentLabel: "Payment receipt",
-            })}`,
-          };
-
-    await createFinanceSideNotification(req, {
-      user: invoice.dmc?._id || invoice.dmc,
-      ...notificationPayload,
-      link: "/dmc/confirmation",
-      meta: {
-        internalInvoiceId: invoice._id,
-        settlementType: isSettlementBatch ? "bulk" : "single",
-        invoiceNumber: invoice.invoiceNumber,
-        queryId: invoice.query?.queryId || invoice.queryCode || invoice.batchNumber || "",
-        status,
-        payoutAmount: invoice.payoutAmount || 0,
-        payoutBank: invoice.payoutBank || "",
-        payoutDate: invoice.payoutDate || null,
-        dispatchChannel: dispatchResult.channel || "",
-        dispatchStatus: dispatchResult.status || "",
-        recipientEmail: dispatchResult.recipientEmail || "",
-        recipientPhone: dispatchResult.recipientPhone || "",
-      },
-    });
-
-    const shouldNotifyAdmin = status === "Rejected" && Boolean(notifyAdmin);
-    if (shouldNotifyAdmin) {
+    if (status === "Passed to Manager" || status === "Pass to Manager") {
       invoice.escalatedToAdmin = true;
       await invoice.save();
 
-      const adminUsers = await Auth.find({
-        role: "admin",
+      const managerUsers = await Auth.find({
+        role: { $in: ["finance_manager", "admin", "operation_manager"] },
         isDeleted: { $ne: true },
         accountStatus: { $ne: "Inactive" },
-      }).select("_id");
+      }).select("_id role name email");
 
-      const normalizedMismatchReason = String(mismatchReason || "").trim();
+      const normalizedMismatchReason = String(mismatchReason || reason || "").trim();
       const normalizedAdminMessage = String(adminMessage || "").trim();
       const escalationActor = req.user?.name || req.user?.companyName || reviewerName;
-      const escalationMessageParts = [
-        `${invoice.invoiceNumber} was escalated by ${escalationActor} for admin review.`,
-        normalizedMismatchReason ? `Reason for mismatch: ${normalizedMismatchReason}.` : "",
-        normalizedAdminMessage ? `Finance note: ${normalizedAdminMessage}` : "",
-      ].filter(Boolean);
+      const passReason = normalizedMismatchReason || invoice.financeNotes || "Passed by finance for manager review";
 
-      if (adminUsers.length) {
+      if (managerUsers.length) {
         await Notification.insertMany(
-          adminUsers.map((adminUser) => ({
-            user: adminUser._id,
+          managerUsers.map((mgr) => ({
+            user: mgr._id,
             type: "warning",
-            title: "Internal invoice mismatch escalated",
-            message: escalationMessageParts.join(" "),
+            title: "Invoice Passed to Manager",
+            message: `Invoice #${invoice.invoiceNumber} (${invoice.query?.queryId || invoice.queryCode || invoice.dmcName || "Internal Invoice"}) was passed to Manager by ${escalationActor}. Reason: ${passReason}`,
             link: "/finance/internalInvoice",
             meta: {
               internalInvoiceId: invoice._id,
               invoiceNumber: invoice.invoiceNumber,
               queryId: invoice.query?._id || invoice.query || null,
               queryNumber: invoice.query?.queryId || invoice.queryCode || invoice.batchNumber || "",
-              mismatchReason: normalizedMismatchReason,
+              mismatchReason: passReason,
+              reason: passReason,
               adminMessage: normalizedAdminMessage,
               financeNotes: invoice.financeNotes || "",
-              source: "finance_internal_invoice_mismatch",
+              passedBy: escalationActor,
+              source: "finance_internal_invoice_pass_to_manager",
             },
           })),
         );
+      }
+    } else {
+      const notificationPayload =
+        status === "Rejected"
+          ? {
+            type: "warning",
+            title: "Internal Invoice Rejected",
+            message: `${invoice.invoiceNumber} was rejected by finance. Reason: ${invoice.financeNotes}`,
+          }
+          : status === "Approved"
+            ? {
+              type: "success",
+              title: "Internal Invoice Validated",
+              message: `${invoice.invoiceNumber} was validated by finance and is ready for payout processing.`,
+            }
+            : {
+              type: "success",
+              title: "Internal Invoice Paid",
+              message: `${invoice.invoiceNumber} has been paid by finance for ${formatNotificationCurrency(
+                invoice.payoutAmount || invoice.summary?.grandTotal || 0,
+                invoice.items?.[0]?.currency || "INR",
+              )}.${getFinanceDispatchNote(dispatchResult.channel, {
+                email: dispatchResult.recipientEmail,
+                phone: dispatchResult.recipientPhone,
+                documentLabel: "Payment receipt",
+              })}`,
+            };
+
+      await createFinanceSideNotification(req, {
+        user: invoice.dmc?._id || invoice.dmc,
+        ...notificationPayload,
+        link: "/dmc/confirmation",
+        meta: {
+          internalInvoiceId: invoice._id,
+          settlementType: isSettlementBatch ? "bulk" : "single",
+          invoiceNumber: invoice.invoiceNumber,
+          queryId: invoice.query?.queryId || invoice.queryCode || invoice.batchNumber || "",
+          status,
+          payoutAmount: invoice.payoutAmount || 0,
+          payoutBank: invoice.payoutBank || "",
+          payoutDate: invoice.payoutDate || null,
+          dispatchChannel: dispatchResult.channel || "",
+          dispatchStatus: dispatchResult.status || "",
+          recipientEmail: dispatchResult.recipientEmail || "",
+          recipientPhone: dispatchResult.recipientPhone || "",
+        },
+      });
+
+      const shouldNotifyAdmin = status === "Rejected" && Boolean(notifyAdmin);
+      if (shouldNotifyAdmin) {
+        invoice.escalatedToAdmin = true;
+        await invoice.save();
+
+        const adminUsers = await Auth.find({
+          role: "admin",
+          isDeleted: { $ne: true },
+          accountStatus: { $ne: "Inactive" },
+        }).select("_id");
+
+        const normalizedMismatchReason = String(mismatchReason || "").trim();
+        const normalizedAdminMessage = String(adminMessage || "").trim();
+        const escalationActor = req.user?.name || req.user?.companyName || reviewerName;
+        const escalationMessageParts = [
+          `${invoice.invoiceNumber} was escalated by ${escalationActor} for admin review.`,
+          normalizedMismatchReason ? `Reason for mismatch: ${normalizedMismatchReason}.` : "",
+          normalizedAdminMessage ? `Finance note: ${normalizedAdminMessage}` : "",
+        ].filter(Boolean);
+
+        if (adminUsers.length) {
+          await Notification.insertMany(
+            adminUsers.map((adminUser) => ({
+              user: adminUser._id,
+              type: "warning",
+              title: "Internal invoice mismatch escalated",
+              message: escalationMessageParts.join(" "),
+              link: "/finance/internalInvoice",
+              meta: {
+                internalInvoiceId: invoice._id,
+                invoiceNumber: invoice.invoiceNumber,
+                queryId: invoice.query?._id || invoice.query || null,
+                queryNumber: invoice.query?.queryId || invoice.queryCode || invoice.batchNumber || "",
+                mismatchReason: normalizedMismatchReason,
+                adminMessage: normalizedAdminMessage,
+                financeNotes: invoice.financeNotes || "",
+                source: "finance_internal_invoice_mismatch",
+              },
+            })),
+          );
+        }
       }
     }
 
