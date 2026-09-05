@@ -6,6 +6,7 @@ import {
   buildVoucherHtml,
   formatServiceTypeLabel,
   getVoucherStatusNote,
+  exportVoucherAsPdf,
 } from "../utils/voucherTemplate";
 
 const parseAdminTermContent = (rawContent) => {
@@ -75,7 +76,7 @@ const voucherDispatchOptions = [
   {
     key: "PDF",
     label: "PDF Download",
-    description: "Download the voucher HTML to your system",
+    description: "Download the voucher PDF to your system",
     icon: Download,
     colorClass: "bg-[#f59e0b]",
   },
@@ -253,7 +254,7 @@ const VoucherDispatchModal = ({
                   ? "The travel voucher with all confirmed service information will be sent directly to the agent's email."
                   : selectedChannel === "WHATSAPP"
                     ? "WhatsApp will open with a ready-to-share message linking to the agent's online travel voucher."
-                    : "A clean travel voucher copy will be downloaded in HTML format for offline sharing."}
+                    : "A clean travel voucher copy will be downloaded in PDF format for offline sharing."}
               </p>
             </div>
           </div>
@@ -277,12 +278,14 @@ const VoucherDispatchModal = ({
             {isSubmitting
               ? selectedChannel === "EMAIL"
                 ? "Sending..."
-                : "Preparing..."
+                : selectedChannel === "PDF"
+                  ? "Generating PDF..."
+                  : "Preparing..."
               : selectedChannel === "EMAIL"
                 ? "Send Email"
                 : selectedChannel === "WHATSAPP"
                   ? "Open WhatsApp"
-                  : "Download"}
+                  : "Download PDF"}
           </button>
         </div>
       </div>
@@ -307,6 +310,7 @@ const VoucherPreviewModal = ({
   const [selectedTermKey, setSelectedTermKey] = useState("");
   const [showTermsPreview, setShowTermsPreview] = useState(false);
   const [loadingTerms, setLoadingTerms] = useState(true);
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
 
   useEffect(() => {
     if (data) {
@@ -402,32 +406,30 @@ const VoucherPreviewModal = ({
 
   if (!data) return null;
 
-  const handleDownload = () => {
+  const handleDownload = async () => {
     const enrichedData = {
       ...data,
       termsAndConditions: selectedTermsList,
       terms: selectedTermsList,
     };
 
-    if (onDownload) {
-      onDownload(enrichedData, branding, selectedTermsList);
-      return;
-    }
+    setDownloadingPdf(true);
+    try {
+      if (onDownload) {
+        await onDownload(enrichedData, branding, selectedTermsList);
+        return;
+      }
 
-    const opsBranding = {
-      name: "Holiday Circuit",
-      logo: "",
-    };
-    const html = buildVoucherHtml(enrichedData, branding, opsBranding);
-    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `${data.voucherNumber || data.query}-${branding}.html`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
+      const opsBranding = {
+        name: "Holiday Circuit",
+        logo: "",
+      };
+      await exportVoucherAsPdf(enrichedData, branding, opsBranding);
+    } catch (err) {
+      console.error("Voucher download error:", err);
+    } finally {
+      setDownloadingPdf(false);
+    }
   };
 
   const handleDispatchConfirm = async () => {
@@ -459,7 +461,7 @@ const VoucherPreviewModal = ({
           window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
         }
       } else if (selectedDispatchChannel === "PDF") {
-        handleDownload();
+        await handleDownload();
       }
 
       setShowDispatchModal(false);
@@ -672,10 +674,11 @@ const VoucherPreviewModal = ({
               ) : (
                 <button
                   onClick={handleDownload}
-                  className="flex flex-1 items-center justify-center gap-1 rounded-[12px] bg-green-600 px-4 py-2 text-[11px] font-semibold text-white transition hover:bg-green-700"
+                  disabled={downloadingPdf}
+                  className="flex flex-1 items-center justify-center gap-1 rounded-[12px] bg-green-600 px-4 py-2 text-[11px] font-semibold text-white transition hover:bg-green-700 disabled:opacity-70 disabled:cursor-not-allowed"
                 >
-                  <Download size={13} />
-                  Download
+                  <Download size={13} className={downloadingPdf ? "animate-pulse" : ""} />
+                  {downloadingPdf ? "Generating PDF..." : "Download"}
                 </button>
               )}
             </div>
@@ -695,7 +698,7 @@ const VoucherPreviewModal = ({
             onPhoneChange={setDispatchRecipientPhone}
             onClose={() => setShowDispatchModal(false)}
             onConfirm={handleDispatchConfirm}
-            isSubmitting={loading}
+            isSubmitting={loading || downloadingPdf}
             agentName={data.agentName}
           />
         )}

@@ -14,7 +14,7 @@ import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import VoucherPreviewModal from "../../modal/VoucherPreviewModal";
 import API from "../../utils/Api.js";
-import { buildVoucherHtml } from "../../utils/voucherTemplate";
+import { buildVoucherHtml, exportVoucherAsPdf } from "../../utils/voucherTemplate";
 
 const formatDisplayDate = (value) => {
   if (!value) return "-";
@@ -106,32 +106,19 @@ export default function VoucherManagement() {
     setShowPreview(true);
   };
 
-  const handleDownloadVoucher = (voucher, branding = "with", terms = null) => {
+  const handleDownloadVoucher = async (voucher, branding = "with", terms = null) => {
+    const toastId = toast.loading("Generating voucher PDF...");
     try {
       const opsBranding = {
         name: "Holiday Circuit",
         logo: "",
       };
       const enrichedVoucher = terms ? { ...voucher, termsAndConditions: terms } : voucher;
-      const html = buildVoucherHtml(enrichedVoucher, branding, opsBranding);
-      const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `${voucher.voucherNumber || voucher.query || "voucher"}-${branding}.html`;
-      document.body.appendChild(link);
-      link.click();
-
-      setTimeout(() => {
-        if (document.body.contains(link)) {
-          document.body.removeChild(link);
-        }
-        URL.revokeObjectURL(url);
-      }, 5000);
+      const { fileName } = await exportVoucherAsPdf(enrichedVoucher, branding, opsBranding);
+      toast.success(`Downloaded ${fileName}`, { id: toastId });
     } catch (err) {
-      console.error("Failed to download voucher", err);
-      toast.error("Failed to generate voucher download file");
+      console.error("Failed to download voucher PDF", err);
+      toast.error("Failed to generate voucher PDF", { id: toastId });
     }
   };
 
@@ -194,7 +181,7 @@ export default function VoucherManagement() {
     downloadable.forEach((voucher, index) => {
       setTimeout(() => {
         handleDownloadVoucher(voucher, voucher.branding || "with");
-      }, (index + 1) * 300);
+      }, (index + 1) * 800);
     });
   };
 
