@@ -31,6 +31,10 @@ const IncExcDetails = () => {
     return <div className="p-6 text-sm text-red-500">Preset not found.</div>;
   }
 
+  const destList = Array.isArray(preset.destinations) && preset.destinations.length > 0
+    ? preset.destinations
+    : (preset.destination ? preset.destination.split(',').map(s => s.trim()).filter(Boolean) : []);
+
   return (
     <section className="font-sans min-h-screen bg-slate-50 pb-12">
       {/* Top Navigation Bar */}
@@ -59,25 +63,40 @@ const IncExcDetails = () => {
       <div className="border-b border-gray-200 bg-white px-6 py-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 flex-wrap">
               <h1 className="text-xl font-bold text-gray-900">{preset.name}</h1>
-              {preset.destination ? (
-                <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">
-                  <MapPin className="h-3.5 w-3.5 text-blue-500" />
-                  {preset.destination}
+              {preset.destinationCategory && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200 uppercase tracking-wide">
+                  {preset.destinationCategory}
                 </span>
+              )}
+            </div>
+
+            {/* Destination Badges */}
+            <div className="mt-3 flex items-center gap-1.5 flex-wrap">
+              {destList.length > 0 ? (
+                destList.map((dest, idx) => (
+                  <span
+                    key={idx}
+                    className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200 shadow-2xs"
+                  >
+                    <MapPin className="h-3.5 w-3.5 text-blue-500" />
+                    {dest}
+                  </span>
+                ))
               ) : (
                 <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-normal bg-gray-100 text-gray-600">
                   All Destinations
                 </span>
               )}
             </div>
-            <p className="text-xs text-gray-500 mt-1">
+
+            <p className="text-xs text-gray-500 mt-2">
               Preset ID: <span className="font-mono">{preset._id}</span>
             </p>
           </div>
           
-          <div className="flex gap-8">
+          <div className="flex gap-8 shrink-0">
             <div>
               <p className="text-xs text-gray-500 mb-1">Created by</p>
               <p className="text-sm">

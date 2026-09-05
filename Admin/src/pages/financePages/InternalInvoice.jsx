@@ -328,6 +328,9 @@ const InternalInvoice = () => {
           quotationNumber: invoice.quotationNumber,
           items: invoice.items || [],
           documents: invoice.documents || [],
+          dmcRemarks: invoice.dmcRemarks || invoice.remarks || invoice.invoiceMeta?.dmcRemarks || "",
+          invoiceExtraction: invoice.invoiceExtraction || {},
+          financeNotes: invoice.financeNotes || "",
         };
       }),
     [invoiceData.invoices],

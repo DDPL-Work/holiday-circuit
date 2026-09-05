@@ -122,28 +122,22 @@ export const getInvoiceTaxConfig = (invoice = {}) => {
 };
 
 export const getExpectedInvoiceSummary = (invoice = {}) => {
-  const fallbackSummary = invoice.summary || {};
-  if (invoice.invoiceSource === "uploaded_invoice") {
-    const totalTax = Number(fallbackSummary.totalTax ?? 0);
-    const subtotal = Number(fallbackSummary.subtotal ?? 0);
-    return {
-      subtotal,
-      gstAmount: Number(fallbackSummary.gstAmount ?? 0),
-      tcsAmount: Number(fallbackSummary.tcsAmount ?? 0),
-      otherTaxAmount: Number(fallbackSummary.otherTaxAmount ?? totalTax ?? 0),
-      totalTax,
-      grandTotal: Number(fallbackSummary.grandTotal ?? subtotal + totalTax ?? 0),
-    };
-  }
-
   const items = Array.isArray(invoice.items) ? invoice.items : [];
   const taxConfig = getInvoiceTaxConfig(invoice);
+  const fallbackSummary = invoice.summary || {};
+  
   const fallbackSubtotal = Number(
-    fallbackSummary.subtotal ?? invoice.dmcInvoiceAmountValue ?? invoice.agreedRateValue ?? 0,
+    invoice.agreedRateValue ??
+    invoice.opsServicesTotal ??
+    fallbackSummary.subtotal ??
+    invoice.dmcInvoiceAmountValue ??
+    0
   );
+
   const subtotal = items.length
     ? items.reduce((sum, item) => sum + getItemSubtotal(item), 0)
     : fallbackSubtotal;
+
   const gstRate = Number(taxConfig.gstRate || 0);
   const tcsRate = Number(taxConfig.tcsRate || 0);
   const itemTaxTotal = items.reduce((sum, item) => {
@@ -151,6 +145,7 @@ export const getExpectedInvoiceSummary = (invoice = {}) => {
     const hasItemTax = item.tax !== undefined && item.tax !== null && item.tax !== "";
     return hasItemTax && Number.isFinite(itemTax) ? sum + itemTax : sum;
   }, 0);
+
   const gstAmount = gstRate > 0
     ? (subtotal * gstRate) / 100
     : itemTaxTotal || Number(fallbackSummary.gstAmount || 0);
@@ -180,26 +175,28 @@ export const getUploadedInvoiceSummary = (invoice = {}) => {
     };
   }
 
+  const subtotal = Number(
+    claimedSummary.subtotal !== undefined && claimedSummary.subtotal !== null && claimedSummary.subtotal !== ""
+      ? claimedSummary.subtotal
+      : (invoice.summary?.subtotal ?? invoice.dmcInvoiceAmountValue ?? 0)
+  );
+
+  const taxAmount = Number(
+    claimedSummary.taxAmount !== undefined && claimedSummary.taxAmount !== null && claimedSummary.taxAmount !== ""
+      ? claimedSummary.taxAmount
+      : (claimedSummary.totalTax ?? invoice.summary?.totalTax ?? invoice.taxValue ?? 0)
+  );
+
+  const grandTotal = Number(
+    claimedSummary.grandTotal !== undefined && claimedSummary.grandTotal !== null && claimedSummary.grandTotal !== ""
+      ? claimedSummary.grandTotal
+      : (invoice.summary?.grandTotal ?? invoice.amountValue ?? (subtotal + taxAmount))
+  );
+
   return {
-    subtotal: Number(
-      claimedSummary.subtotal ??
-      invoice.summary?.subtotal ??
-      invoice.dmcInvoiceAmountValue ??
-      0,
-    ),
-    taxAmount: Number(
-      claimedSummary.taxAmount ??
-      claimedSummary.totalTax ??
-      invoice.summary?.totalTax ??
-      invoice.taxValue ??
-      0,
-    ),
-    grandTotal: Number(
-      claimedSummary.grandTotal ??
-      invoice.summary?.grandTotal ??
-      invoice.amountValue ??
-      0,
-    ),
+    subtotal,
+    taxAmount,
+    grandTotal,
   };
 };
 

@@ -3709,9 +3709,15 @@ const scoreHotelVariantMatch = (variant = {}, nextService = {}, changedField = "
         }
         const qDest = queryDestination.toLowerCase().trim();
         return incExcPresets.filter((p) => {
-          if (!p.destination) return false;
-          const pDest = p.destination.toLowerCase().trim();
-          return pDest === qDest || pDest.includes(qDest) || qDest.includes(pDest);
+          const destList = Array.isArray(p.destinations) && p.destinations.length > 0
+            ? p.destinations
+            : (p.destination ? p.destination.split(',').map(s => s.trim()).filter(Boolean) : []);
+          
+          if (destList.length === 0) return false;
+          return destList.some((d) => {
+            const low = d.toLowerCase().trim();
+            return low === qDest || low.includes(qDest) || qDest.includes(low);
+          });
         });
       }, [incExcPresets, queryDestination]);
 

@@ -51,6 +51,7 @@ export default function DmcPaymentLedger() {
     creditPeriodDays: 7,
     dueDate: addDaysToDate(todayInput(), 7),
     templateVariant: "aurora-ledger",
+    dmcRemarks: "",
   });
 
   const [taxConfig, setTaxConfig] = useState({ gstRate: 0, tcsRate: 0, otherTax: 0 });
@@ -249,6 +250,11 @@ export default function DmcPaymentLedger() {
         toast.error("Please enter claimed invoice total");
         return;
       }
+
+      if (!invoiceMeta.dmcRemarks || !String(invoiceMeta.dmcRemarks).trim()) {
+        toast.error("Please add a remark/reason before submitting your invoice to finance");
+        return;
+      }
     }
 
     try {
@@ -261,7 +267,9 @@ export default function DmcPaymentLedger() {
           ...invoiceMeta,
           dueDate: invoiceMeta.dueDate,
           invoiceSource,
+          dmcRemarks: String(invoiceMeta.dmcRemarks || "").trim(),
         }));
+        formData.append("dmcRemarks", String(invoiceMeta.dmcRemarks || "").trim());
         formData.append("taxConfig", JSON.stringify(taxConfig));
         formData.append("claimedSummary", JSON.stringify(claimedSummary));
         formData.append("templateVariant", invoiceMeta.templateVariant);
@@ -277,7 +285,9 @@ export default function DmcPaymentLedger() {
             ...invoiceMeta,
             dueDate: invoiceMeta.dueDate,
             invoiceSource,
+            dmcRemarks: String(invoiceMeta.dmcRemarks || "").trim(),
           },
+          dmcRemarks: String(invoiceMeta.dmcRemarks || "").trim(),
           taxConfig,
           claimedSummary,
           templateVariant: invoiceMeta.templateVariant,

@@ -78,8 +78,10 @@ const mockInvoices = [
 
 const mismatchReasons = [
   "Amount mismatch",
+  "Rate difference approval needed",
   "Missing supporting documents",
   "Contract rate issue",
+  "Additional service added by DMC",
   "Duplicate payout request",
   "Other",
 ];
@@ -96,6 +98,7 @@ const uiStatusStyles = {
   Validated: "border border-blue-200 bg-blue-50 text-blue-600",
   Mismatch: "border border-rose-200 bg-rose-50 text-rose-600",
   Settled: "border border-emerald-200 bg-emerald-50 text-emerald-600",
+  Escalated: "border border-purple-200 bg-purple-50 text-purple-700",
 };
 
 const feedbackStyles = {
@@ -119,6 +122,11 @@ const cardThemes = {
     bg: "bg-gradient-to-br from-[#ffe4e6]/30 via-white to-white",
     border: "border border-rose-200/80 border-b-4 border-b-rose-500 shadow-[0_4px_12px_rgba(244,63,94,0.03)]",
     iconColor: "text-rose-500 bg-rose-50",
+  },
+  "Escalated": {
+    bg: "bg-gradient-to-br from-[#f3e8ff]/30 via-white to-white",
+    border: "border border-purple-200/80 border-b-4 border-b-purple-500 shadow-[0_4px_12px_rgba(168,85,247,0.03)]",
+    iconColor: "text-purple-500 bg-purple-50",
   },
   "Settled": {
     bg: "bg-gradient-to-br from-[#d1fae5]/30 via-white to-white",
@@ -170,6 +178,7 @@ const mapRawStatusToUi = (status) => {
   if (status === "Paid") return "Settled";
   if (status === "Approved") return "Validated";
   if (status === "Rejected") return "Mismatch";
+  if (status === "Passed to Manager" || status === "Pass to Manager") return "Escalated";
   return "Under Review";
 };
 
@@ -245,6 +254,9 @@ const buildInvoiceModalPayload = (invoice = {}) => ({
   quotationNumber: invoice?.quotationNumber || "",
   items: invoice?.items || [],
   documents: invoice?.documents || [],
+  dmcRemarks: invoice?.dmcRemarks || invoice?.remarks || invoice?.invoiceMeta?.dmcRemarks || "",
+  invoiceExtraction: invoice?.invoiceExtraction || {},
+  financeNotes: invoice?.financeNotes || "",
   payoutReference: invoice?.payoutReference || "",
   payoutDate: invoice?.payoutDate || "",
   payoutDateValue: invoice?.payoutDateValue || "",
@@ -440,7 +452,7 @@ function ValidateModal({ invoice, submitting, onClose, onConfirm }) {
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.96, y: 12 }}
         transition={{ duration: 0.26, ease: [0.22, 1, 0.36, 1] }}
-        className="w-full max-w-[365px] overflow-hidden bg-white shadow-[0_26px_60px_rgba(15,23,42,0.28)]"
+        className="w-full max-w-[375px] overflow-hidden bg-white shadow-[0_26px_60px_rgba(15,23,42,0.28)]"
         style={{ borderRadius: "24px" }}
       >
 
@@ -455,10 +467,11 @@ function ValidateModal({ invoice, submitting, onClose, onConfirm }) {
             </div>
             <div>
               <p className="text-sm font-bold text-white">Validate Payout</p>
-              <p className="text-xs text-blue-100">Confirm invoice validation</p>
+              <p className="text-xs text-blue-100">Confirm invoice validation &amp; approval</p>
             </div>
           </div>
           <button
+            type="button"
             onClick={onClose}
             className="flex h-8 w-8 items-center justify-center rounded-xl text-white transition-colors hover:bg-white/20"
             style={{ background: "rgba(255,255,255,0.14)" }}
@@ -474,27 +487,36 @@ function ValidateModal({ invoice, submitting, onClose, onConfirm }) {
           {/* Info card — light gray bg, NO blue border, slate dividers */}
           <div className="overflow-hidden" style={{ borderRadius: "16px", border: "1px solid #BEDBFE", background: "#EFF5FC" }}>
             {[
-              { label: "DMC Partner", value: invoice.partner, highlight: false },
+              { label: "DMC Partner", value: invoice.dmcName || invoice.supplierName || invoice.partner || "-", highlight: false },
               { label: "Invoice No", value: invoice.invoiceNumber || invoice.id, highlight: false },
               { label: "Payout Amount", value: invoice.amountDisplay, highlight: true },
             ].map(({ label, value, highlight }, index) => (
               <div
                 key={label}
                 style={{ borderBottom: index !== 2 ? "1px solid #BEDBFF" : "none" }}
-                className="flex items-center justify-between gap-4 px-4 py-3.5 text-sm"
+                className="flex items-center justify-between gap-4 px-4 py-3 text-sm"
               >
                 <span style={{ color: "#64748b" }}>{label}</span>
                 <span style={highlight
                   ? payoutAmountStyle
-                  : { color: "#636464", fontWeight: 600 }}>
+                  : { color: "#1e293b", fontWeight: 600 }}>
                   {value}
                 </span>
               </div>
             ))}
           </div>
 
+          {invoice.dmcRemarks && (
+            <div className="mt-3 rounded-xl border border-amber-200/80 bg-amber-50/70 p-2.5 text-left">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-amber-800">DMC Remarks</p>
+              <p className="mt-0.5 text-xs text-amber-900 leading-relaxed font-medium line-clamp-2">
+                "{invoice.dmcRemarks}"
+              </p>
+            </div>
+          )}
+
           {/* Checkbox */}
-          <div className="mt-4 flex items-start gap-3 cursor-pointer" onClick={() => setChecked(prev => !prev)}>
+          <div className="mt-4 flex items-start gap-3 cursor-pointer select-none" onClick={() => setChecked(prev => !prev)}>
             <div
               className="mt-0.5 shrink-0 flex items-center justify-center transition-colors"
               style={{
@@ -512,8 +534,8 @@ function ValidateModal({ invoice, submitting, onClose, onConfirm }) {
             </div>
             <div>
               <p style={{ fontSize: 13, fontWeight: 600, color: "#1e293b" }}>Verification Checkpoint</p>
-              <p style={{ fontSize: 12, color: "#64748b", marginTop: 3, lineHeight: 1.5 }}>
-                I confirm the rate matches the system invoice and all details are accurate.
+              <p style={{ fontSize: 12, color: "#64748b", marginTop: 3, lineHeight: 1.4 }}>
+                I confirm invoice rates, remarks, and payout details have been verified for settlement.
               </p>
             </div>
           </div>
@@ -523,6 +545,7 @@ function ValidateModal({ invoice, submitting, onClose, onConfirm }) {
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, padding: "0 20px 20px" }}>
           {/* Cancel */}
           <button
+            type="button"
             onClick={onClose}
             style={{
               borderRadius: 14,
@@ -554,15 +577,15 @@ function ValidateModal({ invoice, submitting, onClose, onConfirm }) {
               gap: 6,
               border: "none",
               cursor: checked && !submitting ? "pointer" : "not-allowed",
-              background: checked && !submitting ? "#9bc6ff" : "#d9e8ff",
-              color: checked && !submitting ? "#1f5fef" : "#8eb3f4",
-              transition: "background 0.15s",
+              background: checked && !submitting ? "#2b67f6" : "#d9e8ff",
+              color: checked && !submitting ? "#ffffff" : "#8eb3f4",
+              transition: "all 0.15s ease",
             }}
           >
             <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            Confirm &amp; Validate
+            {submitting ? "Validating..." : "Confirm & Validate"}
           </button>
         </div>
       </motion.div>
@@ -803,10 +826,11 @@ export default function InternalDMCInvoices() {
           if (invoice.uiStatus === "Under Review") acc.underReview += 1;
           if (invoice.uiStatus === "Validated") acc.validated += 1;
           if (invoice.uiStatus === "Mismatch") acc.mismatch += 1;
+          if (invoice.uiStatus === "Escalated") acc.escalated += 1;
           if (invoice.uiStatus === "Settled") acc.settled += 1;
           return acc;
         },
-        { underReview: 0, validated: 0, mismatch: 0, settled: 0 },
+        { underReview: 0, validated: 0, mismatch: 0, escalated: 0, settled: 0 },
       ),
     [displayInvoices],
   );
@@ -840,16 +864,6 @@ export default function InternalDMCInvoices() {
   const handleValidate = async (invoice) => {
     if (!invoice) return;
 
-    if (invoice.uiStatus === "Validated") {
-      setValidateInvoice(null);
-      setFeedback({
-        type: "success",
-        title: "Already Validated",
-        message: `${invoice.invoiceNumber} is already validated.`,
-      });
-      return;
-    }
-
     if (invoice.uiStatus === "Settled") {
       setValidateInvoice(null);
       setFeedback({
@@ -872,7 +886,7 @@ export default function InternalDMCInvoices() {
         };
         updateInvoiceRow(nextInvoice);
       } else {
-        const { data: response } = await API.patch(`/admin/internal-invoices/${invoice.id}/status`, {
+        const { data: response } = await API.patch(`/admin/internal-invoices/${invoice.id || invoice._id}/status`, {
           status: "Approved",
         });
         const updatedInvoice = response?.data;
@@ -911,6 +925,7 @@ export default function InternalDMCInvoices() {
             underReview: summary.underReview,
             validated: summary.validated,
             mismatched: summary.mismatch,
+            escalated: summary.escalated,
             settled: summary.settled,
             totalInvoices: invoices.length,
           },
@@ -988,13 +1003,13 @@ export default function InternalDMCInvoices() {
       if (invoice.isMock) {
         updateInvoiceRow({
           ...invoice,
-          status: "Rejected",
+          status: "Passed to Manager",
           reviewedByName: user?.name || "Finance Manager",
           financeNotes: financeReason,
         });
       } else {
-        const { data: response } = await API.patch(`/admin/internal-invoices/${invoice.id}/status`, {
-          status: "Rejected",
+        const { data: response } = await API.patch(`/admin/internal-invoices/${invoice.id || invoice._id}/status`, {
+          status: "Passed to Manager",
           reason: financeReason,
           notifyAdmin: true,
           mismatchReason: reason,
@@ -1008,7 +1023,7 @@ export default function InternalDMCInvoices() {
       setFeedback({
         type: "warning",
         title: "Escalated To Admin",
-        message: `${invoice.invoiceNumber} has been flagged for admin review.`,
+        message: `${invoice.invoiceNumber} has been escalated to admin review.`,
       });
     } catch (actionError) {
       setFeedback({
@@ -1106,11 +1121,12 @@ export default function InternalDMCInvoices() {
           </div>
         </div>
 
-        <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
           {[
             { label: "Under Review", value: summary.underReview, color: "text-amber-600", themeKey: "Under Review" },
             { label: "Validated", value: summary.validated, color: "text-blue-600", themeKey: "Validated" },
             { label: "Mismatched", value: summary.mismatch, color: "text-rose-600", themeKey: "Mismatched" },
+            { label: "Escalated", value: summary.escalated, color: "text-purple-600", themeKey: "Escalated" },
             { label: "Settled", value: summary.settled, color: "text-emerald-600", themeKey: "Settled" },
           ].map((card) => {
             const theme = cardThemes[card.themeKey];
@@ -1125,6 +1141,7 @@ export default function InternalDMCInvoices() {
                     {card.themeKey === "Under Review" && <Clock size={12.5} />}
                     {card.themeKey === "Validated" && <CheckCircle2 size={12.5} />}
                     {card.themeKey === "Mismatched" && <AlertCircle size={12.5} />}
+                    {card.themeKey === "Escalated" && <AlertCircle size={12.5} />}
                     {card.themeKey === "Settled" && <Coins size={12.5} />}
                   </span>
                 </div>
@@ -1224,28 +1241,52 @@ export default function InternalDMCInvoices() {
                         </td>
                         <td className="whitespace-nowrap px-4 py-2.5">
                           <div className="flex items-center gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() => setValidateInvoice(invoice)}
-                              className="inline-flex items-center gap-1 rounded-xl border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-[10.5px] font-semibold text-blue-600 transition hover:bg-blue-100"
-                            >
-                              <EyeIcon className="h-2.5 w-2.5" />
-                              Validate
-                            </button>
+                            {invoice.uiStatus === "Validated" ? (
+                              <button
+                                type="button"
+                                onClick={() => setSelectedInvoice(buildInvoiceModalPayload(invoice))}
+                                className="inline-flex items-center gap-1 rounded-xl border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-[10.5px] font-semibold text-emerald-600 transition hover:bg-emerald-100 cursor-pointer"
+                                title="Process Payout"
+                              >
+                                <Coins className="h-3 w-3" />
+                                Payout
+                              </button>
+                            ) : invoice.uiStatus !== "Settled" ? (
+                              <button
+                                type="button"
+                                onClick={() => setValidateInvoice(invoice)}
+                                className="inline-flex items-center gap-1 rounded-xl border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-[10.5px] font-semibold text-blue-600 transition hover:bg-blue-100 cursor-pointer"
+                                title="Validate Invoice"
+                              >
+                                <CheckCircle2 className="h-3 w-3" />
+                                Validate
+                              </button>
+                            ) : null}
 
-                            {(invoice.uiStatus === "Under Review" || invoice.uiStatus === "Mismatch") ? (
+                            {invoice.uiStatus !== "Settled" ? (
                               <button
                                 type="button"
                                 onClick={() => {
                                   setSelectedInvoice(buildInvoiceModalPayload(invoice));
                                   setEscalateInvoice(invoice);
                                 }}
-                                className="inline-flex items-center gap-1 rounded-xl border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-[10.5px] font-semibold text-rose-600 transition hover:bg-rose-100"
+                                className="inline-flex items-center gap-1 rounded-xl border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-[10.5px] font-semibold text-rose-600 transition hover:bg-rose-100 cursor-pointer"
+                                title="Escalate to Admin"
                               >
                                 <AlertIcon className="h-2.5 w-2.5" />
                                 Escalate
                               </button>
                             ) : null}
+
+                            <button
+                              type="button"
+                              onClick={() => setSelectedInvoice(buildInvoiceModalPayload(invoice))}
+                              className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-[10.5px] font-semibold text-slate-600 transition hover:bg-slate-100 cursor-pointer"
+                              title="View Details"
+                            >
+                              <EyeIcon className="h-2.5 w-2.5" />
+                              View
+                            </button>
                           </div>
                         </td>
                       </tr>

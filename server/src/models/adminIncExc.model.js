@@ -31,6 +31,10 @@ const adminIncExcSchema = new mongoose.Schema(
       default: "",
       trim: true,
     },
+    destinations: {
+      type: [String],
+      default: [],
+    },
     inclusions: {
       type: [itemSchema],
       default: [],
