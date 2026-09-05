@@ -1000,13 +1000,6 @@ export default function InternalDMCInvoices() {
     try {
       setActionLoading(true);
 
-      const targetQueryId = invoice?.query?._id || invoice?.queryId || invoice?.query;
-      if (targetQueryId) {
-        await API.patch(`/ops/queries/pass-admin/${targetQueryId}`, {
-          note: `Finance Escalation (Invoice #${invoice?.invoiceNumber || invoice?.id || ""}): ${financeReason}`,
-        }).catch(() => {});
-      }
-
       if (invoice.isMock) {
         updateInvoiceRow({
           ...invoice,

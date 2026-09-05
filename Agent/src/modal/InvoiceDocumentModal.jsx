@@ -404,12 +404,6 @@ const InvoiceDocumentModal = ({ invoice, onClose, onInvoiceUpdated, sidePanelOpe
 
     try {
       setIsSubmitting(true);
-      const targetQueryId = invoice?.query?._id || invoice?.queryId || invoice?.query;
-      if (targetQueryId) {
-        await API.patch(`/ops/queries/pass-admin/${targetQueryId}`, {
-          note: `Finance Escalation (Invoice #${invoice?.id || invoice?.invoiceNumber || ''}): ${reason}`,
-        }).catch(() => {});
-      }
 
       const { data } = await API.patch(`/admin/internal-invoices/${invoice._id}/status`, {
         status: 'Passed to Manager',

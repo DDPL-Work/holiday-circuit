@@ -7550,133 +7550,252 @@ export const updateInternalInvoiceStatus = async (req, res, next) => {
       }
     }
 
+    const actorName = req.user?.name || req.user?.companyName || reviewerName || "Finance Manager";
+    const dmcPartyName = invoice.dmcName || invoice.supplierName || "DMC Partner";
+    const invoiceQueryRef = invoice.query?.queryId || invoice.queryCode || invoice.batchNumber || "";
+    const formattedAmount = formatNotificationCurrency(
+      invoice.payoutAmount || invoice.summary?.grandTotal || invoice.claimedSummary?.grandTotal || 0,
+      invoice.items?.[0]?.currency || "INR",
+    );
+
+    // Fetch team users across roles (Finance & Admin only)
+    const [teamUsers, adminUsers] = await Promise.all([
+      Auth.find({
+        role: { $in: ["finance_manager", "finance_partner"] },
+        isDeleted: { $ne: true },
+        accountStatus: { $ne: "Inactive" },
+      }).select("_id role name email"),
+      Auth.find({
+        role: { $in: ["admin", "super_admin"] },
+        isDeleted: { $ne: true },
+        accountStatus: { $ne: "Inactive" },
+      }).select("_id role name email"),
+    ]);
+
+    const notificationsToInsert = [];
+    const addedUserIds = new Set();
+
+    const addNotification = (userId, notifData) => {
+      if (!userId) return;
+      const idStr = String(userId._id || userId);
+      if (addedUserIds.has(idStr)) return;
+      addedUserIds.add(idStr);
+      notificationsToInsert.push({
+        user: userId._id || userId,
+        ...notifData,
+      });
+    };
+
+    const dmcRecipientId = invoice.dmc?._id || invoice.dmc || invoice.submittedBy;
+
     if (status === "Passed to Manager" || status === "Pass to Manager") {
       invoice.escalatedToAdmin = true;
       await invoice.save();
 
-      const managerUsers = await Auth.find({
-        role: { $in: ["finance_manager", "admin", "operation_manager"] },
-        isDeleted: { $ne: true },
-        accountStatus: { $ne: "Inactive" },
-      }).select("_id role name email");
-
       const normalizedMismatchReason = String(mismatchReason || reason || "").trim();
       const normalizedAdminMessage = String(adminMessage || "").trim();
-      const escalationActor = req.user?.name || req.user?.companyName || reviewerName;
       const passReason = normalizedMismatchReason || invoice.financeNotes || "Passed by finance for manager review";
 
-      if (managerUsers.length) {
-        await Notification.insertMany(
-          managerUsers.map((mgr) => ({
-            user: mgr._id,
-            type: "warning",
-            title: "Invoice Passed to Manager",
-            message: `Invoice #${invoice.invoiceNumber} (${invoice.query?.queryId || invoice.queryCode || invoice.dmcName || "Internal Invoice"}) was passed to Manager by ${escalationActor}. Reason: ${passReason}`,
-            link: "/finance/internalInvoice",
-            meta: {
-              internalInvoiceId: invoice._id,
-              invoiceNumber: invoice.invoiceNumber,
-              queryId: invoice.query?._id || invoice.query || null,
-              queryNumber: invoice.query?.queryId || invoice.queryCode || invoice.batchNumber || "",
-              mismatchReason: passReason,
-              reason: passReason,
-              adminMessage: normalizedAdminMessage,
-              financeNotes: invoice.financeNotes || "",
-              passedBy: escalationActor,
-              source: "finance_internal_invoice_pass_to_manager",
-            },
-          })),
-        );
+      // 1. Notify DMC
+      if (dmcRecipientId) {
+        addNotification(dmcRecipientId, {
+          type: "info",
+          title: "Invoice Under Admin Review",
+          message: `Your invoice #${invoice.invoiceNumber} is under review by Admin. Reason: ${passReason}`,
+          link: "/dmc/confirmation",
+          meta: {
+            internalInvoiceId: invoice._id,
+            invoiceNumber: invoice.invoiceNumber,
+            queryId: invoice.query?._id || invoice.query || null,
+            status: "Passed to Manager",
+          },
+        });
       }
-    } else {
-      const notificationPayload =
-        status === "Rejected"
-          ? {
-            type: "warning",
-            title: "Internal Invoice Rejected",
-            message: `${invoice.invoiceNumber} was rejected by finance. Reason: ${invoice.financeNotes}`,
-          }
-          : status === "Approved"
-            ? {
-              type: "success",
-              title: "Internal Invoice Validated",
-              message: `${invoice.invoiceNumber} was validated by finance and is ready for payout processing.`,
-            }
-            : {
-              type: "success",
-              title: "Internal Invoice Paid",
-              message: `${invoice.invoiceNumber} has been paid by finance for ${formatNotificationCurrency(
-                invoice.payoutAmount || invoice.summary?.grandTotal || 0,
-                invoice.items?.[0]?.currency || "INR",
-              )}.${getFinanceDispatchNote(dispatchResult.channel, {
-                email: dispatchResult.recipientEmail,
-                phone: dispatchResult.recipientPhone,
-                documentLabel: "Payment receipt",
-              })}`,
-            };
 
-      await createFinanceSideNotification(req, {
-        user: invoice.dmc?._id || invoice.dmc,
-        ...notificationPayload,
-        link: "/dmc/confirmation",
-        meta: {
-          internalInvoiceId: invoice._id,
-          settlementType: isSettlementBatch ? "bulk" : "single",
-          invoiceNumber: invoice.invoiceNumber,
-          queryId: invoice.query?.queryId || invoice.queryCode || invoice.batchNumber || "",
-          status,
-          payoutAmount: invoice.payoutAmount || 0,
-          payoutBank: invoice.payoutBank || "",
-          payoutDate: invoice.payoutDate || null,
-          dispatchChannel: dispatchResult.channel || "",
-          dispatchStatus: dispatchResult.status || "",
-          recipientEmail: dispatchResult.recipientEmail || "",
-          recipientPhone: dispatchResult.recipientPhone || "",
-        },
+      // 2. Notify Admins
+      adminUsers.forEach((adminUser) => {
+        addNotification(adminUser._id, {
+          type: "warning",
+          title: "DMC Invoice Escalated to Admin",
+          message: `Invoice #${invoice.invoiceNumber} (${dmcPartyName}${invoiceQueryRef ? ` | ${invoiceQueryRef}` : ""}) was escalated to Admin by ${actorName}. Reason: ${passReason}`,
+          link: "/financeManager/internalDmcInvoice",
+          meta: {
+            internalInvoiceId: invoice._id,
+            invoiceNumber: invoice.invoiceNumber,
+            queryId: invoice.query?._id || invoice.query || null,
+            mismatchReason: passReason,
+            adminMessage: normalizedAdminMessage,
+            financeNotes: invoice.financeNotes || "",
+            passedBy: actorName,
+            source: "finance_internal_invoice_pass_to_manager",
+          },
+        });
       });
 
-      const shouldNotifyAdmin = status === "Rejected" && Boolean(notifyAdmin);
-      if (shouldNotifyAdmin) {
-        invoice.escalatedToAdmin = true;
-        await invoice.save();
-
-        const adminUsers = await Auth.find({
-          role: "admin",
-          isDeleted: { $ne: true },
-          accountStatus: { $ne: "Inactive" },
-        }).select("_id");
-
-        const normalizedMismatchReason = String(mismatchReason || "").trim();
-        const normalizedAdminMessage = String(adminMessage || "").trim();
-        const escalationActor = req.user?.name || req.user?.companyName || reviewerName;
-        const escalationMessageParts = [
-          `${invoice.invoiceNumber} was escalated by ${escalationActor} for admin review.`,
-          normalizedMismatchReason ? `Reason for mismatch: ${normalizedMismatchReason}.` : "",
-          normalizedAdminMessage ? `Finance note: ${normalizedAdminMessage}` : "",
-        ].filter(Boolean);
-
-        if (adminUsers.length) {
-          await Notification.insertMany(
-            adminUsers.map((adminUser) => ({
-              user: adminUser._id,
-              type: "warning",
-              title: "Internal invoice mismatch escalated",
-              message: escalationMessageParts.join(" "),
-              link: "/finance/internalInvoice",
-              meta: {
-                internalInvoiceId: invoice._id,
-                invoiceNumber: invoice.invoiceNumber,
-                queryId: invoice.query?._id || invoice.query || null,
-                queryNumber: invoice.query?.queryId || invoice.queryCode || invoice.batchNumber || "",
-                mismatchReason: normalizedMismatchReason,
-                adminMessage: normalizedAdminMessage,
-                financeNotes: invoice.financeNotes || "",
-                source: "finance_internal_invoice_mismatch",
-              },
-            })),
-          );
-        }
+      // 3. Notify Finance Team & Assigned Exec
+      if (invoice.assignedTo) {
+        addNotification(invoice.assignedTo, {
+          type: "warning",
+          title: "Invoice Escalated to Admin",
+          message: `Invoice #${invoice.invoiceNumber} (${dmcPartyName}) was escalated to Admin by ${actorName}. Reason: ${passReason}`,
+          link: "/finance/internalInvoice",
+          meta: { internalInvoiceId: invoice._id, invoiceNumber: invoice.invoiceNumber },
+        });
       }
+      teamUsers.forEach((fUser) => {
+        addNotification(fUser._id, {
+          type: "warning",
+          title: "Invoice Escalated to Admin",
+          message: `Invoice #${invoice.invoiceNumber} (${dmcPartyName}) was escalated to Admin by ${actorName}. Reason: ${passReason}`,
+          link: "/financeManager/internalDmcInvoice",
+          meta: { internalInvoiceId: invoice._id, invoiceNumber: invoice.invoiceNumber },
+        });
+      });
+    } else if (status === "Paid" || status === "Partially Paid") {
+      const dispatchNote = getFinanceDispatchNote(dispatchResult.channel, {
+        email: dispatchResult.recipientEmail,
+        phone: dispatchResult.recipientPhone,
+        documentLabel: "Payment receipt",
+      });
+      const utrInfo = invoice.payoutReference
+        ? ` via UTR: ${invoice.payoutReference} (${invoice.payoutBank || "Bank"})`
+        : "";
+
+      // 1. Notify DMC
+      if (dmcRecipientId) {
+        addNotification(dmcRecipientId, {
+          type: "success",
+          title: "Internal Invoice Paid & Settled",
+          message: `Invoice #${invoice.invoiceNumber} has been settled and paid for ${formattedAmount}${utrInfo}.${dispatchNote}`,
+          link: "/dmc/confirmation",
+          meta: {
+            internalInvoiceId: invoice._id,
+            invoiceNumber: invoice.invoiceNumber,
+            payoutAmount: invoice.payoutAmount || 0,
+            payoutReference: invoice.payoutReference || "",
+            status,
+          },
+        });
+      }
+
+      // 2. Notify Finance Team & Assigned Exec
+      if (invoice.assignedTo) {
+        addNotification(invoice.assignedTo, {
+          type: "success",
+          title: "DMC Invoice Payout Settled",
+          message: `Invoice #${invoice.invoiceNumber} (${dmcPartyName}${invoiceQueryRef ? ` | ${invoiceQueryRef}` : ""}) has been settled by ${actorName} for ${formattedAmount}${utrInfo}.`,
+          link: "/finance/internalInvoice",
+          meta: { internalInvoiceId: invoice._id, invoiceNumber: invoice.invoiceNumber },
+        });
+      }
+      teamUsers.forEach((fUser) => {
+        addNotification(fUser._id, {
+          type: "success",
+          title: "DMC Invoice Payout Settled",
+          message: `Invoice #${invoice.invoiceNumber} (${dmcPartyName}${invoiceQueryRef ? ` | ${invoiceQueryRef}` : ""}) has been settled by ${actorName} for ${formattedAmount}${utrInfo}.`,
+          link: "/financeManager/internalDmcInvoice",
+          meta: { internalInvoiceId: invoice._id, invoiceNumber: invoice.invoiceNumber },
+        });
+      });
+
+      // 3. Notify Admin Team
+      adminUsers.forEach((adminUser) => {
+        addNotification(adminUser._id, {
+          type: "success",
+          title: "DMC Invoice Settled",
+          message: `Invoice #${invoice.invoiceNumber} (${dmcPartyName}) settled by ${actorName} for ${formattedAmount}${utrInfo}.`,
+          link: "/financeManager/internalDmcInvoice",
+          meta: { internalInvoiceId: invoice._id, invoiceNumber: invoice.invoiceNumber },
+        });
+      });
+    } else if (status === "Approved") {
+      // 1. Notify DMC
+      if (dmcRecipientId) {
+        addNotification(dmcRecipientId, {
+          type: "success",
+          title: "Internal Invoice Validated",
+          message: `Your invoice #${invoice.invoiceNumber} (${dmcPartyName}) was validated by Finance and approved for payout settlement.`,
+          link: "/dmc/confirmation",
+          meta: { internalInvoiceId: invoice._id, invoiceNumber: invoice.invoiceNumber, status: "Approved" },
+        });
+      }
+
+      // 2. Notify Finance Team & Assigned Exec
+      if (invoice.assignedTo) {
+        addNotification(invoice.assignedTo, {
+          type: "success",
+          title: "DMC Invoice Validated",
+          message: `Invoice #${invoice.invoiceNumber} (${dmcPartyName}${invoiceQueryRef ? ` | ${invoiceQueryRef}` : ""}) was validated by ${actorName} and is ready for payout.`,
+          link: "/finance/internalInvoice",
+          meta: { internalInvoiceId: invoice._id, invoiceNumber: invoice.invoiceNumber },
+        });
+      }
+      teamUsers.forEach((fUser) => {
+        addNotification(fUser._id, {
+          type: "success",
+          title: "DMC Invoice Validated",
+          message: `Invoice #${invoice.invoiceNumber} (${dmcPartyName}${invoiceQueryRef ? ` | ${invoiceQueryRef}` : ""}) was validated by ${actorName} and is ready for payout.`,
+          link: "/financeManager/internalDmcInvoice",
+          meta: { internalInvoiceId: invoice._id, invoiceNumber: invoice.invoiceNumber },
+        });
+      });
+
+      // 3. Notify Admin Team
+      adminUsers.forEach((adminUser) => {
+        addNotification(adminUser._id, {
+          type: "info",
+          title: "DMC Invoice Validated",
+          message: `Invoice #${invoice.invoiceNumber} (${dmcPartyName}) validated by ${actorName} for ${formattedAmount}.`,
+          link: "/financeManager/internalDmcInvoice",
+          meta: { internalInvoiceId: invoice._id, invoiceNumber: invoice.invoiceNumber },
+        });
+      });
+    } else if (status === "Rejected") {
+      // 1. Notify DMC
+      if (dmcRecipientId) {
+        addNotification(dmcRecipientId, {
+          type: "warning",
+          title: "Internal Invoice Rejected",
+          message: `Your invoice #${invoice.invoiceNumber} was rejected by finance. Reason: ${invoice.financeNotes}`,
+          link: "/dmc/confirmation",
+          meta: { internalInvoiceId: invoice._id, invoiceNumber: invoice.invoiceNumber, status: "Rejected" },
+        });
+      }
+
+      // 2. Notify Finance Team
+      if (invoice.assignedTo) {
+        addNotification(invoice.assignedTo, {
+          type: "warning",
+          title: "DMC Invoice Rejected",
+          message: `Invoice #${invoice.invoiceNumber} (${dmcPartyName}) was rejected by ${actorName}. Reason: ${invoice.financeNotes}`,
+          link: "/finance/internalInvoice",
+          meta: { internalInvoiceId: invoice._id, invoiceNumber: invoice.invoiceNumber },
+        });
+      }
+      teamUsers.forEach((fUser) => {
+        addNotification(fUser._id, {
+          type: "warning",
+          title: "DMC Invoice Rejected",
+          message: `Invoice #${invoice.invoiceNumber} (${dmcPartyName}) was rejected by ${actorName}. Reason: ${invoice.financeNotes}`,
+          link: "/financeManager/internalDmcInvoice",
+          meta: { internalInvoiceId: invoice._id, invoiceNumber: invoice.invoiceNumber },
+        });
+      });
+
+      // 3. Notify Admin Team
+      adminUsers.forEach((adminUser) => {
+        addNotification(adminUser._id, {
+          type: "warning",
+          title: "DMC Invoice Rejected",
+          message: `Invoice #${invoice.invoiceNumber} (${dmcPartyName}) was rejected by ${actorName}. Reason: ${invoice.financeNotes}`,
+          link: "/financeManager/internalDmcInvoice",
+          meta: { internalInvoiceId: invoice._id, invoiceNumber: invoice.invoiceNumber },
+        });
+      });
+    }
+
+    if (notificationsToInsert.length) {
+      await Notification.insertMany(notificationsToInsert);
     }
 
     const quotation = invoice.query
