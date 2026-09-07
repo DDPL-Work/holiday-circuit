@@ -84,8 +84,13 @@ const TABS = [
   { id: "hotel", label: "Hotel", icon: Building2, color: "purple" },
   { id: "activity", label: "Activity", icon: Compass, color: "emerald" },
   { id: "transport", label: "Transport", icon: Bus, color: "blue" },
-  { id: "sightseeing", label: "Sightseeing", icon: Eye, color: "amber" },
 ];
+
+const normalizeCategory = (cat) => {
+  const c = String(cat || "").toLowerCase().trim();
+  if (c === "sightseeing") return "activity";
+  return c;
+};
 
 export default function ContractedRates() {
   const [showBulkUploadModal, setShowBulkUploadModal] = useState(false);
@@ -143,7 +148,7 @@ export default function ContractedRates() {
 
   const filteredUploads = useMemo(() => {
     if (activeTab === "all") return uploads;
-    return uploads.filter((item) => String(item.category || "").toLowerCase() === activeTab.toLowerCase());
+    return uploads.filter((item) => normalizeCategory(item.category) === activeTab.toLowerCase());
   }, [uploads, activeTab]);
 
   // Resolve current active sheet data
@@ -542,7 +547,7 @@ const availableSheets = selectedSheet?.sheetNames?.length ? selectedSheet.sheetN
 
 const getTabCount = (tabId) => {
   if (tabId === "all") return uploads.length;
-  return uploads.filter((item) => String(item.category || "").toLowerCase() === tabId.toLowerCase()).length;
+  return uploads.filter((item) => normalizeCategory(item.category) === tabId.toLowerCase()).length;
 };
 
 const tabColorClasses = {
@@ -598,18 +603,9 @@ const tabColorClasses = {
               Bulk Service Upload & Inventory
             </h2>
             <p className="text-xs text-gray-500 mt-0.5">
-              Manage hotel rates, transport, activities, and sightseeing inventories
+              Manage hotel rates, transport, and activity inventories
             </p>
           </div>
-
-          <button
-            type="button"
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-xs text-white bg-gradient-to-r from-[#0b1e36] to-[#107c41] hover:from-[#132d52] hover:to-[#16914d] hover:shadow-[0_4px_12px_rgba(16,124,65,0.25)] transition-all duration-300 font-bold active:scale-95 cursor-pointer shrink-0"
-            onClick={() => setShowBulkUploadModal(true)}
-          >
-            <Upload size={15} />
-            Bulk Upload
-          </button>
         </div>
       </div>
 
@@ -753,25 +749,15 @@ const tabColorClasses = {
                         )}
                       </td>
                       <td className="text-end px-3 py-4 text-xs whitespace-nowrap">
-                        <div className="flex justify-end items-center gap-3">
-                          <Eye
-                            size={16}
-                            onClick={() => !viewLoading && handleViewData(item._id)}
-                            className={`${viewLoading ? "cursor-not-allowed text-blue-300" : "cursor-pointer text-blue-500 hover:text-blue-600"} transition-colors`}
-                            title={viewLoading ? "Loading sheet data" : "Show Sheet Data"}
-                          />
-                          <Download
-                            size={16}
+                        <div className="flex justify-end items-center pr-1">
+                          <button
+                            type="button"
                             onClick={() => handleDownload(item._id, item.fileName)}
-                            className="cursor-pointer text-slate-500 hover:text-slate-800 transition-colors"
+                            className="p-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors cursor-pointer"
                             title="Download File"
-                          />
-                          <Trash2
-                            size={16}
-                            onClick={() => handleDelete(item._id)}
-                            className="cursor-pointer text-red-500 hover:text-red-600 transition-colors"
-                            title="Delete Upload"
-                          />
+                          >
+                            <Download size={16} />
+                          </button>
                         </div>
                       </td>
                     </tr>
