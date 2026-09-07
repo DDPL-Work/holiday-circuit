@@ -14,6 +14,7 @@ import Transfer from "../models/transferDmc.model.js";
 import Sightseeing from "../models/sightseeingDmc.model.js";
 import DestinationName from "../models/destinationName.model.js";
 import AgentTerm from "../models/agentTerms.js";
+import AdminTerm from "../models/adminTerms.js";
 import Confirmation from "../models/dmcConfirmation.js";
 import Voucher from "../models/voucher.model.js";
 import bcrypt from "bcrypt";
@@ -1633,13 +1634,61 @@ const getQueryClientRecipientName = (query = {}) => {
     "Guest"
   );
 };
-const buildQuotationClientEmailPayload = ({ quotation, query, agent }) => {
+const parseBackendTermContent = (rawContent) => {
+  if (!rawContent) return [];
+  if (Array.isArray(rawContent)) {
+    const list = [];
+    rawContent.forEach((item) => {
+      if (typeof item === "string") {
+        list.push(...parseBackendTermContent(item));
+      } else if (item && typeof item === "object") {
+        const text = item.content || item.text || item.name || item.item || item.label || "";
+        if (text) list.push(...parseBackendTermContent(text));
+      }
+    });
+    return list.filter(Boolean);
+  }
+  if (typeof rawContent !== "string") return [];
+
+  const clean = rawContent
+    .replace(/<\/(p|li|div|h[1-6]|tr)>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">");
+
+  return clean
+    .split("\n")
+    .map((line) => line.replace(/^\d+[\.\)]\s*/, "").replace(/^[•\-\*]\s*/, "").trim())
+    .filter(Boolean);
+};
+
+const buildQuotationClientEmailPayload = ({ quotation, query, agent, customTerm = null, options = {} }) => {
   const totalAmount = Number(quotation?.clientTotalAmount || quotation?.pricing?.totalAmount || 0);
   const totalServiceBase = Array.isArray(quotation?.services)
     ? quotation.services.reduce((sum, s) => sum + Number(s.total || 0), 0)
     : 0;
   const resolvedBranding = resolveAgentBranding({ quotation, agent });
   const queryPax = getQueryPassengerCount(query);
+
+  const removeTerms = options.removeTerms === "true" || options.removeTerms === true;
+  const showPriceBreakup = options.showPriceBreakup === "true" || options.showPriceBreakup === true;
+  const removeItinerary = options.removeItinerary === "true" || options.removeItinerary === true;
+  const removeTransport = options.removeTransport === "true" || options.removeTransport === true;
+  const similarHotelWord = options.similarHotelWord !== undefined 
+    ? (options.similarHotelWord === "true" || options.similarHotelWord === true)
+    : true;
+  const showIncExc = options.showIncExc === "true" || options.showIncExc === true;
+  const hideTotalPrice = options.hideTotalPrice === "true" || options.hideTotalPrice === true;
+
+  let termsTitle = customTerm?.name || "";
+  let customTermsList = [];
+  if (customTerm?.content) {
+    customTermsList = parseBackendTermContent(customTerm.content);
+  } else if (Array.isArray(quotation?.termsAndConditions) && quotation.termsAndConditions.length > 0) {
+    customTermsList = parseBackendTermContent(quotation.termsAndConditions);
+  }
 
   const getAbsoluteMediaUrl = (urlStr) => {
     const rawUrl = String(urlStr || "").trim();
@@ -1697,6 +1746,15 @@ const buildQuotationClientEmailPayload = ({ quotation, query, agent }) => {
     validTill: formatMailDateLabel(quotation?.validTill),
     totalAmount,
     currency: quotation?.pricing?.currency || "INR",
+    removeTerms,
+    showPriceBreakup,
+    removeItinerary,
+    removeTransport,
+    similarHotelWord,
+    showIncExc,
+    hideTotalPrice,
+    termsTitle,
+    customTerms: customTermsList,
     gstPercent: Number(
       quotation?.pricing?.tax?.gst?.percent ||
       quotation?.pricing?.gstPercent ||
@@ -1952,7 +2010,23 @@ export const getClientQuotationEmailPreview = async (req, res, next) => {
     ]);
     if (!query) return next(new ApiError(404, "Travel query not found"));
 
-    const payload = buildQuotationClientEmailPayload({ quotation, query, agent });
+    const selectedTermId = req.query.selectedTermId || req.query.termId;
+    let customTermDoc = null;
+    if (selectedTermId && selectedTermId !== "default" && selectedTermId !== "none") {
+      try {
+        customTermDoc = (await AgentTerm.findById(selectedTermId)) || (await AdminTerm.findById(selectedTermId));
+      } catch (e) {
+        console.warn("Could not find term by ID:", selectedTermId);
+      }
+    }
+
+    const payload = buildQuotationClientEmailPayload({
+      quotation,
+      query,
+      agent,
+      customTerm: customTermDoc,
+      options: req.query,
+    });
     return res.json({ success: true, html: buildAgentClientQuotationTemplate(payload) });
   } catch (error) {
     next(error);
@@ -2100,6 +2174,12 @@ export const sendAgentVoucherEmail = async (req, res, next) => {
       cleanHtml = cleanHtml.replace(/<div[^>]*>[^<]*<h2[^>]*>[\s\S]*?<\/h2>[\s\S]*?<\/div>/gi, '');
     }
 
+    // Strip existing footer image / footer banner / brand footer from cleanHtml to avoid duplicate footer banner in full email
+    cleanHtml = cleanHtml.replace(/<!--\s*FOOTER[\s\S]*$/i, "");
+    cleanHtml = cleanHtml.replace(/<div[^>]*style="[^"]*margin-top:\s*16px[^"]*"[^>]*>\s*<img[^>]*alt=["']Footer Banner["'][^>]*>\s*<\/div>/gi, "");
+    cleanHtml = cleanHtml.replace(/<div[^>]*class=["']brand-footer["'][\s\S]*?<\/div>\s*<\/div>/gi, "");
+    cleanHtml = cleanHtml.replace(/<img[^>]*alt=["']Footer Banner["'][^>]*>/gi, "");
+
     const rawTripNum = req.body.tripId || query?.queryId || query?.queryNumber || voucherNumber || query?.voucherNumber || "1109";
     const cleanTripNum = String(rawTripNum).replace(/^#\s*/, "").trim();
     const formattedTripId = cleanTripNum.toUpperCase().startsWith("QRY-")
@@ -2137,7 +2217,7 @@ export const sendAgentVoucherEmail = async (req, res, next) => {
     const defaultPhone = resolvedGuestPhone;
     const defaultDest = query?.destination || quotation?.destination || "India";
     const defaultDuration = `${query?.numberOfNights || quotation?.nights || 1} Night${(query?.numberOfNights || quotation?.nights || 1) > 1 ? "s" : ""} / ${(query?.numberOfNights || quotation?.nights || 1) + 1} Days`;
-    const defaultIssuedBy = "Holiday Circuit";
+    const defaultIssuedBy = companyName || agent?.brandingName || agent?.companyName || "DDLC Company";
     const defaultPax = `${query?.numberOfAdults || 2} Adults${(query?.numberOfChildren || 0) > 0 ? `, ${query.numberOfChildren} Children` : ""}`;
 
     const defaultVoucherBodyHtml = `
@@ -2207,6 +2287,7 @@ export const sendAgentVoucherEmail = async (req, res, next) => {
     // 5. GENERATE & ATTACH PDF AUTOMATICALLY (PACKAGE PDF or VOUCHER PDF)
     const { generateVoucherPdf } = await import("../services/voucherPdfService.js");
     const { generatePDF } = await import("../services/pdfService.js");
+    const { pdfMemoryCache } = await import("../utils/pdfCache.js");
     const fs = await import("fs");
 
     const safeVoucherNum = String(voucherNumber || query?.voucherNumber || query?.queryId || "VCH").replace(/[^a-zA-Z0-9-_]/g, "");
@@ -2390,8 +2471,15 @@ export const sendAgentVoucherEmail = async (req, res, next) => {
         };
 
         const pdfResult = await generatePDF(packagePdfDetails);
+        const pkgBuffer = pdfResult?.buffer || (pdfResult?.publicFilePath ? pdfMemoryCache.get(pdfResult.publicFilePath) : null);
         const pkgPdfPath = pdfResult?.filePath || pdfResult?.absoluteFilePath;
-        if (pkgPdfPath && fs.existsSync(pkgPdfPath)) {
+        if (pkgBuffer) {
+          attachments.push({
+            filename: `Package-Details-${safeQueryId}.pdf`,
+            content: pkgBuffer,
+            contentType: "application/pdf",
+          });
+        } else if (pkgPdfPath && fs.existsSync(pkgPdfPath)) {
           attachments.push({
             filename: `Package-Details-${safeQueryId}.pdf`,
             path: pkgPdfPath,
@@ -2400,8 +2488,15 @@ export const sendAgentVoucherEmail = async (req, res, next) => {
         }
       } else {
         const pdfResult = await generateVoucherPdf(voucherDetails);
+        const voucherBuffer = pdfResult?.buffer || (pdfResult?.publicFilePath ? pdfMemoryCache.get(pdfResult.publicFilePath) : null);
         const voucherPdfPath = pdfResult?.absoluteFilePath || pdfResult?.filePath;
-        if (voucherPdfPath && fs.existsSync(voucherPdfPath)) {
+        if (voucherBuffer) {
+          attachments.push({
+            filename: `Travel-Voucher-${safeVoucherNum}.pdf`,
+            content: voucherBuffer,
+            contentType: "application/pdf",
+          });
+        } else if (voucherPdfPath && fs.existsSync(voucherPdfPath)) {
           attachments.push({
             filename: `Travel-Voucher-${safeVoucherNum}.pdf`,
             path: voucherPdfPath,
@@ -4323,7 +4418,23 @@ export const acceptQuotationByAgent = async (req, res, next) => {
         return next(new ApiError(400, "Please provide a valid recipient email"));
       }
 
-      const emailPayload = buildQuotationClientEmailPayload({ quotation, query, agent });
+      const selectedTermId = req.body?.selectedTermId || req.body?.termId;
+      let customTermDoc = null;
+      if (selectedTermId && selectedTermId !== "default" && selectedTermId !== "none") {
+        try {
+          customTermDoc = (await AgentTerm.findById(selectedTermId)) || (await AdminTerm.findById(selectedTermId));
+        } catch (e) {
+          console.warn("Could not find term by ID:", selectedTermId);
+        }
+      }
+
+      const emailPayload = buildQuotationClientEmailPayload({
+        quotation,
+        query,
+        agent,
+        customTerm: customTermDoc,
+        options: req.body,
+      });
 
       if (query.clientEmail !== recipientEmail) {
         query.clientEmail = recipientEmail;
