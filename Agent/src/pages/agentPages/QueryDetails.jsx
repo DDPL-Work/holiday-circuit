@@ -2491,6 +2491,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
               const showMarkupActions = ["Quote Accepted", "Markup Applied", "Sent to Client"].includes(normalizedQuoteStatus);
               const canShareQuote = ["Quote Accepted", "Markup Applied", "Sent to Client"].includes(normalizedQuoteStatus);
               const canConfirmClientApproval = normalizedQuoteStatus === "Sent to Client";
+              const canRequestRevisionFromMenu = ["Quote Accepted", "Markup Applied", "Sent to Client"].includes(normalizedQuoteStatus);
               const isClientApprovedQuote = normalizedQuoteStatus === "Confirmed";
 
               const opsQuoteAmount = Number(
@@ -2993,6 +2994,20 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                                       >
                                         <CheckCircle2 size={15} className="text-emerald-600" />
                                         <span>Client Approved</span>
+                                      </button>
+                                    )}
+
+                                    {canRequestRevisionFromMenu && (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setShowThreeDotsMenu(false);
+                                          openRevisionModal(quote._id);
+                                        }}
+                                        className="w-full text-left px-3.5 py-2.5 hover:bg-rose-50 flex items-center gap-2.5 cursor-pointer text-[#b91c1c] font-medium transition-colors border-t border-slate-100"
+                                      >
+                                        <RotateCcw size={15} className="text-[#b91c1c]" />
+                                        <span>Request Revision</span>
                                       </button>
                                     )}
                                   </div>

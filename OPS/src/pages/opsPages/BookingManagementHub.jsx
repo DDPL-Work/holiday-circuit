@@ -585,7 +585,7 @@ export default function BookingManagementHub() {
                             </div>
                             {isReceivedQuery ? (
                               <div className="flex items-center">
-                                <span className="inline-flex max-w-full whitespace-nowrap rounded-full bg-amber-50 px-2 py-1 text-[9px] font-semibold leading-4 text-amber-700">
+                                <span className="inline-flex max-w-full whitespace-nowrap rounded-md bg-amber-50 px-2 py-0.5 text-[9px] font-semibold leading-4 text-amber-700 border border-amber-200/60">
                                   Received from {row.receivedFrom}
                                 </span>
                               </div>
@@ -617,7 +617,7 @@ export default function BookingManagementHub() {
                         </td>
 
                         <td className="px-4 py-4 align-middle text-center">
-                          <span className={`inline-flex h-8 min-w-[156px] items-center justify-center gap-1.5 whitespace-nowrap rounded-full px-3 text-xs font-sm leading-none ${status.color}`}>
+                          <span className={`inline-flex h-7 min-w-[145px] items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-2.5 text-xs font-medium leading-none ${status.color}`}>
                             {status.icon}
                             {status.label}
                           </span>
@@ -625,28 +625,28 @@ export default function BookingManagementHub() {
 
                         <td className="px-4 py-4 align-middle text-center">
                           <span
-                            className={`inline-flex min-w-[148px] items-center justify-center rounded-full px-3 py-1.5 text-[11px] font-medium ${row.travelerDocumentReview.tone}`}
+                            className={`inline-flex min-w-[140px] items-center justify-center rounded-md px-2.5 py-1 text-[11px] font-medium ${row.travelerDocumentReview.tone}`}
                           >
                             {row.travelerDocumentReview.label}
                           </span>
                         </td>
 
                         <td className="px-4 py-4 align-middle text-center">
-                          <div className="flex items-center justify-center gap-2">
+                          <div className="flex items-center justify-center gap-1.5">
                             <motion.button
-                              whileHover={{ scale: 1.05 }}
-                              whileTap={{ scale: 0.95 }}
+                              whileHover={{ scale: 1.03 }}
+                              whileTap={{ scale: 0.97 }}
                               onClick={() => setSelectedBooking(row._raw)}
-                              className="inline-flex whitespace-nowrap shrink-0 cursor-pointer items-center gap-1 rounded-2xl border px-2 py-1 text-sm text-blue-600 hover:bg-green-500 hover:text-white"
+                              className="inline-flex whitespace-nowrap shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50/80 px-2.5 py-1 text-xs font-medium text-blue-700 transition-colors hover:bg-blue-600 hover:text-white hover:border-blue-600 shadow-2xs"
                             >
                               <Eye className="h-3 w-3" />
                               View
                             </motion.button>
                             <motion.button
-                              whileHover={{ scale: 1.05 }}
-                              whileTap={{ scale: 0.95 }}
+                              whileHover={{ scale: 1.03 }}
+                              whileTap={{ scale: 0.97 }}
                               onClick={() => setSelectedDocumentBooking(row._raw)}
-                              className="inline-flex whitespace-nowrap shrink-0 cursor-pointer items-center gap-1 rounded-2xl border border-violet-200 bg-violet-50 px-2 py-1 text-sm text-violet-700 transition-colors hover:bg-violet-600 hover:text-white"
+                              className="inline-flex whitespace-nowrap shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50/80 px-2.5 py-1 text-xs font-medium text-violet-700 transition-colors hover:bg-violet-600 hover:text-white hover:border-violet-600 shadow-2xs"
                             >
                               <FileText className="h-3 w-3" />
                               Docs View

@@ -16,6 +16,15 @@ import {
   MapPin,
   BookmarkPlus,
   Sparkles,
+  Search,
+  Eye,
+  Edit3,
+  ArrowLeft,
+  Plus,
+  Utensils,
+  ShieldCheck,
+  Hotel,
+  Car,
 } from "lucide-react";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -439,6 +448,15 @@ const WHATSAPP_QUOTATION_BRAND = "Holiday Circuit";
 const WHATSAPP_SECTION_DIVIDER = "----------";
 const WHATSAPP_SUBSECTION_DIVIDER = "-------";
 const DEFAULT_WHATSAPP_TERMS = Object.freeze([]);
+const DEFAULT_QUOTATION_TERMS = Object.freeze([
+  "Welcome to Holiday Circuit. These Terms and Conditions govern your quotation and booking. When you make a booking or reservation, you agree to be bound by these Terms.",
+  "Bookings & Reservations: When you confirm a booking through Holiday Circuit, you agree to provide accurate and complete travel details. Any discrepancies in passenger names or dates may affect reservations.",
+  "Payment Terms: Payments for bookings are due as specified during the confirmation process. Timely remittance ensures guaranteed hotel and transfer fulfillment.",
+  "Cancellations & Refunds: Cancellation and refund policies vary depending on supplier and hotel rules. Specific cancellation penalties apply as per the package timeline.",
+  "Changes to Itineraries & Force Majeure: Unforeseen circumstances including weather delays, flight cancellations, or local administrative closures may require itinerary adjustments.",
+  "Travel Documents & ID Proof: Valid government ID proof (Aadhaar / Passport / Voter ID) is mandatory for all travelers at the time of hotel check-in and transit.",
+  "By confirming this quotation with Holiday Circuit, you acknowledge that you have read, understood, and agreed to these Terms and Conditions.",
+]);
 
 const SHOW_SELECTED_HISTORY_COMPARISON = false;
 
@@ -3807,6 +3825,11 @@ const scoreHotelVariantMatch = (variant = {}, nextService = {}, changedField = "
       const [quotationHistoryLoading, setQuotationHistoryLoading] = useState(false);
       const [quotationHistoryLoadError, setQuotationHistoryLoadError] = useState("");
       const [isQuotationHistoryOpen, setIsQuotationHistoryOpen] = useState(false);
+      const [showQuotationHistoryPage, setShowQuotationHistoryPage] = useState(false);
+      const [historySearchTerm, setHistorySearchTerm] = useState("");
+      const [historyStatusFilter, setHistoryStatusFilter] = useState("All");
+      const [historyCurrentPage, setHistoryCurrentPage] = useState(1);
+      const [previewingHistoryQuotation, setPreviewingHistoryQuotation] = useState(null);
       const [selectedHistoryQuotationId, setSelectedHistoryQuotationId] = useState("");
       const [activeDraftSourceQuotationId, setActiveDraftSourceQuotationId] = useState(
       String(order?.editQuotationId || "").trim(),
@@ -4327,6 +4350,142 @@ setDraftValidTill("");
         ),
       );
     };
+
+    const handleLoadHistoryQuotation = (quotation) => {
+      if (!quotation) return;
+      setIsFreshDraftMode(false);
+      setActiveDraftSourceQuotationId(quotation.id || quotation._id);
+      setEditingTargetQuotationId(quotation.id || quotation._id);
+      editingSourceQuotationSnapshotRef.current = quotation;
+      setEditingSourceQuotationSnapshot(quotation);
+      setDraftHydrated(false);
+      setDraftSourceReloadRequest((value) => value + 1);
+      setSelectedHistoryQuotationId(quotation.id || quotation._id);
+      setShowQuotationHistoryPage(false);
+      setPreviewingHistoryQuotation(null);
+      toast.success(`Loaded ${quotation.quotationNumber || `Quotation ${quotation.attemptNumber || ""}`} in builder`);
+    };
+
+    const handleStartFreshDraft = () => {
+      resetBuilderWorkspace();
+      setIsFreshDraftMode(true);
+      setActiveDraftSourceQuotationId("");
+      setEditingTargetQuotationId("");
+      editingSourceQuotationSnapshotRef.current = null;
+      setEditingSourceQuotationSnapshot(null);
+      setDraftHydrated(false);
+      setSelectedHistoryQuotationId("");
+      setShowQuotationHistoryPage(false);
+      setPreviewingHistoryQuotation(null);
+      toast.success("Started fresh quotation draft");
+    };
+
+    const historyStatusTabs = useMemo(() => [
+      { label: "All Quotations", statusKey: "All" },
+      { label: "Quote Sent", statusKey: "Quote Sent" },
+      { label: "Revision Requested", statusKey: "Revision Requested" },
+      { label: "Booking Confirmed", statusKey: "Confirmed" },
+      { label: "Drafts", statusKey: "Draft" },
+    ], []);
+
+    const historyStatusCounts = useMemo(() => {
+      return {
+        All: quotationHistory.length,
+        "Quote Sent": quotationHistory.filter((q) =>
+          ["Quote Sent", "Sent to Client", "Markup Applied"].includes(String(q?.status || "").trim()),
+        ).length,
+        "Revision Requested": quotationHistory.filter((q) =>
+          ["Revision Requested", "Revision_Query"].includes(String(q?.status || "").trim()),
+        ).length,
+        Confirmed: quotationHistory.filter((q) =>
+          ["Quote Accepted", "Client Approved", "Confirmed"].includes(String(q?.status || "").trim()),
+        ).length,
+        Draft: quotationHistory.filter((q) =>
+          ["Draft", "In Progress", "Pending"].includes(String(q?.status || "").trim()),
+        ).length,
+      };
+    }, [quotationHistory]);
+
+    const getHistoryStatusBadge = (status) => {
+      const norm = String(status || "").trim();
+      if (norm === "Quote Sent" || norm === "Sent to Client" || norm === "Markup Applied") {
+        return {
+          className: "bg-emerald-50 text-emerald-700 border border-emerald-200",
+          label: "Quote Sent",
+        };
+      }
+      if (norm === "Revision Requested" || norm === "Revision_Query") {
+        return {
+          className: "bg-orange-50 text-orange-700 border border-orange-200",
+          label: "Revision Requested",
+        };
+      }
+      if (norm === "Quote Accepted" || norm === "Client Approved") {
+        return {
+          className: "bg-indigo-50 text-indigo-700 border border-indigo-200",
+          label: "Quote Accepted",
+        };
+      }
+      if (norm === "Confirmed") {
+        return {
+          className: "bg-emerald-50 text-emerald-700 border border-emerald-200 font-semibold",
+          label: "Booking Confirmed",
+        };
+      }
+      if (norm === "In Progress" || norm === "Draft" || norm === "Pending") {
+        return {
+          className: "bg-sky-50 text-sky-700 border border-sky-200",
+          label: norm === "Pending" ? "New Query" : norm === "In Progress" ? "In Progress" : "Draft",
+        };
+      }
+      return {
+        className: "bg-slate-50 text-slate-700 border border-slate-200",
+        label: norm || "Draft",
+      };
+    };
+
+    const filteredQuotationHistory = useMemo(() => {
+      return quotationHistory.filter((q) => {
+        const search = historySearchTerm.toLowerCase().trim();
+        const qNum = String(q.quotationNumber || `Quotation ${q.attemptNumber || ""}`).toLowerCase();
+        const qStatus = String(q.status || "").toLowerCase();
+        const qDate = String(q.createdAtLabel || "").toLowerCase();
+        const qRemark = String(q.agentRevisionRemark || "").toLowerCase();
+        const matchesSearch =
+          !search ||
+          qNum.includes(search) ||
+          qStatus.includes(search) ||
+          qDate.includes(search) ||
+          qRemark.includes(search);
+
+        if (!matchesSearch) return false;
+
+        if (!historyStatusFilter || historyStatusFilter === "All") return true;
+
+        if (historyStatusFilter === "Quote Sent") {
+          return ["Quote Sent", "Sent to Client", "Markup Applied"].includes(String(q?.status || "").trim());
+        }
+        if (historyStatusFilter === "Revision Requested") {
+          return ["Revision Requested", "Revision_Query"].includes(String(q?.status || "").trim());
+        }
+        if (historyStatusFilter === "Confirmed") {
+          return ["Quote Accepted", "Client Approved", "Confirmed"].includes(String(q?.status || "").trim());
+        }
+        if (historyStatusFilter === "Draft") {
+          return ["Draft", "In Progress", "Pending"].includes(String(q?.status || "").trim());
+        }
+
+        return true;
+      });
+    }, [quotationHistory, historySearchTerm, historyStatusFilter]);
+
+    const historyItemsPerPage = 8;
+    const historyTotalPages = Math.ceil(filteredQuotationHistory.length / historyItemsPerPage);
+    const historyStartIndex = (historyCurrentPage - 1) * historyItemsPerPage;
+    const paginatedQuotationHistory = filteredQuotationHistory.slice(
+      historyStartIndex,
+      historyStartIndex + historyItemsPerPage,
+    );
 
     useEffect(() => {
         const fetchAdminTerms = async () => {
@@ -8381,6 +8540,913 @@ const renderSelectedServicesModal = () => {
     );
   }
 
+  if (showQuotationHistoryPage) {
+    return (
+      <>
+        <motion.section
+          initial="hidden"
+          animate="visible"
+          variants={pageShellVariants}
+          className="-m-3 min-h-[calc(100vh-24px)] overflow-x-hidden bg-slate-50 p-3 text-slate-900 font-sans sm:-m-4 sm:min-h-[calc(100vh-32px)] sm:p-4 lg:-m-5 lg:min-h-[calc(100vh-40px)] lg:p-5 space-y-5"
+        >
+          {/* Top Bar Navigation */}
+          <motion.div variants={sectionRevealVariants} className="flex items-center justify-between">
+            <button
+              type="button"
+              onClick={() => setShowQuotationHistoryPage(false)}
+              className="text-[#3E63DD] hover:text-[#3252c4] text-sm font-semibold cursor-pointer inline-flex items-center gap-1.5"
+            >
+              <ArrowLeft size={16} />
+              <span>Back to Quotation Builder</span>
+            </button>
+            <div className="text-right font-semibold text-[#3E63DD]">
+              <p className="text-xs text-gray-500">Query ID</p>
+              <span className="font-bold">{orderQueryId || "-"}</span>
+            </div>
+          </motion.div>
+
+          {/* Page Header (Agent Queries UI Style) */}
+          <motion.header variants={sectionRevealVariants}>
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div>
+                <h1 className="text-2xl font-bold text-slate-900">Quotation History</h1>
+                <p className="text-sm text-gray-500">
+                  Manage and review all previous quotations and revisions for Query #{orderQueryId || "-"}
+                </p>
+              </div>
+
+              {/* Search + Create Fresh Draft */}
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <div className="relative w-full sm:w-72 lg:w-80">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
+                  <input
+                    type="text"
+                    placeholder="Search quotations..."
+                    value={historySearchTerm}
+                    onChange={(e) => {
+                      setHistorySearchTerm(e.target.value);
+                      setHistoryCurrentPage(1);
+                    }}
+                    className="w-full pl-9 pr-4 py-1.5 border rounded-lg text-sm border-gray-300 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition bg-white shadow-xs"
+                  />
+                </div>
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  type="button"
+                  onClick={handleStartFreshDraft}
+                  className="flex w-full sm:w-auto items-center justify-center gap-1.5 rounded-lg bg-[#3E63DD] hover:bg-[#3252c4] px-3.5 py-1.5 text-xs font-semibold text-white shadow-sm transition-all duration-200 cursor-pointer shrink-0"
+                >
+                  <Plus size={14} />
+                  Start Fresh Draft
+                </motion.button>
+              </div>
+            </div>
+
+            {/* Status Filter Tabs */}
+            <div className="mt-4 flex flex-wrap gap-2">
+              {historyStatusTabs.map((tab) => {
+                const isActive = historyStatusFilter === tab.statusKey;
+                const count = historyStatusCounts[tab.statusKey] ?? 0;
+                return (
+                  <button
+                    key={tab.label}
+                    type="button"
+                    onClick={() => {
+                      setHistoryStatusFilter(tab.statusKey);
+                      setHistoryCurrentPage(1);
+                    }}
+                    className={`inline-flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-medium transition-all duration-200 cursor-pointer ${
+                      isActive
+                        ? "bg-[#3E63DD] text-white shadow-[0_2px_8px_rgba(62,99,221,0.3)]"
+                        : "bg-white text-gray-700 border border-gray-200 hover:bg-gray-50 hover:border-gray-300"
+                    }`}
+                  >
+                    {tab.label}
+                    {count > 0 && (
+                      <span
+                        className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold leading-none ${
+                          isActive
+                            ? "bg-white/20 text-white"
+                            : "bg-gray-100 text-gray-500"
+                        }`}
+                      >
+                        {count}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </motion.header>
+
+          {/* Quotations Table */}
+          <motion.div
+            variants={sectionRevealVariants}
+            className="bg-white shadow-xs rounded-xl overflow-hidden border border-gray-200"
+          >
+            <div className="overflow-x-auto">
+              <table className="min-w-[850px] w-full table-fixed text-xs">
+                <colgroup>
+                  <col className="w-[18%]" />
+                  <col className="w-[16%]" />
+                  <col className="w-[18%]" />
+                  <col className="w-[16%]" />
+                  <col className="w-[15%]" />
+                  <col className="w-[17%]" />
+                </colgroup>
+                <thead className="bg-gray-50 text-gray-500 border-b border-gray-200">
+                  <tr>
+                    <th className="text-left px-5 py-3 font-semibold">Quotation ID</th>
+                    <th className="text-left px-5 py-3 font-semibold">Created Date</th>
+                    <th className="text-left px-5 py-3 font-semibold">Services & Items</th>
+                    <th className="text-left px-5 py-3 font-semibold">Status</th>
+                    <th className="text-right px-5 py-3 font-semibold whitespace-nowrap">OPS Total Price</th>
+                    <th className="text-right px-5 py-3 font-semibold">Actions</th>
+                  </tr>
+                </thead>
+
+                <tbody className="divide-y divide-gray-200">
+                  {quotationHistoryLoading ? (
+                    <tr>
+                      <td colSpan={6} className="px-5 py-10 text-center text-slate-500">
+                        <div className="flex flex-col items-center justify-center gap-2">
+                          <div className="h-6 w-6 animate-spin rounded-full border-2 border-blue-600 border-t-transparent"></div>
+                          <p className="text-xs">Loading quotation history...</p>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : quotationHistoryLoadError ? (
+                    <tr>
+                      <td colSpan={6} className="px-5 py-8 text-center text-rose-600">
+                        {quotationHistoryLoadError}
+                      </td>
+                    </tr>
+                  ) : paginatedQuotationHistory.length > 0 ? (
+                    paginatedQuotationHistory.map((quotation) => {
+                      const badge = getHistoryStatusBadge(quotation.status);
+                      const isCurrentlyLoaded = editingTargetQuotationId === quotation.id;
+                      const serviceCount = quotation.serviceCount ?? (quotation.services?.length || 0);
+
+                      return (
+                        <tr
+                          key={quotation.id || quotation._id}
+                          className="cursor-pointer transition-colors hover:bg-[#F9FAFB]"
+                          onClick={() => setPreviewingHistoryQuotation(quotation)}
+                        >
+                          {/* Quotation ID */}
+                          <td className="px-5 py-4 align-middle">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="whitespace-nowrap font-bold text-slate-900 text-xs">
+                                {quotation.quotationNumber || `Quotation ${quotation.attemptNumber || ""}`}
+                              </span>
+                              {quotation.isLatest && (
+                                <span className="rounded-md border border-emerald-300 bg-emerald-50 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-emerald-700">
+                                  Latest
+                                </span>
+                              )}
+                              {isCurrentlyLoaded && (
+                                <span className="rounded-md border border-blue-300 bg-blue-50 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-blue-700">
+                                  Active in Builder
+                                </span>
+                              )}
+                            </div>
+                            {quotation.attemptNumber && (
+                              <p className="mt-0.5 text-[10px] text-slate-400">
+                                Revision Attempt #{quotation.attemptNumber}
+                              </p>
+                            )}
+                          </td>
+
+                          {/* Created Date */}
+                          <td className="px-5 py-4 align-middle">
+                            <p className="leading-snug text-slate-700 whitespace-nowrap">
+                              {quotation.createdAtLabel || "Date unavailable"}
+                            </p>
+                          </td>
+
+                          {/* Services & Items */}
+                          <td className="px-5 py-4 align-middle">
+                            <p className="font-semibold text-slate-800">
+                              {serviceCount} {serviceCount === 1 ? "Service" : "Services"}
+                            </p>
+                            <p className="mt-0.5 text-[10px] text-slate-500 whitespace-nowrap">
+                              Inc: {quotation.inclusions?.length || 0} • Exc: {quotation.exclusions?.length || 0} • Notes: {quotation.additionalNotes?.length || 0}
+                            </p>
+                            {quotation.agentRevisionRemark && (
+                              <div className="mt-1 flex items-center gap-1 text-[10px] text-rose-600 font-medium truncate max-w-[200px]" title={quotation.agentRevisionRemark}>
+                                <span className="inline-block h-1.5 w-1.5 rounded-full bg-rose-500"></span>
+                                Remark: {quotation.agentRevisionRemark}
+                              </div>
+                            )}
+                          </td>
+
+                          {/* Status */}
+                          <td className="px-5 py-4 align-middle">
+                            <span
+                              className={`inline-flex items-center justify-center whitespace-nowrap rounded-md px-2.5 py-1 text-[11px] font-medium leading-none ${badge.className}`}
+                            >
+                              {badge.label}
+                            </span>
+                          </td>
+
+                          {/* OPS Total Price */}
+                          <td className="px-5 py-4 align-middle text-right font-medium whitespace-nowrap">
+                            <p className="text-xs font-bold text-slate-900">
+                              {formatCurrencyValue(quotation.opsTotalAmount || quotation.displayAmount || 0, quotation.pricing?.currency || "INR")}
+                            </p>
+                            {Number(quotation.pricing?.tax?.totalTax || 0) > 0 && (
+                              <p className="mt-0.5 text-[10px] text-slate-500">
+                                Tax: {formatCurrencyValue(quotation.pricing?.tax?.totalTax || 0, quotation.pricing?.currency || "INR")}
+                              </p>
+                            )}
+                          </td>
+
+                          {/* Actions */}
+                          <td className="px-5 py-4 align-middle text-right">
+                            <div className="flex items-center justify-end gap-2" onClick={(e) => e.stopPropagation()}>
+                              <button
+                                type="button"
+                                onClick={() => setPreviewingHistoryQuotation(quotation)}
+                                className="inline-flex items-center gap-1.5 text-[11px] font-medium text-blue-700 bg-blue-50 border border-blue-200 px-3 py-1.5 rounded-lg hover:bg-blue-100 hover:border-blue-300 cursor-pointer transition-colors whitespace-nowrap"
+                              >
+                                <Eye size={12} />
+                                View
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => handleLoadHistoryQuotation(quotation)}
+                                className="inline-flex items-center gap-1.5 text-[11px] font-medium text-amber-700 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-lg hover:bg-amber-100 hover:border-amber-300 cursor-pointer transition-colors whitespace-nowrap"
+                              >
+                                <Edit3 size={12} />
+                                Edit
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  ) : (
+                    <tr>
+                      <td colSpan={6} className="px-5 py-12 text-center text-slate-500">
+                        <div className="flex flex-col items-center justify-center gap-2">
+                          <FileText size={32} className="text-gray-300" />
+                          <p className="text-sm font-semibold text-slate-700">No quotation history found</p>
+                          <p className="text-xs text-slate-400">
+                            {historySearchTerm
+                              ? `No quotations matching "${historySearchTerm}"`
+                              : "No previous quotation drafts or revisions exist for this query yet."}
+                          </p>
+                          <button
+                            type="button"
+                            onClick={handleStartFreshDraft}
+                            className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-[#3E63DD] hover:bg-[#3252c4] px-3.5 py-1.5 text-xs font-semibold text-white shadow-xs cursor-pointer"
+                          >
+                            + Create Fresh Draft
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Pagination */}
+            {historyTotalPages > 1 && (
+              <div className="flex items-center justify-between border-t border-gray-200 bg-slate-50 px-5 py-3 text-xs text-slate-500">
+                <p>
+                  Showing {historyStartIndex + 1} to {Math.min(historyStartIndex + historyItemsPerPage, filteredQuotationHistory.length)} of {filteredQuotationHistory.length} quotations
+                </p>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    disabled={historyCurrentPage === 1}
+                    onClick={() => setHistoryCurrentPage((p) => Math.max(1, p - 1))}
+                    className="rounded-md border border-gray-200 bg-white px-2.5 py-1 font-medium text-slate-700 hover:bg-gray-50 disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
+                  >
+                    Previous
+                  </button>
+                  <span className="px-2 font-semibold text-slate-800">
+                    Page {historyCurrentPage} of {historyTotalPages}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={historyCurrentPage === historyTotalPages}
+                    onClick={() => setHistoryCurrentPage((p) => Math.min(historyTotalPages, p + 1))}
+                    className="rounded-md border border-gray-200 bg-white px-2.5 py-1 font-medium text-slate-700 hover:bg-gray-50 disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
+          </motion.div>
+        </motion.section>
+
+        {/* Quotation Snapshot Preview Modal */}
+        {previewingHistoryQuotation && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-3 sm:p-5 animate-fadeIn">
+            <div className="relative flex max-h-[90vh] w-full max-w-6xl flex-col rounded-xl border border-gray-200 bg-white text-slate-800 shadow-2xl overflow-hidden font-sans">
+              {/* Modal Header */}
+              <div className="flex items-center justify-between border-b border-gray-200 bg-gray-50/90 px-6 py-4">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-50 border border-blue-200 text-[#3E63DD] shrink-0 font-bold text-xs">
+                    QT
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2.5 flex-wrap">
+                      <h2 className="text-base font-bold text-slate-900">
+                        {previewingHistoryQuotation.quotationNumber || `Quotation ${previewingHistoryQuotation.attemptNumber || ""}`}
+                      </h2>
+                      <span
+                        className={`rounded-md px-2.5 py-0.5 text-[11px] font-medium ${getHistoryStatusBadge(previewingHistoryQuotation.status).className}`}
+                      >
+                        {getHistoryStatusBadge(previewingHistoryQuotation.status).label}
+                      </span>
+                      {previewingHistoryQuotation.isLatest && (
+                        <span className="rounded-md border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-700">
+                          Latest
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      Created on {previewingHistoryQuotation.createdAtLabel || "Date unavailable"} • Query #{orderQueryId || "-"}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPreviewingHistoryQuotation(null)}
+                  className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-200 hover:text-gray-700 transition cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* Modal Body with Full Matching Height & Transparent Scrollbar */}
+              <div className="flex-1 max-h-[calc(90vh-130px)] overflow-y-auto p-6 space-y-5 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+                {/* Revision Remark Alert */}
+                {previewingHistoryQuotation.agentRevisionRemark && (
+                  <div className="rounded-lg border border-rose-200 bg-rose-50 p-3.5">
+                    <div className="flex items-center gap-2">
+                      <AlertCircle size={16} className="text-rose-600 shrink-0" />
+                      <p className="text-xs font-bold uppercase tracking-wider text-rose-800">
+                        Agent Revision Remark
+                      </p>
+                    </div>
+                    <p className="mt-1 text-xs leading-5 text-rose-900 pl-6">
+                      {previewingHistoryQuotation.agentRevisionRemark}
+                    </p>
+                  </div>
+                )}
+
+                {/* Summary Stats Grid */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="rounded-lg border border-gray-200 bg-slate-50 p-3">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">OPS Total</p>
+                    <p className="mt-1 text-sm font-bold text-slate-900">
+                      {formatCurrencyValue(previewingHistoryQuotation.opsTotalAmount || previewingHistoryQuotation.displayAmount || 0, previewingHistoryQuotation.pricing?.currency || "INR")}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-gray-200 bg-slate-50 p-3">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Services Total</p>
+                    <p className="mt-1 text-sm font-bold text-blue-700">
+                      {formatCurrencyValue(
+                        Number(previewingHistoryQuotation.pricing?.subTotal || 0) ||
+                        (previewingHistoryQuotation.services || []).reduce(
+                          (sum, s) => sum + Number(s?.totalInInr || s?.total || 0),
+                          0,
+                        ),
+                        previewingHistoryQuotation.pricing?.currency || "INR",
+                      )}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-gray-200 bg-slate-50 p-3">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Taxes</p>
+                    <p className="mt-1 text-sm font-bold text-emerald-700">
+                      {formatCurrencyValue(previewingHistoryQuotation.pricing?.tax?.totalTax || 0, previewingHistoryQuotation.pricing?.currency || "INR")}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-gray-200 bg-slate-50 p-3">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Services Count</p>
+                    <p className="mt-1 text-sm font-bold text-indigo-700">
+                      {previewingHistoryQuotation.serviceCount ?? (previewingHistoryQuotation.services?.length || 0)} Items
+                    </p>
+                  </div>
+                </div>
+
+                {/* Included Services with Rich Details & Calculation Subtext */}
+                {Array.isArray(previewingHistoryQuotation.services) && previewingHistoryQuotation.services.length > 0 && (
+                  <div>
+                    <div className="flex items-center justify-between mb-2.5">
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700">
+                        Included Services ({previewingHistoryQuotation.services.length})
+                      </h4>
+                      <span className="text-[11px] font-medium text-slate-400">
+                        Rate &amp; Spec Breakdown
+                      </span>
+                    </div>
+
+                    <div className="space-y-2.5">
+                      {previewingHistoryQuotation.services.map((srv, idx) => {
+                        const type = String(srv.type || "").toLowerCase();
+                        const isHotel = type === "hotel";
+                        const isTransfer = type === "transfer" || type === "transport" || type === "car";
+                        const isActivity = type === "activity" || type === "sightseeing";
+
+                        const rawDate = srv.serviceDate || srv.date || "";
+                        let formattedDate = rawDate;
+                        if (rawDate && !isNaN(new Date(rawDate).getTime())) {
+                          formattedDate = new Date(rawDate).toLocaleDateString("en-IN", {
+                            day: "2-digit",
+                            month: "short",
+                            year: "numeric",
+                          });
+                        }
+
+                        // Price calculation subtext
+                        const total = Number(srv.totalInInr || srv.total || 0);
+                        let calcSubtext = "";
+                        if (isHotel) {
+                          const nights = Math.max(1, Number(srv.nights || 1));
+                          const rooms = Math.max(1, Number(srv.rooms || 1));
+                          const unitRate =
+                            Number(srv.pricePerNight || srv.quoteBaseRate || srv.basePrice || srv.price || 0) ||
+                            Math.round(total / (nights * rooms));
+                          calcSubtext = `${nights} Night${nights > 1 ? "s" : ""} × ${rooms} Room${rooms > 1 ? "s" : ""} @ ₹${Number(unitRate).toLocaleString("en-IN")}/N`;
+                        } else if (isTransfer) {
+                          const days = Number(srv.days || 1);
+                          const units = Number(srv.vehicleCount || srv.units || 1);
+                          const unitRate =
+                            Number(srv.price || srv.quoteBaseRate || srv.basePrice || 0) ||
+                            Math.round(total / (Math.max(1, days) * Math.max(1, units)));
+                          if (days > 1) {
+                            calcSubtext = `${days} Days × ${units} Unit${units > 1 ? "s" : ""} @ ₹${Number(unitRate).toLocaleString("en-IN")}`;
+                          } else {
+                            calcSubtext = `${units} Unit${units > 1 ? "s" : ""} @ ₹${Number(unitRate).toLocaleString("en-IN")}`;
+                          }
+                        } else if (isActivity) {
+                          const pax = Math.max(1, Number(srv.pax || srv.adults || 1));
+                          const unitRate =
+                            Number(srv.adultPrice || srv.price || srv.quoteBaseRate || srv.basePrice || 0) ||
+                            Math.round(total / pax);
+                          calcSubtext = `${pax} Pax @ ₹${Number(unitRate).toLocaleString("en-IN")}/Pax`;
+                        } else {
+                          calcSubtext = `1 Item @ ₹${Number(total).toLocaleString("en-IN")}`;
+                        }
+
+                        // Meal Plan Resolution
+                        const rawMeal = [srv.mealPlan, srv.meal_plan, srv.meal, srv.meals, srv.mealType].find(
+                          (v) => typeof v === "string" && v.trim().length > 0,
+                        );
+                        let mealPlanText = rawMeal || "";
+                        if (rawMeal) {
+                          const upperM = rawMeal.toUpperCase();
+                          if (upperM === "EP" || upperM.includes("ROOM ONLY") || upperM.includes("ONLY ROOM")) mealPlanText = "EP (Room Only)";
+                          else if (upperM === "CP" || upperM.includes("BREAKFAST")) mealPlanText = "CP (Breakfast Included)";
+                          else if (upperM === "MAP" || upperM.includes("HALF BOARD") || upperM.includes("BREAKFAST & DINNER") || upperM.includes("BREAKFAST AND DINNER")) mealPlanText = "MAP (Breakfast & Dinner)";
+                          else if (upperM === "AP" || upperM.includes("FULL BOARD") || upperM.includes("ALL MEAL")) mealPlanText = "AP (All Meals)";
+                          else if (upperM === "AI" || upperM.includes("ALL INCLUSIVE")) mealPlanText = "AI (All Inclusive)";
+                        } else if (isHotel) {
+                          const descUpper = String(srv.description || srv.desc || srv.roomType || "").toUpperCase();
+                          if (descUpper.includes("MAP") || (descUpper.includes("BREAKFAST") && descUpper.includes("DINNER"))) mealPlanText = "MAP (Breakfast & Dinner)";
+                          else if (descUpper.includes("AP") || descUpper.includes("ALL MEALS") || descUpper.includes("FULL BOARD")) mealPlanText = "AP (All Meals)";
+                          else if (descUpper.includes("CP") || descUpper.includes("BREAKFAST")) mealPlanText = "CP (Breakfast Included)";
+                          else if (descUpper.includes("EP") || descUpper.includes("ROOM ONLY")) mealPlanText = "EP (Room Only)";
+                        }
+
+                        return (
+                          <div
+                            key={srv.id || idx}
+                            className="rounded-lg border border-gray-200 bg-white p-3.5 hover:bg-slate-50/60 transition shadow-2xs text-xs"
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="flex items-start gap-3 min-w-0 flex-1">
+                                <div
+                                  className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md border text-sm ${
+                                    isHotel
+                                      ? "border-blue-200 bg-blue-50 text-blue-600"
+                                      : isTransfer
+                                      ? "border-amber-200 bg-amber-50 text-amber-600"
+                                      : "border-emerald-200 bg-emerald-50 text-emerald-600"
+                                  }`}
+                                >
+                                  {isHotel ? (
+                                    <LiaHotelSolid size={18} />
+                                  ) : isTransfer ? (
+                                    <FaCarSide size={16} />
+                                  ) : (
+                                    <MdOutlineTravelExplore size={16} />
+                                  )}
+                                </div>
+
+                                <div className="min-w-0 flex-1 space-y-1.5">
+                                  {/* Title, Type Badge & Star Category */}
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <h5 className="font-bold text-slate-900 text-xs">
+                                      {srv.hotelName || srv.title || srv.name || "Service Item"}
+                                    </h5>
+                                    <span
+                                      className={`rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+                                        isHotel
+                                          ? "bg-blue-50 text-blue-700 border border-blue-200"
+                                          : isTransfer
+                                          ? "bg-amber-50 text-amber-700 border border-amber-200"
+                                          : "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                      }`}
+                                    >
+                                      {srv.type ? srv.type.toUpperCase() : "SERVICE"}
+                                    </span>
+                                    {(srv.hotelCategory || srv.starRating || srv.stars) && (
+                                      <span className="rounded-md bg-amber-50 border border-amber-200 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800 inline-flex items-center gap-1">
+                                        <FaStar size={10} className="text-amber-500" />
+                                        {srv.hotelCategory || srv.starRating || `${srv.stars} Star`}
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  {/* Sub-details Tags & Badges */}
+                                  <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-slate-600">
+                                    {formattedDate && (
+                                      <span className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 text-slate-700 font-medium">
+                                        <CalendarDays size={11} className="text-slate-500" />
+                                        {formattedDate}
+                                      </span>
+                                    )}
+
+                                    {/* Hotel Details */}
+                                    {isHotel && (
+                                      <>
+                                        <span className="rounded-md bg-slate-100 px-2 py-0.5 text-slate-700 font-medium">
+                                          {srv.nights || 1} Night{(srv.nights || 1) > 1 ? "s" : ""} • {srv.rooms || 1} Room{(srv.rooms || 1) > 1 ? "s" : ""}
+                                        </span>
+                                        <span className="rounded-md bg-slate-100 px-2 py-0.5 text-slate-700 font-medium">
+                                          {srv.pax || (srv.adults ? `${srv.adults} Adults${srv.children ? ` + ${srv.children} Child` : ""}` : "") || `${previewingHistoryQuotation.pax || 2} Pax`}
+                                        </span>
+                                        {(srv.roomCategory || srv.roomType) && (
+                                          <span className="rounded-md bg-indigo-50 border border-indigo-200 px-2 py-0.5 text-indigo-700 font-semibold">
+                                            Room: {[srv.roomCategory, srv.roomType].filter(Boolean).join(" - ")}
+                                          </span>
+                                        )}
+                                        {mealPlanText && (
+                                          <span className="rounded-md bg-teal-50 border border-teal-200 px-2 py-0.5 text-teal-800 font-semibold inline-flex items-center gap-1">
+                                            <Utensils size={11} className="text-teal-600" />
+                                            Meal: {mealPlanText}
+                                          </span>
+                                        )}
+                                        {srv.bedType && (
+                                          <span className="rounded-md bg-purple-50 border border-purple-200 px-2 py-0.5 text-purple-700 font-medium">
+                                            Bed: {srv.bedType}
+                                          </span>
+                                        )}
+                                        {(srv.extraBedType || srv.extraAdult || srv.childWithBed) && (
+                                          <span className="rounded-md bg-slate-100 px-2 py-0.5 text-slate-700 font-medium">
+                                            Extra: {srv.extraBedType || (srv.extraAdult ? "Extra Adult Bed" : "Child with Bed")}
+                                          </span>
+                                        )}
+                                      </>
+                                    )}
+
+                                    {/* Transfer Details */}
+                                    {isTransfer && (
+                                      <>
+                                        {srv.vehicleType && (
+                                          <span className="rounded-md bg-indigo-50 border border-indigo-200 px-2 py-0.5 text-indigo-700 font-semibold inline-flex items-center gap-1">
+                                            <Car size={11} className="text-indigo-600" />
+                                            Vehicle: {srv.vehicleType}
+                                          </span>
+                                        )}
+                                        {(srv.passengerCapacity || srv.pax) && (
+                                          <span className="rounded-md bg-slate-100 px-2 py-0.5 text-slate-700 font-medium inline-flex items-center gap-1">
+                                            <BsPeople size={11} className="text-slate-500" />
+                                            {srv.passengerCapacity ? `${srv.passengerCapacity} Passengers` : `${srv.pax} Pax`}
+                                          </span>
+                                        )}
+                                        {srv.luggageCapacity && (
+                                          <span className="rounded-md bg-slate-100 px-2 py-0.5 text-slate-700 font-medium inline-flex items-center gap-1">
+                                            <HiOutlineBriefcase size={11} className="text-slate-500" />
+                                            {srv.luggageCapacity} Luggage
+                                          </span>
+                                        )}
+                                        {(srv.usageType || srv.transportUsageLabel || srv.selectedUsage) && (
+                                          <span className="rounded-md bg-amber-50 border border-amber-200 px-2 py-0.5 text-amber-800 font-medium">
+                                            Usage: {srv.usageType || srv.transportUsageLabel || srv.selectedUsage}
+                                          </span>
+                                        )}
+                                        {(srv.pickupTime || srv.time) && (
+                                          <span className="rounded-md bg-slate-100 px-2 py-0.5 text-slate-700 font-medium inline-flex items-center gap-1">
+                                            <Clock size={11} className="text-slate-500" />
+                                            Pickup: {srv.pickupTime || srv.time}
+                                          </span>
+                                        )}
+                                      </>
+                                    )}
+
+                                    {/* Activity Details */}
+                                    {isActivity && (
+                                      <>
+                                        {(srv.tourType || srv.selectedTourType) && (
+                                          <span className="rounded-md bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-emerald-800 font-semibold">
+                                            Tour: {srv.tourType || srv.selectedTourType}
+                                          </span>
+                                        )}
+                                        {(srv.selectedSlot || srv.slot || srv.time || srv.openingTime) && (
+                                          <span className="rounded-md bg-slate-100 px-2 py-0.5 text-slate-700 font-medium inline-flex items-center gap-1">
+                                            <Clock size={11} className="text-slate-500" />
+                                            Slot: {srv.selectedSlot || srv.slot || srv.time || srv.openingTime}
+                                          </span>
+                                        )}
+                                        {srv.duration && (
+                                          <span className="rounded-md bg-slate-100 px-2 py-0.5 text-slate-700 font-medium">
+                                            Duration: {srv.duration}
+                                          </span>
+                                        )}
+                                        <span className="rounded-md bg-slate-100 px-2 py-0.5 text-slate-700 font-medium">
+                                          {srv.pax || srv.adults || 1} Pax
+                                        </span>
+                                      </>
+                                    )}
+                                  </div>
+
+                                  {/* Description / Notes text */}
+                                  {(srv.description || srv.desc || srv.notes) && (
+                                    <p className="text-[11px] text-slate-500 line-clamp-2 pt-0.5 leading-relaxed">
+                                      {srv.description || srv.desc || srv.notes}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Price Column */}
+                              <div className="text-right shrink-0 min-w-[125px] pl-2">
+                                <p className="text-sm font-bold text-slate-900">
+                                  {formatCurrencyValue(srv.totalInInr || srv.total || 0, "INR")}
+                                </p>
+                                {calcSubtext && (
+                                  <p className="text-[10px] text-slate-500 mt-0.5 font-medium tracking-tight">
+                                    {calcSubtext}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Day-Wise Itinerary */}
+                {(() => {
+                  const itineraryList =
+                    Array.isArray(previewingHistoryQuotation.dayWiseItinerary) && previewingHistoryQuotation.dayWiseItinerary.length > 0
+                      ? previewingHistoryQuotation.dayWiseItinerary
+                      : Array.isArray(previewingHistoryQuotation.itinerary) && previewingHistoryQuotation.itinerary.length > 0
+                      ? previewingHistoryQuotation.itinerary
+                      : [];
+
+                  if (!itineraryList.length) return null;
+
+                  return (
+                    <div>
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-purple-700 mb-2.5 flex items-center gap-1.5">
+                        <CalendarDays size={14} /> Day-Wise Itinerary ({itineraryList.length} Days)
+                      </h4>
+                      <div className="space-y-2">
+                        {itineraryList.map((d, i) => {
+                          const rawDate = d.date || "";
+                          let formattedDate = rawDate;
+                          if (rawDate && !isNaN(new Date(rawDate).getTime())) {
+                            formattedDate = new Date(rawDate).toLocaleDateString("en-IN", {
+                              day: "2-digit",
+                              month: "short",
+                              year: "numeric",
+                            });
+                          }
+                          const descText = d.description || d.desc || "";
+                          const hasHtml = /<[a-z][\s\S]*>/i.test(descText);
+
+                          return (
+                            <div key={i} className="rounded-lg border border-gray-200 bg-gray-50/60 p-3.5 text-xs space-y-1.5 shadow-2xs">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="rounded-md bg-purple-50 border border-purple-200 px-2 py-0.5 text-[11px] font-bold text-purple-700">
+                                  Day {d.dayNumber || d.day || i + 1}
+                                </span>
+                                <span className="font-bold text-slate-900 text-xs">
+                                  {d.title || d.dayLabel || "Tour Itinerary"}
+                                </span>
+                                {(formattedDate || d.stayLocation || d.hotelName) && (
+                                  <span className="text-[11px] text-slate-500 font-medium">
+                                    {formattedDate ? `• ${formattedDate}` : ""}
+                                    {d.stayLocation || d.hotelName ? ` • Stay: ${d.stayLocation || d.hotelName}` : ""}
+                                  </span>
+                                )}
+                              </div>
+                              {descText && (
+                                <div className="text-[11px] text-slate-600 leading-relaxed pl-1">
+                                  {hasHtml ? (
+                                    <span dangerouslySetInnerHTML={{ __html: descText.replace(/className=/g, "class=") }} />
+                                  ) : (
+                                    <span>{descText}</span>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Inclusions & Exclusions */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="rounded-lg border border-emerald-200 bg-emerald-50/40 p-4">
+                    <p className="text-xs font-bold text-emerald-800 mb-2.5">
+                      Inclusions ({previewingHistoryQuotation.inclusions?.length || 0})
+                    </p>
+                    {previewingHistoryQuotation.inclusions?.length ? (
+                      <ul className="space-y-1.5 text-xs text-emerald-900">
+                        {previewingHistoryQuotation.inclusions.map((item, i) => {
+                          const text = typeof item === "string" ? item : item?.text || item?.title || "";
+                          const hasHtml = /<[a-z][\s\S]*>/i.test(text);
+
+                          return (
+                            <li key={i} className="flex items-start gap-2">
+                              <Check size={14} className="text-emerald-600 mt-0.5 shrink-0" />
+                              {hasHtml ? (
+                                <span dangerouslySetInnerHTML={{ __html: text.replace(/className=/g, "class=") }} />
+                              ) : (
+                                <span>{text}</span>
+                              )}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    ) : (
+                      <p className="text-xs text-slate-400 italic">No inclusions listed</p>
+                    )}
+                  </div>
+
+                  <div className="rounded-lg border border-rose-200 bg-rose-50/40 p-4">
+                    <p className="text-xs font-bold text-rose-800 mb-2.5">
+                      Exclusions ({previewingHistoryQuotation.exclusions?.length || 0})
+                    </p>
+                    {previewingHistoryQuotation.exclusions?.length ? (
+                      <ul className="space-y-1.5 text-xs text-rose-900">
+                        {previewingHistoryQuotation.exclusions.map((item, i) => {
+                          const text = typeof item === "string" ? item : item?.text || item?.title || "";
+                          const hasHtml = /<[a-z][\s\S]*>/i.test(text);
+
+                          return (
+                            <li key={i} className="flex items-start gap-2">
+                              <X size={14} className="text-rose-600 mt-0.5 shrink-0" />
+                              {hasHtml ? (
+                                <span dangerouslySetInnerHTML={{ __html: text.replace(/className=/g, "class=") }} />
+                              ) : (
+                                <span>{text}</span>
+                              )}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    ) : (
+                      <p className="text-xs text-slate-400 italic">No exclusions listed</p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Additional Notes */}
+                {previewingHistoryQuotation.additionalNotes?.length > 0 && (
+                  <div className="rounded-lg border border-gray-200 bg-slate-50 p-4">
+                    <p className="text-xs font-bold text-slate-700 mb-2">
+                      Additional Notes ({previewingHistoryQuotation.additionalNotes.length})
+                    </p>
+                    <ul className="list-disc list-inside space-y-1 text-xs text-slate-600">
+                      {previewingHistoryQuotation.additionalNotes.map((note, i) => {
+                        const text = typeof note === "string" ? note : note?.text || note?.title || "";
+                        const hasHtml = /<[a-z][\s\S]*>/i.test(text);
+
+                        return (
+                          <li key={i}>
+                            {hasHtml ? (
+                              <span dangerouslySetInnerHTML={{ __html: text.replace(/className=/g, "class=") }} />
+                            ) : (
+                              <span>{text}</span>
+                            )}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Terms & Conditions */}
+                {(() => {
+                  let rawTerms =
+                    previewingHistoryQuotation.termsAndConditions ||
+                    previewingHistoryQuotation.terms ||
+                    previewingHistoryQuotation.termsConditions ||
+                    previewingHistoryQuotation.voucherDetails?.termsAndConditions ||
+                    [];
+
+                  // If array of IDs or names, match against adminTerms
+                  if (Array.isArray(rawTerms) && rawTerms.length > 0) {
+                    rawTerms = rawTerms.map((item) => {
+                      if (typeof item === "string" && adminTerms?.length > 0) {
+                        const found = adminTerms.find((t) => t.id === item || t._id === item || t.name === item);
+                        if (found) return found.content || found.text || found.name;
+                      }
+                      if (item && typeof item === "object") {
+                        return item.content || item.text || item.title || item.name || "";
+                      }
+                      return item;
+                    });
+                  }
+
+                  // Fallback if empty
+                  if (!rawTerms || (Array.isArray(rawTerms) && rawTerms.length === 0)) {
+                    if (adminTerms && adminTerms.length > 0) {
+                      rawTerms = adminTerms.map((t) => t.content || t.text || t.name);
+                    } else {
+                      rawTerms = DEFAULT_QUOTATION_TERMS;
+                    }
+                  }
+
+                  const termsItems = parseStructuredTerms(rawTerms);
+                  const displayList = termsItems.length > 0 ? termsItems : parseStructuredTerms(DEFAULT_QUOTATION_TERMS);
+
+                  return (
+                    <div className="rounded-lg border border-slate-200 bg-slate-50/80 p-4">
+                      <div className="flex items-center justify-between gap-2 mb-3">
+                        <div className="flex items-center gap-2">
+                          <ShieldCheck size={16} className="text-blue-600 shrink-0" />
+                          <p className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                            Terms &amp; Conditions ({displayList.length})
+                          </p>
+                        </div>
+                        <span className="rounded-md bg-blue-50 border border-blue-200 px-2 py-0.5 text-[10px] font-bold text-blue-700 uppercase tracking-wide">
+                          Policy
+                        </span>
+                      </div>
+
+                      <div className="space-y-2 text-xs text-slate-700">
+                        {displayList.map((item, idx) => {
+                          const hasHtml = /<[a-z][\s\S]*>/i.test(item.rawText || item.text);
+                          if (item.type === "header") {
+                            return (
+                              <div key={idx} className="font-bold text-slate-900 pt-2 pb-0.5 text-xs flex items-center gap-1.5">
+                                <span className="h-1.5 w-1.5 rounded-full bg-blue-500 shrink-0"></span>
+                                {item.text}
+                              </div>
+                            );
+                          }
+                          return (
+                            <div key={idx} className="flex items-start gap-2 pl-1">
+                              <span className="text-slate-400 mt-0.5 select-none shrink-0 font-bold">•</span>
+                              <div className="leading-relaxed text-slate-600 flex-1">
+                                {hasHtml ? (
+                                  <span dangerouslySetInnerHTML={{ __html: (item.rawText || item.text).replace(/className=/g, "class=") }} />
+                                ) : (
+                                  <span>{item.rawText || item.text}</span>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* Modal Footer */}
+              <div className="flex items-center justify-end gap-3 border-t border-gray-200 bg-gray-50/90 px-6 py-4 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setPreviewingHistoryQuotation(null)}
+                  className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-gray-50 transition cursor-pointer shadow-2xs"
+                >
+                  Close
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleLoadHistoryQuotation(previewingHistoryQuotation)}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 px-4 py-2 text-xs font-bold text-white shadow-xs transition cursor-pointer"
+                >
+                  <Edit3 size={14} />
+                  Edit in Builder
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </>
+    );
+  }
+
   
   return (
     <>
@@ -8399,220 +9465,18 @@ const renderSelectedServicesModal = () => {
             ← Back to Order Acceptance
           </button>
           <div className="flex items-start gap-3">
-            <div className="relative">
+            <div>
               <button
                 type="button"
-                onClick={() => setIsQuotationHistoryOpen((prev) => !prev)}
-                className="inline-flex cursor-pointer items-center gap-2 rounded-full border border-gray-300 bg-white px-3.5 py-2 text-xs font-semibold text-gray-700 shadow-xs hover:bg-gray-50 hover:border-gray-400 transition"
+                onClick={() => setShowQuotationHistoryPage(true)}
+                className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-gray-300 bg-white px-3.5 py-2 text-xs font-semibold text-gray-700 shadow-xs hover:bg-gray-50 hover:border-gray-400 transition"
               >
                 <FileText size={14} className="text-gray-500" />
                 <span>Quotation History</span>
-                <span className="rounded-full bg-blue-50 border border-blue-200 px-2 py-0.5 text-[11px] font-bold text-blue-700">
+                <span className="rounded-md bg-blue-50 border border-blue-200 px-2 py-0.5 text-[11px] font-bold text-blue-700">
                   {quotationHistory.length}
                 </span>
-                {isQuotationHistoryOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
               </button>
-
-              <AnimatePresence>
-                {isQuotationHistoryOpen && (
-                <motion.div
-                  initial={{ opacity: 0, y: -10, scale: 0.97 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: -8, scale: 0.97 }}
-                  transition={{ duration: 0.22, ease: "easeOut" }}
-                  className="absolute right-0 top-full z-30 mt-2 w-[320px] origin-top-right overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-xl text-slate-900"
-                >
-                  <div className="border-b border-gray-100 bg-slate-50 px-4 py-3">
-                    <p className="text-sm font-semibold text-slate-900">Previous Quotations</p>
-                    <p className="mt-1 text-[11px] text-slate-500">
-                      Select any quotation to review it first, then click edit if you want to load it in the builder.
-                    </p>
-                  </div>
-
-                  <div className="max-h-[28rem] overflow-y-auto px-2 py-2 [scrollbar-color:transparent_transparent] [scrollbar-width:none] [&::-webkit-scrollbar]:w-0 [&::-webkit-scrollbar-thumb]:bg-transparent [&::-webkit-scrollbar-track]:bg-transparent">
-                    {quotationHistoryLoading ? (
-                      <p className="px-2 py-3 text-xs text-slate-500">Loading quotation history...</p>
-                    ) : quotationHistoryLoadError ? (
-                      <p className="px-2 py-3 text-xs text-rose-600">{quotationHistoryLoadError}</p>
-                    ) : quotationHistory.length ? (
-                      quotationHistory.map((quotation) => {
-                        const isSelected = quotation.id === selectedHistoryQuotationId;
-
-                        return (
-                          <button
-                            key={quotation.id}
-                            type="button"
-                            onClick={() => {
-                              setSelectedHistoryQuotationId(quotation.id);
-                            }}
-                            className={`mb-2 flex w-full items-start gap-3 rounded-2xl border px-3 py-3 text-left transition ${
-                              isSelected
-                                ? "border-amber-400 bg-amber-50"
-                                : "border-gray-200 bg-white hover:border-gray-300 hover:bg-slate-50"
-                            }`}
-                          >
-                            <span
-                              className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
-                                isSelected
-                                  ? "border-amber-500 bg-amber-500 text-white"
-                                  : "border-gray-300 bg-white text-transparent"
-                              }`}
-                            >
-                              <CheckCircle2 size={11} strokeWidth={3} />
-                            </span>
-
-                            <span className="min-w-0 flex-1">
-                              <span className="flex items-center justify-between gap-2">
-                                <span className="truncate text-sm font-semibold text-slate-900">
-                                  {quotation.quotationNumber || `Quotation ${quotation.attemptNumber}`}
-                                </span>
-                                {quotation.isLatest && (
-                                  <span className="rounded-full border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-emerald-700">
-                                    Latest
-                                  </span>
-                                )}
-                              </span>
-                              <span className="mt-1 block text-[11px] text-slate-500">
-                                {quotation.status} • {quotation.createdAtLabel || "Date unavailable"}
-                              </span>
-                              <span className="mt-1 block text-xs font-semibold text-amber-700">
-                                {formatCurrencyValue(quotation.displayAmount || 0, quotation.pricing?.currency || "INR")}
-                              </span>
-                            </span>
-                          </button>
-                        );
-                      })
-                    ) : (
-                      <p className="px-2 py-3 text-xs text-slate-500">
-                        No previous quotations found for this query yet.
-                      </p>
-                    )}
-
-                    {selectedHistoryQuotation && !quotationHistoryLoading && !quotationHistoryLoadError && (
-                      <div className="mt-3 rounded-xl border border-blue-200/80 bg-slate-50 p-3 text-slate-900">
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-blue-700">
-                              Selected History
-                            </p>
-                            <p className="mt-1 text-sm font-bold text-slate-900">
-                              {selectedHistoryQuotation.quotationNumber || `Quotation ${selectedHistoryQuotation.attemptNumber}`}
-                            </p>
-                            <p className="mt-1 text-[11px] font-medium text-slate-500">
-                              {selectedHistoryQuotation.status} • {selectedHistoryQuotation.createdAtLabel || "Date unavailable"}
-                            </p>
-                          </div>
-                          <span className="rounded-full border border-emerald-300 bg-emerald-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.14em] text-emerald-800">
-                            Preview
-                          </span>
-                        </div>
-
-                        <div className="mt-3 grid grid-cols-2 gap-2">
-                          <div className="rounded-lg border border-gray-200 bg-white px-3 py-2 shadow-2xs">
-                            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">OPS Total</p>
-                            <p className="mt-1 text-xs font-bold text-slate-900">
-                              {formatCurrencyValue(selectedHistoryQuotation.opsTotalAmount || 0, selectedHistoryQuotation.pricing?.currency || "INR")}
-                            </p>
-                          </div>
-                          <div className="rounded-lg border border-gray-200 bg-white px-3 py-2 shadow-2xs">
-                            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Services Total</p>
-                            <p className="mt-1 text-xs font-bold text-blue-700">
-                              {formatCurrencyValue(
-                                Number(selectedHistoryQuotation.pricing?.subTotal || 0) ||
-                                (selectedHistoryQuotation.services || []).reduce(
-                                  (sum, service) => sum + Number(service?.totalInInr || service?.total || 0),
-                                  0,
-                                ),
-                                selectedHistoryQuotation.pricing?.currency || "INR",
-                              )}
-                            </p>
-                          </div>
-                          <div className="rounded-lg border border-gray-200 bg-white px-3 py-2 shadow-2xs">
-                            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Services</p>
-                            <p className="mt-1 text-xs font-semibold text-blue-700">
-                              {selectedHistoryQuotation.serviceCount || 0} item{selectedHistoryQuotation.serviceCount === 1 ? "" : "s"}
-                            </p>
-                          </div>
-                          <div className="rounded-lg border border-gray-200 bg-white px-3 py-2 shadow-2xs">
-                            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Taxes</p>
-                            <p className="mt-1 text-xs font-bold text-emerald-700">
-                              {formatCurrencyValue(selectedHistoryQuotation.pricing?.tax?.totalTax || 0, selectedHistoryQuotation.pricing?.currency || "INR")}
-                            </p>
-                          </div>
-                        </div>
-
-                        {selectedHistoryQuotation.agentRevisionRemark && (
-                          <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2">
-                            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-rose-700">
-                              Revision Remark
-                            </p>
-                            <p className="mt-1 text-xs font-medium leading-5 text-rose-900">
-                              {selectedHistoryQuotation.agentRevisionRemark}
-                            </p>
-                          </div>
-                        )}
-
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          <span className="rounded-full border border-gray-200 bg-white px-2.5 py-1 text-[10px] font-semibold text-slate-700 shadow-2xs">
-                            Inclusions {selectedHistoryQuotation.inclusions?.length || 0}
-                          </span>
-                          <span className="rounded-full border border-gray-200 bg-white px-2.5 py-1 text-[10px] font-semibold text-slate-700 shadow-2xs">
-                            Exclusions {selectedHistoryQuotation.exclusions?.length || 0}
-                          </span>
-                          <span className="rounded-full border border-gray-200 bg-white px-2.5 py-1 text-[10px] font-semibold text-slate-700 shadow-2xs">
-                            Notes {selectedHistoryQuotation.additionalNotes?.length || 0}
-                          </span>
-                        </div>
-
-                        <div className="mt-3 grid grid-cols-1 gap-2">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setIsFreshDraftMode(false);
-                              setActiveDraftSourceQuotationId(selectedHistoryQuotation.id);
-                              setEditingTargetQuotationId(selectedHistoryQuotation.id);
-                              editingSourceQuotationSnapshotRef.current = selectedHistoryQuotation;
-                              setEditingSourceQuotationSnapshot(selectedHistoryQuotation);
-                              setDraftHydrated(false);
-                              setDraftSourceReloadRequest((value) => value + 1);
-                              setIsQuotationHistoryOpen(false);
-                            }}
-                            className={`rounded-lg px-3 py-2 text-xs font-bold transition cursor-pointer ${
-                              editingTargetQuotationId === selectedHistoryQuotation.id
-                                ? "border border-emerald-500 bg-emerald-500 text-white shadow-xs"
-                                : "border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 shadow-2xs"
-                            }`}
-                          >
-                            Edit This Quotation
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              resetBuilderWorkspace();
-                              setIsFreshDraftMode(true);
-                              setActiveDraftSourceQuotationId("");
-                              setEditingTargetQuotationId("");
-                              editingSourceQuotationSnapshotRef.current = null;
-                              setEditingSourceQuotationSnapshot(null);
-                              setDraftHydrated(false);
-                              setSelectedHistoryQuotationId("");
-                              setIsQuotationHistoryOpen(false);
-                            }}
-                            className={`rounded-lg border px-3 py-2 text-xs font-semibold transition cursor-pointer ${
-                              !isEditingHistoricalQuotation
-                                ? "border-amber-500 bg-amber-500 text-white font-bold shadow-xs"
-                                : "border-gray-300 bg-white text-slate-700 hover:bg-gray-50 shadow-2xs"
-                            }`}
-                          >
-                            Start Fresh Draft
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </motion.div>
-              )}
-              </AnimatePresence>
             </div>
 
             <div className="text-right font-semibold text-[#3E63DD]">
