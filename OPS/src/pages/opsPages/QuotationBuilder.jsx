@@ -30,6 +30,7 @@ import { LiaHotelSolid } from "react-icons/lia";
 import { RiDeleteBin6Line } from "react-icons/ri";
 import { useLocation } from "react-router-dom";
 import API from "../../utils/Api.js";
+import { DEFAULT_LOGO_BASE64 } from "../../utils/defaultLogoBase64.js";
 import toast from "react-hot-toast";
 import { useNavigate } from "react-router-dom";
 import QuickAddServiceModal from "../../modal/QuickAddServiceModal";
@@ -720,19 +721,222 @@ const buildWhatsAppSellerBankDetailsSection = (items = []) => {
   ].join("\n");
 };
 
+const parseStructuredTerms = (rawContent) => {
+  if (!rawContent) return [];
+  let text = "";
+  if (Array.isArray(rawContent)) {
+    text = rawContent
+      .map((item) => {
+        if (typeof item === "string") return item;
+        if (item && typeof item === "object") {
+          return item.content || item.text || item.name || item.item || item.label || "";
+        }
+        return String(item || "");
+      })
+      .join("\n");
+  } else if (typeof rawContent === "string") {
+    text = rawContent;
+  } else {
+    text = String(rawContent || "");
+  }
+
+  // Convert HTML block tags to newlines
+  text = text
+    .replace(/<\/(p|li|div|h[1-6]|tr|blockquote)>/gi, "\n")
+    .replace(/<br\s*[\/]?>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">");
+
+  // Split known major categories if merged
+  const majorSections = [
+    "Bookings and Reservations",
+    "Travel Documents and Requirements",
+    "Changes to Itineraries & Liability",
+    "Contact Information",
+    "Intellectual Property",
+    "Changes to Terms and Conditions",
+  ];
+
+  majorSections.forEach((sec) => {
+    const reg = new RegExp(`(^|\\s|\\.|\\n)(${sec})(:?)`, "gi");
+    text = text.replace(reg, "\n\n__HEADER__$2:\n");
+  });
+
+  // Split sub-items
+  const subItems = [
+    "Booking Process",
+    "Payment Terms",
+    "Payment",
+    "Confirmation",
+    "Credit Card",
+    "Confirmation Vouchers",
+    "Airport Transfers & Tour Pick Ups",
+    "Airport Transfers",
+    "Taxes",
+    "Changes & Cancellations",
+    "Cancellations and Refunds",
+    "Valid ID Proof",
+    "Health & Vaccinations",
+    "Travel Insurance",
+    "Changes by [^:\n]+",
+    "Service Providers Liability",
+    "Force Majeure",
+    "Governing Law",
+    "Ownership",
+  ];
+
+  subItems.forEach((sub) => {
+    const reg = new RegExp(`(^|\\s|\\.|\\n)(${sub}):`, "gi");
+    text = text.replace(reg, "\n__SUB__$2:");
+  });
+
+  // Split payment nested items e.g. "Minimum 50%...", "Remaining 50%...", "In Case of Airline...", "If a booking is under..."
+  text = text
+    .replace(/(\.|\n)\s*(Minimum 50%[^\.]+?\.)/gi, "\n__NESTED__$2")
+    .replace(/(\.|\n)\s*(Remaining 50%[^\.]+?\.)/gi, "\n__NESTED__$2")
+    .replace(/(\.|\n)\s*(In Case of Airline[^\.]+?\.)/gi, "\n__NESTED__$2")
+    .replace(/(\.|\n)\s*(If a booking is under[^\.]+?\.)/gi, "\n__NESTED__$2");
+
+  // Split general sentences if merged after period without space
+  text = text.replace(/([.!?])([A-Z0-9])/g, "$1\n$2");
+
+  const rawLines = text
+    .split("\n")
+    .map((l) => l.replace(/^\d+[\.\)]\s*/, "").replace(/^[•\-\*]\s*/, "").trim())
+    .filter(Boolean);
+
+  let headerCount = 0;
+  let nestedCount = 0;
+
+  const items = [];
+  rawLines.forEach((line) => {
+    if (line.startsWith("__HEADER__")) {
+      headerCount++;
+      nestedCount = 0;
+      const cleanLine = line.replace("__HEADER__", "").trim();
+      items.push({
+        type: "header",
+        level: 1,
+        number: headerCount,
+        text: `${headerCount}. ${cleanLine.replace(/:$/, "")}`,
+        rawText: cleanLine,
+      });
+    } else if (line.startsWith("__SUB__")) {
+      nestedCount = 0;
+      const cleanLine = line.replace("__SUB__", "").trim();
+      items.push({
+        type: "subitem",
+        level: 2,
+        text: `• ${cleanLine}`,
+        rawText: cleanLine,
+      });
+    } else if (line.startsWith("__NESTED__")) {
+      nestedCount++;
+      const cleanLine = line.replace("__NESTED__", "").trim();
+      items.push({
+        type: "nested",
+        level: 3,
+        number: nestedCount,
+        text: `${nestedCount}. ${cleanLine}`,
+        rawText: cleanLine,
+      });
+    } else {
+      items.push({
+        type: "text",
+        level: 0,
+        text: line,
+        rawText: line,
+      });
+    }
+  });
+
+  return items;
+};
+
+const parseTermsContentToTextList = (rawContent) => {
+  const structured = parseStructuredTerms(rawContent);
+  return structured.map((item) => item.text);
+};
+
+const formatTermsForWordDoc = (terms) => {
+  const items = parseStructuredTerms(terms);
+  if (!items.length) {
+    return `<p class="muted">Not specified</p>`;
+  }
+
+  let html = "";
+  let inSubList = false;
+  let inNestedList = false;
+
+  items.forEach((item) => {
+    if (item.type === "text") {
+      if (inNestedList) { html += "</ol>"; inNestedList = false; }
+      if (inSubList) { html += "</ul>"; inSubList = false; }
+      html += `<p style="margin: 0 0 8px 0; font-size: 11pt; color: #1e293b; line-height: 1.5;">${escapeWordHtml(item.rawText)}</p>`;
+    } else if (item.type === "header") {
+      if (inNestedList) { html += "</ol>"; inNestedList = false; }
+      if (inSubList) { html += "</ul>"; inSubList = false; }
+      html += `<h4 style="margin: 12px 0 6px 0; font-size: 11pt; font-weight: bold; color: #0f172a;">${escapeWordHtml(item.text)}</h4>`;
+    } else if (item.type === "subitem") {
+      if (inNestedList) { html += "</ol>"; inNestedList = false; }
+      if (!inSubList) { html += '<ul style="margin: 4px 0 8px 20px; padding: 0; list-style-type: disc;">'; inSubList = true; }
+      
+      const colonIdx = item.rawText.indexOf(":");
+      if (colonIdx > 0 && colonIdx < 40) {
+        const label = item.rawText.slice(0, colonIdx + 1);
+        const rest = item.rawText.slice(colonIdx + 1);
+        html += `<li style="margin-bottom: 5px; font-size: 10.5pt; color: #1e293b; line-height: 1.45;"><strong>${escapeWordHtml(label)}</strong>${escapeWordHtml(rest)}</li>`;
+      } else {
+        html += `<li style="margin-bottom: 5px; font-size: 10.5pt; color: #1e293b; line-height: 1.45;">${escapeWordHtml(item.rawText)}</li>`;
+      }
+    } else if (item.type === "nested") {
+      if (!inNestedList) {
+        if (!inSubList) { html += '<ul style="margin: 4px 0 8px 20px; padding: 0; list-style-type: disc;">'; inSubList = true; }
+        html += '<ol style="margin: 4px 0 6px 22px; padding: 0; list-style-type: decimal;">';
+        inNestedList = true;
+      }
+      html += `<li style="margin-bottom: 4px; font-size: 10pt; color: #1e293b; line-height: 1.4;">${escapeWordHtml(item.rawText)}</li>`;
+    }
+  });
+
+  if (inNestedList) html += "</ol>";
+  if (inSubList) html += "</ul>";
+
+  return html;
+};
+
 const buildWhatsAppTermsSection = (items = []) => {
-  const normalizedItems = Array.isArray(items)
-    ? items.map((item) => String(item || "").trim()).filter(Boolean)
-    : [];
-  const terms = normalizedItems.length ? normalizedItems : [...DEFAULT_WHATSAPP_TERMS];
+  const structuredItems = parseStructuredTerms(items);
+  if (!structuredItems.length) return "";
 
-  if (!terms.length) return "";
-
-  return [
+  const lines = [
     "*_Terms and Conditions_*",
     WHATSAPP_SECTION_DIVIDER,
-    ...terms.map((item, index) => `${index + 1}. ${item}`),
-  ].join("\n");
+  ];
+
+  structuredItems.forEach((item) => {
+    if (item.type === "header") {
+      lines.push(`\n*${item.text}*`);
+    } else if (item.type === "subitem") {
+      const colonIdx = item.rawText.indexOf(":");
+      if (colonIdx > 0 && colonIdx < 40) {
+        const title = item.rawText.slice(0, colonIdx);
+        const rest = item.rawText.slice(colonIdx + 1);
+        lines.push(`• *${title}:*${rest}`);
+      } else {
+        lines.push(`• ${item.rawText}`);
+      }
+    } else if (item.type === "nested") {
+      lines.push(`   ${item.number}. ${item.rawText}`);
+    } else {
+      lines.push(item.rawText);
+    }
+  });
+
+  return lines.join("\n");
 };
 
   const buildWhatsAppDayWiseItinerary = (quotation = {}) => {
@@ -870,11 +1074,32 @@ const buildWhatsAppTermsSection = (items = []) => {
   };
 
   const sanitizeDynamicListItems = (items = []) =>
-  Array.isArray(items)
-  ? items
-  .map((item) => String(item || "").replace(/\s+/g, " ").trim())
-  .filter(Boolean)
-  : [];
+    Array.isArray(items)
+      ? items
+          .map((item) =>
+            String(item || "")
+              .replace(/<[^>]*>?/gm, "")
+              .replace(/\s+/g, " ")
+              .trim()
+          )
+          .filter(Boolean)
+      : [];
+
+  const sanitizeTermsItems = (items = []) => {
+    if (!Array.isArray(items)) {
+      if (typeof items === "string" && items.trim()) {
+        return [items.trim()];
+      }
+      return [];
+    }
+    return items
+      .map((item) => {
+        if (!item) return "";
+        if (typeof item !== "string") return String(item).trim();
+        return item.trim();
+      })
+      .filter(Boolean);
+  };
 
   const normalizeDateInputValue = (value) => {
   if (!value) return "";
@@ -1084,14 +1309,14 @@ const buildWhatsAppTermsSection = (items = []) => {
   .join("");
 
   const listMarkup = (items = []) =>
-  items.length
-  ? `<ul>${items.map((item) => `<li>${escapeWordHtml(item)}</li>`).join("")}</ul>`
-  : `<p class="muted">Not specified</p>`;
+    items.length
+      ? `<ul>${items.map((item) => `<li>${escapeWordHtml(String(item || "").replace(/<[^>]*>?/gm, "").replace(/\s+/g, " ").trim())}</li>`).join("")}</ul>`
+      : `<p class="muted">Not specified</p>`;
 
-  const normalizedTerms = Array.isArray(quotation.termsAndConditions) &&
-  quotation.termsAndConditions.length
-  ? quotation.termsAndConditions
-  : [...DEFAULT_WHATSAPP_TERMS];
+  const parsedTerms = parseTermsContentToTextList(quotation.termsAndConditions);
+  const normalizedTerms = parsedTerms.length
+    ? parsedTerms
+    : [...DEFAULT_WHATSAPP_TERMS];
 
   const bankMarkup = (quotation.sellerBankDetails || [])
   .map((item) => `
@@ -1102,6 +1327,18 @@ const buildWhatsAppTermsSection = (items = []) => {
   `)
   .join("");
 
+  const logoSrc = String(
+    quotation.agentLogo ||
+    quotation.brandingLogo ||
+    quotation.logo ||
+    DEFAULT_LOGO_BASE64 ||
+    ""
+  ).trim();
+  const companyTitle = escapeWordHtml(quotation.agentBrandingName || "Holiday Circuit");
+  const companyAddress = escapeWordHtml(quotation.agentCompanyAddress || "2nd Floor, 632 Block B1, Janakpuri, New Delhi - 110058");
+  const companyPhone = escapeWordHtml(quotation.agentPhone || "+91 8851346665, +91 9971706003");
+  const companyEmail = escapeWordHtml(quotation.agentEmail || "ops@leelatravels.com");
+
   return `<!DOCTYPE html>
 <html>
   <head>
@@ -1110,31 +1347,46 @@ const buildWhatsAppTermsSection = (items = []) => {
     <style>
       body { font-family: Calibri, Arial, sans-serif; color: #1f2937; margin: 28px; line-height: 1.5; }
       h1, h2, h3, h4 { margin: 0; }
-      h1 { font-size: 26px; margin-bottom: 6px; color: #111827; }
-      h2 { font-size: 18px; margin: 22px 0 10px; color: #1d4ed8; }
+      h1 { font-size: 20px; margin-bottom: 3px; color: #111827; }
+      h2 { font-size: 16px; margin: 22px 0 10px; color: #1d4ed8; }
       h3 { font-size: 14px; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.08em; color: #475569; }
       h4 { font-size: 14px; margin-bottom: 6px; color: #0f172a; }
-      p { margin: 0 0 8px; }
+      p { margin: 0 0 6px; }
       .muted { color: #64748b; }
-      .hero { border-bottom: 2px solid #e5e7eb; padding-bottom: 16px; margin-bottom: 18px; }
       .grid { width: 100%; border-collapse: collapse; margin-top: 12px; }
       .grid td { padding: 8px 10px; border: 1px solid #dbeafe; vertical-align: top; }
       .services th, .services td { border: 1px solid #d1d5db; padding: 8px 10px; text-align: left; vertical-align: top; }
       .services th { background: #eff6ff; color: #1e3a8a; }
-      .card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px; margin-top: 12px; }
+      .card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-top: 10px; }
       .block { margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid #e5e7eb; }
       .block:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
-      ul { margin: 8px 0 0 18px; padding: 0; }
+      ul { margin: 6px 0 0 18px; padding: 0; }
       li { margin-bottom: 4px; }
-      .amount { font-size: 20px; font-weight: 700; color: #15803d; }
+      .amount { font-size: 18px; font-weight: 700; color: #15803d; }
     </style>
   </head>
   <body>
-    <div class="hero">
-      <h1>Holiday Circuit Quotation</h1>
-      <p class="muted">Quotation No: ${escapeWordHtml(quotation.quotationNumber || "-")}</p>
-      <p class="muted">Query ID: ${escapeWordHtml(quotation.queryId || "-")}</p>
-    </div>
+    <table style="width: 100%; border: none; border-bottom: 2px solid #e5e7eb; padding-bottom: 14px; margin-bottom: 20px; border-collapse: collapse;">
+      <tr>
+        ${logoSrc ? `
+        <td style="width: 110px; vertical-align: middle; border: none; padding: 0 14px 0 0;">
+          <img src="${logoSrc}" alt="${companyTitle} Logo" width="100" height="48" style="width: 100px; height: 48px; max-height: 48px; max-width: 100px; display: block;" />
+        </td>` : ""}
+        <td style="vertical-align: middle; border: none; padding: 0;">
+          <h1 style="font-size: 19px; font-weight: bold; margin: 0 0 3px 0; color: #111827;">${companyTitle}</h1>
+          <p style="margin: 0 0 3px 0; font-size: 11px; color: #4b5563; line-height: 1.3;">${companyAddress}</p>
+          <p style="margin: 0; font-size: 11px; color: #4b5563; line-height: 1.3;">
+            ${companyPhone ? `Phone: <span style="color: #2563eb; font-weight: 600;">${companyPhone}</span>` : ""}
+            ${companyPhone && companyEmail ? ` &bull; ` : ""}
+            ${companyEmail ? `Email: <span style="color: #2563eb; font-weight: 600;">${companyEmail}</span>` : ""}
+          </p>
+        </td>
+        <td style="vertical-align: middle; border: none; padding: 0; text-align: right; white-space: nowrap;">
+          <p style="margin: 0 0 3px 0; font-size: 12px; font-weight: bold; color: #1e40af;">Quotation No: ${escapeWordHtml(quotation.quotationNumber || "-")}</p>
+          <p style="margin: 0; font-size: 11px; color: #64748b;">Query ID: ${escapeWordHtml(quotation.queryId || "-")}</p>
+        </td>
+      </tr>
+    </table>
 
     <h2>Trip Overview</h2>
     <table class="grid">
@@ -1183,7 +1435,7 @@ const buildWhatsAppTermsSection = (items = []) => {
     </table>
 
     <h2>Terms and Conditions</h2>
-    <div class="card">${listMarkup(normalizedTerms)}</div>
+    <div class="card">${formatTermsForWordDoc(quotation.termsAndConditions)}</div>
   </body>
 </html>`;
   };
@@ -4064,7 +4316,7 @@ setDraftValidTill("");
       setAdditionalNotes(sanitizeDynamicListItems(quotation?.additionalNotes));
       setTermsAndConditions(
         Array.isArray(quotation?.termsAndConditions)
-          ? sanitizeDynamicListItems(quotation.termsAndConditions)
+          ? sanitizeTermsItems(quotation.termsAndConditions)
           : []
       );
       setDayWiseItinerary(
@@ -5740,6 +5992,7 @@ return true;
       inclusions: sanitizeDynamicListItems(inclusions),
       exclusions: sanitizeDynamicListItems(exclusions),
       additionalNotes: sanitizeDynamicListItems(additionalNotes),
+      termsAndConditions: sanitizeTermsItems(termsAndConditions),
       dayWiseItinerary: sanitizeDayWiseItineraryItems(itineraryEntries),
       services: selectedServices.map((service) => buildDraftServicePayload(service)),
       pricing: {
@@ -5839,8 +6092,10 @@ return true;
       additionalNotes: sanitizeDynamicListItems(
       Array.isArray(quotation?.additionalNotes) ? quotation.additionalNotes : additionalNotes,
       ),
-      termsAndConditions: sanitizeDynamicListItems(
-        Array.isArray(quotation?.termsAndConditions) ? quotation.termsAndConditions : termsAndConditions
+      termsAndConditions: sanitizeTermsItems(
+        Array.isArray(quotation?.termsAndConditions) && quotation.termsAndConditions.length > 0
+          ? quotation.termsAndConditions
+          : termsAndConditions
       ),
       dayWiseItinerary: sanitizeDayWiseItineraryItems(
       Array.isArray(quotation?.dayWiseItinerary) ? quotation.dayWiseItinerary : itineraryEntries,
@@ -6060,6 +6315,7 @@ return true;
       inclusions: sanitizeDynamicListItems(inclusions),
       exclusions: sanitizeDynamicListItems(exclusions),
       additionalNotes: sanitizeDynamicListItems(additionalNotes),
+      termsAndConditions: sanitizeTermsItems(termsAndConditions),
       dayWiseItinerary: sanitizeDayWiseItineraryItems(itineraryEntries),
       services: selectedServices.map((service) => buildDraftServicePayload(service)),
 
@@ -6095,14 +6351,21 @@ return true;
       };
 
 
+
+
+
+
       // ✅ STEP 1: Create quotation
       const res = await API.post("/ops/quotations", payload);
+      
       const savedQuotation = res?.data?.quotation;
       const warnings = Array.isArray(res?.data?.warnings) ? [...res.data.warnings] : [];
       const sentToAgent = Boolean(res?.data?.sentToAgent);
       let actionSuccessMessage = sentToAgent
       ? "Quotation sent successfully"
       : "Quotation saved successfully";
+
+
 
       try {
       actionSuccessMessage = await runPostSendAction(selectedAction, savedQuotation);
@@ -7470,8 +7733,16 @@ const renderSelectedServicesModal = () => {
                       onClick={() => {
                         setSelectedIncExcId(preset._id);
                         if (preset) {
-                          const incStrings = (preset.inclusions || []).map(i => i.category ? `<b className='font-semibold'>${i.category}</b>: ${i.description}` : i.description);
-                          const excStrings = (preset.exclusions || []).map(ex => ex.category ? `<b className='font-semibold'>${ex.category}</b>: ${ex.description}` : ex.description);
+                          const incStrings = (preset.inclusions || []).map(i => {
+                            const desc = String(i.description || "").replace(/<[^>]*>?/gm, "").trim();
+                            const cat = String(i.category || "").replace(/<[^>]*>?/gm, "").trim();
+                            return cat ? `${cat}: ${desc}` : desc;
+                          });
+                          const excStrings = (preset.exclusions || []).map(ex => {
+                            const desc = String(ex.description || "").replace(/<[^>]*>?/gm, "").trim();
+                            const cat = String(ex.category || "").replace(/<[^>]*>?/gm, "").trim();
+                            return cat ? `${cat}: ${desc}` : desc;
+                          });
                           setInclusions(incStrings);
                           setExclusions(excStrings);
                         }
@@ -7532,7 +7803,7 @@ const renderSelectedServicesModal = () => {
                   <li key={i} className="text-xs text-slate-800 bg-white border border-emerald-100 hover:border-emerald-200 rounded-lg px-3.5 py-2.5 flex items-center justify-between gap-2.5 shadow-2xs transition-colors">
                     <div className="flex items-center gap-2.5 flex-1 min-w-0">
                       <Check size={14} className="text-emerald-600 shrink-0 stroke-[2.5]" />
-                      <span className="flex-1 text-slate-800 font-normal" dangerouslySetInnerHTML={{ __html: inc }} />
+                      <span className="flex-1 text-slate-800 font-normal">{String(inc || "").replace(/<[^>]*>?/gm, "").trim()}</span>
                     </div>
                     <button
                       type="button"
@@ -7599,7 +7870,7 @@ const renderSelectedServicesModal = () => {
                   <li key={i} className="text-xs text-slate-800 bg-white border border-rose-100 hover:border-rose-200 rounded-lg px-3.5 py-2.5 flex items-center justify-between gap-2.5 shadow-2xs transition-colors">
                     <div className="flex items-center gap-2.5 flex-1 min-w-0">
                       <X size={14} className="text-rose-500 shrink-0 stroke-[2.5]" />
-                      <span className="flex-1 text-slate-800 font-normal" dangerouslySetInnerHTML={{ __html: exc }} />
+                      <span className="flex-1 text-slate-800 font-normal">{String(exc || "").replace(/<[^>]*>?/gm, "").trim()}</span>
                     </div>
                     <button
                       type="button"
@@ -9466,9 +9737,19 @@ const renderSelectedServicesModal = () => {
 
                 <button
                   onClick={() => handleFinalSend()}
-                  className="w-full bg-[#3E63DD] hover:bg-[#3252c4] text-white py-2.5 font-semibold cursor-pointer transition"
+                  className="w-full bg-[#3E63DD] hover:bg-[#3252c4] text-white py-2.5 font-semibold cursor-pointer transition flex items-center justify-center gap-2"
                 >
-                  Send Now
+                  {selectedSendOption === "PDF Download" || selectedSendOption === "Word Format" ? (
+                    <>
+                      <Download size={16} />
+                      Download Now
+                    </>
+                  ) : (
+                    <>
+                      <Send size={16} />
+                      Send Now
+                    </>
+                  )}
                 </button>
               </div>
             </motion.div>
@@ -9530,9 +9811,19 @@ const renderSelectedServicesModal = () => {
 
                 <button
                   onClick={() => handleFinalSend()}
-                  className="w-full bg-[#3E63DD] hover:bg-[#3252c4] text-white py-2.5 font-semibold cursor-pointer transition"
+                  className="w-full bg-[#3E63DD] hover:bg-[#3252c4] text-white py-2.5 font-semibold cursor-pointer transition flex items-center justify-center gap-2"
                 >
-                  Send Now
+                  {selectedSendOption === "PDF Download" || selectedSendOption === "Word Format" ? (
+                    <>
+                      <Download size={16} />
+                      Download Now
+                    </>
+                  ) : (
+                    <>
+                      <Send size={16} />
+                      Send Now
+                    </>
+                  )}
                 </button>
               </div>
             </motion.div>

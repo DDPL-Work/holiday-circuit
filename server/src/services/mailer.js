@@ -10,11 +10,24 @@ const providerMap = {
 };
 
 export const getActiveMailProvider = () => {
-  const requestedProvider = String(process.env.MAIL_PROVIDER || "smtp")
+  const requestedProvider = String(process.env.MAIL_PROVIDER || "")
     .trim()
     .toLowerCase();
 
-  return providerMap[requestedProvider] ? requestedProvider : "smtp";
+  if (requestedProvider && providerMap[requestedProvider]) {
+    return requestedProvider;
+  }
+
+  if (process.env.BREVO_API_KEY) {
+    return "brevo";
+  }
+  
+
+  if (process.env.RESEND_API_KEY) {
+    return "resend";
+  }
+
+  return "smtp";
 };
 
 const activeMailer = providerMap[getActiveMailProvider()];

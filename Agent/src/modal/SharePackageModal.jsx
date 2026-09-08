@@ -13,13 +13,19 @@ const DEFAULT_INCLUSIONS = [];
 const DEFAULT_EXCLUSIONS = [];
 
 const toDisplayList = (value) => {
+  const stripHtml = (text) =>
+    String(text || "")
+      .replace(/<[^>]*>?/gm, "")
+      .replace(/\s+/g, " ")
+      .trim();
+
   if (Array.isArray(value)) {
-    return value.map((item) => String(item || "").trim()).filter(Boolean);
+    return value.map((item) => stripHtml(item)).filter(Boolean);
   }
 
   return String(value || "")
     .split(/\r?\n|,|•/)
-    .map((item) => item.trim())
+    .map((item) => stripHtml(item))
     .filter(Boolean);
 };
 
@@ -54,6 +60,136 @@ const getPackageDurationDetails = (pkg = {}, query = {}) => {
       ? `${nights} Nights / ${days || nights + 1} Days`
       : (rawDuration || "Duration on Request"),
   };
+};
+
+const parseStructuredTerms = (rawContent) => {
+  if (!rawContent) return [];
+  let text = "";
+  if (Array.isArray(rawContent)) {
+    text = rawContent
+      .map((item) => {
+        if (typeof item === "string") return item;
+        if (item && typeof item === "object") {
+          return item.content || item.text || item.name || item.item || item.label || "";
+        }
+        return String(item || "");
+      })
+      .join("\n");
+  } else if (typeof rawContent === "string") {
+    text = rawContent;
+  } else {
+    text = String(rawContent || "");
+  }
+
+  text = text
+    .replace(/<\/(p|li|div|h[1-6]|tr|blockquote)>/gi, "\n")
+    .replace(/<br\s*[\/]?>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">");
+
+  const majorSections = [
+    "Bookings and Reservations",
+    "Travel Documents and Requirements",
+    "Changes to Itineraries & Liability",
+    "Contact Information",
+    "Intellectual Property",
+    "Changes to Terms and Conditions",
+  ];
+
+  majorSections.forEach((sec) => {
+    const reg = new RegExp(`(^|\\s|\\.|\\n)(${sec})(:?)`, "gi");
+    text = text.replace(reg, "\n\n__HEADER__$2:\n");
+  });
+
+  const subItems = [
+    "Booking Process",
+    "Payment Terms",
+    "Payment",
+    "Confirmation",
+    "Credit Card",
+    "Confirmation Vouchers",
+    "Airport Transfers & Tour Pick Ups",
+    "Airport Transfers",
+    "Taxes",
+    "Changes & Cancellations",
+    "Cancellations and Refunds",
+    "Valid ID Proof",
+    "Health & Vaccinations",
+    "Travel Insurance",
+    "Changes by [^:\n]+",
+    "Service Providers Liability",
+    "Force Majeure",
+    "Governing Law",
+    "Ownership",
+  ];
+
+  subItems.forEach((sub) => {
+    const reg = new RegExp(`(^|\\s|\\.|\\n)(${sub}):`, "gi");
+    text = text.replace(reg, "\n__SUB__$2:");
+  });
+
+  text = text
+    .replace(/(\.|\n)\s*(Minimum 50%[^\.]+?\.)/gi, "\n__NESTED__$2")
+    .replace(/(\.|\n)\s*(Remaining 50%[^\.]+?\.)/gi, "\n__NESTED__$2")
+    .replace(/(\.|\n)\s*(In Case of Airline[^\.]+?\.)/gi, "\n__NESTED__$2")
+    .replace(/(\.|\n)\s*(If a booking is under[^\.]+?\.)/gi, "\n__NESTED__$2");
+
+  text = text.replace(/([.!?])([A-Z0-9])/g, "$1\n$2");
+
+  const rawLines = text
+    .split("\n")
+    .map((l) => l.replace(/^\d+[\.\)]\s*/, "").replace(/^[•\-\*]\s*/, "").trim())
+    .filter(Boolean);
+
+  let headerCount = 0;
+  let nestedCount = 0;
+
+  const items = [];
+  rawLines.forEach((line) => {
+    if (line.startsWith("__HEADER__")) {
+      headerCount++;
+      nestedCount = 0;
+      const cleanLine = line.replace("__HEADER__", "").trim();
+      items.push({
+        type: "header",
+        level: 1,
+        number: headerCount,
+        text: `${headerCount}. ${cleanLine.replace(/:$/, "")}:`,
+        rawText: cleanLine,
+      });
+    } else if (line.startsWith("__SUB__")) {
+      nestedCount = 0;
+      const cleanLine = line.replace("__SUB__", "").trim();
+      items.push({
+        type: "subitem",
+        level: 2,
+        text: cleanLine,
+        rawText: cleanLine,
+      });
+    } else if (line.startsWith("__NESTED__")) {
+      nestedCount++;
+      const cleanLine = line.replace("__NESTED__", "").trim();
+      items.push({
+        type: "nested",
+        level: 3,
+        number: nestedCount,
+        text: cleanLine,
+        rawText: cleanLine,
+      });
+    } else {
+      items.push({
+        type: "text",
+        level: 0,
+        text: line,
+        rawText: line,
+      });
+    }
+  });
+
+  return items;
 };
 
 const getTransportUsageLabel = (transport = {}) => {
@@ -370,7 +506,23 @@ export default function SharePackageModal({
               items,
             };
           })
-          .filter((t) => t.items.length > 0);
+          .filter((t) => t.items.length > 0)
+          .filter((t) => {
+            const nameLower = (t.name || "").trim().toLowerCase().replace(/\s+/g, " ");
+            if (
+              nameLower === "voucher t&c" ||
+              nameLower === "voucher tnc" ||
+              nameLower.startsWith("voucher t&c") ||
+              nameLower.startsWith("voucher tnc") ||
+              nameLower === "invoice tnc" ||
+              nameLower === "invoice t&c" ||
+              nameLower.startsWith("invoice tnc") ||
+              nameLower.startsWith("invoice t&c")
+            ) {
+              return false;
+            }
+            return true;
+          });
 
         if (isMounted) {
           setAvailableAgentTerms(parsed);
@@ -2259,7 +2411,7 @@ export default function SharePackageModal({
   }, [adults, children, infants]);
 
   const totalPrice = Math.round(
-    Number(quote?.clientTotalAmount ?? quote?.pricing?.totalAmount ?? quote?.totalAmount ?? 14500)
+    Number(quote?.clientTotalAmount ?? quote?.pricing?.totalAmount ?? quote?.totalAmount ?? 0)
   );
 
   const gstPercent = Number(
@@ -2300,26 +2452,8 @@ export default function SharePackageModal({
   };
 
   const modalHotelServices = useMemo(() => {
-    const hs = allModalServices.filter((s) => isHotelItem(s));
-    if (hs.length > 0) return hs;
-    if (allModalServices.length === 0) {
-      return [
-        {
-          city: "Colombo",
-          title: "Amari Colombo",
-          hotelCategory: "5 Star",
-          nights: 1,
-          mealPlan: "Breakfast and Dinner",
-          roomType: "1 Superior City View",
-          pax: `${adults} Pax`,
-          checkIn: "19 Aug",
-          checkOut: "20 Aug",
-          nightLabel: "1st Night",
-        },
-      ];
-    }
-    return [];
-  }, [allModalServices, adults]);
+    return allModalServices.filter((s) => isHotelItem(s));
+  }, [allModalServices]);
 
   const modalTransferServices = useMemo(() => {
     const quoteTransfers = allModalServices.filter((s) => !isHotelItem(s) && isTransferItem(s));
@@ -3722,12 +3856,55 @@ export default function SharePackageModal({
                           }
                         }
                         if (termsToShow.length > 0) {
-                          return termsToShow.map((termText, idx) => (
-                            <div key={idx} className="space-y-1">
-                              <p className="font-bold text-slate-900">{idx + 1}. Policy / Condition</p>
-                              <p className="whitespace-pre-line text-slate-700">{termText}</p>
+                          const structured = parseStructuredTerms(termsToShow);
+                          return (
+                            <div className="space-y-2.5">
+                              {structured.map((item, idx) => {
+                                if (item.type === "header") {
+                                  return (
+                                    <h4 key={idx} className="font-bold text-slate-900 text-sm pt-2 border-b border-slate-100 pb-1">
+                                      {item.text}
+                                    </h4>
+                                  );
+                                }
+                                if (item.type === "subitem") {
+                                  const colonIdx = item.rawText.indexOf(":");
+                                  if (colonIdx > 0 && colonIdx < 40) {
+                                    const label = item.rawText.slice(0, colonIdx + 1);
+                                    const rest = item.rawText.slice(colonIdx + 1);
+                                    return (
+                                      <div key={idx} className="flex items-start gap-2 pl-3">
+                                        <span className="text-slate-400 leading-none select-none">•</span>
+                                        <p className="flex-1 text-slate-700">
+                                          <strong className="font-semibold text-slate-900">{label}</strong>
+                                          {rest}
+                                        </p>
+                                      </div>
+                                    );
+                                  }
+                                  return (
+                                    <div key={idx} className="flex items-start gap-2 pl-3">
+                                      <span className="text-slate-400 leading-none select-none">•</span>
+                                      <p className="flex-1 text-slate-700">{item.rawText}</p>
+                                    </div>
+                                  );
+                                }
+                                if (item.type === "nested") {
+                                  return (
+                                    <div key={idx} className="flex items-start gap-2 pl-8 text-slate-600 text-xs">
+                                      <span className="font-semibold text-slate-800">{item.number}.</span>
+                                      <p className="flex-1">{item.rawText}</p>
+                                    </div>
+                                  );
+                                }
+                                return (
+                                  <p key={idx} className="text-slate-700">
+                                    {item.rawText}
+                                  </p>
+                                );
+                              })}
                             </div>
-                          ));
+                          );
                         }
                         return <p className="text-slate-500 italic">No specific terms and conditions specified.</p>;
                       })()}

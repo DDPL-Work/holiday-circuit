@@ -8,6 +8,212 @@ import { ChevronDown, Loader2 } from "lucide-react";
 import API from "../../../../../utils/Api";
 import toast from "react-hot-toast";
 
+const parseStructuredTerms = (rawContent) => {
+  if (!rawContent) return [];
+  let text = "";
+  if (Array.isArray(rawContent)) {
+    text = rawContent
+      .map((item) => {
+        if (typeof item === "string") return item;
+        if (item && typeof item === "object") {
+          return item.content || item.text || item.name || item.item || item.label || "";
+        }
+        return String(item || "");
+      })
+      .join("\n");
+  } else if (typeof rawContent === "string") {
+    text = rawContent;
+  } else {
+    text = String(rawContent || "");
+  }
+
+  // Convert HTML block tags to newlines
+  text = text
+    .replace(/<\/(p|li|div|h[1-6]|tr|blockquote)>/gi, "\n")
+    .replace(/<br\s*[\/]?>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">");
+
+  // Split known major categories if merged
+  const majorSections = [
+    "Bookings and Reservations",
+    "Travel Documents and Requirements",
+    "Changes to Itineraries & Liability",
+    "Contact Information",
+    "Intellectual Property",
+    "Changes to Terms and Conditions",
+  ];
+
+  majorSections.forEach((sec) => {
+    const reg = new RegExp(`(^|\\s|\\.|\\n)(${sec})(:?)`, "gi");
+    text = text.replace(reg, "\n\n__HEADER__$2:\n");
+  });
+
+  // Split sub-items
+  const subItems = [
+    "Booking Process",
+    "Payment Terms",
+    "Payment",
+    "Confirmation",
+    "Credit Card",
+    "Confirmation Vouchers",
+    "Airport Transfers & Tour Pick Ups",
+    "Airport Transfers",
+    "Taxes",
+    "Changes & Cancellations",
+    "Cancellations and Refunds",
+    "Valid ID Proof",
+    "Health & Vaccinations",
+    "Travel Insurance",
+    "Changes by [^:\n]+",
+    "Service Providers Liability",
+    "Force Majeure",
+    "Governing Law",
+    "Ownership",
+  ];
+
+  subItems.forEach((sub) => {
+    const reg = new RegExp(`(^|\\s|\\.|\\n)(${sub}):`, "gi");
+    text = text.replace(reg, "\n__SUB__$2:");
+  });
+
+  // Split payment nested items e.g. "Minimum 50%...", "Remaining 50%...", "In Case of Airline...", "If a booking is under..."
+  text = text
+    .replace(/(\.|\n)\s*(Minimum 50%[^\.]+?\.)/gi, "\n__NESTED__$2")
+    .replace(/(\.|\n)\s*(Remaining 50%[^\.]+?\.)/gi, "\n__NESTED__$2")
+    .replace(/(\.|\n)\s*(In Case of Airline[^\.]+?\.)/gi, "\n__NESTED__$2")
+    .replace(/(\.|\n)\s*(If a booking is under[^\.]+?\.)/gi, "\n__NESTED__$2");
+
+  // Split general sentences if merged after period without space
+  text = text.replace(/([.!?])([A-Z0-9])/g, "$1\n$2");
+
+  const rawLines = text
+    .split("\n")
+    .map((l) => l.replace(/^\d+[\.\)]\s*/, "").replace(/^[•\-\*]\s*/, "").trim())
+    .filter(Boolean);
+
+  let headerCount = 0;
+  let nestedCount = 0;
+
+  const items = [];
+  rawLines.forEach((line) => {
+    if (line.startsWith("__HEADER__")) {
+      headerCount++;
+      nestedCount = 0;
+      const cleanLine = line.replace("__HEADER__", "").trim();
+      items.push({
+        type: "header",
+        level: 1,
+        number: headerCount,
+        text: `${headerCount}. ${cleanLine.replace(/:$/, "")}:`,
+        rawText: cleanLine,
+      });
+    } else if (line.startsWith("__SUB__")) {
+      nestedCount = 0;
+      const cleanLine = line.replace("__SUB__", "").trim();
+      items.push({
+        type: "subitem",
+        level: 2,
+        text: cleanLine,
+        rawText: cleanLine,
+      });
+    } else if (line.startsWith("__NESTED__")) {
+      nestedCount++;
+      const cleanLine = line.replace("__NESTED__", "").trim();
+      items.push({
+        type: "nested",
+        level: 3,
+        number: nestedCount,
+        text: cleanLine,
+        rawText: cleanLine,
+      });
+    } else {
+      items.push({
+        type: "text",
+        level: 0,
+        text: line,
+        rawText: line,
+      });
+    }
+  });
+
+  return items;
+};
+
+const renderStructuredTermsContent = (terms) => {
+  const items = parseStructuredTerms(terms);
+  if (!items.length) {
+    return (
+      <div className="space-y-3 font-sans text-xs sm:text-sm text-slate-800 leading-relaxed">
+        <p>
+          Welcome to <strong className="font-bold text-slate-900">Holiday Circuit</strong>. These Terms and Conditions govern your use of the Holiday Circuit services. When You Make a booking or reservation, you agree to be bound by these Terms.
+        </p>
+        <h4 className="font-bold text-slate-900 text-sm sm:text-base pt-2">1. Bookings and Reservations:</h4>
+        <div className="flex items-start gap-2 pl-4">
+          <span className="text-slate-400 text-base leading-none select-none">•</span>
+          <p className="flex-1"><strong className="font-semibold text-slate-900">Booking Process:</strong> When you make a booking through Holiday Circuit, you agree to provide accurate and complete information.</p>
+        </div>
+        <div className="flex items-start gap-2 pl-4">
+          <span className="text-slate-400 text-base leading-none select-none">•</span>
+          <p className="flex-1"><strong className="font-semibold text-slate-900">Payment Terms:</strong> Payments are due as specified during booking.</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2.5 font-sans text-xs sm:text-sm text-slate-800 leading-relaxed">
+      {items.map((item, idx) => {
+        if (item.type === "header") {
+          return (
+            <h4 key={idx} className="font-bold text-slate-900 text-sm sm:text-base pt-2 border-b border-slate-100 pb-1">
+              {item.text}
+            </h4>
+          );
+        }
+        if (item.type === "subitem") {
+          const colonIdx = item.rawText.indexOf(":");
+          if (colonIdx > 0 && colonIdx < 40) {
+            const label = item.rawText.slice(0, colonIdx + 1);
+            const rest = item.rawText.slice(colonIdx + 1);
+            return (
+              <div key={idx} className="flex items-start gap-2 pl-3 sm:pl-4">
+                <span className="text-slate-400 text-base leading-none select-none shrink-0">•</span>
+                <p className="flex-1">
+                  <strong className="font-semibold text-slate-900">{label}</strong>
+                  {rest}
+                </p>
+              </div>
+            );
+          }
+          return (
+            <div key={idx} className="flex items-start gap-2 pl-3 sm:pl-4">
+              <span className="text-slate-400 text-base leading-none select-none shrink-0">•</span>
+              <p className="flex-1">{item.rawText}</p>
+            </div>
+          );
+        }
+        if (item.type === "nested") {
+          return (
+            <div key={idx} className="flex items-start gap-2 pl-7 sm:pl-9 text-slate-700 text-xs sm:text-[13px]">
+              <span className="font-semibold text-slate-900 shrink-0">{item.number}.</span>
+              <p className="flex-1">{item.rawText}</p>
+            </div>
+          );
+        }
+        return (
+          <p key={idx} className="text-slate-800">
+            {item.rawText}
+          </p>
+        );
+      })}
+    </div>
+  );
+};
+
 export const InlineTermsEditor = forwardRef(
   ({ initialTerms = [], quotationId, isPackageTemplate, onUpdate }, ref) => {
     const [isEditing, setIsEditing] = useState(false);
@@ -53,10 +259,10 @@ export const InlineTermsEditor = forwardRef(
         setTermsList(list);
 
         if (initialTerms && initialTerms.length > 0) {
-          const normInitial = initialTerms.join("").replace(/\\s+/g, "");
+          const normInitial = (Array.isArray(initialTerms) ? initialTerms.join("") : String(initialTerms)).replace(/\s+/g, "");
           const matchedIndex = list.findIndex((t) => {
             if (!t.content) return false;
-            const normT = t.content.replace(/\\s+/g, "");
+            const normT = t.content.replace(/\s+/g, "");
             return normInitial === normT;
           });
           if (matchedIndex !== -1) {
@@ -160,7 +366,6 @@ export const InlineTermsEditor = forwardRef(
             {isDropdownOpen && !loadingTerms && (
               <div className="absolute z-10 mt-1 w-full rounded-lg bg-white shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none max-h-60 overflow-y-auto">
                 <div className="py-1">
-                
                   {termsList.map((term, idx) => (
                     <div
                       key={term._id || idx}
@@ -180,16 +385,8 @@ export const InlineTermsEditor = forwardRef(
           </div>
 
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-            {previewTerms && previewTerms.length > 0 ? (
-              <div className="space-y-4">
-                {previewTerms.map((term, tIdx) => (
-                  <div
-                    key={tIdx}
-                    className="rte-content text-slate-800 text-xs sm:text-sm leading-relaxed"
-                    dangerouslySetInnerHTML={{ __html: term }}
-                  />
-                ))}
-              </div>
+            {previewTerms && (Array.isArray(previewTerms) ? previewTerms.length > 0 : String(previewTerms).trim()) ? (
+              renderStructuredTermsContent(previewTerms)
             ) : (
               <p className="text-sm text-slate-500 italic">
                 No terms selected or content is empty.
@@ -220,109 +417,7 @@ export const InlineTermsEditor = forwardRef(
 
     return (
       <div className="space-y-4">
-        {initialTerms &&
-        Array.isArray(initialTerms) &&
-        initialTerms.length > 0 ? (
-          <div className="space-y-4">
-            {initialTerms.map((term, tIdx) => (
-              <div
-                key={tIdx}
-                className="rte-content text-slate-800 text-xs sm:text-sm leading-relaxed"
-                dangerouslySetInnerHTML={{ __html: term }}
-              />
-            ))}
-          </div>
-        ) : (
-          <>
-            <p className="text-xs sm:text-sm text-slate-800 leading-relaxed">
-              Welcome to{" "}
-              <strong className="font-bold text-slate-900">
-                Holiday Circuit
-              </strong>
-              . These Terms and Conditions govern your use of the{" "}
-              <strong className="font-bold text-slate-900">
-                Holiday Circuit
-              </strong>{" "}
-              services. When You Make a booking or reservation, you agree to be
-              bound by these Terms.
-            </p>
-            <div className="space-y-2">
-              <h4 className="font-bold text-slate-900 text-sm sm:text-base">
-                Bookings and Reservations
-              </h4>
-              <ul className="list-disc pl-5 space-y-2 text-xs sm:text-sm text-slate-800">
-                <li>
-                  <strong className="font-bold text-slate-900">
-                    Booking Process:
-                  </strong>{" "}
-                  When you make a booking or reservation through{" "}
-                  <strong className="font-bold text-slate-900">
-                    Holiday Circuit
-                  </strong>
-                  , you agree to provide accurate and complete information. Any
-                  discrepancies or errors in the information you provide may
-                  result in the cancellation of your booking.
-                </li>
-              </ul>
-            </div>
-            <div className="space-y-2">
-              <p className="text-xs sm:text-sm text-slate-800 leading-relaxed">
-                <strong className="font-bold text-slate-900">Payment:</strong>{" "}
-                Payments for bookings are due as specified during the booking
-                process. Failure to make payments on time may result in the
-                cancellation of your booking.
-              </p>
-              <p className="text-xs sm:text-sm text-slate-800 leading-relaxed">
-                <strong className="font-bold text-slate-900">
-                  Cancellations and Refunds:
-                </strong>{" "}
-                Cancellation and refund policies vary depending on the type of
-                booking. Please refer to the specific cancellation policy
-                provided at the time of booking.{" "}
-                <strong className="font-bold text-slate-900">
-                  Holiday Circuit
-                </strong>{" "}
-                reserves the right to charge cancellation fees as applicable.
-              </p>
-            </div>
-            <div className="space-y-2">
-              <h4 className="font-bold text-slate-900 text-sm sm:text-base">
-                Intellectual Property
-              </h4>
-              <ul className="list-disc pl-5 space-y-2 text-xs sm:text-sm text-slate-800">
-                <li>
-                  <strong className="font-bold text-slate-900">
-                    Ownership:
-                  </strong>{" "}
-                  All content, trademarks, logos, and intellectual property on
-                  the{" "}
-                  <strong className="font-bold text-slate-900">
-                    Holiday Circuit
-                  </strong>{" "}
-                  website and app are the property of{" "}
-                  <strong className="font-bold text-slate-900">
-                    Holiday Circuit
-                  </strong>{" "}
-                  or its licensors. You may not use, reproduce, or distribute
-                  our content without prior written permission.
-                </li>
-              </ul>
-            </div>
-            <p className="text-xs sm:text-sm text-slate-800 leading-relaxed">
-              <strong className="font-bold text-slate-900">
-                Changes to Terms and Conditions:
-              </strong>{" "}
-              We reserve the right to update and modify these Terms and
-              Conditions at any time. Please review them periodically for
-              changes. Your continued use of our services after any
-              modifications indicates your acceptance of the updated Terms.
-            </p>
-            <p className="italic font-bold text-slate-900 pt-2 text-xs sm:text-sm">
-              By booking with Holiday Circuit, you acknowledge that you have
-              read, understood, and agreed to these Terms and Conditions.
-            </p>
-          </>
-        )}
+        {renderStructuredTermsContent(initialTerms)}
       </div>
     );
   },

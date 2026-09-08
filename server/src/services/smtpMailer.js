@@ -133,6 +133,7 @@ const getMailConfigError = () => {
   return null;
 };
 
+
 export const MAIL_FROM_ADDRESS =
   String(process.env.SMTP_FROM_EMAIL || "").trim() ||
   String(process.env.EMAIL_FROM || "").trim() ||
@@ -144,6 +145,8 @@ export const MAIL_REPLY_TO_ADDRESS =
   String(process.env.SUPPORT_EMAIL || "").trim() ||
   String(process.env.EMAIL_USER || "").trim() ||
   MAIL_FROM_ADDRESS;
+
+
 
 export const getEmailDeliveryErrorMessage = (error) => {
   const rawMessage = String(error?.message || "").trim();

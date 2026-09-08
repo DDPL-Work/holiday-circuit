@@ -42,7 +42,14 @@ const buildServiceMeta = (service = {}) => {
 
 const sanitizeQuoteList = (items = []) =>
   Array.isArray(items)
-    ? items.map((item) => String(item || "").trim()).filter(Boolean)
+    ? items
+        .map((item) =>
+          String(item || "")
+            .replace(/<[^>]*>?/gm, "")
+            .replace(/\s+/g, " ")
+            .trim()
+        )
+        .filter(Boolean)
     : [];
 
 const buildQuoteListText = (items = []) =>
@@ -698,8 +705,9 @@ export const buildAgentClientQuotationTemplate = (quoteDetails = {}) => {
         "Travel Insurance - recommended"
       ];
 
-  const inclusionsHtml = inclusionsList.map(item => `<li style="margin-bottom:6px; list-style-type:none;"><span style="color:#059669; font-weight:bold; margin-right:6px;">✔</span>${escapeHtml(item)}</li>`).join("");
-  const exclusionsHtml = exclusionsList.map(item => `<li style="margin-bottom:6px; list-style-type:none;"><span style="color:#dc2626; font-weight:bold; margin-right:6px;">✖</span>${escapeHtml(item)}</li>`).join("");
+  const stripHtmlTags = (str) => String(str || "").replace(/<[^>]*>?/gm, "").replace(/\s+/g, " ").trim();
+  const inclusionsHtml = inclusionsList.map(item => `<li style="margin-bottom:6px; list-style-type:none;"><span style="color:#059669; font-weight:bold; margin-right:6px;">✔</span>${escapeHtml(stripHtmlTags(item))}</li>`).join("");
+  const exclusionsHtml = exclusionsList.map(item => `<li style="margin-bottom:6px; list-style-type:none;"><span style="color:#dc2626; font-weight:bold; margin-right:6px;">✖</span>${escapeHtml(stripHtmlTags(item))}</li>`).join("");
 
   return `
     <div style="font-family: Arial, sans-serif; color: #1e293b; line-height: 1.5; max-width: 100%; margin: 0 auto; background: #ffffff; padding: 16px;">

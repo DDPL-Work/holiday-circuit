@@ -5,13 +5,19 @@ export const DEFAULT_INCLUSIONS = [];
 export const DEFAULT_EXCLUSIONS = [];
 
 export const toDisplayList = (value) => {
+  const stripHtml = (text) =>
+    String(text || "")
+      .replace(/<[^>]*>?/gm, "")
+      .replace(/\s+/g, " ")
+      .trim();
+
   if (Array.isArray(value)) {
-    return value.map((item) => String(item || "").trim()).filter(Boolean);
+    return value.map((item) => stripHtml(item)).filter(Boolean);
   }
 
   return String(value || "")
     .split(/\r?\n|,|•/)
-    .map((item) => item.trim())
+    .map((item) => stripHtml(item))
     .filter(Boolean);
 };
 
