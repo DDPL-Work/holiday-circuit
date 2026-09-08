@@ -1,7 +1,6 @@
-// Keep a real image source available even when a saved agent logo is absent.
-// The voucher is rendered in a new document/PDF canvas, so a text-only fallback
-// leaves the logo panel visibly empty.
-export const DEFAULT_FALLBACK_LOGO = "https://res.cloudinary.com/dszadvuz6/image/upload/e_trim/v1777932524/unzssx1sjkrigbgldg7h.png";
+import { DEFAULT_LOGO_BASE64 } from "./defaultLogoBase64";
+
+export const DEFAULT_FALLBACK_LOGO = DEFAULT_LOGO_BASE64;
 
 export const DEFAULT_VOUCHER_TERMS = [
   "Welcome to Holiday Circuit. These Terms and Conditions govern your use of the Holiday Circuit services. When You Make a booking or reservation, you agree to be bound by these Terms.",
@@ -225,8 +224,6 @@ export const buildVoucherHtml = (data, branding, agentBranding = {}) => {
     ""
   ).trim();
 
-  // A generated voucher should always carry the primary brand mark. Individual
-  // agent branding still takes precedence whenever it has been configured.
   const agentLogoUrl = rawLogo || (showBranding ? DEFAULT_FALLBACK_LOGO : "");
   const hasAgentBranding = showBranding && (!isAgentHolidayCircuit || Boolean(rawLogo));
 
@@ -445,46 +442,46 @@ export const buildVoucherHtml = (data, branding, agentBranding = {}) => {
     const roomDesc = h.roomDescription || h.roomDetails || "";
 
     return `
-      <table class="voucher-card" style="width: 100%; border-collapse: collapse; margin-bottom: 4px; font-size: 10.5px; border: 1px solid #b3cae8; font-family: Arial, sans-serif; page-break-inside: avoid; break-inside: avoid;">
+      <table class="voucher-card" style="width: 100%; border-collapse: collapse; margin-bottom: 3px; font-size: 10px; border: 1px solid #b3cae8; font-family: Arial, sans-serif; page-break-inside: avoid; break-inside: avoid;">
         <thead>
           <tr style="background-color: #dce8f6;">
-            <th colspan="2" style="padding: 4px 6px; font-size: 11px; font-weight: 800; color: #000000; text-align: left; border: 1px solid #b3cae8; letter-spacing: 0.2px;">
+            <th colspan="2" style="padding: 3.5px 6px; font-size: 10.5px; font-weight: 800; color: #000000; text-align: left; border: 1px solid #b3cae8; letter-spacing: 0.2px;">
               Hotel Accommodation
             </th>
           </tr>
         </thead>
         <tbody>
           <tr>
-            <td colspan="2" style="padding: 5px 6px; background-color: #ffffff; border: 1px solid #b3cae8;">
-              <div style="font-size: 12px; font-weight: 800; color: #000000; margin-bottom: 1px; line-height: 1.15;">
+            <td colspan="2" style="padding: 4px 6px; background-color: #ffffff; border: 1px solid #b3cae8;">
+              <div style="font-size: 11.5px; font-weight: 800; color: #000000; margin-bottom: 1px; line-height: 1.15;">
                 ${hHotelName}
               </div>
-              ${hServiceName ? `<div style="font-size: 10px; font-weight: 700; color: #2B5083; margin-bottom: 1px;">Service: ${hServiceName}</div>` : ''}
-              <div style="font-size: 10px; color: #334155; margin-bottom: 1px;">
+              ${hServiceName ? `<div style="font-size: 9.5px; font-weight: 700; color: #2B5083; margin-bottom: 1px;">Service: ${hServiceName}</div>` : ''}
+              <div style="font-size: 9.5px; color: #334155; margin-bottom: 1px;">
                 ${hRating}
               </div>
-              <div style="font-size: 10px; color: #1e293b; line-height: 1.2; margin-bottom: ${hDesc ? '2px' : '4px'};">
+              <div style="font-size: 9.5px; color: #1e293b; line-height: 1.2; margin-bottom: ${hDesc ? '2px' : '3px'};">
                 ${hAddress}
               </div>
-              ${hDesc ? `<div style="font-size: 9.5px; color: #475569; line-height: 1.2; margin-bottom: 4px;">${hDesc}</div>` : ''}
-              <div style="font-size: 10.5px; font-weight: 800; color: #713f12; border-top: 1px solid #e2e8f0; padding-top: 3px; margin-bottom: 4px;">
-                Confirmation: ${cnfDisplay} <span style="font-style: italic; font-size: 10px; color: ${hStatLabel === 'Confirmed' ? '#15803d' : '#e11d48'}; font-weight: 700; margin-left: 4px;">( ${hStatLabel} )</span>
+              ${hDesc ? `<div style="font-size: 9px; color: #475569; line-height: 1.2; margin-bottom: 3px;">${hDesc}</div>` : ''}
+              <div style="font-size: 10px; font-weight: 800; color: #713f12; border-top: 1px solid #e2e8f0; padding-top: 2px; margin-bottom: 3px;">
+                Confirmation: ${cnfDisplay} <span style="font-style: italic; font-size: 9.5px; color: ${hStatLabel === 'Confirmed' ? '#15803d' : '#e11d48'}; font-weight: 700; margin-left: 4px;">( ${hStatLabel} )</span>
               </div>
 
               <!-- CHECK-IN & CHECK-OUT HIGHLIGHT BOX -->
-              <table style="width: 100%; border-collapse: collapse; margin-bottom: 4px; border: 1px solid #b3cae8;">
+              <table style="width: 100%; border-collapse: collapse; margin-bottom: 3px; border: 1px solid #b3cae8;">
                 <tr>
-                  <td style="width: 14%; background-color: #fef08a; padding: 3px 5px; font-weight: 700; color: #000000; border: 1px solid #b3cae8; font-size: 10px; text-align: center;">
+                  <td style="width: 14%; background-color: #fef08a; padding: 2.5px 5px; font-weight: 700; color: #000000; border: 1px solid #b3cae8; font-size: 9.5px; text-align: center;">
                     Check-in
                   </td>
-                  <td style="width: 36%; padding: 3px 5px; background-color: #ffffff; border: 1px solid #b3cae8; font-size: 10px;">
-                    <strong style="color: #000000;">${hCheckInDate}</strong> <span style="font-style: italic; font-size: 9.5px; color: #334155;">at ${hCheckInTime}</span>
+                  <td style="width: 36%; padding: 2.5px 5px; background-color: #ffffff; border: 1px solid #b3cae8; font-size: 9.5px;">
+                    <strong style="color: #000000;">${hCheckInDate}</strong> <span style="font-style: italic; font-size: 9px; color: #334155;">at ${hCheckInTime}</span>
                   </td>
-                  <td style="width: 14%; background-color: #fef08a; padding: 3px 5px; font-weight: 700; color: #000000; border: 1px solid #b3cae8; font-size: 10px; text-align: center;">
+                  <td style="width: 14%; background-color: #fef08a; padding: 2.5px 5px; font-weight: 700; color: #000000; border: 1px solid #b3cae8; font-size: 9.5px; text-align: center;">
                     Check-out
                   </td>
-                  <td style="width: 36%; padding: 3px 5px; background-color: #ffffff; border: 1px solid #b3cae8; font-size: 10px;">
-                    <strong style="color: #000000;">${hCheckOutDate} (${hNights}N)</strong> <span style="font-style: italic; font-size: 9.5px; color: #334155;">at ${hCheckOutTime}</span> <span style="font-style: italic; font-size: 9.5px; color: ${hStatLabel === 'Confirmed' ? '#15803d' : '#e11d48'}; font-weight: 700; margin-left: 3px;">( ${hStatLabel} )</span>
+                  <td style="width: 36%; padding: 2.5px 5px; background-color: #ffffff; border: 1px solid #b3cae8; font-size: 9.5px;">
+                    <strong style="color: #000000;">${hCheckOutDate} (${hNights}N)</strong> <span style="font-style: italic; font-size: 9px; color: #334155;">at ${hCheckOutTime}</span> <span style="font-style: italic; font-size: 9px; color: ${hStatLabel === 'Confirmed' ? '#15803d' : '#e11d48'}; font-weight: 700; margin-left: 3px;">( ${hStatLabel} )</span>
                   </td>
                 </tr>
               </table>
@@ -493,24 +490,24 @@ export const buildVoucherHtml = (data, branding, agentBranding = {}) => {
               <table style="width: 100%; border-collapse: collapse; border: 1px solid #b3cae8;">
                 <thead>
                   <tr style="background-color: #dce8f6;">
-                    <th style="width: 55%; padding: 3px 5px; font-size: 10px; font-weight: 700; color: #000000; text-align: left; border: 1px solid #b3cae8;">
+                    <th style="width: 55%; padding: 2.5px 5px; font-size: 9.5px; font-weight: 700; color: #000000; text-align: left; border: 1px solid #b3cae8;">
                       Night and Meals
                     </th>
-                    <th style="width: 45%; padding: 3px 5px; font-size: 10px; font-weight: 700; color: #000000; text-align: left; border: 1px solid #b3cae8;">
+                    <th style="width: 45%; padding: 2.5px 5px; font-size: 9.5px; font-weight: 700; color: #000000; text-align: left; border: 1px solid #b3cae8;">
                       Room Type
                     </th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr>
-                    <td style="padding: 3px 5px; background-color: #ffffff; border: 1px solid #b3cae8; font-size: 10px; color: #000000; vertical-align: top;">
+                    <td style="padding: 2.5px 5px; background-color: #ffffff; border: 1px solid #b3cae8; font-size: 9.5px; color: #000000; vertical-align: top;">
                       <div style="font-weight: 600; color: #000000;">${nightMealStr}</div>
-                      ${h.mealDescription ? `<div style="font-size: 9.5px; color: #475569; margin-top: 1px;">${h.mealDescription}</div>` : ''}
+                      ${h.mealDescription ? `<div style="font-size: 9px; color: #475569; margin-top: 1px;">${h.mealDescription}</div>` : ''}
                     </td>
-                    <td style="padding: 3px 5px; background-color: #ffffff; border: 1px solid #b3cae8; font-size: 10px; color: #000000; vertical-align: top;">
+                    <td style="padding: 2.5px 5px; background-color: #ffffff; border: 1px solid #b3cae8; font-size: 9.5px; color: #000000; vertical-align: top;">
                       <div style="font-weight: 700; color: #000000;">${roomTypeStr}</div>
-                      <div style="font-size: 9.5px; color: #475569; margin-top: 1px;">${paxDetailStr}</div>
-                      ${roomDesc ? `<div style="font-size: 9.5px; color: #64748b; margin-top: 1px;">${roomDesc}</div>` : ''}
+                      <div style="font-size: 9px; color: #475569; margin-top: 1px;">${paxDetailStr}</div>
+                      ${roomDesc ? `<div style="font-size: 9px; color: #64748b; margin-top: 1px;">${roomDesc}</div>` : ''}
                     </td>
                   </tr>
                 </tbody>
@@ -520,7 +517,7 @@ export const buildVoucherHtml = (data, branding, agentBranding = {}) => {
         </tbody>
       </table>
     `;
-  }).join("") : `<div style="padding: 8px 12px; text-align: center; color: #64748b; font-style: italic; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 4px; margin-bottom: 4px; font-size: 10.5px;">No specific hotel accommodations listed for this voucher.</div>`;
+  }).join("") : `<div style="padding: 6px 10px; text-align: center; color: #64748b; font-style: italic; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 4px; margin-bottom: 3px; font-size: 10px;">No specific hotel accommodations listed for this voucher.</div>`;
 
   const nonHotelServicesHtml = nonHotelServices.map((s) => {
     const sTypeRaw = String(s.type || s.category || "Service").toLowerCase();
@@ -529,7 +526,7 @@ export const buildVoucherHtml = (data, branding, agentBranding = {}) => {
 
     const isTransport = sTypeRaw.includes("transfer") || sTypeRaw.includes("transport") || sTypeRaw.includes("cab") || sTypeRaw.includes("car");
 
-    // Format Transport Specifics (Usage/Trip Type, Passenger & Luggage Capacity)
+    // Format Transport Specifics
     const rawUsage = String(s.usageType || s.transferType || s.tripType || s.serviceMode || s.direction || "").trim();
     let usageLabel = "";
     if (rawUsage) {
@@ -658,43 +655,43 @@ export const buildVoucherHtml = (data, branding, agentBranding = {}) => {
     const sDetailsStr = `${sTitle} - ${statLabel === "Confirmed" ? "Confirmed Service" : "Service"}`;
 
     return `
-      <table class="voucher-card" style="width: 100%; border-collapse: collapse; margin-bottom: 4px; font-size: 10.5px; border: 1px solid #b3cae8; font-family: Arial, sans-serif; page-break-inside: avoid; break-inside: avoid;">
+      <table class="voucher-card" style="width: 100%; border-collapse: collapse; margin-bottom: 3px; font-size: 10px; border: 1px solid #b3cae8; font-family: Arial, sans-serif; page-break-inside: avoid; break-inside: avoid;">
         <thead>
           <tr style="background-color: #dce8f6;">
-            <th colspan="2" style="padding: 4px 6px; font-size: 11px; font-weight: 800; color: #000000; text-align: left; border: 1px solid #b3cae8; letter-spacing: 0.2px;">
+            <th colspan="2" style="padding: 3.5px 6px; font-size: 10.5px; font-weight: 800; color: #000000; text-align: left; border: 1px solid #b3cae8; letter-spacing: 0.2px;">
               ${sectionTitle}
             </th>
           </tr>
         </thead>
         <tbody>
           <tr>
-            <td colspan="2" style="padding: 5px 6px; background-color: #ffffff; border: 1px solid #b3cae8;">
-              <div style="font-size: 12px; font-weight: 800; color: #000000; margin-bottom: 1px; line-height: 1.15;">
+            <td colspan="2" style="padding: 4px 6px; background-color: #ffffff; border: 1px solid #b3cae8;">
+              <div style="font-size: 11.5px; font-weight: 800; color: #000000; margin-bottom: 1px; line-height: 1.15;">
                 ${sTitle}
               </div>
-              <div style="font-size: 10px; color: #334155; margin-bottom: 1px;">
+              <div style="font-size: 9.5px; color: #334155; margin-bottom: 1px;">
                 ${sectionTitle} • ${destinationVal}
               </div>
-              ${sDesc ? `<div style="font-size: 9.5px; color: #1e293b; line-height: 1.2; margin-bottom: 4px;">${sDesc}</div>` : `<div style="margin-bottom: 3px;"></div>`}
+              ${sDesc ? `<div style="font-size: 9px; color: #1e293b; line-height: 1.2; margin-bottom: 3px;">${sDesc}</div>` : `<div style="margin-bottom: 2px;"></div>`}
               
-              <div style="font-size: 10.5px; font-weight: 800; color: #713f12; border-top: 1px solid #e2e8f0; padding-top: 3px; margin-bottom: 4px;">
+              <div style="font-size: 10px; font-weight: 800; color: #713f12; border-top: 1px solid #e2e8f0; padding-top: 2px; margin-bottom: 3px;">
                 Confirmation: ${cnfDisplay}
               </div>
 
               <!-- SERVICE DATE & DETAILS HIGHLIGHT BOX -->
-              <table style="width: 100%; border-collapse: collapse; margin-bottom: 4px; border: 1px solid #b3cae8;">
+              <table style="width: 100%; border-collapse: collapse; margin-bottom: 3px; border: 1px solid #b3cae8;">
                 <tr>
-                  <td style="width: 14%; background-color: #fef08a; padding: 3px 5px; font-weight: 700; color: #000000; border: 1px solid #b3cae8; font-size: 10px; text-align: center;">
+                  <td style="width: 14%; background-color: #fef08a; padding: 2.5px 5px; font-weight: 700; color: #000000; border: 1px solid #b3cae8; font-size: 9.5px; text-align: center;">
                     ${badge1Label}
                   </td>
-                  <td style="width: 36%; padding: 3px 5px; background-color: #ffffff; border: 1px solid #b3cae8; font-size: 10px;">
-                    <strong style="color: #000000;">${sDateFormatted}</strong> <span style="font-style: italic; font-size: 9.5px; color: #334155;">at ${sTimeFormatted}</span>
+                  <td style="width: 36%; padding: 2.5px 5px; background-color: #ffffff; border: 1px solid #b3cae8; font-size: 9.5px;">
+                    <strong style="color: #000000;">${sDateFormatted}</strong> <span style="font-style: italic; font-size: 9px; color: #334155;">at ${sTimeFormatted}</span>
                   </td>
-                  <td style="width: 14%; background-color: #fef08a; padding: 3px 5px; font-weight: 700; color: #000000; border: 1px solid #b3cae8; font-size: 10px; text-align: center;">
+                  <td style="width: 14%; background-color: #fef08a; padding: 2.5px 5px; font-weight: 700; color: #000000; border: 1px solid #b3cae8; font-size: 9.5px; text-align: center;">
                     ${badge2Label}
                   </td>
-                  <td style="width: 36%; padding: 3px 5px; background-color: #ffffff; border: 1px solid #b3cae8; font-size: 10px;">
-                    <strong style="color: #000000;">${badge2Value}</strong> <span style="font-style: italic; font-size: 9.5px; color: ${statLabel === 'Confirmed' ? '#15803d' : '#334155'}; font-weight: 600;">( ${statLabel} )</span>
+                  <td style="width: 36%; padding: 2.5px 5px; background-color: #ffffff; border: 1px solid #b3cae8; font-size: 9.5px;">
+                    <strong style="color: #000000;">${badge2Value}</strong> <span style="font-style: italic; font-size: 9px; color: ${statLabel === 'Confirmed' ? '#15803d' : '#334155'}; font-weight: 600;">( ${statLabel} )</span>
                   </td>
                 </tr>
               </table>
@@ -703,29 +700,29 @@ export const buildVoucherHtml = (data, branding, agentBranding = {}) => {
               <table style="width: 100%; border-collapse: collapse; border: 1px solid #b3cae8;">
                 <thead>
                   <tr style="background-color: #dce8f6;">
-                    <th style="width: 58%; padding: 3px 5px; font-size: 10px; font-weight: 700; color: #000000; text-align: left; border: 1px solid #b3cae8;">
+                    <th style="width: 58%; padding: 2.5px 5px; font-size: 9.5px; font-weight: 700; color: #000000; text-align: left; border: 1px solid #b3cae8;">
                       ${subCol1Title}
                     </th>
-                    <th style="width: 42%; padding: 3px 5px; font-size: 10px; font-weight: 700; color: #000000; text-align: left; border: 1px solid #b3cae8;">
+                    <th style="width: 42%; padding: 2.5px 5px; font-size: 9.5px; font-weight: 700; color: #000000; text-align: left; border: 1px solid #b3cae8;">
                       ${subCol2Title}
                     </th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr>
-                    <td style="padding: 3px 5px; background-color: #ffffff; border: 1px solid #b3cae8; font-size: 9.5px; color: #000000; vertical-align: top;">
+                    <td style="padding: 2.5px 5px; background-color: #ffffff; border: 1px solid #b3cae8; font-size: 9px; color: #000000; vertical-align: top;">
                       <div style="font-weight: 600; color: #000000;">${sDetailsStr}</div>
                       ${isTransport ? `
-                        <div style="margin-top: 1px; font-size: 9.5px; color: #1e40af; font-weight: 600;">
+                        <div style="margin-top: 1px; font-size: 9px; color: #1e40af; font-weight: 600;">
                           ${usageLabel}${s.pickupLocation || s.dropLocation ? ` • ${s.pickupLocation || 'Pickup'} ➔ ${s.dropLocation || 'Drop'}` : ''}
                         </div>
                       ` : ''}
-                      ${sDesc ? `<div style="font-size: 9px; color: #475569; margin-top: 1px; line-height: 1.2;">${sDesc}</div>` : ''}
+                      ${sDesc ? `<div style="font-size: 8.5px; color: #475569; margin-top: 1px; line-height: 1.2;">${sDesc}</div>` : ''}
                     </td>
-                    <td style="padding: 3px 5px; background-color: #ffffff; border: 1px solid #b3cae8; font-size: 9.5px; color: #000000; vertical-align: top;">
+                    <td style="padding: 2.5px 5px; background-color: #ffffff; border: 1px solid #b3cae8; font-size: 9px; color: #000000; vertical-align: top;">
                       ${isTransport ? `
-                        <div style="font-weight: 700; color: #000000; font-size: 9.5px; margin-bottom: 2px;">${vehicleTitle}</div>
-                        <table style="width: 100%; border-collapse: collapse; font-size: 9px; color: #1e293b;">
+                        <div style="font-weight: 700; color: #000000; font-size: 9px; margin-bottom: 2px;">${vehicleTitle}</div>
+                        <table style="width: 100%; border-collapse: collapse; font-size: 8.5px; color: #1e293b;">
                           <tr>
                             <td style="padding: 1px 0; color: #475569;"><strong>Pax Cap:</strong></td>
                             <td style="padding: 1px 0; font-weight: 700; color: #0f172a; text-align: right;">${passCap}</td>
@@ -737,7 +734,7 @@ export const buildVoucherHtml = (data, branding, agentBranding = {}) => {
                         </table>
                       ` : `
                         <div style="font-weight: 600; color: #000000;">${sPaxVehicleStr}</div>
-                        <div style="font-size: 9px; color: #475569; margin-top: 1px;"><strong>Booked Pax:</strong> ${paxVal}</div>
+                        <div style="font-size: 8.5px; color: #475569; margin-top: 1px;"><strong>Booked Pax:</strong> ${paxVal}</div>
                       `}
                     </td>
                   </tr>
@@ -779,12 +776,12 @@ export const buildVoucherHtml = (data, branding, agentBranding = {}) => {
 
   const termsHtml = termsList.length > 0 ? `
     <!-- TERMS & CONDITIONS SECTION -->
-    <div style="margin-top: 4px; margin-bottom: 4px; font-family: Arial, sans-serif; page-break-inside: avoid; break-inside: avoid;">
-      <div style="font-size: 10.5px; font-weight: 800; color: #9a3412; margin-bottom: 2px;">
+    <div style="margin-top: 3px; margin-bottom: 3px; font-family: Arial, sans-serif; page-break-inside: avoid; break-inside: avoid;">
+      <div style="font-size: 10px; font-weight: 800; color: #9a3412; margin-bottom: 2px;">
         Terms &amp; Conditions:
       </div>
-      <ol style="margin: 0; padding-left: 14px; font-size: 8.5px; color: #1e293b; line-height: 1.25;">
-        ${termsList.map((t) => `<li style="margin-bottom: 1.5px;">${t.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</li>`).join("")}
+      <ol style="margin: 0; padding-left: 13px; font-size: 8px; color: #1e293b; line-height: 1.2;">
+        ${termsList.map((t) => `<li style="margin-bottom: 1px;">${t.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</li>`).join("")}
       </ol>
     </div>
   ` : "";
@@ -814,13 +811,20 @@ export const buildVoucherHtml = (data, branding, agentBranding = {}) => {
             border: 1px solid #cbd5e1;
             overflow: hidden;
             box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+          }
+          .voucher-main-content {
+            flex: 1 0 auto;
+            width: 100%;
           }
           .voucher-body {
-            padding: 6px 10px;
+            padding: 5px 10px;
           }
           .voucher-footer-wrapper {
+            margin-top: auto;
             width: 100%;
-            margin-top: 4px;
             page-break-inside: avoid;
             break-inside: avoid;
           }
@@ -843,108 +847,113 @@ export const buildVoucherHtml = (data, branding, agentBranding = {}) => {
       </head>
       <body>
         <div class="voucher-container">
-          <!-- HEADER -->
-          <table style="width: 100%; border-collapse: collapse; background: #0f1d32; border-bottom: 2px solid #3d6a8e; font-family: Arial, sans-serif;">
-            <tr>
-              <td style="padding: 6px 12px; vertical-align: middle; text-align: left; width: 35%;">
-                <div style="background: #ffffff; padding: 3px 6px; border: 1.5px solid #5a8aa8; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center; min-height: 38px; max-width: 180px; box-sizing: border-box;">
-                  ${agentLogoUrl
-                    ? `<img src="${agentLogoUrl}" crossorigin="anonymous" alt="${agentCompanyName || 'Logo'}" style="max-height: 36px; max-width: 160px; height: auto; width: auto; object-fit: contain; display: block;" onerror="this.style.display='none'; if(this.nextElementSibling) this.nextElementSibling.style.display='block';" /><div style="display: none; font-size: 13px; font-weight: 800; color: #0f1d32; line-height: 1.15; text-align: center;">${agentCompanyName || 'Holiday Circuit'}</div>`
-                    : `<div style="font-size: 13px; font-weight: 800; color: #0f1d32; line-height: 1.15; text-align: center;">${agentCompanyName || 'Holiday Circuit'}</div>`
-                  }
-                </div>
-              </td>
-              <td style="padding: 6px 12px; vertical-align: middle; text-align: right; width: 65%;">
-                <div style="color: #ffffff; font-size: 18px; font-weight: 800; letter-spacing: -0.3px; font-family: Arial, sans-serif; line-height: 1.2;">
-                  ${agentCompanyName || (showBranding ? "Holiday Circuit" : "Travel Voucher")}
-                </div>
-              </td>
-            </tr>
-          </table>
-
-          <!-- TITLE BAR -->
-          <table style="width: 100%; border-collapse: collapse; background: #1a3352; border-top: 1px solid #5a8aa8; border-bottom: 1px solid #0f1d32;">
-            <tr>
-              <td style="text-align: center; color: #ffffff; font-size: 11.5px; font-weight: 800; padding: 4px 10px; letter-spacing: 2px; text-transform: uppercase; font-family: Arial, sans-serif;">
-                Travel Voucher
-              </td>
-            </tr>
-          </table>
-
-          <!-- BODY -->
-          <div class="voucher-body">
-            <!-- OVERVIEW TABLE -->
-            <table class="voucher-card" style="width: 100%; border-collapse: collapse; margin-bottom: 4px; font-size: 10px; border: 1px solid #b3cae8; font-family: Arial, sans-serif; page-break-inside: avoid; break-inside: avoid;">
-              <thead>
-                <tr style="background-color: #dce8f6;">
-                  <th colspan="4" style="padding: 4px 6px; font-size: 10.5px; font-weight: 800; color: #000000; text-align: center; border: 1px solid #b3cae8; letter-spacing: 0.3px;">
-                    Trip ID: ${tripIdVal}
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td style="padding: 3px 6px; color: #1e293b; width: 18%; font-weight: 500; border: 1px solid #b3cae8;">Start Date</td>
-                  <td style="padding: 3px 6px; color: #000000; width: 32%; font-weight: 700; border: 1px solid #b3cae8;">${startDateOrdinal}</td>
-                  <td style="padding: 3px 6px; color: #1e293b; width: 20%; font-weight: 500; border: 1px solid #b3cae8;">Trip Duration</td>
-                  <td style="padding: 3px 6px; color: #000000; width: 30%; font-weight: 700; border: 1px solid #b3cae8;">${durationVal}</td>
-                </tr>
-                <tr>
-                  <td style="padding: 3px 6px; color: #1e293b; font-weight: 500; border: 1px solid #b3cae8;">Destination</td>
-                  <td colspan="3" style="padding: 3px 6px; color: #000000; font-weight: 700; border: 1px solid #b3cae8;">${destinationVal}</td>
-                </tr>
-                <tr>
-                  <td style="padding: 3px 6px; color: #1e293b; font-weight: 500; border: 1px solid #b3cae8;">Guest Name</td>
-                  <td style="padding: 3px 6px; color: #000000; font-weight: 700; border: 1px solid #b3cae8;">${guestNameVal}</td>
-                  <td style="padding: 3px 6px; color: #1e293b; font-weight: 500; border: 1px solid #b3cae8;">Guest Ph.</td>
-                  <td style="padding: 3px 6px; color: #000000; font-weight: 600; border: 1px solid #b3cae8;">${guestPhoneVal}</td>
-                </tr>
-                <tr>
-                  <td style="padding: 3px 6px; color: #1e293b; font-weight: 500; border: 1px solid #b3cae8;">Pax Details</td>
-                  <td colspan="3" style="padding: 3px 6px; color: #000000; font-weight: 700; border: 1px solid #b3cae8;">${paxVal}</td>
-                </tr>
-                <tr>
-                  <td style="padding: 3px 6px; color: #000000; font-weight: 700; border: 1px solid #b3cae8;">Issued By</td>
-                  <td colspan="3" style="padding: 3px 6px; color: #1e293b; font-weight: 500; border: 1px solid #b3cae8;">${issuedByVal}</td>
-                </tr>
-              </tbody>
+          <div class="voucher-main-content">
+            <!-- HEADER -->
+            <table style="width: 100%; border-collapse: collapse; background: #0f1d32; border-bottom: 2px solid #3d6a8e; font-family: Arial, sans-serif;">
+              <tr>
+                <td style="padding: 6px 12px; vertical-align: middle; text-align: left; width: 35%;">
+                  <div style="background: #ffffff; padding: 3px 6px; border: 1.5px solid #5a8aa8; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center; min-height: 38px; max-width: 180px; box-sizing: border-box;">
+                    ${agentLogoUrl
+                      ? `<img src="${agentLogoUrl}" alt="${agentCompanyName || 'Logo'}" style="max-height: 36px; max-width: 160px; height: auto; width: auto; object-fit: contain; display: block;" />`
+                      : `<div style="font-size: 13px; font-weight: 800; color: #0f1d32; line-height: 1.15; text-align: center;">${agentCompanyName || 'Holiday Circuit'}</div>`
+                    }
+                  </div>
+                </td>
+                <td style="padding: 6px 12px; vertical-align: middle; text-align: right; width: 65%;">
+                  <div style="color: #ffffff; font-size: 18px; font-weight: 800; letter-spacing: -0.3px; font-family: Arial, sans-serif; line-height: 1.2;">
+                    ${agentCompanyName || (showBranding ? "Holiday Circuit" : "Travel Voucher")}
+                  </div>
+                </td>
+              </tr>
             </table>
 
-            <!-- HOTELS SECTION -->
-            ${hotelsHtml}
-
-            <!-- TRANSFERS & ACTIVITIES SECTION -->
-            ${nonHotelServicesHtml}
-
-            <!-- TERMS & CONDITIONS SECTION -->
-            ${termsHtml}
-
-            <!-- HELPLINE SECTION -->
-            <table class="voucher-card" style="width: 100%; border-collapse: collapse; margin-bottom: 4px; font-size: 10px; border: 1px solid #b3cae8; font-family: Arial, sans-serif; page-break-inside: avoid; break-inside: avoid;">
-              <thead>
-                <tr style="background-color: #fef08a;">
-                  <th colspan="3" style="padding: 3px 6px; font-size: 10px; font-weight: 800; color: #000000; text-align: center; border: 1px solid #b3cae8;">
-                    Helpline
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td style="padding: 3px 6px; color: #000000; font-weight: 600; width: 34%; border: 1px solid #b3cae8;">${helplineCompany}</td>
-                  <td style="padding: 3px 6px; color: #000000; font-weight: 500; width: 33%; border: 1px solid #b3cae8;">24x7 Operational</td>
-                  <td style="padding: 3px 6px; color: #000000; font-weight: 700; width: 33%; border: 1px solid #b3cae8;">${helplinePhone}</td>
-                </tr>
-              </tbody>
+            <!-- TITLE BAR -->
+            <table style="width: 100%; border-collapse: collapse; background: #1a3352; border-top: 1px solid #5a8aa8; border-bottom: 1px solid #0f1d32;">
+              <tr>
+                <td style="text-align: center; color: #ffffff; font-size: 11.5px; font-weight: 800; padding: 4px 10px; letter-spacing: 2px; text-transform: uppercase; font-family: Arial, sans-serif;">
+                  Travel Voucher
+                </td>
+              </tr>
             </table>
 
-            <!-- GENERATED NOTE -->
-            <div style="text-align: right; font-size: 8.5px; color: #64748b; margin-top: 2px; font-family: Arial, sans-serif;">
-              Generated On - ${new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })} - ${new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false })} Hrs UTC
+            <!-- BODY -->
+            <div class="voucher-body">
+              <!-- OVERVIEW TABLE -->
+              <table class="voucher-card" style="width: 100%; border-collapse: collapse; margin-bottom: 3px; font-size: 9.5px; border: 1px solid #b3cae8; font-family: Arial, sans-serif; page-break-inside: avoid; break-inside: avoid;">
+                <thead>
+                  <tr style="background-color: #dce8f6;">
+                    <th colspan="4" style="padding: 3.5px 6px; font-size: 10px; font-weight: 800; color: #000000; text-align: center; border: 1px solid #b3cae8; letter-spacing: 0.3px;">
+                      Trip ID: ${tripIdVal}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td style="padding: 2.5px 6px; color: #1e293b; width: 18%; font-weight: 500; border: 1px solid #b3cae8;">Start Date</td>
+                    <td style="padding: 2.5px 6px; color: #000000; width: 32%; font-weight: 700; border: 1px solid #b3cae8;">${startDateOrdinal}</td>
+                    <td style="padding: 2.5px 6px; color: #1e293b; width: 20%; font-weight: 500; border: 1px solid #b3cae8;">Trip Duration</td>
+                    <td style="padding: 2.5px 6px; color: #000000; width: 30%; font-weight: 700; border: 1px solid #b3cae8;">${durationVal}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 2.5px 6px; color: #1e293b; font-weight: 500; border: 1px solid #b3cae8;">Destination</td>
+                    <td colspan="3" style="padding: 2.5px 6px; color: #000000; font-weight: 700; border: 1px solid #b3cae8;">${destinationVal}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 2.5px 6px; color: #1e293b; font-weight: 500; border: 1px solid #b3cae8;">Guest Name</td>
+                    <td style="padding: 2.5px 6px; color: #000000; font-weight: 700; border: 1px solid #b3cae8;">${guestNameVal}</td>
+                    <td style="padding: 2.5px 6px; color: #1e293b; font-weight: 500; border: 1px solid #b3cae8;">Guest Ph.</td>
+                    <td style="padding: 2.5px 6px; color: #000000; font-weight: 600; border: 1px solid #b3cae8;">${guestPhoneVal}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 2.5px 6px; color: #1e293b; font-weight: 500; border: 1px solid #b3cae8;">Pax Details</td>
+                    <td colspan="3" style="padding: 2.5px 6px; color: #000000; font-weight: 700; border: 1px solid #b3cae8;">${paxVal}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 2.5px 6px; color: #000000; font-weight: 700; border: 1px solid #b3cae8;">Issued By</td>
+                    <td colspan="3" style="padding: 2.5px 6px; color: #1e293b; font-weight: 500; border: 1px solid #b3cae8;">${issuedByVal}</td>
+                  </tr>
+                </tbody>
+              </table>
+
+              <!-- HOTELS SECTION -->
+              ${hotelsHtml}
+
+              <!-- TRANSFERS & ACTIVITIES SECTION -->
+              ${nonHotelServicesHtml}
+
+              <!-- TERMS & CONDITIONS SECTION -->
+              ${termsHtml}
             </div>
           </div>
 
-          <!-- FOOTER -->
+          <!-- PINNED FOOTER WRAPPER: Sits at bottom of voucher -->
           <div class="voucher-footer-wrapper">
+            <!-- HELPLINE SECTION -->
+            <div style="padding: 0 10px 3px 10px;">
+              <table class="voucher-card" style="width: 100%; border-collapse: collapse; margin-bottom: 2px; font-size: 9.5px; border: 1px solid #b3cae8; font-family: Arial, sans-serif; page-break-inside: avoid; break-inside: avoid;">
+                <thead>
+                  <tr style="background-color: #fef08a;">
+                    <th colspan="3" style="padding: 2.5px 6px; font-size: 9.5px; font-weight: 800; color: #000000; text-align: center; border: 1px solid #b3cae8;">
+                      Helpline
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td style="padding: 2.5px 6px; color: #000000; font-weight: 600; width: 34%; border: 1px solid #b3cae8;">${helplineCompany}</td>
+                    <td style="padding: 2.5px 6px; color: #000000; font-weight: 500; width: 33%; border: 1px solid #b3cae8;">24x7 Operational</td>
+                    <td style="padding: 2.5px 6px; color: #000000; font-weight: 700; width: 33%; border: 1px solid #b3cae8;">${helplinePhone}</td>
+                  </tr>
+                </tbody>
+              </table>
+
+              <!-- GENERATED NOTE -->
+              <div style="text-align: right; font-size: 8px; color: #64748b; margin-top: 1px; margin-bottom: 2px; font-family: Arial, sans-serif;">
+                Generated On - ${new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })} - ${new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false })} Hrs UTC
+              </div>
+            </div>
+
+            <!-- FOOTER BANNER / CONTACT FOOTER -->
             ${voucherFooterSrc ? `
               <div style="width:100%; text-align:center;">
                 <img src="${voucherFooterSrc}" alt="Footer Banner" style="width:100%; max-width:100%; height:auto; display:block;" />

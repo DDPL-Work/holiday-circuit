@@ -131,10 +131,28 @@ export default function BookingDetailView({
                 <span className="text-slate-300 font-normal mx-0.5">•</span>
                 {/* Badges */}
                 <div className="inline-flex items-center gap-2 ml-1 flex-wrap">
-                  <span className="px-2.5 py-0.5 rounded-md text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-300/80">
-                    {getOpsStatusBadge(selectedQuery?.opsStatus, selectedQuery)
-                      .label || "Converted"}
-                  </span>
+                  {(() => {
+                    const badge = getOpsStatusBadge(
+                      selectedQuery?.opsStatus,
+                      selectedQuery,
+                    );
+                    return (
+                      <>
+                        <span
+                          className={`px-2.5 py-0.5 rounded-md text-xs font-semibold border ${badge.bgClass}`}
+                        >
+                          {badge.label || "Converted"}
+                        </span>
+                        {badge.voucherSubtitle && (
+                          <span
+                            className="text-[11px] px-2 py-0.5 rounded-md border bg-slate-50 text-slate-600 font-medium border-slate-200 shadow-2xs inline-flex items-center"
+                          >
+                            <span>{badge.voucherSubtitle}</span>
+                          </span>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
               {/* Line 2: Calendar 14 Jul, 2026 • 2N, 3D • Users 2 Adults */}

@@ -61,28 +61,175 @@ const normalizeSellerBankDetails = (items = []) => {
   return normalizedItems.length ? normalizedItems : [...DEFAULT_SELLER_BANK_DETAILS];
 };
 
-const normalizeTermsAndConditions = (items = []) => {
-  const normalizedItems = Array.isArray(items)
-    ? items.map((item) => String(item || "").trim()).filter(Boolean)
-    : [];
+const parseStructuredTerms = (rawContent) => {
+  if (!rawContent) return [];
+  let text = "";
+  if (Array.isArray(rawContent)) {
+    text = rawContent
+      .map((item) => {
+        if (typeof item === "string") return item;
+        if (item && typeof item === "object") {
+          return item.content || item.text || item.name || item.item || item.label || "";
+        }
+        return String(item || "");
+      })
+      .join("\n");
+  } else if (typeof rawContent === "string") {
+    text = rawContent;
+  } else {
+    text = String(rawContent || "");
+  }
 
-  return normalizedItems.length ? normalizedItems : [...DEFAULT_WHATSAPP_TERMS];
+  text = text
+    .replace(/<\/(p|li|div|h[1-6]|tr|blockquote)>/gi, "\n")
+    .replace(/<br\s*[\/]?>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">");
+
+  const majorSections = [
+    "Bookings and Reservations",
+    "Travel Documents and Requirements",
+    "Changes to Itineraries & Liability",
+    "Contact Information",
+    "Intellectual Property",
+    "Changes to Terms and Conditions",
+  ];
+
+  majorSections.forEach((sec) => {
+    const reg = new RegExp(`(^|\\s|\\.|\\n)(${sec})(:?)`, "gi");
+    text = text.replace(reg, "\n\n__HEADER__$2:\n");
+  });
+
+  const subItems = [
+    "Booking Process",
+    "Payment Terms",
+    "Payment",
+    "Confirmation",
+    "Credit Card",
+    "Confirmation Vouchers",
+    "Airport Transfers & Tour Pick Ups",
+    "Airport Transfers",
+    "Taxes",
+    "Changes & Cancellations",
+    "Cancellations and Refunds",
+    "Valid ID Proof",
+    "Health & Vaccinations",
+    "Travel Insurance",
+    "Changes by [^:\n]+",
+    "Service Providers Liability",
+    "Force Majeure",
+    "Governing Law",
+    "Ownership",
+  ];
+
+  subItems.forEach((sub) => {
+    const reg = new RegExp(`(^|\\s|\\.|\\n)(${sub}):`, "gi");
+    text = text.replace(reg, "\n__SUB__$2:");
+  });
+
+  text = text
+    .replace(/(\.|\n)\s*(Minimum 50%[^\.]+?\.)/gi, "\n__NESTED__$2")
+    .replace(/(\.|\n)\s*(Remaining 50%[^\.]+?\.)/gi, "\n__NESTED__$2")
+    .replace(/(\.|\n)\s*(In Case of Airline[^\.]+?\.)/gi, "\n__NESTED__$2")
+    .replace(/(\.|\n)\s*(If a booking is under[^\.]+?\.)/gi, "\n__NESTED__$2");
+
+  text = text.replace(/([.!?])([A-Z0-9])/g, "$1\n$2");
+
+  const rawLines = text
+    .split("\n")
+    .map((l) => l.replace(/^\d+[\.\)]\s*/, "").replace(/^[•\-\*]\s*/, "").trim())
+    .filter(Boolean);
+
+  let headerCount = 0;
+  let nestedCount = 0;
+
+  const items = [];
+  rawLines.forEach((line) => {
+    if (line.startsWith("__HEADER__")) {
+      headerCount++;
+      nestedCount = 0;
+      const cleanLine = line.replace("__HEADER__", "").trim();
+      items.push({
+        type: "header",
+        level: 1,
+        number: headerCount,
+        text: `${headerCount}. ${cleanLine.replace(/:$/, "")}:`,
+        rawText: cleanLine,
+      });
+    } else if (line.startsWith("__SUB__")) {
+      nestedCount = 0;
+      const cleanLine = line.replace("__SUB__", "").trim();
+      items.push({
+        type: "subitem",
+        level: 2,
+        text: cleanLine,
+        rawText: cleanLine,
+      });
+    } else if (line.startsWith("__NESTED__")) {
+      nestedCount++;
+      const cleanLine = line.replace("__NESTED__", "").trim();
+      items.push({
+        type: "nested",
+        level: 3,
+        number: nestedCount,
+        text: cleanLine,
+        rawText: cleanLine,
+      });
+    } else {
+      items.push({
+        type: "text",
+        level: 0,
+        text: line,
+        rawText: line,
+      });
+    }
+  });
+
+  return items;
+};
+
+const buildWhatsAppTermsFormatted = (items = []) => {
+  const structuredItems = parseStructuredTerms(items);
+  if (!structuredItems.length) return "";
+
+  const lines = [
+    "\n\nTerms and Conditions\n----------",
+  ];
+
+  structuredItems.forEach((item) => {
+    if (item.type === "header") {
+      lines.push(`\n*${item.text}*`);
+    } else if (item.type === "subitem") {
+      const colonIdx = item.rawText.indexOf(":");
+      if (colonIdx > 0 && colonIdx < 40) {
+        const title = item.rawText.slice(0, colonIdx);
+        const rest = item.rawText.slice(colonIdx + 1);
+        lines.push(`• *${title}:*${rest}`);
+      } else {
+        lines.push(`• ${item.rawText}`);
+      }
+    } else if (item.type === "nested") {
+      lines.push(`   ${item.number}. ${item.rawText}`);
+    } else {
+      lines.push(item.rawText);
+    }
+  });
+
+  return lines.join("\n");
 };
 
 const buildWhatsappMessage = (quoteDetails = {}) => {
   const includeSellerBankDetails = quoteDetails?.includeSellerBankDetails !== false;
   const sellerBankDetails = normalizeSellerBankDetails(quoteDetails?.sellerBankDetails);
-  const termsAndConditions = normalizeTermsAndConditions(quoteDetails?.termsAndConditions);
   const sellerBankSection = includeSellerBankDetails && sellerBankDetails.length
     ? `\n\nSeller Bank Details\n----------\n${sellerBankDetails
       .map((item) => `${item.label}: ${item.value}`)
       .join("\n")}`
     : "";
-  const termsSection = termsAndConditions.length
-    ? `\n\nTerms and Conditions\n----------\n${termsAndConditions
-      .map((item, index) => `${index + 1}. ${item}`)
-      .join("\n")}`
-    : "";
+  const termsSection = buildWhatsAppTermsFormatted(quoteDetails?.termsAndConditions);
 
   return `
 *Holiday Circuit*

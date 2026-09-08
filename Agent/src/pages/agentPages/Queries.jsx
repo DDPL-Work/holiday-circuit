@@ -146,7 +146,7 @@ const Queries = () => {
 
   const queryCounts = useMemo(() => ({
     All: queries.length,
-    Pending: queries.filter((q) => q.agentStatus === "Pending" || q.agentStatus === "In Progress").length,
+    Pending: queries.filter((q) => q.agentStatus === "Pending" || q.agentStatus === "In Progress" || q.agentStatus === "Revision Requested").length,
     "Quote Sent": queries.filter((q) => q.agentStatus === "Quote Sent").length,
     "Client Approved": queries.filter((q) => q.agentStatus === "Client Approved").length,
     Confirmed: queries.filter((q) => q.agentStatus === "Confirmed").length,
@@ -238,7 +238,7 @@ const Queries = () => {
 
     let price = null;
     if (activeTab === "Pending" || activeTab === "In Progress") {
-      price = query.customerBudget;
+      price = query.customerBudget || query.latestQuotationPrice;
     } else if (activeTab === "Quote Sent") {
       price = query.latestQuotationPrice || query.customerBudget;
     } else if (activeTab === "Client Approved" || activeTab === "Confirmed") {
@@ -246,7 +246,7 @@ const Queries = () => {
     } else {
       if (query.agentStatus === "Confirmed" || query.agentStatus === "Client Approved") {
         price = query.approvedQuotationPrice || query.latestQuotationPrice || query.customerBudget;
-      } else if (query.agentStatus === "Quote Sent") {
+      } else if (query.agentStatus === "Quote Sent" || query.agentStatus === "Revision Requested") {
         price = query.latestQuotationPrice || query.customerBudget;
       } else {
         price = query.customerBudget;
@@ -271,7 +271,7 @@ const Queries = () => {
     if (!statusFilter || statusFilter === "All") return true;
 
     if (statusFilter === "Pending" || statusFilter === "In Progress") {
-      return query.agentStatus === "Pending" || query.agentStatus === "In Progress";
+      return query.agentStatus === "Pending" || query.agentStatus === "In Progress" || query.agentStatus === "Revision Requested";
     }
 
     return query.agentStatus === statusFilter;

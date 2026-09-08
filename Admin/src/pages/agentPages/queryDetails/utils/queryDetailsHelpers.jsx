@@ -455,31 +455,58 @@ export const fetchQuotationsByQuery = async (queryId) => {
   );
 };
 
-export const getSavedAgentBranding = ({ quote = {}, user = null }) => {
+export const getSavedAgentBranding = ({ quote = {}, user = null, query = {} } = {}) => {
+  let localUser = null;
+  let storedBrandLogo = "";
+  if (typeof window !== "undefined") {
+    try {
+      const stored = localStorage.getItem("user");
+      if (stored) localUser = JSON.parse(stored);
+      storedBrandLogo = localStorage.getItem("agentBrandLogo") || localStorage.getItem("brandLogoUrl") || "";
+    } catch (e) {}
+  }
+
+  const effectiveUser = user || localUser || {};
+
   const rawName = String(
-    user?.brandingName ||
-    user?.companyName ||
-    user?.agencyName ||
+    effectiveUser?.brandingName ||
+    effectiveUser?.companyName ||
+    effectiveUser?.agencyName ||
     quote?.agentBrandingName ||
     quote?.agencyName ||
+    query?.brandingName ||
+    query?.companyName ||
+    query?.agencyName ||
+    query?.agentName ||
     ""
   ).trim();
 
-  const name = rawName || "Holiday Circuit";
+  const name = rawName || "DDLC Company";
   const logo = String(
-    user?.brandingLogo ||
-    user?.brandLogoUrl ||
-    user?.logo ||
+    effectiveUser?.brandingLogo ||
+    effectiveUser?.brandLogoUrl ||
+    effectiveUser?.logo ||
+    effectiveUser?.profileImage ||
+    storedBrandLogo ||
     quote?.agentLogo ||
+    quote?.brandingLogo ||
+    quote?.agent?.brandingLogo ||
+    quote?.agent?.brandLogoUrl ||
+    quote?.agent?.logo ||
+    query?.brandingLogo ||
+    query?.agentLogo ||
+    query?.agent?.brandingLogo ||
+    query?.agent?.brandLogoUrl ||
+    query?.agent?.logo ||
     ""
   ).trim();
 
   return {
     name,
     logo,
-    phone: String(user?.phone || user?.companyPhone || quote?.agentPhone || "+91-8851346665").trim(),
-    email: String(user?.email || user?.companyEmail || quote?.agentEmail || "ops@holidaycircuit.com").trim(),
-    address: String(user?.companyAddress || user?.address || quote?.agentAddress || "KG 3/69, Ground Floor, Vikas Puri, New Delhi, Near UK Nursing Home, New Delhi, Delhi, India - 110018").trim(),
+    phone: String(effectiveUser?.phone || effectiveUser?.companyPhone || quote?.agentPhone || query?.agencyPhone || "+91-8851346665").trim(),
+    email: String(effectiveUser?.email || effectiveUser?.companyEmail || quote?.agentEmail || query?.agencyEmail || "ops@holidaycircuit.com").trim(),
+    address: String(effectiveUser?.companyAddress || effectiveUser?.address || quote?.agentAddress || query?.agencyAddress || "KG 3/69, Ground Floor, Vikas Puri, New Delhi, Near UK Nursing Home, New Delhi, Delhi, India - 110018").trim(),
   };
 };
 

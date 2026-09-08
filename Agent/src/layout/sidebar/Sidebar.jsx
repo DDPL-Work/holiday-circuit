@@ -54,7 +54,7 @@ const Sidebar = ({ user, mobileOpen = false, onMobileClose = () => {} }) => {
           const queriesList = res.data?.queries || [];
           const counts = {
             All: queriesList.length,
-            Pending: queriesList.filter((q) => q.agentStatus === "Pending").length,
+            Pending: queriesList.filter((q) => q.agentStatus === "Pending" || q.agentStatus === "Revision Requested").length,
             "In Progress": queriesList.filter((q) => q.agentStatus === "In Progress").length,
             "Quote Sent": queriesList.filter((q) => q.agentStatus === "Quote Sent").length,
             "Revision Requested": queriesList.filter((q) => q.agentStatus === "Revision Requested").length,

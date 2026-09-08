@@ -13,13 +13,19 @@ const DEFAULT_INCLUSIONS = [];
 const DEFAULT_EXCLUSIONS = [];
 
 const toDisplayList = (value) => {
+  const stripHtml = (text) =>
+    String(text || "")
+      .replace(/<[^>]*>?/gm, "")
+      .replace(/\s+/g, " ")
+      .trim();
+
   if (Array.isArray(value)) {
-    return value.map((item) => String(item || "").trim()).filter(Boolean);
+    return value.map((item) => stripHtml(item)).filter(Boolean);
   }
 
   return String(value || "")
     .split(/\r?\n|,|•/)
-    .map((item) => item.trim())
+    .map((item) => stripHtml(item))
     .filter(Boolean);
 };
 
@@ -336,7 +342,23 @@ export default function SharePackageModal({
               items,
             };
           })
-          .filter((t) => t.items.length > 0);
+          .filter((t) => t.items.length > 0)
+          .filter((t) => {
+            const nameLower = (t.name || "").trim().toLowerCase().replace(/\s+/g, " ");
+            if (
+              nameLower === "voucher t&c" ||
+              nameLower === "voucher tnc" ||
+              nameLower.startsWith("voucher t&c") ||
+              nameLower.startsWith("voucher tnc") ||
+              nameLower === "invoice tnc" ||
+              nameLower === "invoice t&c" ||
+              nameLower.startsWith("invoice tnc") ||
+              nameLower.startsWith("invoice t&c")
+            ) {
+              return false;
+            }
+            return true;
+          });
 
         if (isMounted) {
           setAvailableAgentTerms(parsed);
@@ -392,10 +414,11 @@ export default function SharePackageModal({
           return str;
         };
 
-        const companyNameVal = normalizeCompanyName(effectiveUser?.brandingName || effectiveUser?.companyName || effectiveUser?.agencyName, "Holiday Circuit");
-        const rawIssued = query?.voucherDetails?.issuedBy || query?.issuedBy || quote?.issuedBy;
-        const isUserName = rawIssued && ["valued client", "joy root"].includes(String(rawIssued).trim().toLowerCase());
-        const issuedByVal = (!rawIssued || isUserName || rawIssued === companyNameVal || String(rawIssued).toLowerCase().includes("ddlc")) ? "Holiday Circuit" : normalizeCompanyName(rawIssued, "Holiday Circuit");
+        const companyNameVal = normalizeCompanyName(
+          effectiveUser?.brandingName || effectiveUser?.companyName || effectiveUser?.agencyName || currentUser?.brandingName || currentUser?.companyName,
+          "DDLC Company"
+        );
+        const issuedByVal = "Holiday Circuit";
         const targetQueryId = query?._id || query?.queryId || quote?.queryId;
         let savedTourists = null;
         if (typeof window !== "undefined" && targetQueryId) {
@@ -2197,7 +2220,7 @@ export default function SharePackageModal({
   }, [adults, children, infants]);
 
   const totalPrice = Math.round(
-    Number(quote?.clientTotalAmount ?? quote?.pricing?.totalAmount ?? quote?.totalAmount ?? 14500)
+    Number(quote?.clientTotalAmount ?? quote?.pricing?.totalAmount ?? quote?.totalAmount ?? 0)
   );
 
   const gstPercent = Number(
@@ -2238,26 +2261,8 @@ export default function SharePackageModal({
   };
 
   const modalHotelServices = useMemo(() => {
-    const hs = allModalServices.filter((s) => isHotelItem(s));
-    if (hs.length > 0) return hs;
-    if (allModalServices.length === 0) {
-      return [
-        {
-          city: "Colombo",
-          title: "Amari Colombo",
-          hotelCategory: "5 Star",
-          nights: 1,
-          mealPlan: "Breakfast and Dinner",
-          roomType: "1 Superior City View",
-          pax: `${adults} Pax`,
-          checkIn: "19 Aug",
-          checkOut: "20 Aug",
-          nightLabel: "1st Night",
-        },
-      ];
-    }
-    return [];
-  }, [allModalServices, adults]);
+    return allModalServices.filter((s) => isHotelItem(s));
+  }, [allModalServices]);
 
   const modalTransferServices = useMemo(() => {
     const quoteTransfers = allModalServices.filter((s) => !isHotelItem(s) && isTransferItem(s));

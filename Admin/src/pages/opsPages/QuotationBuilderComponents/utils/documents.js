@@ -77,11 +77,182 @@ export const buildWordQuotationDocumentHtml = (quotation = {}) => {
       ? `<ul>${items.map((item) => `<li>${escapeWordHtml(item)}</li>`).join("")}</ul>`
       : `<p class="muted">Not specified</p>`;
 
-  const normalizedTerms =
-    Array.isArray(quotation.termsAndConditions) &&
-    quotation.termsAndConditions.length
-      ? quotation.termsAndConditions
-      : [...DEFAULT_WHATSAPP_TERMS];
+  const parseStructuredTerms = (rawContent) => {
+    if (!rawContent) return [];
+    let text = "";
+    if (Array.isArray(rawContent)) {
+      text = rawContent
+        .map((item) => {
+          if (typeof item === "string") return item;
+          if (item && typeof item === "object") {
+            return item.content || item.text || item.name || item.item || item.label || "";
+          }
+          return String(item || "");
+        })
+        .join("\n");
+    } else if (typeof rawContent === "string") {
+      text = rawContent;
+    } else {
+      text = String(rawContent || "");
+    }
+
+    text = text
+      .replace(/<\/(p|li|div|h[1-6]|tr|blockquote)>/gi, "\n")
+      .replace(/<br\s*[\/]?>/gi, "\n")
+      .replace(/<[^>]+>/g, "")
+      .replace(/&nbsp;/g, " ")
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">");
+
+    const majorSections = [
+      "Bookings and Reservations",
+      "Travel Documents and Requirements",
+      "Changes to Itineraries & Liability",
+      "Contact Information",
+      "Intellectual Property",
+      "Changes to Terms and Conditions",
+    ];
+
+    majorSections.forEach((sec) => {
+      const reg = new RegExp(`(^|\\s|\\.|\\n)(${sec})(:?)`, "gi");
+      text = text.replace(reg, "\n\n__HEADER__$2:\n");
+    });
+
+    const subItems = [
+      "Booking Process",
+      "Payment Terms",
+      "Payment",
+      "Confirmation",
+      "Credit Card",
+      "Confirmation Vouchers",
+      "Airport Transfers & Tour Pick Ups",
+      "Airport Transfers",
+      "Taxes",
+      "Changes & Cancellations",
+      "Cancellations and Refunds",
+      "Valid ID Proof",
+      "Health & Vaccinations",
+      "Travel Insurance",
+      "Changes by [^:\n]+",
+      "Service Providers Liability",
+      "Force Majeure",
+      "Governing Law",
+      "Ownership",
+    ];
+
+    subItems.forEach((sub) => {
+      const reg = new RegExp(`(^|\\s|\\.|\\n)(${sub}):`, "gi");
+      text = text.replace(reg, "\n__SUB__$2:");
+    });
+
+    text = text
+      .replace(/(\.|\n)\s*(Minimum 50%[^\.]+?\.)/gi, "\n__NESTED__$2")
+      .replace(/(\.|\n)\s*(Remaining 50%[^\.]+?\.)/gi, "\n__NESTED__$2")
+      .replace(/(\.|\n)\s*(In Case of Airline[^\.]+?\.)/gi, "\n__NESTED__$2")
+      .replace(/(\.|\n)\s*(If a booking is under[^\.]+?\.)/gi, "\n__NESTED__$2");
+
+    text = text.replace(/([.!?])([A-Z0-9])/g, "$1\n$2");
+
+    const rawLines = text
+      .split("\n")
+      .map((l) => l.replace(/^\d+[\.\)]\s*/, "").replace(/^[•\-\*]\s*/, "").trim())
+      .filter(Boolean);
+
+    let headerCount = 0;
+    let nestedCount = 0;
+
+    const items = [];
+    rawLines.forEach((line) => {
+      if (line.startsWith("__HEADER__")) {
+        headerCount++;
+        nestedCount = 0;
+        const cleanLine = line.replace("__HEADER__", "").trim();
+        items.push({
+          type: "header",
+          level: 1,
+          number: headerCount,
+          text: `${headerCount}. ${cleanLine.replace(/:$/, "")}`,
+          rawText: cleanLine,
+        });
+      } else if (line.startsWith("__SUB__")) {
+        nestedCount = 0;
+        const cleanLine = line.replace("__SUB__", "").trim();
+        items.push({
+          type: "subitem",
+          level: 2,
+          text: `• ${cleanLine}`,
+          rawText: cleanLine,
+        });
+      } else if (line.startsWith("__NESTED__")) {
+        nestedCount++;
+        const cleanLine = line.replace("__NESTED__", "").trim();
+        items.push({
+          type: "nested",
+          level: 3,
+          number: nestedCount,
+          text: `${nestedCount}. ${cleanLine}`,
+          rawText: cleanLine,
+        });
+      } else {
+        items.push({
+          type: "text",
+          level: 0,
+          text: line,
+          rawText: line,
+        });
+      }
+    });
+
+    return items;
+  };
+
+  const formatTermsForWordDoc = (terms) => {
+    const items = parseStructuredTerms(terms);
+    if (!items.length) {
+      return `<p class="muted">Not specified</p>`;
+    }
+
+    let html = "";
+    let inSubList = false;
+    let inNestedList = false;
+
+    items.forEach((item) => {
+      if (item.type === "text") {
+        if (inNestedList) { html += "</ol>"; inNestedList = false; }
+        if (inSubList) { html += "</ul>"; inSubList = false; }
+        html += `<p style="margin: 0 0 8px 0; font-size: 11pt; color: #1e293b; line-height: 1.5;">${escapeWordHtml(item.rawText)}</p>`;
+      } else if (item.type === "header") {
+        if (inNestedList) { html += "</ol>"; inNestedList = false; }
+        if (inSubList) { html += "</ul>"; inSubList = false; }
+        html += `<h4 style="margin: 12px 0 6px 0; font-size: 11pt; font-weight: bold; color: #0f172a;">${escapeWordHtml(item.text)}</h4>`;
+      } else if (item.type === "subitem") {
+        if (inNestedList) { html += "</ol>"; inNestedList = false; }
+        if (!inSubList) { html += '<ul style="margin: 4px 0 8px 20px; padding: 0; list-style-type: disc;">'; inSubList = true; }
+        
+        const colonIdx = item.rawText.indexOf(":");
+        if (colonIdx > 0 && colonIdx < 40) {
+          const label = item.rawText.slice(0, colonIdx + 1);
+          const rest = item.rawText.slice(colonIdx + 1);
+          html += `<li style="margin-bottom: 5px; font-size: 10.5pt; color: #1e293b; line-height: 1.45;"><strong>${escapeWordHtml(label)}</strong>${escapeWordHtml(rest)}</li>`;
+        } else {
+          html += `<li style="margin-bottom: 5px; font-size: 10.5pt; color: #1e293b; line-height: 1.45;">${escapeWordHtml(item.rawText)}</li>`;
+        }
+      } else if (item.type === "nested") {
+        if (!inNestedList) {
+          if (!inSubList) { html += '<ul style="margin: 4px 0 8px 20px; padding: 0; list-style-type: disc;">'; inSubList = true; }
+          html += '<ol style="margin: 4px 0 6px 22px; padding: 0; list-style-type: decimal;">';
+          inNestedList = true;
+        }
+        html += `<li style="margin-bottom: 4px; font-size: 10pt; color: #1e293b; line-height: 1.4;">${escapeWordHtml(item.rawText)}</li>`;
+      }
+    });
+
+    if (inNestedList) html += "</ol>";
+    if (inSubList) html += "</ul>";
+
+    return html;
+  };
 
   const bankMarkup = (quotation.sellerBankDetails || [])
     .map(
@@ -175,7 +346,7 @@ export const buildWordQuotationDocumentHtml = (quotation = {}) => {
     </table>
 
     <h2>Terms and Conditions</h2>
-    <div class="card">${listMarkup(normalizedTerms)}</div>
+    <div class="card">${formatTermsForWordDoc(quotation.termsAndConditions)}</div>
   </body>
 </html>`;
 };

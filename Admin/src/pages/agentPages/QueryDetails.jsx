@@ -2274,7 +2274,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
               const isClientApprovedQuote = normalizedQuoteStatus === "Confirmed";
 
               const opsQuoteAmount = Number(
-                quote?.pricing?.totalAmount ?? quote?.totalAmount ?? 14500
+                quote?.pricing?.totalAmount ?? quote?.totalAmount ?? 0
               );
               const activeQuotePrice = Number(
                 quote?.clientTotalAmount ?? opsQuoteAmount
@@ -2447,7 +2447,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                       <div className="divide-y divide-slate-100 shrink-0">
                         {displayQuotesList.map((item, qIdx) => {
                           const itemPrice = Number(
-                            item?.clientTotalAmount ?? item?.pricing?.totalAmount ?? item?.totalAmount ?? 14500
+                            item?.clientTotalAmount ?? item?.pricing?.totalAmount ?? item?.totalAmount ?? 0
                           );
                           const isSelected = selectedQuoteId
                             ? item._id === selectedQuoteId
@@ -2829,69 +2829,6 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                               </thead>
                               <tbody className="divide-y divide-slate-200 text-slate-700">
                                 {(() => {
-                                  const defaultHotels = [
-                                    {
-                                      nightLabel: "1st",
-                                      dateStr: "19 Aug",
-                                      hotelName: "Amari Colombo",
-                                      city: "Colombo",
-                                      starCount: 5,
-                                      meal: "Breakfast and Dinner",
-                                      room: "1 Superior City View",
-                                      nights: 1,
-                                      pax: "2 Pax",
-                                      price: "1",
-                                    },
-                                    {
-                                      nightLabel: "2nd",
-                                      dateStr: "20 Aug",
-                                      hotelName: "Grand Kandyan",
-                                      city: "Kandy",
-                                      starCount: 5,
-                                      meal: "Breakfast and Dinner",
-                                      room: "1 Deluxe Room",
-                                      nights: 1,
-                                      pax: "2 Pax",
-                                      price: "1",
-                                    },
-                                    {
-                                      nightLabel: "3rd",
-                                      dateStr: "21 Aug",
-                                      hotelName: "Grand Kandyan",
-                                      city: "Kandy",
-                                      starCount: 5,
-                                      meal: "Breakfast and Dinner",
-                                      room: "1 Deluxe Room",
-                                      nights: 1,
-                                      pax: "2 Pax",
-                                      price: "1",
-                                    },
-                                    {
-                                      nightLabel: "4th",
-                                      dateStr: "22 Aug",
-                                      hotelName: "Occidental Eden",
-                                      city: "Bentota",
-                                      starCount: 5,
-                                      meal: "Breakfast and Dinner",
-                                      room: "1 Superior Ocean View",
-                                      nights: 1,
-                                      pax: "2 Pax",
-                                      price: "7,248.50",
-                                    },
-                                    {
-                                      nightLabel: "5th",
-                                      dateStr: "23 Aug",
-                                      hotelName: "Occidental Eden",
-                                      city: "Bentota",
-                                      starCount: 5,
-                                      meal: "Breakfast and Dinner",
-                                      room: "1 Superior Ocean View",
-                                      nights: 1,
-                                      pax: "2 Pax",
-                                      price: "7,248.50",
-                                    },
-                                  ];
-
                                   const rowsToRender = hotelServices.length > 0
                                     ? hotelServices.map((s, idx) => {
                                       const startDate = query?.startDate ? new Date(query.startDate) : new Date("2026-08-19");
@@ -2957,10 +2894,10 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                                       return {
                                         nightLabel: `${nightNum}${nightSuffix}`,
                                         dateStr: currentDate.toLocaleDateString("en-IN", { day: "numeric", month: "short" }),
-                                        hotelName: s.title || s.hotelName || s.name || "Amari Colombo",
-                                        city: s.city || query?.destination || "Colombo",
+                                        hotelName: s.title || s.hotelName || s.name || "Hotel",
+                                        city: s.city || query?.destination || "",
                                         starCount: stars,
-                                        meal: s.mealPlan || s.description || "Breakfast and Dinner",
+                                        meal: s.mealPlan || s.description || "As per plan",
                                         room: `${s.rooms || 1} ${rType}`,
                                         roomCategory: rCat,
                                         bedType: bType,
@@ -2972,110 +2909,113 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                                         price: itemPrice > 0 ? Number(itemPrice).toLocaleString("en-IN") : "0",
                                       };
                                     })
-                                    : defaultHotels;
-
-                                  const totalAcc = rowsToRender.reduce((acc, r) => {
-                                    const val = Number(String(r.price || "0").replace(/,/g, "")) || 0;
-                                    return acc + val;
-                                  }, 0);
+                                    : [];
 
                                   return (
                                     <>
-                                      {rowsToRender.map((row, rIdx) => (
-                                        <tr key={rIdx} className="hover:bg-slate-50/50 transition-colors">
-                                          <td className="py-3.5 px-4 align-top">
-                                            <p className="font-bold text-slate-900 text-sm">{row.nightLabel}</p>
-                                            <p className="text-xs text-slate-400 font-normal mt-0.5">{row.dateStr}</p>
-                                          </td>
-                                          <td className="py-3.5 px-4 align-top">
-                                            <p className="font-bold text-slate-900 text-sm">{row.hotelName}</p>
-                                            <div className="flex items-center gap-1.5 text-xs text-slate-500 font-normal mt-0.5 flex-wrap">
-                                              <span>{row.city}, {row.starCount || 5} Star</span>
-                                              <div className="flex items-center gap-0.5 text-amber-400 ml-0.5">
-                                                {Array.from({ length: row.starCount || 5 }).map((_, sIdx) => (
-                                                  <MdStarBorderPurple500 key={sIdx} className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                                                ))}
-                                              </div>
-                                            </div>
-                                            {/* Room Category, Bed Type, Room Type Badges */}
-                                            <div className="flex items-center gap-1 flex-wrap text-[10.5px] mt-1.5">
-                                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 font-semibold border border-slate-200">
-                                                <span className="text-slate-400 font-bold uppercase text-[9px]">Cat:</span> {row.roomCategory || "Double"}
-                                              </span>
-                                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 font-semibold border border-slate-200">
-                                                <span className="text-slate-400 font-bold uppercase text-[9px]">Bed:</span> {row.bedType || "King"}
-                                              </span>
-                                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-blue-50 text-blue-800 font-semibold border border-blue-200">
-                                                <span className="text-blue-400 font-bold uppercase text-[9px]">Type:</span> {row.roomType || "Superior Room"}
-                                              </span>
-                                            </div>
-                                          </td>
-                                          <td className="py-3.5 px-4 align-top text-[11px] text-slate-500 font-normal leading-snug">
-                                            {(() => {
-                                              const text = String(row.meal || "");
-                                              const parts = text.split(/\s*\|\s*/).filter(Boolean);
-                                              if (parts.length <= 2) {
-                                                return (
-                                                  <p>
-                                                    {parts.map((p, i) => (
-                                                      <span key={i}>
-                                                        {i > 0 && <span className="text-slate-400 font-medium mx-1">|</span>}
-                                                        {p}
-                                                      </span>
-                                                    ))}
-                                                  </p>
-                                                );
-                                              }
-                                              const mid = Math.ceil(parts.length / 2);
-                                              const line1Parts = parts.slice(0, mid);
-                                              const line2Parts = parts.slice(mid);
-                                              return (
-                                                <div className="space-y-0.5">
-                                                  <p>
-                                                    {line1Parts.map((p, i) => (
-                                                      <span key={i}>
-                                                        {i > 0 && <span className="text-slate-400 font-medium mx-1">|</span>}
-                                                        {p}
-                                                      </span>
-                                                    ))}
-                                                    <span className="text-slate-400 font-medium mx-1">|</span>
-                                                  </p>
-                                                  <p>
-                                                    {line2Parts.map((p, i) => (
-                                                      <span key={i}>
-                                                        {i > 0 && <span className="text-slate-400 font-medium mx-1">|</span>}
-                                                        {p}
-                                                      </span>
-                                                    ))}
-                                                  </p>
+                                      {rowsToRender.length > 0 ? (
+                                        rowsToRender.map((row, rIdx) => (
+                                          <tr key={rIdx} className="hover:bg-slate-50/50 transition-colors">
+                                            <td className="py-3.5 px-4 align-top">
+                                              <p className="font-bold text-slate-900 text-sm">{row.nightLabel}</p>
+                                              <p className="text-xs text-slate-400 font-normal mt-0.5">{row.dateStr}</p>
+                                            </td>
+                                            <td className="py-3.5 px-4 align-top">
+                                              <p className="font-bold text-slate-900 text-sm">{row.hotelName}</p>
+                                              <div className="flex items-center gap-1.5 text-xs text-slate-500 font-normal mt-0.5 flex-wrap">
+                                                <span>{row.city ? `${row.city}, ` : ""}{row.starCount || 5} Star</span>
+                                                <div className="flex items-center gap-0.5 text-amber-400 ml-0.5">
+                                                  {Array.from({ length: row.starCount || 5 }).map((_, sIdx) => (
+                                                    <MdStarBorderPurple500 key={sIdx} className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                                                  ))}
                                                 </div>
-                                              );
-                                            })()}
-                                          </td>
-                                          <td className="py-3.5 px-4 align-top">
-                                            <p className="font-bold text-slate-900 text-sm">{row.room}</p>
-                                            <p className="text-xs text-slate-400 font-normal mt-0.5">
-                                              {row.nights ? `${row.nights} Night${row.nights > 1 ? "s" : ""} • ` : "1 Night • "}{row.pax}
-                                            </p>
-                                          </td>
-                                          <td className="py-3.5 px-4 align-top text-right whitespace-nowrap">
-                                            <p className="text-base font-bold text-slate-900">
-                                              <span className="text-[11px] text-slate-400 font-normal uppercase mr-1">INR</span>
-                                              {row.price}
-                                            </p>
-                                            {row.nightlyRateLabel && (
-                                              <p className="text-[11px] font-medium text-slate-600 mt-0.5">
-                                                {row.nightlyRateLabel}
+                                              </div>
+                                              {/* Room Category, Bed Type, Room Type Badges */}
+                                              <div className="flex items-center gap-1 flex-wrap text-[10.5px] mt-1.5">
+                                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 font-semibold border border-slate-200">
+                                                  <span className="text-slate-400 font-bold uppercase text-[9px]">Cat:</span> {row.roomCategory || "Double"}
+                                                </span>
+                                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 font-semibold border border-slate-200">
+                                                  <span className="text-slate-400 font-bold uppercase text-[9px]">Bed:</span> {row.bedType || "King"}
+                                                </span>
+                                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-blue-50 text-blue-800 font-semibold border border-blue-200">
+                                                  <span className="text-blue-400 font-bold uppercase text-[9px]">Type:</span> {row.roomType || "Superior Room"}
+                                                </span>
+                                              </div>
+                                            </td>
+                                            <td className="py-3.5 px-4 align-top text-[11px] text-slate-500 font-normal leading-snug">
+                                              {(() => {
+                                                const text = String(row.meal || "");
+                                                const parts = text.split(/\s*\|\s*/).filter(Boolean);
+                                                if (parts.length <= 2) {
+                                                  return (
+                                                    <p>
+                                                      {parts.map((p, i) => (
+                                                        <span key={i}>
+                                                          {i > 0 && <span className="text-slate-400 font-medium mx-1">|</span>}
+                                                          {p}
+                                                        </span>
+                                                      ))}
+                                                    </p>
+                                                  );
+                                                }
+                                                const mid = Math.ceil(parts.length / 2);
+                                                const line1Parts = parts.slice(0, mid);
+                                                const line2Parts = parts.slice(mid);
+                                                return (
+                                                  <div className="space-y-0.5">
+                                                    <p>
+                                                      {line1Parts.map((p, i) => (
+                                                        <span key={i}>
+                                                          {i > 0 && <span className="text-slate-400 font-medium mx-1">|</span>}
+                                                          {p}
+                                                        </span>
+                                                      ))}
+                                                      <span className="text-slate-400 font-medium mx-1">|</span>
+                                                    </p>
+                                                    <p>
+                                                      {line2Parts.map((p, i) => (
+                                                        <span key={i}>
+                                                          {i > 0 && <span className="text-slate-400 font-medium mx-1">|</span>}
+                                                          {p}
+                                                        </span>
+                                                      ))}
+                                                    </p>
+                                                  </div>
+                                                );
+                                              })()}
+                                            </td>
+                                            <td className="py-3.5 px-4 align-top">
+                                              <p className="font-bold text-slate-900 text-sm">{row.room}</p>
+                                              <p className="text-xs text-slate-400 font-normal mt-0.5">
+                                                {row.nights ? `${row.nights} Night${row.nights > 1 ? "s" : ""} • ` : "1 Night • "}{row.pax}
                                               </p>
-                                            )}
-                                            {row.breakdownDetailLabel && (
-                                              <p className="text-[10px] font-normal text-slate-400 mt-0.5">
-                                                {row.breakdownDetailLabel}
+                                            </td>
+                                            <td className="py-3.5 px-4 align-top text-right whitespace-nowrap">
+                                              <p className="text-base font-bold text-slate-900">
+                                                <span className="text-[11px] text-slate-400 font-normal uppercase mr-1">INR</span>
+                                                {row.price}
                                               </p>
-                                            )}
+                                              {row.nightlyRateLabel && (
+                                                <p className="text-[11px] font-medium text-slate-600 mt-0.5">
+                                                  {row.nightlyRateLabel}
+                                                </p>
+                                              )}
+                                              {row.breakdownDetailLabel && (
+                                                <p className="text-[10px] font-normal text-slate-400 mt-0.5">
+                                                  {row.breakdownDetailLabel}
+                                                </p>
+                                              )}
+                                            </td>
+                                          </tr>
+                                        ))
+                                      ) : (
+                                        <tr>
+                                          <td colSpan={5} className="py-8 px-4 text-center text-xs text-slate-400 font-medium bg-slate-50/30">
+                                            No accommodation services added
                                           </td>
                                         </tr>
-                                      ))}
+                                      )}
                                     </>
                                   );
                                 })()}
@@ -3106,7 +3046,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                                       }
                                       return acc + calcItemPrice;
                                     }, 0)
-                                  : 14500
+                                  : 0
                               ).toLocaleString("en-IN")}
                             </span>
                           </div>
@@ -3122,36 +3062,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                           return cat.includes("transfer") || cat.includes("transport") || cat.includes("cab") || cat.includes("car") || cat.includes("drop") || cat.includes("pickup") || cat.includes("airport");
                         });
 
-                        const defaultTransferGroups = [
-                          {
-                            dayLabel: "1st Day",
-                            dateStr: "26 Dec 2026",
-                            items: [
-                              {
-                                title: "Calangute North Goa Sightseeing",
-                                description: "Calangute | Baga | Anjuna | Fort Aguada | 8 Hours | Driver | Fuel Included",
-                                qty: "full day | 6 Pax | SUV",
-                                rateBreakdown: "0",
-                                price: "4,000",
-                              },
-                            ],
-                          },
-                          {
-                            dayLabel: "2nd Day",
-                            dateStr: "27 Dec 2026",
-                            items: [
-                              {
-                                title: "Margao Airport South Goa Transfer",
-                                description: "Goa Airport to Margao Hotel | AC Sedan | Driver Included | Meet & Greet",
-                                qty: "point to point | 3 Pax | Sedan",
-                                rateBreakdown: "0",
-                                price: "2,400",
-                              },
-                            ],
-                          },
-                        ];
-
-                        let displayTransferGroups = defaultTransferGroups;
+                        let displayTransferGroups = [];
 
                         if (transferServices.length > 0) {
                           const groupMap = {};
@@ -3224,99 +3135,105 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
 
                             {/* Card Body Grid */}
                             <div className="rounded-xl border border-slate-200 bg-white overflow-hidden shadow-2xs">
-                              <div className="divide-y divide-slate-100">
-                                {displayTransferGroups.map((group, gIdx) => (
-                                  <div
-                                    key={gIdx}
-                                    className="flex flex-col sm:flex-row p-4 gap-3 sm:gap-6 hover:bg-slate-50/40 transition-colors"
-                                  >
-                                    {/* Left Day Column */}
-                                    <div className="w-full sm:w-28 lg:w-32 shrink-0">
-                                      <p className="font-bold text-slate-900 text-sm">{group.dayLabel}</p>
-                                      <p className="text-xs text-slate-500 font-medium mt-0.5">{group.dateStr}</p>
-                                    </div>
+                              {displayTransferGroups.length > 0 ? (
+                                <div className="divide-y divide-slate-100">
+                                  {displayTransferGroups.map((group, gIdx) => (
+                                    <div
+                                      key={gIdx}
+                                      className="flex flex-col sm:flex-row p-4 gap-3 sm:gap-6 hover:bg-slate-50/40 transition-colors"
+                                    >
+                                      {/* Left Day Column */}
+                                      <div className="w-full sm:w-28 lg:w-32 shrink-0">
+                                        <p className="font-bold text-slate-900 text-sm">{group.dayLabel}</p>
+                                        <p className="text-xs text-slate-500 font-medium mt-0.5">{group.dateStr}</p>
+                                      </div>
 
-                                    {/* Right Items Column */}
-                                    <div className="flex-1 space-y-3">
-                                      {group.items.map((item, iIdx) => (
-                                        <div
-                                          key={iIdx}
-                                          className="rounded-lg border border-slate-200/80 bg-white p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs hover:border-slate-300 transition-colors"
-                                        >
-                                          {/* Left: Title & Description */}
-                                          <div className="flex-1 min-w-0">
-                                            <h4 className="font-bold text-slate-900 text-sm leading-snug">
-                                              {item.title}
-                                            </h4>
-                                            {item.description && (() => {
-                                              const text = String(item.description || "");
-                                              const parts = text.split(/\s*\|\s*/).filter(Boolean);
-                                              if (parts.length <= 3) {
-                                                return <p className="text-xs text-slate-500 font-normal mt-1 leading-relaxed">{text}</p>;
-                                              }
-                                              let breakIdx = 4;
-                                              for (let i = 0; i < parts.length; i++) {
-                                                const p = parts[i].toLowerCase();
-                                                if (p.includes("hours") || p.includes("full day") || p.includes("half day")) {
-                                                  breakIdx = i + 1;
-                                                  break;
+                                      {/* Right Items Column */}
+                                      <div className="flex-1 space-y-3">
+                                        {group.items.map((item, iIdx) => (
+                                          <div
+                                            key={iIdx}
+                                            className="rounded-lg border border-slate-200/80 bg-white p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs hover:border-slate-300 transition-colors"
+                                          >
+                                            {/* Left: Title & Description */}
+                                            <div className="flex-1 min-w-0">
+                                              <h4 className="font-bold text-slate-900 text-sm leading-snug">
+                                                {item.title}
+                                              </h4>
+                                              {item.description && (() => {
+                                                const text = String(item.description || "");
+                                                const parts = text.split(/\s*\|\s*/).filter(Boolean);
+                                                if (parts.length <= 3) {
+                                                  return <p className="text-xs text-slate-500 font-normal mt-1 leading-relaxed">{text}</p>;
                                                 }
-                                              }
-                                              if (breakIdx >= parts.length) breakIdx = Math.ceil(parts.length / 2);
-                                              const line1 = parts.slice(0, breakIdx).join(" | ") + " |";
-                                              const line2 = parts.slice(breakIdx).join(" | ");
-                                              return (
-                                                <div className="text-xs text-slate-500 font-normal mt-1 leading-relaxed space-y-0.5">
-                                                  <p>{line1}</p>
-                                                  <p>{line2}</p>
-                                                </div>
-                                              );
-                                            })()}
-                                            <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
-                                              {item.pickupTime && (
-                                                <span className="inline-flex items-center gap-1 rounded bg-amber-50 px-2 py-0.5 font-semibold text-amber-800 border border-amber-200">
-                                                  ⏰ Pickup Time: {item.pickupTime}
-                                                </span>
-                                              )}
-                                              {item.passengerCap && (
-                                                <span className="inline-flex items-center gap-1 rounded bg-slate-100 px-2 py-0.5 font-medium text-slate-700 border border-slate-200">
-                                                  👥 Max Pax: {item.passengerCap} Passengers
-                                                </span>
-                                              )}
-                                              {item.luggageCap && (
-                                                <span className="inline-flex items-center gap-1 rounded bg-slate-100 px-2 py-0.5 font-medium text-slate-700 border border-slate-200">
-                                                  🧳 Luggage: {item.luggageCap} Bags
-                                                </span>
+                                                let breakIdx = 4;
+                                                for (let i = 0; i < parts.length; i++) {
+                                                  const p = parts[i].toLowerCase();
+                                                  if (p.includes("hours") || p.includes("full day") || p.includes("half day")) {
+                                                    breakIdx = i + 1;
+                                                    break;
+                                                  }
+                                                }
+                                                if (breakIdx >= parts.length) breakIdx = Math.ceil(parts.length / 2);
+                                                const line1 = parts.slice(0, breakIdx).join(" | ") + " |";
+                                                const line2 = parts.slice(breakIdx).join(" | ");
+                                                return (
+                                                  <div className="text-xs text-slate-500 font-normal mt-1 leading-relaxed space-y-0.5">
+                                                    <p>{line1}</p>
+                                                    <p>{line2}</p>
+                                                  </div>
+                                                );
+                                              })()}
+                                              <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
+                                                {item.pickupTime && (
+                                                  <span className="inline-flex items-center gap-1 rounded bg-amber-50 px-2 py-0.5 font-semibold text-amber-800 border border-amber-200">
+                                                    ⏰ Pickup Time: {item.pickupTime}
+                                                  </span>
+                                                )}
+                                                {item.passengerCap && (
+                                                  <span className="inline-flex items-center gap-1 rounded bg-slate-100 px-2 py-0.5 font-medium text-slate-700 border border-slate-200">
+                                                    👥 Max Pax: {item.passengerCap} Passengers
+                                                  </span>
+                                                )}
+                                                {item.luggageCap && (
+                                                  <span className="inline-flex items-center gap-1 rounded bg-slate-100 px-2 py-0.5 font-medium text-slate-700 border border-slate-200">
+                                                    🧳 Luggage: {item.luggageCap} Bags
+                                                  </span>
+                                                )}
+                                              </div>
+                                            </div>
+
+                                            {/* Middle: QTY Column (Center Aligned, Fixed Width) */}
+                                            <div className="text-left sm:text-center shrink-0 w-44 sm:w-56">
+                                              <p className="font-bold text-slate-900 text-sm">{item.usageLabel}</p>
+                                              <p className="text-xs text-slate-600 font-semibold mt-0.5">{item.paxDisplay}</p>
+                                              <p className="text-[11px] text-slate-400 font-normal mt-0.5">{item.vehicleStr}</p>
+                                              {item.rateBreakdown && item.rateBreakdown !== "0" && (
+                                                <p className="text-[11px] text-slate-400 font-normal mt-1">
+                                                  {item.rateBreakdown}
+                                                </p>
                                               )}
                                             </div>
-                                          </div>
 
-                                          {/* Middle: QTY Column (Center Aligned, Fixed Width) */}
-                                          <div className="text-left sm:text-center shrink-0 w-44 sm:w-56">
-                                            <p className="font-bold text-slate-900 text-sm">{item.usageLabel}</p>
-                                            <p className="text-xs text-slate-600 font-semibold mt-0.5">{item.paxDisplay}</p>
-                                            <p className="text-[11px] text-slate-400 font-normal mt-0.5">{item.vehicleStr}</p>
-                                            {item.rateBreakdown && item.rateBreakdown !== "0" && (
-                                              <p className="text-[11px] text-slate-400 font-normal mt-1">
-                                                {item.rateBreakdown}
+                                            {/* Right: Price */}
+                                            <div className="text-left sm:text-right shrink-0 whitespace-nowrap">
+                                              <p className="text-sm font-bold text-slate-900">
+                                                <span className="text-[10px] text-slate-400 font-normal uppercase mr-1">INR</span>
+                                                {item.price}
                                               </p>
-                                            )}
+                                              <p className="text-[11px] text-slate-400 font-normal mt-0.5">/ N/A</p>
+                                            </div>
                                           </div>
-
-                                          {/* Right: Price */}
-                                          <div className="text-left sm:text-right shrink-0 whitespace-nowrap">
-                                            <p className="text-sm font-bold text-slate-900">
-                                              <span className="text-[10px] text-slate-400 font-normal uppercase mr-1">INR</span>
-                                              {item.price}
-                                            </p>
-                                            <p className="text-[11px] text-slate-400 font-normal mt-0.5">/ N/A</p>
-                                          </div>
-                                        </div>
-                                      ))}
+                                        ))}
+                                      </div>
                                     </div>
-                                  </div>
-                                ))}
-                              </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <div className="py-8 px-4 text-center text-xs text-slate-400 font-medium bg-slate-50/30">
+                                  No transfer or transportation services added
+                                </div>
+                              )}
                             </div>
 
                             {/* Transfers Footer Total (Standalone under card) */}
@@ -3340,44 +3257,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                           return cat.includes("activity") || cat.includes("sightseeing") || cat.includes("excursion") || cat.includes("tour");
                         });
 
-                        const defaultActivityGroups = [
-                          {
-                            dayLabel: "1st Day",
-                            dateStr: "28 Dec 2026",
-                            items: [
-                              {
-                                title: "South Goa Beach Hopping",
-                                description: "Palolem | Agonda | Cola | Private Boat | Snorkeling | Lunch Included | Full Day",
-                                qty: "1D | 2 Pax",
-                                rateBreakdown: "0",
-                                price: "0",
-                              },
-                              {
-                                title:
-                                  "Alcazar Show with Transfers (Normal Seat) (Evening) (ADT/CHD Rate is Same)",
-                                description: "Private Transfer",
-                                qty: "1D | 2 Adults, 1 Child (3-12)",
-                                rateBreakdown: "13,500 * 2   2,000 * 1",
-                                price: "29,000",
-                              },
-                            ],
-                          },
-                          {
-                            dayLabel: "2nd Day",
-                            dateStr: "29 Dec 2026",
-                            items: [
-                              {
-                                title: "Old Goa Churches Full Circuit",
-                                description: "6 UNESCO Churches | Museum of Christian Art | Convent | Guide | Full Day",
-                                qty: "1D | 2 Pax",
-                                rateBreakdown: "0",
-                                price: "0",
-                              },
-                            ],
-                          },
-                        ];
-
-                        let displayActivityGroups = defaultActivityGroups;
+                        let displayActivityGroups = [];
 
                         if (activityServices.length > 0) {
                           const groupMap = {};
@@ -3484,140 +3364,146 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
 
                             {/* Card Body Grid */}
                             <div className="rounded-xl border border-slate-200 bg-white overflow-hidden shadow-2xs">
-                              <div className="divide-y divide-slate-100">
-                                {displayActivityGroups.map((group, gIdx) => (
-                                  <div
-                                    key={gIdx}
-                                    className="flex flex-col sm:flex-row p-4 gap-3 sm:gap-6 hover:bg-slate-50/40 transition-colors"
-                                  >
-                                    {/* Left Day Column */}
-                                    <div className="w-full sm:w-28 lg:w-32 shrink-0">
-                                      <p className="font-bold text-slate-900 text-sm">{group.dayLabel}</p>
-                                      <p className="text-xs text-slate-500 font-medium mt-0.5">{group.dateStr}</p>
-                                    </div>
+                              {displayActivityGroups.length > 0 ? (
+                                <div className="divide-y divide-slate-100">
+                                  {displayActivityGroups.map((group, gIdx) => (
+                                    <div
+                                      key={gIdx}
+                                      className="flex flex-col sm:flex-row p-4 gap-3 sm:gap-6 hover:bg-slate-50/40 transition-colors"
+                                    >
+                                      {/* Left Day Column */}
+                                      <div className="w-full sm:w-28 lg:w-32 shrink-0">
+                                        <p className="font-bold text-slate-900 text-sm">{group.dayLabel}</p>
+                                        <p className="text-xs text-slate-500 font-medium mt-0.5">{group.dateStr}</p>
+                                      </div>
 
-                                    {/* Right Items Column */}
-                                    <div className="flex-1 space-y-3">
-                                      {group.items.map((item, iIdx) => (
-                                        <div
-                                          key={iIdx}
-                                          className="rounded-lg border border-slate-200/80 bg-white p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs hover:border-slate-300 transition-colors"
-                                        >
-                                          {/* Left: Title & Description */}
-                                          <div className="flex-1 min-w-0">
-                                            <h4 className="font-bold text-slate-900 text-sm leading-snug">
-                                              {item.title}
-                                            </h4>
-                                            {item.description && (() => {
-                                              const text = String(item.description || "");
-                                              const parts = text.split(/\s*\|\s*/).filter(Boolean);
-                                              if (parts.length <= 3) {
-                                                return <p className="text-xs text-slate-500 font-normal mt-1 leading-relaxed">{text}</p>;
-                                              }
-                                              let breakIdx = 4;
-                                              for (let i = 0; i < parts.length; i++) {
-                                                const p = parts[i].toLowerCase();
-                                                if (p.includes("hours") || p.includes("full day") || p.includes("half day")) {
-                                                  breakIdx = i + 1;
-                                                  break;
+                                      {/* Right Items Column */}
+                                      <div className="flex-1 space-y-3">
+                                        {group.items.map((item, iIdx) => (
+                                          <div
+                                            key={iIdx}
+                                            className="rounded-lg border border-slate-200/80 bg-white p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs hover:border-slate-300 transition-colors"
+                                          >
+                                            {/* Left: Title & Description */}
+                                            <div className="flex-1 min-w-0">
+                                              <h4 className="font-bold text-slate-900 text-sm leading-snug">
+                                                {item.title}
+                                              </h4>
+                                              {item.description && (() => {
+                                                const text = String(item.description || "");
+                                                const parts = text.split(/\s*\|\s*/).filter(Boolean);
+                                                if (parts.length <= 3) {
+                                                  return <p className="text-xs text-slate-500 font-normal mt-1 leading-relaxed">{text}</p>;
                                                 }
-                                              }
-                                              if (breakIdx >= parts.length) breakIdx = Math.ceil(parts.length / 2);
-                                              const line1 = parts.slice(0, breakIdx).join(" | ") + " |";
-                                              const line2 = parts.slice(breakIdx).join(" | ");
-                                              return (
-                                                <div className="text-xs text-slate-500 font-normal mt-1 leading-relaxed space-y-0.5">
-                                                  <p>{line1}</p>
-                                                  <p>{line2}</p>
+                                                let breakIdx = 4;
+                                                for (let i = 0; i < parts.length; i++) {
+                                                  const p = parts[i].toLowerCase();
+                                                  if (p.includes("hours") || p.includes("full day") || p.includes("half day")) {
+                                                    breakIdx = i + 1;
+                                                    break;
+                                                  }
+                                                }
+                                                if (breakIdx >= parts.length) breakIdx = Math.ceil(parts.length / 2);
+                                                const line1 = parts.slice(0, breakIdx).join(" | ") + " |";
+                                                const line2 = parts.slice(breakIdx).join(" | ");
+                                                return (
+                                                  <div className="text-xs text-slate-500 font-normal mt-1 leading-relaxed space-y-0.5">
+                                                    <p>{line1}</p>
+                                                    <p>{line2}</p>
+                                                  </div>
+                                                );
+                                              })()}
+                                              {/* Rich Info Badges for Activities */}
+                                              <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
+                                                {item.tourType && (
+                                                  <span className="inline-flex items-center gap-1 rounded bg-blue-50 px-2 py-0.5 font-semibold text-blue-700 border border-blue-200">
+                                                    ● {item.tourType}
+                                                  </span>
+                                                )}
+                                                {item.selectedSlot && (
+                                                  <span className="inline-flex items-center gap-1 rounded bg-amber-50 px-2 py-0.5 font-semibold text-amber-800 border border-amber-200">
+                                                    ⏰ Slot: {item.selectedSlot}
+                                                  </span>
+                                                )}
+                                                {item.duration && (
+                                                  <span className="inline-flex items-center gap-1 rounded bg-purple-50 px-2 py-0.5 font-semibold text-purple-800 border border-purple-200">
+                                                    ⏱️ Duration: {item.duration}
+                                                  </span>
+                                                )}
+                                                {item.operatingDays && (
+                                                  <span className="inline-flex items-center gap-1 rounded bg-slate-100 px-2 py-0.5 font-medium text-slate-700 border border-slate-200">
+                                                    📅 {item.operatingDays}
+                                                  </span>
+                                                )}
+                                                {item.timings && (
+                                                  <span className="inline-flex items-center gap-1 rounded bg-slate-100 px-2 py-0.5 font-medium text-slate-700 border border-slate-200">
+                                                    ⌛ {item.timings}
+                                                  </span>
+                                                )}
+                                              </div>
+                                              {(item.adultPrice > 0 || item.childPrice > 0) && (
+                                                <div className="mt-1 text-xs font-semibold text-emerald-700">
+                                                  {item.adultPrice > 0 && `Adult: ₹${item.adultPrice.toLocaleString("en-IN")}`}
+                                                  {item.childPrice > 0 && ` | Child: ₹${item.childPrice.toLocaleString("en-IN")}`}
                                                 </div>
-                                              );
-                                            })()}
-                                            {/* Rich Info Badges for Activities */}
-                                            <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
-                                              {item.tourType && (
-                                                <span className="inline-flex items-center gap-1 rounded bg-blue-50 px-2 py-0.5 font-semibold text-blue-700 border border-blue-200">
-                                                  ● {item.tourType}
-                                                </span>
-                                              )}
-                                              {item.selectedSlot && (
-                                                <span className="inline-flex items-center gap-1 rounded bg-amber-50 px-2 py-0.5 font-semibold text-amber-800 border border-amber-200">
-                                                  ⏰ Slot: {item.selectedSlot}
-                                                </span>
-                                              )}
-                                              {item.duration && (
-                                                <span className="inline-flex items-center gap-1 rounded bg-purple-50 px-2 py-0.5 font-semibold text-purple-800 border border-purple-200">
-                                                  ⏱️ Duration: {item.duration}
-                                                </span>
-                                              )}
-                                              {item.operatingDays && (
-                                                <span className="inline-flex items-center gap-1 rounded bg-slate-100 px-2 py-0.5 font-medium text-slate-700 border border-slate-200">
-                                                  📅 {item.operatingDays}
-                                                </span>
-                                              )}
-                                              {item.timings && (
-                                                <span className="inline-flex items-center gap-1 rounded bg-slate-100 px-2 py-0.5 font-medium text-slate-700 border border-slate-200">
-                                                  ⌛ {item.timings}
-                                                </span>
                                               )}
                                             </div>
-                                            {(item.adultPrice > 0 || item.childPrice > 0) && (
-                                              <div className="mt-1 text-xs font-semibold text-emerald-700">
-                                                {item.adultPrice > 0 && `Adult: ₹${item.adultPrice.toLocaleString("en-IN")}`}
-                                                {item.childPrice > 0 && ` | Child: ₹${item.childPrice.toLocaleString("en-IN")}`}
-                                              </div>
-                                            )}
-                                          </div>
 
-                                          {/* Middle: QTY Column (Center Aligned, Fixed Width) */}
-                                          <div className="text-left sm:text-center shrink-0 w-36 sm:w-44">
-                                            {(() => {
-                                              const qtyStr = String(item.qty || "");
-                                              const formattedWithDots = qtyStr.replace(/\s*\|\s*/g, " • ");
-                                              const parts = formattedWithDots.split(" • ");
-                                              const firstPart = parts[0] || "";
-                                              const restParts = parts.slice(1).join(" • ");
+                                            {/* Middle: QTY Column (Center Aligned, Fixed Width) */}
+                                            <div className="text-left sm:text-center shrink-0 w-36 sm:w-44">
+                                              {(() => {
+                                                const qtyStr = String(item.qty || "");
+                                                const formattedWithDots = qtyStr.replace(/\s*\|\s*/g, " • ");
+                                                const parts = formattedWithDots.split(" • ");
+                                                const firstPart = parts[0] || "";
+                                                const restParts = parts.slice(1).join(" • ");
 
-                                              return (
-                                                <div>
-                                                  <p className="font-bold text-slate-900 text-sm">{firstPart}</p>
-                                                  {restParts && (
-                                                    <p className="text-xs text-slate-400 font-normal mt-0.5">{restParts}</p>
-                                                  )}
-                                                </div>
-                                              );
-                                            })()}
-                                            {item.rateBreakdown && item.rateBreakdown !== "0" && (
-                                              <p className="text-[11px] text-slate-400 font-normal mt-1">
-                                                {item.rateBreakdown}
+                                                return (
+                                                  <div>
+                                                    <p className="font-bold text-slate-900 text-sm">{firstPart}</p>
+                                                    {restParts && (
+                                                      <p className="text-xs text-slate-400 font-normal mt-0.5">{restParts}</p>
+                                                    )}
+                                                  </div>
+                                                );
+                                              })()}
+                                              {item.rateBreakdown && item.rateBreakdown !== "0" && (
+                                                <p className="text-[11px] text-slate-400 font-normal mt-1">
+                                                  {item.rateBreakdown}
+                                                </p>
+                                              )}
+                                            </div>
+
+                                            {/* Right: Price */}
+                                            <div className="text-left sm:text-right shrink-0 whitespace-nowrap">
+                                              <p className="text-base font-bold text-slate-900">
+                                                <span className="text-[11px] text-slate-400 font-normal uppercase mr-1">INR</span>
+                                                {item.price}
                                               </p>
-                                            )}
+                                              {item.adultsCount > 0 && item.adultPrice > 0 ? (
+                                                <>
+                                                  <p className="text-[11px] font-medium text-slate-600 mt-0.5">
+                                                    ₹{item.adultPrice.toLocaleString("en-IN")} / Person
+                                                  </p>
+                                                  <p className="text-[10px] font-normal text-slate-400 mt-0.5">
+                                                    ({item.adultsCount} Adults × ₹{item.adultPrice.toLocaleString("en-IN")}{item.childrenCount > 0 && item.childPrice > 0 ? ` + ${item.childrenCount} Children × ₹${item.childPrice.toLocaleString("en-IN")}` : ""})
+                                                  </p>
+                                                </>
+                                              ) : (
+                                                <p className="text-[11px] text-slate-400 font-normal mt-0.5">Total</p>
+                                              )}
+                                            </div>
                                           </div>
-
-                                          {/* Right: Price */}
-                                          <div className="text-left sm:text-right shrink-0 whitespace-nowrap">
-                                            <p className="text-base font-bold text-slate-900">
-                                              <span className="text-[11px] text-slate-400 font-normal uppercase mr-1">INR</span>
-                                              {item.price}
-                                            </p>
-                                            {item.adultsCount > 0 && item.adultPrice > 0 ? (
-                                              <>
-                                                <p className="text-[11px] font-medium text-slate-600 mt-0.5">
-                                                  ₹{item.adultPrice.toLocaleString("en-IN")} / Person
-                                                </p>
-                                                <p className="text-[10px] font-normal text-slate-400 mt-0.5">
-                                                  ({item.adultsCount} Adults × ₹{item.adultPrice.toLocaleString("en-IN")}{item.childrenCount > 0 && item.childPrice > 0 ? ` + ${item.childrenCount} Children × ₹${item.childPrice.toLocaleString("en-IN")}` : ""})
-                                                </p>
-                                              </>
-                                            ) : (
-                                              <p className="text-[11px] text-slate-400 font-normal mt-0.5">Total</p>
-                                            )}
-                                          </div>
-                                        </div>
-                                      ))}
+                                        ))}
+                                      </div>
                                     </div>
-                                  </div>
-                                ))}
-                              </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <div className="py-8 px-4 text-center text-xs text-slate-400 font-medium bg-slate-50/30">
+                                  No activities or sightseeing added
+                                </div>
+                              )}
                             </div>
 
                             {/* Activities Footer Total (Standalone under card) */}
@@ -3710,71 +3596,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                       </button>
 
                       {isItineraryExpanded && (() => {
-                        const defaultItineraryDays = [
-                          {
-                            dayLabel: "1st Day",
-                            weekday: "Sunday",
-                            dateMonth: "16th Aug",
-                            year: "2026",
-                            events: [
-                              {
-                                title: "Bangkok Airport to Pattaya Hotel - Bangkok Airport to Pattaya Hotel Transfers",
-                                description: "Bangkok Airport Pick up & Drop at Pattaya Hotel",
-                              },
-                              {
-                                title: "Alcazar Show with Transfers + 1 Soft Drink (Normal Seat) (Evening) (ADT/CHD Rate is Same) - Private Transfer",
-                                description: "Enjoy an entertaining evening at the world-famous Alcazar Cabaret Show in Pattaya. Witness a spectacular blend of dazzling costumes, energetic dance performances, and international music acts. The package includes shared transfers, normal seat entry, and one soft drink during the show. A must-see family-friendly experience.",
-                              },
-                            ],
-                          },
-                          {
-                            dayLabel: "2nd Day",
-                            weekday: "Monday",
-                            dateStr: "17th Aug",
-                            dateMonth: "17th Aug",
-                            year: "2026",
-                            events: [
-                              {
-                                title: "Free Day in Pattaya - SIC",
-                                description: "Enjoy breakfast and spend the day at leisure. You can opt for optional tours such as Nong Nooch Village, Alcazar Show, or Sanctuary of Truth. Overnight stay in Pattaya.",
-                              },
-                            ],
-                          },
-                          {
-                            dayLabel: "3rd Day",
-                            weekday: "Tuesday",
-                            dateMonth: "18th Aug",
-                            year: "2026",
-                            events: [
-                              {
-                                title: "Pattaya Hotel to Bangkok Hotel - Pattaya Hotel to Bangkok Hotel Pvt Transfers",
-                                description: "Inter Hotel Transfers From Pattaya to Bangkok on Pvt Basis",
-                              },
-                              {
-                                title: "Full Day Safari World + Marine Park with Lunch (PU/ 08:00AM) - Private Transfer + Entry Tickets",
-                                description: "Enjoy a fun-filled day at Safari World Bangkok, starting with the Marine Park, where you'll watch exciting shows like the Dolphin, Sea Lion, and Cowboy Stunt performances. Explore various animal exhibits before enjoying a delicious buffet lunch.\n\nIn the afternoon, hop on a coach for a thrilling drive through the Safari Park, where you'll see lions, tigers, giraffes, and more roaming freely in their natural-style habitats. Pickup is at 08:00 AM, making it the perfect full-day adventure for families and animal lovers!",
-                              },
-                              {
-                                title: "Evening Chaopraya Princess Dinner Cruise (PU/ 17:30PM) - Private Transfer",
-                                description: "The Chao Phraya Princess Dinner Cruise is a luxurious evening experience in Bangkok, offering a two-hour journey along the scenic Chao Phraya River. Starting with hotel pickup around 17:30 PM, the cruise features a lavish international and seafood buffet, live music, and stunning night views of illuminated landmarks like Wat Arun and the Grand Palace. With a warm, romantic ambiance and excellent hospitality, it's a perfect way to enjoy Bangkok's charm from the water.",
-                              },
-                            ],
-                          },
-                          {
-                            dayLabel: "4th Day",
-                            weekday: "Wednesday",
-                            dateMonth: "19th Aug",
-                            year: "2026",
-                            events: [
-                              {
-                                title: "Bangkok Hotel to Suvarnabhumbi Airport - Bangkok Hotel to Suvarnabhumi International Airport on Pvt Transfer",
-                                description: "After Check Out the Bangkok Hotel get Transferred to the Suvarnabhumi International Airport for your return flight to your Hometown.",
-                              },
-                            ],
-                          },
-                        ];
-
-                        let displayItineraryDays = defaultItineraryDays;
+                        let displayItineraryDays = [];
 
                         if (Array.isArray(quote?.dayWiseItinerary) && quote.dayWiseItinerary.length > 0) {
                           displayItineraryDays = quote.dayWiseItinerary.map((day, dIdx) => {
@@ -3805,41 +3627,49 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                         }
 
                         return (
-                          <div className="pt-4 space-y-6">
-                            {displayItineraryDays.map((dayItem, dIdx) => (
-                              <div key={dIdx} className="flex flex-col sm:flex-row items-start gap-4 sm:gap-6">
-                                {/* Left Date Card Box */}
-                                <div className="w-28 sm:w-32 shrink-0 rounded-xl border border-sky-200 bg-white overflow-hidden shadow-2xs text-center">
-                                  {/* Header */}
-                                  <div className="bg-[#f0f9ff] py-1.5 border-b border-sky-100 font-bold text-[#0284c7] text-xs tracking-wide">
-                                    {dayItem.dayLabel}
-                                  </div>
-                                  {/* Body */}
-                                  <div className="py-2.5 px-2 bg-white space-y-0.5">
-                                    <p className="text-xs text-slate-500 font-normal">{dayItem.weekday}</p>
-                                    <p className="text-sm font-bold text-slate-900">{dayItem.dateMonth}</p>
-                                    <p className="text-xs text-slate-400 font-normal">{dayItem.year}</p>
-                                  </div>
-                                </div>
-
-                                {/* Right Events List */}
-                                <div className="flex-1 min-w-0 space-y-5 pt-0.5">
-                                  {dayItem.events.map((evt, eIdx) => (
-                                    <div key={eIdx} className="space-y-1">
-                                      <h4 className="font-bold text-slate-900 underline underline-offset-2 text-sm sm:text-base leading-snug">
-                                        {evt.title}
-                                      </h4>
-                                      {evt.description && (
-                                        <p className="text-slate-600 text-xs sm:text-sm font-normal leading-relaxed whitespace-pre-line">
-                                          {evt.description}
-                                        </p>
-                                      )}
+                          displayItineraryDays.length > 0 ? (
+                            <div className="pt-4 space-y-6">
+                              {displayItineraryDays.map((dayItem, dIdx) => (
+                                <div key={dIdx} className="flex flex-col sm:flex-row items-start gap-4 sm:gap-6">
+                                  {/* Left Date Card Box */}
+                                  <div className="w-28 sm:w-32 shrink-0 rounded-xl border border-sky-200 bg-white overflow-hidden shadow-2xs text-center">
+                                    {/* Header */}
+                                    <div className="bg-[#f0f9ff] py-1.5 border-b border-sky-100 font-bold text-[#0284c7] text-xs tracking-wide">
+                                      {dayItem.dayLabel}
                                     </div>
-                                  ))}
+                                    {/* Body */}
+                                    <div className="py-2.5 px-2 bg-white space-y-0.5">
+                                      <p className="text-xs text-slate-500 font-normal">{dayItem.weekday}</p>
+                                      <p className="text-sm font-bold text-slate-900">{dayItem.dateMonth}</p>
+                                      <p className="text-xs text-slate-400 font-normal">{dayItem.year}</p>
+                                    </div>
+                                  </div>
+
+                                  {/* Right Events List */}
+                                  <div className="flex-1 min-w-0 space-y-5 pt-0.5">
+                                    {dayItem.events.map((evt, eIdx) => (
+                                      <div key={eIdx} className="space-y-1">
+                                        <h4 className="font-bold text-slate-900 underline underline-offset-2 text-sm sm:text-base leading-snug">
+                                          {evt.title}
+                                        </h4>
+                                        {evt.description && (
+                                          <p className="text-slate-600 text-xs sm:text-sm font-normal leading-relaxed whitespace-pre-line">
+                                            {evt.description}
+                                          </p>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
                                 </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="pt-4">
+                              <div className="p-6 text-center text-xs text-slate-400 font-medium bg-slate-50/30 rounded-xl border border-slate-200">
+                                No day-wise schedule added
                               </div>
-                            ))}
-                          </div>
+                            </div>
+                          )
                         );
                       })()}
                     </div>

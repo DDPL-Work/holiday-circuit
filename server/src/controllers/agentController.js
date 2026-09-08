@@ -4533,7 +4533,7 @@ export const requestQuotationRevision = async (req, res) => {
       return res.status(404).json({ message: "Quotation not found" });
     }
 
-    if (!["Quote Sent", "Sent to Client"].includes(quotation.status)) {
+    if (!["Quote Sent", "Sent to Client", "Quote Accepted", "Markup Applied"].includes(quotation.status)) {
       return res.status(400).json({
         message: "Revision can only be requested for a quote that was sent by operations or already shared with the client",
       });

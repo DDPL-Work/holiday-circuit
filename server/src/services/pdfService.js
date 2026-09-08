@@ -140,20 +140,33 @@ const FONT_BOLD_PATH = path.join(FONTS_DIR, "Roboto-Bold.ttf");
 const downloadFont = (url, destPath) => {
   return new Promise((resolve, reject) => {
     ensureDirectory(path.dirname(destPath));
-    const file = fs.createWriteStream(destPath);
-    https.get(url, (response) => {
-      if (response.statusCode !== 200) {
-        reject(new Error(`Failed to download font: status code ${response.statusCode}`));
-        return;
-      }
-      response.pipe(file);
-      file.on("finish", () => {
-        file.close(resolve);
-      });
-    }).on("error", (err) => {
-      fs.unlink(destPath, () => {});
-      reject(err);
-    });
+    const handleRequest = (currentUrl) => {
+      https
+        .get(currentUrl, (response) => {
+          if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
+            handleRequest(response.headers.location);
+            return;
+          }
+          if (response.statusCode !== 200) {
+            reject(new Error(`Failed to download font: status code ${response.statusCode}`));
+            return;
+          }
+          const file = fs.createWriteStream(destPath);
+          response.pipe(file);
+          file.on("finish", () => {
+            file.close(resolve);
+          });
+          file.on("error", (err) => {
+            fs.unlink(destPath, () => {});
+            reject(err);
+          });
+        })
+        .on("error", (err) => {
+          fs.unlink(destPath, () => {});
+          reject(err);
+        });
+    };
+    handleRequest(url);
   });
 };
 
@@ -174,8 +187,8 @@ const ensureFontsExist = async () => {
   }
 
   try {
-    const regularUrl = "https://raw.githubusercontent.com/google/fonts/main/apache/roboto/static/Roboto-Regular.ttf";
-    const boldUrl = "https://raw.githubusercontent.com/google/fonts/main/apache/roboto/static/Roboto-Bold.ttf";
+    const regularUrl = "https://raw.githubusercontent.com/googlefonts/roboto/main/src/hinted/Roboto-Regular.ttf";
+    const boldUrl = "https://raw.githubusercontent.com/googlefonts/roboto/main/src/hinted/Roboto-Bold.ttf";
 
     if (!fs.existsSync(FONT_REGULAR_PATH)) {
       await downloadFont(regularUrl, FONT_REGULAR_PATH);
@@ -941,6 +954,8 @@ const drawContinuationHeader = (
     );
 };
 
+const SUMMARY_SECTION_HEIGHT = 106;
+
 const drawSummarySection = (doc, y, quoteDetails = {}, servicesCount = 0) => {
   const leftWidth = 326;
   const rightWidth = 165;
@@ -1045,64 +1060,230 @@ const drawSummarySection = (doc, y, quoteDetails = {}, servicesCount = 0) => {
   return y + 106;
 };
 
-const SUMMARY_SECTION_HEIGHT = 106;
-const TERMS_SECTION_HEIGHT = 132;
+const parseStructuredTerms = (rawContent) => {
+  if (!rawContent) return [];
+  let text = "";
+  if (Array.isArray(rawContent)) {
+    text = rawContent
+      .map((item) => {
+        if (typeof item === "string") return item;
+        if (item && typeof item === "object") {
+          return item.content || item.text || item.name || item.item || item.label || "";
+        }
+        return String(item || "");
+      })
+      .join("\n");
+  } else if (typeof rawContent === "string") {
+    text = rawContent;
+  } else {
+    text = String(rawContent || "");
+  }
 
-const drawTermsSection = (doc, y, customTerms = []) => {
-  const officialTerms = [
-    { text: "Welcome to Holiday Circuit. These Terms and Conditions govern your use of Holiday Circuit services. When you make a booking, you agree to be bound by these Terms.", bold: true, color: "#0f172a" },
-    { text: "1. Minimum 50% of the booking amount is required at the time of booking confirmation.", bold: true, color: "#b91c1c" },
-    { text: "2. Remaining 50% in 2 parts: 25% within 30 Days prior to departure and 25% within 20 days prior to departure.", bold: false, color: "#1e293b" },
-    { text: "3. In Case of Airline booking / Train Tickets, 100% ticket cost to be paid at the time of confirmation.", bold: true, color: "#b91c1c" },
-    { text: "4. In Case a booking is under 100% cancellation period, 100% booking amount is required at confirmation.", bold: true, color: "#b91c1c" },
-    { text: "5. Booking will be auto cancelled in case of non-payment within stipulated time.", bold: true, color: "#dc2626" },
-    { text: "6. Credit Card: Payments through Credit Cards may attract an additional charge from 3% to 5% depending upon card type (charged over & above actual package cost).", bold: true, color: "#d97706" },
-    { text: "7. Confirmation Vouchers: Provided only 7 days before the arrival date.", bold: true, color: "#2563eb" },
-    { text: "8. Airport Transfers & Pickups: Includes 60 minutes waiting time for Airport pick-ups. For all other pick-ups, driver will wait for 10 minutes at Hotel Lobby / Reception.", bold: true, color: "#d97706" },
-    { text: "9. Taxes: Any changes in taxes (GST/TCS/Government Tax) at confirmation will be adjusted as per prevailing law.", bold: false, color: "#1e293b" },
-    { text: "10. Changes & Cancellations are subject to fees/penalties determined by service providers and Holiday Circuit.", bold: false, color: "#1e293b" },
-    { text: "11. NEPAL ENTRY RULE: To Enter Nepal by Air - Valid Passport or Election Card is Mandatory. Aadhar Card is NOT valid for Travel.", bold: true, color: "#b91c1c" },
-    { text: "12. Health & Vaccinations: Guest is responsible for meeting all health and vaccination entry requirements.", bold: false, color: "#1e293b" },
-    { text: "13. Travel Insurance: Strongly recommended to protect against unexpected events, trip cancellations, or emergencies.", bold: false, color: "#1e293b" },
-    { text: "14. Force Majeure & Liability: Holiday Circuit acts as an intermediary; not liable for third-party negligence or force majeure events.", bold: false, color: "#1e293b" },
-    { text: "15. Governing Law: Governed by the laws of New Delhi Jurisdiction.", bold: true, color: "#0f172a" },
-    { text: "16. Contact Info: Holiday Circuit, KG 3/69, Ground Floor, Vikas Puri, New Delhi - 110018 | Email: varun@holidaycircuit.com | Ph: +91 8851346665, +91 9971706003", bold: false, color: "#475569" },
+  // Convert HTML block tags to newlines
+  text = text
+    .replace(/<\/(p|li|div|h[1-6]|tr|blockquote)>/gi, "\n")
+    .replace(/<br\s*[\/]?>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">");
+
+  // Split known major categories if merged
+  const majorSections = [
+    "Bookings and Reservations",
+    "Travel Documents and Requirements",
+    "Changes to Itineraries & Liability",
+    "Contact Information",
+    "Intellectual Property",
+    "Changes to Terms and Conditions",
   ];
 
-  const termsToRender = Array.isArray(customTerms) && customTerms.length > 0
-    ? customTerms.map((t, idx) => {
-        const str = String(t || "").trim();
-        const isCritical = /50%|100%|Nepal|auto cancel|60 min|10 min|3% to 5%|passport/i.test(str);
-        return {
-          text: `${idx + 1}. ${str}`,
-          bold: isCritical,
-          color: isCritical ? "#b91c1c" : COLORS.text,
-        };
-      })
-    : officialTerms;
+  majorSections.forEach((sec) => {
+    const reg = new RegExp(`(^|\\s|\\.|\\n)(${sec})(:?)`, "gi");
+    text = text.replace(reg, "\n\n__HEADER__$2:\n");
+  });
+
+  // Split sub-items
+  const subItems = [
+    "Booking Process",
+    "Payment Terms",
+    "Payment",
+    "Confirmation",
+    "Credit Card",
+    "Confirmation Vouchers",
+    "Airport Transfers & Tour Pick Ups",
+    "Airport Transfers",
+    "Taxes",
+    "Changes & Cancellations",
+    "Cancellations and Refunds",
+    "Valid ID Proof",
+    "Health & Vaccinations",
+    "Travel Insurance",
+    "Changes by [^:\n]+",
+    "Service Providers Liability",
+    "Force Majeure",
+    "Governing Law",
+    "Ownership",
+  ];
+
+  subItems.forEach((sub) => {
+    const reg = new RegExp(`(^|\\s|\\.|\\n)(${sub}):`, "gi");
+    text = text.replace(reg, "\n__SUB__$2:");
+  });
+
+  // Split payment nested items e.g. "Minimum 50%...", "Remaining 50%...", "In Case of Airline...", "If a booking is under..."
+  text = text
+    .replace(/(\.|\n)\s*(Minimum 50%[^\.]+?\.)/gi, "\n__NESTED__$2")
+    .replace(/(\.|\n)\s*(Remaining 50%[^\.]+?\.)/gi, "\n__NESTED__$2")
+    .replace(/(\.|\n)\s*(In Case of Airline[^\.]+?\.)/gi, "\n__NESTED__$2")
+    .replace(/(\.|\n)\s*(If a booking is under[^\.]+?\.)/gi, "\n__NESTED__$2");
+
+  // Split general sentences if merged after period without space
+  text = text.replace(/([.!?])([A-Z0-9])/g, "$1\n$2");
+
+  const rawLines = text
+    .split("\n")
+    .map((l) => l.replace(/^\d+[\.\)]\s*/, "").replace(/^[•\-\*]\s*/, "").trim())
+    .filter(Boolean);
+
+  let headerCount = 0;
+  let nestedCount = 0;
+
+  const items = [];
+  rawLines.forEach((line) => {
+    if (line.startsWith("__HEADER__")) {
+      headerCount++;
+      nestedCount = 0;
+      const cleanLine = line.replace("__HEADER__", "").trim();
+      items.push({
+        type: "header",
+        level: 1,
+        number: headerCount,
+        text: `${headerCount}. ${cleanLine.replace(/:$/, "")}`,
+        rawText: cleanLine,
+      });
+    } else if (line.startsWith("__SUB__")) {
+      nestedCount = 0;
+      const cleanLine = line.replace("__SUB__", "").trim();
+      items.push({
+        type: "subitem",
+        level: 2,
+        text: `• ${cleanLine}`,
+        rawText: cleanLine,
+      });
+    } else if (line.startsWith("__NESTED__")) {
+      nestedCount++;
+      const cleanLine = line.replace("__NESTED__", "").trim();
+      items.push({
+        type: "nested",
+        level: 3,
+        number: nestedCount,
+        text: `${nestedCount}. ${cleanLine}`,
+        rawText: cleanLine,
+      });
+    } else {
+      items.push({
+        type: "text",
+        level: 0,
+        text: line,
+        rawText: line,
+      });
+    }
+  });
+
+  return items;
+};
+
+const parseTermsContentList = (rawContent) => {
+  return parseStructuredTerms(rawContent);
+};
+
+const getTermsSectionEstimatedHeight = (doc, customTerms = []) => {
+  const items = parseStructuredTerms(customTerms);
+  if (!items.length) return 60;
+
+  let totalHeight = 16;
+  items.forEach((item) => {
+    const fontSize = item.type === "header" ? 8 : (item.type === "nested" ? 7.2 : 7.5);
+    const fontName = item.type === "header" ? (doc.fontBold || "Helvetica-Bold") : (doc.fontRegular || "Helvetica");
+    const xOffset = item.type === "nested" ? 22 : (item.type === "subitem" ? 8 : 0);
+    const itemWidth = PAGE.contentWidth - 28 - xOffset;
+    doc.font(fontName).fontSize(fontSize);
+    const h = doc.heightOfString(item.text, { width: itemWidth });
+    const topPad = item.type === "header" ? 5 : (item.type === "nested" ? 2 : 2.5);
+    totalHeight += h + topPad;
+  });
+
+  return Math.max(60, totalHeight + 16);
+};
+
+const drawTermsSection = (doc, y, customTerms = []) => {
+  const items = parseStructuredTerms(customTerms);
+  if (!items.length) {
+    items.push(
+      { type: "text", level: 0, text: "Welcome to Holiday Circuit. These Terms and Conditions govern your use of Holiday Circuit services. When you make a booking, you agree to be bound by these Terms." },
+      { type: "header", level: 1, text: "1. Bookings and Reservations" },
+      { type: "subitem", level: 2, text: "• Minimum 50% of the booking amount is required at the time of booking confirmation." },
+      { type: "subitem", level: 2, text: "• Remaining 50% in 2 parts: 25% within 30 Days prior to departure and 25% within 20 days prior to departure." },
+      { type: "subitem", level: 2, text: "• In Case of Airline booking / Train Tickets, 100% ticket cost to be paid at confirmation." },
+      { type: "subitem", level: 2, text: "• In Case a booking is under 100% cancellation period, 100% booking amount is required at confirmation." },
+      { type: "subitem", level: 2, text: "• Confirmation: Booking is confirmed only upon receipt of payment. Booking will be auto cancelled in case of non-payment within stipulated time." },
+      { type: "subitem", level: 2, text: "• Credit Card: Payments may attract an additional charge from 3% to 5% depending upon card type." },
+      { type: "subitem", level: 2, text: "• Confirmation Vouchers: Provided only 7 days before the arrival date." },
+      { type: "subitem", level: 2, text: "• Airport Transfers & Tour Pickups: Includes 60 minutes waiting time for Airport pick-ups. Delayed at immigration/luggage requires calling emergency number to extend. For all other pick-ups, driver will wait for 10 minutes at Hotel Lobby / Reception." },
+      { type: "subitem", level: 2, text: "• Taxes: Any changes in taxes (GST/TCS/Government Tax) at confirmation will be adjusted as per prevailing law." },
+      { type: "subitem", level: 2, text: "• Changes & Cancellations are subject to fees/penalties determined by service providers and Holiday Circuit." },
+      { type: "header", level: 1, text: "2. Travel Documents and Requirements" },
+      { type: "subitem", level: 2, text: "• Valid ID Proof: Responsibility of guest to possess valid ID/Visas. To Enter Nepal by Air: Valid Passport or Election Card is Mandatory. Aadhar Card is NOT valid for Travel." },
+      { type: "subitem", level: 2, text: "• Health & Vaccinations: Guest is responsible for meeting all health and vaccination entry requirements." },
+      { type: "subitem", level: 2, text: "• Travel Insurance: Strongly recommended to protect against unexpected events, trip cancellations, or emergencies." },
+      { type: "header", level: 1, text: "3. Changes to Itineraries & Liability" },
+      { type: "subitem", level: 2, text: "• Changes by Holiday Circuit: Right reserved to modify itinerary/accommodations due to unforeseen circumstances with prompt notice." },
+      { type: "subitem", level: 2, text: "• Force Majeure & Liability: Holiday Circuit acts as an intermediary; not liable for third-party negligence or force majeure events." },
+      { type: "subitem", level: 2, text: "• Governing Law: Governed by the laws of New Delhi Jurisdiction." },
+      { type: "header", level: 1, text: "4. Contact Information" },
+      { type: "subitem", level: 2, text: "• Holiday Circuit: 2nd Floor, 632 Block B1, Janakpuri, New Delhi - 110058 | Email: ops@holidaycircuit.com | Ph: +91 8851346665, +91 9971706003" }
+    );
+  }
 
   drawSectionBar(doc, y, "TERMS AND CONDITIONS");
 
-  let contentHeight = 18;
-  termsToRender.forEach((item) => {
-    doc.font(item.bold ? (doc.fontBold || "Helvetica-Bold") : (doc.fontRegular || "Helvetica")).fontSize(8);
-    contentHeight += doc.heightOfString(item.text, { width: PAGE.contentWidth - 28 }) + 4;
+  let contentHeight = 14;
+  items.forEach((item) => {
+    const fontSize = item.type === "header" ? 8 : (item.type === "nested" ? 7.2 : 7.5);
+    const fontName = item.type === "header" ? (doc.fontBold || "Helvetica-Bold") : (doc.fontRegular || "Helvetica");
+    const xOffset = item.type === "nested" ? 22 : (item.type === "subitem" ? 8 : 0);
+    const itemWidth = PAGE.contentWidth - 28 - xOffset;
+
+    doc.font(fontName).fontSize(fontSize);
+    const h = doc.heightOfString(item.text, { width: itemWidth });
+    const topPad = item.type === "header" ? 5 : (item.type === "nested" ? 2 : 2.5);
+    contentHeight += h + topPad;
   });
 
-  const boxHeight = Math.max(60, contentHeight + 12);
+  const boxHeight = Math.max(60, contentHeight + 14);
   drawRoundedBox(doc, PAGE.contentX, y + 30, PAGE.contentWidth, boxHeight, "#ffffff");
 
   let cursorY = y + 38;
-  termsToRender.forEach((item) => {
+  items.forEach((item) => {
+    const fontSize = item.type === "header" ? 8 : (item.type === "nested" ? 7.2 : 7.5);
+    const fontName = item.type === "header" ? (doc.fontBold || "Helvetica-Bold") : (doc.fontRegular || "Helvetica");
+    const color = item.type === "header" ? "#0f172a" : (item.type === "nested" ? "#334155" : COLORS.text || "#1e293b");
+    const xOffset = item.type === "nested" ? 22 : (item.type === "subitem" ? 8 : 0);
+    const itemWidth = PAGE.contentWidth - 28 - xOffset;
+    const topPad = item.type === "header" ? 5 : (item.type === "nested" ? 2 : 2.5);
+
+    cursorY += topPad;
     doc
-      .font(item.bold ? (doc.fontBold || "Helvetica-Bold") : (doc.fontRegular || "Helvetica"))
-      .fontSize(8)
-      .fillColor(item.color || COLORS.text)
-      .text(item.text, PAGE.contentX + 14, cursorY, {
-        width: PAGE.contentWidth - 28,
+      .font(fontName)
+      .fontSize(fontSize)
+      .fillColor(color)
+      .text(item.text, PAGE.contentX + 14 + xOffset, cursorY, {
+        width: itemWidth,
       });
 
-    cursorY = doc.y + 4;
+    cursorY = doc.y;
   });
 
   return y + 30 + boxHeight + 14;
@@ -1329,11 +1510,12 @@ const drawItinerarySection = (doc, y, items = [], quoteDetails = {}) => {
 };
 
 const drawInclusionsExclusionsSection = (doc, y, inclusions = [], exclusions = [], quoteDetails = {}) => {
+  const stripHtml = (text) => String(text || "").replace(/<[^>]*>?/gm, "").replace(/\s+/g, " ").trim();
   const normalizedInclusions = Array.isArray(inclusions)
-    ? inclusions.map((item) => String(item || "").trim()).filter(Boolean)
+    ? inclusions.map(stripHtml).filter(Boolean)
     : [];
   const normalizedExclusions = Array.isArray(exclusions)
-    ? exclusions.map((item) => String(item || "").trim()).filter(Boolean)
+    ? exclusions.map(stripHtml).filter(Boolean)
     : [];
 
   let currentY = y;
@@ -1656,14 +1838,19 @@ export const generatePDF = async (quoteDetails = {}) => {
     );
   }
 
-  if (cursorY + 12 + TERMS_SECTION_HEIGHT > CONTENT_BOTTOM_LIMIT) {
+  const termsSectionEstimatedHeight = getTermsSectionEstimatedHeight(
+    doc,
+    quoteDetails?.termsAndConditions || quoteDetails?.customTerms,
+  );
+
+  if (cursorY + 12 + termsSectionEstimatedHeight > CONTENT_BOTTOM_LIMIT && cursorY > 160) {
     doc.addPage();
     drawPageFrame(doc);
     drawContinuationHeader(doc, quoteDetails, "Quotation Details (Continued)");
     cursorY = 132;
   }
 
-  cursorY = drawTermsSection(doc, cursorY + 12, quoteDetails?.termsAndConditions);
+  cursorY = drawTermsSection(doc, cursorY + 12, quoteDetails?.termsAndConditions || quoteDetails?.customTerms);
 
   if (quoteDetails?.agentFooterImage) {
     const footerBuffer = await getLogoBuffer(quoteDetails.agentFooterImage);

@@ -2854,6 +2854,8 @@ export const getOrderAcceptanceQueries = async (req, res, next) => {
   }
 };
 
+
+
 /* ========================= CREATE QUOTATION ========================= */
 
 export const createQuotation = async (req, res, next) => {
@@ -2875,17 +2877,22 @@ export const createQuotation = async (req, res, next) => {
       inclusions = [],
       exclusions = [],
       additionalNotes = [],
+      termsAndConditions = [],
       dayWiseItinerary = [],
     } = req.body;
 
+    const stripHtml = (text) => String(text || "").replace(/<[^>]*>?/gm, "").replace(/\s+/g, " ").trim();
     const normalizedInclusions = Array.isArray(inclusions)
-      ? inclusions.map((item) => String(item || "").trim()).filter(Boolean)
+      ? inclusions.map(stripHtml).filter(Boolean)
       : [];
     const normalizedExclusions = Array.isArray(exclusions)
-      ? exclusions.map((item) => String(item || "").trim()).filter(Boolean)
+      ? exclusions.map(stripHtml).filter(Boolean)
       : [];
     const normalizedAdditionalNotes = Array.isArray(additionalNotes)
-      ? additionalNotes.map((item) => String(item || "").trim()).filter(Boolean)
+      ? additionalNotes.map(stripHtml).filter(Boolean)
+      : [];
+    const normalizedTermsAndConditions = Array.isArray(termsAndConditions)
+      ? termsAndConditions.map((item) => String(item || "").trim()).filter(Boolean)
       : [];
     const normalizedDayWiseItinerary = normalizeDayWiseItinerary(dayWiseItinerary);
     const sendViaArray = Array.isArray(sendVia)
@@ -3156,6 +3163,7 @@ export const createQuotation = async (req, res, next) => {
       quotation.inclusions = normalizedInclusions;
       quotation.exclusions = normalizedExclusions;
       quotation.additionalNotes = normalizedAdditionalNotes;
+      quotation.termsAndConditions = normalizedTermsAndConditions;
       quotation.dayWiseItinerary = normalizedDayWiseItinerary;
       quotation.services = formattedServices;
       quotation.pricing = {
@@ -3222,6 +3230,7 @@ export const createQuotation = async (req, res, next) => {
           { label: "IFSC", value: "HDFC0004413" },
           { label: "Branch", value: "RAMPHAL CHOWK SEC VII DWARKA" },
         ],
+        termsAndConditions: normalizedTermsAndConditions,
       };
 
       if (isNaN(totalAmount)) {
@@ -3307,6 +3316,7 @@ export const createQuotation = async (req, res, next) => {
       inclusions: normalizedInclusions,
       exclusions: normalizedExclusions,
       additionalNotes: normalizedAdditionalNotes,
+      termsAndConditions: normalizedTermsAndConditions,
       dayWiseItinerary: normalizedDayWiseItinerary,
 
       services: formattedServices,   // ✅ ADD THIS
@@ -4454,8 +4464,6 @@ export const sendVoucherToAgent = async (req, res, next) => {
 };
 
 
-
-
 export const getOrCreateQuotationDraft = async (req, res, next) => {
   try {
     const query = await TravelQuery.findById(req.params.queryId).populate("agent");
@@ -4550,6 +4558,7 @@ export const getOrCreateQuotationDraft = async (req, res, next) => {
       inclusions: Array.isArray(baseQuotation?.inclusions) ? baseQuotation.inclusions : [],
       exclusions: Array.isArray(baseQuotation?.exclusions) ? baseQuotation.exclusions : [],
       additionalNotes: Array.isArray(baseQuotation?.additionalNotes) ? baseQuotation.additionalNotes : [],
+      termsAndConditions: Array.isArray(baseQuotation?.termsAndConditions) ? baseQuotation.termsAndConditions : [],
       dayWiseItinerary: normalizeDayWiseItinerary(baseQuotation?.dayWiseItinerary),
       services: Array.isArray(baseQuotation?.services)
         ? baseQuotation.services.map((service) => ({
@@ -4628,6 +4637,7 @@ export const getOrCreateQuotationDraft = async (req, res, next) => {
       quotation.inclusions = draftPayload.inclusions;
       quotation.exclusions = draftPayload.exclusions;
       quotation.additionalNotes = draftPayload.additionalNotes;
+      quotation.termsAndConditions = draftPayload.termsAndConditions;
       quotation.dayWiseItinerary = draftPayload.dayWiseItinerary;
       quotation.services = draftPayload.services;
       quotation.sourceQuotationId = undefined;
@@ -4646,6 +4656,7 @@ export const getOrCreateQuotationDraft = async (req, res, next) => {
         quotation.inclusions = draftPayload.inclusions;
         quotation.exclusions = draftPayload.exclusions;
         quotation.additionalNotes = draftPayload.additionalNotes;
+        quotation.termsAndConditions = draftPayload.termsAndConditions;
         quotation.dayWiseItinerary = draftPayload.dayWiseItinerary;
         quotation.services = draftPayload.services;
         quotation.sourceQuotationId = draftPayload.sourceQuotationId;
@@ -4669,6 +4680,7 @@ export const getOrCreateQuotationDraft = async (req, res, next) => {
         inclusions: draftPayload.inclusions,
         exclusions: draftPayload.exclusions,
         additionalNotes: draftPayload.additionalNotes,
+        termsAndConditions: draftPayload.termsAndConditions,
         dayWiseItinerary: draftPayload.dayWiseItinerary,
         services: draftPayload.services,
         sourceQuotationId: draftPayload.sourceQuotationId,
@@ -4736,7 +4748,7 @@ export const getOpsQueryQuotations = async (req, res, next) => {
       status: { $ne: "Pending" },
     })
       .select(
-        "quotationNumber status pricing clientTotalAmount validTill services inclusions exclusions additionalNotes dayWiseItinerary agentMarkup agentRevisionRemark createdAt updatedAt createdBy",
+        "quotationNumber status pricing clientTotalAmount validTill services inclusions exclusions additionalNotes termsAndConditions dayWiseItinerary agentMarkup agentRevisionRemark createdAt updatedAt createdBy",
       )
       .populate("createdBy", "name email companyName role")
       .sort({ updatedAt: -1, createdAt: -1 })
@@ -4762,6 +4774,8 @@ export const getOpsQueryQuotations = async (req, res, next) => {
   }
 };
 
+
+
 export const saveQuotationDraft = async (req, res, next) => {
   try {
     const { quotationId } = req.params;
@@ -4776,6 +4790,7 @@ export const saveQuotationDraft = async (req, res, next) => {
       inclusions,
       exclusions,
       additionalNotes,
+      termsAndConditions,
       dayWiseItinerary,
     } = req.body;
 
@@ -4897,14 +4912,18 @@ export const saveQuotationDraft = async (req, res, next) => {
       totalInInr: Number(service.totalInInr || 0),
     }));
 
+    const stripHtml = (text) => String(text || "").replace(/<[^>]*>?/gm, "").replace(/\s+/g, " ").trim();
     if (Array.isArray(inclusions)) {
-      quotation.inclusions = inclusions.map((item) => String(item || "").trim()).filter(Boolean);
+      quotation.inclusions = inclusions.map(stripHtml).filter(Boolean);
     }
     if (Array.isArray(exclusions)) {
-      quotation.exclusions = exclusions.map((item) => String(item || "").trim()).filter(Boolean);
+      quotation.exclusions = exclusions.map(stripHtml).filter(Boolean);
     }
     if (Array.isArray(additionalNotes)) {
-      quotation.additionalNotes = additionalNotes.map((item) => String(item || "").trim()).filter(Boolean);
+      quotation.additionalNotes = additionalNotes.map(stripHtml).filter(Boolean);
+    }
+    if (Array.isArray(termsAndConditions)) {
+      quotation.termsAndConditions = termsAndConditions.map((item) => String(item || "").trim()).filter(Boolean);
     }
     if (Array.isArray(dayWiseItinerary)) {
       quotation.dayWiseItinerary = normalizeDayWiseItinerary(dayWiseItinerary);
@@ -4954,6 +4973,7 @@ export const saveQuotationDraft = async (req, res, next) => {
     next(error);
   }
 };
+
 
 export const addQuotationService = async (req, res, next) => {
   try {
