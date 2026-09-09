@@ -1038,25 +1038,31 @@ export default function SharePackageModal({
         const generatedOnStr = `${genDay} ${genMonth}, ${genYear} - ${genHours}:${genMins} Hrs UTC`;
 
         // Dynamic Terms & Conditions from Voucher / Query / Quote (sent by OPS or set by Admin)
-        const candidateTerms =
-          query?.voucherDetails?.termsAndConditions ||
-          query?.voucher?.termsAndConditions ||
-          query?.termsAndConditions ||
-          query?.voucherTerms ||
-          query?.voucherDetails?.terms ||
-          query?.voucher?.terms ||
-          quote?.voucherDetails?.termsAndConditions ||
-          quote?.voucher?.termsAndConditions ||
-          quote?.termsAndConditions ||
-          quote?.voucherTerms ||
-          quote?.voucherDetails?.terms ||
-          quote?.voucher?.terms ||
-          query?.activeQuote?.termsAndConditions ||
-          query?.quotation?.termsAndConditions ||
-          query?.terms ||
-          quote?.terms ||
-          selectedPkg?.termsAndConditions ||
-          selectedPkg?.terms;
+        const isPkgMode = isPackage || shareType === "PACKAGE" || Boolean(selectedPkg);
+        const candidateTerms = isPkgMode
+          ? (selectedPkg?.termsAndConditions ||
+             selectedPkg?.terms ||
+             quote?.termsAndConditions ||
+             query?.termsAndConditions ||
+             query?.voucherDetails?.termsAndConditions)
+          : (query?.voucherDetails?.termsAndConditions ||
+             query?.voucher?.termsAndConditions ||
+             query?.termsAndConditions ||
+             query?.voucherTerms ||
+             query?.voucherDetails?.terms ||
+             query?.voucher?.terms ||
+             quote?.voucherDetails?.termsAndConditions ||
+             quote?.voucher?.termsAndConditions ||
+             quote?.termsAndConditions ||
+             quote?.voucherTerms ||
+             quote?.voucherDetails?.terms ||
+             quote?.voucher?.terms ||
+             query?.activeQuote?.termsAndConditions ||
+             query?.quotation?.termsAndConditions ||
+             query?.terms ||
+             quote?.terms ||
+             selectedPkg?.termsAndConditions ||
+             selectedPkg?.terms);
 
         let parsedVoucherTerms = [];
         if (!removeTerms && selectedTermId !== "none") {

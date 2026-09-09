@@ -111,6 +111,27 @@ const packageSchema = new mongoose.Schema({
     ref: "Auth"
   },
 
+  createdBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Auth",
+    index: true,
+  },
+
+  creatorRole: {
+    type: String,
+    default: "operations",
+  },
+
+  creatorName: {
+    type: String,
+    default: "",
+  },
+
+  creatorEmail: {
+    type: String,
+    default: "",
+  },
+
   // Links inventory to the exact bulk file that created it, enabling a
   // safe delete of that upload without touching other DMC inventory.
   sourceUpload: {

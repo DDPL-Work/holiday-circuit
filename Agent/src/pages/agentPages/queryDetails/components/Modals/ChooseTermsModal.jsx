@@ -42,8 +42,21 @@ export const ChooseTermsModal = ({ isOpen, onClose, onUpdate, quotationId, isPac
     const selectedTermContent = termsList[selectedTermIndex]?.content;
     if (!selectedTermContent) return;
 
-    // Convert string to array by splitting on newlines
-    const termsArray = selectedTermContent.split("\n").filter(t => t.trim() !== "");
+    // Convert string to array by stripping HTML and splitting on newlines
+    const plainText = String(selectedTermContent)
+      .replace(/<\/(p|div|li|h[1-6])>/gi, "\n")
+      .replace(/<br\s*[\/]?>/gi, "\n")
+      .replace(/<[^>]+>/g, "")
+      .replace(/&nbsp;/g, " ")
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .trim();
+
+    const termsArray = (plainText || selectedTermContent)
+      .split("\n")
+      .map((t) => t.trim())
+      .filter(Boolean);
 
     try {
       setSaving(true);

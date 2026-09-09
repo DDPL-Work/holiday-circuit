@@ -423,20 +423,36 @@ export const getTransportLimitLabelForQuote = (service = {}) => {
 };
 
 export const validateAgentMarkupInput = ({ markupType, markupValue }) => {
-  const normalizedType = String(markupType || "").trim().toUpperCase();
+  const rawType = String(markupType || "PERCENT").trim().toUpperCase();
   const normalizedValue = Number(markupValue);
 
   if (!Number.isFinite(normalizedValue) || normalizedValue <= 0) {
     return "Please enter a valid markup value.";
   }
 
-  if (["PERCENT", "AMOUNT"].includes(normalizedType)) return "";
+  if (
+    rawType === "PERCENT" ||
+    rawType === "PERCENTAGE" ||
+    rawType.includes("PERCENT") ||
+    rawType === "AMOUNT" ||
+    rawType === "FIXED" ||
+    rawType === "INR" ||
+    rawType === "%"
+  ) {
+    return "";
+  }
 
   return "Please select a valid markup type.";
 };
 
 export const calculateAgentMarkupPreview = ({ markupType, markupValue, opsTotal }) => {
-  const normalizedType = String(markupType || "").trim().toUpperCase();
+  const rawType = String(markupType || "PERCENT").trim().toUpperCase();
+  const isPercent =
+    rawType === "PERCENT" ||
+    rawType === "PERCENTAGE" ||
+    rawType.includes("PERCENT") ||
+    rawType === "%" ||
+    rawType === "";
   const normalizedValue = Number(markupValue);
   const normalizedOpsTotal = Math.max(0, Number(opsTotal) || 0);
 
@@ -447,10 +463,9 @@ export const calculateAgentMarkupPreview = ({ markupType, markupValue, opsTotal 
     };
   }
 
-  const markupAmount =
-    normalizedType === "PERCENT"
-      ? Math.round((normalizedOpsTotal * normalizedValue) / 100)
-      : Math.round(normalizedValue);
+  const markupAmount = isPercent
+    ? Math.round((normalizedOpsTotal * normalizedValue) / 100)
+    : Math.round(normalizedValue);
 
   return {
     markupAmount,

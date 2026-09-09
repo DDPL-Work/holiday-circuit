@@ -1811,19 +1811,28 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
               const savedStr = localStorage.getItem(queryKey) || localStorage.getItem(globalKey);
               if (savedStr) {
                 const savedMarkup = JSON.parse(savedStr);
-                const baseCost = Number(
-                  pkg.costPrice ?? pkg.netPrice ?? pkg.basePrice ?? pkg.price ?? 225000,
+                const baseCost = Number(pkg.costPrice ?? pkg.price ?? pkg.basePrice ?? pkg.netPrice ?? 225000);
+                const markupVal = Number(
+                  savedMarkup.value !== undefined && savedMarkup.value !== null && savedMarkup.value !== ""
+                    ? savedMarkup.value
+                    : (savedMarkup.markupAmount || 0)
                 );
-                const finalAmt =
-                  savedMarkup.finalAmount ||
-                  baseCost + Number(savedMarkup.markupAmount || 0);
+                const preview = calculateAgentMarkupPreview({
+                  markupType: savedMarkup.type || "PERCENT",
+                  markupValue: markupVal,
+                  opsTotal: baseCost,
+                });
                 return {
                   ...pkg,
                   basePrice: baseCost,
                   costPrice: baseCost,
-                  price: finalAmt,
-                  clientTotalAmount: finalAmt,
-                  agentMarkup: savedMarkup,
+                  price: baseCost,
+                  clientTotalAmount: preview.finalAmount,
+                  agentMarkup: {
+                    ...savedMarkup,
+                    markupAmount: preview.markupAmount,
+                    finalAmount: preview.finalAmount,
+                  },
                   status: "Markup Applied",
                 };
               }
@@ -4937,39 +4946,55 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                           ? pkgItem._id === selectedAgentPackageId
                           : pIndex === packageIdx;
 
+                        const cardBasePrice = Number(pkgItem?.costPrice ?? pkgItem?.price ?? pkgItem?.basePrice ?? 0);
+                        const pkgMarkupType = pkgItem?.agentMarkup?.type || "PERCENT";
                         const pkgMarkupVal = Number(
-                          pkgItem?.agentMarkup?.markupAmount ||
-                          pkgItem?.agentMarkup?.value ||
-                          pkgItem?.markupAmount ||
-                          pkgItem?.markup ||
-                          0
+                          pkgItem?.agentMarkup?.value !== undefined &&
+                          pkgItem?.agentMarkup?.value !== null &&
+                          pkgItem?.agentMarkup?.value !== ""
+                            ? pkgItem.agentMarkup.value
+                            : (pkgMarkupType === "PERCENT"
+                                ? (pkgItem?.agentMarkup?.markupAmount && cardBasePrice > 0
+                                    ? Math.round((pkgItem.agentMarkup.markupAmount / cardBasePrice) * 100)
+                                    : (pkgItem?.agentMarkup?.markupAmount || 0))
+                                : (pkgItem?.agentMarkup?.markupAmount || 0))
                         );
-                        const hasMarkup = pkgMarkupVal > 0;
-                        const isSent = Boolean(
+                        const hasMarkup = pkgMarkupVal > 0 || pkgItem?.status === "Markup Applied" || Boolean(pkgItem?.agentMarkup?.finalAmount && Number(pkgItem.agentMarkup.finalAmount) > cardBasePrice);
+                        const cardFinalPrice = hasMarkup
+                          ? (Number(pkgItem?.agentMarkup?.finalAmount) > cardBasePrice
+                              ? Number(pkgItem.agentMarkup.finalAmount)
+                              : calculateAgentMarkupPreview({
+                                  markupType: pkgMarkupType,
+                                  markupValue: pkgMarkupVal,
+                                  opsTotal: cardBasePrice,
+                                }).finalAmount)
+                          : cardBasePrice;
+
+                        const isPkgSent = Boolean(
                           pkgItem?.isSentToClient ||
                           pkgItem?.sentToClientAt ||
-                          pkgItem?.status === "Sent to Client" ||
-                          query?.voucherStatus === "sent"
+                          pkgItem?.status === "Sent to Client"
                         );
+
                         const isApproved = Boolean(
                           pkgItem?.isApproved ||
                           pkgItem?.status === "Confirmed" ||
                           (isPkgSelected && (query?.queryStatus === "Confirmed" || query?.agentStatus === "Confirmed"))
                         );
 
-                        let cardTheme = "gray";
+                        let cardTheme = "none";
                         let textPriceColor = "text-[#475569]";
-                        let borderBarColor = "bg-[#3b58b5]";
+                        let borderBarColor = isPkgSelected ? "bg-[#3b58b5]" : "bg-transparent";
 
                         if (isApproved) {
                           cardTheme = "green";
                           textPriceColor = "text-emerald-600";
                           borderBarColor = "bg-emerald-600";
-                        } else if (isSent && hasMarkup) {
+                        } else if (hasMarkup) {
                           cardTheme = "blue";
                           textPriceColor = "text-[#3b58b5]";
                           borderBarColor = "bg-[#3b58b5]";
-                        } else if (isSent && !hasMarkup) {
+                        } else if (isPkgSent) {
                           cardTheme = "gray_sent";
                           textPriceColor = "text-[#475569]";
                           borderBarColor = "bg-slate-500";
@@ -4990,7 +5015,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                               <span
                                 className={`text-2xl sm:text-[26px] font-extrabold tracking-tight leading-none ${textPriceColor}`}
                               >
-                                {Math.round(pkgItem.price || pkgItem.basePrice || 0).toLocaleString("en-IN")}
+                                {Math.round(cardFinalPrice || pkgItem.price || pkgItem.basePrice || 0).toLocaleString("en-IN")}
                               </span>
 
                               {cardTheme === "green" && (
@@ -5057,7 +5082,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                         room: "1 Ocean Deluxe Room",
                         nights: selectedPkg?.duration ? parseInt(selectedPkg.duration) || 1 : 1,
                         pax: `${query?.numberOfAdults || 2} Pax`,
-                        price: selectedPkg?.price ? Math.round(selectedPkg.price).toLocaleString("en-IN") : "20,900",
+                        price: selectedPkg?.price ? Math.round(Number(selectedPkg.costPrice || selectedPkg.price || selectedPkg.basePrice)) : 20900,
                       },
                     ];
 
@@ -6079,7 +6104,12 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                     const sightseeingTotal = allSightseeingRows.reduce((sum, r) => sum + r.effectivePrice, 0);
 
                     // NET ADJUSTMENTS & TOTAL CALCULATIONS
-                    const basePackagePrice = Number(selectedPkg?.price || selectedPkg?.basePrice || 225000);
+                    const basePackagePrice = Number(
+                      selectedPkg?.costPrice ??
+                      selectedPkg?.price ??
+                      selectedPkg?.basePrice ??
+                      225000
+                    );
                     const packageGstPercent = Number(
                       selectedPkg?.tax?.gstPercent ||
                       selectedPkg?.tax?.gst?.percent ||
@@ -6096,7 +6126,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                     const hasTransferCustomizations = Object.keys(pkgCustom.transferOverrides || {}).length > 0;
                     const hasActivityCustomizations = Object.keys(pkgCustom.activityOverrides || {}).length > 0;
                     const hasSightseeingCustomizations = Object.keys(pkgCustom.sightseeingOverrides || {}).length > 0;
-                    const hasCustomizations = (
+                    const hasCustomizations = Boolean(
                       excludedHotels.length > 0 ||
                       excludedTransfers.length > 0 ||
                       excludedActivities.length > 0 ||
@@ -6107,18 +6137,37 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                       hasSightseeingCustomizations ||
                       customHotels.length > 0 ||
                       customTransfers.length > 0 ||
-                      customActivities.length > 0
+                      customActivities.length > 0 ||
+                      (customSightseeing && customSightseeing.length > 0)
                     );
 
-                    const customizedFinalPrice = Math.max(0, basePackagePrice + netAdjustments);
+                    // When hasCustomizations is false, the price is strictly basePackagePrice
+                    const customizedFinalPrice = hasCustomizations
+                      ? Math.max(0, basePackagePrice + netAdjustments)
+                      : basePackagePrice;
+
+                    const pkgMarkupType = selectedPkg?.agentMarkup?.type || "PERCENT";
                     const pkgMarkupVal = Number(
-                      selectedPkg?.agentMarkup?.markupAmount ||
-                      selectedPkg?.agentMarkup?.value ||
-                      0
+                      selectedPkg?.agentMarkup?.value !== undefined &&
+                      selectedPkg?.agentMarkup?.value !== null &&
+                      selectedPkg?.agentMarkup?.value !== ""
+                        ? selectedPkg.agentMarkup.value
+                        : (pkgMarkupType === "PERCENT"
+                            ? (selectedPkg?.agentMarkup?.markupAmount && customizedFinalPrice > 0
+                                ? Math.round((selectedPkg.agentMarkup.markupAmount / customizedFinalPrice) * 100)
+                                : (selectedPkg?.agentMarkup?.markupAmount || 0))
+                            : (selectedPkg?.agentMarkup?.markupAmount || 0))
                     );
-                    const finalWithMarkup = selectedPkg?.agentMarkup?.type === "PERCENT"
-                      ? customizedFinalPrice + (customizedFinalPrice * pkgMarkupVal / 100)
-                      : customizedFinalPrice + pkgMarkupVal;
+
+                    const markupPreview = calculateAgentMarkupPreview({
+                      markupType: pkgMarkupType,
+                      markupValue: pkgMarkupVal,
+                      opsTotal: customizedFinalPrice,
+                    });
+
+                    const finalWithMarkup = (selectedPkg?.agentMarkup?.finalAmount && !hasCustomizations && Number(selectedPkg.agentMarkup.finalAmount) > customizedFinalPrice)
+                      ? Number(selectedPkg.agentMarkup.finalAmount)
+                      : markupPreview.finalAmount;
 
                     // DYNAMIC REAL-TIME TRAVELER PRICE BREAKDOWN (Adults, Extra Beds, Children with Ages)
                     const activeHotelRows = allHotelRows.filter((r) => !r.isExcluded);
@@ -6402,11 +6451,11 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                                     <span className="text-right font-medium">1.</span>
                                     <span>
                                       Quotation Status:{" "}
-                                      {pkgMarkupVal > 0
+                                      {pkgMarkupVal > 0 || (selectedPkg?.agentMarkup?.markupAmount && selectedPkg.agentMarkup.markupAmount > 0)
                                         ? `Markup Applied (${
-                                            selectedPkg?.agentMarkup?.type === "PERCENT"
-                                              ? `${selectedPkg.agentMarkup.value}%`
-                                              : `INR ${Math.round(pkgMarkupVal).toLocaleString("en-IN")}`
+                                            pkgMarkupType === "PERCENT" || pkgMarkupType === "PERCENTAGE" || pkgMarkupType === "%"
+                                              ? `${pkgMarkupVal}%`
+                                              : `INR ${Math.round(selectedPkg?.agentMarkup?.markupAmount || pkgMarkupVal).toLocaleString("en-IN")}`
                                           })`
                                         : "NO Markup applied (Ops net cost quotation shared with client)"}
                                       .

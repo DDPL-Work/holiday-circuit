@@ -456,9 +456,8 @@ export default function SharePackageModal({
       try {
         setLoadingTerms(true);
         let agentTerms = [];
-        let adminTerms = [];
 
-        // 1. Fetch Agent-created Terms & Conditions (created by Agent)
+        // 1. Fetch Agent-created Terms & Conditions (created by Agent only)
         try {
           const resAgent = await API.get("/agent/terms");
           agentTerms = Array.isArray(resAgent?.data)
@@ -470,32 +469,7 @@ export default function SharePackageModal({
           console.warn("Could not fetch agent terms:", err);
         }
 
-        // 2. Fetch Admin Terms & Conditions
-        try {
-          const resAdmin = await API.get("/admin/terms");
-          adminTerms = Array.isArray(resAdmin?.data)
-            ? resAdmin.data
-            : Array.isArray(resAdmin?.data?.data)
-            ? resAdmin.data.data
-            : [];
-        } catch (err) {
-          console.warn("Could not fetch admin terms:", err);
-        }
-
-        // Combine: Agent's created terms first, then Admin terms (deduplicated)
-        const combined = [...agentTerms];
-        const existingIds = new Set(combined.map((t) => String(t.id || t._id)));
-        const existingNames = new Set(combined.map((t) => String(t.name || "").trim().toLowerCase()));
-
-        adminTerms.forEach((item) => {
-          const itemId = String(item.id || item._id);
-          const itemName = String(item.name || "").trim().toLowerCase();
-          if (!existingIds.has(itemId) && !existingNames.has(itemName)) {
-            combined.push(item);
-          }
-        });
-
-        const parsed = combined
+        const parsed = agentTerms
           .map((item) => {
             const items = parseAdminTermContent(item.content || "");
             return {
@@ -1206,25 +1180,31 @@ export default function SharePackageModal({
         const generatedOnStr = `${genDay} ${genMonth}, ${genYear} - ${genHours}:${genMins} Hrs UTC`;
 
         // Dynamic Terms & Conditions from Voucher / Query / Quote (sent by OPS or set by Admin)
-        const candidateTerms =
-          query?.voucherDetails?.termsAndConditions ||
-          query?.voucher?.termsAndConditions ||
-          query?.termsAndConditions ||
-          query?.voucherTerms ||
-          query?.voucherDetails?.terms ||
-          query?.voucher?.terms ||
-          quote?.voucherDetails?.termsAndConditions ||
-          quote?.voucher?.termsAndConditions ||
-          quote?.termsAndConditions ||
-          quote?.voucherTerms ||
-          quote?.voucherDetails?.terms ||
-          quote?.voucher?.terms ||
-          query?.activeQuote?.termsAndConditions ||
-          query?.quotation?.termsAndConditions ||
-          query?.terms ||
-          quote?.terms ||
-          selectedPkg?.termsAndConditions ||
-          selectedPkg?.terms;
+        const isPkgMode = isPackage || shareType === "PACKAGE" || Boolean(selectedPkg);
+        const candidateTerms = isPkgMode
+          ? (selectedPkg?.termsAndConditions ||
+             selectedPkg?.terms ||
+             quote?.termsAndConditions ||
+             query?.termsAndConditions ||
+             query?.voucherDetails?.termsAndConditions)
+          : (query?.voucherDetails?.termsAndConditions ||
+             query?.voucher?.termsAndConditions ||
+             query?.termsAndConditions ||
+             query?.voucherTerms ||
+             query?.voucherDetails?.terms ||
+             query?.voucher?.terms ||
+             quote?.voucherDetails?.termsAndConditions ||
+             quote?.voucher?.termsAndConditions ||
+             quote?.termsAndConditions ||
+             quote?.voucherTerms ||
+             quote?.voucherDetails?.terms ||
+             quote?.voucher?.terms ||
+             query?.activeQuote?.termsAndConditions ||
+             query?.quotation?.termsAndConditions ||
+             query?.terms ||
+             quote?.terms ||
+             selectedPkg?.termsAndConditions ||
+             selectedPkg?.terms);
 
         let parsedVoucherTerms = [];
         if (!removeTerms) {

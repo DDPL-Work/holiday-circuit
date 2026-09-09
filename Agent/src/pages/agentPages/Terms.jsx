@@ -12,7 +12,10 @@ const Terms = () => {
     const fetchTerms = async () => {
       try {
         const response = await API.get('/agent/terms');
-        setTerms(response.data);
+        const list = Array.isArray(response.data)
+          ? response.data
+          : (response.data?.data || response.data?.terms || []);
+        setTerms(list);
       } catch (error) {
         console.error('Failed to fetch terms:', error);
       }
@@ -20,8 +23,7 @@ const Terms = () => {
     fetchTerms();
   }, []);
 
-  
-  const filteredTerms = terms.filter(t => t.name.toLowerCase().includes(searchQuery.toLowerCase()));
+  const filteredTerms = (terms || []).filter(t => (t?.name || '').toLowerCase().includes(searchQuery.toLowerCase()));
 
 
   return (

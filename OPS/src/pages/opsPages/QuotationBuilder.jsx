@@ -7218,6 +7218,21 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
         if (Array.isArray(pkg.dayWiseItinerary) && pkg.dayWiseItinerary.length > 0) {
           setDayWiseItinerary(pkg.dayWiseItinerary);
         }
+
+        if (pkg.termsAndConditions) {
+          let parsedTerms = [];
+          if (Array.isArray(pkg.termsAndConditions)) {
+            parsedTerms = pkg.termsAndConditions;
+          } else if (typeof pkg.termsAndConditions === "string") {
+            parsedTerms = pkg.termsAndConditions
+              .split(/\r?\n/)
+              .map((t) => t.trim())
+              .filter(Boolean);
+          }
+          if (parsedTerms.length > 0) {
+            setTermsAndConditions(sanitizeTermsItems(parsedTerms));
+          }
+        }
       };
 
       const renderSelectedServicesList = (servicesToRender = selectedServices) => (

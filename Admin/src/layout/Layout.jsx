@@ -22,7 +22,9 @@ const Layout = () => {
     getRequestLoaderSnapshot,
   );
 
-  const isSuperAdminDashboardRoute = location.pathname === "/admin/superAdminDashboard";
+  const isFullWidthRoute =
+    location.pathname === "/admin/superAdminDashboard" ||
+    location.pathname === "/admin/override-disputes";
 
   useEffect(() => {
     dispatch(fetchCurrentUser());
@@ -100,10 +102,11 @@ const Layout = () => {
       <Header />
       <main
         ref={mainRef}
-        className={`relative flex-1 overflow-y-auto bg-gray-50 custom-scroll ${isSuperAdminDashboardRoute
+        className={`relative flex-1 overflow-y-auto bg-gray-50 custom-scroll ${
+          isFullWidthRoute
             ? "px-0 py-0"
             : "px-3 pt-3 pb-0 sm:px-4 sm:pt-4 sm:pb-0.5 lg:px-4 lg:pt-3 lg:pb-1"
-          }`}
+        }`}
       >
         <GlobalDatabaseLoader scoped label="Loading..." />
         <Outlet />

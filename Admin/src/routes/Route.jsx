@@ -46,6 +46,9 @@ const Dashboard = lazy(() => import("../pages/adminPages/Dashboard"));
 const SuperAdminDashboard = lazy(
   () => import("../pages/adminPages/SuperAdminDashboard"),
 );
+const OverrideDisputeDeskPage = lazy(
+  () => import("../pages/adminPages/OverrideDisputeDeskPage"),
+);
 const Discount = lazy(() => import("../pages/adminPages/Discount"));
 const UserManagement = lazy(() => import("../pages/adminPages/UserManagement"));
 const Terms = lazy(() => import("../pages/adminPages/Terms"));
@@ -97,6 +100,10 @@ export const appRouter = createBrowserRouter([
           {
             path: "/admin/superAdminDashboard",
             element: lazyPage(SuperAdminDashboard),
+          },
+          {
+            path: "/admin/override-disputes",
+            element: lazyPage(OverrideDisputeDeskPage),
           },
           { path: "/admin/discount", element: lazyPage(Discount) },
           {

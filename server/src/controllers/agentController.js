@@ -4275,8 +4275,8 @@ export const updatePackageTermsAndConditions = async (req, res, next) => {
       return next(new ApiError(400, "Package ID is required"));
     }
 
-    if (!Array.isArray(termsAndConditions)) {
-      return next(new ApiError(400, "termsAndConditions must be an array of strings"));
+    if (typeof termsAndConditions !== "string" && !Array.isArray(termsAndConditions)) {
+      return next(new ApiError(400, "termsAndConditions must be an array or string"));
     }
 
     const pkg = await mongoose.model("Dmc_Package").findById(id);
@@ -4290,6 +4290,7 @@ export const updatePackageTermsAndConditions = async (req, res, next) => {
     res.status(200).json({
       success: true,
       message: "Terms and conditions updated successfully for the package",
+      data: pkg,
       package: pkg
     });
   } catch (error) {
@@ -6249,7 +6250,7 @@ export const updateTermsAndConditions = async (req, res, next) => {
     const { id } = req.params;
     const { name, content } = req.body;
     
-    const term = await AgentTerm.findById(id);
+    const term = await AgentTerm.findOne({ _id: id, createdBy: userId });
     if (!term) return res.status(404).json({ message: "Term not found" });
 
     if (content && content !== term.content) {
@@ -6283,7 +6284,10 @@ export const updateTermsAndConditions = async (req, res, next) => {
 
 export const fetchTermsAndConditions = async (req, res, next) => {
   try {
-    const terms = await AgentTerm.find().populate("createdBy", "name").sort({ createdAt: -1 });
+    const userId = getAuthenticatedUserId(req);
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+    const terms = await AgentTerm.find({ createdBy: userId }).populate("createdBy", "name").sort({ createdAt: -1 });
     
     const formattedTerms = terms.map(term => ({
       id: term._id,
@@ -6301,8 +6305,11 @@ export const fetchTermsAndConditions = async (req, res, next) => {
 
 export const fetchByIDTermsAndConditions = async (req, res, next) => {
   try {
+    const userId = getAuthenticatedUserId(req);
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
     const { id } = req.params;
-    const term = await AgentTerm.findById(id).populate("createdBy revisions.updatedBy", "name");
+    const term = await AgentTerm.findOne({ _id: id, createdBy: userId }).populate("createdBy revisions.updatedBy", "name");
     
     if (!term) return res.status(404).json({ message: "Term not found" });
 
@@ -6312,7 +6319,7 @@ export const fetchByIDTermsAndConditions = async (req, res, next) => {
       by: term.createdBy?.name || 'Agent',
       on: formatTermDate(term.createdAt),
       content: term.content,
-      revisions: term.revisions.map(rev => ({
+      revisions: (term.revisions || []).map(rev => ({
          _id: rev._id,
          content: rev.content,
          action: rev.action,
@@ -6330,8 +6337,11 @@ export const fetchByIDTermsAndConditions = async (req, res, next) => {
 
 export const deleteTermsAndConditions = async (req, res, next) => {
   try {
+    const userId = getAuthenticatedUserId(req);
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
     const { id } = req.params;
-    const term = await AgentTerm.findByIdAndDelete(id);
+    const term = await AgentTerm.findOneAndDelete({ _id: id, createdBy: userId });
     if (!term) return res.status(404).json({ message: "Term not found" });
 
     res.status(200).json({ message: "Term deleted successfully" });

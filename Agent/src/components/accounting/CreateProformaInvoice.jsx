@@ -357,11 +357,7 @@ const CreateProformaInvoice = ({ onClose, onSave, queryData = {} }) => {
         try {
           res = await API.get("/agent/terms");
         } catch (e) {
-          try {
-            res = await API.get("/admin/terms");
-          } catch (err) {
-            console.error("Failed to fetch terms:", err);
-          }
+          console.warn("Could not fetch agent terms:", e);
         }
         let list = [];
         if (Array.isArray(res?.data)) {
