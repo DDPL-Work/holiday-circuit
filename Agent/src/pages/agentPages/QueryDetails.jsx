@@ -93,6 +93,9 @@ import {
   getSavedAgentBranding,
   calculateAgentMarkupPreview,
   validateAgentMarkupInput,
+  resolveQuoteOpsAmount,
+  resolveQuoteClientAmount,
+  calculateQuoteServicesTotal,
 } from "./queryDetails/utils/queryDetailsHelpers";
 
 import { QueryHeaderCard } from "./queryDetails/components/Header/QueryHeaderCard";
@@ -132,7 +135,11 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const currentUser = useSelector((state) => state.auth.user);
-  const [quotes, setQuotes] = useState([]);
+  const [quotes, setQuotes] = useState(() =>
+    Array.isArray(query?.quotations)
+      ? query.quotations.filter((q) => String(q?.status || "").trim() !== "Pending")
+      : [],
+  );
   const [expandedQuoteIds, setExpandedQuoteIds] = useState({});
   const [showQuoteHistory, setShowQuoteHistory] = useState(false);
   const [quoteDropdownPos, setQuoteDropdownPos] = useState({ top: 0, left: 0 });
@@ -1365,17 +1372,22 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
   }, []);
 
   useEffect(() => {
+    if (Array.isArray(query?.quotations) && query.quotations.length > 0) {
+      setQuotes(query.quotations.filter((q) => String(q?.status || "").trim() !== "Pending"));
+    }
     const fetchQuotations = async () => {
       try {
-        const nextQuotes = await fetchQuotationsByQuery(query._id);
-        setQuotes(nextQuotes);
+        if (query?._id) {
+          const nextQuotes = await fetchQuotationsByQuery(query._id);
+          setQuotes(nextQuotes);
+        }
       } catch (err) {
         console.error("Error fetching quotations:", err);
       }
     };
 
     fetchQuotations();
-  }, [query._id]);
+  }, [query?._id, query?.quotations]);
 
   // Accounting is an overview only. It reads the same invoice data as the
   // Booking Payments desk, so installments stay consistent in both places.
@@ -1811,34 +1823,54 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
     }
   };
 
-  const handleSendToClient = async ({ recipientEmail, channel, note }) => {
+  const handleSendToClient = async (arg1, arg2, arg3) => {
     try {
-      setSendSubmittingId(sendQuoteId);
-      const isPkg = (agentPackages || []).some((p) => p._id === sendQuoteId) || sendShareMode === "PACKAGE";
+      let targetQuoteOrPkg = null;
+      let recipientEmail = "";
+      let options = {};
+
+      if (arg1 && typeof arg1 === "object" && !arg2 && (arg1.recipientEmail || arg1.channel || arg1.note)) {
+        recipientEmail = arg1.recipientEmail || "";
+        options = arg1;
+        targetQuoteOrPkg = quotes.find((q) => q._id === sendQuoteId) || activeQuote || quotes[0];
+      } else {
+        targetQuoteOrPkg = arg1 || quotes.find((q) => q._id === sendQuoteId) || activeQuote || quotes[0];
+        recipientEmail = arg2 || arg1?.recipientEmail || "";
+        options = arg3 || {};
+      }
+
+      const targetId = targetQuoteOrPkg?._id || sendQuoteId;
+      if (!targetId) return;
+
+      setSendSubmittingId(targetId);
+      const isPkg = (agentPackages || []).some((p) => p._id === targetId) || sendShareMode === "PACKAGE";
       if (isPkg) {
-        const targetPkg = (agentPackages || []).find((p) => p._id === sendQuoteId) || agentPackages?.[0];
+        const targetPkg = (agentPackages || []).find((p) => p._id === targetId) || agentPackages?.[0];
         const pkgKey = `agent_pkg_shared_${query?._id || query?.queryId}_${targetPkg?._id}`;
-        localStorage.setItem(pkgKey, JSON.stringify({ sharedAt: new Date().toISOString(), channel, recipientEmail }));
+        localStorage.setItem(pkgKey, JSON.stringify({ sharedAt: new Date().toISOString(), channel: options.channel || "email", recipientEmail }));
         setAgentPackages((prev) =>
           prev.map((p) => (p._id === targetPkg?._id ? { ...p, isSentToClient: true, status: "Sent to Client" } : p))
         );
-        toast.success(`Package quotation sent to ${recipientEmail || "client"}`);
         setIsSendModalOpen(false);
         return;
       }
-      const res = await API.post(`/agent/quotations/${sendQuoteId}/send-to-client`, {
+
+      const payload = {
         recipientEmail,
-        channel,
-        note,
-      });
-      toast.success("Quotation sent to client successfully");
+        channel: options.channel || "email",
+        note: options.note || "",
+        ...options,
+      };
+
+      const res = await API.post(`/agent/quotations/${targetId}/send-to-client`, payload);
       if (res.data?.quotation) {
         updateQuote(res.data.quotation);
       }
       setIsSendModalOpen(false);
       await onRefresh?.();
     } catch (err) {
-      toast.error(err.response?.data?.message || "Unable to send quotation to client");
+      console.error("Unable to send quotation to client:", err);
+      throw err;
     } finally {
       setSendSubmittingId(null);
     }
@@ -1938,7 +1970,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
     query?.agencyName || query?.companyName || currentUser?.companyName || currentUser?.name || currentUser?.fullName || "",
   ).trim() || "Company not specified";
   const headerStatus = String(activeQuote?.status || query?.agentStatus || query?.opsStatus || "Pending").trim();
-  const hasActiveQuoteMarkup = Number(activeQuote?.agentMarkup?.markupAmount || activeQuote?.agentMarkup?.value || 0) > 0 || activeQuote?.status === "Markup Applied";
+  const hasActiveQuoteMarkup = activeQuote?.status !== "Quote Sent" && activeQuote?.status !== "Revision Requested" && activeQuote?.status !== "Pending" && (Number(activeQuote?.agentMarkup?.markupAmount || activeQuote?.agentMarkup?.value || 0) > 0 || activeQuote?.status === "Markup Applied");
   const isActiveQuoteSentToClient = activeQuote?.status === "Sent to Client" || Boolean(activeQuote?.isSentToClient || activeQuote?.sentToClientAt || activeQuote?.sharedWithClient || query?.voucherStatus === "sent");
 
   const agentQueryStatus = String(query?.agentStatus || query?.status || "").trim();
@@ -2042,9 +2074,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
 
   const headerStatusMeta = getHeaderStatusMeta();
   const headerPackageCurrency = String(activeQuote?.pricing?.currency || "INR").trim() || "INR";
-  const headerPackageAmount = Number(
-    activeQuote?.clientTotalAmount ?? activeQuote?.pricing?.totalAmount ?? activeQuote?.pricing?.subTotal ?? 0,
-  );
+  const headerPackageAmount = resolveQuoteClientAmount(activeQuote, query);
 
   const currentVoucherData = useMemo(() => {
     if (!query) return null;
@@ -2565,16 +2595,14 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
               const canConfirmClientApproval = normalizedQuoteStatus === "Sent to Client";
               const canRequestRevisionFromMenu = ["Quote Accepted", "Markup Applied", "Sent to Client"].includes(normalizedQuoteStatus);
               const isClientApprovedQuote = normalizedQuoteStatus === "Confirmed";
-
-              const opsQuoteAmount = Number(
-                quote?.pricing?.totalAmount ?? quote?.totalAmount ?? 0
-              );
-              const activeQuotePrice = Number(
-                quote?.clientTotalAmount ?? opsQuoteAmount
-              );
+              const opsQuoteAmount = resolveQuoteOpsAmount(quote, query);
+              const activeQuotePrice = resolveQuoteClientAmount(quote, query);
               const quoteTax = quote?.pricing?.tax || {};
               const gstPercent = Number(quoteTax?.gst?.percent || 0);
-              const gstAmount = Number(quoteTax?.gst?.amount || 0);
+              let gstAmount = Number(quoteTax?.gst?.amount || 0);
+              if (gstPercent > 0 && gstAmount === 0 && opsQuoteAmount > 0) {
+                gstAmount = Math.round((opsQuoteAmount * gstPercent) / (100 + gstPercent));
+              }
               const tcsAmount = Number(quoteTax?.tcs?.amount || 0);
               const tourismTaxAmount = Number(quoteTax?.tourismFee?.amount || 0);
               const otherTaxAmount = tcsAmount + tourismTaxAmount;
@@ -2664,7 +2692,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                 ? quote.additionalNotes.map((note) => String(note || "").trim()).filter(isValidRemark)
                 : [];
 
-              const hasMarkupApplied = Number(quote?.agentMarkup?.markupAmount || quote?.agentMarkup?.value || 0) > 0 || normalizedQuoteStatus === "Markup Applied";
+              const hasMarkupApplied = normalizedQuoteStatus !== "Quote Sent" && normalizedQuoteStatus !== "Revision Requested" && normalizedQuoteStatus !== "Pending" && (Number(quote?.agentMarkup?.markupAmount || quote?.agentMarkup?.value || 0) > 0 || normalizedQuoteStatus === "Markup Applied");
               const isBookingConfirmedStage =
                 ["Confirmed", "Voucher Generated", "Active Booking", "Booking Confirmed", "Completed", "Vouchered"].includes(query?.agentStatus) ||
                 ["Confirmed", "Vouchered", "Payment_Completed"].includes(query?.opsStatus);
@@ -2739,9 +2767,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                     <div className="w-full md:w-36 lg:w-40 shrink-0 bg-white rounded-lg border border-slate-200 overflow-hidden shadow-2xs self-stretch flex flex-col">
                       <div className="divide-y divide-slate-100 shrink-0">
                         {displayQuotesList.map((item, qIdx) => {
-                          const itemPrice = Number(
-                            item?.clientTotalAmount ?? item?.pricing?.totalAmount ?? item?.totalAmount ?? 0
-                          );
+                          const itemPrice = resolveQuoteClientAmount(item, query);
                           const isSelected = selectedQuoteId
                             ? item._id === selectedQuoteId
                             : qIdx === index;
@@ -2753,7 +2779,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                           const paxStr = `${query?.numberOfAdults || 0}A`;
                           const timeAgo = quoteDate ? `Created ${getRelativeTimeString(quoteDate)}` : "Creation date unavailable";
                           const isClientApproved = item.status === "Confirmed";
-                          const hasMarkup = Number(item?.agentMarkup?.markupAmount || item?.agentMarkup?.value || 0) > 0 || item.status === "Markup Applied";
+                          const hasMarkup = item.status !== "Quote Sent" && item.status !== "Revision Requested" && item.status !== "Pending" && (Number(item?.agentMarkup?.markupAmount || item?.agentMarkup?.value || 0) > 0 || item.status === "Markup Applied");
                           const isSentToClient = item.status === "Sent to Client" || Boolean(item.isSentToClient || item.sentToClientAt || item.sharedWithClient);
                           const isBlueTheme = !isClientApproved && hasMarkup && isSentToClient;
                           const isGrayCheckTheme = !isClientApproved && !hasMarkup && isSentToClient;
@@ -2820,7 +2846,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                           <div className="w-full">
                             <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 mb-2">
                               <span>Package Quote Price</span>
-                              <Pencil size={13} className="text-slate-400 cursor-pointer hover:text-slate-600" />
+                             {/*<Pencil size={13} className="text-slate-400 cursor-pointer hover:text-slate-600" /> */} 
                             </div>
 
                             {isClientApprovedQuote ? (
@@ -2996,7 +3022,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                                              const clientName = cleanLeadName || headerLeadTraveler || "Client";
                                              const quoteNum = targetQuote?.quotationNumber || query?.queryId || "QRY-1093";
                                              const dest = query?.destination || "Goa";
-                                             const priceVal = Math.round(activeQuotePrice || targetQuote?.clientTotalAmount || targetQuote?.totalAmount || 0);
+                                             const priceVal = Math.round(activeQuotePrice || resolveQuoteClientAmount(targetQuote, query) || 0);
                                              const priceStr = priceVal > 0 ? priceVal.toLocaleString("en-IN") : "Price on Request";
                                              const company = headerCompany || "Holiday Circuit";
 
@@ -4223,9 +4249,9 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
         {/* TAB VIEW: ACCOUNTING & FINANCIALS (Matches Image Design 1-to-1) */}
         {activeTab === "accounting" && (() => {
           const quote = activeQuote;
-          const opsQuoteAmount = Number(quote?.pricing?.totalAmount ?? quote?.totalAmount ?? 0);
+          const opsQuoteAmount = resolveQuoteOpsAmount(quote, query);
           const markupAmount = Number(quote?.agentMarkup?.markupAmount || 0);
-          const finalQuoteAmount = Number(quote?.clientTotalAmount ?? opsQuoteAmount);
+          const finalQuoteAmount = resolveQuoteClientAmount(quote, query);
 
           const creatorName = currentUser?.fullName || currentUser?.name || "Operations Team";
           const createdTimeAgo = formatDisplayDate(query?.createdAt) || "Recently created";
@@ -10704,10 +10730,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
             >
               {(() => {
                 const approvedQuote = quotes.find((item) => item._id === clientApprovalQuoteId);
-                const approvedAmount =
-                  approvedQuote?.clientTotalAmount ??
-                  approvedQuote?.pricing?.totalAmount ??
-                  0;
+                const approvedAmount = resolveQuoteClientAmount(approvedQuote, query);
                 const travelerCounts = getQueryTravelerCounts(query);
 
                 return (
@@ -10937,11 +10960,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                 currentPkg?.price ||
                 (pkgServicesSum > 0 ? pkgServicesSum : 250000),
             )
-          : Number(
-              markupQuote?.pricing?.opsTotalAmount ||
-                markupQuote?.pricing?.totalAmount ||
-                0,
-            );
+          : resolveQuoteOpsAmount(markupQuote, query);
 
         const targetTitle = isPackageTarget
           ? currentPkg?.title || "Pre-defined Package"

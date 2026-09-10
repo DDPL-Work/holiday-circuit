@@ -3,8 +3,10 @@ import { useSelector } from "react-redux";
 import { X, Copy, RefreshCw, AlertTriangle, FileText, CheckCircle2, Mail, Send } from "lucide-react";
 import toast from "react-hot-toast";
 import { AnimatePresence, motion } from "framer-motion";
+import html2pdf from "html2pdf.js";
 import API from "../utils/Api";
 import { buildVoucherHtml, parseAdminTermContent, DEFAULT_VOUCHER_TERMS } from "../utils/voucherTemplate";
+import { resolveQuoteClientAmount } from "../pages/agentPages/queryDetails/utils/queryDetailsHelpers";
 
 // Clean Dynamic Default Fallbacks
 const DEFAULT_SELLER_BANK_DETAILS = [
@@ -1473,7 +1475,8 @@ export default function SharePackageModal({
           const children = Number(query?.numberOfChildren || 0);
           const paxSummary = `${adults} Adults${children > 0 ? `, ${children} Children` : ""}`;
 
-          const rawPrice = Number(pkgObj?.price || pkgObj?.basePrice || quote?.clientTotalAmount || quote?.pricing?.totalAmount || 225000);
+          const quotePriceVal = quote ? resolveQuoteClientAmount(quote, query) : 0;
+          const rawPrice = Number(pkgObj?.price || pkgObj?.basePrice || quotePriceVal || 225000);
           const safeTotalAmount = `INR ${Math.round(rawPrice).toLocaleString("en-IN")}`;
 
           // Separate Activities and Sightseeing
@@ -2542,7 +2545,9 @@ export default function SharePackageModal({
   }, [adults, children, infants]);
 
   const totalPrice = Math.round(
-    Number(quote?.clientTotalAmount ?? quote?.pricing?.totalAmount ?? quote?.totalAmount ?? 0)
+    quote
+      ? resolveQuoteClientAmount(quote, query)
+      : Number(selectedPkg?.price || selectedPkg?.basePrice || 0)
   );
 
   const gstPercent = Number(
@@ -3175,6 +3180,9 @@ export default function SharePackageModal({
     availableAgentTerms,
   ]);
 
+
+  
+
   const handleSendWhatsApp = async () => {
     const rawPhone = String(query?.clientPhone || "").replace(/\D/g, "");
     const formattedPhone = rawPhone.length === 10 ? `91${rawPhone}` : rawPhone;
@@ -3197,47 +3205,208 @@ export default function SharePackageModal({
   };
 
   const handleDownloadPDF = async () => {
-    if (shareMode === "VOUCHER") {
-      const voucherHtmlToPrint = emailPreviewHtml;
-      if (voucherHtmlToPrint) {
-        const printWindow = window.open("", "_blank");
-        if (printWindow) {
-          printWindow.document.write(`
-            <!DOCTYPE html>
-            <html>
-              <head>
-                <title>Travel Voucher - ${query?.voucherNumber || tripId}</title>
-                <style>
-                  @page { size: A4; margin: 1cm; }
-                  body { font-family: Arial, sans-serif; margin: 0; padding: 0; background: #fff; }
-                </style>
-              </head>
-              <body>
-                ${voucherHtmlToPrint}
-                <script>
-                  window.onload = function() {
-                    window.print();
-                  };
-                </script>
-              </body>
-            </html>
-          `);
-          printWindow.document.close();
-          return;
+    const isVoucher = shareMode === "VOUCHER";
+    const isPackage = shareMode === "PACKAGE";
+    const docType = isVoucher ? "Travel Voucher" : isPackage ? "Package" : "Quotation";
+    const cleanClientName = (clientName || "Guest").replace(/[^\w\s-]/g, "").trim().replace(/\s+/g, "_");
+    const voucherNo = query?.voucherNumber || `VCH-${query?.queryId || tripId}`;
+    const safeTripId = isVoucher ? voucherNo : tripId;
+    const downloadFileName = isVoucher
+      ? `Travel_Voucher_${safeTripId}_${cleanClientName}.pdf`
+      : isPackage
+      ? `Package_${safeTripId}_${cleanClientName}.pdf`
+      : `Quotation_${safeTripId}_${cleanClientName}.pdf`;
+
+    const toastId = toast.loading(`Generating ${docType} PDF...`);
+
+    try {
+      if (!isPackage && !isVoucher && getClientPdfUrl && quote?._id) {
+        try {
+          const url = await getClientPdfUrl(quote._id);
+          if (url) {
+            const response = await fetch(url);
+            if (response.ok) {
+              const blob = await response.blob();
+              const blobUrl = URL.createObjectURL(blob);
+              const a = document.createElement("a");
+              a.href = blobUrl;
+              a.download = downloadFileName;
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+              URL.revokeObjectURL(blobUrl);
+              toast.success(`${docType} PDF downloaded successfully!`, { id: toastId });
+              return;
+            }
+          }
+        } catch (backendErr) {
+          console.warn("Backend quotation PDF fetch failed, generating client-side PDF:", backendErr);
         }
       }
-      window.print();
-      return;
-    }
-    if (getClientPdfUrl && quote?._id) {
-      try {
-        const url = await getClientPdfUrl(quote._id);
-        window.open(url, "_blank");
-      } catch (err) {
-        toast.error("Unable to generate PDF.");
+
+      let contentHtml = emailPreviewHtml;
+      if (!contentHtml) {
+        let attempts = 0;
+        while (!contentHtml && attempts < 15) {
+          await new Promise((r) => setTimeout(r, 200));
+          contentHtml = emailPreviewHtml;
+          attempts++;
+        }
       }
-    } else {
-      window.print();
+      if (!contentHtml) {
+        const iframeDoc = emailPreviewIframeRef.current?.contentDocument;
+        if (iframeDoc && iframeDoc.body && iframeDoc.body.innerHTML) {
+          contentHtml = iframeDoc.body.innerHTML;
+        }
+      }
+      if (!contentHtml && emailContentRef.current) {
+        contentHtml = emailContentRef.current.innerHTML;
+      }
+
+      if (!contentHtml) {
+        toast.error(`Unable to generate ${docType} PDF. Content is still loading.`, { id: toastId });
+        return;
+      }
+
+      // Offscreen container to completely eliminate on-screen visual glitch/popup
+      const container = document.createElement("div");
+      container.id = "share-pdf-offscreen-host";
+      container.style.position = "absolute";
+      container.style.left = "-99999px";
+      container.style.top = "0";
+      container.style.width = "800px";
+      container.style.maxWidth = "800px";
+      container.style.background = "#ffffff";
+      container.style.opacity = "1";
+      container.style.zIndex = "-9999";
+      container.style.pointerEvents = "none";
+
+      const contentWrapper = document.createElement("div");
+      contentWrapper.className = "share-pdf-render-root";
+      contentWrapper.style.display = "block";
+      contentWrapper.style.width = "800px";
+      contentWrapper.style.minWidth = "800px";
+      contentWrapper.style.maxWidth = "800px";
+      contentWrapper.style.background = "#ffffff";
+      contentWrapper.style.color = "#1e293b";
+      contentWrapper.style.padding = "0px";
+      contentWrapper.style.margin = "0px";
+      contentWrapper.style.boxSizing = "border-box";
+      contentWrapper.style.fontFamily = "'Plus Jakarta Sans', Arial, sans-serif";
+      contentWrapper.innerHTML = `
+        <style>
+          * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; box-sizing: border-box; }
+          body, div, table, tr, td, th, p, span, h1, h2, h3, h4 { font-family: 'Plus Jakarta Sans', Arial, sans-serif; }
+          table { page-break-inside: auto; border-collapse: collapse !important; width: 100% !important; }
+          tr { page-break-inside: avoid; page-break-after: auto; }
+          thead { display: table-header-group; }
+          tfoot { display: table-footer-group; }
+          img { max-width: 100%; height: auto; display: block; }
+        </style>
+        ${contentHtml}
+      `;
+      container.appendChild(contentWrapper);
+      document.body.appendChild(container);
+
+      // Helper to convert external image URL to Base64 data URI to avoid canvas tainting
+      const convertUrlToBase64 = async (url) => {
+        if (!url || typeof url !== "string") return null;
+        const trimmed = url.trim();
+        if (!trimmed || trimmed.startsWith("data:")) return trimmed;
+
+        let normalized = trimmed;
+        if (normalized.startsWith("//")) {
+          normalized = `https:${normalized}`;
+        }
+
+        try {
+          const res = await fetch(normalized, { mode: "cors" });
+          if (res.ok) {
+            const blob = await res.blob();
+            return await new Promise((resolve) => {
+              const reader = new FileReader();
+              reader.onloadend = () => resolve(reader.result);
+              reader.onerror = () => resolve(null);
+              reader.readAsDataURL(blob);
+            });
+          }
+        } catch (err) {}
+
+        try {
+          return await new Promise((resolve) => {
+            const img = new Image();
+            img.crossOrigin = "anonymous";
+            img.onload = () => {
+              try {
+                const canvas = document.createElement("canvas");
+                canvas.width = img.naturalWidth || img.width || 200;
+                canvas.height = img.naturalHeight || img.height || 60;
+                const ctx = canvas.getContext("2d");
+                ctx.drawImage(img, 0, 0);
+                resolve(canvas.toDataURL("image/png"));
+              } catch (e) {
+                resolve(null);
+              }
+            };
+            img.onerror = () => resolve(null);
+            img.src = normalized;
+          });
+        } catch (e) {
+          return null;
+        }
+      };
+
+      // Convert images to base64 and ensure all images are loaded
+      const images = Array.from(contentWrapper.querySelectorAll("img"));
+      if (images.length > 0) {
+        await Promise.all(
+          images.map(async (img) => {
+            if (img.src && !img.src.startsWith("data:")) {
+              const b64 = await convertUrlToBase64(img.src);
+              if (b64) img.src = b64;
+            }
+            if (img.complete && img.naturalWidth > 0) return Promise.resolve();
+            return new Promise((resolve) => {
+              img.onload = resolve;
+              img.onerror = resolve;
+              setTimeout(resolve, 2000);
+            });
+          })
+        );
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 250));
+
+      const opt = {
+        margin: [5, 5, 5, 5],
+        filename: downloadFileName,
+        image: { type: "jpeg", quality: 0.98 },
+        html2canvas: {
+          scale: 2,
+          useCORS: true,
+          allowTaint: true,
+          backgroundColor: "#ffffff",
+          logging: false,
+          scrollY: 0,
+          scrollX: 0,
+          windowWidth: 800,
+        },
+        jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+        pagebreak: {
+          mode: ["css", "legacy", "avoid-all"],
+        },
+      };
+
+      await html2pdf().set(opt).from(contentWrapper).save();
+
+      if (document.body.contains(container)) {
+        document.body.removeChild(container);
+      }
+
+      toast.success(`${docType} PDF downloaded successfully!`, { id: toastId });
+    } catch (err) {
+      console.error("PDF download error:", err);
+      toast.error(`Failed to download ${docType} PDF.`, { id: toastId });
     }
   };
 
@@ -3265,16 +3434,27 @@ export default function SharePackageModal({
       : `Quotation_${safeTripId}_${cleanClientName}.doc`;
 
     let wordHtml = contentHtml;
-    // Fix all logo images specifically for Microsoft Word rendering by locking BOTH width and height
-    wordHtml = wordHtml.replace(
-      /<img([^>]*?)(?:alt=["']Logo["']|src=["'][^"']*logo[^"']*["'])([^>]*?)>/gi,
-      (match) => {
-        const srcMatch = match.match(/src=["']([^"']+)["']/i);
-        const src = srcMatch ? srcMatch[1] : "";
-        if (!src) return match;
-        return `<img src="${src}" alt="Logo" width="95" height="65" style="width: 95px; height: 65px; max-width: 95px; max-height: 65px; display: block; border: 0;" />`;
+    // Fix all images specifically for Microsoft Word rendering by locking explicit width and height attributes and inline styles
+    wordHtml = wordHtml.replace(/<img\b([^>]*)>/gi, (match, attrs) => {
+      const srcMatch = attrs.match(/src=["']([^"']+)["']/i);
+      const src = srcMatch ? srcMatch[1] : "";
+      if (!src) return match;
+
+      const altMatch = attrs.match(/alt=["']([^"']*)["']/i);
+      const alt = altMatch ? altMatch[1] : "";
+
+      const isFooterBanner =
+        alt.toLowerCase().includes("footer") ||
+        attrs.toLowerCase().includes("footer") ||
+        attrs.toLowerCase().includes("banner");
+
+      if (isFooterBanner) {
+        return `<img src="${src}" alt="${alt || "Footer Banner"}" width="600" style="width: 600px; max-width: 100%; height: auto; display: block; margin: 0 auto; border: 0;" />`;
       }
-    );
+
+      // Agency / brand logo in header - strictly locked for Microsoft Word
+      return `<img src="${src}" alt="${alt || "Logo"}" width="110" height="75" style="width: 110px; height: 75px; max-width: 110px; max-height: 75px; object-fit: contain; display: block; border: 0;" />`;
+    });
 
     const fullDocHtml = `
       <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
@@ -3316,20 +3496,17 @@ export default function SharePackageModal({
             vertical-align: top;
             padding: 6px 10px;
           }
-          img[alt="Logo"], .agency-logo {
-            width: 95px !important;
-            max-width: 95px !important;
-            height: 65px !important;
-            max-height: 65px !important;
+          img {
+            width: 110px !important;
+            max-width: 110px !important;
+            height: 75px !important;
+            max-height: 75px !important;
           }
           img[alt="Footer Banner"], .footer-banner {
             width: 600px !important;
             max-width: 600px !important;
             height: auto !important;
-          }
-          img {
-            max-width: 100%;
-            height: auto;
+            max-height: none !important;
           }
           p {
             margin: 0 0 6pt 0;

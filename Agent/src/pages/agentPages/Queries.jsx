@@ -7,6 +7,7 @@ import CreateNewQueries from "../../modal/CreateNewQueries.Modal";
 import QueryDetails from "./QueryDetails.jsx";
 import API from "../../utils/Api.js";
 import toast from "react-hot-toast";
+import { resolveQuoteClientAmount } from "./queryDetails/utils/queryDetailsHelpers";
 
 /* ===== Page Animation (one time only) ===== */
 const containerVariant = {
@@ -233,28 +234,80 @@ const Queries = () => {
     return "Quote Price";
   };
 
+  const isQueryAfterConversion = (query) => {
+    if (!query) return false;
+    if (query?.isAfterConversion || query?.isAfterConversionQuote || query?.isPostConversion) return true;
+    if (
+      query?.agentStatus === "Revision Requested" ||
+      query?.agentStatus === "Quote Updated" ||
+      query?.opsStatus === "Revision_Query"
+    ) return true;
+    if (query?.rejectionNote && String(query.rejectionNote).trim().length > 0) return true;
+
+    const quotations = Array.isArray(query?.quotations) ? query.quotations : [];
+    if (quotations.length > 1) return true;
+    if (quotations.length === 1) {
+      const q = quotations[0];
+      return Boolean(
+        q?.isAfterConversion ||
+        q?.isAfterConversionQuote ||
+        q?.isPostConversion ||
+        q?.sourceQuotationId ||
+        q?.status === "Revised" ||
+        q?.agentRevisionRemark
+      );
+    }
+
+    const logs = Array.isArray(query?.activityLog) ? query.activityLog : [];
+    if (logs.some((l) => {
+      const action = String(l?.action || "").toLowerCase();
+      return (
+        action.includes("revision") ||
+        action.includes("after conversion") ||
+        action.includes("quote revised") ||
+        action.includes("revised")
+      );
+    })) {
+      return true;
+    }
+
+    return false;
+  };
+
   const getDisplayPrice = (query) => {
     const activeTab = statusFilter && statusFilter !== "All" ? statusFilter : query.agentStatus;
+    const quotations = Array.isArray(query?.quotations) ? query.quotations : [];
+    let latestQuotePrice = Number(query.latestQuotationPrice || 0);
+
+    if (quotations.length > 0) {
+      const sorted = [...quotations].sort(
+        (a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0)
+      );
+      const latestQ = sorted[0];
+      if (latestQ) {
+        latestQuotePrice = resolveQuoteClientAmount(latestQ, query);
+      }
+    }
 
     let price = null;
     if (activeTab === "Pending" || activeTab === "In Progress") {
-      price = query.customerBudget || query.latestQuotationPrice;
-    } else if (activeTab === "Quote Sent") {
-      price = query.latestQuotationPrice || query.customerBudget;
+      price = query.customerBudget || latestQuotePrice;
+    } else if (activeTab === "Quote Sent" || activeTab === "Quote Received") {
+      price = latestQuotePrice || query.customerBudget;
     } else if (activeTab === "Client Approved" || activeTab === "Confirmed") {
-      price = query.approvedQuotationPrice || query.latestQuotationPrice || query.customerBudget;
+      price = query.approvedQuotationPrice || latestQuotePrice || query.customerBudget;
     } else {
       if (query.agentStatus === "Confirmed" || query.agentStatus === "Client Approved") {
-        price = query.approvedQuotationPrice || query.latestQuotationPrice || query.customerBudget;
+        price = query.approvedQuotationPrice || latestQuotePrice || query.customerBudget;
       } else if (query.agentStatus === "Quote Sent" || query.agentStatus === "Revision Requested") {
-        price = query.latestQuotationPrice || query.customerBudget;
+        price = latestQuotePrice || query.customerBudget;
       } else {
-        price = query.customerBudget;
+        price = query.customerBudget || latestQuotePrice;
       }
     }
 
     if (price && Number(price) > 0) {
-      return `₹${Number(price).toLocaleString("en-IN")}`;
+      return `₹${Math.round(Number(price)).toLocaleString("en-IN")}`;
     }
     return "N/A";
   };
@@ -441,7 +494,14 @@ const Queries = () => {
                         </span>
                       </td>
                       <td className="px-5 py-4 align-middle text-right font-medium whitespace-nowrap">
-                        {getDisplayPrice(query)}
+                        <div className="flex flex-col items-end justify-center gap-0.5">
+                          <span className="font-bold text-slate-900 text-xs sm:text-sm">{getDisplayPrice(query)}</span>
+                          {isQueryAfterConversion(query) && (
+                            <span className="inline-flex items-center text-[10px] font-semibold text-blue-700 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded leading-none mt-0.5 whitespace-nowrap">
+                              After Conversion Price
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       {/* FIX: View & Edit buttons — padding balanced, no overflow */}

@@ -3601,18 +3601,24 @@ export const getMyQueries = async (req, res, next) => {
     const queryIds = queries.map((q) => q._id);
 
     const quotations = await Quotation.find({
-      agent: req.user.id,
       queryId: { $in: queryIds },
+      status: { $ne: "Pending" },
     })
-      .select("queryId clientTotalAmount pricing status createdAt updatedAt")
+      .select("queryId services pricing totalAmount clientTotalAmount agentMarkup status isAfterConversion isAfterConversionQuote isPostConversion sourceQuotationId agentRevisionRemark createdAt updatedAt")
       .sort({ updatedAt: -1, createdAt: -1 })
       .lean();
 
+    const quotationsByQuery = {};
     const latestQuotationByQuery = {};
     const approvedQuotationByQuery = {};
 
     quotations.forEach((q) => {
-      const qKey = String(q.queryId);
+      const qKey = String(q.queryId?._id || q.queryId);
+      if (!quotationsByQuery[qKey]) {
+        quotationsByQuery[qKey] = [];
+      }
+      quotationsByQuery[qKey].push(q);
+
       if (!latestQuotationByQuery[qKey]) {
         latestQuotationByQuery[qKey] = q;
       }
@@ -3626,21 +3632,48 @@ export const getMyQueries = async (req, res, next) => {
 
     const enrichedQueries = queries.map((query) => {
       const qKey = String(query._id);
-      const latestQ = latestQuotationByQuery[qKey];
-      const approvedQ = approvedQuotationByQuery[qKey] || latestQ;
+      const queryQuotes = quotationsByQuery[qKey] || quotationsByQuery[String(query.queryId)] || [];
+      const latestQ = latestQuotationByQuery[qKey] || latestQuotationByQuery[String(query.queryId)] || queryQuotes[0] || null;
+      const approvedQ = approvedQuotationByQuery[qKey] || approvedQuotationByQuery[String(query.queryId)] || latestQ;
 
       const latestPrice = latestQ
-        ? Number(latestQ.clientTotalAmount || latestQ.pricing?.totalAmount || 0)
+        ? Number(
+            (latestQ.status === "Quote Sent" || latestQ.status === "Revision Requested")
+              ? (latestQ.pricing?.totalAmount || latestQ.totalAmount || latestQ.clientTotalAmount || 0)
+              : (latestQ.clientTotalAmount || latestQ.pricing?.totalAmount || latestQ.totalAmount || 0)
+          )
         : 0;
 
       const approvedPrice = approvedQ
-        ? Number(approvedQ.clientTotalAmount || approvedQ.pricing?.totalAmount || 0)
+        ? Number(approvedQ.clientTotalAmount || approvedQ.pricing?.totalAmount || approvedQ.totalAmount || 0)
         : 0;
+
+      const isAfterConversion = Boolean(
+        query.isAfterConversion ||
+        query.isAfterConversionQuote ||
+        query.isPostConversion ||
+        latestQ?.isAfterConversion ||
+        latestQ?.isAfterConversionQuote ||
+        latestQ?.isPostConversion ||
+        latestQ?.sourceQuotationId ||
+        latestQ?.status === "Revised" ||
+        latestQ?.agentRevisionRemark ||
+        query.agentStatus === "Revision Requested" ||
+        query.opsStatus === "Revision_Query" ||
+        Boolean(query.rejectionNote && String(query.rejectionNote).trim().length > 0) ||
+        (Array.isArray(query.activityLog) && query.activityLog.some((l) => {
+          const act = String(l?.action || "").toLowerCase();
+          return act.includes("revision") || act.includes("after conversion") || act.includes("quote revised") || act.includes("revised");
+        })) ||
+        (queryQuotes.length > 1)
+      );
 
       return {
         ...query,
+        quotations: queryQuotes,
         latestQuotationPrice: latestPrice,
         approvedQuotationPrice: approvedPrice,
+        isAfterConversion,
       };
     });
 
@@ -4547,6 +4580,138 @@ export const acceptQuotationByAgent = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
+};
+
+/* ========================= UPDATE QUOTATION MARKUP ========================= */
+export const updateQuotationMarkup = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { markupType, markupValue } = req.body;
+    const agentId = getAuthenticatedUserId(req);
+
+    if (!agentId) {
+      return next(new ApiError(401, "Unauthorized"));
+    }
+
+    const quotation = await Quotation.findById(id);
+    if (!quotation) {
+      return next(new ApiError(404, "Quotation not found"));
+    }
+
+    if (String(quotation.agent?._id || quotation.agent) !== String(agentId)) {
+      return next(new ApiError(403, "Forbidden: You cannot modify this quotation"));
+    }
+
+    const opsTotal = Number(quotation.pricing?.totalAmount || quotation.totalAmount || 0);
+    const normalizedMarkupValue = Number(markupValue);
+
+    // If markupValue is 0 or non-positive, remove markup
+    if (!Number.isFinite(normalizedMarkupValue) || normalizedMarkupValue <= 0) {
+      quotation.agentMarkup = {
+        type: "PERCENT",
+        value: 0,
+        markupAmount: 0,
+      };
+      quotation.clientTotalAmount = opsTotal;
+      if (quotation.status === "Markup Applied") {
+        quotation.status = "Quote Sent";
+      }
+      await quotation.save();
+      return res.json({ success: true, message: "Agent markup removed successfully", quotation });
+    }
+
+    const normalizedMarkupType = String(markupType || "PERCENT").trim().toUpperCase() === "AMOUNT" ? "AMOUNT" : "PERCENT";
+    const markupAmount =
+      normalizedMarkupType === "PERCENT"
+        ? Math.round((opsTotal * normalizedMarkupValue) / 100)
+        : Math.round(normalizedMarkupValue);
+
+    quotation.agentMarkup = {
+      type: normalizedMarkupType,
+      value: normalizedMarkupValue,
+      markupAmount,
+    };
+
+    quotation.clientTotalAmount = Math.round(opsTotal + markupAmount);
+    if (quotation.status !== "Sent to Client" && quotation.status !== "Confirmed") {
+      quotation.status = "Markup Applied";
+    }
+
+    await quotation.save();
+
+    return res.json({ success: true, message: "Agent markup saved successfully", quotation });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/* ========================= UPDATE QUOTATION VISIBILITY ========================= */
+export const updateQuotationVisibility = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { isHidden } = req.body;
+    const agentId = getAuthenticatedUserId(req);
+
+    if (!agentId) {
+      return next(new ApiError(401, "Unauthorized"));
+    }
+
+    const quotation = await Quotation.findById(id);
+    if (!quotation) {
+      return next(new ApiError(404, "Quotation not found"));
+    }
+
+    if (String(quotation.agent?._id || quotation.agent) !== String(agentId)) {
+      return next(new ApiError(403, "Forbidden: You cannot modify this quotation"));
+    }
+
+    quotation.isHidden = Boolean(isHidden);
+    await quotation.save();
+
+    return res.json({ success: true, message: "Quotation visibility updated", quotation });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/* ========================= MARK QUOTATION SHARED ========================= */
+export const markQuotationShared = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { channel = "link" } = req.body;
+    const agentId = getAuthenticatedUserId(req);
+
+    if (!agentId) {
+      return next(new ApiError(401, "Unauthorized"));
+    }
+
+    const quotation = await Quotation.findById(id);
+    if (!quotation) {
+      return next(new ApiError(404, "Quotation not found"));
+    }
+
+    const query = await TravelQuery.findById(quotation.queryId);
+    if (!query) {
+      return next(new ApiError(404, "Travel query not found"));
+    }
+
+    await markQuotationSharedWithClient({
+      quotation,
+      query,
+      channel,
+      performedBy: req.user?.name || "Agent",
+    });
+
+    return res.json({ success: true, message: "Quotation marked as shared", quotation });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/* ========================= SEND QUOTATION TO CLIENT ========================= */
+export const sendQuotationToClient = async (req, res, next) => {
+  req.body.action = "SEND_TO_CLIENT";
+  return acceptQuotationByAgent(req, res, next);
 };
 
 

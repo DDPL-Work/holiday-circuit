@@ -774,7 +774,7 @@ export const buildAgentClientQuotationTemplate = (quoteDetails = {}) => {
           <tr>
             ${logoUrl ? `
               <td style="vertical-align: middle; padding-right: 12px; width: 110px; text-align: left;">
-                <img src="${logoUrl}" alt="${escapeHtml(brandName)}" style="width: 105px; height: 75px; object-fit: contain; object-position: left; display: block; margin-left: 0;" />
+                <img src="${logoUrl}" alt="${escapeHtml(brandName)}" width="110" height="75" style="width: 110px; height: 75px; max-width: 110px; max-height: 75px; object-fit: contain; object-position: left; display: block; margin-left: 0; border: 0;" />
               </td>
             ` : ""}
             <td style="vertical-align: middle; text-align: left; font-family: -apple-system, BlinkMacSystemFont, Arial, sans-serif; padding: 0;">
