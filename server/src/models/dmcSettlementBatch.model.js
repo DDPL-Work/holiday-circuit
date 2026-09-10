@@ -226,6 +226,7 @@ const dmcSettlementBatchSchema = new mongoose.Schema(
       default: [],
     },
     financeNotes: { type: String, trim: true, default: "" },
+    dmcRemarks: { type: String, trim: true, default: "" },
     assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: "Auth", default: null },
     assignedToName: { type: String, trim: true, default: "" },
     assignedToEmail: { type: String, trim: true, default: "" },

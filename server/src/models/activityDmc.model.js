@@ -145,6 +145,15 @@ const activitySchema = new mongoose.Schema(
       ref: "Auth",
     },
 
+    // Links inventory to the exact bulk file that created it, enabling a
+    // safe delete of that upload without touching other DMC inventory.
+    sourceUpload: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "UploadHistory",
+      index: true,
+      default: null,
+    },
+
     status: {
       type: String,
       default: "active",
@@ -155,5 +164,9 @@ const activitySchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+// Matches the bulk-upload upsert filter. This is intentionally non-unique so
+// existing DMC inventory data remains unchanged while lookups become faster.
+activitySchema.index({ supplier: 1, serviceName: 1, city: 1, country: 1 });
 
 export default mongoose.model("Dmc_Activity", activitySchema);

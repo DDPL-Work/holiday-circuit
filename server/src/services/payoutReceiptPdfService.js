@@ -1,6 +1,7 @@
 import PDFDocument from "pdfkit";
 import fs from "fs";
 import path from "path";
+import { pdfMemoryCache } from "../utils/pdfCache.js";
 
 const BRAND = Object.freeze({
   name: "Holiday Circuit",
@@ -286,15 +287,27 @@ export const generatePayoutReceiptPdf = async ({
   remainingAmount = 0,
   totalAmount = 0,
 }) => {
-  const dirPath = ensureUploadsDir();
+  // [LOCAL] Disk write disabled — no files saved to uploads/payoutreceipts/
+  // const dirPath = ensureUploadsDir();
   const sanitizedInvoiceNumber = String(invoiceNumber || queryCode || "receipt").replace(/[^a-zA-Z0-9]/g, "");
   const fileName = `DmcPayoutReceipt${sanitizedInvoiceNumber}.pdf`;
-  const absoluteFilePath = path.join(dirPath, fileName);
+  // const absoluteFilePath = path.join(dirPath, fileName); // [LOCAL] disk write disabled
+  const absoluteFilePath = "";
   const publicFilePath = `/uploads/payoutreceipts/${fileName}`;
 
   const doc = new PDFDocument({ margin: 34, size: "A4" });
-  const stream = fs.createWriteStream(absoluteFilePath);
-  doc.pipe(stream);
+  
+  const chunks = [];
+  doc.on("data", (chunk) => chunks.push(chunk));
+  const pdfPromise = new Promise((resolve, reject) => {
+    doc.on("end", () => {
+      const buffer = Buffer.concat(chunks);
+      pdfMemoryCache.set(publicFilePath, buffer);
+      setTimeout(() => pdfMemoryCache.delete(publicFilePath), 15 * 60 * 1000);
+      resolve();
+    });
+    doc.on("error", reject);
+  });
 
   drawFrame(doc);
   drawHeader(doc, { logoPath: resolveBrandLogoPath(), title: "Payment Receipt" });
@@ -422,7 +435,9 @@ export const generatePayoutReceiptPdf = async ({
   );
 
   drawFooter(doc);
-  await finalizePdf(doc, stream);
+  // await finalizePdf(doc, stream); // [LOCAL] disk write disabled
+  doc.end();
+  await pdfPromise;
 
   return {
     fileName,
@@ -450,16 +465,28 @@ export const generateAgentPaymentReceiptPdf = async ({
   receiptTitle = "Payment Receipt",
   trackerPayments = [],
 }) => {
-  const dirPath = ensureAgentReceiptUploadsDir();
+  // [LOCAL] Disk write disabled — no files saved to uploads/agentreceipts/
+  // const dirPath = ensureAgentReceiptUploadsDir();
   const sanitizedInvoiceNumber = String(invoiceNumber || queryCode || "receipt").replace(/[^a-zA-Z0-9]/g, "");
   const uniqueSuffix = new Date(generatedAt || new Date()).getTime();
   const fileName = `AgentPaymentReceipt${sanitizedInvoiceNumber}${uniqueSuffix}.pdf`;
-  const absoluteFilePath = path.join(dirPath, fileName);
+  // const absoluteFilePath = path.join(dirPath, fileName); // [LOCAL] disk write disabled
+  const absoluteFilePath = "";
   const publicFilePath = `/uploads/agentreceipts/${fileName}`;
 
   const doc = new PDFDocument({ margin: 34, size: "A4" });
-  const stream = fs.createWriteStream(absoluteFilePath);
-  doc.pipe(stream);
+  
+  const chunks = [];
+  doc.on("data", (chunk) => chunks.push(chunk));
+  const pdfPromise = new Promise((resolve, reject) => {
+    doc.on("end", () => {
+      const buffer = Buffer.concat(chunks);
+      pdfMemoryCache.set(publicFilePath, buffer);
+      setTimeout(() => pdfMemoryCache.delete(publicFilePath), 15 * 60 * 1000);
+      resolve();
+    });
+    doc.on("error", reject);
+  });
 
   drawFrame(doc);
   drawHeader(doc, { logoPath: resolveBrandLogoPath(), title: receiptTitle || "Payment Receipt" });
@@ -584,7 +611,9 @@ export const generateAgentPaymentReceiptPdf = async ({
   );
 
   drawFooter(doc);
-  await finalizePdf(doc, stream);
+  // await finalizePdf(doc, stream); // [LOCAL] disk write disabled
+  doc.end();
+  await pdfPromise;
 
   return {
     fileName,

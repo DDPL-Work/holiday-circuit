@@ -1,6 +1,7 @@
 import PDFDocument from "pdfkit";
 import fs from "fs";
 import path from "path";
+import { pdfMemoryCache } from "../utils/pdfCache.js";
 
 const ensureUploadsDir = () => {
   const dirPath = path.join(process.cwd(), "uploads", "internal-invoices");
@@ -330,16 +331,28 @@ export const generateInternalInvoicePdf = async ({
   templateVariant = "",
 }) => {
   const config = getTemplateConfig(templateVariant);
-  const dirPath = ensureUploadsDir();
+  // [LOCAL] Disk write disabled — no files saved to uploads/internal-invoices/
+  // const dirPath = ensureUploadsDir();
   const sanitizedInvoiceNumber = String(invoiceMeta.invoiceNumber || queryCode || "invoice")
     .replace(/[^a-zA-Z0-9-_]/g, "");
   const fileName = `DMC_Internal_Invoice_${sanitizedInvoiceNumber}.pdf`;
-  const absoluteFilePath = path.join(dirPath, fileName);
+  // const absoluteFilePath = path.join(dirPath, fileName); // [LOCAL] disk write disabled
+  const absoluteFilePath = "";
   const publicFilePath = `/uploads/internal-invoices/${fileName}`;
 
   const doc = new PDFDocument({ margin: 40, size: "A4" });
-  const stream = fs.createWriteStream(absoluteFilePath);
-  doc.pipe(stream);
+  
+  const chunks = [];
+  doc.on("data", (chunk) => chunks.push(chunk));
+  const pdfPromise = new Promise((resolve, reject) => {
+    doc.on("end", () => {
+      const buffer = Buffer.concat(chunks);
+      pdfMemoryCache.set(publicFilePath, buffer);
+      setTimeout(() => pdfMemoryCache.delete(publicFilePath), 15 * 60 * 1000);
+      resolve(buffer);
+    });
+    doc.on("error", reject);
+  });
 
   const snapshotY = drawInvoiceHeader(doc, { config, queryCode, invoiceMeta, dmcName });
   const itemizedHeadingY = drawSnapshotSection(doc, {
@@ -482,13 +495,11 @@ export const generateInternalInvoicePdf = async ({
 
   doc.end();
 
-  await new Promise((resolve, reject) => {
-    stream.on("finish", resolve);
-    stream.on("error", reject);
-  });
+  const finalBuffer = await pdfPromise;
 
-  const stats = fs.statSync(absoluteFilePath);
-  const fileSizeKb = Math.max(1, Math.round(stats.size / 1024));
+  // const stats = fs.statSync(absoluteFilePath); // [LOCAL] disk write disabled
+  // const fileSizeKb = Math.max(1, Math.round(stats.size / 1024));
+  const fileSizeKb = Math.max(1, Math.round(finalBuffer.length / 1024));
 
   return {
     name: fileName,

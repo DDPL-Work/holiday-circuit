@@ -34,6 +34,17 @@ import {
   deleteAgentQueryTask,
   getAgentDueTasks,
   dismissAgentDueTasks,
+  createTermsAndConditions,
+  updateTermsAndConditions,
+  fetchTermsAndConditions,
+  fetchByIDTermsAndConditions,
+  deleteTermsAndConditions,
+  updateQuotationTermsAndConditions,
+  updatePackageTermsAndConditions,
+  updateQuotationMarkup,
+  updateQuotationVisibility,
+  markQuotationShared,
+  sendQuotationToClient,
 } from "../controllers/agentController.js";
 import { getAgentCoupons, markAgentCouponNotificationsRead } from "../controllers/couponController.js";
 
@@ -73,9 +84,17 @@ routers.patch("/queries/:queryId/traveler-documents/submit", isAuthenticated, su
 routers.get("/quotations/query/:queryId", isAuthenticated, getQuotationsByQuery);
 routers.get("/quotations/:id/client-pdf", isAuthenticated, generateClientQuotationPdf);
 routers.get("/quotations/:id/email-preview", isAuthenticated, getClientQuotationEmailPreview);
+routers.put("/quotations/:id/markup", isAuthenticated, updateQuotationMarkup);
+routers.patch("/quotations/:id/markup", isAuthenticated, updateQuotationMarkup);
+routers.put("/quotations/:id/visibility", isAuthenticated, updateQuotationVisibility);
+routers.put("/quotations/:id/mark-shared", isAuthenticated, markQuotationShared);
+routers.post("/quotations/:id/send-to-client", isAuthenticated, sendQuotationToClient);
 routers.put("/quotations/:id/revision", isAuthenticated, requestQuotationRevision);
-routers.patch("/quotations/:id/accept",isAuthenticated, acceptQuotationByAgent);
+routers.patch("/quotations/:id/accept", isAuthenticated, acceptQuotationByAgent);
+routers.put("/quotations/:id/accept", isAuthenticated, acceptQuotationByAgent);
 routers.patch("/quotations/:id/branding", isAuthenticated, upload.single("agentLogo"), updateQuotationBranding);
+routers.put("/quotations/:id/terms", isAuthenticated, updateQuotationTermsAndConditions);
+routers.put("/packages/:id/terms", isAuthenticated, updatePackageTermsAndConditions);
 routers.put("/quotations/:id/confirm", isAuthenticated, confirmQuotation);
 routers.post("/queries/:queryId/send-voucher-email", isAuthenticated, sendAgentVoucherEmail);
 
@@ -84,5 +103,12 @@ routers.get("/invoices", isAuthenticated, getMyInvoices);
 routers.post("/invoices/:id/apply-coupon", isAuthenticated, applyCouponToInvoice);
 routers.post("/invoices/:id/payment-receipts/:installmentIndex/generate", isAuthenticated, generateAgentFinancePaymentReceipt);
 routers.put("/invoices/:id/payment-status", isAuthenticated, upload.single("paymentReceipt"), updatePaymentStatus);
+
+/* 🔹 TERMS AND CONDITIONS */
+routers.get("/terms", isAuthenticated, fetchTermsAndConditions);
+routers.post("/terms", isAuthenticated, createTermsAndConditions);
+routers.get("/terms/:id", isAuthenticated, fetchByIDTermsAndConditions);
+routers.put("/terms/:id", isAuthenticated, updateTermsAndConditions);
+routers.delete("/terms/:id", isAuthenticated, deleteTermsAndConditions);
 
 export default routers;

@@ -944,10 +944,6 @@ export const deleteManagedUser = async (req, res, next) => {
     const { id } = req.params;
     const reason = String(req.body?.reason || "").trim();
 
-    if (!reason) {
-      return next(new ApiError(400, "Deletion reason is required"));
-    }
-
     const user = await Auth.findOne({
       _id: id,
       role: { $in: MANAGED_USER_ROLES },
@@ -961,33 +957,26 @@ export const deleteManagedUser = async (req, res, next) => {
       return next(new ApiError(400, "You cannot delete your own account"));
     }
 
-    if (user.isDeleted) {
-      return next(new ApiError(400, "User is already deleted"));
-    }
+    // Permanently remove user from DB
+    await Auth.deleteOne({ _id: user._id });
 
-    user.isDeleted = true;
-    user.deletedAt = new Date();
-    user.deletedBy = String(req.user?.id || "");
-    user.deletionReason = reason;
-    user.accountStatus = "Inactive";
-    await user.save();
-
-    // Notify via email (notifications cannot be seen after deletion).
-    // If email fails, we still keep deletion successful.
-    try {
-      await sendAccountDeletionMail(user.email, {
-        name: user.name || "Team Member",
-        role: BACKEND_ROLE_TO_FRONTEND[user.role] || user.role,
-        reason,
-      });
-    } catch (mailError) {
-      console.error("Account deletion email failed:", mailError);
+    // Notify via email if email exists
+    if (user.email) {
+      try {
+        await sendAccountDeletionMail(user.email, {
+          name: user.name || "Team Member",
+          role: BACKEND_ROLE_TO_FRONTEND[user.role] || user.role,
+          reason: reason || "Account removed by administrator",
+        });
+      } catch (mailError) {
+        console.error("Account deletion email failed:", mailError);
+      }
     }
 
     res.status(200).json({
       success: true,
       message: "User deleted successfully",
-      user: formatManagedUser(user),
+      userId: String(user._id),
     });
   } catch (error) {
     next(error);
@@ -1057,10 +1046,6 @@ export const permanentlyDeleteManagedUser = async (req, res, next) => {
 
     if (String(req.user?.id) === String(user._id)) {
       return next(new ApiError(400, "You cannot permanently delete your own account"));
-    }
-
-    if (!user.isDeleted) {
-      return next(new ApiError(400, "Please soft delete the user first"));
     }
 
     await Auth.deleteOne({ _id: user._id });
@@ -2062,6 +2047,201 @@ export const getAdminDashboardData = async (req, res, next) => {
       invoice.paymentVerification?.status === "Pending",
     ).length;
 
+    // =========================================================================
+    // Booking Trends Comparison: Last Year Same Month & Same Quarter (YoY & QoQ)
+    // =========================================================================
+    const calculateTrendPct = (current = 0, previous = 0) => {
+      const c = Number(current) || 0;
+      const p = Number(previous) || 0;
+      if (p === 0) return c > 0 ? 100 : 0;
+      return Number((((c - p) / p) * 100).toFixed(1));
+    };
+
+    const currentYear = now.getFullYear();
+    const currentMonthIndex = now.getMonth(); // 0 to 11
+    const lastYear = currentYear - 1;
+    const currentQuarterIndex = Math.floor(currentMonthIndex / 3); // 0 (Q1) to 3 (Q4)
+
+    const confirmedBookingQueries = queries.filter((query) =>
+      activeBookingStatuses.has(query.opsStatus) ||
+      ["Confirmed", "Vouchered", "Payment_Completed"].includes(query.opsStatus) ||
+      ["Confirmed", "Client Approved"].includes(query.agentStatus)
+    );
+
+    const getQueryBookingRevenue = (query) => {
+      const qKey = String(query._id || query.queryId || "").trim();
+      const inv = invoiceByQueryId[qKey];
+      return Number(inv?.totalAmount || inv?.pricingSnapshot?.grandTotal || query.customerBudget || 0);
+    };
+
+    const getQueryReferenceDate = (query) => {
+      return new Date(query.createdAt || query.updatedAt || query.startDate || now);
+    };
+
+    const filterBookingsInWindow = (winStart, winEnd) => {
+      return confirmedBookingQueries.filter((query) => {
+        const d = getQueryReferenceDate(query);
+        return isWithinRange(d, winStart, winEnd);
+      });
+    };
+
+    // 1. Monthly Comparison (Same Month Last Year & Previous Month MoM)
+    const curMonthRangeStart = new Date(currentYear, currentMonthIndex, 1, 0, 0, 0, 0);
+    const curMonthRangeEnd = new Date(currentYear, currentMonthIndex + 1, 0, 23, 59, 59, 999);
+    const lastYearMonthRangeStart = new Date(lastYear, currentMonthIndex, 1, 0, 0, 0, 0);
+    const lastYearMonthRangeEnd = new Date(lastYear, currentMonthIndex + 1, 0, 23, 59, 59, 999);
+    const prevMonthRangeStart = new Date(currentYear, currentMonthIndex - 1, 1, 0, 0, 0, 0);
+    const prevMonthRangeEnd = new Date(currentYear, currentMonthIndex, 0, 23, 59, 59, 999);
+
+    const curMonthBookingsList = filterBookingsInWindow(curMonthRangeStart, curMonthRangeEnd);
+    const lastYearMonthBookingsList = filterBookingsInWindow(lastYearMonthRangeStart, lastYearMonthRangeEnd);
+    const prevMonthBookingsList = filterBookingsInWindow(prevMonthRangeStart, prevMonthRangeEnd);
+
+    const curMonthBookingsCount = curMonthBookingsList.length;
+    const lastYearMonthBookingsCount = lastYearMonthBookingsList.length;
+    const prevMonthBookingsCount = prevMonthBookingsList.length;
+
+    const curMonthBookingRevenue = curMonthBookingsList.reduce((sum, q) => sum + getQueryBookingRevenue(q), 0);
+    const lastYearMonthBookingRevenue = lastYearMonthBookingsList.reduce((sum, q) => sum + getQueryBookingRevenue(q), 0);
+    const prevMonthBookingRevenue = prevMonthBookingsList.reduce((sum, q) => sum + getQueryBookingRevenue(q), 0);
+
+    const monthYoYGrowth = calculateTrendPct(curMonthBookingsCount, lastYearMonthBookingsCount);
+    const monthMoMGrowth = calculateTrendPct(curMonthBookingsCount, prevMonthBookingsCount);
+    const monthRevenueYoYGrowth = calculateTrendPct(curMonthBookingRevenue, lastYearMonthBookingRevenue);
+
+    const monthNamesList = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const curMonthName = monthNamesList[currentMonthIndex];
+    const prevMonthName = monthNamesList[currentMonthIndex === 0 ? 11 : currentMonthIndex - 1];
+
+    // 2. Quarterly Comparison (Same Quarter Last Year & Previous Quarter QoQ)
+    const quarterStartMonth = currentQuarterIndex * 3;
+    const curQuarterRangeStart = new Date(currentYear, quarterStartMonth, 1, 0, 0, 0, 0);
+    const curQuarterRangeEnd = new Date(currentYear, quarterStartMonth + 3, 0, 23, 59, 59, 999);
+    const lastYearQuarterRangeStart = new Date(lastYear, quarterStartMonth, 1, 0, 0, 0, 0);
+    const lastYearQuarterRangeEnd = new Date(lastYear, quarterStartMonth + 3, 0, 23, 59, 59, 999);
+
+    const prevQYear = currentQuarterIndex === 0 ? currentYear - 1 : currentYear;
+    const prevQStartMonth = currentQuarterIndex === 0 ? 9 : (currentQuarterIndex - 1) * 3;
+    const prevQuarterRangeStart = new Date(prevQYear, prevQStartMonth, 1, 0, 0, 0, 0);
+    const prevQuarterRangeEnd = new Date(prevQYear, prevQStartMonth + 3, 0, 23, 59, 59, 999);
+
+    const curQuarterBookingsList = filterBookingsInWindow(curQuarterRangeStart, curQuarterRangeEnd);
+    const lastYearQuarterBookingsList = filterBookingsInWindow(lastYearQuarterRangeStart, lastYearQuarterRangeEnd);
+    const prevQuarterBookingsList = filterBookingsInWindow(prevQuarterRangeStart, prevQuarterRangeEnd);
+
+    const curQuarterBookingsCount = curQuarterBookingsList.length;
+    const lastYearQuarterBookingsCount = lastYearQuarterBookingsList.length;
+    const prevQuarterBookingsCount = prevQuarterBookingsList.length;
+
+    const curQuarterBookingRevenue = curQuarterBookingsList.reduce((sum, q) => sum + getQueryBookingRevenue(q), 0);
+    const lastYearQuarterBookingRevenue = lastYearQuarterBookingsList.reduce((sum, q) => sum + getQueryBookingRevenue(q), 0);
+    const prevQuarterBookingRevenue = prevQuarterBookingsList.reduce((sum, q) => sum + getQueryBookingRevenue(q), 0);
+
+    const quarterYoYGrowth = calculateTrendPct(curQuarterBookingsCount, lastYearQuarterBookingsCount);
+    const quarterQoQGrowth = calculateTrendPct(curQuarterBookingsCount, prevQuarterBookingsCount);
+    const quarterRevenueYoYGrowth = calculateTrendPct(curQuarterBookingRevenue, lastYearQuarterBookingRevenue);
+
+    const quarterLabelsList = ["Q1 (Jan - Mar)", "Q2 (Apr - Jun)", "Q3 (Jul - Sep)", "Q4 (Oct - Dec)"];
+    const curQuarterLabel = quarterLabelsList[currentQuarterIndex];
+    const lastYearSameQuarterLabel = `${quarterLabelsList[currentQuarterIndex]} ${lastYear}`;
+    const prevQuarterLabel = `${quarterLabelsList[prevQStartMonth / 3]} ${prevQYear}`;
+
+    // 3. 12-Month YoY Trend Chart Array
+    const monthlyTrendData = monthNamesList.map((name, mIdx) => {
+      const mThisStart = new Date(currentYear, mIdx, 1, 0, 0, 0, 0);
+      const mThisEnd = new Date(currentYear, mIdx + 1, 0, 23, 59, 59, 999);
+      const mLastStart = new Date(lastYear, mIdx, 1, 0, 0, 0, 0);
+      const mLastEnd = new Date(lastYear, mIdx + 1, 0, 23, 59, 59, 999);
+
+      const thisList = filterBookingsInWindow(mThisStart, mThisEnd);
+      const lastList = filterBookingsInWindow(mLastStart, mLastEnd);
+
+      const thisCount = thisList.length;
+      const lastCount = lastList.length;
+      const thisRev = thisList.reduce((sum, q) => sum + getQueryBookingRevenue(q), 0);
+      const lastRev = lastList.reduce((sum, q) => sum + getQueryBookingRevenue(q), 0);
+      const yoyChange = calculateTrendPct(thisCount, lastCount);
+      const yoyRevChange = calculateTrendPct(thisRev, lastRev);
+
+      return {
+        month: name,
+        fullLabel: `${name} ${currentYear}`,
+        thisYear: thisCount,
+        lastYear: lastCount,
+        thisYearRevenue: thisRev,
+        lastYearRevenue: lastRev,
+        growthPercent: yoyChange,
+        revenueGrowthPercent: yoyRevChange,
+        isCurrentMonth: mIdx === currentMonthIndex,
+      };
+    });
+
+    // 4. 4-Quarter Trend Chart Array
+    const quarterlyTrendData = quarterLabelsList.map((label, qIdx) => {
+      const qStartMonth = qIdx * 3;
+      const qThisStart = new Date(currentYear, qStartMonth, 1, 0, 0, 0, 0);
+      const qThisEnd = new Date(currentYear, qStartMonth + 3, 0, 23, 59, 59, 999);
+      const qLastStart = new Date(lastYear, qStartMonth, 1, 0, 0, 0, 0);
+      const qLastEnd = new Date(lastYear, qStartMonth + 3, 0, 23, 59, 59, 999);
+
+      const thisList = filterBookingsInWindow(qThisStart, qThisEnd);
+      const lastList = filterBookingsInWindow(qLastStart, qLastEnd);
+
+      const thisCount = thisList.length;
+      const lastCount = lastList.length;
+      const thisRev = thisList.reduce((sum, q) => sum + getQueryBookingRevenue(q), 0);
+      const lastRev = lastList.reduce((sum, q) => sum + getQueryBookingRevenue(q), 0);
+      const yoyChange = calculateTrendPct(thisCount, lastCount);
+      const yoyRevChange = calculateTrendPct(thisRev, lastRev);
+
+      return {
+        quarter: `Q${qIdx + 1}`,
+        label,
+        thisYear: thisCount,
+        lastYear: lastCount,
+        thisYearRevenue: thisRev,
+        lastYearRevenue: lastRev,
+        growthPercent: yoyChange,
+        revenueGrowthPercent: yoyRevChange,
+        isCurrentQuarter: qIdx === currentQuarterIndex,
+      };
+    });
+
+    const bookingTrendsPayload = {
+      monthlyComparison: {
+        currentMonthLabel: `${curMonthName} ${currentYear}`,
+        lastYearSameMonthLabel: `${curMonthName} ${lastYear}`,
+        previousMonthLabel: `${prevMonthName} ${currentMonthIndex === 0 ? currentYear - 1 : currentYear}`,
+        currentMonthBookings: curMonthBookingsCount,
+        lastYearSameMonthBookings: lastYearMonthBookingsCount,
+        previousMonthBookings: prevMonthBookingsCount,
+        currentMonthRevenue: curMonthBookingRevenue,
+        lastYearSameMonthRevenue: lastYearMonthBookingRevenue,
+        previousMonthRevenue: prevMonthBookingRevenue,
+        growthPercent: monthYoYGrowth,
+        momGrowthPercent: monthMoMGrowth,
+        revenueGrowthPercent: monthRevenueYoYGrowth,
+        trend: monthYoYGrowth >= 0 ? "up" : "down",
+      },
+      quarterlyComparison: {
+        currentQuarterLabel: `${curQuarterLabel} ${currentYear}`,
+        lastYearSameQuarterLabel,
+        previousQuarterLabel: prevQuarterLabel,
+        currentQuarterBookings: curQuarterBookingsCount,
+        lastYearSameQuarterBookings: lastYearQuarterBookingsCount,
+        previousQuarterBookings: prevQuarterBookingsCount,
+        currentQuarterRevenue: curQuarterBookingRevenue,
+        lastYearSameQuarterRevenue: lastYearQuarterBookingRevenue,
+        previousQuarterRevenue: prevQuarterBookingRevenue,
+        growthPercent: quarterYoYGrowth,
+        qoqGrowthPercent: quarterQoQGrowth,
+        revenueGrowthPercent: quarterRevenueYoYGrowth,
+        trend: quarterYoYGrowth >= 0 ? "up" : "down",
+      },
+      monthlyTrendData,
+      quarterlyTrendData,
+    };
+
     const dashboardPayload = {
       header: {
         title: "Admin Dashboard",
@@ -2204,6 +2384,7 @@ export const getAdminDashboardData = async (req, res, next) => {
           { name: "Finance Team", hours: Number(financeReviewHours.toFixed(1)) },
           { name: "DMC Partners", hours: Number(dmcFulfillmentHours.toFixed(1)) },
         ],
+        bookingTrends: bookingTrendsPayload,
         masterBookings: masterBookingRows,
         overrideCases: overrideCaseRows,
         overrideSummary: {
@@ -2687,9 +2868,20 @@ const buildAgentPaymentReceiptWhatsappMessage = ({
   return parts.filter((p) => typeof p === "string").join("\n");
 };
 
+const resolveStandardInvoiceNumber = (invoice) => {
+  const queryCode = invoice.query?.queryId || invoice.queryCode;
+  if (queryCode && !invoice.batchNumber && !String(queryCode).includes("bookings") && queryCode !== "-") {
+    return `INV-${String(queryCode).replace(/^INV-/, "")}`;
+  }
+  const rawNum = String(invoice.invoiceNumber || "").trim();
+  if (!rawNum) return "INV-0001";
+  if (rawNum.startsWith("INV-")) return rawNum;
+  return `INV-${rawNum}`;
+};
+
 const formatInternalInvoiceRow = (invoice, quotation) => ({
   id: invoice._id,
-  invoiceNumber: invoice.invoiceNumber,
+  invoiceNumber: resolveStandardInvoiceNumber(invoice),
   settlementType: invoice.settlementType || (invoice.batchNumber ? "bulk" : "single"),
   batchNumber: invoice.batchNumber || "",
   queryId:
@@ -2773,6 +2965,7 @@ const formatInternalInvoiceRow = (invoice, quotation) => ({
       createdAt: invoice.reviewedAt || invoice.updatedAt,
     }] : []),
   financeNotes: invoice.financeNotes || "",
+  dmcRemarks: invoice.dmcRemarks || invoice.remarks || invoice.invoiceMeta?.dmcRemarks || "",
   assignedTo: invoice.assignedTo || null,
   assignedToName:
     invoice.assignedTo?.companyName ||
@@ -2855,69 +3048,23 @@ const getUploadedInvoiceAmountValidation = (invoice = {}) => {
     return { passed: true, message: "" };
   }
 
-  const extraction = invoice.invoiceExtraction || {};
-  if (
-    extraction.status === "parsed" &&
-    extraction.verification &&
-    extraction.verification.claimedMatchesExtracted === false
-  ) {
+  const grandTotal = Number(
+    invoice.claimedSummary?.grandTotal ??
+    invoice.summary?.grandTotal ??
+    invoice.payoutAmount ??
+    0,
+  );
+
+  if (grandTotal <= 0) {
     return {
       passed: false,
-      message:
-        extraction.verification.warnings?.join(" ") ||
-        "Uploaded invoice OCR/PDF parser total does not match the entered claimed amount.",
+      message: "Uploaded invoice amount must be greater than zero.",
     };
   }
 
-  const items = Array.isArray(invoice.items) ? invoice.items : [];
-  if (!items.length) {
-    return { passed: true, message: "" };
-  }
-
-  const currency = invoice.items?.[0]?.currency || "INR";
-  const expected = getInternalInvoiceExpectedSummary(invoice);
-  const claimed = {
-    subtotal: Number(invoice.claimedSummary?.subtotal ?? invoice.summary?.subtotal ?? 0),
-    taxAmount: Number(
-      invoice.claimedSummary?.taxAmount ??
-      invoice.claimedSummary?.totalTax ??
-      invoice.summary?.totalTax ??
-      0,
-    ),
-    grandTotal: Number(invoice.claimedSummary?.grandTotal ?? invoice.summary?.grandTotal ?? 0),
-  };
-
-  const mismatchNotes = [];
-
-  if (!invoiceAmountsMatch(claimed.subtotal, expected.subtotal)) {
-    mismatchNotes.push(
-      `subtotal ${formatNotificationCurrency(claimed.subtotal, currency)} should be ${formatNotificationCurrency(expected.subtotal, currency)}`,
-    );
-  }
-
-  if (!invoiceAmountsMatch(claimed.taxAmount, expected.totalTax)) {
-    mismatchNotes.push(
-      `tax ${formatNotificationCurrency(claimed.taxAmount, currency)} should be ${formatNotificationCurrency(expected.totalTax, currency)}`,
-    );
-  }
-
-  if (!invoiceAmountsMatch(claimed.grandTotal, expected.grandTotal)) {
-    mismatchNotes.push(
-      `grand total ${formatNotificationCurrency(claimed.grandTotal, currency)} should be ${formatNotificationCurrency(expected.grandTotal, currency)}`,
-    );
-  }
-
-  if (!invoiceAmountsMatch(claimed.subtotal + claimed.taxAmount, claimed.grandTotal)) {
-    mismatchNotes.push(
-      `subtotal plus tax is ${formatNotificationCurrency(claimed.subtotal + claimed.taxAmount, currency)}, not ${formatNotificationCurrency(claimed.grandTotal, currency)}`,
-    );
-  }
-
   return {
-    passed: mismatchNotes.length === 0,
-    message: mismatchNotes.length
-      ? `Uploaded invoice amount mismatch: ${mismatchNotes.join("; ")}.`
-      : "",
+    passed: true,
+    message: "",
   };
 };
 
@@ -7089,7 +7236,7 @@ export const updateInternalInvoiceStatus = async (req, res, next) => {
       dispatchRecipientPhone = "",
     } = req.body || {};
 
-    if (!["Approved", "Rejected", "Paid", "Partially Paid"].includes(status)) {
+    if (!["Approved", "Rejected", "Paid", "Partially Paid", "Passed to Manager", "Pass to Manager"].includes(status)) {
       return next(new ApiError(400, "Invalid internal invoice status"));
     }
 
@@ -7154,12 +7301,35 @@ export const updateInternalInvoiceStatus = async (req, res, next) => {
       invoice.financeNotes = String(reason).trim();
     }
 
+    if (status === "Passed to Manager" || status === "Pass to Manager") {
+      if (!String(reason || "").trim()) {
+        return next(new ApiError(400, "Reason is required to pass to manager"));
+      }
+
+      invoice.status = "Passed to Manager";
+      invoice.financeNotes = String(reason).trim();
+      invoice.escalatedToAdmin = true;
+    }
+
     if (status === "Paid" || status === "Partially Paid") {
       if (!payoutReference || !payoutDate || !payoutBank || Number(payoutAmount || 0) <= 0) {
         return next(new ApiError(400, "Payout reference, date, bank, and amount are required"));
       }
 
-      const totalExpected = Number(invoice.summary?.grandTotal || 0);
+      if (invoice.invoiceSource === "uploaded_invoice" && Number(invoice.claimedSummary?.grandTotal || 0) > 0) {
+        if (!invoice.summary || !invoice.summary.grandTotal) {
+          invoice.summary = {
+            subtotal: Number(invoice.claimedSummary.subtotal || invoice.summary?.subtotal || 0),
+            gstAmount: Number(invoice.claimedSummary.taxAmount || invoice.summary?.gstAmount || 0),
+            tcsAmount: Number(invoice.summary?.tcsAmount || 0),
+            otherTaxAmount: Number(invoice.summary?.otherTaxAmount || 0),
+            totalTax: Number(invoice.claimedSummary.taxAmount || invoice.summary?.totalTax || 0),
+            grandTotal: Number(invoice.claimedSummary.grandTotal || invoice.summary?.grandTotal || 0),
+          };
+        }
+      }
+
+      const totalExpected = Number(invoice.summary?.grandTotal || invoice.claimedSummary?.grandTotal || 0);
       const newAmount = Number(payoutAmount || 0);
 
       // Handle legacy payouts integration
@@ -7277,6 +7447,11 @@ export const updateInternalInvoiceStatus = async (req, res, next) => {
         name: payoutReceipt.fileName,
         filePath: payoutReceipt.publicFilePath,
       };
+      if (currentInst) {
+        currentInst.receiptUrl = payoutReceipt.publicFilePath;
+        currentInst.filePath = payoutReceipt.publicFilePath;
+      }
+      invoice.payoutReceiptUrl = payoutReceipt.publicFilePath;
       invoice.documents = Array.isArray(invoice.documents) ? invoice.documents : [];
       invoice.documents.push({
         name: payoutReceipt.fileName,
@@ -7375,93 +7550,252 @@ export const updateInternalInvoiceStatus = async (req, res, next) => {
       }
     }
 
-    const notificationPayload =
-      status === "Rejected"
-        ? {
-          type: "warning",
-          title: "Internal Invoice Rejected",
-          message: `${invoice.invoiceNumber} was rejected by finance. Reason: ${invoice.financeNotes}`,
-        }
-        : status === "Approved"
-          ? {
-            type: "success",
-            title: "Internal Invoice Validated",
-            message: `${invoice.invoiceNumber} was validated by finance and is ready for payout processing.`,
-          }
-          : {
-            type: "success",
-            title: "Internal Invoice Paid",
-            message: `${invoice.invoiceNumber} has been paid by finance for ${formatNotificationCurrency(
-              invoice.payoutAmount || invoice.summary?.grandTotal || 0,
-              invoice.items?.[0]?.currency || "INR",
-            )}.${getFinanceDispatchNote(dispatchResult.channel, {
-              email: dispatchResult.recipientEmail,
-              phone: dispatchResult.recipientPhone,
-              documentLabel: "Payment receipt",
-            })}`,
-          };
+    const actorName = req.user?.name || req.user?.companyName || reviewerName || "Finance Manager";
+    const dmcPartyName = invoice.dmcName || invoice.supplierName || "DMC Partner";
+    const invoiceQueryRef = invoice.query?.queryId || invoice.queryCode || invoice.batchNumber || "";
+    const formattedAmount = formatNotificationCurrency(
+      invoice.payoutAmount || invoice.summary?.grandTotal || invoice.claimedSummary?.grandTotal || 0,
+      invoice.items?.[0]?.currency || "INR",
+    );
 
-    await createFinanceSideNotification(req, {
-      user: invoice.dmc?._id || invoice.dmc,
-      ...notificationPayload,
-      link: "/dmc/confirmation",
-      meta: {
-        internalInvoiceId: invoice._id,
-        settlementType: isSettlementBatch ? "bulk" : "single",
-        invoiceNumber: invoice.invoiceNumber,
-        queryId: invoice.query?.queryId || invoice.queryCode || invoice.batchNumber || "",
-        status,
-        payoutAmount: invoice.payoutAmount || 0,
-        payoutBank: invoice.payoutBank || "",
-        payoutDate: invoice.payoutDate || null,
-        dispatchChannel: dispatchResult.channel || "",
-        dispatchStatus: dispatchResult.status || "",
-        recipientEmail: dispatchResult.recipientEmail || "",
-        recipientPhone: dispatchResult.recipientPhone || "",
-      },
-    });
+    // Fetch team users across roles (Finance & Admin only)
+    const [teamUsers, adminUsers] = await Promise.all([
+      Auth.find({
+        role: { $in: ["finance_manager", "finance_partner"] },
+        isDeleted: { $ne: true },
+        accountStatus: { $ne: "Inactive" },
+      }).select("_id role name email"),
+      Auth.find({
+        role: { $in: ["admin", "super_admin"] },
+        isDeleted: { $ne: true },
+        accountStatus: { $ne: "Inactive" },
+      }).select("_id role name email"),
+    ]);
 
-    const shouldNotifyAdmin = status === "Rejected" && Boolean(notifyAdmin);
-    if (shouldNotifyAdmin) {
+    const notificationsToInsert = [];
+    const addedUserIds = new Set();
+
+    const addNotification = (userId, notifData) => {
+      if (!userId) return;
+      const idStr = String(userId._id || userId);
+      if (addedUserIds.has(idStr)) return;
+      addedUserIds.add(idStr);
+      notificationsToInsert.push({
+        user: userId._id || userId,
+        ...notifData,
+      });
+    };
+
+    const dmcRecipientId = invoice.dmc?._id || invoice.dmc || invoice.submittedBy;
+
+    if (status === "Passed to Manager" || status === "Pass to Manager") {
       invoice.escalatedToAdmin = true;
       await invoice.save();
 
-      const adminUsers = await Auth.find({
-        role: "admin",
-        isDeleted: { $ne: true },
-        accountStatus: { $ne: "Inactive" },
-      }).select("_id");
-
-      const normalizedMismatchReason = String(mismatchReason || "").trim();
+      const normalizedMismatchReason = String(mismatchReason || reason || "").trim();
       const normalizedAdminMessage = String(adminMessage || "").trim();
-      const escalationActor = req.user?.name || req.user?.companyName || reviewerName;
-      const escalationMessageParts = [
-        `${invoice.invoiceNumber} was escalated by ${escalationActor} for admin review.`,
-        normalizedMismatchReason ? `Reason for mismatch: ${normalizedMismatchReason}.` : "",
-        normalizedAdminMessage ? `Finance note: ${normalizedAdminMessage}` : "",
-      ].filter(Boolean);
+      const passReason = normalizedMismatchReason || invoice.financeNotes || "Passed by finance for manager review";
 
-      if (adminUsers.length) {
-        await Notification.insertMany(
-          adminUsers.map((adminUser) => ({
-            user: adminUser._id,
-            type: "warning",
-            title: "Internal invoice mismatch escalated",
-            message: escalationMessageParts.join(" "),
-            link: "/finance/internalInvoice",
-            meta: {
-              internalInvoiceId: invoice._id,
-              invoiceNumber: invoice.invoiceNumber,
-              queryId: invoice.query?._id || invoice.query || null,
-              queryNumber: invoice.query?.queryId || invoice.queryCode || invoice.batchNumber || "",
-              mismatchReason: normalizedMismatchReason,
-              adminMessage: normalizedAdminMessage,
-              financeNotes: invoice.financeNotes || "",
-              source: "finance_internal_invoice_mismatch",
-            },
-          })),
-        );
+      // 1. Notify DMC
+      if (dmcRecipientId) {
+        addNotification(dmcRecipientId, {
+          type: "info",
+          title: "Invoice Under Admin Review",
+          message: `Your invoice #${invoice.invoiceNumber} is under review by Admin. Reason: ${passReason}`,
+          link: "/dmc/confirmation",
+          meta: {
+            internalInvoiceId: invoice._id,
+            invoiceNumber: invoice.invoiceNumber,
+            queryId: invoice.query?._id || invoice.query || null,
+            status: "Passed to Manager",
+          },
+        });
       }
+
+      // 2. Notify Admins
+      adminUsers.forEach((adminUser) => {
+        addNotification(adminUser._id, {
+          type: "warning",
+          title: "DMC Invoice Escalated to Admin",
+          message: `Invoice #${invoice.invoiceNumber} (${dmcPartyName}${invoiceQueryRef ? ` | ${invoiceQueryRef}` : ""}) was escalated to Admin by ${actorName}. Reason: ${passReason}`,
+          link: "/financeManager/internalDmcInvoice",
+          meta: {
+            internalInvoiceId: invoice._id,
+            invoiceNumber: invoice.invoiceNumber,
+            queryId: invoice.query?._id || invoice.query || null,
+            mismatchReason: passReason,
+            adminMessage: normalizedAdminMessage,
+            financeNotes: invoice.financeNotes || "",
+            passedBy: actorName,
+            source: "finance_internal_invoice_pass_to_manager",
+          },
+        });
+      });
+
+      // 3. Notify Finance Team & Assigned Exec
+      if (invoice.assignedTo) {
+        addNotification(invoice.assignedTo, {
+          type: "warning",
+          title: "Invoice Escalated to Admin",
+          message: `Invoice #${invoice.invoiceNumber} (${dmcPartyName}) was escalated to Admin by ${actorName}. Reason: ${passReason}`,
+          link: "/finance/internalInvoice",
+          meta: { internalInvoiceId: invoice._id, invoiceNumber: invoice.invoiceNumber },
+        });
+      }
+      teamUsers.forEach((fUser) => {
+        addNotification(fUser._id, {
+          type: "warning",
+          title: "Invoice Escalated to Admin",
+          message: `Invoice #${invoice.invoiceNumber} (${dmcPartyName}) was escalated to Admin by ${actorName}. Reason: ${passReason}`,
+          link: "/financeManager/internalDmcInvoice",
+          meta: { internalInvoiceId: invoice._id, invoiceNumber: invoice.invoiceNumber },
+        });
+      });
+    } else if (status === "Paid" || status === "Partially Paid") {
+      const dispatchNote = getFinanceDispatchNote(dispatchResult.channel, {
+        email: dispatchResult.recipientEmail,
+        phone: dispatchResult.recipientPhone,
+        documentLabel: "Payment receipt",
+      });
+      const utrInfo = invoice.payoutReference
+        ? ` via UTR: ${invoice.payoutReference} (${invoice.payoutBank || "Bank"})`
+        : "";
+
+      // 1. Notify DMC
+      if (dmcRecipientId) {
+        addNotification(dmcRecipientId, {
+          type: "success",
+          title: "Internal Invoice Paid & Settled",
+          message: `Invoice #${invoice.invoiceNumber} has been settled and paid for ${formattedAmount}${utrInfo}.${dispatchNote}`,
+          link: "/dmc/confirmation",
+          meta: {
+            internalInvoiceId: invoice._id,
+            invoiceNumber: invoice.invoiceNumber,
+            payoutAmount: invoice.payoutAmount || 0,
+            payoutReference: invoice.payoutReference || "",
+            status,
+          },
+        });
+      }
+
+      // 2. Notify Finance Team & Assigned Exec
+      if (invoice.assignedTo) {
+        addNotification(invoice.assignedTo, {
+          type: "success",
+          title: "DMC Invoice Payout Settled",
+          message: `Invoice #${invoice.invoiceNumber} (${dmcPartyName}${invoiceQueryRef ? ` | ${invoiceQueryRef}` : ""}) has been settled by ${actorName} for ${formattedAmount}${utrInfo}.`,
+          link: "/finance/internalInvoice",
+          meta: { internalInvoiceId: invoice._id, invoiceNumber: invoice.invoiceNumber },
+        });
+      }
+      teamUsers.forEach((fUser) => {
+        addNotification(fUser._id, {
+          type: "success",
+          title: "DMC Invoice Payout Settled",
+          message: `Invoice #${invoice.invoiceNumber} (${dmcPartyName}${invoiceQueryRef ? ` | ${invoiceQueryRef}` : ""}) has been settled by ${actorName} for ${formattedAmount}${utrInfo}.`,
+          link: "/financeManager/internalDmcInvoice",
+          meta: { internalInvoiceId: invoice._id, invoiceNumber: invoice.invoiceNumber },
+        });
+      });
+
+      // 3. Notify Admin Team
+      adminUsers.forEach((adminUser) => {
+        addNotification(adminUser._id, {
+          type: "success",
+          title: "DMC Invoice Settled",
+          message: `Invoice #${invoice.invoiceNumber} (${dmcPartyName}) settled by ${actorName} for ${formattedAmount}${utrInfo}.`,
+          link: "/financeManager/internalDmcInvoice",
+          meta: { internalInvoiceId: invoice._id, invoiceNumber: invoice.invoiceNumber },
+        });
+      });
+    } else if (status === "Approved") {
+      // 1. Notify DMC
+      if (dmcRecipientId) {
+        addNotification(dmcRecipientId, {
+          type: "success",
+          title: "Internal Invoice Validated",
+          message: `Your invoice #${invoice.invoiceNumber} (${dmcPartyName}) was validated by Finance and approved for payout settlement.`,
+          link: "/dmc/confirmation",
+          meta: { internalInvoiceId: invoice._id, invoiceNumber: invoice.invoiceNumber, status: "Approved" },
+        });
+      }
+
+      // 2. Notify Finance Team & Assigned Exec
+      if (invoice.assignedTo) {
+        addNotification(invoice.assignedTo, {
+          type: "success",
+          title: "DMC Invoice Validated",
+          message: `Invoice #${invoice.invoiceNumber} (${dmcPartyName}${invoiceQueryRef ? ` | ${invoiceQueryRef}` : ""}) was validated by ${actorName} and is ready for payout.`,
+          link: "/finance/internalInvoice",
+          meta: { internalInvoiceId: invoice._id, invoiceNumber: invoice.invoiceNumber },
+        });
+      }
+      teamUsers.forEach((fUser) => {
+        addNotification(fUser._id, {
+          type: "success",
+          title: "DMC Invoice Validated",
+          message: `Invoice #${invoice.invoiceNumber} (${dmcPartyName}${invoiceQueryRef ? ` | ${invoiceQueryRef}` : ""}) was validated by ${actorName} and is ready for payout.`,
+          link: "/financeManager/internalDmcInvoice",
+          meta: { internalInvoiceId: invoice._id, invoiceNumber: invoice.invoiceNumber },
+        });
+      });
+
+      // 3. Notify Admin Team
+      adminUsers.forEach((adminUser) => {
+        addNotification(adminUser._id, {
+          type: "info",
+          title: "DMC Invoice Validated",
+          message: `Invoice #${invoice.invoiceNumber} (${dmcPartyName}) validated by ${actorName} for ${formattedAmount}.`,
+          link: "/financeManager/internalDmcInvoice",
+          meta: { internalInvoiceId: invoice._id, invoiceNumber: invoice.invoiceNumber },
+        });
+      });
+    } else if (status === "Rejected") {
+      // 1. Notify DMC
+      if (dmcRecipientId) {
+        addNotification(dmcRecipientId, {
+          type: "warning",
+          title: "Internal Invoice Rejected",
+          message: `Your invoice #${invoice.invoiceNumber} was rejected by finance. Reason: ${invoice.financeNotes}`,
+          link: "/dmc/confirmation",
+          meta: { internalInvoiceId: invoice._id, invoiceNumber: invoice.invoiceNumber, status: "Rejected" },
+        });
+      }
+
+      // 2. Notify Finance Team
+      if (invoice.assignedTo) {
+        addNotification(invoice.assignedTo, {
+          type: "warning",
+          title: "DMC Invoice Rejected",
+          message: `Invoice #${invoice.invoiceNumber} (${dmcPartyName}) was rejected by ${actorName}. Reason: ${invoice.financeNotes}`,
+          link: "/finance/internalInvoice",
+          meta: { internalInvoiceId: invoice._id, invoiceNumber: invoice.invoiceNumber },
+        });
+      }
+      teamUsers.forEach((fUser) => {
+        addNotification(fUser._id, {
+          type: "warning",
+          title: "DMC Invoice Rejected",
+          message: `Invoice #${invoice.invoiceNumber} (${dmcPartyName}) was rejected by ${actorName}. Reason: ${invoice.financeNotes}`,
+          link: "/financeManager/internalDmcInvoice",
+          meta: { internalInvoiceId: invoice._id, invoiceNumber: invoice.invoiceNumber },
+        });
+      });
+
+      // 3. Notify Admin Team
+      adminUsers.forEach((adminUser) => {
+        addNotification(adminUser._id, {
+          type: "warning",
+          title: "DMC Invoice Rejected",
+          message: `Invoice #${invoice.invoiceNumber} (${dmcPartyName}) was rejected by ${actorName}. Reason: ${invoice.financeNotes}`,
+          link: "/financeManager/internalDmcInvoice",
+          meta: { internalInvoiceId: invoice._id, invoiceNumber: invoice.invoiceNumber },
+        });
+      });
+    }
+
+    if (notificationsToInsert.length) {
+      await Notification.insertMany(notificationsToInsert);
     }
 
     const quotation = invoice.query

@@ -1,5 +1,8 @@
 import mongoose from "mongoose";
 import env from "dotenv";
+import dns from "dns";
+
+dns.setServers(['8.8.8.8']);
 
 env.config({ quiet: true });
 

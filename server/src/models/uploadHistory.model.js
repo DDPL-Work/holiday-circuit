@@ -55,8 +55,15 @@ blackoutDates: {
 
   status: {
     type: String,
-    enum: ["success", "failed"],
+    enum: ["processing", "success", "failed"],
     default: "success"
+  },
+
+  // True only for uploads whose inventory records contain this upload's ID.
+  // Older rows remain false so they cannot accidentally delete unrelated data.
+  inventoryTracked: {
+    type: Boolean,
+    default: false,
   },
 
   changeLog: {

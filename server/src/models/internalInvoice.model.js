@@ -37,6 +37,7 @@ const internalInvoiceItemSchema = new mongoose.Schema(
   { _id: false },
 );
 
+
 const internalInvoiceDocumentSchema = new mongoose.Schema(
   {
     name: {
@@ -62,6 +63,10 @@ const internalInvoiceDocumentSchema = new mongoose.Schema(
   },
   { _id: false },
 );
+
+
+
+
 
 const internalInvoiceSchema = new mongoose.Schema(
   {
@@ -170,7 +175,16 @@ const internalInvoiceSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["Submitted", "In Review", "Approved", "Rejected", "Partially Paid", "Paid"],
+      enum: [
+        "Submitted",
+        "In Review",
+        "Approved",
+        "Rejected",
+        "Partially Paid",
+        "Paid",
+        "Passed to Manager",
+        "Pass to Manager",
+      ],
       default: "Submitted",
     },
     submittedBy: {
@@ -216,6 +230,11 @@ const internalInvoiceSchema = new mongoose.Schema(
       default: []
     },
     financeNotes: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    dmcRemarks: {
       type: String,
       trim: true,
       default: "",

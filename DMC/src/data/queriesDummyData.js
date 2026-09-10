@@ -1,0 +1,37 @@
+export const queriesData = [
+  {
+    id: "Q-1001",
+    destination: "Maldives Trip",
+    status: "Quote Sent",
+    price: "₹1,45,000",
+    dates: "12 Dec - 18 Dec",
+    travelers: "2 Adults",
+    preferences: "Client requested sea view rooms if possible. Vegetarian meals required.",
+    inclusions: [
+      "4 Nights Accommodation in 5-star Resort",
+      "Daily Breakfast & Dinner",
+      "Airport Transfers (Speedboat)",
+      "All Taxes included",
+    ],
+  },
+  {
+    id: "Q-1002",
+    destination: "Dubai Trip",
+    status: "Pending",
+    price: null,
+    dates: "24 Jan - 29 Jan",
+    travelers: "4 Adults, 2 Kids",
+    preferences: "Client requested sea view rooms if possible. Vegetarian meals required",
+    inclusions: [],
+  },
+  {
+    id: "Q-1003",
+    destination: "Switzerland Trip",
+    status: "Revision Requested",
+    price: "₹ 2,10,000",
+    dates: "10 Feb - 18 Feb",
+    travelers: "2 Adults",
+    preferences: "Scenic locations, Vegetarian meals",
+    inclusions: [],
+  },
+];
