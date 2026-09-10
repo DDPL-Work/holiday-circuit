@@ -373,6 +373,52 @@ const NationalitySelect = ({ value, onChange, onOpenChange }) => {
   );
 };
 
+// Standard Country Dial Codes with validation rules
+export const COUNTRY_DIAL_CODES = [
+  { code: "91-IN", dial: "+91", label: "India (+91)", min: 10, max: 10, placeholder: "10 digits (e.g. 9876543210)" },
+  { code: "1-US", dial: "+1", label: "USA / Canada (+1)", min: 10, max: 10, placeholder: "10 digits (e.g. 2025550123)" },
+  { code: "44-UK", dial: "+44", label: "UK (+44)", min: 10, max: 11, placeholder: "10-11 digits (e.g. 7911123456)" },
+  { code: "971-UAE", dial: "+971", label: "UAE (+971)", min: 9, max: 9, placeholder: "9 digits (e.g. 501234567)" },
+  { code: "966-SA", dial: "+966", label: "Saudi Arabia (+966)", min: 9, max: 9, placeholder: "9 digits (e.g. 501234567)" },
+  { code: "65-SG", dial: "+65", label: "Singapore (+65)", min: 8, max: 8, placeholder: "8 digits (e.g. 81234567)" },
+  { code: "60-MY", dial: "+60", label: "Malaysia (+60)", min: 9, max: 10, placeholder: "9-10 digits (e.g. 123456789)" },
+  { code: "66-TH", dial: "+66", label: "Thailand (+66)", min: 9, max: 9, placeholder: "9 digits (e.g. 812345678)" },
+  { code: "61-AU", dial: "+61", label: "Australia (+61)", min: 9, max: 10, placeholder: "9-10 digits (e.g. 412345678)" },
+  { code: "49-DE", dial: "+49", label: "Germany (+49)", min: 10, max: 11, placeholder: "10-11 digits (e.g. 15123456789)" },
+  { code: "33-FR", dial: "+33", label: "France (+33)", min: 9, max: 9, placeholder: "9 digits (e.g. 612345678)" },
+  { code: "81-JP", dial: "+81", label: "Japan (+81)", min: 10, max: 10, placeholder: "10 digits (e.g. 9012345678)" },
+  { code: "86-CN", dial: "+86", label: "China (+86)", min: 11, max: 11, placeholder: "11 digits (e.g. 13812345678)" },
+  { code: "977-NP", dial: "+977", label: "Nepal (+977)", min: 10, max: 10, placeholder: "10 digits (e.g. 9841234567)" },
+  { code: "94-LK", dial: "+94", label: "Sri Lanka (+94)", min: 9, max: 9, placeholder: "9 digits (e.g. 712345678)" },
+  { code: "880-BD", dial: "+880", label: "Bangladesh (+880)", min: 10, max: 10, placeholder: "10 digits (e.g. 1712345678)" },
+  { code: "other", dial: "+", label: "Other International", min: 7, max: 15, placeholder: "7-15 digits international" },
+];
+
+export const getPhoneRule = (countryCode) => {
+  const found = COUNTRY_DIAL_CODES.find((c) => c.code === countryCode);
+  if (found) return found;
+  return { code: "other", dial: "+", label: "International", min: 7, max: 15, placeholder: "7-15 digits" };
+};
+
+export const isAgentEmail = (emailStr, query) => {
+  if (!emailStr) return false;
+  const em = String(emailStr).trim().toLowerCase();
+  let userEmail = "";
+  try {
+    const u = JSON.parse(localStorage.getItem("user") || "{}");
+    userEmail = (u?.email || "").trim().toLowerCase();
+  } catch (e) {}
+  const agentEmails = [
+    userEmail,
+    String(query?.agentEmail || "").trim().toLowerCase(),
+    String(query?.agentId?.email || "").trim().toLowerCase(),
+    String(query?.email || "").trim().toLowerCase(),
+    "sudhanshufordev@gmail.com",
+  ].filter(Boolean);
+
+  return agentEmails.some((ae) => ae === em);
+};
+
 export const TripTouristsModal = ({ isOpen, onClose, query, headerLeadTraveler, onSave }) => {
   const [tourists, setTourists] = useState([]);
   const [expandedIds, setExpandedIds] = useState([]);
@@ -387,10 +433,30 @@ export const TripTouristsModal = ({ isOpen, onClose, query, headerLeadTraveler, 
           const parsed = JSON.parse(savedData);
           if (Array.isArray(parsed) && parsed.length > 0) {
             const savedAddress = localStorage.getItem(`${queryKey}_address`) || "";
-            const withAddress = parsed.map((t, idx) => ({
-              ...t,
-              address: t.address !== undefined ? t.address : (idx === 0 ? (savedAddress || query?.clientAddress || query?.address || "") : ""),
-            }));
+            const withAddress = parsed.map((t, idx) => {
+              let cleanEmail = t.email || "";
+              if (isAgentEmail(cleanEmail, query)) {
+                cleanEmail = "";
+              }
+              const cleanPhones = (t.phones || []).map((p) => {
+                const rule = getPhoneRule(p.countryCode || "91-IN");
+                const cleanNum = (p.number || "").replace(/\D/g, "").slice(0, rule.max);
+                return { ...p, number: cleanNum };
+              });
+              return {
+                ...t,
+                email: cleanEmail,
+                phones: cleanPhones.length > 0 ? cleanPhones : [
+                  {
+                    id: 101,
+                    countryCode: "91-IN",
+                    number: "",
+                    isPrimary: true,
+                  }
+                ],
+                address: t.address !== undefined ? t.address : (idx === 0 ? (savedAddress || query?.clientAddress || query?.address || "") : ""),
+              };
+            });
             setTourists(withAddress);
             setExpandedIds([]);
             setActiveDropdownId(null);
@@ -406,7 +472,8 @@ export const TripTouristsModal = ({ isOpen, onClose, query, headerLeadTraveler, 
       const salutationMatch = leadFullName.match(/^(Mr\.|Mrs\.|Ms\.|Master|Dr\.)\s*/i);
       const salutation = salutationMatch ? salutationMatch[1] : "Mr.";
       const name = leadFullName.replace(/^(Mr\.|Mrs\.|Ms\.|Master|Dr\.)\s*/i, "").trim() || "";
-      const leadPhone = query?.phone || query?.mobileNumber || query?.contactNumber || query?.clientPhone || "";
+      const rawLeadPhone = (query?.phone || query?.mobileNumber || query?.contactNumber || query?.clientPhone || "");
+      const cleanLeadDigits = rawLeadPhone.replace(/\D/g, "").slice(-10);
       let leadAddress = "";
       try {
         leadAddress = localStorage.getItem(`${queryKey}_address`) || "";
@@ -417,6 +484,11 @@ export const TripTouristsModal = ({ isOpen, onClose, query, headerLeadTraveler, 
       } catch (e) {}
       if (!leadAddress) {
         leadAddress = query?.clientAddress || query?.buyerAddress || query?.address || "";
+      }
+
+      let initialClientEmail = query?.clientEmail || query?.leadEmail || query?.guestEmail || "";
+      if (isAgentEmail(initialClientEmail, query)) {
+        initialClientEmail = "";
       }
 
       const initialId = 1;
@@ -434,11 +506,11 @@ export const TripTouristsModal = ({ isOpen, onClose, query, headerLeadTraveler, 
             {
               id: 101,
               countryCode: "91-IN",
-              number: leadPhone.replace(/^\+?91-?/, "").trim(),
+              number: cleanLeadDigits,
               isPrimary: true,
             },
           ],
-          email: query?.clientEmail || query?.leadEmail || query?.guestEmail || query?.email || "",
+          email: initialClientEmail,
           isFlagged: false,
           isNewTourist: false,
         },
@@ -527,16 +599,18 @@ export const TripTouristsModal = ({ isOpen, onClose, query, headerLeadTraveler, 
     setTourists((prev) =>
       prev.map((t) => {
         if (t.id === touristId) {
-          if ((t.phones || []).length > 1) {
-            const updatedPhones = (t.phones || []).filter((p) => p.id !== phoneId);
-            return { ...t, phones: updatedPhones };
-          } else {
-            // If only 1 phone row exists, clear the number
-            const updatedPhones = (t.phones || []).map((p) =>
-              p.id === phoneId ? { ...p, number: "", isPrimary: true } : p
-            );
-            return { ...t, phones: updatedPhones };
+          const filtered = (t.phones || []).filter((p) => p.id !== phoneId);
+          if (filtered.length === 0) {
+            filtered.push({
+              id: Date.now(),
+              countryCode: "91-IN",
+              number: "",
+              isPrimary: true,
+            });
+          } else if (!filtered.some((p) => p.isPrimary)) {
+            filtered[0].isPrimary = true;
           }
+          return { ...t, phones: filtered };
         }
         return t;
       })
@@ -562,7 +636,7 @@ export const TripTouristsModal = ({ isOpen, onClose, query, headerLeadTraveler, 
       prev.map((t) => {
         if (t.id === touristId) {
           const updatedPhones = (t.phones || []).map((p) =>
-            p.id === phoneId ? { ...p, isPrimary: !p.isPrimary } : p
+            p.id === phoneId ? { ...p, isPrimary: !p.isPrimary } : (p.isPrimary ? {...p, isPrimary: false} : p)
           );
           return { ...t, phones: updatedPhones };
         }
@@ -572,6 +646,89 @@ export const TripTouristsModal = ({ isOpen, onClose, query, headerLeadTraveler, 
   };
 
   const handleSaveTourists = async () => {
+    // 1. Validation Checks
+    for (let i = 0; i < tourists.length; i++) {
+      const t = tourists[i];
+      const isPrimary = t.isFlagged || i === 0;
+      const tNum = i + 1;
+      const tName = t.name ? t.name.trim() : "";
+
+      // Mandatory Name for every tourist
+      if (!tName) {
+        toast.error(`Please enter traveler name for Tourist #${tNum}.`);
+        return;
+      }
+
+      // Validate Phone Numbers for this tourist
+      const primaryPhoneObj = t.phones?.find((p) => p.isPrimary) || t.phones?.[0];
+      const primaryDigits = primaryPhoneObj?.number ? primaryPhoneObj.number.replace(/\D/g, "") : "";
+      const primaryCountryCode = primaryPhoneObj?.countryCode || "91-IN";
+      const primaryRule = getPhoneRule(primaryCountryCode);
+
+      if (isPrimary) {
+        if (!primaryDigits) {
+          toast.error(`Please enter phone number for primary traveler (${tName}).`);
+          return;
+        }
+        if (primaryRule.min === primaryRule.max) {
+          if (primaryDigits.length !== primaryRule.min) {
+            toast.error(
+              `${primaryRule.label} phone number must be exactly ${primaryRule.min} digits (you entered ${primaryDigits.length} digits) for ${tName}.`
+            );
+            return;
+          }
+        } else {
+          if (primaryDigits.length < primaryRule.min || primaryDigits.length > primaryRule.max) {
+            toast.error(
+              `${primaryRule.label} phone number must be between ${primaryRule.min} and ${primaryRule.max} digits (you entered ${primaryDigits.length} digits) for ${tName}.`
+            );
+            return;
+          }
+        }
+      }
+
+      // Check format of all entered phone numbers for this tourist
+      if (t.phones && t.phones.length > 0) {
+        for (let pIdx = 0; pIdx < t.phones.length; pIdx++) {
+          const p = t.phones[pIdx];
+          if (p.number && p.number.trim()) {
+            const digits = p.number.replace(/\D/g, "");
+            const rule = getPhoneRule(p.countryCode || "91-IN");
+            if (rule.min === rule.max) {
+              if (digits.length !== rule.min) {
+                toast.error(
+                  `${rule.label} phone number for Tourist #${tNum} (${tName}) must be exactly ${rule.min} digits (entered ${digits.length}).`
+                );
+                return;
+              }
+            } else {
+              if (digits.length < rule.min || digits.length > rule.max) {
+                toast.error(
+                  `${rule.label} phone number for Tourist #${tNum} (${tName}) must be between ${rule.min} and ${rule.max} digits (entered ${digits.length}).`
+                );
+                return;
+              }
+            }
+          }
+        }
+      }
+
+      // Mandatory Address for primary traveler
+      if (isPrimary && (!t.address || !t.address.trim())) {
+        toast.error(`Please enter address for primary traveler (${tName}).`);
+        return;
+      }
+
+      // Email Format Validation (Optional, but if entered must be valid)
+      if (t.email && t.email.trim()) {
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(t.email.trim())) {
+          toast.error(`Please enter a valid email address for Tourist #${tNum} (${tName}).`);
+          return;
+        }
+      }
+    }
+
     const targetQueryId = query?._id || query?.queryId;
     const rawId = String(targetQueryId || "default");
     const cleanId = rawId.replace(/^#\s*/, "").trim();
@@ -580,8 +737,9 @@ export const TripTouristsModal = ({ isOpen, onClose, query, headerLeadTraveler, 
     const fullName = primary ? [primary.salutation, primary.name].filter(Boolean).join(" ") : "";
     const phoneObj = primary?.phones?.[0];
     const rawNum = phoneObj?.number ? phoneObj.number.trim() : "";
-    const codeStr = phoneObj?.countryCode ? `+${phoneObj.countryCode.split("-")[0]}-` : "+91-";
-    const formattedPhone = rawNum ? (rawNum.startsWith("+") ? rawNum : `${codeStr}${rawNum}`) : "";
+    const primaryRule = getPhoneRule(phoneObj?.countryCode || "91-IN");
+    const dialPrefix = primaryRule.dial ? `${primaryRule.dial}-` : "+91-";
+    const formattedPhone = rawNum ? (rawNum.startsWith("+") ? rawNum : `${dialPrefix}${rawNum}`) : "";
     const primaryEmail = primary?.email ? primary.email.trim() : "";
     const primaryAddress = primary?.address ? primary.address.trim() : "";
 
@@ -825,7 +983,9 @@ export const TripTouristsModal = ({ isOpen, onClose, query, headerLeadTraveler, 
 
                         {/* Name */}
                         <div>
-                          <label className="text-xs font-bold text-slate-800 mb-1.5 block">Name</label>
+                          <label className="text-xs font-bold text-slate-800 mb-1.5 block">
+                            Name <span className="text-red-500">*</span>
+                          </label>
                           <input
                             type="text"
                             value={tourist.name || ""}
@@ -875,7 +1035,9 @@ export const TripTouristsModal = ({ isOpen, onClose, query, headerLeadTraveler, 
 
                         {/* Address */}
                         <div className="sm:col-span-2">
-                          <label className="text-xs font-bold text-slate-800 mb-1.5 block">Address</label>
+                          <label className="text-xs font-bold text-slate-800 mb-1.5 block">
+                            Address {index === 0 && <span className="text-red-500">*</span>}
+                          </label>
                           <input
                             type="text"
                             value={tourist.address || ""}
@@ -891,58 +1053,69 @@ export const TripTouristsModal = ({ isOpen, onClose, query, headerLeadTraveler, 
                         {/* Phone Number(s) Block */}
                         <div>
                           <label className="text-xs font-bold text-slate-800 mb-1.5 block">
-                            Phone Number(s)
+                            Phone Number(s) {index === 0 && <span className="text-red-500">*</span>}
                           </label>
                           <div className="space-y-2">
-                            {(tourist.phones || []).map((phoneObj, pIdx) => (
-                              <div key={phoneObj.id} className="flex items-center gap-2">
-                                <select
-                                  value={phoneObj.countryCode || "91-IN"}
-                                  onChange={(e) =>
-                                    handleUpdatePhone(tourist.id, phoneObj.id, "countryCode", e.target.value)
-                                  }
-                                  className="border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-800 bg-white focus:outline-none focus:border-[#3E63DD] shrink-0"
-                                >
-                                  <option value="91-IN">91-IN</option>
-                                  <option value="1-US">1-US</option>
-                                  <option value="44-UK">44-UK</option>
-                                  <option value="971-UAE">971-UAE</option>
-                                </select>
-                                <input
-                                  type="text"
-                                  value={phoneObj.number || ""}
-                                  onChange={(e) =>
-                                    handleUpdatePhone(tourist.id, phoneObj.id, "number", e.target.value)
-                                  }
-                                  placeholder="e.g. 9779212232"
-                                  className="flex-1 min-w-0 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-800 bg-white focus:outline-none focus:border-[#3E63DD] placeholder-slate-300"
-                                />
+                            {(tourist.phones || []).map((phoneObj, pIdx) => {
+                              const currentRule = getPhoneRule(phoneObj.countryCode || "91-IN");
+                              return (
+                                <div key={phoneObj.id} className="flex items-center gap-2">
+                                  <select
+                                    value={phoneObj.countryCode || "91-IN"}
+                                    onChange={(e) => {
+                                      const newCode = e.target.value;
+                                      const newRule = getPhoneRule(newCode);
+                                      const cleanNum = (phoneObj.number || "").replace(/\D/g, "").slice(0, newRule.max);
+                                      handleUpdatePhone(tourist.id, phoneObj.id, "countryCode", newCode);
+                                      handleUpdatePhone(tourist.id, phoneObj.id, "number", cleanNum);
+                                    }}
+                                    className="border border-slate-300 rounded-lg px-2.5 py-2 text-xs text-slate-800 bg-white focus:outline-none focus:border-[#3E63DD] shrink-0 font-medium max-w-[130px] sm:max-w-[155px]"
+                                  >
+                                    {COUNTRY_DIAL_CODES.map((c) => (
+                                      <option key={c.code} value={c.code}>
+                                        {c.label}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <input
+                                    type="tel"
+                                    inputMode="numeric"
+                                    maxLength={currentRule.max}
+                                    value={phoneObj.number || ""}
+                                    onChange={(e) => {
+                                      const cleanDigits = e.target.value.replace(/\D/g, "").slice(0, currentRule.max);
+                                      handleUpdatePhone(tourist.id, phoneObj.id, "number", cleanDigits);
+                                    }}
+                                    placeholder={currentRule.placeholder || "e.g. 9876543210"}
+                                    className="flex-1 min-w-0 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-800 bg-white focus:outline-none focus:border-[#3E63DD] placeholder-slate-300 font-mono"
+                                  />
 
-                                {/* Flag Primary Toggle Button matching Sembark image */}
-                                <button
-                                  type="button"
-                                  onClick={() => handleTogglePhonePrimary(tourist.id, phoneObj.id)}
-                                  className={`border rounded-lg p-2.5 transition-all shrink-0 cursor-pointer ${
-                                    phoneObj.isPrimary
-                                      ? "bg-blue-50 border-[#3E63DD] text-[#3E63DD]"
-                                      : "bg-white border-slate-300 text-slate-400 hover:text-slate-600"
-                                  }`}
-                                  title="Toggle Primary Phone Flag"
-                                >
-                                  <Flag size={14} className={phoneObj.isPrimary ? "fill-[#3E63DD]" : ""} />
-                                </button>
+                                  {/* Flag Primary Toggle Button matching Sembark image */}
+                                  <button
+                                    type="button"
+                                    onClick={() => handleTogglePhonePrimary(tourist.id, phoneObj.id)}
+                                    className={`border rounded-lg p-2.5 transition-all shrink-0 cursor-pointer ${
+                                      phoneObj.isPrimary
+                                        ? "bg-blue-50 border-[#3E63DD] text-[#3E63DD]"
+                                        : "bg-white border-slate-300 text-slate-400 hover:text-slate-600"
+                                    }`}
+                                    title="Toggle Primary Phone Flag"
+                                  >
+                                    <Flag size={14} className={phoneObj.isPrimary ? "fill-[#3E63DD]" : ""} />
+                                  </button>
 
-                                {/* Cut / Remove Button */}
-                                <button
-                                  type="button"
-                                  onClick={() => handleRemovePhone(tourist.id, phoneObj.id)}
-                                  className="border border-slate-300 rounded-lg p-2.5 bg-white hover:bg-red-50 text-slate-400 hover:text-red-500 shrink-0 cursor-pointer transition-colors"
-                                  title="Remove / Clear Phone"
-                                >
-                                  <X size={14} />
-                                </button>
-                              </div>
-                            ))}
+                                  {/* Cut / Remove Button */}
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemovePhone(tourist.id, phoneObj.id)}
+                                    className="border border-slate-300 rounded-lg p-2.5 bg-white hover:bg-red-50 text-slate-400 hover:text-red-500 shrink-0 cursor-pointer transition-colors"
+                                    title="Remove / Clear Phone"
+                                  >
+                                    <X size={14} />
+                                  </button>
+                                </div>
+                              );
+                            })}
                           </div>
 
                           {/* Add More Button matching Sembark screenshot 1 */}

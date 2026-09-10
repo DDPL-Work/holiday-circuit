@@ -85,9 +85,13 @@ export const QueryHeaderCard = ({
           localStorage.setItem(`${queryKey}_phone`, formatted);
         } catch (e) {}
       }
-      if (primary?.email) {
+      if (primary?.email && primary.email.trim()) {
         try {
           localStorage.setItem(`${queryKey}_email`, primary.email.trim());
+        } catch (e) {}
+      } else {
+        try {
+          localStorage.removeItem(`${queryKey}_email`);
         } catch (e) {}
       }
       if (primary?.address) {
