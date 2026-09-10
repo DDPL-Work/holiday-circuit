@@ -318,10 +318,7 @@ const QUOTATION_BRAND = Object.freeze({
 });
 
 export const buildAgentClientQuotationTemplate = (quoteDetails = {}) => {
-  const isClientQuote = Boolean(
-    quoteDetails.isClientQuotation ||
-    quoteDetails.includeSellerBankDetails === false
-  );
+  const isClientQuote = Boolean(quoteDetails.isClientQuotation);
   const isOps = !isClientQuote && Boolean(
     quoteDetails.isOpsQuotation ||
     quoteDetails.fromOpsSide ||
@@ -329,9 +326,9 @@ export const buildAgentClientQuotationTemplate = (quoteDetails = {}) => {
     quoteDetails.agentBrandingName === "Holiday Circuit" ||
     quoteDetails.agencyName === "Holiday Circuit"
   );
-  const showBankDetails = !isClientQuote && Boolean(
-    quoteDetails.includeSellerBankDetails ||
-    isOps
+  const showBankDetails = Boolean(
+    quoteDetails.includeSellerBankDetails !== false &&
+    quoteDetails.sellerBankDetails !== false
   );
   const showPriceBreakup = Boolean(quoteDetails.showPriceBreakup);
   const brandName = isOps 
@@ -709,6 +706,65 @@ export const buildAgentClientQuotationTemplate = (quoteDetails = {}) => {
   const inclusionsHtml = inclusionsList.map(item => `<li style="margin-bottom:6px; list-style-type:none;"><span style="color:#059669; font-weight:bold; margin-right:6px;">✔</span>${escapeHtml(stripHtmlTags(item))}</li>`).join("");
   const exclusionsHtml = exclusionsList.map(item => `<li style="margin-bottom:6px; list-style-type:none;"><span style="color:#dc2626; font-weight:bold; margin-right:6px;">✖</span>${escapeHtml(stripHtmlTags(item))}</li>`).join("");
 
+  const getOrdinal = (n) => {
+    const s = ["th", "st", "nd", "rd"];
+    const v = n % 100;
+    return n + (s[(v - 20) % 10] || s[v] || s[0]);
+  };
+
+  const rawSchedule = Array.isArray(quoteDetails?.dayWiseItinerary || quoteDetails?.itinerary) && (quoteDetails.dayWiseItinerary || quoteDetails.itinerary).length > 0
+    ? (quoteDetails.dayWiseItinerary || quoteDetails.itinerary)
+    : [];
+
+  const scheduleRowsHtml = rawSchedule.length > 0
+    ? rawSchedule.map((d, idx) => {
+        const dayNum = Number(d?.dayNumber || d?.day || (idx + 1));
+        const baseStartObj = (quoteDetails?.travelDates?.split(" - ")[0] || quoteDetails?.startDate) && !isNaN(new Date(quoteDetails?.travelDates?.split(" - ")[0] || quoteDetails?.startDate).getTime())
+          ? new Date(quoteDetails?.travelDates?.split(" - ")[0] || quoteDetails?.startDate)
+          : null;
+        
+        let dObj = null;
+        if (d?.date && !isNaN(new Date(d.date).getTime())) {
+          dObj = new Date(d.date);
+        } else if (baseStartObj) {
+          dObj = new Date(baseStartObj.getTime() + (dayNum - 1) * 86400000);
+        }
+
+        const weekDayStr = dObj && !isNaN(dObj.getTime())
+          ? dObj.toLocaleDateString("en-GB", { weekday: "long" })
+          : "";
+        const dateFormatted = dObj && !isNaN(dObj.getTime())
+          ? dObj.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })
+          : "";
+        const ordinalLabel = `${getOrdinal(dayNum)} Day`;
+
+        const titleText = escapeHtml(d?.title || d?.dayTitle || d?.heading || `Day ${dayNum}: Itinerary`);
+        const detailsText = escapeHtml(d?.description || d?.details || d?.content || "Scheduled activities and sightseeing.");
+
+        return `
+          <tr style="${idx % 2 === 1 ? 'background-color: #f8fafc;' : ''}">
+            <td width="24%" style="padding: 10px 12px; border: 1px solid #d1d5db; font-size: 12px; line-height: 1.4; vertical-align: top;">
+              <div style="color: #0284c7; font-weight: bold; font-size: 12px; margin-bottom: 2px;">${ordinalLabel}</div>
+              ${weekDayStr ? `<div style="color: #64748b; font-size: 11px;">${weekDayStr}</div>` : ""}
+              ${dateFormatted ? `<strong style="color: #0f172a; font-size: 12px;">${dateFormatted}</strong>` : ""}
+            </td>
+            <td width="76%" style="padding: 10px 12px; border: 1px solid #d1d5db; font-size: 12px; color: #1e293b; vertical-align: top; line-height: 1.5;">
+              <strong style="color: #0f172a; font-size: 13px; text-decoration: underline;">${titleText}</strong>
+              <p style="margin: 6px 0 0 0; color: #334155; font-size: 12px;">• ${detailsText.startsWith("•") ? detailsText.slice(1).trim() : detailsText}</p>
+            </td>
+          </tr>
+        `;
+      }).join("")
+    : "";
+
+  const bankList = normalizeSellerBankDetails(quoteDetails?.sellerBankDetails);
+  const sellerBankRowsHtml = bankList.map((b, idx) => `
+    <tr style="${idx % 2 === 1 ? 'background-color: #f8fafc;' : ''}">
+      <td width="35%" style="padding: 7px 12px; border: 1px solid #d1d5db; font-size: 12px; font-weight: 500; color: #475569;">${escapeHtml(b.label || b.name || "Detail")}</td>
+      <td width="65%" style="padding: 7px 12px; border: 1px solid #d1d5db; font-size: 12px; font-weight: bold; color: #0f172a;">${escapeHtml(b.value || "-")}</td>
+    </tr>
+  `).join("");
+
   return `
     <div style="font-family: Arial, sans-serif; color: #1e293b; line-height: 1.5; max-width: 100%; margin: 0 auto; background: #ffffff; padding: 16px;">
       
@@ -879,6 +935,22 @@ export const buildAgentClientQuotationTemplate = (quoteDetails = {}) => {
       </table>
       ` : ""}
 
+      <!-- 2.3 DAY WISE SCHEDULE (IF ANY) -->
+      ${!quoteDetails.removeItinerary && rawSchedule.length > 0 ? `
+      <table width="100%" cellspacing="0" cellpadding="0" style="border-collapse: collapse; margin-bottom: 20px; border: 1px solid #d1d5db;">
+        <thead>
+          <tr>
+            <th colspan="2" style="background-color: #ecfeff; color: #0f766e; padding: 8px 12px; font-size: 13px; font-weight: bold; text-align: center; border: 1px solid #7dd3c7;">
+              Day Wise Schedule
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          ${scheduleRowsHtml}
+        </tbody>
+      </table>
+      ` : ""}
+
       <!-- 3. TOTAL PRICE -->
       <table width="100%" cellspacing="0" cellpadding="0" style="border-collapse: collapse; margin-bottom: 20px; border: 1px solid #d1d5db;">
         <thead>
@@ -903,7 +975,7 @@ export const buildAgentClientQuotationTemplate = (quoteDetails = {}) => {
       </table>
 
       <!-- 3.1 BANK DETAILS FOR PAYMENT -->
-      ${showBankDetails ? `
+      ${showBankDetails && bankList.length > 0 ? `
       <table width="100%" cellspacing="0" cellpadding="0" style="border-collapse: collapse; margin-bottom: 20px; border: 1px solid #d1d5db;">
         <thead>
           <tr>
@@ -913,26 +985,7 @@ export const buildAgentClientQuotationTemplate = (quoteDetails = {}) => {
           </tr>
         </thead>
         <tbody>
-          <tr>
-            <td style="padding: 7px 12px; border: 1px solid #d1d5db; font-size: 12px; font-weight: 500; color: #475569; width: 35%;">Bank Name</td>
-            <td style="padding: 7px 12px; border: 1px solid #d1d5db; font-size: 12px; font-weight: bold; color: #0f172a;">HDFC Bank</td>
-          </tr>
-          <tr>
-            <td style="padding: 7px 12px; border: 1px solid #d1d5db; font-size: 12px; font-weight: 500; color: #475569;">Account Holder Name</td>
-            <td style="padding: 7px 12px; border: 1px solid #d1d5db; font-size: 12px; font-weight: bold; color: #0f172a;">Holiday Circuit</td>
-          </tr>
-          <tr>
-            <td style="padding: 7px 12px; border: 1px solid #d1d5db; font-size: 12px; font-weight: 500; color: #475569;">Account Number</td>
-            <td style="padding: 7px 12px; border: 1px solid #d1d5db; font-size: 12px; font-weight: bold; color: #0f172a;">50200103968171</td>
-          </tr>
-          <tr>
-            <td style="padding: 7px 12px; border: 1px solid #d1d5db; font-size: 12px; font-weight: 500; color: #475569;">IFSC Code</td>
-            <td style="padding: 7px 12px; border: 1px solid #d1d5db; font-size: 12px; font-weight: bold; color: #0f172a;">HDFC0004413</td>
-          </tr>
-          <tr>
-            <td style="padding: 7px 12px; border: 1px solid #d1d5db; font-size: 12px; font-weight: 500; color: #475569;">Branch</td>
-            <td style="padding: 7px 12px; border: 1px solid #d1d5db; font-size: 12px; font-weight: bold; color: #0f172a;">RAMPHAL CHOWK SEC VII DWARKA</td>
-          </tr>
+          ${sellerBankRowsHtml}
         </tbody>
       </table>
       ` : ""}

@@ -1708,7 +1708,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
   const handleAcceptQuote = async (id) => {
     try {
       setAcceptSubmitting(true);
-      const res = await API.put(`/agent/quotations/${id}/accept`);
+      const res = await API.patch(`/agent/quotations/${id}/accept`, { action: "ACCEPT" });
       toast.success("Quotation accepted");
       if (res.data?.quotation) {
         updateQuote(res.data.quotation);

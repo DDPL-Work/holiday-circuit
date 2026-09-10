@@ -81,7 +81,8 @@ routers.get("/quotations/query/:queryId", isAuthenticated, getQuotationsByQuery)
 routers.get("/quotations/:id/client-pdf", isAuthenticated, generateClientQuotationPdf);
 routers.get("/quotations/:id/email-preview", isAuthenticated, getClientQuotationEmailPreview);
 routers.put("/quotations/:id/revision", isAuthenticated, requestQuotationRevision);
-routers.patch("/quotations/:id/accept",isAuthenticated, acceptQuotationByAgent);
+routers.patch("/quotations/:id/accept", isAuthenticated, acceptQuotationByAgent);
+routers.put("/quotations/:id/accept", isAuthenticated, acceptQuotationByAgent);
 routers.patch("/quotations/:id/branding", isAuthenticated, upload.single("agentLogo"), updateQuotationBranding);
 routers.put("/quotations/:id/terms", isAuthenticated, updateQuotationTermsAndConditions);
 routers.put("/packages/:id/terms", isAuthenticated, updatePackageTermsAndConditions);

@@ -1726,8 +1726,38 @@ const buildQuotationClientEmailPayload = ({ quotation, query, agent, customTerm 
     quotation?.agentFooterImage ||
     "";
 
+  const rawBankList = (Array.isArray(quotation?.sellerBankDetails) && quotation.sellerBankDetails.length > 0)
+    ? quotation.sellerBankDetails
+    : (Array.isArray(agent?.bankDetails) && agent.bankDetails.length > 0)
+      ? agent.bankDetails
+      : [];
+
+  let sellerBankDetails = [];
+  if (Array.isArray(rawBankList) && rawBankList.length > 0) {
+    sellerBankDetails = rawBankList.filter((b) => b && (b.label || b.value));
+  } else if (agent?.bankDetails && typeof agent.bankDetails === "object") {
+    const uBank = agent.bankDetails;
+    if (uBank.bankName) sellerBankDetails.push({ label: "Bank Name", value: uBank.bankName });
+    if (uBank.accountHolderName) sellerBankDetails.push({ label: "A/c Holder Name", value: uBank.accountHolderName });
+    if (uBank.accountNumber) sellerBankDetails.push({ label: "A/c No.", value: uBank.accountNumber });
+    if (uBank.ifscCode || uBank.ifsc) sellerBankDetails.push({ label: "IFSC", value: uBank.ifscCode || uBank.ifsc });
+    if (uBank.branchName || uBank.branch) sellerBankDetails.push({ label: "Branch", value: uBank.branchName || uBank.branch });
+  }
+
+  if (sellerBankDetails.length === 0) {
+    const brandHolder = resolvedBranding.brandingName || agent?.brandingName || agent?.companyName || "Holiday Circuit";
+    sellerBankDetails = [
+      { label: "Bank Name", value: "HDFC Bank" },
+      { label: "A/c Holder Name", value: brandHolder },
+      { label: "A/c No.", value: "50200103968171" },
+      { label: "IFSC", value: "HDFC0004413" },
+      { label: "Branch", value: "RAMPHAL CHOWK SEC VII DWARKA" },
+    ];
+  }
+
   return {
-    includeSellerBankDetails: false,
+    includeSellerBankDetails: true,
+    sellerBankDetails,
     recipientName: getQueryClientRecipientName(query),
     agencyName: agent?.companyName || "",
     agentLogo: getAbsoluteMediaUrl(rawLogo),
@@ -1801,23 +1831,23 @@ const buildQuotationClientEmailPayload = ({ quotation, query, agent, customTerm 
     additionalNotes: Array.isArray(quotation?.additionalNotes)
       ? quotation.additionalNotes.filter(Boolean)
       : [],
-    dayWiseItinerary: Array.isArray(quotation?.dayWiseItinerary)
-      ? quotation.dayWiseItinerary
+    dayWiseItinerary: Array.isArray(quotation?.dayWiseItinerary || quotation?.itinerary || query?.dayWiseItinerary || query?.itinerary)
+      ? (quotation?.dayWiseItinerary || quotation?.itinerary || query?.dayWiseItinerary || query?.itinerary)
           .map((item, index) => {
-            const dayNumber = Math.max(1, Number(item?.dayNumber || index + 1));
+            const dayNumber = Math.max(1, Number(item?.dayNumber || item?.day || index + 1));
             const parsedDate = item?.date ? new Date(item.date) : null;
 
             return {
               dayNumber,
-              dayLabel: String(item?.dayLabel || "").trim(),
+              dayLabel: String(item?.dayLabel || item?.heading || `Day ${dayNumber}`).trim(),
               date: parsedDate && !Number.isNaN(parsedDate.getTime())
                 ? parsedDate.toISOString()
                 : "",
-              title: String(item?.title || item?.heading || "").trim(),
-              description: String(item?.description || "").trim(),
+              title: String(item?.title || item?.dayTitle || item?.heading || item?.activity || "").trim(),
+              description: String(item?.description || item?.details || item?.content || "").trim(),
             };
           })
-          .filter((item) => item.title || item.description)
+          .filter((item) => item.title || item.description || item.dayLabel)
       : [],
   };
 };
@@ -1983,7 +2013,7 @@ export const generateClientQuotationPdf = async (req, res, next) => {
     const pdfPayload = buildQuotationClientEmailPayload({ quotation, query, agent });
     const pdf = await generatePDF({
       ...pdfPayload,
-      includeSellerBankDetails: false,
+      includeSellerBankDetails: true,
     });
 
     return res.json({
@@ -4320,8 +4350,8 @@ export const acceptQuotationByAgent = async (req, res, next) => {
     }
 
     /* STEP 1: ACCEPT QUOTE */
-    if (action === "ACCEPT") {
-      if (quotation.status !== "Quote Sent") {
+    if (!action || action === "ACCEPT") {
+      if (quotation.status !== "Quote Sent" && quotation.status !== "Quote Received") {
         return next(new ApiError(400, "Quote cannot be accepted"));
       }
 
