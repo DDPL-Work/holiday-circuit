@@ -6402,11 +6402,11 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                                     <span className="text-right font-medium">1.</span>
                                     <span>
                                       Quotation Status:{" "}
-                                      {pkgMarkupVal > 0
+                                      {pkgMarkupVal > 0 || (selectedPkg?.agentMarkup?.markupAmount && selectedPkg.agentMarkup.markupAmount > 0)
                                         ? `Markup Applied (${
-                                            selectedPkg?.agentMarkup?.type === "PERCENT"
-                                              ? `${selectedPkg.agentMarkup.value}%`
-                                              : `INR ${Math.round(pkgMarkupVal).toLocaleString("en-IN")}`
+                                            pkgMarkupType === "PERCENT" || pkgMarkupType === "PERCENTAGE" || pkgMarkupType === "%"
+                                              ? `${pkgMarkupVal}%`
+                                              : `INR ${Math.round(selectedPkg?.agentMarkup?.markupAmount || pkgMarkupVal).toLocaleString("en-IN")}`
                                           })`
                                         : "NO Markup applied (Ops net cost quotation shared with client)"}
                                       .

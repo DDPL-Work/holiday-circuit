@@ -1726,8 +1726,38 @@ const buildQuotationClientEmailPayload = ({ quotation, query, agent, customTerm 
     quotation?.agentFooterImage ||
     "";
 
+  const rawBankList = (Array.isArray(quotation?.sellerBankDetails) && quotation.sellerBankDetails.length > 0)
+    ? quotation.sellerBankDetails
+    : (Array.isArray(agent?.bankDetails) && agent.bankDetails.length > 0)
+      ? agent.bankDetails
+      : [];
+
+  let sellerBankDetails = [];
+  if (Array.isArray(rawBankList) && rawBankList.length > 0) {
+    sellerBankDetails = rawBankList.filter((b) => b && (b.label || b.value));
+  } else if (agent?.bankDetails && typeof agent.bankDetails === "object") {
+    const uBank = agent.bankDetails;
+    if (uBank.bankName) sellerBankDetails.push({ label: "Bank Name", value: uBank.bankName });
+    if (uBank.accountHolderName) sellerBankDetails.push({ label: "A/c Holder Name", value: uBank.accountHolderName });
+    if (uBank.accountNumber) sellerBankDetails.push({ label: "A/c No.", value: uBank.accountNumber });
+    if (uBank.ifscCode || uBank.ifsc) sellerBankDetails.push({ label: "IFSC", value: uBank.ifscCode || uBank.ifsc });
+    if (uBank.branchName || uBank.branch) sellerBankDetails.push({ label: "Branch", value: uBank.branchName || uBank.branch });
+  }
+
+  if (sellerBankDetails.length === 0) {
+    const brandHolder = resolvedBranding.brandingName || agent?.brandingName || agent?.companyName || "Holiday Circuit";
+    sellerBankDetails = [
+      { label: "Bank Name", value: "HDFC Bank" },
+      { label: "A/c Holder Name", value: brandHolder },
+      { label: "A/c No.", value: "50200103968171" },
+      { label: "IFSC", value: "HDFC0004413" },
+      { label: "Branch", value: "RAMPHAL CHOWK SEC VII DWARKA" },
+    ];
+  }
+
   return {
-    includeSellerBankDetails: false,
+    includeSellerBankDetails: true,
+    sellerBankDetails,
     recipientName: getQueryClientRecipientName(query),
     agencyName: agent?.companyName || "",
     agentLogo: getAbsoluteMediaUrl(rawLogo),
@@ -1801,23 +1831,23 @@ const buildQuotationClientEmailPayload = ({ quotation, query, agent, customTerm 
     additionalNotes: Array.isArray(quotation?.additionalNotes)
       ? quotation.additionalNotes.filter(Boolean)
       : [],
-    dayWiseItinerary: Array.isArray(quotation?.dayWiseItinerary)
-      ? quotation.dayWiseItinerary
+    dayWiseItinerary: Array.isArray(quotation?.dayWiseItinerary || quotation?.itinerary || query?.dayWiseItinerary || query?.itinerary)
+      ? (quotation?.dayWiseItinerary || quotation?.itinerary || query?.dayWiseItinerary || query?.itinerary)
           .map((item, index) => {
-            const dayNumber = Math.max(1, Number(item?.dayNumber || index + 1));
+            const dayNumber = Math.max(1, Number(item?.dayNumber || item?.day || index + 1));
             const parsedDate = item?.date ? new Date(item.date) : null;
 
             return {
               dayNumber,
-              dayLabel: String(item?.dayLabel || "").trim(),
+              dayLabel: String(item?.dayLabel || item?.heading || `Day ${dayNumber}`).trim(),
               date: parsedDate && !Number.isNaN(parsedDate.getTime())
                 ? parsedDate.toISOString()
                 : "",
-              title: String(item?.title || item?.heading || "").trim(),
-              description: String(item?.description || "").trim(),
+              title: String(item?.title || item?.dayTitle || item?.heading || item?.activity || "").trim(),
+              description: String(item?.description || item?.details || item?.content || "").trim(),
             };
           })
-          .filter((item) => item.title || item.description)
+          .filter((item) => item.title || item.description || item.dayLabel)
       : [],
   };
 };
@@ -1983,7 +2013,7 @@ export const generateClientQuotationPdf = async (req, res, next) => {
     const pdfPayload = buildQuotationClientEmailPayload({ quotation, query, agent });
     const pdf = await generatePDF({
       ...pdfPayload,
-      includeSellerBankDetails: false,
+      includeSellerBankDetails: true,
     });
 
     return res.json({
@@ -3571,18 +3601,24 @@ export const getMyQueries = async (req, res, next) => {
     const queryIds = queries.map((q) => q._id);
 
     const quotations = await Quotation.find({
-      agent: req.user.id,
       queryId: { $in: queryIds },
+      status: { $ne: "Pending" },
     })
-      .select("queryId clientTotalAmount pricing status createdAt updatedAt")
+      .select("queryId services pricing totalAmount clientTotalAmount agentMarkup status isAfterConversion isAfterConversionQuote isPostConversion sourceQuotationId agentRevisionRemark createdAt updatedAt")
       .sort({ updatedAt: -1, createdAt: -1 })
       .lean();
 
+    const quotationsByQuery = {};
     const latestQuotationByQuery = {};
     const approvedQuotationByQuery = {};
 
     quotations.forEach((q) => {
-      const qKey = String(q.queryId);
+      const qKey = String(q.queryId?._id || q.queryId);
+      if (!quotationsByQuery[qKey]) {
+        quotationsByQuery[qKey] = [];
+      }
+      quotationsByQuery[qKey].push(q);
+
       if (!latestQuotationByQuery[qKey]) {
         latestQuotationByQuery[qKey] = q;
       }
@@ -3596,21 +3632,48 @@ export const getMyQueries = async (req, res, next) => {
 
     const enrichedQueries = queries.map((query) => {
       const qKey = String(query._id);
-      const latestQ = latestQuotationByQuery[qKey];
-      const approvedQ = approvedQuotationByQuery[qKey] || latestQ;
+      const queryQuotes = quotationsByQuery[qKey] || quotationsByQuery[String(query.queryId)] || [];
+      const latestQ = latestQuotationByQuery[qKey] || latestQuotationByQuery[String(query.queryId)] || queryQuotes[0] || null;
+      const approvedQ = approvedQuotationByQuery[qKey] || approvedQuotationByQuery[String(query.queryId)] || latestQ;
 
       const latestPrice = latestQ
-        ? Number(latestQ.clientTotalAmount || latestQ.pricing?.totalAmount || 0)
+        ? Number(
+            (latestQ.status === "Quote Sent" || latestQ.status === "Revision Requested")
+              ? (latestQ.pricing?.totalAmount || latestQ.totalAmount || latestQ.clientTotalAmount || 0)
+              : (latestQ.clientTotalAmount || latestQ.pricing?.totalAmount || latestQ.totalAmount || 0)
+          )
         : 0;
 
       const approvedPrice = approvedQ
-        ? Number(approvedQ.clientTotalAmount || approvedQ.pricing?.totalAmount || 0)
+        ? Number(approvedQ.clientTotalAmount || approvedQ.pricing?.totalAmount || approvedQ.totalAmount || 0)
         : 0;
+
+      const isAfterConversion = Boolean(
+        query.isAfterConversion ||
+        query.isAfterConversionQuote ||
+        query.isPostConversion ||
+        latestQ?.isAfterConversion ||
+        latestQ?.isAfterConversionQuote ||
+        latestQ?.isPostConversion ||
+        latestQ?.sourceQuotationId ||
+        latestQ?.status === "Revised" ||
+        latestQ?.agentRevisionRemark ||
+        query.agentStatus === "Revision Requested" ||
+        query.opsStatus === "Revision_Query" ||
+        Boolean(query.rejectionNote && String(query.rejectionNote).trim().length > 0) ||
+        (Array.isArray(query.activityLog) && query.activityLog.some((l) => {
+          const act = String(l?.action || "").toLowerCase();
+          return act.includes("revision") || act.includes("after conversion") || act.includes("quote revised") || act.includes("revised");
+        })) ||
+        (queryQuotes.length > 1)
+      );
 
       return {
         ...query,
+        quotations: queryQuotes,
         latestQuotationPrice: latestPrice,
         approvedQuotationPrice: approvedPrice,
+        isAfterConversion,
       };
     });
 
@@ -4275,8 +4338,8 @@ export const updatePackageTermsAndConditions = async (req, res, next) => {
       return next(new ApiError(400, "Package ID is required"));
     }
 
-    if (!Array.isArray(termsAndConditions)) {
-      return next(new ApiError(400, "termsAndConditions must be an array of strings"));
+    if (typeof termsAndConditions !== "string" && !Array.isArray(termsAndConditions)) {
+      return next(new ApiError(400, "termsAndConditions must be an array or string"));
     }
 
     const pkg = await mongoose.model("Dmc_Package").findById(id);
@@ -4290,6 +4353,7 @@ export const updatePackageTermsAndConditions = async (req, res, next) => {
     res.status(200).json({
       success: true,
       message: "Terms and conditions updated successfully for the package",
+      data: pkg,
       package: pkg
     });
   } catch (error) {
@@ -4319,8 +4383,8 @@ export const acceptQuotationByAgent = async (req, res, next) => {
     }
 
     /* STEP 1: ACCEPT QUOTE */
-    if (action === "ACCEPT") {
-      if (quotation.status !== "Quote Sent") {
+    if (!action || action === "ACCEPT") {
+      if (quotation.status !== "Quote Sent" && quotation.status !== "Quote Received") {
         return next(new ApiError(400, "Quote cannot be accepted"));
       }
 
@@ -4516,6 +4580,138 @@ export const acceptQuotationByAgent = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
+};
+
+/* ========================= UPDATE QUOTATION MARKUP ========================= */
+export const updateQuotationMarkup = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { markupType, markupValue } = req.body;
+    const agentId = getAuthenticatedUserId(req);
+
+    if (!agentId) {
+      return next(new ApiError(401, "Unauthorized"));
+    }
+
+    const quotation = await Quotation.findById(id);
+    if (!quotation) {
+      return next(new ApiError(404, "Quotation not found"));
+    }
+
+    if (String(quotation.agent?._id || quotation.agent) !== String(agentId)) {
+      return next(new ApiError(403, "Forbidden: You cannot modify this quotation"));
+    }
+
+    const opsTotal = Number(quotation.pricing?.totalAmount || quotation.totalAmount || 0);
+    const normalizedMarkupValue = Number(markupValue);
+
+    // If markupValue is 0 or non-positive, remove markup
+    if (!Number.isFinite(normalizedMarkupValue) || normalizedMarkupValue <= 0) {
+      quotation.agentMarkup = {
+        type: "PERCENT",
+        value: 0,
+        markupAmount: 0,
+      };
+      quotation.clientTotalAmount = opsTotal;
+      if (quotation.status === "Markup Applied") {
+        quotation.status = "Quote Sent";
+      }
+      await quotation.save();
+      return res.json({ success: true, message: "Agent markup removed successfully", quotation });
+    }
+
+    const normalizedMarkupType = String(markupType || "PERCENT").trim().toUpperCase() === "AMOUNT" ? "AMOUNT" : "PERCENT";
+    const markupAmount =
+      normalizedMarkupType === "PERCENT"
+        ? Math.round((opsTotal * normalizedMarkupValue) / 100)
+        : Math.round(normalizedMarkupValue);
+
+    quotation.agentMarkup = {
+      type: normalizedMarkupType,
+      value: normalizedMarkupValue,
+      markupAmount,
+    };
+
+    quotation.clientTotalAmount = Math.round(opsTotal + markupAmount);
+    if (quotation.status !== "Sent to Client" && quotation.status !== "Confirmed") {
+      quotation.status = "Markup Applied";
+    }
+
+    await quotation.save();
+
+    return res.json({ success: true, message: "Agent markup saved successfully", quotation });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/* ========================= UPDATE QUOTATION VISIBILITY ========================= */
+export const updateQuotationVisibility = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { isHidden } = req.body;
+    const agentId = getAuthenticatedUserId(req);
+
+    if (!agentId) {
+      return next(new ApiError(401, "Unauthorized"));
+    }
+
+    const quotation = await Quotation.findById(id);
+    if (!quotation) {
+      return next(new ApiError(404, "Quotation not found"));
+    }
+
+    if (String(quotation.agent?._id || quotation.agent) !== String(agentId)) {
+      return next(new ApiError(403, "Forbidden: You cannot modify this quotation"));
+    }
+
+    quotation.isHidden = Boolean(isHidden);
+    await quotation.save();
+
+    return res.json({ success: true, message: "Quotation visibility updated", quotation });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/* ========================= MARK QUOTATION SHARED ========================= */
+export const markQuotationShared = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { channel = "link" } = req.body;
+    const agentId = getAuthenticatedUserId(req);
+
+    if (!agentId) {
+      return next(new ApiError(401, "Unauthorized"));
+    }
+
+    const quotation = await Quotation.findById(id);
+    if (!quotation) {
+      return next(new ApiError(404, "Quotation not found"));
+    }
+
+    const query = await TravelQuery.findById(quotation.queryId);
+    if (!query) {
+      return next(new ApiError(404, "Travel query not found"));
+    }
+
+    await markQuotationSharedWithClient({
+      quotation,
+      query,
+      channel,
+      performedBy: req.user?.name || "Agent",
+    });
+
+    return res.json({ success: true, message: "Quotation marked as shared", quotation });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/* ========================= SEND QUOTATION TO CLIENT ========================= */
+export const sendQuotationToClient = async (req, res, next) => {
+  req.body.action = "SEND_TO_CLIENT";
+  return acceptQuotationByAgent(req, res, next);
 };
 
 
@@ -6249,7 +6445,7 @@ export const updateTermsAndConditions = async (req, res, next) => {
     const { id } = req.params;
     const { name, content } = req.body;
     
-    const term = await AgentTerm.findById(id);
+    const term = await AgentTerm.findOne({ _id: id, createdBy: userId });
     if (!term) return res.status(404).json({ message: "Term not found" });
 
     if (content && content !== term.content) {
@@ -6283,7 +6479,10 @@ export const updateTermsAndConditions = async (req, res, next) => {
 
 export const fetchTermsAndConditions = async (req, res, next) => {
   try {
-    const terms = await AgentTerm.find().populate("createdBy", "name").sort({ createdAt: -1 });
+    const userId = getAuthenticatedUserId(req);
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+    const terms = await AgentTerm.find({ createdBy: userId }).populate("createdBy", "name").sort({ createdAt: -1 });
     
     const formattedTerms = terms.map(term => ({
       id: term._id,
@@ -6301,8 +6500,11 @@ export const fetchTermsAndConditions = async (req, res, next) => {
 
 export const fetchByIDTermsAndConditions = async (req, res, next) => {
   try {
+    const userId = getAuthenticatedUserId(req);
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
     const { id } = req.params;
-    const term = await AgentTerm.findById(id).populate("createdBy revisions.updatedBy", "name");
+    const term = await AgentTerm.findOne({ _id: id, createdBy: userId }).populate("createdBy revisions.updatedBy", "name");
     
     if (!term) return res.status(404).json({ message: "Term not found" });
 
@@ -6312,7 +6514,7 @@ export const fetchByIDTermsAndConditions = async (req, res, next) => {
       by: term.createdBy?.name || 'Agent',
       on: formatTermDate(term.createdAt),
       content: term.content,
-      revisions: term.revisions.map(rev => ({
+      revisions: (term.revisions || []).map(rev => ({
          _id: rev._id,
          content: rev.content,
          action: rev.action,
@@ -6330,8 +6532,11 @@ export const fetchByIDTermsAndConditions = async (req, res, next) => {
 
 export const deleteTermsAndConditions = async (req, res, next) => {
   try {
+    const userId = getAuthenticatedUserId(req);
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
     const { id } = req.params;
-    const term = await AgentTerm.findByIdAndDelete(id);
+    const term = await AgentTerm.findOneAndDelete({ _id: id, createdBy: userId });
     if (!term) return res.status(404).json({ message: "Term not found" });
 
     res.status(200).json({ message: "Term deleted successfully" });

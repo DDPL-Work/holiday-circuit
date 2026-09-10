@@ -982,27 +982,6 @@ export const createPackage = async (req, res, next) => {
       return next(error);
     }
 
-    const pkg = await Package.create({
-      title: String(title || "").trim(),
-      destination: String(destination || "").trim(),
-      country: String(country || "").trim(),
-      duration: String(duration || (days ? `${days} Days` : "")).trim(),
-      days: Number(days || 0),
-      description: String(description || "").trim(),
-      inclusions: String(inclusions || "").trim(),
-      exclusions: String(exclusions || "").trim(),
-      dayWiseItinerary: Array.isArray(dayWiseItinerary) ? dayWiseItinerary : (String(dayWiseItinerary || "").trim() || []),
-      termsAndConditions: String(termsAndConditions || "").trim(),
-      hotels: Array.isArray(hotels) ? hotels : [],
-      activities: Array.isArray(activities) ? activities : [],
-      transfers: Array.isArray(transfers) ? transfers : [],
-      sightseeing: Array.isArray(sightseeing) ? sightseeing : [],
-      basePrice: Number(basePrice || finalPrice),
-      tax: tax && typeof tax === "object" ? tax : {},
-      price: finalPrice,
-      supplier: req.user?.id || req.user?._id
-    });
-
     // Capture creator info and audit log
     const createdByUserId = req.user?._id || req.user?.id;
     const creatorName = req.user?.name || req.user?.fullName || "Operations Member";
@@ -1016,6 +995,33 @@ export const createPackage = async (req, res, next) => {
         : creatorRole === "admin"
         ? "Admin"
         : creatorRole;
+
+    const pkg = await Package.create({
+      title: String(title || "").trim(),
+      destination: String(destination || "").trim(),
+      country: String(country || "").trim(),
+      duration: String(duration || (days ? `${days} Days` : "")).trim(),
+      days: Number(days || 0),
+      description: String(description || "").trim(),
+      inclusions: String(inclusions || "").trim(),
+      exclusions: String(exclusions || "").trim(),
+      dayWiseItinerary: Array.isArray(dayWiseItinerary) ? dayWiseItinerary : (String(dayWiseItinerary || "").trim() || []),
+      termsAndConditions: Array.isArray(termsAndConditions)
+        ? termsAndConditions
+        : String(termsAndConditions || "").trim(),
+      hotels: Array.isArray(hotels) ? hotels : [],
+      activities: Array.isArray(activities) ? activities : [],
+      transfers: Array.isArray(transfers) ? transfers : [],
+      sightseeing: Array.isArray(sightseeing) ? sightseeing : [],
+      basePrice: Number(basePrice || finalPrice),
+      tax: tax && typeof tax === "object" ? tax : {},
+      price: finalPrice,
+      supplier: createdByUserId,
+      createdBy: createdByUserId,
+      creatorRole: creatorRole,
+      creatorName: creatorName,
+      creatorEmail: creatorEmail,
+    });
 
     try {
       // Record permanent audit entry
@@ -1099,13 +1105,67 @@ export const createPackage = async (req, res, next) => {
 
 export const getPackages = async (req, res, next) => {
   try {
+    const userRole = String(req.user?.role || "").toLowerCase().trim();
+    const userId = String(req.user?._id || req.user?.id || "");
 
     const packages = await Package.find()
-
       .populate("hotels", "hotelName roomType")
       .populate("activities", "name")
       .populate("transfers", "serviceName")
-      .populate("sightseeing", "name");
+      .populate("sightseeing", "name")
+      .populate("supplier", "name email role")
+      .populate("createdBy", "name email role")
+      .sort({ createdAt: -1 });
+
+    // Business Rule (OPS Side):
+    // 1. Admin/Manager created packages -> visible to everyone
+    // 2. Regular OPS team member created packages -> ONLY visible to the member who created it (and Managers/Admins)
+    // 3. For other roles (Agent, DMC, Finance, Manager, Admin) -> visible as per standard system access
+    if (userRole === "operations" || userRole === "ops") {
+      const filtered = packages.filter((pkg) => {
+        const pkgCreatorId = String(
+          pkg.createdBy?._id || pkg.createdBy || pkg.supplier?._id || pkg.supplier || ""
+        );
+        const pkgCreatorRole = String(
+          pkg.creatorRole ||
+          pkg.createdBy?.role ||
+          pkg.supplier?.role ||
+          ""
+        ).toLowerCase().trim();
+
+        // 1. If created by the current OPS member -> ALWAYS SHOW
+        if (pkgCreatorId && pkgCreatorId === userId) {
+          return true;
+        }
+
+        // 2. If created by Admin or Manager or Super Admin -> SHOW TO ALL OPS MEMBERS
+        if (
+          pkgCreatorRole === "admin" ||
+          pkgCreatorRole === "super_admin" ||
+          pkgCreatorRole === "operation_manager" ||
+          pkgCreatorRole === "ops_manager" ||
+          pkgCreatorRole === "manager"
+        ) {
+          return true;
+        }
+
+        // 3. Legacy / System default packages without an explicit creator or non-ops creator -> SHOW
+        if (!pkgCreatorRole && !pkgCreatorId) {
+          return true;
+        }
+        if (pkgCreatorRole && !["operations", "ops"].includes(pkgCreatorRole)) {
+          return true;
+        }
+
+        // 4. Created by another regular OPS team member -> HIDE from this member
+        return false;
+      });
+
+      return res.status(200).json({
+        success: true,
+        data: filtered,
+      });
+    }
 
     res.status(200).json({
       success: true,
@@ -1122,12 +1182,28 @@ export const getPackages = async (req, res, next) => {
 export const deletePackage = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const pkg = await Package.findById(id);
+    const pkg = await Package.findById(id).populate("supplier", "role").populate("createdBy", "role");
     if (!pkg) {
       return res.status(404).json({
         success: false,
         message: "Package template not found"
       });
+    }
+
+    const userRole = String(req.user?.role || "").toLowerCase().trim();
+    const userId = String(req.user?._id || req.user?.id || "");
+
+    // Regular operations members can only delete package templates created by themselves
+    if (userRole === "operations" || userRole === "ops") {
+      const pkgCreatorId = String(
+        pkg.createdBy?._id || pkg.createdBy || pkg.supplier?._id || pkg.supplier || ""
+      );
+      if (pkgCreatorId && pkgCreatorId !== userId) {
+        return res.status(403).json({
+          success: false,
+          message: "You can only delete package templates created by you."
+        });
+      }
     }
 
     // Capture package snapshot before deletion

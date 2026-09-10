@@ -3,11 +3,19 @@ import { useSelector } from "react-redux";
 import { X, Copy, RefreshCw, AlertTriangle, FileText, CheckCircle2, Mail, Send } from "lucide-react";
 import toast from "react-hot-toast";
 import { AnimatePresence, motion } from "framer-motion";
+import html2pdf from "html2pdf.js";
 import API from "../utils/Api";
 import { buildVoucherHtml, parseAdminTermContent, DEFAULT_VOUCHER_TERMS } from "../utils/voucherTemplate";
+import { resolveQuoteClientAmount } from "../pages/agentPages/queryDetails/utils/queryDetailsHelpers";
 
 // Clean Dynamic Default Fallbacks
-const DEFAULT_SELLER_BANK_DETAILS = [];
+const DEFAULT_SELLER_BANK_DETAILS = [
+  { label: "Bank Name", value: "HDFC Bank" },
+  { label: "A/c Holder Name", value: "Holiday Circuit" },
+  { label: "A/c No.", value: "50200103968171" },
+  { label: "IFSC", value: "HDFC0004413" },
+  { label: "Branch", value: "RAMPHAL CHOWK SEC VII DWARKA" },
+];
 const GENERAL_TERMS_AND_CONDITIONS = [];
 const DEFAULT_INCLUSIONS = [];
 const DEFAULT_EXCLUSIONS = [];
@@ -456,9 +464,8 @@ export default function SharePackageModal({
       try {
         setLoadingTerms(true);
         let agentTerms = [];
-        let adminTerms = [];
 
-        // 1. Fetch Agent-created Terms & Conditions (created by Agent)
+        // 1. Fetch Agent-created Terms & Conditions (created by Agent only)
         try {
           const resAgent = await API.get("/agent/terms");
           agentTerms = Array.isArray(resAgent?.data)
@@ -470,32 +477,7 @@ export default function SharePackageModal({
           console.warn("Could not fetch agent terms:", err);
         }
 
-        // 2. Fetch Admin Terms & Conditions
-        try {
-          const resAdmin = await API.get("/admin/terms");
-          adminTerms = Array.isArray(resAdmin?.data)
-            ? resAdmin.data
-            : Array.isArray(resAdmin?.data?.data)
-            ? resAdmin.data.data
-            : [];
-        } catch (err) {
-          console.warn("Could not fetch admin terms:", err);
-        }
-
-        // Combine: Agent's created terms first, then Admin terms (deduplicated)
-        const combined = [...agentTerms];
-        const existingIds = new Set(combined.map((t) => String(t.id || t._id)));
-        const existingNames = new Set(combined.map((t) => String(t.name || "").trim().toLowerCase()));
-
-        adminTerms.forEach((item) => {
-          const itemId = String(item.id || item._id);
-          const itemName = String(item.name || "").trim().toLowerCase();
-          if (!existingIds.has(itemId) && !existingNames.has(itemName)) {
-            combined.push(item);
-          }
-        });
-
-        const parsed = combined
+        const parsed = agentTerms
           .map((item) => {
             const items = parseAdminTermContent(item.content || "");
             return {
@@ -1206,25 +1188,31 @@ export default function SharePackageModal({
         const generatedOnStr = `${genDay} ${genMonth}, ${genYear} - ${genHours}:${genMins} Hrs UTC`;
 
         // Dynamic Terms & Conditions from Voucher / Query / Quote (sent by OPS or set by Admin)
-        const candidateTerms =
-          query?.voucherDetails?.termsAndConditions ||
-          query?.voucher?.termsAndConditions ||
-          query?.termsAndConditions ||
-          query?.voucherTerms ||
-          query?.voucherDetails?.terms ||
-          query?.voucher?.terms ||
-          quote?.voucherDetails?.termsAndConditions ||
-          quote?.voucher?.termsAndConditions ||
-          quote?.termsAndConditions ||
-          quote?.voucherTerms ||
-          quote?.voucherDetails?.terms ||
-          quote?.voucher?.terms ||
-          query?.activeQuote?.termsAndConditions ||
-          query?.quotation?.termsAndConditions ||
-          query?.terms ||
-          quote?.terms ||
-          selectedPkg?.termsAndConditions ||
-          selectedPkg?.terms;
+        const isPkgMode = isPackage || shareType === "PACKAGE" || Boolean(selectedPkg);
+        const candidateTerms = isPkgMode
+          ? (selectedPkg?.termsAndConditions ||
+             selectedPkg?.terms ||
+             quote?.termsAndConditions ||
+             query?.termsAndConditions ||
+             query?.voucherDetails?.termsAndConditions)
+          : (query?.voucherDetails?.termsAndConditions ||
+             query?.voucher?.termsAndConditions ||
+             query?.termsAndConditions ||
+             query?.voucherTerms ||
+             query?.voucherDetails?.terms ||
+             query?.voucher?.terms ||
+             quote?.voucherDetails?.termsAndConditions ||
+             quote?.voucher?.termsAndConditions ||
+             quote?.termsAndConditions ||
+             quote?.voucherTerms ||
+             quote?.voucherDetails?.terms ||
+             quote?.voucher?.terms ||
+             query?.activeQuote?.termsAndConditions ||
+             query?.quotation?.termsAndConditions ||
+             query?.terms ||
+             quote?.terms ||
+             selectedPkg?.termsAndConditions ||
+             selectedPkg?.terms);
 
         let parsedVoucherTerms = [];
         if (!removeTerms) {
@@ -1487,12 +1475,17 @@ export default function SharePackageModal({
           const children = Number(query?.numberOfChildren || 0);
           const paxSummary = `${adults} Adults${children > 0 ? `, ${children} Children` : ""}`;
 
-          const rawPrice = Number(pkgObj?.price || pkgObj?.basePrice || quote?.clientTotalAmount || quote?.pricing?.totalAmount || 225000);
+          const quotePriceVal = quote ? resolveQuoteClientAmount(quote, query) : 0;
+          const rawPrice = Number(pkgObj?.price || pkgObj?.basePrice || quotePriceVal || 225000);
           const safeTotalAmount = `INR ${Math.round(rawPrice).toLocaleString("en-IN")}`;
 
           // Separate Activities and Sightseeing
-          const rawActivities = Array.isArray(pkgObj?.activities) ? pkgObj.activities : [];
-          const rawSightseeing = Array.isArray(pkgObj?.sightseeing) ? pkgObj.sightseeing : [];
+          const rawActivities = Array.isArray(pkgObj?.activities) && pkgObj.activities.length > 0
+            ? pkgObj.activities
+            : (Array.isArray(pkgObj?.services) ? pkgObj.services.filter(s => String(s.type || s.category || "").toLowerCase() === "activity") : []);
+          const rawSightseeing = Array.isArray(pkgObj?.sightseeing) && pkgObj.sightseeing.length > 0
+            ? pkgObj.sightseeing
+            : (Array.isArray(pkgObj?.services) ? pkgObj.services.filter(s => String(s.type || s.category || "").toLowerCase() === "sightseeing") : []);
 
           const getItemDayAndDate = (item, idx, defaultStartDay = 2) => {
             const baseStartObj = query?.startDate && !isNaN(new Date(query.startDate).getTime())
@@ -1524,20 +1517,46 @@ export default function SharePackageModal({
 
           const activityRowsHtml = rawActivities.map((a, idx) => {
             const { dayLabel, dateSubtext } = getItemDayAndDate(a, idx, 2);
+            const actName = a?.name || a?.serviceName || a?.activityName || a?.title || "Tour Activity";
+            const tourType = a?.tourType || "Private Tour";
+            const actAdults = Number(a?.adults !== undefined ? a?.adults : (a?.pax || adults || 1));
+            const actChildren = Number(a?.children || 0);
+            const actSlot = a?.selectedSlot || a?.time || a?.slot || a?.timing || "";
+            const actDuration = a?.duration || a?.dayHours || "";
+            const actDesc = a?.description || a?.details || a?.desc || "";
+
+            const actMeta = [
+              dayLabel,
+              tourType,
+              `${actAdults} Adult(s)${actChildren > 0 ? `, ${actChildren} Child(ren)` : ""}`,
+              actSlot ? `Slot: ${actSlot}` : null,
+              actDuration ? `Duration: ${actDuration}` : null,
+            ].filter(Boolean).join(" • ");
+
             return `
               <tr style="${idx % 2 === 1 ? 'background-color: #f8fafc;' : ''}">
                 <td style="padding: 10px 12px; border: 1px solid #d1d5db; font-size: 12px; line-height: 1.4;">
                   <strong style="color: #0f172a;">${dayLabel}</strong><br/>
                   <span style="font-size: 11px; color: #64748b; font-weight: 500;">(${dateSubtext})</span>
                 </td>
-                <td style="padding: 10px 12px; border: 1px solid #d1d5db; font-size: 12px; font-weight: bold; color: #0f172a;">
-                  ${a?.name || a?.title || "Tour Activity"}
+                <td style="padding: 10px 12px; border: 1px solid #d1d5db; font-size: 12px;">
+                  <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 2px;">
+                    <span style="background-color: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; font-size: 10px; font-weight: 700; padding: 1px 5px; border-radius: 3px;">
+                      Activity
+                    </span>
+                    <strong style="color: #0f172a; font-size: 12px;">${actName}</strong>
+                  </div>
+                  <div style="font-size: 11px; color: #64748b; font-weight: 500; margin-top: 2px; line-height: 1.4;">
+                    ${actMeta}
+                  </div>
                 </td>
-                <td style="padding: 10px 12px; border: 1px solid #d1d5db; font-size: 12px; color: #334155;">
-                  ${a?.description || "Includes activity experience."}
+                <td style="padding: 10px 12px; border: 1px solid #d1d5db; font-size: 12px; color: #334155; line-height: 1.4;">
+                  ${actDesc || "Includes activity experience."}
                 </td>
                 <td style="padding: 10px 12px; border: 1px solid #d1d5db; font-size: 12px; font-weight: 600;">
-                  ${(a?.quantity || adults)} • ${a?.unit || "person"}
+                  <strong style="color: #0f172a;">${actAdults} Adult(s)${actChildren > 0 ? `, ${actChildren} Child(ren)` : ""}</strong>
+                  <div style="font-size: 11px; color: #475569; font-weight: 600; margin-top: 2px;">${tourType}</div>
+                  ${actSlot ? `<div style="font-size: 10px; color: #0284c7; font-weight: 600; margin-top: 2px;">Slot: ${actSlot}</div>` : ""}
                 </td>
               </tr>
             `;
@@ -1545,20 +1564,46 @@ export default function SharePackageModal({
 
           const sightseeingRowsHtml = rawSightseeing.map((s, idx) => {
             const { dayLabel, dateSubtext } = getItemDayAndDate(s, idx, 2);
+            const sightName = s?.name || s?.serviceName || s?.sightseeingName || s?.title || "Sightseeing Tour";
+            const tourType = s?.tourType || "Private Tour";
+            const sightAdults = Number(s?.adults !== undefined ? s?.adults : (s?.pax || adults || 1));
+            const sightChildren = Number(s?.children || 0);
+            const sightSlot = s?.selectedSlot || s?.time || s?.slot || s?.timing || "";
+            const sightDuration = s?.duration || s?.dayHours || "";
+            const sightDesc = s?.description || s?.details || s?.desc || "";
+
+            const sightMeta = [
+              dayLabel,
+              tourType,
+              `${sightAdults} Adult(s)${sightChildren > 0 ? `, ${sightChildren} Child(ren)` : ""}`,
+              sightSlot ? `Slot: ${sightSlot}` : null,
+              sightDuration ? `Duration: ${sightDuration}` : null,
+            ].filter(Boolean).join(" • ");
+
             return `
               <tr style="${idx % 2 === 1 ? 'background-color: #f8fafc;' : ''}">
                 <td style="padding: 10px 12px; border: 1px solid #d1d5db; font-size: 12px; line-height: 1.4;">
                   <strong style="color: #0f172a;">${dayLabel}</strong><br/>
                   <span style="font-size: 11px; color: #64748b; font-weight: 500;">(${dateSubtext})</span>
                 </td>
-                <td style="padding: 10px 12px; border: 1px solid #d1d5db; font-size: 12px; font-weight: bold; color: #0f172a;">
-                  ${s?.name || s?.title || "Sightseeing Tour"}
+                <td style="padding: 10px 12px; border: 1px solid #d1d5db; font-size: 12px;">
+                  <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 2px;">
+                    <span style="background-color: #faf5ff; color: #7e22ce; border: 1px solid #e9d5ff; font-size: 10px; font-weight: 700; padding: 1px 5px; border-radius: 3px;">
+                      Sightseeing
+                    </span>
+                    <strong style="color: #0f172a; font-size: 12px;">${sightName}</strong>
+                  </div>
+                  <div style="font-size: 11px; color: #64748b; font-weight: 500; margin-top: 2px; line-height: 1.4;">
+                    ${sightMeta}
+                  </div>
                 </td>
-                <td style="padding: 10px 12px; border: 1px solid #d1d5db; font-size: 12px; color: #334155;">
-                  ${s?.description || "Includes entry tickets and guided access."}
+                <td style="padding: 10px 12px; border: 1px solid #d1d5db; font-size: 12px; color: #334155; line-height: 1.4;">
+                  ${sightDesc || "Includes entry tickets and guided access."}
                 </td>
                 <td style="padding: 10px 12px; border: 1px solid #d1d5db; font-size: 12px; font-weight: 600;">
-                  ${(s?.quantity || adults)} • ${s?.unit || "person"}
+                  <strong style="color: #0f172a;">${sightAdults} Adult(s)${sightChildren > 0 ? `, ${sightChildren} Child(ren)` : ""}</strong>
+                  <div style="font-size: 11px; color: #475569; font-weight: 600; margin-top: 2px;">${tourType}</div>
+                  ${sightSlot ? `<div style="font-size: 10px; color: #0284c7; font-weight: 600; margin-top: 2px;">Slot: ${sightSlot}</div>` : ""}
                 </td>
               </tr>
             `;
@@ -1572,11 +1617,28 @@ export default function SharePackageModal({
           const exclusionsListHtml = excList.map((e) => `<li style="margin-bottom: 6px; color: #1e293b;">❌ ${e}</li>`).join("");
 
           // Seller Bank Details
-          const templateSellerBankDetails = (Array.isArray(pkgObj?.sellerBankDetails) && pkgObj.sellerBankDetails.length > 0)
+          const rawBankList = (Array.isArray(pkgObj?.sellerBankDetails) && pkgObj.sellerBankDetails.length > 0)
             ? pkgObj.sellerBankDetails
             : (Array.isArray(quote?.sellerBankDetails) && quote.sellerBankDetails.length > 0)
             ? quote.sellerBankDetails
-            : DEFAULT_SELLER_BANK_DETAILS;
+            : (effectiveUser?.bankDetails || currentUser?.bankDetails || DEFAULT_SELLER_BANK_DETAILS);
+
+          let templateSellerBankDetails = [];
+          if (Array.isArray(rawBankList) && rawBankList.length > 0) {
+            templateSellerBankDetails = rawBankList.filter((b) => b && (b.label || b.value));
+          } else if (rawBankList && typeof rawBankList === "object") {
+            if (rawBankList.bankName) templateSellerBankDetails.push({ label: "Bank Name", value: rawBankList.bankName });
+            if (rawBankList.accountHolderName) templateSellerBankDetails.push({ label: "A/c Holder Name", value: rawBankList.accountHolderName });
+            if (rawBankList.accountNumber) templateSellerBankDetails.push({ label: "A/c No.", value: rawBankList.accountNumber });
+            if (rawBankList.ifscCode || rawBankList.ifsc) templateSellerBankDetails.push({ label: "IFSC", value: rawBankList.ifscCode || rawBankList.ifsc });
+            if (rawBankList.branchName || rawBankList.branch) templateSellerBankDetails.push({ label: "Branch", value: rawBankList.branchName || rawBankList.branch });
+          }
+          if (templateSellerBankDetails.length === 0) {
+            templateSellerBankDetails = DEFAULT_SELLER_BANK_DETAILS.map((b) => ({
+              ...b,
+              value: b.label === "A/c Holder Name" ? companyNameVal : b.value,
+            }));
+          }
 
           // Day Wise Schedule
           const getOrdinal = (n) => {
@@ -1737,34 +1799,78 @@ export default function SharePackageModal({
                             });
 
                         if (hotelsList.length > 0) {
+                          let runningHotelDate = query?.startDate && !isNaN(new Date(query.startDate).getTime())
+                            ? new Date(query.startDate)
+                            : new Date();
+
                           return hotelsList.map((h, idx) => {
                             const actualHotel = h?.hotelName || h?.hotel_name || h?.actualHotelName || h?.name || h?.title || "Hotel Stay";
                             const serviceTitle = h?.serviceTitle || h?.serviceName || h?.title || h?.name || actualHotel;
 
-                            const combinedHText = `${h?.starRating || ""} ${h?.hotelCategory || ""} ${h?.stars || ""} ${h?.category || ""} ${actualHotel} ${serviceTitle} ${h?.description || ""} ${h?.meal || ""} ${h?.mealPlan || ""} ${pkgObj?.description || ""} ${pkgObj?.title || ""}`.toLowerCase();
-                            let starCount = (() => {
-                              if (combinedHText.includes("3-star") || combinedHText.includes("3 star") || combinedHText.includes("3star") || combinedHText.includes("citymax") || combinedHText.includes("budget")) return 3;
-                              if (combinedHText.includes("5-star") || combinedHText.includes("5 star") || combinedHText.includes("5star") || combinedHText.includes("luxury") || combinedHText.includes("atlantis")) return 5;
-                              if (combinedHText.includes("4-star") || combinedHText.includes("4 star") || combinedHText.includes("4star")) return 4;
-                              const num = Number(String(h?.starRating || h?.hotelCategory || h?.stars || h?.category || "").replace(/\D/g, ""));
-                              if (num > 0 && num <= 5) return num;
-                              return combinedHText.includes("budget") ? 3 : 4;
-                            })();
-                            const starStr = "⭐".repeat(Math.min(5, Math.max(1, starCount))) + ` ${starCount} Star`;
-                            const roomType = h?.roomType || h?.room_type || h?.roomCategory || "Standard Room";
-                            const meal = h?.description || h?.mealPlan || "CP Plan (✅ Breakfast • ❌ Dinner)";
-                            const city = h?.city || destination;
-                            const nVal = Number(h?.nights || h?.numberOfNights || pkgObj?.nights || nights) || nights;
+                            // Star rating calculation
+                            let starNum = 4;
+                            const rawRating = h?.rating || h?.starRating || h?.starCategory || h?.stars;
+                            if (rawRating) {
+                              const num = Number(String(rawRating).replace(/\D/g, ""));
+                              if (num >= 1 && num <= 5) starNum = num;
+                            } else {
+                              const combinedHText = `${h?.hotelCategory || ""} ${h?.category || ""} ${actualHotel} ${serviceTitle} ${h?.description || ""} ${pkgObj?.description || ""} ${pkgObj?.title || ""}`.toLowerCase();
+                              if (combinedHText.includes("5-star") || combinedHText.includes("5 star") || combinedHText.includes("luxury")) starNum = 5;
+                              else if (combinedHText.includes("3-star") || combinedHText.includes("3 star") || combinedHText.includes("budget")) starNum = 3;
+                              else starNum = 4;
+                            }
+                            const starStr = "⭐".repeat(starNum) + ` ${starNum} Star`;
 
-                            const baseStartObj = query?.startDate && !isNaN(new Date(query.startDate).getTime())
-                              ? new Date(query.startDate)
-                              : new Date();
-                            const hCheckIn = h?.checkIn && !isNaN(new Date(h.checkIn).getTime())
-                              ? new Date(h.checkIn)
-                              : baseStartObj;
-                            const hCheckOut = h?.checkOut && !isNaN(new Date(h.checkOut).getTime())
-                              ? new Date(h.checkOut)
-                              : new Date(hCheckIn.getTime() + nVal * 86400000);
+                            const roomType = h?.roomType || h?.room_type || "Standard Room";
+                            const roomCategory = h?.roomCategory || h?.category || "";
+                            const bedType = h?.bedType || h?.bed_type || "";
+                            const mealPlan = h?.mealPlan || h?.meal_plan || h?.meal || "EP";
+
+                            // Extra bed details
+                            const extraBedsList = [];
+                            if (h?.extraAdult) extraBedsList.push("Extra Adult");
+                            if (h?.childWithBed) extraBedsList.push("Child w/ Bed");
+                            if (h?.childWithoutBed) extraBedsList.push("Child w/o Bed");
+                            if (extraBedsList.length === 0 && h?.extraBedType && h?.extraBedType !== "None") {
+                              extraBedsList.push(`Extra Bed: ${h.extraBedType}`);
+                            }
+                            const extraBedLabel = extraBedsList.length > 0 ? extraBedsList.join(", ") : "Extra Bed: None";
+
+                            const hotelNights = Number(h?.nights || h?.numberOfNights || (hotelsList.length === 1 ? (pkgObj?.nights || nights) : 1)) || 1;
+                            const hotelRooms = Number(h?.rooms || h?.roomCount || h?.numberOfRooms || 1);
+
+                            const hotelSpecs = [
+                              roomType ? `Room: ${roomType}` : "Standard Room",
+                              roomCategory ? `Category: ${roomCategory}` : null,
+                              bedType ? `Bed: ${bedType}` : null,
+                              extraBedLabel ? extraBedLabel : null,
+                              mealPlan ? `Meal: ${mealPlan}` : null,
+                              `${hotelRooms} Room${hotelRooms > 1 ? "s" : ""} • ${hotelNights} Night${hotelNights > 1 ? "s" : ""}`,
+                              rawRating ? `★ ${rawRating}` : null,
+                            ].filter(Boolean).join(" • ");
+
+                            const city = h?.city || destination;
+                            const descriptionText = h?.description || h?.desc || "";
+
+                            // Calculate consecutive check-in and check-out dates for consecutive hotels
+                            let hCheckIn;
+                            let hCheckOut;
+                            if (
+                              h?.checkIn &&
+                              h?.checkOut &&
+                              !isNaN(new Date(h.checkIn).getTime()) &&
+                              !isNaN(new Date(h.checkOut).getTime()) &&
+                              new Date(h.checkIn).getTime() !== new Date(h.checkOut).getTime() &&
+                              (idx === 0 || new Date(h.checkIn).getTime() >= runningHotelDate.getTime())
+                            ) {
+                              hCheckIn = new Date(h.checkIn);
+                              hCheckOut = new Date(h.checkOut);
+                              runningHotelDate = new Date(hCheckOut);
+                            } else {
+                              hCheckIn = new Date(runningHotelDate);
+                              hCheckOut = new Date(hCheckIn.getTime() + hotelNights * 86400000);
+                              runningHotelDate = new Date(hCheckOut);
+                            }
 
                             const checkInFormatted = !isNaN(hCheckIn.getTime())
                               ? hCheckIn.toLocaleDateString("en-GB", { day: "numeric", month: "short" })
@@ -1776,22 +1882,22 @@ export default function SharePackageModal({
                             return `
                               <tr style="${idx % 2 === 1 ? 'background-color: #f8fafc;' : ''}">
                                 <td style="padding: 10px 12px; border: 1px solid #d1d5db; font-size: 12px; line-height: 1.4;">
-                                  <strong style="color: #0f172a;">${nVal} Nights</strong><br/>
+                                  <strong style="color: #0f172a;">${hotelNights} Night${hotelNights > 1 ? "s" : ""}</strong><br/>
                                   <span style="font-size: 11px; color: #64748b; font-weight: 500;">(${checkInFormatted} - ${checkOutFormatted})</span>
                                 </td>
                                 <td style="padding: 10px 12px; border: 1px solid #d1d5db; font-size: 12px; font-weight: bold; color: #0f172a;">${city}</td>
                                 <td style="padding: 10px 12px; border: 1px solid #d1d5db; font-size: 12px;">
                                   <strong style="color: #0f172a;">${serviceTitle}</strong>
-                                  ${actualHotel && actualHotel !== serviceTitle ? `<div style="font-size: 11px; color: #334155; font-weight: 600; margin-top: 2px;">Hotel: ${actualHotel}</div>` : ""}
+                                  ${actualHotel && actualHotel !== serviceTitle ? `<div style="font-size: 11px; color: #334155; font-weight: 600; margin-top: 2px;">Hotel: ${actualHotel}${similarHotelWord ? " / Similar" : ""}</div>` : (similarHotelWord ? `<div style="font-size: 11px; color: #334155; font-weight: 600; margin-top: 2px;">Hotel: ${actualHotel} / Similar</div>` : "")}
                                   <div style="font-size: 11px; color: #d97706; font-weight: 600; margin-top: 3px;">${starStr}</div>
                                 </td>
                                 <td style="padding: 10px 12px; border: 1px solid #d1d5db; font-size: 12px;">
-                                  <strong>${meal}</strong>
-                                  <div style="font-size: 11px; color: #475569; line-height: 1.4; margin-top: 3px;">${roomType}</div>
+                                  <div style="font-weight: 700; color: #0f172a; line-height: 1.4;">${hotelSpecs}</div>
+                                  ${descriptionText ? `<div style="font-size: 11px; color: #475569; line-height: 1.4; margin-top: 4px;">${descriptionText}</div>` : ""}
                                 </td>
                                 <td style="padding: 10px 12px; border: 1px solid #d1d5db; font-size: 12px; font-weight: 600;">
-                                  ${nVal}N | 1 Room | ${paxSummary}<br/>
-                                  <span style="font-size: 11px; color: #64748b; font-weight: normal;">• ${roomType}</span>
+                                  ${hotelNights}N | ${hotelRooms} Room${hotelRooms > 1 ? "s" : ""} | ${paxSummary}<br/>
+                                  <span style="font-size: 11px; color: #64748b; font-weight: normal;">• ${roomType}${roomCategory ? ` (${roomCategory})` : ""}</span>
                                 </td>
                               </tr>
                             `;
@@ -1821,8 +1927,8 @@ export default function SharePackageModal({
                               <div style="font-size: 11px; color: #d97706; font-weight: 600; margin-top: 3px;">⭐⭐⭐⭐⭐ 5 Star</div>
                             </td>
                             <td style="padding:10px 12px; border:1px solid #d1d5db; font-size:12px;">
-                              <strong>CP Plan (✅ Breakfast • ❌ Dinner)</strong>
-                              <div style="font-size:11px; color:#475569; line-height:1.4; margin-top:3px;">Ocean Deluxe Room | Includes Aquaventure Waterpark access</div>
+                              <div style="font-weight: 700; color: #0f172a; line-height: 1.4;">Room: Ocean Deluxe Room • Category: Double • Bed: King Bed • Extra Bed: None • Meal: CP • 1 Room • ${nights} Nights • ★ 5 Star</div>
+                              <div style="font-size:11px; color:#475569; line-height:1.4; margin-top:4px;">Ocean Deluxe Room | Includes Aquaventure Waterpark access</div>
                             </td>
                             <td style="padding:10px 12px; border:1px solid #d1d5db; font-size:12px; font-weight:600;">
                               ${nights}N | 1 Room | ${paxSummary}<br/>
@@ -1850,125 +1956,153 @@ export default function SharePackageModal({
                     </tr>
                   </thead>
                   <tbody>
-                    ${(Array.isArray(pkgObj?.transfers) && pkgObj.transfers.length > 0)
-                      ? pkgObj.transfers.map((t, idx) => {
-                          const baseStartObj = query?.startDate && !isNaN(new Date(query.startDate).getTime())
-                            ? new Date(query.startDate)
-                            : new Date();
-                          const rawStr = String(t?.dayRange || t?.day || t?.serviceDate || t?.days || "").trim();
-                          const nums = rawStr.match(/\d+/g)?.map(Number) || [];
+                    ${(() => {
+                        const allTransfersList = (Array.isArray(pkgObj?.transfers) && pkgObj.transfers.length > 0)
+                          ? pkgObj.transfers
+                          : (Array.isArray(pkgObj?.services) ? pkgObj.services.filter(s => String(s.type || s.category || "").toLowerCase() === "transfer") : []);
 
-                          let dayLabel = "";
-                          let dateRangeSubtext = "";
+                        if (allTransfersList.length > 0) {
+                          return allTransfersList.map((t, idx) => {
+                            const baseStartObj = query?.startDate && !isNaN(new Date(query.startDate).getTime())
+                              ? new Date(query.startDate)
+                              : new Date();
+                            const rawStr = String(t?.dayRange || t?.day || t?.serviceDate || t?.days || "").trim();
+                            const nums = rawStr.match(/\d+/g)?.map(Number) || [];
 
-                          if (nums.length >= 2) {
-                            const sDay = nums[0];
-                            const eDay = nums[1];
-                            dayLabel = `Day ${sDay} - Day ${eDay}`;
-                            const dStart = new Date(baseStartObj.getTime() + (sDay - 1) * 86400000);
-                            const dEnd = new Date(baseStartObj.getTime() + (eDay - 1) * 86400000);
-                            const sStr = !isNaN(dStart.getTime()) ? dStart.toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : "";
-                            const eStr = !isNaN(dEnd.getTime()) ? dEnd.toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : "";
-                            dateRangeSubtext = sStr && eStr ? `(${sStr} - ${eStr})` : "";
-                          } else if (nums.length === 1) {
-                            const sDay = nums[0];
-                            dayLabel = `Day ${sDay}`;
-                            const dStart = new Date(baseStartObj.getTime() + (sDay - 1) * 86400000);
-                            const sStr = !isNaN(dStart.getTime()) ? dStart.toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : "";
-                            dateRangeSubtext = sStr ? `(${sStr})` : "";
-                          } else {
-                            if (idx === 0) {
-                              dayLabel = "Day 1";
-                              const sStr = !isNaN(baseStartObj.getTime()) ? baseStartObj.toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : "";
-                              dateRangeSubtext = sStr ? `(${sStr})` : "";
-                            } else {
-                              dayLabel = "Day 2 - Day 4";
-                              const dStart = new Date(baseStartObj.getTime() + 1 * 86400000);
-                              const dEnd = new Date(baseStartObj.getTime() + 3 * 86400000);
+                            let dayLabel = "";
+                            let dateRangeSubtext = "";
+
+                            if (nums.length >= 2) {
+                              const sDay = nums[0];
+                              const eDay = nums[1];
+                              dayLabel = `Day ${sDay} - Day ${eDay}`;
+                              const dStart = new Date(baseStartObj.getTime() + (sDay - 1) * 86400000);
+                              const dEnd = new Date(baseStartObj.getTime() + (eDay - 1) * 86400000);
                               const sStr = !isNaN(dStart.getTime()) ? dStart.toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : "";
                               const eStr = !isNaN(dEnd.getTime()) ? dEnd.toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : "";
                               dateRangeSubtext = sStr && eStr ? `(${sStr} - ${eStr})` : "";
+                            } else if (nums.length === 1) {
+                              const sDay = nums[0];
+                              dayLabel = `Day ${sDay}`;
+                              const dStart = new Date(baseStartObj.getTime() + (sDay - 1) * 86400000);
+                              const sStr = !isNaN(dStart.getTime()) ? dStart.toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : "";
+                              dateRangeSubtext = sStr ? `(${sStr})` : "";
+                            } else {
+                              if (idx === 0) {
+                                dayLabel = "Day 1";
+                                const sStr = !isNaN(baseStartObj.getTime()) ? baseStartObj.toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : "";
+                                dateRangeSubtext = sStr ? `(${sStr})` : "";
+                              } else {
+                                dayLabel = "Day 2 - Day 4";
+                                const dStart = new Date(baseStartObj.getTime() + 1 * 86400000);
+                                const dEnd = new Date(baseStartObj.getTime() + 3 * 86400000);
+                                const sStr = !isNaN(dStart.getTime()) ? dStart.toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : "";
+                                const eStr = !isNaN(dEnd.getTime()) ? dEnd.toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : "";
+                                dateRangeSubtext = sStr && eStr ? `(${sStr} - ${eStr})` : "";
+                              }
                             }
-                          }
 
-                          const serviceName = t?.name || t?.serviceName || t?.title || (idx === 0 ? "Airport Pick-up Transfer" : "City Transfer");
-                          const vehicleName = t?.vehicle_type || t?.vehicleType || t?.vehicle || (idx === 0 ? "Private SUV / Sedan Transfer" : "Private SUV (Toyota Fortuner / Innova / Land Cruiser)");
-                          const usageType = getTransportUsageLabel(t) || "One Way / Airport Transfer";
-                          const passengerCapacity = Number(t?.passengerCapacity || t?.passenger_capacity || t?.capacity || (/suv|innova/i.test(vehicleName) ? 6 : (/tempo|traveller/i.test(vehicleName) ? 12 : 4)));
-                          const luggageCapacity = Number(t?.luggageCapacity || t?.luggage_capacity || t?.luggage || (/suv|innova/i.test(vehicleName) ? 4 : (/tempo|traveller/i.test(vehicleName) ? 8 : 2)));
-                          const descriptionText = t?.description || (idx === 0 ? "Arrival airport pick-up and hotel drop transfer service." : "Full-Day Private Chauffeur Services in SUV | Available for 10 hours/day for comfortable transfers between hotel, shopping malls & sightseeing spots.");
+                            const transferName = t?.name || t?.serviceName || t?.title || (idx === 0 ? "Airport Pick-up Transfer" : "City Transfer");
+                            const vehicleName = t?.vehicleType || t?.vehicle_type || t?.carType || t?.vehicle || (idx === 0 ? "Sedan" : "Private AC Vehicle");
+                            const rawType = t?.usage || t?.usageType || t?.transferType || t?.tripType || t?.serviceType || "one-way-airport-transfer";
+                            const usageType = getTransportUsageLabel(t) || "One Way / Airport Transfer";
+                            const passengerCapacity = Number(t?.passengerCapacity || t?.passenger_capacity || t?.capacity || (/suv|innova/i.test(vehicleName) ? 6 : (/tempo|traveller/i.test(vehicleName) ? 12 : 4)));
+                            const luggageCapacity = Number(t?.luggageCapacity !== undefined ? t.luggageCapacity : (t?.luggage_capacity !== undefined ? t.luggage_capacity : 2));
+                            const pickupTime = t?.pickupTime || t?.time || "";
+                            const tripsCount = t?.days ? (rawType === "full-day" ? `${t.days} Day${Number(t.days) > 1 ? "s" : ""}` : rawType === "half-day" ? `${t.days} Half-Day${Number(t.days) > 1 ? "s" : ""}` : `${t.days} Trip${Number(t.days) > 1 ? "s" : ""}`) : "1 Trip";
+                            const descriptionText = t?.description || t?.fullDayNote || t?.halfDayNote || t?.desc || (idx === 0 ? "Arrival airport pick-up and hotel drop transfer service." : "Full-Day Private Chauffeur Services in vehicle.");
 
-                          return `
-                            <tr style="${idx % 2 === 1 ? 'background-color: #f8fafc;' : ''}">
-                              <td style="padding: 10px 12px; border: 1px solid #d1d5db; font-size: 12px; line-height: 1.4;">
-                                <strong style="color: #0f172a;">${dayLabel}</strong><br/>
-                                <span style="font-size: 11px; color: #64748b; font-weight: 500;">${dateRangeSubtext}</span>
-                              </td>
-                              <td style="padding: 10px 12px; border: 1px solid #d1d5db; font-size: 12px; font-weight: bold; color: #0f172a;">
-                                ${serviceName}
-                              </td>
-                              <td style="padding: 10px 12px; border: 1px solid #d1d5db; font-size: 12px;">
-                                <strong style="color: #0f172a;">${vehicleName}</strong>
-                                ${descriptionText ? `<div style="font-size: 11px; color: #475569; line-height: 1.4; margin-top: 3px;">${descriptionText}</div>` : ""}
-                              </td>
-                              <td style="padding: 10px 12px; border: 1px solid #d1d5db; font-size: 12px; font-weight: 600;">
-                                <strong style="color: #0f172a;">${t?.pax || paxSummary}</strong>
-                                ${usageType ? `<div style="font-size: 11px; color: #475569; font-weight: 600; margin-top: 3px;">${usageType}</div>` : ""}
-                                ${(passengerCapacity > 0 || luggageCapacity > 0) ? `
-                                  <div style="font-size: 10px; color: #475569; font-weight: 700; margin-top: 3px; letter-spacing: 0.2px;">
-                                    ${passengerCapacity > 0 ? `CAPACITY: ${passengerCapacity} Pax` : ""}
-                                    ${passengerCapacity > 0 && luggageCapacity > 0 ? `<span style="color: #94a3b8; margin: 0 4px;">•</span>` : ""}
-                                    ${luggageCapacity > 0 ? `LUGGAGE: ${luggageCapacity} Bags` : ""}
+                            const transferMeta = [
+                              dayLabel,
+                              vehicleName ? `Vehicle: ${vehicleName}` : null,
+                              usageType,
+                              (passengerCapacity > 0 || luggageCapacity > 0) ? `Capacity: ${passengerCapacity} Pax, ${luggageCapacity} Bags` : null,
+                              pickupTime ? `Pickup: ${pickupTime}` : null,
+                              tripsCount,
+                            ].filter(Boolean).join(" • ");
+
+                            return `
+                              <tr style="${idx % 2 === 1 ? 'background-color: #f8fafc;' : ''}">
+                                <td style="padding: 10px 12px; border: 1px solid #d1d5db; font-size: 12px; line-height: 1.4;">
+                                  <strong style="color: #0f172a;">${dayLabel}</strong><br/>
+                                  <span style="font-size: 11px; color: #64748b; font-weight: 500;">${dateRangeSubtext}</span>
+                                </td>
+                                <td style="padding: 10px 12px; border: 1px solid #d1d5db; font-size: 12px;">
+                                  <strong style="color: #0f172a; font-size: 12px;">${transferName}</strong>
+                                  <div style="font-size: 11px; color: #64748b; font-weight: 500; margin-top: 3px; line-height: 1.4;">
+                                    ${transferMeta}
                                   </div>
-                                ` : ""}
-                              </td>
-                            </tr>
-                          `;
-                        }).join("")
-                      : (() => {
-                          const fallbackStartObj = query?.startDate && !isNaN(new Date(query.startDate).getTime())
-                            ? new Date(query.startDate)
-                            : new Date();
-                          const d1Str = !isNaN(fallbackStartObj.getTime()) ? fallbackStartObj.toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : "-";
-                          const d2Obj = new Date(fallbackStartObj.getTime() + 1 * 86400000);
-                          const d2Date = !isNaN(d2Obj.getTime()) ? d2Obj.toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : "-";
-                          const d4Obj = new Date(fallbackStartObj.getTime() + 3 * 86400000);
-                          const d4Date = !isNaN(d4Obj.getTime()) ? d4Obj.toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : "-";
-                          return `
-                            <tr>
-                              <td style="padding:10px 12px; border:1px solid #d1d5db; font-size:12px; line-height:1.4;">
-                                <strong style="color: #0f172a;">Day 1</strong><br/>
-                                <span style="font-size:11px; color:#64748b; font-weight:500;">(${d1Str})</span>
-                              </td>
-                              <td style="padding:10px 12px; border:1px solid #d1d5db; font-size:12px; font-weight:bold; color:#0f172a;">Airport Pick-up Transfer</td>
-                              <td style="padding:10px 12px; border:1px solid #d1d5db; font-size:12px;">
-                                <strong style="color: #0f172a;">Private SUV / Sedan Transfer</strong>
-                                <div style="font-size:11px; color:#475569; line-height:1.4; margin-top:3px;">Arrival airport pick-up and hotel drop transfer service.</div>
-                              </td>
-                              <td style="padding:10px 12px; border:1px solid #d1d5db; font-size:12px; font-weight:600;">
-                                <strong style="color: #0f172a;">${paxSummary}</strong>
-                                <div style="font-size: 11px; color: #475569; font-weight: 600; margin-top: 3px;">One Way / Airport Transfer</div>
-                                <div style="font-size: 10px; color: #475569; font-weight: 700; margin-top: 3px; letter-spacing: 0.2px;">CAPACITY: 4 Pax <span style="color: #94a3b8; margin: 0 4px;">•</span> LUGGAGE: 2 Bags</div>
-                              </td>
-                            </tr>
-                            <tr style="background-color: #f8fafc;">
-                              <td style="padding:10px 12px; border:1px solid #d1d5db; font-size:12px; line-height:1.4;">
-                                <strong style="color: #0f172a;">Day 2 - Day 4</strong><br/>
-                                <span style="font-size:11px; color:#64748b; font-weight:500;">(${d2Date} - ${d4Date})</span>
-                              </td>
-                              <td style="padding:10px 12px; border:1px solid #d1d5db; font-size:12px; font-weight:bold; color:#0f172a;">City Transfer</td>
-                              <td style="padding:10px 12px; border:1px solid #d1d5db; font-size:12px;">
-                                <strong style="color: #0f172a;">Private SUV (Toyota Fortuner / Innova / Land Cruiser)</strong>
-                                <div style="font-size:11px; color:#475569; line-height:1.4; margin-top:3px;">Full-Day Private Chauffeur Services in SUV | Available for 10 hours/day for comfortable transfers between hotel, shopping malls & sightseeing spots.</div>
-                              </td>
-                              <td style="padding:10px 12px; border:1px solid #d1d5db; font-size:12px; font-weight:600;">
-                                <strong style="color: #0f172a;">${paxSummary}</strong>
-                                <div style="font-size: 11px; color: #475569; font-weight: 600; margin-top: 3px;">Full Day / Disposal</div>
-                                <div style="font-size: 10px; color: #475569; font-weight: 700; margin-top: 3px; letter-spacing: 0.2px;">CAPACITY: 6 Pax <span style="color: #94a3b8; margin: 0 4px;">•</span> LUGGAGE: 4 Bags</div>
-                              </td>
-                            </tr>
-                          `;
-                        })()}
+                                </td>
+                                <td style="padding: 10px 12px; border: 1px solid #d1d5db; font-size: 12px;">
+                                  <strong style="color: #0f172a;">${vehicleName}</strong>
+                                  ${descriptionText ? `<div style="font-size: 11px; color: #475569; line-height: 1.4; margin-top: 3px;">${descriptionText}</div>` : ""}
+                                </td>
+                                <td style="padding: 10px 12px; border: 1px solid #d1d5db; font-size: 12px; font-weight: 600;">
+                                  <strong style="color: #0f172a;">${t?.pax || paxSummary}</strong>
+                                  ${usageType ? `<div style="font-size: 11px; color: #475569; font-weight: 600; margin-top: 3px;">${usageType}</div>` : ""}
+                                  ${(passengerCapacity > 0 || luggageCapacity > 0) ? `
+                                    <div style="font-size: 10px; color: #475569; font-weight: 700; margin-top: 3px; letter-spacing: 0.2px;">
+                                      ${passengerCapacity > 0 ? `CAPACITY: ${passengerCapacity} Pax` : ""}
+                                      ${passengerCapacity > 0 && luggageCapacity > 0 ? `<span style="color: #94a3b8; margin: 0 4px;">•</span>` : ""}
+                                      ${luggageCapacity > 0 ? `LUGGAGE: ${luggageCapacity} Bags` : ""}
+                                    </div>
+                                  ` : ""}
+                                  ${pickupTime ? `<div style="font-size: 10px; color: #0284c7; font-weight: 600; margin-top: 2px;">Pickup: ${pickupTime}</div>` : ""}
+                                </td>
+                              </tr>
+                            `;
+                          }).join("");
+                        }
+
+                        const fallbackStartObj = query?.startDate && !isNaN(new Date(query.startDate).getTime())
+                          ? new Date(query.startDate)
+                          : new Date();
+                        const d1Str = !isNaN(fallbackStartObj.getTime()) ? fallbackStartObj.toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : "-";
+                        const d2Obj = new Date(fallbackStartObj.getTime() + 1 * 86400000);
+                        const d2Date = !isNaN(d2Obj.getTime()) ? d2Obj.toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : "-";
+                        const d4Obj = new Date(fallbackStartObj.getTime() + 3 * 86400000);
+                        const d4Date = !isNaN(d4Obj.getTime()) ? d4Obj.toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : "-";
+                        return `
+                          <tr>
+                            <td style="padding:10px 12px; border:1px solid #d1d5db; font-size:12px; line-height:1.4;">
+                              <strong style="color: #0f172a;">Day 1</strong><br/>
+                              <span style="font-size:11px; color:#64748b; font-weight:500;">(${d1Str})</span>
+                            </td>
+                            <td style="padding:10px 12px; border:1px solid #d1d5db; font-size:12px; font-weight:bold; color:#0f172a;">
+                              Airport Pick-up Transfer
+                              <div style="font-size: 11px; color: #64748b; font-weight: 500; margin-top: 3px;">Day 1 • Vehicle: Sedan • One Way / Airport Transfer • Capacity: 4 Pax, 2 Bags • 1 Trip</div>
+                            </td>
+                            <td style="padding:10px 12px; border:1px solid #d1d5db; font-size:12px;">
+                              <strong style="color: #0f172a;">Private Sedan</strong>
+                              <div style="font-size:11px; color:#475569; line-height:1.4; margin-top:3px;">Arrival airport pick-up and hotel drop transfer service.</div>
+                            </td>
+                            <td style="padding:10px 12px; border:1px solid #d1d5db; font-size:12px; font-weight:600;">
+                              <strong style="color: #0f172a;">${paxSummary}</strong>
+                              <div style="font-size: 11px; color: #475569; font-weight: 600; margin-top: 3px;">One Way / Airport Transfer</div>
+                              <div style="font-size: 10px; color: #475569; font-weight: 700; margin-top: 3px; letter-spacing: 0.2px;">CAPACITY: 4 Pax <span style="color: #94a3b8; margin: 0 4px;">•</span> LUGGAGE: 2 Bags</div>
+                            </td>
+                          </tr>
+                          <tr style="background-color: #f8fafc;">
+                            <td style="padding:10px 12px; border:1px solid #d1d5db; font-size:12px; line-height:1.4;">
+                              <strong style="color: #0f172a;">Day 2 - Day 4</strong><br/>
+                              <span style="font-size:11px; color:#64748b; font-weight:500;">(${d2Date} - ${d4Date})</span>
+                            </td>
+                            <td style="padding:10px 12px; border:1px solid #d1d5db; font-size:12px; font-weight:bold; color:#0f172a;">
+                              City Transfer
+                              <div style="font-size: 11px; color: #64748b; font-weight: 500; margin-top: 3px;">Day 2 - Day 4 • Vehicle: SUV • Full Day Disposal • Capacity: 6 Pax, 4 Bags • 3 Days</div>
+                            </td>
+                            <td style="padding:10px 12px; border:1px solid #d1d5db; font-size:12px;">
+                              <strong style="color: #0f172a;">Private SUV</strong>
+                              <div style="font-size:11px; color:#475569; line-height:1.4; margin-top:3px;">Full-Day Private Chauffeur Services in SUV | Available for 10 hours/day for comfortable transfers between hotel, shopping malls & sightseeing spots.</div>
+                            </td>
+                            <td style="padding:10px 12px; border:1px solid #d1d5db; font-size:12px; font-weight:600;">
+                              <strong style="color: #0f172a;">${paxSummary}</strong>
+                              <div style="font-size: 11px; color: #475569; font-weight: 600; margin-top: 3px;">Full Day / Disposal</div>
+                              <div style="font-size: 10px; color: #475569; font-weight: 700; margin-top: 3px; letter-spacing: 0.2px;">CAPACITY: 6 Pax <span style="color: #94a3b8; margin: 0 4px;">•</span> LUGGAGE: 4 Bags</div>
+                            </td>
+                          </tr>
+                        `;
+                      })()}
                   </tbody>
                 </table>
 
@@ -2411,7 +2545,9 @@ export default function SharePackageModal({
   }, [adults, children, infants]);
 
   const totalPrice = Math.round(
-    Number(quote?.clientTotalAmount ?? quote?.pricing?.totalAmount ?? quote?.totalAmount ?? 0)
+    quote
+      ? resolveQuoteClientAmount(quote, query)
+      : Number(selectedPkg?.price || selectedPkg?.basePrice || 0)
   );
 
   const gstPercent = Number(
@@ -2423,8 +2559,18 @@ export default function SharePackageModal({
   const taxLabel = gstPercent > 0 ? `(inc. ${gstPercent}% GST & other Taxes)` : `(inc. Taxes & Charges)`;
 
   const allModalServices = useMemo(() => {
-    return Array.isArray(quote?.services) ? quote.services : [];
-  }, [quote?.services]);
+    if (Array.isArray(quote?.services) && quote.services.length > 0) {
+      return quote.services;
+    }
+    const pkgObj = selectedPkg || {};
+    const extracted = [];
+    if (Array.isArray(pkgObj.hotels)) extracted.push(...pkgObj.hotels.map(h => ({ ...h, type: "hotel" })));
+    if (Array.isArray(pkgObj.transfers)) extracted.push(...pkgObj.transfers.map(t => ({ ...t, type: "transfer" })));
+    if (Array.isArray(pkgObj.activities)) extracted.push(...pkgObj.activities.map(a => ({ ...a, type: "activity" })));
+    if (Array.isArray(pkgObj.sightseeing)) extracted.push(...pkgObj.sightseeing.map(s => ({ ...s, type: "sightseeing" })));
+    if (Array.isArray(pkgObj.services)) extracted.push(...pkgObj.services);
+    return extracted;
+  }, [quote?.services, selectedPkg]);
 
   const isHotelItem = (s) => {
     const type = String(s?.type || s?.category || "").trim().toLowerCase();
@@ -2452,8 +2598,61 @@ export default function SharePackageModal({
   };
 
   const modalHotelServices = useMemo(() => {
-    return allModalServices.filter((s) => isHotelItem(s));
-  }, [allModalServices]);
+    const rawHotels = allModalServices.filter((s) => isHotelItem(s));
+    let runningDate = query?.startDate && !isNaN(new Date(query.startDate).getTime())
+      ? new Date(query.startDate)
+      : new Date();
+
+    let cumulativeNights = 0;
+
+    return rawHotels.map((h, idx) => {
+      const hotelNights = Number(h?.nights || h?.numberOfNights || (rawHotels.length === 1 ? (selectedPkg?.nights || nightsCount) : 1)) || 1;
+
+      let hCheckIn;
+      let hCheckOut;
+      if (
+        h?.checkIn &&
+        h?.checkOut &&
+        !isNaN(new Date(h.checkIn).getTime()) &&
+        !isNaN(new Date(h.checkOut).getTime()) &&
+        new Date(h.checkIn).getTime() !== new Date(h.checkOut).getTime() &&
+        (idx === 0 || new Date(h.checkIn).getTime() >= runningDate.getTime())
+      ) {
+        hCheckIn = new Date(h.checkIn);
+        hCheckOut = new Date(h.checkOut);
+        runningDate = new Date(hCheckOut);
+      } else {
+        hCheckIn = new Date(runningDate);
+        hCheckOut = new Date(hCheckIn.getTime() + hotelNights * 86400000);
+        runningDate = new Date(hCheckOut);
+      }
+
+      const checkInFormatted = !isNaN(hCheckIn.getTime())
+        ? hCheckIn.toLocaleDateString("en-GB", { day: "numeric", month: "short" })
+        : "-";
+      const checkOutFormatted = !isNaN(hCheckOut.getTime())
+        ? hCheckOut.toLocaleDateString("en-GB", { day: "numeric", month: "short" })
+        : "-";
+
+      const startNight = cumulativeNights + 1;
+      const endNight = cumulativeNights + hotelNights;
+      cumulativeNights += hotelNights;
+
+      const nightLabel = startNight === endNight
+        ? `${startNight}${startNight === 1 ? "st" : startNight === 2 ? "nd" : startNight === 3 ? "rd" : "th"} Night`
+        : `Nights ${startNight}-${endNight}`;
+
+      return {
+        ...h,
+        nights: hotelNights,
+        checkIn: checkInFormatted,
+        checkOut: checkOutFormatted,
+        checkInDate: hCheckIn,
+        checkOutDate: hCheckOut,
+        nightLabel,
+      };
+    });
+  }, [allModalServices, query?.startDate, selectedPkg?.nights, nightsCount]);
 
   const modalTransferServices = useMemo(() => {
     const quoteTransfers = allModalServices.filter((s) => !isHotelItem(s) && isTransferItem(s));
@@ -2511,13 +2710,55 @@ export default function SharePackageModal({
   const sellerBankDetails = useMemo(() => {
     const pkg = selectedPkg || quote || {};
     if (Array.isArray(pkg?.sellerBankDetails) && pkg.sellerBankDetails.length > 0) {
-      return pkg.sellerBankDetails;
+      return pkg.sellerBankDetails.filter((b) => b && (b.label || b.value));
     }
     if (Array.isArray(quote?.sellerBankDetails) && quote.sellerBankDetails.length > 0) {
-      return quote.sellerBankDetails;
+      return quote.sellerBankDetails.filter((b) => b && (b.label || b.value));
     }
-    return DEFAULT_SELLER_BANK_DETAILS;
-  }, [selectedPkg, quote]);
+    const uBank = effectiveUser?.bankDetails || currentUser?.bankDetails;
+    if (Array.isArray(uBank) && uBank.length > 0) {
+      return uBank.filter((b) => b && (b.label || b.value));
+    }
+    if (uBank && typeof uBank === "object") {
+      const list = [];
+      if (uBank.bankName) list.push({ label: "Bank Name", value: uBank.bankName });
+      if (uBank.accountHolderName) list.push({ label: "A/c Holder Name", value: uBank.accountHolderName });
+      if (uBank.accountNumber) list.push({ label: "A/c No.", value: uBank.accountNumber });
+      if (uBank.ifscCode || uBank.ifsc) list.push({ label: "IFSC", value: uBank.ifscCode || uBank.ifsc });
+      if (uBank.branchName || uBank.branch) list.push({ label: "Branch", value: uBank.branchName || uBank.branch });
+      if (list.length > 0) return list;
+    }
+    const compName = effectiveUser?.brandingName || effectiveUser?.companyName || currentUser?.companyName || "Holiday Circuit";
+    return DEFAULT_SELLER_BANK_DETAILS.map((b) => ({
+      ...b,
+      value: b.label === "A/c Holder Name" ? compName : b.value,
+    }));
+  }, [selectedPkg, quote, effectiveUser, currentUser]);
+
+  const dayWiseSchedule = useMemo(() => {
+    const raw =
+      quote?.dayWiseItinerary ||
+      quote?.itinerary ||
+      selectedPkg?.schedule ||
+      selectedPkg?.dayWiseItinerary ||
+      selectedPkg?.itinerary ||
+      query?.dayWiseItinerary ||
+      query?.itinerary;
+    if (Array.isArray(raw) && raw.length > 0) {
+      return raw
+        .map((item, index) => {
+          const dayNumber = Math.max(1, Number(item?.dayNumber || item?.day || index + 1));
+          return {
+            dayNumber,
+            dayLabel: String(item?.dayLabel || item?.heading || `Day ${dayNumber}`).trim(),
+            title: String(item?.title || item?.dayTitle || item?.heading || item?.activity || `Day ${dayNumber}: Itinerary`).trim(),
+            description: String(item?.description || item?.details || item?.content || "").trim(),
+          };
+        })
+        .filter((item) => item.title || item.description || item.dayLabel);
+    }
+    return [];
+  }, [quote?.dayWiseItinerary, quote?.itinerary, selectedPkg?.schedule, selectedPkg?.dayWiseItinerary, selectedPkg?.itinerary, query?.dayWiseItinerary, query?.itinerary]);
 
   const companyName = currentUser?.companyName || "Holiday Circuit";
 
@@ -2642,15 +2883,141 @@ export default function SharePackageModal({
       lines.push(`----------------------------------------`);
       lines.push("");
 
-      const hotels = Array.isArray(pkgObj.hotels) ? pkgObj.hotels : [];
+      const hotels = Array.isArray(pkgObj.hotels) && pkgObj.hotels.length > 0
+        ? pkgObj.hotels
+        : (Array.isArray(pkgObj.services) ? pkgObj.services.filter(s => String(s.type || s.category || "").toLowerCase() === "hotel") : []);
       if (hotels.length > 0) {
         lines.push(`🏨 *ACCOMMODATIONS*`);
-        hotels.forEach((h) => {
-          lines.push(`• *${h.serviceTitle || h.title || h.name || "Hotel Stay"}*`);
-          if (h.hotel_name || h.hotelName || h.actualHotelName) {
-            lines.push(`  └ Hotel: ${h.hotel_name || h.hotelName || h.actualHotelName}`);
+        lines.push(`----------------------------------------`);
+        let runningPkgHotelDate = query?.startDate && !isNaN(new Date(query.startDate).getTime())
+          ? new Date(query.startDate)
+          : new Date();
+
+        hotels.forEach((h, idx) => {
+          const hotelNights = Number(h?.nights || h?.numberOfNights || (hotels.length === 1 ? (pkgObj?.nights || nightsCount) : 1)) || 1;
+          let hCheckIn;
+          let hCheckOut;
+          if (
+            h?.checkIn &&
+            h?.checkOut &&
+            !isNaN(new Date(h.checkIn).getTime()) &&
+            !isNaN(new Date(h.checkOut).getTime()) &&
+            new Date(h.checkIn).getTime() !== new Date(h.checkOut).getTime() &&
+            (idx === 0 || new Date(h.checkIn).getTime() >= runningPkgHotelDate.getTime())
+          ) {
+            hCheckIn = new Date(h.checkIn);
+            hCheckOut = new Date(h.checkOut);
+            runningPkgHotelDate = new Date(hCheckOut);
+          } else {
+            hCheckIn = new Date(runningPkgHotelDate);
+            hCheckOut = new Date(hCheckIn.getTime() + hotelNights * 86400000);
+            runningPkgHotelDate = new Date(hCheckOut);
           }
-          lines.push(`  └ Room: ${h.room_type || h.roomType || "Standard Room"}`);
+
+          const checkInFormatted = !isNaN(hCheckIn.getTime())
+            ? hCheckIn.toLocaleDateString("en-GB", { day: "numeric", month: "short" })
+            : "-";
+          const checkOutFormatted = !isNaN(hCheckOut.getTime())
+            ? hCheckOut.toLocaleDateString("en-GB", { day: "numeric", month: "short" })
+            : "-";
+
+          const hName = h.hotel_name || h.hotelName || h.actualHotelName || h.title || h.name || "Hotel Stay";
+          const serviceTitle = h.serviceTitle || h.serviceName || h.title || h.name || hName;
+          const rType = h.room_type || h.roomType || "Standard Room";
+          const rCat = h.roomCategory || h.category;
+          const bType = h.bedType || h.bed_type;
+          const mPlan = h.mealPlan || h.meal_plan || h.meal;
+          const rRating = h.rating || h.starRating || h.starCategory || h.stars;
+
+          const extraBedsList = [];
+          if (h.extraAdult) extraBedsList.push("Extra Adult");
+          if (h.childWithBed) extraBedsList.push("Child w/ Bed");
+          if (h.childWithoutBed) extraBedsList.push("Child w/o Bed");
+          if (extraBedsList.length === 0 && h.extraBedType && h.extraBedType !== "None") {
+            extraBedsList.push(`Extra Bed: ${h.extraBedType}`);
+          }
+          const exBed = extraBedsList.length > 0 ? extraBedsList.join(", ") : "Extra Bed: None";
+
+          lines.push(`• *${serviceTitle}* (${hotelNights}N • ${checkInFormatted} to ${checkOutFormatted})`);
+          if (hName && hName !== serviceTitle) {
+            lines.push(`  └ Hotel: ${hName}${similarHotelWord ? " / Similar" : ""}`);
+          }
+          const specs = [
+            `Room: ${rType}`,
+            rCat ? `Category: ${rCat}` : null,
+            bType ? `Bed: ${bType}` : null,
+            exBed ? exBed : null,
+            mPlan ? `Meal: ${mPlan}` : null,
+            rRating ? `★ ${rRating}` : null,
+          ].filter(Boolean).join(" • ");
+          lines.push(`  └ ${specs}`);
+          if (h.description || h.desc) {
+            lines.push(`  └ Inclusions: ${h.description || h.desc}`);
+          }
+        });
+        lines.push("");
+      }
+
+      const transfers = Array.isArray(pkgObj.transfers) && pkgObj.transfers.length > 0
+        ? pkgObj.transfers
+        : (Array.isArray(pkgObj.services) ? pkgObj.services.filter(s => String(s.type || s.category || "").toLowerCase() === "transfer") : []);
+      if (transfers.length > 0) {
+        lines.push(`🚗 *TRANSFERS & TRANSPORT*`);
+        lines.push(`----------------------------------------`);
+        transfers.forEach((t) => {
+          const tName = t.name || t.serviceName || t.title || "Transfer Service";
+          const vType = t.vehicleType || t.vehicle_type || t.carType || t.vehicle || "Sedan";
+          const uType = getTransportUsageLabel(t) || "One Way / Airport Transfer";
+          const pCap = Number(t.passengerCapacity || t.passenger_capacity || t.capacity || 4);
+          const lCap = Number(t.luggageCapacity !== undefined ? t.luggageCapacity : (t.luggage_capacity !== undefined ? t.luggage_capacity : 2));
+          const pTime = t.pickupTime || t.time || "";
+
+          lines.push(`• *${tName}*`);
+          const tMeta = [
+            t.day ? `Day ${t.day}` : null,
+            `Vehicle: ${vType}`,
+            uType,
+            `Capacity: ${pCap} Pax, ${lCap} Bags`,
+            pTime ? `Pickup: ${pTime}` : null,
+          ].filter(Boolean).join(" • ");
+          lines.push(`  └ ${tMeta}`);
+          if (t.description || t.desc) {
+            lines.push(`  └ Route/Note: ${t.description || t.desc}`);
+          }
+        });
+        lines.push("");
+      }
+
+      const activities = [
+        ...(Array.isArray(pkgObj.activities) ? pkgObj.activities.map(a => ({ ...a, itemType: "Activity" })) : []),
+        ...(Array.isArray(pkgObj.sightseeing) ? pkgObj.sightseeing.map(s => ({ ...s, itemType: "Sightseeing" })) : []),
+      ];
+      if (activities.length > 0) {
+        lines.push(`🪂 *ACTIVITIES & SIGHTSEEING*`);
+        lines.push(`----------------------------------------`);
+        activities.forEach((act) => {
+          const aName = act.name || act.serviceName || act.activityName || act.sightseeingName || act.title || "Activity";
+          const tourType = act.tourType || "Private Tour";
+          const actSlot = act.selectedSlot || act.time || act.slot || "";
+          lines.push(`• *[${act.itemType}] ${aName}*`);
+          const aMeta = [
+            act.day ? `Day ${act.day}` : null,
+            tourType,
+            actSlot ? `Slot: ${actSlot}` : null,
+          ].filter(Boolean).join(" • ");
+          lines.push(`  └ ${aMeta}`);
+          if (act.description || act.details || act.desc) {
+            lines.push(`  └ Inclusions: ${act.description || act.details || act.desc}`);
+          }
+        });
+        lines.push("");
+      }
+
+      if (sellerBankDetails.length > 0) {
+        lines.push(`🏦 *BANK DETAILS*`);
+        lines.push(`----------------------------------------`);
+        sellerBankDetails.forEach((b) => {
+          lines.push(`• *${b.label || "Detail"}:* ${b.value || "-"}`);
         });
         lines.push("");
       }
@@ -2712,6 +3079,18 @@ export default function SharePackageModal({
         const aDate = a.serviceDateLabel || a.date || "";
         lines.push(`• *${aTitle}*${aDate ? ` (${aDate})` : ""}`);
         if (a.description) lines.push(`  _${a.description}_`);
+        lines.push("");
+      });
+    }
+
+    if (!removeItinerary && dayWiseSchedule.length > 0) {
+      lines.push(`📅 _*Day Wise Schedule*_`);
+      lines.push(`---------`);
+      dayWiseSchedule.forEach((d) => {
+        lines.push(`• *Day ${d.dayNumber}: ${d.title}*`);
+        if (d.description) {
+          lines.push(`  _${d.description.startsWith("•") ? d.description.slice(1).trim() : d.description}_`);
+        }
         lines.push("");
       });
     }
@@ -2790,6 +3169,8 @@ export default function SharePackageModal({
     hideTotalPrice,
     totalPrice,
     removeTerms,
+    removeItinerary,
+    dayWiseSchedule,
     adults,
     shareMode,
     query?.voucherNumber,
@@ -2798,6 +3179,9 @@ export default function SharePackageModal({
     selectedTermId,
     availableAgentTerms,
   ]);
+
+
+  
 
   const handleSendWhatsApp = async () => {
     const rawPhone = String(query?.clientPhone || "").replace(/\D/g, "");
@@ -2821,47 +3205,208 @@ export default function SharePackageModal({
   };
 
   const handleDownloadPDF = async () => {
-    if (shareMode === "VOUCHER") {
-      const voucherHtmlToPrint = emailPreviewHtml;
-      if (voucherHtmlToPrint) {
-        const printWindow = window.open("", "_blank");
-        if (printWindow) {
-          printWindow.document.write(`
-            <!DOCTYPE html>
-            <html>
-              <head>
-                <title>Travel Voucher - ${query?.voucherNumber || tripId}</title>
-                <style>
-                  @page { size: A4; margin: 1cm; }
-                  body { font-family: Arial, sans-serif; margin: 0; padding: 0; background: #fff; }
-                </style>
-              </head>
-              <body>
-                ${voucherHtmlToPrint}
-                <script>
-                  window.onload = function() {
-                    window.print();
-                  };
-                </script>
-              </body>
-            </html>
-          `);
-          printWindow.document.close();
-          return;
+    const isVoucher = shareMode === "VOUCHER";
+    const isPackage = shareMode === "PACKAGE";
+    const docType = isVoucher ? "Travel Voucher" : isPackage ? "Package" : "Quotation";
+    const cleanClientName = (clientName || "Guest").replace(/[^\w\s-]/g, "").trim().replace(/\s+/g, "_");
+    const voucherNo = query?.voucherNumber || `VCH-${query?.queryId || tripId}`;
+    const safeTripId = isVoucher ? voucherNo : tripId;
+    const downloadFileName = isVoucher
+      ? `Travel_Voucher_${safeTripId}_${cleanClientName}.pdf`
+      : isPackage
+      ? `Package_${safeTripId}_${cleanClientName}.pdf`
+      : `Quotation_${safeTripId}_${cleanClientName}.pdf`;
+
+    const toastId = toast.loading(`Generating ${docType} PDF...`);
+
+    try {
+      if (!isPackage && !isVoucher && getClientPdfUrl && quote?._id) {
+        try {
+          const url = await getClientPdfUrl(quote._id);
+          if (url) {
+            const response = await fetch(url);
+            if (response.ok) {
+              const blob = await response.blob();
+              const blobUrl = URL.createObjectURL(blob);
+              const a = document.createElement("a");
+              a.href = blobUrl;
+              a.download = downloadFileName;
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+              URL.revokeObjectURL(blobUrl);
+              toast.success(`${docType} PDF downloaded successfully!`, { id: toastId });
+              return;
+            }
+          }
+        } catch (backendErr) {
+          console.warn("Backend quotation PDF fetch failed, generating client-side PDF:", backendErr);
         }
       }
-      window.print();
-      return;
-    }
-    if (getClientPdfUrl && quote?._id) {
-      try {
-        const url = await getClientPdfUrl(quote._id);
-        window.open(url, "_blank");
-      } catch (err) {
-        toast.error("Unable to generate PDF.");
+
+      let contentHtml = emailPreviewHtml;
+      if (!contentHtml) {
+        let attempts = 0;
+        while (!contentHtml && attempts < 15) {
+          await new Promise((r) => setTimeout(r, 200));
+          contentHtml = emailPreviewHtml;
+          attempts++;
+        }
       }
-    } else {
-      window.print();
+      if (!contentHtml) {
+        const iframeDoc = emailPreviewIframeRef.current?.contentDocument;
+        if (iframeDoc && iframeDoc.body && iframeDoc.body.innerHTML) {
+          contentHtml = iframeDoc.body.innerHTML;
+        }
+      }
+      if (!contentHtml && emailContentRef.current) {
+        contentHtml = emailContentRef.current.innerHTML;
+      }
+
+      if (!contentHtml) {
+        toast.error(`Unable to generate ${docType} PDF. Content is still loading.`, { id: toastId });
+        return;
+      }
+
+      // Offscreen container to completely eliminate on-screen visual glitch/popup
+      const container = document.createElement("div");
+      container.id = "share-pdf-offscreen-host";
+      container.style.position = "absolute";
+      container.style.left = "-99999px";
+      container.style.top = "0";
+      container.style.width = "800px";
+      container.style.maxWidth = "800px";
+      container.style.background = "#ffffff";
+      container.style.opacity = "1";
+      container.style.zIndex = "-9999";
+      container.style.pointerEvents = "none";
+
+      const contentWrapper = document.createElement("div");
+      contentWrapper.className = "share-pdf-render-root";
+      contentWrapper.style.display = "block";
+      contentWrapper.style.width = "800px";
+      contentWrapper.style.minWidth = "800px";
+      contentWrapper.style.maxWidth = "800px";
+      contentWrapper.style.background = "#ffffff";
+      contentWrapper.style.color = "#1e293b";
+      contentWrapper.style.padding = "0px";
+      contentWrapper.style.margin = "0px";
+      contentWrapper.style.boxSizing = "border-box";
+      contentWrapper.style.fontFamily = "'Plus Jakarta Sans', Arial, sans-serif";
+      contentWrapper.innerHTML = `
+        <style>
+          * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; box-sizing: border-box; }
+          body, div, table, tr, td, th, p, span, h1, h2, h3, h4 { font-family: 'Plus Jakarta Sans', Arial, sans-serif; }
+          table { page-break-inside: auto; border-collapse: collapse !important; width: 100% !important; }
+          tr { page-break-inside: avoid; page-break-after: auto; }
+          thead { display: table-header-group; }
+          tfoot { display: table-footer-group; }
+          img { max-width: 100%; height: auto; display: block; }
+        </style>
+        ${contentHtml}
+      `;
+      container.appendChild(contentWrapper);
+      document.body.appendChild(container);
+
+      // Helper to convert external image URL to Base64 data URI to avoid canvas tainting
+      const convertUrlToBase64 = async (url) => {
+        if (!url || typeof url !== "string") return null;
+        const trimmed = url.trim();
+        if (!trimmed || trimmed.startsWith("data:")) return trimmed;
+
+        let normalized = trimmed;
+        if (normalized.startsWith("//")) {
+          normalized = `https:${normalized}`;
+        }
+
+        try {
+          const res = await fetch(normalized, { mode: "cors" });
+          if (res.ok) {
+            const blob = await res.blob();
+            return await new Promise((resolve) => {
+              const reader = new FileReader();
+              reader.onloadend = () => resolve(reader.result);
+              reader.onerror = () => resolve(null);
+              reader.readAsDataURL(blob);
+            });
+          }
+        } catch (err) {}
+
+        try {
+          return await new Promise((resolve) => {
+            const img = new Image();
+            img.crossOrigin = "anonymous";
+            img.onload = () => {
+              try {
+                const canvas = document.createElement("canvas");
+                canvas.width = img.naturalWidth || img.width || 200;
+                canvas.height = img.naturalHeight || img.height || 60;
+                const ctx = canvas.getContext("2d");
+                ctx.drawImage(img, 0, 0);
+                resolve(canvas.toDataURL("image/png"));
+              } catch (e) {
+                resolve(null);
+              }
+            };
+            img.onerror = () => resolve(null);
+            img.src = normalized;
+          });
+        } catch (e) {
+          return null;
+        }
+      };
+
+      // Convert images to base64 and ensure all images are loaded
+      const images = Array.from(contentWrapper.querySelectorAll("img"));
+      if (images.length > 0) {
+        await Promise.all(
+          images.map(async (img) => {
+            if (img.src && !img.src.startsWith("data:")) {
+              const b64 = await convertUrlToBase64(img.src);
+              if (b64) img.src = b64;
+            }
+            if (img.complete && img.naturalWidth > 0) return Promise.resolve();
+            return new Promise((resolve) => {
+              img.onload = resolve;
+              img.onerror = resolve;
+              setTimeout(resolve, 2000);
+            });
+          })
+        );
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 250));
+
+      const opt = {
+        margin: [5, 5, 5, 5],
+        filename: downloadFileName,
+        image: { type: "jpeg", quality: 0.98 },
+        html2canvas: {
+          scale: 2,
+          useCORS: true,
+          allowTaint: true,
+          backgroundColor: "#ffffff",
+          logging: false,
+          scrollY: 0,
+          scrollX: 0,
+          windowWidth: 800,
+        },
+        jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+        pagebreak: {
+          mode: ["css", "legacy", "avoid-all"],
+        },
+      };
+
+      await html2pdf().set(opt).from(contentWrapper).save();
+
+      if (document.body.contains(container)) {
+        document.body.removeChild(container);
+      }
+
+      toast.success(`${docType} PDF downloaded successfully!`, { id: toastId });
+    } catch (err) {
+      console.error("PDF download error:", err);
+      toast.error(`Failed to download ${docType} PDF.`, { id: toastId });
     }
   };
 
@@ -2889,16 +3434,27 @@ export default function SharePackageModal({
       : `Quotation_${safeTripId}_${cleanClientName}.doc`;
 
     let wordHtml = contentHtml;
-    // Fix all logo images specifically for Microsoft Word rendering by locking BOTH width and height
-    wordHtml = wordHtml.replace(
-      /<img([^>]*?)(?:alt=["']Logo["']|src=["'][^"']*logo[^"']*["'])([^>]*?)>/gi,
-      (match) => {
-        const srcMatch = match.match(/src=["']([^"']+)["']/i);
-        const src = srcMatch ? srcMatch[1] : "";
-        if (!src) return match;
-        return `<img src="${src}" alt="Logo" width="95" height="65" style="width: 95px; height: 65px; max-width: 95px; max-height: 65px; display: block; border: 0;" />`;
+    // Fix all images specifically for Microsoft Word rendering by locking explicit width and height attributes and inline styles
+    wordHtml = wordHtml.replace(/<img\b([^>]*)>/gi, (match, attrs) => {
+      const srcMatch = attrs.match(/src=["']([^"']+)["']/i);
+      const src = srcMatch ? srcMatch[1] : "";
+      if (!src) return match;
+
+      const altMatch = attrs.match(/alt=["']([^"']*)["']/i);
+      const alt = altMatch ? altMatch[1] : "";
+
+      const isFooterBanner =
+        alt.toLowerCase().includes("footer") ||
+        attrs.toLowerCase().includes("footer") ||
+        attrs.toLowerCase().includes("banner");
+
+      if (isFooterBanner) {
+        return `<img src="${src}" alt="${alt || "Footer Banner"}" width="600" style="width: 600px; max-width: 100%; height: auto; display: block; margin: 0 auto; border: 0;" />`;
       }
-    );
+
+      // Agency / brand logo in header - strictly locked for Microsoft Word
+      return `<img src="${src}" alt="${alt || "Logo"}" width="110" height="75" style="width: 110px; height: 75px; max-width: 110px; max-height: 75px; object-fit: contain; display: block; border: 0;" />`;
+    });
 
     const fullDocHtml = `
       <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
@@ -2940,20 +3496,17 @@ export default function SharePackageModal({
             vertical-align: top;
             padding: 6px 10px;
           }
-          img[alt="Logo"], .agency-logo {
-            width: 95px !important;
-            max-width: 95px !important;
-            height: 65px !important;
-            max-height: 65px !important;
+          img {
+            width: 110px !important;
+            max-width: 110px !important;
+            height: 75px !important;
+            max-height: 75px !important;
           }
           img[alt="Footer Banner"], .footer-banner {
             width: 600px !important;
             max-width: 600px !important;
             height: auto !important;
-          }
-          img {
-            max-width: 100%;
-            height: auto;
+            max-height: none !important;
           }
           p {
             margin: 0 0 6pt 0;
@@ -3330,28 +3883,53 @@ export default function SharePackageModal({
                     </div>
                   ) : (
                     <>
-                      <p className="font-normal text-slate-900">Hi {clientName},</p>
-                      <p className="mt-3">Greetings from {companyName}.</p>
-                      <p className="mt-3">
-                        As per our discussion, following is the <strong className="font-bold text-black">updated quote after conversion</strong> details.
-                      </p>
-                      <p className="mt-4 font-bold text-black text-xs sm:text-sm">After Conversion Updated Quote</p>
-                      
-                      <p className="mt-3 font-bold text-black">Trip ID {tripId}</p>
-                      <p className="text-slate-500 font-mono text-xs select-none">---------</p>
-
-                      <div className="mt-3">
-                        <p className="font-bold text-black">{destination} Trip</p>
-                        <p className="text-slate-900">• <strong className="font-bold">{shortStartDateFormatted}</strong> <span className="font-normal italic">for</span> <strong className="font-bold">{nightsCount} Nights, {daysCount} Days</strong></p>
-                        <p className="text-slate-900">• <strong className="font-bold">{paxText}</strong></p>
-                      </div>
-
-                      {!hideTotalPrice && (
-                        <div className="mt-4">
-                          <p className="font-bold text-black">
-                            Total Price (INR): {totalPrice.toLocaleString("en-IN")} /- <span className="font-normal italic text-slate-800">{taxLabel}</span>
+                      {shareMode === "PACKAGE" || (!quote?._id && selectedPkg) ? (
+                        <>
+                          <p className="font-normal text-slate-900">Hi <strong>{clientName}</strong>,</p>
+                          <p className="mt-3">Greetings from <strong>{companyName}</strong>! 🙏</p>
+                          <p className="mt-3">
+                            Here is the package details for your upcoming trip to <strong>{destination}</strong>:
                           </p>
-                        </div>
+                          <div className="mt-4 pt-3 border-t border-emerald-300/60">
+                            <p className="font-bold text-black text-sm">📦 PACKAGE: {(selectedPkg?.title || quote?.title || "Pre-Defined Package").toUpperCase()}</p>
+                            <p className="text-slate-400 font-mono text-xs select-none">---------</p>
+                            <div className="mt-2 space-y-1 text-slate-900 font-medium">
+                              {!hideTotalPrice && (
+                                <p>• <strong>Total Package Price:</strong> INR {Math.round(Number(selectedPkg?.price || selectedPkg?.basePrice || 0)).toLocaleString("en-IN")}</p>
+                              )}
+                              <p>• <strong>Destination:</strong> {destination}</p>
+                              <p>• <strong>Duration:</strong> {durationText}</p>
+                              <p>• <strong>Travel Date:</strong> {shortStartDateFormatted}</p>
+                              <p>• <strong>Passengers:</strong> {paxText}</p>
+                            </div>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <p className="font-normal text-slate-900">Hi {clientName},</p>
+                          <p className="mt-3">Greetings from {companyName}.</p>
+                          <p className="mt-3">
+                            As per our discussion, following is the <strong className="font-bold text-black">updated quote after conversion</strong> details.
+                          </p>
+                          <p className="mt-4 font-bold text-black text-xs sm:text-sm">After Conversion Updated Quote</p>
+                          
+                          <p className="mt-3 font-bold text-black">Trip ID {tripId}</p>
+                          <p className="text-slate-500 font-mono text-xs select-none">---------</p>
+
+                          <div className="mt-3">
+                            <p className="font-bold text-black">{destination} Trip</p>
+                            <p className="text-slate-900">• <strong className="font-bold">{shortStartDateFormatted}</strong> <span className="font-normal italic">for</span> <strong className="font-bold">{nightsCount} Nights, {daysCount} Days</strong></p>
+                            <p className="text-slate-900">• <strong className="font-bold">{paxText}</strong></p>
+                          </div>
+
+                          {!hideTotalPrice && (
+                            <div className="mt-4">
+                              <p className="font-bold text-black">
+                                Total Price (INR): {totalPrice.toLocaleString("en-IN")} /- <span className="font-normal italic text-slate-800">{taxLabel}</span>
+                              </p>
+                            </div>
+                          )}
+                        </>
                       )}
 
                       {hotelServices.length > 0 && (
@@ -3364,22 +3942,52 @@ export default function SharePackageModal({
                           </div>
 
                           <div className="mt-4 space-y-4">
-                            {hotelServices.map((h, idx) => (
-                              <div key={idx} className="space-y-0.5">
-                                <p className="font-bold text-black">
-                                  {h.nightLabel || `${idx + 1}st Night`} <span className="font-normal italic">at</span> {h.city || "Destination"}
-                                </p>
-                                <p className="text-slate-800 italic">
-                                  Check-in: {h.checkIn || shortStartDateFormatted} & Check-out: {h.checkOut || ""}
-                                </p>
-                                <p className="font-bold text-slate-900">
-                                  {h.title || h.hotelName || "Hotel"} <span className="font-normal">({h.hotelCategory || "5 Star"}${similarHotelWord ? " / Similar" : ""})</span>
-                                </p>
-                                <p className="text-slate-900 font-normal">
-                                  {h.mealPlan || h.meals || "Breakfast and Dinner"} • {h.roomType || "Standard Room"} ({h.pax || `${adults} Pax`})
-                                </p>
-                              </div>
-                            ))}
+                            {hotelServices.map((h, idx) => {
+                              const hName = h.hotel_name || h.hotelName || h.actualHotelName || h.title || h.name || "Hotel Stay";
+                              const serviceTitle = h.serviceTitle || h.serviceName || h.title || h.name || hName;
+                              const rType = h.room_type || h.roomType || "Standard Room";
+                              const rCat = h.roomCategory || h.category;
+                              const bType = h.bedType || h.bed_type;
+                              const mPlan = h.mealPlan || h.meal_plan || h.meal || h.meals || "Breakfast";
+                              const rRating = h.rating || h.starRating || h.starCategory || h.stars;
+                              
+                              const extraBedsList = [];
+                              if (h.extraAdult) extraBedsList.push("Extra Adult");
+                              if (h.childWithBed) extraBedsList.push("Child w/ Bed");
+                              if (h.childWithoutBed) extraBedsList.push("Child w/o Bed");
+                              if (extraBedsList.length === 0 && h.extraBedType && h.extraBedType !== "None") {
+                                extraBedsList.push(`Extra Bed: ${h.extraBedType}`);
+                              }
+                              const exBed = extraBedsList.length > 0 ? extraBedsList.join(", ") : null;
+
+                              return (
+                                <div key={idx} className="space-y-0.5">
+                                  <p className="font-bold text-black">
+                                    • {serviceTitle} <span className="text-slate-600 font-normal">({h.nights || 1}N • {h.checkIn} - {h.checkOut})</span>
+                                  </p>
+                                  {hName && hName !== serviceTitle && (
+                                    <p className="text-slate-800 pl-3">
+                                      Hotel: <span className="font-bold">{hName}</span>{similarHotelWord ? " / Similar" : ""}
+                                    </p>
+                                  )}
+                                  <p className="text-slate-800 pl-3">
+                                    Room: <span className="font-semibold">{rType}</span>
+                                    {rCat && <> | Cat: <span className="font-semibold">{rCat}</span></>}
+                                    {bType && <> | Bed: <span className="font-semibold">{bType}</span></>}
+                                    {exBed && <> | <span className="font-semibold">{exBed}</span></>}
+                                  </p>
+                                  <p className="text-slate-800 pl-3">
+                                    Meal: <span className="font-semibold">{mPlan}</span>
+                                    {rRating && <> | ★ <span className="font-semibold">{rRating} Star</span></>}
+                                  </p>
+                                  {(h.description || h.desc) && (
+                                    <p className="text-slate-700 italic pl-3 text-[11px]">
+                                      Inclusions: {h.description || h.desc}
+                                    </p>
+                                  )}
+                                </div>
+                              );
+                            })}
                           </div>
                         </>
                       )}
@@ -3393,12 +4001,24 @@ export default function SharePackageModal({
                             <p className="text-slate-500 font-mono text-xs select-none">---------</p>
                           </div>
                           <div className="mt-3 space-y-3">
-                            {modalTransferServices.map((t, idx) => (
-                              <div key={idx} className="space-y-0.5">
-                                <p className="font-bold text-black">• {t.title || t.name || t.particulars || "Transfer Service"}{t.serviceDateLabel || t.date ? ` (${t.serviceDateLabel || t.date})` : ""}</p>
-                                {t.description && <p className="text-slate-700 italic pl-3">{t.description}</p>}
-                              </div>
-                            ))}
+                            {modalTransferServices.map((t, idx) => {
+                              const tName = t.name || t.serviceName || t.title || "Transfer Service";
+                              const vType = t.vehicleType || t.vehicle_type || t.carType || t.vehicle || "Sedan";
+                              const uType = getTransportUsageLabel(t) || "One Way / Airport Transfer";
+                              const pCap = Number(t.passengerCapacity || t.passenger_capacity || t.capacity || 4);
+                              const lCap = Number(t.luggageCapacity !== undefined ? t.luggageCapacity : (t.luggage_capacity !== undefined ? t.luggage_capacity : 2));
+                              const pTime = t.pickupTime || t.time || "";
+
+                              return (
+                                <div key={idx} className="space-y-0.5">
+                                  <p className="font-bold text-black">• {tName}{t.serviceDateLabel || t.date ? ` (${t.serviceDateLabel || t.date})` : ""}</p>
+                                  <p className="text-slate-800 pl-3">
+                                    {t.day ? `Day ${t.day} • ` : ""}{vType} • {uType} • {pCap} Pax, {lCap} Bags{pTime ? ` • Pickup: ${pTime}` : ""}
+                                  </p>
+                                  {(t.description || t.desc) && <p className="text-slate-700 italic pl-3 text-[11px]">{t.description || t.desc}</p>}
+                                </div>
+                              );
+                            })}
                           </div>
                         </>
                       )}
@@ -3412,10 +4032,41 @@ export default function SharePackageModal({
                             <p className="text-slate-500 font-mono text-xs select-none">---------</p>
                           </div>
                           <div className="mt-3 space-y-3">
-                            {modalActivityServices.map((a, idx) => (
+                            {modalActivityServices.map((act, idx) => {
+                              const aName = act.name || act.serviceName || act.activityName || act.sightseeingName || act.title || "Activity";
+                              const itemType = act.itemType || (String(act.type || "").toLowerCase() === "sightseeing" ? "Sightseeing" : "Activity");
+                              const tourType = act.tourType || "Private Tour";
+                              const actSlot = act.selectedSlot || act.time || act.slot || "";
+
+                              return (
+                                <div key={idx} className="space-y-0.5">
+                                  <p className="font-bold text-black">• [{itemType}] {aName}{act.serviceDateLabel || act.date ? ` (${act.serviceDateLabel || act.date})` : ""}</p>
+                                  <p className="text-slate-800 pl-3">
+                                    {act.day ? `Day ${act.day} • ` : ""}{tourType}{actSlot ? ` • Slot: ${actSlot}` : ""}
+                                  </p>
+                                  {(act.description || act.details || act.desc) && <p className="text-slate-700 italic pl-3 text-[11px]">{act.description || act.details || act.desc}</p>}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </>
+                      )}
+
+                      {!removeItinerary && dayWiseSchedule.length > 0 && (
+                        <>
+                          <div className="mt-5">
+                            <p className="font-bold text-black flex items-center gap-1.5 text-sm sm:text-base">
+                              <span>📅</span> <span className="italic">Day Wise Schedule</span>
+                            </p>
+                            <p className="text-slate-500 font-mono text-xs select-none">---------</p>
+                          </div>
+                          <div className="mt-3 space-y-3">
+                            {dayWiseSchedule.map((d, idx) => (
                               <div key={idx} className="space-y-0.5">
-                                <p className="font-bold text-black">• {a.title || a.name || a.particulars || "Activity / Tour"}{a.serviceDateLabel || a.date ? ` (${a.serviceDateLabel || a.date})` : ""}</p>
-                                {a.description && <p className="text-slate-700 italic pl-3">{a.description}</p>}
+                                <p className="font-bold text-black">• Day {d.dayNumber}: {d.title}</p>
+                                {d.description && (
+                                  <p className="text-slate-700 pl-3 text-xs">• {d.description.startsWith("•") ? d.description.slice(1).trim() : d.description}</p>
+                                )}
                               </div>
                             ))}
                           </div>
@@ -3439,6 +4090,21 @@ export default function SharePackageModal({
                                 <li key={idx}>{item}</li>
                               ))}
                             </ul>
+                          </div>
+                        </div>
+                      )}
+
+                      {sellerBankDetails.length > 0 && (
+                        <div className="mt-5 pt-4 border-t border-emerald-300/60 text-slate-800">
+                          <p className="font-semibold text-slate-950 flex items-center gap-1.5">
+                            <span>🏦</span> <span>Bank Details:</span>
+                          </p>
+                          <div className="mt-1.5 space-y-0.5 text-xs text-slate-700">
+                            {sellerBankDetails.map((b, idx) => (
+                              <p key={idx}>
+                                • <strong>{b.label || "Detail"}:</strong> {b.value || "-"}
+                              </p>
+                            ))}
                           </div>
                         </div>
                       )}
@@ -3745,6 +4411,34 @@ export default function SharePackageModal({
                               </td>
                               <td className="py-3 px-3 text-slate-800 font-medium">
                                 {act.pax || `${adults} Pax`}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {/* DAY WISE SCHEDULE TABLE (IF ANY) */}
+                {!removeItinerary && dayWiseSchedule.length > 0 && (
+                  <div className="w-full">
+                    <div className="bg-[#ecfeff] text-[#0f766e] border border-[#7dd3c7] border-b-0 font-bold text-center py-2 px-3 text-xs sm:text-sm">
+                      Day Wise Schedule
+                    </div>
+                    <div className="overflow-x-auto border border-slate-200 bg-white">
+                      <table className="w-full border-collapse text-xs sm:text-sm">
+                        <tbody className="divide-y divide-slate-200">
+                          {dayWiseSchedule.map((d, idx) => (
+                            <tr key={idx} className="hover:bg-slate-50/50">
+                              <td className="py-3 px-3 border-r border-slate-200 font-semibold text-slate-800 w-24 sm:w-28 align-top">
+                                <div className="text-sky-600 font-bold">Day {d.dayNumber}</div>
+                              </td>
+                              <td className="py-3 px-3 text-slate-800 align-top">
+                                <div className="font-bold text-slate-900 underline">{d.title}</div>
+                                {d.description && (
+                                  <div className="text-slate-600 text-xs mt-1">• {d.description.startsWith("•") ? d.description.slice(1).trim() : d.description}</div>
+                                )}
                               </td>
                             </tr>
                           ))}

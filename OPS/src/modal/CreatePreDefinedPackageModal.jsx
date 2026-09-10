@@ -29,6 +29,7 @@ import { ActivitiesTab } from "./createPackage/tabs/ActivitiesTab.jsx";
 import { PricingTaxesTab } from "./createPackage/tabs/PricingTaxesTab.jsx";
 import { InclusionsNotesTab } from "./createPackage/tabs/InclusionsNotesTab.jsx";
 import { DayItineraryTab } from "./createPackage/tabs/DayItineraryTab.jsx";
+import { TermsConditionsTab } from "./createPackage/tabs/TermsConditionsTab.jsx";
 
 export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSuccess }) {
   const [activeTab, setActiveTab] = useState("basic");
@@ -51,6 +52,7 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
   const [description, setDescription] = useState("");
   const [inclusions, setInclusions] = useState("Daily breakfast, Airport pickup & drop, Sightseeing transfers as per itinerary");
   const [exclusions, setExclusions] = useState("Airfare/Train fare, Personal expenses, Entry tickets not mentioned");
+  const [termsAndConditions, setTermsAndConditions] = useState("");
 
   // Services Lists
   const [hotels, setHotels] = useState([initialHotel()]);
@@ -949,6 +951,7 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
         description: description.trim(),
         inclusions: inclusions.trim(),
         exclusions: exclusions.trim(),
+        termsAndConditions: String(termsAndConditions || "").trim(),
         dayWiseItinerary: itinerary.filter((it) => it.title?.trim() || it.description?.trim()),
         hotels: hotels.filter((h) => h.hotelName?.trim() || h.name?.trim()),
         transfers: transfers.filter((t) => t.name?.trim()),
@@ -1095,6 +1098,7 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
             { id: "pricing", label: "5. Pricing & Taxes", count: null, hasWarning: false },
             { id: "inclusions", label: "6. Inclusions & Notes", count: null, hasWarning: false },
             { id: "itinerary", label: "7. Day-wise Itinerary", count: itinerary.length > 0 ? `${itinerary.length} Days` : null, hasWarning: false },
+            { id: "terms", label: "8. Terms & Conditions", count: termsAndConditions?.trim()?.length > 0 ? "Added" : null, hasWarning: false },
           ].map((tab) => (
             <button
               key={tab.id}
@@ -1250,6 +1254,10 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
               validTransfersCount={validTransfersCount}
               validActivitiesCount={validActivitiesCount}
               validSightseeingCount={validSightseeingCount}
+              hotels={hotels}
+              transfers={transfers}
+              activities={activities}
+              sightseeing={sightseeing}
             />
           )}
 
@@ -1268,6 +1276,13 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
               addItineraryDay={addItineraryDay}
               removeItineraryDay={removeItineraryDay}
               updateItinerary={updateItinerary}
+            />
+          )}
+
+          {activeTab === "terms" && (
+            <TermsConditionsTab
+              termsAndConditions={termsAndConditions}
+              setTermsAndConditions={setTermsAndConditions}
             />
           )}
 

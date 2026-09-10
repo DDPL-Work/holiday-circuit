@@ -11,6 +11,7 @@ import {
   TicketPercent,
   PackagePlus,
   LucideSheet,
+  ShieldCheck,
 } from "lucide-react";
 import { MdOutlineDashboardCustomize, MdOutlineVerifiedUser } from "react-icons/md";
 import { GrUserManager } from "react-icons/gr";
@@ -30,6 +31,7 @@ const menuConfig = {
   admin: [
     { label: "Dashboard", path: "/admin/dashboard", icon: LayoutGrid },
     { label: "Super Admin", path: "/admin/superAdminDashboard", hash: "#overview", icon: MdOutlineDashboardCustomize },
+    { label: "Override & Dispute", path: "/admin/override-disputes", icon: ShieldCheck },
     { label: "Discount", path: "/admin/discount", icon: TicketPercent },
     { label: "Finance Dashboard", path: "/finance/dashboard", icon: Wallet },
     { label: "Advanced Analytics", path: "/finance/advancedAnalytics", icon: ClipboardList },

@@ -63,13 +63,13 @@ export const DesktopNav = ({ menus = [] }) => {
           <AnimatePresence>
             {moreDropdownOpen && (
               <motion.div
-                initial={{ opacity: 0, y: 6, scale: 0.96 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: 6, scale: 0.96 }}
+                initial={{ opacity: 0, y: -4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
                 transition={{ duration: 0.15, ease: "easeOut" }}
-                className="absolute right-0 top-full mt-1 z-50 min-w-[210px] rounded-2xl border border-white/10 bg-[#0F172A] p-2 shadow-2xl backdrop-blur-xl"
+                className="fixed left-0 right-0 top-[4.5rem] z-50 w-full rounded-none border-b border-white/10 bg-[#0F172A]/95 px-3 sm:px-5 lg:px-6 py-2 shadow-xl backdrop-blur-2xl before:absolute before:-top-5 before:left-0 before:right-0 before:h-5"
               >
-                <div className="space-y-1">
+                <div className="flex flex-wrap items-center justify-start gap-1 sm:gap-2 w-full">
                   {overflowMenus.map((item) => {
                     const Icon = item.icon;
                     const active = isItemActive(item, location);
@@ -78,14 +78,14 @@ export const DesktopNav = ({ menus = [] }) => {
                         key={`${item.path}${item.hash || item.label}`}
                         to={getItemTarget(item)}
                         onClick={() => setMoreDropdownOpen(false)}
-                        className={`flex items-center gap-2.5 rounded-xl px-3 py-2 text-[12.5px] font-medium transition-all duration-150 ${
+                        className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-[13px] font-medium transition-all duration-200 ${
                           active
-                            ? "bg-[#3E63DD] text-white shadow-sm"
-                            : "text-slate-300 hover:bg-white/[0.08] hover:text-white"
+                            ? "bg-[#3E63DD] text-white shadow-[0_8px_16px_rgba(62,99,221,0.3)]"
+                            : "text-slate-300 hover:bg-white/[0.06] hover:text-white"
                         }`}
                       >
-                        <Icon size={14} className="shrink-0" />
-                        <span className="truncate">{item.label}</span>
+                        <Icon size={14} />
+                        <span>{item.label}</span>
                       </NavLink>
                     );
                   })}

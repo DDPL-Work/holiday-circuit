@@ -93,6 +93,9 @@ import {
   getSavedAgentBranding,
   calculateAgentMarkupPreview,
   validateAgentMarkupInput,
+  resolveQuoteOpsAmount,
+  resolveQuoteClientAmount,
+  calculateQuoteServicesTotal,
 } from "./queryDetails/utils/queryDetailsHelpers";
 
 import { QueryHeaderCard } from "./queryDetails/components/Header/QueryHeaderCard";
@@ -132,7 +135,11 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const currentUser = useSelector((state) => state.auth.user);
-  const [quotes, setQuotes] = useState([]);
+  const [quotes, setQuotes] = useState(() =>
+    Array.isArray(query?.quotations)
+      ? query.quotations.filter((q) => String(q?.status || "").trim() !== "Pending")
+      : [],
+  );
   const [expandedQuoteIds, setExpandedQuoteIds] = useState({});
   const [showQuoteHistory, setShowQuoteHistory] = useState(false);
   const [quoteDropdownPos, setQuoteDropdownPos] = useState({ top: 0, left: 0 });
@@ -1344,9 +1351,9 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
       try {
         let res = null;
         try {
-          res = await API.get("/admin/terms");
-        } catch (e) {
           res = await API.get("/agent/terms");
+        } catch (e) {
+          console.warn("Could not fetch agent terms:", e);
         }
         const list = Array.isArray(res?.data)
           ? res.data
@@ -1365,17 +1372,22 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
   }, []);
 
   useEffect(() => {
+    if (Array.isArray(query?.quotations) && query.quotations.length > 0) {
+      setQuotes(query.quotations.filter((q) => String(q?.status || "").trim() !== "Pending"));
+    }
     const fetchQuotations = async () => {
       try {
-        const nextQuotes = await fetchQuotationsByQuery(query._id);
-        setQuotes(nextQuotes);
+        if (query?._id) {
+          const nextQuotes = await fetchQuotationsByQuery(query._id);
+          setQuotes(nextQuotes);
+        }
       } catch (err) {
         console.error("Error fetching quotations:", err);
       }
     };
 
     fetchQuotations();
-  }, [query._id]);
+  }, [query?._id, query?.quotations]);
 
   // Accounting is an overview only. It reads the same invoice data as the
   // Booking Payments desk, so installments stay consistent in both places.
@@ -1471,290 +1483,266 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
       (item && quotes.find((q) => q._id === item._id)) ||
       activeQuote ||
       quotes[0];
+
+    if (!targetQuote) return;
+
     setMarkupTargetMode("QUOTATION");
-    setMarkupTargetItem(targetQuote || null);
-    setActiveQuoteId(targetQuote?._id || null);
+    setMarkupTargetItem(targetQuote);
+    setActiveQuoteId(targetQuote._id);
     setMarkupType(targetQuote?.agentMarkup?.type || "PERCENT");
     setMarkupValue(
-      targetQuote?.agentMarkup?.value ? String(targetQuote.agentMarkup.value) : "",
+      targetQuote?.agentMarkup?.value !== undefined &&
+        targetQuote?.agentMarkup?.value !== null &&
+        targetQuote?.agentMarkup?.value !== ""
+        ? String(targetQuote.agentMarkup.value)
+        : "",
     );
     setIsMarkupModalOpen(true);
   };
 
   const closeMarkupModal = () => {
-    if (markupSubmittingId) return;
     setIsMarkupModalOpen(false);
-    setActiveQuoteId(null);
-    setMarkupTargetMode("QUOTATION");
     setMarkupTargetItem(null);
-    setMarkupType("PERCENT");
+    setMarkupTargetMode("QUOTATION");
     setMarkupValue("");
   };
 
-  const toggleQuoteVisibility = (quoteId) => {
-    if (!quoteId) return;
+  const handleRemoveMarkup = async () => {
+    const isPackage =
+      markupTargetMode === "PACKAGE" ||
+      Boolean(markupTargetItem && !markupTargetItem.quotationNumber && !activeQuoteId);
 
-    setExpandedQuoteIds((prev) => ({
-      ...prev,
-      [quoteId]: !prev[quoteId],
-    }));
-  };
-
-  const openAcceptModal = (quoteId) => {
-    setAcceptQuoteId(quoteId || null);
-    setIsAcceptModalOpen(true);
-  };
-
-  const closeAcceptModal = () => {
-    if (acceptSubmitting) return;
-    setIsAcceptModalOpen(false);
-    setAcceptQuoteId(null);
-  };
-
-  const openClientApprovalModal = (quoteId) => {
-    setClientApprovalQuoteId(quoteId || null);
-    setIsClientApprovalModalOpen(true);
-  };
-
-  const closeClientApprovalModal = () => {
-    if (clientApprovalSubmitting) return;
-    setIsClientApprovalModalOpen(false);
-    setClientApprovalQuoteId(null);
-  };
-
-  const handleAcceptQuote = async (quoteId) => {
-    try {
-      setAcceptSubmitting(true);
-      const res = await API.patch(`/agent/quotations/${quoteId}/accept`, {
-        action: "ACCEPT",
-      });
-      toast.success("Quote accepted");
-      updateQuote(res.data.quotation);
-      setActiveQuoteId(quoteId);
-      setIsAcceptModalOpen(false);
-      setAcceptQuoteId(null);
-    } catch (err) {
-
-      toast.error(err.response?.data?.message || "Error");
-    } finally {
-      setAcceptSubmitting(false);
-    }
-  };
-
-  const handleApplyMarkup = async () => {
-    const validationMessage = validateAgentMarkupInput({
-      markupType,
-      markupValue,
-    });
-
-    if (validationMessage) {
-      toast.error(validationMessage);
-      return;
-    }
-
-    if (markupTargetMode === "PACKAGE" || (!activeQuoteId && markupTargetItem)) {
+    if (isPackage) {
       const targetPkg =
         markupTargetItem ||
         (agentPackages || []).find((p) => p._id === selectedAgentPackageId) ||
         agentPackages?.[0];
 
-      if (!targetPkg) {
-        toast.error("No package selected to apply markup");
-        return;
+      if (!targetPkg) return;
+
+      const baseCost = Number(targetPkg?.costPrice ?? targetPkg?.price ?? targetPkg?.basePrice ?? targetPkg?.netPrice ?? 0);
+
+      try {
+        const queryKey = `agent_pkg_markup_${query?._id || query?.queryId}_${targetPkg._id}`;
+        const globalKey = `agent_pkg_markup_${targetPkg._id}`;
+        localStorage.removeItem(queryKey);
+        localStorage.removeItem(globalKey);
+      } catch (e) {
+        console.warn("Unable to remove markup from localStorage", e);
       }
 
-      setMarkupSubmittingId(targetPkg._id || "package");
-      try {
-        const pkgServicesSum =
-          (Array.isArray(targetPkg?.hotels) ? targetPkg.hotels : []).reduce((s, h) => s + Number(h.price || 0), 0) +
-          (Array.isArray(targetPkg?.transfers) ? targetPkg.transfers : []).reduce((s, t) => s + Number(t.price || 0), 0) +
-          (Array.isArray(targetPkg?.activities) ? targetPkg.activities : []).reduce((s, a) => s + Number(a.price || 0), 0) +
-          (Array.isArray(targetPkg?.sightseeing) ? targetPkg.sightseeing : []).reduce((s, si) => s + Number(si.price || 0), 0);
-
-        const baseCost = Number(
-          targetPkg.customizedFinalPrice ||
-            targetPkg.customPrice ||
-            targetPkg.costPrice ||
-            targetPkg.netPrice ||
-            targetPkg.basePrice ||
-            targetPkg.price ||
-            (pkgServicesSum > 0 ? pkgServicesSum : 250000),
-        );
-        const { markupAmount, finalAmount } = calculateAgentMarkupPreview({
-          markupType,
-          markupValue,
-          opsTotal: baseCost,
-        });
-
-        const markupObj = {
-          type: markupType,
-          value: Number(markupValue),
-          markupAmount,
-          finalAmount,
-        };
-
-        setAgentPackages((prev) =>
-          prev.map((pkg) => {
-            if (pkg._id === targetPkg._id) {
-              return {
+      setAgentPackages((prev) =>
+        prev.map((pkg) =>
+          pkg._id === targetPkg._id
+            ? {
                 ...pkg,
                 basePrice: baseCost,
                 costPrice: baseCost,
-                price: finalAmount,
-                clientTotalAmount: finalAmount,
-                agentMarkup: markupObj,
-                status: "Markup Applied",
-              };
+                price: baseCost,
+                clientTotalAmount: baseCost,
+                agentMarkup: null,
+                status: "Draft",
+              }
+            : pkg,
+        ),
+      );
+
+      setMarkupTargetItem((prev) =>
+        prev && prev._id === targetPkg._id
+          ? {
+              ...prev,
+              basePrice: baseCost,
+              costPrice: baseCost,
+              price: baseCost,
+              clientTotalAmount: baseCost,
+              agentMarkup: null,
+              status: "Draft",
             }
-            return pkg;
-          }),
-        );
+          : prev,
+      );
 
-        try {
-          const queryKey = `agent_pkg_markup_${query?._id || query?.queryId}_${targetPkg._id}`;
-          localStorage.setItem(queryKey, JSON.stringify(markupObj));
-          localStorage.setItem(`agent_pkg_markup_${targetPkg._id}`, JSON.stringify(markupObj));
-        } catch (e) {
-          console.error("Failed to save package markup to localStorage", e);
-        }
-
-        const hadExistingMarkup =
-          Number(targetPkg?.agentMarkup?.markupAmount || targetPkg?.agentMarkup?.value || 0) > 0;
-        toast.success(hadExistingMarkup ? "Markup updated" : "Markup applied");
-        closeMarkupModal();
-      } catch (err) {
-        console.error("Error applying package markup:", err);
-        toast.error("Failed to apply package markup");
-      } finally {
-        setMarkupSubmittingId(null);
-      }
+      setIsMarkupModalOpen(false);
+      setMarkupValue("");
+      toast.success("Markup removed successfully");
       return;
     }
 
     const targetQuote =
+      (markupTargetItem && quotes.find((q) => q._id === markupTargetItem._id)) ||
       quotes.find((q) => q._id === activeQuoteId) ||
-      markupTargetItem ||
       activeQuote ||
       quotes[0];
 
-    if (!targetQuote || !targetQuote._id) {
-      toast.error("Quotation not found");
+    if (!targetQuote) return;
+
+    try {
+      setMarkupSubmittingId(targetQuote._id);
+      const res = await API.put(`/agent/quotations/${targetQuote._id}/markup`, {
+        markupType: "PERCENT",
+        markupValue: 0,
+      });
+      toast.success("Agent markup removed successfully");
+      if (res.data?.quotation) {
+        updateQuote(res.data.quotation);
+      }
+      setIsMarkupModalOpen(false);
+      setMarkupValue("");
+      await onRefresh?.();
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Unable to remove agent markup");
+    } finally {
+      setMarkupSubmittingId(null);
+    }
+  };
+
+  const handleApplyMarkup = async () => {
+    const isPackage =
+      markupTargetMode === "PACKAGE" ||
+      Boolean(markupTargetItem && !markupTargetItem.quotationNumber && !activeQuoteId);
+
+    if (isPackage) {
+      const targetPkg =
+        markupTargetItem ||
+        (agentPackages || []).find((p) => p._id === selectedAgentPackageId) ||
+        agentPackages?.[0];
+
+      if (!targetPkg) return;
+
+      const numVal = Number(markupValue);
+      if (!Number.isFinite(numVal) || numVal <= 0) {
+        handleRemoveMarkup();
+        return;
+      }
+
+      const baseCost = Number(targetPkg?.costPrice ?? targetPkg?.price ?? targetPkg?.basePrice ?? targetPkg?.netPrice ?? 0);
+
+      const preview = calculateAgentMarkupPreview({
+        markupType,
+        markupValue,
+        opsTotal: baseCost,
+      });
+
+      const markupObj = {
+        type: markupType,
+        value: Number(markupValue) || 0,
+        markupAmount: preview.markupAmount,
+        finalAmount: preview.finalAmount,
+        updatedAt: new Date().toISOString(),
+      };
+
+      try {
+        const queryKey = `agent_pkg_markup_${query?._id || query?.queryId}_${targetPkg._id}`;
+        const globalKey = `agent_pkg_markup_${targetPkg._id}`;
+        localStorage.setItem(queryKey, JSON.stringify(markupObj));
+        localStorage.setItem(globalKey, JSON.stringify(markupObj));
+      } catch (e) {
+        console.warn("Unable to save markup to localStorage", e);
+      }
+
+      setAgentPackages((prev) =>
+        prev.map((pkg) =>
+          pkg._id === targetPkg._id
+            ? {
+                ...pkg,
+                basePrice: baseCost,
+                costPrice: baseCost,
+                price: baseCost,
+                clientTotalAmount: preview.finalAmount,
+                agentMarkup: markupObj,
+                status: "Markup Applied",
+              }
+            : pkg,
+        ),
+      );
+
+      setMarkupTargetItem((prev) =>
+        prev && prev._id === targetPkg._id
+          ? {
+              ...prev,
+              basePrice: baseCost,
+              costPrice: baseCost,
+              price: baseCost,
+              clientTotalAmount: preview.finalAmount,
+              agentMarkup: markupObj,
+              status: "Markup Applied",
+            }
+          : prev,
+      );
+
+      setIsMarkupModalOpen(false);
+      toast.success("Package markup applied successfully");
+      return;
+    }
+
+    const targetQuote =
+      (markupTargetItem && quotes.find((q) => q._id === markupTargetItem._id)) ||
+      quotes.find((q) => q._id === activeQuoteId) ||
+      activeQuote ||
+      quotes[0];
+
+    if (!targetQuote) return;
+
+    const validationError = validateAgentMarkupInput({ markupType, markupValue });
+    if (validationError) {
+      toast.error(validationError);
       return;
     }
 
     try {
       setMarkupSubmittingId(targetQuote._id);
-      const hadExistingMarkup =
-        Number(targetQuote?.agentMarkup?.markupAmount || 0) > 0 ||
-        Number(targetQuote?.agentMarkup?.value || 0) > 0;
-
-      const res = await API.patch(`/agent/quotations/${targetQuote._id}/accept`, {
-        action: "APPLY_MARKUP",
+      const res = await API.put(`/agent/quotations/${targetQuote._id}/markup`, {
         markupType,
         markupValue: Number(markupValue),
       });
-      toast.success(hadExistingMarkup ? "Markup updated" : "Markup applied");
-      updateQuote(res.data.quotation);
-      const nextQuotes = await fetchQuotationsByQuery(query._id);
-      setQuotes(nextQuotes);
+      toast.success("Agent markup saved successfully");
+      if (res.data?.quotation) {
+        updateQuote(res.data.quotation);
+      }
+      setIsMarkupModalOpen(false);
       await onRefresh?.();
-      setMarkupSubmittingId(null);
-      closeMarkupModal();
     } catch (err) {
-      toast.error(err.response?.data?.message || "Unable to apply markup");
+      toast.error(err.response?.data?.message || "Unable to save agent markup");
     } finally {
       setMarkupSubmittingId(null);
     }
   };
 
-  const handleOpenSendModal = (quote, mode = "QUOTATION") => {
-    const savedBranding = getSavedAgentBranding({
-      quote,
-      user: currentUser,
-    });
-
-    setSendQuoteId(quote?._id || null);
-    setSendShareMode(mode);
-    setSendRecipientEmail(String(query?.clientEmail || "").trim());
-    setSendRecipientPhone(String(query?.clientPhone || "").trim());
-    setSendChannel("EMAIL");
-    setBrandName(savedBranding.name);
-    setBrandLogoUrl(savedBranding.logo);
-    setBrandLogoFile(null);
-    setIsSendModalOpen(true);
+  const openAcceptModal = (quoteId) => {
+    setAcceptQuoteId(quoteId);
+    setIsAcceptModalOpen(true);
   };
 
-  const handleCloseSendModal = () => {
-    setIsSendModalOpen(false);
-    setSendQuoteId(null);
-    setSendShareMode("QUOTATION");
-    setSendRecipientEmail("");
-    setSendRecipientPhone("");
-    setSendChannel("EMAIL");
-    setBrandName("");
-    setBrandLogoUrl("");
-    setBrandLogoFile(null);
+  const closeAcceptModal = () => {
+    setIsAcceptModalOpen(false);
+    setAcceptQuoteId(null);
   };
 
-  const handleSendToClient = async (quote, recipientEmail) => {
-    const normalizedRecipientEmail = String(recipientEmail || "").trim().toLowerCase();
-
-    if (!normalizedRecipientEmail) {
-      toast.error("Please enter client email");
-      return;
-    }
-
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedRecipientEmail)) {
-      toast.error("Please enter a valid client email");
-      return;
-    }
-
+  const handleAcceptQuote = async (id) => {
     try {
-      setSendSubmittingId(quote._id);
-      const res = await API.patch(`/agent/quotations/${quote._id}/accept`, {
-        action: "SEND_TO_CLIENT",
-        recipientEmail: normalizedRecipientEmail,
-      });
-      updateQuote(res.data.quotation);
-      setSendSuccessMeta({
-        recipientEmail: res.data?.recipientEmail || "",
-        quotationNumber: res.data?.summary?.quotationNumber || quote?.quotationNumber || "",
-        destination: res.data?.summary?.destination || query.destination,
-        totalAmount:
-          res.data?.summary?.totalAmount ??
-          quote?.clientTotalAmount ??
-          quote?.pricing?.totalAmount ??
-          0,
-        serviceCount: res.data?.summary?.serviceCount ?? quote?.services?.length ?? 0,
-        validTill:
-          res.data?.summary?.validTill ||
-          (quote?.validTill
-            ? new Date(quote.validTill).toLocaleDateString("en-IN")
-            : "-"),
-      });
-      handleCloseSendModal();
+      setAcceptSubmitting(true);
+      const res = await API.patch(`/agent/quotations/${id}/accept`, { action: "ACCEPT" });
+      toast.success("Quotation accepted");
+      if (res.data?.quotation) {
+        updateQuote(res.data.quotation);
+      }
+      setIsAcceptModalOpen(false);
+      setAcceptQuoteId(null);
       await onRefresh?.();
     } catch (err) {
-      toast.error(err.response?.data?.message || "Unable to send quotation email");
+      toast.error(err.response?.data?.message || "Unable to accept quotation");
     } finally {
-      setSendSubmittingId(null);
+      setAcceptSubmitting(false);
     }
   };
 
-  const markQuoteSharedToClient = async (target) => {
-    const targetId = typeof target === "string" ? target : target?._id;
-    if (!targetId) return;
+  const openClientApprovalModal = (quoteId) => {
+    setClientApprovalQuoteId(quoteId);
+    setIsClientApprovalModalOpen(true);
+  };
 
-    const res = await API.patch(`/agent/quotations/${targetId}/accept`, {
-      action: "MARK_SHARED_TO_CLIENT",
-    });
-
-    if (res.data?.quotation) {
-      updateQuote(res.data.quotation);
-    }
-
-    await onRefresh?.();
-    return res.data;
+  const closeClientApprovalModal = () => {
+    setIsClientApprovalModalOpen(false);
+    setClientApprovalQuoteId(null);
   };
 
   const handleClientApproved = async (id) => {
@@ -1762,7 +1750,9 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
       setClientApprovalSubmitting(true);
       const res = await API.put(`/agent/quotations/${id}/confirm`);
       toast.success("Client approval sent to operations");
-      updateQuote(res.data.quotation);
+      if (res.data?.quotation) {
+        updateQuote(res.data.quotation);
+      }
       setIsClientApprovalModalOpen(false);
       setClientApprovalQuoteId(null);
       await onRefresh?.();
@@ -1778,6 +1768,111 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
       }
     } finally {
       setClientApprovalSubmitting(false);
+    }
+  };
+
+  const handleOpenSendModal = (item, mode = "QUOTATION") => {
+    setSendShareMode(mode);
+    setSendQuoteId(item?._id || item?.id || null);
+    setIsSendModalOpen(true);
+  };
+
+  const handleCloseSendModal = () => {
+    setIsSendModalOpen(false);
+    setSendQuoteId(null);
+  };
+
+  const toggleQuoteVisibility = async (quote) => {
+    try {
+      const nextHidden = !quote?.isHidden;
+      const res = await API.put(`/agent/quotations/${quote._id}/visibility`, {
+        isHidden: nextHidden,
+      });
+      toast.success(nextHidden ? "Quotation hidden from overview" : "Quotation visible in overview");
+      if (res.data?.quotation) {
+        updateQuote(res.data.quotation);
+      }
+      await onRefresh?.();
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Unable to change quotation visibility");
+    }
+  };
+
+  const markQuoteSharedToClient = async (quoteOrPkgId, channel = "EMAIL") => {
+    try {
+      const isPkg = (agentPackages || []).some((p) => p._id === quoteOrPkgId) || sendShareMode === "PACKAGE";
+      if (isPkg) {
+        const pkgKey = `agent_pkg_shared_${query?._id || query?.queryId}_${quoteOrPkgId}`;
+        localStorage.setItem(pkgKey, JSON.stringify({ sharedAt: new Date().toISOString(), channel }));
+        setAgentPackages((prev) =>
+          prev.map((p) => (p._id === quoteOrPkgId ? { ...p, isSentToClient: true, status: "Sent to Client" } : p))
+        );
+        toast.success(`Package shared via ${channel}`);
+        setIsSendModalOpen(false);
+        return;
+      }
+      const res = await API.put(`/agent/quotations/${quoteOrPkgId}/mark-shared`, { channel });
+      toast.success(`Quotation shared via ${channel}`);
+      if (res.data?.quotation) {
+        updateQuote(res.data.quotation);
+      }
+      setIsSendModalOpen(false);
+      await onRefresh?.();
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Unable to mark quotation as shared");
+    }
+  };
+
+  const handleSendToClient = async (arg1, arg2, arg3) => {
+    try {
+      let targetQuoteOrPkg = null;
+      let recipientEmail = "";
+      let options = {};
+
+      if (arg1 && typeof arg1 === "object" && !arg2 && (arg1.recipientEmail || arg1.channel || arg1.note)) {
+        recipientEmail = arg1.recipientEmail || "";
+        options = arg1;
+        targetQuoteOrPkg = quotes.find((q) => q._id === sendQuoteId) || activeQuote || quotes[0];
+      } else {
+        targetQuoteOrPkg = arg1 || quotes.find((q) => q._id === sendQuoteId) || activeQuote || quotes[0];
+        recipientEmail = arg2 || arg1?.recipientEmail || "";
+        options = arg3 || {};
+      }
+
+      const targetId = targetQuoteOrPkg?._id || sendQuoteId;
+      if (!targetId) return;
+
+      setSendSubmittingId(targetId);
+      const isPkg = (agentPackages || []).some((p) => p._id === targetId) || sendShareMode === "PACKAGE";
+      if (isPkg) {
+        const targetPkg = (agentPackages || []).find((p) => p._id === targetId) || agentPackages?.[0];
+        const pkgKey = `agent_pkg_shared_${query?._id || query?.queryId}_${targetPkg?._id}`;
+        localStorage.setItem(pkgKey, JSON.stringify({ sharedAt: new Date().toISOString(), channel: options.channel || "email", recipientEmail }));
+        setAgentPackages((prev) =>
+          prev.map((p) => (p._id === targetPkg?._id ? { ...p, isSentToClient: true, status: "Sent to Client" } : p))
+        );
+        setIsSendModalOpen(false);
+        return;
+      }
+
+      const payload = {
+        recipientEmail,
+        channel: options.channel || "email",
+        note: options.note || "",
+        ...options,
+      };
+
+      const res = await API.post(`/agent/quotations/${targetId}/send-to-client`, payload);
+      if (res.data?.quotation) {
+        updateQuote(res.data.quotation);
+      }
+      setIsSendModalOpen(false);
+      await onRefresh?.();
+    } catch (err) {
+      console.error("Unable to send quotation to client:", err);
+      throw err;
+    } finally {
+      setSendSubmittingId(null);
     }
   };
 
@@ -1875,7 +1970,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
     query?.agencyName || query?.companyName || currentUser?.companyName || currentUser?.name || currentUser?.fullName || "",
   ).trim() || "Company not specified";
   const headerStatus = String(activeQuote?.status || query?.agentStatus || query?.opsStatus || "Pending").trim();
-  const hasActiveQuoteMarkup = Number(activeQuote?.agentMarkup?.markupAmount || activeQuote?.agentMarkup?.value || 0) > 0 || activeQuote?.status === "Markup Applied";
+  const hasActiveQuoteMarkup = activeQuote?.status !== "Quote Sent" && activeQuote?.status !== "Revision Requested" && activeQuote?.status !== "Pending" && (Number(activeQuote?.agentMarkup?.markupAmount || activeQuote?.agentMarkup?.value || 0) > 0 || activeQuote?.status === "Markup Applied");
   const isActiveQuoteSentToClient = activeQuote?.status === "Sent to Client" || Boolean(activeQuote?.isSentToClient || activeQuote?.sentToClientAt || activeQuote?.sharedWithClient || query?.voucherStatus === "sent");
 
   const agentQueryStatus = String(query?.agentStatus || query?.status || "").trim();
@@ -1979,9 +2074,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
 
   const headerStatusMeta = getHeaderStatusMeta();
   const headerPackageCurrency = String(activeQuote?.pricing?.currency || "INR").trim() || "INR";
-  const headerPackageAmount = Number(
-    activeQuote?.clientTotalAmount ?? activeQuote?.pricing?.totalAmount ?? activeQuote?.pricing?.subTotal ?? 0,
-  );
+  const headerPackageAmount = resolveQuoteClientAmount(activeQuote, query);
 
   const currentVoucherData = useMemo(() => {
     if (!query) return null;
@@ -2031,19 +2124,28 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
               const savedStr = localStorage.getItem(queryKey) || localStorage.getItem(globalKey);
               if (savedStr) {
                 const savedMarkup = JSON.parse(savedStr);
-                const baseCost = Number(
-                  pkg.costPrice ?? pkg.netPrice ?? pkg.basePrice ?? pkg.price ?? 225000,
+                const baseCost = Number(pkg.costPrice ?? pkg.price ?? pkg.basePrice ?? pkg.netPrice ?? 225000);
+                const markupVal = Number(
+                  savedMarkup.value !== undefined && savedMarkup.value !== null && savedMarkup.value !== ""
+                    ? savedMarkup.value
+                    : (savedMarkup.markupAmount || 0)
                 );
-                const finalAmt =
-                  savedMarkup.finalAmount ||
-                  baseCost + Number(savedMarkup.markupAmount || 0);
+                const preview = calculateAgentMarkupPreview({
+                  markupType: savedMarkup.type || "PERCENT",
+                  markupValue: markupVal,
+                  opsTotal: baseCost,
+                });
                 return {
                   ...pkg,
                   basePrice: baseCost,
                   costPrice: baseCost,
-                  price: finalAmt,
-                  clientTotalAmount: finalAmt,
-                  agentMarkup: savedMarkup,
+                  price: baseCost,
+                  clientTotalAmount: preview.finalAmount,
+                  agentMarkup: {
+                    ...savedMarkup,
+                    markupAmount: preview.markupAmount,
+                    finalAmount: preview.finalAmount,
+                  },
                   status: "Markup Applied",
                 };
               }
@@ -2493,16 +2595,14 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
               const canConfirmClientApproval = normalizedQuoteStatus === "Sent to Client";
               const canRequestRevisionFromMenu = ["Quote Accepted", "Markup Applied", "Sent to Client"].includes(normalizedQuoteStatus);
               const isClientApprovedQuote = normalizedQuoteStatus === "Confirmed";
-
-              const opsQuoteAmount = Number(
-                quote?.pricing?.totalAmount ?? quote?.totalAmount ?? 0
-              );
-              const activeQuotePrice = Number(
-                quote?.clientTotalAmount ?? opsQuoteAmount
-              );
+              const opsQuoteAmount = resolveQuoteOpsAmount(quote, query);
+              const activeQuotePrice = resolveQuoteClientAmount(quote, query);
               const quoteTax = quote?.pricing?.tax || {};
               const gstPercent = Number(quoteTax?.gst?.percent || 0);
-              const gstAmount = Number(quoteTax?.gst?.amount || 0);
+              let gstAmount = Number(quoteTax?.gst?.amount || 0);
+              if (gstPercent > 0 && gstAmount === 0 && opsQuoteAmount > 0) {
+                gstAmount = Math.round((opsQuoteAmount * gstPercent) / (100 + gstPercent));
+              }
               const tcsAmount = Number(quoteTax?.tcs?.amount || 0);
               const tourismTaxAmount = Number(quoteTax?.tourismFee?.amount || 0);
               const otherTaxAmount = tcsAmount + tourismTaxAmount;
@@ -2592,7 +2692,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                 ? quote.additionalNotes.map((note) => String(note || "").trim()).filter(isValidRemark)
                 : [];
 
-              const hasMarkupApplied = Number(quote?.agentMarkup?.markupAmount || quote?.agentMarkup?.value || 0) > 0 || normalizedQuoteStatus === "Markup Applied";
+              const hasMarkupApplied = normalizedQuoteStatus !== "Quote Sent" && normalizedQuoteStatus !== "Revision Requested" && normalizedQuoteStatus !== "Pending" && (Number(quote?.agentMarkup?.markupAmount || quote?.agentMarkup?.value || 0) > 0 || normalizedQuoteStatus === "Markup Applied");
               const isBookingConfirmedStage =
                 ["Confirmed", "Voucher Generated", "Active Booking", "Booking Confirmed", "Completed", "Vouchered"].includes(query?.agentStatus) ||
                 ["Confirmed", "Vouchered", "Payment_Completed"].includes(query?.opsStatus);
@@ -2667,9 +2767,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                     <div className="w-full md:w-36 lg:w-40 shrink-0 bg-white rounded-lg border border-slate-200 overflow-hidden shadow-2xs self-stretch flex flex-col">
                       <div className="divide-y divide-slate-100 shrink-0">
                         {displayQuotesList.map((item, qIdx) => {
-                          const itemPrice = Number(
-                            item?.clientTotalAmount ?? item?.pricing?.totalAmount ?? item?.totalAmount ?? 0
-                          );
+                          const itemPrice = resolveQuoteClientAmount(item, query);
                           const isSelected = selectedQuoteId
                             ? item._id === selectedQuoteId
                             : qIdx === index;
@@ -2681,7 +2779,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                           const paxStr = `${query?.numberOfAdults || 0}A`;
                           const timeAgo = quoteDate ? `Created ${getRelativeTimeString(quoteDate)}` : "Creation date unavailable";
                           const isClientApproved = item.status === "Confirmed";
-                          const hasMarkup = Number(item?.agentMarkup?.markupAmount || item?.agentMarkup?.value || 0) > 0 || item.status === "Markup Applied";
+                          const hasMarkup = item.status !== "Quote Sent" && item.status !== "Revision Requested" && item.status !== "Pending" && (Number(item?.agentMarkup?.markupAmount || item?.agentMarkup?.value || 0) > 0 || item.status === "Markup Applied");
                           const isSentToClient = item.status === "Sent to Client" || Boolean(item.isSentToClient || item.sentToClientAt || item.sharedWithClient);
                           const isBlueTheme = !isClientApproved && hasMarkup && isSentToClient;
                           const isGrayCheckTheme = !isClientApproved && !hasMarkup && isSentToClient;
@@ -2748,7 +2846,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                           <div className="w-full">
                             <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 mb-2">
                               <span>Package Quote Price</span>
-                              <Pencil size={13} className="text-slate-400 cursor-pointer hover:text-slate-600" />
+                             {/*<Pencil size={13} className="text-slate-400 cursor-pointer hover:text-slate-600" /> */} 
                             </div>
 
                             {isClientApprovedQuote ? (
@@ -2924,7 +3022,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                                              const clientName = cleanLeadName || headerLeadTraveler || "Client";
                                              const quoteNum = targetQuote?.quotationNumber || query?.queryId || "QRY-1093";
                                              const dest = query?.destination || "Goa";
-                                             const priceVal = Math.round(activeQuotePrice || targetQuote?.clientTotalAmount || targetQuote?.totalAmount || 0);
+                                             const priceVal = Math.round(activeQuotePrice || resolveQuoteClientAmount(targetQuote, query) || 0);
                                              const priceStr = priceVal > 0 ? priceVal.toLocaleString("en-IN") : "Price on Request";
                                              const company = headerCompany || "Holiday Circuit";
 
@@ -4151,9 +4249,9 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
         {/* TAB VIEW: ACCOUNTING & FINANCIALS (Matches Image Design 1-to-1) */}
         {activeTab === "accounting" && (() => {
           const quote = activeQuote;
-          const opsQuoteAmount = Number(quote?.pricing?.totalAmount ?? quote?.totalAmount ?? 0);
+          const opsQuoteAmount = resolveQuoteOpsAmount(quote, query);
           const markupAmount = Number(quote?.agentMarkup?.markupAmount || 0);
-          const finalQuoteAmount = Number(quote?.clientTotalAmount ?? opsQuoteAmount);
+          const finalQuoteAmount = resolveQuoteClientAmount(quote, query);
 
           const creatorName = currentUser?.fullName || currentUser?.name || "Operations Team";
           const createdTimeAgo = formatDisplayDate(query?.createdAt) || "Recently created";
@@ -5037,39 +5135,55 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                           ? pkgItem._id === selectedAgentPackageId
                           : pIndex === packageIdx;
 
+                        const cardBasePrice = Number(pkgItem?.costPrice ?? pkgItem?.price ?? pkgItem?.basePrice ?? 0);
+                        const pkgMarkupType = pkgItem?.agentMarkup?.type || "PERCENT";
                         const pkgMarkupVal = Number(
-                          pkgItem?.agentMarkup?.markupAmount ||
-                          pkgItem?.agentMarkup?.value ||
-                          pkgItem?.markupAmount ||
-                          pkgItem?.markup ||
-                          0
+                          pkgItem?.agentMarkup?.value !== undefined &&
+                          pkgItem?.agentMarkup?.value !== null &&
+                          pkgItem?.agentMarkup?.value !== ""
+                            ? pkgItem.agentMarkup.value
+                            : (pkgMarkupType === "PERCENT"
+                                ? (pkgItem?.agentMarkup?.markupAmount && cardBasePrice > 0
+                                    ? Math.round((pkgItem.agentMarkup.markupAmount / cardBasePrice) * 100)
+                                    : (pkgItem?.agentMarkup?.markupAmount || 0))
+                                : (pkgItem?.agentMarkup?.markupAmount || 0))
                         );
-                        const hasMarkup = pkgMarkupVal > 0;
-                        const isSent = Boolean(
+                        const hasMarkup = pkgMarkupVal > 0 || pkgItem?.status === "Markup Applied" || Boolean(pkgItem?.agentMarkup?.finalAmount && Number(pkgItem.agentMarkup.finalAmount) > cardBasePrice);
+                        const cardFinalPrice = hasMarkup
+                          ? (Number(pkgItem?.agentMarkup?.finalAmount) > cardBasePrice
+                              ? Number(pkgItem.agentMarkup.finalAmount)
+                              : calculateAgentMarkupPreview({
+                                  markupType: pkgMarkupType,
+                                  markupValue: pkgMarkupVal,
+                                  opsTotal: cardBasePrice,
+                                }).finalAmount)
+                          : cardBasePrice;
+
+                        const isPkgSent = Boolean(
                           pkgItem?.isSentToClient ||
                           pkgItem?.sentToClientAt ||
-                          pkgItem?.status === "Sent to Client" ||
-                          query?.voucherStatus === "sent"
+                          pkgItem?.status === "Sent to Client"
                         );
+
                         const isApproved = Boolean(
                           pkgItem?.isApproved ||
                           pkgItem?.status === "Confirmed" ||
                           (isPkgSelected && (query?.queryStatus === "Confirmed" || query?.agentStatus === "Confirmed"))
                         );
 
-                        let cardTheme = "gray";
+                        let cardTheme = "none";
                         let textPriceColor = "text-[#475569]";
-                        let borderBarColor = "bg-[#3b58b5]";
+                        let borderBarColor = isPkgSelected ? "bg-[#3b58b5]" : "bg-transparent";
 
                         if (isApproved) {
                           cardTheme = "green";
                           textPriceColor = "text-emerald-600";
                           borderBarColor = "bg-emerald-600";
-                        } else if (isSent && hasMarkup) {
+                        } else if (hasMarkup) {
                           cardTheme = "blue";
                           textPriceColor = "text-[#3b58b5]";
                           borderBarColor = "bg-[#3b58b5]";
-                        } else if (isSent && !hasMarkup) {
+                        } else if (isPkgSent) {
                           cardTheme = "gray_sent";
                           textPriceColor = "text-[#475569]";
                           borderBarColor = "bg-slate-500";
@@ -5090,7 +5204,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                               <span
                                 className={`text-2xl sm:text-[26px] font-extrabold tracking-tight leading-none ${textPriceColor}`}
                               >
-                                {Math.round(pkgItem.price || pkgItem.basePrice || 0).toLocaleString("en-IN")}
+                                {Math.round(cardFinalPrice || pkgItem.price || pkgItem.basePrice || 0).toLocaleString("en-IN")}
                               </span>
 
                               {cardTheme === "green" && (
@@ -5157,7 +5271,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                         room: "1 Ocean Deluxe Room",
                         nights: selectedPkg?.duration ? parseInt(selectedPkg.duration) || 1 : 1,
                         pax: `${query?.numberOfAdults || 2} Pax`,
-                        price: selectedPkg?.price ? Math.round(selectedPkg.price).toLocaleString("en-IN") : "20,900",
+                        price: selectedPkg?.price ? Math.round(Number(selectedPkg.costPrice || selectedPkg.price || selectedPkg.basePrice)) : 20900,
                       },
                     ];
 
@@ -6179,7 +6293,12 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                     const sightseeingTotal = allSightseeingRows.reduce((sum, r) => sum + r.effectivePrice, 0);
 
                     // NET ADJUSTMENTS & TOTAL CALCULATIONS
-                    const basePackagePrice = Number(selectedPkg?.price || selectedPkg?.basePrice || 225000);
+                    const basePackagePrice = Number(
+                      selectedPkg?.costPrice ??
+                      selectedPkg?.price ??
+                      selectedPkg?.basePrice ??
+                      225000
+                    );
                     const packageGstPercent = Number(
                       selectedPkg?.tax?.gstPercent ||
                       selectedPkg?.tax?.gst?.percent ||
@@ -6196,7 +6315,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                     const hasTransferCustomizations = Object.keys(pkgCustom.transferOverrides || {}).length > 0;
                     const hasActivityCustomizations = Object.keys(pkgCustom.activityOverrides || {}).length > 0;
                     const hasSightseeingCustomizations = Object.keys(pkgCustom.sightseeingOverrides || {}).length > 0;
-                    const hasCustomizations = (
+                    const hasCustomizations = Boolean(
                       excludedHotels.length > 0 ||
                       excludedTransfers.length > 0 ||
                       excludedActivities.length > 0 ||
@@ -6207,18 +6326,37 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                       hasSightseeingCustomizations ||
                       customHotels.length > 0 ||
                       customTransfers.length > 0 ||
-                      customActivities.length > 0
+                      customActivities.length > 0 ||
+                      (customSightseeing && customSightseeing.length > 0)
                     );
 
-                    const customizedFinalPrice = Math.max(0, basePackagePrice + netAdjustments);
+                    // When hasCustomizations is false, the price is strictly basePackagePrice
+                    const customizedFinalPrice = hasCustomizations
+                      ? Math.max(0, basePackagePrice + netAdjustments)
+                      : basePackagePrice;
+
+                    const pkgMarkupType = selectedPkg?.agentMarkup?.type || "PERCENT";
                     const pkgMarkupVal = Number(
-                      selectedPkg?.agentMarkup?.markupAmount ||
-                      selectedPkg?.agentMarkup?.value ||
-                      0
+                      selectedPkg?.agentMarkup?.value !== undefined &&
+                      selectedPkg?.agentMarkup?.value !== null &&
+                      selectedPkg?.agentMarkup?.value !== ""
+                        ? selectedPkg.agentMarkup.value
+                        : (pkgMarkupType === "PERCENT"
+                            ? (selectedPkg?.agentMarkup?.markupAmount && customizedFinalPrice > 0
+                                ? Math.round((selectedPkg.agentMarkup.markupAmount / customizedFinalPrice) * 100)
+                                : (selectedPkg?.agentMarkup?.markupAmount || 0))
+                            : (selectedPkg?.agentMarkup?.markupAmount || 0))
                     );
-                    const finalWithMarkup = selectedPkg?.agentMarkup?.type === "PERCENT"
-                      ? customizedFinalPrice + (customizedFinalPrice * pkgMarkupVal / 100)
-                      : customizedFinalPrice + pkgMarkupVal;
+
+                    const markupPreview = calculateAgentMarkupPreview({
+                      markupType: pkgMarkupType,
+                      markupValue: pkgMarkupVal,
+                      opsTotal: customizedFinalPrice,
+                    });
+
+                    const finalWithMarkup = (selectedPkg?.agentMarkup?.finalAmount && !hasCustomizations && Number(selectedPkg.agentMarkup.finalAmount) > customizedFinalPrice)
+                      ? Number(selectedPkg.agentMarkup.finalAmount)
+                      : markupPreview.finalAmount;
 
                     // DYNAMIC REAL-TIME TRAVELER PRICE BREAKDOWN (Adults, Extra Beds, Children with Ages)
                     const activeHotelRows = allHotelRows.filter((r) => !r.isExcluded);
@@ -6502,11 +6640,11 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                                     <span className="text-right font-medium">1.</span>
                                     <span>
                                       Quotation Status:{" "}
-                                      {pkgMarkupVal > 0
+                                      {pkgMarkupVal > 0 || (selectedPkg?.agentMarkup?.markupAmount && selectedPkg.agentMarkup.markupAmount > 0)
                                         ? `Markup Applied (${
-                                            selectedPkg?.agentMarkup?.type === "PERCENT"
-                                              ? `${selectedPkg.agentMarkup.value}%`
-                                              : `INR ${Math.round(pkgMarkupVal).toLocaleString("en-IN")}`
+                                            pkgMarkupType === "PERCENT" || pkgMarkupType === "PERCENTAGE" || pkgMarkupType === "%"
+                                              ? `${pkgMarkupVal}%`
+                                              : `INR ${Math.round(selectedPkg?.agentMarkup?.markupAmount || pkgMarkupVal).toLocaleString("en-IN")}`
                                           })`
                                         : "NO Markup applied (Ops net cost quotation shared with client)"}
                                       .
@@ -10592,10 +10730,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
             >
               {(() => {
                 const approvedQuote = quotes.find((item) => item._id === clientApprovalQuoteId);
-                const approvedAmount =
-                  approvedQuote?.clientTotalAmount ??
-                  approvedQuote?.pricing?.totalAmount ??
-                  0;
+                const approvedAmount = resolveQuoteClientAmount(approvedQuote, query);
                 const travelerCounts = getQueryTravelerCounts(query);
 
                 return (
@@ -10825,17 +10960,34 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                 currentPkg?.price ||
                 (pkgServicesSum > 0 ? pkgServicesSum : 250000),
             )
-          : Number(
-              markupQuote?.pricing?.opsTotalAmount ||
-                markupQuote?.pricing?.totalAmount ||
-                0,
-            );
+          : resolveQuoteOpsAmount(markupQuote, query);
 
         const targetTitle = isPackageTarget
           ? currentPkg?.title || "Pre-defined Package"
           : `Quotation #${markupQuote?.quotationNumber || "Quote"}`;
 
         const baseLabel = isPackageTarget ? "Package Cost" : "Ops Amount";
+
+        const preview = calculateAgentMarkupPreview({
+          markupType,
+          markupValue: markupValue || 0,
+          opsTotal: baseCostAmount,
+        });
+
+        const previewMarkupAmount = preview?.markupAmount || 0;
+        const previewFinalAmount = preview?.finalAmount || baseCostAmount;
+
+        const hasExistingMarkup = isPackageTarget
+          ? Boolean(
+              (currentPkg?.agentMarkup?.value !== undefined && Number(currentPkg?.agentMarkup?.value) > 0) ||
+              (currentPkg?.agentMarkup?.markupAmount !== undefined && Number(currentPkg?.agentMarkup?.markupAmount) > 0) ||
+              currentPkg?.status === "Markup Applied"
+            )
+          : Boolean(
+              (markupQuote?.agentMarkup?.value !== undefined && Number(markupQuote?.agentMarkup?.value) > 0) ||
+              (markupQuote?.agentMarkup?.markupAmount !== undefined && Number(markupQuote?.agentMarkup?.markupAmount) > 0) ||
+              markupQuote?.status === "Markup Applied"
+            );
 
         return createPortal(
           <motion.div
@@ -10874,62 +11026,51 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                 </div>
               </div>
 
-              {/* Summary Cards */}
-              <div className="grid gap-2.5 grid-cols-3 mb-4">
-                <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-2.5 flex flex-col justify-between shadow-2xs">
-                  <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+              {/* 3 Summary Cards */}
+              <div className="grid grid-cols-3 gap-2.5 mb-4">
+                <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200">
+                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate">
                     {baseLabel}
-                  </p>
-                  <p className="mt-1 text-xs sm:text-sm font-bold text-slate-900">
-                    {formatMoney(baseCostAmount)}
-                  </p>
+                  </div>
+                  <div className="text-sm font-extrabold text-slate-900 mt-0.5 truncate">
+                    ₹{Math.round(baseCostAmount).toLocaleString("en-IN")}
+                  </div>
                 </div>
-                <div className="rounded-lg border border-[#4263EB]/30 bg-[#4263EB]/5 p-2.5 flex flex-col justify-between shadow-2xs">
-                  <p className="text-[10px] font-bold uppercase tracking-wide text-[#4263EB]">
+
+                <div className="p-2.5 rounded-lg bg-blue-50/70 border border-blue-100">
+                  <div className="text-[10px] font-bold text-blue-600 uppercase tracking-wider truncate">
                     Markup Added
-                  </p>
-                  <p className="mt-1 text-xs sm:text-sm font-bold text-[#4263EB]">
-                    {formatMoney(
-                      calculateAgentMarkupPreview({
-                        markupType,
-                        markupValue,
-                        opsTotal: baseCostAmount,
-                      }).markupAmount,
-                    )}
-                  </p>
+                  </div>
+                  <div className="text-sm font-extrabold text-[#3252c3] mt-0.5 truncate">
+                    {previewMarkupAmount > 0
+                      ? `+₹${Math.round(previewMarkupAmount).toLocaleString("en-IN")}`
+                      : `₹0`}
+                  </div>
                 </div>
-                <div className="rounded-lg border border-emerald-200/80 bg-emerald-50/50 p-2.5 flex flex-col justify-between shadow-2xs">
-                  <p className="text-[10px] font-bold uppercase tracking-wide text-emerald-600">
+
+                <div className="p-2.5 rounded-lg bg-emerald-50/70 border border-emerald-100">
+                  <div className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider truncate">
                     Final Amount
-                  </p>
-                  <p className="mt-1 text-xs sm:text-sm font-bold text-emerald-700">
-                    {formatMoney(
-                      calculateAgentMarkupPreview({
-                        markupType,
-                        markupValue,
-                        opsTotal: baseCostAmount,
-                      }).finalAmount,
-                    )}
-                  </p>
+                  </div>
+                  <div className="text-sm font-extrabold text-emerald-700 mt-0.5 truncate">
+                    ₹{Math.round(previewFinalAmount).toLocaleString("en-IN")}
+                  </div>
                 </div>
               </div>
 
-              {/* Form Controls */}
-              <div className="space-y-3.5">
+              {/* Inputs */}
+              <div className="space-y-3.5 mb-4">
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
                     Markup Type
                   </label>
                   <select
                     value={markupType}
-                    onChange={(e) => {
-                      setMarkupType(e.target.value);
-                      setMarkupValue("");
-                    }}
-                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs font-semibold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-[#4263EB]/20 focus:border-[#4263EB] transition-all cursor-pointer"
+                    onChange={(e) => setMarkupType(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-medium text-slate-800 focus:bg-white focus:border-[#4263EB] focus:ring-1 focus:ring-[#4263EB] outline-none transition"
                   >
                     <option value="PERCENT">Percentage (%)</option>
-                    <option value="AMOUNT">Fixed Amount (INR)</option>
+                    <option value="AMOUNT">Fixed Amount (₹)</option>
                   </select>
                 </div>
 
@@ -10940,65 +11081,61 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                   <input
                     type="number"
                     min="0"
-                    step={markupType === "PERCENT" ? "0.01" : "1"}
+                    step="any"
                     value={markupValue}
                     onChange={(e) => setMarkupValue(e.target.value)}
-                    placeholder={
-                      markupType === "PERCENT"
-                        ? "Enter markup percentage (e.g. 5)"
-                        : "Enter fixed markup amount (e.g. 5000)"
-                    }
-                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs font-medium text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-[#4263EB]/20 focus:border-[#4263EB] transition-all"
+                    placeholder={markupType === "PERCENT" ? "e.g. 5" : "e.g. 5000"}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-xs font-medium text-slate-800 focus:bg-white focus:border-[#4263EB] focus:ring-1 focus:ring-[#4263EB] outline-none transition"
                   />
-                </div>
-
-                {/* Info Banner */}
-                <div className="rounded-lg border border-[#4263EB]/20 bg-[#4263EB]/5 p-3 text-xs text-slate-700 leading-relaxed flex items-start gap-2">
-                  <Info size={15} className="text-[#4263EB] shrink-0 mt-0.5" />
-                  <div>
-                    This will add{" "}
-                    <span className="font-bold text-slate-900">
-                      {formatMoney(
-                        calculateAgentMarkupPreview({
-                          markupType,
-                          markupValue,
-                          opsTotal: baseCostAmount,
-                        }).markupAmount,
-                      )}
-                    </span>{" "}
-                    and update client total to{" "}
-                    <span className="font-bold text-slate-900">
-                      {formatMoney(
-                        calculateAgentMarkupPreview({
-                          markupType,
-                          markupValue,
-                          opsTotal: baseCostAmount,
-                        }).finalAmount,
-                      )}
-                    </span>
-                    .
-                  </div>
                 </div>
               </div>
 
-              {/* Modal Actions */}
-              <div className="mt-5 pt-3.5 border-t border-slate-100 flex items-center justify-end gap-2.5">
-                <button
-                  type="button"
-                  onClick={closeMarkupModal}
-                  disabled={Boolean(markupSubmittingId)}
-                  className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors disabled:opacity-60 cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleApplyMarkup}
-                  disabled={Boolean(markupSubmittingId)}
-                  className="rounded-lg bg-[#4263EB] hover:bg-[#324ec9] px-5 py-2 text-xs font-bold text-white shadow-2xs transition-all disabled:opacity-60 cursor-pointer"
-                >
-                  {markupSubmittingId ? "Applying..." : "Apply Markup"}
-                </button>
+              {/* Info Banner */}
+              <div className="mb-5 p-3 rounded-lg bg-blue-50/60 border border-blue-100 flex items-center gap-2 text-xs text-blue-800">
+                <Info size={15} className="text-blue-500 shrink-0" />
+                <span>
+                  This will add{" "}
+                  <strong className="font-bold text-blue-900">
+                    ₹{Math.round(previewMarkupAmount).toLocaleString("en-IN")}
+                  </strong>{" "}
+                  and update client total to{" "}
+                  <strong className="font-bold text-blue-900">
+                    ₹{Math.round(previewFinalAmount).toLocaleString("en-IN")}
+                  </strong>.
+                </span>
+              </div>
+
+              {/* Actions Footer */}
+              <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-100">
+                <div>
+                  {(hasExistingMarkup || Number(markupValue) > 0) && (
+                    <button
+                      type="button"
+                      onClick={handleRemoveMarkup}
+                      disabled={markupSubmittingId !== null}
+                      className="px-3.5 py-2 text-xs font-semibold text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+                    >
+                      Remove Markup
+                    </button>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 ml-auto">
+                  <button
+                    type="button"
+                    onClick={closeMarkupModal}
+                    className="px-3.5 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleApplyMarkup}
+                    disabled={markupSubmittingId !== null}
+                    className="px-4 py-2 text-xs font-semibold text-white bg-[#4263EB] hover:bg-[#3651c9] rounded-lg transition-colors cursor-pointer shadow-xs disabled:opacity-50 flex items-center gap-1.5"
+                  >
+                    {markupSubmittingId !== null ? "Applying..." : "Apply Markup"}
+                  </button>
+                </div>
               </div>
             </motion.div>
           </motion.div>,

@@ -230,6 +230,10 @@ export const InlineTermsEditor = forwardRef(
     const dropdownRef = React.useRef(null);
 
     useEffect(() => {
+      setPreviewTerms(initialTerms);
+    }, [initialTerms]);
+
+    useEffect(() => {
       const handleClickOutside = (event) => {
         if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
           setIsDropdownOpen(false);
@@ -258,12 +262,12 @@ export const InlineTermsEditor = forwardRef(
         }
         setTermsList(list);
 
-        if (initialTerms && initialTerms.length > 0) {
-          const normInitial = (Array.isArray(initialTerms) ? initialTerms.join("") : String(initialTerms)).replace(/\s+/g, "");
+        if (initialTerms && (Array.isArray(initialTerms) ? initialTerms.length > 0 : String(initialTerms).trim().length > 0)) {
+          const normInitial = (Array.isArray(initialTerms) ? initialTerms.join("") : String(initialTerms)).replace(/\s+/g, "").toLowerCase();
           const matchedIndex = list.findIndex((t) => {
             if (!t.content) return false;
-            const normT = t.content.replace(/\s+/g, "");
-            return normInitial === normT;
+            const normT = String(t.content).replace(/\s+/g, "").toLowerCase();
+            return normInitial.includes(normT) || normT.includes(normInitial);
           });
           if (matchedIndex !== -1) {
             setSelectedTermIndex(matchedIndex);
@@ -285,10 +289,22 @@ export const InlineTermsEditor = forwardRef(
       } else {
         const termObj = termsList[Number(val)];
         if (termObj?.content) {
-          const termsArray = termObj.content
+          const plainText = String(termObj.content)
+            .replace(/<\/(p|div|li|h[1-6])>/gi, "\n")
+            .replace(/<br\s*[\/]?>/gi, "\n")
+            .replace(/<[^>]+>/g, "")
+            .replace(/&nbsp;/g, " ")
+            .replace(/&amp;/g, "&")
+            .replace(/&lt;/g, "<")
+            .replace(/&gt;/g, ">")
+            .trim();
+
+          const termsArray = (plainText || termObj.content)
             .split("\n")
-            .filter((t) => t.trim() !== "");
-          setPreviewTerms(termsArray);
+            .map((t) => t.trim())
+            .filter(Boolean);
+
+          setPreviewTerms(termsArray.length > 0 ? termsArray : [termObj.content]);
         } else {
           setPreviewTerms([]);
         }

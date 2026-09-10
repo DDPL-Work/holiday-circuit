@@ -423,20 +423,36 @@ export const getTransportLimitLabelForQuote = (service = {}) => {
 };
 
 export const validateAgentMarkupInput = ({ markupType, markupValue }) => {
-  const normalizedType = String(markupType || "").trim().toUpperCase();
+  const rawType = String(markupType || "PERCENT").trim().toUpperCase();
   const normalizedValue = Number(markupValue);
 
   if (!Number.isFinite(normalizedValue) || normalizedValue <= 0) {
     return "Please enter a valid markup value.";
   }
 
-  if (["PERCENT", "AMOUNT"].includes(normalizedType)) return "";
+  if (
+    rawType === "PERCENT" ||
+    rawType === "PERCENTAGE" ||
+    rawType.includes("PERCENT") ||
+    rawType === "AMOUNT" ||
+    rawType === "FIXED" ||
+    rawType === "INR" ||
+    rawType === "%"
+  ) {
+    return "";
+  }
 
   return "Please select a valid markup type.";
 };
 
 export const calculateAgentMarkupPreview = ({ markupType, markupValue, opsTotal }) => {
-  const normalizedType = String(markupType || "").trim().toUpperCase();
+  const rawType = String(markupType || "PERCENT").trim().toUpperCase();
+  const isPercent =
+    rawType === "PERCENT" ||
+    rawType === "PERCENTAGE" ||
+    rawType.includes("PERCENT") ||
+    rawType === "%" ||
+    rawType === "";
   const normalizedValue = Number(markupValue);
   const normalizedOpsTotal = Math.max(0, Number(opsTotal) || 0);
 
@@ -447,15 +463,146 @@ export const calculateAgentMarkupPreview = ({ markupType, markupValue, opsTotal 
     };
   }
 
-  const markupAmount =
-    normalizedType === "PERCENT"
-      ? Math.round((normalizedOpsTotal * normalizedValue) / 100)
-      : Math.round(normalizedValue);
+  const markupAmount = isPercent
+    ? Math.round((normalizedOpsTotal * normalizedValue) / 100)
+    : Math.round(normalizedValue);
 
   return {
     markupAmount,
     finalAmount: normalizedOpsTotal + Math.max(0, markupAmount),
   };
+};
+
+export const calculateQuoteServicesTotal = (quote = {}, query = {}) => {
+  let services = Array.isArray(quote?.services) ? quote.services : [];
+  if (services.length === 0 && Array.isArray(quote?.packages) && quote.packages.length > 0) {
+    const pkg = quote.packages[0] || {};
+    services = [
+      ...(Array.isArray(pkg.hotels) ? pkg.hotels.map(h => ({ ...h, type: "hotel" })) : []),
+      ...(Array.isArray(pkg.transfers) ? pkg.transfers.map(t => ({ ...t, type: "transfer" })) : []),
+      ...(Array.isArray(pkg.activities) ? pkg.activities.map(a => ({ ...a, type: "activity" })) : []),
+      ...(Array.isArray(pkg.sightseeing) ? pkg.sightseeing.map(s => ({ ...s, type: "sightseeing" })) : []),
+      ...(Array.isArray(pkg.services) ? pkg.services : []),
+    ];
+  }
+  if (services.length === 0) return 0;
+
+  const qAdults = Number(query?.numberOfAdults || 1);
+  const qChildren = Number(query?.numberOfChildren || 0);
+
+  return services.reduce((total, s) => {
+    const sType = String(s?.type || s?.category || "").trim().toLowerCase();
+    const isHotel =
+      sType === "hotel" ||
+      sType === "accommodation" ||
+      sType === "stay" ||
+      Boolean(s?.roomType || s?.starCategory || s?.starRating);
+
+    if (isHotel) {
+      const nVal = Number(s?.nights || s?.numberOfNights || query?.numberOfNights || 1);
+      const rCount = Number(s?.rooms || s?.numberOfRooms || 1);
+      const explicitTotalPrice = Number(
+        s?.total || s?.totalInInr || s?.totalPrice || (s?.isTotalPrice || s?.isTotal ? s?.price : 0)
+      );
+      const directRoomRate = Number(
+        s?.roomPrice || s?.unitPrice || s?.ratePerNight || s?.roomRate || s?.pricePerNight || s?.nightlyRate || 0
+      );
+      const fallbackPrice = Number(s?.price || s?.rate || s?.cost || s?.amount || 0);
+      const itemPrice = explicitTotalPrice > 0
+        ? explicitTotalPrice
+        : directRoomRate > 0
+        ? directRoomRate * rCount * nVal
+        : fallbackPrice > 0 && fallbackPrice > 50000
+        ? fallbackPrice
+        : fallbackPrice * rCount * nVal;
+      return total + (itemPrice > 0 ? itemPrice : 0);
+    }
+
+    const isActivity =
+      sType.includes("activity") ||
+      sType.includes("sightseeing") ||
+      sType.includes("tour") ||
+      sType.includes("excursion");
+
+    if (isActivity) {
+      const numAdults = Number(s?.adults !== undefined && s?.adults !== null && s?.adults !== "" ? s?.adults : (s?.pax || qAdults));
+      const numChildren = Number(s?.children !== undefined && s?.children !== null && s?.children !== "" ? s?.children : qChildren);
+      const adultP = Number(s?.adultPrice || s?.adult_price || 0);
+      const childP = Number(s?.childPrice || s?.child_price || 0);
+      if (adultP > 0 || childP > 0) {
+        return total + (numAdults * adultP) + (numChildren * childP);
+      }
+      const explicitPrice = Number(s?.total || s?.totalInInr || s?.totalPrice || s?.price || s?.amount || s?.cost || 0);
+      return total + (explicitPrice > 0 ? explicitPrice : 0);
+    }
+
+    // Transfers, flights, other services
+    const vehicleMultiplier = Number(s?.vehicleCount || s?.vehicles || 1);
+    const explicitTransPrice = Number(s?.total || s?.totalInInr || s?.totalPrice || 0);
+    const generalPrice = explicitTransPrice > 0 
+      ? explicitTransPrice 
+      : Number(s?.price || s?.amount || s?.cost || 0) * (vehicleMultiplier > 1 ? vehicleMultiplier : 1);
+
+    return total + (generalPrice > 0 ? generalPrice : 0);
+  }, 0);
+};
+
+export const resolveQuoteOpsAmount = (quote = {}, query = {}) => {
+  if (!quote) return 0;
+  const servicesTotal = calculateQuoteServicesTotal(quote, query);
+  const baseTotal = Number(
+    quote?.pricing?.totalAmount ??
+    quote?.totalAmount ??
+    quote?.pricing?.opsTotalAmount ??
+    quote?.opsTotalAmount ??
+    quote?.pricing?.subTotal ??
+    quote?.baseAmount ??
+    0
+  );
+
+  return Math.max(baseTotal, servicesTotal);
+};
+
+export const resolveQuoteClientAmount = (quote = {}, query = {}) => {
+  if (!quote) return 0;
+  const opsAmount = resolveQuoteOpsAmount(quote, query);
+  const rawClientTotal = Number(quote?.clientTotalAmount || 0);
+  const status = String(quote?.status || "").trim();
+
+  // Fresh quotation from Ops (not accepted / no agent markup applied yet)
+  if (status === "Quote Sent" || status === "Revision Requested" || status === "Pending") {
+    return opsAmount;
+  }
+
+  // If status is Markup Applied, Sent to Client, Confirmed, or Quote Accepted with markup
+  const isMarkupActive =
+    status === "Markup Applied" ||
+    status === "Sent to Client" ||
+    status === "Confirmed" ||
+    Boolean(quote?.isSentToClient || quote?.sentToClientAt || quote?.sharedWithClient);
+
+  if (isMarkupActive || status === "Quote Accepted") {
+    if (quote?.agentMarkup) {
+      const markupVal = Number(
+        quote.agentMarkup.value !== undefined && quote.agentMarkup.value !== null && quote.agentMarkup.value !== ""
+          ? quote.agentMarkup.value
+          : (quote.agentMarkup.markupAmount || 0)
+      );
+      if (markupVal > 0) {
+        const markupPreview = calculateAgentMarkupPreview({
+          markupType: quote.agentMarkup.type || quote.agentMarkup.markupType,
+          markupValue: markupVal,
+          opsTotal: opsAmount,
+        });
+        return Math.max(rawClientTotal, markupPreview.finalAmount);
+      }
+    }
+    if (rawClientTotal > 0 && rawClientTotal >= opsAmount) {
+      return rawClientTotal;
+    }
+  }
+
+  return rawClientTotal > 0 && rawClientTotal >= opsAmount ? rawClientTotal : opsAmount;
 };
 
 export const fetchQuotationsByQuery = async (queryId) => {

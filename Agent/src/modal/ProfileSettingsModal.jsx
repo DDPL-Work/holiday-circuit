@@ -271,7 +271,7 @@ export default function ProfileSettingsModal({ open, onClose, user }) {
 
                     {/* Name + Role */}
                     <div className="min-w-0 pb-1.5">
-                      <h2 className="text-lg sm:text-xl font-bold tracking-tight text-slate-900 leading-tight truncate">
+                      <h2 className="text-lg sm:text-xl font-bold tracking-tight text-white drop-shadow-md leading-tight truncate">
                         {identityLabel}
                       </h2>
                       <p className="text-xs font-semibold text-slate-600">{roleLabel}</p>

@@ -317,7 +317,6 @@ const VoucherPreviewModal = ({
         try {
           setLoadingTerms(true);
           let agentTerms = [];
-          let adminTerms = [];
 
           try {
             const resAgent = await API.get("/agent/terms");
@@ -330,30 +329,7 @@ const VoucherPreviewModal = ({
             console.warn("Could not fetch agent terms:", e);
           }
 
-          try {
-            const resAdmin = await API.get("/admin/terms");
-            adminTerms = Array.isArray(resAdmin?.data)
-              ? resAdmin.data
-              : Array.isArray(resAdmin?.data?.data)
-              ? resAdmin.data.data
-              : [];
-          } catch (e) {
-            console.warn("Could not fetch admin terms:", e);
-          }
-
-          const combined = [...agentTerms];
-          const existingIds = new Set(combined.map((t) => String(t.id || t._id)));
-          const existingNames = new Set(combined.map((t) => String(t.name || "").trim().toLowerCase()));
-
-          adminTerms.forEach((item) => {
-            const itemId = String(item.id || item._id);
-            const itemName = String(item.name || "").trim().toLowerCase();
-            if (!existingIds.has(itemId) && !existingNames.has(itemName)) {
-              combined.push(item);
-            }
-          });
-
-          const adminTermsList = combined
+          const adminTermsList = agentTerms
             .map((item) => {
               const items = parseAdminTermContent(item.content || "");
               return {

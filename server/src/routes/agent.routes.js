@@ -41,6 +41,10 @@ import {
   deleteTermsAndConditions,
   updateQuotationTermsAndConditions,
   updatePackageTermsAndConditions,
+  updateQuotationMarkup,
+  updateQuotationVisibility,
+  markQuotationShared,
+  sendQuotationToClient,
 } from "../controllers/agentController.js";
 import { getAgentCoupons, markAgentCouponNotificationsRead } from "../controllers/couponController.js";
 
@@ -80,8 +84,14 @@ routers.patch("/queries/:queryId/traveler-documents/submit", isAuthenticated, su
 routers.get("/quotations/query/:queryId", isAuthenticated, getQuotationsByQuery);
 routers.get("/quotations/:id/client-pdf", isAuthenticated, generateClientQuotationPdf);
 routers.get("/quotations/:id/email-preview", isAuthenticated, getClientQuotationEmailPreview);
+routers.put("/quotations/:id/markup", isAuthenticated, updateQuotationMarkup);
+routers.patch("/quotations/:id/markup", isAuthenticated, updateQuotationMarkup);
+routers.put("/quotations/:id/visibility", isAuthenticated, updateQuotationVisibility);
+routers.put("/quotations/:id/mark-shared", isAuthenticated, markQuotationShared);
+routers.post("/quotations/:id/send-to-client", isAuthenticated, sendQuotationToClient);
 routers.put("/quotations/:id/revision", isAuthenticated, requestQuotationRevision);
-routers.patch("/quotations/:id/accept",isAuthenticated, acceptQuotationByAgent);
+routers.patch("/quotations/:id/accept", isAuthenticated, acceptQuotationByAgent);
+routers.put("/quotations/:id/accept", isAuthenticated, acceptQuotationByAgent);
 routers.patch("/quotations/:id/branding", isAuthenticated, upload.single("agentLogo"), updateQuotationBranding);
 routers.put("/quotations/:id/terms", isAuthenticated, updateQuotationTermsAndConditions);
 routers.put("/packages/:id/terms", isAuthenticated, updatePackageTermsAndConditions);

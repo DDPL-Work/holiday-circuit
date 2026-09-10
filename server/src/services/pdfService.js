@@ -7,7 +7,7 @@ import { pdfMemoryCache } from "../utils/pdfCache.js";
 
 const getLogoBuffer = (inputPathOrUrl) => {
   return new Promise((resolve) => {
-    try {
+    try { 
       if (!inputPathOrUrl || typeof inputPathOrUrl !== "string") {
         resolve(null);
         return;
