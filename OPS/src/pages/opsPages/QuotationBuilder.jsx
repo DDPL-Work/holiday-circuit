@@ -1266,7 +1266,7 @@ const buildWhatsAppTermsSection = (items = []) => {
   };
 
   const getPublicBaseUrl = () => {
-  const browserOrigin = typeof window !== "undefined" ? window.location.origin : "http://localhost:3000";
+  const browserOrigin = typeof window !== "undefined" ? window.location.origin : "";
   const baseUrl = API.defaults.baseURL || browserOrigin;
   return new URL(baseUrl, browserOrigin).origin;
   };
