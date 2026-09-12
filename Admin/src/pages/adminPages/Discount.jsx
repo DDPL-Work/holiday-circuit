@@ -175,6 +175,17 @@ export default function CouponsDiscounts() {
   const [feedback, setFeedback] = useState(null);
   const [statusFilter, setStatusFilter] = useState("all");
   const [searchTerm, setSearchTerm] = useState("");
+  const [emailDropdownOpen, setEmailDropdownOpen] = useState(false);
+
+  const filteredEmailAgents = agents.filter((agent) => {
+    const q = (form.email || "").toLowerCase();
+    if (!q) return true;
+    return (
+      (agent.email || "").toLowerCase().includes(q) ||
+      (agent.name || "").toLowerCase().includes(q) ||
+      (agent.companyName || "").toLowerCase().includes(q)
+    );
+  });
 
   useEffect(() => {
     const fetchCoupons = async () => {
@@ -246,17 +257,14 @@ export default function CouponsDiscounts() {
     const code = String(form.code || "").trim().toUpperCase();
     const discount = String(form.discount || "").trim();
     const email = normalizeEmail(form.email);
-    const matchedAgent =
-      agents.find((agent) => agent.id === form.assignedAgentId) ||
-      agents.find((agent) => normalizeEmail(agent.email) === email);
 
     if (!code || !discount) {
       setFormError("Code and discount are required.");
       return;
     }
 
-    if (!matchedAgent) {
-      setFormError("Please select a valid approved agent email.");
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setFormError("Please enter a valid email address.");
       return;
     }
 
@@ -272,8 +280,8 @@ export default function CouponsDiscounts() {
         endDate: form.endDate,
         usage: form.users,
         users: form.users,
-        email: matchedAgent.email,
-        assignedAgentId: matchedAgent.id,
+        email: email,
+        assignedAgentId: form.assignedAgentId || "",
       };
 
       const { data } = editId
@@ -617,13 +625,13 @@ export default function CouponsDiscounts() {
             <div className="absolute inset-0" onClick={closeModal} />
 
             <motion.div
-              className="relative z-10 w-full max-w-md overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
+              className="relative z-10 w-full max-w-md rounded-2xl border border-slate-200 bg-white shadow-2xl"
               variants={modalVariants}
               initial="hidden"
               animate="visible"
               exit="exit"
             >
-              <div className="h-1 w-full bg-gradient-to-r from-[#1e3a8a] via-[#2563eb] to-[#3b82f6]" />
+              <div className="h-1 w-full rounded-t-2xl bg-gradient-to-r from-[#1e3a8a] via-[#2563eb] to-[#3b82f6]" />
 
               <div className="flex items-center justify-between border-b border-slate-100 px-6 py-5">
                 <div className="flex items-center gap-2.5">
@@ -727,32 +735,55 @@ export default function CouponsDiscounts() {
                     />
                   </div>
 
-                  <div>
+                  <div className="relative">
                     <label className="mb-1.5 flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                       <Mail size={11} />
                       Email
                     </label>
                     <input
-                      list="coupon-agent-email-options"
                       value={form.email}
-                      onChange={(e) => handleEmailChange(e.target.value)}
+                      onChange={(e) => {
+                        handleEmailChange(e.target.value);
+                        setEmailDropdownOpen(true);
+                      }}
+                      onFocus={() => setEmailDropdownOpen(true)}
+                      onBlur={() => setTimeout(() => setEmailDropdownOpen(false), 200)}
                       placeholder="contact@example.com"
                       className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 outline-none transition-all focus:border-[#3252C3] focus:ring-2 focus:ring-[#3252C3]/20"
                     />
-                    <datalist id="coupon-agent-email-options">
-                      {agents.map((agent) => (
-                        <option key={agent.id} value={agent.email}>
-                          {agent.label}
-                        </option>
-                      ))}
-                    </datalist>
+                    
+                    {emailDropdownOpen && (
+                      <div className="absolute left-0 top-[calc(100%+4px)] z-500 w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl custom-scroll max-h-48 overflow-y-auto">
+                        {filteredEmailAgents.length > 0 ? (
+                          filteredEmailAgents.map((agent) => (
+                            <button
+                              key={agent.id}
+                              type="button"
+                              onClick={() => {
+                                handleEmailChange(agent.email);
+                                setEmailDropdownOpen(false);
+                              }}
+                              className="flex w-full cursor-pointer flex-col px-3 py-2 text-left transition-all hover:bg-blue-50 border-b border-slate-100 last:border-0"
+                            >
+                              <div className="text-[13px] font-semibold text-slate-900">{agent.companyName || agent.name || "Agent"}</div>
+                              <div className="text-[11px] text-slate-500">{agent.email}</div>
+                            </button>
+                          ))
+                        ) : (
+                          <div className="px-3 py-3 text-center">
+                            <span className="block text-[13px] font-medium text-slate-600">No matching agent found</span>
+                            <span className="mt-0.5 block text-[11px] text-slate-400">Coupon will be sent directly to this email.</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
 
                 {formError ? <p className="text-sm text-red-500">{formError}</p> : null}
               </div>
 
-              <div className="flex items-center justify-end gap-3 border-t border-slate-100 bg-slate-50 px-6 py-4">
+              <div className="flex items-center justify-end gap-3 rounded-b-2xl border-t border-slate-100 bg-slate-50 px-6 py-4">
                 <button
                   type="button"
                   onClick={closeModal}
