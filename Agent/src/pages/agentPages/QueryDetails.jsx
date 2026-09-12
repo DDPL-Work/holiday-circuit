@@ -1159,9 +1159,11 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
       const vData = buildCurrentVoucherData();
       const targetQuote = activeQuote || quotes[0] || {};
       const agentBranding = getSavedAgentBranding({ quote: targetQuote, user: currentUser, query });
-      agentBranding.logo = agentBranding.logo || DEFAULT_FALLBACK_LOGO;
+
       if (agentBranding.logo) {
         agentBranding.logo = buildPublicAssetUrl(agentBranding.logo) || agentBranding.logo;
+      } else {
+        agentBranding.logo = DEFAULT_FALLBACK_LOGO;
       }
       if (vData.voucherFooterImage) {
         vData.voucherFooterImage = buildPublicAssetUrl(vData.voucherFooterImage) || vData.voucherFooterImage;
@@ -1194,7 +1196,6 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
       const vData = buildCurrentVoucherData();
       const targetQuote = activeQuote || quotes[0] || {};
       const agentBranding = getSavedAgentBranding({ quote: targetQuote, user: currentUser, query });
-      agentBranding.logo = agentBranding.logo || DEFAULT_FALLBACK_LOGO;
 
       // Helper to convert external image URL / relative path to Base64 data URI to bypass any CORS restrictions in html2canvas
       const convertUrlToBase64 = async (url, fallback = "") => {
@@ -1208,21 +1209,46 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
           normalized = `https:${normalized}`;
         }
 
+        // 1. Try axios API.get with blob response (handles baseUrl and backend upload paths)
+        try {
+          const res = await API.get(normalized, { responseType: "blob" });
+          if (res?.data && res.data.size > 0) {
+            return await new Promise((resolve) => {
+              const reader = new FileReader();
+              reader.onloadend = () => {
+                if (typeof reader.result === "string" && reader.result.startsWith("data:image")) {
+                  resolve(reader.result);
+                } else {
+                  resolve(fallback || normalized);
+                }
+              };
+              reader.onerror = () => resolve(fallback || normalized);
+              reader.readAsDataURL(res.data);
+            });
+          }
+        } catch (apiErr) {}
+
+        // 2. Try native fetch with CORS
         try {
           const res = await fetch(normalized, { mode: "cors" });
           if (res.ok) {
             const blob = await res.blob();
             return await new Promise((resolve) => {
               const reader = new FileReader();
-              reader.onloadend = () => resolve(reader.result);
+              reader.onloadend = () => {
+                if (typeof reader.result === "string" && reader.result.startsWith("data:image")) {
+                  resolve(reader.result);
+                } else {
+                  resolve(fallback || normalized);
+                }
+              };
               reader.onerror = () => resolve(fallback || normalized);
               reader.readAsDataURL(blob);
             });
           }
-        } catch (err) {
-          // fallback to canvas method
-        }
+        } catch (err) {}
 
+        // 3. Fallback to Image canvas draw
         try {
           return await new Promise((resolve) => {
             const img = new Image();
@@ -1234,7 +1260,8 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                 canvas.height = img.naturalHeight || img.height || 60;
                 const ctx = canvas.getContext("2d");
                 ctx.drawImage(img, 0, 0);
-                resolve(canvas.toDataURL("image/png"));
+                const dataUrl = canvas.toDataURL("image/png");
+                resolve(dataUrl || fallback || normalized);
               } catch (e) {
                 resolve(fallback || normalized);
               }
@@ -1284,27 +1311,14 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
             return new Promise((resolve) => {
               img.onload = resolve;
               img.onerror = resolve;
-              setTimeout(resolve, 2000);
+              setTimeout(resolve, 1500);
             });
           })
         );
       }
 
-      // Calculate exact height to pin footer to bottom of last page without overflow
-      // Printable A4 height at 800px width with 5mm margin = 1148px per page
-      const PAGE_HEIGHT_PX = 1148;
-      const initialHeight = targetElement.scrollHeight;
-      const pageCount = Math.max(1, Math.ceil(initialHeight / PAGE_HEIGHT_PX));
-      const targetHeight = (pageCount * PAGE_HEIGHT_PX) - 16;
-
-      targetElement.style.minHeight = `${targetHeight}px`;
-      targetElement.style.height = `${targetHeight}px`;
-      targetElement.style.display = "flex";
-      targetElement.style.flexDirection = "column";
-      targetElement.style.justifyContent = "space-between";
-
       // Small layout stabilization delay
-      await new Promise((resolve) => setTimeout(resolve, 200));
+      await new Promise((resolve) => setTimeout(resolve, 150));
 
       const opt = {
         margin: [5, 5, 5, 5],
@@ -1322,6 +1336,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
         jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
         pagebreak: {
           mode: ["css", "legacy"],
+          avoid: [".voucher-card", ".voucher-footer-wrapper", "tr"],
         },
       };
 
@@ -10710,8 +10725,6 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
       </AnimatePresence>
 
 
-
-
       {/* CLIENT APPROVAL MODAL */}
       <AnimatePresence>
         {isClientApprovalModalOpen && clientApprovalQuoteId && (
@@ -10819,6 +10832,8 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
         )}
       </AnimatePresence>
 
+
+
       {/* VOUCHER PREVIEW / VIEW MODAL */}
       {isVoucherPreviewModalOpen && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/70 backdrop-blur-xs p-2 sm:p-4 md:p-6">
@@ -10905,6 +10920,8 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
           </motion.div>
         </div>
       )}
+
+
 
       {/* SHARE PACKAGE MODAL */}
       <SharePackageModal
@@ -11152,6 +11169,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
         onCloseQuery={handleClose}
         query={query}
       />
+
 
 
       <RevisionModal

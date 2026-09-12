@@ -21,14 +21,12 @@ import { BookingTrendsCard } from "./superAdminDashboard/components/BookingTrend
 import { DashboardCharts } from "./superAdminDashboard/components/DashboardCharts";
 import { AgentApprovalDeskModal } from "./superAdminDashboard/components/AgentApprovalDeskModal";
 import { AdminEscalationDesk } from "./superAdminDashboard/components/AdminEscalationDesk";
-import { OverrideDisputeDesk } from "./superAdminDashboard/components/OverrideDisputeDesk";
 import { UserManagementTable } from "./superAdminDashboard/components/UserManagementTable";
 import { MasterBookingsTable } from "./superAdminDashboard/components/MasterBookingsTable";
 
 import { DeleteUserModal } from "./superAdminDashboard/components/Modals/DeleteUserModal";
 import { AgentRejectModal } from "./superAdminDashboard/components/Modals/AgentRejectModal";
 import { EscalationReplyModal } from "./superAdminDashboard/components/Modals/EscalationReplyModal";
-import { OverrideResolutionModal } from "./superAdminDashboard/components/Modals/OverrideResolutionModal";
 import { BookingTrendsModal } from "./superAdminDashboard/components/Modals/BookingTrendsModal";
 
 export default function SuperAdminDashboard() {
@@ -62,10 +60,6 @@ export default function SuperAdminDashboard() {
   const [selectedEscalation, setSelectedEscalation] = useState(null);
   const [escalationReply, setEscalationReply] = useState("");
   const [escalationActionId, setEscalationActionId] = useState("");
-  const [selectedOverrideCase, setSelectedOverrideCase] = useState(null);
-  const [overrideDecision, setOverrideDecision] = useState("approve");
-  const [overrideNote, setOverrideNote] = useState("");
-  const [overrideActionId, setOverrideActionId] = useState("");
 
   const mapApiUserToRow = (user) => {
     const roleName = user.roleLabel || user.role || "Super Admin";
@@ -202,11 +196,11 @@ export default function SuperAdminDashboard() {
   }, []);
 
   useEffect(() => {
-    if (!deleteDialogUser && !agentRejectDialogUser && !selectedEscalation && !selectedOverrideCase) return;
+    if (!deleteDialogUser && !agentRejectDialogUser && !selectedEscalation) return;
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => { document.body.style.overflow = prev; };
-  }, [deleteDialogUser, agentRejectDialogUser, selectedEscalation, selectedOverrideCase]);
+  }, [deleteDialogUser, agentRejectDialogUser, selectedEscalation]);
 
   useEffect(() => {
     const filteredRows = filterAgentApprovalRows(agentApprovalRows, agentApprovalFilter);
@@ -311,18 +305,6 @@ export default function SuperAdminDashboard() {
     setEscalationReply("");
   };
 
-  const closeOverrideDialog = () => {
-    setSelectedOverrideCase(null);
-    setOverrideDecision("approve");
-    setOverrideNote("");
-  };
-
-  const openOverrideDialog = (entry, decision = "approve") => {
-    setSelectedOverrideCase(entry);
-    setOverrideDecision(decision);
-    setOverrideNote("");
-  };
-
   const openQuotationBuilder = (query) => {
     if (!query?.builderState?._id) {
       toast.error("Query details are incomplete for quotation editing.");
@@ -360,39 +342,6 @@ export default function SuperAdminDashboard() {
     }
   };
 
-  const handleSubmitOverrideResolution = async () => {
-    const trimmedNote = overrideNote.trim();
-
-    if (!selectedOverrideCase?.targetType || !selectedOverrideCase?.targetId) {
-      toast.error("Override case details are missing.");
-      return;
-    }
-
-    if (!trimmedNote) {
-      toast.error("Please add a resolution note.");
-      return;
-    }
-
-    try {
-      setOverrideActionId(selectedOverrideCase.id || selectedOverrideCase.targetId);
-      const { data } = await API.patch(
-        `/admin/override-cases/${selectedOverrideCase.targetType}/${selectedOverrideCase.targetId}/resolve`,
-        {
-          decision: overrideDecision,
-          resolutionNote: trimmedNote,
-        },
-      );
-      toast.success(data?.message || "Override resolved successfully");
-      closeOverrideDialog();
-      await fetchDashboardData();
-      await fetchAgentApprovals(true);
-    } catch (error) {
-      toast.error(error?.response?.data?.message || "Unable to resolve override right now.");
-    } finally {
-      setOverrideActionId("");
-    }
-  };
-
   const isBusyAction = (id) => userActionId === id;
   const managerOptions = userList
     .filter((u) => u?.role === "Operation Manager" || u?.role === "Finance Manager")
@@ -413,8 +362,6 @@ export default function SuperAdminDashboard() {
   const totalBookingPages = Math.ceil(bookingRows.length / bookingItemsPerPage) || 1;
   const bookingStartIndex = (bookingPage - 1) * bookingItemsPerPage;
   const paginatedBookingRows = bookingRows.slice(bookingStartIndex, bookingStartIndex + bookingItemsPerPage);
-  const overrideRows = Array.isArray(superAdminData.overrideCases) ? superAdminData.overrideCases : [];
-  const openOverrideCount = Number(superAdminData.overrideSummary?.open || overrideRows.filter((entry) => entry.status === "Open").length);
   const pendingBookingCount = bookingRows.filter((entry) => String(entry?.paymentStatus || "").trim().toLowerCase() === "pending").length;
   const verifiedBookingCount = bookingRows.filter((entry) => {
     const status = String(entry?.paymentStatus || "").trim().toLowerCase();
@@ -507,12 +454,6 @@ export default function SuperAdminDashboard() {
           setEscalationReply={setEscalationReply}
         />
 
-        <OverrideDisputeDesk
-          overrideRows={overrideRows}
-          openOverrideCount={openOverrideCount}
-          openOverrideDialog={openOverrideDialog}
-        />
-
         <UserManagementTable
           userList={userList}
           activeUserCount={activeUserCount}
@@ -550,19 +491,6 @@ export default function SuperAdminDashboard() {
             onClose={() => { setIsAddUserModalOpen(false); setEditingUser(null); }}
             onCreateUser={handleCreateUser}
             onUpdateUser={handleUpdateUser}
-          />
-        ) : null}
-
-        {selectedOverrideCase ? (
-          <OverrideResolutionModal
-            selectedOverrideCase={selectedOverrideCase}
-            closeOverrideDialog={closeOverrideDialog}
-            overrideActionId={overrideActionId}
-            overrideDecision={overrideDecision}
-            setOverrideDecision={setOverrideDecision}
-            overrideNote={overrideNote}
-            setOverrideNote={setOverrideNote}
-            handleSubmitOverrideResolution={handleSubmitOverrideResolution}
           />
         ) : null}
 

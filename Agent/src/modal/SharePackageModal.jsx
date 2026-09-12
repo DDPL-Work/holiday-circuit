@@ -266,7 +266,7 @@ export default function SharePackageModal({
 
   const handleConfirmSendEmail = async (e) => {
     if (e) e.preventDefault();
-    const recipientEmail = String(targetEmailInput || "").trim();
+     const recipientEmail = String(targetEmailInput || "").trim();
 
     if (!recipientEmail) {
       toast.error("Please enter a valid recipient email address.");
@@ -478,11 +478,11 @@ export default function SharePackageModal({
         }
 
         const parsed = agentTerms
-          .map((item) => {
-            const items = parseAdminTermContent(item.content || "");
+          .map((item, idx) => {
+            const items = parseAdminTermContent(item.content || item.terms || item.items || "");
             return {
-              id: String(item.id || item._id),
-              name: item.name || "Terms & Conditions",
+              id: String(item.id || item._id || `agent-term-${idx}`),
+              name: item.name || item.title || "Terms & Conditions",
               by: item.by || item.createdBy?.name || "Agent",
               content: item.content || "",
               items,
@@ -580,10 +580,10 @@ export default function SharePackageModal({
           } catch (e) {}
         }
         const primaryTourist = Array.isArray(savedTourists) && savedTourists.length > 0
-          ? (savedTourists.find((t) => t.isFlagged) || savedTourists[0])
+          ? (savedTourists.find((t) => t && t.isFlagged) || savedTourists[0])
           : null;
         const touristName = primaryTourist ? [primaryTourist.salutation, primaryTourist.name].filter(Boolean).join(" ").trim() : "";
-        const primaryPhoneObj = primaryTourist?.phones?.find((p) => p.isPrimary) || primaryTourist?.phones?.[0];
+        const primaryPhoneObj = primaryTourist?.phones?.find((p) => p && p.isPrimary) || primaryTourist?.phones?.[0];
         const touristPhoneRaw = primaryPhoneObj?.number ? String(primaryPhoneObj.number).trim() : "";
         const touristPhoneCode = primaryPhoneObj?.countryCode ? `+${primaryPhoneObj.countryCode.split("-")[0]}-` : "+91-";
         const touristPhone = touristPhoneRaw ? (touristPhoneRaw.startsWith("+") ? touristPhoneRaw : `${touristPhoneCode}${touristPhoneRaw}`) : "";
@@ -627,12 +627,12 @@ export default function SharePackageModal({
         };
 
         const formatLongDate = (d) => {
-          if (!d || isNaN(d.getTime())) return "-";
+          if (!d || !(d instanceof Date) || isNaN(d.getTime())) return "-";
           return d.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
         };
 
         const formatOrdinalDate = (d) => {
-          if (!d || isNaN(d.getTime())) return "-";
+          if (!d || !(d instanceof Date) || isNaN(d.getTime())) return "-";
           const day = d.getDate();
           const month = d.toLocaleDateString("en-GB", { month: "short" });
           const year = d.getFullYear();
@@ -640,7 +640,7 @@ export default function SharePackageModal({
         };
 
         const formatShortDate = (d) => {
-          if (!d || isNaN(d.getTime())) return "-";
+          if (!d || !(d instanceof Date) || isNaN(d.getTime())) return "-";
           return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
         };
 
@@ -649,14 +649,14 @@ export default function SharePackageModal({
           const diffTime = Math.abs(endObj - startObj);
           calcNights = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
         }
-        const nights = query?.nights || quote?.nights || calcNights || 1;
-        const days = query?.days || quote?.days || (nights > 0 ? nights + 1 : 2);
+        const nights = Number(query?.nights || quote?.nights || calcNights || 1);
+        const days = Number(query?.days || quote?.days || (nights > 0 ? nights + 1 : 2));
         const tripDurationFormatted = `${nights} Night${nights > 1 ? "s" : ""} / ${days} Day${days > 1 ? "s" : ""}`;
 
-        const startDateLong = startObj && !isNaN(startObj.getTime()) ? formatLongDate(startObj) : (query?.startDate || "22 December, 2026");
-        const startDateOrdinal = startObj && !isNaN(startObj.getTime()) ? formatOrdinalDate(startObj) : "22nd Dec, 2026";
-        const startDateShort = startObj && !isNaN(startObj.getTime()) ? formatShortDate(startObj) : "22 Dec, 2026";
-        const endDateOrdinal = endObj && !isNaN(endObj.getTime()) ? formatOrdinalDate(endObj) : (startObj && !isNaN(startObj.getTime()) ? formatOrdinalDate(new Date(startObj.getTime() + nights * 86400000)) : "23rd Dec, 2026");
+        const startDateLong = startObj && !isNaN(startObj.getTime()) ? formatLongDate(startObj) : (query?.startDate || "-");
+        const startDateOrdinal = startObj && !isNaN(startObj.getTime()) ? formatOrdinalDate(startObj) : (query?.startDate || "-");
+        const startDateShort = startObj && !isNaN(startObj.getTime()) ? formatShortDate(startObj) : (query?.startDate || "-");
+        const endDateOrdinal = endObj && !isNaN(endObj.getTime()) ? formatOrdinalDate(endObj) : (startObj && !isNaN(startObj.getTime()) ? formatOrdinalDate(new Date(startObj.getTime() + nights * 86400000)) : (query?.endDate || "-"));
 
         const paxVal = `${(query?.numberOfAdults || quote?.numberOfAdults || 2)} Adults${(query?.numberOfChildren || quote?.numberOfChildren) > 0 ? `, ${query?.numberOfChildren || quote?.numberOfChildren} Child${(query?.numberOfChildren || quote?.numberOfChildren) > 1 ? "ren" : ""}` : ""}`;
 
@@ -668,8 +668,8 @@ export default function SharePackageModal({
                   ? query.voucherServices
                   : []));
 
-        const hotelServices = rawServices.filter((s) => String(s.type || s.category || "").toLowerCase().includes("hotel"));
-        const nonHotelServices = rawServices.filter((s) => !String(s.type || s.category || "").toLowerCase().includes("hotel"));
+        const hotelServices = (rawServices || []).filter((s) => s && String(s.type || s.category || "").toLowerCase().includes("hotel"));
+        const nonHotelServices = (rawServices || []).filter((s) => s && !String(s.type || s.category || "").toLowerCase().includes("hotel"));
 
         const displayHotels = hotelServices;
 
@@ -723,6 +723,7 @@ export default function SharePackageModal({
         };
 
         const resolveHotelMealPlanText = (h = {}) => {
+          if (!h) return "EP ( Room Only )";
           const candidates = [
             h.mealPlan,
             h.meal_plan,
@@ -798,18 +799,21 @@ export default function SharePackageModal({
             return "CP ( Breakfast Included )";
           }
 
-          const fallbackRaw = candidates[0] || h.description || h.roomType || "";
-          return fallbackRaw.trim() ? fallbackRaw.trim() : "As per hotel policy";
+          return "EP ( Room Only )";
         };
 
         let runningHotelDate = startObj && !isNaN(startObj.getTime()) ? new Date(startObj.getTime()) : new Date();
 
         const hotelsHtml = displayHotels.length > 0 ? displayHotels.map((h, idx) => {
+          if (!h) return "";
           const rawTitle = String(h.title || "").trim();
           const rawHotelName = String(h.hotelName || h.hotel || "").trim();
           const rawServiceName = String(h.serviceName || h.name || "").trim();
 
-          const hHotelName = rawHotelName || (rawTitle && !rawTitle.toLowerCase().includes("hotel stay") && !rawTitle.toLowerCase().includes("service") ? rawTitle : (rawServiceName || "Hotel Accommodation"));
+          let hHotelName = rawHotelName || (rawTitle && !rawTitle.toLowerCase().includes("hotel stay") && !rawTitle.toLowerCase().includes("service") ? rawTitle : (rawServiceName || "Hotel Accommodation"));
+          if (similarHotelWord && !hHotelName.toLowerCase().includes("similar")) {
+            hHotelName = `${hHotelName} (or Similar)`;
+          }
           const hServiceName = rawServiceName && rawServiceName !== hHotelName ? rawServiceName : (rawTitle && rawTitle !== hHotelName ? rawTitle : "");
 
           const hRating = h.rating || h.starRating || h.hotelCategory || h.category || "";
@@ -947,7 +951,8 @@ export default function SharePackageModal({
           `;
         }).join("") : `<div style="padding: 16px 20px; text-align: center; color: #64748b; font-style: italic; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; margin-bottom: 20px; font-size: 13px;">No specific hotel accommodations listed for this voucher.</div>`;
 
-        const nonHotelServicesHtml = nonHotelServices.map((s) => {
+        const nonHotelServicesHtml = removeTransport ? "" : nonHotelServices.map((s) => {
+          if (!s) return "";
           const sTypeRaw = String(s.type || s.category || "Service").toLowerCase();
           const sTitle = s.title || s.name || s.serviceName || `${destinationVal} Service`;
           const sDesc = s.description || s.details || s.notes || "";
@@ -1188,7 +1193,7 @@ export default function SharePackageModal({
         const generatedOnStr = `${genDay} ${genMonth}, ${genYear} - ${genHours}:${genMins} Hrs UTC`;
 
         // Dynamic Terms & Conditions from Voucher / Query / Quote (sent by OPS or set by Admin)
-        const isPkgMode = isPackage || shareType === "PACKAGE" || Boolean(selectedPkg);
+        const isPkgMode = shareMode === "PACKAGE" || Boolean(selectedPkg);
         const candidateTerms = isPkgMode
           ? (selectedPkg?.termsAndConditions ||
              selectedPkg?.terms ||
@@ -1217,13 +1222,13 @@ export default function SharePackageModal({
         let parsedVoucherTerms = [];
         if (!removeTerms) {
           if (selectedTermId && selectedTermId !== "default" && selectedTermId !== "none") {
-            const matchedCustomTerm = availableAgentTerms.find((t) => t.id === selectedTermId);
-            if (matchedCustomTerm && matchedCustomTerm.items?.length > 0) {
+            const matchedCustomTerm = availableAgentTerms.find((t) => String(t.id || t._id) === String(selectedTermId));
+            if (matchedCustomTerm && Array.isArray(matchedCustomTerm.items) && matchedCustomTerm.items.length > 0) {
               parsedVoucherTerms = matchedCustomTerm.items;
             }
           }
           if (parsedVoucherTerms.length === 0) {
-            if (candidateTerms && (!Array.isArray(candidateTerms) || candidateTerms.length > 0)) {
+            if (candidateTerms) {
               parsedVoucherTerms = parseAdminTermContent(candidateTerms);
             }
             if (parsedVoucherTerms.length === 0 && DEFAULT_VOUCHER_TERMS?.length > 0) {
@@ -1239,7 +1244,10 @@ export default function SharePackageModal({
               Terms &amp; Conditions:
             </div>
             <ol style="margin: 0; padding-left: 20px; font-size: 11.5px; color: #1e293b; line-height: 1.65;">
-              ${parsedVoucherTerms.map((t) => `<li style="margin-bottom: 5px;">${t.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</li>`).join("")}
+              ${parsedVoucherTerms.map((t) => {
+                const textStr = typeof t === "string" ? t : (t?.text || t?.content || t?.name || t?.item || String(t || ""));
+                return `<li style="margin-bottom: 5px;">${String(textStr).replace(/</g, "&lt;").replace(/>/g, "&gt;")}</li>`;
+              }).join("")}
             </ol>
           </div>
         ` : "";
@@ -1375,8 +1383,9 @@ export default function SharePackageModal({
 
         setEmailPreviewHtml(emailVoucherHtml);
       } catch (error) {
+        console.error("Voucher Email Preview Error:", error);
         setEmailPreviewHtml("");
-        setEmailPreviewError("Unable to load Travel Voucher email preview.");
+        setEmailPreviewError(error?.message || "Unable to load Travel Voucher email preview.");
       } finally {
         setIsEmailPreviewLoading(false);
       }
@@ -3547,6 +3556,7 @@ export default function SharePackageModal({
   if (!isOpen) return null;
 
   return (
+
     <AnimatePresence>
       <div className="fixed inset-0 z-[100] flex justify-center items-start bg-slate-950/70 p-2 sm:p-4 pt-2 sm:pt-3 overflow-y-auto custom-scrollbar">
         <motion.div
@@ -3758,8 +3768,8 @@ export default function SharePackageModal({
                     className="text-xs font-semibold bg-white border border-slate-300 rounded px-2 py-0.5 text-slate-800 shadow-2xs focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500 outline-none cursor-pointer max-w-[200px] sm:max-w-[240px] truncate disabled:opacity-50"
                   >
                     <option value="">Select Term &amp; Condition</option>
-                    {availableAgentTerms.map((t) => (
-                      <option key={t.id} value={t.id}>
+                    {availableAgentTerms.map((t, idx) => (
+                      <option key={t.id || `term-${idx}`} value={t.id}>
                         {t.name} ({t.items?.length || 0} pts)
                       </option>
                     ))}
@@ -4615,7 +4625,12 @@ export default function SharePackageModal({
         </motion.div>
       </div>
 
-      {/* TOP RECIPIENT EMAIL PROMPT MODAL */}
+
+
+
+
+      {/*======================================TOP RECIPIENT EMAIL PROMPT MODAL =======================================================*/}
+
       <AnimatePresence>
         {isSendEmailModalOpen && (
           <div className="fixed inset-0 z-[160] flex justify-center items-start pt-12 sm:pt-16 bg-slate-950/65 backdrop-blur-xs p-4 overflow-y-auto custom-scrollbar">

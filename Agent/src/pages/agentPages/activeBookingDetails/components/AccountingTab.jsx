@@ -70,8 +70,9 @@ export const AccountingTab = ({
               <span className="absolute right-0 top-0 bottom-0 w-[3px] bg-[#35489e] rounded-l-xs" />
             )}
           </button>
+          
 
-          <button
+          {/* <button
             type="button"
             onClick={() => setAccountingSubTab("proforma")}
             className={`w-full text-left px-3.5 py-2.5 text-[14px] transition-all relative flex items-center justify-between cursor-pointer ${
@@ -84,7 +85,9 @@ export const AccountingTab = ({
             {accountingSubTab === "proforma" && (
               <span className="absolute right-0 top-0 bottom-0 w-[3px] bg-[#35489e] rounded-l-xs" />
             )}
-          </button>
+          </button> */}
+
+
         </div>
       </div>
 

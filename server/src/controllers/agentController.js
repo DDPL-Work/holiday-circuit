@@ -779,6 +779,7 @@ const formatAuthenticatedUser = (user) => ({
   companyName: user.companyName || "",
   phone: user.phone || "",
   profileImage: user.profileImage || "",
+  gstNumber: user.gstNumber || "",
   coverImage: user.coverImage || "",
   brandingName: user.brandingName || "",
   brandingLogo: user.brandingLogo || "",
@@ -2602,6 +2603,7 @@ export const sendAgentVoucherEmail = async (req, res, next) => {
     next(error);
   }
 };
+
 // ========================== Login Agent Controller ==========================
 
 export const login = async (req, res, next) => {
@@ -2699,6 +2701,9 @@ export const login = async (req, res, next) => {
   }
 };
 
+
+
+
 export const sendHeartbeat = async (req, res, next) => {
   try {
     const userId = req.user?.id || req.user?._id;
@@ -2716,6 +2721,8 @@ export const sendHeartbeat = async (req, res, next) => {
     next(error);
   }
 };
+
+
 
 // Helper to upload base64 image strings to Cloudinary and return the secure URL
 const uploadBase64ToCloudinary = async (base64String, folder = "holiday-circuit/profiles") => {
@@ -2845,6 +2852,8 @@ export const updateProfile = async (req, res, next) => {
     next(error);
   }
 };
+
+
 
 export const getMe = async (req, res, next) => {
   try {
@@ -3422,6 +3431,7 @@ export const createQuery = async (req, res, next) => {
 
     /* ================= OPS ROUND ROBIN ================= */
 
+
     //========================= 1️⃣ get all active ops users ================================
     const opsUsers = await Auth.find({
       role: "operations",
@@ -3430,6 +3440,7 @@ export const createQuery = async (req, res, next) => {
       accountStatus: "Active",
       manager: { $exists: true, $ne: "" },
     }).sort({ createdAt: 1 });
+
 
     if (!opsUsers.length) {
       return next(new ApiError(400, "No manager-created operations executive available for query assignment"));
@@ -4291,6 +4302,9 @@ export const getQuotationsByQuery = async (req, res, next) => {
     next(error);
   }
 };
+
+
+
 // Update Quotation Terms and Conditions
 export const updateQuotationTermsAndConditions = async (req, res, next) => {
   try {
@@ -4327,6 +4341,8 @@ export const updateQuotationTermsAndConditions = async (req, res, next) => {
     next(error);
   }
 };
+
+
 
 // Update Package Terms and Conditions (DMC Package)
 export const updatePackageTermsAndConditions = async (req, res, next) => {
@@ -4673,6 +4689,8 @@ export const updateQuotationVisibility = async (req, res, next) => {
     next(error);
   }
 };
+
+
 
 /* ========================= MARK QUOTATION SHARED ========================= */
 export const markQuotationShared = async (req, res, next) => {
@@ -5657,6 +5675,8 @@ export const updatePaymentStatus = async (req, res) => {
   }
 };
 
+
+
 const resolveReceiptClientName = (query = {}) => {
   const travelers = Array.isArray(query?.travelerDetails) ? query.travelerDetails : [];
   const adultTraveler = travelers.find(
@@ -5802,6 +5822,7 @@ export const generateAgentFinancePaymentReceipt = async (req, res) => {
 };
 
 
+
 //=============================== Notification Controller ============================
 
 export const getMyNotifications = async (req, res) => {
@@ -5820,6 +5841,8 @@ export const getMyNotifications = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
+
+
 
 //==================== Mark all notifications as read ===================================
 
@@ -5860,7 +5883,6 @@ export const deleteNotification = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
-
 
 
 
@@ -6166,8 +6188,6 @@ export const updateQuotationBranding = async (req, res, next) => {
 
 
 
-
-
 const getAgentTaskStage = (query = {}) => {
   const status = String(query?.agentStatus || "").trim();
   if (["Confirmed", "Booking Confirmed"].includes(status)) return "BOOKING_CONFIRMED";
@@ -6177,9 +6197,9 @@ const getAgentTaskStage = (query = {}) => {
 };
 
 
-
 const getAgentTaskActorName = (req) =>
   String(req.user?.name || req.user?.fullName || req.user?.email || "Agent").trim() || "Agent";
+
 
 const getAgentTaskTimeAgo = (value) => {
   const timestamp = new Date(value).getTime();
@@ -6210,7 +6230,6 @@ const serializeAgentTask = (task = {}) => ({
 
 
 
-
 const getAgentTaskDayRange = () => {
   const indiaOffsetMs = 330 * 60 * 1000;
   const indiaClock = new Date(Date.now() + indiaOffsetMs);
@@ -6221,6 +6240,7 @@ const getAgentTaskDayRange = () => {
   return { start, end };
 };
 
+// 
 const findAgentOwnedTaskQuery = async (agentId, queryId) => {
   if (!mongoose.isValidObjectId(queryId)) return null;
   return TravelQuery.findOne({ _id: queryId, agent: agentId }).select("agentStatus queryId");
@@ -6228,6 +6248,7 @@ const findAgentOwnedTaskQuery = async (agentId, queryId) => {
 
 
 
+// 
 export const getAgentQueryTasks = async (req, res, next) => {
   try {
     const agentId = getAuthenticatedUserId(req);
@@ -6247,6 +6268,7 @@ export const getAgentQueryTasks = async (req, res, next) => {
     next(error);
   }
 };
+
 
 
 
@@ -6332,6 +6354,7 @@ export const deleteAgentQueryTask = async (req, res, next) => {
 
 
 
+
 export const getAgentDueTasks = async (req, res, next) => {
   try {
     const agentId = getAuthenticatedUserId(req);
@@ -6359,6 +6382,7 @@ export const getAgentDueTasks = async (req, res, next) => {
     next(error);
   }
 };
+
 
 
 export const dismissAgentDueTasks = async (req, res, next) => {
@@ -6389,6 +6413,7 @@ export const dismissAgentDueTasks = async (req, res, next) => {
 };
 
 
+
 const formatTermDate = (date) => {
   const d = new Date(date);
   const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -6399,6 +6424,8 @@ const formatTermDate = (date) => {
   hours = hours ? hours : 12; 
   return `${d.getDate()} ${months[d.getMonth()]}, ${d.getFullYear()} ${hours}:${minutes} ${ampm}`;
 };
+
+
 
 export const createTermsAndConditions = async (req, res, next) => {
   try {
@@ -6436,6 +6463,9 @@ export const createTermsAndConditions = async (req, res, next) => {
     next(error);
   }
 };
+
+
+
 
 export const updateTermsAndConditions = async (req, res, next) => {
   try {
@@ -6477,6 +6507,9 @@ export const updateTermsAndConditions = async (req, res, next) => {
   }
 };
 
+
+
+
 export const fetchTermsAndConditions = async (req, res, next) => {
   try {
     const userId = getAuthenticatedUserId(req);
@@ -6497,6 +6530,9 @@ export const fetchTermsAndConditions = async (req, res, next) => {
     next(error);
   }
 };
+
+
+
 
 export const fetchByIDTermsAndConditions = async (req, res, next) => {
   try {
@@ -6529,6 +6565,8 @@ export const fetchByIDTermsAndConditions = async (req, res, next) => {
     next(error);
   }
 };
+
+
 
 export const deleteTermsAndConditions = async (req, res, next) => {
   try {

@@ -179,14 +179,14 @@ const AgentDashboard = () => {
       icon: Upload,
       iconColor: "text-violet-600 bg-violet-50/80 border border-violet-100",
     },
-    {
-      label: "Check Payment History",
-      path: "/agent/finance",
-      borderColor: "border-l-amber-500",
-      bgClass: "from-amber-50/20 to-white hover:from-amber-50/50 hover:to-white/80",
-      icon: Wallet,
-      iconColor: "text-amber-600 bg-amber-50/80 border border-amber-100",
-    },
+    // {
+    //   label: "Check Payment History",
+    //   path: "/agent/finance",
+    //   borderColor: "border-l-amber-500",
+    //   bgClass: "from-amber-50/20 to-white hover:from-amber-50/50 hover:to-white/80",
+    //   icon: Wallet,
+    //   iconColor: "text-amber-600 bg-amber-50/80 border border-amber-100",
+    // },
   ];
 
   const stats = [
@@ -220,7 +220,7 @@ const AgentDashboard = () => {
       variants={containerVariant}
       initial="hidden"
       animate="visible"
-      className="space-y-3.5 px-0 pt-0 pb-0"
+      className="space-y-8 px-0 pt-1 pb-0"
     >
       {/* ── Header ── */}
       <motion.header
