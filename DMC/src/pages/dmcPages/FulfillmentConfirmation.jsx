@@ -293,7 +293,7 @@ const handleDownloadReceipt = async (inst, query) => {
     receiptPath = `/uploads/payoutreceipts/DmcPayoutReceipt${sanitized}.pdf`;
   }
 
-  const apiBaseUrl = API?.defaults?.baseURL || "http://localhost:3000/api";
+  const apiBaseUrl = API?.defaults?.baseURL || import.meta.env.VITE_API_BASE_URL;
   const serverBaseUrl = apiBaseUrl.replace(/\/api\/?$/, "");
 
   const fullUrl = receiptPath && receiptPath.startsWith("http")

@@ -67,9 +67,9 @@ export const DesktopNav = ({ menus = [] }) => {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -4 }}
                 transition={{ duration: 0.15, ease: "easeOut" }}
-                className="fixed left-0 right-0 top-[4.5rem] z-50 w-full rounded-none border-b border-white/10 bg-[#0F172A]/95 px-3 sm:px-5 lg:px-6 py-2 shadow-xl backdrop-blur-2xl before:absolute before:-top-5 before:left-0 before:right-0 before:h-5"
+                className="absolute right-0 top-full mt-2 z-50 w-68 rounded-xl border border-white/10 bg-[#0F172A]/95 p-2 shadow-xl backdrop-blur-2xl before:absolute before:-top-2 before:left-0 before:right-0 before:h-2"
               >
-                <div className="flex flex-wrap items-center justify-start gap-1 sm:gap-2 w-full">
+                <div className="flex flex-col items-stretch gap-1 w-full">
                   {overflowMenus.map((item) => {
                     const Icon = item.icon;
                     const active = isItemActive(item, location);

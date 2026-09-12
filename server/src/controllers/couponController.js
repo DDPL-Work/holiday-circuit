@@ -208,7 +208,7 @@ const getAgentBySelection = async ({ assignedAgentId = "", email = "" } = {}) =>
   }
 
   if (!normalizedEmail || !emailPattern.test(normalizedEmail)) {
-    throw new ApiError(400, "Please select a valid approved agent email");
+    throw new ApiError(400, "Please provide a valid email");
   }
 
   const agent = await Auth.findOne({
@@ -217,7 +217,7 @@ const getAgentBySelection = async ({ assignedAgentId = "", email = "" } = {}) =>
   }).select("name companyName email");
 
   if (!agent) {
-    throw new ApiError(404, "Approved active agent not found for this email");
+    return { _id: null, email: normalizedEmail, name: "", companyName: "" };
   }
 
   return agent;
@@ -263,7 +263,7 @@ const buildCouponPayload = async (req, existingCoupon = null) => {
     startDate,
     endDate,
     usageLimit,
-    assignedAgent: agent._id,
+    assignedAgent: agent._id || null,
     assignedAgentName: agent.companyName || agent.name || "",
     assignedAgentEmail: String(agent.email || "").trim().toLowerCase(),
     updatedBy: req.user?.id || null,
@@ -390,17 +390,19 @@ export const sendCouponToAgent = async (req, res, next) => {
       return next(new ApiError(404, "Coupon not found"));
     }
 
-    const agent = await Auth.findOne({
+    const agent = coupon.assignedAgent ? await Auth.findOne({
       _id: coupon.assignedAgent,
       ...ACTIVE_AGENT_FILTER,
-    }).select("name companyName email");
+    }).select("name companyName email") : null;
 
-    if (!agent?.email) {
-      return next(new ApiError(400, "Assigned agent email is missing or inactive"));
+    const targetEmail = agent?.email || coupon.assignedAgentEmail;
+
+    if (!targetEmail) {
+      return next(new ApiError(400, "Assigned email is missing"));
     }
 
-    await sendCouponEmail(agent.email, {
-      agentName: agent.companyName || agent.name || "Agent",
+    await sendCouponEmail(targetEmail, {
+      agentName: agent?.companyName || agent?.name || coupon.assignedAgentName || "User",
       code: coupon.code,
       discount: coupon.discountLabel,
       description: coupon.description,
@@ -415,28 +417,30 @@ export const sendCouponToAgent = async (req, res, next) => {
     coupon.sentCount = Number(coupon.sentCount || 0) + 1;
     await coupon.save();
 
-    await Notification.create({
-      user: agent._id,
-      type: "info",
-      title: "New Coupon Shared",
-      message: `${coupon.code} has been shared with your account. Use it while making your payment.`,
-      link: "/agent/bookings",
-      meta: {
-        kind: "coupon",
-        couponId: coupon._id,
-        code: coupon.code,
-        discount: coupon.discountLabel,
-        description: coupon.description,
-        startDate: coupon.startDate,
-        endDate: coupon.endDate,
-        usageLimit: coupon.usageLimit,
-        sentAt,
-      },
-    });
+    if (agent) {
+      await Notification.create({
+        user: agent._id,
+        type: "info",
+        title: "New Coupon Shared",
+        message: `${coupon.code} has been shared with your account. Use it while making your payment.`,
+        link: "/agent/bookings",
+        meta: {
+          kind: "coupon",
+          couponId: coupon._id,
+          code: coupon.code,
+          discount: coupon.discountLabel,
+          description: coupon.description,
+          startDate: coupon.startDate,
+          endDate: coupon.endDate,
+          usageLimit: coupon.usageLimit,
+          sentAt,
+        },
+      });
+    }
 
     res.status(200).json({
       success: true,
-      message: "Coupon sent to agent successfully",
+      message: "Coupon sent successfully",
       data: {
         coupon: formatCoupon(coupon),
       },

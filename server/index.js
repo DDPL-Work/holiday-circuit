@@ -19,7 +19,28 @@ const REQUEST_BODY_LIMIT = process.env.REQUEST_BODY_LIMIT || "25mb";
 dbConnect();
 
 // ====================== MIDDLEWARE ==================
-app.use(cors());
+const allowedOrigins = [
+  "https://holidaycircuit.com",
+  "https://www.holidaycircuit.com",
+  "https://admin.holidaycircuit.com",
+  "https://agent.holidaycircuit.com",
+  "https://dmc.holidaycircuit.com",
+  "https://ops.holidaycircuit.com",
+  "https://finance.holidaycircuit.com",
+];
+// const allowedOrigins = [
+//   "http://localhost:5173",
+//   "http://localhost:5174",
+//   "http://localhost:5175",
+//   "http://localhost:5176",
+//   "http://localhost:5177",
+// ];
+
+app.use(cors({
+  origin: allowedOrigins,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "Cache-Control"],
+}));
 app.use(express.json({ limit: REQUEST_BODY_LIMIT }));
 app.use(express.urlencoded({ extended: true, limit: REQUEST_BODY_LIMIT }));
 app.use(morgan("dev"));
