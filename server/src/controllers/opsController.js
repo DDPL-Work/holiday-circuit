@@ -1039,7 +1039,7 @@ const notifyOpsForBlockedBlackoutRate = async ({ query, service, blackout }) => 
 
 const canUserOverrideBlackoutRate = (user = {}) => {
   const role = String(user?.role || "").trim().toLowerCase();
-  return ["admin", "operation_manager", "operations_manager", "ops_manager"].includes(role);
+  return ["admin", "operation_manager", "operations_manager", "ops_manager", "operations", "ops"].includes(role);
 };
 
 const isBlackoutOverrideApproved = ({ user = {}, service = {} }) => {
@@ -1057,24 +1057,19 @@ const assertNoBlackoutContractRates = async ({ query, services = [], user = {} }
 
   if (!blockedServices.length) return;
 
-  await Promise.all(
-    blockedServices.map((item) =>
-      notifyOpsForBlockedBlackoutRate({
-        query,
-        service: item.service,
-        blackout: item.blackout,
-      }),
-    ),
-  );
-
-  const serviceList = blockedServices
-    .map(({ service, blackout }) => `${service.title || "Hotel"} (${formatBlackoutLabel(blackout)})`)
-    .join(", ");
-
-  throw new ApiError(
-    400,
-    `Blackout date matched. Contracted hotel rate cannot be used for: ${serviceList}. Use manual/special pricing instead.`,
-  );
+  try {
+    await Promise.all(
+      blockedServices.map((item) =>
+        notifyOpsForBlockedBlackoutRate({
+          query,
+          service: item.service,
+          blackout: item.blackout,
+        }),
+      ),
+    );
+  } catch (err) {
+    console.error("Blackout notification error:", err);
+  }
 };
 
 const notifyAssignedOpsMemberForBlackoutOverride = async ({ query, services = [], user = {}, quotation = null }) => {
@@ -1692,11 +1687,17 @@ const buildAgentQuotationEmailPayload = ({ quotation, query }) => {
   ];
 
   return {
+    isOpsQuotation: true,
+    agentBrandingName: "Holiday Circuit",
+    agentLogo: "https://res.cloudinary.com/dszadvuz6/image/upload/e_trim/v1777932524/unzssx1sjkrigbgldg7h.png",
+    agentCompanyAddress: "2nd Floor, 632 Block B1, Janakpuri, New Delhi - 110058",
+    agentPhone: "+91 8851346665, +91 9971706003",
+    agentEmail: "ops@leelatravels.com",
     recipientName:
       query?.agent?.companyName ||
       query?.agent?.name ||
       "Guest",
-    agencyName: query?.agent?.companyName || "",
+    agencyName: "Holiday Circuit",
     quotationNumber: quotation?.quotationNumber || "",
     queryId: query?.queryId || "",
     destination: query?.destination || "",
@@ -1713,20 +1714,24 @@ const buildAgentQuotationEmailPayload = ({ quotation, query }) => {
     dayWiseItinerary: normalizeDayWiseItinerary(quotation?.dayWiseItinerary),
     services: Array.isArray(quotation?.services)
       ? quotation.services.map((service) => {
-        const normalizedServiceType = normalizeQuotationServiceType(service?.type);
-        const ratio = totalServiceBase > 0 ? Number(service.total || 0) / totalServiceBase : 0;
+        const rawService = typeof service?.toObject === "function" ? service.toObject() : (service || {});
+        const normalizedServiceType = normalizeQuotationServiceType(rawService?.type);
+        const ratio = totalServiceBase > 0 ? Number(rawService.total || 0) / totalServiceBase : 0;
         const clientAmount = totalServiceBase > 0 ? Math.round(totalAmount * ratio) : 0;
-        const serviceDescription = String(service?.description || "").replace(/\|/g, " | ").trim();
+        const serviceDescription = String(rawService?.description || "").replace(/\|/g, " | ").trim();
         const transportNotes = normalizedServiceType === "transfer"
-          ? buildTransportQuotationNotes(service)
+          ? buildTransportQuotationNotes(rawService)
           : [];
         const description = [serviceDescription, ...transportNotes].filter(Boolean).join("\n");
         return {
-          title: service?.title || "Service",
+          ...rawService,
+          title: rawService?.title || rawService?.name || "Service",
+          type: normalizedServiceType || rawService?.type || "hotel",
+          nights: Number(rawService?.nights || rawService?.nightCount || 0),
           typeLabel: MAIL_SERVICE_TYPE_LABELS[normalizedServiceType] || "Travel Service",
-          location: buildServiceLocationLabel(service),
-          serviceDateLabel: formatMailDateLabel(service?.serviceDate),
-          quantityLabel: buildServiceQuantityLabel(service, queryPax),
+          location: buildServiceLocationLabel(rawService),
+          serviceDateLabel: formatMailDateLabel(rawService?.serviceDate),
+          quantityLabel: buildServiceQuantityLabel(rawService, queryPax),
           description,
           clientAmount,
         };
@@ -2849,6 +2854,8 @@ export const getOrderAcceptanceQueries = async (req, res, next) => {
   }
 };
 
+
+
 /* ========================= CREATE QUOTATION ========================= */
 
 export const createQuotation = async (req, res, next) => {
@@ -2870,17 +2877,22 @@ export const createQuotation = async (req, res, next) => {
       inclusions = [],
       exclusions = [],
       additionalNotes = [],
+      termsAndConditions = [],
       dayWiseItinerary = [],
     } = req.body;
 
+    const stripHtml = (text) => String(text || "").replace(/<[^>]*>?/gm, "").replace(/\s+/g, " ").trim();
     const normalizedInclusions = Array.isArray(inclusions)
-      ? inclusions.map((item) => String(item || "").trim()).filter(Boolean)
+      ? inclusions.map(stripHtml).filter(Boolean)
       : [];
     const normalizedExclusions = Array.isArray(exclusions)
-      ? exclusions.map((item) => String(item || "").trim()).filter(Boolean)
+      ? exclusions.map(stripHtml).filter(Boolean)
       : [];
     const normalizedAdditionalNotes = Array.isArray(additionalNotes)
-      ? additionalNotes.map((item) => String(item || "").trim()).filter(Boolean)
+      ? additionalNotes.map(stripHtml).filter(Boolean)
+      : [];
+    const normalizedTermsAndConditions = Array.isArray(termsAndConditions)
+      ? termsAndConditions.map((item) => String(item || "").trim()).filter(Boolean)
       : [];
     const normalizedDayWiseItinerary = normalizeDayWiseItinerary(dayWiseItinerary);
     const sendViaArray = Array.isArray(sendVia)
@@ -3035,80 +3047,105 @@ export const createQuotation = async (req, res, next) => {
     // const subTotal = base + opsAmt + service + handling;
     const totalAmount = Number(subTotal + taxTotal);
 
-    const formattedServices = resolvedServices.map(s => ({
-      serviceId: s.serviceId,
-      supplierId: s.supplierId || undefined,
-      supplierName: s.supplierName || "",
-      dmcId: s.dmcId || s.supplierId || undefined,
-      dmcName: s.dmcName || "",
-      type: s.type || s.serviceType || s.category || "",
-      title:
-        s.title ||
-        s.serviceName ||
-        s.name ||
-        s.hotelName ||
-        s.activityName ||
-        s.sightseeingName ||
-        s.transferName ||
-        s.description ||
-        "Service",
+    const formattedServices = resolvedServices.map(s => {
+      const type = String(s.type || s.serviceType || s.category || "").toLowerCase();
+      const basePayload = {
+        serviceId: s.serviceId,
+        supplierId: s.supplierId || undefined,
+        supplierName: s.supplierName || "",
+        dmcId: s.dmcId || s.supplierId || undefined,
+        dmcName: s.dmcName || "",
+        type: s.type || s.serviceType || s.category || "",
+        title:
+          s.title ||
+          s.serviceName ||
+          s.name ||
+          s.hotelName ||
+          s.activityName ||
+          s.sightseeingName ||
+          s.transferName ||
+          s.description ||
+          "Service",
+        city: s.city,
+        country: s.country,
+        description: s.description,
+        serviceDate: s.serviceDate || undefined,
+        adults: Number(s.adults || 0),
+        children: Number(s.children || 0),
+        infants: Number(s.infants || 0),
+        currency: s.currency || "INR",
+        price: s.price || 0,
+        exchangeRate: Number(s.exchangeRate || 1),
+        priceInInr: Number(s.priceInInr || 0),
+        total: s.total || 0,
+        totalInInr: Number(s.totalInInr || 0),
+      };
 
-      city: s.city,
-      country: s.country,
-      description: s.description,
-      serviceDate: s.serviceDate || undefined,
+      if (type === "hotel") {
+        return {
+          ...basePayload,
+          roomCategory: s.roomCategory,
+          roomType: s.roomType,
+          hotelCategory: s.hotelCategory,
+          bedType: normalizeBedType(s.bedType),
+          rooms: s.rooms || 1,
+          nights: s.nights || 1,
+          hotelRateMode: s.hotelRateMode === "service-total" ? "service-total" : "unit-rate",
+          manualRateOverride: Boolean(s.manualRateOverride),
+          quoteBaseRate: Number(s.quoteBaseRate || 0),
+          roomTypeOptionRate: Number(s.roomTypeOptionRate || 0),
+          roomTypeOptionCurrency: s.roomTypeOptionCurrency || s.currency || "INR",
+          extraAdult: Boolean(s.extraAdult),
+          childWithBed: Boolean(s.childWithBed),
+          childWithoutBed: Boolean(s.childWithoutBed),
+          awebRate: Number(s.awebRate || 0),
+          cwebRate: Number(s.cwebRate || 0),
+          cwoebRate: Number(s.cwoebRate || 0),
+        };
+      } else if (["transfer", "transport", "car"].includes(type)) {
+        return {
+          ...basePayload,
+          vehicleType: s.vehicleType,
+          pickupTime: s.pickupTime || s.time || "",
+          time: s.pickupTime || s.time || "",
+          passengerCapacity: s.passengerCapacity,
+          luggageCapacity: s.luggageCapacity,
+          usageType: normalizeUsageType(s.usageType),
+          transportUsageOptionKey: s.transportUsageOptionKey || "",
+          transportUsageLabel: s.transportUsageLabel || "",
+          transportUsageLimitOptionKey: s.transportUsageLimitOptionKey || "",
+          extraPerKmRate: Number(s.extraPerKmRate || 0),
+          fullDayExtraPerKmRate: Number(s.fullDayExtraPerKmRate || 0),
+          halfDayExtraPerKmRate: Number(s.halfDayExtraPerKmRate || 0),
+          days: s.days || 1,
+          pax: s.pax || 1,
+        };
+      } else if (["activity", "sightseeing"].includes(type)) {
+        return {
+          ...basePayload,
+          tourType: s.tourType || "Sharing Tour",
+          tourTypes: Array.isArray(s.tourTypes) ? s.tourTypes : [],
+          pricingBasis: s.pricingBasis || "",
+          maxPax: s.maxPax || "",
+          adultPrice: Number(s.adultPrice !== undefined ? s.adultPrice : (s.price || 0)),
+          childPrice: Number(s.childPrice !== undefined ? s.childPrice : 0),
+          duration: s.duration || "",
+          slots: s.slots || "",
+          selectedSlot: s.selectedSlot || s.slot || "",
+          operatingDays: s.operatingDays || "",
+          openingTime: s.openingTime || "",
+          closingTime: s.closingTime || "",
+          days: s.days || 1,
+          pax: s.pax || 1,
+        };
+      }
 
-      roomCategory: s.roomCategory,
-      roomType: s.roomType,
-      hotelCategory: s.hotelCategory,
-      bedType: normalizeBedType(s.bedType),
-      adults: s.adults,
-      children: s.children,
-      infants: s.infants,
-
-      // HOTEL
-      nights: s.nights || 1,
-      adults: s.adults || 0,
-      children: s.children || 0,
-      infants: s.infants || 0,
-      rooms: s.rooms || 1,
-      bedType: normalizeBedType(s.bedType),
-
-      // TRANSFER
-      vehicleType: s.vehicleType,
-      passengerCapacity: s.passengerCapacity,
-      luggageCapacity: s.luggageCapacity,
-      transportUsageOptionKey: s.transportUsageOptionKey || "",
-      transportUsageLabel: s.transportUsageLabel || "",
-      transportUsageLimitOptionKey: s.transportUsageLimitOptionKey || "",
-      extraPerKmRate: Number(s.extraPerKmRate || 0),
-      fullDayExtraPerKmRate: Number(s.fullDayExtraPerKmRate || 0),
-      halfDayExtraPerKmRate: Number(s.halfDayExtraPerKmRate || 0),
-      days: s.days || 1,
-
-      // ACTIVITY
-      pax: s.pax || 1,
-
-      // PRICE
-      currency: s.currency || "INR",
-      price: s.price || 0,
-      hotelRateMode: s.hotelRateMode === "service-total" ? "service-total" : "unit-rate",
-      manualRateOverride: Boolean(s.manualRateOverride),
-      quoteBaseRate: Number(s.quoteBaseRate || 0),
-      roomTypeOptionRate: Number(s.roomTypeOptionRate || 0),
-      roomTypeOptionCurrency: s.roomTypeOptionCurrency || s.currency || "INR",
-      exchangeRate: Number(s.exchangeRate || 1),
-      priceInInr: Number(s.priceInInr || 0),
-      extraAdult: Boolean(s.extraAdult),
-      childWithBed: Boolean(s.childWithBed),
-      childWithoutBed: Boolean(s.childWithoutBed),
-      awebRate: Number(s.awebRate || 0),
-      cwebRate: Number(s.cwebRate || 0),
-      cwoebRate: Number(s.cwoebRate || 0),
-      total: s.total || 0,
-      totalInInr: Number(s.totalInInr || 0),
-      usageType: normalizeUsageType(s.usageType)
-    }));
+      return {
+        ...basePayload,
+        days: s.days || 1,
+        pax: s.pax || 1,
+      };
+    });
 
     console.log("🔥 DEBUG:", {
       subTotal,
@@ -3126,6 +3163,7 @@ export const createQuotation = async (req, res, next) => {
       quotation.inclusions = normalizedInclusions;
       quotation.exclusions = normalizedExclusions;
       quotation.additionalNotes = normalizedAdditionalNotes;
+      quotation.termsAndConditions = normalizedTermsAndConditions;
       quotation.dayWiseItinerary = normalizedDayWiseItinerary;
       quotation.services = formattedServices;
       quotation.pricing = {
@@ -3192,6 +3230,7 @@ export const createQuotation = async (req, res, next) => {
           { label: "IFSC", value: "HDFC0004413" },
           { label: "Branch", value: "RAMPHAL CHOWK SEC VII DWARKA" },
         ],
+        termsAndConditions: normalizedTermsAndConditions,
       };
 
       if (isNaN(totalAmount)) {
@@ -3277,6 +3316,7 @@ export const createQuotation = async (req, res, next) => {
       inclusions: normalizedInclusions,
       exclusions: normalizedExclusions,
       additionalNotes: normalizedAdditionalNotes,
+      termsAndConditions: normalizedTermsAndConditions,
       dayWiseItinerary: normalizedDayWiseItinerary,
 
       services: formattedServices,   // ✅ ADD THIS
@@ -3836,6 +3876,7 @@ export const getVoucherManagementData = async (req, res, next) => {
           agentName: query.agent?.companyName || query.agent?.name || "",
           agentEmail: query.agent?.email || "",
           agentPhone: query.agent?.phone || "",
+          termsAndConditions: quotation?.termsAndConditions || [],
         };
       })
     );
@@ -3852,7 +3893,7 @@ export const getVoucherManagementData = async (req, res, next) => {
         voucher.quotation ||
         (voucher.query?._id
           ? await getLatestOperationalQuotation(voucher.query._id)
-            .select("services")
+            .select("services termsAndConditions")
           : null);
       const quotationServices = fallbackQuotation?.services || [];
       const resolvedVoucherServices = buildResolvedVoucherServices({
@@ -3890,6 +3931,7 @@ export const getVoucherManagementData = async (req, res, next) => {
         agentPhone: voucher.agent?.phone || "",
         agentBrandingName: voucher.agent?.brandingName || voucher.agent?.companyName || "",
         agentLogo: voucher.agent?.brandingLogo || "",
+        termsAndConditions: voucher.termsAndConditions?.length ? voucher.termsAndConditions : (fallbackQuotation?.termsAndConditions || []),
       };
     }));
 
@@ -4180,20 +4222,40 @@ export const generateVoucher = async (req, res, next) => {
       travelDate: query.startDate || null,
       passengers: `${passengers} PAX`,
       duration: `${nights}N/${days}D`,
-      services: (quotation?.services || []).map((service, index) => ({
-        type: service.type || "service",
-        name: service.title || "",
-        status: getServiceConfirmationStatus(
-          confirmationServices,
-          service,
-          index,
-        ) || "",
-        confirmation: "Pending",
-      })),
+      termsAndConditions: quotation?.termsAndConditions || [],
+      services: (quotation?.services || []).map((service, index) => {
+        const cnfNum = getServiceConfirmationNumber(confirmationServices, service, index);
+        const cnfStatus = getServiceConfirmationStatus(confirmationServices, service, index);
+        return {
+          type: service.type || "service",
+          name: service.title || service.name || "",
+          status: cnfStatus || (cnfNum && cnfNum !== "Pending" ? "Confirmed" : "Pending"),
+          confirmation: cnfNum && cnfNum !== "Pending" ? cnfNum : (cnfStatus === "Confirmed" ? "Confirmed" : "Pending"),
+        };
+      }),
       generatedBy: req.user.id,
       generatedAt: new Date(),
     });
 
+    if (quotation && Array.isArray(quotation.services)) {
+      quotation.services = quotation.services.map((service, index) => {
+        const cnfNum = getServiceConfirmationNumber(confirmationServices, service, index);
+        const cnfStatus = getServiceConfirmationStatus(confirmationServices, service, index);
+        const serviceObj = service.toObject ? service.toObject() : { ...service };
+        if (cnfNum && cnfNum !== "Pending") {
+          serviceObj.confirmationNumber = cnfNum;
+          serviceObj.voucherNumber = cnfNum;
+          serviceObj.confirmation = cnfNum;
+          serviceObj.status = "Confirmed";
+          serviceObj.isVoucherGenerated = true;
+        } else if (cnfStatus && cnfStatus !== "Pending") {
+          serviceObj.status = cnfStatus;
+          serviceObj.confirmation = cnfStatus;
+        }
+        return serviceObj;
+      });
+      await quotation.save();
+    }
 
     res.status(200).json({
       success: true,
@@ -4213,7 +4275,7 @@ export const generateVoucher = async (req, res, next) => {
 
 export const sendVoucherToAgent = async (req, res, next) => {
   try {
-    const { branding = "with", email, phone, dispatchChannel = "EMAIL" } = req.body;
+    const { branding = "with", email, phone, dispatchChannel = "EMAIL", termsAndConditions = null } = req.body;
     const normalizedDispatchChannel = String(dispatchChannel || "EMAIL").trim().toUpperCase();
     const query = await TravelQuery.findById(req.params.id).populate("agent");
 
@@ -4237,6 +4299,10 @@ export const sendVoucherToAgent = async (req, res, next) => {
       });
     }
 
+    if (termsAndConditions && Array.isArray(termsAndConditions)) {
+      voucher.termsAndConditions = termsAndConditions;
+    }
+
     const latestInvoice = await Invoice.findOne({ query: query._id })
       .select("paymentStatus paymentVerification.status createdAt")
       .sort({ createdAt: -1 })
@@ -4251,10 +4317,10 @@ export const sendVoucherToAgent = async (req, res, next) => {
 
     const quotation =
       (voucher.quotation
-        ? await Quotation.findById(voucher.quotation).select("services")
+        ? await Quotation.findById(voucher.quotation).select("services termsAndConditions")
         : null) ||
       (await getLatestOperationalQuotation(query._id)
-        .select("services")
+        .select("services termsAndConditions")
       );
 
     const confirmationQueryIds = [
@@ -4311,6 +4377,7 @@ export const sendVoucherToAgent = async (req, res, next) => {
             adults: Number(query.numberOfAdults || 0),
             children: Number(query.numberOfChildren || 0),
             travelerSummary: buildTravelerSummary(query),
+            termsAndConditions: termsAndConditions || voucher.termsAndConditions || quotation?.termsAndConditions || [],
             services: resolvedVoucherServices.map((service) => ({
               type: service.type,
               title: service.name,
@@ -4395,8 +4462,6 @@ export const sendVoucherToAgent = async (req, res, next) => {
     next(error);
   }
 };
-
-
 
 
 export const getOrCreateQuotationDraft = async (req, res, next) => {
@@ -4493,6 +4558,7 @@ export const getOrCreateQuotationDraft = async (req, res, next) => {
       inclusions: Array.isArray(baseQuotation?.inclusions) ? baseQuotation.inclusions : [],
       exclusions: Array.isArray(baseQuotation?.exclusions) ? baseQuotation.exclusions : [],
       additionalNotes: Array.isArray(baseQuotation?.additionalNotes) ? baseQuotation.additionalNotes : [],
+      termsAndConditions: Array.isArray(baseQuotation?.termsAndConditions) ? baseQuotation.termsAndConditions : [],
       dayWiseItinerary: normalizeDayWiseItinerary(baseQuotation?.dayWiseItinerary),
       services: Array.isArray(baseQuotation?.services)
         ? baseQuotation.services.map((service) => ({
@@ -4571,6 +4637,7 @@ export const getOrCreateQuotationDraft = async (req, res, next) => {
       quotation.inclusions = draftPayload.inclusions;
       quotation.exclusions = draftPayload.exclusions;
       quotation.additionalNotes = draftPayload.additionalNotes;
+      quotation.termsAndConditions = draftPayload.termsAndConditions;
       quotation.dayWiseItinerary = draftPayload.dayWiseItinerary;
       quotation.services = draftPayload.services;
       quotation.sourceQuotationId = undefined;
@@ -4589,6 +4656,7 @@ export const getOrCreateQuotationDraft = async (req, res, next) => {
         quotation.inclusions = draftPayload.inclusions;
         quotation.exclusions = draftPayload.exclusions;
         quotation.additionalNotes = draftPayload.additionalNotes;
+        quotation.termsAndConditions = draftPayload.termsAndConditions;
         quotation.dayWiseItinerary = draftPayload.dayWiseItinerary;
         quotation.services = draftPayload.services;
         quotation.sourceQuotationId = draftPayload.sourceQuotationId;
@@ -4612,6 +4680,7 @@ export const getOrCreateQuotationDraft = async (req, res, next) => {
         inclusions: draftPayload.inclusions,
         exclusions: draftPayload.exclusions,
         additionalNotes: draftPayload.additionalNotes,
+        termsAndConditions: draftPayload.termsAndConditions,
         dayWiseItinerary: draftPayload.dayWiseItinerary,
         services: draftPayload.services,
         sourceQuotationId: draftPayload.sourceQuotationId,
@@ -4679,7 +4748,7 @@ export const getOpsQueryQuotations = async (req, res, next) => {
       status: { $ne: "Pending" },
     })
       .select(
-        "quotationNumber status pricing clientTotalAmount validTill services inclusions exclusions additionalNotes dayWiseItinerary agentMarkup agentRevisionRemark createdAt updatedAt createdBy",
+        "quotationNumber status pricing clientTotalAmount validTill services inclusions exclusions additionalNotes termsAndConditions dayWiseItinerary agentMarkup agentRevisionRemark createdAt updatedAt createdBy",
       )
       .populate("createdBy", "name email companyName role")
       .sort({ updatedAt: -1, createdAt: -1 })
@@ -4705,6 +4774,8 @@ export const getOpsQueryQuotations = async (req, res, next) => {
   }
 };
 
+
+
 export const saveQuotationDraft = async (req, res, next) => {
   try {
     const { quotationId } = req.params;
@@ -4719,6 +4790,7 @@ export const saveQuotationDraft = async (req, res, next) => {
       inclusions,
       exclusions,
       additionalNotes,
+      termsAndConditions,
       dayWiseItinerary,
     } = req.body;
 
@@ -4840,14 +4912,18 @@ export const saveQuotationDraft = async (req, res, next) => {
       totalInInr: Number(service.totalInInr || 0),
     }));
 
+    const stripHtml = (text) => String(text || "").replace(/<[^>]*>?/gm, "").replace(/\s+/g, " ").trim();
     if (Array.isArray(inclusions)) {
-      quotation.inclusions = inclusions.map((item) => String(item || "").trim()).filter(Boolean);
+      quotation.inclusions = inclusions.map(stripHtml).filter(Boolean);
     }
     if (Array.isArray(exclusions)) {
-      quotation.exclusions = exclusions.map((item) => String(item || "").trim()).filter(Boolean);
+      quotation.exclusions = exclusions.map(stripHtml).filter(Boolean);
     }
     if (Array.isArray(additionalNotes)) {
-      quotation.additionalNotes = additionalNotes.map((item) => String(item || "").trim()).filter(Boolean);
+      quotation.additionalNotes = additionalNotes.map(stripHtml).filter(Boolean);
+    }
+    if (Array.isArray(termsAndConditions)) {
+      quotation.termsAndConditions = termsAndConditions.map((item) => String(item || "").trim()).filter(Boolean);
     }
     if (Array.isArray(dayWiseItinerary)) {
       quotation.dayWiseItinerary = normalizeDayWiseItinerary(dayWiseItinerary);
@@ -4897,6 +4973,7 @@ export const saveQuotationDraft = async (req, res, next) => {
     next(error);
   }
 };
+
 
 export const addQuotationService = async (req, res, next) => {
   try {

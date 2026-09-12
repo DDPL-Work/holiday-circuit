@@ -50,7 +50,7 @@ const couponSchema = new mongoose.Schema(
     assignedAgent: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Auth",
-      required: true,
+      default: null,
     },
     assignedAgentName: {
       type: String,

@@ -13,9 +13,9 @@ const getVal = (row = {}, keys = []) => {
   return "";
 };
 
-export const processPackageExcel = async (filePath, ownerId) => {
+export const processPackageExcel = async (filePath, ownerId, providedWorkbook = null, sourceUpload = null) => {
 
-  const workbook = XLSX.readFile(filePath)
+  const workbook = providedWorkbook || XLSX.readFile(filePath)
 
   // ======================= PACKAGES =======================
   const packageSheet = workbook.Sheets["packages"]
@@ -39,6 +39,7 @@ export const processPackageExcel = async (filePath, ownerId) => {
       dayWiseItinerary: getVal(row, ["Day Wise Itinerary", "day_wise_itinerary", "itinerary"]),
       termsAndConditions: getVal(row, ["Terms & Conditions", "terms_and_conditions", "terms"]),
       supplier: ownerId || null,
+      sourceUpload,
       hotels: [],
       activities: [],
       transfers: [],

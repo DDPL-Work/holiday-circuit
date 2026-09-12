@@ -62,8 +62,8 @@ const normalizeCurrency = (value) => {
   return normalized || "INR";
 };
 
-export const processActivityExcel = async (filePath, ownerId) => {
-  const workbook = XLSX.readFile(filePath);
+export const processActivityExcel = async (filePath, ownerId, providedWorkbook = null, sourceUpload = null) => {
+  const workbook = providedWorkbook || XLSX.readFile(filePath);
 
   // Extract blackout dates if blackout sheet exists
   const blackoutDates = parseBlackoutDatesFromWorkbook(workbook);
@@ -164,6 +164,7 @@ export const processActivityExcel = async (filePath, ownerId) => {
       targetMap.set(groupKey, {
         serviceName: currServiceName,
         supplier: ownerId,
+        sourceUpload,
         supplierName: currSupplierName,
         country: currCountry,
         city: currCity,

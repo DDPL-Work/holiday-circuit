@@ -75,6 +75,10 @@ const voucherSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+    termsAndConditions: {
+      type: [String],
+      default: [],
+    },
     generatedBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Auth",

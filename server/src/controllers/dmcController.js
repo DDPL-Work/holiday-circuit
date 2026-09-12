@@ -982,27 +982,6 @@ export const createPackage = async (req, res, next) => {
       return next(error);
     }
 
-    const pkg = await Package.create({
-      title: String(title || "").trim(),
-      destination: String(destination || "").trim(),
-      country: String(country || "").trim(),
-      duration: String(duration || (days ? `${days} Days` : "")).trim(),
-      days: Number(days || 0),
-      description: String(description || "").trim(),
-      inclusions: String(inclusions || "").trim(),
-      exclusions: String(exclusions || "").trim(),
-      dayWiseItinerary: Array.isArray(dayWiseItinerary) ? dayWiseItinerary : (String(dayWiseItinerary || "").trim() || []),
-      termsAndConditions: String(termsAndConditions || "").trim(),
-      hotels: Array.isArray(hotels) ? hotels : [],
-      activities: Array.isArray(activities) ? activities : [],
-      transfers: Array.isArray(transfers) ? transfers : [],
-      sightseeing: Array.isArray(sightseeing) ? sightseeing : [],
-      basePrice: Number(basePrice || finalPrice),
-      tax: tax && typeof tax === "object" ? tax : {},
-      price: finalPrice,
-      supplier: req.user?.id || req.user?._id
-    });
-
     // Capture creator info and audit log
     const createdByUserId = req.user?._id || req.user?.id;
     const creatorName = req.user?.name || req.user?.fullName || "Operations Member";
@@ -1016,6 +995,33 @@ export const createPackage = async (req, res, next) => {
         : creatorRole === "admin"
         ? "Admin"
         : creatorRole;
+
+    const pkg = await Package.create({
+      title: String(title || "").trim(),
+      destination: String(destination || "").trim(),
+      country: String(country || "").trim(),
+      duration: String(duration || (days ? `${days} Days` : "")).trim(),
+      days: Number(days || 0),
+      description: String(description || "").trim(),
+      inclusions: String(inclusions || "").trim(),
+      exclusions: String(exclusions || "").trim(),
+      dayWiseItinerary: Array.isArray(dayWiseItinerary) ? dayWiseItinerary : (String(dayWiseItinerary || "").trim() || []),
+      termsAndConditions: Array.isArray(termsAndConditions)
+        ? termsAndConditions
+        : String(termsAndConditions || "").trim(),
+      hotels: Array.isArray(hotels) ? hotels : [],
+      activities: Array.isArray(activities) ? activities : [],
+      transfers: Array.isArray(transfers) ? transfers : [],
+      sightseeing: Array.isArray(sightseeing) ? sightseeing : [],
+      basePrice: Number(basePrice || finalPrice),
+      tax: tax && typeof tax === "object" ? tax : {},
+      price: finalPrice,
+      supplier: createdByUserId,
+      createdBy: createdByUserId,
+      creatorRole: creatorRole,
+      creatorName: creatorName,
+      creatorEmail: creatorEmail,
+    });
 
     try {
       // Record permanent audit entry
@@ -1099,13 +1105,67 @@ export const createPackage = async (req, res, next) => {
 
 export const getPackages = async (req, res, next) => {
   try {
+    const userRole = String(req.user?.role || "").toLowerCase().trim();
+    const userId = String(req.user?._id || req.user?.id || "");
 
     const packages = await Package.find()
-
       .populate("hotels", "hotelName roomType")
       .populate("activities", "name")
       .populate("transfers", "serviceName")
-      .populate("sightseeing", "name");
+      .populate("sightseeing", "name")
+      .populate("supplier", "name email role")
+      .populate("createdBy", "name email role")
+      .sort({ createdAt: -1 });
+
+    // Business Rule (OPS Side):
+    // 1. Admin/Manager created packages -> visible to everyone
+    // 2. Regular OPS team member created packages -> ONLY visible to the member who created it (and Managers/Admins)
+    // 3. For other roles (Agent, DMC, Finance, Manager, Admin) -> visible as per standard system access
+    if (userRole === "operations" || userRole === "ops") {
+      const filtered = packages.filter((pkg) => {
+        const pkgCreatorId = String(
+          pkg.createdBy?._id || pkg.createdBy || pkg.supplier?._id || pkg.supplier || ""
+        );
+        const pkgCreatorRole = String(
+          pkg.creatorRole ||
+          pkg.createdBy?.role ||
+          pkg.supplier?.role ||
+          ""
+        ).toLowerCase().trim();
+
+        // 1. If created by the current OPS member -> ALWAYS SHOW
+        if (pkgCreatorId && pkgCreatorId === userId) {
+          return true;
+        }
+
+        // 2. If created by Admin or Manager or Super Admin -> SHOW TO ALL OPS MEMBERS
+        if (
+          pkgCreatorRole === "admin" ||
+          pkgCreatorRole === "super_admin" ||
+          pkgCreatorRole === "operation_manager" ||
+          pkgCreatorRole === "ops_manager" ||
+          pkgCreatorRole === "manager"
+        ) {
+          return true;
+        }
+
+        // 3. Legacy / System default packages without an explicit creator or non-ops creator -> SHOW
+        if (!pkgCreatorRole && !pkgCreatorId) {
+          return true;
+        }
+        if (pkgCreatorRole && !["operations", "ops"].includes(pkgCreatorRole)) {
+          return true;
+        }
+
+        // 4. Created by another regular OPS team member -> HIDE from this member
+        return false;
+      });
+
+      return res.status(200).json({
+        success: true,
+        data: filtered,
+      });
+    }
 
     res.status(200).json({
       success: true,
@@ -1122,12 +1182,28 @@ export const getPackages = async (req, res, next) => {
 export const deletePackage = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const pkg = await Package.findById(id);
+    const pkg = await Package.findById(id).populate("supplier", "role").populate("createdBy", "role");
     if (!pkg) {
       return res.status(404).json({
         success: false,
         message: "Package template not found"
       });
+    }
+
+    const userRole = String(req.user?.role || "").toLowerCase().trim();
+    const userId = String(req.user?._id || req.user?.id || "");
+
+    // Regular operations members can only delete package templates created by themselves
+    if (userRole === "operations" || userRole === "ops") {
+      const pkgCreatorId = String(
+        pkg.createdBy?._id || pkg.createdBy || pkg.supplier?._id || pkg.supplier || ""
+      );
+      if (pkgCreatorId && pkgCreatorId !== userId) {
+        return res.status(403).json({
+          success: false,
+          message: "You can only delete package templates created by you."
+        });
+      }
     }
 
     // Capture package snapshot before deletion
@@ -1235,26 +1311,64 @@ export const deletePackage = async (req, res, next) => {
 
 export const deleteUpload = async (req, res) => {
   try {
-    const { id } = req.params
+    const { id } = req.params;
+    const ownerFilter = req.user?.role === "admin" ? {} : { uploadedAuth: req.user?.id };
 
-    const file = await UploadHistory.findById(id)
+    const file = await UploadHistory.findOne({ _id: id, ...ownerFilter });
 
     if (!file) {
-      return res.status(404).json({ message: "File not found" })
+      return res.status(404).json({ message: "File not found" });
     }
 
-    // server se file delete
+    if (file.status === "processing") {
+      return res.status(409).json({ message: "This upload is still processing and cannot be deleted yet." });
+    }
+
+    // We now allow deletion of legacy uploads. 
+    // The inventoryFilter below ensures we don't accidentally delete all inventory,
+    // as it specifically requires `sourceUpload: file._id`, which legacy records lack.
+
+    // Only inventory tagged with this exact upload is deleted. Records from
+    // older uploads without sourceUpload are intentionally left untouched.
+    const inventoryFilter = { sourceUpload: file._id };
+    let inventoryDeleteResult;
+    switch (String(file.category || "").toLowerCase()) {
+      case "hotel":
+        inventoryDeleteResult = await Hotel.deleteMany(inventoryFilter);
+        break;
+      case "transport":
+        inventoryDeleteResult = await Transfer.deleteMany(inventoryFilter);
+        break;
+      case "activity":
+      case "sightseeing": {
+        const [activityResult, sightseeingResult] = await Promise.all([
+          Activity.deleteMany(inventoryFilter),
+          Sightseeing.deleteMany(inventoryFilter),
+        ]);
+        inventoryDeleteResult = { deletedCount: activityResult.deletedCount + sightseeingResult.deletedCount };
+        break;
+      }
+      case "package":
+        inventoryDeleteResult = await Package.deleteMany(inventoryFilter);
+        break;
+      default:
+        inventoryDeleteResult = { deletedCount: 0 };
+    }
+
+    // Delete the original Excel file from the server.
     if (file.filePath && fs.existsSync("." + file.filePath)) {
-      fs.unlinkSync("." + file.filePath)
+      fs.unlinkSync("." + file.filePath);
     }
 
-    // DB se delete
-    await UploadHistory.findByIdAndDelete(id)
+    await UploadHistory.findByIdAndDelete(id);
 
-    res.json({ message: "Deleted successfully" })
+    return res.json({
+      message: `Deleted upload and ${Number(inventoryDeleteResult?.deletedCount || 0)} linked inventory record(s).`,
+      deletedInventoryRecords: Number(inventoryDeleteResult?.deletedCount || 0),
+    });
 
   } catch (error) {
-    res.status(500).json({ error: error.message })
+    return res.status(500).json({ error: error.message });
   }
 }
 
@@ -2183,6 +2297,7 @@ export const submitInternalInvoice = async (req, res, next) => {
     );
     const invoiceSource = normalizeInvoiceSource(req.body?.invoiceSource || invoiceMeta?.invoiceSource);
     const templateVariant = req.body?.templateVariant || invoiceMeta?.templateVariant || "aurora-ledger";
+    const dmcRemarks = String(req.body?.dmcRemarks || invoiceMeta?.dmcRemarks || "").trim();
 
     if (!queryId) {
       return next(new ApiError(400, "Query is required"));
@@ -2364,7 +2479,11 @@ export const submitInternalInvoice = async (req, res, next) => {
       dmcName: dmc?.companyName || dmc?.name || "",
       destination: query.destination || "",
       supplierName: String(invoiceMeta.supplierName || "").trim(),
-      invoiceNumber: String(invoiceMeta.invoiceNumber || "").trim(),
+      invoiceNumber: query.queryId
+        ? `INV-${String(query.queryId).replace(/^INV-/, "")}`
+        : (String(invoiceMeta.invoiceNumber || "").trim().startsWith("INV-")
+          ? String(invoiceMeta.invoiceNumber || "").trim()
+          : `INV-${String(invoiceMeta.invoiceNumber || "0001").trim()}`),
       invoiceDate: new Date(invoiceMeta.invoiceDate),
       dueDate: calculatedDueDate,
       creditPeriodDays,
@@ -2404,6 +2523,7 @@ export const submitInternalInvoice = async (req, res, next) => {
       reviewedByName: "",
       reviewedAt: null,
       financeNotes: "",
+      dmcRemarks,
       submittedBy: req.user.id,
       submittedAt: new Date(),
     };
@@ -2695,6 +2815,7 @@ export const submitDmcSettlementBatch = async (req, res, next) => {
     );
     const invoiceSource = normalizeInvoiceSource(req.body?.invoiceSource || invoiceMeta?.invoiceSource);
     const templateVariant = req.body?.templateVariant || invoiceMeta?.templateVariant || "aurora-ledger";
+    const dmcRemarks = String(req.body?.dmcRemarks || invoiceMeta?.dmcRemarks || req.body?.remarks || "").trim();
 
     const normalizedServiceRefs = Array.isArray(serviceRefs)
       ? serviceRefs.map((item) => String(item || "").trim()).filter(Boolean)
@@ -2872,6 +2993,7 @@ export const submitDmcSettlementBatch = async (req, res, next) => {
       taxConfig: normalizedTaxConfig,
       summary: effectiveSummary,
       templateVariant: normalizedTemplateVariant,
+      dmcRemarks,
       status: "Submitted",
       submittedBy: req.user.id,
       submittedAt: new Date(),
@@ -3206,11 +3328,11 @@ const getDmcVisibleQueriesData = async (req) => {
       checkInDate: schedule?.checkInDate || "",
       checkOutDate: schedule?.checkOutDate || "",
       checkInTime: alignedService.checkInTime || alignedService.hotelCheckInTime || "",
-      checkOutTime: alignedService.checkOutTime || alignedService.hotelCheckOutTime || "",
-      status: "Confirmed",
-      confirmationNumber: "",
-      voucherNumber: "",
-      emergency: "",
+      status: alignedService.status || "Confirmed",
+      confirmationNumber: alignedService.confirmationNumber || alignedService.voucherNumber || "",
+      voucherNumber: alignedService.voucherNumber || "",
+      emergency: alignedService.emergency || "",
+      isVoucherGenerated: Boolean(alignedService.voucherNumber || alignedService.confirmationNumber || alignedService.isVoucherGenerated),
       city: alignedService.city || "",
       country: alignedService.country || "",
       supplierId: alignedService.supplierId || alignedService.dmcId || "",
@@ -3248,8 +3370,7 @@ const getDmcVisibleQueriesData = async (req) => {
       service?.supplierId?.toString?.() ||
       service?.supplierId;
 
-    if (serviceSupplierId) {
-      if (serviceSupplierId !== currentDmcId) return null;
+    if (serviceSupplierId && serviceSupplierId === currentDmcId) {
       return mapQuotationServiceReference(service, schedule, alignedTotal, index);
     }
 
@@ -3257,26 +3378,21 @@ const getDmcVisibleQueriesData = async (req) => {
       return mapQuotationServiceReference(service, schedule, alignedTotal, index);
     }
 
-    if (!service?.serviceId) {
-      const ownedByDetails = await serviceBelongsToCurrentDmcByDetails(service);
-      return ownedByDetails
-        ? mapQuotationServiceReference(service, schedule, alignedTotal, index)
-        : null;
-    }
+    if (service?.serviceId) {
+      const ServiceModel = getServiceModel(service.type);
+      if (ServiceModel) {
+        const sourceServiceKey = `${String(service.type || "").trim().toLowerCase()}:${service.serviceId}`;
+        if (!sourceServiceSupplierByKey.has(sourceServiceKey)) {
+          const sourceService = await ServiceModel.findById(service.serviceId)
+            .select("supplier")
+            .lean();
+          sourceServiceSupplierByKey.set(sourceServiceKey, sourceService?.supplier?.toString() || "");
+        }
 
-    const ServiceModel = getServiceModel(service.type);
-    if (!ServiceModel) return null;
-
-    const sourceServiceKey = `${String(service.type || "").trim().toLowerCase()}:${service.serviceId}`;
-    if (!sourceServiceSupplierByKey.has(sourceServiceKey)) {
-      const sourceService = await ServiceModel.findById(service.serviceId)
-        .select("supplier")
-        .lean();
-      sourceServiceSupplierByKey.set(sourceServiceKey, sourceService?.supplier?.toString() || "");
-    }
-
-    if (sourceServiceSupplierByKey.get(sourceServiceKey) === currentDmcId) {
-      return mapQuotationServiceReference(service, schedule, alignedTotal, index);
+        if (sourceServiceSupplierByKey.get(sourceServiceKey) === currentDmcId) {
+          return mapQuotationServiceReference(service, schedule, alignedTotal, index);
+        }
+      }
     }
 
     const ownedByDetails = await serviceBelongsToCurrentDmcByDetails(service);
@@ -3429,6 +3545,28 @@ const getDmcVisibleQueriesData = async (req) => {
           vouchers: vouchersByQueryId.get(queryKey) || [],
         },
       );
+
+      if (Array.isArray(confirmation?.services) && confirmation.services.length > 0) {
+        quotationServices.forEach((qs, qIdx) => {
+          const qsTitle = normalizeText(qs.title || qs.serviceName || qs.hotelName || qs.name || "");
+          const matchedConf = confirmation.services.find((cs, cIdx) => {
+            if (cs._id && qs._id && String(cs._id) === String(qs._id)) return true;
+            if (cs.serviceId && qs.serviceId && String(cs.serviceId) === String(qs.serviceId)) return true;
+            const csTitle = normalizeText(cs.serviceName || cs.title || cs.name || "");
+            if (csTitle && qsTitle && (csTitle === qsTitle || csTitle.includes(qsTitle) || qsTitle.includes(csTitle))) return true;
+            return cIdx === qIdx;
+          });
+
+          if (matchedConf) {
+            if (matchedConf.confirmationNumber) qs.confirmationNumber = matchedConf.confirmationNumber;
+            if (matchedConf.voucherNumber) qs.voucherNumber = matchedConf.voucherNumber;
+            if (matchedConf.status) qs.status = matchedConf.status;
+            if (matchedConf.emergency) qs.emergency = matchedConf.emergency;
+            if (matchedConf.serviceDate) qs.serviceDate = matchedConf.serviceDate;
+            qs.isVoucherGenerated = Boolean(matchedConf.voucherNumber || matchedConf.confirmationNumber || matchedConf.isVoucherGenerated);
+          }
+        });
+      }
       const derivedServiceSchedule = deriveQuotationServiceSchedule(
         quotationServices,
         query.startDate,

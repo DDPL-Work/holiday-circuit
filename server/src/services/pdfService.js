@@ -3,17 +3,23 @@ import fs from "fs";
 import path from "path";
 import https from "https";
 import http from "http";
+import { pdfMemoryCache } from "../utils/pdfCache.js";
 
 const getLogoBuffer = (inputPathOrUrl) => {
   return new Promise((resolve) => {
-    try {
+    try { 
       if (!inputPathOrUrl || typeof inputPathOrUrl !== "string") {
         resolve(null);
         return;
       }
 
       let cleanPath = inputPathOrUrl.trim();
-      if (!cleanPath) {
+      if (
+        !cleanPath ||
+        cleanPath.includes("1771279110850") ||
+        cleanPath.includes("1771278920287") ||
+        cleanPath.includes("1771278816234")
+      ) {
         resolve(null);
         return;
       }
@@ -134,20 +140,33 @@ const FONT_BOLD_PATH = path.join(FONTS_DIR, "Roboto-Bold.ttf");
 const downloadFont = (url, destPath) => {
   return new Promise((resolve, reject) => {
     ensureDirectory(path.dirname(destPath));
-    const file = fs.createWriteStream(destPath);
-    https.get(url, (response) => {
-      if (response.statusCode !== 200) {
-        reject(new Error(`Failed to download font: status code ${response.statusCode}`));
-        return;
-      }
-      response.pipe(file);
-      file.on("finish", () => {
-        file.close(resolve);
-      });
-    }).on("error", (err) => {
-      fs.unlink(destPath, () => {});
-      reject(err);
-    });
+    const handleRequest = (currentUrl) => {
+      https
+        .get(currentUrl, (response) => {
+          if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
+            handleRequest(response.headers.location);
+            return;
+          }
+          if (response.statusCode !== 200) {
+            reject(new Error(`Failed to download font: status code ${response.statusCode}`));
+            return;
+          }
+          const file = fs.createWriteStream(destPath);
+          response.pipe(file);
+          file.on("finish", () => {
+            file.close(resolve);
+          });
+          file.on("error", (err) => {
+            fs.unlink(destPath, () => {});
+            reject(err);
+          });
+        })
+        .on("error", (err) => {
+          fs.unlink(destPath, () => {});
+          reject(err);
+        });
+    };
+    handleRequest(url);
   });
 };
 
@@ -168,8 +187,8 @@ const ensureFontsExist = async () => {
   }
 
   try {
-    const regularUrl = "https://raw.githubusercontent.com/google/fonts/main/apache/roboto/static/Roboto-Regular.ttf";
-    const boldUrl = "https://raw.githubusercontent.com/google/fonts/main/apache/roboto/static/Roboto-Bold.ttf";
+    const regularUrl = "https://raw.githubusercontent.com/googlefonts/roboto/main/src/hinted/Roboto-Regular.ttf";
+    const boldUrl = "https://raw.githubusercontent.com/googlefonts/roboto/main/src/hinted/Roboto-Bold.ttf";
 
     if (!fs.existsSync(FONT_REGULAR_PATH)) {
       await downloadFont(regularUrl, FONT_REGULAR_PATH);
@@ -373,9 +392,6 @@ const formatAmountInWords = (value) => {
 const resolveBrandLogoPath = () => {
   const candidates = [
     path.join(process.cwd(), "..", "client", "src", "assets", "logo img.png"),
-    path.join(process.cwd(), "uploads", "1771279110850-logo img.png"),
-    path.join(process.cwd(), "uploads", "1771278920287-logo img.png"),
-    path.join(process.cwd(), "uploads", "1771278816234-logo img.png"),
   ];
 
   return candidates.find((candidate) => fs.existsSync(candidate)) || "";
@@ -747,12 +763,71 @@ const drawServiceDescriptionLines = (doc, lines = [], x, y, width) => {
 };
 
 const drawServiceRow = (doc, columns, y, service = {}, index = 0) => {
-  const descriptionLines = buildServiceDescriptionLines(service?.description);
-  const quantityText = service?.quantityLabel || "-";
-  const locationText = service?.location || "-";
-  const dateText = service?.serviceDateLabel || "-";
+  const type = String(service?.type || service?.serviceType || service?.category || "").toLowerCase();
+  
+  // Format description lines with rich details (Pickup Time, Tour Type, Slot, Duration, etc.)
+  let rawDesc = String(service?.description || "");
+  const extraDetails = [];
+
+  if (["transfer", "transport", "car"].includes(type)) {
+    const pickupTime = service?.pickupTime || service?.time || service?.selectedSlot || "";
+    if (pickupTime && !rawDesc.toLowerCase().includes("pickup time")) {
+      extraDetails.push(`Pickup Time: ${pickupTime}`);
+    }
+  } else if (["activity", "sightseeing"].includes(type)) {
+    const tourType = service?.tourType || "Sharing Tour";
+    const slotTime = service?.selectedSlot || service?.slot || service?.time || "";
+    
+    // Format duration (e.g. 600 -> 10 Hours)
+    const rawDur = String(service?.duration || "").trim();
+    let formattedDur = "";
+    if (rawDur) {
+      const numDur = Number(rawDur);
+      if (!isNaN(numDur) && numDur > 0) {
+        const hrs = numDur / 60;
+        formattedDur = hrs >= 1 ? `${hrs % 1 === 0 ? hrs : hrs.toFixed(1)} Hours` : `${numDur} Mins`;
+      } else {
+        formattedDur = rawDur;
+      }
+    }
+
+    if (tourType && !rawDesc.toLowerCase().includes("tour type")) extraDetails.push(`Tour Type: ${tourType}`);
+    if (slotTime && !rawDesc.toLowerCase().includes("slot")) extraDetails.push(`Slot: ${slotTime}`);
+    if (formattedDur && !rawDesc.toLowerCase().includes("duration")) extraDetails.push(`Duration: ${formattedDur}`);
+  }
+
+  const fullDesc = [rawDesc, ...extraDetails].filter(Boolean).join(" | ");
+  const descriptionLines = buildServiceDescriptionLines(fullDesc);
+
+  // Quantity / Pax formatting
+  let quantityText = service?.quantityLabel || "-";
+  if (["activity", "sightseeing"].includes(type)) {
+    const numAdults = Number(service?.adults !== undefined && service?.adults !== null ? service?.adults : 0);
+    const numChildren = Number(service?.children !== undefined && service?.children !== null ? service?.children : 0);
+    const numInfants = Number(service?.infants !== undefined && service?.infants !== null ? service?.infants : 0);
+    const hasBreakdown = (numAdults > 0 || numChildren > 0 || numInfants > 0);
+    const totalPax = hasBreakdown ? (numAdults + numChildren + numInfants) : Number(service?.pax || 0);
+
+    if (hasBreakdown) {
+      const parts = [];
+      if (numAdults > 0) parts.push(`${numAdults} Adult${numAdults > 1 ? 's' : ''}`);
+      if (numChildren > 0) parts.push(`${numChildren} Child${numChildren > 1 ? 'ren' : ''}`);
+      if (numInfants > 0) parts.push(`${numInfants} Infant${numInfants > 1 ? 's' : ''}`);
+      quantityText = `${totalPax} Pax (${parts.join(", ")})`;
+    } else if (totalPax > 1) {
+      quantityText = `${totalPax} Pax`;
+    }
+  } else if (["transfer", "transport", "car"].includes(type)) {
+    const pickupTime = service?.pickupTime || service?.time || "";
+    if (pickupTime && !quantityText.toLowerCase().includes("pickup")) {
+      quantityText = `${quantityText}\n(Pickup: ${pickupTime})`;
+    }
+  }
+
+  const locationText = service?.location || service?.city || "-";
+  const dateText = service?.serviceDateLabel || service?.date || "-";
   const titleText = service?.title || "Service";
-  const typeText = normalizeServiceTypeLabel(service?.typeLabel);
+  const typeText = normalizeServiceTypeLabel(service?.typeLabel || service?.type);
 
   doc.font(doc.fontBold || "Helvetica-Bold").fontSize(10);
   const titleHeight = doc.heightOfString(titleText, { width: columns[1].width - 16 });
@@ -879,6 +954,8 @@ const drawContinuationHeader = (
     );
 };
 
+const SUMMARY_SECTION_HEIGHT = 106;
+
 const drawSummarySection = (doc, y, quoteDetails = {}, servicesCount = 0) => {
   const leftWidth = 326;
   const rightWidth = 165;
@@ -983,42 +1060,230 @@ const drawSummarySection = (doc, y, quoteDetails = {}, servicesCount = 0) => {
   return y + 106;
 };
 
-const SUMMARY_SECTION_HEIGHT = 106;
-const TERMS_SECTION_HEIGHT = 132;
+const parseStructuredTerms = (rawContent) => {
+  if (!rawContent) return [];
+  let text = "";
+  if (Array.isArray(rawContent)) {
+    text = rawContent
+      .map((item) => {
+        if (typeof item === "string") return item;
+        if (item && typeof item === "object") {
+          return item.content || item.text || item.name || item.item || item.label || "";
+        }
+        return String(item || "");
+      })
+      .join("\n");
+  } else if (typeof rawContent === "string") {
+    text = rawContent;
+  } else {
+    text = String(rawContent || "");
+  }
+
+  // Convert HTML block tags to newlines
+  text = text
+    .replace(/<\/(p|li|div|h[1-6]|tr|blockquote)>/gi, "\n")
+    .replace(/<br\s*[\/]?>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">");
+
+  // Split known major categories if merged
+  const majorSections = [
+    "Bookings and Reservations",
+    "Travel Documents and Requirements",
+    "Changes to Itineraries & Liability",
+    "Contact Information",
+    "Intellectual Property",
+    "Changes to Terms and Conditions",
+  ];
+
+  majorSections.forEach((sec) => {
+    const reg = new RegExp(`(^|\\s|\\.|\\n)(${sec})(:?)`, "gi");
+    text = text.replace(reg, "\n\n__HEADER__$2:\n");
+  });
+
+  // Split sub-items
+  const subItems = [
+    "Booking Process",
+    "Payment Terms",
+    "Payment",
+    "Confirmation",
+    "Credit Card",
+    "Confirmation Vouchers",
+    "Airport Transfers & Tour Pick Ups",
+    "Airport Transfers",
+    "Taxes",
+    "Changes & Cancellations",
+    "Cancellations and Refunds",
+    "Valid ID Proof",
+    "Health & Vaccinations",
+    "Travel Insurance",
+    "Changes by [^:\n]+",
+    "Service Providers Liability",
+    "Force Majeure",
+    "Governing Law",
+    "Ownership",
+  ];
+
+  subItems.forEach((sub) => {
+    const reg = new RegExp(`(^|\\s|\\.|\\n)(${sub}):`, "gi");
+    text = text.replace(reg, "\n__SUB__$2:");
+  });
+
+  // Split payment nested items e.g. "Minimum 50%...", "Remaining 50%...", "In Case of Airline...", "If a booking is under..."
+  text = text
+    .replace(/(\.|\n)\s*(Minimum 50%[^\.]+?\.)/gi, "\n__NESTED__$2")
+    .replace(/(\.|\n)\s*(Remaining 50%[^\.]+?\.)/gi, "\n__NESTED__$2")
+    .replace(/(\.|\n)\s*(In Case of Airline[^\.]+?\.)/gi, "\n__NESTED__$2")
+    .replace(/(\.|\n)\s*(If a booking is under[^\.]+?\.)/gi, "\n__NESTED__$2");
+
+  // Split general sentences if merged after period without space
+  text = text.replace(/([.!?])([A-Z0-9])/g, "$1\n$2");
+
+  const rawLines = text
+    .split("\n")
+    .map((l) => l.replace(/^\d+[\.\)]\s*/, "").replace(/^[•\-\*]\s*/, "").trim())
+    .filter(Boolean);
+
+  let headerCount = 0;
+  let nestedCount = 0;
+
+  const items = [];
+  rawLines.forEach((line) => {
+    if (line.startsWith("__HEADER__")) {
+      headerCount++;
+      nestedCount = 0;
+      const cleanLine = line.replace("__HEADER__", "").trim();
+      items.push({
+        type: "header",
+        level: 1,
+        number: headerCount,
+        text: `${headerCount}. ${cleanLine.replace(/:$/, "")}`,
+        rawText: cleanLine,
+      });
+    } else if (line.startsWith("__SUB__")) {
+      nestedCount = 0;
+      const cleanLine = line.replace("__SUB__", "").trim();
+      items.push({
+        type: "subitem",
+        level: 2,
+        text: `• ${cleanLine}`,
+        rawText: cleanLine,
+      });
+    } else if (line.startsWith("__NESTED__")) {
+      nestedCount++;
+      const cleanLine = line.replace("__NESTED__", "").trim();
+      items.push({
+        type: "nested",
+        level: 3,
+        number: nestedCount,
+        text: `${nestedCount}. ${cleanLine}`,
+        rawText: cleanLine,
+      });
+    } else {
+      items.push({
+        type: "text",
+        level: 0,
+        text: line,
+        rawText: line,
+      });
+    }
+  });
+
+  return items;
+};
+
+const parseTermsContentList = (rawContent) => {
+  return parseStructuredTerms(rawContent);
+};
+
+const getTermsSectionEstimatedHeight = (doc, customTerms = []) => {
+  const items = parseStructuredTerms(customTerms);
+  if (!items.length) return 60;
+
+  let totalHeight = 16;
+  items.forEach((item) => {
+    const fontSize = item.type === "header" ? 8 : (item.type === "nested" ? 7.2 : 7.5);
+    const fontName = item.type === "header" ? (doc.fontBold || "Helvetica-Bold") : (doc.fontRegular || "Helvetica");
+    const xOffset = item.type === "nested" ? 22 : (item.type === "subitem" ? 8 : 0);
+    const itemWidth = PAGE.contentWidth - 28 - xOffset;
+    doc.font(fontName).fontSize(fontSize);
+    const h = doc.heightOfString(item.text, { width: itemWidth });
+    const topPad = item.type === "header" ? 5 : (item.type === "nested" ? 2 : 2.5);
+    totalHeight += h + topPad;
+  });
+
+  return Math.max(60, totalHeight + 16);
+};
 
 const drawTermsSection = (doc, y, customTerms = []) => {
-  const normalizedTerms = Array.isArray(customTerms) && customTerms.length > 0
-    ? customTerms.map((t) => String(t || "").trim()).filter(Boolean)
-    : [
-        "Rates are subject to availability and confirmation at the time of booking.",
-        "Only the services listed in this quotation are included in the shared amount.",
-        "Any amendment after confirmation may affect availability and final pricing.",
-        "Hotel check-in, check-out, and supplier-specific policies will apply as per service rules.",
-        "Please review and confirm within the validity period to avoid fare or rate changes.",
-      ];
+  const items = parseStructuredTerms(customTerms);
+  if (!items.length) {
+    items.push(
+      { type: "text", level: 0, text: "Welcome to Holiday Circuit. These Terms and Conditions govern your use of Holiday Circuit services. When you make a booking, you agree to be bound by these Terms." },
+      { type: "header", level: 1, text: "1. Bookings and Reservations" },
+      { type: "subitem", level: 2, text: "• Minimum 50% of the booking amount is required at the time of booking confirmation." },
+      { type: "subitem", level: 2, text: "• Remaining 50% in 2 parts: 25% within 30 Days prior to departure and 25% within 20 days prior to departure." },
+      { type: "subitem", level: 2, text: "• In Case of Airline booking / Train Tickets, 100% ticket cost to be paid at confirmation." },
+      { type: "subitem", level: 2, text: "• In Case a booking is under 100% cancellation period, 100% booking amount is required at confirmation." },
+      { type: "subitem", level: 2, text: "• Confirmation: Booking is confirmed only upon receipt of payment. Booking will be auto cancelled in case of non-payment within stipulated time." },
+      { type: "subitem", level: 2, text: "• Credit Card: Payments may attract an additional charge from 3% to 5% depending upon card type." },
+      { type: "subitem", level: 2, text: "• Confirmation Vouchers: Provided only 7 days before the arrival date." },
+      { type: "subitem", level: 2, text: "• Airport Transfers & Tour Pickups: Includes 60 minutes waiting time for Airport pick-ups. Delayed at immigration/luggage requires calling emergency number to extend. For all other pick-ups, driver will wait for 10 minutes at Hotel Lobby / Reception." },
+      { type: "subitem", level: 2, text: "• Taxes: Any changes in taxes (GST/TCS/Government Tax) at confirmation will be adjusted as per prevailing law." },
+      { type: "subitem", level: 2, text: "• Changes & Cancellations are subject to fees/penalties determined by service providers and Holiday Circuit." },
+      { type: "header", level: 1, text: "2. Travel Documents and Requirements" },
+      { type: "subitem", level: 2, text: "• Valid ID Proof: Responsibility of guest to possess valid ID/Visas. To Enter Nepal by Air: Valid Passport or Election Card is Mandatory. Aadhar Card is NOT valid for Travel." },
+      { type: "subitem", level: 2, text: "• Health & Vaccinations: Guest is responsible for meeting all health and vaccination entry requirements." },
+      { type: "subitem", level: 2, text: "• Travel Insurance: Strongly recommended to protect against unexpected events, trip cancellations, or emergencies." },
+      { type: "header", level: 1, text: "3. Changes to Itineraries & Liability" },
+      { type: "subitem", level: 2, text: "• Changes by Holiday Circuit: Right reserved to modify itinerary/accommodations due to unforeseen circumstances with prompt notice." },
+      { type: "subitem", level: 2, text: "• Force Majeure & Liability: Holiday Circuit acts as an intermediary; not liable for third-party negligence or force majeure events." },
+      { type: "subitem", level: 2, text: "• Governing Law: Governed by the laws of New Delhi Jurisdiction." },
+      { type: "header", level: 1, text: "4. Contact Information" },
+      { type: "subitem", level: 2, text: "• Holiday Circuit: 2nd Floor, 632 Block B1, Janakpuri, New Delhi - 110058 | Email: ops@holidaycircuit.com | Ph: +91 8851346665, +91 9971706003" }
+    );
+  }
 
   drawSectionBar(doc, y, "TERMS AND CONDITIONS");
 
-  let contentHeight = 18;
-  doc.font(doc.fontRegular || "Helvetica").fontSize(8.2);
-  normalizedTerms.forEach((term, index) => {
-    contentHeight += doc.heightOfString(`${index + 1}. ${term}`, { width: PAGE.contentWidth - 28 }) + 5;
+  let contentHeight = 14;
+  items.forEach((item) => {
+    const fontSize = item.type === "header" ? 8 : (item.type === "nested" ? 7.2 : 7.5);
+    const fontName = item.type === "header" ? (doc.fontBold || "Helvetica-Bold") : (doc.fontRegular || "Helvetica");
+    const xOffset = item.type === "nested" ? 22 : (item.type === "subitem" ? 8 : 0);
+    const itemWidth = PAGE.contentWidth - 28 - xOffset;
+
+    doc.font(fontName).fontSize(fontSize);
+    const h = doc.heightOfString(item.text, { width: itemWidth });
+    const topPad = item.type === "header" ? 5 : (item.type === "nested" ? 2 : 2.5);
+    contentHeight += h + topPad;
   });
 
-  const boxHeight = Math.max(50, contentHeight + 10);
+  const boxHeight = Math.max(60, contentHeight + 14);
   drawRoundedBox(doc, PAGE.contentX, y + 30, PAGE.contentWidth, boxHeight, "#ffffff");
 
-  let cursorY = y + 40;
-  normalizedTerms.forEach((term, index) => {
+  let cursorY = y + 38;
+  items.forEach((item) => {
+    const fontSize = item.type === "header" ? 8 : (item.type === "nested" ? 7.2 : 7.5);
+    const fontName = item.type === "header" ? (doc.fontBold || "Helvetica-Bold") : (doc.fontRegular || "Helvetica");
+    const color = item.type === "header" ? "#0f172a" : (item.type === "nested" ? "#334155" : COLORS.text || "#1e293b");
+    const xOffset = item.type === "nested" ? 22 : (item.type === "subitem" ? 8 : 0);
+    const itemWidth = PAGE.contentWidth - 28 - xOffset;
+    const topPad = item.type === "header" ? 5 : (item.type === "nested" ? 2 : 2.5);
+
+    cursorY += topPad;
     doc
-      .font(doc.fontRegular || "Helvetica")
-      .fontSize(8.2)
-      .fillColor(COLORS.text)
-      .text(`${index + 1}. ${term}`, PAGE.contentX + 14, cursorY, {
-        width: PAGE.contentWidth - 28,
+      .font(fontName)
+      .fontSize(fontSize)
+      .fillColor(color)
+      .text(item.text, PAGE.contentX + 14 + xOffset, cursorY, {
+        width: itemWidth,
       });
 
-    cursorY = doc.y + 5;
+    cursorY = doc.y;
   });
 
   return y + 30 + boxHeight + 14;
@@ -1245,11 +1510,12 @@ const drawItinerarySection = (doc, y, items = [], quoteDetails = {}) => {
 };
 
 const drawInclusionsExclusionsSection = (doc, y, inclusions = [], exclusions = [], quoteDetails = {}) => {
+  const stripHtml = (text) => String(text || "").replace(/<[^>]*>?/gm, "").replace(/\s+/g, " ").trim();
   const normalizedInclusions = Array.isArray(inclusions)
-    ? inclusions.map((item) => String(item || "").trim()).filter(Boolean)
+    ? inclusions.map(stripHtml).filter(Boolean)
     : [];
   const normalizedExclusions = Array.isArray(exclusions)
-    ? exclusions.map((item) => String(item || "").trim()).filter(Boolean)
+    ? exclusions.map(stripHtml).filter(Boolean)
     : [];
 
   let currentY = y;
@@ -1290,15 +1556,18 @@ const getInclusionsExclusionsSectionHeight = (doc, inclusions = [], exclusions =
   + getBulletListSectionHeight(doc, exclusions, "No exclusions provided.");
 
 export const generatePDF = async (quoteDetails = {}) => {
-  const uploadsDir = path.join(process.cwd(), "uploads", "quotations");
-  ensureDirectory(uploadsDir);
+  // [LOCAL] Disk write disabled — no files saved to uploads/quotations/
+  // const uploadsDir = path.join(process.cwd(), "uploads", "quotations");
+  // ensureDirectory(uploadsDir);
+  const uploadsDir = "";
 
   const fileToken = sanitizeFileToken(
     quoteDetails?.quotationNumber || quoteDetails?.queryId || quoteDetails?.destination,
   );
   const fileVariantSuffix = quoteDetails?.includeSellerBankDetails === false ? "_client" : "";
   const fileName = `quotation_${fileToken}${fileVariantSuffix}.pdf`;
-  const filePath = path.join(uploadsDir, fileName);
+  // const filePath = path.join(uploadsDir, fileName); // [LOCAL] disk write disabled
+  const filePath = "";
   const publicFilePath = `/uploads/quotations/${fileName}`;
 
   const brandName = quoteDetails.agentBrandingName || BRAND.name;
@@ -1339,8 +1608,20 @@ export const generatePDF = async (quoteDetails = {}) => {
   // Set the default font
   doc.font(doc.fontRegular);
 
-  const stream = fs.createWriteStream(filePath);
-  doc.pipe(stream);
+  const chunks = [];
+  doc.on("data", (chunk) => chunks.push(chunk));
+
+  let generatedBuffer = null;
+  const pdfPromise = new Promise((resolve, reject) => {
+    doc.on("end", () => {
+      generatedBuffer = Buffer.concat(chunks);
+      pdfMemoryCache.set(publicFilePath, generatedBuffer);
+      // Clean up memory after 15 minutes
+      setTimeout(() => pdfMemoryCache.delete(publicFilePath), 15 * 60 * 1000);
+      resolve(generatedBuffer);
+    });
+    doc.on("error", reject);
+  });
 
   let logoPath = null;
   if (quoteDetails.agentLogo) {
@@ -1557,14 +1838,19 @@ export const generatePDF = async (quoteDetails = {}) => {
     );
   }
 
-  if (cursorY + 12 + TERMS_SECTION_HEIGHT > CONTENT_BOTTOM_LIMIT) {
+  const termsSectionEstimatedHeight = getTermsSectionEstimatedHeight(
+    doc,
+    quoteDetails?.termsAndConditions || quoteDetails?.customTerms,
+  );
+
+  if (cursorY + 12 + termsSectionEstimatedHeight > CONTENT_BOTTOM_LIMIT && cursorY > 160) {
     doc.addPage();
     drawPageFrame(doc);
     drawContinuationHeader(doc, quoteDetails, "Quotation Details (Continued)");
     cursorY = 132;
   }
 
-  cursorY = drawTermsSection(doc, cursorY + 12, quoteDetails?.termsAndConditions);
+  cursorY = drawTermsSection(doc, cursorY + 12, quoteDetails?.termsAndConditions || quoteDetails?.customTerms);
 
   if (quoteDetails?.agentFooterImage) {
     const footerBuffer = await getLogoBuffer(quoteDetails.agentFooterImage);
@@ -1592,10 +1878,7 @@ export const generatePDF = async (quoteDetails = {}) => {
 
   doc.end();
 
-  await new Promise((resolve, reject) => {
-    stream.on("finish", resolve);
-    stream.on("error", reject);
-  });
+  await pdfPromise;
 
-  return { filePath, publicFilePath, fileName };
+  return { filePath, publicFilePath, fileName, buffer: generatedBuffer };
 };

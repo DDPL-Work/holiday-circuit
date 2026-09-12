@@ -16,12 +16,22 @@ export const sendQuotationController = async (req, res) => {
   try {
     const results = {};
 
+    const opsQuoteDetails = {
+      ...quoteDetails,
+      isOpsQuotation: true,
+      agentBrandingName: "Holiday Circuit",
+      agentLogo: "https://res.cloudinary.com/dszadvuz6/image/upload/e_trim/v1777932524/unzssx1sjkrigbgldg7h.png",
+      agentCompanyAddress: "2nd Floor, 632 Block B1, Janakpuri, New Delhi - 110058",
+      agentPhone: "+91 8851346665, +91 9971706003",
+      agentEmail: "ops@leelatravels.com",
+    };
+
     if (
       normalizedChannels.includes("dashboard") ||
       normalizedChannels.includes("dashboard_notification")
     ) {
       results.dashboard = await createDashboardNotification(queryId, {
-        ...quoteDetails,
+        ...opsQuoteDetails,
         deliveryChannels: normalizedChannels,
         recipientEmail: agent?.email || "",
         recipientPhone: agent?.phone || "",
@@ -33,7 +43,7 @@ export const sendQuotationController = async (req, res) => {
         return res.status(400).json({ status: "error", message: "Agent email required" });
       }
 
-      results.email = await sendEmailQuote(agent.email, quoteDetails);
+      results.email = await sendEmailQuote(agent.email, opsQuoteDetails);
     }
 
     if (normalizedChannels.includes("whatsapp")) {
@@ -43,7 +53,7 @@ export const sendQuotationController = async (req, res) => {
 
       try {
         results.whatsapp = await sendWhatsAppMessage({
-          ...quoteDetails,
+          ...opsQuoteDetails,
           phone: agent.phone,
         });
       } catch (whatsappError) {
@@ -56,8 +66,8 @@ export const sendQuotationController = async (req, res) => {
 
     if (normalizedChannels.includes("pdf")) {
       results.pdf = await generatePDF({
-        ...quoteDetails,
-        queryId: quoteDetails?.queryId || queryId,
+        ...opsQuoteDetails,
+        queryId: opsQuoteDetails?.queryId || queryId,
       });
     }
 

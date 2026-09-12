@@ -3,16 +3,16 @@ import ApiError from "../utils/ApiError.js";
 
 const authMiddleware = (req, res, next) => {
 try {
-       console.log("👉 HEADERS:", req.headers);
+    //    console.log("👉 HEADERS:", req.headers);
        const authHeader = req.headers.authorization;
-    console.log("👉 AUTH HEADER:", authHeader)
+    // console.log("👉 AUTH HEADER:", authHeader)
 
 if (!authHeader || !authHeader.startsWith("Bearer ")) {
 return next(new ApiError(401, "Unauthorized: Token missing"));
 }
 
 const token = authHeader.replace("Bearer", "").trim();
- console.log("👉 TOKEN:", token);
+//  console.log("👉 TOKEN:", token);
 const decoded = jwt.verify(token, process.env.JWT_SECRET);
 const normalizedUserId = decoded?.id || decoded?._id;
 req.user = {
@@ -20,7 +20,7 @@ req.user = {
 id: normalizedUserId,
 _id: normalizedUserId,
 }
-console.log("USER:", req.user);
+// console.log("USER:", req.user);
 
 next();
 } catch (error) {

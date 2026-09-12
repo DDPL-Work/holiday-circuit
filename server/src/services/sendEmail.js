@@ -1,4 +1,8 @@
-import {MAIL_FROM_ADDRESS,MAIL_REPLY_TO_ADDRESS,transporter,} from "./mailer.js";
+import {
+  MAIL_FROM_ADDRESS,
+  MAIL_REPLY_TO_ADDRESS,
+  transporter,
+} from "./mailer.js";
 
 const escapeHtml = (value = "") =>
   String(value || "")
@@ -8,15 +12,9 @@ const escapeHtml = (value = "") =>
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
 
-
-
-
 export const sendAgentRegistrationReceivedMail = async (
   email,
-  {
-    name = "Partner",
-    companyName = "your agency",
-  } = {},
+  { name = "Partner", companyName = "your agency" } = {},
 ) => {
   await transporter.sendMail({
     from: MAIL_FROM_ADDRESS,
@@ -39,13 +37,17 @@ export const sendAgentRegistrationReceivedMail = async (
   });
 };
 
-
 export const sendAgentApprovalMail = async (
   email,
   {
     name = "Partner",
     companyName = "your agency",
-    loginUrl = process.env.FRONTEND_LOGIN_URL,
+    loginUrl = process.env.FRONTEND_LOGIN_URL ||
+      process.env.ADMIN_LOGIN_URL ||
+      process.env.OPS_LOGIN_URL ||
+      process.env.FINANCE_LOGIN_URL ||
+      process.env.AGENT_LOGIN_URL ||
+      process.env.DMC_LOGIN_URL,
   } = {},
 ) => {
   await transporter.sendMail({
@@ -64,7 +66,6 @@ export const sendAgentApprovalMail = async (
     `,
   });
 };
-
 
 export const sendAgentRejectionMail = async (
   email,
@@ -98,8 +99,10 @@ export const sendAgentRejectionMail = async (
   });
 };
 
-
-export const sendPasswordResetOtpMail = async (email, { name = "Team Member", otp = "" } = {}) => {
+export const sendPasswordResetOtpMail = async (
+  email,
+  { name = "Team Member", otp = "" } = {},
+) => {
   await transporter.sendMail({
     from: MAIL_FROM_ADDRESS,
     to: email,
@@ -166,7 +169,6 @@ export const sendPasswordResetOtpMail = async (email, { name = "Team Member", ot
   });
 };
 
-
 export const sendTeamMemberCredentialsMail = async (
   email,
   {
@@ -174,7 +176,13 @@ export const sendTeamMemberCredentialsMail = async (
     role = "Team Member",
     loginEmail = email,
     password = "",
-    loginUrl = process.env.FRONTEND_LOGIN_URL,
+    from = MAIL_FROM_ADDRESS,
+    loginUrl = process.env.FRONTEND_LOGIN_URL ||
+      process.env.ADMIN_LOGIN_URL ||
+      process.env.OPS_LOGIN_URL ||
+      process.env.FINANCE_LOGIN_URL ||
+      process.env.AGENT_LOGIN_URL ||
+      process.env.DMC_LOGIN_URL,
   } = {},
 ) => {
   const safeName = escapeHtml(name);
@@ -184,7 +192,7 @@ export const sendTeamMemberCredentialsMail = async (
   const safeLoginUrl = escapeHtml(String(loginUrl || "#").trim() || "#");
 
   await transporter.sendMail({
-    from: MAIL_FROM_ADDRESS,
+    from: from || MAIL_FROM_ADDRESS,
     to: email,
     subject: "Holiday Circuit Workspace Credentials",
     html: `
@@ -381,10 +389,12 @@ export const sendNewQueryAssignedMail = async (
     agentName = "Agent",
     agentCompany = "",
     agentEmail = "",
+    from,
     dashboardUrl = "",
   } = {},
 ) => {
-  const totalTravelers = Number(numberOfAdults || 0) + Number(numberOfChildren || 0);
+  const totalTravelers =
+    Number(numberOfAdults || 0) + Number(numberOfChildren || 0);
   const safeDashboardUrl = String(dashboardUrl || "").trim();
   const safeNotes = String(specialRequirements || "").trim();
   const inclusions = [
@@ -393,9 +403,9 @@ export const sendNewQueryAssignedMail = async (
   ];
 
   await transporter.sendMail({
-    from: MAIL_FROM_ADDRESS,
+    from: from ? `${from} <${MAIL_FROM_ADDRESS}>` : MAIL_FROM_ADDRESS,
+    replyTo: agentEmail || MAIL_REPLY_TO_ADDRESS,
     to: email,
-    replyTo: MAIL_REPLY_TO_ADDRESS,
     subject: `New Query Assigned: ${queryId || destination || "Holiday Circuit"}`,
     html: `
       <div style="margin:0;padding:0;background:#f1f5f9;font-family:Arial,sans-serif;color:#0f172a;">
@@ -462,7 +472,6 @@ export const sendNewQueryAssignedMail = async (
   });
 };
 
-
 export const sendAgentQueryCreatedMail = async (
   email,
   {
@@ -479,10 +488,12 @@ export const sendAgentQueryCreatedMail = async (
     sightseeingRequired = false,
     specialRequirements = "",
     assignedOpsName = "Operations Team",
+    from,
     dashboardUrl = "",
   } = {},
 ) => {
-  const totalTravelers = Number(numberOfAdults || 0) + Number(numberOfChildren || 0);
+  const totalTravelers =
+    Number(numberOfAdults || 0) + Number(numberOfChildren || 0);
   const safeDashboardUrl = String(dashboardUrl || "").trim();
   const safeNotes = String(specialRequirements || "").trim();
   const services = [
@@ -491,7 +502,7 @@ export const sendAgentQueryCreatedMail = async (
   ];
 
   await transporter.sendMail({
-    from: MAIL_FROM_ADDRESS,
+    from: from || MAIL_FROM_ADDRESS,
     to: email,
     replyTo: MAIL_REPLY_TO_ADDRESS,
     subject: `Travel Query Created: ${queryId || destination || "Holiday Circuit"}`,
@@ -559,8 +570,6 @@ export const sendAgentQueryCreatedMail = async (
       .join("\n"),
   });
 };
-
-
 
 export const sendAccountDeletionMail = async (
   email,
@@ -685,5 +694,3 @@ export const sendAccountDeletionMail = async (
     `,
   });
 };
-
-

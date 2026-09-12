@@ -1,18 +1,33 @@
 import "dotenv/config";
 import * as resendMailer from "./resendMailer.js";
 import * as smtpMailer from "./smtpMailer.js";
+import * as brevoMailer from "./brevoMailer.js";
 
 const providerMap = {
   resend: resendMailer,
   smtp: smtpMailer,
+  brevo: brevoMailer,
 };
 
 export const getActiveMailProvider = () => {
-  const requestedProvider = String(process.env.MAIL_PROVIDER || "smtp")
+  const requestedProvider = String(process.env.MAIL_PROVIDER || "")
     .trim()
     .toLowerCase();
 
-  return providerMap[requestedProvider] ? requestedProvider : "smtp";
+  if (requestedProvider && providerMap[requestedProvider]) {
+    return requestedProvider;
+  }
+
+  if (process.env.BREVO_API_KEY) {
+    return "brevo";
+  }
+  
+
+  if (process.env.RESEND_API_KEY) {
+    return "resend";
+  }
+
+  return "smtp";
 };
 
 const activeMailer = providerMap[getActiveMailProvider()];

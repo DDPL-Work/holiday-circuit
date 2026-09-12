@@ -78,7 +78,9 @@ const packageSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.Mixed,
     default: []
   },
-  termsAndConditions: String,
+  termsAndConditions: {
+    type: mongoose.Schema.Types.Mixed,
+  },
 
   hotels: [serviceSchema],
   activities: [serviceSchema],
@@ -107,6 +109,36 @@ const packageSchema = new mongoose.Schema({
   supplier: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Auth"
+  },
+
+  createdBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Auth",
+    index: true,
+  },
+
+  creatorRole: {
+    type: String,
+    default: "operations",
+  },
+
+  creatorName: {
+    type: String,
+    default: "",
+  },
+
+  creatorEmail: {
+    type: String,
+    default: "",
+  },
+
+  // Links inventory to the exact bulk file that created it, enabling a
+  // safe delete of that upload without touching other DMC inventory.
+  sourceUpload: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "UploadHistory",
+    index: true,
+    default: null,
   }
 
 }, { timestamps: true });
