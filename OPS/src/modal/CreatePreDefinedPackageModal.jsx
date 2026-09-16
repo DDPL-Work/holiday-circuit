@@ -732,7 +732,14 @@ export default function CreatePreDefinedPackageModal({
     }
 
     if (field === "price") {
-      updated[index].price = Number(value || 0);
+      const tot = Number(value || 0);
+      const aCount = Math.max(1, Number(updated[index].adults !== undefined ? updated[index].adults : (updated[index].pax || 1)));
+      const cCount = Math.max(0, Number(updated[index].children || 0));
+      const paxNum = aCount + cCount;
+      updated[index].price = tot;
+      const perPaxRate = paxNum > 0 ? Math.round(tot / paxNum) : tot;
+      updated[index].adultPrice = perPaxRate;
+      updated[index].basePrice = perPaxRate;
     }
 
     setActivities(updated);
@@ -917,7 +924,14 @@ export default function CreatePreDefinedPackageModal({
     }
 
     if (field === "price") {
-      updated[index].price = Number(value || 0);
+      const tot = Number(value || 0);
+      const aCount = Math.max(1, Number(updated[index].adults !== undefined ? updated[index].adults : (updated[index].pax || 1)));
+      const cCount = Math.max(0, Number(updated[index].children || 0));
+      const paxNum = aCount + cCount;
+      updated[index].price = tot;
+      const perPaxRate = paxNum > 0 ? Math.round(tot / paxNum) : tot;
+      updated[index].adultPrice = perPaxRate;
+      updated[index].basePrice = perPaxRate;
     }
 
     setSightseeing(updated);
@@ -1041,18 +1055,44 @@ export default function CreatePreDefinedPackageModal({
   };
 
   // Cost & Tax Calculations
-  const numBaseCost = Number(basePrice || (price && !basePrice ? price : 0) || 0);
+  const linkedHotelsCost = hotels.reduce((sum, h) => {
+    const nights = Math.max(1, Number(h.nights || 1));
+    const rooms = Math.max(1, Number(h.rooms || 1));
+    const hotelQuantity = nights * rooms;
+    const basePrice = Number(h.basePrice || (h.price ? h.price / hotelQuantity : 0));
+    return sum + (basePrice * hotelQuantity);
+  }, 0);
+
+  const linkedTransfersCost = transfers.reduce((sum, t) => {
+    const days = Math.max(1, Number(t.days || 1));
+    const basePrice = Number(t.basePrice || (t.price ? t.price / days : 0));
+    return sum + (basePrice * days);
+  }, 0);
+
+  const linkedActivitiesCost = activities.reduce((sum, a) => {
+    const adultPrice = Number(a.adultPrice !== undefined ? a.adultPrice : (a.price ?? a.rate ?? 0));
+    const adultCount = Number(a.adults !== undefined ? a.adults : a.pax || 1);
+    const childPrice = Number(a.childPrice || 0);
+    const childCount = Number(a.children || 0);
+    return sum + (adultPrice * adultCount) + (childPrice * childCount);
+  }, 0);
+
+  const linkedSightseeingCost = sightseeing.reduce((sum, s) => {
+    const adultPrice = Number(s.adultPrice !== undefined ? s.adultPrice : (s.price ?? s.rate ?? 0));
+    const adultCount = Number(s.adults !== undefined ? s.adults : s.pax || 1);
+    const childPrice = Number(s.childPrice || 0);
+    const childCount = Number(s.children || 0);
+    return sum + (adultPrice * adultCount) + (childPrice * childCount);
+  }, 0);
+
+  const totalLinkedServicesCost = linkedHotelsCost + linkedTransfersCost + linkedActivitiesCost + linkedSightseeingCost;
+
+  const numBaseCost = Number(basePrice || (price && !basePrice ? price : 0) || totalLinkedServicesCost || 0);
   const gstAmt = gstChecked && numBaseCost > 0 ? Math.round((numBaseCost * Number(gstPercent || 0)) / 100) : 0;
   const tcsAmt = tcsChecked && numBaseCost > 0 ? Math.round((numBaseCost * Number(tcsPercent || 0)) / 100) : 0;
   const tourismAmt = tourismChecked && Number(tourismAmount) > 0 ? Math.round(Number(tourismAmount)) : 0;
   const totalTaxAmt = gstAmt + tcsAmt + tourismAmt;
   const finalCalculatedPrice = numBaseCost + totalTaxAmt;
-
-  const linkedHotelsCost = hotels.reduce((sum, h) => sum + Number(h.price || 0), 0);
-  const linkedTransfersCost = transfers.reduce((sum, t) => sum + Number(t.price || 0), 0);
-  const linkedActivitiesCost = activities.reduce((sum, a) => sum + Number(a.price || 0), 0);
-  const linkedSightseeingCost = sightseeing.reduce((sum, s) => sum + Number(s.price || 0), 0);
-  const totalLinkedServicesCost = linkedHotelsCost + linkedTransfersCost + linkedActivitiesCost + linkedSightseeingCost;
 
   const validHotelsCount = hotels.filter((h) => h.hotelName?.trim() || h.name?.trim() || Number(h.price) > 0).length;
   const validTransfersCount = transfers.filter((t) => t.name?.trim() || Number(t.price) > 0).length;
@@ -1289,12 +1329,14 @@ export default function CreatePreDefinedPackageModal({
               t.dmcName ||
               primaryBpName ||
               "";
+            const days = Math.max(1, Number(t.days || 1));
+            const basePrice = Number(t.basePrice || (t.price ? t.price / days : 0));
             return {
               ...t,
               type: "transfer",
               title: t.name || t.serviceName || "Transfer",
-              price: Number(t.price || t.basePrice || 0),
-              total: Number(t.price || t.basePrice || 0),
+              price: basePrice,
+              total: basePrice * days,
               serviceDate: t.serviceDate || null,
               businessPartnerId: bpId,
               businessPartner: bpId,
@@ -1320,12 +1362,16 @@ export default function CreatePreDefinedPackageModal({
               a.dmcName ||
               primaryBpName ||
               "";
+            const adultPrice = Number(a.adultPrice !== undefined ? a.adultPrice : (a.price ?? a.rate ?? 0));
+            const adultCount = Number(a.adults !== undefined ? a.adults : a.pax || 1);
+            const childPrice = Number(a.childPrice || 0);
+            const childCount = Number(a.children || 0);
             return {
               ...a,
               type: "activity",
               title: a.name || a.serviceName || "Activity",
-              price: Number(a.adultPrice || a.price || a.basePrice || 0),
-              total: Number(a.price || a.basePrice || 0),
+              price: adultPrice,
+              total: (adultPrice * adultCount) + (childPrice * childCount),
               serviceDate: a.serviceDate || null,
               businessPartnerId: bpId,
               businessPartner: bpId,
@@ -1351,12 +1397,16 @@ export default function CreatePreDefinedPackageModal({
               s.dmcName ||
               primaryBpName ||
               "";
+            const adultPrice = Number(s.adultPrice !== undefined ? s.adultPrice : (s.price ?? s.rate ?? 0));
+            const adultCount = Number(s.adults !== undefined ? s.adults : s.pax || 1);
+            const childPrice = Number(s.childPrice || 0);
+            const childCount = Number(s.children || 0);
             return {
               ...s,
               type: "sightseeing",
               title: s.name || s.serviceName || "Sightseeing",
-              price: Number(s.adultPrice || s.price || s.basePrice || 0),
-              total: Number(s.price || s.basePrice || 0),
+              price: adultPrice,
+              total: (adultPrice * adultCount) + (childPrice * childCount),
               serviceDate: s.serviceDate || null,
               businessPartnerId: bpId,
               businessPartner: bpId,

@@ -7767,7 +7767,7 @@ const QuotationBuilder = () => {
   }
 
   const taxableAmountForTaxes = hasTaxableQuoteValue
-    ? opsMarkupBasisAmount + opsMarkup + serviceFeeAmount + handlingFeeAmount
+    ? opsMarkupBasisAmount
     : 0;
   const draftGstFinal = draftGstChecked
     ? roundCurrencyAmount(
