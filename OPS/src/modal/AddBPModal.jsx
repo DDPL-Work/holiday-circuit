@@ -252,7 +252,7 @@ const getFormStateFromUser = (user) => ({
   creditDays: Array.isArray(user?.creditDays) ? user.creditDays : (user?.creditDays ? [Number(user.creditDays)] : [7]),
 });
 
-export default function AddNewUserModal({
+export default function AddBPModal({
   onClose,
   onCreateUser,
   onUpdateUser,
