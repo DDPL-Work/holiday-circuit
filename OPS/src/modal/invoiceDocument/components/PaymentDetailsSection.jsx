@@ -65,7 +65,14 @@ export const PaymentDetailsSection = ({
         <div className="grid grid-cols-2 gap-x-4 gap-y-2">
           <div className="min-w-0">
             <p className="text-[9.5px] font-medium text-slate-500">Party Name</p>
-            <p className="truncate text-xs font-bold text-slate-800">{invoice.party}</p>
+            <div className="flex items-center gap-1.5 min-w-0">
+              <p className="truncate text-xs font-bold text-slate-800">{invoice.party}</p>
+              {invoice.isOfflinePartner && (
+                <span className="shrink-0 bg-amber-100 text-amber-800 border border-amber-300 text-[8px] font-extrabold px-1.5 py-px rounded uppercase">
+                  Offline Partner
+                </span>
+              )}
+            </div>
           </div>
           <div className="min-w-0 text-right">
             <p className="text-[9.5px] font-medium text-slate-500">Invoice Number</p>

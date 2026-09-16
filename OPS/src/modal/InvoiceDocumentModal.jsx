@@ -294,10 +294,17 @@ const InvoiceDocumentModal = ({ invoice, onClose, onInvoiceUpdated, sidePanelOpe
   const documentList = getDisplayDocuments(invoice.documents || [], invoice.id);
   const settledAmount = formatRoundedAmount(cumulativePaid || expectedPayoutAmount);
   const settledDate = formatDisplayDate(invoice.payoutDateValue || invoice.payoutDate);
-  const invoiceSourceLabel =
-    invoice.invoiceSource === "uploaded_invoice"
-      ? "Uploaded by DMC"
-      : "Company Template";
+  const isOfflinePartner = Boolean(
+    invoice.partnerType === "offline_partner" ||
+    invoice.businessPartnerName ||
+    invoice.isOfflinePartner ||
+    invoice.uploadedByRole === "ops"
+  );
+  const invoiceSourceLabel = isOfflinePartner
+    ? `Uploaded by Ops (${invoice.businessPartnerName || "Offline Partner"})`
+    : invoice.invoiceSource === "uploaded_invoice"
+    ? "Uploaded by DMC"
+    : "Company Template";
 
   const handleVerifyPass = (key, value, expectedValue, label) => {
     if (manualChecks[key] === 'pass') {
@@ -619,7 +626,11 @@ const InvoiceDocumentModal = ({ invoice, onClose, onInvoiceUpdated, sidePanelOpe
                     <p className="truncate text-[10.5px] text-slate-500 font-medium">
                       {invoice.id} | {invoice.ref}
                     </p>
-                    <span className="inline-flex rounded-full border border-blue-100 bg-blue-50 px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] text-blue-700">
+                    <span className={`inline-flex rounded-full border px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] ${
+                      isOfflinePartner
+                        ? "border-amber-200 bg-amber-50 text-amber-800"
+                        : "border-blue-100 bg-blue-50 text-blue-700"
+                    }`}>
                       Invoice Source: {invoiceSourceLabel}
                     </span>
                   </div>

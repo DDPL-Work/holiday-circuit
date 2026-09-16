@@ -2896,7 +2896,12 @@ const formatInternalInvoiceRow = (invoice, quotation) => ({
     (Array.isArray(invoice.coveredQueries) && invoice.coveredQueries.length
       ? "Bulk Settlement"
       : "-"),
+  partnerType: invoice.partnerType || (invoice.businessPartnerName ? "offline_partner" : "online_dmc"),
+  isOfflinePartner: Boolean(invoice.partnerType === "offline_partner" || invoice.businessPartnerName),
+  businessPartnerName: invoice.businessPartnerName || "",
+  uploadedByRole: invoice.uploadedByRole || "dmc",
   dmcName:
+    invoice.businessPartnerName ||
     invoice.dmc?.companyName ||
     invoice.dmc?.name ||
     invoice.dmcName ||
@@ -2908,7 +2913,7 @@ const formatInternalInvoiceRow = (invoice, quotation) => ({
     invoice.agent?.name ||
     invoice.agentName ||
     "-",
-  supplierName: invoice.supplierName || "-",
+  supplierName: invoice.supplierName || invoice.businessPartnerName || "-",
   invoiceDate: formatDashboardDate(invoice.invoiceDate),
   invoiceDateValue: invoice.invoiceDate,
   dueDate: formatDashboardDate(invoice.dueDate),

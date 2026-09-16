@@ -93,7 +93,23 @@ const internalInvoiceSchema = new mongoose.Schema(
     dmc: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Auth",
-      required: true,
+      default: null,
+      required: false,
+    },
+    partnerType: {
+      type: String,
+      enum: ["online_dmc", "offline_partner"],
+      default: "online_dmc",
+    },
+    businessPartnerName: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    uploadedByRole: {
+      type: String,
+      enum: ["dmc", "ops", "admin", "finance"],
+      default: "dmc",
     },
     dmcName: {
       type: String,
@@ -280,7 +296,9 @@ const internalInvoiceSchema = new mongoose.Schema(
   { timestamps: true },
 );
 
-internalInvoiceSchema.index({ query: 1, dmc: 1 }, { unique: true });
+internalInvoiceSchema.index({ query: 1, invoiceNumber: 1 });
+internalInvoiceSchema.index({ query: 1, dmc: 1 }, { sparse: true });
+internalInvoiceSchema.index({ partnerType: 1, submittedAt: -1 });
 internalInvoiceSchema.index({ dmc: 1, submittedAt: -1 });
 internalInvoiceSchema.index({ status: 1, updatedAt: -1 });
 internalInvoiceSchema.index({ assignedTo: 1, updatedAt: -1 });

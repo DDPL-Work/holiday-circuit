@@ -1,4 +1,4 @@
-import { DEFAULT_LOGO_BASE64 } from "./defaultLogoBase64";
+import { DEFAULT_LOGO_BASE64 } from "./defaultLogoBase64.js";
 
 export const DEFAULT_FALLBACK_LOGO = DEFAULT_LOGO_BASE64;
 
@@ -130,8 +130,7 @@ export const getVoucherStatusNote = (services = [], isAlreadySent = false) => {
     return {
       tone: "red",
       title: "Voucher Services Missing",
-      message:
-        "No services are mapped in this voucher yet. Add services before sending it to the client.",
+      message: "No services are mapped in this voucher yet. Add services before sending it to the client.",
       canSend: false,
     };
   }
@@ -140,8 +139,7 @@ export const getVoucherStatusNote = (services = [], isAlreadySent = false) => {
     return {
       tone: "red",
       title: "Services And Confirmations Missing",
-      message:
-        "Some voucher services are missing and some DMC confirmation numbers are still pending. Client sharing will stay blocked until both are complete.",
+      message: "Some voucher services are missing and some DMC confirmation numbers are still pending. Client sharing will stay blocked until both are complete.",
       canSend: false,
     };
   }
@@ -150,8 +148,7 @@ export const getVoucherStatusNote = (services = [], isAlreadySent = false) => {
     return {
       tone: "red",
       title: "Service Details Missing",
-      message:
-        "Some voucher services are missing. Complete all service names before sending the voucher to the client.",
+      message: "Some voucher services are missing. Complete all service names before sending the voucher to the client.",
       canSend: false,
     };
   }
@@ -160,8 +157,7 @@ export const getVoucherStatusNote = (services = [], isAlreadySent = false) => {
     return {
       tone: "red",
       title: "DMC Confirmation Pending",
-      message:
-        "Some DMC confirmation numbers are still pending. Client sharing will stay blocked until all confirmations are updated.",
+      message: "Some DMC confirmation numbers are still pending. Client sharing will stay blocked until all confirmations are updated.",
       canSend: false,
     };
   }
@@ -170,8 +166,7 @@ export const getVoucherStatusNote = (services = [], isAlreadySent = false) => {
     return {
       tone: "green",
       title: "Voucher Already Shared",
-      message:
-        "This voucher has already been sent successfully. You can review or download the final shared copy here.",
+      message: "This voucher has already been sent successfully. You can review or download the final shared copy here.",
       canSend: false,
     };
   }
@@ -179,23 +174,9 @@ export const getVoucherStatusNote = (services = [], isAlreadySent = false) => {
   return {
     tone: "green",
     title: "Client Ready To Send",
-    message:
-      "All services and DMC confirmation numbers are available. This voucher is ready to share with the client.",
+    message: "All services and DMC confirmation numbers are available. This voucher is ready to share with the client.",
     canSend: true,
   };
-};
-
-const getConfirmationStatusDisplay = (confirmation = "", status = "") => {
-  const conf = String(confirmation || "").trim().toLowerCase();
-  const stat = String(status || "").trim().toLowerCase();
-
-  if (!conf || conf === "pending") {
-    return { label: "Pending", cssClass: "status-pending" };
-  }
-  if (stat === "cancelled" || conf === "cancelled") {
-    return { label: "Cancelled", cssClass: "status-cancelled" };
-  }
-  return { label: "Confirmed", cssClass: "status-confirmed" };
 };
 
 export const buildVoucherHtml = (data, branding, agentBranding = {}) => {
@@ -211,9 +192,10 @@ export const buildVoucherHtml = (data, branding, agentBranding = {}) => {
     return str;
   };
 
-  const rawAgentCompanyName = String(agentBranding?.name || agentBranding?.brandingName || agentBranding?.companyName || data?.agentName || data?.agencyName || "").trim();
-  const agentCompanyName = rawAgentCompanyName ? normalizeCompanyName(rawAgentCompanyName, "Holiday Circuit") : "";
-  const isAgentHolidayCircuit = !agentCompanyName || agentCompanyName.toLowerCase() === "holiday circuit";
+  const rawAgentCompanyName = String(
+    agentBranding?.name || agentBranding?.brandingName || agentBranding?.companyName || data?.agentName || data?.agencyName || ""
+  ).trim();
+  const agentCompanyName = rawAgentCompanyName ? normalizeCompanyName(rawAgentCompanyName, "Holiday Circuit") : "Holiday Circuit";
 
   const rawLogo = String(
     agentBranding?.logo ||
@@ -225,7 +207,6 @@ export const buildVoucherHtml = (data, branding, agentBranding = {}) => {
   ).trim();
 
   const agentLogoUrl = rawLogo || (showBranding ? DEFAULT_FALLBACK_LOGO : "");
-  const hasAgentBranding = showBranding && (!isAgentHolidayCircuit || Boolean(rawLogo));
 
   const formatOrdinalDate = (d) => {
     if (!d || isNaN(new Date(d).getTime())) return "-";
@@ -315,23 +296,6 @@ export const buildVoucherHtml = (data, branding, agentBranding = {}) => {
       }
     }
 
-    const fullDesc = textSources.join(" ");
-    if (/\b(EP|ROOM\s*ONLY|ONLY\s*ROOM|EUROPEAN\s*PLAN|NO\s*MEALS?)\b/i.test(fullDesc)) {
-      return "EP ( Room Only )";
-    }
-    if (/\b(MAP|HALF\s*BOARD|BREAKFAST\s*(?:AND|&|\+)\s*DINNER)\b/i.test(fullDesc)) {
-      return "MAP ( Breakfast & Dinner Included )";
-    }
-    if (/\b(AP|FULL\s*BOARD|ALL\s*MEALS?)\b/i.test(fullDesc)) {
-      return "AP ( Breakfast, Lunch & Dinner Included )";
-    }
-    if (/\b(AI|ALL\s*INCLUSIVE)\b/i.test(fullDesc)) {
-      return "AI ( All Inclusive )";
-    }
-    if (/\b(CP|BREAKFAST(?:\s*INCLUDED)?|BED\s*&\s*BREAKFAST)\b/i.test(fullDesc)) {
-      return "CP ( Breakfast Included )";
-    }
-
     const fallbackRaw = candidates[0] || h.description || h.roomType || "";
     return fallbackRaw.trim() ? fallbackRaw.trim() : "As per hotel policy";
   };
@@ -364,19 +328,18 @@ export const buildVoucherHtml = (data, branding, agentBranding = {}) => {
   const guestPhoneVal = isDummyPhone ? "-" : String(rawPhone).trim();
 
   const paxVal = data?.passengers || data?.travelerSummary || `${data?.adults || 2} Adults${Number(data?.children || 0) > 0 ? `, ${data.children} Children` : ""}`;
-  const issuedByVal = agentCompanyName || "DDLC Company";
+  const issuedByVal = agentCompanyName || "Holiday Circuit";
   const helplinePhone = data?.agencyPhone || data?.companyPhone || data?.phone || "+91-8851346665";
-  const helplineCompany = agentCompanyName || "DDLC Company";
+  const helplineCompany = agentCompanyName || "Holiday Circuit";
 
   const rawServices = Array.isArray(data?.services) && data.services.length > 0 ? data.services : [];
   const hotelServices = rawServices.filter((s) => String(s.type || s.category || "").toLowerCase().includes("hotel"));
   const nonHotelServices = rawServices.filter((s) => !String(s.type || s.category || "").toLowerCase().includes("hotel"));
 
-  const displayHotels = hotelServices;
-
   let runningHotelDate = startObj && !isNaN(startObj.getTime()) ? new Date(startObj.getTime()) : new Date();
 
-  const hotelsHtml = displayHotels.length > 0 ? displayHotels.map((h, idx) => {
+  // Helper to render hotel card
+  const renderHotelCard = (h, idx) => {
     const rawTitle = String(h.title || "").trim();
     const rawHotelName = String(h.hotelName || h.hotel || "").trim();
     const rawServiceName = String(h.serviceName || h.name || "").trim();
@@ -398,8 +361,7 @@ export const buildVoucherHtml = (data, branding, agentBranding = {}) => {
     const hStatLabel = isHotelConfirmed ? "Confirmed" : "Pending";
     const cnfDisplay = realCnfNum ? String(realCnfNum).trim() : (isHotelConfirmed ? "Confirmed" : "Pending");
 
-    // Calculate dates per hotel
-    const hNights = Number(h.nights || h.numberOfNights || (displayHotels.length > 1 ? 2 : nights) || 2);
+    const hNights = Number(h.nights || h.numberOfNights || (hotelServices.length > 1 ? 2 : nights) || 2);
 
     let hCheckInObj;
     if (h.checkIn) {
@@ -417,7 +379,7 @@ export const buildVoucherHtml = (data, branding, agentBranding = {}) => {
     let hCheckOutObj;
     if (h.checkOut) {
       hCheckOutObj = new Date(h.checkOut);
-    } else if (h.endDate && idx === displayHotels.length - 1 && displayHotels.length === 1) {
+    } else if (h.endDate && idx === hotelServices.length - 1 && hotelServices.length === 1) {
       hCheckOutObj = new Date(h.endDate);
     } else if (h.endDate && h.endDate !== data?.endDate) {
       hCheckOutObj = new Date(h.endDate);
@@ -442,72 +404,78 @@ export const buildVoucherHtml = (data, branding, agentBranding = {}) => {
     const roomDesc = h.roomDescription || h.roomDetails || "";
 
     return `
-      <table class="voucher-card" style="width: 100%; border-collapse: collapse; margin-bottom: 3px; font-size: 10px; border: 1px solid #b3cae8; font-family: Arial, sans-serif; page-break-inside: avoid; break-inside: avoid;">
+      <table class="voucher-card" style="width: 100%; border-collapse: collapse; margin-bottom: 7px; font-size: 10px; border: 1px solid #94a3b8; font-family: Arial, sans-serif; background: #ffffff; page-break-inside: avoid; break-inside: avoid;">
         <thead>
-          <tr style="background-color: #dce8f6;">
-            <th colspan="2" style="padding: 3.5px 6px; font-size: 10.5px; font-weight: 800; color: #000000; text-align: left; border: 1px solid #b3cae8; letter-spacing: 0.2px;">
+          <tr style="background: #1e3a8a;">
+            <th colspan="2" style="padding: 4.5px 8px; font-size: 11px; font-weight: 800; color: #ffffff; text-align: left; border: 1px solid #1e3a8a; letter-spacing: 0.3px;">
               Hotel Accommodation
             </th>
           </tr>
         </thead>
         <tbody>
           <tr>
-            <td colspan="2" style="padding: 4px 6px; background-color: #ffffff; border: 1px solid #b3cae8;">
-              <div style="font-size: 11.5px; font-weight: 800; color: #000000; margin-bottom: 1px; line-height: 1.15;">
-                ${hHotelName}
-              </div>
-              ${hServiceName ? `<div style="font-size: 9.5px; font-weight: 700; color: #2B5083; margin-bottom: 1px;">Service: ${hServiceName}</div>` : ''}
-              <div style="font-size: 9.5px; color: #334155; margin-bottom: 1px;">
-                ${hRating}
-              </div>
-              <div style="font-size: 9.5px; color: #1e293b; line-height: 1.2; margin-bottom: ${hDesc ? '2px' : '3px'};">
-                ${hAddress}
-              </div>
-              ${hDesc ? `<div style="font-size: 9px; color: #475569; line-height: 1.2; margin-bottom: 3px;">${hDesc}</div>` : ''}
-              <div style="font-size: 10px; font-weight: 800; color: #713f12; border-top: 1px solid #e2e8f0; padding-top: 2px; margin-bottom: 3px;">
-                Confirmation: ${cnfDisplay} <span style="font-style: italic; font-size: 9.5px; color: ${hStatLabel === 'Confirmed' ? '#15803d' : '#e11d48'}; font-weight: 700; margin-left: 4px;">( ${hStatLabel} )</span>
-              </div>
+            <td colspan="2" style="padding: 6px 8px; background-color: #ffffff; border: 1px solid #94a3b8;">
+              <table style="width: 100%; border-collapse: collapse; margin-bottom: 4px;">
+                <tr>
+                  <td style="vertical-align: top;">
+                    <div style="font-size: 12px; font-weight: 800; color: #0f172a; line-height: 1.2;">
+                      ${hHotelName}
+                    </div>
+                    ${hServiceName ? `<div style="font-size: 9.5px; font-weight: 700; color: #2563eb; margin-top: 1px;">Service: ${hServiceName}</div>` : ''}
+                    <div style="font-size: 9.5px; color: #475569; margin-top: 1px;">
+                      ${hRating ? `<span style="font-weight: 600; color: #d97706;">★ ${hRating}</span> • ` : ''}${hAddress}
+                    </div>
+                    ${hDesc ? `<div style="font-size: 9px; color: #64748b; line-height: 1.2; margin-top: 2px;">${hDesc}</div>` : ''}
+                  </td>
+                  <td style="vertical-align: top; text-align: right; width: 35%;">
+                    <div style="font-size: 10px; font-weight: 800; color: #0f172a;">
+                      CNF: <span style="color: #1e3a8a;">${cnfDisplay}</span>
+                      <span style="font-size: 9.5px; font-weight: 700; color: ${isHotelConfirmed ? '#15803d' : '#e11d48'}; margin-left: 2px;">(${hStatLabel})</span>
+                    </div>
+                  </td>
+                </tr>
+              </table>
 
               <!-- CHECK-IN & CHECK-OUT HIGHLIGHT BOX -->
-              <table style="width: 100%; border-collapse: collapse; margin-bottom: 3px; border: 1px solid #b3cae8;">
+              <table style="width: 100%; border-collapse: collapse; margin: 4px 0 6px 0; border: 1px solid #cbd5e1;">
                 <tr>
-                  <td style="width: 14%; background-color: #fef08a; padding: 2.5px 5px; font-weight: 700; color: #000000; border: 1px solid #b3cae8; font-size: 9.5px; text-align: center;">
+                  <td style="width: 16%; background-color: #fef08a; padding: 4px 6px; font-weight: 700; color: #713f12; border: 1px solid #cbd5e1; font-size: 9.5px; text-align: center;">
                     Check-in
                   </td>
-                  <td style="width: 36%; padding: 2.5px 5px; background-color: #ffffff; border: 1px solid #b3cae8; font-size: 9.5px;">
-                    <strong style="color: #000000;">${hCheckInDate}</strong> <span style="font-style: italic; font-size: 9px; color: #334155;">at ${hCheckInTime}</span>
+                  <td style="width: 34%; padding: 4px 6px; background-color: #ffffff; border: 1px solid #cbd5e1; font-size: 9.5px; color: #0f172a;">
+                    <strong>${hCheckInDate}</strong> <span style="color: #64748b; font-size: 9px;">at ${hCheckInTime}</span>
                   </td>
-                  <td style="width: 14%; background-color: #fef08a; padding: 2.5px 5px; font-weight: 700; color: #000000; border: 1px solid #b3cae8; font-size: 9.5px; text-align: center;">
+                  <td style="width: 16%; background-color: #fef08a; padding: 4px 6px; font-weight: 700; color: #713f12; border: 1px solid #cbd5e1; font-size: 9.5px; text-align: center;">
                     Check-out
                   </td>
-                  <td style="width: 36%; padding: 2.5px 5px; background-color: #ffffff; border: 1px solid #b3cae8; font-size: 9.5px;">
-                    <strong style="color: #000000;">${hCheckOutDate} (${hNights}N)</strong> <span style="font-style: italic; font-size: 9px; color: #334155;">at ${hCheckOutTime}</span> <span style="font-style: italic; font-size: 9px; color: ${hStatLabel === 'Confirmed' ? '#15803d' : '#e11d48'}; font-weight: 700; margin-left: 3px;">( ${hStatLabel} )</span>
+                  <td style="width: 34%; padding: 4px 6px; background-color: #ffffff; border: 1px solid #cbd5e1; font-size: 9.5px; color: #0f172a;">
+                    <strong>${hCheckOutDate}</strong> <span style="color: #64748b; font-size: 9px;">(${hNights}N at ${hCheckOutTime})</span>
                   </td>
                 </tr>
               </table>
 
               <!-- NIGHT AND MEALS & ROOM TYPE SUB-TABLE -->
-              <table style="width: 100%; border-collapse: collapse; border: 1px solid #b3cae8;">
+              <table style="width: 100%; border-collapse: collapse; border: 1px solid #cbd5e1;">
                 <thead>
-                  <tr style="background-color: #dce8f6;">
-                    <th style="width: 55%; padding: 2.5px 5px; font-size: 9.5px; font-weight: 700; color: #000000; text-align: left; border: 1px solid #b3cae8;">
+                  <tr style="background-color: #f1f5f9;">
+                    <th style="width: 56%; padding: 3.5px 6px; font-size: 9.5px; font-weight: 700; color: #334155; text-align: left; border: 1px solid #cbd5e1;">
                       Night and Meals
                     </th>
-                    <th style="width: 45%; padding: 2.5px 5px; font-size: 9.5px; font-weight: 700; color: #000000; text-align: left; border: 1px solid #b3cae8;">
-                      Room Type
+                    <th style="width: 44%; padding: 3.5px 6px; font-size: 9.5px; font-weight: 700; color: #334155; text-align: left; border: 1px solid #cbd5e1;">
+                      Room Type &amp; Pax
                     </th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr>
-                    <td style="padding: 2.5px 5px; background-color: #ffffff; border: 1px solid #b3cae8; font-size: 9.5px; color: #000000; vertical-align: top;">
-                      <div style="font-weight: 600; color: #000000;">${nightMealStr}</div>
+                    <td style="padding: 4px 6px; background-color: #ffffff; border: 1px solid #cbd5e1; font-size: 9.5px; color: #0f172a; vertical-align: top;">
+                      <div style="font-weight: 600; color: #0f172a;">${nightMealStr}</div>
                       ${h.mealDescription ? `<div style="font-size: 9px; color: #475569; margin-top: 1px;">${h.mealDescription}</div>` : ''}
                     </td>
-                    <td style="padding: 2.5px 5px; background-color: #ffffff; border: 1px solid #b3cae8; font-size: 9.5px; color: #000000; vertical-align: top;">
-                      <div style="font-weight: 700; color: #000000;">${roomTypeStr}</div>
-                      <div style="font-size: 9px; color: #475569; margin-top: 1px;">${paxDetailStr}</div>
-                      ${roomDesc ? `<div style="font-size: 9px; color: #64748b; margin-top: 1px;">${roomDesc}</div>` : ''}
+                    <td style="padding: 4px 6px; background-color: #ffffff; border: 1px solid #cbd5e1; font-size: 9.5px; color: #0f172a; vertical-align: top;">
+                      <div style="font-weight: 700; color: #0f172a;">${roomTypeStr}</div>
+                      <div style="font-size: 9px; color: #475569; margin-top: 1px;">Booked: ${paxDetailStr}</div>
+                      ${roomDesc ? `<div style="font-size: 8.5px; color: #64748b; margin-top: 1px;">${roomDesc}</div>` : ''}
                     </td>
                   </tr>
                 </tbody>
@@ -517,18 +485,17 @@ export const buildVoucherHtml = (data, branding, agentBranding = {}) => {
         </tbody>
       </table>
     `;
-  }).join("") : `<div style="padding: 6px 10px; text-align: center; color: #64748b; font-style: italic; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 4px; margin-bottom: 3px; font-size: 10px;">No specific hotel accommodations listed for this voucher.</div>`;
+  };
 
-  const nonHotelServicesHtml = nonHotelServices.map((s) => {
+  // Helper to render non-hotel cards (transfers, activities, sightseeing)
+  const renderNonHotelCard = (s) => {
     const sTypeRaw = String(s.type || s.category || "Service").toLowerCase();
     const sTitle = s.title || s.name || s.serviceName || `${destinationVal} Service`;
     const sDesc = s.description || s.details || s.notes || "";
-
     const isTransport = sTypeRaw.includes("transfer") || sTypeRaw.includes("transport") || sTypeRaw.includes("cab") || sTypeRaw.includes("car");
 
-    // Format Transport Specifics
     const rawUsage = String(s.usageType || s.transferType || s.tripType || s.serviceMode || s.direction || "").trim();
-    let usageLabel = "";
+    let usageLabel = "One Way Transfer";
     if (rawUsage) {
       const lowUsage = rawUsage.toLowerCase();
       if (lowUsage.includes("point") || lowUsage.includes("oneway") || lowUsage.includes("one-way") || lowUsage.includes("one way")) {
@@ -546,59 +513,17 @@ export const buildVoucherHtml = (data, branding, agentBranding = {}) => {
       } else {
         usageLabel = rawUsage;
       }
-    } else {
-      const titleLow = String(sTitle || "").toLowerCase();
-      if (titleLow.includes("round trip") || titleLow.includes("round-trip")) {
-        usageLabel = "Round Trip";
-      } else if (titleLow.includes("disposal") || titleLow.includes("full day")) {
-        usageLabel = "Full Day Disposal";
-      } else if (titleLow.includes("half day")) {
-        usageLabel = "Half Day Disposal";
-      } else {
-        usageLabel = "One Way Transfer";
-      }
     }
 
     const vType = s.vehicleType || s.carType || s.vehicle || (isTransport ? "Private AC Vehicle" : "Standard Vehicle");
     const vCount = s.vehicleCount || s.numberOfVehicles || s.quantity || 1;
     const vehicleTitle = `${vCount > 1 ? `${vCount} x ` : ''}${vType}`;
 
-    let passCap = s.passengerCapacity || s.maxPassengers || s.maxPax || s.seatingCapacity || s.seats || s.paxCapacity || null;
-    let luggCap = s.luggageCapacity || s.maxLuggage || s.luggage || s.baggageCapacity || s.bags || null;
+    let passCap = s.passengerCapacity || s.maxPassengers || s.maxPax || s.seatingCapacity || s.seats || s.paxCapacity || (isTransport ? "Max 4 Pax" : "4 Pax");
+    let luggCap = s.luggageCapacity || s.maxLuggage || s.luggage || s.baggageCapacity || s.bags || (isTransport ? "2-3 Bags" : "2 Bags");
 
-    if (!passCap && isTransport) {
-      const vtLow = String(vType).toLowerCase();
-      if (vtLow.includes("sedan") || vtLow.includes("etios") || vtLow.includes("dzire") || vtLow.includes("car")) {
-        passCap = "Max 4 Pax";
-      } else if (vtLow.includes("innova") || vtLow.includes("suv") || vtLow.includes("ertiga") || vtLow.includes("crysta")) {
-        passCap = "Max 6 Pax";
-      } else if (vtLow.includes("tempo") || vtLow.includes("van") || vtLow.includes("minivan")) {
-        passCap = "Max 12 Pax";
-      } else if (vtLow.includes("coach") || vtLow.includes("bus")) {
-        passCap = "Max 25 Pax";
-      } else {
-        passCap = "Max 4 Pax";
-      }
-    } else if (passCap && !String(passCap).toLowerCase().includes("pax")) {
-      passCap = `Max ${passCap} Pax`;
-    }
-
-    if (!luggCap && isTransport) {
-      const vtLow = String(vType).toLowerCase();
-      if (vtLow.includes("sedan") || vtLow.includes("etios") || vtLow.includes("dzire") || vtLow.includes("car")) {
-        luggCap = "2 Bags";
-      } else if (vtLow.includes("innova") || vtLow.includes("suv") || vtLow.includes("ertiga") || vtLow.includes("crysta")) {
-        luggCap = "4 Bags";
-      } else if (vtLow.includes("tempo") || vtLow.includes("van") || vtLow.includes("minivan")) {
-        luggCap = "8 Bags";
-      } else if (vtLow.includes("coach") || vtLow.includes("bus")) {
-        luggCap = "20 Bags";
-      } else {
-        luggCap = "2-3 Bags";
-      }
-    } else if (luggCap && !String(luggCap).toLowerCase().includes("bag")) {
-      luggCap = `${luggCap} Bags`;
-    }
+    if (passCap && !String(passCap).toLowerCase().includes("pax")) passCap = `Max ${passCap} Pax`;
+    if (luggCap && !String(luggCap).toLowerCase().includes("bag")) luggCap = `${luggCap} Bags`;
 
     let sectionTitle = "Service";
     let badge1Label = "Service Date";
@@ -617,7 +542,7 @@ export const buildVoucherHtml = (data, branding, agentBranding = {}) => {
     } else if (sTypeRaw.includes("activity")) {
       sectionTitle = "Activity";
       badge1Label = "Activity Date";
-      badge2Label = "Timing / Duration";
+      badge2Label = "Timing / Slot";
       badge2Value = s.timing || s.duration || s.slot || "As per schedule";
       subCol1Title = "Activity Description";
       subCol2Title = "Pax Details";
@@ -649,92 +574,91 @@ export const buildVoucherHtml = (data, branding, agentBranding = {}) => {
 
     const sDateObj = s.serviceDate ? new Date(s.serviceDate) : (s.date ? new Date(s.date) : (s.startDate ? new Date(s.startDate) : startObj));
     const sDateFormatted = sDateObj && !isNaN(sDateObj.getTime()) ? formatOrdinalDate(sDateObj) : startDateOrdinal;
-    const sTimeFormatted = s.time || s.pickupTime || s.serviceDate || "10:00 hrs";
+    const sTimeFormatted = s.time || s.pickupTime || "10:00 hrs";
 
     const sPaxVehicleStr = s.vehicleType ? `${s.vehicleType} • ${paxVal}` : (s.pax || paxVal || "2 Pax");
     const sDetailsStr = `${sTitle} - ${statLabel === "Confirmed" ? "Confirmed Service" : "Service"}`;
 
     return `
-      <table class="voucher-card" style="width: 100%; border-collapse: collapse; margin-bottom: 3px; font-size: 10px; border: 1px solid #b3cae8; font-family: Arial, sans-serif; page-break-inside: avoid; break-inside: avoid;">
+      <table class="voucher-card" style="width: 100%; border-collapse: collapse; margin-bottom: 7px; font-size: 10px; border: 1px solid #94a3b8; font-family: Arial, sans-serif; background: #ffffff; page-break-inside: avoid; break-inside: avoid;">
         <thead>
-          <tr style="background-color: #dce8f6;">
-            <th colspan="2" style="padding: 3.5px 6px; font-size: 10.5px; font-weight: 800; color: #000000; text-align: left; border: 1px solid #b3cae8; letter-spacing: 0.2px;">
+          <tr style="background: #1e3a8a;">
+            <th colspan="2" style="padding: 4.5px 8px; font-size: 11px; font-weight: 800; color: #ffffff; text-align: left; border: 1px solid #1e3a8a; letter-spacing: 0.3px;">
               ${sectionTitle}
             </th>
           </tr>
         </thead>
         <tbody>
           <tr>
-            <td colspan="2" style="padding: 4px 6px; background-color: #ffffff; border: 1px solid #b3cae8;">
-              <div style="font-size: 11.5px; font-weight: 800; color: #000000; margin-bottom: 1px; line-height: 1.15;">
-                ${sTitle}
-              </div>
-              <div style="font-size: 9.5px; color: #334155; margin-bottom: 1px;">
-                ${sectionTitle} • ${destinationVal}
-              </div>
-              ${sDesc ? `<div style="font-size: 9px; color: #1e293b; line-height: 1.2; margin-bottom: 3px;">${sDesc}</div>` : `<div style="margin-bottom: 2px;"></div>`}
-              
-              <div style="font-size: 10px; font-weight: 800; color: #713f12; border-top: 1px solid #e2e8f0; padding-top: 2px; margin-bottom: 3px;">
-                Confirmation: ${cnfDisplay}
-              </div>
+            <td colspan="2" style="padding: 6px 8px; background-color: #ffffff; border: 1px solid #94a3b8;">
+              <table style="width: 100%; border-collapse: collapse; margin-bottom: 4px;">
+                <tr>
+                  <td style="vertical-align: top;">
+                    <div style="font-size: 12px; font-weight: 800; color: #0f172a; line-height: 1.2;">
+                      ${sTitle}
+                    </div>
+                    <div style="font-size: 9.5px; color: #475569; margin-top: 1px;">
+                      ${sectionTitle} • ${destinationVal}
+                    </div>
+                    ${sDesc ? `<div style="font-size: 9px; color: #64748b; line-height: 1.2; margin-top: 2px;">${sDesc}</div>` : ''}
+                  </td>
+                  <td style="vertical-align: top; text-align: right; width: 35%;">
+                    <div style="font-size: 10px; font-weight: 800; color: #0f172a;">
+                      CNF: <span style="color: #1e3a8a;">${cnfDisplay}</span>
+                      <span style="font-size: 9.5px; font-weight: 700; color: ${isConfirmed ? '#15803d' : '#e11d48'}; margin-left: 2px;">(${statLabel})</span>
+                    </div>
+                  </td>
+                </tr>
+              </table>
 
               <!-- SERVICE DATE & DETAILS HIGHLIGHT BOX -->
-              <table style="width: 100%; border-collapse: collapse; margin-bottom: 3px; border: 1px solid #b3cae8;">
+              <table style="width: 100%; border-collapse: collapse; margin: 4px 0 6px 0; border: 1px solid #cbd5e1;">
                 <tr>
-                  <td style="width: 14%; background-color: #fef08a; padding: 2.5px 5px; font-weight: 700; color: #000000; border: 1px solid #b3cae8; font-size: 9.5px; text-align: center;">
+                  <td style="width: 16%; background-color: #fef08a; padding: 4px 6px; font-weight: 700; color: #713f12; border: 1px solid #cbd5e1; font-size: 9.5px; text-align: center;">
                     ${badge1Label}
                   </td>
-                  <td style="width: 36%; padding: 2.5px 5px; background-color: #ffffff; border: 1px solid #b3cae8; font-size: 9.5px;">
-                    <strong style="color: #000000;">${sDateFormatted}</strong> <span style="font-style: italic; font-size: 9px; color: #334155;">at ${sTimeFormatted}</span>
+                  <td style="width: 34%; padding: 4px 6px; background-color: #ffffff; border: 1px solid #cbd5e1; font-size: 9.5px; color: #0f172a;">
+                    <strong>${sDateFormatted}</strong> <span style="color: #64748b; font-size: 9px;">at ${sTimeFormatted}</span>
                   </td>
-                  <td style="width: 14%; background-color: #fef08a; padding: 2.5px 5px; font-weight: 700; color: #000000; border: 1px solid #b3cae8; font-size: 9.5px; text-align: center;">
+                  <td style="width: 16%; background-color: #fef08a; padding: 4px 6px; font-weight: 700; color: #713f12; border: 1px solid #cbd5e1; font-size: 9.5px; text-align: center;">
                     ${badge2Label}
                   </td>
-                  <td style="width: 36%; padding: 2.5px 5px; background-color: #ffffff; border: 1px solid #b3cae8; font-size: 9.5px;">
-                    <strong style="color: #000000;">${badge2Value}</strong> <span style="font-style: italic; font-size: 9px; color: ${statLabel === 'Confirmed' ? '#15803d' : '#334155'}; font-weight: 600;">( ${statLabel} )</span>
+                  <td style="width: 34%; padding: 4px 6px; background-color: #ffffff; border: 1px solid #cbd5e1; font-size: 9.5px; color: #0f172a;">
+                    <strong>${badge2Value}</strong>
                   </td>
                 </tr>
               </table>
 
               <!-- SERVICE SUB-TABLE -->
-              <table style="width: 100%; border-collapse: collapse; border: 1px solid #b3cae8;">
+              <table style="width: 100%; border-collapse: collapse; border: 1px solid #cbd5e1;">
                 <thead>
-                  <tr style="background-color: #dce8f6;">
-                    <th style="width: 58%; padding: 2.5px 5px; font-size: 9.5px; font-weight: 700; color: #000000; text-align: left; border: 1px solid #b3cae8;">
+                  <tr style="background-color: #f1f5f9;">
+                    <th style="width: 58%; padding: 3.5px 6px; font-size: 9.5px; font-weight: 700; color: #334155; text-align: left; border: 1px solid #cbd5e1;">
                       ${subCol1Title}
                     </th>
-                    <th style="width: 42%; padding: 2.5px 5px; font-size: 9.5px; font-weight: 700; color: #000000; text-align: left; border: 1px solid #b3cae8;">
+                    <th style="width: 42%; padding: 3.5px 6px; font-size: 9.5px; font-weight: 700; color: #334155; text-align: left; border: 1px solid #cbd5e1;">
                       ${subCol2Title}
                     </th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr>
-                    <td style="padding: 2.5px 5px; background-color: #ffffff; border: 1px solid #b3cae8; font-size: 9px; color: #000000; vertical-align: top;">
-                      <div style="font-weight: 600; color: #000000;">${sDetailsStr}</div>
+                    <td style="padding: 4px 6px; background-color: #ffffff; border: 1px solid #cbd5e1; font-size: 9.5px; color: #0f172a; vertical-align: top;">
+                      <div style="font-weight: 600; color: #0f172a;">${sDetailsStr}</div>
                       ${isTransport ? `
-                        <div style="margin-top: 1px; font-size: 9px; color: #1e40af; font-weight: 600;">
+                        <div style="margin-top: 2px; font-size: 9px; color: #2563eb; font-weight: 600;">
                           ${usageLabel}${s.pickupLocation || s.dropLocation ? ` • ${s.pickupLocation || 'Pickup'} ➔ ${s.dropLocation || 'Drop'}` : ''}
                         </div>
                       ` : ''}
-                      ${sDesc ? `<div style="font-size: 8.5px; color: #475569; margin-top: 1px; line-height: 1.2;">${sDesc}</div>` : ''}
+                      ${sDesc ? `<div style="font-size: 9px; color: #64748b; margin-top: 2px; line-height: 1.3;">${sDesc}</div>` : ''}
                     </td>
-                    <td style="padding: 2.5px 5px; background-color: #ffffff; border: 1px solid #b3cae8; font-size: 9px; color: #000000; vertical-align: top;">
+                    <td style="padding: 4px 6px; background-color: #ffffff; border: 1px solid #cbd5e1; font-size: 9.5px; color: #0f172a; vertical-align: top;">
                       ${isTransport ? `
-                        <div style="font-weight: 700; color: #000000; font-size: 9px; margin-bottom: 2px;">${vehicleTitle}</div>
-                        <table style="width: 100%; border-collapse: collapse; font-size: 8.5px; color: #1e293b;">
-                          <tr>
-                            <td style="padding: 1px 0; color: #475569;"><strong>Pax Cap:</strong></td>
-                            <td style="padding: 1px 0; font-weight: 700; color: #0f172a; text-align: right;">${passCap}</td>
-                          </tr>
-                          <tr>
-                            <td style="padding: 1px 0; color: #475569;"><strong>Luggage:</strong></td>
-                            <td style="padding: 1px 0; font-weight: 700; color: #0f172a; text-align: right;">${luggCap}</td>
-                          </tr>
-                        </table>
+                        <div style="font-weight: 700; color: #0f172a; font-size: 9.5px; margin-bottom: 2px;">${vehicleTitle}</div>
+                        <div style="font-size: 9px; color: #475569;">Pax Cap: <strong style="color: #0f172a;">${passCap}</strong> • Luggage: <strong style="color: #0f172a;">${luggCap}</strong></div>
                       ` : `
-                        <div style="font-weight: 600; color: #000000;">${sPaxVehicleStr}</div>
-                        <div style="font-size: 8.5px; color: #475569; margin-top: 1px;"><strong>Booked Pax:</strong> ${paxVal}</div>
+                        <div style="font-weight: 600; color: #0f172a;">${sPaxVehicleStr}</div>
+                        <div style="font-size: 9px; color: #475569; margin-top: 1px;">Booked Pax: <strong style="color: #0f172a;">${paxVal}</strong></div>
                       `}
                     </td>
                   </tr>
@@ -745,9 +669,82 @@ export const buildVoucherHtml = (data, branding, agentBranding = {}) => {
         </tbody>
       </table>
     `;
-  }).join("");
+  };
 
-  // TERMS AND CONDITIONS SECTION
+  // Overview Table
+  const renderOverviewTable = () => `
+    <table class="voucher-overview-table" style="width: 100%; border-collapse: collapse; margin-bottom: 7px; font-size: 10px; border: 1px solid #94a3b8; font-family: Arial, sans-serif; background: #ffffff; page-break-inside: avoid;">
+      <thead>
+        <tr style="background: #e2e8f0;">
+          <th colspan="4" style="padding: 4px 8px; font-size: 11px; font-weight: 800; color: #0f172a; text-align: center; border: 1px solid #94a3b8; letter-spacing: 0.4px;">
+            Trip ID: ${tripIdVal}
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td style="padding: 4px 8px; color: #475569; width: 18%; font-weight: 600; border: 1px solid #cbd5e1; background: #f8fafc;">Start Date</td>
+          <td style="padding: 4px 8px; color: #0f172a; width: 32%; font-weight: 700; border: 1px solid #cbd5e1;">${startDateOrdinal}</td>
+          <td style="padding: 4px 8px; color: #475569; width: 18%; font-weight: 600; border: 1px solid #cbd5e1; background: #f8fafc;">Trip Duration</td>
+          <td style="padding: 4px 8px; color: #0f172a; width: 32%; font-weight: 700; border: 1px solid #cbd5e1;">${durationVal}</td>
+        </tr>
+        <tr>
+          <td style="padding: 4px 8px; color: #475569; font-weight: 600; border: 1px solid #cbd5e1; background: #f8fafc;">Destination</td>
+          <td colspan="3" style="padding: 4px 8px; color: #0f172a; font-weight: 700; border: 1px solid #cbd5e1;">${destinationVal}</td>
+        </tr>
+        <tr>
+          <td style="padding: 4px 8px; color: #475569; font-weight: 600; border: 1px solid #cbd5e1; background: #f8fafc;">Guest Name</td>
+          <td style="padding: 4px 8px; color: #0f172a; font-weight: 700; border: 1px solid #cbd5e1;">${guestNameVal}</td>
+          <td style="padding: 4px 8px; color: #475569; font-weight: 600; border: 1px solid #cbd5e1; background: #f8fafc;">Guest Ph.</td>
+          <td style="padding: 4px 8px; color: #0f172a; font-weight: 600; border: 1px solid #cbd5e1;">${guestPhoneVal}</td>
+        </tr>
+        <tr>
+          <td style="padding: 4px 8px; color: #475569; font-weight: 600; border: 1px solid #cbd5e1; background: #f8fafc;">Pax Details</td>
+          <td colspan="3" style="padding: 4px 8px; color: #0f172a; font-weight: 700; border: 1px solid #cbd5e1;">${paxVal}</td>
+        </tr>
+        <tr>
+          <td style="padding: 4px 8px; color: #475569; font-weight: 600; border: 1px solid #cbd5e1; background: #f8fafc;">Issued By</td>
+          <td colspan="3" style="padding: 4px 8px; color: #1e3a8a; font-weight: 700; border: 1px solid #cbd5e1;">${issuedByVal}</td>
+        </tr>
+      </tbody>
+    </table>
+  `;
+
+  // Header Component (Identical on both pages)
+  const renderHeader = () => `
+    <!-- HEADER -->
+    <table style="width: 100%; border-collapse: collapse; background: #0f1d32; border-bottom: 2px solid #2563eb; font-family: Arial, sans-serif;">
+      <tr>
+        <td style="padding: 6px 14px; vertical-align: middle; text-align: left; width: 35%;">
+          <div style="background: #ffffff; padding: 2px 6px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; height: 42px; width: 140px; box-sizing: border-box; box-shadow: 0 1px 3px rgba(0,0,0,0.2);">
+            ${agentLogoUrl
+              ? `<img src="${agentLogoUrl}" alt="${agentCompanyName || 'Holiday Circuit'}" style="max-height: 38px; max-width: 130px; width: auto; height: auto; object-fit: contain; display: block;" />`
+              : `<div style="font-size: 14px; font-weight: 800; color: #0f1d32; line-height: 1.15; text-align: center; letter-spacing: -0.2px;">${agentCompanyName || 'Holiday Circuit'}</div>`
+            }
+          </div>
+        </td>
+        <td style="padding: 6px 14px; vertical-align: middle; text-align: right; width: 65%;">
+          <div style="color: #ffffff; font-size: 18px; font-weight: 800; letter-spacing: -0.3px; font-family: Arial, sans-serif; line-height: 1.2;">
+            ${agentCompanyName || (showBranding ? "Holiday Circuit" : "Travel Voucher")}
+          </div>
+        </td>
+      </tr>
+    </table>
+  `;
+
+  // Title Bar Component
+  const renderTitleBar = (isContinuation = false) => `
+    <!-- TITLE BAR -->
+    <table style="width: 100%; border-collapse: collapse; background: #1a3352; border-top: 1px solid #3b82f6; border-bottom: 1px solid #0f1d32; margin-bottom: 6px;">
+      <tr>
+        <td style="text-align: center; color: #ffffff; font-size: 11px; font-weight: 800; padding: 3.5px 10px; letter-spacing: 2px; text-transform: uppercase; font-family: Arial, sans-serif;">
+          Travel Voucher ${isContinuation ? "(Continued)" : ""}
+        </td>
+      </tr>
+    </table>
+  `;
+
+  // Terms & Conditions Component
   const rawTerms =
     data?.termsAndConditions ||
     data?.terms ||
@@ -774,17 +771,212 @@ export const buildVoucherHtml = (data, branding, agentBranding = {}) => {
     termsList = DEFAULT_VOUCHER_TERMS;
   }
 
-  const termsHtml = termsList.length > 0 ? `
+  const renderTermsAndConditions = () => `
     <!-- TERMS & CONDITIONS SECTION -->
-    <div style="margin-top: 3px; margin-bottom: 3px; font-family: Arial, sans-serif; page-break-inside: avoid; break-inside: avoid;">
-      <div style="font-size: 10px; font-weight: 800; color: #9a3412; margin-bottom: 2px;">
-        Terms &amp; Conditions:
+    <div style="margin: 5px 0 5px 0; font-family: Arial, sans-serif; page-break-inside: avoid; break-inside: avoid; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 4px; padding: 5px 8px;">
+      <div style="font-size: 10px; font-weight: 800; color: #c2410c; margin-bottom: 3px; text-transform: uppercase; letter-spacing: 0.3px;">
+        Terms &amp; Conditions
       </div>
-      <ol style="margin: 0; padding-left: 13px; font-size: 8px; color: #1e293b; line-height: 1.2;">
-        ${termsList.map((t) => `<li style="margin-bottom: 1px;">${t.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</li>`).join("")}
+      <ol style="margin: 0; padding-left: 14px; font-size: 8px; color: #334155; line-height: 1.3;">
+        ${termsList.map((t) => `<li style="margin-bottom: 1.5px;">${t.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</li>`).join("")}
       </ol>
     </div>
-  ` : "";
+  `;
+
+  // Helpline Section (Content element, placed above footer)
+  const renderHelpline = () => `
+    <!-- HELPLINE SECTION -->
+    <table class="voucher-helpline" style="width: 100%; border-collapse: collapse; margin-top: 5px; margin-bottom: 6px; font-size: 9.5px; border: 1px solid #cbd5e1; font-family: Arial, sans-serif; page-break-inside: avoid; break-inside: avoid;">
+      <thead>
+        <tr style="background-color: #fef08a;">
+          <th colspan="3" style="padding: 3.5px 6px; font-size: 9.5px; font-weight: 800; color: #713f12; text-align: center; border: 1px solid #cbd5e1; letter-spacing: 0.2px;">
+            24x7 Customer Helpline &amp; Operations Support
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td style="padding: 3.5px 6px; color: #0f172a; font-weight: 700; width: 34%; border: 1px solid #cbd5e1; text-align: center;">${helplineCompany}</td>
+          <td style="padding: 3.5px 6px; color: #166534; font-weight: 600; width: 33%; border: 1px solid #cbd5e1; text-align: center;">24x7 Operational Support</td>
+          <td style="padding: 3.5px 6px; color: #1e3a8a; font-weight: 700; width: 33%; border: 1px solid #cbd5e1; text-align: center;">${helplinePhone}</td>
+        </tr>
+      </tbody>
+    </table>
+  `;
+
+  // Pinned Bottom Footer (Identical on every page, ONLY footer banner & page numbering)
+  const renderFooter = (pageNum, totalPages) => `
+    <!-- PINNED FOOTER WRAPPER: Fixed at bottom of every page -->
+    <div class="voucher-page-footer" style="margin-top: auto; width: 100%; background: #ffffff; page-break-inside: avoid; break-inside: avoid;">
+      <!-- GENERATED NOTE & PAGE NUMBER -->
+      <div style="display: flex; justify-content: space-between; align-items: center; padding: 3px 10px; font-size: 8px; color: #64748b; font-family: Arial, sans-serif; border-top: 1px solid #e2e8f0;">
+        <span>Generated On - ${new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}</span>
+        <span style="font-weight: 700; color: #1e293b;">Page ${pageNum} of ${totalPages}</span>
+      </div>
+
+      <!-- FOOTER BANNER / CONTACT FOOTER -->
+      ${voucherFooterSrc ? `
+        <div style="width:100%; text-align:center;">
+          <img src="${voucherFooterSrc}" alt="Footer Banner" style="width:100%; max-width:100%; height:auto; display:block;" />
+        </div>
+      ` : `
+        <table style="width: 100%; border-collapse: collapse; background: #0f1d32; border-top: 2px solid #2563eb; color: #ffffff; font-family: Arial, sans-serif;">
+          <tr>
+            <td style="padding: 5px 14px; text-align: center;">
+              <div style="color: #f1f5f9; font-size: 9.5px; font-weight: 700; line-height: 1.3;">
+                Phone: ${helplinePhone} &nbsp;|&nbsp; Email: ${data.agencyEmail || 'ops@holidaycircuit.com'}
+              </div>
+              <div style="color: #94a3b8; font-size: 8px; font-weight: 500; line-height: 1.2; margin-top: 1px;">
+                ${data.agencyAddress || '2nd Floor, 632 Block B1, Janakpuri, New Delhi - 110058'}
+              </div>
+            </td>
+          </tr>
+        </table>
+      `}
+    </div>
+  `;
+
+  // Render generic service card
+  const renderServiceCard = (s, idx) => {
+    const isHotel = String(s.type || s.category || "").toLowerCase().includes("hotel");
+    return isHotel ? renderHotelCard(s, idx) : renderNonHotelCard(s);
+  };
+
+  // Combine all services: hotels first, then other services
+  const allServices = [...hotelServices, ...nonHotelServices];
+
+  const getServiceHeight = (s) => {
+    const isHotel = String(s.type || s.category || "").toLowerCase().includes("hotel");
+    return isHotel ? 155 : 125;
+  };
+
+  const termsEstHeight = Math.min(220, 35 + termsList.length * 12);
+  const helplineEstHeight = 45;
+  const overviewEstHeight = 135;
+  const pageContentBudget = 930; // Safe height budget for body content on A4
+
+
+  const totalServicesEstHeight = allServices.reduce((sum, s) => sum + getServiceHeight(s), 0);
+  const singlePageTotalNeeded = overviewEstHeight + totalServicesEstHeight + termsEstHeight + helplineEstHeight;
+
+  let pageConfigs = [];
+
+  if (singlePageTotalNeeded <= pageContentBudget && allServices.length <= 3) {
+    // Single Page Voucher
+    pageConfigs.push({
+      hasOverview: true,
+      services: allServices,
+      hasTerms: true,
+      hasHelpline: true,
+    });
+  } else {
+    // Multi-page voucher: Fill Page 1 nicely, overflow remaining to Page 2
+    let remainingServices = [...allServices];
+    let page1Services = [];
+    let page1UsedHeight = overviewEstHeight;
+
+    while (remainingServices.length > 0) {
+      const nextS = remainingServices[0];
+      const sHeight = getServiceHeight(nextS);
+
+      // If this is the last remaining service and it + terms + helpline fit on page 1, keep it on page 1
+      if (remainingServices.length === 1 && (page1UsedHeight + sHeight + termsEstHeight + helplineEstHeight <= pageContentBudget)) {
+        page1Services.push(remainingServices.shift());
+        page1UsedHeight += sHeight;
+        break;
+      }
+
+      // If adding next service would exceed page 1 budget (leaving margin for bottom), stop
+      if (page1UsedHeight + sHeight > pageContentBudget - 20) {
+        break;
+      }
+
+      // If only 1 service is left and terms wouldn't fit, don't put all services on page 1
+      // so page 2 gets at least 1 service
+      if (remainingServices.length === 1 && (page1UsedHeight + sHeight + termsEstHeight + helplineEstHeight > pageContentBudget)) {
+        break;
+      }
+
+      page1Services.push(remainingServices.shift());
+      page1UsedHeight += sHeight;
+    }
+
+    pageConfigs.push({
+      hasOverview: true,
+      services: page1Services,
+      hasTerms: false,
+      hasHelpline: false,
+    });
+
+    // Distribute remaining services across subsequent pages
+    while (remainingServices.length > 0) {
+      let pageServices = [];
+      let pageUsed = 0;
+
+      while (remainingServices.length > 0) {
+        const nextS = remainingServices[0];
+        const sHeight = getServiceHeight(nextS);
+        if (pageUsed + sHeight > pageContentBudget - 60) {
+          break;
+        }
+        pageServices.push(remainingServices.shift());
+        pageUsed += sHeight;
+      }
+
+      const fitsTerms = (pageUsed + termsEstHeight + helplineEstHeight <= pageContentBudget);
+      const isLastChunk = remainingServices.length === 0;
+
+      if (fitsTerms || isLastChunk) {
+        pageConfigs.push({
+          hasOverview: false,
+          services: pageServices,
+          hasTerms: true,
+          hasHelpline: true,
+        });
+      } else {
+        pageConfigs.push({
+          hasOverview: false,
+          services: pageServices,
+          hasTerms: false,
+          hasHelpline: false,
+        });
+      }
+    }
+
+    // Ensure terms and helpline are attached if not already
+    if (!pageConfigs.some((p) => p.hasTerms)) {
+      pageConfigs.push({
+        hasOverview: false,
+        services: [],
+        hasTerms: true,
+        hasHelpline: true,
+      });
+    }
+  }
+
+  const totalPages = pageConfigs.length;
+
+  const pagesHtml = pageConfigs.map((cfg, idx) => {
+    const pageNum = idx + 1;
+    const isFirstPage = pageNum === 1;
+
+    return `
+      <!-- PAGE ${pageNum} -->
+      <div class="voucher-page" style="width: 794px; min-height: 1120px; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between; background: #ffffff; margin: 0 auto 20px auto; border: 1px solid #cbd5e1; overflow: hidden; page-break-after: always; break-after: page;">
+        <div>
+          ${renderHeader()}
+          ${renderTitleBar(!isFirstPage)}
+          <div style="padding: 0 10px;">
+            ${cfg.hasOverview ? renderOverviewTable() : ""}
+            ${cfg.services.map((s, sIdx) => renderServiceCard(s, sIdx)).join("")}
+            ${cfg.hasTerms ? renderTermsAndConditions() : ""}
+            ${cfg.hasHelpline ? renderHelpline() : ""}
+          </div>
+        </div>
+        ${renderFooter(pageNum, totalPages)}
+      </div>
+    `;
+  }).join("\n");
 
   return `
     <!DOCTYPE html>
@@ -798,185 +990,30 @@ export const buildVoucherHtml = (data, branding, agentBranding = {}) => {
           html, body {
             margin: 0;
             padding: 0;
-            background-color: #ffffff;
+            background-color: #f1f5f9;
             font-family: Arial, sans-serif;
             color: #1e293b;
             -webkit-font-smoothing: antialiased;
           }
-          .voucher-container {
-            width: 100%;
-            max-width: 800px;
-            margin: 0 auto;
-            background: #ffffff;
-            border: 1px solid #cbd5e1;
-            overflow: hidden;
-            box-sizing: border-box;
-            display: flex;
-            flex-direction: column;
-            justify-content: space-between;
-          }
-          .voucher-main-content {
-            flex: 1 0 auto;
-            width: 100%;
-          }
-          .voucher-body {
-            padding: 5px 10px;
-          }
-          .voucher-footer-wrapper {
-            margin-top: auto;
-            width: 100%;
-            page-break-inside: avoid;
-            break-inside: avoid;
+          .voucher-page {
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
           }
           table {
-            page-break-inside: auto;
-            break-inside: auto;
+            page-break-inside: avoid;
+            break-inside: avoid;
           }
           tr {
             page-break-inside: avoid;
             break-inside: avoid;
           }
-          .voucher-card {
-            page-break-inside: avoid;
-            break-inside: avoid;
-          }
-          thead {
-            display: table-header-group;
-          }
         </style>
       </head>
       <body>
-        <div class="voucher-container">
-          <div class="voucher-main-content">
-            <!-- HEADER -->
-            <table style="width: 100%; border-collapse: collapse; background: #0f1d32; border-bottom: 2px solid #3d6a8e; font-family: Arial, sans-serif;">
-              <tr>
-                <td style="padding: 6px 12px; vertical-align: middle; text-align: left; width: 35%;">
-                  <div style="background: #ffffff; padding: 3px 6px; border: 1.5px solid #5a8aa8; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center; min-height: 38px; max-width: 180px; box-sizing: border-box;">
-                    ${agentLogoUrl
-                      ? `<img src="${agentLogoUrl}" alt="${agentCompanyName || 'Logo'}" style="max-height: 36px; max-width: 160px; height: auto; width: auto; object-fit: contain; display: block;" />`
-                      : `<div style="font-size: 13px; font-weight: 800; color: #0f1d32; line-height: 1.15; text-align: center;">${agentCompanyName || 'Holiday Circuit'}</div>`
-                    }
-                  </div>
-                </td>
-                <td style="padding: 6px 12px; vertical-align: middle; text-align: right; width: 65%;">
-                  <div style="color: #ffffff; font-size: 18px; font-weight: 800; letter-spacing: -0.3px; font-family: Arial, sans-serif; line-height: 1.2;">
-                    ${agentCompanyName || (showBranding ? "Holiday Circuit" : "Travel Voucher")}
-                  </div>
-                </td>
-              </tr>
-            </table>
-
-            <!-- TITLE BAR -->
-            <table style="width: 100%; border-collapse: collapse; background: #1a3352; border-top: 1px solid #5a8aa8; border-bottom: 1px solid #0f1d32;">
-              <tr>
-                <td style="text-align: center; color: #ffffff; font-size: 11.5px; font-weight: 800; padding: 4px 10px; letter-spacing: 2px; text-transform: uppercase; font-family: Arial, sans-serif;">
-                  Travel Voucher
-                </td>
-              </tr>
-            </table>
-
-            <!-- BODY -->
-            <div class="voucher-body">
-              <!-- OVERVIEW TABLE -->
-              <table class="voucher-card" style="width: 100%; border-collapse: collapse; margin-bottom: 3px; font-size: 9.5px; border: 1px solid #b3cae8; font-family: Arial, sans-serif; page-break-inside: avoid; break-inside: avoid;">
-                <thead>
-                  <tr style="background-color: #dce8f6;">
-                    <th colspan="4" style="padding: 3.5px 6px; font-size: 10px; font-weight: 800; color: #000000; text-align: center; border: 1px solid #b3cae8; letter-spacing: 0.3px;">
-                      Trip ID: ${tripIdVal}
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td style="padding: 2.5px 6px; color: #1e293b; width: 18%; font-weight: 500; border: 1px solid #b3cae8;">Start Date</td>
-                    <td style="padding: 2.5px 6px; color: #000000; width: 32%; font-weight: 700; border: 1px solid #b3cae8;">${startDateOrdinal}</td>
-                    <td style="padding: 2.5px 6px; color: #1e293b; width: 20%; font-weight: 500; border: 1px solid #b3cae8;">Trip Duration</td>
-                    <td style="padding: 2.5px 6px; color: #000000; width: 30%; font-weight: 700; border: 1px solid #b3cae8;">${durationVal}</td>
-                  </tr>
-                  <tr>
-                    <td style="padding: 2.5px 6px; color: #1e293b; font-weight: 500; border: 1px solid #b3cae8;">Destination</td>
-                    <td colspan="3" style="padding: 2.5px 6px; color: #000000; font-weight: 700; border: 1px solid #b3cae8;">${destinationVal}</td>
-                  </tr>
-                  <tr>
-                    <td style="padding: 2.5px 6px; color: #1e293b; font-weight: 500; border: 1px solid #b3cae8;">Guest Name</td>
-                    <td style="padding: 2.5px 6px; color: #000000; font-weight: 700; border: 1px solid #b3cae8;">${guestNameVal}</td>
-                    <td style="padding: 2.5px 6px; color: #1e293b; font-weight: 500; border: 1px solid #b3cae8;">Guest Ph.</td>
-                    <td style="padding: 2.5px 6px; color: #000000; font-weight: 600; border: 1px solid #b3cae8;">${guestPhoneVal}</td>
-                  </tr>
-                  <tr>
-                    <td style="padding: 2.5px 6px; color: #1e293b; font-weight: 500; border: 1px solid #b3cae8;">Pax Details</td>
-                    <td colspan="3" style="padding: 2.5px 6px; color: #000000; font-weight: 700; border: 1px solid #b3cae8;">${paxVal}</td>
-                  </tr>
-                  <tr>
-                    <td style="padding: 2.5px 6px; color: #000000; font-weight: 700; border: 1px solid #b3cae8;">Issued By</td>
-                    <td colspan="3" style="padding: 2.5px 6px; color: #1e293b; font-weight: 500; border: 1px solid #b3cae8;">${issuedByVal}</td>
-                  </tr>
-                </tbody>
-              </table>
-
-              <!-- HOTELS SECTION -->
-              ${hotelsHtml}
-
-              <!-- TRANSFERS & ACTIVITIES SECTION -->
-              ${nonHotelServicesHtml}
-
-              <!-- TERMS & CONDITIONS SECTION -->
-              ${termsHtml}
-            </div>
-          </div>
-
-          <!-- PINNED FOOTER WRAPPER: Sits at bottom of voucher -->
-          <div class="voucher-footer-wrapper">
-            <!-- HELPLINE SECTION -->
-            <div style="padding: 0 10px 3px 10px;">
-              <table class="voucher-card" style="width: 100%; border-collapse: collapse; margin-bottom: 2px; font-size: 9.5px; border: 1px solid #b3cae8; font-family: Arial, sans-serif; page-break-inside: avoid; break-inside: avoid;">
-                <thead>
-                  <tr style="background-color: #fef08a;">
-                    <th colspan="3" style="padding: 2.5px 6px; font-size: 9.5px; font-weight: 800; color: #000000; text-align: center; border: 1px solid #b3cae8;">
-                      Helpline
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td style="padding: 2.5px 6px; color: #000000; font-weight: 600; width: 34%; border: 1px solid #b3cae8;">${helplineCompany}</td>
-                    <td style="padding: 2.5px 6px; color: #000000; font-weight: 500; width: 33%; border: 1px solid #b3cae8;">24x7 Operational</td>
-                    <td style="padding: 2.5px 6px; color: #000000; font-weight: 700; width: 33%; border: 1px solid #b3cae8;">${helplinePhone}</td>
-                  </tr>
-                </tbody>
-              </table>
-
-              <!-- GENERATED NOTE -->
-              <div style="text-align: right; font-size: 8px; color: #64748b; margin-top: 1px; margin-bottom: 2px; font-family: Arial, sans-serif;">
-                Generated On - ${new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })} - ${new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false })} Hrs UTC
-              </div>
-            </div>
-
-            <!-- FOOTER BANNER / CONTACT FOOTER -->
-            ${voucherFooterSrc ? `
-              <div style="width:100%; text-align:center;">
-                <img src="${voucherFooterSrc}" alt="Footer Banner" style="width:100%; max-width:100%; height:auto; display:block;" />
-              </div>
-            ` : `
-              <table style="width: 100%; border-collapse: collapse; background: #0f1d32; border-top: 2px solid #3d6a8e; color: #ffffff; font-family: Arial, sans-serif;">
-                <tr>
-                  <td style="padding: 6px 14px; text-align: center;">
-                    <div style="color: #cbd5e1; font-size: 10px; font-weight: 600; line-height: 1.3; margin-bottom: 2px;">
-                      Phone: ${data.agencyPhone || helplinePhone} | Email: ${data.agencyEmail || 'ops@holidaycircuit.com'}
-                    </div>
-                    <div style="color: #94a3b8; font-size: 9px; font-weight: 500; line-height: 1.2;">
-                      ${data.agencyAddress || '2nd Floor, 632 Block B1, Janakpuri, New Delhi - 110058'}
-                    </div>
-                  </td>
-                </tr>
-              </table>
-            `}
-          </div>
-        </div>
+        ${pagesHtml}
       </body>
     </html>
   `;
 };
 
-export { exportVoucherAsPdf } from "./voucherPdf";
+export { exportVoucherAsPdf } from "./voucherPdf.js";
+

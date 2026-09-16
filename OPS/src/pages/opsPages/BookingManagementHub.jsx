@@ -9,11 +9,13 @@ import {
   MapPin,
   User,
   ChevronDown,
+  Upload,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useSelector } from "react-redux";
 import { motion } from "framer-motion";
 import BookingDetailsModal from "../../modal/BookingDetails";
+import UploadBusinessPartnerInvoiceModal from "../../modal/UploadBusinessPartnerInvoiceModal";
 import API from "../../utils/Api.js";
 
 const getTravelerDocumentReviewMeta = (query = {}) => {
@@ -145,6 +147,8 @@ export default function BookingManagementHub() {
   const [loading, setLoading] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState(null);
   const [selectedDocumentBooking, setSelectedDocumentBooking] = useState(null);
+  const [showPartnerInvoiceModal, setShowPartnerInvoiceModal] = useState(false);
+  const [partnerInvoiceSelectedBooking, setPartnerInvoiceSelectedBooking] = useState(null);
   const [mobileDropdownOpen, setMobileDropdownOpen] = useState(false);
   const itemsPerPage = 8;
   
@@ -335,9 +339,11 @@ export default function BookingManagementHub() {
         transition={{ duration: 0.28 }}
         className={`bg-white transition-opacity duration-150 ${selectedBooking || selectedDocumentBooking ? "pointer-events-none opacity-95" : "opacity-100"}`}
       >
-        <div className="mb-5">
-          <h2 className="text-lg font-bold text-[#0F172A]">Booking Management Hub</h2>
-          <p className="text-sm text-gray-500">Central hub for all agent requests and bookings</p>
+        <div className="mb-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-bold text-[#0F172A]">Booking Management Hub</h2>
+            <p className="text-sm text-gray-500">Central hub for all agent requests and bookings</p>
+          </div>
         </div>
 
         <div className="mb-4">
@@ -522,7 +528,7 @@ export default function BookingManagementHub() {
                   <tr>
                     <th className="w-[90px] px-4 py-3 text-left font-medium">Query ID</th>
                     <th className="w-[140px] px-4 py-3 text-left font-medium whitespace-nowrap">Agent Name</th>
-                    <th className="w-[120px] px-4 py-3 text-left font-medium">Destination</th>
+                    <th className="w-[150px] px-4 py-3 text-left font-medium">Destination</th>
                     <th className="w-[160px] px-4 py-3 text-left font-medium">Travel Date</th>
                     <th className="w-[140px] px-4 py-3 text-center font-medium">Pax</th>
                     <th className="w-[160px] px-4 py-3 text-center font-medium">Ops Status</th>
@@ -593,10 +599,19 @@ export default function BookingManagementHub() {
                           </div>
                         </td>
 
-                        <td className="px-4 py-4 align-middle text-left">
-                          <div className="flex min-w-0 items-center gap-2 text-gray-600">
-                            <MapPin className="h-3 w-3 shrink-0 text-red-500" />
-                            <span className="truncate">{row.destination}</span>
+                        <td className="px-4 py-4 align-middle text-left max-w-[200px]">
+                          <div className="flex items-center gap-1.5 text-gray-600 min-w-0">
+                            <MapPin className="h-3.5 w-3.5 shrink-0 text-red-500" />
+                            <span
+                              className={`text-slate-700 font-medium ${
+                                (row.destination || "").length > 22
+                                  ? "break-words leading-tight line-clamp-2"
+                                  : "whitespace-nowrap"
+                              }`}
+                              title={row.destination}
+                            >
+                              {row.destination}
+                            </span>
                           </div>
                         </td>
 
@@ -649,7 +664,20 @@ export default function BookingManagementHub() {
                               className="inline-flex whitespace-nowrap shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50/80 px-2.5 py-1 text-xs font-medium text-violet-700 transition-colors hover:bg-violet-600 hover:text-white hover:border-violet-600 shadow-2xs"
                             >
                               <FileText className="h-3 w-3" />
-                              Docs View
+                              Docs
+                            </motion.button>
+                            <motion.button
+                              whileHover={{ scale: 1.03 }}
+                              whileTap={{ scale: 0.97 }}
+                              onClick={() => {
+                                setPartnerInvoiceSelectedBooking(row._raw);
+                                setShowPartnerInvoiceModal(true);
+                              }}
+                              className="inline-flex whitespace-nowrap shrink-0 cursor-pointer items-center gap-1 rounded-lg border border-amber-200 bg-amber-50/80 px-2 py-1 text-xs font-medium text-amber-700 transition-colors hover:bg-amber-600 hover:text-white hover:border-amber-600 shadow-2xs"
+                              title="Upload Offline Partner Invoice (MakeMyTrip, Agoda, Yatra)"
+                            >
+                              <Upload className="h-3 w-3" />
+                              Invoice
                             </motion.button>
                           </div>
                         </td>
@@ -738,6 +766,18 @@ export default function BookingManagementHub() {
           refresh={fetchQueries}
           viewMode="documents"
           onClose={() => setSelectedDocumentBooking(null)}
+        />
+      )}
+      {showPartnerInvoiceModal && (
+        <UploadBusinessPartnerInvoiceModal
+          initialQuery={partnerInvoiceSelectedBooking}
+          onClose={() => {
+            setShowPartnerInvoiceModal(false);
+            setPartnerInvoiceSelectedBooking(null);
+          }}
+          onSuccess={() => {
+            fetchQueries();
+          }}
         />
       )}
     </>
