@@ -7164,6 +7164,16 @@ const QuotationBuilder = () => {
 
   const loadServices = useCallback(
     async ({ preserveCurrent = false, showLoader = !preserveCurrent } = {}) => {
+      // When Business Partner mode is active, DMC contracted rates are not applicable.
+      // Keep only already-selected / custom services and do not call the API.
+      if (partnerType === "Business Partner") {
+        setServicesLoadError("");
+        setServices((prev) => prev.filter((s) => s.checked || s.custom));
+        setBaseServicesSnapshot((prev) => prev.filter((s) => s.checked || s.custom));
+        if (showLoader) setServicesLoading(false);
+        return;
+      }
+
       if (showLoader) {
         setServicesLoading(true);
       }

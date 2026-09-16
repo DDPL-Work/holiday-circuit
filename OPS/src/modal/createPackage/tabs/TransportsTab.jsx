@@ -130,24 +130,27 @@ export const TransportsTab = ({
               )}
 
               <div className="flex items-center justify-between flex-wrap gap-2 pb-2.5 border-b border-gray-200">
-                <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex items-center flex-1 gap-2 flex-wrap">
                   <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
                     <Car size={14} className="text-sky-600" /> Transfer #{index + 1}
                   </span>
 
-                  {(partnerType === "Business Partner" || isOpenedFromQuotationBuilder) && (
-                    <div className="w-52 ml-1 mr-2">
-                      <BusinessPartnerSelect
-                        value={transfer.businessPartnerId || transfer.businessPartner || ""}
-                        onChange={(val) => {
-                          const partnerObj = businessPartners?.find((p) => (p._id || p.id) === val);
-                          updateTransfer(index, "businessPartnerId", val);
-                          updateTransfer(index, "businessPartner", val);
-                          updateTransfer(index, "businessPartnerName", partnerObj?.name || partnerObj?.companyName || "");
-                        }}
-                        businessPartners={businessPartners}
-                        placeholderName={transfer.businessPartnerName || transfer.dmcName || transfer.supplierName || ""}
-                      />
+                  {partnerType === "Business Partner" && (
+                    <div className="ml-auto flex items-center gap-1.5 shrink-0">
+                      <span className="text-[11px] font-semibold text-slate-500 whitespace-nowrap">Partner:</span>
+                      <div className="w-48">
+                        <BusinessPartnerSelect
+                          value={transfer.businessPartnerId || transfer.businessPartner || ""}
+                          onChange={(val) => {
+                            const partnerObj = businessPartners?.find((p) => (p._id || p.id) === val);
+                            updateTransfer(index, "businessPartnerId", val);
+                            updateTransfer(index, "businessPartner", val);
+                            updateTransfer(index, "businessPartnerName", partnerObj?.name || partnerObj?.companyName || "");
+                          }}
+                          businessPartners={businessPartners}
+                          placeholderName={transfer.businessPartnerName || transfer.dmcName || transfer.supplierName || ""}
+                        />
+                      </div>
                     </div>
                   )}
 

@@ -80,24 +80,27 @@ export const HotelsTab = ({
               }`}
             >
               <div className="flex items-center justify-between flex-wrap gap-2 pb-2.5 border-b border-gray-200">
-                <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex items-center flex-1 gap-2 flex-wrap">
                   <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
                     <BedDouble size={14} className="text-amber-600" /> Hotel #{index + 1}
                   </span>
 
-                  {(partnerType === "Business Partner" || isOpenedFromQuotationBuilder) && (
-                    <div className="w-52 ml-1 mr-2">
-                      <BusinessPartnerSelect
-                        value={hotel.businessPartnerId || hotel.businessPartner || ""}
-                        onChange={(val) => {
-                          const partnerObj = businessPartners?.find((p) => (p._id || p.id) === val);
-                          updateHotel(index, "businessPartnerId", val);
-                          updateHotel(index, "businessPartner", val);
-                          updateHotel(index, "businessPartnerName", partnerObj?.name || partnerObj?.companyName || "");
-                        }}
-                        businessPartners={businessPartners}
-                        placeholderName={hotel.businessPartnerName || hotel.dmcName || hotel.supplierName || ""}
-                      />
+                  {partnerType === "Business Partner" && (
+                    <div className="ml-auto flex items-center gap-1.5 shrink-0">
+                      <span className="text-[11px] font-semibold text-slate-500 whitespace-nowrap">Partner:</span>
+                      <div className="w-48">
+                        <BusinessPartnerSelect
+                          value={hotel.businessPartnerId || hotel.businessPartner || ""}
+                          onChange={(val) => {
+                            const partnerObj = businessPartners?.find((p) => (p._id || p.id) === val);
+                            updateHotel(index, "businessPartnerId", val);
+                            updateHotel(index, "businessPartner", val);
+                            updateHotel(index, "businessPartnerName", partnerObj?.name || partnerObj?.companyName || "");
+                          }}
+                          businessPartners={businessPartners}
+                          placeholderName={hotel.businessPartnerName || hotel.dmcName || hotel.supplierName || ""}
+                        />
+                      </div>
                     </div>
                   )}
 
@@ -122,9 +125,19 @@ export const HotelsTab = ({
                     </span>
                   ) : null}
 
-                  <span className="rounded-md bg-amber-50 border border-amber-200 px-2 py-0.5 text-[11px] font-bold text-amber-700">
-                    ★ {hotel.starCategory || "5 Star"}
-                  </span>
+                  <div className="flex items-center gap-1 rounded-md bg-amber-50 border border-amber-200 px-2 py-0.5 shadow-2xs">
+                    <span className="text-amber-500 text-[11px] font-bold">★</span>
+                    <select
+                      value={hotel.starCategory || "5 Star"}
+                      onChange={(e) => updateHotel(index, "starCategory", e.target.value)}
+                      className="bg-transparent text-amber-700 text-[11px] font-bold focus:outline-none cursor-pointer"
+                      title="Hotel Star Rating"
+                    >
+                      <option value="3 Star">3 Star</option>
+                      <option value="4 Star">4 Star</option>
+                      <option value="5 Star">5 Star</option>
+                    </select>
+                  </div>
 
                   {hotel.supplierName && (
                     <span className="rounded-md bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-[10px] text-emerald-700 font-semibold">
