@@ -1404,6 +1404,11 @@ const mapQuotationHistoryRow = (quotation = {}, index = 0, total = 0, latestRevi
     id: String(quotation?._id || ""),
     quotationNumber: quotation?.quotationNumber || `Quotation ${index + 1}`,
     status: quotation?.status || "Pending",
+    partnerType:
+      quotation?.partnerType ||
+      (quotation?.services?.some((s) => s?.isBpService || s?.businessPartnerId || s?.businessPartner)
+        ? "Business Partner"
+        : "Online DMC"),
     attemptNumber: total - index,
     isLatest: index === 0,
     createdAt: quotation?.createdAt || null,
@@ -2867,6 +2872,7 @@ export const createQuotation = async (req, res, next) => {
       quotationId,
       editExistingQuotation = false,
       queryId,
+      partnerType: rawPartnerType,
       validTill,
       pricing,
       sendVia = [],
@@ -2882,6 +2888,12 @@ export const createQuotation = async (req, res, next) => {
       termsAndConditions = [],
       dayWiseItinerary = [],
     } = req.body;
+
+    const partnerType =
+      rawPartnerType ||
+      (services.some((s) => s.isBpService || s.businessPartnerId || s.businessPartner)
+        ? "Business Partner"
+        : "Online DMC");
 
     const stripHtml = (text) => String(text || "").replace(/<[^>]*>?/gm, "").replace(/\s+/g, " ").trim();
     const normalizedInclusions = Array.isArray(inclusions)
@@ -3055,6 +3067,9 @@ export const createQuotation = async (req, res, next) => {
         serviceId: s.serviceId,
         supplierId: s.supplierId || undefined,
         supplierName: s.supplierName || "",
+        businessPartnerId: s.businessPartnerId || s.businessPartner || undefined,
+        businessPartnerName: s.businessPartnerName || "",
+        isBpService: Boolean(s.isBpService || s.businessPartnerId || s.businessPartner),
         dmcId: s.dmcId || s.supplierId || undefined,
         dmcName: s.dmcName || "",
         type: s.type || s.serviceType || s.category || "",
@@ -3162,6 +3177,7 @@ export const createQuotation = async (req, res, next) => {
       quotation.queryId = query._id;
       quotation.agent = query.agent;
       quotation.createdBy = req.user.id;
+      quotation.partnerType = partnerType;
       quotation.inclusions = normalizedInclusions;
       quotation.exclusions = normalizedExclusions;
       quotation.additionalNotes = normalizedAdditionalNotes;
@@ -3314,6 +3330,7 @@ export const createQuotation = async (req, res, next) => {
       queryId: query._id,
       agent: query.agent,
       createdBy: req.user.id,
+      partnerType,
 
       inclusions: normalizedInclusions,
       exclusions: normalizedExclusions,
@@ -4898,7 +4915,7 @@ export const getOpsQueryQuotations = async (req, res, next) => {
       status: { $ne: "Pending" },
     })
       .select(
-        "quotationNumber status pricing clientTotalAmount validTill services inclusions exclusions additionalNotes termsAndConditions dayWiseItinerary agentMarkup agentRevisionRemark createdAt updatedAt createdBy",
+        "quotationNumber status partnerType pricing clientTotalAmount validTill services inclusions exclusions additionalNotes termsAndConditions dayWiseItinerary agentMarkup agentRevisionRemark createdAt updatedAt createdBy",
       )
       .populate("createdBy", "name email companyName role")
       .sort({ updatedAt: -1, createdAt: -1 })
@@ -4931,6 +4948,7 @@ export const saveQuotationDraft = async (req, res, next) => {
     const { quotationId } = req.params;
     const {
       validTill,
+      partnerType,
       pricing = {},
       services = [],
       opsPercent = 0,
@@ -5079,6 +5097,9 @@ export const saveQuotationDraft = async (req, res, next) => {
       quotation.dayWiseItinerary = normalizeDayWiseItinerary(dayWiseItinerary);
     }
     quotation.services = formattedServices;
+    if (partnerType) {
+      quotation.partnerType = partnerType;
+    }
     quotation.validTill = validTill || quotation.validTill;
     quotation.pricing = {
       currency: "INR",

@@ -5051,8 +5051,8 @@ const QuotationBuilder = () => {
           return nextHistory[0]?.id || nextHistory[0]?._id || "";
         });
 
-        // Hydrate quotation details into builder workspace if not in fresh draft mode
-        if (nextHistory.length > 0 && !isFreshDraftMode) {
+        // Hydrate quotation details into builder workspace if not in fresh draft mode and not already hydrated
+        if (nextHistory.length > 0 && !isFreshDraftMode && !draftHydrated) {
           const targetQuotation =
             nextHistory.find((q) => q.isLatest) || nextHistory[0];
           if (targetQuotation) {
@@ -5091,7 +5091,7 @@ const QuotationBuilder = () => {
     return () => {
       isDisposed = true;
     };
-  }, [order?._id, partnerType, historyRefreshKey]);
+  }, [order?._id, historyRefreshKey]);
 
   const selectedHistoryQuotation = useMemo(
     () =>
@@ -5171,6 +5171,8 @@ const QuotationBuilder = () => {
 
     if (quotation.partnerType) {
       setPartnerType(quotation.partnerType);
+    } else if (quotation.services?.some((s) => s.isBpService || s.businessPartnerId || s.businessPartner)) {
+      setPartnerType("Business Partner");
     }
 
     const draftOpsMarkupPercent = Number(
@@ -5302,11 +5304,24 @@ const QuotationBuilder = () => {
     if (Array.isArray(quotation?.services) && quotation.services.length > 0) {
       const formattedServices = quotation.services.map((service) => {
         const owner = resolveDmcOwner(service);
-        const resolvedId =
-          service.id ||
-          service._id ||
-          service.serviceId ||
-          `srv-${Math.random().toString(36).substring(2)}`;
+        const isCustom = Boolean(
+          service.custom ||
+            service.isBpService ||
+            service.businessPartnerId ||
+            service.businessPartner ||
+            (!service.serviceId && partnerType === "Business Partner"),
+        );
+        const resolvedServiceId =
+          service.serviceId || service.id || service._id;
+        const resolvedId = isCustom
+          ? service.id ||
+            service._id ||
+            resolvedServiceId ||
+            `srv-${Math.random().toString(36).substring(2)}`
+          : service.serviceId ||
+            service.id ||
+            service._id ||
+            `srv-${Math.random().toString(36).substring(2)}`;
         const basePrice = Number(
           service.price ?? service.rate ?? service.quoteBaseRate ?? 0,
         );
@@ -5334,7 +5349,7 @@ const QuotationBuilder = () => {
         const mapped = mapDraftServiceToUi(service, {
           id: resolvedId,
           checked: true,
-          custom: true,
+          custom: isCustom,
           useStoredPricing: true,
           fullServiceAmount: resolvedStoredTotal,
           baseServiceAmount: basePrice,
@@ -5345,10 +5360,10 @@ const QuotationBuilder = () => {
         return {
           ...mapped,
           id: resolvedId,
-          serviceId: service.serviceId || resolvedId,
+          serviceId: resolvedServiceId || resolvedId,
           dbServiceId: service._id || service.dbServiceId || resolvedId,
           checked: true,
-          custom: true,
+          custom: isCustom,
           useStoredPricing: true,
           supplierId: bpId || mapped.supplierId,
           supplierName: bpName || mapped.supplierName,
@@ -5437,24 +5452,36 @@ const QuotationBuilder = () => {
           return formattedServices;
         }
         const formattedIdSet = new Set(
-          formattedServices.map((s) =>
-            String(s.id || s._id || s.serviceId || ""),
+          formattedServices.flatMap((s) =>
+            [s.id, s._id, s.serviceId, s.dbServiceId]
+              .filter(Boolean)
+              .map(String),
           ),
         );
         const remainingPrev = prev.filter(
-          (s) => !formattedIdSet.has(String(s.id || s._id || s.serviceId || "")),
+          (s) =>
+            !formattedIdSet.has(String(s.id || "")) &&
+            !formattedIdSet.has(String(s._id || "")) &&
+            !formattedIdSet.has(String(s.serviceId || "")) &&
+            !formattedIdSet.has(String(s.dbServiceId || "")),
         );
         return [...formattedServices, ...remainingPrev];
       });
 
       setBaseServicesSnapshot((prev) => {
         const formattedIdSet = new Set(
-          formattedServices.map((s) =>
-            String(s.id || s._id || s.serviceId || ""),
+          formattedServices.flatMap((s) =>
+            [s.id, s._id, s.serviceId, s.dbServiceId]
+              .filter(Boolean)
+              .map(String),
           ),
         );
         const remainingPrev = prev.filter(
-          (s) => !formattedIdSet.has(String(s.id || s._id || s.serviceId || "")),
+          (s) =>
+            !formattedIdSet.has(String(s.id || "")) &&
+            !formattedIdSet.has(String(s._id || "")) &&
+            !formattedIdSet.has(String(s.serviceId || "")) &&
+            !formattedIdSet.has(String(s.dbServiceId || "")),
         );
         return [...formattedServices, ...remainingPrev];
       });
@@ -7199,10 +7226,18 @@ const QuotationBuilder = () => {
         setBaseServicesSnapshot((previous) => {
           const customServices = previous.filter((s) => s.custom);
           const formattedIds = new Set(
-            formatted.map((s) => String(s.id || s._id || s.serviceId || "")),
+            formatted.flatMap((s) =>
+              [s.id, s._id, s.serviceId, s.dbServiceId]
+                .filter(Boolean)
+                .map(String),
+            ),
           );
           const remainingCustom = customServices.filter(
-            (s) => !formattedIds.has(String(s.id || s._id || s.serviceId || "")),
+            (s) =>
+              !formattedIds.has(String(s.id || "")) &&
+              !formattedIds.has(String(s._id || "")) &&
+              !formattedIds.has(String(s.serviceId || "")) &&
+              !formattedIds.has(String(s.dbServiceId || "")),
           );
           return [
             ...remainingCustom,
@@ -7642,43 +7677,52 @@ const QuotationBuilder = () => {
       });
   }, [exchangeRates, services]);
 
-  const contractedRateFilterCounts = useMemo(
-    () =>
-      services
-        .filter((service) =>
-          doesServiceMatchDestination(service, order?.destination),
-        )
-        .reduce(
-          (counts, service) => {
-            counts.all += 1;
-            const type = normalizeServiceFilterType(service.type);
-            if (counts[type] !== undefined) {
-              counts[type] += 1;
-            }
-            return counts;
-          },
-          {
-            all: 0,
-            hotel: 0,
-            transfer: 0,
-            activity: 0,
-            sightseeing: 0,
-          },
-        ),
-    [order?.destination, services],
-  );
-
   const destinationMatchedServices = useMemo(
     () => {
       return services.filter((service) => {
-        return (
-          service.isBpService ||
-          service.custom ||
-          doesServiceMatchDestination(service, order?.destination)
-        );
+        if (partnerType === "Online DMC") {
+          // In Online DMC mode, do not show Business Partner services in contracted rates
+          if (service.isBpService || service.businessPartnerId || service.businessPartner) {
+            return false;
+          }
+          return (
+            service.custom ||
+            doesServiceMatchDestination(service, order?.destination)
+          );
+        } else {
+          // In Business Partner mode, show only BP services and custom BP services
+          return Boolean(
+            service.isBpService ||
+            service.businessPartnerId ||
+            service.businessPartner ||
+            service.custom
+          );
+        }
       });
     },
-    [order?.destination, services],
+    [order?.destination, partnerType, services],
+  );
+
+  const contractedRateFilterCounts = useMemo(
+    () =>
+      destinationMatchedServices.reduce(
+        (counts, service) => {
+          counts.all += 1;
+          const type = normalizeServiceFilterType(service.type);
+          if (counts[type] !== undefined) {
+            counts[type] += 1;
+          }
+          return counts;
+        },
+        {
+          all: 0,
+          hotel: 0,
+          transfer: 0,
+          activity: 0,
+          sightseeing: 0,
+        },
+      ),
+    [destinationMatchedServices],
   );
 
   const filteredServices = useMemo(() => {

@@ -2429,11 +2429,15 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
               const allQuoteServices = Array.isArray(quote?.services) ? quote.services : [];
 
               const isHotelItem = (s) => {
-                const type = String(s?.type || s?.category || "").trim().toLowerCase();
-                const title = String(s?.title || s?.hotelName || s?.name || "").trim().toLowerCase();
+                const type = String(s?.type || s?.category || s?.serviceType || "").trim().toLowerCase();
+                if (type === "transfer" || type === "transport" || type === "cab" || type === "car" || type === "flight") return false;
+                if (type === "activity" || type === "sightseeing" || type === "tour") return false;
                 if (type === "hotel" || type === "accommodation" || type === "stay") return true;
                 if (s?.roomType || s?.starCategory || s?.hotelCategory || s?.starRating) return true;
-                if (title.includes("hotel") || title.includes("resort") || title.includes("villas") || title.includes("inn") || title.includes("suites") || title.includes("hyatt") || title.includes("taj") || title.includes("eden") || title.includes("kandyan") || title.includes("amari")) return true;
+                const title = String(s?.title || s?.hotelName || s?.name || "").trim().toLowerCase();
+                if (title.includes("transfer") || title.includes("airport") || title.includes("pickup") || title.includes("drop") || title.includes("cab") || title.includes("car")) return false;
+                if (title.includes("tour") || title.includes("sightseeing") || title.includes("activity") || title.includes("safari") || title.includes("cruise") || title.includes("watersport") || title.includes("water sport")) return false;
+                if (title.includes("hotel") || title.includes("resort") || title.includes("villas") || title.includes("inn") || title.includes("suites") || title.includes("ramada") || title.includes("alka") || title.includes("hyatt") || title.includes("taj") || title.includes("eden") || title.includes("kandyan") || title.includes("amari")) return true;
                 return false;
               };
 

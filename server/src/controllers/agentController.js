@@ -512,10 +512,37 @@ const buildQuotationRateMismatch = (service = {}, liveService = null) => {
 };
 
 const validateQuotationSupplierRates = async (quotation = {}) => {
+  const resolvedPartnerType = String(
+    quotation?.partnerType ||
+      (quotation?.services?.some((s) => s?.isBpService || s?.businessPartnerId || s?.businessPartner)
+        ? "Business Partner"
+        : "Online DMC")
+  ).trim();
+
+  // If the quotation was built for a Business Partner, prices are manually negotiated/entered,
+  // so bypass live Online DMC catalog rate validation.
+  if (resolvedPartnerType === "Business Partner") {
+    return {
+      valid: true,
+      mismatches: [],
+    };
+  }
+
   const services = Array.isArray(quotation?.services) ? quotation.services : [];
   const mismatches = [];
 
   await Promise.all(services.map(async (service) => {
+    // Skip manual / Business Partner services or manual rate overrides
+    if (
+      service?.isBpService ||
+      service?.businessPartnerId ||
+      service?.businessPartner ||
+      service?.custom ||
+      service?.manualRateOverride
+    ) {
+      return;
+    }
+
     const normalizedType = normalizeQuotationServiceType(service?.type);
     // Rate validation is strictly for hotel services only
     if (normalizedType !== "hotel") return;
@@ -526,6 +553,9 @@ const validateQuotationSupplierRates = async (quotation = {}) => {
     if (!Model || !serviceId || !mongoose.Types.ObjectId.isValid(serviceId)) return;
 
     const liveService = await Model.findById(serviceId).lean();
+    // If the service is not in live supplier catalog, it is a custom/manual/BP service - skip it
+    if (!liveService) return;
+
     const mismatch = buildQuotationRateMismatch(service, liveService);
     if (mismatch) mismatches.push(mismatch);
   }));
