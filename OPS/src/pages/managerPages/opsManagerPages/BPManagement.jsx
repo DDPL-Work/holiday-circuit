@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSelector } from "react-redux";
 import toast from "react-hot-toast";
-import API from "../../utils/Api";
-import AddNewUserModal from "../../modal/AddNewUserModal";
+import API from "../../../utils/Api";
+import AddBPModal from "../../../modal/AddBPModal";
 
 const roleBadge = {
   "Ops Team": "bg-blue-50 text-blue-600",
@@ -76,6 +76,7 @@ const mapApiUserToRow = (user = {}) => ({
   role: getRoleLabel(user),
   status: user.isDeleted ? "Deleted" : user.accountStatus || "Active",
   isDeleted: Boolean(user.isDeleted),
+  isBusinessPartner: Boolean(user.isBusinessPartner),
   lastLoginAt: user.lastLoginAt || null,
   lastLogin: formatRelativeTime(user.lastLoginAt),
   updatedAt: user.updatedAt || null,
@@ -86,7 +87,6 @@ const mapApiUserToRow = (user = {}) => ({
   manager: user.manager || "",
   permissions: Array.isArray(user.permissions) ? user.permissions : [],
   accessExpiry: user.accessExpiry || "",
-  isBusinessPartner: Boolean(user.isBusinessPartner),
 });
 
 const EditIcon = () => (
@@ -246,7 +246,7 @@ function ConfirmUserActionModal({
   );
 }
 
-export default function UserManagement() {
+export default function BPManagement() {
   const currentUser = useSelector((state) => state.auth.user);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -263,7 +263,8 @@ export default function UserManagement() {
     try {
       setLoading(true);
       const { data } = await API.get("/admin/managed-users");
-      setUsers((data?.users || []).map(mapApiUserToRow));
+      const onlyBPs = (data?.users || []).filter(u => u.isBusinessPartner);
+      setUsers(onlyBPs.map(mapApiUserToRow));
     } catch (error) {
       toast.error(error?.response?.data?.message || "Failed to load users");
       setUsers([]);
@@ -451,17 +452,6 @@ export default function UserManagement() {
               <AddUserIcon />
               Add Business Partner
             </button>
-            <button
-              onClick={() => {
-                setEditingUser(null);
-                setModalMode("user");
-                setIsAddUserModalOpen(true);
-              }}
-              className="flex items-center gap-2 bg-gray-900 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-gray-700 transition-colors"
-            >
-              <AddUserIcon />
-              Add New User
-            </button>
           </div>
         </div>
 
@@ -509,7 +499,7 @@ export default function UserManagement() {
           </div>
         </div>
 
-        <div className="grid grid-cols-4 gap-3.5 mb-5">
+        <div className="grid grid-cols-3 gap-3.5 mb-5">
           {[
             {
               label: "Total Users",
@@ -529,15 +519,15 @@ export default function UserManagement() {
               iconColor: "text-emerald-600",
               Icon: ShieldIcon,
             },
-            {
-              label: "Operations",
-              value: operations,
-              cardBg: "bg-sky-50/60",
-              cardBorder: "border-sky-200/90",
-              iconBg: "bg-sky-100",
-              iconColor: "text-sky-600",
-              Icon: ShieldIcon,
-            },
+            // {
+            //   label: "Operations",
+            //   value: operations,
+            //   cardBg: "bg-sky-50/60",
+            //   cardBorder: "border-sky-200/90",
+            //   iconBg: "bg-sky-100",
+            //   iconColor: "text-sky-600",
+            //   Icon: ShieldIcon,
+            // },
             {
               label: "DMC Partners",
               value: dmcPartners,
@@ -731,7 +721,7 @@ export default function UserManagement() {
       </div>
 
       {isAddUserModalOpen ? (
-        <AddNewUserModal
+        <AddBPModal
           onClose={handleCloseModal}
           onCreateUser={handleCreateUser}
           onUpdateUser={handleUpdateUser}

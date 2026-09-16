@@ -2,6 +2,7 @@ import React from "react";
 import { Car, Plus, Trash2, ChevronDown, MapPin, AlertTriangle, Clock, Zap } from "lucide-react";
 import { formatLocationWithDestination, TRANSPORT_USAGE_OPTIONS } from "../utils/packageUtils.js";
 import { DayScheduleVisualizer } from "../components/DayScheduleVisualizer.jsx";
+import { BusinessPartnerSelect } from "../components/BusinessPartnerSelect.jsx";
 
 export const TransportsTab = ({
   transfers,
@@ -23,6 +24,9 @@ export const TransportsTab = ({
   handleShiftItemDay,
   totalDaysCount,
   getServiceConflicts,
+  partnerType,
+  businessPartners,
+  isOpenedFromQuotationBuilder,
 }) => {
   return (
     <div className="space-y-4 pt-1">
@@ -131,6 +135,22 @@ export const TransportsTab = ({
                     <Car size={14} className="text-sky-600" /> Transfer #{index + 1}
                   </span>
 
+                  {(partnerType === "Business Partner" || isOpenedFromQuotationBuilder) && (
+                    <div className="w-52 ml-1 mr-2">
+                      <BusinessPartnerSelect
+                        value={transfer.businessPartnerId || transfer.businessPartner || ""}
+                        onChange={(val) => {
+                          const partnerObj = businessPartners?.find((p) => (p._id || p.id) === val);
+                          updateTransfer(index, "businessPartnerId", val);
+                          updateTransfer(index, "businessPartner", val);
+                          updateTransfer(index, "businessPartnerName", partnerObj?.name || partnerObj?.companyName || "");
+                        }}
+                        businessPartners={businessPartners}
+                        placeholderName={transfer.businessPartnerName || transfer.dmcName || transfer.supplierName || ""}
+                      />
+                    </div>
+                  )}
+
                   {transfer.vehicleType && (
                     <span className="rounded-md border border-gray-200 bg-white px-2.5 py-0.5 text-[11px] text-slate-800 font-semibold shadow-2xs">
                       {transfer.vehicleType}
@@ -203,40 +223,46 @@ export const TransportsTab = ({
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-12">
+              <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 mt-4">
                 <div className={`sm:col-span-6 relative dmc-autocomplete-container ${activeTransferDropdownIdx === index ? "z-40" : "z-10"}`}>
                   <label className="block text-[11px] font-semibold text-slate-600 mb-1 flex items-center justify-between">
-                    <span>Route / Service Name (Select Route or Type)</span>
-                    {servicesLoading ? (
-                      <span className="text-[10px] text-blue-600 font-medium">Loading Routes...</span>
-                    ) : (
-                      <span className="text-[10px] text-emerald-600 font-semibold">
-                        {getFilteredTransfers("").length} Routes in {destination || "Selected Destination"}
-                      </span>
+                    <span>{partnerType === "Business Partner" ? "Route / Service Name (Manual Entry)" : "Route / Service Name (Select Route or Type)"}</span>
+                    {partnerType !== "Business Partner" && (
+                      servicesLoading ? (
+                        <span className="text-[10px] text-blue-600 font-medium">Loading Routes...</span>
+                      ) : (
+                        <span className="text-[10px] text-emerald-600 font-semibold">
+                          {getFilteredTransfers("").length} Routes in {destination || "Selected Destination"}
+                        </span>
+                      )
                     )}
                   </label>
                   <div className="relative">
                     <input
                       type="text"
-                      placeholder="e.g. Airport to Hotel Pickup, Sightseeing Cab, Station Drop..."
+                      placeholder={partnerType === "Business Partner" ? "Enter Transport Service Name manually..." : "e.g. Airport to Hotel Pickup, Sightseeing Cab, Station Drop..."}
                       value={transfer.name}
-                      onFocus={() => setActiveTransferDropdownIdx(index)}
+                      onFocus={() => {
+                        if (partnerType !== "Business Partner") setActiveTransferDropdownIdx(index);
+                      }}
                       onChange={(e) => {
                         updateTransfer(index, "name", e.target.value);
-                        setActiveTransferDropdownIdx(index);
+                        if (partnerType !== "Business Partner") setActiveTransferDropdownIdx(index);
                       }}
                       className="w-full rounded-lg border border-gray-300 bg-white pl-3 pr-8 py-1.5 text-xs text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs"
                     />
-                    <button
-                      type="button"
-                      onClick={() => setActiveTransferDropdownIdx(activeTransferDropdownIdx === index ? null : index)}
-                      className="absolute right-2 top-2 text-gray-400 hover:text-gray-600 p-0.5 cursor-pointer transition-colors"
-                    >
-                      <ChevronDown size={14} />
-                    </button>
+                    {partnerType !== "Business Partner" && (
+                      <button
+                        type="button"
+                        onClick={() => setActiveTransferDropdownIdx(activeTransferDropdownIdx === index ? null : index)}
+                        className="absolute right-2 top-2 text-gray-400 hover:text-gray-600 p-0.5 cursor-pointer transition-colors"
+                      >
+                        <ChevronDown size={14} />
+                      </button>
+                    )}
                   </div>
 
-                  {activeTransferDropdownIdx === index && (
+                  {partnerType !== "Business Partner" && activeTransferDropdownIdx === index && (
                     <div className="absolute left-0 right-0 top-full mt-1.5 max-h-64 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-xl z-[100] divide-y divide-gray-100 [scrollbar-width:thin]">
                       {filteredTransfers.length === 0 ? (
                         <div className="p-3 text-[11px] text-gray-500 italic text-center">
@@ -292,18 +318,29 @@ export const TransportsTab = ({
                 </div>
 
                 <div className="sm:col-span-2">
-                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">Travel Day</label>
-                  <select
-                    value={transfer.day || 1}
-                    onChange={(e) => updateTransfer(index, "day", Number(e.target.value))}
-                    className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs cursor-pointer"
-                  >
-                    {Array.from({ length: totalDaysCount }, (_, i) => i + 1).map((d) => (
-                      <option key={d} value={d}>
-                        Day {d}
-                      </option>
-                    ))}
-                  </select>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                    {isOpenedFromQuotationBuilder ? "Service Date" : "Travel Day"}
+                  </label>
+                  {isOpenedFromQuotationBuilder ? (
+                    <input
+                      type="date"
+                      value={transfer.serviceDate ? String(transfer.serviceDate).substring(0, 10) : ""}
+                      onChange={(e) => updateTransfer(index, "serviceDate", e.target.value)}
+                      className="w-full rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs font-bold text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs cursor-pointer"
+                    />
+                  ) : (
+                    <select
+                      value={transfer.day || 1}
+                      onChange={(e) => updateTransfer(index, "day", Number(e.target.value))}
+                      className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs cursor-pointer"
+                    >
+                      {Array.from({ length: totalDaysCount }, (_, i) => i + 1).map((d) => (
+                        <option key={d} value={d}>
+                          Day {d}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                 </div>
 
                 <div className="sm:col-span-4">
