@@ -31,6 +31,12 @@ export const quotationSchema = new mongoose.Schema(
     required: true
   },
 
+  partnerType: {
+    type: String,
+    enum: ["Online DMC", "Business Partner"],
+    default: "Online DMC"
+  },
+
   inclusions: [{ type: String }],
   exclusions: [{ type: String }],
   additionalNotes: [{ type: String }],
@@ -59,6 +65,20 @@ export const quotationSchema = new mongoose.Schema(
 
       supplierName: {
         type: String
+      },
+
+      businessPartnerId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Auth"
+      },
+
+      businessPartnerName: {
+        type: String
+      },
+
+      isBpService: {
+        type: Boolean,
+        default: false
       },
 
       dmcId: {

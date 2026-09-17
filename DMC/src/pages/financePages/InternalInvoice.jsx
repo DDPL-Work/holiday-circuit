@@ -278,12 +278,33 @@ const InternalInvoice = () => {
         const cumulativePaid = payoutInstallments.reduce((sum, inst) => sum + Number(inst.amount || 0), 0);
         const remainingAmount = Math.max(0, Number(invoice.amount || 0) - cumulativePaid);
 
+        const normalizedInvoiceNumber =
+          invoice.invoiceNumber && invoice.invoiceNumber.startsWith("INV-")
+            ? invoice.invoiceNumber
+            : (invoice.queryId && invoice.queryId !== "-"
+              ? `INV-${String(invoice.queryId).replace(/^INV-/, "")}`
+              : (invoice.invoiceNumber ? `INV-${invoice.invoiceNumber}` : "INV-0001"));
+
+        const isOfflinePartner = Boolean(
+          invoice.partnerType === "offline_partner" ||
+          invoice.businessPartnerName ||
+          invoice.isOfflinePartner ||
+          invoice.uploadedByRole === "ops"
+        );
+        const partnerType = isOfflinePartner ? "offline_partner" : "online_dmc";
+        const businessPartnerName = invoice.businessPartnerName || (isOfflinePartner ? (invoice.dmcName || invoice.supplierName || "Offline Partner") : "");
+        const partyName = isOfflinePartner ? (businessPartnerName || invoice.dmcName || "Offline Partner") : (invoice.dmcName || invoice.supplierName || "-");
+
         return {
           _id: invoice.id,
-          id: invoice.invoiceNumber,
-          isDmc: true,
+          id: normalizedInvoiceNumber,
+          isDmc: !isOfflinePartner,
+          isOfflinePartner: isOfflinePartner,
+          partnerType: partnerType,
+          businessPartnerName: businessPartnerName,
+          uploadedByRole: invoice.uploadedByRole || (isOfflinePartner ? "ops" : "dmc"),
           ref: invoice.queryId,
-          party: invoice.dmcName,
+          party: partyName,
           utr:
             invoice.utrNumber ||
             invoice.utr ||
@@ -644,13 +665,13 @@ const InternalInvoice = () => {
           <div className="min-w-305">
             <table className="w-full table-fixed border-separate border-spacing-y-2">
             <colgroup>
+              <col style={{ width: '15%' }} />
+              <col style={{ width: '9%' }} />
               <col style={{ width: '14%' }} />
-              <col style={{ width: '10%' }} />
               <col style={{ width: '11%' }} />
-              <col style={{ width: '12%' }} />
               <col style={{ width: '13%' }} />
-              <col style={{ width: '12%' }} />
               <col style={{ width: '11%' }} />
+              <col style={{ width: '10%' }} />
               <col style={{ width: '10%' }} />
               <col style={{ width: '7%' }} />
             </colgroup>
@@ -679,15 +700,40 @@ const InternalInvoice = () => {
               ) : paginatedInvoices.length > 0 ? (
                 paginatedInvoices.map((invoice, idx) => {
                   const rowCellClass = "border-y border-slate-200 bg-white px-3 py-2.5 align-middle";
+                  const partyName = invoice.party || "-";
+                  const partyLength = partyName.length;
+                  const partyFontClass =
+                    partyLength > 25
+                      ? "text-[9.5px] leading-tight"
+                      : partyLength > 16
+                      ? "text-[10.5px] leading-tight"
+                      : "text-[11px] leading-tight";
+
                   return (
                   <tr key={idx} className="transition-transform duration-150 hover:-translate-y-[1px]">
                     <td className={`${rowCellClass} rounded-l-xl border-l`}>
-                      <div className="flex items-center gap-1.5 min-w-0">
-                        <FileText className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                        <span className="text-[11px] font-semibold text-slate-800 truncate min-w-0">{invoice.id}</span>
-                        {invoice.isDmc && (
-                          <span className="shrink-0 bg-purple-50 text-purple-600 border border-purple-200 text-[8px] font-bold px-1 py-px rounded uppercase">DMC</span>
-                        )}
+                      <div className="flex flex-col items-start gap-1 min-w-0">
+                        <div className="flex items-center gap-1.5 min-w-0 max-w-full" title={invoice.id}>
+                          <FileText className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                          <span className="text-[11px] font-semibold text-slate-800 break-all select-all leading-tight">
+                            {invoice.id}
+                          </span>
+                        </div>
+                        {invoice.isOfflinePartner ? (
+                          <span
+                            className="inline-flex items-center bg-amber-50 text-amber-800 border border-amber-300 text-[8px] font-extrabold px-1.5 py-0.5 rounded uppercase tracking-wider shadow-2xs"
+                            title="Offline Business Partner"
+                          >
+                            PARTNER
+                          </span>
+                        ) : invoice.isDmc ? (
+                          <span
+                            className="inline-flex items-center bg-purple-50 text-purple-600 border border-purple-200 text-[8px] font-bold px-1.5 py-0.5 rounded uppercase shadow-2xs"
+                            title="Online DMC"
+                          >
+                            DMC
+                          </span>
+                        ) : null}
                       </div>
                     </td>
 
@@ -696,7 +742,22 @@ const InternalInvoice = () => {
                     </td>
 
                     <td className={rowCellClass}>
-                      <span className="text-[11px] text-slate-800 font-medium truncate block">{invoice.party}</span>
+                      {invoice.isOfflinePartner ? (
+                        <div className="min-w-0 flex flex-col items-start" title={invoice.party}>
+                          <span className={`${partyFontClass} text-slate-800 font-bold break-words block`}>
+                            {invoice.party}
+                          </span>
+                          <span className="mt-0.5 text-[8.5px] text-amber-700 font-bold leading-3 block uppercase tracking-wider">
+                            Offline Partner
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="min-w-0" title={invoice.party}>
+                          <span className={`${partyFontClass} text-slate-800 font-medium break-words block`}>
+                            {invoice.party}
+                          </span>
+                        </div>
+                      )}
                     </td>
 
                     <td className={rowCellClass}>

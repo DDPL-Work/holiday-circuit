@@ -2961,7 +2961,9 @@ export default function FulfillmentConfirmation() {
     );
   }
   return (
-    <div className="min-h-screen bg-[#f8fafc] font-sans antialiased text-slate-800 p-3 sm:p-2 lg:p-3.5">
+
+
+    <div className="min-h-screen bg-[#f8fafc] font-sans antialiased text-slate-800 p-1 sm:p-2 lg:p-1">
       {" "}
       <div className="max-w-[1600px] mx-auto space-y-6">
         {" "}
@@ -3037,6 +3039,11 @@ export default function FulfillmentConfirmation() {
                 })}{" "}
               </div>{" "}
             </div>{" "}
+
+
+
+
+
             {/* QUERY LIST TABLE VIEW (Image 2 Style) */}{" "}
             <div className="bg-white rounded-xl  overflow-hidden mb-6">
               {" "}
@@ -4406,10 +4413,10 @@ export default function FulfillmentConfirmation() {
                                                   className={`inline-flex items-center gap-1.5 mt-1 font-bold text-[11px] cursor-pointer px-2.5 py-1 rounded border transition shadow-2xs whitespace-nowrap w-fit shrink-0 ${vInfo.bgClass}`}
                                                 >
                                                   {" "}
-                                                  <FileText
+                                                  {/* <FileText
                                                     size={12}
                                                     className="text-slate-500 shrink-0"
-                                                  />{" "}
+                                                  />{" "} */}
                                                   <span className="text-amber-400 text-[10px]">
                                                     •
                                                   </span>{" "}
@@ -4423,13 +4430,15 @@ export default function FulfillmentConfirmation() {
                                                     {" "}
                                                     {vInfo.label}{" "}
                                                   </span>{" "}
-                                                  <span className="text-amber-400 text-[10px]">
+                                                  {/* <span className="text-amber-400 text-[10px]">
                                                     •
-                                                  </span>{" "}
-                                                  <RefreshCw
+                                                  </span>{" "} */}
+
+                                                  {/* <RefreshCw
                                                     size={11}
                                                     className="text-slate-400 shrink-0"
-                                                  />{" "}
+                                                  />{" "} */}
+
                                                 </button>
                                               );
                                             })()}{" "}
@@ -4518,6 +4527,8 @@ export default function FulfillmentConfirmation() {
                           )}{" "}
                         </div>
                       )}{" "}
+
+
                       {/* 2. OPERATIONAL SERVICES SECTION */}{" "}
                       {(serviceCategoryTab === "all" ||
                         serviceCategoryTab === "operational") && (
@@ -4690,10 +4701,10 @@ export default function FulfillmentConfirmation() {
                                                   className={`inline-flex items-center gap-1.5 mt-1 font-bold text-[11px] cursor-pointer px-2.5 py-1 rounded border transition shadow-2xs whitespace-nowrap w-fit shrink-0 ${vInfo.bgClass}`}
                                                 >
                                                   {" "}
-                                                  <FileText
+                                                  {/* <FileText
                                                     size={12}
                                                     className="text-slate-500 shrink-0"
-                                                  />{" "}
+                                                  />{" "} */}
                                                   <span className="text-amber-400 text-[10px]">
                                                     •
                                                   </span>{" "}
@@ -4707,13 +4718,13 @@ export default function FulfillmentConfirmation() {
                                                     {" "}
                                                     {vInfo.label}{" "}
                                                   </span>{" "}
-                                                  <span className="text-amber-400 text-[10px]">
+                                                  {/* <span className="text-amber-400 text-[10px]">
                                                     •
-                                                  </span>{" "}
-                                                  <RefreshCw
+                                                  </span>{" "} */}
+                                                  {/* <RefreshCw
                                                     size={11}
                                                     className="text-slate-400 shrink-0"
-                                                  />{" "}
+                                                  />{" "} */}
                                                 </button>
                                               );
                                             })()}{" "}
@@ -4800,6 +4811,8 @@ export default function FulfillmentConfirmation() {
                           )}{" "}
                         </div>
                       )}{" "}
+
+
                       {/* 3. SIGHTSEEING SERVICES SECTION */}{" "}
                       {(serviceCategoryTab === "all" ||
                         serviceCategoryTab === "sightseeing") && (
@@ -4972,10 +4985,10 @@ export default function FulfillmentConfirmation() {
                                                   className={`inline-flex items-center gap-1.5 mt-1 font-bold text-[11px] cursor-pointer px-2.5 py-1 rounded border transition shadow-2xs whitespace-nowrap w-fit shrink-0 ${vInfo.bgClass}`}
                                                 >
                                                   {" "}
-                                                  <FileText
+                                                  {/* <FileText
                                                     size={12}
                                                     className="text-slate-500 shrink-0"
-                                                  />{" "}
+                                                  />{" "} */}
                                                   <span className="text-amber-400 text-[10px]">
                                                     •
                                                   </span>{" "}
@@ -4989,13 +5002,13 @@ export default function FulfillmentConfirmation() {
                                                     {" "}
                                                     {vInfo.label}{" "}
                                                   </span>{" "}
-                                                  <span className="text-amber-400 text-[10px]">
+                                                  {/* <span className="text-amber-400 text-[10px]">
                                                     •
-                                                  </span>{" "}
-                                                  <RefreshCw
+                                                  </span>{" "} */}
+                                                  {/* <RefreshCw
                                                     size={11}
                                                     className="text-slate-400 shrink-0"
-                                                  />{" "}
+                                                  />{" "} */}
                                                 </button>
                                               );
                                             })()}{" "}
@@ -5082,6 +5095,10 @@ export default function FulfillmentConfirmation() {
                           )}{" "}
                         </div>
                       )}{" "}
+
+
+
+
                       {/* 4. ACTIVITY BOOKINGS SECTION */}{" "}
                       {(serviceCategoryTab === "all" ||
                         serviceCategoryTab === "activities") && (
@@ -5255,10 +5272,10 @@ export default function FulfillmentConfirmation() {
                                                   className={`inline-flex items-center gap-1.5 mt-1 font-bold text-[11px] cursor-pointer px-2.5 py-1 rounded border transition shadow-2xs whitespace-nowrap w-fit shrink-0 ${vInfo.bgClass}`}
                                                 >
                                                   {" "}
-                                                  <FileText
+                                                  {/* <FileText
                                                     size={12}
                                                     className="text-slate-500 shrink-0"
-                                                  />{" "}
+                                                  />{" "} */}
                                                   <span className="text-amber-400 text-[10px]">
                                                     •
                                                   </span>{" "}
@@ -5272,13 +5289,19 @@ export default function FulfillmentConfirmation() {
                                                     {" "}
                                                     {vInfo.label}{" "}
                                                   </span>{" "}
-                                                  <span className="text-amber-400 text-[10px]">
+
+                                                  {/* <span className="text-amber-400 text-[10px]">
                                                     •
-                                                  </span>{" "}
-                                                  <RefreshCw
+                                                  </span>{" "} */}
+
+
+
+                                                  {/*                                                   
+                                                   <RefreshCw
                                                     size={11}
                                                     className="text-slate-400 shrink-0"
-                                                  />{" "}
+                                                  />{" "} */}
+
                                                 </button>
                                               );
                                             })()}{" "}
@@ -7584,7 +7607,7 @@ export default function FulfillmentConfirmation() {
           {" "}
           <div className="w-full max-w-md overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-2xl">
             {" "}
-            <div className="relative bg-gradient-to-br from-[#1e3a8a] via-[#0f172a] to-black px-6 py-7 text-white">
+            <div className="relative bg-line-to-br from-[#1e3a8a] via-[#0f172a] to-black px-6 py-7 text-white">
               {" "}
               <button
                 onClick={() =>

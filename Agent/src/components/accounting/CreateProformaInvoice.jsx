@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
+import { useSelector } from "react-redux";
 import { ArrowLeft, Pencil, Phone, Mail, CreditCard, Plus, X, ChevronDown, AlertTriangle, FileText } from "lucide-react";
 import API from "../../utils/Api";
 
@@ -330,6 +331,119 @@ export const resolveClientDetails = (data) => {
 };
 
 const CreateProformaInvoice = ({ onClose, onSave, queryData = {} }) => {
+  const { user: authUser } = useSelector((state) => state.auth || {});
+
+  let localUser = null;
+  if (typeof window !== "undefined") {
+    try {
+      const stored = localStorage.getItem("user");
+      if (stored) localUser = JSON.parse(stored);
+    } catch (e) {}
+  }
+  const effectiveUser = authUser || localUser || queryData?.user || queryData?.agent || {};
+
+  const getDynamicSellerDetails = () => {
+    const rawName =
+      queryData?.sellerName ||
+      queryData?.sellerDetails?.name ||
+      effectiveUser?.companyName ||
+      effectiveUser?.brandingName ||
+      effectiveUser?.agencyName ||
+      queryData?.agencyName ||
+      queryData?.agentName ||
+      effectiveUser?.name ||
+      "";
+
+    const rawAddress =
+      queryData?.sellerAddress ||
+      queryData?.sellerDetails?.address ||
+      effectiveUser?.companyAddress ||
+      effectiveUser?.address ||
+      "";
+
+    const rawCityState =
+      queryData?.sellerCityState ||
+      queryData?.sellerDetails?.cityState ||
+      (effectiveUser?.city || effectiveUser?.state
+        ? `${effectiveUser.city || ""}${effectiveUser.city && effectiveUser.state ? ", " : ""}${effectiveUser.state || ""}`.trim()
+        : "") ||
+      "";
+
+    const rawCountryZip =
+      queryData?.sellerCountryZip ||
+      queryData?.sellerDetails?.countryZip ||
+      (effectiveUser?.country || effectiveUser?.zipCode || effectiveUser?.pincode
+        ? `${effectiveUser.country || "India"}${effectiveUser.zipCode || effectiveUser.pincode ? `, ${effectiveUser.zipCode || effectiveUser.pincode}` : ""}`.trim()
+        : "") ||
+      "";
+
+    const rawPhone =
+      queryData?.sellerPhone ||
+      queryData?.sellerDetails?.phone ||
+      effectiveUser?.phone ||
+      effectiveUser?.companyPhone ||
+      queryData?.agentPhone ||
+      "";
+
+    const rawEmail =
+      queryData?.sellerEmail ||
+      queryData?.sellerDetails?.email ||
+      effectiveUser?.email ||
+      effectiveUser?.companyEmail ||
+      queryData?.agentEmail ||
+      "";
+
+    const rawPan =
+      queryData?.sellerPan ||
+      queryData?.sellerDetails?.pan ||
+      effectiveUser?.panNumber ||
+      effectiveUser?.pan ||
+      effectiveUser?.panNo ||
+      queryData?.panNumber ||
+      "NA";
+
+    const rawGst =
+      queryData?.sellerGst ||
+      queryData?.sellerDetails?.gst ||
+      effectiveUser?.gstNumber ||
+      effectiveUser?.gst ||
+      effectiveUser?.gstNo ||
+      queryData?.gstNumber ||
+      queryData?.user?.gstNumber ||
+      "NA";
+
+    const rawMsme =
+      queryData?.sellerMsme ||
+      queryData?.sellerDetails?.msme ||
+      effectiveUser?.msmeNumber ||
+      effectiveUser?.msme ||
+      effectiveUser?.msmeNo ||
+      queryData?.msmeNumber ||
+      "NA";
+
+    const rawTan =
+      queryData?.sellerTan ||
+      queryData?.sellerDetails?.tan ||
+      effectiveUser?.tanNumber ||
+      effectiveUser?.tan ||
+      effectiveUser?.tanNo ||
+      queryData?.tanNumber ||
+      "NA";
+
+    return {
+      name: rawName || "DDLC Company",
+      address: rawAddress || "KG 3/69, Ground Floor, Vikas Puri",
+      cityState: rawCityState || "New Delhi, Delhi",
+      countryZip: rawCountryZip || "India, 110018",
+      phone: rawPhone || "9368825518",
+      email: rawEmail || "joy@gmail.com",
+      pan: rawPan,
+      gst: rawGst,
+      msme: rawMsme,
+      tan: rawTan,
+    };
+  };
+
   const [hideTaxBreakup, setHideTaxBreakup] = useState(false);
   const [bankName, setBankName] = useState(queryData?.bankName || "");
   const [branchName, setBranchName] = useState(queryData?.branchName || "");
@@ -389,16 +503,20 @@ const CreateProformaInvoice = ({ onClose, onSave, queryData = {} }) => {
     return Number(cleaned) || 0;
   };
 
+
+
   const clientInfo = resolveClientDetails(queryData);
   const queryId = queryData?.queryId || queryData?.id || queryData?._id || "4310346";
   const clientName = clientInfo.name;
-  const clientPhone = clientInfo.phone;
+  const clientPhone = clientInfo.phone ;
   const clientEmail = clientInfo.email;
-  const clientAddress = clientInfo.address;
+  const clientAddress = clientInfo.address || "Not Provided";
   const agentName = queryData?.agentName || queryData?.agencyName || queryData?.agent?.agencyName || queryData?.agent?.name || "Agency";
   const destination = queryData?.destination || "Tour";
   const numDays = queryData?.duration || (queryData?.numberOfNights ? `${queryData.numberOfNights}N/${Number(queryData.numberOfNights) + 1}D` : "4N,5D");
   const pax = queryData?.pax || queryData?.paxCount || (queryData?.numberOfAdults ? `${queryData.numberOfAdults}A` : "2A");
+
+  
 
   const tripDateDisplay = queryData?.startDate
     ? new Date(queryData.startDate).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })
@@ -465,29 +583,24 @@ const CreateProformaInvoice = ({ onClose, onSave, queryData = {} }) => {
     },
   ]);
 
-  // Seller Details (DDLC Company Details)
+  // Seller Details (Agent Company Details from Auth/Query Data)
   const [isEditingSeller, setIsEditingSeller] = useState(false);
-  const [sellerDetails, setSellerDetails] = useState({
-    name: queryData?.sellerName || "DDLC Company Pvt. Ltd.",
-    address: queryData?.sellerAddress || "KG 3/69, Ground Floor, Vikas Puri",
-    cityState: queryData?.sellerCityState || "New Delhi, Delhi",
-    countryZip: queryData?.sellerCountryZip || "India, 110018",
-    phone: queryData?.sellerPhone || "9368825518",
-    email: queryData?.sellerEmail || "joy@gmail.com",
-    pan: queryData?.sellerPan || "ABAPW1816B",
-    gst: queryData?.sellerGst || "07ABAPW1816B3ZZ",
-    msme: queryData?.sellerMsme || "UDYAM-DL-10-0079437",
-    tan: queryData?.sellerTan || "DELV30189F",
-  });
+  const [sellerDetails, setSellerDetails] = useState(getDynamicSellerDetails());
+
+  useEffect(() => {
+    if (!isEditingSeller) {
+      setSellerDetails(getDynamicSellerDetails());
+    }
+  }, [authUser, queryData]);
 
   // Buyer Details (Agent's Client)
   const [isEditingBuyer, setIsEditingBuyer] = useState(false);
   const [buyerDetails, setBuyerDetails] = useState({
     name: queryData?.buyerName && queryData?.buyerName !== "Carma Tours" ? queryData.buyerName : clientName,
-    address: queryData?.buyerAddress || clientAddress,
-    country: queryData?.buyerCountry || clientInfo.country || "India",
-    phone: queryData?.buyerPhone || clientPhone,
-    email: queryData?.buyerEmail || clientEmail,
+    address: queryData?.buyerAddress || "Not Provided",
+    country: queryData?.buyerCountry || clientInfo.country || "NA",
+    phone: queryData?.buyerPhone || "Not Provided",
+    email: queryData?.buyerEmail || "Not Provided",
   });
 
   // Close type dropdown when clicking outside
@@ -671,9 +784,9 @@ const CreateProformaInvoice = ({ onClose, onSave, queryData = {} }) => {
   };
 
   return (
-    <div className="w-full min-h-screen bg-white font-sans text-slate-800">
+    <div className="w-full min-h-screen font-sans text-slate-800">
       {/* Top Header Strip with Back Icon & Title */}
-      <div className="w-full bg-white border-b border-slate-200 px-6 py-3.5 flex items-center gap-3">
+      <div className="w-full  border-b border-slate-200 px-1 py-1 flex items-center gap-3">
         <button
           type="button"
           onClick={onClose}
@@ -744,14 +857,25 @@ const CreateProformaInvoice = ({ onClose, onSave, queryData = {} }) => {
                       className="w-full border border-slate-300 rounded px-2 py-1"
                     />
                   </div>
-                  <div>
-                    <label className="block font-semibold text-slate-700 mb-0.5">City, State:</label>
-                    <input
-                      type="text"
-                      value={sellerDetails.cityState}
-                      onChange={(e) => setSellerDetails({ ...sellerDetails, cityState: e.target.value })}
-                      className="w-full border border-slate-300 rounded px-2 py-1"
-                    />
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block font-semibold text-slate-700 mb-0.5">City, State:</label>
+                      <input
+                        type="text"
+                        value={sellerDetails.cityState}
+                        onChange={(e) => setSellerDetails({ ...sellerDetails, cityState: e.target.value })}
+                        className="w-full border border-slate-300 rounded px-2 py-1"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-semibold text-slate-700 mb-0.5">Country, Zip:</label>
+                      <input
+                        type="text"
+                        value={sellerDetails.countryZip}
+                        onChange={(e) => setSellerDetails({ ...sellerDetails, countryZip: e.target.value })}
+                        className="w-full border border-slate-300 rounded px-2 py-1"
+                      />
+                    </div>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     <div>
@@ -769,6 +893,46 @@ const CreateProformaInvoice = ({ onClose, onSave, queryData = {} }) => {
                         type="text"
                         value={sellerDetails.email}
                         onChange={(e) => setSellerDetails({ ...sellerDetails, email: e.target.value })}
+                        className="w-full border border-slate-300 rounded px-2 py-1"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block font-semibold text-slate-700 mb-0.5">GST:</label>
+                      <input
+                        type="text"
+                        value={sellerDetails.gst}
+                        onChange={(e) => setSellerDetails({ ...sellerDetails, gst: e.target.value })}
+                        className="w-full border border-slate-300 rounded px-2 py-1"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-semibold text-slate-700 mb-0.5">PAN:</label>
+                      <input
+                        type="text"
+                        value={sellerDetails.pan}
+                        onChange={(e) => setSellerDetails({ ...sellerDetails, pan: e.target.value })}
+                        className="w-full border border-slate-300 rounded px-2 py-1"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block font-semibold text-slate-700 mb-0.5">MSME:</label>
+                      <input
+                        type="text"
+                        value={sellerDetails.msme}
+                        onChange={(e) => setSellerDetails({ ...sellerDetails, msme: e.target.value })}
+                        className="w-full border border-slate-300 rounded px-2 py-1"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-semibold text-slate-700 mb-0.5">TAN:</label>
+                      <input
+                        type="text"
+                        value={sellerDetails.tan}
+                        onChange={(e) => setSellerDetails({ ...sellerDetails, tan: e.target.value })}
                         className="w-full border border-slate-300 rounded px-2 py-1"
                       />
                     </div>
@@ -1025,7 +1189,7 @@ const CreateProformaInvoice = ({ onClose, onSave, queryData = {} }) => {
                           value={item.particularText}
                           onChange={(e) => handleItemChange(index, "particularText", e.target.value)}
                           placeholder="Details regarding the item"
-                          className="w-full border border-slate-300 rounded-md p-3 text-sm focus:outline-none focus:border-blue-600 font-normal leading-relaxed placeholder:text-slate-400"
+                          className="w-full border border-slate-300 rounded-md p-2.5 text-sm focus:outline-none focus:border-blue-600 font-normal leading-relaxed placeholder:text-slate-400"
                         />
                       </td>
 

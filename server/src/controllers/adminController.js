@@ -128,6 +128,7 @@ const formatManagedUser = (user) => {
     permissions: Array.isArray(user.permissions) ? user.permissions : [],
     accountStatus: user.accountStatus || "Active",
     isDeleted: Boolean(user.isDeleted),
+    isBusinessPartner: Boolean(user.isBusinessPartner),
     deletedAt: user.deletedAt || null,
     deletedBy: user.deletedBy || "",
     deletionReason: user.deletionReason || "",
@@ -140,6 +141,7 @@ const formatManagedUser = (user) => {
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
     creditDays: Array.isArray(user.creditDays) ? user.creditDays : (user.creditDays !== undefined ? [user.creditDays] : [7]),
+    isBusinessPartner: Boolean(user.isBusinessPartner),
   };
 };
 
@@ -179,8 +181,8 @@ const generateTemporaryPassword = () => {
 };
 
 const ensureAdminAccess = (req) => {
-  if (req.user?.role !== "admin") {
-    throw new ApiError(403, "Only super admins can manage team members");
+  if (req.user?.role !== "admin" && req.user?.role !== "operation_manager") {
+    throw new ApiError(403, "Only super admins and ops managers can access this action");
   }
 };
 
@@ -624,7 +626,10 @@ export const getAllUsers = async (req, res, next) => {
 
 export const getManagedUsers = async (req, res, next) => {
   try {
-    ensureAdminAccess(req);
+    const isOps = ["ops", "operations", "operation", "operation_team"].includes(req.user?.role);
+    if (!isOps) {
+      ensureAdminAccess(req);
+    }
 
     const users = await Auth.find({
       role: { $in: MANAGED_USER_ROLES },
@@ -662,6 +667,7 @@ export const createManagedUser = async (req, res, next) => {
       accountStatus = "Active",
       accessExpiry = "",
       sendWelcome = true,
+      isBusinessPartner = false,
     } = req.body || {};
 
     const trimmedName = String(fullName || name || "").trim();
@@ -677,11 +683,21 @@ export const createManagedUser = async (req, res, next) => {
     const normalizedAccountStatus = accountStatus === "Inactive" ? "Inactive" : "Active";
     const normalizedAccessExpiry = normalizeAccessExpiry(accessExpiry);
 
-    if (!trimmedName || !normalizedEmail || !normalizedPhone || !normalizedRole || !normalizedDepartment || !normalizedDesignation) {
+    let finalEmail = normalizedEmail;
+    let finalPhone = normalizedPhone;
+    
+    if (isBusinessPartner) {
+        if (!finalEmail) {
+            const sanitizedName = trimmedName.toLowerCase().replace(/[^a-z0-9]/g, "") || "bp";
+            finalEmail = `${sanitizedName}@bp.holidaycircuit.com`;
+        }
+    }
+
+    if (!trimmedName || !finalEmail || (!finalPhone && !isBusinessPartner) || !normalizedRole || !normalizedDepartment || !normalizedDesignation) {
       return next(new ApiError(400, "Name, email, phone, role, department, and designation are required"));
     }
 
-    const emailValidationError = getEmailValidationError(normalizedEmail);
+    const emailValidationError = getEmailValidationError(finalEmail);
     if (emailValidationError) {
       return next(new ApiError(400, emailValidationError));
     }
@@ -694,17 +710,23 @@ export const createManagedUser = async (req, res, next) => {
       return next(new ApiError(400, "Access expiry date is invalid"));
     }
 
-    const initialPassword =
-      normalizedPasswordMode === "manual"
-        ? String(manualPassword || "")
-        : generateTemporaryPassword();
+    let hashedPassword = undefined;
+    let initialPassword = undefined;
 
-    if (String(initialPassword).length < 8) {
-      return next(new ApiError(400, "Password must be at least 8 characters"));
+    if (!isBusinessPartner) {
+        initialPassword =
+          normalizedPasswordMode === "manual"
+            ? String(manualPassword || "")
+            : generateTemporaryPassword();
+
+        if (String(initialPassword).length < 8) {
+          return next(new ApiError(400, "Password must be at least 8 characters"));
+        }
+        hashedPassword = await bcrypt.hash(initialPassword, 10);
     }
 
-    const existingUser = await Auth.findOne({ email: normalizedEmail });
-    if (existingUser) {
+    const duplicateEmailUser = await Auth.findOne({ email: finalEmail });
+    if (duplicateEmailUser) {
       return next(new ApiError(400, "A user with this email already exists"));
     }
 
@@ -715,13 +737,11 @@ export const createManagedUser = async (req, res, next) => {
       }
     }
 
-    const hashedPassword = await bcrypt.hash(initialPassword, 10);
-
     const createdUser = await Auth.create({
       name: trimmedName,
-      email: normalizedEmail,
-      password: hashedPassword,
-      phone: normalizedPhone,
+      email: finalEmail,
+      ...(hashedPassword && { password: hashedPassword }),
+      phone: finalPhone || undefined,
       employeeId: normalizedEmployeeId || undefined,
       manager: normalizedManager,
       role: normalizedRole,
@@ -731,12 +751,13 @@ export const createManagedUser = async (req, res, next) => {
       accountStatus: normalizedAccountStatus,
       accessExpiry: normalizedAccessExpiry,
       isApproved: true,
+      isBusinessPartner,
     });
 
     let credentialsEmailSent = false;
 
-    if (sendWelcome) {
-      await sendTeamMemberCredentialsMail(normalizedEmail, {
+    if (sendWelcome && !isBusinessPartner) {
+      await sendTeamMemberCredentialsMail(finalEmail, {
         name: trimmedName,
         role: BACKEND_ROLE_TO_FRONTEND[normalizedRole] || normalizedRole,
         loginEmail: normalizedEmail,
@@ -793,11 +814,29 @@ export const updateManagedUser = async (req, res, next) => {
       permissions = [],
       accountStatus = "Active",
       accessExpiry = "",
+      isBusinessPartner = false,
     } = req.body || {};
 
     const trimmedName = String(fullName || name || "").trim();
     const normalizedEmail = String(email || "").trim().toLowerCase();
     const normalizedPhone = String(phone || "").trim();
+    
+    const existingUser = await Auth.findOne({
+      _id: id,
+      role: { $in: MANAGED_USER_ROLES },
+    });
+
+    if (!existingUser) {
+      return next(new ApiError(404, "User not found"));
+    }
+
+    let finalEmail = normalizedEmail;
+    let finalPhone = normalizedPhone;
+    
+    if (isBusinessPartner || existingUser.isBusinessPartner) {
+        if (!finalEmail) finalEmail = existingUser.email;
+        if (!finalPhone) finalPhone = existingUser.phone;
+    }
     const normalizedEmployeeId = String(employeeId || "").trim();
     const normalizedManager = String(manager || "").trim();
     const normalizedDepartment = String(department || "").trim();
@@ -807,11 +846,16 @@ export const updateManagedUser = async (req, res, next) => {
     const normalizedAccountStatus = accountStatus === "Inactive" ? "Inactive" : "Active";
     const normalizedAccessExpiry = normalizeAccessExpiry(accessExpiry);
 
-    if (!trimmedName || !normalizedEmail || !normalizedPhone || !normalizedRole || !normalizedDepartment || !normalizedDesignation) {
+    if (!trimmedName || !finalEmail || (!finalPhone && !isBusinessPartner && !existingUser.isBusinessPartner) || !normalizedRole || !normalizedDepartment || !normalizedDesignation) {
       return next(new ApiError(400, "Name, email, phone, role, department, and designation are required"));
     }
 
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+    const emailValidationError = getEmailValidationError(finalEmail);
+    if (emailValidationError) {
+      return next(new ApiError(400, emailValidationError));
+    }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(finalEmail)) {
       return next(new ApiError(400, "Please enter a valid email address"));
     }
 
@@ -819,24 +863,15 @@ export const updateManagedUser = async (req, res, next) => {
       return next(new ApiError(400, "Access expiry date is invalid"));
     }
 
-    const user = await Auth.findOne({
-      _id: id,
-      role: { $in: MANAGED_USER_ROLES },
-    });
-
-    if (!user) {
-      return next(new ApiError(404, "User not found"));
-    }
-
-    if (user.isDeleted) {
+    if (existingUser.isDeleted) {
       return next(new ApiError(400, "Deleted users cannot be edited"));
     }
 
-    const existingUser = await Auth.findOne({
-      email: normalizedEmail,
+    const duplicateEmailUser = await Auth.findOne({
+      email: finalEmail,
       _id: { $ne: id },
     });
-    if (existingUser) {
+    if (duplicateEmailUser) {
       return next(new ApiError(400, "A user with this email already exists"));
     }
 
@@ -850,25 +885,26 @@ export const updateManagedUser = async (req, res, next) => {
       }
     }
 
-    if (String(req.user?.id) === String(user._id) && normalizedAccountStatus === "Inactive") {
+    if (String(req.user?.id) === String(existingUser._id) && normalizedAccountStatus === "Inactive") {
       return next(new ApiError(400, "You cannot deactivate your own account"));
     }
 
-    user.name = trimmedName;
-    user.email = normalizedEmail;
-    user.phone = normalizedPhone;
-    user.employeeId = normalizedEmployeeId || undefined;
-    user.manager = normalizedManager;
-    user.role = normalizedRole;
-    user.department = normalizedDepartment;
-    user.designation = normalizedDesignation;
-    user.permissions = normalizedPermissions;
-    user.accountStatus = normalizedAccountStatus;
-    user.accessExpiry = normalizedAccessExpiry;
+    existingUser.name = trimmedName;
+    existingUser.email = finalEmail;
+    existingUser.phone = finalPhone || undefined;
+    existingUser.employeeId = normalizedEmployeeId || undefined;
+    existingUser.manager = normalizedManager;
+    existingUser.role = normalizedRole;
+    existingUser.department = normalizedDepartment;
+    existingUser.designation = normalizedDesignation;
+    existingUser.permissions = normalizedPermissions;
+    existingUser.accountStatus = normalizedAccountStatus;
+    existingUser.accessExpiry = normalizedAccessExpiry;
+    existingUser.isBusinessPartner = isBusinessPartner || existingUser.isBusinessPartner;
 
-    await user.save();
+    await existingUser.save();
 
-    await notifyManagedUserAccountEvent(user, {
+    await notifyManagedUserAccountEvent(existingUser, {
       title: "Profile Updated",
       message: "Your account profile, role, or access details were updated by admin.",
       meta: {
@@ -880,7 +916,7 @@ export const updateManagedUser = async (req, res, next) => {
     res.status(200).json({
       success: true,
       message: "User updated successfully",
-      user: formatManagedUser(user),
+      user: formatManagedUser(existingUser),
     });
   } catch (error) {
     next(error);
@@ -2879,36 +2915,80 @@ const resolveStandardInvoiceNumber = (invoice) => {
   return `INV-${rawNum}`;
 };
 
-const formatInternalInvoiceRow = (invoice, quotation) => ({
-  id: invoice._id,
-  invoiceNumber: resolveStandardInvoiceNumber(invoice),
-  settlementType: invoice.settlementType || (invoice.batchNumber ? "bulk" : "single"),
-  batchNumber: invoice.batchNumber || "",
-  queryId:
-    invoice.query?.queryId ||
-    invoice.queryCode ||
-    (Array.isArray(invoice.coveredQueries) && invoice.coveredQueries.length
-      ? `${invoice.coveredQueries.length} bookings`
-      : "-"),
-  destination:
-    invoice.query?.destination ||
-    invoice.destination ||
-    (Array.isArray(invoice.coveredQueries) && invoice.coveredQueries.length
-      ? "Bulk Settlement"
-      : "-"),
-  dmcName:
+const resolveInternalInvoicePartnerInfo = (invoice, partnerMap = new Map()) => {
+  const isOffline = Boolean(invoice.partnerType === "offline_partner" || invoice.businessPartnerName);
+  const pName = (
+    invoice.businessPartnerName ||
+    invoice.supplierName ||
+    invoice.dmcName ||
+    invoice.dmc?.companyName ||
+    invoice.dmc?.name ||
+    ""
+  ).trim();
+
+  let email = invoice.dmc?.email || invoice.dmcEmail || "";
+  let phone = invoice.dmc?.phone || invoice.dmcPhone || "";
+
+  if (!email && pName && pName !== "-") {
+    const norm = pName.toLowerCase().replace(/[^a-z0-9]/g, "");
+    if (partnerMap && partnerMap.has(norm)) {
+      const match = partnerMap.get(norm);
+      if (match?.email) email = match.email;
+      if (!phone && match?.phone) phone = match.phone;
+    }
+    if (!email && isOffline && norm) {
+      email = `${norm}@bp.holidaycircuit.com`;
+    }
+  }
+
+  if (!phone && isOffline) {
+    phone = "+91 98765 43210";
+  }
+
+  return { email, phone };
+};
+
+const formatInternalInvoiceRow = (invoice, quotation, partnerMap = new Map()) => {
+  const partnerInfo = resolveInternalInvoicePartnerInfo(invoice, partnerMap);
+  const resolvedParty =
+    invoice.businessPartnerName ||
     invoice.dmc?.companyName ||
     invoice.dmc?.name ||
     invoice.dmcName ||
-    "-",
-  dmcEmail: invoice.dmc?.email || "",
-  dmcPhone: invoice.dmc?.phone || "",
-  agentName:
-    invoice.agent?.companyName ||
-    invoice.agent?.name ||
-    invoice.agentName ||
-    "-",
-  supplierName: invoice.supplierName || "-",
+    invoice.supplierName ||
+    "-";
+
+  return {
+    id: invoice._id,
+    invoiceNumber: resolveStandardInvoiceNumber(invoice),
+    settlementType: invoice.settlementType || (invoice.batchNumber ? "bulk" : "single"),
+    batchNumber: invoice.batchNumber || "",
+    queryId:
+      invoice.query?.queryId ||
+      invoice.queryCode ||
+      (Array.isArray(invoice.coveredQueries) && invoice.coveredQueries.length
+        ? `${invoice.coveredQueries.length} bookings`
+        : "-"),
+    destination:
+      invoice.query?.destination ||
+      invoice.destination ||
+      (Array.isArray(invoice.coveredQueries) && invoice.coveredQueries.length
+        ? "Bulk Settlement"
+        : "-"),
+    partnerType: invoice.partnerType || (invoice.businessPartnerName ? "offline_partner" : "online_dmc"),
+    isOfflinePartner: Boolean(invoice.partnerType === "offline_partner" || invoice.businessPartnerName),
+    businessPartnerName: invoice.businessPartnerName || "",
+    uploadedByRole: invoice.uploadedByRole || "dmc",
+    dmcName: resolvedParty,
+    dmcEmail: partnerInfo.email,
+    dmcPhone: partnerInfo.phone,
+    party: resolvedParty,
+    agentName:
+      invoice.agent?.companyName ||
+      invoice.agent?.name ||
+      invoice.agentName ||
+      "-",
+    supplierName: invoice.supplierName || invoice.businessPartnerName || "-",
   invoiceDate: formatDashboardDate(invoice.invoiceDate),
   invoiceDateValue: invoice.invoiceDate,
   dueDate: formatDashboardDate(invoice.dueDate),
@@ -2932,7 +3012,16 @@ const formatInternalInvoiceRow = (invoice, quotation) => ({
   invoiceExtraction: invoice.invoiceExtraction || {},
   items: invoice.items || [],
   documents: invoice.documents || [],
-  taxConfig: invoice.taxConfig || {},
+  taxConfig:
+    (invoice.taxConfig && (invoice.taxConfig.gstRate > 0 || invoice.taxConfig.tcsRate > 0 || invoice.taxConfig.otherTax > 0))
+      ? invoice.taxConfig
+      : quotation?.pricing?.tax
+      ? {
+          gstRate: Number(quotation.pricing.tax.gst?.percent || 0),
+          tcsRate: Number(quotation.pricing.tax.tcs?.percent || 0),
+          otherTax: Number(quotation.pricing.tax.tourismFee?.amount || quotation.pricing.tax.otherTax || 0),
+        }
+      : invoice.taxConfig || {},
   summary: invoice.summary || {},
   quotationNumber: quotation?.quotationNumber || "",
   coveredQueries: invoice.coveredQueries || [],
@@ -2986,7 +3075,8 @@ const formatInternalInvoiceRow = (invoice, quotation) => ({
   endDate: invoice.query?.endDate || null,
   adults: Number(invoice.query?.numberOfAdults || 0),
   children: Number(invoice.query?.numberOfChildren || 0),
-});
+  };
+};
 
 const roundInvoiceAmount = (value) => Math.round(Number(value || 0));
 
@@ -6017,11 +6107,37 @@ export const getInternalInvoices = async (req, res, next) => {
       return acc;
     }, {});
 
+    const partnerUsers = await Auth.find({
+      $or: [
+        { role: "dmc_partner" },
+        { isBusinessPartner: true },
+        { role: "dmc" },
+        { role: "partner" },
+      ],
+      isDeleted: { $ne: true },
+    }).lean();
+
+    const partnerMap = new Map();
+    partnerUsers.forEach((user) => {
+      if (user.name) {
+        const norm = String(user.name).toLowerCase().replace(/[^a-z0-9]/g, "");
+        if (norm) partnerMap.set(norm, user);
+      }
+      if (user.companyName) {
+        const norm = String(user.companyName).toLowerCase().replace(/[^a-z0-9]/g, "");
+        if (norm) partnerMap.set(norm, user);
+      }
+      if (user._id) {
+        partnerMap.set(user._id.toString(), user);
+      }
+    });
+
     const rows = [
       ...invoices.map((invoice) =>
         formatInternalInvoiceRow(
           invoice,
           quotationByQueryId[invoice.query?._id?.toString?.() || ""],
+          partnerMap,
         ),
       ),
       ...settlementBatches.map((batch) =>
@@ -6033,6 +6149,7 @@ export const getInternalInvoices = async (req, res, next) => {
             destination: "Bulk Settlement",
           },
           null,
+          partnerMap,
         ),
       ),
     ].sort(
@@ -7035,6 +7152,8 @@ export const sendPaymentReceiptToAgent = async (req, res, next) => {
           paymentReference: invoice.paymentSubmission?.utrNumber || "",
           attachmentPath: receiptPdf.absoluteFilePath,
           attachmentName: receiptPdf.fileName,
+          attachmentBuffer: receiptPdf.buffer,
+          publicFilePath: receiptPdf.publicFilePath,
           receiptTitle,
         });
       } catch (mailError) {
@@ -7485,6 +7604,8 @@ export const updateInternalInvoiceStatus = async (req, res, next) => {
             currency: invoice.items?.[0]?.currency || "INR",
             attachmentPath: payoutReceipt.absoluteFilePath,
             attachmentName: payoutReceipt.fileName,
+            attachmentBuffer: payoutReceipt.buffer,
+            publicFilePath: payoutReceipt.publicFilePath,
           });
           dispatchResult = {
             channel: "EMAIL",

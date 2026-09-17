@@ -15,7 +15,9 @@ const agentSchema = new mongoose.Schema(
 
     password: {
       type: String,
-      required: true
+      required: function() {
+        return !this.isBusinessPartner;
+      }
     },
 
     companyName: {
@@ -140,6 +142,11 @@ const agentSchema = new mongoose.Schema(
     },
 
     isDeleted: {
+      type: Boolean,
+      default: false,
+    },
+
+    isBusinessPartner: {
       type: Boolean,
       default: false,
     },

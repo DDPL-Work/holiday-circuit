@@ -31,6 +31,14 @@ export const formatDisplayDate = (value) => {
 export const buildPublicAssetUrl = (assetPath = "") => {
   const normalizedPath = String(assetPath || "").trim();
   if (!normalizedPath) return "";
+  if (
+    normalizedPath.startsWith("http://") ||
+    normalizedPath.startsWith("https://") ||
+    normalizedPath.startsWith("data:") ||
+    normalizedPath.startsWith("blob:")
+  ) {
+    return normalizedPath;
+  }
 
   const apiBaseUrl = String(API.defaults.baseURL || window.location.origin);
   const originBase = apiBaseUrl.replace(/\/api\/?$/, "");
@@ -170,6 +178,10 @@ export const formatShareDate = (
   if (!parsed) return "-";
 
   const day = parsed.getDate();
+
+
+
+
   const monthLabel = parsed.toLocaleDateString("en-GB", { month });
   const weekdayLabel = weekday
     ? `${parsed.toLocaleDateString("en-GB", { weekday })}, `

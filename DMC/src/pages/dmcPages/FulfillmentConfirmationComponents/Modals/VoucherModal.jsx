@@ -204,12 +204,15 @@ export default function VoucherModal({
                   <p className="font-bold text-slate-800 text-[11px] mb-1.5">
                     Document Upload Vault
                   </p>{" "}
+
                   <div className="grid grid-cols-3 gap-2.5">
-                    {" "}
-                    {/* Supplier Confirmation */}{" "}
-                    <div className="flex items-center justify-between border border-dashed border-blue-300 rounded-xl p-2 bg-blue-50/40">
+
+                    {/* Supplier Confirmation{" "} */}
+
+                    {/* <div className="flex items-center justify-between border border-dashed border-blue-300 rounded-xl p-2 bg-blue-50/40">
                       {" "}
-                      <div className="min-w-0 pr-1">
+
+                       <div className="min-w-0 pr-1">
                         {" "}
                         <p className="text-[11px] font-bold text-slate-800 truncate">
                           Supplier Confirmation
@@ -217,7 +220,8 @@ export default function VoucherModal({
                         <p className="text-[9.5px] text-slate-500 truncate">
                           {files.supplier ? files.supplier.name : "PDF / Word"}
                         </p>{" "}
-                      </div>{" "}
+                      </div>{" "} 
+
                       <label className="shrink-0 cursor-pointer bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-bold px-2 py-1 rounded-md shadow-2xs">
                         {" "}
                         Choose{" "}
@@ -229,7 +233,9 @@ export default function VoucherModal({
                           }
                         />{" "}
                       </label>{" "}
-                    </div>{" "}
+                    </div>{" "}  */}
+
+
                     {/* Voucher Reference */}{" "}
                     <div className="flex items-center justify-between border border-dashed border-emerald-300 rounded-xl p-2 bg-emerald-50/40">
                       {" "}
@@ -254,6 +260,8 @@ export default function VoucherModal({
                         />{" "}
                       </label>{" "}
                     </div>{" "}
+
+
                     {/* Terms & Conditions */}{" "}
                     <div className="flex items-center justify-between border border-dashed border-purple-300 rounded-xl p-2 bg-purple-50/40">
                       {" "}

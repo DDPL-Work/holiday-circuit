@@ -31,9 +31,44 @@ import { InclusionsNotesTab } from "./createPackage/tabs/InclusionsNotesTab.jsx"
 import { DayItineraryTab } from "./createPackage/tabs/DayItineraryTab.jsx";
 import { TermsConditionsTab } from "./createPackage/tabs/TermsConditionsTab.jsx";
 
-export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSuccess }) {
+export default function CreatePreDefinedPackageModal({ 
+  isOpen, 
+  onClose, 
+  onSuccess, 
+  submitBtnText = "Save Pre-defined Package", 
+  partnerType, 
+  queryId, 
+  agentId, 
+  initialData, 
+  isOpenedFromQuotationBuilder,
+  modalTitle,
+  modalSubtitle,
+}) {
   const [activeTab, setActiveTab] = useState("basic");
   const [loading, setLoading] = useState(false);
+
+  const isEditingHistory = Boolean(
+    isOpenedFromQuotationBuilder && (initialData?.id || initialData?._id || initialData?.quotationNumber)
+  );
+  const isQuickAddService = Boolean(
+    isOpenedFromQuotationBuilder && !isEditingHistory
+  );
+
+  const headerTitle =
+    modalTitle ||
+    (isEditingHistory
+      ? `Edit Quotation${initialData?.quotationNumber ? ` (${initialData.quotationNumber})` : ""}`
+      : isQuickAddService
+        ? "Add Services to Quotation"
+        : "Create Pre-defined Package Template");
+
+  const headerSubtitle =
+    modalSubtitle ||
+    (isEditingHistory
+      ? "Update quotation services, pricing, taxes, and itinerary details"
+      : isQuickAddService
+        ? "Configure hotels, cabs, sightseeing & itinerary for this quotation"
+        : "Configure reusable packages with live uploaded hotels, cabs, sightseeing & itinerary");
 
   // Form State
   const [title, setTitle] = useState("");
@@ -59,6 +94,175 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
   const [transfers, setTransfers] = useState([initialTransfer()]);
   const [activities, setActivities] = useState([]);
   const [sightseeing, setSightseeing] = useState([]);
+  const [businessPartners, setBusinessPartners] = useState([]);
+
+  useEffect(() => {
+    if (initialData && isOpen) {
+      setTitle(initialData.title || initialData.quotationNumber || "");
+      setDestination(initialData.destination || "Mussoorie");
+      setCountry(initialData.country || "India");
+      setDuration(initialData.duration || "5 Nights / 6 Days");
+      setDays(String(initialData.days || "6"));
+      setBasePrice(initialData.pricing?.baseAmount || "");
+      setPrice(initialData.pricing?.subTotal || "");
+      setGstChecked(!!initialData.pricing?.tax?.gst?.percent);
+      setGstPercent(initialData.pricing?.tax?.gst?.percent || 5);
+      setTcsChecked(!!initialData.pricing?.tax?.tcs?.percent);
+      setTcsPercent(initialData.pricing?.tax?.tcs?.percent || 5);
+      setTourismChecked(!!initialData.pricing?.tax?.tourismFee?.amount);
+      setTourismAmount(initialData.pricing?.tax?.tourismFee?.amount || "");
+      setDescription(initialData.description || "");
+      setInclusions(Array.isArray(initialData.inclusions) ? initialData.inclusions.join("\n") : (initialData.inclusions || ""));
+      setExclusions(Array.isArray(initialData.exclusions) ? initialData.exclusions.join("\n") : (initialData.exclusions || ""));
+      setTermsAndConditions(Array.isArray(initialData.termsAndConditions) ? initialData.termsAndConditions.join("\n") : (initialData.termsAndConditions || ""));
+
+      const newItinerary = Array.isArray(initialData.dayWiseItinerary) && initialData.dayWiseItinerary.length > 0 
+        ? initialData.dayWiseItinerary.map(i => ({ day: i.dayNumber, title: i.title || i.dayLabel, description: i.description }))
+        : [
+            { day: 1, title: "Day 1: Arrival & Leisure", description: "Pickup from airport/station, transfer to hotel. Check-in and relax for the evening." },
+            { day: 2, title: "Day 2: Sightseeing Tour & Departure", description: "Explore major landmarks, scenic spots, and transfer with wonderful memories." },
+          ];
+      setItinerary(newItinerary);
+
+      const loadedServices = (Array.isArray(initialData.services) && initialData.services.length > 0)
+        ? initialData.services
+        : [
+            ...(initialData.hotels || []).map(h => ({ ...h, type: 'hotel' })),
+            ...(initialData.transfers || []).map(t => ({ ...t, type: 'transfer' })),
+            ...(initialData.activities || []).map(a => ({ ...a, type: 'activity' })),
+            ...(initialData.sightseeing || []).map(s => ({ ...s, type: 'sightseeing' }))
+          ];
+      const h = loadedServices.filter(s => s.type === "hotel").map(s => {
+        const bpId = s.businessPartnerId || s.businessPartner || s.dmcId || s.supplierId || null;
+        const bpName = s.businessPartnerName || s.supplierName || s.dmcName || "";
+        const hName = s.hotelName || s.title || s.name || s.serviceName || "";
+        return {
+          ...initialHotel(),
+          ...s,
+          hotelName: hName,
+          serviceName: s.serviceName || hName,
+          name: s.name || hName,
+          price: s.price || s.rate || 0,
+          basePrice: s.basePrice || s.price || s.rate || 0,
+          businessPartnerId: bpId,
+          businessPartner: bpId,
+          businessPartnerName: bpName,
+          supplierId: bpId,
+          supplierName: bpName,
+          dmcId: bpId,
+          dmcName: bpName,
+        };
+      });
+      const t = loadedServices.filter(s => s.type === "transfer").map(s => {
+        const bpId = s.businessPartnerId || s.businessPartner || s.dmcId || s.supplierId || null;
+        const bpName = s.businessPartnerName || s.supplierName || s.dmcName || "";
+        const tName = s.name || s.title || s.serviceName || "";
+        return {
+          ...initialTransfer(),
+          ...s,
+          name: tName,
+          serviceName: s.serviceName || tName,
+          title: s.title || tName,
+          price: s.price || s.rate || 0,
+          basePrice: s.basePrice || s.price || s.rate || 0,
+          businessPartnerId: bpId,
+          businessPartner: bpId,
+          businessPartnerName: bpName,
+          supplierId: bpId,
+          supplierName: bpName,
+          dmcId: bpId,
+          dmcName: bpName,
+        };
+      });
+      const a = loadedServices.filter(s => s.type === "activity").map(s => {
+        const bpId = s.businessPartnerId || s.businessPartner || s.dmcId || s.supplierId || null;
+        const bpName = s.businessPartnerName || s.supplierName || s.dmcName || "";
+        const aName = s.name || s.title || s.serviceName || "";
+        return {
+          ...initialActivity(),
+          ...s,
+          name: aName,
+          serviceName: s.serviceName || aName,
+          title: s.title || aName,
+          price: s.price || s.rate || 0,
+          basePrice: s.basePrice || s.price || s.rate || 0,
+          adultPrice: s.adultPrice || s.basePrice || s.price || s.rate || 0,
+          businessPartnerId: bpId,
+          businessPartner: bpId,
+          businessPartnerName: bpName,
+          supplierId: bpId,
+          supplierName: bpName,
+          dmcId: bpId,
+          dmcName: bpName,
+        };
+      });
+      const s = loadedServices.filter(s => s.type === "sightseeing").map(s => {
+        const bpId = s.businessPartnerId || s.businessPartner || s.dmcId || s.supplierId || null;
+        const bpName = s.businessPartnerName || s.supplierName || s.dmcName || "";
+        const sName = s.name || s.title || s.serviceName || "";
+        return {
+          ...initialSightseeing(),
+          ...s,
+          name: sName,
+          serviceName: s.serviceName || sName,
+          title: s.title || sName,
+          price: s.price || s.rate || 0,
+          basePrice: s.basePrice || s.price || s.rate || 0,
+          adultPrice: s.adultPrice || s.basePrice || s.price || s.rate || 0,
+          businessPartnerId: bpId,
+          businessPartner: bpId,
+          businessPartnerName: bpName,
+          supplierId: bpId,
+          supplierName: bpName,
+          dmcId: bpId,
+          dmcName: bpName,
+        };
+      });
+
+      setHotels(h.length ? h : [initialHotel()]);
+      setTransfers(t.length ? t : [initialTransfer()]);
+      setActivities(a);
+      setSightseeing(s);
+    } else if (!isOpen) {
+      setTitle("");
+      setDestination("Mussoorie");
+      setCountry("India");
+      setDuration("5 Nights / 6 Days");
+      setDays("6");
+      setBasePrice("");
+      setPrice("");
+      setGstChecked(true);
+      setGstPercent(5);
+      setTcsChecked(false);
+      setTcsPercent(5);
+      setTourismChecked(false);
+      setTourismAmount("");
+      setDescription("");
+      setInclusions("Daily breakfast, Airport pickup & drop, Sightseeing transfers as per itinerary");
+      setExclusions("Airfare/Train fare, Personal expenses, Entry tickets not mentioned");
+      setTermsAndConditions("");
+      setItinerary([
+        { day: 1, title: "Day 1: Arrival & Leisure", description: "Pickup from airport/station, transfer to hotel. Check-in and relax for the evening." },
+        { day: 2, title: "Day 2: Sightseeing Tour & Departure", description: "Explore major landmarks, scenic spots, and transfer with wonderful memories." },
+      ]);
+      setHotels([initialHotel()]);
+      setTransfers([initialTransfer()]);
+      setActivities([]);
+      setSightseeing([]);
+      setActiveTab("basic");
+    }
+  }, [initialData, isOpen]);
+
+  useEffect(() => {
+    if (isOpen && (partnerType === "Business Partner" || isOpenedFromQuotationBuilder)) {
+      API.get("/admin/managed-users")
+        .then((res) => {
+          const bps = res.data?.users?.filter((u) => u.isBusinessPartner) || [];
+          setBusinessPartners(bps);
+        })
+        .catch((err) => console.error("Error fetching business partners:", err));
+    }
+  }, [isOpen, partnerType, isOpenedFromQuotationBuilder]);
 
   // Day-wise Itinerary
   const [itinerary, setItinerary] = useState([
@@ -74,7 +278,7 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
     getFilteredTransfers,
     getFilteredActivities,
     getFilteredSightseeing,
-  } = useDmcServices(isOpen, destination);
+  } = useDmcServices(isOpen, destination, partnerType);
 
   // Active Dropdown States for autocomplete
   const [activeHotelDropdownIdx, setActiveHotelDropdownIdx] = useState(null);
@@ -95,8 +299,6 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
     document.addEventListener("mousedown", handleGlobalClick);
     return () => document.removeEventListener("mousedown", handleGlobalClick);
   }, []);
-
-  if (!isOpen) return null;
 
   // Add & Update Handlers for Hotels
   const addHotel = () => setHotels([...hotels, initialHotel()]);
@@ -123,7 +325,10 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
       field === "rooms" ||
       field === "extraAdult" ||
       field === "childWithBed" ||
-      field === "childWithoutBed"
+      field === "childWithoutBed" ||
+      field === "awebRate" ||
+      field === "cwebRate" ||
+      field === "cwoebRate"
     ) {
       updated[index].price = recalculateHotelPrice(updated[index]);
     }
@@ -1005,9 +1210,249 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
           }),
       };
 
-      const res = await API.post("/dmc/package", payload);
-      toast.success("Pre-defined package template created successfully!");
-      onSuccess?.(res.data?.data || payload);
+      let res;
+      if (partnerType === "Business Partner" && isOpenedFromQuotationBuilder) {
+        const primaryBp =
+          businessPartners?.[0]?._id ||
+          businessPartners?.[0]?.id ||
+          initialData?.businessPartnerId ||
+          initialData?.businessPartner ||
+          initialData?.dmcId ||
+          initialData?.supplierId ||
+          initialData?.services?.find((s) => s.businessPartnerId || s.businessPartner || s.dmcId || s.supplierId)?.businessPartnerId ||
+          initialData?.services?.find((s) => s.businessPartnerId || s.businessPartner || s.dmcId || s.supplierId)?.businessPartner ||
+          initialData?.services?.find((s) => s.businessPartnerId || s.businessPartner || s.dmcId || s.supplierId)?.dmcId ||
+          null;
+        const primaryBpName =
+          businessPartners?.[0]?.name ||
+          businessPartners?.[0]?.companyName ||
+          initialData?.businessPartnerName ||
+          initialData?.dmcName ||
+          initialData?.supplierName ||
+          initialData?.services?.find((s) => s.businessPartnerName || s.dmcName || s.supplierName)?.businessPartnerName ||
+          initialData?.services?.find((s) => s.businessPartnerName || s.dmcName || s.supplierName)?.dmcName ||
+          "";
+
+        const bpServices = [
+          ...payload.hotels.map((h) => {
+            const bpId =
+              h.businessPartnerId ||
+              h.businessPartner ||
+              h.supplier ||
+              h.supplierId ||
+              h.dmcId ||
+              primaryBp ||
+              null;
+            const bpName =
+              h.businessPartnerName ||
+              h.supplierName ||
+              h.dmcName ||
+              primaryBpName ||
+              "";
+            const nights = Math.max(1, Number(h.nights || 1));
+            const rooms = Math.max(1, Number(h.rooms || 1));
+            const baseUnitPrice = Number(h.basePrice || (h.price ? h.price / (nights * rooms) : 0));
+            return {
+              ...h,
+              type: "hotel",
+              title: h.hotelName || h.serviceName || h.name || "Hotel",
+              hotelName: h.hotelName || h.serviceName || h.name || "Hotel",
+              price: baseUnitPrice,
+              quoteBaseRate: baseUnitPrice,
+              total: Number(h.price || baseUnitPrice * nights * rooms || 0),
+              checkInDate: h.checkInDate || null,
+              checkOutDate: h.checkOutDate || null,
+              serviceDate: h.serviceDate || h.checkInDate || null,
+              nights: nights,
+              rooms: rooms,
+              businessPartnerId: bpId,
+              businessPartner: bpId,
+              businessPartnerName: bpName,
+              supplierId: bpId,
+              supplierName: bpName,
+              dmcId: bpId,
+              dmcName: bpName,
+            };
+          }),
+          ...payload.transfers.map((t) => {
+            const bpId =
+              t.businessPartnerId ||
+              t.businessPartner ||
+              t.supplier ||
+              t.supplierId ||
+              t.dmcId ||
+              primaryBp ||
+              null;
+            const bpName =
+              t.businessPartnerName ||
+              t.supplierName ||
+              t.dmcName ||
+              primaryBpName ||
+              "";
+            return {
+              ...t,
+              type: "transfer",
+              title: t.name || t.serviceName || "Transfer",
+              price: Number(t.price || t.basePrice || 0),
+              total: Number(t.price || t.basePrice || 0),
+              serviceDate: t.serviceDate || null,
+              businessPartnerId: bpId,
+              businessPartner: bpId,
+              businessPartnerName: bpName,
+              supplierId: bpId,
+              supplierName: bpName,
+              dmcId: bpId,
+              dmcName: bpName,
+            };
+          }),
+          ...payload.activities.map((a) => {
+            const bpId =
+              a.businessPartnerId ||
+              a.businessPartner ||
+              a.supplier ||
+              a.supplierId ||
+              a.dmcId ||
+              primaryBp ||
+              null;
+            const bpName =
+              a.businessPartnerName ||
+              a.supplierName ||
+              a.dmcName ||
+              primaryBpName ||
+              "";
+            return {
+              ...a,
+              type: "activity",
+              title: a.name || a.serviceName || "Activity",
+              price: Number(a.adultPrice || a.price || a.basePrice || 0),
+              total: Number(a.price || a.basePrice || 0),
+              serviceDate: a.serviceDate || null,
+              businessPartnerId: bpId,
+              businessPartner: bpId,
+              businessPartnerName: bpName,
+              supplierId: bpId,
+              supplierName: bpName,
+              dmcId: bpId,
+              dmcName: bpName,
+            };
+          }),
+          ...payload.sightseeing.map((s) => {
+            const bpId =
+              s.businessPartnerId ||
+              s.businessPartner ||
+              s.supplier ||
+              s.supplierId ||
+              s.dmcId ||
+              primaryBp ||
+              null;
+            const bpName =
+              s.businessPartnerName ||
+              s.supplierName ||
+              s.dmcName ||
+              primaryBpName ||
+              "";
+            return {
+              ...s,
+              type: "sightseeing",
+              title: s.name || s.serviceName || "Sightseeing",
+              price: Number(s.adultPrice || s.price || s.basePrice || 0),
+              total: Number(s.price || s.basePrice || 0),
+              serviceDate: s.serviceDate || null,
+              businessPartnerId: bpId,
+              businessPartner: bpId,
+              businessPartnerName: bpName,
+              supplierId: bpId,
+              supplierName: bpName,
+              dmcId: bpId,
+              dmcName: bpName,
+            };
+          }),
+        ];
+
+        const targetQuotationId = initialData?.id || initialData?._id || undefined;
+        const isEditing = Boolean(targetQuotationId);
+        const targetQueryId = queryId || initialData?.queryId || initialData?.query?.queryId;
+
+        const bpPayload = {
+          quotationId: targetQuotationId,
+          editExistingQuotation: isEditing,
+          queryId: targetQueryId,
+          validTill:
+            initialData?.validTill ||
+            new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+          baseAmount: Number(payload.basePrice || payload.price || 0),
+          inclusions: Array.isArray(payload.inclusions)
+            ? payload.inclusions
+            : String(payload.inclusions || "")
+                .split("\n")
+                .map((x) => x.trim())
+                .filter(Boolean),
+          exclusions: Array.isArray(payload.exclusions)
+            ? payload.exclusions
+            : String(payload.exclusions || "")
+                .split("\n")
+                .map((x) => x.trim())
+                .filter(Boolean),
+          termsAndConditions: Array.isArray(payload.termsAndConditions)
+            ? payload.termsAndConditions
+            : String(payload.termsAndConditions || "")
+                .split("\n")
+                .map((x) => x.trim())
+                .filter(Boolean),
+          dayWiseItinerary: payload.dayWiseItinerary.map((it, idx) => ({
+            dayNumber: it.day || idx + 1,
+            dayLabel: it.title || `Day ${idx + 1}`,
+            title: it.title || `Day ${idx + 1}`,
+            description: it.description || "",
+          })),
+          services: bpServices,
+          pricing: {
+            currency: "INR",
+            quoteCategory: "domestic",
+            baseAmount: Number(payload.basePrice || payload.price || 0),
+            subTotal: Number(payload.price || 0),
+            totalAmount: Number(payload.price || 0) + Number(payload.tax?.totalTax || 0),
+            tax: {
+              gst: {
+                percent: Number(payload.tax?.gstPercent || 0),
+                amount: Number(payload.tax?.gstAmount || 0),
+              },
+              tcs: {
+                percent: Number(payload.tax?.tcsPercent || 0),
+                amount: Number(payload.tax?.tcsAmount || 0),
+              },
+              tourismFee: {
+                amount: Number(payload.tax?.tourismAmount || 0),
+              },
+              totalTax: Number(payload.tax?.totalTax || 0),
+            },
+          },
+          tax: {
+            gstPercent: Number(payload.tax?.gstPercent || 0),
+            gstAmount: Number(payload.tax?.gstAmount || 0),
+            tcsPercent: Number(payload.tax?.tcsPercent || 0),
+            tcsAmount: Number(payload.tax?.tcsAmount || 0),
+            tourismAmount: Number(payload.tax?.tourismAmount || 0),
+          },
+          opsPercent: Number(initialData?.pricing?.opsMarkup?.percent || initialData?.opsPercent || 0),
+          opsAmount: Number(initialData?.pricing?.opsMarkup?.amount || initialData?.opsAmount || 0),
+          serviceCharge: Number(initialData?.pricing?.opsCharges?.serviceCharge || initialData?.serviceCharge || 0),
+          handlingFee: Number(initialData?.pricing?.opsCharges?.handlingFee || initialData?.handlingFee || 0),
+        };
+
+        res = await API.post("/ops/quotations", bpPayload);
+        toast.success(
+          isEditing
+            ? "Quotation updated successfully!"
+            : "Quotation created successfully!"
+        );
+      } else {
+        res = await API.post("/dmc/package", payload);
+        toast.success("Pre-defined package template created successfully!");
+      }
+
+      const responseData = res?.data?.quotation || res?.data?.data || payload;
+      onSuccess?.(responseData);
       onClose();
     } catch (error) {
       console.error(error);
@@ -1060,6 +1505,8 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
     }
   };
 
+  if (!isOpen) return null;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-3 sm:p-5 animate-fadeIn">
       <div className="relative flex max-h-[90vh] w-full max-w-6xl flex-col rounded-xl border border-gray-200 bg-white text-slate-800 shadow-2xl overflow-hidden font-sans">
@@ -1072,10 +1519,10 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
             </div>
             <div>
               <h2 className="text-base font-bold text-slate-900">
-                Create Pre-defined Package Template
+                {headerTitle}
               </h2>
               <p className="text-xs text-gray-500 mt-0.5">
-                Configure reusable packages with live uploaded hotels, cabs, sightseeing & itinerary
+                {headerSubtitle}
               </p>
             </div>
           </div>
@@ -1164,6 +1611,9 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
               activeHotelDropdownIdx={activeHotelDropdownIdx}
               setActiveHotelDropdownIdx={setActiveHotelDropdownIdx}
               isTripleAllowedCategory={isTripleAllowedCategory}
+              partnerType={partnerType}
+              businessPartners={businessPartners}
+              isOpenedFromQuotationBuilder={isOpenedFromQuotationBuilder}
             />
           )}
 
@@ -1188,6 +1638,9 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
               handleShiftItemDay={handleShiftItemDay}
               totalDaysCount={totalDaysCount}
               getServiceConflicts={getServiceConflicts}
+              partnerType={partnerType}
+              businessPartners={businessPartners}
+              isOpenedFromQuotationBuilder={isOpenedFromQuotationBuilder}
             />
           )}
 
@@ -1222,6 +1675,9 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
               getServiceConflicts={getServiceConflicts}
               dayLoadSummary={dayLoadSummary}
               checkSlotAvailability={checkSlotAvailability}
+              partnerType={partnerType}
+              businessPartners={businessPartners}
+              isOpenedFromQuotationBuilder={isOpenedFromQuotationBuilder}
             />
           )}
 
@@ -1300,7 +1756,7 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
               disabled={loading}
               className="rounded-lg bg-[#3E63DD] px-5 py-2 text-xs font-bold text-white shadow-md hover:bg-blue-700 transition disabled:opacity-50 cursor-pointer"
             >
-              {loading ? "Creating Template..." : "Save Pre-defined Package"}
+              {loading ? "Creating Template..." : submitBtnText}
             </button>
           </div>
         </form>

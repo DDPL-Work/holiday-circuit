@@ -19,27 +19,38 @@ const REQUEST_BODY_LIMIT = process.env.REQUEST_BODY_LIMIT || "25mb";
 dbConnect();
 
 // ====================== MIDDLEWARE ==================
-// const allowedOrigins = [
-//   "https://holidaycircuit.com",
-//   "https://www.holidaycircuit.com",
-//   "https://admin.holidaycircuit.com",
-//   "https://agent.holidaycircuit.com",
-//   "https://dmc.holidaycircuit.com",
-//   "https://ops.holidaycircuit.com",
-//   "https://finance.holidaycircuit.com",
-// ];
 const allowedOrigins = [
+  "https://holidaycircuit.com",
+  "https://www.holidaycircuit.com",
+  "https://admin.holidaycircuit.com",
+  "https://agent.holidaycircuit.com",
+  "https://dmc.holidaycircuit.com",
+  "https://ops.holidaycircuit.com",
+  "https://finance.holidaycircuit.com",
+
+  
   "http://localhost:5173",
   "http://localhost:5174",
   "http://localhost:5175",
   "http://localhost:5176",
   "http://localhost:5177",
+  "http://localhost:3000",
 ];
 
 app.use(cors({
-  origin: allowedOrigins,
+  origin: function (origin, callback) {
+    if (!origin) return callback(null, true);
+    if (
+      allowedOrigins.includes(origin) ||
+      /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)
+    ) {
+      return callback(null, true);
+    }
+    return callback(new Error("Not allowed by CORS"));
+  },
+  credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "Cache-Control"],
+  allowedHeaders: ["Content-Type", "Authorization", "Cache-Control", "X-Requested-With", "Accept"],
 }));
 app.use(express.json({ limit: REQUEST_BODY_LIMIT }));
 app.use(express.urlencoded({ extended: true, limit: REQUEST_BODY_LIMIT }));
@@ -88,14 +99,11 @@ app.use((err, req, res, next) => {
 
 
 
-  
 
   console.error(err.stack);
   res.status(err.statusCode || err.status || 500).json({success: false, message: err.message || "Internal Server Error",
   });
 });
-
-
 
 
 
