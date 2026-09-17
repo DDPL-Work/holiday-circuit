@@ -1941,14 +1941,97 @@ export const getAllQueries = async (req, res, next) => {
     const queryFilter = await getAssignedQueryFilter(req);
 
     const queries = await TravelQuery.find(queryFilter)
-
       .populate("agent", "name email phone companyName")
       .populate("assignedTo", "name email")
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const queryMongoIds = queries.map((q) => q._id);
+    const queryCodes = queries.map((q) => q.queryId).filter(Boolean);
+
+    const [quotations, internalInvoices] = await Promise.all([
+      Quotation.find({ queryId: { $in: queryMongoIds } })
+        .select("queryId partnerType services")
+        .sort({ createdAt: -1 })
+        .lean(),
+      InternalInvoice.find({
+        $or: [{ query: { $in: queryMongoIds } }, { queryCode: { $in: queryCodes } }],
+        isDeleted: { $ne: true },
+      })
+        .select("query queryCode businessPartnerName supplierName dmcName invoiceNumber claimedSummary summary status documents uploadedInvoice")
+        .lean(),
+    ]);
+
+    const latestQuotationByQueryId = new Map();
+    quotations.forEach((q) => {
+      const qKey = String(q.queryId);
+      if (!latestQuotationByQueryId.has(qKey)) {
+        latestQuotationByQueryId.set(qKey, q);
+      }
+    });
+
+    const invoicesByQueryId = new Map();
+    internalInvoices.forEach((inv) => {
+      const qIdKey = inv.query ? String(inv.query) : "";
+      const qCodeKey = inv.queryCode ? String(inv.queryCode) : "";
+      if (qIdKey) {
+        if (!invoicesByQueryId.has(qIdKey)) invoicesByQueryId.set(qIdKey, []);
+        invoicesByQueryId.get(qIdKey).push(inv);
+      }
+      if (qCodeKey) {
+        if (!invoicesByQueryId.has(qCodeKey)) invoicesByQueryId.set(qCodeKey, []);
+        invoicesByQueryId.get(qCodeKey).push(inv);
+      }
+    });
+
+    const enrichedQueries = queries.map((q) => {
+      const qIdStr = String(q._id);
+      const qCodeStr = String(q.queryId || "");
+      const quot = latestQuotationByQueryId.get(qIdStr);
+      const invs = [
+        ...(invoicesByQueryId.get(qIdStr) || []),
+        ...(invoicesByQueryId.get(qCodeStr) || []),
+      ].filter((v, i, a) => a.findIndex((t) => String(t._id) === String(v._id)) === i);
+
+      const uniquePartners = new Set();
+      if (quot?.services?.length) {
+        quot.services.forEach((s) => {
+          const p = (s.businessPartnerName || s.supplierName || s.dmcName || "").trim();
+          if (p) uniquePartners.add(p.toLowerCase());
+        });
+      }
+
+      invs.forEach((inv) => {
+        const p = (inv.businessPartnerName || inv.supplierName || inv.dmcName || "").trim();
+        if (p) uniquePartners.add(p.toLowerCase());
+      });
+
+      const totalRequired = uniquePartners.size;
+      const uploadedCount = invs.length;
+      const isComplete = totalRequired > 0 && uploadedCount >= totalRequired;
+
+      const isConfirmedBooking =
+        ["Client Approved", "Confirmed"].includes(String(q.agentStatus || "").trim()) ||
+        ["Confirmed", "Vouchered", "Invoice_Requested", "Payment_Completed"].includes(String(q.opsStatus || "").trim());
+
+      const showInvoiceButton = isConfirmedBooking && (totalRequired > 0 || uploadedCount > 0);
+
+      return {
+        ...q,
+        partnerInvoiceStats: {
+          totalRequired,
+          uploadedCount,
+          isComplete,
+          isPending: totalRequired > 0 && uploadedCount < totalRequired,
+          hasInvoices: uploadedCount > 0,
+          showInvoiceButton,
+        },
+      };
+    });
 
     res.json({
       message: "Assigned queries fetched successfully",
-      queries
+      queries: enrichedQueries,
     });
   } catch (error) {
     next(error);
@@ -5327,13 +5410,184 @@ export const deleteQuotationService = async (req, res, next) => {
   }
 };
 
+export const getQueryPartnerInvoiceStatus = async (req, res, next) => {
+  try {
+    const { queryId } = req.params;
+    if (!queryId) {
+      return next(new ApiError(400, "Query ID is required"));
+    }
+
+    const queryLookup = mongoose.Types.ObjectId.isValid(queryId)
+      ? { _id: queryId }
+      : { queryId: String(queryId).trim() };
+
+    const query = await TravelQuery.findOne(queryLookup)
+      .populate("agent", "name companyName email")
+      .lean();
+
+    if (!query) {
+      return next(new ApiError(404, "Booking / Query not found"));
+    }
+
+    const quotation = await Quotation.findOne({ queryId: query._id })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const services = quotation?.services || [];
+    const partnerMap = new Map();
+
+    services.forEach((s) => {
+      const rawPartnerName = (s.businessPartnerName || s.supplierName || s.dmcName || "").trim();
+      if (rawPartnerName) {
+        const key = rawPartnerName.toLowerCase();
+        const type = s.type || s.serviceType || "Service";
+        const title = s.title || s.serviceName || s.hotelName || s.name || "Service";
+        const amount = Number(s.total || s.totalInInr || s.price || s.rate || 0);
+
+        if (!partnerMap.has(key)) {
+          partnerMap.set(key, {
+            partnerName: rawPartnerName,
+            partnerId: s.businessPartnerId || s.businessPartner || s.supplierId || s.dmcId || null,
+            serviceTypes: [type],
+            serviceTitles: [title],
+            expectedAmount: amount,
+          });
+        } else {
+          const item = partnerMap.get(key);
+          if (!item.serviceTypes.includes(type)) {
+            item.serviceTypes.push(type);
+          }
+          item.serviceTitles.push(title);
+          item.expectedAmount += amount;
+        }
+      }
+    });
+
+    const uploadedInvoices = await InternalInvoice.find({
+      $or: [{ query: query._id }, { queryCode: query.queryId }],
+      isDeleted: { $ne: true },
+    })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const isPartnerMatch = (nameA = "", nameB = "") => {
+      const normA = String(nameA || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+      const normB = String(nameB || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+      if (!normA || !normB) return false;
+      if (normA === normB) return true;
+      if (normA.includes(normB) || normB.includes(normA)) return true;
+      if ((normA.includes("mmt") || normA.includes("makemytrip")) && (normB.includes("mmt") || normB.includes("makemytrip"))) return true;
+      if (normA.includes("tbo") && normB.includes("tbo")) return true;
+      if (normA.includes("tripjack") && normB.includes("tripjack")) return true;
+      if (normA.includes("yatra") && normB.includes("yatra")) return true;
+      if (normA.includes("agoda") && normB.includes("agoda")) return true;
+      if (normA.includes("riya") && normB.includes("riya")) return true;
+      if (normA.includes("expedia") && normB.includes("expedia")) return true;
+      if (normA.includes("easemytrip") && normB.includes("easemytrip")) return true;
+      if (normA.includes("cleartrip") && normB.includes("cleartrip")) return true;
+      return false;
+    };
+
+    const partners = [];
+
+    // Map quotation partners
+    for (const [key, pData] of partnerMap.entries()) {
+      const matchedInvoices = uploadedInvoices.filter((inv) => {
+        const invName = (inv.businessPartnerName || inv.supplierName || inv.dmcName || "").trim();
+        return isPartnerMatch(invName, pData.partnerName);
+      });
+
+      const isUploaded = matchedInvoices.length > 0;
+      partners.push({
+        partnerName: pData.partnerName,
+        partnerId: pData.partnerId,
+        serviceTypes: pData.serviceTypes,
+        serviceTitles: pData.serviceTitles,
+        expectedAmount: pData.expectedAmount,
+        isUploaded,
+        uploadedCount: matchedInvoices.length,
+        invoices: matchedInvoices.map((inv) => ({
+          id: inv._id,
+          invoiceNumber: inv.invoiceNumber,
+          invoiceDate: inv.invoiceDate,
+          amount: inv.claimedSummary?.grandTotal || inv.summary?.grandTotal || 0,
+          status: inv.status,
+          filePath: inv.uploadedInvoice?.filePath || inv.documents?.[0]?.filePath || "",
+          fileName: inv.uploadedInvoice?.name || inv.documents?.[0]?.name || "",
+        })),
+      });
+    }
+
+    // Add any uploaded invoice partner not in quotation
+    uploadedInvoices.forEach((inv) => {
+      const invPartnerName = (inv.businessPartnerName || inv.supplierName || inv.dmcName || "").trim();
+      const alreadyInList = partners.some((p) => isPartnerMatch(p.partnerName, invPartnerName));
+      if (invPartnerName && !alreadyInList) {
+        partners.push({
+          partnerName: invPartnerName,
+          partnerId: null,
+          serviceTypes: ["Offline Partner"],
+          serviceTitles: [inv.invoiceNumber || "Partner Invoice"],
+          expectedAmount: inv.claimedSummary?.grandTotal || inv.summary?.grandTotal || 0,
+          isUploaded: true,
+          uploadedCount: 1,
+          invoices: [
+            {
+              id: inv._id,
+              invoiceNumber: inv.invoiceNumber,
+              invoiceDate: inv.invoiceDate,
+              amount: inv.claimedSummary?.grandTotal || inv.summary?.grandTotal || 0,
+              status: inv.status,
+              filePath: inv.uploadedInvoice?.filePath || inv.documents?.[0]?.filePath || "",
+              fileName: inv.uploadedInvoice?.name || inv.documents?.[0]?.name || "",
+            },
+          ],
+        });
+      }
+    });
+
+    const totalRequired = partners.length;
+    const uploadedCount = partners.filter((p) => p.isUploaded).length;
+    const pendingCount = partners.filter((p) => !p.isUploaded).length;
+
+    res.status(200).json({
+      success: true,
+      data: {
+        queryId: query.queryId,
+        destination: query.destination || "",
+        totalRequired,
+        uploadedCount,
+        pendingCount,
+        isComplete: totalRequired > 0 && pendingCount === 0,
+        partners,
+        uploadedInvoices: uploadedInvoices.map((inv) => ({
+          id: inv._id,
+          invoiceNumber: inv.invoiceNumber,
+          businessPartnerName: inv.businessPartnerName || inv.supplierName || "",
+          invoiceDate: inv.invoiceDate,
+          amount: inv.claimedSummary?.grandTotal || inv.summary?.grandTotal || 0,
+          status: inv.status,
+          filePath: inv.uploadedInvoice?.filePath || inv.documents?.[0]?.filePath || "",
+          fileName: inv.uploadedInvoice?.name || inv.documents?.[0]?.name || "",
+        })),
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const getQueriesForPartnerInvoiceUpload = async (req, res, next) => {
   try {
     const queries = await TravelQuery.find({
       isDeleted: { $ne: true },
+      $or: [
+        { opsStatus: { $in: ["Confirmed", "Vouchered", "Invoice_Requested", "Payment_Completed"] } },
+        { agentStatus: { $in: ["Client Approved", "Confirmed"] } },
+      ],
     })
       .populate("agent", "name companyName email")
-      .select("queryId destination startDate endDate numberOfAdults numberOfChildren customerName opsStatus quotationStatus createdAt")
+      .select("queryId destination startDate endDate numberOfAdults numberOfChildren customerName opsStatus agentStatus quotationStatus createdAt")
       .sort({ createdAt: -1 })
       .limit(100)
       .lean();
@@ -5479,12 +5733,30 @@ export const uploadBusinessPartnerInvoice = async (req, res, next) => {
     const partnerNameTrimmed = String(businessPartnerName).trim();
     const invoiceNumTrimmed = String(invoiceNumber).trim();
 
+    const sanitizedPartnerHandle = partnerNameTrimmed.toLowerCase().replace(/[^a-z0-9]/g, "");
+    const partnerRegex = new RegExp(`^${partnerNameTrimmed.replace(/[-\/\\^$*+?.()|[\]{}]/g, "\\$&")}$`, "i");
+
+    const partnerAuth = await Auth.findOne({
+      $or: [
+        { name: partnerRegex },
+        { companyName: partnerRegex },
+        { email: `${sanitizedPartnerHandle}@bp.holidaycircuit.com` },
+      ],
+      isDeleted: { $ne: true },
+    }).lean();
+
+    const resolvedPartnerEmail =
+      partnerAuth?.email || (sanitizedPartnerHandle ? `${sanitizedPartnerHandle}@bp.holidaycircuit.com` : "");
+    const resolvedPartnerPhone = partnerAuth?.phone || "+91 98765 43210";
+
     const invoicePayload = {
       query: query._id,
       queryCode: query.queryId,
       agent: query.agent?._id || query.agent || null,
       agentName: query.agent?.companyName || query.agent?.name || "",
-      dmc: null,
+      dmc: partnerAuth?._id || null,
+      dmcEmail: resolvedPartnerEmail,
+      dmcPhone: resolvedPartnerPhone,
       partnerType: "offline_partner",
       businessPartnerName: partnerNameTrimmed,
       dmcName: `${partnerNameTrimmed} (Offline Partner)`,
@@ -5502,6 +5774,11 @@ export const uploadBusinessPartnerInvoice = async (req, res, next) => {
         subtotal: Number(subtotal || grandTotal || 0),
         taxAmount: Number(taxAmount || 0),
         grandTotal: Number(grandTotal || 0),
+      },
+      taxConfig: {
+        gstRate: Number(quotation?.pricing?.tax?.gst?.percent || quotation?.taxConfig?.gstRate || 0),
+        tcsRate: Number(quotation?.pricing?.tax?.tcs?.percent || quotation?.taxConfig?.tcsRate || 0),
+        otherTax: Number(quotation?.pricing?.tax?.tourismFee?.amount || quotation?.taxConfig?.otherTax || 0),
       },
       summary: {
         subtotal: Number(subtotal || grandTotal || 0),

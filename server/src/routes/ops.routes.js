@@ -26,6 +26,7 @@ import {
   updateQueryStatus,
   uploadBusinessPartnerInvoice,
   getQueriesForPartnerInvoiceUpload,
+  getQueryPartnerInvoiceStatus,
   submitOfflinePartnerConfirmation,
 } from "../controllers/opsController.js";
 import multer from "multer";
@@ -107,6 +108,7 @@ router.get("/manager/activity-logs", isAuthenticated, getOpsActivityLogs);
 
 router.post("/invoices", isAuthenticated, generateInvoice);
 router.get("/business-partner-invoices/queries", isAuthenticated, getQueriesForPartnerInvoiceUpload);
+router.get("/business-partner-invoices/status/:queryId", isAuthenticated, getQueryPartnerInvoiceStatus);
 router.post(
   "/business-partner-invoices/upload",
   isAuthenticated,

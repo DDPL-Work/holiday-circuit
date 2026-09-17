@@ -666,19 +666,57 @@ export default function BookingManagementHub() {
                               <FileText className="h-3 w-3" />
                               Docs
                             </motion.button>
-                            <motion.button
-                              whileHover={{ scale: 1.03 }}
-                              whileTap={{ scale: 0.97 }}
-                              onClick={() => {
-                                setPartnerInvoiceSelectedBooking(row._raw);
-                                setShowPartnerInvoiceModal(true);
-                              }}
-                              className="inline-flex whitespace-nowrap shrink-0 cursor-pointer items-center gap-1 rounded-lg border border-amber-200 bg-amber-50/80 px-2 py-1 text-xs font-medium text-amber-700 transition-colors hover:bg-amber-600 hover:text-white hover:border-amber-600 shadow-2xs"
-                              title="Upload Offline Partner Invoice (MakeMyTrip, Agoda, Yatra)"
-                            >
-                              <Upload className="h-3 w-3" />
-                              Invoice
-                            </motion.button>
+                            {(() => {
+                              const isConfirmed =
+                                ["Client Approved", "Confirmed"].includes(String(row._raw?.agentStatus || "").trim()) ||
+                                ["Confirmed", "Vouchered", "Invoice_Requested", "Payment_Completed"].includes(String(row._raw?.opsStatus || "").trim());
+                              const hasPartners =
+                                Number(row._raw?.partnerInvoiceStats?.totalRequired || 0) > 0 ||
+                                Number(row._raw?.partnerInvoiceStats?.uploadedCount || 0) > 0;
+                              const shouldShow =
+                                row._raw?.partnerInvoiceStats?.showInvoiceButton !== undefined
+                                  ? row._raw?.partnerInvoiceStats?.showInvoiceButton
+                                  : isConfirmed && hasPartners;
+
+                              if (!shouldShow) return null;
+
+                              return (
+                                <motion.button
+                                  whileHover={{ scale: 1.03 }}
+                                  whileTap={{ scale: 0.97 }}
+                                  onClick={() => {
+                                    setPartnerInvoiceSelectedBooking(row._raw);
+                                    setShowPartnerInvoiceModal(true);
+                                  }}
+                                  className={`inline-flex whitespace-nowrap shrink-0 cursor-pointer items-center gap-1 rounded-lg border px-2 py-1 text-xs font-medium shadow-2xs transition-colors ${
+                                    row._raw?.partnerInvoiceStats?.isComplete
+                                      ? "border-emerald-200 bg-emerald-50/80 text-emerald-800 hover:bg-emerald-600 hover:text-white hover:border-emerald-600"
+                                      : row._raw?.partnerInvoiceStats?.hasInvoices
+                                      ? "border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-600 hover:text-white hover:border-amber-600"
+                                      : "border-amber-200 bg-amber-50/80 text-amber-700 hover:bg-amber-600 hover:text-white hover:border-amber-600"
+                                  }`}
+                                  title="Upload Offline Partner Invoice (MakeMyTrip, Agoda, Yatra)"
+                                >
+                                  <Upload className="h-3 w-3" />
+                                  <span>Invoice</span>
+                                  {row._raw?.partnerInvoiceStats?.totalRequired > 0 ? (
+                                    <span
+                                      className={`ml-0.5 rounded-full px-1.5 py-0.2 text-[10px] font-extrabold ${
+                                        row._raw?.partnerInvoiceStats?.isComplete
+                                          ? "bg-emerald-200 text-emerald-900"
+                                          : "bg-amber-200 text-amber-900"
+                                      }`}
+                                    >
+                                      {row._raw.partnerInvoiceStats.uploadedCount}/{row._raw.partnerInvoiceStats.totalRequired}
+                                    </span>
+                                  ) : row._raw?.partnerInvoiceStats?.uploadedCount > 0 ? (
+                                    <span className="ml-0.5 rounded-full bg-emerald-200 text-emerald-900 px-1.5 py-0.2 text-[10px] font-extrabold">
+                                      {row._raw.partnerInvoiceStats.uploadedCount}
+                                    </span>
+                                  ) : null}
+                                </motion.button>
+                              );
+                            })()}
                           </div>
                         </td>
                       </motion.tr>

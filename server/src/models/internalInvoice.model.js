@@ -116,6 +116,16 @@ const internalInvoiceSchema = new mongoose.Schema(
       trim: true,
       default: "",
     },
+    dmcEmail: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    dmcPhone: {
+      type: String,
+      trim: true,
+      default: "",
+    },
     destination: {
       type: String,
       trim: true,

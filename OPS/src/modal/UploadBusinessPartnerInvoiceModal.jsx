@@ -56,6 +56,25 @@ export default function UploadBusinessPartnerInvoiceModal({
   const [submitting, setSubmitting] = useState(false);
   const [parsing, setParsing] = useState(false);
   const [autoExtracted, setAutoExtracted] = useState(false);
+  const [partnerTracker, setPartnerTracker] = useState(null);
+  const [loadingPartnerTracker, setLoadingPartnerTracker] = useState(false);
+
+  const fetchPartnerStatus = async (qId) => {
+    if (!qId) {
+      setPartnerTracker(null);
+      return;
+    }
+    try {
+      setLoadingPartnerTracker(true);
+      const { data } = await API.get(`/ops/business-partner-invoices/status/${qId}`);
+      setPartnerTracker(data?.data || null);
+    } catch (err) {
+      console.warn("Failed to load partner invoice status", err);
+      setPartnerTracker(null);
+    } finally {
+      setLoadingPartnerTracker(false);
+    }
+  };
 
   useEffect(() => {
     const fetchQueries = async () => {
@@ -80,6 +99,13 @@ export default function UploadBusinessPartnerInvoiceModal({
       ) || initialQuery || null
     );
   }, [selectedQueryId, queries, initialQuery]);
+
+  useEffect(() => {
+    const targetId = selectedQuery?.queryId || selectedQuery?.id || selectedQueryId;
+    if (targetId) {
+      fetchPartnerStatus(targetId);
+    }
+  }, [selectedQuery, selectedQueryId]);
 
   const filteredQueries = useMemo(() => {
     if (!querySearch.trim()) return queries.slice(0, 15);
@@ -188,10 +214,37 @@ export default function UploadBusinessPartnerInvoiceModal({
       const extraction = data?.data || null;
       const fields = extraction?.fields || {};
 
-      // 1. Partner Name Auto-fill
-      const detectedPartner = fields.partnerName || fields.supplierName || "";
-      if (detectedPartner) {
-        setPartnerName(detectedPartner);
+      // 1. Partner Name Auto-fill with intelligent quotation partner checklist matching
+      const rawDetected = fields.partnerName || fields.supplierName || "";
+      let finalPartner = rawDetected;
+
+      if (partnerTracker?.partners?.length) {
+        const isPartnerMatch = (nameA = "", nameB = "") => {
+          const normA = String(nameA || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+          const normB = String(nameB || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+          if (!normA || !normB) return false;
+          if (normA === normB || normA.includes(normB) || normB.includes(normA)) return true;
+          if ((normA.includes("mmt") || normA.includes("makemytrip")) && (normB.includes("mmt") || normB.includes("makemytrip"))) return true;
+          if (normA.includes("tbo") && normB.includes("tbo")) return true;
+          if (normA.includes("tripjack") && normB.includes("tripjack")) return true;
+          if (normA.includes("yatra") && normB.includes("yatra")) return true;
+          if (normA.includes("agoda") && normB.includes("agoda")) return true;
+          return false;
+        };
+
+        const matched = partnerTracker.partners.find((p) => isPartnerMatch(p.partnerName, rawDetected));
+        if (matched) {
+          finalPartner = matched.partnerName;
+        } else {
+          const pendingList = partnerTracker.partners.filter((p) => !p.isUploaded);
+          if (pendingList.length === 1) {
+            finalPartner = pendingList[0].partnerName;
+          }
+        }
+      }
+
+      if (finalPartner) {
+        setPartnerName(finalPartner);
       }
 
       // 2. Invoice Number
@@ -296,8 +349,24 @@ export default function UploadBusinessPartnerInvoiceModal({
       toast.success(
         data?.message || `Invoice for ${effectivePartnerName} uploaded successfully and sent to Finance!`
       );
+      
+      const currentQueryCode = selectedQuery?.queryId || selectedQueryId;
+      if (currentQueryCode) {
+        await fetchPartnerStatus(currentQueryCode);
+      }
+      
       onSuccess?.(data?.data);
-      onClose?.();
+
+      setPartnerName("");
+      setInvoiceNumber("");
+      setInvoiceDate(todayStr());
+      setCreditPeriodDays(7);
+      setSubtotal("");
+      setTaxAmount("");
+      setGrandTotal("");
+      setRemarks("");
+      setFile(null);
+      setAutoExtracted(false);
     } catch (err) {
       console.error("Failed to upload business partner invoice", err);
       toast.error(
@@ -423,13 +492,96 @@ export default function UploadBusinessPartnerInvoiceModal({
                       </span>
                     </div>
                   )}
+
+                  {/* Partner Invoices Tracker / Checklist */}
+                  {selectedQuery && partnerTracker && partnerTracker.partners?.length > 0 && (
+                    <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50/90 p-3 space-y-2.5 shadow-2xs">
+                      <div className="flex items-center justify-between flex-wrap gap-2">
+                        <div className="flex items-center gap-2">
+                          <Building2 size={14} className="text-slate-600" />
+                          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-700">
+                            Quotation Partners Checklist
+                          </span>
+                          <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-extrabold text-slate-700">
+                            {partnerTracker.uploadedCount} / {partnerTracker.totalRequired} Uploaded
+                          </span>
+                        </div>
+                        {partnerTracker.isComplete ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-[10px] font-bold text-emerald-800">
+                            <CheckCircle2 size={12} /> All Partner Invoices Uploaded
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-[10px] font-bold text-amber-800">
+                            <Clock size={12} /> {partnerTracker.pendingCount} Pending Upload
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Partner Cards Grid - Informative non-clickable tracker */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {partnerTracker.partners.map((p, pIdx) => {
+                          return (
+                            <div
+                              key={pIdx}
+                              className={`flex items-start justify-between rounded-lg border p-2.5 transition cursor-default ${
+                                p.isUploaded
+                                  ? "border-emerald-200 bg-emerald-50/80 text-emerald-900"
+                                  : "border-amber-200 bg-amber-50/60 text-amber-950"
+                              }`}
+                            >
+                              <div className="space-y-0.5 min-w-0 flex-1 pr-2">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  {p.isUploaded ? (
+                                    <CheckCircle2 size={14} className="text-emerald-600 shrink-0" />
+                                  ) : (
+                                    <Clock size={14} className="text-amber-600 shrink-0" />
+                                  )}
+                                  <span className="text-xs font-bold leading-none truncate">{p.partnerName}</span>
+                                  <span
+                                    className={`rounded-md px-1.5 py-0.2 text-[9px] font-semibold ${
+                                      p.isUploaded
+                                        ? "bg-emerald-200/70 text-emerald-800"
+                                        : "bg-amber-200/80 text-amber-800"
+                                    }`}
+                                  >
+                                    {p.serviceTypes?.join(" & ") || "Service"}
+                                  </span>
+                                </div>
+                                <p className="text-[10.5px] opacity-85 pl-5 leading-tight">
+                                  {p.isUploaded
+                                    ? `Inv: ${p.invoices?.[0]?.invoiceNumber || "Uploaded"} • ₹${formatIndianNumber(
+                                        p.invoices?.[0]?.amount || 0
+                                      )}`
+                                    : "Pending Upload"}
+                                </p>
+                              </div>
+
+                              {p.isUploaded && p.invoices?.[0]?.filePath && (
+                                <a
+                                  href={p.invoices[0].filePath}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="shrink-0 rounded-md bg-emerald-200/70 px-2 py-1 text-emerald-900 hover:bg-emerald-300 transition text-[10px] font-bold cursor-pointer"
+                                  title="View Uploaded Invoice Document"
+                                >
+                                  View
+                                </a>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* 2. Partner Name Input */}
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Business Partner / Offline Supplier <span className="text-rose-500">*</span>
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-bold text-slate-700">
+                      Business Partner / Offline Supplier <span className="text-rose-500">*</span>
+                    </label>
+                  </div>
                   <input
                     type="text"
                     value={partnerName}

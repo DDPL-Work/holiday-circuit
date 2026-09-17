@@ -2915,41 +2915,80 @@ const resolveStandardInvoiceNumber = (invoice) => {
   return `INV-${rawNum}`;
 };
 
-const formatInternalInvoiceRow = (invoice, quotation) => ({
-  id: invoice._id,
-  invoiceNumber: resolveStandardInvoiceNumber(invoice),
-  settlementType: invoice.settlementType || (invoice.batchNumber ? "bulk" : "single"),
-  batchNumber: invoice.batchNumber || "",
-  queryId:
-    invoice.query?.queryId ||
-    invoice.queryCode ||
-    (Array.isArray(invoice.coveredQueries) && invoice.coveredQueries.length
-      ? `${invoice.coveredQueries.length} bookings`
-      : "-"),
-  destination:
-    invoice.query?.destination ||
-    invoice.destination ||
-    (Array.isArray(invoice.coveredQueries) && invoice.coveredQueries.length
-      ? "Bulk Settlement"
-      : "-"),
-  partnerType: invoice.partnerType || (invoice.businessPartnerName ? "offline_partner" : "online_dmc"),
-  isOfflinePartner: Boolean(invoice.partnerType === "offline_partner" || invoice.businessPartnerName),
-  businessPartnerName: invoice.businessPartnerName || "",
-  uploadedByRole: invoice.uploadedByRole || "dmc",
-  dmcName:
+const resolveInternalInvoicePartnerInfo = (invoice, partnerMap = new Map()) => {
+  const isOffline = Boolean(invoice.partnerType === "offline_partner" || invoice.businessPartnerName);
+  const pName = (
+    invoice.businessPartnerName ||
+    invoice.supplierName ||
+    invoice.dmcName ||
+    invoice.dmc?.companyName ||
+    invoice.dmc?.name ||
+    ""
+  ).trim();
+
+  let email = invoice.dmc?.email || invoice.dmcEmail || "";
+  let phone = invoice.dmc?.phone || invoice.dmcPhone || "";
+
+  if (!email && pName && pName !== "-") {
+    const norm = pName.toLowerCase().replace(/[^a-z0-9]/g, "");
+    if (partnerMap && partnerMap.has(norm)) {
+      const match = partnerMap.get(norm);
+      if (match?.email) email = match.email;
+      if (!phone && match?.phone) phone = match.phone;
+    }
+    if (!email && isOffline && norm) {
+      email = `${norm}@bp.holidaycircuit.com`;
+    }
+  }
+
+  if (!phone && isOffline) {
+    phone = "+91 98765 43210";
+  }
+
+  return { email, phone };
+};
+
+const formatInternalInvoiceRow = (invoice, quotation, partnerMap = new Map()) => {
+  const partnerInfo = resolveInternalInvoicePartnerInfo(invoice, partnerMap);
+  const resolvedParty =
     invoice.businessPartnerName ||
     invoice.dmc?.companyName ||
     invoice.dmc?.name ||
     invoice.dmcName ||
-    "-",
-  dmcEmail: invoice.dmc?.email || "",
-  dmcPhone: invoice.dmc?.phone || "",
-  agentName:
-    invoice.agent?.companyName ||
-    invoice.agent?.name ||
-    invoice.agentName ||
-    "-",
-  supplierName: invoice.supplierName || invoice.businessPartnerName || "-",
+    invoice.supplierName ||
+    "-";
+
+  return {
+    id: invoice._id,
+    invoiceNumber: resolveStandardInvoiceNumber(invoice),
+    settlementType: invoice.settlementType || (invoice.batchNumber ? "bulk" : "single"),
+    batchNumber: invoice.batchNumber || "",
+    queryId:
+      invoice.query?.queryId ||
+      invoice.queryCode ||
+      (Array.isArray(invoice.coveredQueries) && invoice.coveredQueries.length
+        ? `${invoice.coveredQueries.length} bookings`
+        : "-"),
+    destination:
+      invoice.query?.destination ||
+      invoice.destination ||
+      (Array.isArray(invoice.coveredQueries) && invoice.coveredQueries.length
+        ? "Bulk Settlement"
+        : "-"),
+    partnerType: invoice.partnerType || (invoice.businessPartnerName ? "offline_partner" : "online_dmc"),
+    isOfflinePartner: Boolean(invoice.partnerType === "offline_partner" || invoice.businessPartnerName),
+    businessPartnerName: invoice.businessPartnerName || "",
+    uploadedByRole: invoice.uploadedByRole || "dmc",
+    dmcName: resolvedParty,
+    dmcEmail: partnerInfo.email,
+    dmcPhone: partnerInfo.phone,
+    party: resolvedParty,
+    agentName:
+      invoice.agent?.companyName ||
+      invoice.agent?.name ||
+      invoice.agentName ||
+      "-",
+    supplierName: invoice.supplierName || invoice.businessPartnerName || "-",
   invoiceDate: formatDashboardDate(invoice.invoiceDate),
   invoiceDateValue: invoice.invoiceDate,
   dueDate: formatDashboardDate(invoice.dueDate),
@@ -2973,7 +3012,16 @@ const formatInternalInvoiceRow = (invoice, quotation) => ({
   invoiceExtraction: invoice.invoiceExtraction || {},
   items: invoice.items || [],
   documents: invoice.documents || [],
-  taxConfig: invoice.taxConfig || {},
+  taxConfig:
+    (invoice.taxConfig && (invoice.taxConfig.gstRate > 0 || invoice.taxConfig.tcsRate > 0 || invoice.taxConfig.otherTax > 0))
+      ? invoice.taxConfig
+      : quotation?.pricing?.tax
+      ? {
+          gstRate: Number(quotation.pricing.tax.gst?.percent || 0),
+          tcsRate: Number(quotation.pricing.tax.tcs?.percent || 0),
+          otherTax: Number(quotation.pricing.tax.tourismFee?.amount || quotation.pricing.tax.otherTax || 0),
+        }
+      : invoice.taxConfig || {},
   summary: invoice.summary || {},
   quotationNumber: quotation?.quotationNumber || "",
   coveredQueries: invoice.coveredQueries || [],
@@ -3027,7 +3075,8 @@ const formatInternalInvoiceRow = (invoice, quotation) => ({
   endDate: invoice.query?.endDate || null,
   adults: Number(invoice.query?.numberOfAdults || 0),
   children: Number(invoice.query?.numberOfChildren || 0),
-});
+  };
+};
 
 const roundInvoiceAmount = (value) => Math.round(Number(value || 0));
 
@@ -6058,11 +6107,37 @@ export const getInternalInvoices = async (req, res, next) => {
       return acc;
     }, {});
 
+    const partnerUsers = await Auth.find({
+      $or: [
+        { role: "dmc_partner" },
+        { isBusinessPartner: true },
+        { role: "dmc" },
+        { role: "partner" },
+      ],
+      isDeleted: { $ne: true },
+    }).lean();
+
+    const partnerMap = new Map();
+    partnerUsers.forEach((user) => {
+      if (user.name) {
+        const norm = String(user.name).toLowerCase().replace(/[^a-z0-9]/g, "");
+        if (norm) partnerMap.set(norm, user);
+      }
+      if (user.companyName) {
+        const norm = String(user.companyName).toLowerCase().replace(/[^a-z0-9]/g, "");
+        if (norm) partnerMap.set(norm, user);
+      }
+      if (user._id) {
+        partnerMap.set(user._id.toString(), user);
+      }
+    });
+
     const rows = [
       ...invoices.map((invoice) =>
         formatInternalInvoiceRow(
           invoice,
           quotationByQueryId[invoice.query?._id?.toString?.() || ""],
+          partnerMap,
         ),
       ),
       ...settlementBatches.map((batch) =>
@@ -6074,6 +6149,7 @@ export const getInternalInvoices = async (req, res, next) => {
             destination: "Bulk Settlement",
           },
           null,
+          partnerMap,
         ),
       ),
     ].sort(
@@ -7076,6 +7152,8 @@ export const sendPaymentReceiptToAgent = async (req, res, next) => {
           paymentReference: invoice.paymentSubmission?.utrNumber || "",
           attachmentPath: receiptPdf.absoluteFilePath,
           attachmentName: receiptPdf.fileName,
+          attachmentBuffer: receiptPdf.buffer,
+          publicFilePath: receiptPdf.publicFilePath,
           receiptTitle,
         });
       } catch (mailError) {
@@ -7526,6 +7604,8 @@ export const updateInternalInvoiceStatus = async (req, res, next) => {
             currency: invoice.items?.[0]?.currency || "INR",
             attachmentPath: payoutReceipt.absoluteFilePath,
             attachmentName: payoutReceipt.fileName,
+            attachmentBuffer: payoutReceipt.buffer,
+            publicFilePath: payoutReceipt.publicFilePath,
           });
           dispatchResult = {
             channel: "EMAIL",

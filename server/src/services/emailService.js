@@ -2504,20 +2504,35 @@ export const sendDmcPayoutReceiptMail = async (email, receiptDetails = {}) => {
     </div>
   `;
 
+  const pdfBuffer =
+    receiptDetails.attachmentBuffer ||
+    receiptDetails.buffer ||
+    (receiptDetails.publicFilePath
+      ? pdfMemoryCache.get(receiptDetails.publicFilePath)
+      : null);
+
+  const attachments = [];
+  if (pdfBuffer) {
+    attachments.push({
+      filename: receiptDetails.attachmentName || `DMC_Payout_Receipt_${safeInvoiceNumber}.pdf`,
+      content: pdfBuffer,
+      contentType: "application/pdf",
+    });
+  } else if (receiptDetails.attachmentPath && fs.existsSync(receiptDetails.attachmentPath)) {
+    attachments.push({
+      filename: receiptDetails.attachmentName || `DMC_Payout_Receipt_${safeInvoiceNumber}.pdf`,
+      path: receiptDetails.attachmentPath,
+      contentType: "application/pdf",
+    });
+  }
+
   const info = await transporter.sendMail({
     from: MAIL_FROM_ADDRESS,
     replyTo: MAIL_REPLY_TO_ADDRESS,
     to: email,
     subject: `Payment Receipt - ${receiptDetails.invoiceNumber || receiptDetails.queryCode || "Holiday Circuit"}`,
     html,
-    attachments: receiptDetails.attachmentPath
-      ? [
-        {
-          filename: receiptDetails.attachmentName || `DMC_Payout_Receipt_${safeInvoiceNumber}.pdf`,
-          path: receiptDetails.attachmentPath,
-        },
-      ]
-      : [],
+    attachments,
   });
 
   return {
@@ -2587,20 +2602,35 @@ export const sendAgentPaymentReceiptMail = async (email, receiptDetails = {}) =>
     </div>
   `;
 
+  const pdfBuffer =
+    receiptDetails.attachmentBuffer ||
+    receiptDetails.buffer ||
+    (receiptDetails.publicFilePath
+      ? pdfMemoryCache.get(receiptDetails.publicFilePath)
+      : null);
+
+  const attachments = [];
+  if (pdfBuffer) {
+    attachments.push({
+      filename: receiptDetails.attachmentName || "Agent_Payment_Receipt.pdf",
+      content: pdfBuffer,
+      contentType: "application/pdf",
+    });
+  } else if (receiptDetails.attachmentPath && fs.existsSync(receiptDetails.attachmentPath)) {
+    attachments.push({
+      filename: receiptDetails.attachmentName || "Agent_Payment_Receipt.pdf",
+      path: receiptDetails.attachmentPath,
+      contentType: "application/pdf",
+    });
+  }
+
   const info = await transporter.sendMail({
     from: MAIL_FROM_ADDRESS,
     replyTo: MAIL_REPLY_TO_ADDRESS,
     to: email,
     subject: `Payment Receipt - ${receiptDetails.queryCode || receiptDetails.invoiceNumber || "Holiday Circuit"}`,
     html,
-    attachments: receiptDetails.attachmentPath
-      ? [
-        {
-          filename: receiptDetails.attachmentName || "Agent_Payment_Receipt.pdf",
-          path: receiptDetails.attachmentPath,
-        },
-      ]
-      : [],
+    attachments,
   });
 
   return {

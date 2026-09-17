@@ -735,28 +735,34 @@ const extractInvoiceNumber = (text) => {
 };
 
 const KNOWN_PARTNER_BRANDS = [
+  { match: /\b(?:makemytrip|make\s*my\s*trip|mmt)\b/i, partnerName: "MakeMyTrip", name: "MakeMyTrip" },
   { match: /\b(?:tbo\s*tek\s*(?:limited|ltd)|tbo\s*tek|tek\s*travels|travel\s*boutique\s*online|tbo\s*holidays|tbo)\b/i, partnerName: "TBO Tek Limited", name: "TBO Tek Limited" },
-  { match: /\b(?:trip\s*jack|tripjack|techzone\s*travels)\b/i, partnerName: "TRIP JACK Private Limited", name: "TRIP JACK Private Limited" },
-  { match: /\b(?:makemytrip|make\s*my\s*trip|mmt)\b/i, partnerName: "MakeMyTrip India Pvt Ltd", name: "MakeMyTrip India Pvt Ltd" },
+  { match: /\b(?:trip\s*jack|tripjack|techzone\s*travels)\b/i, partnerName: "TRIP JACK", name: "TRIP JACK" },
   { match: /\b(?:yatra\.com|yatra)\b/i, partnerName: "Yatra Online Limited", name: "Yatra Online Limited" },
-  { match: /\b(?:agoda)\b/i, partnerName: "Agoda Company Pte Ltd", name: "Agoda" },
+  { match: /\b(?:agoda)\b/i, partnerName: "Agoda", name: "Agoda" },
   { match: /\b(?:booking\.com|booking\s*dot\s*com)\b/i, partnerName: "Booking.com", name: "Booking.com" },
   { match: /\b(?:bhasin\s*travels|bhasin)\b/i, partnerName: "BHASIN TRAVELS ONLINE PRIVATE LIMITED", name: "BHASIN TRAVELS ONLINE PRIVATE LIMITED" },
   { match: /\b(?:riya\s*travel|riva\s*travel|riya\s*connect|riya)\b/i, partnerName: "Riya Travel & Tours (India) Pvt Ltd", name: "Riya Travel & Tours (India) Pvt Ltd" },
   { match: /\b(?:expedia)\b/i, partnerName: "Expedia", name: "Expedia" },
-  { match: /\b(?:easemytrip|ease\s*my\s*trip|easy\s*trip\s*planners)\b/i, partnerName: "Easy Trip Planners Ltd", name: "EaseMyTrip" },
-  { match: /\b(?:cleartrip|clear\s*trip)\b/i, partnerName: "Cleartrip Private Limited", name: "Cleartrip" },
+  { match: /\b(?:easemytrip|ease\s*my\s*trip|easy\s*trip\s*planners)\b/i, partnerName: "EaseMyTrip", name: "EaseMyTrip" },
+  { match: /\b(?:cleartrip|clear\s*trip)\b/i, partnerName: "Cleartrip", name: "Cleartrip" },
   { match: /\b(?:goibibo|go\s*ibibo)\b/i, partnerName: "Goibibo", name: "Goibibo" },
   { match: /\b(?:hotelbeds)\b/i, partnerName: "Hotelbeds", name: "Hotelbeds" },
-  { match: /\b(?:akbar\s*travels|akbar)\b/i, partnerName: "Akbar Online Booking Co. Pvt. Ltd.", name: "Akbar Travels" },
-  { match: /\b(?:fly24hrs)\b/i, partnerName: "Fly24hrs Holiday Pvt. Ltd.", name: "Fly24hrs" },
+  { match: /\b(?:akbar\s*travels|akbar)\b/i, partnerName: "Akbar Travels", name: "Akbar Travels" },
+  { match: /\b(?:fly24hrs)\b/i, partnerName: "Fly24hrs", name: "Fly24hrs" },
 ];
 
 const GENERIC_IGNORE_TITLES =
   /^(?:invoice|tax\s*invoice|payment\s*invoice|proforma\s*invoice|commercial\s*invoice|original\s*for\s*recipient|duplicate\s*copy|bill|receipt|voucher|statement|summary|original|duplicate|triplicate)$/i;
 
-const COMPANY_ENTITY_REGEX =
-  /\b([A-Za-z0-9&.' -]{2,60}?\s*(?:Pvt\.?\s*Ltd\.?|Private\s*Limited|Limited|Ltd\.?|LLP|Inc\.?))\b/i;
+const isGenericOrOnlySuffix = (name = "") => {
+  const trimmed = String(name || "").trim();
+  const withoutSuffix = trimmed
+    .replace(/\b(?:Pvt\.?\s*Ltd\.?|Private\s*Limited|Limited|Ltd\.?|LLP|Inc\.?)\b/gi, "")
+    .replace(/[^a-zA-Z0-9]/g, "")
+    .trim();
+  return withoutSuffix.length < 2 || /^(?:to|customer|buyer|client|guest|pax|owner|company|name)$/i.test(withoutSuffix);
+};
 
 const cleanBuyerFromSupplierName = (nameStr = "") => {
   let cleaned = String(nameStr || "").trim();
@@ -769,21 +775,33 @@ const cleanBuyerFromSupplierName = (nameStr = "") => {
 const extractSupplierAndPartner = (text = "") => {
   const normalized = normalizeText(text);
   const lines = splitInvoiceTextLines(normalized);
+  const topText = lines.slice(0, 30).join(" ");
 
-  // 1. Check if an exact registered company name appears in the top header lines (top 15 lines)
-  // e.g. "TBO Tek Limited", "MakeMyTrip India Pvt Ltd", "Yatra Online Limited"
+  // 1. Priority 1: Check known partner brands in top text (MakeMyTrip, TBO, Tripjack, Yatra, Agoda, etc.)
+  for (const brand of KNOWN_PARTNER_BRANDS) {
+    if (brand.match.test(topText)) {
+      return {
+        supplierName: brand.partnerName || brand.name,
+        partnerName: brand.partnerName || brand.name,
+      };
+    }
+  }
+
+  // 2. Check if an exact registered company name appears in the top header lines (top 15 lines)
+  // e.g. "TBO Tek Limited", "MAKEMYTRIP (INDIA) PRIVATE LIMITED", "XYZ Travel Services Pvt Ltd"
+  const FULL_COMPANY_REGEX = /\b([A-Za-z0-9&.'() -]{2,65}?\s*(?:Pvt\.?\s*Ltd\.?|Private\s*Limited|Limited|Ltd\.?|LLP|Inc\.?))\b/i;
   for (let i = 0; i < Math.min(lines.length, 15); i += 1) {
     const line = lines[i];
     if (GENERIC_IGNORE_TITLES.test(line)) continue;
     if (/payment\s*invoice|tax\s*invoice|proforma|gst\s*reg|pan\s*no|cin\s*no|cin\s*number|date|phone|email:|web:|regd\s*office|corp\s*off|place\s*of\s*supply/i.test(line)) continue;
 
-    // Check if line contains a company entity (e.g. "TBO Tek Limited", "XYZ Pvt Ltd")
-    const entityMatch = line.match(COMPANY_ENTITY_REGEX);
+    const entityMatch = line.match(FULL_COMPANY_REGEX);
     if (entityMatch?.[1]) {
       const candidate = cleanBuyerFromSupplierName(entityMatch[1].trim());
       if (
-        candidate.length >= 3 &&
-        candidate.length <= 70 &&
+        candidate.length >= 4 &&
+        candidate.length <= 75 &&
+        !isGenericOrOnlySuffix(candidate) &&
         !GENERIC_IGNORE_TITLES.test(candidate) &&
         !/^(?:to|customer|billed\s*to|buyer|guest|pax|leela\s*travels|holiday\s*circuit|owner's\s*name)/i.test(candidate)
       ) {
@@ -796,6 +814,7 @@ const extractSupplierAndPartner = (text = "") => {
       if (
         cleaned.length >= 3 &&
         cleaned.length <= 70 &&
+        !isGenericOrOnlySuffix(cleaned) &&
         !GENERIC_IGNORE_TITLES.test(cleaned) &&
         !/^(?:to|customer|billed\s*to|buyer|guest|pax|leela\s*travels|holiday\s*circuit|owner's\s*name)/i.test(cleaned)
       ) {
@@ -804,7 +823,7 @@ const extractSupplierAndPartner = (text = "") => {
     }
   }
 
-  // 2. Check explicit supplier / vendor labels
+  // 3. Check explicit supplier / vendor labels
   const patterns = [
     /(?:supplier|vendor|billed\s+by|from)\s*(?:name)?\s*[:#-]\s*([^\n]{3,80})/i,
     /(?:dmc\s*\/\s*supplier|supplier\s*name|vendor\s*name)\s*\n\s*([^\n]{3,80})/i,
@@ -815,22 +834,12 @@ const extractSupplierAndPartner = (text = "") => {
       const name = cleanBuyerFromSupplierName(match[1].replace(/\s{2,}/g, " ").trim());
       if (
         name.length >= 3 &&
+        !/^(?:pvt\.?\s*ltd\.?|private\s*limited|limited|ltd\.?)$/i.test(name) &&
         !GENERIC_IGNORE_TITLES.test(name) &&
         !/^(?:to|customer|billed\s*to|buyer|guest|pax|leela\s*travels|holiday\s*circuit|owner's\s*name)/i.test(name)
       ) {
         return { supplierName: name, partnerName: name };
       }
-    }
-  }
-
-  // 3. Fallback: Check known brands anywhere in top 25 lines
-  const topText = lines.slice(0, 25).join(" ");
-  for (const brand of KNOWN_PARTNER_BRANDS) {
-    if (brand.match.test(topText)) {
-      return {
-        supplierName: brand.partnerName || brand.name,
-        partnerName: brand.partnerName || brand.name,
-      };
     }
   }
 

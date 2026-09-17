@@ -1310,11 +1310,16 @@ export default function BookingStatistics() {
                             {service.type === "Activity" && <Users size={16} />}
                           </div>
                           <div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
                               <span className="text-xs font-bold px-2 py-0.5 bg-slate-100 text-slate-600 rounded-md">
                                 {service.type}
                               </span>
                               <h5 className="text-sm font-bold text-slate-800">{service.name}</h5>
+                              {service.provider && service.provider !== "Partner" && (
+                                <span className="text-[10px] font-bold px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200/80 rounded-md">
+                                  {service.provider}
+                                </span>
+                              )}
                             </div>
                             <p className="text-xs text-slate-500 mt-1">{service.details}</p>
                           </div>
