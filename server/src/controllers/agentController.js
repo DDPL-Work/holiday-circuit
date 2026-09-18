@@ -1757,6 +1757,8 @@ const buildQuotationClientEmailPayload = ({ quotation, query, agent, customTerm 
     quotation?.agentFooterImage ||
     "";
 
+  const isSendingToClient = options.isSendingToClient === true || options.isSendingToClient === "true";
+
   const rawBankList = (Array.isArray(quotation?.sellerBankDetails) && quotation.sellerBankDetails.length > 0)
     ? quotation.sellerBankDetails
     : (Array.isArray(agent?.bankDetails) && agent.bankDetails.length > 0)
@@ -1786,9 +1788,13 @@ const buildQuotationClientEmailPayload = ({ quotation, query, agent, customTerm 
     ];
   }
 
+  const finalSellerBankDetails = isSendingToClient ? [] : sellerBankDetails;
+  const includeSellerBankDetails = isSendingToClient ? false : true;
+
   return {
-    includeSellerBankDetails: true,
-    sellerBankDetails,
+    isClientQuotation: isSendingToClient,
+    includeSellerBankDetails,
+    sellerBankDetails: finalSellerBankDetails,
     recipientName: getQueryClientRecipientName(query),
     agencyName: agent?.companyName || "",
     agentLogo: getAbsoluteMediaUrl(rawLogo),
@@ -2041,10 +2047,15 @@ export const generateClientQuotationPdf = async (req, res, next) => {
       return next(new ApiError(404, "Travel query not found"));
     }
 
-    const pdfPayload = buildQuotationClientEmailPayload({ quotation, query, agent });
+    const pdfPayload = buildQuotationClientEmailPayload({
+      quotation,
+      query,
+      agent,
+      options: { isSendingToClient: true },
+    });
     const pdf = await generatePDF({
       ...pdfPayload,
-      includeSellerBankDetails: true,
+      includeSellerBankDetails: false,
     });
 
     return res.json({
@@ -2519,13 +2530,7 @@ export const sendAgentVoucherEmail = async (req, res, next) => {
             : defaultPackageTerms,
           includeSellerBankDetails: false,
           isClientQuotation: true,
-          sellerBankDetails: [
-            { label: "Bank Name", value: "HDFC Bank" },
-            { label: "A/c Holder Name", value: companyName || "Holiday Circuit" },
-            { label: "A/c No.", value: "50200103968171" },
-            { label: "IFSC", value: "HDFC0004413" },
-            { label: "Branch", value: "RAMPHAL CHOWK SEC VII DWARKA" },
-          ],
+          sellerBankDetails: [],
           agentBrandingName: companyName,
           agentLogo: rawLogo,
           agentFooterImage: rawFooterImg,
@@ -4553,7 +4558,7 @@ export const acceptQuotationByAgent = async (req, res, next) => {
         query,
         agent,
         customTerm: customTermDoc,
-        options: req.body,
+        options: { ...req.body, isSendingToClient: true },
       });
 
       if (query.clientEmail !== recipientEmail) {

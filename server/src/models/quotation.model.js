@@ -55,12 +55,13 @@ export const quotationSchema = new mongoose.Schema(
   services: [
     {
       serviceId: {
-        type: mongoose.Schema.Types.ObjectId
+        type: mongoose.Schema.Types.Mixed
       },
 
       supplierId: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: "Auth"
+        ref: "Auth",
+        default: null
       },
 
       supplierName: {
@@ -69,7 +70,8 @@ export const quotationSchema = new mongoose.Schema(
 
       businessPartnerId: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: "Auth"
+        ref: "Auth",
+        default: null
       },
 
       businessPartnerName: {
@@ -83,7 +85,8 @@ export const quotationSchema = new mongoose.Schema(
 
       dmcId: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: "Auth"
+        ref: "Auth",
+        default: null
       },
 
       dmcName: {

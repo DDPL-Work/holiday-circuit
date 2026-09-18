@@ -3182,14 +3182,21 @@ export const createQuotation = async (req, res, next) => {
 
     const formattedServices = resolvedServices.map(s => {
       const type = String(s.type || s.serviceType || s.category || "").toLowerCase();
+      const rawBpId = s.businessPartnerId || s.businessPartner;
+      const validBpId = rawBpId && mongoose.Types.ObjectId.isValid(rawBpId) ? rawBpId : undefined;
+      const rawSupplierId = s.supplierId || s.supplier;
+      const validSupplierId = rawSupplierId && mongoose.Types.ObjectId.isValid(rawSupplierId) ? rawSupplierId : undefined;
+      const rawDmcId = s.dmcId || validSupplierId;
+      const validDmcId = rawDmcId && mongoose.Types.ObjectId.isValid(rawDmcId) ? rawDmcId : undefined;
+
       const basePayload = {
-        serviceId: s.serviceId,
-        supplierId: s.supplierId || undefined,
+        serviceId: s.serviceId || s.id || s._id,
+        supplierId: validSupplierId,
         supplierName: s.supplierName || "",
-        businessPartnerId: s.businessPartnerId || s.businessPartner || undefined,
+        businessPartnerId: validBpId,
         businessPartnerName: s.businessPartnerName || "",
-        isBpService: Boolean(s.isBpService || s.businessPartnerId || s.businessPartner),
-        dmcId: s.dmcId || s.supplierId || undefined,
+        isBpService: Boolean(s.isBpService || validBpId),
+        dmcId: validDmcId,
         dmcName: s.dmcName || "",
         type: s.type || s.serviceType || s.category || "",
         title:

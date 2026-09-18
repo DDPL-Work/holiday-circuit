@@ -619,9 +619,12 @@ const getTravelerDocumentVerification = (query = {}) => ({
 //----------------------- Create Hotel ---------------------------
 export const createHotel = async (req, res, next) => {
   try {
-    const { hotelName, city, pricePerNight, roomType, mealPlan } = req.body;
+    const { hotelName, name, serviceName, city, country, pricePerNight, price, roomType, mealPlan, validFrom, validTo } = req.body;
 
-    if (!hotelName || !city || !pricePerNight) {
+    const resolvedHotelName = hotelName || name || serviceName;
+    const resolvedPrice = Number(pricePerNight || price || req.body.basePrice || 0);
+
+    if (!resolvedHotelName || !city || !resolvedPrice) {
       const error = new Error("hotelName, city and pricePerNight are required");
       error.statusCode = 400;
       return next(error);
@@ -629,27 +632,46 @@ export const createHotel = async (req, res, next) => {
 
     // duplicate check
     const existingHotel = await Hotel.findOne({
-      hotelName,
-      city,
+      serviceName: { $regex: new RegExp(`^${resolvedHotelName}`, "i") },
+      city: { $regex: new RegExp(`^${city}`, "i") },
       supplier: req.user.id,
     });
 
     if (existingHotel) {
-      const error = new Error(
-        "Hotel already exists for this supplier in this city",
-      );
-      error.statusCode = 409;
-      return next(error);
+      return res.status(200).json({
+        success: true,
+        message: "Hotel already exists",
+        data: existingHotel,
+      });
     }
 
-    const serviceName = `${hotelName} ${roomType || ""} ${mealPlan || ""}`;
+    const generatedServiceName = serviceName || `${resolvedHotelName} ${roomType || ""} ${mealPlan || ""}`.trim();
 
     const hotel = await Hotel.create({
       ...req.body,
       supplier: req.user.id,
-      supplierName: req.body.supplierName || "",
-      serviceName,
+      supplierName: req.body.supplierName || req.user?.name || req.user?.companyName || "DMC Partner",
+      serviceName: generatedServiceName,
       serviceCategory: "hotel",
+      country: country || "India",
+      city,
+      validFrom: validFrom || new Date(),
+      validTo: validTo || new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+      hotels: req.body.hotels || [
+        {
+          hotelName: resolvedHotelName,
+          hotelCategory: req.body.hotelCategory || "5 Star",
+          supplierName: req.body.supplierName || req.user?.name || req.user?.companyName || "DMC Partner",
+          rooms: [
+            {
+              roomType: roomType || "Standard Room",
+              price: resolvedPrice,
+              basePrice: resolvedPrice,
+              mealPlan: mealPlan || "EP",
+            },
+          ],
+        },
+      ],
     });
 
     res.status(201).json({
@@ -753,13 +775,14 @@ export const deleteHotel = async (req, res, next) => {
 //---------- CREATE ACTIVITY-------------
 export const createActivity = async (req, res, next) => {
   try {
-    const { serviceName, name, country, city, currency, validFrom, validTo } =
+    const { serviceName, name, country, city, currency, validFrom, validTo, price, adultPrice } =
       req.body;
 
     const resolvedServiceName = serviceName || name;
+    const resolvedPrice = Number(adultPrice !== undefined ? adultPrice : (price || req.body.basePrice || 0));
 
     // validation
-    if (!resolvedServiceName || !country || !city || !validFrom || !validTo) {
+    if (!resolvedServiceName || !city) {
       const error = new Error("Required activity fields missing");
       error.statusCode = 400;
       return next(error);
@@ -767,24 +790,26 @@ export const createActivity = async (req, res, next) => {
 
     // duplicate check
     const existingActivity = await Activity.findOne({
-      serviceName: resolvedServiceName,
-      city,
+      serviceName: { $regex: new RegExp(`^${resolvedServiceName}`, "i") },
+      city: { $regex: new RegExp(`^${city}`, "i") },
       supplier: req.user.id,
     });
 
     if (existingActivity) {
-      const error = new Error(
-        "Activity already exists for this supplier in this city",
-      );
-      error.statusCode = 409;
-      return next(error);
+      return res.status(200).json({
+        success: true,
+        message: "Activity already exists",
+        data: existingActivity,
+      });
     }
 
     let tourTypes =
       Array.isArray(req.body.tourTypes) && req.body.tourTypes.length > 0
         ? req.body.tourTypes.map((t) => ({
             tourType: t.tourType || "Group Tour",
-            price: Number(t.price ?? t.adultPrice ?? 0) || 0,
+            price: Number(t.price ?? t.adultPrice ?? resolvedPrice) || 0,
+            adultPrice: Number(t.adultPrice ?? t.price ?? resolvedPrice) || 0,
+            childPrice: Number(t.childPrice ?? req.body.childPrice ?? 0) || 0,
             pricingBasis: t.pricingBasis || "Per Pax",
             maxPax:
               t.maxPax ||
@@ -797,7 +822,9 @@ export const createActivity = async (req, res, next) => {
         : [
             {
               tourType: req.body.tourType || "Group Tour",
-              price: Number(req.body.price ?? req.body.adultPrice ?? 0) || 0,
+              price: resolvedPrice,
+              adultPrice: resolvedPrice,
+              childPrice: Number(req.body.childPrice || 0),
               pricingBasis: req.body.pricingBasis || "Per Pax",
               maxPax: req.body.maxPax || "N/A (Shared Group)",
               description: req.body.description || "",
@@ -808,12 +835,12 @@ export const createActivity = async (req, res, next) => {
       serviceName: resolvedServiceName,
       serviceCategory: "activity",
       supplier: req.user.id,
-      supplierName: req.body.supplierName || "",
-      country,
+      supplierName: req.body.supplierName || req.user?.name || req.user?.companyName || "DMC Partner",
+      country: country || "India",
       city,
       currency: currency || "INR",
-      validFrom,
-      validTo,
+      validFrom: validFrom || new Date(),
+      validTo: validTo || new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
       status: "active",
       tourTypes,
     });
@@ -851,28 +878,26 @@ export const createTransfer = async (req, res, next) => {
   try {
     const {
       serviceName,
+      name,
       country,
       city,
       vehicleType,
       passengerCapacity,
       luggageCapacity,
       price,
+      basePrice,
       currency,
       usageType,
+      usage,
       validFrom,
       validTo,
     } = req.body;
 
+    const resolvedServiceName = serviceName || name || "Transfer Cab Service";
+    const resolvedPrice = Number(price || basePrice || 0);
+
     // validation
-    if (
-      !serviceName ||
-      !country ||
-      !city ||
-      !vehicleType ||
-      !price ||
-      !validFrom ||
-      !validTo
-    ) {
+    if (!resolvedServiceName || !city) {
       const error = new Error("Required transfer fields missing");
       error.statusCode = 400;
       return next(error);
@@ -880,25 +905,48 @@ export const createTransfer = async (req, res, next) => {
 
     // duplicate check
     const existingTransfer = await Transfer.findOne({
-      city,
-      vehicleType,
-      usageType,
+      serviceName: { $regex: new RegExp(`^${resolvedServiceName}`, "i") },
+      city: { $regex: new RegExp(`^${city}`, "i") },
       supplier: req.user.id,
     });
 
     if (existingTransfer) {
-      const error = new Error(
-        "Transfer already exists for this vehicle type in this city",
-      );
-      error.statusCode = 409;
-      return next(error);
+      return res.status(200).json({
+        success: true,
+        message: "Transfer already exists",
+        data: existingTransfer,
+      });
     }
 
     const transfer = await Transfer.create({
       ...req.body,
+      serviceName: resolvedServiceName,
+      country: country || "India",
+      city,
+      currency: currency || "INR",
       supplier: req.user.id,
-      supplierName: req.body.supplierName || "",
+      supplierName: req.body.supplierName || req.user?.name || req.user?.companyName || "DMC Partner",
       serviceCategory: "transport",
+      validFrom: validFrom || new Date(),
+      validTo: validTo || new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+      vehicles: req.body.vehicles || [
+        {
+          vehicleType: vehicleType || "Sedan",
+          passengerCapacity: Number(passengerCapacity || 4),
+          luggageCapacity: Number(luggageCapacity || 2),
+          description: req.body.description || "",
+          usageTypes: {
+            pointToPoint: [
+              {
+                name: usageType || usage || "One Way / Airport Transfer",
+                usageType: "point-to-point",
+                price: resolvedPrice,
+              },
+            ],
+            hourly: [],
+          },
+        },
+      ],
     });
 
     res.status(201).json({
@@ -930,13 +978,14 @@ export const getTransfers = async (req, res, next) => {
 
 export const createSightseeing = async (req, res, next) => {
   try {
-    const { serviceName, name, country, city, currency, validFrom, validTo } =
+    const { serviceName, name, country, city, currency, validFrom, validTo, price, adultPrice } =
       req.body;
 
     const resolvedServiceName = serviceName || name;
+    const resolvedPrice = Number(adultPrice !== undefined ? adultPrice : (price || req.body.basePrice || 0));
 
     // validation
-    if (!resolvedServiceName || !country || !city || !validFrom || !validTo) {
+    if (!resolvedServiceName || !city) {
       const error = new Error("Required sightseeing fields missing");
       error.statusCode = 400;
       return next(error);
@@ -944,24 +993,26 @@ export const createSightseeing = async (req, res, next) => {
 
     // duplicate check
     const existingSightseeing = await Sightseeing.findOne({
-      serviceName: resolvedServiceName,
-      city,
+      serviceName: { $regex: new RegExp(`^${resolvedServiceName}`, "i") },
+      city: { $regex: new RegExp(`^${city}`, "i") },
       supplier: req.user.id,
     });
 
     if (existingSightseeing) {
-      const error = new Error(
-        "Sightseeing already exists for this supplier in this city",
-      );
-      error.statusCode = 409;
-      return next(error);
+      return res.status(200).json({
+        success: true,
+        message: "Sightseeing already exists",
+        data: existingSightseeing,
+      });
     }
 
     let tourTypes =
       Array.isArray(req.body.tourTypes) && req.body.tourTypes.length > 0
         ? req.body.tourTypes.map((t) => ({
             tourType: t.tourType || "Group Tour",
-            price: Number(t.price ?? t.adultPrice ?? 0) || 0,
+            price: Number(t.price ?? t.adultPrice ?? resolvedPrice) || 0,
+            adultPrice: Number(t.adultPrice ?? t.price ?? resolvedPrice) || 0,
+            childPrice: Number(t.childPrice ?? req.body.childPrice ?? 0) || 0,
             pricingBasis: t.pricingBasis || "Per Pax",
             maxPax:
               t.maxPax ||
@@ -974,7 +1025,9 @@ export const createSightseeing = async (req, res, next) => {
         : [
             {
               tourType: req.body.tourType || "Group Tour",
-              price: Number(req.body.price ?? 0) || 0,
+              price: resolvedPrice,
+              adultPrice: resolvedPrice,
+              childPrice: Number(req.body.childPrice || 0),
               pricingBasis: req.body.pricingBasis || "Per Pax",
               maxPax: req.body.maxPax || "N/A (Shared Group)",
               description: req.body.description || "",
@@ -985,12 +1038,12 @@ export const createSightseeing = async (req, res, next) => {
       serviceName: resolvedServiceName,
       serviceCategory: "sightseeing",
       supplier: req.user.id,
-      supplierName: req.body.supplierName || "",
-      country,
+      supplierName: req.body.supplierName || req.user?.name || req.user?.companyName || "DMC Partner",
+      country: country || "India",
       city,
       currency: currency || "INR",
-      validFrom,
-      validTo,
+      validFrom: validFrom || new Date(),
+      validTo: validTo || new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
       status: "active",
       tourTypes,
     });

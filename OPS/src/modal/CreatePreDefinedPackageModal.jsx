@@ -35,7 +35,7 @@ export default function CreatePreDefinedPackageModal({
   isOpen, 
   onClose, 
   onSuccess, 
-  submitBtnText = "Save Pre-defined Package", 
+  submitBtnText, 
   partnerType, 
   queryId, 
   agentId, 
@@ -58,12 +58,27 @@ export default function CreatePreDefinedPackageModal({
     isOpenedFromQuotationBuilder && !isEditingHistory
   );
 
+  const effectiveSubmitBtnText =
+    submitBtnText ||
+    (isOpenedFromQuotationBuilder
+      ? (partnerType === "Business Partner"
+          ? (isEditingHistory ? "Update Quotation" : "Create Quotation")
+          : (isEditingHistory ? "Update Service" : "Save Service"))
+      : "Save Pre-defined Package");
+
+  const effectiveLoadingText =
+    isOpenedFromQuotationBuilder
+      ? (partnerType === "Business Partner"
+          ? (isEditingHistory ? "Updating Quotation..." : "Creating Quotation...")
+          : "Saving Services...")
+      : "Creating Template...";
+
   const headerTitle =
     modalTitle ||
     (isEditingHistory
       ? `Edit Quotation${initialData?.quotationNumber ? ` (${initialData.quotationNumber})` : ""}`
       : isQuickAddService
-        ? "Add Services to Quotation"
+        ? (partnerType === "Business Partner" ? "Create Quotation" : "Add Services to Quotation")
         : "Create Pre-defined Package Template");
 
   const headerSubtitle =
@@ -71,7 +86,9 @@ export default function CreatePreDefinedPackageModal({
     (isEditingHistory
       ? "Update quotation services, pricing, taxes, and itinerary details"
       : isQuickAddService
-        ? "Configure hotels, cabs, sightseeing & itinerary for this quotation"
+        ? (partnerType === "Business Partner"
+            ? "Configure complete package details, pricing, taxes, and itinerary for this quotation"
+            : "Configure hotels, cabs, sightseeing & itinerary for this quotation")
         : "Configure reusable packages with live uploaded hotels, cabs, sightseeing & itinerary");
 
   // Form State
@@ -1317,7 +1334,7 @@ export default function CreatePreDefinedPackageModal({
       };
 
       let res;
-      if (partnerType === "Business Partner" && isOpenedFromQuotationBuilder) {
+      if (isOpenedFromQuotationBuilder) {
         const primaryBp =
           businessPartners?.[0]?._id ||
           businessPartners?.[0]?.id ||
@@ -1339,148 +1356,228 @@ export default function CreatePreDefinedPackageModal({
           initialData?.services?.find((s) => s.businessPartnerName || s.dmcName || s.supplierName)?.dmcName ||
           "";
 
-        const bpServices = [
+        const isBp = partnerType === "Business Partner";
+
+        const quotationServices = [
           ...payload.hotels.map((h) => {
-            const bpId =
-              h.businessPartnerId ||
-              h.businessPartner ||
-              h.supplier ||
-              h.supplierId ||
-              h.dmcId ||
-              primaryBp ||
-              null;
-            const bpName =
-              h.businessPartnerName ||
-              h.supplierName ||
-              h.dmcName ||
-              primaryBpName ||
-              "";
+            const bpId = isBp
+              ? (h.businessPartnerId ||
+                h.businessPartner ||
+                h.supplier ||
+                h.supplierId ||
+                h.dmcId ||
+                primaryBp ||
+                null)
+              : null;
+            const bpName = isBp
+              ? (h.businessPartnerName ||
+                h.supplierName ||
+                h.dmcName ||
+                primaryBpName ||
+                "")
+              : "";
             const nights = Math.max(1, Number(h.nights || 1));
             const rooms = Math.max(1, Number(h.rooms || 1));
             const baseUnitPrice = Number(h.basePrice || (h.price ? h.price / (nights * rooms) : 0));
+            const sId = h.id || h._id || `custom-hotel-${Math.random().toString(36).substring(2, 9)}`;
             return {
               ...h,
+              id: sId,
+              serviceId: sId,
               type: "hotel",
               title: h.hotelName || h.serviceName || h.name || "Hotel",
               hotelName: h.hotelName || h.serviceName || h.name || "Hotel",
+              serviceName: h.hotelName || h.serviceName || h.name || "Hotel",
+              name: h.hotelName || h.serviceName || h.name || "Hotel",
               price: baseUnitPrice,
+              rate: baseUnitPrice,
               quoteBaseRate: baseUnitPrice,
               total: Number(h.price || baseUnitPrice * nights * rooms || 0),
+              originalTotal: Number(h.price || baseUnitPrice * nights * rooms || 0),
+              totalInInr: Number(h.price || baseUnitPrice * nights * rooms || 0),
               checkInDate: h.checkInDate || null,
               checkOutDate: h.checkOutDate || null,
               serviceDate: h.serviceDate || h.checkInDate || null,
               nights: nights,
               rooms: rooms,
-              businessPartnerId: bpId,
-              businessPartner: bpId,
+              city: h.city || destination || "",
+              destination: h.destination || destination || "",
+              custom: true,
+              checked: true,
+              isBpService: isBp,
+              businessPartnerId: bpId || undefined,
+              businessPartner: bpId || undefined,
               businessPartnerName: bpName,
-              supplierId: bpId,
-              supplierName: bpName,
-              dmcId: bpId,
-              dmcName: bpName,
+              supplierId: bpId || undefined,
+              supplierName: bpName || "",
+              dmcId: bpId || undefined,
+              dmcName: bpName || "",
             };
           }),
           ...payload.transfers.map((t) => {
-            const bpId =
-              t.businessPartnerId ||
-              t.businessPartner ||
-              t.supplier ||
-              t.supplierId ||
-              t.dmcId ||
-              primaryBp ||
-              null;
-            const bpName =
-              t.businessPartnerName ||
-              t.supplierName ||
-              t.dmcName ||
-              primaryBpName ||
-              "";
+            const bpId = isBp
+              ? (t.businessPartnerId ||
+                t.businessPartner ||
+                t.supplier ||
+                t.supplierId ||
+                t.dmcId ||
+                primaryBp ||
+                null)
+              : null;
+            const bpName = isBp
+              ? (t.businessPartnerName ||
+                t.supplierName ||
+                t.dmcName ||
+                primaryBpName ||
+                "")
+              : "";
             const days = Math.max(1, Number(t.days || 1));
             const basePrice = Number(t.basePrice || (t.price ? t.price / days : 0));
+            const sId = t.id || t._id || `custom-transfer-${Math.random().toString(36).substring(2, 9)}`;
             return {
               ...t,
+              id: sId,
+              serviceId: sId,
               type: "transfer",
               title: t.name || t.serviceName || "Transfer",
+              serviceName: t.name || t.serviceName || "Transfer",
+              name: t.name || t.serviceName || "Transfer",
               price: basePrice,
+              rate: basePrice,
+              quoteBaseRate: basePrice,
               total: basePrice * days,
+              originalTotal: basePrice * days,
+              totalInInr: basePrice * days,
               serviceDate: t.serviceDate || null,
-              businessPartnerId: bpId,
-              businessPartner: bpId,
+              pickupTime: t.pickupTime || t.time || "",
+              time: t.pickupTime || t.time || "",
+              selectedSlot: t.selectedSlot || t.pickupTime || t.time || "",
+              passengerCapacity: Number(t.paxCapacity || t.passengerCapacity || 4),
+              luggageCapacity: Number(t.luggage || t.luggageCapacity || 2),
+              vehicleType: t.vehicleType || "Sedan",
+              usageType: t.usage || t.usageType || "One Way / Airport Transfer",
+              transportUsageLabel: t.usage || t.usageType || "One Way / Airport Transfer",
+              transportUsageOptionKey: t.transportUsageOptionKey || t.usage || t.usageType || "one-way-airport-transfer",
+              city: t.city || destination || "",
+              destination: t.destination || destination || "",
+              custom: true,
+              checked: true,
+              isBpService: isBp,
+              businessPartnerId: bpId || undefined,
+              businessPartner: bpId || undefined,
               businessPartnerName: bpName,
-              supplierId: bpId,
-              supplierName: bpName,
-              dmcId: bpId,
-              dmcName: bpName,
+              supplierId: bpId || undefined,
+              supplierName: bpName || "",
+              dmcId: bpId || undefined,
+              dmcName: bpName || "",
             };
           }),
           ...payload.activities.map((a) => {
-            const bpId =
-              a.businessPartnerId ||
-              a.businessPartner ||
-              a.supplier ||
-              a.supplierId ||
-              a.dmcId ||
-              primaryBp ||
-              null;
-            const bpName =
-              a.businessPartnerName ||
-              a.supplierName ||
-              a.dmcName ||
-              primaryBpName ||
-              "";
+            const bpId = isBp
+              ? (a.businessPartnerId ||
+                a.businessPartner ||
+                a.supplier ||
+                a.supplierId ||
+                a.dmcId ||
+                primaryBp ||
+                null)
+              : null;
+            const bpName = isBp
+              ? (a.businessPartnerName ||
+                a.supplierName ||
+                a.dmcName ||
+                primaryBpName ||
+                "")
+              : "";
             const adultPrice = Number(a.adultPrice !== undefined ? a.adultPrice : (a.price ?? a.rate ?? 0));
             const adultCount = Number(a.adults !== undefined ? a.adults : a.pax || 1);
             const childPrice = Number(a.childPrice || 0);
             const childCount = Number(a.children || 0);
+            const tot = (adultPrice * adultCount) + (childPrice * childCount);
+            const sId = a.id || a._id || `custom-activity-${Math.random().toString(36).substring(2, 9)}`;
             return {
               ...a,
+              id: sId,
+              serviceId: sId,
               type: "activity",
               title: a.name || a.serviceName || "Activity",
+              serviceName: a.name || a.serviceName || "Activity",
+              name: a.name || a.serviceName || "Activity",
               price: adultPrice,
-              total: (adultPrice * adultCount) + (childPrice * childCount),
+              rate: adultPrice,
+              quoteBaseRate: adultPrice,
+              adultPrice: adultPrice,
+              childPrice: childPrice,
+              total: tot,
+              originalTotal: tot,
+              totalInInr: tot,
               serviceDate: a.serviceDate || null,
-              businessPartnerId: bpId,
-              businessPartner: bpId,
+              city: a.city || destination || "",
+              destination: a.destination || destination || "",
+              custom: true,
+              checked: true,
+              isBpService: isBp,
+              businessPartnerId: bpId || undefined,
+              businessPartner: bpId || undefined,
               businessPartnerName: bpName,
-              supplierId: bpId,
-              supplierName: bpName,
-              dmcId: bpId,
-              dmcName: bpName,
+              supplierId: bpId || undefined,
+              supplierName: bpName || "",
+              dmcId: bpId || undefined,
+              dmcName: bpName || "",
             };
           }),
           ...payload.sightseeing.map((s) => {
-            const bpId =
-              s.businessPartnerId ||
-              s.businessPartner ||
-              s.supplier ||
-              s.supplierId ||
-              s.dmcId ||
-              primaryBp ||
-              null;
-            const bpName =
-              s.businessPartnerName ||
-              s.supplierName ||
-              s.dmcName ||
-              primaryBpName ||
-              "";
+            const bpId = isBp
+              ? (s.businessPartnerId ||
+                s.businessPartner ||
+                s.supplier ||
+                s.supplierId ||
+                s.dmcId ||
+                primaryBp ||
+                null)
+              : null;
+            const bpName = isBp
+              ? (s.businessPartnerName ||
+                s.supplierName ||
+                s.dmcName ||
+                primaryBpName ||
+                "")
+              : "";
             const adultPrice = Number(s.adultPrice !== undefined ? s.adultPrice : (s.price ?? s.rate ?? 0));
             const adultCount = Number(s.adults !== undefined ? s.adults : s.pax || 1);
             const childPrice = Number(s.childPrice || 0);
             const childCount = Number(s.children || 0);
+            const tot = (adultPrice * adultCount) + (childPrice * childCount);
+            const sId = s.id || s._id || `custom-sightseeing-${Math.random().toString(36).substring(2, 9)}`;
             return {
               ...s,
+              id: sId,
+              serviceId: sId,
               type: "sightseeing",
               title: s.name || s.serviceName || "Sightseeing",
+              serviceName: s.name || s.serviceName || "Sightseeing",
+              name: s.name || s.serviceName || "Sightseeing",
               price: adultPrice,
-              total: (adultPrice * adultCount) + (childPrice * childCount),
+              rate: adultPrice,
+              quoteBaseRate: adultPrice,
+              adultPrice: adultPrice,
+              childPrice: childPrice,
+              total: tot,
+              originalTotal: tot,
+              totalInInr: tot,
               serviceDate: s.serviceDate || null,
-              businessPartnerId: bpId,
-              businessPartner: bpId,
+              city: s.city || destination || "",
+              destination: s.destination || destination || "",
+              custom: true,
+              checked: true,
+              isBpService: isBp,
+              businessPartnerId: bpId || undefined,
+              businessPartner: bpId || undefined,
               businessPartnerName: bpName,
-              supplierId: bpId,
-              supplierName: bpName,
-              dmcId: bpId,
-              dmcName: bpName,
+              supplierId: bpId || undefined,
+              supplierName: bpName || "",
+              dmcId: bpId || undefined,
+              dmcName: bpName || "",
             };
           }),
         ];
@@ -1489,87 +1586,228 @@ export default function CreatePreDefinedPackageModal({
         const isEditing = Boolean(targetQuotationId);
         const targetQueryId = queryId || initialData?.queryId || initialData?.query?.queryId;
 
-        const bpPayload = {
-          quotationId: targetQuotationId,
-          editExistingQuotation: isEditing,
-          queryId: targetQueryId,
-          validTill:
-            initialData?.validTill ||
-            new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
-          baseAmount: Number(payload.basePrice || payload.price || 0),
-          inclusions: Array.isArray(payload.inclusions)
-            ? payload.inclusions
-            : String(payload.inclusions || "")
-                .split("\n")
-                .map((x) => x.trim())
-                .filter(Boolean),
-          exclusions: Array.isArray(payload.exclusions)
-            ? payload.exclusions
-            : String(payload.exclusions || "")
-                .split("\n")
-                .map((x) => x.trim())
-                .filter(Boolean),
-          termsAndConditions: Array.isArray(payload.termsAndConditions)
-            ? payload.termsAndConditions
-            : String(payload.termsAndConditions || "")
-                .split("\n")
-                .map((x) => x.trim())
-                .filter(Boolean),
-          dayWiseItinerary: payload.dayWiseItinerary.map((it, idx) => ({
-            dayNumber: it.day || idx + 1,
-            dayLabel: it.title || `Day ${idx + 1}`,
-            title: it.title || `Day ${idx + 1}`,
-            description: it.description || "",
-          })),
-          services: bpServices,
-          pricing: {
-            currency: "INR",
-            quoteCategory: "domestic",
+        if (isBp || isEditing) {
+          const quotationPayload = {
+            quotationId: targetQuotationId,
+            editExistingQuotation: isEditing,
+            queryId: targetQueryId,
+            validTill:
+              initialData?.validTill ||
+              new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
             baseAmount: Number(payload.basePrice || payload.price || 0),
-            subTotal: Number(payload.price || 0),
-            totalAmount: Number(payload.price || 0) + Number(payload.tax?.totalTax || 0),
-            tax: {
-              gst: {
-                percent: Number(payload.tax?.gstPercent || 0),
-                amount: Number(payload.tax?.gstAmount || 0),
+            inclusions: Array.isArray(payload.inclusions)
+              ? payload.inclusions
+              : String(payload.inclusions || "")
+                  .split("\n")
+                  .map((x) => x.trim())
+                  .filter(Boolean),
+            exclusions: Array.isArray(payload.exclusions)
+              ? payload.exclusions
+              : String(payload.exclusions || "")
+                  .split("\n")
+                  .map((x) => x.trim())
+                  .filter(Boolean),
+            termsAndConditions: Array.isArray(payload.termsAndConditions)
+              ? payload.termsAndConditions
+              : String(payload.termsAndConditions || "")
+                  .split("\n")
+                  .map((x) => x.trim())
+                  .filter(Boolean),
+            dayWiseItinerary: payload.dayWiseItinerary.map((it, idx) => ({
+              dayNumber: it.day || idx + 1,
+              dayLabel: it.title || `Day ${idx + 1}`,
+              title: it.title || `Day ${idx + 1}`,
+              description: it.description || "",
+            })),
+            services: quotationServices,
+            pricing: {
+              currency: "INR",
+              quoteCategory: "domestic",
+              baseAmount: Number(payload.basePrice || payload.price || 0),
+              subTotal: Number(payload.price || 0),
+              totalAmount: Number(payload.price || 0) + Number(payload.tax?.totalTax || 0),
+              tax: {
+                gst: {
+                  percent: Number(payload.tax?.gstPercent || 0),
+                  amount: Number(payload.tax?.gstAmount || 0),
+                },
+                tcs: {
+                  percent: Number(payload.tax?.tcsPercent || 0),
+                  amount: Number(payload.tax?.tcsAmount || 0),
+                },
+                tourismFee: {
+                  amount: Number(payload.tax?.tourismAmount || 0),
+                },
+                totalTax: Number(payload.tax?.totalTax || 0),
               },
-              tcs: {
-                percent: Number(payload.tax?.tcsPercent || 0),
-                amount: Number(payload.tax?.tcsAmount || 0),
-              },
-              tourismFee: {
-                amount: Number(payload.tax?.tourismAmount || 0),
-              },
-              totalTax: Number(payload.tax?.totalTax || 0),
             },
-          },
-          tax: {
-            gstPercent: Number(payload.tax?.gstPercent || 0),
-            gstAmount: Number(payload.tax?.gstAmount || 0),
-            tcsPercent: Number(payload.tax?.tcsPercent || 0),
-            tcsAmount: Number(payload.tax?.tcsAmount || 0),
-            tourismAmount: Number(payload.tax?.tourismAmount || 0),
-          },
-          opsPercent: Number(initialData?.pricing?.opsMarkup?.percent || initialData?.opsPercent || 0),
-          opsAmount: Number(initialData?.pricing?.opsMarkup?.amount || initialData?.opsAmount || 0),
-          serviceCharge: Number(initialData?.pricing?.opsCharges?.serviceCharge || initialData?.serviceCharge || 0),
-          handlingFee: Number(initialData?.pricing?.opsCharges?.handlingFee || initialData?.handlingFee || 0),
-        };
+            tax: {
+              gstPercent: Number(payload.tax?.gstPercent || 0),
+              gstAmount: Number(payload.tax?.gstAmount || 0),
+              tcsPercent: Number(payload.tax?.tcsPercent || 0),
+              tcsAmount: Number(payload.tax?.tcsAmount || 0),
+              tourismAmount: Number(payload.tax?.tourismAmount || 0),
+            },
+            opsPercent: Number(initialData?.pricing?.opsMarkup?.percent || initialData?.opsPercent || 0),
+            opsAmount: Number(initialData?.pricing?.opsMarkup?.amount || initialData?.opsAmount || 0),
+            serviceCharge: Number(initialData?.pricing?.opsCharges?.serviceCharge || initialData?.serviceCharge || 0),
+            handlingFee: Number(initialData?.pricing?.opsCharges?.handlingFee || initialData?.handlingFee || 0),
+          };
 
-        res = await API.post("/ops/quotations", bpPayload);
-        toast.success(
-          isEditing
-            ? "Quotation updated successfully!"
-            : "Quotation created successfully!"
-        );
+          res = await API.post("/ops/quotations", quotationPayload);
+          toast.success(
+            isEditing
+              ? "Quotation updated successfully!"
+              : "Quotation created successfully!"
+          );
+        } else {
+          // Direct Database persistence into respective collections for Online DMC services
+          for (let i = 0; i < payload.transfers.length; i++) {
+            const t = payload.transfers[i];
+            try {
+              const transferRes = await API.post("/dmc/transfer", {
+                serviceName: t.name || t.serviceName || "Transfer Cab Service",
+                name: t.name || t.serviceName || "Transfer Cab Service",
+                city: t.city || destination || "",
+                country: t.country || country || "India",
+                vehicleType: t.vehicleType || "Sedan",
+                price: Number(t.basePrice || t.price || 0),
+                basePrice: Number(t.basePrice || t.price || 0),
+                currency: "INR",
+                usageType: t.usage || t.usageType || "point-to-point",
+                usage: t.usage || t.usageType || "One Way / Airport Transfer",
+                passengerCapacity: Number(t.paxCapacity || t.passengerCapacity || 4),
+                luggageCapacity: Number(t.luggage || t.luggageCapacity || 2),
+                validFrom: new Date().toISOString(),
+                validTo: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
+              });
+              const savedTransfer = transferRes?.data?.data;
+              if (savedTransfer?._id) {
+                const qIdx = quotationServices.findIndex(
+                  (qs) => qs.type === "transfer" && (qs.title === (t.name || t.serviceName) || qs.name === (t.name || t.serviceName))
+                );
+                if (qIdx !== -1) {
+                  quotationServices[qIdx]._id = savedTransfer._id;
+                  quotationServices[qIdx].id = savedTransfer._id;
+                  quotationServices[qIdx].serviceId = savedTransfer._id;
+                }
+              }
+            } catch (err) {
+              console.warn("Could not save transfer to Dmc_Transfers DB:", err);
+            }
+          }
+
+          for (let i = 0; i < payload.hotels.length; i++) {
+            const h = payload.hotels[i];
+            try {
+              const hotelRes = await API.post("/dmc/hotel", {
+                hotelName: h.hotelName || h.serviceName || h.name || "Hotel",
+                name: h.hotelName || h.serviceName || h.name || "Hotel",
+                city: h.city || destination || "",
+                country: h.country || country || "India",
+                pricePerNight: Number(h.price || h.basePrice || 0),
+                price: Number(h.price || h.basePrice || 0),
+                roomType: h.roomType || "Standard Room",
+                mealPlan: h.mealPlan || "EP",
+                validFrom: new Date().toISOString(),
+                validTo: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
+              });
+              const savedHotel = hotelRes?.data?.data;
+              if (savedHotel?._id) {
+                const qIdx = quotationServices.findIndex(
+                  (qs) => qs.type === "hotel" && (qs.title === (h.hotelName || h.serviceName || h.name) || qs.hotelName === (h.hotelName || h.serviceName || h.name))
+                );
+                if (qIdx !== -1) {
+                  quotationServices[qIdx]._id = savedHotel._id;
+                  quotationServices[qIdx].id = savedHotel._id;
+                  quotationServices[qIdx].serviceId = savedHotel._id;
+                }
+              }
+            } catch (err) {
+              console.warn("Could not save hotel to Dmc_Hotels DB:", err);
+            }
+          }
+
+          for (let i = 0; i < payload.activities.length; i++) {
+            const a = payload.activities[i];
+            try {
+              const actRes = await API.post("/dmc/activity", {
+                serviceName: a.name || a.serviceName || "Activity",
+                name: a.name || a.serviceName || "Activity",
+                city: a.city || destination || "",
+                country: a.country || country || "India",
+                currency: "INR",
+                price: Number(a.adultPrice !== undefined ? a.adultPrice : (a.price || 0)),
+                adultPrice: Number(a.adultPrice !== undefined ? a.adultPrice : (a.price || 0)),
+                childPrice: Number(a.childPrice || 0),
+                tourType: a.tourType || "Group Tour",
+                validFrom: new Date().toISOString(),
+                validTo: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
+              });
+              const savedAct = actRes?.data?.data;
+              if (savedAct?._id) {
+                const qIdx = quotationServices.findIndex(
+                  (qs) => qs.type === "activity" && (qs.title === (a.name || a.serviceName) || qs.name === (a.name || a.serviceName))
+                );
+                if (qIdx !== -1) {
+                  quotationServices[qIdx]._id = savedAct._id;
+                  quotationServices[qIdx].id = savedAct._id;
+                  quotationServices[qIdx].serviceId = savedAct._id;
+                }
+              }
+            } catch (err) {
+              console.warn("Could not save activity to Dmc_Activities DB:", err);
+            }
+          }
+
+          for (let i = 0; i < payload.sightseeing.length; i++) {
+            const s = payload.sightseeing[i];
+            try {
+              const sightRes = await API.post("/dmc/sightseeing", {
+                serviceName: s.name || s.serviceName || "Sightseeing",
+                name: s.name || s.serviceName || "Sightseeing",
+                city: s.city || destination || "",
+                country: s.country || country || "India",
+                currency: "INR",
+                price: Number(s.adultPrice !== undefined ? s.adultPrice : (s.price || 0)),
+                adultPrice: Number(s.adultPrice !== undefined ? s.adultPrice : (s.price || 0)),
+                childPrice: Number(s.childPrice || 0),
+                tourType: s.tourType || "Group Tour",
+                validFrom: new Date().toISOString(),
+                validTo: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
+              });
+              const savedSight = sightRes?.data?.data;
+              if (savedSight?._id) {
+                const qIdx = quotationServices.findIndex(
+                  (qs) => qs.type === "sightseeing" && (qs.title === (s.name || s.serviceName) || qs.name === (s.name || s.serviceName))
+                );
+                if (qIdx !== -1) {
+                  quotationServices[qIdx]._id = savedSight._id;
+                  quotationServices[qIdx].id = savedSight._id;
+                  quotationServices[qIdx].serviceId = savedSight._id;
+                }
+              }
+            } catch (err) {
+              console.warn("Could not save sightseeing to Dmc_Sightseeings DB:", err);
+            }
+          }
+
+          toast.success("Services saved to Database and added to quotation successfully!");
+        }
+
+        const responseData = res?.data?.quotation || res?.data?.data || {
+          ...payload,
+          services: quotationServices,
+        };
+        onSuccess?.(responseData);
+        onClose();
       } else {
         res = await API.post("/dmc/package", payload);
         toast.success("Pre-defined package template created successfully!");
+        const responseData = res?.data?.quotation || res?.data?.data || payload;
+        onSuccess?.(responseData);
+        onClose();
       }
-
-      const responseData = res?.data?.quotation || res?.data?.data || payload;
-      onSuccess?.(responseData);
-      onClose();
     } catch (error) {
       console.error(error);
       toast.error(error?.response?.data?.message || "Failed to create package template");
@@ -1882,7 +2120,7 @@ export default function CreatePreDefinedPackageModal({
               disabled={loading}
               className="rounded-lg bg-[#3E63DD] px-5 py-2 text-xs font-bold text-white shadow-md hover:bg-blue-700 transition disabled:opacity-50 cursor-pointer"
             >
-              {loading ? "Creating Template..." : submitBtnText}
+              {loading ? effectiveLoadingText : effectiveSubmitBtnText}
             </button>
           </div>
         </form>

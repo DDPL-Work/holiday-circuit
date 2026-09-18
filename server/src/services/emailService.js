@@ -326,10 +326,9 @@ export const buildAgentClientQuotationTemplate = (quoteDetails = {}) => {
     quoteDetails.agentBrandingName === "Holiday Circuit" ||
     quoteDetails.agencyName === "Holiday Circuit"
   );
-  const showBankDetails = Boolean(
-    quoteDetails.includeSellerBankDetails !== false &&
-    quoteDetails.sellerBankDetails !== false
-  );
+  const showBankDetails = isOps
+    ? Boolean(quoteDetails.includeSellerBankDetails !== false && quoteDetails.sellerBankDetails !== false)
+    : Boolean(quoteDetails.includeSellerBankDetails === true);
   const showPriceBreakup = Boolean(quoteDetails.showPriceBreakup);
   const brandName = isOps 
     ? QUOTATION_BRAND.name 

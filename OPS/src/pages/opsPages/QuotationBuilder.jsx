@@ -1860,6 +1860,52 @@ const normalizeServiceFilterType = (type = "") => {
   return normalizedType;
 };
 
+const getServiceMeta = (type) => {
+  const normalized = normalizeServiceFilterType(type);
+  switch (normalized) {
+    case "hotel":
+      return {
+        icon: (
+          <LiaHotelSolid className="w-6 h-5 bg-blue-500 text-white rounded-md p-0.5" />
+        ),
+        color: "text-blue-400",
+      };
+
+    case "activity":
+      return {
+        icon: (
+          <FaWater className=" w-6 h-5 bg-[#00C950] text-white rounded-md p-0.5" />
+        ),
+        color: "text-green-400 text-[18px]",
+      };
+
+    case "transfer":
+    case "car":
+      return {
+        icon: (
+          <GiCityCar className=" w-6 h-5 bg-[#AD46FF] text-white rounded-md p-0.5" />
+        ),
+        color: "text-blue-400",
+      };
+
+    case "sightseeing":
+      return {
+        icon: (
+          <GiModernCity className=" w-6 h-5 bg-blue-500 text-white rounded-md p-0.5" />
+        ),
+        color: "text-purple-400",
+      };
+
+    default:
+      return {
+        icon: (
+          <GiModernCity className=" w-6 h-5 bg-blue-500 text-white rounded-md p-0.5" />
+        ),
+        color: "text-gray-400",
+      };
+  }
+};
+
 const normalizeBedTypeValue = (value = "") => {
   const normalizedValue = String(value || "")
     .trim()
@@ -2792,6 +2838,11 @@ const resolveTransportVehicleSelection = (
 
 const getTransportUsageOptionDisplayPrice = (service = {}, usageType = "") => {
   const selectedOption = getTransportUsageOptionMeta(usageType);
+  if (service?.custom || service?.useStoredPricing) {
+    if (selectedOption.value === getTransportUsageOptionKey(service)) {
+      return roundCurrencyAmount(service.rate ?? service.price ?? 0);
+    }
+  }
   const selectedPriceFromService = Number(
     service?.transportUsagePrices?.[selectedOption.value],
   );
@@ -5850,51 +5901,6 @@ const QuotationBuilder = () => {
     };
   };
 
-  const getServiceMeta = (type) => {
-    switch (type) {
-      case "hotel":
-        return {
-          icon: (
-            <LiaHotelSolid className="w-6 h-5 bg-blue-500 text-white rounded-md p-0.5" />
-          ),
-          color: "text-blue-400",
-        };
-
-      case "activity":
-        return {
-          icon: (
-            <FaWater className=" w-6 h-5 bg-[#00C950] text-white rounded-md p-0.5" />
-          ),
-          color: "text-green-400 text-[18px]",
-        };
-
-      case "transfer":
-      case "car":
-        return {
-          icon: (
-            <GiCityCar className=" w-6 h-5 bg-[#AD46FF] text-white rounded-md p-0.5" />
-          ),
-          color: "text-blue-400",
-        };
-
-      case "sightseeing":
-        return {
-          icon: (
-            <GiModernCity className=" w-6 h-5 bg-blue-500 text-white rounded-md p-0.5" />
-          ),
-          color: "text-purple-400",
-        };
-
-      default:
-        return {
-          icon: (
-            <GiModernCity className=" w-6 h-5 bg-blue-500 text-white rounded-md p-0.5" />
-          ),
-          color: "text-gray-400",
-        };
-    }
-  };
-
   const mapDraftServiceToUi = (service = {}, overrides = {}) => {
     const meta = getServiceMeta(service.type);
     const owner = resolveDmcOwner(service);
@@ -7943,7 +7949,7 @@ const QuotationBuilder = () => {
 
   const persistQuotationDraft = async () => {
     if (!quotationId) {
-      throw new Error("Quotation draft not ready yet");
+      return null;
     }
 
     const payload = {
@@ -14976,6 +14982,10 @@ const QuotationBuilder = () => {
         )}
       </AnimatePresence>
 
+
+
+      {/* //======================== ✅ QUICK ADD SERVICE MODAL =============================================// */}
+
       <CreatePreDefinedPackageModal
         isOpen={showQuickServiceModal}
         onClose={() => {
@@ -14987,15 +14997,23 @@ const QuotationBuilder = () => {
         partnerType={partnerType}
         isOpenedFromQuotationBuilder={true}
         initialData={bpEditData}
-        submitBtnText={bpEditData ? "Update Quotation" : "Save Quotation"}
+        submitBtnText={
+          partnerType === "Business Partner"
+            ? (bpEditData ? "Update Quotation" : "Create Quotation")
+            : (bpEditData ? "Update Service" : "Save Service")
+        }
         modalTitle={
           bpEditData
             ? `Edit Quotation${bpEditData.quotationNumber ? ` (${bpEditData.quotationNumber})` : ""}`
+            : partnerType === "Business Partner"
+            ? "Create Quotation"
             : "Add Services to Quotation"
         }
         modalSubtitle={
           bpEditData
             ? "Update quotation services, pricing, taxes, and itinerary details"
+            : partnerType === "Business Partner"
+            ? "Configure complete package details, pricing, taxes, and itinerary for this quotation"
             : "Configure hotels, cabs & activities for this quotation"
         }
         orderData={order}
@@ -15006,45 +15024,133 @@ const QuotationBuilder = () => {
           setShowQuickServiceModal(false);
           setBpEditData(null);
           setHistoryRefreshKey((prev) => prev + 1);
-          const bpServices = newPkg?.services || [
-            ...(newPkg?.hotels || []).map(s => ({ ...s, type: 'hotel' })),
-            ...(newPkg?.transfers || []).map(s => ({ ...s, type: 'transfer' })),
-            ...(newPkg?.activities || []).map(s => ({ ...s, type: 'activity' })),
-            ...(newPkg?.sightseeing || []).map(s => ({ ...s, type: 'sightseeing' }))
-          ];
+          const rawAddedServices = newPkg?.services?.length
+            ? newPkg.services
+            : [
+                ...(newPkg?.hotels || []).map((s) => ({ ...s, type: "hotel" })),
+                ...(newPkg?.transfers || []).map((s) => ({ ...s, type: "transfer" })),
+                ...(newPkg?.activities || []).map((s) => ({ ...s, type: "activity" })),
+                ...(newPkg?.sightseeing || []).map((s) => ({ ...s, type: "sightseeing" })),
+              ];
 
-          if (partnerType === "Business Partner" && bpServices.length > 0) {
-            setBpQuotationId(newPkg._id);
-            const formattedBpServices = bpServices.map((s) => {
-              const basePrice = s.price || s.rate || 0;
-              const bpId = s.businessPartnerId || s.businessPartner || s.supplierId || s.supplier || s.dmcId || newPkg?.businessPartner || newPkg?.businessPartnerId || null;
-              const bpName = s.businessPartnerName || s.supplierName || s.dmcName || "";
+          if (rawAddedServices && rawAddedServices.length > 0) {
+            if (newPkg?._id && partnerType === "Business Partner") {
+              setBpQuotationId(newPkg._id);
+            }
+
+            const formattedNewServices = rawAddedServices.map((s) => {
+              const basePrice = Number(s.price || s.rate || s.basePrice || 0);
+              const rawType = s.type || (s.hotelName ? "hotel" : s.vehicleType ? "transfer" : "activity");
+              const normalizedType = normalizeServiceFilterType(rawType);
+              const isBp = partnerType === "Business Partner";
+              const bpId = isBp
+                ? s.businessPartnerId ||
+                  s.businessPartner ||
+                  s.supplierId ||
+                  s.supplier ||
+                  s.dmcId ||
+                  newPkg?.businessPartner ||
+                  newPkg?.businessPartnerId ||
+                  null
+                : null;
+              const bpName = isBp
+                ? s.businessPartnerName || s.supplierName || s.dmcName || ""
+                : "";
+              const serviceId =
+                s._id || s.id || `quick-serv-${Math.random().toString(36).substring(2, 9)}`;
+
+              const meta = getServiceMeta(normalizedType);
+              const usageKey =
+                s.transportUsageOptionKey ||
+                normalizeTransportUsageOptionKey(
+                  s.usageType || s.transportUsageLabel || s.usage,
+                ) ||
+                "one-way-airport-transfer";
+
               return {
                 ...s,
+                id: serviceId,
+                serviceId: serviceId,
+                type: normalizedType,
+                icon: meta?.icon,
+                color: meta?.color,
+                title:
+                  s.title ||
+                  s.serviceName ||
+                  s.hotelName ||
+                  s.name ||
+                  (normalizedType === "hotel"
+                    ? "Hotel"
+                    : normalizedType === "transfer"
+                      ? "Transfer"
+                      : "Activity"),
+                serviceName:
+                  s.serviceName || s.hotelName || s.name || s.title || "",
+                hotelName:
+                  s.hotelName ||
+                  (normalizedType === "hotel"
+                    ? s.serviceName || s.name || s.title
+                    : ""),
+                name: s.name || s.serviceName || s.hotelName || s.title || "",
+                checked: true,
+                custom: true,
+                isBpService: isBp,
                 businessPartnerId: bpId,
                 businessPartner: bpId,
                 businessPartnerName: bpName,
-                supplierId: bpId,
-                supplierName: bpName,
-                dmcId: bpId,
-                dmcName: bpName,
-                id: s._id || `bp-serv-${Math.random().toString(36).substring(2)}`,
-                checked: true,
-                custom: true,
-                isBpService: true,
+                supplierId: bpId || "",
+                supplierName: bpName || "",
+                dmcId: bpId || "",
+                dmcName: bpName || "",
                 useStoredPricing: true,
-                city: order?.destination || s.city || "",
+                city: s.city || s.destination || order?.destination || "",
+                destination: s.destination || s.city || order?.destination || "",
                 rate: basePrice,
-                adultPrice: (s.type === 'activity' || s.type === 'sightseeing') ? (s.adultPrice || basePrice) : s.adultPrice
+                price: basePrice,
+                quoteBaseRate: basePrice,
+                originalTotal: Number(s.total || s.originalTotal || basePrice),
+                totalInInr: Number(s.total || s.originalTotal || basePrice),
+                currency: normalizeCurrencyCode(s.currency || "INR"),
+                adultPrice:
+                  normalizedType === "activity" || normalizedType === "sightseeing"
+                    ? Number(s.adultPrice !== undefined ? s.adultPrice : basePrice)
+                    : Number(s.adultPrice || 0),
+                childPrice: Number(s.childPrice || 0),
+                passengerCapacity: Number(s.passengerCapacity || s.paxCapacity || 4),
+                luggageCapacity: Number(s.luggageCapacity || s.luggage || 2),
+                vehicleType: s.vehicleType || "Sedan",
+                usageType: s.usageType || s.usage || "One Way / Airport Transfer",
+                transportUsageLabel:
+                  s.transportUsageLabel || s.usage || "One Way / Airport Transfer",
+                transportUsageOptionKey: usageKey,
+                pickupTime: s.pickupTime || s.time || "",
+                time: s.pickupTime || s.time || "",
+                selectedSlot: s.selectedSlot || s.pickupTime || s.time || "",
+                serviceDate: s.serviceDate || formatDateInput(order?.startDate) || "",
+                nights:
+                  s.nights ||
+                  (order?.duration ? Number(order.duration.match(/\d+/)?.[0]) : 1) ||
+                  1,
+                rooms: s.rooms || 1,
+                pax: s.pax || (order?.passengers?.total || 2),
+                adults:
+                  s.adults !== undefined
+                    ? s.adults
+                    : Number(order?.numberOfAdults || 2),
+                children:
+                  s.children !== undefined
+                    ? s.children
+                    : Number(order?.numberOfChildren || 0),
               };
             });
-            setServices(prev => [...formattedBpServices, ...prev]);
-            setBaseServicesSnapshot(prev => [...formattedBpServices, ...prev]);
+
+            setServices((prev) => [...formattedNewServices, ...prev]);
+            setBaseServicesSnapshot((prev) => [...formattedNewServices, ...prev]);
 
             // Map pricing and taxes back to QuotationBuilder states
             if (newPkg.pricing) {
               const { tax, opsMarkup, opsCharges } = newPkg.pricing;
-              
+
               if (tax) {
                 setGstChecked(!!tax.gst?.percent);
                 setGstPercent(tax.gst?.percent || 0);
@@ -15089,9 +15195,11 @@ const QuotationBuilder = () => {
               days: newPkg.days || 1,
               duration: newPkg.duration || `${newPkg.days} Days`,
               package: newPkg,
+              checked: true,
+              custom: true,
             };
-            setServices(prev => [formattedPkg, ...prev]);
-            setBaseServicesSnapshot(prev => [formattedPkg, ...prev]);
+            setServices((prev) => [formattedPkg, ...prev]);
+            setBaseServicesSnapshot((prev) => [formattedPkg, ...prev]);
           }
         }}
       />
@@ -15234,6 +15342,36 @@ const Service = ({
         ? "Half Day"
         : "";
   const isHotelService = service.type === "hotel";
+
+  const serviceMeta = useMemo(
+    () => getServiceMeta(service.type),
+    [service.type],
+  );
+
+  const availableTransportUsageOptions = useMemo(() => {
+    if (service.custom) {
+      const currentKey = selectedTransportUsageKey || "one-way-airport-transfer";
+      const currentMeta = getTransportUsageOptionMeta(currentKey);
+      return [
+        {
+          value: currentKey,
+          label:
+            service.transportUsageLabel ||
+            service.usageType ||
+            currentMeta.label,
+          price: service.rate || service.price || 0,
+        },
+      ];
+    }
+    return TRANSPORT_USAGE_OPTIONS;
+  }, [
+    service.custom,
+    service.rate,
+    service.price,
+    service.transportUsageLabel,
+    service.usageType,
+    selectedTransportUsageKey,
+  ]);
 
   const hotelAmenities = useMemo(() => {
     if (!isHotelService) return rawAmenities;
@@ -15464,8 +15602,10 @@ const Service = ({
               className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border text-lg shadow-2xs
               ${service.checked ? "border-amber-300 bg-amber-100" : "border-gray-200 bg-slate-50"}`}
             >
-              <span className={service.color || "text-gray-600"}>
-                {service.icon || "Hotel"}
+              <span className={service.color || serviceMeta?.color || "text-gray-600"}>
+                {service.icon || serviceMeta?.icon || (
+                  <GiCityCar className="w-6 h-5 bg-[#AD46FF] text-white rounded-md p-0.5" />
+                )}
               </span>
             </div>
 
@@ -16071,7 +16211,7 @@ const Service = ({
                       }
                       className={`${selectCls.replace("rounded-lg", "rounded-full")} h-8 w-full pl-4 pr-8 appearance-none`}
                     >
-                      {TRANSPORT_USAGE_OPTIONS.map((option) => (
+                      {availableTransportUsageOptions.map((option) => (
                         <option key={option.value} value={option.value}>
                           {`${option.label} (${formatCurrencyValue(
                             getTransportUsageOptionDisplayPrice(
