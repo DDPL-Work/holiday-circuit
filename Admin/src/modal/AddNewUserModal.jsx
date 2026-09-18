@@ -260,6 +260,7 @@ export default function AddNewUserModal({
   initialUser = null,
   managerOptions = null,
   vendorMode = false,
+  isBusinessPartnerMode = false,
 }) {
   const isEditMode = mode === "edit";
   const [step, setStep] = useState(1);
@@ -353,6 +354,19 @@ export default function AddNewUserModal({
   };
 
   const handleContinue1 = () => {
+    if (isBusinessPartnerMode) {
+      if (!fullName) {
+        toast.error("Please enter a full name.");
+        return;
+      }
+      setSelectedRole("DMC Partner");
+      setDepartment("DMC Relations");
+      setDesignation("Business Partner");
+      setPermissions(["View", "Edit", "Export", "Submit Invoice"]);
+      setStep(3);
+      return;
+    }
+
     const emailErr = !email ? "Email address is required." : getEmailValidationError(email);
     const phoneErr = !phone ? "Phone number is required." : getPhoneValidationError(phone);
 
@@ -427,15 +441,17 @@ export default function AddNewUserModal({
   }, [passwordMode, showManualPassword]);
 
   const handleSubmitUser = async () => {
-    const emailError = getEmailValidationError(email);
-    if (emailError) {
-      toast.error(emailError);
-      return;
-    }
+    if (!isBusinessPartnerMode) {
+      const emailError = getEmailValidationError(email);
+      if (emailError) {
+        toast.error(emailError);
+        return;
+      }
 
-    if (!isEditMode && passwordMode === "manual" && manualPassword.trim().length < 8) {
-      toast.error("Manual password must be at least 8 characters.");
-      return;
+      if (!isEditMode && passwordMode === "manual" && manualPassword.trim().length < 8) {
+        toast.error("Manual password must be at least 8 characters.");
+        return;
+      }
     }
 
     setIsSubmitting(true);
@@ -443,21 +459,22 @@ export default function AddNewUserModal({
     try {
       const payload = {
         fullName,
-        email,
-        phone,
+        email: isBusinessPartnerMode ? "" : email,
+        phone: isBusinessPartnerMode ? "" : phone,
         employeeId,
         manager,
-        selectedRole,
-        department,
-        designation,
+        selectedRole: isBusinessPartnerMode ? "DMC Partner" : selectedRole,
+        department: isBusinessPartnerMode ? "DMC Relations" : department,
+        designation: isBusinessPartnerMode ? "Business Partner" : designation,
         permissions,
-        passwordMode,
-        manualPassword,
+        passwordMode: isBusinessPartnerMode ? "auto" : passwordMode,
+        manualPassword: isBusinessPartnerMode ? "" : manualPassword,
         accountStatus,
         accessExpiry,
-        sendWelcome,
+        sendWelcome: isBusinessPartnerMode ? false : sendWelcome,
         gstNumber,
         creditDays: Array.isArray(creditDays) ? creditDays.map(Number) : [Number(creditDays) || 7],
+        isBusinessPartner: isBusinessPartnerMode,
       };
 
       const response = isEditMode
@@ -525,11 +542,13 @@ export default function AddNewUserModal({
     paddingLeft: 30,
   };
 
+  const entityType = vendorMode ? "Vendor" : isBusinessPartnerMode ? "Business Partner" : "User";
+
   const successBadgeText = isEditMode
-    ? creationMeta.message || "User updated successfully"
+    ? creationMeta.message || `${entityType} updated successfully`
     : creationMeta.credentialsEmailSent
       ? `Login credentials sent to ${email || "user@holidaycircuit.com"}`
-      : creationMeta.message || "User created successfully";
+      : creationMeta.message || `${entityType} created successfully`;
 
   return (
     <motion.div
@@ -591,10 +610,10 @@ export default function AddNewUserModal({
             </div>
             <div>
               <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: "#fff" }}>
-                {vendorMode ? (isEditMode ? "Edit Vendor" : "Add New Vendor") : (isEditMode ? "Edit User" : "Add New User")}
+                {vendorMode ? (isEditMode ? "Edit Vendor" : "Add New Vendor") : isBusinessPartnerMode ? (isEditMode ? "Edit Business Partner" : "Add Business Partner") : (isEditMode ? "Edit User" : "Add New User")}
               </p>
               <p style={{ margin: 0, fontSize: 10, color: "#94a3b8" }}>
-                {vendorMode ? "Holiday Circuit — DMC Partner Setup" : "Holiday Circuit — Role-Based Access Control"}
+                {vendorMode ? "Holiday Circuit — DMC Partner Setup" : isBusinessPartnerMode ? "Holiday Circuit — Business Partner Setup" : "Holiday Circuit — Role-Based Access Control"}
               </p>
             </div>
           </div>
@@ -708,13 +727,11 @@ export default function AddNewUserModal({
                 </motion.div>
               </motion.div>
               <p style={{ margin: 0, fontSize: 18, fontWeight: 600, color: "#0f172a" }}>
-                {vendorMode
-                  ? (isEditMode ? "Vendor Updated Successfully!" : "Vendor Added Successfully!")
-                  : (isEditMode ? "User Updated Successfully!" : "User Added Successfully!")}
+                {isEditMode ? `${entityType} Updated Successfully!` : `${entityType} Added Successfully!`}
               </p>
               <p style={{ margin: "10px 0 0", fontSize: 13, color: "#64748b" }}>
-                <strong style={{ color: "#0f172a" }}>{fullName || (vendorMode ? "Vendor" : "User")}</strong> has been {isEditMode ? "updated" : "created"} as{" "}
-                <span style={{ color: vendorMode ? "#15803d" : "#7c3aed", fontWeight: 600 }}>{selectedRole || "Super Admin"}.</span>
+                <strong style={{ color: "#0f172a" }}>{fullName || entityType}</strong> has been {isEditMode ? "updated" : "created"} as{" "}
+                <span style={{ color: vendorMode ? "#15803d" : isBusinessPartnerMode ? "#0284c7" : "#7c3aed", fontWeight: 600 }}>{selectedRole || "Super Admin"}.</span>
               </p>
               {successBadgeText ? (
                 <div
@@ -772,11 +789,12 @@ export default function AddNewUserModal({
               </div>
 
               {/* Email + Phone */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 18 }}>
-                <div style={{ position: "relative" }}>
-                  <label style={{ fontSize: 12, fontWeight: 500, color: "#475569", display: "block", marginBottom: 4 }}>
-                    Email Address <span style={{ color: "#ef4444" }}>*</span>
-                  </label>
+              {!isBusinessPartnerMode && (
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 18 }}>
+                  <div style={{ position: "relative" }}>
+                    <label style={{ fontSize: 12, fontWeight: 500, color: "#475569", display: "block", marginBottom: 4 }}>
+                      Email Address <span style={{ color: "#ef4444" }}>*</span>
+                    </label>
                   <div style={iconInputWrap}>
                     <span style={iconStyle}><Mail size={12} color="#94a3b8" /></span>
                     <input
@@ -820,10 +838,12 @@ export default function AddNewUserModal({
                   )}
                 </div>
               </div>
+              )}
 
               {/* Employee ID (+ Reporting Manager summary for Ops/Finance roles) / Vendor specific details */}
-              {vendorMode ? (
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              {!isBusinessPartnerMode && (
+                vendorMode ? (
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                   <div>
                     <label style={{ fontSize: 12, fontWeight: 500, color: "#475569", display: "block", marginBottom: 4 }}>
                       GST Number <span style={{ color: "#ef4444" }}>*</span>
@@ -1020,7 +1040,7 @@ export default function AddNewUserModal({
                     </div>
                   ) : null}
                 </div>
-              )}
+              ))}
             </div>
           )}
 
@@ -1330,10 +1350,12 @@ export default function AddNewUserModal({
                     <p style={{ margin: "0 0 2px", fontSize: 10, color: "#94a3b8" }}>Name</p>
                     <p style={{ margin: 0, fontSize: 12, fontWeight: 500, color: "#0f172a" }}>{fullName || "—"}</p>
                   </div>
-                  <div>
-                    <p style={{ margin: "0 0 2px", fontSize: 10, color: "#94a3b8" }}>Email</p>
-                    <p style={{ margin: 0, fontSize: 12, fontWeight: 500, color: "#0f172a" }}>{email || "—"}</p>
-                  </div>
+                  {!isBusinessPartnerMode && (
+                    <div>
+                      <p style={{ margin: "0 0 2px", fontSize: 10, color: "#94a3b8" }}>Email</p>
+                      <p style={{ margin: 0, fontSize: 12, fontWeight: 500, color: "#0f172a" }}>{email || "—"}</p>
+                    </div>
+                  )}
                   <div>
                     <p style={{ margin: "0 0 2px", fontSize: 10, color: "#94a3b8" }}>Role</p>
                     <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: ROLES.find((r) => r.key === selectedRole)?.color || "#0f172a" }}>
@@ -1371,7 +1393,7 @@ export default function AddNewUserModal({
                 </div>
               </div>
 
-              {!isEditMode && (
+              {!isEditMode && !isBusinessPartnerMode && (
                 <>
                   {/* Password Setup */}
                   <div>
@@ -1526,7 +1548,7 @@ export default function AddNewUserModal({
                 </div>
               </div>
 
-              {!isEditMode && (
+              {!isEditMode && !isBusinessPartnerMode && (
                 <div
                   style={{
                     display: "flex", alignItems: "center", justifyContent: "space-between",
@@ -1610,7 +1632,13 @@ export default function AddNewUserModal({
               <div style={{ display: "flex", gap: 8 }}>
                 {step > 1 && (
                   <button
-                    onClick={() => setStep((s) => s - 1)}
+                    onClick={() => {
+                        if (step === 3 && isBusinessPartnerMode) {
+                            setStep(1);
+                        } else {
+                            setStep((s) => s - 1);
+                        }
+                    }}
                     style={{
                       display: "flex", alignItems: "center", gap: 4,
                       padding: "6px 14px", borderRadius: 8,

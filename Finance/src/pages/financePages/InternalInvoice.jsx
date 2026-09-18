@@ -250,6 +250,7 @@ const InternalInvoice = () => {
   const [feedback, setFeedback] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("All Status");
+  const [partnerTypeFilter, setPartnerTypeFilter] = useState("All Partners");
   const [dateFilter, setDateFilter] = useState("All Time");
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedInvoice, setSelectedInvoice] = useState(null);
@@ -290,12 +291,26 @@ const InternalInvoice = () => {
               ? `INV-${String(invoice.queryId).replace(/^INV-/, "")}`
               : (invoice.invoiceNumber ? `INV-${invoice.invoiceNumber}` : "INV-0001"));
 
+        const isOfflinePartner = Boolean(
+          invoice.partnerType === "offline_partner" ||
+          invoice.businessPartnerName ||
+          invoice.isOfflinePartner ||
+          invoice.uploadedByRole === "ops"
+        );
+        const partnerType = isOfflinePartner ? "offline_partner" : "online_dmc";
+        const businessPartnerName = invoice.businessPartnerName || (isOfflinePartner ? (invoice.dmcName || invoice.supplierName || "Offline Partner") : "");
+        const partyName = isOfflinePartner ? (businessPartnerName || invoice.dmcName || "Offline Partner") : (invoice.dmcName || invoice.supplierName || "-");
+
         return {
           _id: invoice.id,
           id: normalizedInvoiceNumber,
-          isDmc: true,
+          isDmc: !isOfflinePartner,
+          isOfflinePartner: isOfflinePartner,
+          partnerType: partnerType,
+          businessPartnerName: businessPartnerName,
+          uploadedByRole: invoice.uploadedByRole || (isOfflinePartner ? "ops" : "dmc"),
           ref: invoice.queryId,
-          party: invoice.dmcName,
+          party: partyName,
           utr:
             invoice.utrNumber ||
             invoice.utr ||
@@ -476,21 +491,28 @@ const InternalInvoice = () => {
     return invoicesData.filter((invoice) => {
       const searchLower = searchTerm.toLowerCase();
       const matchesSearch =
+        !searchLower ||
         String(invoice.id || "").toLowerCase().includes(searchLower) ||
         String(invoice.ref || "").toLowerCase().includes(searchLower) ||
-        String(invoice.party || "").toLowerCase().includes(searchLower);
+        String(invoice.party || "").toLowerCase().includes(searchLower) ||
+        String(invoice.businessPartnerName || "").toLowerCase().includes(searchLower);
 
       const matchesStatus = statusFilter === "All Status" || invoice.status === statusFilter;
 
+      const matchesPartnerType =
+        partnerTypeFilter === "All Partners" ||
+        (partnerTypeFilter === "Online DMCs" && !invoice.isOfflinePartner) ||
+        (partnerTypeFilter === "Offline Partners" && invoice.isOfflinePartner);
+
       const matchesDate = withinDateFilter(invoice.dateValue, dateFilter);
 
-      return matchesSearch && matchesStatus && matchesDate;
+      return matchesSearch && matchesStatus && matchesPartnerType && matchesDate;
     });
-  }, [dateFilter, invoicesData, searchTerm, statusFilter]);
+  }, [dateFilter, invoicesData, partnerTypeFilter, searchTerm, statusFilter]);
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, statusFilter, dateFilter, invoicesData.length]);
+  }, [searchTerm, statusFilter, partnerTypeFilter, dateFilter, invoicesData.length]);
 
   const totalPages = Math.ceil(filteredInvoices.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
@@ -566,7 +588,7 @@ const InternalInvoice = () => {
           <button
             type="button"
             onClick={() => setShowBulkUpload(true)}
-            className="flex items-center justify-center gap-2 bg-gradient-to-r from-slate-900 to-blue-700 hover:from-slate-950 hover:to-blue-800 active:scale-95 active:translate-y-0 hover:-translate-y-0.5 transition-all duration-300 ease-out text-white px-4.5 py-2 rounded-xl text-sm font-semibold shadow-sm hover:shadow-md"
+            className="flex items-center justify-center gap-2 bg-gradient-to-r from-slate-900 to-blue-700 hover:from-slate-950 hover:to-blue-800 active:scale-95 active:translate-y-0 hover:-translate-y-0.5 transition-all duration-300 ease-out text-white px-4.5 py-2 rounded-xl text-sm font-semibold shadow-sm hover:shadow-md cursor-pointer"
           >
             <Upload className="w-4 h-4" />
             Upload Bulk Invoice
@@ -620,7 +642,19 @@ const InternalInvoice = () => {
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="relative">
+            <select
+              value={partnerTypeFilter}
+              onChange={(e) => setPartnerTypeFilter(e.target.value)}
+              className="appearance-none bg-white border border-gray-200 text-slate-700 py-1.5 pl-3 pr-8 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer font-medium"
+            >
+              <option value="All Partners">All Partners</option>
+              <option value="Online DMCs">Online DMCs</option>
+              <option value="Offline Partners">Offline Partners (MMT/Agoda)</option>
+            </select>
+            <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+          </div>
           <div className="relative">
             <select
               value={statusFilter}
@@ -657,13 +691,13 @@ const InternalInvoice = () => {
           <div className="min-w-305">
             <table className="w-full table-fixed border-separate border-spacing-y-2">
             <colgroup>
+              <col style={{ width: '15%' }} />
+              <col style={{ width: '9%' }} />
               <col style={{ width: '14%' }} />
-              <col style={{ width: '10%' }} />
               <col style={{ width: '11%' }} />
-              <col style={{ width: '12%' }} />
               <col style={{ width: '13%' }} />
-              <col style={{ width: '12%' }} />
               <col style={{ width: '11%' }} />
+              <col style={{ width: '10%' }} />
               <col style={{ width: '10%' }} />
               <col style={{ width: '7%' }} />
             </colgroup>
@@ -692,15 +726,40 @@ const InternalInvoice = () => {
               ) : paginatedInvoices.length > 0 ? (
                 paginatedInvoices.map((invoice, idx) => {
                   const rowCellClass = "border-y border-slate-200 bg-white px-3 py-2.5 align-middle";
+                  const partyName = invoice.party || "-";
+                  const partyLength = partyName.length;
+                  const partyFontClass =
+                    partyLength > 25
+                      ? "text-[9.5px] leading-tight"
+                      : partyLength > 16
+                      ? "text-[10.5px] leading-tight"
+                      : "text-[11px] leading-tight";
+
                   return (
                   <tr key={idx} className="transition-transform duration-150 hover:-translate-y-[1px]">
                     <td className={`${rowCellClass} rounded-l-xl border-l`}>
-                      <div className="flex items-center gap-1.5 min-w-0">
-                        <FileText className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                        <span className="text-[11px] font-semibold text-slate-800 truncate min-w-0">{invoice.id}</span>
-                        {invoice.isDmc && (
-                          <span className="shrink-0 bg-purple-50 text-purple-600 border border-purple-200 text-[8px] font-bold px-1 py-px rounded uppercase">DMC</span>
-                        )}
+                      <div className="flex flex-col items-start gap-1 min-w-0">
+                        <div className="flex items-center gap-1.5 min-w-0 max-w-full" title={invoice.id}>
+                          <FileText className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                          <span className="text-[11px] font-semibold text-slate-800 break-all select-all leading-tight">
+                            {invoice.id}
+                          </span>
+                        </div>
+                        {invoice.isOfflinePartner ? (
+                          <span
+                            className="inline-flex items-center bg-amber-50 text-amber-800 border border-amber-300 text-[8px] font-extrabold px-1.5 py-0.5 rounded uppercase tracking-wider shadow-2xs"
+                            title="Offline Business Partner"
+                          >
+                            PARTNER
+                          </span>
+                        ) : invoice.isDmc ? (
+                          <span
+                            className="inline-flex items-center bg-purple-50 text-purple-600 border border-purple-200 text-[8px] font-bold px-1.5 py-0.5 rounded uppercase shadow-2xs"
+                            title="Online DMC"
+                          >
+                            DMC
+                          </span>
+                        ) : null}
                       </div>
                     </td>
 
@@ -709,7 +768,22 @@ const InternalInvoice = () => {
                     </td>
 
                     <td className={rowCellClass}>
-                      <span className="text-[11px] text-slate-800 font-medium truncate block">{invoice.party}</span>
+                      {invoice.isOfflinePartner ? (
+                        <div className="min-w-0 flex flex-col items-start" title={invoice.party}>
+                          <span className={`${partyFontClass} text-slate-800 font-bold break-words block`}>
+                            {invoice.party}
+                          </span>
+                          <span className="mt-0.5 text-[8.5px] text-amber-700 font-bold leading-3 block uppercase tracking-wider">
+                            Offline Partner
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="min-w-0" title={invoice.party}>
+                          <span className={`${partyFontClass} text-slate-800 font-medium break-words block`}>
+                            {invoice.party}
+                          </span>
+                        </div>
+                      )}
                     </td>
 
                     <td className={rowCellClass}>
@@ -866,6 +940,7 @@ const InternalInvoice = () => {
           />
         )}
       </AnimatePresence>
+
 
       <AnimatePresence>
         {selectedTrackerInvoice && (

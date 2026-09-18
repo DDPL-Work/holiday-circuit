@@ -86,6 +86,7 @@ const mapApiUserToRow = (user = {}) => ({
   manager: user.manager || "",
   permissions: Array.isArray(user.permissions) ? user.permissions : [],
   accessExpiry: user.accessExpiry || "",
+  isBusinessPartner: Boolean(user.isBusinessPartner),
 });
 
 const EditIcon = () => (
@@ -254,6 +255,7 @@ export default function UserManagement() {
   const [roleFilter, setRoleFilter] = useState("All Roles");
   const [statusFilter, setStatusFilter] = useState("All Status");
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
+  const [modalMode, setModalMode] = useState("user");
   const [editingUser, setEditingUser] = useState(null);
   const [confirmDialog, setConfirmDialog] = useState(EMPTY_DIALOG);
 
@@ -437,16 +439,30 @@ export default function UserManagement() {
               Manage team members and their access permissions
             </p>
           </div>
-          <button
-            onClick={() => {
-              setEditingUser(null);
-              setIsAddUserModalOpen(true);
-            }}
-            className="flex items-center gap-2 bg-gray-900 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-gray-700 transition-colors"
-          >
-            <AddUserIcon />
-            Add New User
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => {
+                setEditingUser(null);
+                setModalMode("businessPartner");
+                setIsAddUserModalOpen(true);
+              }}
+              className="flex items-center gap-2 bg-white border border-gray-200 text-gray-700 text-sm font-semibold px-4 py-2 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              <AddUserIcon />
+              Add Business Partner
+            </button>
+            <button
+              onClick={() => {
+                setEditingUser(null);
+                setModalMode("user");
+                setIsAddUserModalOpen(true);
+              }}
+              className="flex items-center gap-2 bg-gray-900 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-gray-700 transition-colors"
+            >
+              <AddUserIcon />
+              Add New User
+            </button>
+          </div>
         </div>
 
         <div className="flex gap-2.5 mb-5">
@@ -680,6 +696,7 @@ export default function UserManagement() {
                             <button
                               onClick={() => {
                                 setEditingUser(user);
+                                setModalMode(user.isBusinessPartner ? "businessPartner" : "user");
                                 setIsAddUserModalOpen(true);
                               }}
                               disabled={userActionId === user.id}
@@ -721,6 +738,7 @@ export default function UserManagement() {
           mode={editingUser ? "edit" : "create"}
           initialUser={editingUser}
           managerOptions={managerOptions}
+          isBusinessPartnerMode={modalMode === "businessPartner"}
         />
       ) : null}
 

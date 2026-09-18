@@ -275,7 +275,7 @@ export default function DMCDashboard() {
         variants={containerVariant}
         initial="hidden"
         animate="visible"
-        className="bg-gray-50 space-y-3.5 p-0"
+        className="bg-gray-50 space-y-8 p-0"
       >
         {/* Header */}
         <motion.div variants={cardVariant}>
@@ -295,7 +295,7 @@ export default function DMCDashboard() {
           {/* Card 1 */}
           <div 
             style={{ background: "linear-gradient(135deg, rgba(243, 232, 255, 0.45) 0%, rgba(255, 255, 255, 0.98) 100%)", borderBottom: "3px solid #a855f7" }}
-            className="border-0 shadow-xs rounded-[18px] py-3 px-4 flex justify-between items-center transition-all duration-200 hover:shadow-sm"
+            className="border-0 shadow-xs rounded-[6px] py-3 px-4 flex justify-between items-center transition-all duration-200 hover:shadow-sm"
           >
             <div className="min-w-0">
               <p className="text-xs text-gray-500 font-medium truncate">Pending Confirmations</p>
@@ -317,7 +317,7 @@ export default function DMCDashboard() {
           {/* Card 2 */}
           <div 
             style={{ background: "linear-gradient(135deg, rgba(219, 234, 254, 0.45) 0%, rgba(255, 255, 255, 0.98) 100%)", borderBottom: "3px solid #3b82f6" }}
-            className="border-0 shadow-xs rounded-[18px] py-3 px-4 flex justify-between items-center transition-all duration-200 hover:shadow-sm"
+            className="border-0 shadow-xs rounded-md py-3 px-4 flex justify-between items-center transition-all duration-200 hover:shadow-sm"
           >
             <div className="min-w-0">
               <p className="text-xs text-gray-500 font-medium truncate">Assigned Active Bookings</p>
@@ -337,7 +337,7 @@ export default function DMCDashboard() {
           {/* Card 3 */}
           <div 
             style={{ background: "linear-gradient(135deg, rgba(220, 252, 231, 0.45) 0%, rgba(255, 255, 255, 0.98) 100%)", borderBottom: "3px solid #10b981" }}
-            className="border-0 shadow-xs rounded-[18px] py-3 px-4 flex justify-between items-center transition-all duration-200 hover:shadow-sm"
+            className="border-0 shadow-xs rounded-md py-3 px-4 flex justify-between items-center transition-all duration-200 hover:shadow-sm"
           >
             <div className="min-w-0">
               <p className="text-xs text-gray-500 font-medium truncate">Completed Vouchers</p>
@@ -359,7 +359,7 @@ export default function DMCDashboard() {
           {/* Card 4 */}
           <div 
             style={{ background: "linear-gradient(135deg, rgba(254, 243, 199, 0.45) 0%, rgba(255, 255, 255, 0.98) 100%)", borderBottom: "3px solid #f59e0b" }}
-            className="border-0 shadow-xs rounded-[18px] py-3 px-4 flex justify-between items-center transition-all duration-200 hover:shadow-sm"
+            className="border-0 shadow-xs rounded-md py-3 px-4 flex justify-between items-center transition-all duration-200 hover:shadow-sm"
           >
             <div className="min-w-0">
               <p className="text-xs text-gray-500 font-medium truncate">Unfinished Action Items</p>
@@ -379,6 +379,7 @@ export default function DMCDashboard() {
           </div>
         </motion.div>
 
+
         {/*================================ Payment Overview + Quick Fulfillment Shortcuts =========================== */}
         <motion.div variants={cardVariant} className="grid grid-cols-1 gap-3 lg:grid-cols-5 items-stretch">
           {/* Left Column: Payment Overview Cards (2x2 Grid) */}
@@ -391,7 +392,7 @@ export default function DMCDashboard() {
               {/* Total Expected Amount */}
               <div
                 style={{ background: "linear-gradient(135deg, rgba(219, 234, 254, 0.45) 0%, rgba(255, 255, 255, 0.98) 100%)", borderBottom: "3px solid #3b82f6" }}
-                className="border-0 shadow-xs rounded-[16px] py-2.5 px-3.5 flex justify-between items-center transition-all duration-200 hover:shadow-sm"
+                className="border-0 shadow-xs rounded-md py-2.5 px-3.5 flex justify-between items-center transition-all duration-200 hover:shadow-sm"
               >
                 <div className="min-w-0">
                   <p className="text-[11px] text-gray-500 font-medium truncate">Total Expected Amount</p>
@@ -408,7 +409,7 @@ export default function DMCDashboard() {
               {/* Payment Received */}
               <div
                 style={{ background: "linear-gradient(135deg, rgba(220, 252, 231, 0.45) 0%, rgba(255, 255, 255, 0.98) 100%)", borderBottom: "3px solid #10b981" }}
-                className="border-0 shadow-xs rounded-[16px] py-2.5 px-3.5 flex justify-between items-center transition-all duration-200 hover:shadow-sm"
+                className="border-0 shadow-xs rounded-md py-2.5 px-3.5 flex justify-between items-center transition-all duration-200 hover:shadow-sm"
               >
                 <div className="min-w-0">
                   <p className="text-[11px] text-gray-500 font-medium truncate">Payment Received</p>
@@ -425,7 +426,7 @@ export default function DMCDashboard() {
               {/* Payment Pending */}
               <div
                 style={{ background: "linear-gradient(135deg, rgba(254, 243, 199, 0.45) 0%, rgba(255, 255, 255, 0.98) 100%)", borderBottom: "3px solid #f59e0b" }}
-                className="border-0 shadow-xs rounded-[16px] py-2.5 px-3.5 flex justify-between items-center transition-all duration-200 hover:shadow-sm"
+                className="border-0 shadow-xs rounded-md py-2.5 px-3.5 flex justify-between items-center transition-all duration-200 hover:shadow-sm"
               >
                 <div className="min-w-0">
                   <p className="text-[11px] text-gray-500 font-medium truncate">Payment Pending</p>
@@ -442,7 +443,7 @@ export default function DMCDashboard() {
               {/* Remaining Balance */}
               <div
                 style={{ background: "linear-gradient(135deg, rgba(254, 226, 226, 0.45) 0%, rgba(255, 255, 255, 0.98) 100%)", borderBottom: "3px solid #ef4444" }}
-                className="border-0 shadow-xs rounded-[16px] py-2.5 px-3.5 flex justify-between items-center transition-all duration-200 hover:shadow-sm"
+                className="border-0 shadow-xs rounded-md py-2.5 px-3.5 flex justify-between items-center transition-all duration-200 hover:shadow-sm"
               >
                 <div className="min-w-0">
                   <p className="text-[11px] text-gray-500 font-medium truncate">Remaining Balance</p>
@@ -458,8 +459,10 @@ export default function DMCDashboard() {
             </div>
           </div>
 
+
+
           {/* Right Column: Quick Fulfillment Shortcuts */}
-          <div className="lg:col-span-2 bg-white rounded-[18px] border border-gray-200 shadow-xs p-3.5 flex flex-col justify-between">
+          <div className="lg:col-span-2 bg-white rounded-md border border-gray-200 shadow-xs p-3.5 flex flex-col justify-between">
             <div>
               <div className="flex items-center justify-between gap-2 mb-2.5">
                 <div className="flex items-center gap-2">
@@ -528,10 +531,11 @@ export default function DMCDashboard() {
               </div>
             </div>
 
-            <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between text-[9.5px] text-slate-400">
+             <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between text-[9.5px] text-slate-400">
               <span>Quick access to core workflows</span>
-              <span className="font-bold text-blue-600">Holiday Circuit B2B</span>
-            </div>
+              {/* <span className="font-bold text-blue-600">Holiday Circuit B2B</span> */}
+            </div> 
+
           </div>
         </motion.div>
       </motion.div>

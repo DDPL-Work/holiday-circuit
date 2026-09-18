@@ -265,7 +265,8 @@ const Service = ({
     const s = new Date(startDate);
     const e = new Date(endDate);
     if (isNaN(s) || isNaN(e)) return 1;
-    return Math.max(1, Math.ceil((e - s) / 86400000));
+    const diffDays = Math.max(0, Math.round((e - s) / 86400000));
+    return diffDays + 1;
   };
 
   const addDaysToServiceDate = (value, daysToAdd = 0) => {

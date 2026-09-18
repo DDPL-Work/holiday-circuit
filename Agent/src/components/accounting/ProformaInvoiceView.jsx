@@ -326,21 +326,107 @@ const buildInvoiceCleanHtml = ({
 };
 
 const ProformaInvoiceView = ({ invoiceData = {}, onEdit, onDelete, onNew, queryData = {} }) => {
-  const { user } = useSelector((state) => state.auth || {});
+  const { user: authUser } = useSelector((state) => state.auth || {});
+
+  let localUser = null;
+  if (typeof window !== "undefined") {
+    try {
+      const stored = localStorage.getItem("user");
+      if (stored) localUser = JSON.parse(stored);
+    } catch (e) {}
+  }
+  const effectiveUser = authUser || localUser || queryData?.user || queryData?.agent || {};
 
   const queryId = invoiceData?.queryId || queryData?.queryId || queryData?.id || "4310346";
   
   const sellerDetails = invoiceData?.sellerDetails || {
-    name: invoiceData?.sellerName || queryData?.sellerName || "DDLC Company Pvt. Ltd.",
-    address: invoiceData?.sellerAddress || queryData?.sellerAddress || "KG 3/69, Ground Floor, Vikas Puri",
-    cityState: invoiceData?.sellerCityState || queryData?.sellerCityState || "New Delhi, Delhi",
-    countryZip: invoiceData?.sellerCountryZip || queryData?.sellerCountryZip || "India, 110018",
-    phone: invoiceData?.sellerPhone || queryData?.sellerPhone || "9368825518",
-    email: invoiceData?.sellerEmail || queryData?.sellerEmail || "joy@gmail.com",
-    pan: invoiceData?.sellerPan || queryData?.sellerPan || "ABAPW1816B",
-    gst: invoiceData?.sellerGst || queryData?.sellerGst || "07ABAPW1816B3ZZ",
-    msme: invoiceData?.sellerMsme || queryData?.sellerMsme || "UDYAM-DL-10-0079437",
-    tan: invoiceData?.sellerTan || queryData?.sellerTan || "DELV30189F",
+    name:
+      invoiceData?.sellerName ||
+      queryData?.sellerName ||
+      queryData?.sellerDetails?.name ||
+      effectiveUser?.companyName ||
+      effectiveUser?.brandingName ||
+      effectiveUser?.agencyName ||
+      queryData?.agencyName ||
+      queryData?.agentName ||
+      effectiveUser?.name ||
+      "DDLC Company",
+    address:
+      invoiceData?.sellerAddress ||
+      queryData?.sellerAddress ||
+      queryData?.sellerDetails?.address ||
+      effectiveUser?.companyAddress ||
+      effectiveUser?.address ||
+      "KG 3/69, Ground Floor, Vikas Puri",
+    cityState:
+      invoiceData?.sellerCityState ||
+      queryData?.sellerCityState ||
+      queryData?.sellerDetails?.cityState ||
+      (effectiveUser?.city || effectiveUser?.state
+        ? `${effectiveUser.city || ""}${effectiveUser.city && effectiveUser.state ? ", " : ""}${effectiveUser.state || ""}`.trim()
+        : "") ||
+      "New Delhi, Delhi",
+    countryZip:
+      invoiceData?.sellerCountryZip ||
+      queryData?.sellerCountryZip ||
+      queryData?.sellerDetails?.countryZip ||
+      (effectiveUser?.country || effectiveUser?.zipCode || effectiveUser?.pincode
+        ? `${effectiveUser.country || "India"}${effectiveUser.zipCode || effectiveUser.pincode ? `, ${effectiveUser.zipCode || effectiveUser.pincode}` : ""}`.trim()
+        : "") ||
+      "India, 110018",
+    phone:
+      invoiceData?.sellerPhone ||
+      queryData?.sellerPhone ||
+      queryData?.sellerDetails?.phone ||
+      effectiveUser?.phone ||
+      effectiveUser?.companyPhone ||
+      queryData?.agentPhone ||
+      "9368825518",
+    email:
+      invoiceData?.sellerEmail ||
+      queryData?.sellerEmail ||
+      queryData?.sellerDetails?.email ||
+      effectiveUser?.email ||
+      effectiveUser?.companyEmail ||
+      queryData?.agentEmail ||
+      "joy@gmail.com",
+    pan:
+      invoiceData?.sellerPan ||
+      queryData?.sellerPan ||
+      queryData?.sellerDetails?.pan ||
+      effectiveUser?.panNumber ||
+      effectiveUser?.pan ||
+      effectiveUser?.panNo ||
+      queryData?.panNumber ||
+      "NA",
+    gst:
+      invoiceData?.sellerGst ||
+      queryData?.sellerGst ||
+      queryData?.sellerDetails?.gst ||
+      effectiveUser?.gstNumber ||
+      effectiveUser?.gst ||
+      effectiveUser?.gstNo ||
+      queryData?.gstNumber ||
+      queryData?.user?.gstNumber ||
+      "NA",
+    msme:
+      invoiceData?.sellerMsme ||
+      queryData?.sellerMsme ||
+      queryData?.sellerDetails?.msme ||
+      effectiveUser?.msmeNumber ||
+      effectiveUser?.msme ||
+      effectiveUser?.msmeNo ||
+      queryData?.msmeNumber ||
+      "NA",
+    tan:
+      invoiceData?.sellerTan ||
+      queryData?.sellerTan ||
+      queryData?.sellerDetails?.tan ||
+      effectiveUser?.tanNumber ||
+      effectiveUser?.tan ||
+      effectiveUser?.tanNo ||
+      queryData?.tanNumber ||
+      "NA",
   };
 
   const sellerLogo =
@@ -352,10 +438,10 @@ const ProformaInvoiceView = ({ invoiceData = {}, onEdit, onDelete, onNew, queryD
     queryData?.agent?.brandLogoUrl ||
     queryData?.agent?.logo ||
     queryData?.sellerLogo ||
-    (user?.role === "agent" ? (user?.brandingLogo || user?.brandLogoUrl || user?.logo) : "") ||
-    user?.brandingLogo ||
-    user?.brandLogoUrl ||
-    user?.logo ||
+    effectiveUser?.brandingLogo ||
+    effectiveUser?.brandLogoUrl ||
+    effectiveUser?.logo ||
+    effectiveUser?.profileImage ||
     "";
 
   const clientInfo = resolveClientDetails(queryData);

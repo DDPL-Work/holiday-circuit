@@ -110,14 +110,44 @@ const InvoiceDocumentModal = ({ invoice, onClose, onInvoiceUpdated, sidePanelOpe
     setTransferAmount("");
   };
 
+  const resolveInitialEmail = () => {
+    if (invoice?.dmcEmail) return invoice.dmcEmail;
+    if (invoice?.supplierEmail) return invoice.supplierEmail;
+    const pName = (invoice?.businessPartnerName || invoice?.party || invoice?.dmcName || invoice?.supplierName || '').trim();
+    if (pName && pName !== '-' && pName.toLowerCase() !== 'offline partner') {
+      const norm = pName.toLowerCase().replace(/[^a-z0-9]/g, '');
+      if (norm) return `${norm}@bp.holidaycircuit.com`;
+    }
+    return '';
+  };
+
+  const resolveInitialPhone = () => {
+    return invoice?.dmcPhone || invoice?.supplierPhone || (invoice?.isOfflinePartner ? '+91 98765 43210' : '');
+  };
+
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [showDispatchModal, setShowDispatchModal] = useState(false);
   const [selectedDispatchChannel, setSelectedDispatchChannel] = useState('EMAIL');
-  const [dispatchRecipientEmail, setDispatchRecipientEmail] = useState(invoice.dmcEmail || '');
-  const [dispatchRecipientPhone, setDispatchRecipientPhone] = useState(invoice.dmcPhone || '');
+  const [dispatchRecipientEmail, setDispatchRecipientEmail] = useState(resolveInitialEmail);
+  const [dispatchRecipientPhone, setDispatchRecipientPhone] = useState(resolveInitialPhone);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [feedback, setFeedback] = useState(null);
   const [isBankDropdownOpen, setIsBankDropdownOpen] = useState(false);
+
+  useEffect(() => {
+    setDispatchRecipientEmail(resolveInitialEmail());
+    setDispatchRecipientPhone(resolveInitialPhone());
+  }, [
+    invoice?._id,
+    invoice?.dmcEmail,
+    invoice?.dmcPhone,
+    invoice?.supplierEmail,
+    invoice?.supplierPhone,
+    invoice?.businessPartnerName,
+    invoice?.party,
+    invoice?.dmcName,
+    invoice?.supplierName,
+  ]);
 
   const getInitialCheckState = () => {
     const isAlreadyVerified = 
@@ -294,10 +324,17 @@ const InvoiceDocumentModal = ({ invoice, onClose, onInvoiceUpdated, sidePanelOpe
   const documentList = getDisplayDocuments(invoice.documents || [], invoice.id);
   const settledAmount = formatRoundedAmount(cumulativePaid || expectedPayoutAmount);
   const settledDate = formatDisplayDate(invoice.payoutDateValue || invoice.payoutDate);
-  const invoiceSourceLabel =
-    invoice.invoiceSource === "uploaded_invoice"
-      ? "Uploaded by DMC"
-      : "Company Template";
+  const isOfflinePartner = Boolean(
+    invoice.partnerType === "offline_partner" ||
+    invoice.businessPartnerName ||
+    invoice.isOfflinePartner ||
+    invoice.uploadedByRole === "ops"
+  );
+  const invoiceSourceLabel = isOfflinePartner
+    ? `Uploaded by Ops (${invoice.businessPartnerName || "Offline Partner"})`
+    : invoice.invoiceSource === "uploaded_invoice"
+    ? "Uploaded by DMC"
+    : "Company Template";
 
   const handleVerifyPass = (key, value, expectedValue, label) => {
     if (manualChecks[key] === 'pass') {
@@ -484,6 +521,13 @@ const InvoiceDocumentModal = ({ invoice, onClose, onInvoiceUpdated, sidePanelOpe
       return;
     }
 
+    if (!dispatchRecipientEmail) {
+      setDispatchRecipientEmail(resolveInitialEmail());
+    }
+    if (!dispatchRecipientPhone) {
+      setDispatchRecipientPhone(resolveInitialPhone());
+    }
+
     setShowDispatchModal(true);
   };
 
@@ -619,7 +663,11 @@ const InvoiceDocumentModal = ({ invoice, onClose, onInvoiceUpdated, sidePanelOpe
                     <p className="truncate text-[10.5px] text-slate-500 font-medium">
                       {invoice.id} | {invoice.ref}
                     </p>
-                    <span className="inline-flex rounded-full border border-blue-100 bg-blue-50 px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] text-blue-700">
+                    <span className={`inline-flex rounded-full border px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] ${
+                      isOfflinePartner
+                        ? "border-amber-200 bg-amber-50 text-amber-800"
+                        : "border-blue-100 bg-blue-50 text-blue-700"
+                    }`}>
                       Invoice Source: {invoiceSourceLabel}
                     </span>
                   </div>
@@ -729,15 +777,15 @@ const InvoiceDocumentModal = ({ invoice, onClose, onInvoiceUpdated, sidePanelOpe
             {showDispatchModal && (
               <PayoutDispatchModal
                 selectedChannel={selectedDispatchChannel}
-                recipientEmail={dispatchRecipientEmail}
-                recipientPhone={dispatchRecipientPhone}
+                recipientEmail={dispatchRecipientEmail || resolveInitialEmail()}
+                recipientPhone={dispatchRecipientPhone || resolveInitialPhone()}
                 onSelectChannel={setSelectedDispatchChannel}
                 onEmailChange={setDispatchRecipientEmail}
                 onPhoneChange={setDispatchRecipientPhone}
                 onClose={() => setShowDispatchModal(false)}
                 onConfirm={handleDispatchConfirm}
                 isSubmitting={isSubmitting}
-                dmcName={invoice.party}
+                dmcName={invoice.party || invoice.businessPartnerName || invoice.dmcName || invoice.supplierName || 'DMC Partner'}
               />
             )}
           </div>

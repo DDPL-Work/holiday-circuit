@@ -2,23 +2,23 @@ import Hotel from "../models/hotelDmc.model.js";
 import Activity from "../models/activityDmc.model.js";
 import Transfer from "../models/transferDmc.model.js";
 import Package from "../models/PackageDmc.model.js";
-import Sightseeing from "../models/sightseeingDmc.model.js"
-import Confirmation from "../models/dmcConfirmation.js"
+import Sightseeing from "../models/sightseeingDmc.model.js";
+import Confirmation from "../models/dmcConfirmation.js";
 import Invoice from "../models/invoice.model.js";
 import InternalInvoice from "../models/internalInvoice.model.js";
 import DmcSettlementBatch from "../models/dmcSettlementBatch.model.js";
 import Auth from "../models/auth.model.js";
 import Notification from "../models/notification.model.js";
 import OpsActivityLog from "../models/opsActivityLog.model.js";
-import UploadHistory from "../models/uploadHistory.model.js"
+import UploadHistory from "../models/uploadHistory.model.js";
 import TravelQuery from "../models/TravelQuery.model.js";
 import Quotation from "../models/quotation.model.js";
 import Voucher from "../models/voucher.model.js";
 import ApiError from "../utils/ApiError.js";
 import mongoose from "mongoose";
 import XLSX from "xlsx";
-import path from "path"
-import fs from "fs"
+import path from "path";
+import fs from "fs";
 import { generateInternalInvoicePdf } from "../services/internalInvoicePdfService.js";
 import { getRoundRobinFinanceAssignee } from "../services/financeTeamScopeService.js";
 import { createNotification } from "../services/notificationDispatchService.js";
@@ -51,7 +51,9 @@ const getLatestOperationalQuotation = (queryId) =>
   Quotation.findOne({
     queryId,
     status: { $in: OPERATIONAL_QUOTATION_STATUSES },
-  }).sort({ createdAt: -1 }).lean();
+  })
+    .sort({ createdAt: -1 })
+    .lean();
 
 const roundMoney = (value = 0) => Math.round(Number(value || 0));
 
@@ -69,11 +71,16 @@ const getQuotationFinanceServiceTotal = (quotation = {}) => {
   const serviceBaseAmount = getQuotationServiceBaseAmount(quotation);
   const opsGrandTotal = Number(quotation?.pricing?.totalAmount || 0);
   const clientGrandTotal =
-    quotation?.clientTotalAmount === undefined || quotation?.clientTotalAmount === null
+    quotation?.clientTotalAmount === undefined ||
+    quotation?.clientTotalAmount === null
       ? 0
       : Number(quotation.clientTotalAmount || 0);
 
-  if (clientGrandTotal > 0 && opsGrandTotal > 0 && clientGrandTotal < opsGrandTotal) {
+  if (
+    clientGrandTotal > 0 &&
+    opsGrandTotal > 0 &&
+    clientGrandTotal < opsGrandTotal
+  ) {
     return roundMoney(clientGrandTotal * (serviceBaseAmount / opsGrandTotal));
   }
 
@@ -84,8 +91,10 @@ const getServiceBillableQuantity = (service = {}) => {
   const normalizedType = String(service?.type || "").toLowerCase();
 
   if (normalizedType === "hotel") {
-    return Math.max(1, Number(service?.nights || 1)) *
-      Math.max(1, Number(service?.rooms || 1));
+    return (
+      Math.max(1, Number(service?.nights || 1)) *
+      Math.max(1, Number(service?.rooms || 1))
+    );
   }
 
   if (
@@ -102,7 +111,10 @@ const getServiceBillableQuantity = (service = {}) => {
 const buildAllocatedServiceTotals = (services = [], targetTotal = 0) => {
   const roundedTargetTotal = roundMoney(targetTotal);
   const serviceTotals = services.map(getServiceStoredTotal);
-  const serviceTotalBase = serviceTotals.reduce((sum, value) => sum + Number(value || 0), 0);
+  const serviceTotalBase = serviceTotals.reduce(
+    (sum, value) => sum + Number(value || 0),
+    0,
+  );
 
   if (roundedTargetTotal <= 0 || serviceTotalBase <= 0) {
     return services.map(() => null);
@@ -115,7 +127,8 @@ const buildAllocatedServiceTotals = (services = [], targetTotal = 0) => {
     }
 
     const allocatedAmount = roundMoney(
-      roundedTargetTotal * (Number(serviceTotals[index] || 0) / serviceTotalBase),
+      roundedTargetTotal *
+        (Number(serviceTotals[index] || 0) / serviceTotalBase),
     );
     allocatedTotal += allocatedAmount;
     return allocatedAmount;
@@ -140,18 +153,24 @@ const applyAlignedServiceTotal = (service = {}, alignedTotal = null) => {
 
 const resolveQuotationServiceType = (service = {}) => {
   const explicitType = String(
-    service?.type ||
-    service?.serviceType ||
-    service?.category ||
-    "",
+    service?.type || service?.serviceType || service?.category || "",
   ).trim();
   if (explicitType) return explicitType;
 
-  if (service?.vehicleType || service?.usageType || service?.passengerCapacity) {
+  if (
+    service?.vehicleType ||
+    service?.usageType ||
+    service?.passengerCapacity
+  ) {
     return "transfer";
   }
 
-  if (service?.hotelName || service?.roomType || service?.rooms || service?.nights) {
+  if (
+    service?.hotelName ||
+    service?.roomType ||
+    service?.rooms ||
+    service?.nights
+  ) {
     return "hotel";
   }
 
@@ -162,9 +181,12 @@ const resolveQuotationServiceType = (service = {}) => {
 };
 
 const getQuotationServiceTypeLabel = (service = {}) => {
-  const normalizedType = String(resolveQuotationServiceType(service) || "").trim().toLowerCase();
+  const normalizedType = String(resolveQuotationServiceType(service) || "")
+    .trim()
+    .toLowerCase();
   if (normalizedType === "hotel") return "Hotel";
-  if (["transfer", "transport", "car"].includes(normalizedType)) return "Transport";
+  if (["transfer", "transport", "car"].includes(normalizedType))
+    return "Transport";
   if (normalizedType === "activity") return "Activity";
   if (normalizedType === "sightseeing") return "Sightseeing";
   return "Service";
@@ -189,7 +211,10 @@ const resolveQuotationServiceName = (service = {}, index = 0) => {
     .map((item) => String(item || "").trim())
     .find(Boolean);
 
-  return resolvedName || `${getQuotationServiceTypeLabel(service)} Service ${index + 1}`;
+  return (
+    resolvedName ||
+    `${getQuotationServiceTypeLabel(service)} Service ${index + 1}`
+  );
 };
 
 const isGeneratedServiceLabel = (value = "") => {
@@ -212,14 +237,17 @@ const buildDisplayServiceQuantityLabel = (service = {}) => {
   if (normalizedType === "hotel") {
     if (Number(service?.nights || 0) > 0) details.push(`${service.nights}N`);
     if (Number(service?.rooms || 0) > 0) {
-      details.push(`${service.rooms} Room${Number(service.rooms) > 1 ? "s" : ""}`);
+      details.push(
+        `${service.rooms} Room${Number(service.rooms) > 1 ? "s" : ""}`,
+      );
     }
     if (Number(service?.pax || 0) > 0) details.push(`${service.pax} Pax`);
     return details.join(" | ");
   }
 
   if (["transfer", "transport", "car"].includes(normalizedType)) {
-    if (service?.usageType) details.push(String(service.usageType).replace(/-/g, " "));
+    if (service?.usageType)
+      details.push(String(service.usageType).replace(/-/g, " "));
     if (Number(service?.passengerCapacity || 0) > 0) {
       details.push(`${service.passengerCapacity} Pax`);
     } else if (Number(service?.pax || 0) > 0) {
@@ -243,7 +271,9 @@ const buildDisplayServiceDescription = (service = {}) => {
   const normalizedType = String(resolveQuotationServiceType(service) || "")
     .trim()
     .toLowerCase();
-  const explicitDescription = String(service?.description || service?.particulars || "")
+  const explicitDescription = String(
+    service?.description || service?.particulars || "",
+  )
     .replace(/\|/g, " | ")
     .trim();
 
@@ -307,7 +337,9 @@ const hasUsableQuotationServiceDetails = (service = {}) => {
   });
 
   return Boolean(
-    (name && !generatedFallbackNames.has(name) && !isGeneratedServiceLabel(name)) ||
+    (name &&
+      !generatedFallbackNames.has(name) &&
+      !isGeneratedServiceLabel(name)) ||
     hasExplicitName ||
     String(service?.city || "").trim() ||
     String(service?.country || "").trim() ||
@@ -322,7 +354,11 @@ const mergeServiceDetailsWithPricing = (service = {}, detailSource = null) => {
     ...detailSource,
     ...service,
     type: service.type || detailSource.type,
-    title: service.title || detailSource.title || detailSource.serviceName || detailSource.name,
+    title:
+      service.title ||
+      detailSource.title ||
+      detailSource.serviceName ||
+      detailSource.name,
     serviceName: service.serviceName || detailSource.serviceName,
     name: service.name || detailSource.name,
     hotelName: service.hotelName || detailSource.hotelName,
@@ -331,7 +367,11 @@ const mergeServiceDetailsWithPricing = (service = {}, detailSource = null) => {
     transferName: service.transferName || detailSource.transferName,
     city: service.city || detailSource.city,
     country: service.country || detailSource.country,
-    description: service.description || service.particulars || detailSource.description || detailSource.particulars,
+    description:
+      service.description ||
+      service.particulars ||
+      detailSource.description ||
+      detailSource.particulars,
     serviceDate: service.serviceDate || detailSource.serviceDate,
     roomCategory: service.roomCategory || detailSource.roomCategory,
     roomType: service.roomType || detailSource.roomType,
@@ -339,7 +379,8 @@ const mergeServiceDetailsWithPricing = (service = {}, detailSource = null) => {
     bedType: service.bedType || detailSource.bedType,
     vehicleType: service.vehicleType || detailSource.vehicleType,
     usageType: service.usageType || detailSource.usageType,
-    passengerCapacity: service.passengerCapacity || detailSource.passengerCapacity,
+    passengerCapacity:
+      service.passengerCapacity || detailSource.passengerCapacity,
     luggageCapacity: service.luggageCapacity || detailSource.luggageCapacity,
     rooms: service.rooms || detailSource.rooms,
     nights: service.nights || detailSource.nights,
@@ -362,28 +403,34 @@ const enrichQuotationServicesWithDetails = async (
 ) => {
   if (!services.length) return services;
 
-  const needsDetails = services.some((service) => !hasUsableQuotationServiceDetails(service));
+  const needsDetails = services.some(
+    (service) => !hasUsableQuotationServiceDetails(service),
+  );
   if (!needsDetails) return services;
 
   const quotations = Array.isArray(cachedSources.quotations)
     ? cachedSources.quotations
     : await Quotation.find({ queryId })
-      .sort({ createdAt: -1 })
-      .select("services")
-      .lean();
+        .sort({ createdAt: -1 })
+        .select("services")
+        .lean();
   const voucherRows = Array.isArray(cachedSources.vouchers)
     ? cachedSources.vouchers
     : await Voucher.find({ query: queryId })
-      .sort({ createdAt: -1 })
-      .select("services")
-      .lean();
+        .sort({ createdAt: -1 })
+        .select("services")
+        .lean();
   const candidateServices = [
     ...extraDetailSources,
     ...voucherRows.flatMap((voucher) =>
-      Array.isArray(voucher?.services) ? voucher.services.map(normalizeDetailCandidateService) : [],
+      Array.isArray(voucher?.services)
+        ? voucher.services.map(normalizeDetailCandidateService)
+        : [],
     ),
     ...quotations.flatMap((quotation) =>
-      Array.isArray(quotation?.services) ? quotation.services.map(normalizeDetailCandidateService) : [],
+      Array.isArray(quotation?.services)
+        ? quotation.services.map(normalizeDetailCandidateService)
+        : [],
     ),
   ];
 
@@ -396,13 +443,15 @@ const enrichQuotationServicesWithDetails = async (
       candidateServices.find(
         (candidate) =>
           hasUsableQuotationServiceDetails(candidate) &&
-          String(candidate?.serviceId || candidate?._id || "").trim() === serviceId,
+          String(candidate?.serviceId || candidate?._id || "").trim() ===
+            serviceId,
       );
     const detailByIndex = quotations
       .map((quotation) => quotation?.services?.[index])
       .find((candidate) => hasUsableQuotationServiceDetails(candidate));
-    const detailByCandidateIndex = candidateServices
-      .filter((candidate) => hasUsableQuotationServiceDetails(candidate))[index];
+    const detailByCandidateIndex = candidateServices.filter((candidate) =>
+      hasUsableQuotationServiceDetails(candidate),
+    )[index];
 
     return mergeServiceDetailsWithPricing(
       service,
@@ -415,11 +464,28 @@ const getServiceDetailScore = (service = {}) => {
   let score = 0;
 
   if (hasUsableQuotationServiceDetails(service)) score += 10;
-  if (String(service?.city || "").trim() || String(service?.country || "").trim()) score += 4;
-  if (String(service?.description || service?.particulars || "").trim()) score += 4;
-  if (["hotel", "transfer", "transport", "car", "activity", "sightseeing"].includes(
-    String(resolveQuotationServiceType(service) || "").trim().toLowerCase(),
-  )) score += 2;
+  if (
+    String(service?.city || "").trim() ||
+    String(service?.country || "").trim()
+  )
+    score += 4;
+  if (String(service?.description || service?.particulars || "").trim())
+    score += 4;
+  if (
+    [
+      "hotel",
+      "transfer",
+      "transport",
+      "car",
+      "activity",
+      "sightseeing",
+    ].includes(
+      String(resolveQuotationServiceType(service) || "")
+        .trim()
+        .toLowerCase(),
+    )
+  )
+    score += 2;
   if (Number(service?.total || service?.totalInInr || 0) > 0) score += 1;
 
   return score;
@@ -431,7 +497,10 @@ const getQuotationDetailScore = (quotation = {}) =>
     0,
   );
 
-const getBestServiceDetailQuotation = async (queryId, currentQuotation = null) => {
+const getBestServiceDetailQuotation = async (
+  queryId,
+  currentQuotation = null,
+) => {
   const quotations = await Quotation.find({ queryId })
     .sort({ createdAt: -1 })
     .select("services createdAt")
@@ -440,26 +509,39 @@ const getBestServiceDetailQuotation = async (queryId, currentQuotation = null) =
   const candidates = [
     currentQuotation?.toObject ? currentQuotation.toObject() : currentQuotation,
     ...quotations,
-  ].filter((quotation) => Array.isArray(quotation?.services) && quotation.services.length);
+  ].filter(
+    (quotation) =>
+      Array.isArray(quotation?.services) && quotation.services.length,
+  );
 
-  return candidates.reduce((best, quotation) =>
-    getQuotationDetailScore(quotation) > getQuotationDetailScore(best)
-      ? quotation
-      : best,
-    candidates[0] || null);
+  return candidates.reduce(
+    (best, quotation) =>
+      getQuotationDetailScore(quotation) > getQuotationDetailScore(best)
+        ? quotation
+        : best,
+    candidates[0] || null,
+  );
 };
 
-const getBestServiceDetailQuotationFromList = (quotations = [], currentQuotation = null) => {
+const getBestServiceDetailQuotationFromList = (
+  quotations = [],
+  currentQuotation = null,
+) => {
   const candidates = [
     currentQuotation?.toObject ? currentQuotation.toObject() : currentQuotation,
     ...quotations,
-  ].filter((quotation) => Array.isArray(quotation?.services) && quotation.services.length);
+  ].filter(
+    (quotation) =>
+      Array.isArray(quotation?.services) && quotation.services.length,
+  );
 
-  return candidates.reduce((best, quotation) =>
-    getQuotationDetailScore(quotation) > getQuotationDetailScore(best)
-      ? quotation
-      : best,
-    candidates[0] || null);
+  return candidates.reduce(
+    (best, quotation) =>
+      getQuotationDetailScore(quotation) > getQuotationDetailScore(best)
+        ? quotation
+        : best,
+    candidates[0] || null,
+  );
 };
 
 const normalizeTravelerDocument = (document = {}) => ({
@@ -471,16 +553,27 @@ const normalizeTravelerDocument = (document = {}) => ({
 });
 
 const getTravelerDocumentKey = (documentType = "Passport") => {
-  const normalizedType = String(documentType || "").trim().toLowerCase();
-  return normalizedType.includes("gov") || normalizedType.includes("id") || normalizedType.includes("aad") || normalizedType.includes("pan")
+  const normalizedType = String(documentType || "")
+    .trim()
+    .toLowerCase();
+  return normalizedType.includes("gov") ||
+    normalizedType.includes("id") ||
+    normalizedType.includes("aad") ||
+    normalizedType.includes("pan")
     ? "governmentId"
     : "passport";
 };
 
-const normalizeTravelerDocuments = (documents = {}, legacyDocument = {}, legacyDocumentType = "Passport") => {
+const normalizeTravelerDocuments = (
+  documents = {},
+  legacyDocument = {},
+  legacyDocumentType = "Passport",
+) => {
   const normalizedDocuments = {
     passport: normalizeTravelerDocument(documents?.passport),
-    governmentId: normalizeTravelerDocument(documents?.governmentId || documents?.govtId),
+    governmentId: normalizeTravelerDocument(
+      documents?.governmentId || documents?.govtId,
+    ),
   };
 
   const normalizedLegacyDocument = normalizeTravelerDocument(legacyDocument);
@@ -490,7 +583,8 @@ const normalizeTravelerDocuments = (documents = {}, legacyDocument = {}, legacyD
     !normalizedDocuments.passport.url &&
     !normalizedDocuments.governmentId.url
   ) {
-    normalizedDocuments[getTravelerDocumentKey(legacyDocumentType)] = normalizedLegacyDocument;
+    normalizedDocuments[getTravelerDocumentKey(legacyDocumentType)] =
+      normalizedLegacyDocument;
   }
 
   return normalizedDocuments;
@@ -501,31 +595,36 @@ const getTravelerDocumentVerification = (query = {}) => ({
   submittedAt: query?.travelerDocumentVerification?.submittedAt || null,
   reviewedAt: query?.travelerDocumentVerification?.reviewedAt || null,
   reviewedBy: query?.travelerDocumentVerification?.reviewedBy || null,
-  reviewedByName: String(query?.travelerDocumentVerification?.reviewedByName || "").trim(),
-  rejectionReason: String(query?.travelerDocumentVerification?.rejectionReason || "").trim(),
-  rejectionRemarks: String(query?.travelerDocumentVerification?.rejectionRemarks || "").trim(),
+  reviewedByName: String(
+    query?.travelerDocumentVerification?.reviewedByName || "",
+  ).trim(),
+  rejectionReason: String(
+    query?.travelerDocumentVerification?.rejectionReason || "",
+  ).trim(),
+  rejectionRemarks: String(
+    query?.travelerDocumentVerification?.rejectionRemarks || "",
+  ).trim(),
   issues: Array.isArray(query?.travelerDocumentVerification?.issues)
     ? query.travelerDocumentVerification.issues.map((issue) => ({
-      travelerId: String(issue?.travelerId || "").trim(),
-      travelerName: String(issue?.travelerName || "").trim(),
-      documentKey: String(issue?.documentKey || "").trim(),
-      documentLabel: String(issue?.documentLabel || "").trim(),
-    }))
+        travelerId: String(issue?.travelerId || "").trim(),
+        travelerName: String(issue?.travelerName || "").trim(),
+        documentKey: String(issue?.documentKey || "").trim(),
+        documentLabel: String(issue?.documentLabel || "").trim(),
+      }))
     : [],
 });
-
-
-
 
 /* ======================= HOTEL CONTROLLERS ================================= */
 
 //----------------------- Create Hotel ---------------------------
 export const createHotel = async (req, res, next) => {
   try {
+    const { hotelName, name, serviceName, city, country, pricePerNight, price, roomType, mealPlan, validFrom, validTo } = req.body;
 
-    const { hotelName, city, pricePerNight, roomType, mealPlan } = req.body;
+    const resolvedHotelName = hotelName || name || serviceName;
+    const resolvedPrice = Number(pricePerNight || price || req.body.basePrice || 0);
 
-    if (!hotelName || !city || !pricePerNight) {
+    if (!resolvedHotelName || !city || !resolvedPrice) {
       const error = new Error("hotelName, city and pricePerNight are required");
       error.statusCode = 400;
       return next(error);
@@ -533,63 +632,77 @@ export const createHotel = async (req, res, next) => {
 
     // duplicate check
     const existingHotel = await Hotel.findOne({
-      hotelName,
-      city,
-      supplier: req.user.id
+      serviceName: { $regex: new RegExp(`^${resolvedHotelName}`, "i") },
+      city: { $regex: new RegExp(`^${city}`, "i") },
+      supplier: req.user.id,
     });
 
     if (existingHotel) {
-      const error = new Error("Hotel already exists for this supplier in this city");
-      error.statusCode = 409;
-      return next(error);
+      return res.status(200).json({
+        success: true,
+        message: "Hotel already exists",
+        data: existingHotel,
+      });
     }
 
-    const serviceName = `${hotelName} ${roomType || ""} ${mealPlan || ""}`;
+    const generatedServiceName = serviceName || `${resolvedHotelName} ${roomType || ""} ${mealPlan || ""}`.trim();
 
     const hotel = await Hotel.create({
       ...req.body,
       supplier: req.user.id,
-      supplierName: req.body.supplierName || "",
-      serviceName,
-      serviceCategory: "hotel"
+      supplierName: req.body.supplierName || req.user?.name || req.user?.companyName || "DMC Partner",
+      serviceName: generatedServiceName,
+      serviceCategory: "hotel",
+      country: country || "India",
+      city,
+      validFrom: validFrom || new Date(),
+      validTo: validTo || new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+      hotels: req.body.hotels || [
+        {
+          hotelName: resolvedHotelName,
+          hotelCategory: req.body.hotelCategory || "5 Star",
+          supplierName: req.body.supplierName || req.user?.name || req.user?.companyName || "DMC Partner",
+          rooms: [
+            {
+              roomType: roomType || "Standard Room",
+              price: resolvedPrice,
+              basePrice: resolvedPrice,
+              mealPlan: mealPlan || "EP",
+            },
+          ],
+        },
+      ],
     });
 
     res.status(201).json({
       success: true,
       message: "Hotel created successfully",
-      data: hotel
+      data: hotel,
     });
-
   } catch (error) {
     next(error);
   }
 };
-
 
 //------------------- GET ALL HOTELS  Controller -----------------------
 
 export const getHotels = async (req, res, next) => {
   try {
-
     const hotels = await Hotel.find().sort({ createdAt: -1 });
 
     res.status(200).json({
       success: true,
       count: hotels.length,
-      data: hotels
+      data: hotels,
     });
-
   } catch (error) {
     next(error);
   }
 };
 
-
-
 // GET SINGLE HOTEL
 export const getHotelById = async (req, res, next) => {
   try {
-
     const hotel = await Hotel.findById(req.params.id);
 
     if (!hotel) {
@@ -600,20 +713,16 @@ export const getHotelById = async (req, res, next) => {
 
     res.status(200).json({
       success: true,
-      data: hotel
+      data: hotel,
     });
-
   } catch (error) {
     next(error);
   }
 };
 
-
-
 // UPDATE HOTEL
 export const updateHotel = async (req, res, next) => {
   try {
-
     const hotel = await Hotel.findById(req.params.id);
 
     if (!hotel) {
@@ -625,15 +734,14 @@ export const updateHotel = async (req, res, next) => {
     const updatedHotel = await Hotel.findByIdAndUpdate(
       req.params.id,
       req.body,
-      { new: true, runValidators: true }
+      { new: true, runValidators: true },
     );
 
     res.status(200).json({
       success: true,
       message: "Hotel updated successfully",
-      data: updatedHotel
+      data: updatedHotel,
     });
-
   } catch (error) {
     next(error);
   }
@@ -643,7 +751,6 @@ export const updateHotel = async (req, res, next) => {
 
 export const deleteHotel = async (req, res, next) => {
   try {
-
     const hotel = await Hotel.findById(req.params.id);
 
     if (!hotel) {
@@ -656,37 +763,26 @@ export const deleteHotel = async (req, res, next) => {
 
     res.status(200).json({
       success: true,
-      message: "Hotel deleted successfully"
+      message: "Hotel deleted successfully",
     });
-
   } catch (error) {
     next(error);
   }
 };
 
-
-
-
 /* ============================= ACTIVITY CONTROLLERS ================================== */
-
 
 //---------- CREATE ACTIVITY-------------
 export const createActivity = async (req, res, next) => {
   try {
-    const {
-      serviceName,
-      name,
-      country,
-      city,
-      currency,
-      validFrom,
-      validTo
-    } = req.body;
+    const { serviceName, name, country, city, currency, validFrom, validTo, price, adultPrice } =
+      req.body;
 
     const resolvedServiceName = serviceName || name;
+    const resolvedPrice = Number(adultPrice !== undefined ? adultPrice : (price || req.body.basePrice || 0));
 
     // validation
-    if (!resolvedServiceName || !country || !city || !validFrom || !validTo) {
+    if (!resolvedServiceName || !city) {
       const error = new Error("Required activity fields missing");
       error.statusCode = 400;
       return next(error);
@@ -694,45 +790,57 @@ export const createActivity = async (req, res, next) => {
 
     // duplicate check
     const existingActivity = await Activity.findOne({
-      serviceName: resolvedServiceName,
-      city,
-      supplier: req.user.id
+      serviceName: { $regex: new RegExp(`^${resolvedServiceName}`, "i") },
+      city: { $regex: new RegExp(`^${city}`, "i") },
+      supplier: req.user.id,
     });
 
     if (existingActivity) {
-      const error = new Error("Activity already exists for this supplier in this city");
-      error.statusCode = 409;
-      return next(error);
+      return res.status(200).json({
+        success: true,
+        message: "Activity already exists",
+        data: existingActivity,
+      });
     }
 
-    let tourTypes = Array.isArray(req.body.tourTypes) && req.body.tourTypes.length > 0
-      ? req.body.tourTypes.map(t => ({
-          tourType: t.tourType || "Group Tour",
-          price: Number(t.price ?? t.adultPrice ?? 0) || 0,
-          pricingBasis: t.pricingBasis || "Per Pax",
-          maxPax: t.maxPax || (t.tourType?.toLowerCase().includes("group") && !t.tourType?.toLowerCase().includes("per group") ? "N/A (Shared Group)" : "Up to 4 Pax"),
-          description: t.description || "",
-        }))
-      : [
-          {
-            tourType: req.body.tourType || "Group Tour",
-            price: Number(req.body.price ?? req.body.adultPrice ?? 0) || 0,
-            pricingBasis: req.body.pricingBasis || "Per Pax",
-            maxPax: req.body.maxPax || "N/A (Shared Group)",
-            description: req.body.description || "",
-          }
-        ];
+    let tourTypes =
+      Array.isArray(req.body.tourTypes) && req.body.tourTypes.length > 0
+        ? req.body.tourTypes.map((t) => ({
+            tourType: t.tourType || "Group Tour",
+            price: Number(t.price ?? t.adultPrice ?? resolvedPrice) || 0,
+            adultPrice: Number(t.adultPrice ?? t.price ?? resolvedPrice) || 0,
+            childPrice: Number(t.childPrice ?? req.body.childPrice ?? 0) || 0,
+            pricingBasis: t.pricingBasis || "Per Pax",
+            maxPax:
+              t.maxPax ||
+              (t.tourType?.toLowerCase().includes("group") &&
+              !t.tourType?.toLowerCase().includes("per group")
+                ? "N/A (Shared Group)"
+                : "Up to 4 Pax"),
+            description: t.description || "",
+          }))
+        : [
+            {
+              tourType: req.body.tourType || "Group Tour",
+              price: resolvedPrice,
+              adultPrice: resolvedPrice,
+              childPrice: Number(req.body.childPrice || 0),
+              pricingBasis: req.body.pricingBasis || "Per Pax",
+              maxPax: req.body.maxPax || "N/A (Shared Group)",
+              description: req.body.description || "",
+            },
+          ];
 
     const activity = await Activity.create({
       serviceName: resolvedServiceName,
       serviceCategory: "activity",
       supplier: req.user.id,
-      supplierName: req.body.supplierName || "",
-      country,
+      supplierName: req.body.supplierName || req.user?.name || req.user?.companyName || "DMC Partner",
+      country: country || "India",
       city,
       currency: currency || "INR",
-      validFrom,
-      validTo,
+      validFrom: validFrom || new Date(),
+      validTo: validTo || new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
       status: "active",
       tourTypes,
     });
@@ -740,133 +848,144 @@ export const createActivity = async (req, res, next) => {
     res.status(201).json({
       success: true,
       message: "Activity created successfully",
-      data: activity
+      data: activity,
     });
-
   } catch (error) {
     next(error);
   }
 };
-
 
 //------------ All GET ACTIVITIES -----------------------------
 
 export const getActivities = async (req, res, next) => {
   try {
-
     const activities = await Activity.find();
 
     res.status(200).json({
       success: true,
       count: activities.length,
-      data: activities
+      data: activities,
     });
-
   } catch (error) {
     next(error);
   }
 };
-
 
 /* ======================================== TRANSFER CONTROLLERS ================================== */
 
 //-------------------------- CREATE TRANSFER-----------------------------------
 export const createTransfer = async (req, res, next) => {
   try {
-
     const {
       serviceName,
+      name,
       country,
       city,
       vehicleType,
       passengerCapacity,
       luggageCapacity,
       price,
+      basePrice,
       currency,
       usageType,
+      usage,
       validFrom,
-      validTo
+      validTo,
     } = req.body;
 
+    const resolvedServiceName = serviceName || name || "Transfer Cab Service";
+    const resolvedPrice = Number(price || basePrice || 0);
+
     // validation
-    if (!serviceName || !country || !city || !vehicleType || !price || !validFrom || !validTo) {
+    if (!resolvedServiceName || !city) {
       const error = new Error("Required transfer fields missing");
       error.statusCode = 400;
       return next(error);
     }
 
-    // duplicate check 
+    // duplicate check
     const existingTransfer = await Transfer.findOne({
-      city,
-      vehicleType,
-      usageType,
-      supplier: req.user.id
+      serviceName: { $regex: new RegExp(`^${resolvedServiceName}`, "i") },
+      city: { $regex: new RegExp(`^${city}`, "i") },
+      supplier: req.user.id,
     });
 
     if (existingTransfer) {
-      const error = new Error(
-        "Transfer already exists for this vehicle type in this city"
-      );
-      error.statusCode = 409;
-      return next(error);
+      return res.status(200).json({
+        success: true,
+        message: "Transfer already exists",
+        data: existingTransfer,
+      });
     }
 
     const transfer = await Transfer.create({
       ...req.body,
+      serviceName: resolvedServiceName,
+      country: country || "India",
+      city,
+      currency: currency || "INR",
       supplier: req.user.id,
-      supplierName: req.body.supplierName || "",
-      serviceCategory: "transport"
+      supplierName: req.body.supplierName || req.user?.name || req.user?.companyName || "DMC Partner",
+      serviceCategory: "transport",
+      validFrom: validFrom || new Date(),
+      validTo: validTo || new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+      vehicles: req.body.vehicles || [
+        {
+          vehicleType: vehicleType || "Sedan",
+          passengerCapacity: Number(passengerCapacity || 4),
+          luggageCapacity: Number(luggageCapacity || 2),
+          description: req.body.description || "",
+          usageTypes: {
+            pointToPoint: [
+              {
+                name: usageType || usage || "One Way / Airport Transfer",
+                usageType: "point-to-point",
+                price: resolvedPrice,
+              },
+            ],
+            hourly: [],
+          },
+        },
+      ],
     });
 
     res.status(201).json({
       success: true,
       message: "Transfer created successfully",
-      data: transfer
+      data: transfer,
     });
-
   } catch (error) {
     next(error);
   }
 };
 
-
-
 //---------------- GET TRANSFERS -------------------
 export const getTransfers = async (req, res, next) => {
   try {
-
     const transfers = await Transfer.find();
 
     res.status(200).json({
       success: true,
       count: transfers.length,
-      data: transfers
+      data: transfers,
     });
-
   } catch (error) {
     next(error);
   }
 };
 
-
 //========================================= CREATE SIGHTSEEING ===================================
 
 export const createSightseeing = async (req, res, next) => {
   try {
-    const {
-      serviceName,
-      name,
-      country,
-      city,
-      currency,
-      validFrom,
-      validTo
-    } = req.body;
+    const { serviceName, name, country, city, currency, validFrom, validTo, price, adultPrice } =
+      req.body;
 
     const resolvedServiceName = serviceName || name;
+    const resolvedPrice = Number(adultPrice !== undefined ? adultPrice : (price || req.body.basePrice || 0));
 
     // validation
-    if (!resolvedServiceName || !country || !city || !validFrom || !validTo) {
+    if (!resolvedServiceName || !city) {
       const error = new Error("Required sightseeing fields missing");
       error.statusCode = 400;
       return next(error);
@@ -874,47 +993,57 @@ export const createSightseeing = async (req, res, next) => {
 
     // duplicate check
     const existingSightseeing = await Sightseeing.findOne({
-      serviceName: resolvedServiceName,
-      city,
-      supplier: req.user.id
+      serviceName: { $regex: new RegExp(`^${resolvedServiceName}`, "i") },
+      city: { $regex: new RegExp(`^${city}`, "i") },
+      supplier: req.user.id,
     });
 
     if (existingSightseeing) {
-      const error = new Error(
-        "Sightseeing already exists for this supplier in this city"
-      );
-      error.statusCode = 409;
-      return next(error);
+      return res.status(200).json({
+        success: true,
+        message: "Sightseeing already exists",
+        data: existingSightseeing,
+      });
     }
 
-    let tourTypes = Array.isArray(req.body.tourTypes) && req.body.tourTypes.length > 0
-      ? req.body.tourTypes.map(t => ({
-          tourType: t.tourType || "Group Tour",
-          price: Number(t.price ?? t.adultPrice ?? 0) || 0,
-          pricingBasis: t.pricingBasis || "Per Pax",
-          maxPax: t.maxPax || (t.tourType?.toLowerCase().includes("group") && !t.tourType?.toLowerCase().includes("per group") ? "N/A (Shared Group)" : "Up to 4 Pax"),
-          description: t.description || "",
-        }))
-      : [
-          {
-            tourType: req.body.tourType || "Group Tour",
-            price: Number(req.body.price ?? 0) || 0,
-            pricingBasis: req.body.pricingBasis || "Per Pax",
-            maxPax: req.body.maxPax || "N/A (Shared Group)",
-            description: req.body.description || "",
-          }
-        ];
+    let tourTypes =
+      Array.isArray(req.body.tourTypes) && req.body.tourTypes.length > 0
+        ? req.body.tourTypes.map((t) => ({
+            tourType: t.tourType || "Group Tour",
+            price: Number(t.price ?? t.adultPrice ?? resolvedPrice) || 0,
+            adultPrice: Number(t.adultPrice ?? t.price ?? resolvedPrice) || 0,
+            childPrice: Number(t.childPrice ?? req.body.childPrice ?? 0) || 0,
+            pricingBasis: t.pricingBasis || "Per Pax",
+            maxPax:
+              t.maxPax ||
+              (t.tourType?.toLowerCase().includes("group") &&
+              !t.tourType?.toLowerCase().includes("per group")
+                ? "N/A (Shared Group)"
+                : "Up to 4 Pax"),
+            description: t.description || "",
+          }))
+        : [
+            {
+              tourType: req.body.tourType || "Group Tour",
+              price: resolvedPrice,
+              adultPrice: resolvedPrice,
+              childPrice: Number(req.body.childPrice || 0),
+              pricingBasis: req.body.pricingBasis || "Per Pax",
+              maxPax: req.body.maxPax || "N/A (Shared Group)",
+              description: req.body.description || "",
+            },
+          ];
 
     const sightseeing = await Sightseeing.create({
       serviceName: resolvedServiceName,
       serviceCategory: "sightseeing",
       supplier: req.user.id,
-      supplierName: req.body.supplierName || "",
-      country,
+      supplierName: req.body.supplierName || req.user?.name || req.user?.companyName || "DMC Partner",
+      country: country || "India",
       city,
       currency: currency || "INR",
-      validFrom,
-      validTo,
+      validFrom: validFrom || new Date(),
+      validTo: validTo || new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
       status: "active",
       tourTypes,
     });
@@ -922,28 +1051,26 @@ export const createSightseeing = async (req, res, next) => {
     res.status(201).json({
       success: true,
       message: "Sightseeing created successfully",
-      data: sightseeing
+      data: sightseeing,
     });
-
   } catch (error) {
     next(error);
   }
 };
 
-
 //---------------- GET Sightseeing  -------------------
 export const getSightseeing = async (req, res, next) => {
   try {
-
-    const sightseeing = await Sightseeing.find()
-      .populate("supplier", "name email");
+    const sightseeing = await Sightseeing.find().populate(
+      "supplier",
+      "name email",
+    );
 
     res.status(200).json({
       success: true,
       count: sightseeing.length,
-      data: sightseeing
+      data: sightseeing,
     });
-
   } catch (error) {
     next(error);
   }
@@ -971,30 +1098,33 @@ export const createPackage = async (req, res, next) => {
       sightseeing,
       basePrice,
       tax,
-      price
+      price,
     } = req.body;
 
     const finalPrice = Number(price || basePrice || 0);
 
     if (!title || !destination || finalPrice <= 0) {
-      const error = new Error("Title, destination and package price are required");
+      const error = new Error(
+        "Title, destination and package price are required",
+      );
       error.statusCode = 400;
       return next(error);
     }
 
     // Capture creator info and audit log
     const createdByUserId = req.user?._id || req.user?.id;
-    const creatorName = req.user?.name || req.user?.fullName || "Operations Member";
+    const creatorName =
+      req.user?.name || req.user?.fullName || "Operations Member";
     const creatorEmail = req.user?.email || "";
     const creatorRole = req.user?.role || "operations";
     const creatorRoleLabel =
       creatorRole === "operations"
         ? "OPS Team Member"
         : creatorRole === "operation_manager"
-        ? "OPS Manager"
-        : creatorRole === "admin"
-        ? "Admin"
-        : creatorRole;
+          ? "OPS Manager"
+          : creatorRole === "admin"
+            ? "Admin"
+            : creatorRole;
 
     const pkg = await Package.create({
       title: String(title || "").trim(),
@@ -1005,7 +1135,9 @@ export const createPackage = async (req, res, next) => {
       description: String(description || "").trim(),
       inclusions: String(inclusions || "").trim(),
       exclusions: String(exclusions || "").trim(),
-      dayWiseItinerary: Array.isArray(dayWiseItinerary) ? dayWiseItinerary : (String(dayWiseItinerary || "").trim() || []),
+      dayWiseItinerary: Array.isArray(dayWiseItinerary)
+        ? dayWiseItinerary
+        : String(dayWiseItinerary || "").trim() || [],
       termsAndConditions: Array.isArray(termsAndConditions)
         ? termsAndConditions
         : String(termsAndConditions || "").trim(),
@@ -1046,9 +1178,15 @@ export const createPackage = async (req, res, next) => {
             days: pkg.days,
             price: finalPrice,
             hotelsCount: Array.isArray(pkg.hotels) ? pkg.hotels.length : 0,
-            activitiesCount: Array.isArray(pkg.activities) ? pkg.activities.length : 0,
-            transfersCount: Array.isArray(pkg.transfers) ? pkg.transfers.length : 0,
-            sightseeingCount: Array.isArray(pkg.sightseeing) ? pkg.sightseeing.length : 0,
+            activitiesCount: Array.isArray(pkg.activities)
+              ? pkg.activities.length
+              : 0,
+            transfersCount: Array.isArray(pkg.transfers)
+              ? pkg.transfers.length
+              : 0,
+            sightseeingCount: Array.isArray(pkg.sightseeing)
+              ? pkg.sightseeing.length
+              : 0,
           },
         },
       });
@@ -1085,27 +1223,29 @@ export const createPackage = async (req, res, next) => {
         await Notification.insertMany(notifPayloads);
       }
     } catch (logErr) {
-      console.error("OpsActivityLog / Notification error on package create:", logErr);
+      console.error(
+        "OpsActivityLog / Notification error on package create:",
+        logErr,
+      );
     }
 
     res.status(201).json({
       success: true,
       message: "Package template created successfully",
-      data: pkg
+      data: pkg,
     });
-
   } catch (error) {
     next(error);
   }
 };
 
-
-
 //----------- GET PACKAGES ---------------------------
 
 export const getPackages = async (req, res, next) => {
   try {
-    const userRole = String(req.user?.role || "").toLowerCase().trim();
+    const userRole = String(req.user?.role || "")
+      .toLowerCase()
+      .trim();
     const userId = String(req.user?._id || req.user?.id || "");
 
     const packages = await Package.find()
@@ -1124,14 +1264,17 @@ export const getPackages = async (req, res, next) => {
     if (userRole === "operations" || userRole === "ops") {
       const filtered = packages.filter((pkg) => {
         const pkgCreatorId = String(
-          pkg.createdBy?._id || pkg.createdBy || pkg.supplier?._id || pkg.supplier || ""
+          pkg.createdBy?._id ||
+            pkg.createdBy ||
+            pkg.supplier?._id ||
+            pkg.supplier ||
+            "",
         );
         const pkgCreatorRole = String(
-          pkg.creatorRole ||
-          pkg.createdBy?.role ||
-          pkg.supplier?.role ||
-          ""
-        ).toLowerCase().trim();
+          pkg.creatorRole || pkg.createdBy?.role || pkg.supplier?.role || "",
+        )
+          .toLowerCase()
+          .trim();
 
         // 1. If created by the current OPS member -> ALWAYS SHOW
         if (pkgCreatorId && pkgCreatorId === userId) {
@@ -1169,9 +1312,8 @@ export const getPackages = async (req, res, next) => {
 
     res.status(200).json({
       success: true,
-      data: packages
+      data: packages,
     });
-
   } catch (error) {
     next(error);
   }
@@ -1182,26 +1324,34 @@ export const getPackages = async (req, res, next) => {
 export const deletePackage = async (req, res, next) => {
   try {
     const { id } = req.params;
-    const pkg = await Package.findById(id).populate("supplier", "role").populate("createdBy", "role");
+    const pkg = await Package.findById(id)
+      .populate("supplier", "role")
+      .populate("createdBy", "role");
     if (!pkg) {
       return res.status(404).json({
         success: false,
-        message: "Package template not found"
+        message: "Package template not found",
       });
     }
 
-    const userRole = String(req.user?.role || "").toLowerCase().trim();
+    const userRole = String(req.user?.role || "")
+      .toLowerCase()
+      .trim();
     const userId = String(req.user?._id || req.user?.id || "");
 
     // Regular operations members can only delete package templates created by themselves
     if (userRole === "operations" || userRole === "ops") {
       const pkgCreatorId = String(
-        pkg.createdBy?._id || pkg.createdBy || pkg.supplier?._id || pkg.supplier || ""
+        pkg.createdBy?._id ||
+          pkg.createdBy ||
+          pkg.supplier?._id ||
+          pkg.supplier ||
+          "",
       );
       if (pkgCreatorId && pkgCreatorId !== userId) {
         return res.status(403).json({
           success: false,
-          message: "You can only delete package templates created by you."
+          message: "You can only delete package templates created by you.",
         });
       }
     }
@@ -1213,23 +1363,30 @@ export const deletePackage = async (req, res, next) => {
     const duration = pkg.duration || "";
     const pkgPrice = Number(pkg.price || 0);
     const hotelsCount = Array.isArray(pkg.hotels) ? pkg.hotels.length : 0;
-    const activitiesCount = Array.isArray(pkg.activities) ? pkg.activities.length : 0;
-    const transfersCount = Array.isArray(pkg.transfers) ? pkg.transfers.length : 0;
-    const sightseeingCount = Array.isArray(pkg.sightseeing) ? pkg.sightseeing.length : 0;
+    const activitiesCount = Array.isArray(pkg.activities)
+      ? pkg.activities.length
+      : 0;
+    const transfersCount = Array.isArray(pkg.transfers)
+      ? pkg.transfers.length
+      : 0;
+    const sightseeingCount = Array.isArray(pkg.sightseeing)
+      ? pkg.sightseeing.length
+      : 0;
 
     // Capture deleting user metadata
     const deletedByUserId = req.user?._id || req.user?.id;
-    const memberName = req.user?.name || req.user?.fullName || "Operations Member";
+    const memberName =
+      req.user?.name || req.user?.fullName || "Operations Member";
     const memberEmail = req.user?.email || "";
     const memberRole = req.user?.role || "operations";
     const roleLabel =
       memberRole === "operations"
         ? "OPS Team Member"
         : memberRole === "operation_manager"
-        ? "OPS Manager"
-        : memberRole === "admin"
-        ? "Admin"
-        : memberRole;
+          ? "OPS Manager"
+          : memberRole === "admin"
+            ? "Admin"
+            : memberRole;
 
     // Delete package from database
     await Package.findByIdAndDelete(id);
@@ -1295,12 +1452,15 @@ export const deletePackage = async (req, res, next) => {
         await Notification.insertMany(notificationPayloads);
       }
     } catch (logErr) {
-      console.error("OpsActivityLog / Notification error on package delete:", logErr);
+      console.error(
+        "OpsActivityLog / Notification error on package delete:",
+        logErr,
+      );
     }
 
     res.status(200).json({
       success: true,
-      message: "Package template deleted successfully"
+      message: "Package template deleted successfully",
     });
   } catch (error) {
     next(error);
@@ -1312,7 +1472,8 @@ export const deletePackage = async (req, res, next) => {
 export const deleteUpload = async (req, res) => {
   try {
     const { id } = req.params;
-    const ownerFilter = req.user?.role === "admin" ? {} : { uploadedAuth: req.user?.id };
+    const ownerFilter =
+      req.user?.role === "admin" ? {} : { uploadedAuth: req.user?.id };
 
     const file = await UploadHistory.findOne({ _id: id, ...ownerFilter });
 
@@ -1321,10 +1482,14 @@ export const deleteUpload = async (req, res) => {
     }
 
     if (file.status === "processing") {
-      return res.status(409).json({ message: "This upload is still processing and cannot be deleted yet." });
+      return res
+        .status(409)
+        .json({
+          message: "This upload is still processing and cannot be deleted yet.",
+        });
     }
 
-    // We now allow deletion of legacy uploads. 
+    // We now allow deletion of legacy uploads.
     // The inventoryFilter below ensures we don't accidentally delete all inventory,
     // as it specifically requires `sourceUpload: file._id`, which legacy records lack.
 
@@ -1345,7 +1510,10 @@ export const deleteUpload = async (req, res) => {
           Activity.deleteMany(inventoryFilter),
           Sightseeing.deleteMany(inventoryFilter),
         ]);
-        inventoryDeleteResult = { deletedCount: activityResult.deletedCount + sightseeingResult.deletedCount };
+        inventoryDeleteResult = {
+          deletedCount:
+            activityResult.deletedCount + sightseeingResult.deletedCount,
+        };
         break;
       }
       case "package":
@@ -1366,11 +1534,10 @@ export const deleteUpload = async (req, res) => {
       message: `Deleted upload and ${Number(inventoryDeleteResult?.deletedCount || 0)} linked inventory record(s).`,
       deletedInventoryRecords: Number(inventoryDeleteResult?.deletedCount || 0),
     });
-
   } catch (error) {
     return res.status(500).json({ error: error.message });
   }
-}
+};
 
 //========================= DOWNLOAD FILE DMC BULK ==============================================
 
@@ -1384,7 +1551,9 @@ export const downloadUpload = async (req, res) => {
       return res.status(404).json({ message: "File not found in DB" });
     }
 
-    const category = String(file.category || "").toLowerCase().trim();
+    const category = String(file.category || "")
+      .toLowerCase()
+      .trim();
 
     if (category === "hotel") {
       const hotelDocs = await Hotel.find({ status: { $ne: "inactive" } })
@@ -1422,8 +1591,12 @@ export const downloadUpload = async (req, res) => {
         const blackoutDatesMap = new Map();
 
         hotelDocs.forEach((doc) => {
-          const validFromStr = doc.validFrom ? new Date(doc.validFrom).toISOString().split("T")[0] : "";
-          const validToStr = doc.validTo ? new Date(doc.validTo).toISOString().split("T")[0] : "";
+          const validFromStr = doc.validFrom
+            ? new Date(doc.validFrom).toISOString().split("T")[0]
+            : "";
+          const validToStr = doc.validTo
+            ? new Date(doc.validTo).toISOString().split("T")[0]
+            : "";
 
           (doc.hotels || []).forEach((hotel, hIdx) => {
             (hotel.rooms || []).forEach((room, rIdx) => {
@@ -1431,12 +1604,14 @@ export const downloadUpload = async (req, res) => {
               const isFirstHotelRow = rIdx === 0;
 
               hotelAoA.push([
-                isFirstServiceRow ? (doc.serviceName || "") : "",
-                isFirstHotelRow ? (hotel.supplierName || doc.supplierName || "") : "",
-                isFirstHotelRow ? (hotel.hotelName || "") : "",
-                isFirstServiceRow ? (doc.country || "") : "",
-                isFirstServiceRow ? (doc.city || "") : "",
-                isFirstHotelRow ? (hotel.hotelCategory || "5 Star") : "",
+                isFirstServiceRow ? doc.serviceName || "" : "",
+                isFirstHotelRow
+                  ? hotel.supplierName || doc.supplierName || ""
+                  : "",
+                isFirstHotelRow ? hotel.hotelName || "" : "",
+                isFirstServiceRow ? doc.country || "" : "",
+                isFirstServiceRow ? doc.city || "" : "",
+                isFirstHotelRow ? hotel.hotelCategory || "5 Star" : "",
                 room.roomCategory || "Double",
                 room.bedType || "King",
                 room.extraBedType || "None",
@@ -1448,7 +1623,7 @@ export const downloadUpload = async (req, res) => {
                 room.awebRate || 0,
                 room.cwebRate || 0,
                 room.cwoebRate || 0,
-                isFirstServiceRow ? (doc.currency || "INR") : "",
+                isFirstServiceRow ? doc.currency || "INR" : "",
                 isFirstServiceRow ? validFromStr : "",
                 isFirstServiceRow ? validToStr : "",
                 room.description || "",
@@ -1458,7 +1633,10 @@ export const downloadUpload = async (req, res) => {
           });
 
           (doc.blackoutDates || []).forEach((bo) => {
-            const key = (bo.rawPeriod || bo.startDateKey || "") + "_" + (bo.occasion || "");
+            const key =
+              (bo.rawPeriod || bo.startDateKey || "") +
+              "_" +
+              (bo.occasion || "");
             if (key && !blackoutDatesMap.has(key)) {
               blackoutDatesMap.set(key, bo);
             }
@@ -1470,11 +1648,28 @@ export const downloadUpload = async (req, res) => {
         XLSX.utils.book_append_sheet(wb, wsHotel, "Hotel Data");
 
         if (blackoutDatesMap.size > 0) {
-          const daysOfWeek = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+          const daysOfWeek = [
+            "Sunday",
+            "Monday",
+            "Tuesday",
+            "Wednesday",
+            "Thursday",
+            "Friday",
+            "Saturday",
+          ];
           const blackoutAoA = [
             ["🚫  BLACKOUT DATES — Hotel Rates Sheet (2026)"],
-            ["Rates on these dates are NOT applicable. Special pricing / supplements will apply."],
-            ["#", "Date / Period", "Day(s)", "Occasion", "Category", "Applicable Region"],
+            [
+              "Rates on these dates are NOT applicable. Special pricing / supplements will apply.",
+            ],
+            [
+              "#",
+              "Date / Period",
+              "Day(s)",
+              "Occasion",
+              "Category",
+              "Applicable Region",
+            ],
           ];
           let boIdx = 1;
           blackoutDatesMap.forEach((bo) => {
@@ -1502,8 +1697,14 @@ export const downloadUpload = async (req, res) => {
 
         const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
         const downloadName = file.fileName || "Hotel_Rates_Sheet.xlsx";
-        res.setHeader("Content-Disposition", `attachment; filename="${downloadName}"`);
-        res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        res.setHeader(
+          "Content-Disposition",
+          `attachment; filename="${downloadName}"`,
+        );
+        res.setHeader(
+          "Content-Type",
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        );
         return res.send(buf);
       }
     }
@@ -1535,7 +1736,11 @@ const getTravelQueryForBlackoutCheck = async (queryId = "") => {
     .lean();
 };
 
-const notifyOpsForBlackoutQuery = async ({ query, blackout, serviceCount = 0 }) => {
+const notifyOpsForBlackoutQuery = async ({
+  query,
+  blackout,
+  serviceCount = 0,
+}) => {
   if (!query || !blackout) return;
 
   const alertKey = [
@@ -1545,18 +1750,23 @@ const notifyOpsForBlackoutQuery = async ({ query, blackout, serviceCount = 0 }) 
     blackout.endDateKey || blackout.endDate || "",
   ].join(":");
 
-  const alreadyExists = await Notification.exists({ "meta.blackoutAlertKey": alertKey });
+  const alreadyExists = await Notification.exists({
+    "meta.blackoutAlertKey": alertKey,
+  });
   if (alreadyExists) return;
 
   const staffUsers = await Auth.find({
     role: { $in: ["admin", "operation_manager", "operations"] },
     isDeleted: { $ne: true },
     accountStatus: { $ne: "Inactive" },
-  }).select("_id").lean();
+  })
+    .select("_id")
+    .lean();
 
   if (!staffUsers.length) return;
 
-  const blackoutLabel = formatBlackoutLabel(blackout) || "configured blackout date";
+  const blackoutLabel =
+    formatBlackoutLabel(blackout) || "configured blackout date";
   await Notification.insertMany(
     staffUsers.map((user) => ({
       user: user._id,
@@ -1620,11 +1830,20 @@ const escapeRegexValue = (value = "") =>
   String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 const DESTINATION_ALIAS_GROUPS = [
-  ["dharamshala", "dharamsala", "mcleod ganj", "mcleodganj", "mc leod ganj", "mcleodgunj"],
+  [
+    "dharamshala",
+    "dharamsala",
+    "mcleod ganj",
+    "mcleodganj",
+    "mc leod ganj",
+    "mcleodgunj",
+  ],
 ];
 
 const expandDestinationLocationTerms = (terms = []) => {
-  const normalizedTerms = terms.map((term) => String(term || "").trim()).filter(Boolean);
+  const normalizedTerms = terms
+    .map((term) => String(term || "").trim())
+    .filter(Boolean);
   const expanded = new Set(normalizedTerms);
 
   normalizedTerms.forEach((term) => {
@@ -1647,12 +1866,18 @@ const buildServiceLocationFilter = (destination = "") => {
     .map((item) => item.trim())
     .filter((item) => item.length >= 2);
 
-  const fallbackTerms = normalizedParts.length ? normalizedParts : [rawDestination];
-  const uniqueTerms = expandDestinationLocationTerms([...new Set(fallbackTerms)]);
+  const fallbackTerms = normalizedParts.length
+    ? normalizedParts
+    : [rawDestination];
+  const uniqueTerms = expandDestinationLocationTerms([
+    ...new Set(fallbackTerms),
+  ]);
 
   if (!uniqueTerms.length) return {};
 
-  const regexes = uniqueTerms.map((term) => new RegExp(escapeRegexValue(term), "i"));
+  const regexes = uniqueTerms.map(
+    (term) => new RegExp(escapeRegexValue(term), "i"),
+  );
 
   return {
     $or: [
@@ -1681,9 +1906,11 @@ export const getAllServices = async (req, res, next) => {
 
     const [hotels, activities, transfers, sightseeing] = await Promise.all([
       Hotel.find(serviceLocationFilter).lean(),
-      Activity.find(serviceLocationFilter).sort({ updatedAt: -1, createdAt: -1 }).lean(),
+      Activity.find(serviceLocationFilter)
+        .sort({ updatedAt: -1, createdAt: -1 })
+        .lean(),
       Transfer.find(serviceLocationFilter).lean(),
-      Sightseeing.find(serviceLocationFilter).lean()
+      Sightseeing.find(serviceLocationFilter).lean(),
     ]);
 
     const dedupedActivities = Array.from(
@@ -1691,9 +1918,15 @@ export const getAllServices = async (req, res, next) => {
         activities.map((item) => [
           [
             item?.supplier?.toString?.() || "",
-            String(item?.serviceName || item?.name || item?._id || "").trim().toLowerCase(),
-            String(item?.city || "").trim().toLowerCase(),
-            String(item?.country || "").trim().toLowerCase(),
+            String(item?.serviceName || item?.name || item?._id || "")
+              .trim()
+              .toLowerCase(),
+            String(item?.city || "")
+              .trim()
+              .toLowerCase(),
+            String(item?.country || "")
+              .trim()
+              .toLowerCase(),
           ].join("::"),
           item,
         ]),
@@ -1709,7 +1942,9 @@ export const getAllServices = async (req, res, next) => {
 
     const owners = await Auth.find({
       _id: { $in: [...new Set(ownerIds)] },
-    }).select("name companyName").lean();
+    })
+      .select("name companyName")
+      .lean();
 
     const ownerMap = new Map(
       owners.map((owner) => [
@@ -1719,20 +1954,38 @@ export const getAllServices = async (req, res, next) => {
     );
 
     const suppliersMissingBlackouts = [
-      ...new Set([
-        ...hotels
-          .filter((hotel) => !Array.isArray(hotel.blackoutDates) || !hotel.blackoutDates.length)
-          .map((hotel) => hotel.supplier?.toString?.()),
-        ...transfers
-          .filter((transfer) => !Array.isArray(transfer.blackoutDates) || !transfer.blackoutDates.length)
-          .map((transfer) => transfer.supplier?.toString?.()),
-        ...dedupedActivities
-          .filter((activity) => !Array.isArray(activity.blackoutDates) || !activity.blackoutDates.length)
-          .map((activity) => activity.supplier?.toString?.()),
-        ...sightseeing
-          .filter((item) => !Array.isArray(item.blackoutDates) || !item.blackoutDates.length)
-          .map((item) => item.supplier?.toString?.()),
-      ].filter(Boolean)),
+      ...new Set(
+        [
+          ...hotels
+            .filter(
+              (hotel) =>
+                !Array.isArray(hotel.blackoutDates) ||
+                !hotel.blackoutDates.length,
+            )
+            .map((hotel) => hotel.supplier?.toString?.()),
+          ...transfers
+            .filter(
+              (transfer) =>
+                !Array.isArray(transfer.blackoutDates) ||
+                !transfer.blackoutDates.length,
+            )
+            .map((transfer) => transfer.supplier?.toString?.()),
+          ...dedupedActivities
+            .filter(
+              (activity) =>
+                !Array.isArray(activity.blackoutDates) ||
+                !activity.blackoutDates.length,
+            )
+            .map((activity) => activity.supplier?.toString?.()),
+          ...sightseeing
+            .filter(
+              (item) =>
+                !Array.isArray(item.blackoutDates) ||
+                !item.blackoutDates.length,
+            )
+            .map((item) => item.supplier?.toString?.()),
+        ].filter(Boolean),
+      ),
     ];
 
     const fallbackBlackoutBySupplier = new Map(
@@ -1745,22 +1998,25 @@ export const getAllServices = async (req, res, next) => {
     );
 
     // 🔹 FORMAT HOTELS
-    const hotelData = hotels.map(h => {
-      const resolvedBlackoutDates = Array.isArray(h.blackoutDates) && h.blackoutDates.length
-        ? h.blackoutDates
-        : fallbackBlackoutBySupplier.get(h.supplier?.toString?.() || "") || [];
+    const hotelData = hotels.map((h) => {
+      const resolvedBlackoutDates =
+        Array.isArray(h.blackoutDates) && h.blackoutDates.length
+          ? h.blackoutDates
+          : fallbackBlackoutBySupplier.get(h.supplier?.toString?.() || "") ||
+            [];
       const blackoutMatch = queryContext
         ? findBlackoutMatch({
-          blackoutDates: resolvedBlackoutDates,
-          travelStart: queryContext.startDate,
-          travelEnd: queryContext.endDate,
-          country: h.country,
-          city: h.city,
-          destination: queryContext.destination,
-        })
+            blackoutDates: resolvedBlackoutDates,
+            travelStart: queryContext.startDate,
+            travelEnd: queryContext.endDate,
+            country: h.country,
+            city: h.city,
+            destination: queryContext.destination,
+          })
         : null;
 
-      const hotelsList = Array.isArray(h.hotels) && h.hotels.length > 0 ? h.hotels : [];
+      const hotelsList =
+        Array.isArray(h.hotels) && h.hotels.length > 0 ? h.hotels : [];
       const defaultHotel = hotelsList[0] || {};
       const defaultRoom = (defaultHotel.rooms && defaultHotel.rooms[0]) || {};
 
@@ -1775,7 +2031,10 @@ export const getAllServices = async (req, res, next) => {
         serviceName: h.serviceName || "",
         hotelName: defaultHotel.hotelName || h.hotelName || "",
         name: h.serviceName || defaultHotel.hotelName || h.hotelName || "",
-        description: defaultRoom.description || h.description || `${h.roomType || ""} | ${h.mealPlan || ""}`,
+        description:
+          defaultRoom.description ||
+          h.description ||
+          `${h.roomType || ""} | ${h.mealPlan || ""}`,
         country: h.country,
         city: h.city,
         price: defaultRoom.price !== undefined ? defaultRoom.price : h.price,
@@ -1787,35 +2046,53 @@ export const getAllServices = async (req, res, next) => {
         extraBedType: defaultRoom.extraBedType || h.extraBedType,
         roomType: defaultRoom.roomType || h.roomType,
         mealPlan: defaultRoom.mealPlan || h.mealPlan || "CP",
-        maxAdults: defaultRoom.maxAdults !== undefined ? defaultRoom.maxAdults : 2,
-        maxChildren: defaultRoom.maxChildren !== undefined ? defaultRoom.maxChildren : 1,
+        maxAdults:
+          defaultRoom.maxAdults !== undefined ? defaultRoom.maxAdults : 2,
+        maxChildren:
+          defaultRoom.maxChildren !== undefined ? defaultRoom.maxChildren : 1,
         childAgeLimit: defaultRoom.childAgeLimit || "As per hotel policy",
-        awebRate: defaultRoom.awebRate !== undefined ? defaultRoom.awebRate : (h.awebRate || 0),
-        cwebRate: defaultRoom.cwebRate !== undefined ? defaultRoom.cwebRate : (h.cwebRate || 0),
-        cwoebRate: defaultRoom.cwoebRate !== undefined ? defaultRoom.cwoebRate : (h.cwoebRate || 0),
+        awebRate:
+          defaultRoom.awebRate !== undefined
+            ? defaultRoom.awebRate
+            : h.awebRate || 0,
+        cwebRate:
+          defaultRoom.cwebRate !== undefined
+            ? defaultRoom.cwebRate
+            : h.cwebRate || 0,
+        cwoebRate:
+          defaultRoom.cwoebRate !== undefined
+            ? defaultRoom.cwoebRate
+            : h.cwoebRate || 0,
         hotels: hotelsList,
         blackoutDates: resolvedBlackoutDates,
         blackout: blackoutMatch
           ? {
-            isBlackout: true,
-            label: formatBlackoutLabel(blackoutMatch),
-            reason: blackoutMatch.occasion || blackoutMatch.category || "Blackout date",
-            startDate: blackoutMatch.startDateKey,
-            endDate: blackoutMatch.endDateKey,
-            applicableRegion: blackoutMatch.applicableRegion || "",
-          }
+              isBlackout: true,
+              label: formatBlackoutLabel(blackoutMatch),
+              reason:
+                blackoutMatch.occasion ||
+                blackoutMatch.category ||
+                "Blackout date",
+              startDate: blackoutMatch.startDateKey,
+              endDate: blackoutMatch.endDateKey,
+              applicableRegion: blackoutMatch.applicableRegion || "",
+            }
           : { isBlackout: false },
       };
     });
 
-    const blackoutHotelServices = hotelData.filter((service) => service.blackout?.isBlackout);
+    const blackoutHotelServices = hotelData.filter(
+      (service) => service.blackout?.isBlackout,
+    );
     if (queryContext && blackoutHotelServices.length) {
       const firstBlackout = findBlackoutMatch({
-        blackoutDates: hotels.flatMap((hotel) => (
+        blackoutDates: hotels.flatMap((hotel) =>
           Array.isArray(hotel.blackoutDates) && hotel.blackoutDates.length
             ? hotel.blackoutDates
-            : fallbackBlackoutBySupplier.get(hotel.supplier?.toString?.() || "") || []
-        )),
+            : fallbackBlackoutBySupplier.get(
+                hotel.supplier?.toString?.() || "",
+              ) || [],
+        ),
         travelStart: queryContext.startDate,
         travelEnd: queryContext.endDate,
         destination: queryContext.destination,
@@ -1829,27 +2106,46 @@ export const getAllServices = async (req, res, next) => {
     }
 
     // 🔹 FORMAT ACTIVITIES
-    const activityData = dedupedActivities.map(a => {
-      const resolvedBlackoutDates = Array.isArray(a.blackoutDates) && a.blackoutDates.length
-        ? a.blackoutDates
-        : fallbackBlackoutBySupplier.get(a.supplier?.toString?.() || "") || [];
+    const activityData = dedupedActivities.map((a) => {
+      const resolvedBlackoutDates =
+        Array.isArray(a.blackoutDates) && a.blackoutDates.length
+          ? a.blackoutDates
+          : fallbackBlackoutBySupplier.get(a.supplier?.toString?.() || "") ||
+            [];
       const blackoutMatch = queryContext
         ? findBlackoutMatch({
-          blackoutDates: resolvedBlackoutDates,
-          travelStart: queryContext.startDate,
-          travelEnd: queryContext.endDate,
-          country: a.country,
-          city: a.city,
-          destination: queryContext.destination,
-        })
+            blackoutDates: resolvedBlackoutDates,
+            travelStart: queryContext.startDate,
+            travelEnd: queryContext.endDate,
+            country: a.country,
+            city: a.city,
+            destination: queryContext.destination,
+          })
         : null;
 
-      const tourTypesList = Array.isArray(a.tourTypes) && a.tourTypes.length > 0 ? a.tourTypes : [];
+      const tourTypesList =
+        Array.isArray(a.tourTypes) && a.tourTypes.length > 0 ? a.tourTypes : [];
       const defaultTour = tourTypesList[0] || {};
-      const defaultPrice = defaultTour.price !== undefined ? defaultTour.price : (a.adultPrice || a.price || 0);
-      const defaultTourType = defaultTour.tourType || a.tourType || "Group Tour";
-      const defaultPricingBasis = defaultTour.pricingBasis || (defaultTourType.toLowerCase().includes("group") && !defaultTourType.toLowerCase().includes("per group") ? "Per Pax" : "Per Group");
-      const defaultMaxPax = defaultTour.maxPax || (defaultTourType.toLowerCase().includes("group") && !defaultTourType.toLowerCase().includes("per group") ? "N/A (Shared Group)" : defaultTourType.toLowerCase().includes("vip") ? "Up to 6 Pax" : "Up to 4 Pax");
+      const defaultPrice =
+        defaultTour.price !== undefined
+          ? defaultTour.price
+          : a.adultPrice || a.price || 0;
+      const defaultTourType =
+        defaultTour.tourType || a.tourType || "Group Tour";
+      const defaultPricingBasis =
+        defaultTour.pricingBasis ||
+        (defaultTourType.toLowerCase().includes("group") &&
+        !defaultTourType.toLowerCase().includes("per group")
+          ? "Per Pax"
+          : "Per Group");
+      const defaultMaxPax =
+        defaultTour.maxPax ||
+        (defaultTourType.toLowerCase().includes("group") &&
+        !defaultTourType.toLowerCase().includes("per group")
+          ? "N/A (Shared Group)"
+          : defaultTourType.toLowerCase().includes("vip")
+            ? "Up to 6 Pax"
+            : "Up to 4 Pax");
 
       return {
         id: a._id,
@@ -1862,7 +2158,8 @@ export const getAllServices = async (req, res, next) => {
         serviceName: a.serviceName || a.name || "",
         name: a.name || a.serviceName || "",
         subtitle: `${a.city} | Activity`,
-        description: defaultTour.description || a.description || a.serviceName || "",
+        description:
+          defaultTour.description || a.description || a.serviceName || "",
         city: a.city || "",
         country: a.country || "",
         price: defaultPrice,
@@ -1871,7 +2168,10 @@ export const getAllServices = async (req, res, next) => {
         infantPrice: a.infantPrice || defaultTour.infantPrice || 0,
         currency: a.currency || "INR",
         operatingDays: a.operatingDays || "Mon-Sun",
-        openingTime: a.openingTime && a.openingTime !== "09:00" ? a.openingTime : (a.openTime || "08:00"),
+        openingTime:
+          a.openingTime && a.openingTime !== "09:00"
+            ? a.openingTime
+            : a.openTime || "08:00",
         closingTime: a.closingTime || a.closeTime || "18:00",
         duration: a.duration || a.durationMins || "",
         slots: a.slots || "",
@@ -1884,44 +2184,59 @@ export const getAllServices = async (req, res, next) => {
         blackoutDates: resolvedBlackoutDates,
         blackout: blackoutMatch
           ? {
-            isBlackout: true,
-            label: formatBlackoutLabel(blackoutMatch),
-            reason: blackoutMatch.occasion || blackoutMatch.category || "Blackout date",
-            startDate: blackoutMatch.startDateKey,
-            endDate: blackoutMatch.endDateKey,
-            applicableRegion: blackoutMatch.applicableRegion || "",
-          }
+              isBlackout: true,
+              label: formatBlackoutLabel(blackoutMatch),
+              reason:
+                blackoutMatch.occasion ||
+                blackoutMatch.category ||
+                "Blackout date",
+              startDate: blackoutMatch.startDateKey,
+              endDate: blackoutMatch.endDateKey,
+              applicableRegion: blackoutMatch.applicableRegion || "",
+            }
           : { isBlackout: false },
       };
     });
 
-
     //======================== 🔹 FORMAT TRANSFERS =================================
-    const transferData = transfers.map(t => {
-      const resolvedBlackoutDates = Array.isArray(t.blackoutDates) && t.blackoutDates.length
-        ? t.blackoutDates
-        : fallbackBlackoutBySupplier.get(t.supplier?.toString?.() || "") || [];
+    const transferData = transfers.map((t) => {
+      const resolvedBlackoutDates =
+        Array.isArray(t.blackoutDates) && t.blackoutDates.length
+          ? t.blackoutDates
+          : fallbackBlackoutBySupplier.get(t.supplier?.toString?.() || "") ||
+            [];
       const blackoutMatch = queryContext
         ? findBlackoutMatch({
-          blackoutDates: resolvedBlackoutDates,
-          travelStart: queryContext.startDate,
-          travelEnd: queryContext.endDate,
-          country: t.country,
-          city: t.city,
-          destination: queryContext.destination,
-        })
+            blackoutDates: resolvedBlackoutDates,
+            travelStart: queryContext.startDate,
+            travelEnd: queryContext.endDate,
+            country: t.country,
+            city: t.city,
+            destination: queryContext.destination,
+          })
         : null;
 
-      const vehiclesList = Array.isArray(t.vehicles) && t.vehicles.length > 0 ? t.vehicles : [];
+      const vehiclesList =
+        Array.isArray(t.vehicles) && t.vehicles.length > 0 ? t.vehicles : [];
       const defaultVehicle = vehiclesList[0] || {};
       const pointToPoint = defaultVehicle.usageTypes?.pointToPoint || [];
       const hourly = defaultVehicle.usageTypes?.hourly || [];
       const defaultUsage = pointToPoint[0] || hourly[0] || {};
 
-      const oneWayItem = pointToPoint.find(p => /one\s*way|airport/i.test(p.name || p.usageType || "")) || pointToPoint[0];
-      const interHotelItem = pointToPoint.find(p => /inter\s*hotel/i.test(p.name || p.usageType || "")) || pointToPoint[1];
-      const fullDayItem = hourly.find(h => /full/i.test(h.name || h.usageType || "")) || hourly[0];
-      const halfDayItem = hourly.find(h => /half/i.test(h.name || h.usageType || "")) || hourly[1];
+      const oneWayItem =
+        pointToPoint.find((p) =>
+          /one\s*way|airport/i.test(p.name || p.usageType || ""),
+        ) || pointToPoint[0];
+      const interHotelItem =
+        pointToPoint.find((p) =>
+          /inter\s*hotel/i.test(p.name || p.usageType || ""),
+        ) || pointToPoint[1];
+      const fullDayItem =
+        hourly.find((h) => /full/i.test(h.name || h.usageType || "")) ||
+        hourly[0];
+      const halfDayItem =
+        hourly.find((h) => /half/i.test(h.name || h.usageType || "")) ||
+        hourly[1];
 
       return {
         id: t._id,
@@ -1943,59 +2258,102 @@ export const getAllServices = async (req, res, next) => {
         country: t.country,
         // 🔹 VEHICLE INFO
         vehicleType: defaultVehicle.vehicleType || t.vehicleType || "Sedan",
-        passengerCapacity: defaultVehicle.passengerCapacity !== undefined ? defaultVehicle.passengerCapacity : (t.passengerCapacity || 4),
-        luggageCapacity: defaultVehicle.luggageCapacity !== undefined ? defaultVehicle.luggageCapacity : (t.luggageCapacity || 2),
+        passengerCapacity:
+          defaultVehicle.passengerCapacity !== undefined
+            ? defaultVehicle.passengerCapacity
+            : t.passengerCapacity || 4,
+        luggageCapacity:
+          defaultVehicle.luggageCapacity !== undefined
+            ? defaultVehicle.luggageCapacity
+            : t.luggageCapacity || 2,
         // 🔹 USAGE
-        usageType: defaultUsage.name || t.usageType || "One Way / Airport Transfer",
+        usageType:
+          defaultUsage.name || t.usageType || "One Way / Airport Transfer",
         // 🔹 PRICE & 4 USAGE OPTIONS
         price: defaultUsage.price !== undefined ? defaultUsage.price : t.price,
-        oneWayPrice: Number(oneWayItem?.price !== undefined ? oneWayItem.price : (defaultUsage.price || t.price || 0)),
-        interHotelPrice: Number(interHotelItem?.price !== undefined ? interHotelItem.price : 0),
-        fullDayPrice: Number(fullDayItem?.price !== undefined ? fullDayItem.price : 0),
-        halfDayPrice: Number(halfDayItem?.price !== undefined ? halfDayItem.price : 0),
-        extraPerKmRate: Number(defaultUsage.extraPerKmRate || t.extraPerKmRate || 0),
-        fullDayExtraPerKmRate: Number(fullDayItem?.extraPerKmRate || t.fullDayExtraPerKmRate || 0),
-        halfDayExtraPerKmRate: Number(halfDayItem?.extraPerKmRate || t.halfDayExtraPerKmRate || 0),
+        oneWayPrice: Number(
+          oneWayItem?.price !== undefined
+            ? oneWayItem.price
+            : defaultUsage.price || t.price || 0,
+        ),
+        interHotelPrice: Number(
+          interHotelItem?.price !== undefined ? interHotelItem.price : 0,
+        ),
+        fullDayPrice: Number(
+          fullDayItem?.price !== undefined ? fullDayItem.price : 0,
+        ),
+        halfDayPrice: Number(
+          halfDayItem?.price !== undefined ? halfDayItem.price : 0,
+        ),
+        extraPerKmRate: Number(
+          defaultUsage.extraPerKmRate || t.extraPerKmRate || 0,
+        ),
+        fullDayExtraPerKmRate: Number(
+          fullDayItem?.extraPerKmRate || t.fullDayExtraPerKmRate || 0,
+        ),
+        halfDayExtraPerKmRate: Number(
+          halfDayItem?.extraPerKmRate || t.halfDayExtraPerKmRate || 0,
+        ),
         currency: t.currency,
         vehicles: vehiclesList,
         blackoutDates: resolvedBlackoutDates,
         blackout: blackoutMatch
           ? {
-            isBlackout: true,
-            label: formatBlackoutLabel(blackoutMatch),
-            reason: blackoutMatch.occasion || blackoutMatch.category || "Blackout date",
-            startDate: blackoutMatch.startDateKey,
-            endDate: blackoutMatch.endDateKey,
-            applicableRegion: blackoutMatch.applicableRegion || "",
-          }
+              isBlackout: true,
+              label: formatBlackoutLabel(blackoutMatch),
+              reason:
+                blackoutMatch.occasion ||
+                blackoutMatch.category ||
+                "Blackout date",
+              startDate: blackoutMatch.startDateKey,
+              endDate: blackoutMatch.endDateKey,
+              applicableRegion: blackoutMatch.applicableRegion || "",
+            }
           : { isBlackout: false },
         // 🔹 UI HELPER
-        subtitle: `${defaultVehicle.vehicleType || t.vehicleType || "Vehicle"} | ${defaultUsage.name || t.usageType || ""}`
+        subtitle: `${defaultVehicle.vehicleType || t.vehicleType || "Vehicle"} | ${defaultUsage.name || t.usageType || ""}`,
       };
     });
 
     // 🔹 FORMAT SIGHTSEEING
-    const sightseeingData = sightseeing.map(s => {
-      const resolvedBlackoutDates = Array.isArray(s.blackoutDates) && s.blackoutDates.length
-        ? s.blackoutDates
-        : fallbackBlackoutBySupplier.get(s.supplier?.toString?.() || "") || [];
+    const sightseeingData = sightseeing.map((s) => {
+      const resolvedBlackoutDates =
+        Array.isArray(s.blackoutDates) && s.blackoutDates.length
+          ? s.blackoutDates
+          : fallbackBlackoutBySupplier.get(s.supplier?.toString?.() || "") ||
+            [];
       const blackoutMatch = queryContext
         ? findBlackoutMatch({
-          blackoutDates: resolvedBlackoutDates,
-          travelStart: queryContext.startDate,
-          travelEnd: queryContext.endDate,
-          country: s.country,
-          city: s.city,
-          destination: queryContext.destination,
-        })
+            blackoutDates: resolvedBlackoutDates,
+            travelStart: queryContext.startDate,
+            travelEnd: queryContext.endDate,
+            country: s.country,
+            city: s.city,
+            destination: queryContext.destination,
+          })
         : null;
 
-      const tourTypesList = Array.isArray(s.tourTypes) && s.tourTypes.length > 0 ? s.tourTypes : [];
+      const tourTypesList =
+        Array.isArray(s.tourTypes) && s.tourTypes.length > 0 ? s.tourTypes : [];
       const defaultTour = tourTypesList[0] || {};
-      const defaultPrice = defaultTour.price !== undefined ? defaultTour.price : (s.price || 0);
-      const defaultTourType = defaultTour.tourType || s.tourType || "Group Tour";
-      const defaultPricingBasis = defaultTour.pricingBasis || (defaultTourType.toLowerCase().includes("group") && !defaultTourType.toLowerCase().includes("per group") ? "Per Pax" : "Per Group");
-      const defaultMaxPax = defaultTour.maxPax || (defaultTourType.toLowerCase().includes("group") && !defaultTourType.toLowerCase().includes("per group") ? "N/A (Shared Group)" : defaultTourType.toLowerCase().includes("vip") ? "Up to 6 Pax" : "Up to 4 Pax");
+      const defaultPrice =
+        defaultTour.price !== undefined ? defaultTour.price : s.price || 0;
+      const defaultTourType =
+        defaultTour.tourType || s.tourType || "Group Tour";
+      const defaultPricingBasis =
+        defaultTour.pricingBasis ||
+        (defaultTourType.toLowerCase().includes("group") &&
+        !defaultTourType.toLowerCase().includes("per group")
+          ? "Per Pax"
+          : "Per Group");
+      const defaultMaxPax =
+        defaultTour.maxPax ||
+        (defaultTourType.toLowerCase().includes("group") &&
+        !defaultTourType.toLowerCase().includes("per group")
+          ? "N/A (Shared Group)"
+          : defaultTourType.toLowerCase().includes("vip")
+            ? "Up to 6 Pax"
+            : "Up to 4 Pax");
 
       return {
         id: s._id,
@@ -2014,7 +2372,10 @@ export const getAllServices = async (req, res, next) => {
         city: s.city,
         country: s.country || "",
         operatingDays: s.operatingDays || "Mon-Sun",
-        openingTime: s.openingTime && s.openingTime !== "09:00" ? s.openingTime : (s.openTime || "08:00"),
+        openingTime:
+          s.openingTime && s.openingTime !== "09:00"
+            ? s.openingTime
+            : s.openTime || "08:00",
         closingTime: s.closingTime || s.closeTime || "18:00",
         duration: s.duration || s.durationMins || "",
         slots: s.slots || "",
@@ -2027,13 +2388,16 @@ export const getAllServices = async (req, res, next) => {
         blackoutDates: resolvedBlackoutDates,
         blackout: blackoutMatch
           ? {
-            isBlackout: true,
-            label: formatBlackoutLabel(blackoutMatch),
-            reason: blackoutMatch.occasion || blackoutMatch.category || "Blackout date",
-            startDate: blackoutMatch.startDateKey,
-            endDate: blackoutMatch.endDateKey,
-            applicableRegion: blackoutMatch.applicableRegion || "",
-          }
+              isBlackout: true,
+              label: formatBlackoutLabel(blackoutMatch),
+              reason:
+                blackoutMatch.occasion ||
+                blackoutMatch.category ||
+                "Blackout date",
+              startDate: blackoutMatch.startDateKey,
+              endDate: blackoutMatch.endDateKey,
+              applicableRegion: blackoutMatch.applicableRegion || "",
+            }
           : { isBlackout: false },
       };
     });
@@ -2043,35 +2407,37 @@ export const getAllServices = async (req, res, next) => {
       ...hotelData,
       ...activityData,
       ...transferData,
-      ...sightseeingData
+      ...sightseeingData,
     ];
 
     res.status(200).json({
       success: true,
       count: allServices.length,
-      data: allServices
+      data: allServices,
     });
-
   } catch (error) {
     next(error);
   }
 };
 
-
-
-// 
+//
 export const createOrUpdateConfirmation = async (req, res) => {
   try {
     const { queryId, services, emergencyContact, status } = req.body;
     const currentDmcId = req.user.id;
-    const normalizedStatus = String(status || "draft").trim().toLowerCase() || "draft";
+    const normalizedStatus =
+      String(status || "draft")
+        .trim()
+        .toLowerCase() || "draft";
 
     let confirmation = await Confirmation.findOne({
       queryId,
       dmcId: currentDmcId,
     });
     const wasSubmittedBefore =
-      String(confirmation?.status || "").trim().toLowerCase() === "submitted";
+      String(confirmation?.status || "")
+        .trim()
+        .toLowerCase() === "submitted";
 
     const documents = {};
 
@@ -2095,7 +2461,9 @@ export const createOrUpdateConfirmation = async (req, res) => {
       confirmation.emergencyContact = emergencyContact;
 
       confirmation.documents = {
-        ...(confirmation.documents?.toObject?.() || confirmation.documents || {}),
+        ...(confirmation.documents?.toObject?.() ||
+          confirmation.documents ||
+          {}),
         ...documents,
       };
 
@@ -2181,10 +2549,9 @@ const buildUploadedInvoiceDocument = (file) => {
   if (!file?.path) return null;
   const normalizedFilePath = String(file.path).replace(/\\/g, "/");
   const absoluteFilePath = path.join(process.cwd(), normalizedFilePath);
-  const fileSizeKb =
-    fs.existsSync(absoluteFilePath)
-      ? Math.max(1, Math.round(fs.statSync(absoluteFilePath).size / 1024))
-      : null;
+  const fileSizeKb = fs.existsSync(absoluteFilePath)
+    ? Math.max(1, Math.round(fs.statSync(absoluteFilePath).size / 1024))
+    : null;
 
   return {
     name: file.originalname || path.basename(file.path),
@@ -2210,7 +2577,10 @@ export const previewUploadedInvoiceExtraction = async (req, res, next) => {
     const claimedSummary = normalizeClaimedSummary(
       parseRequestJsonField(req.body?.claimedSummary, {}),
     );
-    const expectedSummary = parseRequestJsonField(req.body?.expectedSummary, {});
+    const expectedSummary = parseRequestJsonField(
+      req.body?.expectedSummary,
+      {},
+    );
     const extraction = await analyzeInvoiceFile(req.file, {
       claimedSummary,
       expectedSummary,
@@ -2220,9 +2590,10 @@ export const previewUploadedInvoiceExtraction = async (req, res, next) => {
 
     res.status(200).json({
       success: true,
-      message: extraction.status === "parsed"
-        ? "Invoice parsed successfully"
-        : "Invoice uploaded, but automatic extraction needs manual review",
+      message:
+        extraction.status === "parsed"
+          ? "Invoice parsed successfully"
+          : "Invoice uploaded, but automatic extraction needs manual review",
       data: extraction,
     });
   } catch (error) {
@@ -2233,29 +2604,38 @@ export const previewUploadedInvoiceExtraction = async (req, res, next) => {
 const calculateCreditDueDate = (invoiceDate, creditPeriodDays) => {
   const parsedDate = new Date(invoiceDate);
   if (Number.isNaN(parsedDate.getTime())) return null;
-  parsedDate.setDate(parsedDate.getDate() + normalizeCreditPeriodDays(creditPeriodDays));
+  parsedDate.setDate(
+    parsedDate.getDate() + normalizeCreditPeriodDays(creditPeriodDays),
+  );
   return parsedDate;
 };
 
 const inferCreditPeriodDays = (invoiceDate, dueDate) => {
   const parsedInvoiceDate = new Date(invoiceDate);
   const parsedDueDate = new Date(dueDate);
-  if (Number.isNaN(parsedInvoiceDate.getTime()) || Number.isNaN(parsedDueDate.getTime())) {
+  if (
+    Number.isNaN(parsedInvoiceDate.getTime()) ||
+    Number.isNaN(parsedDueDate.getTime())
+  ) {
     return 7;
   }
 
   parsedInvoiceDate.setHours(0, 0, 0, 0);
   parsedDueDate.setHours(0, 0, 0, 0);
-  const diffDays = Math.round((parsedDueDate - parsedInvoiceDate) / (1000 * 60 * 60 * 24));
+  const diffDays = Math.round(
+    (parsedDueDate - parsedInvoiceDate) / (1000 * 60 * 60 * 24),
+  );
   return normalizeCreditPeriodDays(diffDays);
 };
 
 const getAgentFinanceAssigneeForQueries = async (queryIds = []) => {
-  const normalizedQueryIds = [...new Set(
-    (Array.isArray(queryIds) ? queryIds : [queryIds])
-      .map((queryId) => String(queryId || "").trim())
-      .filter(Boolean),
-  )];
+  const normalizedQueryIds = [
+    ...new Set(
+      (Array.isArray(queryIds) ? queryIds : [queryIds])
+        .map((queryId) => String(queryId || "").trim())
+        .filter(Boolean),
+    ),
+  ];
 
   if (!normalizedQueryIds.length) return "";
 
@@ -2266,7 +2646,9 @@ const getAgentFinanceAssigneeForQueries = async (queryIds = []) => {
       { "paymentVerification.reviewedBy": { $exists: true, $ne: null } },
     ],
   })
-    .select("query paymentVerification.assignedTo paymentVerification.reviewedBy paymentSubmission.submittedAt updatedAt")
+    .select(
+      "query paymentVerification.assignedTo paymentVerification.reviewedBy paymentSubmission.submittedAt updatedAt",
+    )
     .sort({
       "paymentSubmission.submittedAt": -1,
       updatedAt: -1,
@@ -2274,7 +2656,9 @@ const getAgentFinanceAssigneeForQueries = async (queryIds = []) => {
     .lean();
 
   for (const queryId of normalizedQueryIds) {
-    const matchingInvoice = agentInvoices.find((invoice) => String(invoice.query || "") === queryId);
+    const matchingInvoice = agentInvoices.find(
+      (invoice) => String(invoice.query || "") === queryId,
+    );
     const preferredAssignee =
       matchingInvoice?.paymentVerification?.assignedTo ||
       matchingInvoice?.paymentVerification?.reviewedBy ||
@@ -2295,15 +2679,26 @@ export const submitInternalInvoice = async (req, res, next) => {
     const claimedSummary = normalizeClaimedSummary(
       parseRequestJsonField(req.body?.claimedSummary, {}),
     );
-    const invoiceSource = normalizeInvoiceSource(req.body?.invoiceSource || invoiceMeta?.invoiceSource);
-    const templateVariant = req.body?.templateVariant || invoiceMeta?.templateVariant || "aurora-ledger";
-    const dmcRemarks = String(req.body?.dmcRemarks || invoiceMeta?.dmcRemarks || "").trim();
+    const invoiceSource = normalizeInvoiceSource(
+      req.body?.invoiceSource || invoiceMeta?.invoiceSource,
+    );
+    const templateVariant =
+      req.body?.templateVariant ||
+      invoiceMeta?.templateVariant ||
+      "aurora-ledger";
+    const dmcRemarks = String(
+      req.body?.dmcRemarks || invoiceMeta?.dmcRemarks || "",
+    ).trim();
 
     if (!queryId) {
       return next(new ApiError(400, "Query is required"));
     }
 
-    if (!invoiceMeta?.supplierName || !invoiceMeta?.invoiceNumber || !invoiceMeta?.invoiceDate) {
+    if (
+      !invoiceMeta?.supplierName ||
+      !invoiceMeta?.invoiceNumber ||
+      !invoiceMeta?.invoiceDate
+    ) {
       return next(new ApiError(400, "Invoice header details are required"));
     }
 
@@ -2311,7 +2706,10 @@ export const submitInternalInvoice = async (req, res, next) => {
       invoiceMeta?.creditPeriodDays,
       inferCreditPeriodDays(invoiceMeta?.invoiceDate, invoiceMeta?.dueDate),
     );
-    const calculatedDueDate = calculateCreditDueDate(invoiceMeta.invoiceDate, creditPeriodDays);
+    const calculatedDueDate = calculateCreditDueDate(
+      invoiceMeta.invoiceDate,
+      creditPeriodDays,
+    );
 
     if (!calculatedDueDate) {
       return next(new ApiError(400, "A valid invoice date is required"));
@@ -2324,7 +2722,9 @@ export const submitInternalInvoice = async (req, res, next) => {
     };
     const normalizedTemplateVariant =
       invoiceSource === "system_template"
-        ? normalizeInternalInvoiceTemplateVariant(invoiceMeta?.templateVariant || templateVariant)
+        ? normalizeInternalInvoiceTemplateVariant(
+            invoiceMeta?.templateVariant || templateVariant,
+          )
         : "";
 
     if (!Array.isArray(items) || !items.length) {
@@ -2334,7 +2734,9 @@ export const submitInternalInvoice = async (req, res, next) => {
     const uploadedInvoiceDocument = buildUploadedInvoiceDocument(req.file);
     if (invoiceSource === "uploaded_invoice") {
       if (!uploadedInvoiceDocument) {
-        return next(new ApiError(400, "Please upload your invoice PDF or Word document"));
+        return next(
+          new ApiError(400, "Please upload your invoice PDF or Word document"),
+        );
       }
 
       if (Number(claimedSummary.grandTotal || 0) <= 0) {
@@ -2344,8 +2746,8 @@ export const submitInternalInvoice = async (req, res, next) => {
 
     const queryLookup = mongoose.Types.ObjectId.isValid(queryId)
       ? {
-        $or: [{ queryId }, { _id: queryId }],
-      }
+          $or: [{ queryId }, { _id: queryId }],
+        }
       : { queryId };
 
     const query = await TravelQuery.findOne(queryLookup)
@@ -2363,7 +2765,11 @@ export const submitInternalInvoice = async (req, res, next) => {
       .select("status invoiceNumber assignedTo reviewedBy")
       .lean();
 
-    if (["Approved", "Paid"].includes(String(existingInvoice?.status || "").trim())) {
+    if (
+      ["Approved", "Paid"].includes(
+        String(existingInvoice?.status || "").trim(),
+      )
+    ) {
       return next(
         new ApiError(
           409,
@@ -2392,7 +2798,9 @@ export const submitInternalInvoice = async (req, res, next) => {
     const dmc = await Auth.findById(req.user.id)
       .select("name companyName")
       .lean();
-    const agentFinanceAssigneeId = await getAgentFinanceAssigneeForQueries([query._id]);
+    const agentFinanceAssigneeId = await getAgentFinanceAssigneeForQueries([
+      query._id,
+    ]);
     const assignedFinanceMember = await getRoundRobinFinanceAssignee({
       keepAssigneeId:
         agentFinanceAssigneeId ||
@@ -2403,7 +2811,9 @@ export const submitInternalInvoice = async (req, res, next) => {
     const normalizedItems = items.map((item) => ({
       type: String(item.type || "Hotel").trim(),
       service: String(item.service || "").trim(),
-      currency: String(item.currency || "INR").trim().toUpperCase(),
+      currency: String(item.currency || "INR")
+        .trim()
+        .toUpperCase(),
       qty: Number(item.qty || 0),
       rate: Number(item.rate || 0),
       subtotal: Number(item.subtotal || 0),
@@ -2418,34 +2828,34 @@ export const submitInternalInvoice = async (req, res, next) => {
     const effectiveSummary =
       invoiceSource === "uploaded_invoice"
         ? {
-          subtotal: claimedSummary.subtotal,
-          gstAmount: 0,
-          tcsAmount: 0,
-          otherTaxAmount: claimedSummary.taxAmount,
-          totalTax: claimedSummary.taxAmount,
-          grandTotal: claimedSummary.grandTotal,
-        }
+            subtotal: claimedSummary.subtotal,
+            gstAmount: 0,
+            tcsAmount: 0,
+            otherTaxAmount: claimedSummary.taxAmount,
+            totalTax: claimedSummary.taxAmount,
+            grandTotal: claimedSummary.grandTotal,
+          }
         : rawSummary;
 
     const generatedInvoiceDocument =
       invoiceSource === "system_template"
         ? await generateInternalInvoicePdf({
-          queryCode: query.queryId,
-          invoiceMeta: normalizedInvoiceMeta,
-          items: normalizedItems,
-          summary: effectiveSummary,
-          taxConfig,
-          dmcName: dmc?.companyName || dmc?.name || "",
-          destination: query.destination || "",
-          templateVariant: normalizedTemplateVariant,
-        })
+            queryCode: query.queryId,
+            invoiceMeta: normalizedInvoiceMeta,
+            items: normalizedItems,
+            summary: effectiveSummary,
+            taxConfig,
+            dmcName: dmc?.companyName || dmc?.name || "",
+            destination: query.destination || "",
+            templateVariant: normalizedTemplateVariant,
+          })
         : uploadedInvoiceDocument;
     const invoiceExtraction =
       invoiceSource === "uploaded_invoice"
         ? await analyzeInvoiceFile(req.file, {
-          claimedSummary,
-          expectedSummary: rawSummary,
-        })
+            claimedSummary,
+            expectedSummary: rawSummary,
+          })
         : {};
 
     const supportingDocuments = [
@@ -2457,10 +2867,9 @@ export const submitInternalInvoice = async (req, res, next) => {
       .map((filePath, index) => {
         const normalizedFilePath = String(filePath).replace(/\\/g, "/");
         const absoluteFilePath = path.join(process.cwd(), normalizedFilePath);
-        const fileSizeKb =
-          fs.existsSync(absoluteFilePath)
-            ? Math.max(1, Math.round(fs.statSync(absoluteFilePath).size / 1024))
-            : null;
+        const fileSizeKb = fs.existsSync(absoluteFilePath)
+          ? Math.max(1, Math.round(fs.statSync(absoluteFilePath).size / 1024))
+          : null;
 
         return {
           name: path.basename(filePath),
@@ -2481,9 +2890,11 @@ export const submitInternalInvoice = async (req, res, next) => {
       supplierName: String(invoiceMeta.supplierName || "").trim(),
       invoiceNumber: query.queryId
         ? `INV-${String(query.queryId).replace(/^INV-/, "")}`
-        : (String(invoiceMeta.invoiceNumber || "").trim().startsWith("INV-")
+        : String(invoiceMeta.invoiceNumber || "")
+              .trim()
+              .startsWith("INV-")
           ? String(invoiceMeta.invoiceNumber || "").trim()
-          : `INV-${String(invoiceMeta.invoiceNumber || "0001").trim()}`),
+          : `INV-${String(invoiceMeta.invoiceNumber || "0001").trim()}`,
       invoiceDate: new Date(invoiceMeta.invoiceDate),
       dueDate: calculatedDueDate,
       creditPeriodDays,
@@ -2502,14 +2913,15 @@ export const submitInternalInvoice = async (req, res, next) => {
         grandTotal: Number(effectiveSummary.grandTotal || 0),
       },
       invoiceSource,
-      uploadedInvoice: invoiceSource === "uploaded_invoice"
-        ? {
-          name: uploadedInvoiceDocument.name,
-          filePath: uploadedInvoiceDocument.filePath,
-          size: uploadedInvoiceDocument.size,
-          mimeType: uploadedInvoiceDocument.mimeType,
-        }
-        : { name: "", filePath: "", size: "", mimeType: "" },
+      uploadedInvoice:
+        invoiceSource === "uploaded_invoice"
+          ? {
+              name: uploadedInvoiceDocument.name,
+              filePath: uploadedInvoiceDocument.filePath,
+              size: uploadedInvoiceDocument.size,
+              mimeType: uploadedInvoiceDocument.mimeType,
+            }
+          : { name: "", filePath: "", size: "", mimeType: "" },
       claimedSummary,
       invoiceExtraction,
       documents: [generatedInvoiceDocument, ...supportingDocuments],
@@ -2566,7 +2978,6 @@ export const submitInternalInvoice = async (req, res, next) => {
   }
 };
 
-
 const parseDateOrNull = (value) => {
   if (!value) return null;
   const parsed = new Date(value);
@@ -2588,12 +2999,12 @@ const addCreditDays = (value, daysToAdd = 0) => {
 const getPayableCreditStartDate = (service = {}, query = {}) =>
   parseDateOrNull(
     service.checkOutDate ||
-    service.serviceEndDate ||
-    service.serviceDate ||
-    query.endDate ||
-    query.startDate ||
-    query.updatedAt ||
-    query.createdAt,
+      service.serviceEndDate ||
+      service.serviceDate ||
+      query.endDate ||
+      query.startDate ||
+      query.updatedAt ||
+      query.createdAt,
   );
 
 const buildPayableServiceRef = (query = {}, service = {}, index = 0) =>
@@ -2615,16 +3026,15 @@ const getDocumentByKind = (documents = [], kind = "") =>
   ) || null;
 
 const formatDmcFinanceUploadedInvoice = (batch = {}) => {
-  const invoiceDocument =
-    batch.uploadedInvoice?.filePath
-      ? {
+  const invoiceDocument = batch.uploadedInvoice?.filePath
+    ? {
         name: batch.uploadedInvoice.name || batch.invoiceNumber,
         filePath: batch.uploadedInvoice.filePath,
         size: batch.uploadedInvoice.size || "",
         mimeType: batch.uploadedInvoice.mimeType || "",
         kind: "invoice",
       }
-      : getDocumentByKind(batch.documents, "invoice");
+    : getDocumentByKind(batch.documents, "invoice");
   const receiptDocument =
     getDocumentByKind(batch.documents, "payout_receipt") ||
     getDocumentByKind(batch.documents, "receipt");
@@ -2633,9 +3043,9 @@ const formatDmcFinanceUploadedInvoice = (batch = {}) => {
     : [];
   const totalAmount = Number(
     batch.summary?.grandTotal ||
-    batch.claimedSummary?.grandTotal ||
-    batch.payoutAmount ||
-    0,
+      batch.claimedSummary?.grandTotal ||
+      batch.payoutAmount ||
+      0,
   );
   const paidAmount = payoutInstallments.reduce(
     (sum, item) => sum + Number(item.amount || 0),
@@ -2681,7 +3091,8 @@ const formatDmcFinanceUploadedInvoice = (batch = {}) => {
 };
 
 const buildPayableLedgerRows = async (req, creditPeriodDays = 7) => {
-  const normalizedCreditPeriodDays = normalizeCreditPeriodDays(creditPeriodDays);
+  const normalizedCreditPeriodDays =
+    normalizeCreditPeriodDays(creditPeriodDays);
   const queries = await getDmcVisibleQueriesData(req);
   const currentDmcId = req.user.id;
   const isAdminAccess = req.user?.role === "admin";
@@ -2708,7 +3119,8 @@ const buildPayableLedgerRows = async (req, creditPeriodDays = 7) => {
   const batchClaimByServiceRef = new Map();
   activeBatches.forEach((batch) => {
     (batch.items || []).forEach((item) => {
-      if (!item?.serviceRef || batchClaimByServiceRef.has(item.serviceRef)) return;
+      if (!item?.serviceRef || batchClaimByServiceRef.has(item.serviceRef))
+        return;
       batchClaimByServiceRef.set(item.serviceRef, {
         status: batch.status,
         invoiceNumber: batch.invoiceNumber || batch.batchNumber,
@@ -2727,14 +3139,25 @@ const buildPayableLedgerRows = async (req, creditPeriodDays = 7) => {
     return (query.services || []).map((service, index) => {
       const serviceRef = buildPayableServiceRef(query, service, index);
       const creditStartDate = getPayableCreditStartDate(service, query);
-      const dueDate = addCreditDays(creditStartDate, normalizedCreditPeriodDays);
+      const dueDate = addCreditDays(
+        creditStartDate,
+        normalizedCreditPeriodDays,
+      );
       const dueDateMidnight = dueDate ? new Date(dueDate) : null;
       if (dueDateMidnight) dueDateMidnight.setHours(0, 0, 0, 0);
       const batchClaim = batchClaimByServiceRef.get(serviceRef);
       const claim = singleInvoiceClaim || batchClaim || null;
       const amount = Number(service.total || 0);
-      const qty = Math.max(1, Number(service.billableQuantityValue || service.quantityValue || 1));
-      const rate = Number(service.billableUnitRate || service.rate || (qty > 0 ? amount / qty : amount) || 0);
+      const qty = Math.max(
+        1,
+        Number(service.billableQuantityValue || service.quantityValue || 1),
+      );
+      const rate = Number(
+        service.billableUnitRate ||
+          service.rate ||
+          (qty > 0 ? amount / qty : amount) ||
+          0,
+      );
 
       return {
         id: serviceRef,
@@ -2760,7 +3183,9 @@ const buildPayableLedgerRows = async (req, creditPeriodDays = 7) => {
         claimInvoiceNumber: claim?.invoiceNumber || "",
         isClaimed: Boolean(claim),
         isDue: Boolean(dueDateMidnight && dueDateMidnight <= today),
-        isOverdue: Boolean(dueDateMidnight && dueDateMidnight < today && !claim),
+        isOverdue: Boolean(
+          dueDateMidnight && dueDateMidnight < today && !claim,
+        ),
       };
     });
   });
@@ -2775,25 +3200,38 @@ const buildPayableLedgerRows = async (req, creditPeriodDays = 7) => {
       eligibleServices: eligibleRows.length,
       dueServices: eligibleRows.filter((row) => row.isDue).length,
       overdueServices: eligibleRows.filter((row) => row.isOverdue).length,
-      eligibleAmount: eligibleRows.reduce((sum, row) => sum + Number(row.amount || 0), 0),
+      eligibleAmount: eligibleRows.reduce(
+        (sum, row) => sum + Number(row.amount || 0),
+        0,
+      ),
       dueAmount: eligibleRows
         .filter((row) => row.isDue)
         .reduce((sum, row) => sum + Number(row.amount || 0), 0),
     },
     services: rows.sort((left, right) => {
       if (left.isClaimed !== right.isClaimed) return left.isClaimed ? 1 : -1;
-      const leftDue = left.dueDate ? new Date(left.dueDate).getTime() : Number.MAX_SAFE_INTEGER;
-      const rightDue = right.dueDate ? new Date(right.dueDate).getTime() : Number.MAX_SAFE_INTEGER;
+      const leftDue = left.dueDate
+        ? new Date(left.dueDate).getTime()
+        : Number.MAX_SAFE_INTEGER;
+      const rightDue = right.dueDate
+        ? new Date(right.dueDate).getTime()
+        : Number.MAX_SAFE_INTEGER;
       if (leftDue !== rightDue) return leftDue - rightDue;
-      return String(left.queryId || "").localeCompare(String(right.queryId || ""));
+      return String(left.queryId || "").localeCompare(
+        String(right.queryId || ""),
+      );
     }),
-    financeUploadedInvoices: financeUploadedBatches.map(formatDmcFinanceUploadedInvoice),
+    financeUploadedInvoices: financeUploadedBatches.map(
+      formatDmcFinanceUploadedInvoice,
+    ),
   };
 };
 
 export const getDmcPaymentLedger = async (req, res, next) => {
   try {
-    const creditPeriodDays = normalizeCreditPeriodDays(req.query?.creditPeriodDays || 7);
+    const creditPeriodDays = normalizeCreditPeriodDays(
+      req.query?.creditPeriodDays || 7,
+    );
     const ledger = await buildPayableLedgerRows(req, creditPeriodDays);
 
     res.status(200).json({
@@ -2813,9 +3251,19 @@ export const submitDmcSettlementBatch = async (req, res, next) => {
     const claimedSummary = normalizeClaimedSummary(
       parseRequestJsonField(req.body?.claimedSummary, {}),
     );
-    const invoiceSource = normalizeInvoiceSource(req.body?.invoiceSource || invoiceMeta?.invoiceSource);
-    const templateVariant = req.body?.templateVariant || invoiceMeta?.templateVariant || "aurora-ledger";
-    const dmcRemarks = String(req.body?.dmcRemarks || invoiceMeta?.dmcRemarks || req.body?.remarks || "").trim();
+    const invoiceSource = normalizeInvoiceSource(
+      req.body?.invoiceSource || invoiceMeta?.invoiceSource,
+    );
+    const templateVariant =
+      req.body?.templateVariant ||
+      invoiceMeta?.templateVariant ||
+      "aurora-ledger";
+    const dmcRemarks = String(
+      req.body?.dmcRemarks ||
+        invoiceMeta?.dmcRemarks ||
+        req.body?.remarks ||
+        "",
+    ).trim();
 
     const normalizedServiceRefs = Array.isArray(serviceRefs)
       ? serviceRefs.map((item) => String(item || "").trim()).filter(Boolean)
@@ -2825,18 +3273,29 @@ export const submitDmcSettlementBatch = async (req, res, next) => {
       return next(new ApiError(400, "Select at least one payable service"));
     }
 
-    const creditPeriodDays = normalizeCreditPeriodDays(invoiceMeta?.creditPeriodDays || 7);
+    const creditPeriodDays = normalizeCreditPeriodDays(
+      invoiceMeta?.creditPeriodDays || 7,
+    );
     const invoiceDate = parseDateOrNull(invoiceMeta?.invoiceDate) || new Date();
     const dueDate = calculateCreditDueDate(invoiceDate, creditPeriodDays);
     const normalizedTemplateVariant =
       invoiceSource === "system_template"
-        ? normalizeInternalInvoiceTemplateVariant(invoiceMeta?.templateVariant || templateVariant)
+        ? normalizeInternalInvoiceTemplateVariant(
+            invoiceMeta?.templateVariant || templateVariant,
+          )
         : "";
     const ledger = await buildPayableLedgerRows(req, creditPeriodDays);
-    const selectedRows = ledger.services.filter((row) => normalizedServiceRefs.includes(row.serviceRef));
+    const selectedRows = ledger.services.filter((row) =>
+      normalizedServiceRefs.includes(row.serviceRef),
+    );
 
     if (selectedRows.length !== normalizedServiceRefs.length) {
-      return next(new ApiError(400, "Some selected services are no longer available in your payable ledger"));
+      return next(
+        new ApiError(
+          400,
+          "Some selected services are no longer available in your payable ledger",
+        ),
+      );
     }
 
     const alreadyClaimed = selectedRows.filter((row) => row.isClaimed);
@@ -2849,7 +3308,9 @@ export const submitDmcSettlementBatch = async (req, res, next) => {
       );
     }
 
-    const dmc = await Auth.findById(req.user.id).select("name companyName email").lean();
+    const dmc = await Auth.findById(req.user.id)
+      .select("name companyName email")
+      .lean();
     const supplierName =
       String(invoiceMeta?.supplierName || "").trim() ||
       dmc?.companyName ||
@@ -2883,8 +3344,14 @@ export const submitDmcSettlementBatch = async (req, res, next) => {
       };
     });
 
-    const subtotal = items.reduce((sum, item) => sum + Number(item.subtotal || 0), 0);
-    const gstAmount = items.reduce((sum, item) => sum + Number(item.tax || 0), 0);
+    const subtotal = items.reduce(
+      (sum, item) => sum + Number(item.subtotal || 0),
+      0,
+    );
+    const gstAmount = items.reduce(
+      (sum, item) => sum + Number(item.tax || 0),
+      0,
+    );
     const tcsAmount = Number(((subtotal * tcsRate) / 100).toFixed(2));
     const totalTax = gstAmount + tcsAmount + otherTaxAmount;
     const summary = {
@@ -2900,19 +3367,21 @@ export const submitDmcSettlementBatch = async (req, res, next) => {
     const effectiveSummary =
       invoiceSource === "uploaded_invoice"
         ? {
-          subtotal: claimedSummary.subtotal,
-          gstAmount: 0,
-          tcsAmount: 0,
-          otherTaxAmount: claimedSummary.taxAmount,
-          totalTax: claimedSummary.taxAmount,
-          grandTotal: claimedSummary.grandTotal,
-        }
+            subtotal: claimedSummary.subtotal,
+            gstAmount: 0,
+            tcsAmount: 0,
+            otherTaxAmount: claimedSummary.taxAmount,
+            totalTax: claimedSummary.taxAmount,
+            grandTotal: claimedSummary.grandTotal,
+          }
         : summary;
 
     const uploadedInvoiceDocument = buildUploadedInvoiceDocument(req.file);
     if (invoiceSource === "uploaded_invoice") {
       if (!uploadedInvoiceDocument) {
-        return next(new ApiError(400, "Please upload your invoice PDF or Word document"));
+        return next(
+          new ApiError(400, "Please upload your invoice PDF or Word document"),
+        );
       }
 
       if (Number(claimedSummary.grandTotal || 0) <= 0) {
@@ -2942,29 +3411,29 @@ export const submitDmcSettlementBatch = async (req, res, next) => {
     const generatedInvoiceDocument =
       invoiceSource === "system_template"
         ? await generateInternalInvoicePdf({
-          queryCode: batchNumber,
-          invoiceMeta: {
-            ...invoiceMeta,
-            supplierName,
-            invoiceNumber,
-            invoiceDate,
-            creditPeriodDays,
-            dueDate,
-          },
-          items,
-          summary: effectiveSummary,
-          taxConfig: normalizedTaxConfig,
-          dmcName: supplierName,
-          destination: `${coveredQueries.length} bookings bulk settlement`,
-          templateVariant: normalizedTemplateVariant,
-        })
+            queryCode: batchNumber,
+            invoiceMeta: {
+              ...invoiceMeta,
+              supplierName,
+              invoiceNumber,
+              invoiceDate,
+              creditPeriodDays,
+              dueDate,
+            },
+            items,
+            summary: effectiveSummary,
+            taxConfig: normalizedTaxConfig,
+            dmcName: supplierName,
+            destination: `${coveredQueries.length} bookings bulk settlement`,
+            templateVariant: normalizedTemplateVariant,
+          })
         : uploadedInvoiceDocument;
     const invoiceExtraction =
       invoiceSource === "uploaded_invoice"
         ? await analyzeInvoiceFile(req.file, {
-          claimedSummary,
-          expectedSummary: summary,
-        })
+            claimedSummary,
+            expectedSummary: summary,
+          })
         : {};
 
     const batch = await DmcSettlementBatch.create({
@@ -2980,14 +3449,15 @@ export const submitDmcSettlementBatch = async (req, res, next) => {
       items,
       documents: [generatedInvoiceDocument],
       invoiceSource,
-      uploadedInvoice: invoiceSource === "uploaded_invoice"
-        ? {
-          name: uploadedInvoiceDocument.name,
-          filePath: uploadedInvoiceDocument.filePath,
-          size: uploadedInvoiceDocument.size,
-          mimeType: uploadedInvoiceDocument.mimeType,
-        }
-        : { name: "", filePath: "", size: "", mimeType: "" },
+      uploadedInvoice:
+        invoiceSource === "uploaded_invoice"
+          ? {
+              name: uploadedInvoiceDocument.name,
+              filePath: uploadedInvoiceDocument.filePath,
+              size: uploadedInvoiceDocument.size,
+              mimeType: uploadedInvoiceDocument.mimeType,
+            }
+          : { name: "", filePath: "", size: "", mimeType: "" },
       claimedSummary,
       invoiceExtraction,
       taxConfig: normalizedTaxConfig,
@@ -3030,7 +3500,6 @@ export const submitDmcSettlementBatch = async (req, res, next) => {
   }
 };
 
-
 const getDmcVisibleQueriesData = async (req) => {
   const isAdminAccess = req.user?.role === "admin";
   const currentDmcId = req.user.id?.toString();
@@ -3071,24 +3540,24 @@ const getDmcVisibleQueriesData = async (req) => {
       const addonBreakdown = [
         service?.extraAdult
           ? {
-            code: "A.W.E.B",
-            label: "A.W.E.B",
-            rate: Number(service?.awebRate || 0),
-          }
+              code: "A.W.E.B",
+              label: "A.W.E.B",
+              rate: Number(service?.awebRate || 0),
+            }
           : null,
         service?.childWithBed
           ? {
-            code: "C.W.E.B",
-            label: "C.W.E.B",
-            rate: Number(service?.cwebRate || 0),
-          }
+              code: "C.W.E.B",
+              label: "C.W.E.B",
+              rate: Number(service?.cwebRate || 0),
+            }
           : null,
         service?.childWithoutBed
           ? {
-            code: "C.Wo.E.B",
-            label: "C.Wo.E.B",
-            rate: Number(service?.cwoebRate || 0),
-          }
+              code: "C.Wo.E.B",
+              label: "C.Wo.E.B",
+              rate: Number(service?.cwoebRate || 0),
+            }
           : null,
       ]
         .filter(Boolean)
@@ -3097,8 +3566,10 @@ const getDmcVisibleQueriesData = async (req) => {
           units: billableQuantityValue,
           total: billableQuantityValue * Number(item.rate || 0),
         }));
-      const addonRatePerRoomNight =
-        addonBreakdown.reduce((sum, item) => sum + Number(item.rate || 0), 0);
+      const addonRatePerRoomNight = addonBreakdown.reduce(
+        (sum, item) => sum + Number(item.rate || 0),
+        0,
+      );
       const addonTotal = addonBreakdown.reduce(
         (sum, item) => sum + Number(item.total || 0),
         0,
@@ -3187,7 +3658,9 @@ const getDmcVisibleQueriesData = async (req) => {
 
     const ServiceModel = getServiceModel(service.type);
     if (!ServiceModel) return false;
-    const normalizedType = String(service.type || "").trim().toLowerCase();
+    const normalizedType = String(service.type || "")
+      .trim()
+      .toLowerCase();
 
     const normalizedTitle = normalizeText(service.title);
     const normalizedCity = normalizeText(service.city);
@@ -3281,12 +3754,10 @@ const getDmcVisibleQueriesData = async (req) => {
         );
         cursorDate = checkOutDate;
       } else if (
-        (
-          normalizedType === "transfer" ||
+        (normalizedType === "transfer" ||
           normalizedType === "transport" ||
           normalizedType === "car" ||
-          normalizedType === "sightseeing"
-        ) &&
+          normalizedType === "sightseeing") &&
         Number(service?.days || 0) > 1
       ) {
         const serviceDays = Number(service.days || 1);
@@ -3306,17 +3777,24 @@ const getDmcVisibleQueriesData = async (req) => {
     });
   };
 
-  const mapQuotationServiceReference = (service, schedule = {}, alignedTotal = null, index = 0) => {
+  const mapQuotationServiceReference = (
+    service,
+    schedule = {},
+    alignedTotal = null,
+    index = 0,
+  ) => {
     const alignedService = applyAlignedServiceTotal(service, alignedTotal);
     const breakdown = buildServiceBreakdown(alignedService);
     const resolvedType = resolveQuotationServiceType(alignedService);
     const normalizedType = String(resolvedType || "").toLowerCase();
     const resolvedServiceDate =
       normalizedType === "hotel"
-        ? schedule?.serviceStartDate || formatDateForUi(alignedService.serviceDate) || ""
+        ? schedule?.serviceStartDate ||
+          formatDateForUi(alignedService.serviceDate) ||
+          ""
         : formatDateForUi(alignedService.serviceDate) ||
-        schedule?.serviceStartDate ||
-        "";
+          schedule?.serviceStartDate ||
+          "";
 
     return {
       type: resolvedType,
@@ -3327,20 +3805,30 @@ const getDmcVisibleQueriesData = async (req) => {
       serviceEndDate: schedule?.serviceEndDate || resolvedServiceDate,
       checkInDate: schedule?.checkInDate || "",
       checkOutDate: schedule?.checkOutDate || "",
-      checkInTime: alignedService.checkInTime || alignedService.hotelCheckInTime || "",
+      checkInTime:
+        alignedService.checkInTime || alignedService.hotelCheckInTime || "",
       status: alignedService.status || "Confirmed",
-      confirmationNumber: alignedService.confirmationNumber || alignedService.voucherNumber || "",
+      confirmationNumber:
+        alignedService.confirmationNumber || alignedService.voucherNumber || "",
       voucherNumber: alignedService.voucherNumber || "",
       emergency: alignedService.emergency || "",
-      isVoucherGenerated: Boolean(alignedService.voucherNumber || alignedService.confirmationNumber || alignedService.isVoucherGenerated),
+      isVoucherGenerated: Boolean(
+        alignedService.voucherNumber ||
+        alignedService.confirmationNumber ||
+        alignedService.isVoucherGenerated,
+      ),
       city: alignedService.city || "",
       country: alignedService.country || "",
       supplierId: alignedService.supplierId || alignedService.dmcId || "",
       supplierName: alignedService.supplierName || alignedService.dmcName || "",
       currency: breakdown.currency,
       rate: Number(breakdown.billableUnitRate || alignedService.price || 0),
-      billableQuantityValue: Number(breakdown.billableQuantityValue || breakdown.quantityValue || 1),
-      billableUnitRate: Number(breakdown.billableUnitRate || alignedService.price || 0),
+      billableQuantityValue: Number(
+        breakdown.billableQuantityValue || breakdown.quantityValue || 1,
+      ),
+      billableUnitRate: Number(
+        breakdown.billableUnitRate || alignedService.price || 0,
+      ),
       addonBreakdown: Array.isArray(breakdown.addonBreakdown)
         ? breakdown.addonBreakdown
         : [],
@@ -3348,20 +3836,47 @@ const getDmcVisibleQueriesData = async (req) => {
       quantityValue: breakdown.quantityValue,
       quantityLabel: breakdown.quantityLabel,
       displayQuantityLabel:
-        buildDisplayServiceQuantityLabel(alignedService) || breakdown.quantityLabel,
+        buildDisplayServiceQuantityLabel(alignedService) ||
+        breakdown.quantityLabel,
       stayLabel: breakdown.stayLabel || "",
       unitLabel: breakdown.unitLabel,
       calculationText: breakdown.calculationText,
-      hotelCategory: alignedService.hotelCategory || alignedService.category || alignedService.starRating || alignedService.stars || alignedService.rating || "",
-      starRating: alignedService.starRating || alignedService.stars || alignedService.rating || alignedService.hotelCategory || alignedService.category || "",
+      hotelCategory:
+        alignedService.hotelCategory ||
+        alignedService.category ||
+        alignedService.starRating ||
+        alignedService.stars ||
+        alignedService.rating ||
+        "",
+      starRating:
+        alignedService.starRating ||
+        alignedService.stars ||
+        alignedService.rating ||
+        alignedService.hotelCategory ||
+        alignedService.category ||
+        "",
       tag: alignedService.tag || alignedService.serviceTag || "",
-      comments: alignedService.comments || alignedService.remarks || alignedService.reconfirmedComments || "",
+      comments:
+        alignedService.comments ||
+        alignedService.remarks ||
+        alignedService.reconfirmedComments ||
+        "",
     };
   };
 
-  const mapDmcVisibleService = async (service, schedule = {}, alignedTotal = null, index = 0) => {
+  const mapDmcVisibleService = async (
+    service,
+    schedule = {},
+    alignedTotal = null,
+    index = 0,
+  ) => {
     if (isAdminAccess) {
-      return mapQuotationServiceReference(service, schedule, alignedTotal, index);
+      return mapQuotationServiceReference(
+        service,
+        schedule,
+        alignedTotal,
+        index,
+      );
     }
 
     const serviceSupplierId =
@@ -3371,26 +3886,46 @@ const getDmcVisibleQueriesData = async (req) => {
       service?.supplierId;
 
     if (serviceSupplierId && serviceSupplierId === currentDmcId) {
-      return mapQuotationServiceReference(service, schedule, alignedTotal, index);
+      return mapQuotationServiceReference(
+        service,
+        schedule,
+        alignedTotal,
+        index,
+      );
     }
 
     if (serviceMatchesDmcByName(service)) {
-      return mapQuotationServiceReference(service, schedule, alignedTotal, index);
+      return mapQuotationServiceReference(
+        service,
+        schedule,
+        alignedTotal,
+        index,
+      );
     }
 
     if (service?.serviceId) {
       const ServiceModel = getServiceModel(service.type);
       if (ServiceModel) {
-        const sourceServiceKey = `${String(service.type || "").trim().toLowerCase()}:${service.serviceId}`;
+        const sourceServiceKey = `${String(service.type || "")
+          .trim()
+          .toLowerCase()}:${service.serviceId}`;
         if (!sourceServiceSupplierByKey.has(sourceServiceKey)) {
           const sourceService = await ServiceModel.findById(service.serviceId)
             .select("supplier")
             .lean();
-          sourceServiceSupplierByKey.set(sourceServiceKey, sourceService?.supplier?.toString() || "");
+          sourceServiceSupplierByKey.set(
+            sourceServiceKey,
+            sourceService?.supplier?.toString() || "",
+          );
         }
 
         if (sourceServiceSupplierByKey.get(sourceServiceKey) === currentDmcId) {
-          return mapQuotationServiceReference(service, schedule, alignedTotal, index);
+          return mapQuotationServiceReference(
+            service,
+            schedule,
+            alignedTotal,
+            index,
+          );
         }
       }
     }
@@ -3437,19 +3972,28 @@ const getDmcVisibleQueriesData = async (req) => {
   activeBulkBatches.forEach((batch) => {
     (batch.coveredQueries || []).forEach((cq) => {
       if (cq.query) {
-        bulkSettledQueryMap.set(cq.query.toString(), batch.invoiceNumber || batch.batchNumber);
+        bulkSettledQueryMap.set(
+          cq.query.toString(),
+          batch.invoiceNumber || batch.batchNumber,
+        );
       }
     });
   });
 
   const queryObjectIds = queries.map((query) => query._id);
-  const queryObjectIdStrings = queryObjectIds.map((queryId) => queryId?.toString()).filter(Boolean);
-  const queryCodes = queries.map((query) => String(query.queryId || "").trim()).filter(Boolean);
+  const queryObjectIdStrings = queryObjectIds
+    .map((queryId) => queryId?.toString())
+    .filter(Boolean);
+  const queryCodes = queries
+    .map((query) => String(query.queryId || "").trim())
+    .filter(Boolean);
   const agentInvoices = await Invoice.find({
     query: { $in: queryObjectIds },
     invoiceType: "agent",
   })
-    .select("query totalAmount paymentStatus currency pricingSnapshot lineItems paymentSubmission.trackerPayments tripSnapshot quotation createdAt updatedAt")
+    .select(
+      "query totalAmount paymentStatus currency pricingSnapshot lineItems paymentSubmission.trackerPayments tripSnapshot quotation createdAt updatedAt",
+    )
     .sort({ createdAt: -1 })
     .lean();
   const agentInvoiceByQueryId = new Map();
@@ -3460,8 +4004,12 @@ const getDmcVisibleQueriesData = async (req) => {
     }
   });
 
-  const allQuotations = await Quotation.find({ queryId: { $in: queryObjectIds } })
-    .select("queryId services pricing clientTotalAmount totalAmount grandTotal createdAt updatedAt status agentMarkup")
+  const allQuotations = await Quotation.find({
+    queryId: { $in: queryObjectIds },
+  })
+    .select(
+      "queryId services pricing clientTotalAmount totalAmount grandTotal createdAt updatedAt status agentMarkup",
+    )
     .sort({ createdAt: -1 })
     .lean();
   const quotationsByQueryId = new Map();
@@ -3512,7 +4060,8 @@ const getDmcVisibleQueriesData = async (req) => {
     queries.map(async (query) => {
       const queryKey = query._id?.toString();
       const quotationRows = quotationsByQueryId.get(queryKey) || [];
-      const quotation = latestOperationalQuotationByQueryId.get(queryKey) || null;
+      const quotation =
+        latestOperationalQuotationByQueryId.get(queryKey) || null;
       const confirmation =
         confirmationByQueryIdentifier.get(String(query.queryId || "").trim()) ||
         confirmationByQueryIdentifier.get(queryKey) ||
@@ -3523,15 +4072,20 @@ const getDmcVisibleQueriesData = async (req) => {
 
       const startDate = query.startDate ? new Date(query.startDate) : null;
       const endDate = query.endDate ? new Date(query.endDate) : null;
-      const days =
+      const diffDays =
         startDate && endDate
-          ? Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24))
+          ? Math.max(0, Math.round((endDate - startDate) / (1000 * 60 * 60 * 24)))
           : 0;
-      const nights = days > 0 ? days - 1 : 0;
+      const nights = diffDays;
+      const days = diffDays > 0 ? diffDays + 1 : 1;
 
-      const detailQuotation = getBestServiceDetailQuotationFromList(quotationRows, quotation);
+      const detailQuotation = getBestServiceDetailQuotationFromList(
+        quotationRows,
+        quotation,
+      );
       const detailServices =
-        Array.isArray(detailQuotation?.services) && detailQuotation.services.length
+        Array.isArray(detailQuotation?.services) &&
+        detailQuotation.services.length
           ? detailQuotation.services
           : quotation?.services || [];
       const quotationServices = await enrichQuotationServicesWithDetails(
@@ -3546,24 +4100,51 @@ const getDmcVisibleQueriesData = async (req) => {
         },
       );
 
-      if (Array.isArray(confirmation?.services) && confirmation.services.length > 0) {
+      if (
+        Array.isArray(confirmation?.services) &&
+        confirmation.services.length > 0
+      ) {
         quotationServices.forEach((qs, qIdx) => {
-          const qsTitle = normalizeText(qs.title || qs.serviceName || qs.hotelName || qs.name || "");
+          const qsTitle = normalizeText(
+            qs.title || qs.serviceName || qs.hotelName || qs.name || "",
+          );
           const matchedConf = confirmation.services.find((cs, cIdx) => {
-            if (cs._id && qs._id && String(cs._id) === String(qs._id)) return true;
-            if (cs.serviceId && qs.serviceId && String(cs.serviceId) === String(qs.serviceId)) return true;
-            const csTitle = normalizeText(cs.serviceName || cs.title || cs.name || "");
-            if (csTitle && qsTitle && (csTitle === qsTitle || csTitle.includes(qsTitle) || qsTitle.includes(csTitle))) return true;
+            if (cs._id && qs._id && String(cs._id) === String(qs._id))
+              return true;
+            if (
+              cs.serviceId &&
+              qs.serviceId &&
+              String(cs.serviceId) === String(qs.serviceId)
+            )
+              return true;
+            const csTitle = normalizeText(
+              cs.serviceName || cs.title || cs.name || "",
+            );
+            if (
+              csTitle &&
+              qsTitle &&
+              (csTitle === qsTitle ||
+                csTitle.includes(qsTitle) ||
+                qsTitle.includes(csTitle))
+            )
+              return true;
             return cIdx === qIdx;
           });
 
           if (matchedConf) {
-            if (matchedConf.confirmationNumber) qs.confirmationNumber = matchedConf.confirmationNumber;
-            if (matchedConf.voucherNumber) qs.voucherNumber = matchedConf.voucherNumber;
+            if (matchedConf.confirmationNumber)
+              qs.confirmationNumber = matchedConf.confirmationNumber;
+            if (matchedConf.voucherNumber)
+              qs.voucherNumber = matchedConf.voucherNumber;
             if (matchedConf.status) qs.status = matchedConf.status;
             if (matchedConf.emergency) qs.emergency = matchedConf.emergency;
-            if (matchedConf.serviceDate) qs.serviceDate = matchedConf.serviceDate;
-            qs.isVoucherGenerated = Boolean(matchedConf.voucherNumber || matchedConf.confirmationNumber || matchedConf.isVoucherGenerated);
+            if (matchedConf.serviceDate)
+              qs.serviceDate = matchedConf.serviceDate;
+            qs.isVoucherGenerated = Boolean(
+              matchedConf.voucherNumber ||
+              matchedConf.confirmationNumber ||
+              matchedConf.isVoucherGenerated,
+            );
           }
         });
       }
@@ -3581,11 +4162,11 @@ const getDmcVisibleQueriesData = async (req) => {
         Number(quotation?.clientTotalAmount || 0) ||
         Number(quotation?.grandTotal || 0) ||
         Number(quotation?.totalAmount || 0) ||
-        (Number(quotation?.pricing?.subTotal || 0) +
+        Number(quotation?.pricing?.subTotal || 0) +
           Number(quotation?.pricing?.packageTemplateAmount || 0) +
           Number(quotation?.pricing?.opsMarkup?.amount || 0) +
           Number(quotation?.pricing?.opsCharges?.serviceCharge || 0) +
-          Number(quotation?.pricing?.opsCharges?.handlingFee || 0));
+          Number(quotation?.pricing?.opsCharges?.handlingFee || 0);
 
       const visibleServices = (
         await Promise.all(
@@ -3609,30 +4190,42 @@ const getDmcVisibleQueriesData = async (req) => {
         return sum + val;
       }, 0);
 
-      const resolvedPackagePrice = visibleServicesTotal > 0
-        ? visibleServicesTotal
-        : (officialQuotationFinalAmount || Number(quotation?.clientTotalAmount || 0));
+      const resolvedPackagePrice =
+        visibleServicesTotal > 0
+          ? visibleServicesTotal
+          : officialQuotationFinalAmount ||
+            Number(quotation?.clientTotalAmount || 0);
 
-      const allocatedAt = confirmation?.createdAt || quotation?.createdAt || query.updatedAt || query.createdAt;
+      const allocatedAt =
+        confirmation?.createdAt ||
+        quotation?.createdAt ||
+        query.updatedAt ||
+        query.createdAt;
 
       const existingInternalInvoice = internalInvoiceByQueryId.get(
         query._id?.toString(),
       );
 
-      const internalInvoicePayout = Number(existingInternalInvoice?.payoutAmount || 0);
+      const internalInvoicePayout = Number(
+        existingInternalInvoice?.payoutAmount || 0,
+      );
       const rawPaidAmount = Math.max(
         Number(query.paidAmount || query.amountPaid || query.payoutAmount || 0),
-        internalInvoicePayout
+        internalInvoicePayout,
       );
 
-      const hasActualServiceVoucher = visibleServices.some(
-        (s) => Boolean(s.voucherNumber || s.isVoucherGenerated)
+      const hasActualServiceVoucher = visibleServices.some((s) =>
+        Boolean(s.voucherNumber || s.isVoucherGenerated),
       );
 
       let resolvedOpsStatus = String(query.opsStatus || "").trim();
 
       // If DB status is Vouchered BUT payment is 0 and no individual service has a voucher:
-      if (resolvedOpsStatus === "Vouchered" && !hasActualServiceVoucher && rawPaidAmount === 0) {
+      if (
+        resolvedOpsStatus === "Vouchered" &&
+        !hasActualServiceVoucher &&
+        rawPaidAmount === 0
+      ) {
         if (existingInternalInvoice || bulkSettledQueryMap.has(queryKey)) {
           resolvedOpsStatus = "Invoice_Requested";
         } else {
@@ -3644,53 +4237,65 @@ const getDmcVisibleQueriesData = async (req) => {
 
       const existingAgentInvoice = agentInvoiceByQueryId.get(queryKey) || null;
 
-      const quotationPricing = quotation?.pricing ? {
-        currency: quotation.pricing.currency || "INR",
-        baseAmount: Number(quotation.pricing.baseAmount || 0),
-        subTotal: Number(quotation.pricing.subTotal || 0),
-        packageTemplateAmount: Number(quotation.pricing.packageTemplateAmount || 0),
-        opsMarkup: {
-          percent: Number(quotation.pricing.opsMarkup?.percent || 0),
-          amount: Number(quotation.pricing.opsMarkup?.amount || 0),
-        },
-        opsCharges: {
-          serviceCharge: Number(quotation.pricing.opsCharges?.serviceCharge || 0),
-          handlingFee: Number(quotation.pricing.opsCharges?.handlingFee || 0),
-        },
-        tax: {
-          gst: {
-            percent: Number(quotation.pricing.tax?.gst?.percent || 0),
-            amount: Number(quotation.pricing.tax?.gst?.amount || 0),
-          },
-          tcs: {
-            percent: Number(quotation.pricing.tax?.tcs?.percent || 0),
-            amount: Number(quotation.pricing.tax?.tcs?.amount || 0),
-          },
-          tourismFee: {
-            amount: Number(quotation.pricing.tax?.tourismFee?.amount || 0),
-          },
-          totalTax: Number(quotation.pricing.tax?.totalTax || 0),
-        },
-        totalAmount: Number(quotation.pricing.totalAmount || 0),
-      } : null;
+      const quotationPricing = quotation?.pricing
+        ? {
+            currency: quotation.pricing.currency || "INR",
+            baseAmount: Number(quotation.pricing.baseAmount || 0),
+            subTotal: Number(quotation.pricing.subTotal || 0),
+            packageTemplateAmount: Number(
+              quotation.pricing.packageTemplateAmount || 0,
+            ),
+            opsMarkup: {
+              percent: Number(quotation.pricing.opsMarkup?.percent || 0),
+              amount: Number(quotation.pricing.opsMarkup?.amount || 0),
+            },
+            opsCharges: {
+              serviceCharge: Number(
+                quotation.pricing.opsCharges?.serviceCharge || 0,
+              ),
+              handlingFee: Number(
+                quotation.pricing.opsCharges?.handlingFee || 0,
+              ),
+            },
+            tax: {
+              gst: {
+                percent: Number(quotation.pricing.tax?.gst?.percent || 0),
+                amount: Number(quotation.pricing.tax?.gst?.amount || 0),
+              },
+              tcs: {
+                percent: Number(quotation.pricing.tax?.tcs?.percent || 0),
+                amount: Number(quotation.pricing.tax?.tcs?.amount || 0),
+              },
+              tourismFee: {
+                amount: Number(quotation.pricing.tax?.tourismFee?.amount || 0),
+              },
+              totalTax: Number(quotation.pricing.tax?.totalTax || 0),
+            },
+            totalAmount: Number(quotation.pricing.totalAmount || 0),
+          }
+        : null;
 
-      const agentMarkupData = quotation?.agentMarkup ? {
-        type: quotation.agentMarkup.type || "",
-        value: Number(quotation.agentMarkup.value || 0),
-        markupAmount: Number(quotation.agentMarkup.markupAmount || 0),
-      } : null;
+      const agentMarkupData = quotation?.agentMarkup
+        ? {
+            type: quotation.agentMarkup.type || "",
+            value: Number(quotation.agentMarkup.value || 0),
+            markupAmount: Number(quotation.agentMarkup.markupAmount || 0),
+          }
+        : null;
 
-      const customerNameFromTravelers = (query.travelerDetails || []).find(
-        (t) => t.travelerType === "Adult"
-      )?.fullName || "";
+      const customerNameFromTravelers =
+        (query.travelerDetails || []).find((t) => t.travelerType === "Adult")
+          ?.fullName || "";
       const customerPhone = query.clientEmail || "";
 
-      const dmcCostTotal = Number(existingInternalInvoice?.summary?.grandTotal || 0)
-        || Number(existingInternalInvoice?.claimedSummary?.grandTotal || 0)
-        || Number(existingInternalInvoice?.payoutAmount || 0);
+      const dmcCostTotal =
+        Number(existingInternalInvoice?.summary?.grandTotal || 0) ||
+        Number(existingInternalInvoice?.claimedSummary?.grandTotal || 0) ||
+        Number(existingInternalInvoice?.payoutAmount || 0);
 
-      const agentRevenueTotal = Number(existingAgentInvoice?.totalAmount || 0)
-        || Number(existingAgentInvoice?.pricingSnapshot?.grandTotal || 0);
+      const agentRevenueTotal =
+        Number(existingAgentInvoice?.totalAmount || 0) ||
+        Number(existingAgentInvoice?.pricingSnapshot?.grandTotal || 0);
 
       return {
         _id: query._id,
@@ -3725,87 +4330,102 @@ const getDmcVisibleQueriesData = async (req) => {
         agentMarkup: agentMarkupData,
         agentInvoice: existingAgentInvoice
           ? {
-            id: existingAgentInvoice._id,
-            invoiceNumber: existingAgentInvoice.invoiceNumber || "",
-            totalAmount: Number(existingAgentInvoice.totalAmount || 0),
-            paymentStatus: existingAgentInvoice.paymentStatus || "Pending",
-            currency: existingAgentInvoice.currency || "INR",
-            pricingSnapshot: existingAgentInvoice.pricingSnapshot || {},
-            trackerPayments: Array.isArray(existingAgentInvoice.paymentSubmission?.trackerPayments)
-              ? existingAgentInvoice.paymentSubmission.trackerPayments
-              : [],
-            createdAt: existingAgentInvoice.createdAt || null,
-          }
+              id: existingAgentInvoice._id,
+              invoiceNumber: existingAgentInvoice.invoiceNumber || "",
+              totalAmount: Number(existingAgentInvoice.totalAmount || 0),
+              paymentStatus: existingAgentInvoice.paymentStatus || "Pending",
+              currency: existingAgentInvoice.currency || "INR",
+              pricingSnapshot: existingAgentInvoice.pricingSnapshot || {},
+              trackerPayments: Array.isArray(
+                existingAgentInvoice.paymentSubmission?.trackerPayments,
+              )
+                ? existingAgentInvoice.paymentSubmission.trackerPayments
+                : [],
+              createdAt: existingAgentInvoice.createdAt || null,
+            }
           : null,
         dmcCostTotal,
         agentRevenueTotal,
-        estimatedProfit: agentRevenueTotal > 0 ? agentRevenueTotal - dmcCostTotal : 0,
-        estimatedProfitPercent: agentRevenueTotal > 0
-          ? Math.round(((agentRevenueTotal - dmcCostTotal) / agentRevenueTotal) * 10000) / 100
-          : 0,
-        travelerDetails: (query.travelerDetails || []).map((traveler, index) => ({
-          id: traveler?._id?.toString?.() || `traveler-${index + 1}`,
-          fullName: String(traveler?.fullName || "").trim(),
-          travelerType:
-            traveler?.travelerType === "Child" ? "Child" : "Adult",
-          childAge:
-            traveler?.travelerType === "Child" &&
+        estimatedProfit:
+          agentRevenueTotal > 0 ? agentRevenueTotal - dmcCostTotal : 0,
+        estimatedProfitPercent:
+          agentRevenueTotal > 0
+            ? Math.round(
+                ((agentRevenueTotal - dmcCostTotal) / agentRevenueTotal) *
+                  10000,
+              ) / 100
+            : 0,
+        travelerDetails: (query.travelerDetails || []).map(
+          (traveler, index) => ({
+            id: traveler?._id?.toString?.() || `traveler-${index + 1}`,
+            fullName: String(traveler?.fullName || "").trim(),
+            travelerType:
+              traveler?.travelerType === "Child" ? "Child" : "Adult",
+            childAge:
+              traveler?.travelerType === "Child" &&
               traveler?.childAge !== undefined &&
               traveler?.childAge !== null
-              ? Number(traveler.childAge)
-              : null,
-          documentType:
-            String(traveler?.documentType || "Passport").trim() || "Passport",
-          documents: normalizeTravelerDocuments(
-            traveler?.documents,
-            traveler?.document,
-            traveler?.documentType,
-          ),
-        })),
+                ? Number(traveler.childAge)
+                : null,
+            documentType:
+              String(traveler?.documentType || "Passport").trim() || "Passport",
+            documents: normalizeTravelerDocuments(
+              traveler?.documents,
+              traveler?.document,
+              traveler?.documentType,
+            ),
+          }),
+        ),
         travelerDocumentVerification: getTravelerDocumentVerification(query),
         travelerDocumentAuditTrail: Array.isArray(
           query.travelerDocumentAuditTrail,
         )
           ? query.travelerDocumentAuditTrail.map((entry) => ({
-            action: String(entry?.action || "").trim(),
-            status: String(entry?.status || "Draft").trim(),
-            performedByName: String(entry?.performedByName || "").trim(),
-            remarks: String(entry?.remarks || "").trim(),
-            performedAt: entry?.performedAt || null,
-          }))
+              action: String(entry?.action || "").trim(),
+              status: String(entry?.status || "Draft").trim(),
+              performedByName: String(entry?.performedByName || "").trim(),
+              remarks: String(entry?.remarks || "").trim(),
+              performedAt: entry?.performedAt || null,
+            }))
           : [],
         internalInvoice: existingInternalInvoice
           ? {
-            id: existingInternalInvoice._id,
-            supplierName: existingInternalInvoice.supplierName || "",
-            invoiceNumber: existingInternalInvoice.invoiceNumber || "",
-            invoiceDate: existingInternalInvoice.invoiceDate || null,
-            dueDate: existingInternalInvoice.dueDate || null,
-            creditPeriodDays: Number(existingInternalInvoice.creditPeriodDays || 7),
-            templateVariant: existingInternalInvoice.templateVariant || "aurora-ledger",
-            items: Array.isArray(existingInternalInvoice.items)
-              ? existingInternalInvoice.items
-              : [],
-            documents: Array.isArray(existingInternalInvoice.documents)
-              ? existingInternalInvoice.documents
-              : [],
-            invoiceSource: existingInternalInvoice.invoiceSource || "system_template",
-            uploadedInvoice: existingInternalInvoice.uploadedInvoice || {},
-            claimedSummary: existingInternalInvoice.claimedSummary || {},
-            taxConfig: existingInternalInvoice.taxConfig || {},
-            summary: existingInternalInvoice.summary || {},
-            status: existingInternalInvoice.status || "Submitted",
-            submittedAt: existingInternalInvoice.submittedAt || null,
-            updatedAt: existingInternalInvoice.updatedAt || null,
-            financeNotes: existingInternalInvoice.financeNotes || "",
-            payoutReference: existingInternalInvoice.payoutReference || "",
-            payoutDate: existingInternalInvoice.payoutDate || null,
-            payoutBank: existingInternalInvoice.payoutBank || "",
-            payoutAmount: Number(existingInternalInvoice.payoutAmount || 0),
-            payoutInstallments: Array.isArray(existingInternalInvoice.payoutInstallments)
-              ? existingInternalInvoice.payoutInstallments
-              : [],
-          }
+              id: existingInternalInvoice._id,
+              supplierName: existingInternalInvoice.supplierName || "",
+              invoiceNumber: existingInternalInvoice.invoiceNumber || "",
+              invoiceDate: existingInternalInvoice.invoiceDate || null,
+              dueDate: existingInternalInvoice.dueDate || null,
+              creditPeriodDays: Number(
+                existingInternalInvoice.creditPeriodDays || 7,
+              ),
+              templateVariant:
+                existingInternalInvoice.templateVariant || "aurora-ledger",
+              items: Array.isArray(existingInternalInvoice.items)
+                ? existingInternalInvoice.items
+                : [],
+              documents: Array.isArray(existingInternalInvoice.documents)
+                ? existingInternalInvoice.documents
+                : [],
+              invoiceSource:
+                existingInternalInvoice.invoiceSource || "system_template",
+              uploadedInvoice: existingInternalInvoice.uploadedInvoice || {},
+              claimedSummary: existingInternalInvoice.claimedSummary || {},
+              taxConfig: existingInternalInvoice.taxConfig || {},
+              summary: existingInternalInvoice.summary || {},
+              status: existingInternalInvoice.status || "Submitted",
+              submittedAt: existingInternalInvoice.submittedAt || null,
+              updatedAt: existingInternalInvoice.updatedAt || null,
+              financeNotes: existingInternalInvoice.financeNotes || "",
+              payoutReference: existingInternalInvoice.payoutReference || "",
+              payoutDate: existingInternalInvoice.payoutDate || null,
+              payoutBank: existingInternalInvoice.payoutBank || "",
+              payoutAmount: Number(existingInternalInvoice.payoutAmount || 0),
+              payoutInstallments: Array.isArray(
+                existingInternalInvoice.payoutInstallments,
+              )
+                ? existingInternalInvoice.payoutInstallments
+                : [],
+            }
           : null,
         services: visibleServices,
         existingConfirmation: confirmation || null,
@@ -3821,7 +4441,12 @@ const getDmcVisibleQueriesData = async (req) => {
 const clampPercent = (value) =>
   Math.max(0, Math.min(100, Math.round(Number(value) || 0)));
 
-const DMC_VISIBLE_BOOKING_STATUSES = ["Confirmed", "Vouchered", "Payment_Completed", "Invoice_Requested"];
+const DMC_VISIBLE_BOOKING_STATUSES = [
+  "Confirmed",
+  "Vouchered",
+  "Payment_Completed",
+  "Invoice_Requested",
+];
 
 const formatDashboardDate = (value = new Date()) =>
   new Intl.DateTimeFormat("en-US", {
@@ -3899,10 +4524,7 @@ const getPendingActionCountForQuery = (query = {}) => {
 };
 
 const getQueryAssignmentDate = (query = {}) =>
-  query?.quotationCreatedAt ||
-  query?.createdAt ||
-  query?.updatedAt ||
-  null;
+  query?.quotationCreatedAt || query?.createdAt || query?.updatedAt || null;
 
 const getResponseTimeHours = (query = {}) => {
   if (!hasSubmittedConfirmation(query)) return null;
@@ -3950,13 +4572,18 @@ const buildDmcRecentActivity = (queries = []) =>
         });
       }
 
-      if (DMC_VISIBLE_BOOKING_STATUSES.includes(String(query?.opsStatus || "").trim())) {
+      if (
+        DMC_VISIBLE_BOOKING_STATUSES.includes(
+          String(query?.opsStatus || "").trim(),
+        )
+      ) {
         items.push({
           title: "Booking Accepted",
           badge: "Accepted",
           color: "bg-blue-100 text-blue-600",
           company,
-          timestamp: query?.updatedAt || query?.quotationUpdatedAt || newQueryAt,
+          timestamp:
+            query?.updatedAt || query?.quotationUpdatedAt || newQueryAt,
         });
       }
 
@@ -4009,7 +4636,9 @@ const calculateTrendPercentage = (current = 0, previous = 0) => {
     return normalizedCurrent > 0 ? 100 : 0;
   }
 
-  return Math.round(((normalizedCurrent - normalizedPrevious) / normalizedPrevious) * 100);
+  return Math.round(
+    ((normalizedCurrent - normalizedPrevious) / normalizedPrevious) * 100,
+  );
 };
 
 const buildDashboardTrend = (current = 0, previous = 0) => {
@@ -4041,7 +4670,11 @@ const buildDmcDashboardPayload = async (queries = [], currentDmcId = null) => {
     isWithinWindow(getQueryAssignmentDate(query), currentWeekStart, now),
   );
   const previousWeekAssigned = queries.filter((query) =>
-    isWithinWindow(getQueryAssignmentDate(query), previousWeekStart, currentWeekStart),
+    isWithinWindow(
+      getQueryAssignmentDate(query),
+      previousWeekStart,
+      currentWeekStart,
+    ),
   );
 
   const currentWeekPendingQueries = currentWeekAssigned.filter(
@@ -4054,8 +4687,8 @@ const buildDmcDashboardPayload = async (queries = [], currentDmcId = null) => {
   const currentWeekVouchers = queries.filter((query) =>
     isWithinWindow(
       query?.voucherGeneratedAt ||
-      query?.voucherSentAt ||
-      (query?.isVoucherGenerated ? query?.updatedAt : null),
+        query?.voucherSentAt ||
+        (query?.isVoucherGenerated ? query?.updatedAt : null),
       currentWeekStart,
       now,
     ),
@@ -4063,8 +4696,8 @@ const buildDmcDashboardPayload = async (queries = [], currentDmcId = null) => {
   const previousWeekVouchers = queries.filter((query) =>
     isWithinWindow(
       query?.voucherGeneratedAt ||
-      query?.voucherSentAt ||
-      (query?.isVoucherGenerated ? query?.updatedAt : null),
+        query?.voucherSentAt ||
+        (query?.isVoucherGenerated ? query?.updatedAt : null),
       previousWeekStart,
       currentWeekStart,
     ),
@@ -4091,7 +4724,7 @@ const buildDmcDashboardPayload = async (queries = [], currentDmcId = null) => {
     .filter((value) => value !== null);
   const avgResponseHours = responseTimeSamples.length
     ? responseTimeSamples.reduce((sum, value) => sum + value, 0) /
-    responseTimeSamples.length
+      responseTimeSamples.length
     : 0;
 
   const voucherWindowStart = getWindowStart(30);
@@ -4109,7 +4742,9 @@ const buildDmcDashboardPayload = async (queries = [], currentDmcId = null) => {
     ),
   ).size;
   const vouchersPerDay = recentVoucherTimestamps.length
-    ? Math.round(recentVoucherTimestamps.length / Math.max(voucherActiveDays, 1))
+    ? Math.round(
+        recentVoucherTimestamps.length / Math.max(voucherActiveDays, 1),
+      )
     : 0;
 
   // Calculate 12-month upload trend data
@@ -4120,15 +4755,28 @@ const buildDmcDashboardPayload = async (queries = [], currentDmcId = null) => {
 
   const uploadsForTrend = currentDmcId
     ? await UploadHistory.find({
-      uploadedAuth: currentDmcId,
-      status: "success",
-      createdAt: { $gte: startOfTrend },
-    })
-      .select("createdAt records category")
-      .lean()
+        uploadedAuth: currentDmcId,
+        status: "success",
+        createdAt: { $gte: startOfTrend },
+      })
+        .select("createdAt records category")
+        .lean()
     : [];
 
-  const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const monthNames = [
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec",
+  ];
   const trendMap = {};
 
   for (let i = 11; i >= 0; i--) {
@@ -4158,7 +4806,9 @@ const buildDmcDashboardPayload = async (queries = [], currentDmcId = null) => {
       const count = Number(upload.records || 0);
       trendMap[key].records += count;
 
-      const cat = String(upload.category || "").toLowerCase().trim();
+      const cat = String(upload.category || "")
+        .toLowerCase()
+        .trim();
       if (cat === "hotel") {
         trendMap[key].hotels += count;
       } else if (cat === "transport" || cat === "vehicle") {
@@ -4222,7 +4872,10 @@ const buildDmcDashboardPayload = async (queries = [], currentDmcId = null) => {
     previousRecordsCount = recordsLastMonth[0]?.total || 0;
   }
 
-  const recordsTrend = buildDashboardTrend(currentRecordsCount, previousRecordsCount);
+  const recordsTrend = buildDashboardTrend(
+    currentRecordsCount,
+    previousRecordsCount,
+  );
 
   // Compute DMC Financial Overview
   let paymentReceived = 0;
@@ -4234,11 +4887,15 @@ const buildDmcDashboardPayload = async (queries = [], currentDmcId = null) => {
     }).lean();
 
     internalInvoices.forEach((inv) => {
-      const invTotal = Number(inv?.summary?.grandTotal || inv?.claimedSummary?.grandTotal || 0);
+      const invTotal = Number(
+        inv?.summary?.grandTotal || inv?.claimedSummary?.grandTotal || 0,
+      );
       const st = String(inv?.status || "").toLowerCase();
       if (st === "paid") {
         paymentReceived += invTotal;
-      } else if (["submitted", "in review", "approved", "partially paid"].includes(st)) {
+      } else if (
+        ["submitted", "in review", "approved", "partially paid"].includes(st)
+      ) {
         paymentPending += invTotal;
       }
     });
@@ -4248,18 +4905,27 @@ const buildDmcDashboardPayload = async (queries = [], currentDmcId = null) => {
     return sum + Number(q?.quotationTaxableAmount || 0);
   }, 0);
 
-  const remainingBalance = Math.max(0, totalBookedValue - paymentReceived - paymentPending);
+  const remainingBalance = Math.max(
+    0,
+    totalBookedValue - paymentReceived - paymentPending,
+  );
 
   return {
     dateLabel: formatDashboardDate(),
     summary: {
       pendingQueries: {
         value: pendingQueries,
-        ...buildChangeMeta(currentWeekPendingQueries, previousWeekPendingQueries),
+        ...buildChangeMeta(
+          currentWeekPendingQueries,
+          previousWeekPendingQueries,
+        ),
       },
       activeBookings: {
         value: activeBookings,
-        ...buildChangeMeta(currentWeekAssigned.length, previousWeekAssigned.length),
+        ...buildChangeMeta(
+          currentWeekAssigned.length,
+          previousWeekAssigned.length,
+        ),
       },
       vouchersGenerated: {
         value: vouchersGenerated,
@@ -4267,7 +4933,10 @@ const buildDmcDashboardPayload = async (queries = [], currentDmcId = null) => {
       },
       pendingActions: {
         value: pendingActions,
-        ...buildChangeMeta(currentWeekPendingActions, previousWeekPendingActions),
+        ...buildChangeMeta(
+          currentWeekPendingActions,
+          previousWeekPendingActions,
+        ),
       },
     },
     financials: {
@@ -4332,7 +5001,14 @@ export const getDmcDashboard = async (req, res, next) => {
 
 export const addOrUpdateSupplierPayment = async (req, res, next) => {
   try {
-    const { queryId, serviceKey, serviceName, supplierName, totalCost, installment } = req.body;
+    const {
+      queryId,
+      serviceKey,
+      serviceName,
+      supplierName,
+      totalCost,
+      installment,
+    } = req.body;
     const currentDmcId = req.user.id;
 
     if (!queryId || !installment || !installment.amount) {
@@ -4358,16 +5034,22 @@ export const addOrUpdateSupplierPayment = async (req, res, next) => {
 
     const keyToMatch = serviceKey || serviceName || "default";
     let supplierPayObj = (confirmation.supplierPayments || []).find(
-      (sp) => sp.serviceKey === keyToMatch || sp.serviceName === serviceName
+      (sp) => sp.serviceKey === keyToMatch || sp.serviceName === serviceName,
     );
 
     const installmentData = {
       amount: Number(installment.amount || 0),
       status: installment.status || "Paid",
       dueDate: installment.dueDate ? new Date(installment.dueDate) : null,
-      paymentDate: installment.paymentDate ? new Date(installment.paymentDate) : new Date(),
+      paymentDate: installment.paymentDate
+        ? new Date(installment.paymentDate)
+        : new Date(),
       comments: installment.comments || "",
-      verifiedBy: installment.verifiedBy || req.user?.name || req.user?.companyName || "DMC Admin",
+      verifiedBy:
+        installment.verifiedBy ||
+        req.user?.name ||
+        req.user?.companyName ||
+        "DMC Admin",
       utrNumber: installment.utrNumber || "",
       bankName: installment.bankName || "",
       createdByName: req.user?.name || req.user?.companyName || "DMC User",

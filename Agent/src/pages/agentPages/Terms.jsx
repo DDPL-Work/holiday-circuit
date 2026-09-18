@@ -27,7 +27,7 @@ const Terms = () => {
 
 
   return (
-    <section className="space-y-5 p-6 font-sans">
+    <section className="space-y-5 p-3 font-sans">
       <header className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Terms and Conditions</h1>

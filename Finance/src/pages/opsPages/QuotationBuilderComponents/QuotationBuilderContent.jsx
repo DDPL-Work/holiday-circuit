@@ -18,6 +18,29 @@ import {
   getServiceCardDomId,
 } from "./utils";
 
+const formatTravelDateRange = (startDate, endDate) => {
+  if (!startDate) return "—";
+  const start = new Date(startDate);
+  if (Number.isNaN(start.getTime())) return String(startDate || "—");
+
+  const formatOptions = {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  };
+
+  const startStr = start.toLocaleDateString("en-IN", formatOptions);
+
+  if (!endDate) return startStr;
+  const end = new Date(endDate);
+  if (Number.isNaN(end.getTime())) return startStr;
+
+  const endStr = end.toLocaleDateString("en-IN", formatOptions);
+  if (startStr === endStr) return startStr;
+
+  return `${startStr} - ${endStr}`;
+};
+
 const QuotationBuilderContent = (props) => {
   const {
     CONTRACTED_RATE_FILTER_OPTIONS,
@@ -139,15 +162,31 @@ const QuotationBuilderContent = (props) => {
             <div>
               <p className="text-gray-500 text-xs mb-1">Agent Name</p>
               <p className="text-slate-900 text-xs font-semibold">
-                {order?.agent?.companyName}
+                {order?.agent?.name ||
+                  order?.agent?.companyName ||
+                  order?.agentName ||
+                  order?.companyName ||
+                  order?.clientName ||
+                  "—"}
               </p>
+              {order?.agent?.companyName &&
+                order?.agent?.name &&
+                order?.agent?.companyName !== order?.agent?.name && (
+                  <p className="text-[11px] text-gray-500 mt-0.5">
+                    {order.agent.companyName}
+                  </p>
+                )}
             </div>
 
             {/* Agent Email */}
             <div>
               <p className="text-gray-500 text-xs mb-1">Agent Email</p>
               <p className="text-slate-900 text-xs font-semibold">
-                {order?.agent?.email}
+                {order?.agent?.email ||
+                  order?.agentEmail ||
+                  order?.email ||
+                  order?.clientEmail ||
+                  "—"}
               </p>
             </div>
 
@@ -155,7 +194,7 @@ const QuotationBuilderContent = (props) => {
             <div>
               <p className="text-gray-500 text-xs mb-1">Destination</p>
               <p className="text-slate-900 text-xs font-semibold">
-                {order?.destination}
+                {order?.destination || "—"}
               </p>
             </div>
 
@@ -163,11 +202,7 @@ const QuotationBuilderContent = (props) => {
             <div>
               <p className="text-gray-500 text-xs mb-1">Travel Date</p>
               <p className="text-slate-900 text-xs font-semibold">
-                {new Date(order?.startDate).toLocaleDateString("en-IN", {
-                  day: "numeric",
-                  month: "long",
-                  year: "numeric",
-                })}
+                {formatTravelDateRange(order?.startDate, order?.endDate)}
               </p>
             </div>
 

@@ -93,7 +93,7 @@ const TermDetails = () => {
   }
 
   return (
-    <section className="space-y-5 p-6 font-sans">
+    <section className="space-y-5 p-3 font-sans">
       <div className="flex items-center justify-between gap-2">
         {/* Breadcrumbs */}
         <div className="flex items-center gap-2 text-sm text-gray-500 font-medium min-w-0">

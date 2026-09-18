@@ -24,7 +24,19 @@ import {
   sendVoucherToAgent,
   startQuotation,
   updateQueryStatus,
+  uploadBusinessPartnerInvoice,
+  getQueriesForPartnerInvoiceUpload,
+  getQueryPartnerInvoiceStatus,
+  submitOfflinePartnerConfirmation,
 } from "../controllers/opsController.js";
+import multer from "multer";
+
+const partnerInvoiceUpload = multer({
+  storage: multer.diskStorage({
+    destination: function (_req, _file, cb) { cb(null, "uploads/") },
+    filename: function (_req, file, cb) { cb(null, Date.now() + "-" + file.originalname) },
+  }),
+});
 import {
   createOperationTeamMember,
   getOperationManagerDashboard,
@@ -72,6 +84,16 @@ router.get("/dmcAllGetServices", isAuthenticated, getAllServices);
 router.get("/vouchers", isAuthenticated, getVoucherManagementData);
 router.patch("/vouchers/:id/generate", isAuthenticated, generateVoucher);
 router.patch("/vouchers/:id/send", isAuthenticated, sendVoucherToAgent);
+router.post(
+  "/vouchers/offline-confirmation",
+  isAuthenticated,
+  partnerInvoiceUpload.fields([
+    { name: "supplierConfirmation", maxCount: 1 },
+    { name: "voucherReference", maxCount: 1 },
+    { name: "termsConditions", maxCount: 1 },
+  ]),
+  submitOfflinePartnerConfirmation
+);
 
 router.get("/manager/dashboard", isAuthenticated, getOperationManagerDashboard);
 router.get("/manager/queries", isAuthenticated, getOperationManagerQueries);
@@ -85,5 +107,13 @@ router.post("/manager/report", isAuthenticated, submitOperationManagerReport);
 router.get("/manager/activity-logs", isAuthenticated, getOpsActivityLogs);
 
 router.post("/invoices", isAuthenticated, generateInvoice);
+router.get("/business-partner-invoices/queries", isAuthenticated, getQueriesForPartnerInvoiceUpload);
+router.get("/business-partner-invoices/status/:queryId", isAuthenticated, getQueryPartnerInvoiceStatus);
+router.post(
+  "/business-partner-invoices/upload",
+  isAuthenticated,
+  partnerInvoiceUpload.single("uploadedInvoice"),
+  uploadBusinessPartnerInvoice
+);
 
 export default router;
