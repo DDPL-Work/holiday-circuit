@@ -158,8 +158,8 @@ export const HotelsTab = ({
                 )}
               </div>
 
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
-                <div className={`sm:col-span-2 relative dmc-autocomplete-container ${activeHotelDropdownIdx === index ? "z-40" : "z-10"}`}>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <div className={`relative dmc-autocomplete-container ${activeHotelDropdownIdx === index ? "z-40" : "z-10"}`}>
                   <label className="block text-[11px] font-semibold text-slate-600 mb-1 flex items-center justify-between">
                     <span>{partnerType === "Business Partner" ? "Service Name (Manual Entry)" : "Service Name (Select Service or Type)"}</span>
                     {partnerType !== "Business Partner" && (
@@ -259,6 +259,19 @@ export const HotelsTab = ({
                       )}
                     </div>
                   )}
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                    <span>{partnerType === "Business Partner" ? "Hotel Name (Manual Entry)" : "Hotel Name (Property)"}</span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. JW Marriott / Grand Palace..."
+                    value={hotel.hotelName || ""}
+                    onChange={(e) => updateHotel(index, "hotelName", e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs"
+                  />
                 </div>
 
                 <div>

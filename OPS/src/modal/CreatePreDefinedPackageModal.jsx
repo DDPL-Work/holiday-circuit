@@ -43,6 +43,10 @@ export default function CreatePreDefinedPackageModal({
   isOpenedFromQuotationBuilder,
   modalTitle,
   modalSubtitle,
+  orderData,
+  defaultDestination,
+  defaultDuration,
+  defaultDays,
 }) {
   const [activeTab, setActiveTab] = useState("basic");
   const [loading, setLoading] = useState(false);
@@ -223,6 +227,68 @@ export default function CreatePreDefinedPackageModal({
       setTransfers(t.length ? t : [initialTransfer()]);
       setActivities(a);
       setSightseeing(s);
+    } else if (isOpen) {
+      const getInitialTripDuration = () => {
+        if (defaultDuration && defaultDays) {
+          return { label: defaultDuration, days: String(defaultDays) };
+        }
+        if (orderData?.startDate && orderData?.endDate) {
+          const d1 = new Date(orderData.startDate);
+          const d2 = new Date(orderData.endDate);
+          const diffTime = Math.abs(d2.getTime() - d1.getTime());
+          if (!isNaN(diffTime) && diffTime > 0) {
+            const n = Math.max(1, Math.round(diffTime / (1000 * 60 * 60 * 24)));
+            const d = n + 1;
+            return {
+              label: `${n} Night${n > 1 ? "s" : ""} / ${d} Day${d > 1 ? "s" : ""}`,
+              days: String(d),
+            };
+          }
+        }
+        if (orderData?.duration) {
+          const raw = String(orderData.duration);
+          const match = raw.match(/(\d+)\s*n.*?(\d+)\s*d/i) || raw.match(/(\d+)\s*night.*?(\d+)\s*day/i);
+          if (match) {
+            const n = match[1];
+            const d = match[2];
+            return {
+              label: `${n} Night${Number(n) > 1 ? "s" : ""} / ${d} Day${Number(d) > 1 ? "s" : ""}`,
+              days: String(d),
+            };
+          }
+          return { label: raw, days: String(orderData?.days || 6) };
+        }
+        return { label: defaultDuration || "5 Nights / 6 Days", days: String(defaultDays || "6") };
+      };
+
+      const durObj = getInitialTripDuration();
+      const dest = defaultDestination || orderData?.destination || "Mussoorie";
+      setTitle(isOpenedFromQuotationBuilder && dest ? `${dest} Quotation` : "");
+      setDestination(dest);
+      setCountry(orderData?.country || "India");
+      setDuration(durObj.label);
+      setDays(durObj.days);
+      setBasePrice("");
+      setPrice("");
+      setGstChecked(true);
+      setGstPercent(5);
+      setTcsChecked(false);
+      setTcsPercent(5);
+      setTourismChecked(false);
+      setTourismAmount("");
+      setDescription("");
+      setInclusions("Daily breakfast, Airport pickup & drop, Sightseeing transfers as per itinerary");
+      setExclusions("Airfare/Train fare, Personal expenses, Entry tickets not mentioned");
+      setTermsAndConditions("");
+      setItinerary([
+        { day: 1, title: "Day 1: Arrival & Leisure", description: "Pickup from airport/station, transfer to hotel. Check-in and relax for the evening." },
+        { day: 2, title: "Day 2: Sightseeing Tour & Departure", description: "Explore major landmarks, scenic spots, and transfer with wonderful memories." },
+      ]);
+      setHotels([initialHotel()]);
+      setTransfers([initialTransfer()]);
+      setActivities([]);
+      setSightseeing([]);
+      setActiveTab("basic");
     } else if (!isOpen) {
       setTitle("");
       setDestination("Mussoorie");
@@ -251,7 +317,7 @@ export default function CreatePreDefinedPackageModal({
       setSightseeing([]);
       setActiveTab("basic");
     }
-  }, [initialData, isOpen]);
+  }, [initialData, isOpen, defaultDestination, defaultDuration, defaultDays, orderData, isOpenedFromQuotationBuilder]);
 
   useEffect(() => {
     if (isOpen && (partnerType === "Business Partner" || isOpenedFromQuotationBuilder)) {
@@ -1068,8 +1134,8 @@ export default function CreatePreDefinedPackageModal({
     if (!destination.trim()) {
       return toast.error("Please enter a destination (e.g. Goa, Dubai, Mussoorie)");
     }
-    const finalPrice = finalCalculatedPrice > 0 ? finalCalculatedPrice : Number(price || 0);
-    if (!finalPrice || finalPrice <= 0) {
+    const finalPrice = finalCalculatedPrice > 0 ? finalCalculatedPrice : (totalLinkedServicesCost > 0 ? totalLinkedServicesCost : Number(price || 0));
+    if (!isOpenedFromQuotationBuilder && (!finalPrice || finalPrice <= 0)) {
       return toast.error("Please enter a valid base package price");
     }
 
@@ -1143,7 +1209,7 @@ export default function CreatePreDefinedPackageModal({
         country: country.trim(),
         duration: duration.trim(),
         days: Number(days) || 1,
-        basePrice: numBaseCost > 0 ? numBaseCost : finalPrice,
+        basePrice: numBaseCost > 0 ? numBaseCost : (totalLinkedServicesCost > 0 ? totalLinkedServicesCost : finalPrice),
         tax: {
           gstPercent: gstChecked ? Number(gstPercent || 0) : 0,
           gstAmount: gstAmt,
@@ -1158,7 +1224,7 @@ export default function CreatePreDefinedPackageModal({
         exclusions: exclusions.trim(),
         termsAndConditions: String(termsAndConditions || "").trim(),
         dayWiseItinerary: itinerary.filter((it) => it.title?.trim() || it.description?.trim()),
-        hotels: hotels.filter((h) => h.hotelName?.trim() || h.name?.trim()),
+        hotels: hotels.filter((h) => h.hotelName?.trim() || h.serviceName?.trim() || h.name?.trim()),
         transfers: transfers.filter((t) => t.name?.trim()),
         activities: activities
           .filter((a) => a.name?.trim())
@@ -1537,16 +1603,24 @@ export default function CreatePreDefinedPackageModal({
 
         {/* Tab Navigation */}
         <div className="flex items-center gap-1 border-b border-gray-200 bg-gray-50/80 px-4 sm:px-6 pt-2 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden shrink-0">
-          {[
-            { id: "basic", label: "1. Basic Details", count: null, hasWarning: false },
-            { id: "hotels", label: "2. Hotels", count: hotels.length, hasWarning: false },
-            { id: "transfers", label: "3. Transports", count: transfers.length, hasWarning: transferConflicts.length > 0 },
-            { id: "activities", label: "4. Activities & Tours", count: activities.length + sightseeing.length, hasWarning: activityOrSightConflicts.length > 0 },
-            { id: "pricing", label: "5. Pricing & Taxes", count: null, hasWarning: false },
-            { id: "inclusions", label: "6. Inclusions & Notes", count: null, hasWarning: false },
-            { id: "itinerary", label: "7. Day-wise Itinerary", count: itinerary.length > 0 ? `${itinerary.length} Days` : null, hasWarning: false },
-            { id: "terms", label: "8. Terms & Conditions", count: termsAndConditions?.trim()?.length > 0 ? "Added" : null, hasWarning: false },
-          ].map((tab) => (
+          {(isOpenedFromQuotationBuilder
+            ? [
+                { id: "basic", label: "1. Basic Details", count: null, hasWarning: false },
+                { id: "hotels", label: "2. Hotels", count: hotels.length, hasWarning: false },
+                { id: "transfers", label: "3. Transports", count: transfers.length, hasWarning: transferConflicts.length > 0 },
+                { id: "activities", label: "4. Activities & Tours", count: activities.length + sightseeing.length, hasWarning: activityOrSightConflicts.length > 0 },
+              ]
+            : [
+                { id: "basic", label: "1. Basic Details", count: null, hasWarning: false },
+                { id: "hotels", label: "2. Hotels", count: hotels.length, hasWarning: false },
+                { id: "transfers", label: "3. Transports", count: transfers.length, hasWarning: transferConflicts.length > 0 },
+                { id: "activities", label: "4. Activities & Tours", count: activities.length + sightseeing.length, hasWarning: activityOrSightConflicts.length > 0 },
+                { id: "pricing", label: "5. Pricing & Taxes", count: null, hasWarning: false },
+                { id: "inclusions", label: "6. Inclusions & Notes", count: null, hasWarning: false },
+                { id: "itinerary", label: "7. Day-wise Itinerary", count: itinerary.length > 0 ? `${itinerary.length} Days` : null, hasWarning: false },
+                { id: "terms", label: "8. Terms & Conditions", count: termsAndConditions?.trim()?.length > 0 ? "Added" : null, hasWarning: false },
+              ]
+          ).map((tab) => (
             <button
               key={tab.id}
               type="button"
@@ -1592,6 +1666,8 @@ export default function CreatePreDefinedPackageModal({
               setDays={setDays}
               description={description}
               setDescription={setDescription}
+              isOpenedFromQuotationBuilder={isOpenedFromQuotationBuilder}
+              partnerType={partnerType}
             />
           )}
 
@@ -1681,7 +1757,7 @@ export default function CreatePreDefinedPackageModal({
             />
           )}
 
-          {activeTab === "pricing" && (
+          {activeTab === "pricing" && !isOpenedFromQuotationBuilder && (
             <PricingTaxesTab
               basePrice={basePrice}
               setBasePrice={setBasePrice}
@@ -1717,7 +1793,7 @@ export default function CreatePreDefinedPackageModal({
             />
           )}
 
-          {activeTab === "inclusions" && (
+          {activeTab === "inclusions" && !isOpenedFromQuotationBuilder && (
             <InclusionsNotesTab
               inclusions={inclusions}
               setInclusions={setInclusions}
@@ -1726,7 +1802,7 @@ export default function CreatePreDefinedPackageModal({
             />
           )}
 
-          {activeTab === "itinerary" && (
+          {activeTab === "itinerary" && !isOpenedFromQuotationBuilder && (
             <DayItineraryTab
               itinerary={itinerary}
               addItineraryDay={addItineraryDay}
@@ -1735,7 +1811,7 @@ export default function CreatePreDefinedPackageModal({
             />
           )}
 
-          {activeTab === "terms" && (
+          {activeTab === "terms" && !isOpenedFromQuotationBuilder && (
             <TermsConditionsTab
               termsAndConditions={termsAndConditions}
               setTermsAndConditions={setTermsAndConditions}

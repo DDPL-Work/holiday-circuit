@@ -1321,6 +1321,29 @@ const normalizeDateInputValue = (value) => {
   return parsed.toISOString().slice(0, 10);
 };
 
+const formatTravelDateRange = (startDate, endDate) => {
+  if (!startDate) return "—";
+  const start = new Date(startDate);
+  if (Number.isNaN(start.getTime())) return String(startDate || "—");
+
+  const formatOptions = {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  };
+
+  const startStr = start.toLocaleDateString("en-IN", formatOptions);
+
+  if (!endDate) return startStr;
+  const end = new Date(endDate);
+  if (Number.isNaN(end.getTime())) return startStr;
+
+  const endStr = end.toLocaleDateString("en-IN", formatOptions);
+  if (startStr === endStr) return startStr;
+
+  return `${startStr} - ${endStr}`;
+};
+
 const addDaysToNormalizedDate = (value, daysToAdd = 0) => {
   const normalizedValue = normalizeDateInputValue(value);
   if (!normalizedValue) return "";
@@ -4524,7 +4547,14 @@ const QuotationBuilder = () => {
 
   // markup
   const location = useLocation();
-  const order = location.state ?? null;
+  const [order, setOrder] = useState(() => location.state ?? null);
+
+  useEffect(() => {
+    if (location.state) {
+      setOrder((prev) => ({ ...(prev || {}), ...location.state }));
+    }
+  }, [location.state]);
+
   const hasOrderContext = Boolean(order?._id);
   const orderQueryId = order?.queryId || "";
   const navigate = useNavigate();
@@ -5739,6 +5769,16 @@ const QuotationBuilder = () => {
           requestConfig,
         );
         const quotation = data?.quotation;
+        if (data?.query) {
+          setOrder((prev) => ({
+            ...(prev || {}),
+            ...data.query,
+            agent:
+              data.query.agent && typeof data.query.agent === "object"
+                ? data.query.agent
+                : prev?.agent || data.query.agent,
+          }));
+        }
         const latestAgentPhone = String(
           data?.query?.agent?.phone || order?.agent?.phone || "",
         ).trim();
@@ -5795,9 +5835,13 @@ const QuotationBuilder = () => {
 
     const startDate = new Date(start);
     const endDate = new Date(end);
+    if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+      return { nights: 0, days: 0, label: "" };
+    }
     const diff = endDate - startDate;
-    const days = Math.max(1, Math.ceil(diff / (1000 * 60 * 60 * 24)));
-    const nights = Math.max(0, days - 1);
+    const diffDays = Math.max(0, Math.round(diff / (1000 * 60 * 60 * 24)));
+    const nights = diffDays;
+    const days = diffDays > 0 ? diffDays + 1 : 1;
 
     return {
       nights,
@@ -8694,7 +8738,8 @@ const QuotationBuilder = () => {
     }
 
     const diff = tripEndDate - startDate;
-    return Math.max(1, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+    const diffDays = Math.max(0, Math.round(diff / (1000 * 60 * 60 * 24)));
+    return diffDays + 1;
   };
 
   const adultPassengers = Number(order?.numberOfAdults || 0);
@@ -12801,15 +12846,31 @@ const QuotationBuilder = () => {
                 <div>
                   <p className="text-gray-500 text-xs mb-1">Agent Name</p>
                   <p className="text-slate-900 text-xs font-semibold">
-                    {order?.agent?.companyName}
+                    {order?.agent?.name ||
+                      order?.agent?.companyName ||
+                      order?.agentName ||
+                      order?.companyName ||
+                      order?.clientName ||
+                      "—"}
                   </p>
+                  {order?.agent?.companyName &&
+                    order?.agent?.name &&
+                    order?.agent?.companyName !== order?.agent?.name && (
+                      <p className="text-[11px] text-gray-500 mt-0.5">
+                        {order.agent.companyName}
+                      </p>
+                    )}
                 </div>
 
                 {/* Agent Email */}
                 <div>
                   <p className="text-gray-500 text-xs mb-1">Agent Email</p>
                   <p className="text-slate-900 text-xs font-semibold">
-                    {order?.agent?.email}
+                    {order?.agent?.email ||
+                      order?.agentEmail ||
+                      order?.email ||
+                      order?.clientEmail ||
+                      "—"}
                   </p>
                 </div>
 
@@ -12817,7 +12878,7 @@ const QuotationBuilder = () => {
                 <div>
                   <p className="text-gray-500 text-xs mb-1">Destination</p>
                   <p className="text-slate-900 text-xs font-semibold">
-                    {order?.destination}
+                    {order?.destination || "—"}
                   </p>
                 </div>
 
@@ -12825,11 +12886,7 @@ const QuotationBuilder = () => {
                 <div>
                   <p className="text-gray-500 text-xs mb-1">Travel Date</p>
                   <p className="text-slate-900 text-xs font-semibold">
-                    {new Date(order?.startDate).toLocaleDateString("en-IN", {
-                      day: "numeric",
-                      month: "long",
-                      year: "numeric",
-                    })}
+                    {formatTravelDateRange(order?.startDate, order?.endDate)}
                   </p>
                 </div>
 
@@ -14939,8 +14996,12 @@ const QuotationBuilder = () => {
         modalSubtitle={
           bpEditData
             ? "Update quotation services, pricing, taxes, and itinerary details"
-            : "Configure hotels, cabs, sightseeing & itinerary for this quotation"
+            : "Configure hotels, cabs & activities for this quotation"
         }
+        orderData={order}
+        defaultDestination={order?.destination || ""}
+        defaultDuration={tripDuration?.label || (order?.duration ? order.duration : "")}
+        defaultDays={tripDuration?.days || order?.days || ""}
         onSuccess={(newPkg) => {
           setShowQuickServiceModal(false);
           setBpEditData(null);
@@ -15299,7 +15360,8 @@ const Service = ({
     const s = new Date(startDate);
     const e = new Date(endDate);
     if (isNaN(s) || isNaN(e)) return 1;
-    return Math.max(1, Math.ceil((e - s) / 86400000));
+    const diffDays = Math.max(0, Math.round((e - s) / 86400000));
+    return diffDays + 1;
   };
 
   const addDaysToServiceDate = (value, daysToAdd = 0) => {

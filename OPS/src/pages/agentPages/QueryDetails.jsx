@@ -212,6 +212,8 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
     };
   }, []);
 
+
+  
   // Package Customizations State (Keyed by packageId)
   const [packageCustomizations, setPackageCustomizations] = useState({});
   const [showAddHotelForm, setShowAddHotelForm] = useState(false);

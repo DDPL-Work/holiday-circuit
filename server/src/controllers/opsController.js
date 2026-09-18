@@ -1949,18 +1949,30 @@ export const getAllQueries = async (req, res, next) => {
     const queryMongoIds = queries.map((q) => q._id);
     const queryCodes = queries.map((q) => q.queryId).filter(Boolean);
 
-    const [quotations, internalInvoices] = await Promise.all([
+    const [quotations, internalInvoices, bpAuthUsers] = await Promise.all([
       Quotation.find({ queryId: { $in: queryMongoIds } })
-        .select("queryId partnerType services")
+        .select("queryId partnerType businessPartnerName services")
         .sort({ createdAt: -1 })
         .lean(),
       InternalInvoice.find({
         $or: [{ query: { $in: queryMongoIds } }, { queryCode: { $in: queryCodes } }],
         isDeleted: { $ne: true },
       })
-        .select("query queryCode businessPartnerName supplierName dmcName invoiceNumber claimedSummary summary status documents uploadedInvoice")
+        .select("query queryCode businessPartnerName supplierName dmcName invoiceNumber claimedSummary summary status documents uploadedInvoice partnerType")
+        .lean(),
+      Auth.find({
+        $or: [{ role: "dmc_partner" }, { isBusinessPartner: true }, { role: "partner" }],
+      })
+        .select("name companyName")
         .lean(),
     ]);
+
+    const knownBpNames = new Set(
+      (bpAuthUsers || [])
+        .flatMap((u) => [u.name, u.companyName])
+        .filter(Boolean)
+        .map((n) => n.trim().toLowerCase())
+    );
 
     const latestQuotationByQueryId = new Map();
     quotations.forEach((q) => {
@@ -1994,27 +2006,51 @@ export const getAllQueries = async (req, res, next) => {
       ].filter((v, i, a) => a.findIndex((t) => String(t._id) === String(v._id)) === i);
 
       const uniquePartners = new Set();
-      if (quot?.services?.length) {
-        quot.services.forEach((s) => {
-          const p = (s.businessPartnerName || s.supplierName || s.dmcName || "").trim();
-          if (p) uniquePartners.add(p.toLowerCase());
-        });
+
+      // 1. Direct query BP
+      if (q.businessPartnerName && String(q.businessPartnerName).trim()) {
+        uniquePartners.add(String(q.businessPartnerName).trim().toLowerCase());
       }
 
+      // 2. Quotation BP (explicit partnerType, businessPartnerName, isBpService, or known BP in Auth)
+      if (quot) {
+        if (quot.partnerType === "Business Partner" && quot.businessPartnerName) {
+          uniquePartners.add(String(quot.businessPartnerName).trim().toLowerCase());
+        } else if (quot.businessPartnerName && String(quot.businessPartnerName).trim()) {
+          uniquePartners.add(String(quot.businessPartnerName).trim().toLowerCase());
+        }
+
+        if (Array.isArray(quot.services)) {
+          quot.services.forEach((s) => {
+            if (s.businessPartnerName && String(s.businessPartnerName).trim()) {
+              uniquePartners.add(String(s.businessPartnerName).trim().toLowerCase());
+            } else if (s.isBpService && (s.supplierName || s.dmcName)) {
+              uniquePartners.add(String(s.supplierName || s.dmcName).trim().toLowerCase());
+            } else if (s.supplierName && knownBpNames.has(String(s.supplierName).trim().toLowerCase())) {
+              uniquePartners.add(String(s.supplierName).trim().toLowerCase());
+            }
+          });
+        }
+      }
+
+      // 3. Offline Internal Invoices
       invs.forEach((inv) => {
-        const p = (inv.businessPartnerName || inv.supplierName || inv.dmcName || "").trim();
-        if (p) uniquePartners.add(p.toLowerCase());
+        if (inv.partnerType === "offline_partner" || inv.businessPartnerName) {
+          const p = (inv.businessPartnerName || inv.dmcName || "").trim();
+          if (p) uniquePartners.add(p.replace(/\s*\(Offline Partner\)/i, "").trim().toLowerCase());
+        }
       });
 
       const totalRequired = uniquePartners.size;
       const uploadedCount = invs.length;
       const isComplete = totalRequired > 0 && uploadedCount >= totalRequired;
 
-      const isConfirmedBooking =
+      const isAgentApproved =
         ["Client Approved", "Confirmed"].includes(String(q.agentStatus || "").trim()) ||
-        ["Confirmed", "Vouchered", "Invoice_Requested", "Payment_Completed"].includes(String(q.opsStatus || "").trim());
+        ["Confirmed", "Vouchered", "Payment_Completed"].includes(String(q.opsStatus || "").trim());
 
-      const showInvoiceButton = isConfirmedBooking && (totalRequired > 0 || uploadedCount > 0);
+      const isBusinessPartnerBooking = totalRequired > 0;
+      const showInvoiceButton = isBusinessPartnerBooking && isAgentApproved;
 
       return {
         ...q,
@@ -3970,11 +4006,12 @@ export const getVoucherManagementData = async (req, res, next) => {
 
         const startDate = query.startDate ? new Date(query.startDate) : null;
         const endDate = query.endDate ? new Date(query.endDate) : null;
-        const days =
+        const diffDays =
           startDate && endDate
-            ? Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24))
+            ? Math.max(0, Math.round((endDate - startDate) / (1000 * 60 * 60 * 24)))
             : 0;
-        const nights = days > 0 ? days - 1 : 0;
+        const nights = diffDays;
+        const days = diffDays > 0 ? diffDays + 1 : 1;
 
         const quotation = await getLatestOperationalQuotation(query._id);
         const queryConfServices = getConfirmationServicesForQuery(confirmationMap, query);
@@ -4442,12 +4479,13 @@ export const generateVoucher = async (req, res, next) => {
     const startDate = query.startDate ? new Date(query.startDate) : null;
     const endDate = query.endDate ? new Date(query.endDate) : null;
 
-    const days =
+    const diffDays =
       startDate && endDate
-        ? Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24))
+        ? Math.max(0, Math.round((endDate - startDate) / (1000 * 60 * 60 * 24)))
         : 0;
 
-    const nights = days > 0 ? days - 1 : 0;
+    const nights = diffDays;
+    const days = diffDays > 0 ? diffDays + 1 : 1;
 
     // 1. Update TravelQuery
     query.voucherNumber = voucherNumber;

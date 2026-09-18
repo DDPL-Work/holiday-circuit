@@ -4019,11 +4019,12 @@ const getDmcVisibleQueriesData = async (req) => {
 
       const startDate = query.startDate ? new Date(query.startDate) : null;
       const endDate = query.endDate ? new Date(query.endDate) : null;
-      const days =
+      const diffDays =
         startDate && endDate
-          ? Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24))
+          ? Math.max(0, Math.round((endDate - startDate) / (1000 * 60 * 60 * 24)))
           : 0;
-      const nights = days > 0 ? days - 1 : 0;
+      const nights = diffDays;
+      const days = diffDays > 0 ? diffDays + 1 : 1;
 
       const detailQuotation = getBestServiceDetailQuotationFromList(
         quotationRows,

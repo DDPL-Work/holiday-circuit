@@ -3459,11 +3459,10 @@ export const createQuery = async (req, res, next) => {
     const queryId = `QRY-${queryCounter.seq}`;
 
 
-    /* ================= OPS ROUND ROBIN ================= */
+    /* ================= OPS ROUND ROBIN (ONLINE FIRST) ================= */
 
-
-    //========================= 1️⃣ get all active ops users ================================
-    const opsUsers = await Auth.find({
+    // 1️⃣ Get all active, approved OPS users created under a manager
+    const allActiveOpsUsers = await Auth.find({
       role: "operations",
       isApproved: true,
       isDeleted: { $ne: true },
@@ -3471,24 +3470,35 @@ export const createQuery = async (req, res, next) => {
       manager: { $exists: true, $ne: "" },
     }).sort({ createdAt: 1 });
 
-
-    if (!opsUsers.length) {
+    if (!allActiveOpsUsers.length) {
       return next(new ApiError(400, "No manager-created operations executive available for query assignment"));
     }
 
-    //===================== 2️⃣ ops counter ==========================
+    // 2️⃣ Filter for currently logged-in / online OPS users (active in the last 2 minutes via live 30s heartbeat)
+    const ONLINE_THRESHOLD_MS = 2 * 60 * 1000;
+    const nowTimestamp = Date.now();
+    const onlineOpsUsers = allActiveOpsUsers.filter((user) => {
+      if (!user.lastActiveAt) return false;
+      const lastActive = new Date(user.lastActiveAt).getTime();
+      return nowTimestamp - lastActive <= ONLINE_THRESHOLD_MS;
+    });
+
+    // 3️⃣ Target candidate pool: If any OPS members are online, allocate ONLY among online members.
+    // If no one is online (e.g. night hours / off shift), fallback to all active members so query is never lost.
+    const targetOpsPool = onlineOpsUsers.length > 0 ? onlineOpsUsers : allActiveOpsUsers;
+
+    // 4️⃣ Round robin logic over the target pool
     let opsCounter = await Counter.findOne({ name: "ops_assign" });
 
     if (!opsCounter) {
       opsCounter = await Counter.create({
         name: "ops_assign",
-        seq: 0
+        seq: 0,
       });
     }
 
-    //======================== 3️⃣round robin logic ========================================
-    const opsIndex = opsCounter.seq % opsUsers.length;
-    const assignedOps = opsUsers[opsIndex];
+    const opsIndex = opsCounter.seq % targetOpsPool.length;
+    const assignedOps = targetOpsPool[opsIndex];
 
     opsCounter.seq += 1;
     await opsCounter.save();

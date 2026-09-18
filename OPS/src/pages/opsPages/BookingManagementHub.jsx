@@ -219,6 +219,10 @@ export default function BookingManagementHub() {
                 ? "Revision_Requested"
                 : q.opsStatus === "Rejected"
                   ? "Pending_Accept"
+                  : q.voucherStatus === "sent" || q.voucherStatus === "generated" || q.opsStatus === "Vouchered" || (q.opsStatus === "Payment_Completed" && q.voucherNumber)
+                  ? "Vouchered"
+                  : q.opsStatus === "Payment_Completed"
+                  ? "Confirmed"
                   : q.opsStatus || "New_Query",
             travelerDocumentReview,
             _raw: q,
@@ -277,6 +281,11 @@ export default function BookingManagementHub() {
       label: "Vouchered",
       icon: <FileText className="h-3 w-3" />,
     },
+    Payment_Completed: {
+      color: "bg-green-100 text-green-600",
+      label: "Vouchered",
+      icon: <FileText className="h-3 w-3" />,
+    },
   };
 
   const filteredRows = rows.filter((row) => {
@@ -287,7 +296,10 @@ export default function BookingManagementHub() {
       row.receivedFrom.toLowerCase().includes(term) ||
       row.destination.toLowerCase().includes(term);
 
-    const matchesStatus = statusFilter === "All" || row.status === statusFilter;
+    const matchesStatus =
+      statusFilter === "All" ||
+      row.status === statusFilter ||
+      (statusFilter === "Vouchered" && (row.status === "Vouchered" || row.status === "Payment_Completed"));
 
     const matchesDate =
       !dateFilter || new Date(row.startDate).toISOString().slice(0, 10) === dateFilter;
