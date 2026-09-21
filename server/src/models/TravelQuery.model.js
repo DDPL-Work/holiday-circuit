@@ -325,7 +325,7 @@ const travelerDetailSchema = new mongoose.Schema(
     childAge: {
       type: Number,
       min: 1,
-      max: 12,
+      max: 18,
       default: null,
     },
     nationality: {
@@ -366,7 +366,125 @@ const travelQuerySchema = new mongoose.Schema(
   agent: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Auth",
-    required: true
+    required: false,
+    default: null,
+  },
+
+  tripSource: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "TripSource",
+    default: null,
+  },
+
+  querySource: {
+    type: String,
+    default: "",
+    trim: true,
+  },
+
+  querySourceType: {
+    type: String,
+    enum: ["b2b", "direct", ""],
+    default: "b2b",
+  },
+
+  referenceId: {
+    type: String,
+    default: "",
+    trim: true,
+  },
+
+  tags: {
+    type: [String],
+    default: [],
+  },
+
+  guestDetails: {
+    salutation: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    name: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    phone: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    phoneNumbers: {
+      type: [
+        {
+          countryCode: { type: String, default: "91-IN" },
+          number: { type: String, default: "" },
+          isPrimary: { type: Boolean, default: false },
+        },
+      ],
+      default: [],
+    },
+    email: {
+      type: String,
+      default: "",
+      trim: true,
+      lowercase: true,
+    },
+    originCity: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    nationality: {
+      type: String,
+      default: "India",
+      trim: true,
+    },
+  },
+
+  nights: {
+    type: Number,
+    default: 1,
+  },
+
+  childrenAges: {
+    type: [
+      {
+        id: { type: String, default: "" },
+        age: { type: String, default: "" },
+      },
+    ],
+    default: [],
+  },
+
+  foc: {
+    type: Number,
+    default: 0,
+  },
+
+  comments: {
+    type: String,
+    default: "",
+    trim: true,
+  },
+
+  createdBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Auth",
+    default: null,
+  },
+
+  createdByType: {
+    type: String,
+    enum: ["agent", "ops_manager", "admin"],
+    default: "agent",
+  },
+
+  allocationType: {
+    type: String,
+    enum: ["round_robin", "self", "manual"],
+    default: "round_robin",
   },
 
   assignedTo: {

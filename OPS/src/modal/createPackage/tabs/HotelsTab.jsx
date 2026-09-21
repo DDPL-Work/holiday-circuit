@@ -1,6 +1,7 @@
 import React from "react";
 import { BedDouble, Plus, Trash2, ChevronDown, Building2, MapPin } from "lucide-react";
 import { formatLocationWithDestination } from "../utils/packageUtils.js";
+import { BusinessPartnerSelect } from "../components/BusinessPartnerSelect.jsx";
 
 export const HotelsTab = ({
   hotels,
@@ -17,7 +18,31 @@ export const HotelsTab = ({
   activeHotelDropdownIdx,
   setActiveHotelDropdownIdx,
   isTripleAllowedCategory,
+  partnerType,
+  businessPartners,
+  isOpenedFromQuotationBuilder,
 }) => {
+  const handleHotelDateChange = (idx, field, val) => {
+    const currentHotel = hotels[idx];
+    const newCheckIn = field === "checkInDate" ? val : currentHotel.checkInDate;
+    const newCheckOut = field === "checkOutDate" ? val : currentHotel.checkOutDate;
+
+    updateHotel(idx, field, val);
+    if (field === "checkInDate") {
+      updateHotel(idx, "serviceDate", val);
+    }
+
+    if (newCheckIn && newCheckOut) {
+      const dIn = new Date(newCheckIn);
+      const dOut = new Date(newCheckOut);
+      const diffTime = dOut.getTime() - dIn.getTime();
+      if (!isNaN(diffTime) && diffTime > 0) {
+        const calculatedNights = Math.max(1, Math.round(diffTime / (1000 * 60 * 60 * 24)));
+        updateHotel(idx, "nights", calculatedNights);
+      }
+    }
+  };
+
   return (
     <div className="space-y-4 pt-1">
       <div className="flex items-center justify-between pb-3 border-b border-gray-200">
@@ -55,10 +80,29 @@ export const HotelsTab = ({
               }`}
             >
               <div className="flex items-center justify-between flex-wrap gap-2 pb-2.5 border-b border-gray-200">
-                <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex items-center flex-1 gap-2 flex-wrap">
                   <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
                     <BedDouble size={14} className="text-amber-600" /> Hotel #{index + 1}
                   </span>
+
+                  {partnerType === "Business Partner" && (
+                    <div className="ml-auto flex items-center gap-1.5 shrink-0">
+                      <span className="text-[11px] font-semibold text-slate-500 whitespace-nowrap">Partner:</span>
+                      <div className="w-48">
+                        <BusinessPartnerSelect
+                          value={hotel.businessPartnerId || hotel.businessPartner || ""}
+                          onChange={(val) => {
+                            const partnerObj = businessPartners?.find((p) => (p._id || p.id) === val);
+                            updateHotel(index, "businessPartnerId", val);
+                            updateHotel(index, "businessPartner", val);
+                            updateHotel(index, "businessPartnerName", partnerObj?.name || partnerObj?.companyName || "");
+                          }}
+                          businessPartners={businessPartners}
+                          placeholderName={hotel.businessPartnerName || hotel.dmcName || hotel.supplierName || ""}
+                        />
+                      </div>
+                    </div>
+                  )}
 
                   {hotel.hotelsList && hotel.hotelsList.length > 1 ? (
                     <div className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2 py-0.5 text-xs text-slate-700 shadow-2xs">
@@ -81,9 +125,19 @@ export const HotelsTab = ({
                     </span>
                   ) : null}
 
-                  <span className="rounded-md bg-amber-50 border border-amber-200 px-2 py-0.5 text-[11px] font-bold text-amber-700">
-                    ★ {hotel.starCategory || "5 Star"}
-                  </span>
+                  <div className="flex items-center gap-1 rounded-md bg-amber-50 border border-amber-200 px-2 py-0.5 shadow-2xs">
+                    <span className="text-amber-500 text-[11px] font-bold">★</span>
+                    <select
+                      value={hotel.starCategory || "5 Star"}
+                      onChange={(e) => updateHotel(index, "starCategory", e.target.value)}
+                      className="bg-transparent text-amber-700 text-[11px] font-bold focus:outline-none cursor-pointer"
+                      title="Hotel Star Rating"
+                    >
+                      <option value="3 Star">3 Star</option>
+                      <option value="4 Star">4 Star</option>
+                      <option value="5 Star">5 Star</option>
+                    </select>
+                  </div>
 
                   {hotel.supplierName && (
                     <span className="rounded-md bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-[10px] text-emerald-700 font-semibold">
@@ -104,40 +158,46 @@ export const HotelsTab = ({
                 )}
               </div>
 
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
-                <div className={`sm:col-span-2 relative dmc-autocomplete-container ${activeHotelDropdownIdx === index ? "z-40" : "z-10"}`}>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <div className={`relative dmc-autocomplete-container ${activeHotelDropdownIdx === index ? "z-40" : "z-10"}`}>
                   <label className="block text-[11px] font-semibold text-slate-600 mb-1 flex items-center justify-between">
-                    <span>Service Name (Select Service or Type)</span>
-                    {servicesLoading ? (
-                      <span className="text-[10px] text-blue-600 font-medium">Loading Services...</span>
-                    ) : (
-                      <span className="text-[10px] text-emerald-600 font-semibold">
-                        {getFilteredHotels("").length} Services in {destination || "Selected Destination"}
-                      </span>
+                    <span>{partnerType === "Business Partner" ? "Service Name (Manual Entry)" : "Service Name (Select Service or Type)"}</span>
+                    {partnerType !== "Business Partner" && (
+                      servicesLoading ? (
+                        <span className="text-[10px] text-blue-600 font-medium">Loading Services...</span>
+                      ) : (
+                        <span className="text-[10px] text-emerald-600 font-semibold">
+                          {getFilteredHotels("").length} Services in {destination || "Selected Destination"}
+                        </span>
+                      )
                     )}
                   </label>
                   <div className="relative">
                     <input
                       type="text"
-                      placeholder="e.g. Mussoorie Queen of Hills Luxury, Luxury Resort Stay..."
+                      placeholder={partnerType === "Business Partner" ? "Enter Hotel Service Name manually..." : "e.g. Mussoorie Queen of Hills Luxury, Luxury Resort Stay..."}
                       value={hotel.serviceName || hotel.name || ""}
-                      onFocus={() => setActiveHotelDropdownIdx(index)}
+                      onFocus={() => {
+                        if (partnerType !== "Business Partner") setActiveHotelDropdownIdx(index);
+                      }}
                       onChange={(e) => {
                         updateHotel(index, "serviceName", e.target.value);
-                        setActiveHotelDropdownIdx(index);
+                        if (partnerType !== "Business Partner") setActiveHotelDropdownIdx(index);
                       }}
                       className="w-full rounded-lg border border-gray-300 bg-white pl-3 pr-8 py-1.5 text-xs text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs"
                     />
-                    <button
-                      type="button"
-                      onClick={() => setActiveHotelDropdownIdx(activeHotelDropdownIdx === index ? null : index)}
-                      className="absolute right-2 top-2 text-gray-400 hover:text-gray-600 p-0.5 cursor-pointer transition-colors"
-                    >
-                      <ChevronDown size={14} />
-                    </button>
+                    {partnerType !== "Business Partner" && (
+                      <button
+                        type="button"
+                        onClick={() => setActiveHotelDropdownIdx(activeHotelDropdownIdx === index ? null : index)}
+                        className="absolute right-2 top-2 text-gray-400 hover:text-gray-600 p-0.5 cursor-pointer transition-colors"
+                      >
+                        <ChevronDown size={14} />
+                      </button>
+                    )}
                   </div>
 
-                  {activeHotelDropdownIdx === index && (
+                  {partnerType !== "Business Partner" && activeHotelDropdownIdx === index && (
                     <div className="absolute left-0 right-0 top-full mt-1.5 max-h-64 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-xl z-[100] divide-y divide-gray-100 [scrollbar-width:thin]">
                       {filteredHotels.length === 0 ? (
                         <div className="p-3 text-[11px] text-gray-500 italic text-center">
@@ -202,6 +262,19 @@ export const HotelsTab = ({
                 </div>
 
                 <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                    <span>{partnerType === "Business Partner" ? "Hotel Name (Manual Entry)" : "Hotel Name (Property)"}</span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. JW Marriott / Grand Palace..."
+                    value={hotel.hotelName || ""}
+                    onChange={(e) => updateHotel(index, "hotelName", e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs"
+                  />
+                </div>
+
+                <div>
                   <label className="block text-[11px] font-semibold text-slate-600 mb-1">Meal Plan</label>
                   <select
                     value={hotel.mealPlan || "EP"}
@@ -235,6 +308,46 @@ export const HotelsTab = ({
                   />
                 </div>
               </div>
+
+              {isOpenedFromQuotationBuilder && (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 rounded-lg border border-blue-200 bg-blue-50/50 p-3 shadow-2xs">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1 flex items-center gap-1">
+                      <span>Check-in Date</span>
+                      <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="date"
+                      value={hotel.checkInDate ? String(hotel.checkInDate).substring(0, 10) : ""}
+                      onChange={(e) => handleHotelDateChange(index, "checkInDate", e.target.value)}
+                      className="w-full rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs cursor-pointer"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1 flex items-center gap-1">
+                      <span>Check-out Date</span>
+                      <span className="text-rose-500">*</span>
+                    </label>
+                    <input
+                      type="date"
+                      value={hotel.checkOutDate ? String(hotel.checkOutDate).substring(0, 10) : ""}
+                      min={hotel.checkInDate ? String(hotel.checkInDate).substring(0, 10) : undefined}
+                      onChange={(e) => handleHotelDateChange(index, "checkOutDate", e.target.value)}
+                      className="w-full rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs cursor-pointer"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                      Total Nights (Auto Calculated)
+                    </label>
+                    <div className="flex items-center h-[34px] px-3 rounded-lg border border-blue-200 bg-white text-xs font-bold text-blue-700 shadow-2xs">
+                      {Number(hotel.nights || 1)} Night{Number(hotel.nights || 1) === 1 ? "" : "s"}
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div className="grid grid-cols-1 gap-3 rounded-lg border border-gray-200 bg-white p-3.5 md:grid-cols-3 lg:grid-cols-6 shadow-2xs">
                 <div>
@@ -288,19 +401,25 @@ export const HotelsTab = ({
 
                 <div>
                   <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-gray-500">
-                    Nights
+                    {isOpenedFromQuotationBuilder ? "Nights (Auto)" : "Nights"}
                   </label>
-                  <select
-                    value={Number(hotel.nights || 1)}
-                    onChange={(e) => updateHotel(index, "nights", Math.max(1, Number(e.target.value || 1)))}
-                    className="w-full rounded-md border border-gray-300 bg-gray-50/50 px-2 py-1.5 text-xs text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition"
-                  >
-                    {[...Array(15)].map((_, i) => (
-                      <option key={i + 1} value={i + 1}>
-                        {i + 1} Night{i === 0 ? "" : "s"}
-                      </option>
-                    ))}
-                  </select>
+                  {isOpenedFromQuotationBuilder ? (
+                    <div className="w-full rounded-md border border-gray-200 bg-gray-100 px-2 py-1.5 text-xs font-bold text-slate-800 flex items-center h-[34px]">
+                      {Number(hotel.nights || 1)} Night{Number(hotel.nights || 1) === 1 ? "" : "s"}
+                    </div>
+                  ) : (
+                    <select
+                      value={Number(hotel.nights || 1)}
+                      onChange={(e) => updateHotel(index, "nights", Math.max(1, Number(e.target.value || 1)))}
+                      className="w-full rounded-md border border-gray-300 bg-gray-50/50 px-2 py-1.5 text-xs text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition"
+                    >
+                      {[...Array(15)].map((_, i) => (
+                        <option key={i + 1} value={i + 1}>
+                          {i + 1} Night{i === 0 ? "" : "s"}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                 </div>
 
                 <div>
@@ -377,9 +496,22 @@ export const HotelsTab = ({
                         <p className="text-[10px] text-gray-500">Extra adult with extra bed</p>
                       </div>
                     </div>
-                    <span className="text-xs font-extrabold text-amber-700">
-                      ₹{Number(hotel.awebRate || 0).toLocaleString("en-IN")}
-                    </span>
+                    {partnerType === "Business Partner" ? (
+                      <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                        <span className="text-xs text-amber-700 font-bold">₹</span>
+                        <input
+                          type="number"
+                          value={hotel.awebRate || ""}
+                          onChange={(e) => updateHotel(index, "awebRate", Number(e.target.value))}
+                          placeholder="0"
+                          className="w-16 rounded border border-gray-200 px-1.5 py-0.5 text-xs text-amber-700 font-bold focus:outline-none focus:ring-1 focus:ring-amber-500 bg-white"
+                        />
+                      </div>
+                    ) : (
+                      <span className="text-xs font-extrabold text-amber-700">
+                        ₹{Number(hotel.awebRate || 0).toLocaleString("en-IN")}
+                      </span>
+                    )}
                   </label>
 
                   <label className={`flex items-center justify-between gap-2 rounded-lg border p-3 cursor-pointer transition shadow-2xs ${hotel.childWithBed ? "border-emerald-300 bg-emerald-50/50" : "border-gray-200 bg-white hover:border-gray-300"}`}>
@@ -395,9 +527,22 @@ export const HotelsTab = ({
                         <p className="text-[10px] text-gray-500">Child with extra bed</p>
                       </div>
                     </div>
-                    <span className="text-xs font-extrabold text-emerald-700">
-                      ₹{Number(hotel.cwebRate || 0).toLocaleString("en-IN")}
-                    </span>
+                    {partnerType === "Business Partner" ? (
+                      <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                        <span className="text-xs text-emerald-700 font-bold">₹</span>
+                        <input
+                          type="number"
+                          value={hotel.cwebRate || ""}
+                          onChange={(e) => updateHotel(index, "cwebRate", Number(e.target.value))}
+                          placeholder="0"
+                          className="w-16 rounded border border-gray-200 px-1.5 py-0.5 text-xs text-emerald-700 font-bold focus:outline-none focus:ring-1 focus:ring-emerald-500 bg-white"
+                        />
+                      </div>
+                    ) : (
+                      <span className="text-xs font-extrabold text-emerald-700">
+                        ₹{Number(hotel.cwebRate || 0).toLocaleString("en-IN")}
+                      </span>
+                    )}
                   </label>
 
                   <label className={`flex items-center justify-between gap-2 rounded-lg border p-3 cursor-pointer transition shadow-2xs ${hotel.childWithoutBed ? "border-sky-300 bg-sky-50/50" : "border-gray-200 bg-white hover:border-gray-300"}`}>
@@ -413,9 +558,22 @@ export const HotelsTab = ({
                         <p className="text-[10px] text-gray-500">Child without extra bed</p>
                       </div>
                     </div>
-                    <span className="text-xs font-extrabold text-sky-700">
-                      ₹{Number(hotel.cwoebRate || 0).toLocaleString("en-IN")}
-                    </span>
+                    {partnerType === "Business Partner" ? (
+                      <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                        <span className="text-xs text-sky-700 font-bold">₹</span>
+                        <input
+                          type="number"
+                          value={hotel.cwoebRate || ""}
+                          onChange={(e) => updateHotel(index, "cwoebRate", Number(e.target.value))}
+                          placeholder="0"
+                          className="w-16 rounded border border-gray-200 px-1.5 py-0.5 text-xs text-sky-700 font-bold focus:outline-none focus:ring-1 focus:ring-sky-500 bg-white"
+                        />
+                      </div>
+                    ) : (
+                      <span className="text-xs font-extrabold text-sky-700">
+                        ₹{Number(hotel.cwoebRate || 0).toLocaleString("en-IN")}
+                      </span>
+                    )}
                   </label>
                 </div>
               </div>

@@ -67,6 +67,8 @@ const menuConfig = {
     { label: "OPS Manager", path: "/operationManager/operationManagerDashboard", icon: GrUserManager },
     { label: "All Team Queries", path: "/operationManager/allTeamQueries", icon: RiTeamFill },
     { label: "My Team", path: "/operationManager/myTeam", icon: BsMicrosoftTeams },
+    { label: "BP Management", path: "/operationManager/bp-management", icon: GrUserManager },
+    { label: "Add New Query", path: "/operationManager/addNewQuery", icon: FilePlus2 },
   ],
   finance_manager: [
     { label: "Finance Manager", path: "/financeManager/financeManagerDashboard", icon: GrUserManager },

@@ -67,16 +67,16 @@ const getEmailValidationError = (value = "") => {
 function StepPill({ stepNumber, label, active, complete }) {
   return (
     <div
-      className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-semibold ${
+      className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] font-semibold ${
         active
-          ? "border-slate-900 bg-slate-900 text-white"
+          ? "border-[#3E63DD] bg-[#3E63DD] text-white"
           : complete
             ? "border-emerald-200 bg-emerald-50 text-emerald-700"
             : "border-slate-200 bg-white text-slate-400"
       }`}
     >
       <span
-        className={`flex h-4 w-4 items-center justify-center rounded-full text-[10px] ${
+        className={`flex h-4 w-4 items-center justify-center rounded-md text-[10px] ${
           active
             ? "bg-white/20 text-white"
             : complete
@@ -94,15 +94,15 @@ function StepPill({ stepNumber, label, active, complete }) {
 function FooterButton({ children, variant = "secondary", ...props }) {
   const classes =
     variant === "primary"
-      ? "bg-slate-900 text-white hover:bg-slate-700 disabled:bg-slate-300"
+      ? "bg-[#3E63DD] text-white hover:bg-[#3353c7] disabled:bg-slate-300"
       : variant === "success"
         ? "bg-emerald-600 text-white hover:bg-emerald-700 disabled:bg-emerald-300"
-        : "border border-slate-200 text-slate-500 hover:bg-slate-50";
+        : "border border-slate-200 text-slate-600 hover:bg-slate-50";
 
   return (
     <button
       type="button"
-      className={`inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium transition disabled:cursor-not-allowed ${classes}`}
+      className={`inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium transition disabled:cursor-not-allowed cursor-pointer ${classes}`}
       {...props}
     >
       {children}

@@ -555,7 +555,14 @@ const QuotationBuilder = () => {
 
   // markup
   const location = useLocation();
-  const order = location.state ?? null;
+  const [order, setOrder] = useState(() => location.state ?? null);
+
+  useEffect(() => {
+    if (location.state) {
+      setOrder((prev) => ({ ...(prev || {}), ...location.state }));
+    }
+  }, [location.state]);
+
   const hasOrderContext = Boolean(order?._id);
   const orderQueryId = order?.queryId || "";
   const navigate = useNavigate();
@@ -1155,6 +1162,16 @@ const QuotationBuilder = () => {
           requestConfig,
         );
         const quotation = data?.quotation;
+        if (data?.query) {
+          setOrder((prev) => ({
+            ...(prev || {}),
+            ...data.query,
+            agent:
+              data.query.agent && typeof data.query.agent === "object"
+                ? data.query.agent
+                : prev?.agent || data.query.agent,
+          }));
+        }
         const latestAgentPhone = String(
           data?.query?.agent?.phone || order?.agent?.phone || "",
         ).trim();
@@ -1192,9 +1209,13 @@ const QuotationBuilder = () => {
 
     const startDate = new Date(start);
     const endDate = new Date(end);
+    if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+      return { nights: 0, days: 0, label: "" };
+    }
     const diff = endDate - startDate;
-    const days = Math.max(1, Math.ceil(diff / (1000 * 60 * 60 * 24)));
-    const nights = Math.max(0, days - 1);
+    const diffDays = Math.max(0, Math.round(diff / (1000 * 60 * 60 * 24)));
+    const nights = diffDays;
+    const days = diffDays > 0 ? diffDays + 1 : 1;
 
     return {
       nights,
@@ -3838,7 +3859,8 @@ const QuotationBuilder = () => {
     }
 
     const diff = tripEndDate - startDate;
-    return Math.max(1, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+    const diffDays = Math.max(0, Math.round(diff / (1000 * 60 * 60 * 24)));
+    return diffDays + 1;
   };
 
   const adultPassengers = Number(order?.numberOfAdults || 0);

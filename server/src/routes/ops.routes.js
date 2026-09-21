@@ -24,7 +24,12 @@ import {
   sendVoucherToAgent,
   startQuotation,
   updateQueryStatus,
+  uploadBusinessPartnerInvoice,
+  getQueriesForPartnerInvoiceUpload,
+  getQueryPartnerInvoiceStatus,
+  submitOfflinePartnerConfirmation,
 } from "../controllers/opsController.js";
+import { upload } from "../middlewares/multer.middlewares.js";
 import {
   createOperationTeamMember,
   getOperationManagerDashboard,
@@ -36,6 +41,9 @@ import {
   submitOperationManagerReport,
   updateOperationManagerQuery,
   getOpsActivityLogs,
+  createTripSource,
+  getTripSources,
+  createOperationManagerQuery,
 } from "../controllers/opsManagerController.js";
 import { sendQuotationController } from "../controllers/quotationNotificationController.js";
 import { getAllServices, createPackage, getPackages, deletePackage } from "../controllers/dmcController.js";
@@ -72,9 +80,20 @@ router.get("/dmcAllGetServices", isAuthenticated, getAllServices);
 router.get("/vouchers", isAuthenticated, getVoucherManagementData);
 router.patch("/vouchers/:id/generate", isAuthenticated, generateVoucher);
 router.patch("/vouchers/:id/send", isAuthenticated, sendVoucherToAgent);
+router.post(
+  "/vouchers/offline-confirmation",
+  isAuthenticated,
+  upload.fields([
+    { name: "supplierConfirmation", maxCount: 1 },
+    { name: "voucherReference", maxCount: 1 },
+    { name: "termsConditions", maxCount: 1 },
+  ]),
+  submitOfflinePartnerConfirmation
+);
 
 router.get("/manager/dashboard", isAuthenticated, getOperationManagerDashboard);
 router.get("/manager/queries", isAuthenticated, getOperationManagerQueries);
+router.post("/manager/queries", isAuthenticated, createOperationManagerQuery);
 router.put("/manager/queries/:queryId", isAuthenticated, updateOperationManagerQuery);
 router.get("/manager/queries/:queryId/quotations", isAuthenticated, getOperationManagerQueryQuotations);
 router.get("/manager/reassign-preview/:userId", isAuthenticated, getOperationManagerReassignPreview);
@@ -83,7 +102,17 @@ router.post("/manager/team", isAuthenticated, createOperationTeamMember);
 router.post("/manager/reassign", isAuthenticated, reassignOperationManagerWorkload);
 router.post("/manager/report", isAuthenticated, submitOperationManagerReport);
 router.get("/manager/activity-logs", isAuthenticated, getOpsActivityLogs);
+router.post("/manager/trip-sources", isAuthenticated, createTripSource);
+router.get("/manager/trip-sources", isAuthenticated, getTripSources);
 
 router.post("/invoices", isAuthenticated, generateInvoice);
+router.get("/business-partner-invoices/queries", isAuthenticated, getQueriesForPartnerInvoiceUpload);
+router.get("/business-partner-invoices/status/:queryId", isAuthenticated, getQueryPartnerInvoiceStatus);
+router.post(
+  "/business-partner-invoices/upload",
+  isAuthenticated,
+  upload.single("uploadedInvoice"),
+  uploadBusinessPartnerInvoice
+);
 
 export default router;

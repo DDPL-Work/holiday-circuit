@@ -2,6 +2,7 @@ import React from "react";
 import { Landmark, Plus, Trash2, ChevronDown, MapPin, AlertTriangle, Clock, Zap } from "lucide-react";
 import { formatLocationWithDestination, resolveSlotOptions, formatServiceDuration } from "../utils/packageUtils.js";
 import { DayScheduleVisualizer } from "../components/DayScheduleVisualizer.jsx";
+import { BusinessPartnerSelect } from "../components/BusinessPartnerSelect.jsx";
 
 export const ActivitiesTab = ({
   activities,
@@ -32,6 +33,9 @@ export const ActivitiesTab = ({
   totalDaysCount,
   getServiceConflicts,
   checkSlotAvailability,
+  partnerType,
+  businessPartners,
+  isOpenedFromQuotationBuilder,
 }) => {
   return (
     <div className="space-y-6 pt-1">
@@ -135,10 +139,29 @@ export const ActivitiesTab = ({
                 )}
 
                 <div className="flex items-center justify-between flex-wrap gap-2 pb-2.5 border-b border-gray-200">
-                  <div className="flex items-center gap-2 flex-wrap">
+                  <div className="flex items-center flex-1 gap-2 flex-wrap">
                     <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
                       <Landmark size={14} className="text-emerald-600" /> Activity #{index + 1}
                     </span>
+
+                    {partnerType === "Business Partner" && (
+                      <div className="ml-auto flex items-center gap-1.5 shrink-0">
+                        <span className="text-[11px] font-semibold text-slate-500 whitespace-nowrap">Partner:</span>
+                        <div className="w-48">
+                          <BusinessPartnerSelect
+                            value={act.businessPartnerId || act.businessPartner || ""}
+                            onChange={(val) => {
+                              const partnerObj = businessPartners?.find((p) => (p._id || p.id) === val);
+                              updateActivity(index, "businessPartnerId", val);
+                              updateActivity(index, "businessPartner", val);
+                              updateActivity(index, "businessPartnerName", partnerObj?.name || partnerObj?.companyName || "");
+                            }}
+                            businessPartners={businessPartners}
+                            placeholderName={act.businessPartnerName || act.dmcName || act.supplierName || ""}
+                          />
+                        </div>
+                      </div>
+                    )}
 
                     {act.tourType && (
                       <span className="rounded-md border border-gray-200 bg-white px-2.5 py-0.5 text-[11px] text-slate-800 font-semibold shadow-2xs">
@@ -171,40 +194,46 @@ export const ActivitiesTab = ({
                   )}
                 </div>
 
-                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-12">
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 mt-4">
                   <div className={`sm:col-span-6 relative dmc-autocomplete-container ${activeActivityDropdownIdx === index ? "z-40" : "z-10"}`}>
                     <label className="block text-[11px] font-semibold text-slate-600 mb-1 flex items-center justify-between">
-                      <span>Activity Name (Select Activity or Type)</span>
-                      {servicesLoading ? (
-                        <span className="text-[10px] text-blue-600 font-medium">Loading Activities...</span>
-                      ) : (
-                        <span className="text-[10px] text-emerald-600 font-semibold">
-                          {getFilteredActivities("").length} Activities in {destination || "Selected Destination"}
-                        </span>
+                      <span>{partnerType === "Business Partner" ? "Activity Name (Manual Entry)" : "Activity Name (Select Activity or Type)"}</span>
+                      {partnerType !== "Business Partner" && (
+                        servicesLoading ? (
+                          <span className="text-[10px] text-blue-600 font-medium">Loading Activities...</span>
+                        ) : (
+                          <span className="text-[10px] text-emerald-600 font-semibold">
+                            {getFilteredActivities("").length} Activities in {destination || "Selected Destination"}
+                          </span>
+                        )
                       )}
                     </label>
                     <div className="relative">
                       <input
                         type="text"
-                        placeholder="e.g. Scuba Diving, Paragliding, Desert Safari..."
+                        placeholder={partnerType === "Business Partner" ? "Enter Activity Name manually..." : "e.g. Scuba Diving, Paragliding, Desert Safari..."}
                         value={act.name}
-                        onFocus={() => setActiveActivityDropdownIdx(index)}
+                        onFocus={() => {
+                          if (partnerType !== "Business Partner") setActiveActivityDropdownIdx(index);
+                        }}
                         onChange={(e) => {
                           updateActivity(index, "name", e.target.value);
-                          setActiveActivityDropdownIdx(index);
+                          if (partnerType !== "Business Partner") setActiveActivityDropdownIdx(index);
                         }}
                         className="w-full rounded-lg border border-gray-300 bg-white pl-3 pr-8 py-1.5 text-xs text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs"
                       />
-                      <button
-                        type="button"
-                        onClick={() => setActiveActivityDropdownIdx(activeActivityDropdownIdx === index ? null : index)}
-                        className="absolute right-2 top-2 text-gray-400 hover:text-gray-600 p-0.5 cursor-pointer transition-colors"
-                      >
-                        <ChevronDown size={14} />
-                      </button>
+                      {partnerType !== "Business Partner" && (
+                        <button
+                          type="button"
+                          onClick={() => setActiveActivityDropdownIdx(activeActivityDropdownIdx === index ? null : index)}
+                          className="absolute right-2 top-2 text-gray-400 hover:text-gray-600 p-0.5 cursor-pointer transition-colors"
+                        >
+                          <ChevronDown size={14} />
+                        </button>
+                      )}
                     </div>
 
-                    {activeActivityDropdownIdx === index && (
+                    {partnerType !== "Business Partner" && activeActivityDropdownIdx === index && (
                       <div className="absolute left-0 right-0 top-full mt-1.5 max-h-64 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-xl z-[100] divide-y divide-gray-100 [scrollbar-width:thin]">
                         {filteredActivities.length === 0 ? (
                           <div className="p-3 text-[11px] text-gray-500 italic text-center">
@@ -260,18 +289,29 @@ export const ActivitiesTab = ({
                   </div>
 
                   <div className="sm:col-span-2">
-                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">Scheduled Day</label>
-                    <select
-                      value={act.day || 1}
-                      onChange={(e) => updateActivity(index, "day", Number(e.target.value))}
-                      className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs cursor-pointer"
-                    >
-                      {Array.from({ length: totalDaysCount }, (_, i) => i + 1).map((d) => (
-                        <option key={d} value={d}>
-                          Day {d}
-                        </option>
-                      ))}
-                    </select>
+                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                      {isOpenedFromQuotationBuilder ? "Service Date" : "Scheduled Day"}
+                    </label>
+                    {isOpenedFromQuotationBuilder ? (
+                      <input
+                        type="date"
+                        value={act.serviceDate ? String(act.serviceDate).substring(0, 10) : ""}
+                        onChange={(e) => updateActivity(index, "serviceDate", e.target.value)}
+                        className="w-full rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs font-bold text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs cursor-pointer"
+                      />
+                    ) : (
+                      <select
+                        value={act.day || 1}
+                        onChange={(e) => updateActivity(index, "day", Number(e.target.value))}
+                        className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs cursor-pointer"
+                      >
+                        {Array.from({ length: totalDaysCount }, (_, i) => i + 1).map((d) => (
+                          <option key={d} value={d}>
+                            Day {d}
+                          </option>
+                        ))}
+                      </select>
+                    )}
                   </div>
 
                   <div className="sm:col-span-4">
@@ -419,10 +459,29 @@ export const ActivitiesTab = ({
                 )}
 
                 <div className="flex items-center justify-between flex-wrap gap-2 pb-2.5 border-b border-gray-200">
-                  <div className="flex items-center gap-2 flex-wrap">
+                  <div className="flex items-center flex-1 gap-2 flex-wrap">
                     <span className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
                       <Landmark size={14} className="text-sky-600" /> Sightseeing #{index + 1}
                     </span>
+
+                    {partnerType === "Business Partner" && (
+                      <div className="ml-auto flex items-center gap-1.5 shrink-0">
+                        <span className="text-[11px] font-semibold text-slate-500 whitespace-nowrap">Partner:</span>
+                        <div className="w-48">
+                          <BusinessPartnerSelect
+                            value={sight.businessPartnerId || sight.businessPartner || ""}
+                            onChange={(val) => {
+                              const partnerObj = businessPartners?.find((p) => (p._id || p.id) === val);
+                              updateSightseeing(index, "businessPartnerId", val);
+                              updateSightseeing(index, "businessPartner", val);
+                              updateSightseeing(index, "businessPartnerName", partnerObj?.name || partnerObj?.companyName || "");
+                            }}
+                            businessPartners={businessPartners}
+                            placeholderName={sight.businessPartnerName || sight.dmcName || sight.supplierName || ""}
+                          />
+                        </div>
+                      </div>
+                    )}
 
                     {sight.tourType && (
                       <span className="rounded-md border border-gray-200 bg-white px-2.5 py-0.5 text-[11px] text-slate-800 font-semibold shadow-2xs">
@@ -455,40 +514,46 @@ export const ActivitiesTab = ({
                   )}
                 </div>
 
-                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-12">
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 mt-4">
                   <div className={`sm:col-span-6 relative dmc-autocomplete-container ${activeSightseeingDropdownIdx === index ? "z-40" : "z-10"}`}>
                     <label className="block text-[11px] font-semibold text-slate-600 mb-1 flex items-center justify-between">
-                      <span>Sightseeing Name (Select Tour or Type)</span>
-                      {servicesLoading ? (
-                        <span className="text-[10px] text-blue-600 font-medium">Loading Tours...</span>
-                      ) : (
-                        <span className="text-[10px] text-emerald-600 font-semibold">
-                          {getFilteredSightseeing("").length} Tours in {destination || "Selected Destination"}
-                        </span>
+                      <span>{partnerType === "Business Partner" ? "Sightseeing Name (Manual Entry)" : "Sightseeing Name (Select Tour or Type)"}</span>
+                      {partnerType !== "Business Partner" && (
+                        servicesLoading ? (
+                          <span className="text-[10px] text-blue-600 font-medium">Loading Tours...</span>
+                        ) : (
+                          <span className="text-[10px] text-emerald-600 font-semibold">
+                            {getFilteredSightseeing("").length} Tours in {destination || "Selected Destination"}
+                          </span>
+                        )
                       )}
                     </label>
                     <div className="relative">
                       <input
                         type="text"
-                        placeholder="e.g. Kempty Falls, Gun Hill Ropeway, Taj Mahal Tour..."
+                        placeholder={partnerType === "Business Partner" ? "Enter Sightseeing Name manually..." : "e.g. Kempty Falls, Gun Hill Ropeway, Taj Mahal Tour..."}
                         value={sight.name}
-                        onFocus={() => setActiveSightseeingDropdownIdx(index)}
+                        onFocus={() => {
+                          if (partnerType !== "Business Partner") setActiveSightseeingDropdownIdx(index);
+                        }}
                         onChange={(e) => {
                           updateSightseeing(index, "name", e.target.value);
-                          setActiveSightseeingDropdownIdx(index);
+                          if (partnerType !== "Business Partner") setActiveSightseeingDropdownIdx(index);
                         }}
                         className="w-full rounded-lg border border-gray-300 bg-white pl-3 pr-8 py-1.5 text-xs text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs"
                       />
-                      <button
-                        type="button"
-                        onClick={() => setActiveSightseeingDropdownIdx(activeSightseeingDropdownIdx === index ? null : index)}
-                        className="absolute right-2 top-2 text-gray-400 hover:text-gray-600 p-0.5 cursor-pointer transition-colors"
-                      >
-                        <ChevronDown size={14} />
-                      </button>
+                      {partnerType !== "Business Partner" && (
+                        <button
+                          type="button"
+                          onClick={() => setActiveSightseeingDropdownIdx(activeSightseeingDropdownIdx === index ? null : index)}
+                          className="absolute right-2 top-2 text-gray-400 hover:text-gray-600 p-0.5 cursor-pointer transition-colors"
+                        >
+                          <ChevronDown size={14} />
+                        </button>
+                      )}
                     </div>
 
-                    {activeSightseeingDropdownIdx === index && (
+                    {partnerType !== "Business Partner" && activeSightseeingDropdownIdx === index && (
                       <div className="absolute left-0 right-0 top-full mt-1.5 max-h-64 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-xl z-[100] divide-y divide-gray-100 [scrollbar-width:thin]">
                         {filteredSightseeing.length === 0 ? (
                           <div className="p-3 text-[11px] text-gray-500 italic text-center">
@@ -544,18 +609,29 @@ export const ActivitiesTab = ({
                   </div>
 
                   <div className="sm:col-span-2">
-                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">Scheduled Day</label>
-                    <select
-                      value={sight.day || 1}
-                      onChange={(e) => updateSightseeing(index, "day", Number(e.target.value))}
-                      className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs cursor-pointer"
-                    >
-                      {Array.from({ length: totalDaysCount }, (_, i) => i + 1).map((d) => (
-                        <option key={d} value={d}>
-                          Day {d}
-                        </option>
-                      ))}
-                    </select>
+                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                      {isOpenedFromQuotationBuilder ? "Service Date" : "Scheduled Day"}
+                    </label>
+                    {isOpenedFromQuotationBuilder ? (
+                      <input
+                        type="date"
+                        value={sight.serviceDate ? String(sight.serviceDate).substring(0, 10) : ""}
+                        onChange={(e) => updateSightseeing(index, "serviceDate", e.target.value)}
+                        className="w-full rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs font-bold text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs cursor-pointer"
+                      />
+                    ) : (
+                      <select
+                        value={sight.day || 1}
+                        onChange={(e) => updateSightseeing(index, "day", Number(e.target.value))}
+                        className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs cursor-pointer"
+                      >
+                        {Array.from({ length: totalDaysCount }, (_, i) => i + 1).map((d) => (
+                          <option key={d} value={d}>
+                            Day {d}
+                          </option>
+                        ))}
+                      </select>
+                    )}
                   </div>
 
                   <div className="sm:col-span-4">

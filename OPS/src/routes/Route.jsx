@@ -41,6 +41,8 @@ const AllTeamTransactions = lazy(() => import("../pages/managerPages/financeMana
 const InternalDMCInvoices = lazy(() => import("../pages/managerPages/financeManagerPages/InternalDMCInvoices"));
 const MyFinanceTeam = lazy(() => import("../pages/managerPages/financeManagerPages/MyFinanceTeam"));
 const UserManagement = lazy(() => import("../pages/adminPages/UserManagement"));
+const BPManagement = lazy(() => import("../pages/managerPages/opsManagerPages/BPManagement"));
+const AddNewQuery = lazy(() => import("../pages/managerPages/opsManagerPages/AddNewQuery"));
 
 const routeFallbackElement = (
   <div className="absolute inset-0 bg-black/25 backdrop-blur-[5px] flex items-center justify-center z-50 select-none pointer-events-none w-full h-full min-h-[30vh]">
@@ -104,6 +106,8 @@ export const appRouter = createBrowserRouter([
               { path: "/operationManager/operationManagerDashboard", element: lazyPage(OperationManagerDashboard) },
               { path: "/operationManager/allTeamQueries", element: lazyPage(AllTeamQueries) },
               { path: "/operationManager/myTeam", element: lazyPage(MyOperationTeam) },
+              { path: "/operationManager/bp-management", element: lazyPage(BPManagement) },
+              { path: "/operationManager/addNewQuery", element: lazyPage(AddNewQuery) },
             ],
           },
         ],

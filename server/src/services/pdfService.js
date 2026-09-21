@@ -1819,7 +1819,11 @@ export const generatePDF = async (quoteDetails = {}) => {
     quoteDetails?.additionalNotes,
     "No additional notes provided.",
   );
-  if (quoteDetails?.includeSellerBankDetails !== false) {
+  const shouldShowBankDetails = Boolean(
+    quoteDetails?.includeSellerBankDetails === true ||
+    (!quoteDetails?.isClientQuotation && quoteDetails?.includeSellerBankDetails !== false && Array.isArray(quoteDetails?.sellerBankDetails) && quoteDetails.sellerBankDetails.length > 0)
+  );
+  if (shouldShowBankDetails) {
     const sellerBankDetailsHeight = getSellerBankDetailsSectionHeight(
       quoteDetails?.sellerBankDetails,
     );

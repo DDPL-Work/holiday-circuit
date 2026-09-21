@@ -1,0 +1,5 @@
+<<<<<<<< HEAD:Admin/dist/assets/file-down-Dq3I_Srw.js
+import{c as a}from"./index-BLcY5sLj.js";const e=[["path",{d:"M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z",key:"1oefj6"}],["path",{d:"M14 2v5a1 1 0 0 0 1 1h5",key:"wfsgrz"}],["path",{d:"M12 18v-6",key:"17g6i2"}],["path",{d:"m9 15 3 3 3-3",key:"1npd3o"}]],t=a("file-down",e);export{t as F};
+========
+import{c as a}from"./index-D4Ugthlw.js";const e=[["path",{d:"M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z",key:"1oefj6"}],["path",{d:"M14 2v5a1 1 0 0 0 1 1h5",key:"wfsgrz"}],["path",{d:"M12 18v-6",key:"17g6i2"}],["path",{d:"m9 15 3 3 3-3",key:"1npd3o"}]],t=a("file-down",e);export{t as F};
+>>>>>>>> f78e552c1ff3fdc1806048a9be8935dfcb392af9:Admin/dist/assets/file-down-BwOHBYGd.js
