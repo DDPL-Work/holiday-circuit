@@ -307,19 +307,18 @@ const addFinanceCreditDays = (value, daysToAdd = 0) => {
 };
 
 const buildManualUploadedInvoiceDocument = (file) => {
-  if (!file?.path) return null;
-  const normalizedFilePath = String(file.path).replace(/\\/g, "/");
-  const absoluteFilePath = path.join(process.cwd(), normalizedFilePath);
-  const fileSizeKb =
-    fs.existsSync(absoluteFilePath)
-      ? Math.max(1, Math.round(fs.statSync(absoluteFilePath).size / 1024))
-      : null;
+  if (!file) return null;
+  const fileUrl = file.path || file.secure_url || file.url || "";
+  if (!fileUrl) return null;
+  const fileSizeKb = file.size
+    ? `${Math.max(1, Math.round(file.size / 1024))} kB`
+    : "150 kB";
 
   return {
-    name: file.originalname || path.basename(file.path),
-    filePath: `/${normalizedFilePath.replace(/^\/+/, "")}`,
-    size: fileSizeKb ? `${fileSizeKb} kB` : "",
-    mimeType: file.mimetype || "",
+    name: file.originalname || (fileUrl ? path.basename(fileUrl) : "Invoice.pdf"),
+    filePath: fileUrl,
+    size: fileSizeKb,
+    mimeType: file.mimetype || "application/pdf",
     kind: "invoice",
   };
 };

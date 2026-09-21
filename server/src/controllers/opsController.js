@@ -1943,6 +1943,7 @@ export const getAllQueries = async (req, res, next) => {
     const queries = await TravelQuery.find(queryFilter)
       .populate("agent", "name email phone companyName")
       .populate("assignedTo", "name email")
+      .populate("tripSource", "name shortName sourceType contactPerson city state country")
       .sort({ createdAt: -1 })
       .lean();
 
@@ -2052,8 +2053,44 @@ export const getAllQueries = async (req, res, next) => {
       const isBusinessPartnerBooking = totalRequired > 0;
       const showInvoiceButton = isBusinessPartnerBooking && isAgentApproved;
 
+      const resolvedAgentName =
+        q.agent?.companyName ||
+        q.agent?.name ||
+        q.tripSource?.name ||
+        q.querySource ||
+        q.guestDetails?.name ||
+        q.clientName ||
+        q.name ||
+        "";
+
+      const resolvedAgentEmail =
+        q.agent?.email ||
+        q.tripSource?.contactPerson?.email ||
+        q.guestDetails?.email ||
+        q.clientEmail ||
+        "";
+
+      const resolvedAgentPhone =
+        q.agent?.phone ||
+        q.tripSource?.contactPerson?.phone ||
+        (q.tripSource?.contactPerson?.phones && q.tripSource.contactPerson.phones[0]?.number) ||
+        q.guestDetails?.phone ||
+        (q.guestDetails?.phoneNumbers && q.guestDetails.phoneNumbers[0]?.number) ||
+        q.clientPhone ||
+        "";
+
+      const agentObj = q.agent || (resolvedAgentName ? {
+        _id: q.tripSource?._id || null,
+        name: resolvedAgentName,
+        companyName: q.tripSource?.name || resolvedAgentName,
+        email: resolvedAgentEmail,
+        phone: resolvedAgentPhone,
+      } : null);
+
       return {
         ...q,
+        agent: agentObj,
+        agentName: resolvedAgentName,
         partnerInvoiceStats: {
           totalRequired,
           uploadedCount,
@@ -4761,7 +4798,7 @@ export const sendVoucherToAgent = async (req, res, next) => {
 
 export const getOrCreateQuotationDraft = async (req, res, next) => {
   try {
-    const query = await TravelQuery.findById(req.params.queryId).populate("agent");
+    const query = await TravelQuery.findById(req.params.queryId).populate("agent").populate("tripSource");
     const requestedSourceQuotationId = String(req.query?.sourceQuotationId || "").trim();
     const requestedSourceRefresh =
       String(req.query?.refreshFromSource || "").trim().toLowerCase() === "true";
@@ -4770,6 +4807,35 @@ export const getOrCreateQuotationDraft = async (req, res, next) => {
 
     if (!query) {
       return res.status(404).json({ success: false, message: "Query not found" });
+    }
+
+    if (!query.agent) {
+      const resolvedAgentName =
+        query.tripSource?.name ||
+        query.querySource ||
+        query.guestDetails?.name ||
+        query.clientName ||
+        query.name ||
+        "Direct Client";
+      const resolvedAgentEmail =
+        query.tripSource?.contactPerson?.email ||
+        query.guestDetails?.email ||
+        query.clientEmail ||
+        "";
+      const resolvedAgentPhone =
+        query.tripSource?.contactPerson?.phone ||
+        (query.tripSource?.contactPerson?.phones && query.tripSource.contactPerson.phones[0]?.number) ||
+        query.guestDetails?.phone ||
+        (query.guestDetails?.phoneNumbers && query.guestDetails.phoneNumbers[0]?.number) ||
+        query.clientPhone ||
+        "";
+      query.agent = {
+        _id: query.tripSource?._id || null,
+        name: resolvedAgentName,
+        companyName: query.tripSource?.name || resolvedAgentName,
+        email: resolvedAgentEmail,
+        phone: resolvedAgentPhone,
+      };
     }
 
     const shouldStartBlankRevisionDraft =
@@ -5719,12 +5785,11 @@ export const uploadBusinessPartnerInvoice = async (req, res, next) => {
     };
 
     if (req.file) {
-      const normalizedPath = req.file.path ? String(req.file.path).replace(/\\/g, "/") : "";
-      const publicPath = normalizedPath.startsWith("uploads") ? `/${normalizedPath}` : normalizedPath.startsWith("/") ? normalizedPath : `/uploads/${req.file.filename}`;
+      const fileUrl = req.file.path || req.file.secure_url || req.file.url || "";
       const fileSizeKb = req.file.size ? `${Math.max(1, Math.round(req.file.size / 1024))} kB` : "150 kB";
       uploadedInvoiceDoc = {
         name: req.file.originalname || uploadedInvoiceDoc.name,
-        filePath: publicPath,
+        filePath: fileUrl,
         size: fileSizeKb,
         mimeType: req.file.mimetype || "application/pdf",
         kind: "invoice",
@@ -5912,15 +5977,20 @@ export const submitOfflinePartnerConfirmation = async (req, res, next) => {
       parsedServices = services;
     }
 
+    const getUploadedFileUrl = (fileObj) => {
+      if (!fileObj) return "";
+      return fileObj.path || fileObj.secure_url || fileObj.url || "";
+    };
+
     const documents = {};
-    if (req.files?.supplierConfirmation?.[0]?.path) {
-      documents.supplierConfirmation = req.files.supplierConfirmation[0].path;
+    if (req.files?.supplierConfirmation?.[0]) {
+      documents.supplierConfirmation = getUploadedFileUrl(req.files.supplierConfirmation[0]);
     }
-    if (req.files?.voucherReference?.[0]?.path) {
-      documents.voucherReference = req.files.voucherReference[0].path;
+    if (req.files?.voucherReference?.[0]) {
+      documents.voucherReference = getUploadedFileUrl(req.files.voucherReference[0]);
     }
-    if (req.files?.termsConditions?.[0]?.path) {
-      documents.termsConditions = req.files.termsConditions[0].path;
+    if (req.files?.termsConditions?.[0]) {
+      documents.termsConditions = getUploadedFileUrl(req.files.termsConditions[0]);
     }
 
     // 1. Find or create Confirmation record

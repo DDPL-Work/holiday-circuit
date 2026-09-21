@@ -1150,8 +1150,18 @@ const getFileKind = (file = {}) => {
   return "unknown";
 };
 
+const getFileBuffer = async (filePath) => {
+  if (Buffer.isBuffer(filePath)) return filePath;
+  if (typeof filePath === "string" && (filePath.startsWith("http://") || filePath.startsWith("https://"))) {
+    const response = await fetch(filePath);
+    const arrayBuf = await response.arrayBuffer();
+    return Buffer.from(arrayBuf);
+  }
+  return fs.promises.readFile(filePath);
+};
+
 const extractPdfText = async (filePath) => {
-  const buffer = await fs.promises.readFile(filePath);
+  const buffer = await getFileBuffer(filePath);
   const parser = new PDFParse({ data: buffer });
   try {
     const result = await parser.getText();
@@ -1162,7 +1172,7 @@ const extractPdfText = async (filePath) => {
 };
 
 const renderPdfPages = async (filePath, maxPages = 15) => {
-  const buffer = await fs.promises.readFile(filePath);
+  const buffer = await getFileBuffer(filePath);
   const parser = new PDFParse({ data: buffer });
   const tempFiles = [];
   try {
@@ -1182,14 +1192,22 @@ const renderPdfPages = async (filePath, maxPages = 15) => {
 };
 
 const extractDocxText = async (filePath) => {
+  if (typeof filePath === "string" && (filePath.startsWith("http://") || filePath.startsWith("https://"))) {
+    const buffer = await getFileBuffer(filePath);
+    const result = await mammoth.extractRawText({ buffer });
+    return normalizeText(result?.value || "");
+  }
   const result = await mammoth.extractRawText({ path: filePath });
   return normalizeText(result?.value || "");
 };
 
 const createPreprocessedOcrImage = async (filePath) => {
+  const input = (typeof filePath === "string" && (filePath.startsWith("http://") || filePath.startsWith("https://")))
+    ? await getFileBuffer(filePath)
+    : filePath;
   const tempPath = path.join(os.tmpdir(), `invoice-ocr-prep-${Date.now()}-${Math.random().toString(36).slice(2)}.png`);
   try {
-    await sharp(filePath)
+    await sharp(input)
       .resize({ width: 2400, withoutEnlargement: false, fit: "inside" })
       .grayscale()
       .normalize()
@@ -1200,7 +1218,7 @@ const createPreprocessedOcrImage = async (filePath) => {
       .toFile(tempPath);
     return tempPath;
   } catch {
-    await sharp(filePath)
+    await sharp(input)
       .resize({ width: 2400, withoutEnlargement: false })
       .grayscale()
       .normalize()

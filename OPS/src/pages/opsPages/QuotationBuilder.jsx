@@ -8033,11 +8033,19 @@ const QuotationBuilder = () => {
       recipientName:
         order?.agent?.name ||
         order?.agentName ||
+        order?.tripSource?.name ||
+        order?.querySource ||
+        order?.guestDetails?.name ||
+        order?.clientName ||
         order?.agent?.companyName ||
         "Agent",
       recipientCompanyName:
         order?.agent?.companyName ||
         order?.agentName ||
+        order?.tripSource?.name ||
+        order?.querySource ||
+        order?.guestDetails?.name ||
+        order?.clientName ||
         order?.agent?.name ||
         "",
       phone: resolvedAgentPhone || order?.agent?.phone || "",

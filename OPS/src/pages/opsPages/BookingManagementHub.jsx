@@ -200,9 +200,20 @@ export default function BookingManagementHub() {
             wasMovedToCurrentUser && ["New_Query", "Pending_Accept"].includes(String(q.opsStatus || ""));
           const travelerDocumentReview = getTravelerDocumentReviewMeta(q);
 
+          const resolvedAgent =
+            q.agent?.companyName ||
+            q.agent?.name ||
+            q.agentName ||
+            q.tripSource?.name ||
+            q.querySource ||
+            q.guestDetails?.name ||
+            q.clientName ||
+            q.name ||
+            "-";
+
           return {
             id: q.queryId,
-            agent: q.agent?.name || "-",
+            agent: resolvedAgent,
             assignedToId: String(q.assignedTo?._id || q.assignedTo?.id || ""),
             assignedTo: q.assignedTo?.name || q.assignedTo?.email || "Unassigned",
             receivedFrom: wasMovedToCurrentUser ? latestReassignment?.fromName || "" : "",

@@ -203,7 +203,7 @@ function DetailModal({ query, onClose }) {
 
         <button
           onClick={onClose}
-          className="absolute top-0 right-0 sm:right-1 w-8 h-8 rounded-full flex items-center justify-center transition-all text-lg leading-none shrink-0 cursor-pointer z-10"
+          className="absolute top-0 right-0 sm:right-1 w-8 h-8 rounded-lg flex items-center justify-center transition-all text-lg leading-none shrink-0 cursor-pointer z-10"
           style={{ background: "rgba(255,255,255,0.12)", border: "1px solid rgba(255,255,255,0.2)", color: "rgba(255,255,255,0.85)" }}
           onMouseEnter={(event) => {
             event.currentTarget.style.background = "rgba(255,255,255,0.25)";
@@ -219,7 +219,7 @@ function DetailModal({ query, onClose }) {
 
         {loading ? (
           <div
-            className="rounded-2xl px-6 py-10 min-h-[40vh] sm:min-h-[60vh] flex flex-col items-center justify-center text-center"
+            className="rounded-xl px-6 py-10 min-h-[40vh] sm:min-h-[60vh] flex flex-col items-center justify-center text-center"
             style={{
               background: "rgba(255,255,255,0.1)",
               border: "1px solid rgba(255,255,255,0.18)",
@@ -235,7 +235,7 @@ function DetailModal({ query, onClose }) {
           </div>
         ) : error ? (
           <div
-            className="rounded-2xl p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"
+            className="rounded-xl p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"
             style={{
               background: "rgba(127, 29, 29, 0.2)",
               border: "1px solid rgba(252, 165, 165, 0.24)",
@@ -249,14 +249,14 @@ function DetailModal({ query, onClose }) {
             </div>
             <button
               onClick={() => setReloadSeed((value) => value + 1)}
-              className="rounded-xl px-4 py-2 text-xs sm:text-sm font-semibold bg-[#d4f23d] text-gray-900 hover:bg-[#c5e535] transition cursor-pointer"
+              className="rounded-md px-4 py-2 text-xs sm:text-sm font-semibold bg-[#d4f23d] text-gray-900 hover:bg-[#c5e535] transition cursor-pointer"
             >
               Retry
             </button>
           </div>
         ) : quotationHistory.length === 0 ? (
           <div
-            className="rounded-2xl p-6 sm:p-8 min-h-[40vh] sm:min-h-[60vh] flex flex-col items-center justify-center text-center"
+            className="rounded-xl p-6 sm:p-8 min-h-[35vh] sm:min-h-[45vh] flex flex-col items-center justify-center text-center"
             style={{
               background: "rgba(255,255,255,0.1)",
               border: "1px solid rgba(255,255,255,0.18)",
@@ -264,10 +264,33 @@ function DetailModal({ query, onClose }) {
               WebkitBackdropFilter: "blur(24px)",
             }}
           >
-            <p className="text-base font-semibold text-white">No quotation attempts yet</p>
-            <p className="text-xs sm:text-sm mt-2" style={{ color: "rgba(255,255,255,0.6)" }}>
-              Is query ke liye abhi tak koi quotation create ya send nahi hua hai.
+            <div className="w-12 h-12 rounded-lg bg-white/10 flex items-center justify-center mb-3">
+              <IconInbox size={22} color="#d4f23d" />
+            </div>
+            <p className="text-base font-bold text-white">No quotation attempts yet</p>
+            <p className="text-xs sm:text-sm mt-1.5 max-w-md text-white/70">
+              No quotation has been created for this query yet. You can build a new quotation directly.
             </p>
+            {query?.builderState?._id && (
+              <button
+                type="button"
+                onClick={() => {
+                  navigate("/ops/quotation-builder", {
+                    state: {
+                      ...query.builderState,
+                    },
+                  });
+                  onClose();
+                }}
+                className="mt-5 px-5 py-2.5 rounded-md text-xs sm:text-sm font-semibold transition cursor-pointer shadow-lg"
+                style={{
+                  background: "rgba(212,242,61,0.95)",
+                  color: "#162033",
+                }}
+              >
+                Create Quotation
+              </button>
+            )}
           </div>
         ) : (
           <div className="overflow-y-auto pr-1 thin-scrollbar max-h-[calc(92vh-70px)]">
@@ -281,7 +304,7 @@ function DetailModal({ query, onClose }) {
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: 8, scale: 0.98 }}
                   transition={{ duration: 0.18, ease: "easeOut", delay: index * 0.04 }}
-                  className="w-full rounded-2xl p-4 sm:p-5 flex flex-col justify-between"
+                  className="w-full rounded-xl p-4 sm:p-5 flex flex-col justify-between"
                   style={{
                     background: "rgba(255,255,255,0.1)",
                     border: "1px solid rgba(255,255,255,0.18)",
@@ -303,7 +326,7 @@ function DetailModal({ query, onClose }) {
                         </span>
                       </div>
                       {quotation.isLatest && (
-                        <span className="text-[10px] font-semibold uppercase px-2 py-0.5 rounded-full bg-[#d4f23d]/90 text-gray-900">
+                        <span className="text-[10px] font-semibold uppercase px-2 py-0.5 rounded-md bg-[#d4f23d]/90 text-gray-900">
                           Latest
                         </span>
                       )}
@@ -314,7 +337,7 @@ function DetailModal({ query, onClose }) {
                         <h3 className="text-lg sm:text-xl font-semibold leading-tight text-white">
                           {quotation.quotationNumber || `Quotation ${quotation.attemptNumber}`}
                         </h3>
-                        <span className={`shrink-0 text-xs font-medium px-2.5 py-0.5 rounded-full ${quotationStatusStyles[quotation.status] || quotationStatusStyles.Pending}`}>
+                        <span className={`shrink-0 text-xs font-medium px-2.5 py-0.5 rounded-md ${quotationStatusStyles[quotation.status] || quotationStatusStyles.Pending}`}>
                           {quotation.displayStatus || quotation.status || "Pending"}
                         </span>
                       </div>
@@ -362,7 +385,7 @@ function DetailModal({ query, onClose }) {
                       <button
                         type="button"
                         onClick={() => handleEditQuotation(quotation)}
-                        className="px-3.5 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer"
+                        className="px-3.5 py-1.5 rounded-md text-xs font-semibold transition cursor-pointer"
                         style={{
                           background: "rgba(212,242,61,0.95)",
                           color: "#162033",
@@ -373,7 +396,7 @@ function DetailModal({ query, onClose }) {
                       <button
                         type="button"
                         onClick={() => toast("Preview action coming soon")}
-                        className="px-3.5 py-1.5 rounded-xl text-xs font-semibold transition border cursor-pointer"
+                        className="px-3.5 py-1.5 rounded-md text-xs font-semibold transition border cursor-pointer"
                         style={{
                           background: "rgba(255,255,255,0.08)",
                           color: "rgba(255,255,255,0.82)",
@@ -531,10 +554,10 @@ export default function AllTeamQueries() {
           <button
             onClick={handleSubmitReport}
             disabled={reportSubmitting}
-            className={`flex items-center justify-center gap-2 px-5 sm:px-6 py-2.5 rounded-full text-xs sm:text-sm font-extrabold transition-all duration-300 transform active:scale-[0.98] shadow-md w-full sm:w-auto shrink-0 cursor-pointer ${
+            className={`flex items-center justify-center gap-2 px-4 sm:px-5 py-2 rounded-lg text-xs sm:text-sm font-bold transition-all duration-300 transform active:scale-[0.98] shadow-xs w-full sm:w-auto shrink-0 cursor-pointer ${
               submitted
-                ? "bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-emerald-500/20 cursor-default"
-                : "bg-gradient-to-r from-[#0f172a] via-[#1e3a8a] to-[#2563eb] hover:from-[#1e3a8a] hover:via-[#2563eb] hover:to-[#3b82f6] text-white hover:shadow-lg hover:shadow-blue-500/15"
+                ? "bg-emerald-600 text-white shadow-emerald-500/20 cursor-default"
+                : "bg-[#3E63DD] hover:bg-[#3353c7] active:bg-[#2842a8] text-white hover:shadow-md hover:shadow-blue-500/15"
             } ${reportSubmitting ? "opacity-70 cursor-wait" : ""}`}
           >
             <IconSend />
@@ -542,53 +565,53 @@ export default function AllTeamQueries() {
           </button>
         </div>
 
-        <div className="overflow-hidden rounded-2xl  mt-4 sm:mt-5">
-          <div className="border-b border-slate-200 bg-gradient-to-r from-slate-50/50 to-white px- sm:px- py- sm:py-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xs mt-4 sm:mt-5">
+          <div className="border-b border-slate-200 bg-slate-50/50 px-4 sm:px-5 py-3 sm:py-3.5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
             <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600 border border-blue-100/90">
-                <IconInbox size={18} />
+              <div className="flex h-8.5 w-8.5 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-[#3E63DD] border border-blue-100">
+                <IconInbox size={17} color="#3E63DD" />
               </div>
               <div>
-                <h2 className="text-base sm:text-[16px] font-black text-slate-900 tracking-tight flex items-center gap-2">
+                <h2 className="text-base sm:text-[15px] font-black text-slate-900 tracking-tight flex items-center gap-2">
                   Query Tracker
                 </h2>
-                <p className="text-xs sm:text-[12px] text-slate-500 font-medium">Live operational queries and quotation tracker</p>
+                <p className="text-xs sm:text-[11.5px] text-slate-500 font-medium">Live operational queries and quotation tracker</p>
               </div>
             </div>
-            <span className="inline-flex items-center justify-center rounded-full bg-gradient-to-r from-black via-slate-900 to-blue-950 px-3.5 py-1 text-xs font-extrabold text-white border border-slate-800/30 self-start sm:self-auto shrink-0">
+            <span className="inline-flex items-center justify-center rounded-md bg-[#3E63DD]/10 text-[#3E63DD] border border-[#3E63DD]/25 px-3 py-1 text-xs font-bold self-start sm:self-auto shrink-0">
               {filtered.length} total queries
             </span>
           </div>
 
           {error && (
-            <div className="m-4 sm:m-6 mb-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-xs sm:text-sm text-red-600 flex items-center justify-between gap-3">
+            <div className="m-4 sm:m-5 mb-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-xs sm:text-sm text-red-600 flex items-center justify-between gap-3">
               <span>{error}</span>
               <button
                 onClick={loadQueries}
-                className="rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-100 transition cursor-pointer shrink-0"
+                className="rounded-md border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-100 transition cursor-pointer shrink-0"
               >
                 Retry
               </button>
             </div>
           )}
 
-          <div className="px- sm:px- pt- sm:pt-4 pb-2 flex flex-col sm:flex-row gap-3">
-            <div className="flex items-center gap-2.5 border border-slate-200 bg-slate-50/30 focus-within:border-blue-400 focus-within:bg-white focus-within:ring-2 focus-within:ring-blue-100 rounded-full px-4 py-2 transition duration-200 flex-1 min-w-0">
+          <div className="px-4 sm:px-5 pt-3 sm:pt-3.5 pb-2 flex flex-col sm:flex-row gap-2.5">
+            <div className="flex items-center gap-2 border border-slate-200 bg-slate-50/50 focus-within:border-[#3E63DD] focus-within:bg-white focus-within:ring-2 focus-within:ring-blue-100 rounded-lg px-3 py-1.5 transition duration-200 flex-1 min-w-0">
               <IconSearch />
               <input
                 type="text"
                 placeholder="Search queries..."
                 value={search}
                 onChange={(event) => handleSearchChange(event.target.value)}
-                className="outline-none bg-transparent text-slate-700 placeholder-slate-400 w-full text-xs sm:text-sm font-medium"
+                className="outline-none bg-transparent text-slate-700 placeholder-slate-400 w-full text-xs sm:text-[13px] font-medium"
               />
             </div>
-            <div className="flex items-center gap-2 border border-slate-200 bg-slate-50/30 focus-within:border-blue-400 focus-within:bg-white focus-within:ring-2 focus-within:ring-blue-100 rounded-full px-4 py-2 transition duration-200 cursor-pointer w-full sm:w-auto shrink-0">
+            <div className="flex items-center gap-2 border border-slate-200 bg-slate-50/50 focus-within:border-[#3E63DD] focus-within:bg-white focus-within:ring-2 focus-within:ring-blue-100 rounded-lg px-3 py-1.5 transition duration-200 cursor-pointer w-full sm:w-auto shrink-0">
               <IconFilter />
               <select
                 value={statusFilter}
                 onChange={(event) => handleFilterChange(event.target.value)}
-                className="outline-none bg-transparent text-slate-700 text-xs sm:text-sm font-semibold cursor-pointer py-0.5 w-full sm:w-auto"
+                className="outline-none bg-transparent text-slate-700 text-xs sm:text-[13px] font-semibold cursor-pointer py-0.5 w-full sm:w-auto"
               >
                 {statuses.map((status) => (
                   <option key={status}>{status}</option>
@@ -601,39 +624,39 @@ export default function AllTeamQueries() {
           <div className="hidden md:block thin-scrollbar overflow-x-auto min-h-[200px]">
             <table className="min-w-[1050px] w-full table-fixed">
               <colgroup>
-                <col style={{ width: "115px" }} />
-                <col style={{ width: "140px" }} />
-                <col style={{ width: "130px" }} />
-                <col style={{ width: "150px" }} />
+                <col style={{ width: "110px" }} />
+                <col style={{ width: "160px" }} />
+                <col style={{ width: "160px" }} />
+                <col style={{ width: "160px" }} />
+                <col style={{ width: "105px" }} />
                 <col style={{ width: "125px" }} />
-                <col style={{ width: "140px" }} />
-                <col style={{ width: "140px" }} />
-                <col style={{ width: "170px" }} />
+                <col style={{ width: "115px" }} />
+                <col style={{ width: "155px" }} />
               </colgroup>
               <thead>
-                <tr className="border-b border-slate-200 bg-slate-50/70 ">
-                  <th className="px- py-3.5 text-left text-[10px] font-extrabold uppercase tracking-[0.12em] text-[#35507a] whitespace-nowrap">
+                <tr className="border-b border-slate-200 bg-slate-50/70">
+                  <th className="px-3.5 py-3 text-left text-[11px] font-extrabold uppercase tracking-[0.1em] text-[#35507a] whitespace-nowrap">
                     Query ID
                   </th>
-                  <th className="px-5 py-3.5 text-left text-[10px] font-extrabold uppercase tracking-[0.12em] text-[#35507a] whitespace-nowrap">
+                  <th className="px-3.5 py-3 text-left text-[11px] font-extrabold uppercase tracking-[0.1em] text-[#35507a] whitespace-nowrap">
                     Client
                   </th>
-                  <th className="px-5 py-3.5 text-left text-[10px] font-extrabold uppercase tracking-[0.12em] text-[#35507a] whitespace-nowrap">
+                  <th className="px-3.5 py-3 text-left text-[11px] font-extrabold uppercase tracking-[0.1em] text-[#35507a] whitespace-nowrap">
                     Destination
                   </th>
-                  <th className="px-5 py-3.5 text-left text-[10px] font-extrabold uppercase tracking-[0.12em] text-[#35507a] whitespace-nowrap">
+                  <th className="px-3.5 py-3 text-left text-[11px] font-extrabold uppercase tracking-[0.1em] text-[#35507a] whitespace-nowrap">
                     Assigned To
                   </th>
-                  <th className="px-2 py-3.5 text-center text-[10px] font-extrabold uppercase tracking-[0.12em] text-[#35507a] whitespace-nowrap">
+                  <th className="px-3 py-3 text-center text-[11px] font-extrabold uppercase tracking-[0.1em] text-[#35507a] whitespace-nowrap">
                     Status
                   </th>
-                  <th className="px-5 py-3.5 text-center text-[10px] font-extrabold uppercase tracking-[0.12em] text-[#35507a] whitespace-nowrap">
+                  <th className="px-3.5 py-3 text-center text-[11px] font-extrabold uppercase tracking-[0.1em] text-[#35507a] whitespace-nowrap">
                     Deadline
                   </th>
-                  <th className="px-4 py-3.5 text-center text-[10px] font-extrabold uppercase tracking-[0.12em] text-[#35507a] whitespace-nowrap">
+                  <th className="px-3.5 py-3 text-center text-[11px] font-extrabold uppercase tracking-[0.1em] text-[#35507a] whitespace-nowrap">
                     Est. Amount
                   </th>
-                  <th className="px-6 py-3.5 text-right text-[10px] font-extrabold uppercase tracking-[0.12em] text-[#35507a] whitespace-nowrap">
+                  <th className="px-3.5 py-3 text-right text-[11px] font-extrabold uppercase tracking-[0.1em] text-[#35507a] whitespace-nowrap">
                     Actions
                   </th>
                 </tr>
@@ -649,46 +672,59 @@ export default function AllTeamQueries() {
                   pageRows.map((query) => (
                     <tr
                       key={query.queryObjectId || query.id}
-                      className="border-b border-slate-200/90 hover:bg-gradient-to-r hover:from-blue-50/50 hover:via-indigo-50/30 hover:to-transparent transition-all duration-200"
+                      className="border-b border-slate-200/90 hover:bg-slate-50/60 transition-all duration-150"
                     >
-                      <td className="px- py-2 text-left align-middle">
-                        <div className="flex items-center gap-2">
-                          <span className="text-[13px] font-bold text-slate-800 font-mono tracking-tight whitespace-nowrap">{query.id}</span>
+                      <td className="px-3.5 py-2.5 text-left align-middle">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[13.5px] font-bold text-slate-800 font-mono tracking-tight whitespace-nowrap">{query.id}</span>
                           {query.hasReminder && (
-                            <span className="flex h-2 w-2 rounded-full bg-blue-500" title="Reminder set" />
+                            <span className="flex h-2 w-2 rounded-full bg-blue-500 shrink-0" title="Reminder set" />
                           )}
                           {query.hasNote && (
-                            <span className="flex h-2 w-2 rounded-full bg-amber-400" title="Internal Note Added" />
+                            <span className="flex h-2 w-2 rounded-full bg-amber-400 shrink-0" title="Internal Note Added" />
                           )}
                         </div>
                       </td>
-                      <td className="px-5 py-2 text-left align-middle">
-                        <span className="text-[12px] text-slate-700 font-semibold">{query.client}</span>
+                      <td className="px-3.5 py-2.5 text-left align-middle">
+                        <span className="text-[13px] text-slate-800 font-semibold leading-snug line-clamp-2">{query.client}</span>
                       </td>
-                      <td className="px-5 py-3 text-left align-middle">
-                        <span className="text-[12px] text-slate-650 font-medium">{query.destination}</span>
+                      <td className="px-3.5 py-2.5 text-left align-middle">
+                        <span className="text-[13px] text-slate-700 font-medium leading-snug line-clamp-2">{query.destination}</span>
                       </td>
-                      <td className="px-5 py-3 text-left align-middle">
-                        <span className="text-[12px] text-slate-700 font-semibold truncate block">{query.assignedTo}</span>
+                      <td className="px-3.5 py-2.5 text-left align-middle">
+                        {query.assignedTo && query.assignedTo.includes("/") ? (
+                          <div className="flex flex-col leading-tight min-w-0">
+                            <span className="text-[13px] font-semibold text-slate-800 truncate">
+                              {query.assignedTo.split("/")[0].trim()}
+                            </span>
+                            <span className="text-[11px] text-slate-400 font-medium mt-0.5 truncate">
+                              {query.assignedTo.split("/").slice(1).join(" / ").trim()}
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-[13px] text-slate-800 font-semibold truncate block">
+                            {query.assignedTo || "Unassigned"}
+                          </span>
+                        )}
                       </td>
-                      <td className="px-2 py-3 text-center align-middle">
-                        <span className={`inline-flex items-center justify-center text-[11px] font-extrabold px-2.5 py-0.5 rounded-full whitespace-nowrap ${statusStyles[query.status] || statusStyles["In Progress"]}`}>
+                      <td className="px-3 py-2.5 text-center align-middle">
+                        <span className={`inline-flex items-center justify-center text-[11.5px] font-extrabold px-2.5 py-0.5 rounded-md whitespace-nowrap ${statusStyles[query.status] || statusStyles["In Progress"]}`}>
                           {query.status}
                         </span>
                       </td>
-                      <td className="px-5 py-3 text-center align-middle">
-                        <span className={`inline-flex items-center justify-center text-[11.5px] font-extrabold tracking-tight px-2.5 py-0.5 rounded-lg whitespace-nowrap ${query.deadlineRed ? "text-rose-600 bg-rose-50 border border-rose-100 animate-pulse" : "text-slate-650 bg-slate-50 border border-slate-100"}`}>
+                      <td className="px-3.5 py-2.5 text-center align-middle">
+                        <span className={`inline-flex items-center justify-center text-[12px] font-bold tracking-tight px-2 py-0.5 rounded-md whitespace-nowrap ${query.deadlineRed ? "text-rose-600 bg-rose-50 border border-rose-100 animate-pulse" : "text-slate-700 bg-slate-50 border border-slate-200/80"}`}>
                           {query.deadline}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-center align-middle font-mono">
+                      <td className="px-3.5 py-2.5 text-center align-middle font-mono">
                         <span className="text-[13.5px] font-bold text-slate-800 whitespace-nowrap">{query.amount}</span>
                       </td>
-                      <td className="px-6 py-3 text-right align-middle">
-                        <div className="flex items-center justify-end gap-2">
+                      <td className="px-3.5 py-2.5 text-right align-middle">
+                        <div className="flex items-center justify-end gap-1.5">
                           <button
                             onClick={() => setSelected(query)}
-                            className="inline-flex items-center gap-1 text-[11px] px-3 py-1.5 rounded-xl bg-gradient-to-r from-slate-900 to-[#1e3a8a] hover:from-[#1e3a8a] hover:to-[#2563eb] text-white shadow-xs hover:shadow border border-slate-800/40 active:scale-[0.98] transition duration-150 font-extrabold cursor-pointer"
+                            className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded-md bg-[#3E63DD] hover:bg-[#3353c7] active:bg-[#2842a8] text-white shadow-xs hover:shadow transition duration-150 font-bold cursor-pointer"
                             title="View quotation tracker"
                           >
                             <IconEye size={12} />
@@ -703,9 +739,9 @@ export default function AllTeamQueries() {
                                   <div
                                     className={`${
                                       t.visible ? 'animate-in fade-in duration-200' : 'animate-out fade-out duration-200'
-                                    } bg-white border-l-[4px] border-[#2563eb] px-4 py-3 shadow-[0_4px_16px_rgba(0,0,0,0.12)] flex items-start gap-3 pointer-events-auto w-full max-w-[420px] rounded-r-lg`}
+                                    } bg-white border-l-[4px] border-[#3E63DD] px-4 py-3 shadow-[0_4px_16px_rgba(0,0,0,0.12)] flex items-start gap-3 pointer-events-auto w-full max-w-[420px] rounded-lg`}
                                   >
-                                    <div className="mt-0.5 text-[#2563eb] shrink-0">
+                                    <div className="mt-0.5 text-[#3E63DD] shrink-0">
                                       <svg
                                         xmlns="http://www.w3.org/2000/svg"
                                         width="18"
@@ -760,7 +796,7 @@ export default function AllTeamQueries() {
                                 setOpenEditModal(true);
                               }
                             }}
-                            className="inline-flex items-center gap-1 text-[11px] px-3 py-1.5 rounded-xl bg-gradient-to-r from-slate-900 to-[#78350f] hover:from-[#78350f] hover:to-[#b45309] text-white shadow-xs hover:shadow border border-slate-800/40 active:scale-[0.98] transition duration-150 font-extrabold cursor-pointer"
+                            className="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded-md bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-700 border border-slate-300/80 shadow-xs transition duration-150 font-bold cursor-pointer"
                             title="Edit query details"
                           >
                             <svg
@@ -791,14 +827,14 @@ export default function AllTeamQueries() {
           {/* Mobile Cards View */}
           <div className="block md:hidden px-4 pb-4 space-y-3">
             {pageRows.length === 0 ? (
-              <div className="text-center text-sm text-slate-400 py-8 border border-dashed border-slate-200 rounded-xl">
+              <div className="text-center text-sm text-slate-400 py-8 border border-dashed border-slate-200 rounded-lg">
                 No queries match your search.
               </div>
             ) : (
               pageRows.map((query) => (
                 <div
                   key={query.queryObjectId || query.id}
-                  className="p-4 rounded-2xl border border-slate-200 bg-white shadow-xs hover:border-slate-300 transition duration-150 space-y-3"
+                  className="p-4 rounded-xl border border-slate-200 bg-white shadow-xs hover:border-slate-300 transition duration-150 space-y-3"
                 >
                   <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
                     <div className="flex items-center gap-2">
@@ -812,7 +848,7 @@ export default function AllTeamQueries() {
                         <span className="flex h-2 w-2 rounded-full bg-amber-400" title="Internal Note Added" />
                       )}
                     </div>
-                    <span className={`inline-flex items-center justify-center text-[10px] font-extrabold px-2.5 py-0.5 rounded-full ${statusStyles[query.status] || statusStyles["In Progress"]}`}>
+                    <span className={`inline-flex items-center justify-center text-[10.5px] font-bold px-2 py-0.5 rounded-md ${statusStyles[query.status] || statusStyles["In Progress"]}`}>
                       {query.status}
                     </span>
                   </div>
@@ -828,7 +864,18 @@ export default function AllTeamQueries() {
                     </div>
                     <div>
                       <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Assigned To</span>
-                      <span className="font-medium text-slate-700 truncate block">{query.assignedTo}</span>
+                      {query.assignedTo && query.assignedTo.includes("/") ? (
+                        <div className="flex flex-col leading-tight">
+                          <span className="text-xs font-semibold text-slate-800 truncate">
+                            {query.assignedTo.split("/")[0].trim()}
+                          </span>
+                          <span className="text-[10.5px] text-slate-400 font-medium truncate">
+                            {query.assignedTo.split("/").slice(1).join(" / ").trim()}
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="font-semibold text-slate-700 text-xs truncate block">{query.assignedTo || "Unassigned"}</span>
+                      )}
                     </div>
                     <div>
                       <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Est. Amount</span>
@@ -847,7 +894,7 @@ export default function AllTeamQueries() {
                     <div className="flex items-center gap-2 shrink-0">
                       <button
                         onClick={() => setSelected(query)}
-                        className="inline-flex items-center justify-center gap-1 text-xs px-3 py-1.5 rounded-xl bg-gradient-to-r from-slate-900 to-[#1e3a8a] text-white shadow-xs font-bold active:scale-[0.98] transition cursor-pointer"
+                        className="inline-flex items-center justify-center gap-1 text-xs px-3 py-1.5 rounded-md bg-[#3E63DD] hover:bg-[#3353c7] text-white shadow-xs font-bold active:scale-[0.98] transition cursor-pointer"
                       >
                         <IconEye size={12} />
                         View
@@ -861,9 +908,9 @@ export default function AllTeamQueries() {
                               <div
                                 className={`${
                                   t.visible ? 'animate-in fade-in duration-200' : 'animate-out fade-out duration-200'
-                                } bg-white border-l-[4px] border-[#2563eb] px-4 py-3 shadow-[0_4px_16px_rgba(0,0,0,0.12)] flex items-start gap-3 pointer-events-auto w-full max-w-[360px] rounded-lg`}
+                                } bg-white border-l-[4px] border-[#3E63DD] px-4 py-3 shadow-[0_4px_16px_rgba(0,0,0,0.12)] flex items-start gap-3 pointer-events-auto w-full max-w-[360px] rounded-lg`}
                               >
-                                <div className="mt-0.5 text-[#2563eb] shrink-0">
+                                <div className="mt-0.5 text-[#3E63DD] shrink-0">
                                   <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                                     <circle cx="12" cy="12" r="10" />
                                     <line x1="12" y1="16" x2="12" y2="12" />
@@ -895,7 +942,7 @@ export default function AllTeamQueries() {
                             setOpenEditModal(true);
                           }
                         }}
-                        className="inline-flex items-center justify-center gap-1 text-xs px-3 py-1.5 rounded-xl bg-gradient-to-r from-slate-900 to-[#78350f] text-white shadow-xs font-bold active:scale-[0.98] transition cursor-pointer"
+                        className="inline-flex items-center justify-center gap-1 text-xs px-3 py-1.5 rounded-md bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-700 border border-slate-300/80 shadow-xs font-bold transition cursor-pointer"
                       >
                         <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                           <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
@@ -929,7 +976,7 @@ export default function AllTeamQueries() {
                     onClick={() => setPage(pageNumber)}
                     className={`w-8 h-8 flex items-center justify-center rounded-lg border text-xs font-bold transition cursor-pointer ${
                       pageNumber === safePage
-                        ? "bg-slate-900 text-white border-slate-900 shadow-xs"
+                        ? "bg-[#3E63DD] text-white border-[#3E63DD] shadow-xs"
                         : "border-slate-200 text-slate-500 hover:bg-slate-50 hover:text-slate-700"
                     }`}
                   >
