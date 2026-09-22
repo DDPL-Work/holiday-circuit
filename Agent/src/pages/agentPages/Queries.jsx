@@ -7,7 +7,6 @@ import CreateNewQueries from "../../modal/CreateNewQueries.Modal";
 import QueryDetails from "./QueryDetails.jsx";
 import API from "../../utils/Api.js";
 import toast from "react-hot-toast";
-import { resolveQuoteClientAmount } from "./queryDetails/utils/queryDetailsHelpers";
 
 /* ===== Page Animation (one time only) ===== */
 const containerVariant = {
@@ -44,6 +43,7 @@ const Queries = () => {
   const [openEditModal, setOpenEditModal] = useState(false);
   const [openQueryDetails, setOpenQueryDetails] = useState(false);
   const [selectedQuery, setSelectedQuery] = useState(null);
+  const [selectedQuoteId, setSelectedQuoteId] = useState(null);
   const [queries, setQueries] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
@@ -148,7 +148,7 @@ const Queries = () => {
   const queryCounts = useMemo(() => ({
     All: queries.length,
     Pending: queries.filter((q) => q.agentStatus === "Pending" || q.agentStatus === "In Progress" || q.agentStatus === "Revision Requested").length,
-    "Quote Sent": queries.filter((q) => q.agentStatus === "Quote Sent").length,
+    "Quote Sent": queries.filter((q) => q.agentStatus === "Quote Sent" || q.agentStatus === "Quote Received").length,
     "Client Approved": queries.filter((q) => q.agentStatus === "Client Approved").length,
     Confirmed: queries.filter((q) => q.agentStatus === "Confirmed").length,
   }), [queries]);
@@ -226,56 +226,7 @@ const Queries = () => {
   const formatPax = (adults, children) =>
     children > 0 ? `${adults} Adults, ${children} Kids` : `${adults} Adults`;
 
-  const getQuotePriceHeaderTitle = (status) => {
-    if (status === "Pending" || status === "In Progress") return "Customer Budget";
-    if (status === "Quote Sent") return "Latest Quote Price";
-    if (status === "Client Approved") return "Approved Quote Price";
-    if (status === "Confirmed") return "Confirmed Quote Price";
-    return "Quote Price";
-  };
-
-  const isQueryAfterConversion = (query) => {
-    if (!query) return false;
-    if (query?.isAfterConversion || query?.isAfterConversionQuote || query?.isPostConversion) return true;
-    if (
-      query?.agentStatus === "Revision Requested" ||
-      query?.agentStatus === "Quote Updated" ||
-      query?.opsStatus === "Revision_Query"
-    ) return true;
-    if (query?.rejectionNote && String(query.rejectionNote).trim().length > 0) return true;
-
-    const quotations = Array.isArray(query?.quotations) ? query.quotations : [];
-    if (quotations.length > 1) return true;
-    if (quotations.length === 1) {
-      const q = quotations[0];
-      return Boolean(
-        q?.isAfterConversion ||
-        q?.isAfterConversionQuote ||
-        q?.isPostConversion ||
-        q?.sourceQuotationId ||
-        q?.status === "Revised" ||
-        q?.agentRevisionRemark
-      );
-    }
-
-    const logs = Array.isArray(query?.activityLog) ? query.activityLog : [];
-    if (logs.some((l) => {
-      const action = String(l?.action || "").toLowerCase();
-      return (
-        action.includes("revision") ||
-        action.includes("after conversion") ||
-        action.includes("quote revised") ||
-        action.includes("revised")
-      );
-    })) {
-      return true;
-    }
-
-    return false;
-  };
-
   const getDisplayPrice = (query) => {
-    const activeTab = statusFilter && statusFilter !== "All" ? statusFilter : query.agentStatus;
     const quotations = Array.isArray(query?.quotations) ? query.quotations : [];
     let latestQuotePrice = Number(query.latestQuotationPrice || 0);
 
@@ -285,26 +236,19 @@ const Queries = () => {
       );
       const latestQ = sorted[0];
       if (latestQ) {
-        latestQuotePrice = resolveQuoteClientAmount(latestQ, query);
+        latestQuotePrice = Number(
+          latestQ.clientTotalAmount ||
+          latestQ.pricing?.totalAmount ||
+          latestQ.totalAmount ||
+          0
+        );
       }
     }
 
-    let price = null;
-    if (activeTab === "Pending" || activeTab === "In Progress") {
-      price = query.customerBudget || latestQuotePrice;
-    } else if (activeTab === "Quote Sent" || activeTab === "Quote Received") {
-      price = latestQuotePrice || query.customerBudget;
-    } else if (activeTab === "Client Approved" || activeTab === "Confirmed") {
-      price = query.approvedQuotationPrice || latestQuotePrice || query.customerBudget;
-    } else {
-      if (query.agentStatus === "Confirmed" || query.agentStatus === "Client Approved") {
-        price = query.approvedQuotationPrice || latestQuotePrice || query.customerBudget;
-      } else if (query.agentStatus === "Quote Sent" || query.agentStatus === "Revision Requested") {
-        price = latestQuotePrice || query.customerBudget;
-      } else {
-        price = query.customerBudget || latestQuotePrice;
-      }
-    }
+    const price =
+      (query.agentStatus === "Confirmed" || query.agentStatus === "Client Approved")
+        ? (query.approvedQuotationPrice || latestQuotePrice || query.quotationPrice || query.customerBudget)
+        : (latestQuotePrice || query.approvedQuotationPrice || query.quotationPrice || query.customerBudget);
 
     if (price && Number(price) > 0) {
       return `₹${Math.round(Number(price)).toLocaleString("en-IN")}`;
@@ -324,7 +268,7 @@ const Queries = () => {
     if (!statusFilter || statusFilter === "All") return true;
 
     if (statusFilter === "Pending" || statusFilter === "In Progress") {
-      return query.agentStatus === "Pending" || query.agentStatus === "In Progress" || query.agentStatus === "Revision Requested";
+      return query.agentStatus === "Pending" || query.agentStatus === "In Progress";
     }
 
     return query.agentStatus === statusFilter;
@@ -344,9 +288,13 @@ const Queries = () => {
   if (openQueryDetails) {
     return (
       <QueryDetails
-        onClose={() => setOpenQueryDetails(false)}
+        onClose={() => {
+          setOpenQueryDetails(false);
+          setSelectedQuoteId(null);
+        }}
         onRefresh={fetchQueries}
         query={selectedQuery}
+        initialQuoteId={selectedQuoteId}
       />
     );
   }
@@ -451,10 +399,8 @@ const Queries = () => {
                   <th className="text-left px-6 py-3">Dates</th>
                   <th className="text-left px-6 py-3">Pax</th>
                   <th className="text-left px-6 py-3">Status</th>
-                  {/* Dynamic Column Header Name based on active tab */}
-                  <th className="text-right px-6 py-3 whitespace-nowrap">
-                    {getQuotePriceHeaderTitle(statusFilter)}
-                  </th>
+                  {/* FIX: whitespace-nowrap add kiya — "Latest Quote Price" ek line mein rahega */}
+                  <th className="text-right px-6 py-3 whitespace-nowrap">Latest Quote Price</th>
                   <th className="px-6 py-3"></th>
                 </tr>
               </thead>
@@ -465,6 +411,11 @@ const Queries = () => {
                     <tr
                       key={query._id}
                       className="cursor-pointer transition-colors hover:bg-[#F9FAFB]"
+                      onClick={() => {
+                        setSelectedQuery(query);
+                        setSelectedQuoteId(null);
+                        setOpenQueryDetails(true);
+                      }}
                     >
                       <td className="px-5 py-4 align-middle">
                         <div className="leading-tight">
@@ -494,14 +445,7 @@ const Queries = () => {
                         </span>
                       </td>
                       <td className="px-5 py-4 align-middle text-right font-medium whitespace-nowrap">
-                        <div className="flex flex-col items-end justify-center gap-0.5">
-                          <span className="font-bold text-slate-900 text-xs sm:text-sm">{getDisplayPrice(query)}</span>
-                          {isQueryAfterConversion(query) && (
-                            <span className="inline-flex items-center text-[10px] font-semibold text-blue-700 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded leading-none mt-0.5 whitespace-nowrap">
-                              After Conversion Price
-                            </span>
-                          )}
-                        </div>
+                        {getDisplayPrice(query)}
                       </td>
 
                       {/* FIX: View & Edit buttons — padding balanced, no overflow */}
@@ -512,6 +456,7 @@ const Queries = () => {
                             onClick={(e) => {
                               e.stopPropagation();
                               setSelectedQuery(query);
+                              setSelectedQuoteId(null);
                               setOpenQueryDetails(true);
                             }}
                           >

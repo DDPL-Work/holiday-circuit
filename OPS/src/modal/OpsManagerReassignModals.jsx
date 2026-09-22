@@ -6,21 +6,21 @@ import API from "../utils/Api";
 
 const memberStatusStyles = {
   Active: "border border-emerald-200 bg-emerald-50 text-emerald-700",
-  "At Risk": "border border-rose-200 bg-rose-50 text-rose-600",
+  "At Risk": "border border-red-200 bg-red-50 text-[#EF4444]",
   Busy: "border border-amber-200 bg-amber-50 text-amber-700",
 };
 
 const queryCategoryStyles = {
   new: "bg-sky-50 border border-sky-200 text-sky-700",
   requote_pending: "bg-amber-50 border border-amber-200 text-amber-700",
-  at_risk: "bg-rose-50 border border-rose-200 text-rose-600",
+  at_risk: "bg-red-50 border border-red-200 text-[#EF4444]",
   active: "bg-slate-50 border border-slate-200 text-slate-600",
 };
 
 const queryStatusColors = {
   New: "text-sky-600 font-bold",
   Quoted: "text-emerald-600 font-bold",
-  Overdue: "text-rose-600 font-bold animate-pulse",
+  Overdue: "text-[#EF4444] font-bold",
   "In Progress": "text-slate-500 font-bold",
 };
 
@@ -71,10 +71,10 @@ function MemberStatusBadge({ status }) {
     status === "Active"
       ? "bg-emerald-500 animate-pulse"
       : status === "At Risk"
-        ? "bg-rose-500"
+        ? "bg-[#EF4444]"
         : "bg-amber-500";
   return (
-    <span className={`inline-flex items-center gap-1.5 justify-center rounded-full px-2.5 py-0.5 text-[10px] font-semibold border whitespace-nowrap shadow-sm transition-all duration-200 ${memberStatusStyles[status] || memberStatusStyles.Active}`}>
+    <span className={`inline-flex items-center gap-1.5 justify-center rounded-md px-2 py-0.5 text-[10px] font-semibold border whitespace-nowrap shadow-sm transition-all duration-200 ${memberStatusStyles[status] || memberStatusStyles.Active}`}>
       <span className={`h-1 w-1 rounded-full ${dotColor}`} />
       {status}
     </span>
@@ -83,7 +83,7 @@ function MemberStatusBadge({ status }) {
 
 function QueryCategoryBadge({ categoryKey, label }) {
   return (
-    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-bold border ${queryCategoryStyles[categoryKey] || queryCategoryStyles.active}`}>
+    <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-[10px] font-bold border ${queryCategoryStyles[categoryKey] || queryCategoryStyles.active}`}>
       {label}
     </span>
   );
@@ -91,13 +91,13 @@ function QueryCategoryBadge({ categoryKey, label }) {
 
 function StatCard({ label, value, tone = "slate" }) {
   const toneMap = {
-    slate: "bg-gradient-to-br from-slate-50 via-slate-100/40 to-white border-slate-200 border-b-[3.5px] border-b-slate-500 text-slate-800 shadow-[0_2px_8px_rgba(15,23,42,0.01)]",
-    blue: "bg-gradient-to-br from-blue-50/50 via-white to-white border-blue-100 border-b-[3.5px] border-b-blue-500 text-blue-700 shadow-[0_2px_8px_rgba(59,130,246,0.02)]",
-    amber: "bg-gradient-to-br from-amber-50/50 via-white to-white border-amber-100 border-b-[3.5px] border-b-amber-500 text-amber-700 shadow-[0_2px_8px_rgba(245,158,11,0.02)]",
-    rose: "bg-gradient-to-br from-rose-50/50 via-white to-white border-rose-100 border-b-[3.5px] border-b-rose-500 text-rose-750 shadow-[0_2px_8px_rgba(244,63,94,0.02)]",
+    slate: "bg-white border-slate-200 border-b-[3px] border-b-slate-500 text-slate-800 shadow-sm",
+    blue: "bg-white border-slate-200 border-b-[3px] border-b-[#3E63DD] text-[#3E63DD] shadow-sm",
+    amber: "bg-white border-slate-200 border-b-[3px] border-b-amber-500 text-amber-700 shadow-sm",
+    rose: "bg-white border-slate-200 border-b-[3px] border-b-[#EF4444] text-[#EF4444] shadow-sm",
   };
   return (
-    <div className={`rounded-xl border px-3 py-2 transition-transform hover:scale-[1.02] duration-200 ${toneMap[tone] || toneMap.slate}`}>
+    <div className={`rounded-lg border px-3 py-2 transition-transform duration-200 ${toneMap[tone] || toneMap.slate}`}>
       <p className="text-[9px] font-extrabold uppercase tracking-wider text-slate-400">{label}</p>
       <p className="mt-1 text-[17px] font-extrabold leading-none">{value}</p>
     </div>
@@ -110,7 +110,7 @@ function WorkloadBar({ value = 0 }) {
   const clamped = Math.min(100, Math.max(0, value));
   const barTone = 
     clamped >= 80 
-      ? "from-rose-500 to-pink-500" 
+      ? "from-[#EF4444] to-red-400" 
       : clamped >= 50 
         ? "from-amber-400 to-orange-500" 
         : "from-emerald-400 to-teal-500";
@@ -130,12 +130,12 @@ function WorkloadBar({ value = 0 }) {
 // ─── Avatar ───────────────────────────────────────────────────────────────────
 
 function Avatar({ initials, bg = "bg-blue-50", text = "text-blue-600" }) {
-  const gradientBg = bg === "bg-blue-100" || bg === "bg-blue-50"
-    ? "bg-gradient-to-br from-blue-500 via-indigo-500 to-indigo-600 text-white ring-2 ring-white shadow-sm"
+  const customBg = bg === "bg-blue-100" || bg === "bg-blue-50"
+    ? "bg-[#3E63DD] text-white ring-2 ring-white shadow-sm"
     : bg;
   const isCustomText = bg === "bg-blue-100" || bg === "bg-blue-50" ? "text-white" : text;
   return (
-    <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${gradientBg} ${isCustomText}`}>
+    <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${customBg} ${isCustomText}`}>
       {initials}
     </div>
   );
@@ -198,13 +198,13 @@ function RecipientRow({ member, selected, onSelect }) {
           <MemberStatusBadge status={member.status} />
         </div>
         <div className="mt-2 flex flex-wrap gap-1.5">
-          <span className="rounded-full border border-sky-100 bg-sky-50 px-2 py-0.5 text-[10px] font-semibold text-sky-700">
+          <span className="rounded-md border border-sky-100 bg-sky-50 px-2 py-0.5 text-[10px] font-semibold text-sky-700">
             {member.newQueries || 0} new
           </span>
-          <span className="rounded-full border border-amber-100 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+          <span className="rounded-md border border-amber-100 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
             {member.requotePendingQueries || 0} re-quote
           </span>
-          <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
+          <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
             {member.reassignedCurrentQueries || 0} reassigned
           </span>
         </div>
@@ -221,8 +221,8 @@ function QueryRow({ query, checked, onToggle }) {
       onClick={onToggle}
       className={`flex cursor-pointer items-start gap-3 border-b border-slate-100 px-4 py-3 transition last:border-b-0 border-l-[3.5px] border-transparent ${
         checked 
-          ? "bg-gradient-to-r from-[#ebf3ff] via-[#f7faff]/30 to-white border-l-blue-500" 
-          : "hover:bg-gradient-to-r hover:from-[#ebf3ff]/40 hover:to-white bg-white"
+          ? "bg-blue-50/50 border-l-[#3E63DD]" 
+          : "hover:bg-slate-50 bg-white"
       }`}
     >
       <div className="mt-1">
@@ -244,12 +244,12 @@ function QueryRow({ query, checked, onToggle }) {
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
           <QueryCategoryBadge categoryKey={query.categoryKey} label={query.categoryLabel} />
           {query.createdAtLabel && (
-            <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-500">
+            <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-500">
               {query.createdAtLabel}
             </span>
           )}
           {query.quoteSentAtLabel && (
-            <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-600">
+            <span className="rounded-md border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-600">
               Quote: {query.quoteSentAtLabel}
             </span>
           )}
@@ -264,7 +264,7 @@ function QueryRow({ query, checked, onToggle }) {
 
 function Section({ children, className = "overflow-hidden" }) {
   return (
-    <div className={`rounded-2xl border border-slate-200 bg-white shadow-[0_4px_20px_rgba(15,23,42,0.02)] transition-shadow hover:shadow-[0_6px_25px_rgba(15,23,42,0.04)] ${className}`}>
+    <div className={`rounded-xl border border-slate-200 bg-white shadow-sm ${className}`}>
       {children}
     </div>
   );
@@ -272,7 +272,7 @@ function Section({ children, className = "overflow-hidden" }) {
 
 function SectionHeader({ title, subtitle, action }) {
   return (
-    <div className="flex items-center justify-between gap-3 border-b border-blue-100/70 bg-gradient-to-r from-[#ebf3ff] via-[#ebf3ff] via-60% to-white px-4 py-2.5 rounded-t-2xl">
+    <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-slate-50/80 px-4 py-2.5 rounded-t-xl">
       <div>
         <p className="text-[12.5px] font-bold text-slate-800 tracking-tight">{title}</p>
         {subtitle && <p className="mt-0.5 text-[10.5px] font-medium text-slate-500">{subtitle}</p>}
@@ -396,21 +396,21 @@ export function OpsManagerReassignModal({ exec, onClose, onSuccess }) {
 
   return (
     <div className={`fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 px-4 py-6 backdrop-blur-[2px] transition-all duration-200 ease-out ${active ? "opacity-100" : "opacity-0"}`}>
-      <div className={`flex max-h-[88vh] w-full max-w-[1080px] flex-col overflow-hidden rounded-[24px] bg-gradient-to-br from-[#f8fafc] via-[#f1f5f9] to-[#e2e8f0]/70 shadow-[0_32px_80px_rgba(15,23,42,0.22)] border border-slate-200/80 transition-all duration-200 ease-out ${active ? "opacity-100 scale-100" : "opacity-0 scale-95"}`}>
+      <div className={`flex max-h-[88vh] w-full max-w-[1080px] flex-col overflow-hidden rounded-xl bg-slate-50 shadow-2xl border border-slate-200 transition-all duration-200 ease-out ${active ? "opacity-100 scale-100" : "opacity-0 scale-95"}`}>
 
         {/* Header */}
-        <div className="flex items-start justify-between border-b border-slate-250/15 bg-gradient-to-r from-[#0f2d5a] via-[#16386c] to-[#0a152d] px-6 py-4">
+        <div className="flex items-start justify-between border-b border-slate-200 bg-slate-900 px-6 py-4">
           <div>
-            <h3 className="text-[17.5px] font-extrabold text-white tracking-tight">Re-assign queries</h3>
-            <p className="mt-0.5 text-[12px] font-medium text-slate-200">
+            <h3 className="text-[17.5px] font-bold text-white tracking-tight">Re-assign queries</h3>
+            <p className="mt-0.5 text-[12px] font-medium text-slate-300">
               Queries moving from{" "}
-              <span className="font-bold text-indigo-200">{exec?.name}</span>
+              <span className="font-bold text-white">{exec?.name}</span>
             </p>
           </div>
           <button
             type="button"
             onClick={triggerClose}
-            className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 text-white/80 transition hover:bg-white/20 hover:text-white active:scale-95 cursor-pointer shadow-sm border border-white/10"
+            className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/10 text-white/80 transition hover:bg-white/20 hover:text-white active:scale-95 cursor-pointer shadow-sm border border-white/10"
           >
             <IconClose />
           </button>
@@ -419,10 +419,10 @@ export function OpsManagerReassignModal({ exec, onClose, onSuccess }) {
         {/* Body */}
         {previewLoading ? (
           <div className="space-y-4 px-6 py-6 animate-pulse">
-            <div className="h-28 rounded-2xl bg-slate-100" />
-            <div className="h-40 rounded-2xl bg-slate-100" />
-            <div className="h-16 rounded-2xl bg-slate-100" />
-            <div className="h-48 rounded-2xl bg-slate-100" />
+            <div className="h-28 rounded-xl bg-slate-200/60" />
+            <div className="h-40 rounded-xl bg-slate-200/60" />
+            <div className="h-16 rounded-xl bg-slate-200/60" />
+            <div className="h-48 rounded-xl bg-slate-200/60" />
           </div>
         ) : (
           <div className="flex-1 overflow-y-auto px-6 py-5 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] space-y-5">
@@ -474,7 +474,7 @@ export function OpsManagerReassignModal({ exec, onClose, onSuccess }) {
                       <button
                         type="button"
                         onClick={() => setDropdownOpen((prev) => !prev)}
-                        className="flex w-full items-center justify-between gap-3 rounded-xl border border-blue-200/80 bg-gradient-to-br from-[#ebf3ff] via-[#f7faff] to-[#e1efff] px-4 py-3 text-left transition-all duration-250 hover:border-blue-300/85 hover:from-[#e3efff] hover:to-[#dbedff] focus:outline-none cursor-pointer shadow-sm hover:shadow-[0_2px_8px_rgba(37,99,235,0.06)]"
+                        className="flex w-full items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50/70 px-4 py-3 text-left transition-all duration-200 hover:border-[#3E63DD] hover:bg-white focus:outline-none cursor-pointer shadow-sm"
                       >
                         {selectedTargetId ? (
                           (() => {
@@ -485,14 +485,14 @@ export function OpsManagerReassignModal({ exec, onClose, onSuccess }) {
                                 <Avatar initials={selectedMember.initials} bg={selectedMember.avatar?.bg} text={selectedMember.avatar?.text} />
                                 <span>
                                   <span className="block text-[13px] font-bold text-slate-800 leading-none">{selectedMember.name}</span>
-                                  <span className="mt-1 block text-[11px] font-semibold text-indigo-650 leading-none">{selectedMember.currentWorkloadLabel}</span>
+                                  <span className="mt-1 block text-[11px] font-semibold text-[#3E63DD] leading-none">{selectedMember.currentWorkloadLabel}</span>
                                 </span>
                               </span>
                             );
                           })()
                         ) : (
                           <span className="flex items-center gap-3 text-slate-400">
-                            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-slate-400">
+                            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-200 text-slate-500">
                               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                 <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
                                 <circle cx="12" cy="7" r="4" />
@@ -505,7 +505,7 @@ export function OpsManagerReassignModal({ exec, onClose, onSuccess }) {
                       </button>
 
                       {dropdownOpen && (
-                        <div className="absolute left-0 right-0 z-20 mt-2 max-h-[380px] overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-xl [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+                        <div className="absolute left-0 right-0 z-20 mt-2 max-h-[380px] overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-xl [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
                           {recipients.map((member) => (
                             <div
                               key={member.id}
@@ -518,8 +518,8 @@ export function OpsManagerReassignModal({ exec, onClose, onSuccess }) {
                               }}
                               className={`flex cursor-pointer items-start gap-3 border-b border-slate-100 px-4 py-3 transition last:border-b-0 border-l-[3.5px] border-transparent ${
                                 selectedTargetId === member.id
-                                  ? "bg-gradient-to-r from-blue-50/80 via-indigo-50/15 to-white border-l-indigo-500"
-                                  : "hover:bg-gradient-to-r hover:from-slate-50/80 hover:to-white bg-white"
+                                  ? "bg-blue-50/60 border-l-[#3E63DD]"
+                                  : "hover:bg-slate-50 bg-white"
                               }`}
                             >
                               <div className="mt-1">
@@ -535,13 +535,13 @@ export function OpsManagerReassignModal({ exec, onClose, onSuccess }) {
                                   <MemberStatusBadge status={member.status} />
                                 </div>
                                 <div className="mt-2 flex flex-wrap gap-1.5">
-                                  <span className="rounded-full border border-sky-100 bg-sky-50 px-2 py-0.5 text-[10px] font-semibold text-sky-700">
+                                  <span className="rounded-md border border-sky-100 bg-sky-50 px-2 py-0.5 text-[10px] font-semibold text-sky-700">
                                     {member.newQueries || 0} new
                                   </span>
-                                  <span className="rounded-full border border-amber-100 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+                                  <span className="rounded-md border border-amber-100 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
                                     {member.requotePendingQueries || 0} re-quote
                                   </span>
-                                  <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
+                                  <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
                                     {member.reassignedCurrentQueries || 0} reassigned
                                   </span>
                                 </div>
@@ -560,7 +560,7 @@ export function OpsManagerReassignModal({ exec, onClose, onSuccess }) {
             {queries.length > 0 && (
               <div className={`transition-all duration-300 ${dropdownOpen ? "filter blur-[2.5px] opacity-40 pointer-events-none" : ""}`}>
                 <p className="text-[10px] font-extrabold uppercase tracking-widest text-slate-450 px-1 mb-1.5 pt-1">3. Selection Preview</p>
-                <div className="rounded-2xl border border-slate-200 bg-slate-50/50 p-3.5 shadow-inner">
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3.5">
                   <div className="grid grid-cols-4 gap-3">
                     <StatCard label="Selected" value={selectedSummary.total} tone="slate" />
                     <StatCard label="New" value={selectedSummary.newCount} tone="blue" />
@@ -585,7 +585,7 @@ export function OpsManagerReassignModal({ exec, onClose, onSuccess }) {
                         <select
                           value={queryFilter}
                           onChange={(e) => setQueryFilter(e.target.value)}
-                          className="cursor-pointer rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 outline-none transition hover:border-slate-350 shadow-sm"
+                          className="cursor-pointer rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 outline-none transition hover:border-[#3E63DD] shadow-sm"
                         >
                           <option value="all">All Queries ({queries.length})</option>
                           <option value="new">New ({queries.filter(q => q.categoryKey === "new").length})</option>
@@ -596,7 +596,7 @@ export function OpsManagerReassignModal({ exec, onClose, onSuccess }) {
                         <button
                           type="button"
                           onClick={toggleAllFilteredQueries}
-                          className="text-[11px] font-bold text-indigo-650 hover:text-indigo-800 transition hover:underline cursor-pointer bg-indigo-50 px-2.5 py-1 rounded-lg border border-indigo-100/50 shadow-sm whitespace-nowrap"
+                          className="text-[11px] font-bold text-[#3E63DD] hover:text-blue-800 transition hover:underline cursor-pointer bg-blue-50 px-2.5 py-1 rounded-md border border-blue-100 shadow-sm whitespace-nowrap"
                         >
                           {allFilteredSelected ? "Clear all" : "Select all"}
                         </button>
@@ -627,16 +627,16 @@ export function OpsManagerReassignModal({ exec, onClose, onSuccess }) {
         )}
 
         {/* Footer */}
-        <div className={`flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-slate-50/60 px-6 py-3.5 transition-all duration-300 ${dropdownOpen ? "filter blur-[2.5px] opacity-40 pointer-events-none" : ""}`}>
-          <p className="text-[12.5px] font-bold text-slate-455">
-            <span className="font-extrabold text-indigo-650 bg-indigo-50 border border-indigo-100 rounded-full px-2.5 py-0.5 shadow-sm">{selectedQueryIds.length}</span>{" "}
+        <div className={`flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-white px-6 py-3.5 transition-all duration-300 ${dropdownOpen ? "filter blur-[2.5px] opacity-40 pointer-events-none" : ""}`}>
+          <p className="text-[12.5px] font-bold text-slate-600">
+            <span className="font-extrabold text-[#3E63DD] bg-blue-50 border border-blue-100 rounded-md px-2 py-0.5 shadow-sm">{selectedQueryIds.length}</span>{" "}
             {selectedQueryIds.length === 1 ? "query" : "queries"} selected to transfer
           </p>
           <div className="flex gap-2.5">
             <button
               type="button"
               onClick={triggerClose}
-              className="rounded-full border border-slate-200 px-5 py-2 text-[12px] font-bold uppercase tracking-wider text-slate-600 bg-white transition-all hover:bg-slate-50 active:scale-95 cursor-pointer"
+              className="rounded-lg border border-slate-200 px-4 py-2 text-xs font-bold uppercase tracking-wider text-slate-700 bg-white transition hover:bg-slate-50 active:scale-95 cursor-pointer"
             >
               Cancel
             </button>
@@ -644,10 +644,10 @@ export function OpsManagerReassignModal({ exec, onClose, onSuccess }) {
               type="button"
               onClick={handleConfirm}
               disabled={submitting || !selectedTargetId || !selectedQueryIds.length}
-              className={`rounded-full px-5 py-2 text-[12px] font-bold uppercase tracking-wider transition-all duration-300 ${
+              className={`rounded-lg px-4 py-2 text-xs font-bold uppercase tracking-wider transition-all duration-200 ${
                 submitting || !selectedTargetId || !selectedQueryIds.length
-                  ? "bg-gradient-to-r from-slate-150 to-slate-200 text-slate-400 border border-slate-200/60 cursor-not-allowed"
-                  : "bg-gradient-to-r from-blue-500 via-indigo-500 to-indigo-600 hover:from-blue-600 hover:via-indigo-600 hover:to-indigo-700 text-white shadow-sm hover:shadow-[0_4px_12px_rgba(99,102,241,0.25)] hover:-translate-y-0.5 active:translate-y-0 active:scale-95 cursor-pointer"
+                  ? "bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed"
+                  : "bg-[#3E63DD] hover:bg-[#3353c7] text-white shadow-sm hover:shadow active:scale-95 cursor-pointer"
               }`}
             >
               {submitting ? "Reassigning..." : "Confirm Reassign"}

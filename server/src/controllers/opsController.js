@@ -23,6 +23,7 @@ import path from "path";
 import XLSX from "xlsx";
 import Voucher from "../models/voucher.model.js";
 import Auth from "../models/auth.model.js";
+import TripSource from "../models/TripSource.model.js";
 import UploadHistory from "../models/uploadHistory.model.js";
 import InternalInvoice from "../models/internalInvoice.model.js";
 import { getRoundRobinFinanceAssignee } from "../services/financeTeamScopeService.js";
@@ -113,6 +114,39 @@ const buildQuotationDeliveryNote = ({
 };
 
 const getAgentNotificationUserId = (query = {}) => query?.agent?._id || query?.agent || null;
+
+const resolveQueryRecipientEmail = async (query, explicitEmail = "") => {
+  const cleanExplicit = String(explicitEmail || "").trim();
+  if (cleanExplicit) return cleanExplicit;
+
+  const agentEmail = String(query?.agent?.email || "").trim();
+  if (agentEmail) return agentEmail;
+
+  const tsContactEmail = String(
+    query?.tripSource?.contactPerson?.email ||
+    (Array.isArray(query?.tripSource?.contactPerson?.phones) && query?.tripSource?.contactPerson?.email) ||
+    ""
+  ).trim();
+  if (tsContactEmail) return tsContactEmail;
+
+  const guestEmail = String(query?.guestDetails?.email || "").trim();
+  if (guestEmail) return guestEmail;
+
+  const clientEmail = String(query?.clientEmail || "").trim();
+  if (clientEmail) return clientEmail;
+
+  if (query?.tripSource && mongoose.Types.ObjectId.isValid(query.tripSource)) {
+    try {
+      const tsDoc = await TripSource.findById(query.tripSource).lean();
+      const fallbackEmail = String(tsDoc?.contactPerson?.email || "").trim();
+      if (fallbackEmail) return fallbackEmail;
+    } catch (e) {
+      console.warn("TripSource fallback lookup failed:", e);
+    }
+  }
+
+  return "";
+};
 
 const createQuotationSentAgentNotification = async (
   req,
@@ -1093,6 +1127,8 @@ const notifyAssignedOpsMemberForBlackoutOverride = async ({ query, services = []
     query.assignedTo?.toString?.() || query.assignedTo,
   ].join(":");
 
+  if (!query?.assignedTo) return;
+
   const alreadyExists = await Notification.exists({ "meta.blackoutOverrideAlertKey": alertKey });
   if (alreadyExists) return;
 
@@ -1703,6 +1739,9 @@ const buildAgentQuotationEmailPayload = ({ quotation, query }) => {
     recipientName:
       query?.agent?.companyName ||
       query?.agent?.name ||
+      query?.tripSource?.name ||
+      query?.guestDetails?.name ||
+      query?.clientName ||
       "Guest",
     agencyName: "Holiday Circuit",
     quotationNumber: quotation?.quotationNumber || "",
@@ -1943,6 +1982,7 @@ export const getAllQueries = async (req, res, next) => {
     const queries = await TravelQuery.find(queryFilter)
       .populate("agent", "name email phone companyName")
       .populate("assignedTo", "name email")
+      .populate("tripSource", "name shortName sourceType contactPerson city state country")
       .sort({ createdAt: -1 })
       .lean();
 
@@ -1951,7 +1991,7 @@ export const getAllQueries = async (req, res, next) => {
 
     const [quotations, internalInvoices, bpAuthUsers] = await Promise.all([
       Quotation.find({ queryId: { $in: queryMongoIds } })
-        .select("queryId partnerType businessPartnerName services")
+        .select("queryId partnerType businessPartnerName services status createdAt")
         .sort({ createdAt: -1 })
         .lean(),
       InternalInvoice.find({
@@ -1961,7 +2001,7 @@ export const getAllQueries = async (req, res, next) => {
         .select("query queryCode businessPartnerName supplierName dmcName invoiceNumber claimedSummary summary status documents uploadedInvoice partnerType")
         .lean(),
       Auth.find({
-        $or: [{ role: "dmc_partner" }, { isBusinessPartner: true }, { role: "partner" }],
+        $or: [{ isBusinessPartner: true }, { role: "partner" }, { role: "business_partner" }],
       })
         .select("name companyName")
         .lean(),
@@ -1974,12 +2014,13 @@ export const getAllQueries = async (req, res, next) => {
         .map((n) => n.trim().toLowerCase())
     );
 
-    const latestQuotationByQueryId = new Map();
+    const quotationsByQueryId = new Map();
     quotations.forEach((q) => {
       const qKey = String(q.queryId);
-      if (!latestQuotationByQueryId.has(qKey)) {
-        latestQuotationByQueryId.set(qKey, q);
+      if (!quotationsByQueryId.has(qKey)) {
+        quotationsByQueryId.set(qKey, []);
       }
+      quotationsByQueryId.get(qKey).push(q);
     });
 
     const invoicesByQueryId = new Map();
@@ -1999,61 +2040,120 @@ export const getAllQueries = async (req, res, next) => {
     const enrichedQueries = queries.map((q) => {
       const qIdStr = String(q._id);
       const qCodeStr = String(q.queryId || "");
-      const quot = latestQuotationByQueryId.get(qIdStr);
+      const queryQuots = quotationsByQueryId.get(qIdStr) || [];
+      const approvedQuot =
+        queryQuots.find((qt) =>
+          ["Confirmed", "Approved", "Quote Accepted"].includes(String(qt.status || "").trim())
+        ) || queryQuots[0] || null;
+
       const invs = [
         ...(invoicesByQueryId.get(qIdStr) || []),
         ...(invoicesByQueryId.get(qCodeStr) || []),
       ].filter((v, i, a) => a.findIndex((t) => String(t._id) === String(v._id)) === i);
 
-      const uniquePartners = new Set();
+      const quotPartnerType = String(approvedQuot?.partnerType || "").trim();
+      const isOnlineDmc =
+        quotPartnerType === "Online DMC" ||
+        (!quotPartnerType &&
+          approvedQuot &&
+          !approvedQuot.businessPartnerName &&
+          !approvedQuot.services?.some((s) => s.isBpService || s.businessPartnerId || s.businessPartner));
 
-      // 1. Direct query BP
-      if (q.businessPartnerName && String(q.businessPartnerName).trim()) {
-        uniquePartners.add(String(q.businessPartnerName).trim().toLowerCase());
-      }
-
-      // 2. Quotation BP (explicit partnerType, businessPartnerName, isBpService, or known BP in Auth)
-      if (quot) {
-        if (quot.partnerType === "Business Partner" && quot.businessPartnerName) {
-          uniquePartners.add(String(quot.businessPartnerName).trim().toLowerCase());
-        } else if (quot.businessPartnerName && String(quot.businessPartnerName).trim()) {
-          uniquePartners.add(String(quot.businessPartnerName).trim().toLowerCase());
-        }
-
-        if (Array.isArray(quot.services)) {
-          quot.services.forEach((s) => {
-            if (s.businessPartnerName && String(s.businessPartnerName).trim()) {
-              uniquePartners.add(String(s.businessPartnerName).trim().toLowerCase());
-            } else if (s.isBpService && (s.supplierName || s.dmcName)) {
-              uniquePartners.add(String(s.supplierName || s.dmcName).trim().toLowerCase());
-            } else if (s.supplierName && knownBpNames.has(String(s.supplierName).trim().toLowerCase())) {
-              uniquePartners.add(String(s.supplierName).trim().toLowerCase());
-            }
-          });
-        }
-      }
-
-      // 3. Offline Internal Invoices
-      invs.forEach((inv) => {
-        if (inv.partnerType === "offline_partner" || inv.businessPartnerName) {
-          const p = (inv.businessPartnerName || inv.dmcName || "").trim();
-          if (p) uniquePartners.add(p.replace(/\s*\(Offline Partner\)/i, "").trim().toLowerCase());
-        }
-      });
-
-      const totalRequired = uniquePartners.size;
-      const uploadedCount = invs.length;
-      const isComplete = totalRequired > 0 && uploadedCount >= totalRequired;
+      const isBusinessPartnerQuotation =
+        !isOnlineDmc &&
+        (quotPartnerType === "Business Partner" ||
+          Boolean(approvedQuot?.businessPartnerName) ||
+          Boolean(approvedQuot?.services?.some((s) => s.isBpService || s.businessPartnerId || s.businessPartner)) ||
+          Boolean(q.businessPartnerName) ||
+          q.partnerType === "offline_partner" ||
+          q.partnerType === "Business Partner");
 
       const isAgentApproved =
         ["Client Approved", "Confirmed"].includes(String(q.agentStatus || "").trim()) ||
         ["Confirmed", "Vouchered", "Payment_Completed"].includes(String(q.opsStatus || "").trim());
 
-      const isBusinessPartnerBooking = totalRequired > 0;
-      const showInvoiceButton = isBusinessPartnerBooking && isAgentApproved;
+      const uniquePartners = new Set();
+
+      if (isBusinessPartnerQuotation) {
+        // 1. Direct query BP
+        if (q.businessPartnerName && String(q.businessPartnerName).trim()) {
+          uniquePartners.add(String(q.businessPartnerName).trim().toLowerCase());
+        }
+
+        // 2. Quotation BP
+        if (approvedQuot) {
+          if (approvedQuot.businessPartnerName && String(approvedQuot.businessPartnerName).trim()) {
+            uniquePartners.add(String(approvedQuot.businessPartnerName).trim().toLowerCase());
+          }
+
+          if (Array.isArray(approvedQuot.services)) {
+            approvedQuot.services.forEach((s) => {
+              if (s.businessPartnerName && String(s.businessPartnerName).trim()) {
+                uniquePartners.add(String(s.businessPartnerName).trim().toLowerCase());
+              } else if (s.supplierName && String(s.supplierName).trim()) {
+                uniquePartners.add(String(s.supplierName).trim().toLowerCase());
+              } else if (s.dmcName && String(s.dmcName).trim()) {
+                uniquePartners.add(String(s.dmcName).trim().toLowerCase());
+              }
+            });
+          }
+        }
+
+        // 3. Offline Internal Invoices already uploaded
+        invs.forEach((inv) => {
+          if (inv.partnerType === "offline_partner" || inv.businessPartnerName) {
+            const p = (inv.businessPartnerName || inv.dmcName || "").trim();
+            if (p) uniquePartners.add(p.replace(/\s*\(Offline Partner\)/i, "").trim().toLowerCase());
+          }
+        });
+      }
+
+      const totalRequired = isBusinessPartnerQuotation ? (uniquePartners.size > 0 ? uniquePartners.size : 1) : 0;
+      const uploadedCount = invs.length;
+      const isComplete = totalRequired > 0 && uploadedCount >= totalRequired;
+
+      // The Invoice button appears ONLY when the quotation was manually created as a Business Partner quotation and approved by agent/client
+      const showInvoiceButton = Boolean(isBusinessPartnerQuotation && isAgentApproved);
+
+      const resolvedAgentName =
+        q.agent?.companyName ||
+        q.agent?.name ||
+        q.tripSource?.name ||
+        q.querySource ||
+        q.guestDetails?.name ||
+        q.clientName ||
+        q.name ||
+        "";
+
+      const resolvedAgentEmail =
+        q.agent?.email ||
+        q.tripSource?.contactPerson?.email ||
+        q.guestDetails?.email ||
+        q.clientEmail ||
+        "";
+
+      const resolvedAgentPhone =
+        q.agent?.phone ||
+        q.tripSource?.contactPerson?.phone ||
+        (q.tripSource?.contactPerson?.phones && q.tripSource.contactPerson.phones[0]?.number) ||
+        q.guestDetails?.phone ||
+        (q.guestDetails?.phoneNumbers && q.guestDetails.phoneNumbers[0]?.number) ||
+        q.clientPhone ||
+        "";
+
+      const agentObj = q.agent || (resolvedAgentName ? {
+        _id: q.tripSource?._id || null,
+        name: resolvedAgentName,
+        companyName: q.tripSource?.name || resolvedAgentName,
+        email: resolvedAgentEmail,
+        phone: resolvedAgentPhone,
+      } : null);
 
       return {
         ...q,
+        agent: agentObj,
+        agentName: resolvedAgentName,
+        quotationPartnerType: isOnlineDmc ? "Online DMC" : isBusinessPartnerQuotation ? "Business Partner" : (quotPartnerType || "Online DMC"),
         partnerInvoiceStats: {
           totalRequired,
           uploadedCount,
@@ -2061,6 +2161,8 @@ export const getAllQueries = async (req, res, next) => {
           isPending: totalRequired > 0 && uploadedCount < totalRequired,
           hasInvoices: uploadedCount > 0,
           showInvoiceButton,
+          partnerType: isOnlineDmc ? "Online DMC" : isBusinessPartnerQuotation ? "Business Partner" : "Online DMC",
+          isBusinessPartner: isBusinessPartnerQuotation,
         },
       };
     });
@@ -2996,6 +3098,9 @@ export const createQuotation = async (req, res, next) => {
       pricing,
       sendVia = [],
       selectedAction = "",
+      agentEmail: explicitAgentEmail = "",
+      email: explicitEmail = "",
+      recipientEmail: explicitRecipientEmail = "",
       services = [],
       opsPercent = 0,
       opsAmount = 0,
@@ -3089,10 +3194,42 @@ export const createQuotation = async (req, res, next) => {
       return next(new ApiError(400, "Required fields are missing"));
     }
 
-    const query = await TravelQuery.findOne({ queryId }).populate("agent");
+    const query = await TravelQuery.findOne({ queryId }).populate("agent").populate("tripSource");
 
     if (!query) {
       return next(new ApiError(404, "Query not found"));
+    }
+
+    if (!query.agent) {
+      const resolvedAgentName =
+        query.tripSource?.name ||
+        query.querySource ||
+        query.guestDetails?.name ||
+        query.clientName ||
+        query.name ||
+        "Direct Client";
+      const resolvedAgentEmail =
+        query.tripSource?.contactPerson?.email ||
+        query.guestDetails?.email ||
+        query.clientEmail ||
+        explicitAgentEmail ||
+        explicitRecipientEmail ||
+        explicitEmail ||
+        "";
+      const resolvedAgentPhone =
+        query.tripSource?.contactPerson?.phone ||
+        (query.tripSource?.contactPerson?.phones && query.tripSource.contactPerson.phones[0]?.number) ||
+        query.guestDetails?.phone ||
+        (query.guestDetails?.phoneNumbers && query.guestDetails.phoneNumbers[0]?.number) ||
+        query.clientPhone ||
+        "";
+      query.agent = {
+        _id: query.tripSource?._id || null,
+        name: resolvedAgentName,
+        companyName: query.tripSource?.name || resolvedAgentName,
+        email: resolvedAgentEmail,
+        phone: resolvedAgentPhone,
+      };
     }
 
     if (!(await canManageAssignedQuery(req, query))) {
@@ -3359,14 +3496,19 @@ export const createQuotation = async (req, res, next) => {
       }
 
       const quoteDetails = {
-        name: query.agent?.name,
-        agentName: query.agent?.name,
+        name: query.agent?.name || query.tripSource?.name || query.guestDetails?.name || query.clientName || "Guest",
+        agentName: query.agent?.name || query.tripSource?.name || "Agent",
         destination: query.destination,
         days: query.totalDays || 5,
         price: totalAmount,
         totalAmount: totalAmount,
         validTill: new Date(validTill).toDateString(),
-        phone: query.agent?.phone,
+        phone:
+          query.agent?.phone ||
+          query.tripSource?.contactPerson?.phone ||
+          (query.tripSource?.contactPerson?.phones && query.tripSource.contactPerson.phones[0]?.number) ||
+          query.guestDetails?.phone ||
+          "",
         sellerBankDetails: [
           { label: "Bank Name", value: "HDFC Bank" },
           { label: "A/c Holder Name", value: "Holiday Circuit" },
@@ -3385,16 +3527,27 @@ export const createQuotation = async (req, res, next) => {
       const successfulDeliveryChannels = [];
 
       if (shouldSendEmail) {
-        try {
-          await sendAgentClientQuotationMail(
-            query.agent.email,
-            buildAgentQuotationEmailPayload({ quotation, query }),
-          );
-          successfulDeliveryChannels.push("email");
-        } catch (emailError) {
-          console.error("Quotation email send failed:", emailError);
+        const recipientEmail = await resolveQueryRecipientEmail(
+          query,
+          explicitAgentEmail || explicitRecipientEmail || explicitEmail,
+        );
+        if (recipientEmail) {
+          try {
+            await sendAgentClientQuotationMail(
+              recipientEmail,
+              buildAgentQuotationEmailPayload({ quotation, query }),
+            );
+            successfulDeliveryChannels.push("email");
+          } catch (emailError) {
+            console.error("Quotation email send failed:", emailError);
+            deliveryWarnings.push(
+              `Quotation saved, but email delivery failed. ${getEmailDeliveryErrorMessage(emailError)}`,
+            );
+          }
+        } else {
+          console.warn(`[createQuotation] Email requested but no recipient email found for query ${query?.queryId || query?._id}`);
           deliveryWarnings.push(
-            `Quotation saved, but email delivery failed. ${getEmailDeliveryErrorMessage(emailError)}`,
+            "Quotation saved, but email delivery failed because no recipient email address was found for this query.",
           );
         }
       }
@@ -3503,14 +3656,19 @@ export const createQuotation = async (req, res, next) => {
     });
 
     const quoteDetails = {
-      name: query.agent?.name,
-      agentName: query.agent?.name,
+      name: query.agent?.name || query.tripSource?.name || query.guestDetails?.name || query.clientName || "Guest",
+      agentName: query.agent?.name || query.tripSource?.name || "Agent",
       destination: query.destination,
       days: query.totalDays || 5,
       price: totalAmount,
       totalAmount: totalAmount,
       validTill: new Date(validTill).toDateString(),
-      phone: query.agent?.phone,
+      phone:
+        query.agent?.phone ||
+        query.tripSource?.contactPerson?.phone ||
+        (query.tripSource?.contactPerson?.phones && query.tripSource.contactPerson.phones[0]?.number) ||
+        query.guestDetails?.phone ||
+        "",
       sellerBankDetails: [
         { label: "Bank Name", value: "HDFC Bank" },
         { label: "A/c Holder Name", value: "Holiday Circuit" },
@@ -3528,16 +3686,27 @@ export const createQuotation = async (req, res, next) => {
     const successfulDeliveryChannels = [];
 
     if (shouldSendEmail) {
-      try {
-        await sendAgentClientQuotationMail(
-          query.agent.email,
-          buildAgentQuotationEmailPayload({ quotation: createdQuotation, query }),
-        );
-        successfulDeliveryChannels.push("email");
-      } catch (emailError) {
-        console.error("Quotation email send failed:", emailError);
+      const recipientEmail = await resolveQueryRecipientEmail(
+        query,
+        explicitAgentEmail || explicitRecipientEmail || explicitEmail,
+      );
+      if (recipientEmail) {
+        try {
+          await sendAgentClientQuotationMail(
+            recipientEmail,
+            buildAgentQuotationEmailPayload({ quotation: createdQuotation, query }),
+          );
+          successfulDeliveryChannels.push("email");
+        } catch (emailError) {
+          console.error("Quotation email send failed:", emailError);
+          deliveryWarnings.push(
+            `Quotation saved, but email delivery failed. ${getEmailDeliveryErrorMessage(emailError)}`,
+          );
+        }
+      } else {
+        console.warn(`[createQuotation] Email requested but no recipient email found for query ${query?.queryId || query?._id}`);
         deliveryWarnings.push(
-          `Quotation saved, but email delivery failed. ${getEmailDeliveryErrorMessage(emailError)}`,
+          "Quotation saved, but email delivery failed because no recipient email address was found for this query.",
         );
       }
     }
@@ -4726,7 +4895,7 @@ export const sendVoucherToAgent = async (req, res, next) => {
     await voucher.save();
 
     await createOpsSideNotification(req, {
-      user: query.agent._id,
+      user: query.agent?._id || query.agent || null,
       type: "success",
       title: "Voucher Sent",
       message: `Your voucher ${voucher.voucherNumber} for ${voucher.destination || query.destination} is ready to view.${getVoucherDispatchNote(
@@ -4761,7 +4930,7 @@ export const sendVoucherToAgent = async (req, res, next) => {
 
 export const getOrCreateQuotationDraft = async (req, res, next) => {
   try {
-    const query = await TravelQuery.findById(req.params.queryId).populate("agent");
+    const query = await TravelQuery.findById(req.params.queryId).populate("agent").populate("tripSource");
     const requestedSourceQuotationId = String(req.query?.sourceQuotationId || "").trim();
     const requestedSourceRefresh =
       String(req.query?.refreshFromSource || "").trim().toLowerCase() === "true";
@@ -4770,6 +4939,35 @@ export const getOrCreateQuotationDraft = async (req, res, next) => {
 
     if (!query) {
       return res.status(404).json({ success: false, message: "Query not found" });
+    }
+
+    if (!query.agent) {
+      const resolvedAgentName =
+        query.tripSource?.name ||
+        query.querySource ||
+        query.guestDetails?.name ||
+        query.clientName ||
+        query.name ||
+        "Direct Client";
+      const resolvedAgentEmail =
+        query.tripSource?.contactPerson?.email ||
+        query.guestDetails?.email ||
+        query.clientEmail ||
+        "";
+      const resolvedAgentPhone =
+        query.tripSource?.contactPerson?.phone ||
+        (query.tripSource?.contactPerson?.phones && query.tripSource.contactPerson.phones[0]?.number) ||
+        query.guestDetails?.phone ||
+        (query.guestDetails?.phoneNumbers && query.guestDetails.phoneNumbers[0]?.number) ||
+        query.clientPhone ||
+        "";
+      query.agent = {
+        _id: query.tripSource?._id || null,
+        name: resolvedAgentName,
+        companyName: query.tripSource?.name || resolvedAgentName,
+        email: resolvedAgentEmail,
+        phone: resolvedAgentPhone,
+      };
     }
 
     const shouldStartBlankRevisionDraft =
@@ -5040,7 +5238,6 @@ export const getOpsQueryQuotations = async (req, res, next) => {
 
     const quotations = await Quotation.find({
       queryId: query._id,
-      status: { $ne: "Pending" },
     })
       .select(
         "quotationNumber status partnerType pricing clientTotalAmount validTill services inclusions exclusions additionalNotes termsAndConditions dayWiseItinerary agentMarkup agentRevisionRemark createdAt updatedAt createdBy",
@@ -5474,9 +5671,56 @@ export const getQueryPartnerInvoiceStatus = async (req, res, next) => {
       return next(new ApiError(404, "Booking / Query not found"));
     }
 
-    const quotation = await Quotation.findOne({ queryId: query._id })
+    const allQuots = await Quotation.find({ queryId: query._id })
       .sort({ createdAt: -1 })
       .lean();
+
+    const quotation =
+      allQuots.find((qt) =>
+        ["Confirmed", "Approved", "Quote Accepted"].includes(String(qt.status || "").trim())
+      ) || allQuots[0] || null;
+
+    const quotPartnerType = String(quotation?.partnerType || "").trim();
+    const isOnlineDmc =
+      quotPartnerType === "Online DMC" ||
+      (!quotPartnerType &&
+        quotation &&
+        !quotation.businessPartnerName &&
+        !quotation.services?.some((s) => s.isBpService || s.businessPartnerId || s.businessPartner));
+
+    const uploadedInvoices = await InternalInvoice.find({
+      $or: [{ query: query._id }, { queryCode: query.queryId }],
+      isDeleted: { $ne: true },
+    })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    if (isOnlineDmc) {
+      return res.status(200).json({
+        success: true,
+        data: {
+          queryId: query.queryId,
+          destination: query.destination || "",
+          partnerType: "Online DMC",
+          isOnlineDmc: true,
+          totalRequired: 0,
+          uploadedCount: uploadedInvoices.length,
+          pendingCount: 0,
+          isComplete: true,
+          partners: [],
+          uploadedInvoices: uploadedInvoices.map((inv) => ({
+            id: inv._id,
+            invoiceNumber: inv.invoiceNumber,
+            businessPartnerName: inv.businessPartnerName || inv.supplierName || "",
+            invoiceDate: inv.invoiceDate,
+            amount: inv.claimedSummary?.grandTotal || inv.summary?.grandTotal || 0,
+            status: inv.status,
+            filePath: inv.uploadedInvoice?.filePath || inv.documents?.[0]?.filePath || "",
+            fileName: inv.uploadedInvoice?.name || inv.documents?.[0]?.name || "",
+          })),
+        },
+      });
+    }
 
     const services = quotation?.services || [];
     const partnerMap = new Map();
@@ -5507,13 +5751,6 @@ export const getQueryPartnerInvoiceStatus = async (req, res, next) => {
         }
       }
     });
-
-    const uploadedInvoices = await InternalInvoice.find({
-      $or: [{ query: query._id }, { queryCode: query.queryId }],
-      isDeleted: { $ne: true },
-    })
-      .sort({ createdAt: -1 })
-      .lean();
 
     const isPartnerMatch = (nameA = "", nameB = "") => {
       const normA = String(nameA || "").toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -5637,7 +5874,42 @@ export const getQueriesForPartnerInvoiceUpload = async (req, res, next) => {
       .limit(100)
       .lean();
 
-    const formattedQueries = queries.map((q) => ({
+    const queryMongoIds = queries.map((q) => q._id);
+    const quots = await Quotation.find({ queryId: { $in: queryMongoIds } })
+      .select("queryId partnerType businessPartnerName services status createdAt")
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const quotsByQueryId = new Map();
+    quots.forEach((qt) => {
+      const qKey = String(qt.queryId);
+      if (!quotsByQueryId.has(qKey)) quotsByQueryId.set(qKey, []);
+      quotsByQueryId.get(qKey).push(qt);
+    });
+
+    const eligibleQueries = queries.filter((q) => {
+      const qQuots = quotsByQueryId.get(String(q._id)) || [];
+      const approvedQuot =
+        qQuots.find((qt) =>
+          ["Confirmed", "Approved", "Quote Accepted"].includes(String(qt.status || "").trim())
+        ) || qQuots[0];
+
+      if (!approvedQuot) {
+        return Boolean(q.businessPartnerName || q.partnerType === "offline_partner" || q.partnerType === "Business Partner");
+      }
+
+      const pType = String(approvedQuot.partnerType || "").trim();
+      if (pType === "Online DMC") return false;
+      if (pType === "Business Partner") return true;
+
+      return Boolean(
+        approvedQuot.businessPartnerName ||
+        approvedQuot.services?.some((s) => s.isBpService || s.businessPartnerId || s.businessPartner) ||
+        q.businessPartnerName
+      );
+    });
+
+    const formattedQueries = eligibleQueries.map((q) => ({
       id: q._id,
       queryId: q.queryId,
       destination: q.destination || "-",
@@ -5719,12 +5991,11 @@ export const uploadBusinessPartnerInvoice = async (req, res, next) => {
     };
 
     if (req.file) {
-      const normalizedPath = req.file.path ? String(req.file.path).replace(/\\/g, "/") : "";
-      const publicPath = normalizedPath.startsWith("uploads") ? `/${normalizedPath}` : normalizedPath.startsWith("/") ? normalizedPath : `/uploads/${req.file.filename}`;
+      const fileUrl = req.file.path || req.file.secure_url || req.file.url || "";
       const fileSizeKb = req.file.size ? `${Math.max(1, Math.round(req.file.size / 1024))} kB` : "150 kB";
       uploadedInvoiceDoc = {
         name: req.file.originalname || uploadedInvoiceDoc.name,
-        filePath: publicPath,
+        filePath: fileUrl,
         size: fileSizeKb,
         mimeType: req.file.mimetype || "application/pdf",
         kind: "invoice",
@@ -5912,15 +6183,20 @@ export const submitOfflinePartnerConfirmation = async (req, res, next) => {
       parsedServices = services;
     }
 
+    const getUploadedFileUrl = (fileObj) => {
+      if (!fileObj) return "";
+      return fileObj.path || fileObj.secure_url || fileObj.url || "";
+    };
+
     const documents = {};
-    if (req.files?.supplierConfirmation?.[0]?.path) {
-      documents.supplierConfirmation = req.files.supplierConfirmation[0].path;
+    if (req.files?.supplierConfirmation?.[0]) {
+      documents.supplierConfirmation = getUploadedFileUrl(req.files.supplierConfirmation[0]);
     }
-    if (req.files?.voucherReference?.[0]?.path) {
-      documents.voucherReference = req.files.voucherReference[0].path;
+    if (req.files?.voucherReference?.[0]) {
+      documents.voucherReference = getUploadedFileUrl(req.files.voucherReference[0]);
     }
-    if (req.files?.termsConditions?.[0]?.path) {
-      documents.termsConditions = req.files.termsConditions[0].path;
+    if (req.files?.termsConditions?.[0]) {
+      documents.termsConditions = getUploadedFileUrl(req.files.termsConditions[0]);
     }
 
     // 1. Find or create Confirmation record

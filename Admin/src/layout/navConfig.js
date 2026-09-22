@@ -12,6 +12,7 @@ import {
   PackagePlus,
   LucideSheet,
   ShieldCheck,
+  Building2,
 } from "lucide-react";
 import { MdOutlineDashboardCustomize, MdOutlineVerifiedUser } from "react-icons/md";
 import { GrUserManager } from "react-icons/gr";
@@ -96,6 +97,29 @@ export const getMenusForRole = (role, user = null) => {
         path: "/admin/discount",
         icon: TicketPercent,
       });
+    }
+
+    const hasCreateQueryPermission =
+      permissions.includes("Create Query") ||
+      permissions.includes("Query Create") ||
+      permissions.includes("Add Query");
+
+    if (role === "operations" && hasCreateQueryPermission) {
+      if (!baseMenus.some((m) => m.path === "/operationManager/addNewQuery")) {
+        baseMenus.push({
+          label: "Add New Query",
+          path: "/operationManager/addNewQuery",
+          icon: FilePlus2,
+        });
+      }
+      if (!baseMenus.some((m) => m.path === "#agent-organization")) {
+        baseMenus.push({
+          label: "Agent Organization",
+          path: "#agent-organization",
+          icon: Building2,
+          isModalAction: true,
+        });
+      }
     }
   }
 

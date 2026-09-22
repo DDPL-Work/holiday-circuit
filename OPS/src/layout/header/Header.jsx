@@ -1,10 +1,11 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Gift, LogOut } from "lucide-react";
 import logo from "../../assets/logo img.png";
 import ExclusiveOfferModal from "../../modal/ExclusiveOfferModal.jsx";
 import ProfileSettingsModal from "../../modal/ProfileSettingsModal";
+import AgentOrganizationModal from "../../modal/AgentOrganizationModal";
 import { logout as logoutAction } from "../../redux/slices/authSlice";
 import { getMenusForRole } from "../navConfig";
 
@@ -28,8 +29,41 @@ const Header = () => {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
+  const [agentOrgModalOpen, setAgentOrgModalOpen] = useState(false);
+  const [offlineAgent, setOfflineAgent] = useState(null);
 
-  const menus = useMemo(() => getMenusForRole(role, user), [role, user]);
+  useEffect(() => {
+    const syncOfflineAgent = () => {
+      try {
+        const stored =
+          sessionStorage.getItem("offlineAgentOrgData") ||
+          localStorage.getItem("offlineAgentOrgData");
+        setOfflineAgent(stored ? JSON.parse(stored) : null);
+      } catch {
+        setOfflineAgent(null);
+      }
+    };
+
+    syncOfflineAgent();
+    window.addEventListener("offlineAgentOrgChanged", syncOfflineAgent);
+    window.addEventListener("storage", syncOfflineAgent);
+
+    return () => {
+      window.removeEventListener("offlineAgentOrgChanged", syncOfflineAgent);
+      window.removeEventListener("storage", syncOfflineAgent);
+    };
+  }, []);
+
+  const isOfflineAgentActive =
+    Boolean(
+      sessionStorage.getItem("offlineAgentOrgId") ||
+        localStorage.getItem("offlineAgentOrgId"),
+    ) && location.pathname.startsWith("/agent");
+
+  const menus = useMemo(
+    () => getMenusForRole(role, user, isOfflineAgentActive),
+    [role, user, isOfflineAgentActive],
+  );
 
   const notificationsProps = useNotifications(role, user);
 
@@ -39,6 +73,15 @@ const Header = () => {
   });
 
   const agentWorkspaceBranding = getAgentWorkspaceBranding(user);
+  const offlineAgentLogo =
+    offlineAgent?.brandingLogo || offlineAgent?.logo || "";
+  const headerBranding =
+    isOfflineAgentActive && offlineAgentLogo
+      ? {
+          name: offlineAgent?.brandingName || offlineAgent?.name || "Agent Organization",
+          logo: offlineAgentLogo,
+        }
+      : workspaceBranding;
   const primaryIdentity =
     role === "agent"
       ? agentWorkspaceBranding.name
@@ -102,17 +145,20 @@ const Header = () => {
             <div className="flex h-full cursor-pointer items-center px-2 sm:px-4">
               <div className="relative flex h-11 w-11 sm:h-12 sm:w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white p-0.5 shadow-inner ring-1 ring-black/5">
                 <img
-                  src={workspaceBranding.logo || logo}
-                  alt={workspaceBranding.name || "Logo"}
+                  src={headerBranding.logo || logo}
+                  alt={headerBranding.name || "Logo"}
                   className={`h-full w-full object-contain ${
-                    workspaceBranding.logo ? "scale-[1.15]" : "scale-[1.4]"
+                    headerBranding.logo ? "scale-[1.15]" : "scale-[1.4]"
                   }`}
                 />
               </div>
             </div>
           </div>
 
-          <DesktopNav menus={menus} />
+          <DesktopNav
+            menus={menus}
+            onOpenAgentOrgModal={() => setAgentOrgModalOpen(true)}
+          />
 
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             {notificationsProps.canViewOffers ? (
@@ -173,10 +219,16 @@ const Header = () => {
               menus={menus}
               mobileNavOpen={mobileNavOpen}
               setMobileNavOpen={setMobileNavOpen}
+              onOpenAgentOrgModal={() => setAgentOrgModalOpen(true)}
             />
           </div>
         </div>
       </header>
+
+      <AgentOrganizationModal
+        isOpen={agentOrgModalOpen}
+        onClose={() => setAgentOrgModalOpen(false)}
+      />
 
       <ProfileSettingsModal
         open={profileModalOpen}

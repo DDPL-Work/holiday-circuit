@@ -200,9 +200,20 @@ export default function BookingManagementHub() {
             wasMovedToCurrentUser && ["New_Query", "Pending_Accept"].includes(String(q.opsStatus || ""));
           const travelerDocumentReview = getTravelerDocumentReviewMeta(q);
 
+          const resolvedAgent =
+            q.agent?.companyName ||
+            q.agent?.name ||
+            q.agentName ||
+            q.tripSource?.name ||
+            q.querySource ||
+            q.guestDetails?.name ||
+            q.clientName ||
+            q.name ||
+            "-";
+
           return {
             id: q.queryId,
-            agent: q.agent?.name || "-",
+            agent: resolvedAgent,
             assignedToId: String(q.assignedTo?._id || q.assignedTo?.id || ""),
             assignedTo: q.assignedTo?.name || q.assignedTo?.email || "Unassigned",
             receivedFrom: wasMovedToCurrentUser ? latestReassignment?.fromName || "" : "",
@@ -679,6 +690,15 @@ export default function BookingManagementHub() {
                               Docs
                             </motion.button>
                             {(() => {
+                              const quotationPartnerType = String(
+                                row._raw?.partnerInvoiceStats?.partnerType ||
+                                row._raw?.quotationPartnerType ||
+                                row._raw?.partnerType ||
+                                ""
+                              ).trim();
+                              const isOnlineDmc =
+                                quotationPartnerType === "Online DMC" ||
+                                row._raw?.partnerInvoiceStats?.isBusinessPartner === false;
                               const isConfirmed =
                                 ["Client Approved", "Confirmed"].includes(String(row._raw?.agentStatus || "").trim()) ||
                                 ["Confirmed", "Vouchered", "Invoice_Requested", "Payment_Completed"].includes(String(row._raw?.opsStatus || "").trim());
@@ -686,9 +706,10 @@ export default function BookingManagementHub() {
                                 Number(row._raw?.partnerInvoiceStats?.totalRequired || 0) > 0 ||
                                 Number(row._raw?.partnerInvoiceStats?.uploadedCount || 0) > 0;
                               const shouldShow =
-                                row._raw?.partnerInvoiceStats?.showInvoiceButton !== undefined
-                                  ? row._raw?.partnerInvoiceStats?.showInvoiceButton
-                                  : isConfirmed && hasPartners;
+                                !isOnlineDmc &&
+                                (row._raw?.partnerInvoiceStats?.showInvoiceButton !== undefined
+                                  ? Boolean(row._raw?.partnerInvoiceStats?.showInvoiceButton)
+                                  : Boolean(isConfirmed && hasPartners));
 
                               if (!shouldShow) return null;
 

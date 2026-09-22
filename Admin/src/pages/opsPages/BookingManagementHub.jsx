@@ -9,11 +9,13 @@ import {
   MapPin,
   User,
   ChevronDown,
+  Upload,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useSelector } from "react-redux";
 import { motion } from "framer-motion";
 import BookingDetailsModal from "../../modal/BookingDetails";
+import UploadBusinessPartnerInvoiceModal from "../../modal/UploadBusinessPartnerInvoiceModal";
 import API from "../../utils/Api.js";
 
 const getTravelerDocumentReviewMeta = (query = {}) => {
@@ -145,6 +147,8 @@ export default function BookingManagementHub() {
   const [loading, setLoading] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState(null);
   const [selectedDocumentBooking, setSelectedDocumentBooking] = useState(null);
+  const [showPartnerInvoiceModal, setShowPartnerInvoiceModal] = useState(false);
+  const [partnerInvoiceSelectedBooking, setPartnerInvoiceSelectedBooking] = useState(null);
   const [mobileDropdownOpen, setMobileDropdownOpen] = useState(false);
   const itemsPerPage = 8;
   
@@ -196,9 +200,20 @@ export default function BookingManagementHub() {
             wasMovedToCurrentUser && ["New_Query", "Pending_Accept"].includes(String(q.opsStatus || ""));
           const travelerDocumentReview = getTravelerDocumentReviewMeta(q);
 
+          const resolvedAgent =
+            q.agent?.companyName ||
+            q.agent?.name ||
+            q.agentName ||
+            q.tripSource?.name ||
+            q.querySource ||
+            q.guestDetails?.name ||
+            q.clientName ||
+            q.name ||
+            "-";
+
           return {
             id: q.queryId,
-            agent: q.agent?.name || "-",
+            agent: resolvedAgent,
             assignedToId: String(q.assignedTo?._id || q.assignedTo?.id || ""),
             assignedTo: q.assignedTo?.name || q.assignedTo?.email || "Unassigned",
             receivedFrom: wasMovedToCurrentUser ? latestReassignment?.fromName || "" : "",
@@ -215,6 +230,10 @@ export default function BookingManagementHub() {
                 ? "Revision_Requested"
                 : q.opsStatus === "Rejected"
                   ? "Pending_Accept"
+                  : q.voucherStatus === "sent" || q.voucherStatus === "generated" || q.opsStatus === "Vouchered" || (q.opsStatus === "Payment_Completed" && q.voucherNumber)
+                  ? "Vouchered"
+                  : q.opsStatus === "Payment_Completed"
+                  ? "Confirmed"
                   : q.opsStatus || "New_Query",
             travelerDocumentReview,
             _raw: q,
@@ -273,6 +292,11 @@ export default function BookingManagementHub() {
       label: "Vouchered",
       icon: <FileText className="h-3 w-3" />,
     },
+    Payment_Completed: {
+      color: "bg-green-100 text-green-600",
+      label: "Vouchered",
+      icon: <FileText className="h-3 w-3" />,
+    },
   };
 
   const filteredRows = rows.filter((row) => {
@@ -283,7 +307,10 @@ export default function BookingManagementHub() {
       row.receivedFrom.toLowerCase().includes(term) ||
       row.destination.toLowerCase().includes(term);
 
-    const matchesStatus = statusFilter === "All" || row.status === statusFilter;
+    const matchesStatus =
+      statusFilter === "All" ||
+      row.status === statusFilter ||
+      (statusFilter === "Vouchered" && (row.status === "Vouchered" || row.status === "Payment_Completed"));
 
     const matchesDate =
       !dateFilter || new Date(row.startDate).toISOString().slice(0, 10) === dateFilter;
@@ -335,9 +362,11 @@ export default function BookingManagementHub() {
         transition={{ duration: 0.28 }}
         className={`bg-white transition-opacity duration-150 ${selectedBooking || selectedDocumentBooking ? "pointer-events-none opacity-95" : "opacity-100"}`}
       >
-        <div className="mb-5">
-          <h2 className="text-lg font-bold text-[#0F172A]">Booking Management Hub</h2>
-          <p className="text-sm text-gray-500">Central hub for all agent requests and bookings</p>
+        <div className="mb-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-bold text-[#0F172A]">Booking Management Hub</h2>
+            <p className="text-sm text-gray-500">Central hub for all agent requests and bookings</p>
+          </div>
         </div>
 
         <div className="mb-4">
@@ -522,7 +551,7 @@ export default function BookingManagementHub() {
                   <tr>
                     <th className="w-[90px] px-4 py-3 text-left font-medium">Query ID</th>
                     <th className="w-[140px] px-4 py-3 text-left font-medium whitespace-nowrap">Agent Name</th>
-                    <th className="w-[120px] px-4 py-3 text-left font-medium">Destination</th>
+                    <th className="w-[150px] px-4 py-3 text-left font-medium">Destination</th>
                     <th className="w-[160px] px-4 py-3 text-left font-medium">Travel Date</th>
                     <th className="w-[140px] px-4 py-3 text-center font-medium">Pax</th>
                     <th className="w-[160px] px-4 py-3 text-center font-medium">Ops Status</th>
@@ -585,7 +614,7 @@ export default function BookingManagementHub() {
                             </div>
                             {isReceivedQuery ? (
                               <div className="flex items-center">
-                                <span className="inline-flex max-w-full whitespace-nowrap rounded-full bg-amber-50 px-2 py-1 text-[9px] font-semibold leading-4 text-amber-700">
+                                <span className="inline-flex max-w-full whitespace-nowrap rounded-md bg-amber-50 px-2 py-0.5 text-[9px] font-semibold leading-4 text-amber-700 border border-amber-200/60">
                                   Received from {row.receivedFrom}
                                 </span>
                               </div>
@@ -593,10 +622,19 @@ export default function BookingManagementHub() {
                           </div>
                         </td>
 
-                        <td className="px-4 py-4 align-middle text-left">
-                          <div className="flex min-w-0 items-center gap-2 text-gray-600">
-                            <MapPin className="h-3 w-3 shrink-0 text-red-500" />
-                            <span className="truncate">{row.destination}</span>
+                        <td className="px-4 py-4 align-middle text-left max-w-[200px]">
+                          <div className="flex items-center gap-1.5 text-gray-600 min-w-0">
+                            <MapPin className="h-3.5 w-3.5 shrink-0 text-red-500" />
+                            <span
+                              className={`text-slate-700 font-medium ${
+                                (row.destination || "").length > 22
+                                  ? "break-words leading-tight line-clamp-2"
+                                  : "whitespace-nowrap"
+                              }`}
+                              title={row.destination}
+                            >
+                              {row.destination}
+                            </span>
                           </div>
                         </td>
 
@@ -617,7 +655,7 @@ export default function BookingManagementHub() {
                         </td>
 
                         <td className="px-4 py-4 align-middle text-center">
-                          <span className={`inline-flex h-8 min-w-[156px] items-center justify-center gap-1.5 whitespace-nowrap rounded-full px-3 text-xs font-sm leading-none ${status.color}`}>
+                          <span className={`inline-flex h-7 min-w-[145px] items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-2.5 text-xs font-medium leading-none ${status.color}`}>
                             {status.icon}
                             {status.label}
                           </span>
@@ -625,32 +663,93 @@ export default function BookingManagementHub() {
 
                         <td className="px-4 py-4 align-middle text-center">
                           <span
-                            className={`inline-flex min-w-[148px] items-center justify-center rounded-full px-3 py-1.5 text-[11px] font-medium ${row.travelerDocumentReview.tone}`}
+                            className={`inline-flex min-w-[140px] items-center justify-center rounded-md px-2.5 py-1 text-[11px] font-medium ${row.travelerDocumentReview.tone}`}
                           >
                             {row.travelerDocumentReview.label}
                           </span>
                         </td>
 
                         <td className="px-4 py-4 align-middle text-center">
-                          <div className="flex items-center justify-center gap-2">
+                          <div className="flex items-center justify-center gap-1.5">
                             <motion.button
-                              whileHover={{ scale: 1.05 }}
-                              whileTap={{ scale: 0.95 }}
+                              whileHover={{ scale: 1.03 }}
+                              whileTap={{ scale: 0.97 }}
                               onClick={() => setSelectedBooking(row._raw)}
-                              className="inline-flex whitespace-nowrap shrink-0 cursor-pointer items-center gap-1 rounded-2xl border px-2 py-1 text-sm text-blue-600 hover:bg-green-500 hover:text-white"
+                              className="inline-flex whitespace-nowrap shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50/80 px-2.5 py-1 text-xs font-medium text-blue-700 transition-colors hover:bg-blue-600 hover:text-white hover:border-blue-600 shadow-2xs"
                             >
                               <Eye className="h-3 w-3" />
                               View
                             </motion.button>
                             <motion.button
-                              whileHover={{ scale: 1.05 }}
-                              whileTap={{ scale: 0.95 }}
+                              whileHover={{ scale: 1.03 }}
+                              whileTap={{ scale: 0.97 }}
                               onClick={() => setSelectedDocumentBooking(row._raw)}
-                              className="inline-flex whitespace-nowrap shrink-0 cursor-pointer items-center gap-1 rounded-2xl border border-violet-200 bg-violet-50 px-2 py-1 text-sm text-violet-700 transition-colors hover:bg-violet-600 hover:text-white"
+                              className="inline-flex whitespace-nowrap shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50/80 px-2.5 py-1 text-xs font-medium text-violet-700 transition-colors hover:bg-violet-600 hover:text-white hover:border-violet-600 shadow-2xs"
                             >
                               <FileText className="h-3 w-3" />
-                              Docs View
+                              Docs
                             </motion.button>
+                            {(() => {
+                              const quotationPartnerType = String(
+                                row._raw?.partnerInvoiceStats?.partnerType ||
+                                row._raw?.quotationPartnerType ||
+                                row._raw?.partnerType ||
+                                ""
+                              ).trim();
+                              const isOnlineDmc =
+                                quotationPartnerType === "Online DMC" ||
+                                row._raw?.partnerInvoiceStats?.isBusinessPartner === false;
+                              const isConfirmed =
+                                ["Client Approved", "Confirmed"].includes(String(row._raw?.agentStatus || "").trim()) ||
+                                ["Confirmed", "Vouchered", "Invoice_Requested", "Payment_Completed"].includes(String(row._raw?.opsStatus || "").trim());
+                              const hasPartners =
+                                Number(row._raw?.partnerInvoiceStats?.totalRequired || 0) > 0 ||
+                                Number(row._raw?.partnerInvoiceStats?.uploadedCount || 0) > 0;
+                              const shouldShow =
+                                !isOnlineDmc &&
+                                (row._raw?.partnerInvoiceStats?.showInvoiceButton !== undefined
+                                  ? Boolean(row._raw?.partnerInvoiceStats?.showInvoiceButton)
+                                  : Boolean(isConfirmed && hasPartners));
+
+                              if (!shouldShow) return null;
+
+                              return (
+                                <motion.button
+                                  whileHover={{ scale: 1.03 }}
+                                  whileTap={{ scale: 0.97 }}
+                                  onClick={() => {
+                                    setPartnerInvoiceSelectedBooking(row._raw);
+                                    setShowPartnerInvoiceModal(true);
+                                  }}
+                                  className={`inline-flex whitespace-nowrap shrink-0 cursor-pointer items-center gap-1 rounded-lg border px-2 py-1 text-xs font-medium shadow-2xs transition-colors ${
+                                    row._raw?.partnerInvoiceStats?.isComplete
+                                      ? "border-emerald-200 bg-emerald-50/80 text-emerald-800 hover:bg-emerald-600 hover:text-white hover:border-emerald-600"
+                                      : row._raw?.partnerInvoiceStats?.hasInvoices
+                                      ? "border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-600 hover:text-white hover:border-amber-600"
+                                      : "border-amber-200 bg-amber-50/80 text-amber-700 hover:bg-amber-600 hover:text-white hover:border-amber-600"
+                                  }`}
+                                  title="Upload Offline Partner Invoice (MakeMyTrip, Agoda, Yatra)"
+                                >
+                                  <Upload className="h-3 w-3" />
+                                  <span>Invoice</span>
+                                  {row._raw?.partnerInvoiceStats?.totalRequired > 0 ? (
+                                    <span
+                                      className={`ml-0.5 rounded-full px-1.5 py-0.2 text-[10px] font-extrabold ${
+                                        row._raw?.partnerInvoiceStats?.isComplete
+                                          ? "bg-emerald-200 text-emerald-900"
+                                          : "bg-amber-200 text-amber-900"
+                                      }`}
+                                    >
+                                      {row._raw.partnerInvoiceStats.uploadedCount}/{row._raw.partnerInvoiceStats.totalRequired}
+                                    </span>
+                                  ) : row._raw?.partnerInvoiceStats?.uploadedCount > 0 ? (
+                                    <span className="ml-0.5 rounded-full bg-emerald-200 text-emerald-900 px-1.5 py-0.2 text-[10px] font-extrabold">
+                                      {row._raw.partnerInvoiceStats.uploadedCount}
+                                    </span>
+                                  ) : null}
+                                </motion.button>
+                              );
+                            })()}
                           </div>
                         </td>
                       </motion.tr>
@@ -738,6 +837,18 @@ export default function BookingManagementHub() {
           refresh={fetchQueries}
           viewMode="documents"
           onClose={() => setSelectedDocumentBooking(null)}
+        />
+      )}
+      {showPartnerInvoiceModal && (
+        <UploadBusinessPartnerInvoiceModal
+          initialQuery={partnerInvoiceSelectedBooking}
+          onClose={() => {
+            setShowPartnerInvoiceModal(false);
+            setPartnerInvoiceSelectedBooking(null);
+          }}
+          onSuccess={() => {
+            fetchQueries();
+          }}
         />
       )}
     </>

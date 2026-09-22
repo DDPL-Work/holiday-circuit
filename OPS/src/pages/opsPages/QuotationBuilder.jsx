@@ -563,9 +563,87 @@ const normalizeWhatsAppPhoneNumber = (value = "") => {
   return digits;
 };
 
+const normalizePartnerTypeKey = (value = "") => {
+  const str = String(value || "").trim().toLowerCase();
+  if (
+    str.includes("business") ||
+    str.includes("offline") ||
+    str === "bp" ||
+    str === "business partner" ||
+    str === "offline_partner"
+  ) {
+    return "business partner";
+  }
+  return "online dmc";
+};
+
+const extractYmdDateString = (value) => {
+  if (!value) return "";
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) return "";
+    const y = value.getFullYear();
+    const m = String(value.getMonth() + 1).padStart(2, "0");
+    const d = String(value.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+  const text = String(value).trim();
+  if (!text) return "";
+
+  // If it's a full ISO timestamp with time/timezone (contains 'T' or 'Z')
+  if (text.includes("T") || text.includes("Z")) {
+    const parsed = new Date(text);
+    if (!Number.isNaN(parsed.getTime())) {
+      const y = parsed.getFullYear();
+      const m = String(parsed.getMonth() + 1).padStart(2, "0");
+      const d = String(parsed.getDate()).padStart(2, "0");
+      return `${y}-${m}-${d}`;
+    }
+  }
+
+  // Pure YYYY-MM-DD
+  const isoMatch = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (isoMatch) {
+    const [, y, m, d] = isoMatch;
+    return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
+  }
+
+  // DD-MM-YYYY or DD/MM/YYYY
+  const dmyMatch = text.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+  if (dmyMatch) {
+    const [, d, m, y] = dmyMatch;
+    return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
+  }
+
+  const parsed = new Date(text);
+  if (Number.isNaN(parsed.getTime())) return text.slice(0, 10);
+  const y = parsed.getFullYear();
+  const m = String(parsed.getMonth() + 1).padStart(2, "0");
+  const d = String(parsed.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+};
+
+const addDaysToYmdDate = (value, daysToAdd = 0) => {
+  const ymd = extractYmdDateString(value);
+  if (!ymd) return "";
+  const parts = ymd.split("-").map(Number);
+  if (parts.length !== 3 || parts.some(Number.isNaN)) return "";
+  const [year, month, day] = parts;
+  const d = new Date(year, month - 1, day + Number(daysToAdd || 0));
+  if (Number.isNaN(d.getTime())) return "";
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const dateVal = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${dateVal}`;
+};
+
 const parseWhatsAppDate = (value) => {
   if (!value) return null;
-
+  const ymd = extractYmdDateString(value);
+  if (ymd) {
+    const [y, m, d] = ymd.split("-").map(Number);
+    const parsed = new Date(y, m - 1, d);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 };
@@ -611,11 +689,7 @@ const formatWhatsAppItineraryDate = (value) => {
 };
 
 const addDaysForWhatsApp = (value, daysToAdd = 0) => {
-  const parsed = parseWhatsAppDate(value);
-  if (!parsed) return "";
-
-  parsed.setDate(parsed.getDate() + Number(daysToAdd || 0));
-  return parsed.toISOString();
+  return addDaysToYmdDate(value, daysToAdd);
 };
 
 const getWhatsAppDateDiff = (startDate, endDate) => {
@@ -1314,17 +1388,14 @@ const sanitizeTermsItems = (items = []) => {
     .filter(Boolean);
 };
 
-const normalizeDateInputValue = (value) => {
-  if (!value) return "";
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return "";
-  return parsed.toISOString().slice(0, 10);
-};
+const normalizeDateInputValue = (value) => extractYmdDateString(value);
 
 const formatTravelDateRange = (startDate, endDate) => {
   if (!startDate) return "—";
-  const start = new Date(startDate);
-  if (Number.isNaN(start.getTime())) return String(startDate || "—");
+  const startYmd = extractYmdDateString(startDate);
+  if (!startYmd) return String(startDate || "—");
+  const [sy, sm, sd] = startYmd.split("-").map(Number);
+  const start = new Date(sy, sm - 1, sd);
 
   const formatOptions = {
     day: "numeric",
@@ -1332,28 +1403,27 @@ const formatTravelDateRange = (startDate, endDate) => {
     year: "numeric",
   };
 
-  const startStr = start.toLocaleDateString("en-IN", formatOptions);
+  const startStr = Number.isNaN(start.getTime())
+    ? String(startDate || "—")
+    : start.toLocaleDateString("en-IN", formatOptions);
 
   if (!endDate) return startStr;
-  const end = new Date(endDate);
-  if (Number.isNaN(end.getTime())) return startStr;
+  const endYmd = extractYmdDateString(endDate);
+  if (!endYmd) return startStr;
+  const [ey, em, ed] = endYmd.split("-").map(Number);
+  const end = new Date(ey, em - 1, ed);
 
-  const endStr = end.toLocaleDateString("en-IN", formatOptions);
+  const endStr = Number.isNaN(end.getTime())
+    ? startStr
+    : end.toLocaleDateString("en-IN", formatOptions);
+
   if (startStr === endStr) return startStr;
 
   return `${startStr} - ${endStr}`;
 };
 
-const addDaysToNormalizedDate = (value, daysToAdd = 0) => {
-  const normalizedValue = normalizeDateInputValue(value);
-  if (!normalizedValue) return "";
-
-  const parsed = new Date(normalizedValue);
-  if (Number.isNaN(parsed.getTime())) return "";
-
-  parsed.setDate(parsed.getDate() + Number(daysToAdd || 0));
-  return parsed.toISOString().slice(0, 10);
-};
+const addDaysToNormalizedDate = (value, daysToAdd = 0) =>
+  addDaysToYmdDate(value, daysToAdd);
 
 const getOrdinalValue = (value) => {
   const number = Number(value || 0);
@@ -1367,10 +1437,11 @@ const getOrdinalValue = (value) => {
 };
 
 const formatItineraryDateLabel = (value) => {
-  const normalizedValue = normalizeDateInputValue(value);
+  const normalizedValue = extractYmdDateString(value);
   if (!normalizedValue) return "";
 
-  const parsed = new Date(normalizedValue);
+  const [y, m, d] = normalizedValue.split("-").map(Number);
+  const parsed = new Date(y, m - 1, d);
   if (Number.isNaN(parsed.getTime())) return "";
 
   return `${parsed.toLocaleDateString("en-GB", {
@@ -2281,14 +2352,7 @@ const getResolvedHotelBaseRate = (service = {}, fallbackRate = 0) => {
   return roundCurrencyAmount(explicitRate);
 };
 
-const normalizeDateOnlyString = (value) => {
-  if (!value) return "";
-  const text = String(value || "").trim();
-  if (!text) return "";
-  const parsed = new Date(text);
-  if (Number.isNaN(parsed.getTime())) return text.slice(0, 10);
-  return parsed.toISOString().slice(0, 10);
-};
+const normalizeDateOnlyString = (value) => extractYmdDateString(value);
 
 const isDateInRange = (targetDate, fromVal, toVal) => {
   if (!targetDate || !fromVal || !toVal) return false;
@@ -2328,17 +2392,22 @@ const resolveSmartSeasonAndBlackoutPrice = (
   const matchedBlackout = checkBlackoutMatch(blackoutDates, targetDate);
 
   if (!targetDate || !Array.isArray(seasons) || !seasons.length) {
+    if (matchedBlackout) {
+      return {
+        rate: defaultRate,
+        tier: "Standard Rate",
+        isBlackout: true,
+        blackoutLabel:
+          matchedBlackout.label ||
+          matchedBlackout.blackoutName ||
+          "Blackout Date",
+      };
+    }
     return {
       rate: defaultRate,
-      tier: matchedBlackout ? "Blackout (Base Rate)" : "Base Rate",
-      seasonName: null,
-      isBlackout: Boolean(matchedBlackout),
-      blackoutLabel: matchedBlackout
-        ? matchedBlackout.blackoutName ||
-          matchedBlackout.occasion ||
-          "Blackout Event"
-        : "",
-      appliedPricingType: "base",
+      tier: "Standard Rate",
+      isBlackout: false,
+      blackoutLabel: "",
     };
   }
 
@@ -2346,63 +2415,55 @@ const resolveSmartSeasonAndBlackoutPrice = (
     isDateInRange(targetDate, s.validFrom, s.validTo),
   );
 
-  if (matchedSeason) {
-    const sName = String(matchedSeason.seasonName || "Season").toUpperCase();
-    const sNormalPrice = Number(matchedSeason.price || 0);
-    const sBlackoutPrice = Number(matchedSeason.blackoutPrice || 0);
-
+  if (!matchedSeason) {
     if (matchedBlackout) {
-      const effectiveBlackoutRate =
-        sBlackoutPrice > 0
-          ? sBlackoutPrice
-          : sNormalPrice > 0
-            ? sNormalPrice
-            : defaultRate;
       return {
-        rate: effectiveBlackoutRate,
-        tier: `${sName} Blackout`,
-        seasonName: sName,
+        rate: defaultRate,
+        tier: "Standard Rate",
         isBlackout: true,
         blackoutLabel:
+          matchedBlackout.label ||
           matchedBlackout.blackoutName ||
-          matchedBlackout.occasion ||
-          `${sName} Blackout Event`,
-        appliedPricingType: "season_blackout",
+          "Blackout Date",
       };
     }
-
-    const effectiveSeasonRate = sNormalPrice > 0 ? sNormalPrice : defaultRate;
     return {
-      rate: effectiveSeasonRate,
-      tier: `${sName} Rate`,
-      seasonName: sName,
+      rate: defaultRate,
+      tier: "Standard Rate",
       isBlackout: false,
       blackoutLabel: "",
-      appliedPricingType: "season_normal",
     };
   }
 
+  const seasonRate =
+    matchedSeason.price !== undefined
+      ? Number(matchedSeason.price)
+      : matchedSeason.adultPrice !== undefined
+        ? Number(matchedSeason.adultPrice)
+        : defaultRate;
+
   if (matchedBlackout) {
+    const blackoutRate =
+      matchedSeason.blackoutPrice !== undefined &&
+      Number(matchedSeason.blackoutPrice) > 0
+        ? Number(matchedSeason.blackoutPrice)
+        : seasonRate;
     return {
-      rate: defaultRate,
-      tier: "Blackout (Standard Rate)",
-      seasonName: null,
+      rate: blackoutRate,
+      tier: matchedSeason.seasonName || "Season Rate",
       isBlackout: true,
       blackoutLabel:
+        matchedBlackout.label ||
         matchedBlackout.blackoutName ||
-        matchedBlackout.occasion ||
-        "Blackout Event",
-      appliedPricingType: "base_blackout",
+        "Blackout Date",
     };
   }
 
   return {
-    rate: defaultRate,
-    tier: "Standard Rate",
-    seasonName: null,
+    rate: seasonRate,
+    tier: matchedSeason.seasonName || "Season Rate",
     isBlackout: false,
     blackoutLabel: "",
-    appliedPricingType: "base",
   };
 };
 
@@ -2440,7 +2501,14 @@ const resolveHotelSmartRate = (service = {}, targetDate = "") => {
     matchedRoom.price !== undefined
       ? Number(matchedRoom.price)
       : Number(service.price || service.rate || 0);
-  const seasons = Array.isArray(matchedRoom.seasons) ? matchedRoom.seasons : [];
+  const seasons =
+    Array.isArray(matchedRoom.seasons) && matchedRoom.seasons.length > 0
+      ? matchedRoom.seasons
+      : Array.isArray(selectedHotel.seasons) && selectedHotel.seasons.length > 0
+        ? selectedHotel.seasons
+        : Array.isArray(service.seasons)
+          ? service.seasons
+          : [];
   const blackoutDates = Array.isArray(service.blackoutDates)
     ? service.blackoutDates
     : [];
@@ -2497,9 +2565,14 @@ const resolveTransportSmartRate = (service = {}, targetDate = "") => {
     matchedOption.price !== undefined
       ? Number(matchedOption.price)
       : Number(service.price || service.rate || 0);
-  const seasons = Array.isArray(matchedOption.seasons)
-    ? matchedOption.seasons
-    : [];
+  const seasons =
+    Array.isArray(matchedOption.seasons) && matchedOption.seasons.length > 0
+      ? matchedOption.seasons
+      : Array.isArray(selectedVehicle.seasons) && selectedVehicle.seasons.length > 0
+        ? selectedVehicle.seasons
+        : Array.isArray(service.seasons)
+          ? service.seasons
+          : [];
   const blackoutDates = Array.isArray(service.blackoutDates)
     ? service.blackoutDates
     : [];
@@ -2518,8 +2591,16 @@ const resolveActivitySmartRate = (
   tourTypeName = "",
 ) => {
   const tourList = Array.isArray(service.tourTypes) ? service.tourTypes : [];
+  const selectedTourName = String(
+    tourTypeName || service.tourType || "",
+  )
+    .trim()
+    .toLowerCase();
   const selectedTour =
-    tourList.find((t) => t.tourType === (tourTypeName || service.tourType)) ||
+    tourList.find(
+      (tour) =>
+        String(tour.tourType || "").trim().toLowerCase() === selectedTourName,
+    ) ||
     tourList[0] ||
     {};
   const basePrice =
@@ -2542,13 +2623,57 @@ const resolveActivitySmartRate = (
     ? service.blackoutDates
     : [];
 
+  // Upload sheets commonly put S1/S2 dates only on the Sharing Tour row.
+  // Private/Ticket prices have their own season values but blank date cells,
+  // which older imports saved as full-year ranges. Use the narrowest date
+  // range for the same season across this service, without replacing the
+  // selected tour's adult/child prices.
+  const getSeasonRangeSpan = (season = {}) => {
+    const from = normalizeDateOnlyString(season.validFrom);
+    const to = normalizeDateOnlyString(season.validTo);
+    if (!from || !to) return Number.POSITIVE_INFINITY;
+    const fromMs = Date.parse(`${from}T00:00:00.000Z`);
+    const toMs = Date.parse(`${to}T00:00:00.000Z`);
+    return Number.isFinite(fromMs) && Number.isFinite(toMs) && toMs >= fromMs
+      ? toMs - fromMs
+      : Number.POSITIVE_INFINITY;
+  };
+
+  const canonicalSeasons = seasons.map((season) => {
+    const seasonName = String(season.seasonName || "").trim().toUpperCase();
+    const canonicalRange = tourList
+      .flatMap((tour) => (Array.isArray(tour.seasons) ? tour.seasons : []))
+      .filter(
+        (candidate) =>
+          String(candidate.seasonName || "").trim().toUpperCase() ===
+          seasonName,
+      )
+      .filter((candidate) => Number.isFinite(getSeasonRangeSpan(candidate)))
+      .sort(
+        (left, right) =>
+          getSeasonRangeSpan(left) - getSeasonRangeSpan(right),
+      )[0];
+
+    return canonicalRange && getSeasonRangeSpan(canonicalRange) < getSeasonRangeSpan(season)
+      ? { ...season, validFrom: canonicalRange.validFrom, validTo: canonicalRange.validTo }
+      : season;
+  });
+
+  const adultSeasons = canonicalSeasons.map((season) => ({
+    ...season,
+    price: Number(season.adultPrice || season.price || 0),
+    blackoutPrice: Number(
+      season.adultBlackoutPrice || season.blackoutPrice || 0,
+    ),
+  }));
+
   const smartAdult = resolveSmartSeasonAndBlackoutPrice(
     basePrice,
-    seasons,
+    adultSeasons,
     blackoutDates,
     targetDate,
   );
-  const matchedSeason = seasons.find((s) =>
+  const matchedSeason = canonicalSeasons.find((s) =>
     isDateInRange(targetDate, s.validFrom, s.validTo),
   );
   const matchedBlackout = checkBlackoutMatch(blackoutDates, targetDate);
@@ -2563,8 +2688,8 @@ const resolveActivitySmartRate = (
 
   return {
     ...smartAdult,
-    adultPrice: smartAdult.rate,
-    childPrice: resolvedChildPrice,
+    adultPrice: Math.round(Number(smartAdult.rate || 0)),
+    childPrice: Math.round(Number(resolvedChildPrice || 0)),
   };
 };
 
@@ -2631,27 +2756,60 @@ const getTransportVehicleUsagePrices = (
     halfDay?.price !== undefined ? halfDay.price : defaultPrice,
   );
 
+  const oneWaySeasons =
+    Array.isArray(oneWay?.seasons) && oneWay.seasons.length > 0
+      ? oneWay.seasons
+      : Array.isArray(vehicle?.seasons) && vehicle.seasons.length > 0
+        ? vehicle.seasons
+        : Array.isArray(service?.seasons)
+          ? service.seasons
+          : [];
+  const interHotelSeasons =
+    Array.isArray(interHotel?.seasons) && interHotel.seasons.length > 0
+      ? interHotel.seasons
+      : Array.isArray(vehicle?.seasons) && vehicle.seasons.length > 0
+        ? vehicle.seasons
+        : Array.isArray(service?.seasons)
+          ? service.seasons
+          : [];
+  const fullDaySeasons =
+    Array.isArray(fullDay?.seasons) && fullDay.seasons.length > 0
+      ? fullDay.seasons
+      : Array.isArray(vehicle?.seasons) && vehicle.seasons.length > 0
+        ? vehicle.seasons
+        : Array.isArray(service?.seasons)
+          ? service.seasons
+          : [];
+  const halfDaySeasons =
+    Array.isArray(halfDay?.seasons) && halfDay.seasons.length > 0
+      ? halfDay.seasons
+      : Array.isArray(vehicle?.seasons) && vehicle.seasons.length > 0
+        ? vehicle.seasons
+        : Array.isArray(service?.seasons)
+          ? service.seasons
+          : [];
+
   const oneWaySmart = resolveSmartSeasonAndBlackoutPrice(
     oneWayBase,
-    oneWay?.seasons,
+    oneWaySeasons,
     blackoutDates,
     dateToUse,
   );
   const interHotelSmart = resolveSmartSeasonAndBlackoutPrice(
     interHotelBase,
-    interHotel?.seasons,
+    interHotelSeasons,
     blackoutDates,
     dateToUse,
   );
   const fullDaySmart = resolveSmartSeasonAndBlackoutPrice(
     fullDayBase,
-    fullDay?.seasons,
+    fullDaySeasons,
     blackoutDates,
     dateToUse,
   );
   const halfDaySmart = resolveSmartSeasonAndBlackoutPrice(
     halfDayBase,
-    halfDay?.seasons,
+    halfDaySeasons,
     blackoutDates,
     dateToUse,
   );
@@ -3288,8 +3446,14 @@ const getHotelVariantOptions = (services = [], service = {}) => {
       service.hotels[0]
     : null;
   const hotelDocRooms = selectedHotelObj?.rooms || [];
-
   if (hotelDocRooms.length > 0) {
+    const targetDate = service.serviceDate || "";
+    const blackoutDates = Array.isArray(service.blackoutDates)
+      ? service.blackoutDates
+      : Array.isArray(selectedHotelObj?.blackoutDates)
+        ? selectedHotelObj.blackoutDates
+        : [];
+
     const uniqueRoomTypes = Array.from(
       new Set(hotelDocRooms.map((r) => r.roomType).filter(Boolean)),
     );
@@ -3303,7 +3467,23 @@ const getHotelVariantOptions = (services = [], service = {}) => {
         ) ||
         hotelDocRooms.find((r) => r.roomType === rt) ||
         {};
-      const price = Number(matchingRoom.price || 0);
+      const basePrice = Number(matchingRoom.price || 0);
+      const seasons =
+        Array.isArray(matchingRoom.seasons) && matchingRoom.seasons.length > 0
+          ? matchingRoom.seasons
+          : Array.isArray(selectedHotelObj?.seasons) &&
+              selectedHotelObj.seasons.length > 0
+            ? selectedHotelObj.seasons
+            : Array.isArray(service.seasons)
+              ? service.seasons
+              : [];
+      const smart = resolveSmartSeasonAndBlackoutPrice(
+        basePrice,
+        seasons,
+        blackoutDates,
+        targetDate,
+      );
+      const price = smart.rate > 0 ? smart.rate : basePrice;
       return {
         value: rt,
         label:
@@ -3379,12 +3559,21 @@ const getHotelVariantOptions = (services = [], service = {}) => {
       service,
       value,
     );
-    const hasPrice = optionRate.amount > 0;
+    const baseAmount = optionRate.amount > 0 ? optionRate.amount : 0;
+    const targetDate = service.serviceDate || "";
+    const smart = resolveSmartSeasonAndBlackoutPrice(
+      baseAmount,
+      service.seasons || [],
+      service.blackoutDates || [],
+      targetDate,
+    );
+    const finalPrice = smart.rate > 0 ? smart.rate : baseAmount;
+    const hasPrice = finalPrice > 0;
 
     return {
       value,
       label: hasPrice
-        ? `${value} (${formatCurrencyValue(optionRate.amount, optionRate.currency)})`
+        ? `${value} (${formatCurrencyValue(finalPrice, optionRate.currency || service.currency || "INR")})`
         : value,
     };
   });
@@ -3460,8 +3649,10 @@ const resolveHotelVariantSelection = (
   changedField = "",
   value = "",
 ) => {
+  const targetHotelName =
+    changedField === "hotelName" ? value : service.hotelName;
   const selectedHotelObj = Array.isArray(service.hotels)
-    ? service.hotels.find((h) => h.hotelName === service.hotelName) ||
+    ? service.hotels.find((h) => h.hotelName === targetHotelName) ||
       service.hotels[0]
     : null;
   const hotelDocRooms = selectedHotelObj?.rooms || [];
@@ -3501,6 +3692,16 @@ const resolveHotelVariantSelection = (
               normalizeComparisonTextValue(targetRoomCategory)
             : normalizeBedTypeValue(r.bedType) === targetBedType,
       ) ||
+      hotelDocRooms.find(
+        (r) =>
+          normalizeComparisonTextValue(r.roomType) ===
+          normalizeComparisonTextValue(targetRoomType),
+      ) ||
+      hotelDocRooms.find(
+        (r) =>
+          normalizeComparisonTextValue(r.roomCategory) ===
+          normalizeComparisonTextValue(targetRoomCategory),
+      ) ||
       hotelDocRooms[0];
 
     if (matchedRoom) {
@@ -3509,13 +3710,32 @@ const resolveHotelVariantSelection = (
           ? Number(matchedRoom.price)
           : Number(service.price || service.rate || 0);
       const targetDate = service.serviceDate || "";
+      const seasons =
+        Array.isArray(matchedRoom.seasons) && matchedRoom.seasons.length > 0
+          ? matchedRoom.seasons
+          : Array.isArray(selectedHotelObj?.seasons) &&
+              selectedHotelObj.seasons.length > 0
+            ? selectedHotelObj.seasons
+            : Array.isArray(service.seasons)
+              ? service.seasons
+              : [];
+      const blackoutDates =
+        Array.isArray(matchedRoom.blackoutDates) &&
+        matchedRoom.blackoutDates.length > 0
+          ? matchedRoom.blackoutDates
+          : Array.isArray(selectedHotelObj?.blackoutDates) &&
+              selectedHotelObj.blackoutDates.length > 0
+            ? selectedHotelObj.blackoutDates
+            : Array.isArray(service.blackoutDates)
+              ? service.blackoutDates
+              : [];
       const smart = resolveSmartSeasonAndBlackoutPrice(
         baseRoomPrice,
-        matchedRoom.seasons,
-        service.blackoutDates,
+        seasons,
+        blackoutDates,
         targetDate,
       );
-      const nextPrice = smart.rate;
+      const nextPrice = smart.rate > 0 ? smart.rate : baseRoomPrice;
       const occupancy = getInferredHotelMaxOccupancy(matchedRoom, {
         ...service,
         roomType: matchedRoom.roomType || targetRoomType || service.roomType,
@@ -3526,10 +3746,10 @@ const resolveHotelVariantSelection = (
       });
       return {
         ...service,
-        hotelName: selectedHotelObj.hotelName || service.hotelName,
-        hotelCategory: selectedHotelObj.hotelCategory || service.hotelCategory,
-        starCategory: selectedHotelObj.hotelCategory || service.hotelCategory,
-        supplierName: selectedHotelObj.supplierName || service.supplierName,
+        hotelName: selectedHotelObj?.hotelName || targetHotelName || service.hotelName,
+        hotelCategory: selectedHotelObj?.hotelCategory || service.hotelCategory,
+        starCategory: selectedHotelObj?.hotelCategory || service.hotelCategory,
+        supplierName: selectedHotelObj?.supplierName || service.supplierName,
         roomType: matchedRoom.roomType || targetRoomType || service.roomType,
         roomCategory:
           matchedRoom.roomCategory ||
@@ -3549,12 +3769,14 @@ const resolveHotelVariantSelection = (
         mealPlan: matchedRoom.mealPlan || service.mealPlan || "EP",
         desc:
           matchedRoom.description ||
-          `${matchedRoom.roomType || ""} | ${matchedRoom.mealPlan || ""} | ${selectedHotelObj.hotelName}`,
+          `${matchedRoom.roomType || ""} | ${matchedRoom.mealPlan || ""} | ${selectedHotelObj?.hotelName || targetHotelName}`,
         rate: nextPrice,
         price: nextPrice,
         quoteBaseRate: nextPrice,
         roomTypeOptionRate: nextPrice,
         pricingTier: smart.tier || "Standard Rate",
+        seasons: seasons,
+        blackoutDates: blackoutDates,
         blackout: smart.isBlackout
           ? { isBlackout: true, label: smart.blackoutLabel }
           : { isBlackout: false },
@@ -3563,7 +3785,7 @@ const resolveHotelVariantSelection = (
         cwoebRate: Number(matchedRoom.cwoebRate || 0),
         hotelRateMode: "unit-rate",
         useStoredPricing: false,
-        manualRateOverride: true,
+        manualRateOverride: false,
         originalTotal: 0,
         totalInInr: 0,
         priceInInr: 0,
@@ -3928,14 +4150,7 @@ const calculateServiceOriginalTotal = (service = {}) => {
 };
 
 const normalizeComparisonDateValue = (value) => {
-  if (!value) return "";
-
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    return String(value || "").trim();
-  }
-
-  return parsed.toISOString().slice(0, 10);
+  return extractYmdDateString(value);
 };
 
 const normalizeComparisonTextValue = (value = "") =>
@@ -4219,17 +4434,11 @@ const getSelectedServiceQuotationEdits = (service = {}) => {
 };
 
 const formatDateInput = (value) => {
-  if (!value) return "";
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return "";
-  return parsed.toISOString().slice(0, 10);
+  return extractYmdDateString(value);
 };
 
 const addDaysToDate = (value, daysToAdd = 0) => {
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return "";
-  parsed.setDate(parsed.getDate() + Number(daysToAdd || 0));
-  return parsed.toISOString().slice(0, 10);
+  return addDaysToYmdDate(value, daysToAdd);
 };
 
 const QuotationBuilder = () => {
@@ -5134,8 +5343,16 @@ const QuotationBuilder = () => {
 
         // Hydrate quotation details into builder workspace if not in fresh draft mode and not already hydrated
         if (nextHistory.length > 0 && !isFreshDraftMode && !draftHydrated) {
+          const partnerSpecificHistory = nextHistory.filter(
+            (q) =>
+              normalizePartnerTypeKey(q?.partnerType) ===
+              normalizePartnerTypeKey(partnerType),
+          );
           const targetQuotation =
-            nextHistory.find((q) => q.isLatest) || nextHistory[0];
+            partnerSpecificHistory.find((q) => q.isLatest) ||
+            partnerSpecificHistory[0] ||
+            nextHistory.find((q) => q.isLatest) ||
+            nextHistory[0];
           if (targetQuotation) {
             applyQuotationDraftToBuilder(targetQuotation);
             setActiveDraftSourceQuotationId(
@@ -5174,18 +5391,30 @@ const QuotationBuilder = () => {
     };
   }, [order?._id, historyRefreshKey]);
 
+  const partnerQuotationHistory = useMemo(
+    () =>
+      quotationHistory.filter(
+        (q) =>
+          normalizePartnerTypeKey(q?.partnerType) ===
+          normalizePartnerTypeKey(partnerType),
+      ),
+    [quotationHistory, partnerType],
+  );
+
   const selectedHistoryQuotation = useMemo(
     () =>
-      quotationHistory.find(
+      partnerQuotationHistory.find(
         (quotation) =>
           quotation.id === selectedHistoryQuotationId ||
           quotation._id === selectedHistoryQuotationId,
-      ) || null,
-    [quotationHistory, selectedHistoryQuotationId],
+      ) ||
+      partnerQuotationHistory[0] ||
+      null,
+    [partnerQuotationHistory, selectedHistoryQuotationId],
   );
   const latestSentQuotation = useMemo(
     () =>
-      quotationHistory.find((quotation) =>
+      partnerQuotationHistory.find((quotation) =>
         [
           "Quote Sent",
           "Quote Accepted",
@@ -5194,9 +5423,9 @@ const QuotationBuilder = () => {
           "Confirmed",
         ].includes(String(quotation?.status || "").trim()),
       ) ||
-      quotationHistory[0] ||
+      partnerQuotationHistory[0] ||
       null,
-    [quotationHistory],
+    [partnerQuotationHistory],
   );
 
   const resetBuilderWorkspace = () => {
@@ -5238,7 +5467,48 @@ const QuotationBuilder = () => {
     setDraftHydrated(false);
 
     if (baseServicesSnapshot.length) {
-      setServices(baseServicesSnapshot.map((service) => ({ ...service })));
+      setServices(
+        baseServicesSnapshot.map((service) => ({ ...service, checked: false })),
+      );
+    } else {
+      setServices((prev) =>
+        (prev || []).map((service) => ({ ...service, checked: false })),
+      );
+    }
+  };
+
+  const handlePartnerTypeChange = (nextPartnerType) => {
+    if (nextPartnerType === partnerType) return;
+    setPartnerType(nextPartnerType);
+
+    const relevantHistory = quotationHistory.filter(
+      (q) =>
+        normalizePartnerTypeKey(q?.partnerType) ===
+        normalizePartnerTypeKey(nextPartnerType),
+    );
+
+    if (relevantHistory.length > 0) {
+      const latestTargetQuotation =
+        relevantHistory.find((q) => q.isLatest) || relevantHistory[0];
+      applyQuotationDraftToBuilder(latestTargetQuotation);
+      setActiveDraftSourceQuotationId(
+        latestTargetQuotation.id || latestTargetQuotation._id,
+      );
+      setEditingTargetQuotationId(
+        latestTargetQuotation.id || latestTargetQuotation._id,
+      );
+      editingSourceQuotationSnapshotRef.current = latestTargetQuotation;
+      setEditingSourceQuotationSnapshot(latestTargetQuotation);
+      setSelectedHistoryQuotationId(
+        latestTargetQuotation.id || latestTargetQuotation._id,
+      );
+    } else {
+      resetBuilderWorkspace();
+      setActiveDraftSourceQuotationId("");
+      setEditingTargetQuotationId("");
+      editingSourceQuotationSnapshotRef.current = null;
+      setEditingSourceQuotationSnapshot(null);
+      setSelectedHistoryQuotationId("");
     }
   };
 
@@ -5539,13 +5809,15 @@ const QuotationBuilder = () => {
               .map(String),
           ),
         );
-        const remainingPrev = prev.filter(
-          (s) =>
-            !formattedIdSet.has(String(s.id || "")) &&
-            !formattedIdSet.has(String(s._id || "")) &&
-            !formattedIdSet.has(String(s.serviceId || "")) &&
-            !formattedIdSet.has(String(s.dbServiceId || "")),
-        );
+        const remainingPrev = prev
+          .filter(
+            (s) =>
+              !formattedIdSet.has(String(s.id || "")) &&
+              !formattedIdSet.has(String(s._id || "")) &&
+              !formattedIdSet.has(String(s.serviceId || "")) &&
+              !formattedIdSet.has(String(s.dbServiceId || "")),
+          )
+          .map((s) => ({ ...s, checked: false }));
         return [...formattedServices, ...remainingPrev];
       });
 
@@ -5557,13 +5829,15 @@ const QuotationBuilder = () => {
               .map(String),
           ),
         );
-        const remainingPrev = prev.filter(
-          (s) =>
-            !formattedIdSet.has(String(s.id || "")) &&
-            !formattedIdSet.has(String(s._id || "")) &&
-            !formattedIdSet.has(String(s.serviceId || "")) &&
-            !formattedIdSet.has(String(s.dbServiceId || "")),
-        );
+        const remainingPrev = prev
+          .filter(
+            (s) =>
+              !formattedIdSet.has(String(s.id || "")) &&
+              !formattedIdSet.has(String(s._id || "")) &&
+              !formattedIdSet.has(String(s.serviceId || "")) &&
+              !formattedIdSet.has(String(s.dbServiceId || "")),
+          )
+          .map((s) => ({ ...s, checked: false }));
         return [...formattedServices, ...remainingPrev];
       });
 
@@ -5628,29 +5902,29 @@ const QuotationBuilder = () => {
 
   const historyStatusCounts = useMemo(() => {
     return {
-      All: quotationHistory.length,
-      "Quote Sent": quotationHistory.filter((q) =>
+      All: partnerQuotationHistory.length,
+      "Quote Sent": partnerQuotationHistory.filter((q) =>
         ["Quote Sent", "Sent to Client", "Markup Applied"].includes(
           String(q?.status || "").trim(),
         ),
       ).length,
-      "Revision Requested": quotationHistory.filter((q) =>
+      "Revision Requested": partnerQuotationHistory.filter((q) =>
         ["Revision Requested", "Revision_Query"].includes(
           String(q?.status || "").trim(),
         ),
       ).length,
-      Confirmed: quotationHistory.filter((q) =>
+      Confirmed: partnerQuotationHistory.filter((q) =>
         ["Quote Accepted", "Client Approved", "Confirmed"].includes(
           String(q?.status || "").trim(),
         ),
       ).length,
-      Draft: quotationHistory.filter((q) =>
+      Draft: partnerQuotationHistory.filter((q) =>
         ["Draft", "In Progress", "Pending"].includes(
           String(q?.status || "").trim(),
         ),
       ).length,
     };
-  }, [quotationHistory]);
+  }, [partnerQuotationHistory]);
 
   const getHistoryStatusBadge = (status) => {
     const norm = String(status || "").trim();
@@ -5701,7 +5975,7 @@ const QuotationBuilder = () => {
   };
 
   const filteredQuotationHistory = useMemo(() => {
-    return quotationHistory.filter((q) => {
+    return partnerQuotationHistory.filter((q) => {
       const search = historySearchTerm.toLowerCase().trim();
       const qNum = String(
         q.quotationNumber || `Quotation ${q.attemptNumber || ""}`,
@@ -5743,7 +6017,7 @@ const QuotationBuilder = () => {
 
       return true;
     });
-  }, [quotationHistory, historySearchTerm, historyStatusFilter]);
+  }, [partnerQuotationHistory, historySearchTerm, historyStatusFilter]);
 
   const historyItemsPerPage = 8;
   const historyTotalPages = Math.ceil(
@@ -6675,7 +6949,12 @@ const QuotationBuilder = () => {
       businessPartner:
         service.businessPartnerId || service.businessPartner || undefined,
       businessPartnerName:
-        service.businessPartnerName || resolveDmcOwner(service).dmcName || "",
+        partnerType === "Business Partner"
+          ? (service.businessPartnerName ||
+              service.supplierName ||
+              resolveDmcOwner(service).dmcName ||
+              "")
+          : "",
       type: normalizedServiceType,
       title: service.title,
       city: service.city || "",
@@ -6979,20 +7258,27 @@ const QuotationBuilder = () => {
             Array.isArray(s.tourTypes) && s.tourTypes.length > 0
               ? s.tourTypes[0]
               : {};
-          const resolvedAdultPrice = Number(
-            s.adultPrice !== undefined
-              ? s.adultPrice
-              : defaultTour.adultPrice !== undefined
-                ? defaultTour.adultPrice
-                : defaultTour.price || s.price || finalRate,
-          );
-          const resolvedChildPrice = Number(
-            s.childPrice !== undefined
-              ? s.childPrice
-              : defaultTour.childPrice !== undefined
-                ? defaultTour.childPrice
-                : 0,
-          );
+          const isSeasonPricedActivity =
+            normalizedServiceType === "activity" ||
+            normalizedServiceType === "sightseeing";
+          const resolvedAdultPrice = isSeasonPricedActivity
+            ? Math.round(Number(smart.adultPrice ?? finalRate ?? 0))
+            : Number(
+                s.adultPrice !== undefined
+                  ? s.adultPrice
+                  : defaultTour.adultPrice !== undefined
+                    ? defaultTour.adultPrice
+                    : defaultTour.price || s.price || finalRate,
+              );
+          const resolvedChildPrice = isSeasonPricedActivity
+            ? Math.round(Number(smart.childPrice ?? 0))
+            : Number(
+                s.childPrice !== undefined
+                  ? s.childPrice
+                  : defaultTour.childPrice !== undefined
+                    ? defaultTour.childPrice
+                    : 0,
+              );
           return {
             id: s.id,
             serviceId: s.id,
@@ -7242,11 +7528,27 @@ const QuotationBuilder = () => {
   const loadServices = useCallback(
     async ({ preserveCurrent = false, showLoader = !preserveCurrent } = {}) => {
       // When Business Partner mode is active, DMC contracted rates are not applicable.
-      // Keep only already-selected / custom services and do not call the API.
+      // Keep only Business Partner services and do not call the DMC API.
       if (partnerType === "Business Partner") {
         setServicesLoadError("");
-        setServices((prev) => prev.filter((s) => s.checked || s.custom));
-        setBaseServicesSnapshot((prev) => prev.filter((s) => s.checked || s.custom));
+        setServices((prev) =>
+          prev.filter(
+            (s) =>
+              s.isBpService ||
+              s.businessPartnerId ||
+              s.businessPartner ||
+              (s.custom && partnerType === "Business Partner"),
+          ),
+        );
+        setBaseServicesSnapshot((prev) =>
+          prev.filter(
+            (s) =>
+              s.isBpService ||
+              s.businessPartnerId ||
+              s.businessPartner ||
+              (s.custom && partnerType === "Business Partner"),
+          ),
+        );
         if (showLoader) setServicesLoading(false);
         return;
       }
@@ -7677,7 +7979,23 @@ const QuotationBuilder = () => {
 
   const selectedServicesWithPricing = useMemo(() => {
     return services
-      .filter((service) => service.checked === true)
+      .filter((service) => {
+        if (!service.checked) return false;
+        if (partnerType === "Online DMC") {
+          return !(
+            service.isBpService ||
+            service.businessPartnerId ||
+            service.businessPartner
+          );
+        } else {
+          return Boolean(
+            service.isBpService ||
+              service.businessPartnerId ||
+              service.businessPartner ||
+              (service.custom && partnerType === "Business Partner"),
+          );
+        }
+      })
       .map((service) => {
         const currency = normalizeCurrencyCode(service.currency);
         const storedExchangeRate = Number(service.exchangeRate || 1);
@@ -7725,7 +8043,7 @@ const QuotationBuilder = () => {
           isForeignCurrency: currency !== "INR",
         };
       });
-  }, [exchangeRates, services]);
+  }, [exchangeRates, partnerType, services]);
 
   const destinationMatchedServices = useMemo(
     () => {
@@ -7745,7 +8063,7 @@ const QuotationBuilder = () => {
             service.isBpService ||
             service.businessPartnerId ||
             service.businessPartner ||
-            service.custom
+            (service.custom && partnerType === "Business Partner")
           );
         }
       });
@@ -8033,11 +8351,19 @@ const QuotationBuilder = () => {
       recipientName:
         order?.agent?.name ||
         order?.agentName ||
+        order?.tripSource?.name ||
+        order?.querySource ||
+        order?.guestDetails?.name ||
+        order?.clientName ||
         order?.agent?.companyName ||
         "Agent",
       recipientCompanyName:
         order?.agent?.companyName ||
         order?.agentName ||
+        order?.tripSource?.name ||
+        order?.querySource ||
+        order?.guestDetails?.name ||
+        order?.clientName ||
         order?.agent?.name ||
         "",
       phone: resolvedAgentPhone || order?.agent?.phone || "",
@@ -8340,11 +8666,19 @@ const QuotationBuilder = () => {
     try {
       // 🔥 MAIN PAYLOAD
       const targetQuotationId = editingTargetQuotationId || quotationId;
+      const targetAgentEmail =
+        order?.agent?.email ||
+        order?.agentEmail ||
+        order?.email ||
+        order?.clientEmail ||
+        "";
       const payload = {
         quotationId: targetQuotationId,
         editExistingQuotation: isEditingHistoricalQuotation,
         queryId: orderQueryId,
+        partnerType: "Online DMC",
         selectedAction,
+        agentEmail: targetAgentEmail,
         validTill,
         baseAmount: baseRate,
         sendVia: sendVia,
@@ -8412,7 +8746,9 @@ const QuotationBuilder = () => {
           quotationId: targetQuotationId,
           editExistingQuotation: isEditingHistoricalQuotation,
           queryId: orderQueryId,
+          partnerType: "Business Partner",
           selectedAction,
+          agentEmail: targetAgentEmail,
           validTill,
           baseAmount: baseRate,
           sendVia: sendVia,
@@ -8864,10 +9200,6 @@ const QuotationBuilder = () => {
           };
         }
 
-        if (service.type === "hotel" && field === "serviceDate") {
-          return { ...service, serviceDate: value, useStoredPricing: false };
-        }
-
         if (field === "rate") {
           const normalizedServiceType = normalizeServiceFilterType(
             service.type,
@@ -8915,79 +9247,15 @@ const QuotationBuilder = () => {
           };
         }
 
-        if (service.type === "hotel" && field === "hotelName") {
-          const hotelsList = Array.isArray(service.hotels)
-            ? service.hotels
-            : [];
-          const selectedHotel =
-            hotelsList.find((h) => h.hotelName === value) || hotelsList[0];
-          if (selectedHotel) {
-            const roomsList = Array.isArray(selectedHotel.rooms)
-              ? selectedHotel.rooms
-              : [];
-            const matchedRoom =
-              roomsList.find((r) => r.roomType === service.roomType) ||
-              roomsList.find((r) => r.roomCategory === service.roomCategory) ||
-              roomsList[0] ||
-              {};
-            const nextHotelCategory =
-              selectedHotel.hotelCategory || service.hotelCategory || "5 Star";
-            const nextSupplierName =
-              selectedHotel.supplierName || service.supplierName || "";
-            const nextPrice =
-              matchedRoom.price !== undefined
-                ? Number(matchedRoom.price)
-                : Number(service.price || 0);
-            const occupancy = getInferredHotelMaxOccupancy(matchedRoom, {
-              ...service,
-              roomType:
-                matchedRoom.roomType || service.roomType || "Standard Room",
-              roomCategory:
-                matchedRoom.roomCategory || service.roomCategory || "Double",
-            });
-            return {
-              ...service,
-              hotelName: selectedHotel.hotelName,
-              hotelCategory: nextHotelCategory,
-              starCategory: nextHotelCategory,
-              supplierName: nextSupplierName,
-              roomType:
-                matchedRoom.roomType || service.roomType || "Standard Room",
-              roomCategory:
-                matchedRoom.roomCategory || service.roomCategory || "Double",
-              bedType:
-                normalizeBedTypeValue(matchedRoom.bedType) || service.bedType,
-              extraBedType:
-                matchedRoom.extraBedType || service.extraBedType || "None",
-              maxAdults: occupancy.maxAdults,
-              maxChildren: occupancy.maxChildren,
-              childAgeLimit: occupancy.childAgeLimit,
-              mealPlan: matchedRoom.mealPlan || service.mealPlan || "EP",
-              desc:
-                matchedRoom.description ||
-                `${matchedRoom.roomType || ""} | ${matchedRoom.mealPlan || ""} | ${selectedHotel.hotelName}`,
-              rate: nextPrice,
-              price: nextPrice,
-              quoteBaseRate: nextPrice,
-              roomTypeOptionRate: nextPrice,
-              awebRate: Number(matchedRoom.awebRate || 0),
-              cwebRate: Number(matchedRoom.cwebRate || 0),
-              cwoebRate: Number(matchedRoom.cwoebRate || 0),
-              hotelRateMode: "unit-rate",
-              useStoredPricing: false,
-              manualRateOverride: true,
-              originalTotal: 0,
-              totalInInr: 0,
-              priceInInr: 0,
-            };
-          }
-        }
-
         if (
           service.type === "hotel" &&
-          ["roomCategory", "roomType", "bedType", "extraBedType"].includes(
-            field,
-          )
+          [
+            "hotelName",
+            "roomCategory",
+            "roomType",
+            "bedType",
+            "extraBedType",
+          ].includes(field)
         ) {
           const resolved = resolveHotelVariantSelection(
             prev,
@@ -9057,35 +9325,34 @@ const QuotationBuilder = () => {
                   .trim()
                   .toLowerCase(),
             ) || {};
-          const nextAdultPrice = Number(
-            matchedTour.adultPrice !== undefined
-              ? matchedTour.adultPrice
-              : matchedTour.price !== undefined
-                ? matchedTour.price
-                : service.price || service.rate || 0,
-          );
-          const nextChildPrice = Number(
-            matchedTour.childPrice !== undefined ? matchedTour.childPrice : 0,
-          );
           const nextTourType = matchedTour.tourType || value;
           const nextDesc =
             matchedTour.description ||
             service.desc ||
             service.description ||
             "";
+          const smart = resolveActivitySmartRate(
+            { ...service, tourType: nextTourType },
+            service.serviceDate,
+            nextTourType,
+          );
 
           return {
             ...service,
             tourType: nextTourType,
-            rate: nextAdultPrice,
-            price: nextAdultPrice,
-            adultPrice: nextAdultPrice,
-            childPrice: nextChildPrice,
-            quoteBaseRate: nextAdultPrice,
+            rate: smart.adultPrice,
+            price: smart.adultPrice,
+            adultPrice: smart.adultPrice,
+            childPrice: smart.childPrice,
+            quoteBaseRate: smart.adultPrice,
+            pricingTier: smart.tier,
+            blackout: smart.isBlackout
+              ? { isBlackout: true, label: smart.blackoutLabel }
+              : { isBlackout: false },
             desc: nextDesc,
             description: nextDesc,
             useStoredPricing: false,
-            manualRateOverride: true,
+            manualRateOverride: false,
             originalTotal: 0,
             totalInInr: 0,
             priceInInr: 0,
@@ -11230,12 +11497,15 @@ const QuotationBuilder = () => {
           <motion.header variants={sectionRevealVariants}>
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div>
-                <h1 className="text-2xl font-bold text-slate-900">
-                  Quotation History
+                <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
+                  <span>Quotation History</span>
+                  <span className="text-sm font-semibold px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                    {partnerType}
+                  </span>
                 </h1>
                 <p className="text-sm text-gray-500">
                   Manage and review all previous quotations and revisions for
-                  Query #{orderQueryId || "-"}
+                  Query #{orderQueryId || "-"} ({partnerType})
                 </p>
               </div>
 
@@ -12505,7 +12775,7 @@ const QuotationBuilder = () => {
                 <FileText size={14} className="text-gray-500" />
                 <span>Quotation History</span>
                 <span className="rounded-md bg-blue-50 border border-blue-200 px-2 py-0.5 text-[11px] font-bold text-blue-700">
-                  {quotationHistory.length}
+                  {partnerQuotationHistory.length}
                 </span>
               </button>
             </div>
@@ -12542,7 +12812,7 @@ const QuotationBuilder = () => {
                 name="partnerType"
                 value="Online DMC"
                 checked={partnerType === "Online DMC"}
-                onChange={(e) => setPartnerType(e.target.value)}
+                onChange={(e) => handlePartnerTypeChange(e.target.value)}
                 className="w-4 h-4 text-[#3E63DD] border-gray-300 focus:ring-[#3E63DD]"
               />
               <span className="text-sm font-semibold text-slate-700">
@@ -12555,7 +12825,7 @@ const QuotationBuilder = () => {
                 name="partnerType"
                 value="Business Partner"
                 checked={partnerType === "Business Partner"}
-                onChange={(e) => setPartnerType(e.target.value)}
+                onChange={(e) => handlePartnerTypeChange(e.target.value)}
                 className="w-4 h-4 text-[#3E63DD] border-gray-300 focus:ring-[#3E63DD]"
               />
               <span className="text-sm font-semibold text-slate-700">
@@ -14105,7 +14375,7 @@ const QuotationBuilder = () => {
                   </p>
                   <p className="text-xs text-slate-500">
                     Selected Services:{" "}
-                    {services.filter((s) => s.checked).length}
+                    {selectedServices.length}
                   </p>
                   <p className="text-xs font-semibold text-amber-700">
                     Total Amount: {"\u20B9"} {formatAmountValue(totalAmount)}
@@ -14196,7 +14466,7 @@ const QuotationBuilder = () => {
                   </p>
                   <p className="text-xs text-slate-500">
                     Selected Services:{" "}
-                    {services.filter((s) => s.checked).length}
+                    {selectedServices.length}
                   </p>
                   <p className="text-xs font-semibold text-amber-700">
                     Total Amount: {"\u20B9"} {formatAmountValue(totalAmount)}
@@ -15503,11 +15773,7 @@ const Service = ({
   };
 
   const addDaysToServiceDate = (value, daysToAdd = 0) => {
-    if (!value) return "";
-    const d = new Date(value);
-    if (isNaN(d)) return "";
-    d.setDate(d.getDate() + Number(daysToAdd));
-    return d.toISOString().slice(0, 10);
+    return addDaysToYmdDate(value, daysToAdd);
   };
 
   const formatDisplayDate = (value) => {

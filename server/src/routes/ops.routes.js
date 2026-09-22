@@ -29,14 +29,7 @@ import {
   getQueryPartnerInvoiceStatus,
   submitOfflinePartnerConfirmation,
 } from "../controllers/opsController.js";
-import multer from "multer";
-
-const partnerInvoiceUpload = multer({
-  storage: multer.diskStorage({
-    destination: function (_req, _file, cb) { cb(null, "uploads/") },
-    filename: function (_req, file, cb) { cb(null, Date.now() + "-" + file.originalname) },
-  }),
-});
+import { upload } from "../middlewares/multer.middlewares.js";
 import {
   createOperationTeamMember,
   getOperationManagerDashboard,
@@ -48,6 +41,11 @@ import {
   submitOperationManagerReport,
   updateOperationManagerQuery,
   getOpsActivityLogs,
+  createTripSource,
+  getTripSources,
+  createOperationManagerQuery,
+  updateOperationTeamMember,
+  toggleExecutiveQueryPermission,
 } from "../controllers/opsManagerController.js";
 import { sendQuotationController } from "../controllers/quotationNotificationController.js";
 import { getAllServices, createPackage, getPackages, deletePackage } from "../controllers/dmcController.js";
@@ -87,7 +85,7 @@ router.patch("/vouchers/:id/send", isAuthenticated, sendVoucherToAgent);
 router.post(
   "/vouchers/offline-confirmation",
   isAuthenticated,
-  partnerInvoiceUpload.fields([
+  upload.fields([
     { name: "supplierConfirmation", maxCount: 1 },
     { name: "voucherReference", maxCount: 1 },
     { name: "termsConditions", maxCount: 1 },
@@ -97,14 +95,19 @@ router.post(
 
 router.get("/manager/dashboard", isAuthenticated, getOperationManagerDashboard);
 router.get("/manager/queries", isAuthenticated, getOperationManagerQueries);
+router.post("/manager/queries", isAuthenticated, createOperationManagerQuery);
 router.put("/manager/queries/:queryId", isAuthenticated, updateOperationManagerQuery);
 router.get("/manager/queries/:queryId/quotations", isAuthenticated, getOperationManagerQueryQuotations);
 router.get("/manager/reassign-preview/:userId", isAuthenticated, getOperationManagerReassignPreview);
 router.get("/manager/reassignments/:userId", isAuthenticated, getOperationManagerReassignmentDetails);
 router.post("/manager/team", isAuthenticated, createOperationTeamMember);
+router.put("/manager/team/:userId", isAuthenticated, updateOperationTeamMember);
+router.patch("/manager/team/:userId/toggle-query-permission", isAuthenticated, toggleExecutiveQueryPermission);
 router.post("/manager/reassign", isAuthenticated, reassignOperationManagerWorkload);
 router.post("/manager/report", isAuthenticated, submitOperationManagerReport);
 router.get("/manager/activity-logs", isAuthenticated, getOpsActivityLogs);
+router.post("/manager/trip-sources", isAuthenticated, createTripSource);
+router.get("/manager/trip-sources", isAuthenticated, getTripSources);
 
 router.post("/invoices", isAuthenticated, generateInvoice);
 router.get("/business-partner-invoices/queries", isAuthenticated, getQueriesForPartnerInvoiceUpload);
@@ -112,7 +115,7 @@ router.get("/business-partner-invoices/status/:queryId", isAuthenticated, getQue
 router.post(
   "/business-partner-invoices/upload",
   isAuthenticated,
-  partnerInvoiceUpload.single("uploadedInvoice"),
+  upload.single("uploadedInvoice"),
   uploadBusinessPartnerInvoice
 );
 

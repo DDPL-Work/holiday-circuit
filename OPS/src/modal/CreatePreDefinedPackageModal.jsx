@@ -1591,6 +1591,9 @@ export default function CreatePreDefinedPackageModal({
             quotationId: targetQuotationId,
             editExistingQuotation: isEditing,
             queryId: targetQueryId,
+            partnerType: isBp ? "Business Partner" : (initialData?.partnerType || "Online DMC"),
+            sendVia: ["dashboard"],
+            selectedAction: "Dashboard Notification",
             validTill:
               initialData?.validTill ||
               new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),

@@ -91,6 +91,7 @@ export default function BookingStatistics() {
   const [chartYear, setChartYear] = useState(String(now.getFullYear()));
   const [chartCustomFrom, setChartCustomFrom] = useState("");
   const [chartCustomTo, setChartCustomTo] = useState("");
+  const [chartDateBasis, setChartDateBasis] = useState("travelDate");
   
   const [currentPage, setCurrentPage] = useState(1);
   const entriesPerPage = 10;
@@ -329,7 +330,8 @@ export default function BookingStatistics() {
         chartQuarter,
         chartYear,
         chartCustomFrom,
-        chartCustomTo
+        chartCustomTo,
+        chartDateBasis
       );
       const dmcChartPayload = buildChartData(
         bookingData,
@@ -339,7 +341,8 @@ export default function BookingStatistics() {
         chartQuarter,
         chartYear,
         chartCustomFrom,
-        chartCustomTo
+        chartCustomTo,
+        chartDateBasis
       );
       const opsChartPayload = buildChartData(
         bookingData,
@@ -349,7 +352,8 @@ export default function BookingStatistics() {
         chartQuarter,
         chartYear,
         chartCustomFrom,
-        chartCustomTo
+        chartCustomTo,
+        chartDateBasis
       );
       const destChartPayload = buildChartData(
         bookingData,
@@ -359,7 +363,8 @@ export default function BookingStatistics() {
         chartQuarter,
         chartYear,
         chartCustomFrom,
-        chartCustomTo
+        chartCustomTo,
+        chartDateBasis
       );
 
       // ───────────────────────────────────────────
@@ -901,7 +906,7 @@ export default function BookingStatistics() {
       initial={{ opacity: 0, y: 15 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5, ease: "easeOut" }}
-      className="flex flex-col gap-6 w-full  mx-auto px-6 text-slate-800 pb-1 bg-slate-50 min-h-screen"
+      className="flex flex-col gap-6 w-full  mx-auto px-2 text-slate-800 pb-1 bg-slate-50 min-h-screen"
     >
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -1207,6 +1212,8 @@ export default function BookingStatistics() {
                   setCustomFrom={setChartCustomFrom}
                   customTo={chartCustomTo}
                   setCustomTo={setChartCustomTo}
+                  dateBasis={chartDateBasis}
+                  setDateBasis={setChartDateBasis}
                   onExportChart={handleExcelExport}
                 />
               </motion.div>

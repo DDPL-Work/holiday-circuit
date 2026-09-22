@@ -78,7 +78,10 @@ const buildAdminMirrorPayloads = async (payloads, options = {}) => {
 };
 
 export const createNotification = async (payload, options = {}) => {
-  const [createdNotification] = await Notification.create([payload]);
+  let createdNotification = null;
+  if (payload?.user) {
+    [createdNotification] = await Notification.create([payload]);
+  }
   const adminPayloads = await buildAdminMirrorPayloads([payload], options);
 
   if (adminPayloads.length) {
@@ -94,7 +97,10 @@ export const createNotifications = async (payloads, options = {}) => {
     return [];
   }
 
-  const createdNotifications = await Notification.insertMany(normalizedPayloads);
+  const validRecipientPayloads = normalizedPayloads.filter((payload) => Boolean(payload?.user));
+  const createdNotifications = validRecipientPayloads.length
+    ? await Notification.insertMany(validRecipientPayloads)
+    : [];
   const adminPayloads = await buildAdminMirrorPayloads(normalizedPayloads, options);
 
   if (adminPayloads.length) {

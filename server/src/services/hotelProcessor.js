@@ -91,8 +91,15 @@ export const processHotelExcel = async (filePath, ownerId, providedWorkbook = nu
   const descIdx = findIdx(["description"]);
 
   // Base Price / Price
-  const basePriceIdx = findIdx(["base price"]);
-  const priceIdx = basePriceIdx !== -1 ? basePriceIdx : findIdx(["price"]);
+  //
+  // Do not use the broad `findIdx(["price"])` fallback here: its partial
+  // match picks the first seasonal column (for example, `S1 Price`) when a
+  // sheet uses `Basic Price`. That silently shifts the primary contracted
+  // rate away from the value the supplier uploaded.
+  const basePriceIdx = findIdx(["base price", "basic price"]);
+  const priceIdx = basePriceIdx !== -1
+    ? basePriceIdx
+    : headers.findIndex((header) => ["price", "room price", "contracted price"].includes(header));
 
   // Season 1
   const s1VfIdx = findIdx(["s1 valid from", "s1_valid_from", "s1 validfrom"]);
@@ -115,6 +122,10 @@ export const processHotelExcel = async (filePath, ownerId, providedWorkbook = nu
   let currCurrency = "INR";
   let currValidFrom = new Date("2026-04-01");
   let currValidTo = new Date("2026-12-31");
+  let currS1ValidFrom = null;
+  let currS1ValidTo = null;
+  let currS2ValidFrom = null;
+  let currS2ValidTo = null;
 
   const serviceDocsMap = new Map();
   let totalRoomsCount = 0;
@@ -132,6 +143,10 @@ export const processHotelExcel = async (filePath, ownerId, providedWorkbook = nu
     if (currIdx !== -1 && row[currIdx]) currCurrency = String(row[currIdx]).trim();
     if (vfIdx !== -1 && row[vfIdx]) currValidFrom = parseExcelDate(row[vfIdx]);
     if (vtIdx !== -1 && row[vtIdx]) currValidTo = parseExcelDate(row[vtIdx]);
+    if (s1VfIdx !== -1 && row[s1VfIdx]) currS1ValidFrom = parseExcelDate(row[s1VfIdx], null);
+    if (s1VtIdx !== -1 && row[s1VtIdx]) currS1ValidTo = parseExcelDate(row[s1VtIdx], null);
+    if (s2VfIdx !== -1 && row[s2VfIdx]) currS2ValidFrom = parseExcelDate(row[s2VfIdx], null);
+    if (s2VtIdx !== -1 && row[s2VtIdx]) currS2ValidTo = parseExcelDate(row[s2VtIdx], null);
 
     const rawBasePrice = basePriceIdx !== -1 && row[basePriceIdx] !== undefined ? Number(row[basePriceIdx]) : 0;
     const rawPrice = priceIdx !== -1 && row[priceIdx] !== undefined ? Number(row[priceIdx]) : 0;
@@ -187,12 +202,12 @@ export const processHotelExcel = async (filePath, ownerId, providedWorkbook = nu
     const cwoebRate = cwoebIdx !== -1 ? Number(row[cwoebIdx]) || 0 : 0;
     const description = descIdx !== -1 ? String(row[descIdx] || "").trim() : "";
 
-    const s1ValidFrom = s1VfIdx !== -1 && row[s1VfIdx] ? parseExcelDate(row[s1VfIdx], null) : null;
-    const s1ValidTo = s1VtIdx !== -1 && row[s1VtIdx] ? parseExcelDate(row[s1VtIdx], null) : null;
+    const s1ValidFrom = (s1VfIdx !== -1 && row[s1VfIdx] ? parseExcelDate(row[s1VfIdx], null) : null) || currS1ValidFrom;
+    const s1ValidTo = (s1VtIdx !== -1 && row[s1VtIdx] ? parseExcelDate(row[s1VtIdx], null) : null) || currS1ValidTo;
     const s1BlackoutPrice = s1BoPriceIdx !== -1 ? Number(row[s1BoPriceIdx]) || 0 : 0;
 
-    const s2ValidFrom = s2VfIdx !== -1 && row[s2VfIdx] ? parseExcelDate(row[s2VfIdx], null) : null;
-    const s2ValidTo = s2VtIdx !== -1 && row[s2VtIdx] ? parseExcelDate(row[s2VtIdx], null) : null;
+    const s2ValidFrom = (s2VfIdx !== -1 && row[s2VfIdx] ? parseExcelDate(row[s2VfIdx], null) : null) || currS2ValidFrom;
+    const s2ValidTo = (s2VtIdx !== -1 && row[s2VtIdx] ? parseExcelDate(row[s2VtIdx], null) : null) || currS2ValidTo;
     const s2BlackoutPrice = s2BoPriceIdx !== -1 ? Number(row[s2BoPriceIdx]) || 0 : 0;
 
     const seasons = [];

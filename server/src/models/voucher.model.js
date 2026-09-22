@@ -16,7 +16,8 @@ const voucherSchema = new mongoose.Schema(
     agent: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Auth",
-      required: true,
+      required: false,
+      default: null,
     },
     voucherNumber: {
       type: String,

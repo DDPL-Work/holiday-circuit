@@ -66,6 +66,44 @@ export const QueryHeaderCard = ({
   const cleanLeadName = rawLeadName.replace(/^(Mr\.|Mrs\.|Ms\.|Master|Dr\.)\s+(?=(Mr\.|Mrs\.|Ms\.|Master|Dr\.)\b)/i, "");
   const activeLeadName = cleanLeadName || currentLeadTraveler || headerLeadTraveler;
 
+  const offlineAgentOrg = (() => {
+    try {
+      const raw =
+        sessionStorage.getItem("offlineAgentOrgData") ||
+        localStorage.getItem("offlineAgentOrgData");
+      if (raw) return JSON.parse(raw);
+    } catch (e) {}
+    return null;
+  })();
+
+  const isInvalidCompany = (val) => {
+    if (!val) return true;
+    const lower = String(val).trim().toLowerCase();
+    return (
+      lower === "operation manager" ||
+      lower === "operations manager" ||
+      lower === "admin" ||
+      lower === "company not specified"
+    );
+  };
+
+  const resolvedCompany =
+    (!isInvalidCompany(headerCompany) ? headerCompany : "") ||
+    (!isInvalidCompany(query?.agencyName) ? query?.agencyName : "") ||
+    (!isInvalidCompany(query?.companyName) ? query?.companyName : "") ||
+    (!isInvalidCompany(query?.querySource) ? query?.querySource : "") ||
+    (query?.tripSource && typeof query.tripSource === "object" && !isInvalidCompany(query.tripSource.name)
+      ? query.tripSource.name
+      : "") ||
+    (!isInvalidCompany(query?.agent?.companyName) ? query?.agent?.companyName : "") ||
+    (!isInvalidCompany(query?.agent?.agencyName) ? query?.agent?.agencyName : "") ||
+    (!isInvalidCompany(query?.agent?.name) ? query?.agent?.name : "") ||
+    (!isInvalidCompany(query?.agentName) ? query?.agentName : "") ||
+    (!isInvalidCompany(offlineAgentOrg?.name) ? offlineAgentOrg?.name : "") ||
+    (!isInvalidCompany(sessionStorage.getItem("offlineAgentOrgName")) ? sessionStorage.getItem("offlineAgentOrgName") : "") ||
+    (!isInvalidCompany(localStorage.getItem("offlineAgentOrgName")) ? localStorage.getItem("offlineAgentOrgName") : "") ||
+    "Holiday Circuit";
+
   const handleSaveTourists = (savedTourists) => {
     if (Array.isArray(savedTourists) && savedTourists.length > 0) {
       const primary = savedTourists.find((t) => t.isFlagged) || savedTourists[0];
@@ -171,7 +209,7 @@ export const QueryHeaderCard = ({
               <span className="font-bold">{query?.destination || "Destination not specified"}</span>
               <span className="text-slate-300 font-normal mx-0.5">•</span>
               <span className="text-sm sm:text-base font-medium text-slate-700">
-                {headerCompany}
+                {resolvedCompany}
               </span>
               <span className="text-slate-300 font-normal mx-0.5">•</span>
 
@@ -216,7 +254,7 @@ export const QueryHeaderCard = ({
             <div className="flex items-center gap-2 flex-wrap text-sm text-slate-800 font-medium pt-0.5">
               <ArrowRight size={15} className="text-purple-400 shrink-0" />
               <span className="font-medium text-slate-900">
-                {headerCompany}
+                {resolvedCompany}
               </span>
             </div>
           </div>

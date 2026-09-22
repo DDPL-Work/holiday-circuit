@@ -32,12 +32,15 @@ router.post("/package", isAuthenticated, createPackage);
 router.get("/package", isAuthenticated, getPackages);
 router.delete("/package/:id", isAuthenticated, deletePackage);
 
-const storage = multer.diskStorage({
+import { upload } from "../middlewares/multer.middlewares.js";
+
+const diskStorage = multer.diskStorage({
   destination: function (req, file, cb) { cb(null, "uploads/") },
   filename: function (req, file, cb) { cb(null, Date.now() + "-" + file.originalname) }
-})
-const upload = multer({ storage })
-router.post("/bulk-upload", upload.single("file"), isAuthenticated, bulkUpload)
+});
+const diskUpload = multer({ storage: diskStorage });
+
+router.post("/bulk-upload", diskUpload.single("file"), isAuthenticated, bulkUpload)
 router.get("/bulk-upload/:id/status", isAuthenticated, getBulkUploadStatus);
 router.get("/bulk-upload-history", isAuthenticated, getBulkUploadHistory);
 router.delete("/upload/:id", isAuthenticated, deleteUpload)

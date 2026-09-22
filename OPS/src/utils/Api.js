@@ -16,6 +16,14 @@ API.interceptors.request.use(config => {
     config.headers.Authorization = `Bearer ${token}`;
   }
 
+  const offlineAgentOrgId =
+    sessionStorage.getItem('offlineAgentOrgId') ||
+    localStorage.getItem('offlineAgentOrgId');
+
+  if (offlineAgentOrgId) {
+    config.headers['x-offline-agent-id'] = offlineAgentOrgId;
+  }
+
   return config;
 });
 

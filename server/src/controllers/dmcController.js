@@ -2439,18 +2439,29 @@ export const createOrUpdateConfirmation = async (req, res) => {
         .trim()
         .toLowerCase() === "submitted";
 
+    const getUploadedFileUrl = (fileObj) => {
+      if (!fileObj) return "";
+      return fileObj.path || fileObj.secure_url || fileObj.url || "";
+    };
+
     const documents = {};
 
-    if (req.files?.supplierConfirmation?.[0]?.path) {
-      documents.supplierConfirmation = req.files.supplierConfirmation[0].path;
+    if (req.files?.supplierConfirmation?.[0]) {
+      documents.supplierConfirmation = getUploadedFileUrl(
+        req.files.supplierConfirmation[0],
+      );
     }
 
-    if (req.files?.voucherReference?.[0]?.path) {
-      documents.voucherReference = req.files.voucherReference[0].path;
+    if (req.files?.voucherReference?.[0]) {
+      documents.voucherReference = getUploadedFileUrl(
+        req.files.voucherReference[0],
+      );
     }
 
-    if (req.files?.termsConditions?.[0]?.path) {
-      documents.termsConditions = req.files.termsConditions[0].path;
+    if (req.files?.termsConditions?.[0]) {
+      documents.termsConditions = getUploadedFileUrl(
+        req.files.termsConditions[0],
+      );
     }
 
     if (confirmation) {
@@ -2490,11 +2501,6 @@ export const createOrUpdateConfirmation = async (req, res) => {
         await createDmcSideNotification(req, {
           user: query.assignedTo,
           type: "info",
-          title: wasSubmittedBefore
-            ? "DMC Service Confirmation Updated"
-            : "DMC Service Confirmation Submitted",
-          message: `${req.user?.companyName || req.user?.name || "DMC partner"} ${wasSubmittedBefore ? "updated" : "submitted"} service confirmation for ${query.queryId}${query.destination ? ` (${query.destination})` : ""}.`,
-          link: "/ops/voucher-management",
           meta: {
             kind: "dmc_confirmation_submitted",
             queryId: query.queryId,
@@ -2546,18 +2552,18 @@ const normalizeInvoiceSource = (value = "") =>
     : "system_template";
 
 const buildUploadedInvoiceDocument = (file) => {
-  if (!file?.path) return null;
-  const normalizedFilePath = String(file.path).replace(/\\/g, "/");
-  const absoluteFilePath = path.join(process.cwd(), normalizedFilePath);
-  const fileSizeKb = fs.existsSync(absoluteFilePath)
-    ? Math.max(1, Math.round(fs.statSync(absoluteFilePath).size / 1024))
-    : null;
+  if (!file) return null;
+  const fileUrl = file.path || file.secure_url || file.url || "";
+  if (!fileUrl) return null;
+  const fileSizeKb = file.size
+    ? `${Math.max(1, Math.round(file.size / 1024))} kB`
+    : "150 kB";
 
   return {
-    name: file.originalname || path.basename(file.path),
-    filePath: `/${normalizedFilePath.replace(/^\/+/, "")}`,
-    size: fileSizeKb ? `${fileSizeKb} kB` : "",
-    mimeType: file.mimetype || "",
+    name: file.originalname || (fileUrl ? path.basename(fileUrl) : "Invoice.pdf"),
+    filePath: fileUrl,
+    size: fileSizeKb,
+    mimeType: file.mimetype || "application/pdf",
     kind: "invoice",
   };
 };

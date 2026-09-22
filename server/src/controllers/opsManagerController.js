@@ -5,6 +5,8 @@ import Notification from "../models/notification.model.js";
 import OpsActivityLog from "../models/opsActivityLog.model.js";
 import TravelQuery from "../models/TravelQuery.model.js";
 import Quotation from "../models/quotation.model.js";
+import TripSource from "../models/TripSource.model.js";
+import Counter from "../models/counter.model.js";
 import { createNotification } from "../services/notificationDispatchService.js";
 import { ensureDestinationName } from "../services/destinationNameService.js";
 import { sendTeamMemberCredentialsMail } from "../services/sendEmail.js";
@@ -39,6 +41,23 @@ const ensureOperationManagerAccess = (req) => {
   if (req.user?.role !== "operation_manager") {
     throw new ApiError(403, "Only operation managers can access this area");
   }
+};
+
+const ensureQueryCreationAccess = (req) => {
+  if (["operation_manager", "admin"].includes(req.user?.role)) {
+    return;
+  }
+  if (req.user?.role === "operations") {
+    const permissions = Array.isArray(req.user?.permissions) ? req.user.permissions : [];
+    const hasPermission =
+      permissions.includes("Create Query") ||
+      permissions.includes("Query Create") ||
+      permissions.includes("Add Query");
+    if (hasPermission) {
+      return;
+    }
+  }
+  throw new ApiError(403, "You do not have permission to create queries");
 };
 
 const ensureQuotationTrackerAccess = (req) => {
@@ -592,17 +611,26 @@ const getManagedTeamMembers = async (req) => {
     isDeleted: { $ne: true },
     manager: { $in: identityCandidates },
   })
-    .select("name email phone employeeId profileImage accountStatus manager createdAt")
+    .select("name email phone employeeId profileImage accountStatus manager permissions designation accessExpiry createdAt lastActiveAt")
     .sort({ createdAt: 1 })
     .lean();
 };
 
-const getManagedTeamQueries = async (teamIds, queryOptions = {}) => {
-  if (!teamIds.length) {
+const getManagedTeamQueries = async (teamIds, queryOptions = {}, managerId = null) => {
+  const queryConditions = [];
+  if (Array.isArray(teamIds) && teamIds.length) {
+    queryConditions.push({ assignedTo: { $in: teamIds } });
+  }
+  if (managerId) {
+    queryConditions.push({ createdBy: managerId });
+    queryConditions.push({ assignedTo: managerId });
+  }
+
+  if (!queryConditions.length) {
     return [];
   }
 
-  let request = TravelQuery.find({ assignedTo: { $in: teamIds } });
+  let request = TravelQuery.find({ $or: queryConditions });
 
   if (queryOptions.select) {
     request = request.select(queryOptions.select);
@@ -616,9 +644,6 @@ const getManagedTeamQueries = async (teamIds, queryOptions = {}) => {
 
   return request.sort({ createdAt: -1 }).lean();
 };
-
-const getPeriodScopedQueries = (queries = [], start, endExclusive) =>
-  queries.filter((query) => isWithinRange(query?.createdAt, start, endExclusive));
 
 const isQuoteOverdueAt = (query = {}, referenceDate = new Date()) => {
   if (!isActiveWorkloadQuery(query) || isQuoteSent(query)) {
@@ -639,6 +664,22 @@ const isQuoteOverdueAt = (query = {}, referenceDate = new Date()) => {
 
   const hoursElapsed = (compareAt.getTime() - createdAt.getTime()) / (1000 * 60 * 60);
   return hoursElapsed > 48;
+};
+
+const getPeriodScopedQueries = (queries = [], start, endExclusive) => {
+  if (!start || !endExclusive) return queries;
+  const startTime = start instanceof Date ? start.getTime() : new Date(start).getTime();
+  const endTime = endExclusive instanceof Date ? endExclusive.getTime() : new Date(endExclusive).getTime();
+
+  if (Number.isNaN(startTime) || Number.isNaN(endTime)) {
+    return queries;
+  }
+
+  return queries.filter((query) => {
+    const createdAt = query?.createdAt ? new Date(query.createdAt).getTime() : NaN;
+    if (Number.isNaN(createdAt)) return false;
+    return createdAt >= startTime && createdAt < endTime;
+  });
 };
 
 const buildPerformanceSnapshot = (queries = [], start, endExclusive) => {
@@ -794,6 +835,10 @@ const buildTeamRows = (teamMembers = [], teamQueries = [], performanceWindow = n
           conversionContribution: round(conversionContribution, 0),
         },
         status,
+        permissions: Array.isArray(member.permissions) ? member.permissions : [],
+        designation: member.designation || "Operations Executive",
+        department: member.department || "Operations",
+        accessExpiry: member.accessExpiry || null,
         accountStatus: member.accountStatus || "Active",
         canReassign: activeQueries.length > 0,
         createdAt: member.createdAt || null,
@@ -903,15 +948,36 @@ const buildQueryRows = (queries = []) =>
       deadline.setDate(deadline.getDate() + 2);
     }
 
-    const assignedUserName = query?.assignedTo?.name || "Unassigned";
+    const executiveName = query?.assignedTo?.name || "Unassigned";
+    const isCreatedByManager =
+      query?.createdByType === "ops_manager" ||
+      Boolean(query?.tripSource) ||
+      (query?.createdBy && !query?.agent);
+
+    let assignedUserName = executiveName;
+    if (isCreatedByManager) {
+      if (executiveName && executiveName !== "Operation Manager" && executiveName !== "Ops Manager") {
+        assignedUserName = `Ops Manager / ${executiveName}`;
+      } else {
+        assignedUserName = `Ops Manager`;
+      }
+    }
+
     const status = getQueryUiStatus(query);
+    const clientName =
+      query?.agent?.companyName ||
+      query?.agent?.name ||
+      query?.tripSource?.name ||
+      query?.guestDetails?.name ||
+      query?.querySource ||
+      "Direct / B2B Partner";
 
     return {
       id: query.queryId || "",
       queryObjectId: query._id,
       _id: query._id,
-      client: query?.agent?.companyName || query?.agent?.name || "Travel Partner",
-      clientEmail: query?.clientEmail || "",
+      client: clientName,
+      clientEmail: query?.clientEmail || query?.guestDetails?.email || "",
       destination: query?.destination || "",
       destinationCategory: query?.destinationCategory || "",
       tourType: query?.tourType || "",
@@ -926,6 +992,7 @@ const buildQueryRows = (queries = []) =>
       amountValue: Number(query?.customerBudget || 0),
       startDate: query?.startDate || null,
       endDate: query?.endDate || null,
+      nights: Number(query?.nights || 1),
       opsStatus: query?.opsStatus || "",
       agentStatus: query?.agentStatus || "",
       quotationStatus: query?.quotationStatus || "",
@@ -935,8 +1002,12 @@ const buildQueryRows = (queries = []) =>
       hotelCategory: query?.hotelCategory || "4 Star",
       transportRequired: Boolean(query?.transportRequired),
       sightseeingRequired: Boolean(query?.sightseeingRequired),
-      specialRequirements: query?.specialRequirements || "",
       travelerDetails: query?.travelerDetails || [],
+      tripSource: query?.tripSource || null,
+      guestDetails: query?.guestDetails || null,
+      querySource: query?.querySource || "",
+      querySourceType: query?.querySourceType || "",
+      comments: query?.comments || "",
       builderState: {
         _id: query?._id || null,
         queryId: query?.queryId || "",
@@ -944,6 +1015,7 @@ const buildQueryRows = (queries = []) =>
         customerBudget: Number(query?.customerBudget || 0),
         startDate: query?.startDate || null,
         endDate: query?.endDate || null,
+        nights: Number(query?.nights || 1),
         numberOfAdults: Number(query?.numberOfAdults || 0),
         numberOfChildren: Number(query?.numberOfChildren || 0),
         hotelCategory: query?.hotelCategory || "",
@@ -953,6 +1025,10 @@ const buildQueryRows = (queries = []) =>
         opsStatus: query?.opsStatus || "",
         agentStatus: query?.agentStatus || "",
         quotationStatus: query?.quotationStatus || "",
+        tripSource: query?.tripSource || null,
+        guestDetails: query?.guestDetails || null,
+        querySource: query?.querySource || "",
+        comments: query?.comments || "",
         reassignmentHistory: Array.isArray(query?.reassignmentHistory) ? query.reassignmentHistory : [],
         agent: query?.agent
           ? {
@@ -961,6 +1037,14 @@ const buildQueryRows = (queries = []) =>
               name: query.agent.name || "",
               companyName: query.agent.companyName || "",
               email: query.agent.email || "",
+            }
+          : query?.tripSource
+          ? {
+              _id: query.tripSource._id || null,
+              id: query.tripSource._id || null,
+              name: query.tripSource.name || "",
+              companyName: query.tripSource.name || "",
+              email: query?.guestDetails?.email || query?.tripSource?.contactPerson?.email || "",
             }
           : null,
         assignedTo: query?.assignedTo
@@ -1317,7 +1401,6 @@ export const getOperationManagerDashboard = async (req, res, next) => {
     ensureOperationManagerAccess(req);
 
     const dashboard = await buildDashboardPayload(req);
-
     res.status(200).json({
       success: true,
       data: dashboard,
@@ -1333,13 +1416,19 @@ export const getOperationManagerQueries = async (req, res, next) => {
 
     const teamMembers = await getManagedTeamMembers(req);
     const teamIds = teamMembers.map((member) => member._id);
-    const queries = await getManagedTeamQueries(teamIds, {
-      select: "queryId destination destinationCategory tourType clientEmail customerBudget createdAt startDate endDate quotationStatus agentStatus opsStatus activityLog assignedTo numberOfAdults numberOfChildren hotelCategory transportRequired sightseeingRequired specialRequirements reassignmentHistory agent travelerDetails",
-      populate: [
-        { path: "agent", select: "name companyName email" },
-        { path: "assignedTo", select: "name email" },
-      ],
-    });
+    const queries = await getManagedTeamQueries(
+      teamIds,
+      {
+        select:
+          "queryId destination destinationCategory tourType clientEmail customerBudget createdAt startDate endDate quotationStatus agentStatus opsStatus activityLog assignedTo numberOfAdults numberOfChildren hotelCategory transportRequired sightseeingRequired specialRequirements reassignmentHistory agent travelerDetails tripSource querySource querySourceType guestDetails comments nights createdBy createdByType",
+        populate: [
+          { path: "agent", select: "name companyName email" },
+          { path: "assignedTo", select: "name email" },
+          { path: "tripSource", select: "name shortName sourceType contactPerson city state country" },
+        ],
+      },
+      req.user.id
+    );
 
     const rows = buildQueryRows(queries);
 
@@ -1380,8 +1469,15 @@ export const updateOperationManagerQuery = async (req, res, next) => {
     const teamIds = teamMembers.map((member) => member._id);
     const query = await TravelQuery.findOne({
       _id: queryId,
-      assignedTo: { $in: teamIds },
-    }).populate("agent", "name companyName email").populate("assignedTo", "name email");
+      $or: [
+        { assignedTo: { $in: teamIds } },
+        { createdBy: req.user.id },
+        { assignedTo: req.user.id },
+      ],
+    })
+      .populate("agent", "name companyName email")
+      .populate("assignedTo", "name email")
+      .populate("tripSource", "name shortName sourceType contactPerson city state country");
 
     if (!query) {
       return next(new ApiError(404, "Query not found in your team"));
@@ -1605,7 +1701,11 @@ export const getOperationManagerQueryQuotations = async (req, res, next) => {
 
             return TravelQuery.findOne({
               _id: queryId,
-              assignedTo: { $in: teamIds },
+              $or: [
+                { assignedTo: { $in: teamIds } },
+                { createdBy: req.user.id },
+                { assignedTo: req.user.id },
+              ],
             }).select("_id queryId rejectionNote");
           })();
 
@@ -1825,6 +1925,146 @@ export const createOperationTeamMember = async (req, res, next) => {
   }
 };
 
+export const updateOperationTeamMember = async (req, res, next) => {
+  try {
+    ensureOperationManagerAccess(req);
+
+    const { userId } = req.params;
+    const {
+      name,
+      fullName,
+      email,
+      phone,
+      employeeId,
+      designation,
+      permissions,
+      accountStatus,
+      accessExpiry,
+    } = req.body || {};
+
+    const executive = await Auth.findById(userId);
+    if (!executive || executive.role !== "operations" || executive.isDeleted) {
+      return next(new ApiError(404, "Operations executive not found"));
+    }
+
+    const manager = await Auth.findById(req.user.id).select("name email employeeId _id").lean();
+    const identityCandidates = getManagerIdentityCandidates(manager);
+    if (!identityCandidates.includes(String(executive.manager || ""))) {
+      return next(new ApiError(403, "You can only edit executives in your team"));
+    }
+
+    const trimmedName = String(fullName || name || "").trim();
+    if (trimmedName) executive.name = trimmedName;
+
+    if (email) {
+      const normalizedEmail = String(email).trim().toLowerCase();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+        return next(new ApiError(400, "Please enter a valid email address"));
+      }
+      const existingUser = await Auth.findOne({ email: normalizedEmail, _id: { $ne: userId } });
+      if (existingUser) {
+        return next(new ApiError(400, "Email already in use by another user"));
+      }
+      executive.email = normalizedEmail;
+    }
+
+    if (phone) {
+      const normalizedPhone = String(phone).trim();
+      const existingPhone = await Auth.findOne({ phone: normalizedPhone, _id: { $ne: userId } });
+      if (existingPhone) {
+        return next(new ApiError(400, "Phone number already in use by another user"));
+      }
+      executive.phone = normalizedPhone;
+    }
+
+    if (employeeId !== undefined) {
+      const normalizedEmployeeId = String(employeeId || "").trim();
+      if (normalizedEmployeeId) {
+        const existingEmp = await Auth.findOne({ employeeId: normalizedEmployeeId, _id: { $ne: userId } });
+        if (existingEmp) {
+          return next(new ApiError(400, "Employee ID already in use"));
+        }
+      }
+      executive.employeeId = normalizedEmployeeId || undefined;
+    }
+
+    if (designation !== undefined) {
+      executive.designation = String(designation || "").trim() || TEAM_DESIGNATION;
+    }
+
+    if (permissions !== undefined && Array.isArray(permissions)) {
+      executive.permissions = normalizePermissionList(permissions);
+    }
+
+    if (accountStatus) {
+      executive.accountStatus = accountStatus === "Inactive" ? "Inactive" : "Active";
+    }
+
+    if (accessExpiry !== undefined) {
+      executive.accessExpiry = accessExpiry ? new Date(accessExpiry) : null;
+    }
+
+    await executive.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Ops executive details updated successfully",
+      data: {
+        id: executive._id,
+        name: executive.name,
+        email: executive.email,
+        phone: executive.phone,
+        employeeId: executive.employeeId,
+        designation: executive.designation,
+        permissions: executive.permissions,
+        accountStatus: executive.accountStatus,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const toggleExecutiveQueryPermission = async (req, res, next) => {
+  try {
+    ensureOperationManagerAccess(req);
+
+    const { userId } = req.params;
+    const executive = await Auth.findById(userId);
+    if (!executive || executive.role !== "operations" || executive.isDeleted) {
+      return next(new ApiError(404, "Operations executive not found"));
+    }
+
+    const currentPermissions = Array.isArray(executive.permissions) ? [...executive.permissions] : [];
+    const hasCreateQuery = currentPermissions.includes("Create Query");
+
+    let updatedPermissions;
+    if (hasCreateQuery) {
+      updatedPermissions = currentPermissions.filter((p) => p !== "Create Query");
+    } else {
+      updatedPermissions = [...new Set([...currentPermissions, "Create Query"])];
+    }
+
+    executive.permissions = updatedPermissions;
+    await executive.save();
+
+    res.status(200).json({
+      success: true,
+      message: hasCreateQuery
+        ? `Create Query permission disabled for ${executive.name}`
+        : `Create Query permission enabled for ${executive.name}`,
+      data: {
+        id: executive._id,
+        name: executive.name,
+        permissions: executive.permissions,
+        hasCreateQuery: !hasCreateQuery,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const reassignOperationManagerWorkload = async (req, res, next) => {
   try {
     ensureOperationManagerAccess(req);
@@ -2002,6 +2242,407 @@ export const getOpsActivityLogs = async (req, res, next) => {
     res.status(200).json({
       success: true,
       data: logs,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/* ================= TRIP SOURCES ================= */
+
+export const createTripSource = async (req, res, next) => {
+  try {
+    ensureQueryCreationAccess(req);
+
+    const {
+      name,
+      shortName,
+      sourceType,
+      contactPerson,
+      location,
+      city,
+      state,
+      country,
+    } = req.body || {};
+
+    if (!name || !String(name).trim()) {
+      return next(new ApiError(400, "Trip Source Name is required"));
+    }
+
+    const normalizedSourceType = sourceType === "direct" ? "direct" : "b2b";
+    const normalizedName = String(name).trim();
+
+    // Check if duplicate already exists with same name & sourceType
+    let existingSource = await TripSource.findOne({
+      name: { $regex: new RegExp(`^${normalizedName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i") },
+      sourceType: normalizedSourceType,
+      isActive: true,
+    });
+
+    if (existingSource) {
+      return res.status(200).json({
+        success: true,
+        message: "Trip source already exists",
+        data: existingSource,
+      });
+    }
+
+    const contactData = contactPerson || {};
+    const phonesList = Array.isArray(contactData.phones)
+      ? contactData.phones.filter((p) => p && String(p.number || "").trim())
+      : [];
+
+    const primaryPhone =
+      phonesList.find((p) => p.isPrimary)?.number ||
+      phonesList[0]?.number ||
+      contactData.phone ||
+      "";
+    const primaryCountryCode =
+      phonesList.find((p) => p.isPrimary)?.countryCode ||
+      phonesList[0]?.countryCode ||
+      contactData.countryCode ||
+      "91-IN";
+
+    const newSource = await TripSource.create({
+      name: normalizedName,
+      shortName: String(shortName || "").trim(),
+      sourceType: normalizedSourceType,
+      contactPerson: {
+        name: String(contactData.name || "").trim(),
+        email: String(contactData.email || "").trim().toLowerCase(),
+        phones: phonesList,
+        phone: primaryPhone,
+        countryCode: primaryCountryCode,
+      },
+      location: String(location || "India").trim(),
+      city: String(city || "").trim(),
+      state: String(state || "").trim(),
+      country: String(country || "India").trim(),
+      createdBy: req.user.id,
+      isActive: true,
+    });
+
+    res.status(201).json({
+      success: true,
+      message: "Trip source added successfully",
+      data: newSource,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getTripSources = async (req, res, next) => {
+  try {
+    const isAllowed = ["operation_manager", "operations", "admin"].includes(req.user?.role);
+    if (!isAllowed) {
+      ensureQueryCreationAccess(req);
+    }
+
+    const { sourceType } = req.query || {};
+    const filter = { isActive: true };
+
+    if (sourceType && ["b2b", "direct"].includes(sourceType)) {
+      filter.sourceType = sourceType;
+    }
+
+    const sources = await TripSource.find(filter).sort({ createdAt: -1 }).lean();
+
+    const sourceIds = sources.map((s) => s._id);
+    const sourceNames = sources.map((s) => s.name).filter(Boolean);
+
+    const queryCounts = await TravelQuery.aggregate([
+      {
+        $match: {
+          $or: [
+            { tripSource: { $in: sourceIds } },
+            { querySource: { $in: sourceNames } },
+          ],
+        },
+      },
+      {
+        $group: {
+          _id: "$tripSource",
+          querySourceName: { $first: "$querySource" },
+          count: { $sum: 1 },
+        },
+      },
+    ]);
+
+    const countMap = new Map();
+    queryCounts.forEach((item) => {
+      if (item._id) countMap.set(String(item._id), item.count);
+      if (item.querySourceName) countMap.set(item.querySourceName.toLowerCase(), item.count);
+    });
+
+    const enrichedSources = sources.map((s) => ({
+      ...s,
+      queryCount:
+        countMap.get(String(s._id)) ||
+        countMap.get((s.name || "").toLowerCase()) ||
+        0,
+    }));
+
+    res.status(200).json({
+      success: true,
+      data: enrichedSources,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/* ================= OPS MANAGER QUERY CREATION ================= */
+
+export const createOperationManagerQuery = async (req, res, next) => {
+  try {
+    ensureQueryCreationAccess(req);
+
+    const {
+      tripSource,
+      querySource,
+      querySourceType,
+      referenceId,
+      tags,
+      guestDetails,
+      destination,
+      startDate,
+      endDate,
+      nights,
+      numberOfAdults,
+      numberOfChildren,
+      childrenAges,
+      foc,
+      salesTeam,
+      assignedExecutiveId,
+      comments,
+      specialRequirements,
+      customerBudget,
+      hotelCategory,
+      tourType,
+      transportRequired,
+      sightseeingRequired,
+    } = req.body || {};
+
+    if (!destination || !startDate) {
+      return next(new ApiError(400, "Destination and Start Date are required"));
+    }
+
+    const parsedStartDate = new Date(startDate);
+    if (Number.isNaN(parsedStartDate.getTime())) {
+      return next(new ApiError(400, "Valid start date is required"));
+    }
+
+    const normalizedNights = Number(nights) > 0 ? Number(nights) : 1;
+    let parsedEndDate = endDate ? new Date(endDate) : null;
+    if (!parsedEndDate || Number.isNaN(parsedEndDate.getTime())) {
+      parsedEndDate = new Date(parsedStartDate);
+      parsedEndDate.setDate(parsedEndDate.getDate() + normalizedNights);
+    }
+
+    const normalizedAdults = Number(numberOfAdults) > 0 ? Number(numberOfAdults) : 1;
+    const normalizedChildren = Number(numberOfChildren) >= 0 ? Number(numberOfChildren) : 0;
+    const normalizedDestination = String(destination || "").trim();
+
+    await ensureDestinationName({
+      label: normalizedDestination,
+      source: "manual",
+      createdBy: req.user.id,
+    });
+
+    // 1️⃣ Generate Query Number using Counter
+    let queryCounter = await Counter.findOne({ name: "query" });
+    if (!queryCounter) {
+      queryCounter = await Counter.create({
+        name: "query",
+        seq: 1000,
+      });
+    }
+    queryCounter.seq += 1;
+    await queryCounter.save();
+    const queryId = `HC-Q-${queryCounter.seq}`;
+
+    // 2️⃣ Allocation logic: Always Round-Robin across team members (prioritizing online members)
+    let assignedTo = null;
+    let allocationType = "round_robin";
+
+    if (assignedExecutiveId) {
+      assignedTo = assignedExecutiveId;
+      allocationType = "manual";
+    } else {
+      // Round-Robin across active team members
+      const teamMembers = await getManagedTeamMembers(req);
+      let candidatePool = teamMembers.filter((m) => m.accountStatus === "Active");
+
+      if (!candidatePool.length) {
+        // Fallback to all approved active ops users
+        candidatePool = await Auth.find({
+          role: "operations",
+          isApproved: true,
+          isDeleted: { $ne: true },
+          accountStatus: "Active",
+        }).sort({ createdAt: 1 });
+      }
+
+      if (candidatePool.length > 0) {
+        const ONLINE_THRESHOLD_MS = 15 * 60 * 1000;
+        const nowTimestamp = Date.now();
+        const onlineOpsUsers = candidatePool.filter((user) => {
+          if (!user.lastActiveAt) return false;
+          const lastActive = new Date(user.lastActiveAt).getTime();
+          return nowTimestamp - lastActive <= ONLINE_THRESHOLD_MS;
+        });
+
+        const targetOpsPool = onlineOpsUsers.length > 0 ? onlineOpsUsers : candidatePool;
+
+        let opsCounter = await Counter.findOne({ name: "ops_assign" });
+        if (!opsCounter) {
+          opsCounter = await Counter.create({
+            name: "ops_assign",
+            seq: 0,
+          });
+        }
+        const opsIndex = opsCounter.seq % targetOpsPool.length;
+        assignedTo = targetOpsPool[opsIndex]._id;
+
+        opsCounter.seq += 1;
+        await opsCounter.save();
+      } else {
+        assignedTo = req.user.id;
+        allocationType = "self";
+      }
+    }
+
+    // 3️⃣ Normalize Guest / Traveler Details
+    const rawGuest = guestDetails || {};
+    const primaryGuestPhone =
+      Array.isArray(rawGuest.phoneNumbers) && rawGuest.phoneNumbers[0]?.number
+        ? rawGuest.phoneNumbers[0].number
+        : rawGuest.phone || "";
+
+    const travelerDetails = [];
+    const leadTravelerName = `${rawGuest.salutation ? rawGuest.salutation + " " : ""}${rawGuest.name || "Lead Guest"}`.trim();
+    travelerDetails.push({
+      travelerType: "Adult",
+      fullName: leadTravelerName,
+      name: leadTravelerName,
+      email: rawGuest.email || "",
+      phone: primaryGuestPhone,
+      isLeadTraveler: true,
+      documentType: "Passport",
+    });
+
+    // Add placeholders for remaining adults
+    for (let i = 1; i < normalizedAdults; i++) {
+      travelerDetails.push({
+        travelerType: "Adult",
+        fullName: `Adult ${i + 1}`,
+        name: `Adult ${i + 1}`,
+        email: "",
+        phone: "",
+        isLeadTraveler: false,
+        documentType: "Passport",
+      });
+    }
+
+    // Add children if any
+    const agesList = Array.isArray(childrenAges) ? childrenAges : [];
+    for (let i = 0; i < normalizedChildren; i++) {
+      const parsedAge = agesList[i]?.age
+        ? parseInt(String(agesList[i].age).replace(/\D/g, ""), 10)
+        : null;
+      const validChildAge = (!isNaN(parsedAge) && parsedAge > 0) ? parsedAge : null;
+      travelerDetails.push({
+        travelerType: "Child",
+        fullName: `Child ${i + 1}`,
+        name: `Child ${i + 1}`,
+        childAge: validChildAge,
+        isLeadTraveler: false,
+        documentType: "Passport",
+      });
+    }
+
+    // 4️⃣ Create TravelQuery Document
+    const newQuery = await TravelQuery.create({
+      queryId,
+      assignedTo,
+      allocationType,
+      createdBy: req.user.id,
+      createdByType: "ops_manager",
+      tripSource: tripSource || null,
+      querySource: String(querySource || "").trim(),
+      querySourceType: String(querySourceType || "b2b").toLowerCase(),
+      referenceId: String(referenceId || "").trim(),
+      tags: Array.isArray(tags) ? tags : typeof tags === "string" ? tags.split(",").map((t) => t.trim()).filter(Boolean) : [],
+      guestDetails: {
+        salutation: String(rawGuest.salutation || "").trim(),
+        name: String(rawGuest.name || "").trim(),
+        phone: primaryGuestPhone,
+        phoneNumbers: Array.isArray(rawGuest.phoneNumbers) ? rawGuest.phoneNumbers : [],
+        email: String(rawGuest.email || "").trim().toLowerCase(),
+        originCity: String(rawGuest.originCity || "").trim(),
+        nationality: String(rawGuest.nationality || "India").trim(),
+      },
+      clientName: String(rawGuest.name || "Guest").trim(),
+      name: String(rawGuest.name || "Guest").trim(),
+      leadTraveler: leadTravelerName,
+      clientPhone: primaryGuestPhone,
+      phone: primaryGuestPhone,
+      clientEmail: String(rawGuest.email || "").trim().toLowerCase(),
+      destination: normalizedDestination,
+      startDate: parsedStartDate,
+      endDate: parsedEndDate,
+      nights: normalizedNights,
+      numberOfAdults: normalizedAdults,
+      numberOfChildren: normalizedChildren,
+      childrenAges: agesList,
+      foc: Number(foc || 0),
+      comments: String(comments || "").trim(),
+      specialRequirements: String(specialRequirements || comments || "").trim(),
+      customerBudget: Number(customerBudget || 0),
+      hotelCategory: normalizeHotelCategorySelection(hotelCategory || "4 Star"),
+      tourType: String(tourType || "").trim(),
+      transportRequired: Boolean(transportRequired),
+      sightseeingRequired: Boolean(sightseeingRequired),
+      travelerDetails,
+      opsStatus: "New_Query",
+      agentStatus: "Pending",
+      quotationStatus: "Awaiting_Decision",
+      activityLog: [
+        {
+          action: "Query Created by Operations Manager",
+          performedBy: req.user?.name || "Operations Manager",
+          timestamp: new Date(),
+        },
+      ],
+    });
+
+    // 5️⃣ Notify assigned executive if not assigned to self
+    if (assignedTo && assignedTo.toString() !== req.user.id.toString()) {
+      await createNotification(
+        {
+          user: assignedTo,
+          type: "info",
+          title: "New Query Allocated",
+          message: `Query ${queryId} (${normalizedDestination}) has been assigned to you by ${req.user?.name || "Operations Manager"}.`,
+          link: "/ops/allQueries",
+          meta: {
+            queryId: newQuery._id,
+            queryNumber: queryId,
+          },
+        },
+        {
+          sourceRole: req.user?.role,
+          sourceUserId: req.user.id,
+          sourceName: req.user?.name || "Operations Manager",
+        }
+      );
+    }
+
+    res.status(201).json({
+      success: true,
+      message: "Query created successfully",
+      data: newQuery,
     });
   } catch (error) {
     next(error);

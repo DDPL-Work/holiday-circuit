@@ -42,6 +42,7 @@ const InternalDMCInvoices = lazy(() => import("../pages/managerPages/financeMana
 const MyFinanceTeam = lazy(() => import("../pages/managerPages/financeManagerPages/MyFinanceTeam"));
 const UserManagement = lazy(() => import("../pages/adminPages/UserManagement"));
 const BPManagement = lazy(() => import("../pages/managerPages/opsManagerPages/BPManagement"));
+const AddNewQuery = lazy(() => import("../pages/managerPages/opsManagerPages/AddNewQuery"));
 
 const routeFallbackElement = (
   <div className="absolute inset-0 bg-black/25 backdrop-blur-[5px] flex items-center justify-center z-50 select-none pointer-events-none w-full h-full min-h-[30vh]">
@@ -91,6 +92,13 @@ export const appRouter = createBrowserRouter([
               { path: "/ops/inc-exc/create", element: lazyPage(IncExcCreate) },
               { path: "/ops/inc-exc/:id/edit", element: lazyPage(IncExcEdit) },
               { path: "/ops/inc-exc/:id", element: lazyPage(IncExcDetails) },
+              { path: "/operationManager/addNewQuery", element: lazyPage(AddNewQuery) },
+              { path: "/agent/dashboard", element: lazyPage(AgentDashboard) },
+              { path: "/agent/queries", element: lazyPage(Queries) },
+              { path: "/agent/bookings", element: lazyPage(ActiveBookings) },
+              { path: "/agent/documents", element: lazyPage(DocumentPortal) },
+              { path: "/agent/finance", element: lazyPage(Finance) },
+              { path: "/agent/assets", element: lazyPage(AssetLibrary) },
             ],
           },
         ],
@@ -106,6 +114,7 @@ export const appRouter = createBrowserRouter([
               { path: "/operationManager/allTeamQueries", element: lazyPage(AllTeamQueries) },
               { path: "/operationManager/myTeam", element: lazyPage(MyOperationTeam) },
               { path: "/operationManager/bp-management", element: lazyPage(BPManagement) },
+              { path: "/operationManager/addNewQuery", element: lazyPage(AddNewQuery) },
             ],
           },
         ],
