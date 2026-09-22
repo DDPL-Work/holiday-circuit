@@ -346,7 +346,7 @@ export const buildAgentClientQuotationTemplate = (quoteDetails = {}) => {
   
   const companyAddress = isOps 
     ? QUOTATION_BRAND.address 
-    : (quoteDetails.agentCompanyAddress || quoteDetails.companyAddress || "KG 3/69, Ground Floor, Vikas Puri, New Delhi, Delhi - 110018");
+    : (quoteDetails.agentCompanyAddress || quoteDetails.companyAddress || (brandName === QUOTATION_BRAND.name ? QUOTATION_BRAND.address : ""));
   const agentPhone = isOps 
     ? QUOTATION_BRAND.phone 
     : (quoteDetails.agentPhone || "");
@@ -2353,11 +2353,21 @@ export const sendAgentClientQuotationMail = async (email, quoteDetails = {}) => 
     console.error("Failed to generate PDF for agent quotation email attachment:", pdfError);
   }
 
+  const brandSenderName = String(quoteDetails.agentBrandingName || quoteDetails.agencyName || "").trim();
+  const senderDisplayName = brandSenderName && brandSenderName.toLowerCase() !== "holiday circuit"
+    ? brandSenderName
+    : "Holiday Circuit";
+
+  const defaultFrom = MAIL_FROM_ADDRESS;
+  const rawEmailMatch = defaultFrom.match(/<([^>]+)>/);
+  const actualEmail = rawEmailMatch ? rawEmailMatch[1] : defaultFrom;
+  const customFromAddress = `"${senderDisplayName}" <${actualEmail}>`;
+
   const info = await transporter.sendMail({
-    from: MAIL_FROM_ADDRESS,
+    from: customFromAddress,
     to: email,
-    replyTo: MAIL_REPLY_TO_ADDRESS,
-    subject: `Your Quotation - ${quoteDetails.destination || quoteDetails.quotationNumber || "Holiday Circuit"}`,
+    replyTo: quoteDetails.agentEmail || MAIL_REPLY_TO_ADDRESS,
+    subject: `Your Quotation - ${quoteDetails.destination || quoteDetails.quotationNumber || senderDisplayName}`,
     html,
     text,
     attachments,

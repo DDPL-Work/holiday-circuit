@@ -27,13 +27,22 @@ const COMMON_DOMAIN_TYPOS = new Map([
   ["icloud.co", "icloud.com"],
 ]);
 
-const OPS_EXEC_PERMISSIONS = ["View", "Edit", "Export", "Manage Booking"];
+const AVAILABLE_PERMISSIONS = [
+  { id: "View", label: "View Access", desc: "View assigned queries, dashboard & bookings" },
+  { id: "Edit", label: "Edit Access", desc: "Edit assigned quotations & service items" },
+  { id: "Export", label: "Export Data", desc: "Export report sheets and transaction logs" },
+  { id: "Manage Booking", label: "Manage Booking", desc: "Process vouchers & booking acceptances" },
+  { id: "Create Query", label: "Create Query", desc: "Allows executive to create new client queries", isSpecial: true },
+];
+
+const INITIAL_PERMISSIONS = ["View", "Edit", "Export", "Manage Booking"];
 const INITIAL_FORM = {
   fullName: "",
   email: "",
   phone: "",
   employeeId: "",
   designation: "",
+  permissions: INITIAL_PERMISSIONS,
   passwordMode: "auto",
   manualPassword: "",
   accountStatus: "Active",
@@ -158,7 +167,7 @@ export default function AddOpsExecutiveModal({ loading, managerName, onClose, on
         employeeId: form.employeeId.trim(),
         department: "Operations",
         designation: form.designation.trim(),
-        permissions: OPS_EXEC_PERMISSIONS,
+        permissions: form.permissions,
         passwordMode: form.passwordMode,
         manualPassword: form.manualPassword,
         accountStatus: form.accountStatus,
@@ -184,7 +193,7 @@ export default function AddOpsExecutiveModal({ loading, managerName, onClose, on
         if (event.target === event.currentTarget && !loading) onClose();
       }}
     >
-      <div className="w-full max-w-[460px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_28px_70px_rgba(15,23,42,0.28)]">
+      <div className="w-full max-w-[1000px] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_28px_70px_rgba(15,23,42,0.28)]">
         <div className="flex items-start justify-between bg-[#233047] px-5 py-4 text-white">
           <div className="flex items-start gap-3">
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/12">
@@ -352,14 +361,60 @@ export default function AddOpsExecutiveModal({ loading, managerName, onClose, on
                 </div>
 
                 <div>
-                  <p className="mb-2 text-xs font-medium text-slate-600">Permissions</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    {OPS_EXEC_PERMISSIONS.map((permission) => (
-                      <div key={permission} className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600">
-                        <Check className="h-3.5 w-3.5 text-slate-400" />
-                        {permission}
-                      </div>
-                    ))}
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs font-semibold text-slate-700">Permissions & Access</p>
+                    <span className="text-[11px] text-slate-400 font-medium">
+                      {form.permissions.length} active
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2.5">
+                    {AVAILABLE_PERMISSIONS.map((perm) => {
+                      const isChecked = form.permissions.includes(perm.id);
+                      return (
+                        <button
+                          key={perm.id}
+                          type="button"
+                          onClick={() => {
+                            const next = isChecked
+                              ? form.permissions.filter((p) => p !== perm.id)
+                              : [...form.permissions, perm.id];
+                            updateField("permissions", next);
+                          }}
+                          className={`flex items-start gap-2.5 rounded-xl border p-2.5 text-left transition cursor-pointer ${
+                            isChecked
+                              ? perm.isSpecial
+                                ? "border-blue-400 bg-blue-50/90 shadow-xs ring-1 ring-blue-300/60"
+                                : "border-blue-200 bg-blue-50/40 shadow-xs"
+                              : "border-slate-200 bg-white hover:border-slate-300 opacity-60"
+                          }`}
+                        >
+                          <span
+                            className={`mt-0.5 flex h-4 w-4 items-center justify-center rounded border transition shrink-0 ${
+                              isChecked
+                                ? "border-[#3E63DD] bg-[#3E63DD] text-white"
+                                : "border-slate-300 bg-white text-transparent"
+                            }`}
+                          >
+                            <Check className="h-2.5 w-2.5" strokeWidth={3} />
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="text-xs font-bold text-slate-800 leading-tight">
+                                {perm.label}
+                              </span>
+                              {perm.isSpecial && (
+                                <span className="rounded bg-blue-100 px-1.5 py-0.5 text-[8.5px] font-extrabold text-[#3E63DD] uppercase tracking-wider">
+                                  Tab
+                                </span>
+                              )}
+                            </div>
+                            <p className="mt-0.5 text-[10.5px] text-slate-500 leading-snug">
+                              {perm.desc}
+                            </p>
+                          </div>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
 

@@ -85,6 +85,9 @@ import {
   inferSharingLabel,
   fetchQuotationsByQuery,
   getSavedAgentBranding,
+  RenderTermsAndConditions,
+  calculateAgentMarkupPreview,
+  validateAgentMarkupInput,
 } from "./queryDetails/utils/queryDetailsHelpers";
 
 import { QueryHeaderCard } from "./queryDetails/components/Header/QueryHeaderCard";
@@ -92,7 +95,7 @@ import { QueryTabNavigation } from "./queryDetails/components/Navigation/QueryTa
 import { RevisionModal } from "./queryDetails/components/Modals/RevisionModal";
 import { SendSuccessModal } from "./queryDetails/components/Modals/SendSuccessModal";
 
-const QueryDetails = ({ query, onClose, onRefresh }) => {
+const QueryDetails = ({ query, onClose, onRefresh, initialQuoteId }) => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const currentUser = useSelector((state) => state.auth.user);
@@ -100,7 +103,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
   const [expandedQuoteIds, setExpandedQuoteIds] = useState({});
   const [showQuoteHistory, setShowQuoteHistory] = useState(false);
   const [quoteDropdownPos, setQuoteDropdownPos] = useState({ top: 0, left: 0 });
-  const [selectedQuoteId, setSelectedQuoteId] = useState(null);
+  const [selectedQuoteId, setSelectedQuoteId] = useState(initialQuoteId || null);
   const [markupType, setMarkupType] = useState("PERCENT");
   const [markupValue, setMarkupValue] = useState("");
   const [isMarkupModalOpen, setIsMarkupModalOpen] = useState(false);
@@ -132,6 +135,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
   const [brandLogoFile, setBrandLogoFile] = useState(null);
   const [brandLogoUrl, setBrandLogoUrl] = useState("");
   const [activeTab, setActiveTab] = useState(() => {
+    if (initialQuoteId) return "quotes";
     const tabParam = new URLSearchParams(window.location.search).get("tab");
     if (tabParam === "docs" || tabParam === "documents") return "docs";
     return "basic";
@@ -140,6 +144,13 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
   const [showPackageThreeDotsMenu, setShowPackageThreeDotsMenu] = useState(false);
   const threeDotsMenuRef = useRef(null);
   const packageThreeDotsMenuRef = useRef(null);
+
+  useEffect(() => {
+    if (initialQuoteId) {
+      setSelectedQuoteId(initialQuoteId);
+      setActiveTab("quotes");
+    }
+  }, [initialQuoteId]);
 
   const [tasks, setTasks] = useState([]);
   const [openTaskMenuId, setOpenTaskMenuId] = useState(null);
@@ -3705,12 +3716,8 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
 
                       {isTermsExpanded && (
                         <div className="pt-3 pl-6 font-sans text-xs sm:text-sm text-slate-800 leading-relaxed space-y-4">
-                          {quote.termsAndConditions && Array.isArray(quote.termsAndConditions) && quote.termsAndConditions.length > 0 ? (
-                            <ul className="list-disc pl-5 space-y-2">
-                              {quote.termsAndConditions.map((term, tIdx) => (
-                                <li key={tIdx}>{term}</li>
-                              ))}
-                            </ul>
+                          {quote.termsAndConditions && (Array.isArray(quote.termsAndConditions) ? quote.termsAndConditions.length > 0 : Boolean(quote.termsAndConditions)) ? (
+                            <RenderTermsAndConditions terms={quote.termsAndConditions} />
                           ) : (
                             <>
                               <p>
@@ -10408,12 +10415,8 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
 
                         {packageAccordions.terms && (
                           <div className="pt-3 pl-6 font-sans text-xs sm:text-sm text-slate-800 leading-relaxed space-y-4">
-                            {selectedPkg?.termsAndConditions && Array.isArray(selectedPkg.termsAndConditions) && selectedPkg.termsAndConditions.length > 0 ? (
-                              <ul className="list-disc pl-5 space-y-2">
-                                {selectedPkg.termsAndConditions.map((term, tIdx) => (
-                                  <li key={tIdx}>{term}</li>
-                                ))}
-                              </ul>
+                            {selectedPkg?.termsAndConditions && (Array.isArray(selectedPkg.termsAndConditions) ? selectedPkg.termsAndConditions.length > 0 : Boolean(selectedPkg.termsAndConditions)) ? (
+                              <RenderTermsAndConditions terms={selectedPkg.termsAndConditions} />
                             ) : (
                               <>
                                 <p>

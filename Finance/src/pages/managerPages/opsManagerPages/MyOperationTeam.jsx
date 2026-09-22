@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { useSelector } from "react-redux";
-import { CalendarRange, ChevronDown, Hash, Mail, MoreHorizontal, Phone } from "lucide-react";
+import { CalendarRange, ChevronDown, FilePlus2, Hash, Mail, MoreHorizontal, Pencil, Phone } from "lucide-react";
 import API from "../../../utils/Api";
 import AddOpsExecutiveModal from "../../../modal/AddOpsExecutiveModal";
+import EditOpsExecutiveModal from "../../../modal/EditOpsExecutiveModal";
 import {
   OpsManagerReassignModal,
 } from "../../../modal/OpsManagerReassignModals";
@@ -21,7 +22,7 @@ function IconUserPlus({ size = 15 }) {
   );
 }
 
-function IconUsers({ size = 17, color = "#378ADD" }) {
+function IconUsers({ size = 17, color = "#3E63DD" }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
@@ -65,13 +66,13 @@ function IconAlertTriangle({ size = 13 }) {
 function perfBarColor(p) {
   if (p >= 90) return "bg-emerald-500";
   if (p >= 75) return "bg-amber-500";
-  return "bg-rose-500";
+  return "bg-[#EF4444]";
 }
 
 function perfBarTrackColor(p) {
   if (p >= 90) return "bg-emerald-100";
   if (p >= 75) return "bg-amber-100";
-  return "bg-rose-100";
+  return "bg-red-100";
 }
 
 function getPerformanceValueClass(p) {
@@ -81,7 +82,7 @@ function getPerformanceValueClass(p) {
 
   if (p >= 90) return "text-emerald-600";
   if (p >= 75) return "text-amber-600";
-  return "text-rose-500";
+  return "text-[#EF4444]";
 }
 
 function formatPercentValue(value) {
@@ -136,8 +137,8 @@ function getTrendMeta(delta, fallbackLabel = "No comparison available") {
   }
 
   return {
-    badgeClass: "border-rose-200 bg-rose-50 text-rose-600",
-    valueClass: "text-rose-500",
+    badgeClass: "border-red-200 bg-red-50 text-[#EF4444]",
+    valueClass: "text-[#EF4444]",
     label: `${prefix}${magnitude}% dropped`,
     shortLabel: `${prefix}${magnitude}%`,
     directionClass: "rotate-180",
@@ -146,21 +147,20 @@ function getTrendMeta(delta, fallbackLabel = "No comparison available") {
 }
 
 function getRowTone(status) {
-  // Return premium subtle background colors with silky hover transitions
   if (status === "At Risk") {
-    return "bg-white hover:bg-gradient-to-r hover:from-rose-50/20 hover:to-white/80 transition-all duration-300";
+    return "bg-white hover:bg-red-50/20 transition-all duration-200";
   }
 
   if (status === "Active") {
-    return "bg-white hover:bg-gradient-to-r hover:from-emerald-50/15 hover:to-white/80 transition-all duration-300";
+    return "bg-white hover:bg-blue-50/20 transition-all duration-200";
   }
 
-  return "bg-white hover:bg-gradient-to-r hover:from-amber-50/15 hover:to-white/80 transition-all duration-300";
+  return "bg-white hover:bg-amber-50/20 transition-all duration-200";
 }
 
 const statusStyles = {
   Active: "border border-emerald-200 bg-emerald-50 text-emerald-700",
-  "At Risk": "border border-rose-200 bg-rose-50 text-rose-600",
+  "At Risk": "border border-red-200 bg-red-50 text-[#EF4444]",
   Busy: "border border-amber-200 bg-amber-50 text-amber-700",
 };
 
@@ -169,10 +169,10 @@ function StatusBadge({ status }) {
     status === "Active"
       ? "bg-emerald-500 animate-pulse"
       : status === "At Risk"
-        ? "bg-rose-500"
+        ? "bg-[#EF4444]"
         : "bg-amber-500";
   return (
-    <span className={`inline-flex items-center gap-1.5 justify-center rounded-full px-3 py-1 text-[11px] font-semibold border whitespace-nowrap transition-all duration-200 shadow-sm ${statusStyles[status] || statusStyles.Active}`}>
+    <span className={`inline-flex items-center gap-1.5 justify-center rounded-md px-2.5 py-1 text-[11px] font-semibold border whitespace-nowrap transition-all duration-200 shadow-sm ${statusStyles[status] || statusStyles.Active}`}>
       <span className={`h-1.5 w-1.5 rounded-full ${dotColor}`} />
       {status}
     </span>
@@ -202,6 +202,9 @@ export default function MyOperationTeam() {
 
   const [showAdd, setShowAdd] = useState(false);
   const [addSubmitting, setAddSubmitting] = useState(false);
+  const [editTarget, setEditTarget] = useState(null);
+  const [editSubmitting, setEditSubmitting] = useState(false);
+  const [togglingQueryId, setTogglingQueryId] = useState(null);
   const performanceCardTimerRef = useRef(null);
   const performanceCardOpenFrameRef = useRef(null);
   const hasLoadedOnceRef = useRef(false);
@@ -457,6 +460,33 @@ export default function MyOperationTeam() {
     }
   };
 
+  const handleToggleQueryPermission = async (member) => {
+    try {
+      setTogglingQueryId(member.id);
+      const { data } = await API.patch(`/ops/manager/team/${member.id}/toggle-query-permission`);
+      toast.success(data?.message || "Query permission updated");
+      await loadTeam({ background: true, notifyOnError: false });
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Failed to update query permission");
+    } finally {
+      setTogglingQueryId(null);
+    }
+  };
+
+  const handleUpdateExecutive = async (userId, payload) => {
+    try {
+      setEditSubmitting(true);
+      const { data } = await API.put(`/ops/manager/team/${userId}`, payload);
+      toast.success(data?.message || "Ops executive updated successfully");
+      await loadTeam({ background: true, notifyOnError: false });
+      return data;
+    } catch (err) {
+      throw err;
+    } finally {
+      setEditSubmitting(false);
+    }
+  };
+
   const addedThisWeek = summary?.addedThisWeek ?? 0;
   const atRisk = summary?.atRiskExecutives ?? 0;
   const avgPerf = summary?.avgTeamPerformance ?? 0;
@@ -544,7 +574,7 @@ export default function MyOperationTeam() {
           </div>
           <button
             onClick={() => setShowAdd(true)}
-            className="flex items-center gap-2 px-6 py-2.5 rounded-full bg-gradient-to-r from-[#0f172a] via-[#1e3a8a] to-[#2563eb] hover:from-[#1e3a8a] hover:via-[#2563eb] hover:to-[#3b82f6] text-white text-sm font-extrabold shadow-md shadow-blue-500/10 hover:shadow-lg hover:shadow-blue-500/15 transition-all duration-300 transform active:scale-[0.98] cursor-pointer"
+            className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-[#3E63DD] hover:bg-[#3353c7] text-white text-sm font-bold shadow-sm hover:shadow transition-all duration-200 transform active:scale-[0.98] cursor-pointer"
           >
             <IconUserPlus />
             Add Ops Executive
@@ -552,12 +582,12 @@ export default function MyOperationTeam() {
         </div>
 
         {error && (
-          <div className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600 flex items-center justify-between gap-3">
+          <div className="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-[#EF4444] flex items-center justify-between gap-3">
             <span>{error}</span>
             <button
               type="button"
               onClick={() => loadTeam({ background: hasLoadedOnceRef.current })}
-              className="rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-100 transition"
+              className="rounded-md border border-red-200 bg-white px-3 py-1.5 text-xs font-semibold text-[#EF4444] hover:bg-red-50 transition"
             >
               Retry
             </button>
@@ -566,43 +596,43 @@ export default function MyOperationTeam() {
 
         <div className="mb-7 grid gap-4 md:grid-cols-3">
           {/* Total Executives */}
-          <div className="group relative flex min-h-[120px] flex-col justify-between rounded-2xl border border-slate-200 border-b-[4.5px] p-5 bg-gradient-to-br from-blue-50/90 via-white to-white border-blue-100/70 border-b-blue-600 hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300">
+          <div className="group relative flex min-h-[120px] flex-col justify-between rounded-xl border border-slate-200 border-b-[3.5px] p-5 bg-gradient-to-br from-blue-50/50 via-white to-white border-b-[#3E63DD] hover:shadow-md hover:-translate-y-0.5 transition-all duration-200">
             <div>
               <p className="text-[10px] font-extrabold uppercase tracking-[0.15em] text-slate-400 whitespace-nowrap">Total Executives</p>
               <p className="text-3xl font-black text-slate-800 tracking-tight leading-none mt-1.5">{summary?.totalExecutives ?? team.length}</p>
             </div>
-            <p className="text-xs text-green-600 font-bold mt-3 flex items-center gap-1.5 bg-green-50/50 rounded-lg px-2.5 py-1 border border-green-100/60 self-start">
+            <p className="text-xs text-emerald-600 font-bold mt-3 flex items-center gap-1.5 bg-emerald-50/70 rounded-md px-2.5 py-1 border border-emerald-100 self-start">
               <IconTrendUp />
               {addedThisWeek} added this week
             </p>
           </div>
 
           {/* At Risk Executives */}
-          <div className="group relative flex min-h-[120px] flex-col justify-between rounded-2xl border border-slate-200 border-b-[4.5px] p-5 bg-gradient-to-br from-rose-50/90 via-white to-white border-rose-100/70 border-b-rose-600 hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300">
+          <div className="group relative flex min-h-[120px] flex-col justify-between rounded-xl border border-slate-200 border-b-[3.5px] p-5 bg-gradient-to-br from-red-50/50 via-white to-white border-b-[#EF4444] hover:shadow-md hover:-translate-y-0.5 transition-all duration-200">
             <div>
               <p className="text-[10px] font-extrabold uppercase tracking-[0.15em] text-slate-400 whitespace-nowrap">At Risk Executives</p>
-              <p className="text-3xl font-black text-rose-600 tracking-tight leading-none mt-1.5">{atRisk}</p>
+              <p className="text-3xl font-black text-[#EF4444] tracking-tight leading-none mt-1.5">{atRisk}</p>
             </div>
-            <p className="text-xs text-rose-600 font-bold mt-3 flex items-center gap-1.5 bg-rose-50/50 rounded-lg px-2.5 py-1 border border-rose-100/60 self-start">
+            <p className="text-xs text-[#EF4444] font-bold mt-3 flex items-center gap-1.5 bg-red-50/80 rounded-md px-2.5 py-1 border border-red-200/80 self-start">
               <IconAlertTriangle />
               Need immediate attention
             </p>
           </div>
 
           {/* Avg. Team Performance */}
-          <div className="group relative flex min-h-[120px] flex-col justify-between rounded-2xl border border-slate-200 border-b-[4.5px] p-5 bg-gradient-to-br from-emerald-50/90 via-white to-white border-emerald-100/70 border-b-emerald-600 hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300">
+          <div className="group relative flex min-h-[120px] flex-col justify-between rounded-xl border border-slate-200 border-b-[3.5px] p-5 bg-gradient-to-br from-emerald-50/50 via-white to-white border-b-emerald-600 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200">
             <div>
               <p className="text-[10px] font-extrabold uppercase tracking-[0.15em] text-slate-400 whitespace-nowrap">Avg. Team Performance</p>
               <p className="text-3xl font-black text-slate-800 tracking-tight leading-none mt-1.5">
                 {displayedAvgPerformance === null ? "--" : `${displayedAvgPerformance}%`}
               </p>
             </div>
-            <p className={`text-xs font-bold mt-3 flex items-center gap-1.5 rounded-lg px-2.5 py-1 border self-start ${
+            <p className={`text-xs font-bold mt-3 flex items-center gap-1.5 rounded-md px-2.5 py-1 border self-start ${
               customRangePending 
-                ? "text-slate-500 bg-slate-50 border-slate-100" 
+                ? "text-slate-500 bg-slate-50 border-slate-200" 
                 : performanceDeltaClass === "text-green-600" 
-                  ? "text-green-600 bg-green-50/50 border-green-100/60" 
-                  : "text-rose-600 bg-rose-50/50 border-rose-100/60"
+                  ? "text-emerald-600 bg-emerald-50/70 border-emerald-100" 
+                  : "text-[#EF4444] bg-red-50/80 border-red-200/80"
             }`}>
               <IconTrendUp />
               {customRangePending
@@ -614,18 +644,18 @@ export default function MyOperationTeam() {
           </div>
         </div>
 
-        <div className="mb-7 rounded-[20px] border border-slate-200 bg-gradient-to-br from-slate-50/20 via-white to-white p-5">
+        <div className="mb-7 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
             <div className="space-y-2">
               <div className="flex flex-wrap gap-2">
-                <div className="inline-flex items-center gap-2 rounded-full bg-blue-50 border border-blue-100/60 px-3.5 py-1.5 text-xs font-bold text-blue-700">
-                  <CalendarRange className="h-3.5 w-3.5 text-blue-600" />
+                <div className="inline-flex items-center gap-2 rounded-md bg-blue-50 border border-blue-200/80 px-3.5 py-1.5 text-xs font-bold text-[#3E63DD]">
+                  <CalendarRange className="h-3.5 w-3.5 text-[#3E63DD]" />
                   {customRangePending
                     ? "Select both dates to load performance"
                     : `Showing performance for ${periodLabel}`}
                 </div>
                 {refreshing ? (
-                  <div className="inline-flex items-center gap-2 rounded-full bg-slate-100 border border-slate-200/50 px-3.5 py-1.5 text-xs font-bold text-slate-600 animate-pulse">
+                  <div className="inline-flex items-center gap-2 rounded-md bg-slate-100 border border-slate-200 px-3.5 py-1.5 text-xs font-bold text-slate-600 animate-pulse">
                     <span className="h-2 w-2 rounded-full bg-slate-400 animate-ping" />
                     Updating team data...
                   </div>
@@ -642,7 +672,7 @@ export default function MyOperationTeam() {
                   <select
                     value={period}
                     onChange={(event) => setPeriod(event.target.value)}
-                    className="h-11 w-full appearance-none rounded-full border border-slate-200 bg-slate-50/50 pl-4 pr-10 text-sm text-slate-700 outline-none transition focus:border-blue-400 focus:bg-white cursor-pointer font-semibold"
+                    className="h-10 w-full appearance-none rounded-lg border border-slate-200 bg-slate-50/50 pl-3.5 pr-10 text-sm text-slate-700 outline-none transition focus:border-[#3E63DD] focus:bg-white cursor-pointer font-semibold"
                   >
                     <option value="current_month">Current Month</option>
                     <option value="previous_month">Previous Month</option>
@@ -650,7 +680,7 @@ export default function MyOperationTeam() {
                     <option value="previous_year">Previous Year</option>
                     <option value="custom">Custom Range</option>
                   </select>
-                  <ChevronDown className="pointer-events-none absolute right-4.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <ChevronDown className="pointer-events-none absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 </div>
               </label>
 
@@ -662,7 +692,7 @@ export default function MyOperationTeam() {
                       type="date"
                       value={customStartDate}
                       onChange={(event) => setCustomStartDate(event.target.value)}
-                      className="h-11 w-full rounded-full border border-slate-200 bg-slate-50/50 px-5 text-sm text-slate-750 outline-none transition focus:border-blue-400 focus:bg-white cursor-pointer font-semibold"
+                      className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50/50 px-3.5 text-sm text-slate-700 outline-none transition focus:border-[#3E63DD] focus:bg-white cursor-pointer font-semibold"
                     />
                   </label>
                   <label className="block flex-1 min-w-[160px] max-w-sm">
@@ -671,7 +701,7 @@ export default function MyOperationTeam() {
                       type="date"
                       value={customEndDate}
                       onChange={(event) => setCustomEndDate(event.target.value)}
-                      className="h-11 w-full rounded-full border border-slate-200 bg-slate-50/50 px-5 text-sm text-slate-750 outline-none transition focus:border-blue-400 focus:bg-white cursor-pointer font-semibold"
+                      className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50/50 px-3.5 text-sm text-slate-700 outline-none transition focus:border-[#3E63DD] focus:bg-white cursor-pointer font-semibold"
                     />
                   </label>
                 </>
@@ -680,25 +710,25 @@ export default function MyOperationTeam() {
           </div>
         </div>
 
-        <div className="overflow-hidden rounded-[20px] border border-slate-200 bg-white shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
-          <div className="flex items-center gap-2 border-b border-slate-200 bg-slate-50/70 px-5 py-4">
+        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+          <div className="flex items-center gap-2 border-b border-slate-200 bg-slate-50/70 px-5 py-3.5">
             <IconUsers />
-            <span className="text-[15px] font-semibold text-slate-900">Executive Directory</span>
+            <span className="text-[15px] font-bold text-slate-900">Executive Directory</span>
             {refreshing ? (
               <span className="ml-auto text-[11px] font-medium text-slate-500">Refreshing...</span>
             ) : null}
           </div>
 
           <div className="thin-scrollbar overflow-x-auto">
-            <table className="min-w-[1140px] w-full table-fixed">
+            <table className="min-w-[1260px] w-full table-fixed">
               <colgroup>
+                <col style={{ width: "190px" }} />
                 <col style={{ width: "200px" }} />
-                <col style={{ width: "210px" }} />
-                <col style={{ width: "120px" }} />
-                <col style={{ width: "130px" }} />
-                <col style={{ width: "240px" }} />
                 <col style={{ width: "110px" }} />
-                <col style={{ width: "130px" }} />
+                <col style={{ width: "110px" }} />
+                <col style={{ width: "220px" }} />
+                <col style={{ width: "100px" }} />
+                <col style={{ width: "280px" }} />
               </colgroup>
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50/50">
@@ -749,13 +779,13 @@ export default function MyOperationTeam() {
                       <tr key={member.id} className={`border-b border-slate-200/90 transition-colors ${rowTone}`}>
                         <td className={`pl-6 pr-4 py-2.5 align-middle border-l-[3.5px] transition-all duration-300 ${
                           member.status === "At Risk" 
-                            ? "border-l-rose-500" 
+                            ? "border-l-[#EF4444]" 
                             : member.status === "Active" 
-                              ? "border-l-emerald-500" 
+                              ? "border-l-[#3E63DD]" 
                               : "border-l-amber-500"
                         }`}>
                           <div className="flex items-center gap-3">
-                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 via-indigo-500 to-indigo-600 text-xs font-bold text-white shadow-sm ring-2 ring-white/80">
+                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#3E63DD] text-xs font-bold text-white shadow-sm ring-2 ring-white/80">
                               {member.initials}
                             </div>
                             <div className="min-w-0">
@@ -770,25 +800,25 @@ export default function MyOperationTeam() {
                         <td className="px-4 py-2.5 align-middle">
                           <div className="space-y-1">
                             <div className="flex items-center gap-2 text-[12.5px] text-slate-600">
-                              <Mail className="h-3.5 w-3.5 text-blue-500/85 shrink-0" />
+                              <Mail className="h-3.5 w-3.5 text-[#3E63DD] shrink-0" />
                               <span className="truncate max-w-[210px]">{member.email || "No email mapped"}</span>
                             </div>
                             <div className="flex items-center gap-2 text-[12.5px] text-slate-600">
-                              <Phone className="h-3.5 w-3.5 text-emerald-500/85 shrink-0" />
+                              <Phone className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
                               <span>{member.phone || "No phone mapped"}</span>
                             </div>
                           </div>
                         </td>
                         <td className="px-4 py-2.5 align-middle text-center">
-                          <span className="inline-flex items-center justify-center px-2.5 py-1 rounded-full bg-slate-50 border border-slate-100 text-[13px] font-bold tabular-nums text-slate-800 shadow-sm min-w-[36px]">
+                          <span className="inline-flex items-center justify-center px-2.5 py-1 rounded-md bg-slate-50 border border-slate-200 text-[13px] font-bold tabular-nums text-slate-800 shadow-sm min-w-[36px]">
                             {member.activeQueries}
                           </span>
                         </td>
                         <td className="px-4 py-2.5 align-middle text-center">
-                          <span className={`inline-flex items-center justify-center px-2.5 py-1 rounded-full text-[13px] font-bold tabular-nums shadow-sm min-w-[36px] border ${
+                          <span className={`inline-flex items-center justify-center px-2.5 py-1 rounded-md text-[13px] font-bold tabular-nums shadow-sm min-w-[36px] border ${
                             member.overdueQuotes === 0 
-                              ? "bg-emerald-50/80 border-emerald-100 text-emerald-700" 
-                              : "bg-rose-50 border-rose-100 text-rose-600 animate-pulse"
+                              ? "bg-emerald-50 border-emerald-200 text-emerald-700" 
+                              : "bg-red-50 border-red-200 text-[#EF4444]"
                           }`}>
                             {member.overdueQuotes}
                           </span>
@@ -804,12 +834,12 @@ export default function MyOperationTeam() {
 
                               openPerformanceCard(member.id);
                             }}
-                            className={`flex w-full min-w-0 cursor-pointer items-center gap-3 rounded-2xl border px-3 py-1.5 text-left transition-all duration-300 hover:scale-[1.02] shadow-[0_2px_8px_rgba(15,23,42,0.02)] ${
+                            className={`flex w-full min-w-0 cursor-pointer items-center gap-3 rounded-lg border px-3 py-1.5 text-left transition-all duration-200 hover:border-[#3E63DD] shadow-sm ${
                               hasScopedPerformance
                                 ? compactTrend !== null && compactTrend < 0
-                                  ? "border-rose-200 bg-gradient-to-br from-rose-50/90 to-pink-50/30 hover:from-white hover:to-rose-50/20 hover:border-rose-300 hover:shadow-[0_4px_12px_rgba(244,63,94,0.05)]"
-                                  : "border-emerald-200 bg-gradient-to-br from-emerald-50/80 to-teal-50/30 hover:from-white hover:to-emerald-50/10 hover:border-emerald-300 hover:shadow-[0_4px_12px_rgba(16,185,129,0.05)]"
-                                : "border-slate-200 bg-gradient-to-br from-slate-50 to-slate-100/50 hover:from-white hover:to-slate-50 hover:border-slate-300"
+                                ? "border-red-200 bg-red-50/40 hover:bg-white hover:border-red-300"
+                                : "border-emerald-200 bg-emerald-50/40 hover:bg-white hover:border-emerald-300"
+                                : "border-slate-200 bg-slate-50/50 hover:bg-white hover:border-slate-300"
                             }`}
                           >
                             <div className="min-w-0 flex-1">
@@ -817,7 +847,7 @@ export default function MyOperationTeam() {
                                 <span className="whitespace-nowrap text-[13px] font-bold tabular-nums text-slate-800">
                                   {formatPercentValue(compactPerformance)}
                                 </span>
-                                <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${trendMeta.badgeClass}`}>
+                                <span className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-semibold ${trendMeta.badgeClass}`}>
                                   {trendMeta.showIcon ? (
                                     <span className={`inline-flex ${trendMeta.directionClass}`}>
                                       <IconTrendUp size={11} />
@@ -850,22 +880,64 @@ export default function MyOperationTeam() {
                         <td className={`px-4 py-2.5 align-middle text-center ${isExpanded ? "relative z-40" : ""}`}>
                           <StatusBadge status={member.status} />
                         </td>
-                        <td className="px-4 py-2.5 align-middle text-center">
-                          <button
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              setReassignTarget(member);
-                            }}
-                            disabled={!member.canReassign || team.length < 2}
-                            className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-4.5 py-1.5 text-[11px] font-bold uppercase tracking-wider transition-all duration-300 ${
-                              !member.canReassign || team.length < 2
-                                ? "bg-gradient-to-r from-slate-100 to-slate-200 text-slate-400 cursor-not-allowed border border-slate-200/60"
-                                : "bg-gradient-to-r from-blue-500 via-indigo-500 to-indigo-600 hover:from-blue-600 hover:via-indigo-600 hover:to-indigo-700 text-white shadow-sm hover:shadow-[0_4px_12px_rgba(99,102,241,0.25)] hover:-translate-y-0.5 active:translate-y-0 active:scale-95"
-                            }`}
-                          >
-                            <IconReassign size={11} />
-                            Re-assign
-                          </button>
+                        <td className="px-3 py-2.5 align-middle text-center">
+                          <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                            <button
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setReassignTarget(member);
+                              }}
+                              disabled={!member.canReassign || team.length < 2}
+                              title="Re-assign active queries"
+                              className={`inline-flex items-center gap-1 whitespace-nowrap rounded-md px-2.5 py-1.5 text-[10.5px] font-bold uppercase tracking-wider transition-all duration-200 ${
+                                !member.canReassign || team.length < 2
+                                  ? "bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200"
+                                  : "bg-[#3E63DD] hover:bg-[#3353c7] text-white shadow-xs hover:shadow active:scale-95 cursor-pointer"
+                              }`}
+                            >
+                              <IconReassign size={11} />
+                              Re-assign
+                            </button>
+
+                            {/* Enable / Disable Query Permission Button */}
+                            {(() => {
+                              const hasCreateQuery = Array.isArray(member.permissions) && member.permissions.includes("Create Query");
+                              const isToggling = togglingQueryId === member.id;
+                              return (
+                                <button
+                                  type="button"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    handleToggleQueryPermission(member);
+                                  }}
+                                  disabled={isToggling}
+                                  title={hasCreateQuery ? "Click to disable Create Query permission" : "Click to enable Create Query permission"}
+                                  className={`inline-flex items-center gap-1 whitespace-nowrap rounded-md px-2.5 py-1.5 text-[10.5px] font-bold transition-all duration-200 cursor-pointer border shadow-xs active:scale-95 disabled:opacity-60 ${
+                                    hasCreateQuery
+                                      ? "border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:border-emerald-400"
+                                      : "border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+                                  }`}
+                                >
+                                  <FilePlus2 className={`h-3 w-3 ${hasCreateQuery ? "text-emerald-600" : "text-slate-400"}`} />
+                                  <span>Query: {hasCreateQuery ? "ON" : "OFF"}</span>
+                                </button>
+                              );
+                            })()}
+
+                            {/* Edit Executive Details Button */}
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setEditTarget(member);
+                              }}
+                              title="Edit executive details and permissions"
+                              className="inline-flex items-center gap-1 whitespace-nowrap rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-[10.5px] font-bold text-slate-700 hover:border-[#3E63DD] hover:text-[#3E63DD] hover:bg-blue-50/40 shadow-xs transition-all duration-200 active:scale-95 cursor-pointer"
+                            >
+                              <Pencil className="h-3 w-3" />
+                              Edit
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -890,13 +962,13 @@ export default function MyOperationTeam() {
             }}
           >
             <div
-              className={`relative flex max-h-[calc(100vh-32px)] w-full max-w-[360px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_28px_70px_rgba(15,23,42,0.24)] transition-all duration-300 ease-out ${
+              className={`relative flex max-h-[calc(100vh-32px)] w-full max-w-[360px] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl transition-all duration-300 ease-out ${
                 performanceCard.open ? "translate-y-0 scale-100 opacity-100" : "translate-y-6 scale-[0.96] opacity-0"
                 }`}
             >
               <div className="relative overflow-y-auto thin-scrollbar pb-3.5">
                 {/* 1. Classic Clean Header */}
-                <div className="flex items-start justify-between border-b border-slate-100 bg-gradient-to-r from-slate-50/50 via-white to-slate-50/50 px-5 py-2.5">
+                <div className="flex items-start justify-between border-b border-slate-100 bg-slate-50/50 px-5 py-3">
                   <div className="flex items-center gap-3 min-w-0 pr-4">
                     {performanceMember.profileImage ? (
                       <img
@@ -905,7 +977,7 @@ export default function MyOperationTeam() {
                         className="h-10 w-10 shrink-0 rounded-full object-cover ring-2 ring-white shadow-sm"
                       />
                     ) : (
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 via-indigo-500 to-indigo-600 text-sm font-bold text-white ring-2 ring-white shadow-sm">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#3E63DD] text-sm font-bold text-white ring-2 ring-white shadow-sm">
                         {performanceMember.initials}
                       </div>
                     )}
@@ -919,7 +991,7 @@ export default function MyOperationTeam() {
                   <button
                     type="button"
                     onClick={closePerformanceCard}
-                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-50 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 active:scale-95 cursor-pointer"
+                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-slate-100 text-slate-400 transition hover:bg-slate-200 hover:text-slate-600 active:scale-95 cursor-pointer"
                   >
                     <span className="text-lg leading-none">&times;</span>
                   </button>
@@ -927,13 +999,13 @@ export default function MyOperationTeam() {
 
                 {/* 2. Contact Details */}
                 <div className="px-5 pt-2">
-                  <div className="space-y-1 rounded-xl bg-gradient-to-br from-slate-50/80 to-slate-100/40 border border-slate-200/50 px-4 py-1.5 shadow-[0_2px_8px_rgba(15,23,42,0.01)]">
+                  <div className="space-y-1 rounded-lg bg-slate-50 border border-slate-200 px-4 py-2">
                     <div className="flex items-center gap-2 text-[11.5px] font-semibold text-slate-600">
-                      <Mail className="h-3 w-3 text-blue-500/85 shrink-0" />
+                      <Mail className="h-3 w-3 text-[#3E63DD] shrink-0" />
                       <span className="truncate">{performanceMember.email || "No email mapped"}</span>
                     </div>
                     <div className="flex items-center gap-2 text-[11.5px] font-semibold text-slate-600">
-                      <Phone className="h-3 w-3 text-emerald-500/85 shrink-0" />
+                      <Phone className="h-3 w-3 text-emerald-600 shrink-0" />
                       <span>{performanceMember.phone || "No phone mapped"}</span>
                     </div>
                   </div>
@@ -962,7 +1034,7 @@ export default function MyOperationTeam() {
                             ? "from-emerald-400 to-teal-500" 
                             : performanceMemberCurrent >= 75 
                               ? "from-amber-400 to-orange-500" 
-                              : "from-rose-400 to-pink-500"
+                              : "from-[#EF4444] to-red-400"
                         }`}
                         style={{ width: clampPercentWidth(performanceMemberCurrent) }}
                       />
@@ -973,24 +1045,24 @@ export default function MyOperationTeam() {
                 {/* 4. Classic Metrics Grid */}
                 <div className="mt-2.5 px-5">
                   <div className="grid grid-cols-2 gap-2">
-                    <div className="rounded-xl border border-slate-150 bg-gradient-to-br from-blue-50/30 via-white to-white px-3 py-1.5 shadow-[0_2px_8px_rgba(59,130,246,0.02)] border-b-[3px] border-b-blue-500/80 hover:scale-[1.02] transition-transform duration-200">
-                      <p className="text-[9px] font-bold uppercase tracking-[0.05em] text-slate-450">Scoped Queries</p>
+                    <div className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 border-b-[3px] border-b-[#3E63DD]">
+                      <p className="text-[9px] font-bold uppercase tracking-[0.05em] text-slate-400">Scoped Queries</p>
                       <p className="text-[17px] font-extrabold text-slate-900">{modalCustomRangePending ? "--" : performanceMember.performanceMetrics?.scopedQueries ?? 0}</p>
                     </div>
-                    <div className="rounded-xl border border-slate-150 bg-gradient-to-br from-violet-50/30 via-white to-white px-3 py-1.5 shadow-[0_2px_8px_rgba(139,92,246,0.02)] border-b-[3px] border-b-violet-500/80 hover:scale-[1.02] transition-transform duration-200">
-                      <p className="text-[9px] font-bold uppercase tracking-[0.05em] text-slate-450">Quotes Sent</p>
+                    <div className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 border-b-[3px] border-b-indigo-500">
+                      <p className="text-[9px] font-bold uppercase tracking-[0.05em] text-slate-400">Quotes Sent</p>
                       <p className="text-[17px] font-extrabold text-slate-900">{modalCustomRangePending ? "--" : performanceMember.performanceMetrics?.quoteSentCount ?? 0}</p>
                     </div>
-                    <div className="rounded-xl border border-slate-150 bg-gradient-to-br from-emerald-50/30 via-white to-white px-3 py-1.5 shadow-[0_2px_8px_rgba(16,185,129,0.02)] border-b-[3px] border-b-emerald-500/80 hover:scale-[1.02] transition-transform duration-200">
-                      <p className="text-[9px] font-bold uppercase tracking-[0.05em] text-slate-455">On-Time Rate</p>
+                    <div className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 border-b-[3px] border-b-emerald-500">
+                      <p className="text-[9px] font-bold uppercase tracking-[0.05em] text-slate-400">On-Time Rate</p>
                       <p className="text-[17px] font-extrabold text-slate-900">
                         {modalCustomRangePending || performanceMember.performanceMetrics?.onTimeRate === null || performanceMember.performanceMetrics?.onTimeRate === undefined
                           ? "--"
                           : `${performanceMember.performanceMetrics.onTimeRate}%`}
                       </p>
                     </div>
-                    <div className="rounded-xl border border-slate-150 bg-gradient-to-br from-amber-50/30 via-white to-white px-3 py-1.5 shadow-[0_2px_8px_rgba(245,158,11,0.02)] border-b-[3px] border-b-amber-500/80 hover:scale-[1.02] transition-transform duration-200">
-                      <p className="text-[9px] font-bold uppercase tracking-[0.05em] text-slate-455">Conversion</p>
+                    <div className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 border-b-[3px] border-b-amber-500">
+                      <p className="text-[9px] font-bold uppercase tracking-[0.05em] text-slate-400">Conversion</p>
                       <p className="text-[17px] font-extrabold text-slate-900">
                         {modalCustomRangePending || performanceMember.performanceMetrics?.conversionRate === null || performanceMember.performanceMetrics?.conversionRate === undefined
                           ? "--"
@@ -1002,17 +1074,17 @@ export default function MyOperationTeam() {
 
                 {/* 5. Classic Filter Block */}
                 <div className="mt-2.5 px-5">
-                  <div className="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-50 via-slate-100/50 to-slate-100/30 p-2.5 shadow-inner">
+                  <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-2.5">
                     <div className="mb-1.5 flex items-center justify-between gap-2">
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-450">Performance Range</p>
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Performance Range</p>
                       <div className="flex items-center gap-2">
                         {modalRefreshing ? (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-0.5 text-[9px] font-bold text-slate-500 ring-1 ring-slate-200/50 animate-pulse">
+                          <span className="inline-flex items-center gap-1 rounded-md bg-white px-2 py-0.5 text-[9px] font-bold text-slate-500 border border-slate-200 animate-pulse">
                             <span className="h-1 w-1 rounded-full bg-slate-400" />
                             Updating
                           </span>
                         ) : null}
-                        <span className="text-[9px] font-bold text-slate-500 bg-white/80 border border-slate-200/60 rounded-full px-2 py-0.5">
+                        <span className="text-[9px] font-bold text-slate-600 bg-white border border-slate-200 rounded-md px-2 py-0.5">
                           {modalPeriod === "custom" ? "Custom" : modalPeriodLabel}
                         </span>
                       </div>
@@ -1023,7 +1095,7 @@ export default function MyOperationTeam() {
                         <select
                           value={modalPeriod}
                           onChange={(event) => setModalPeriod(event.target.value)}
-                          className="h-8 w-full appearance-none rounded-full border border-slate-200 bg-white pl-4 pr-10 text-[11px] font-semibold text-slate-700 outline-none transition focus:border-blue-400 focus:bg-white cursor-pointer"
+                          className="h-8 w-full appearance-none rounded-lg border border-slate-200 bg-white pl-3.5 pr-8 text-[11px] font-semibold text-slate-700 outline-none transition focus:border-[#3E63DD] focus:bg-white cursor-pointer"
                         >
                           <option value="current_month">Current Month</option>
                           <option value="previous_month">Previous Month</option>
@@ -1031,7 +1103,7 @@ export default function MyOperationTeam() {
                           <option value="previous_year">Previous Year</option>
                           <option value="custom">Custom Range</option>
                         </select>
-                        <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                        <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                       </div>
 
                       <div className="grid grid-cols-2 gap-1.5">
@@ -1040,14 +1112,14 @@ export default function MyOperationTeam() {
                           value={selectedRangeStartValue}
                           onChange={(event) => setModalCustomStartDate(event.target.value)}
                           disabled={modalPeriod !== "custom"}
-                          className="h-8 w-full rounded-full border border-slate-200 bg-white px-4 text-[10px] font-semibold text-slate-700 outline-none transition focus:border-blue-400 disabled:cursor-not-allowed disabled:bg-slate-50/50 disabled:opacity-60 cursor-pointer"
+                          className="h-8 w-full rounded-lg border border-slate-200 bg-white px-3 text-[10px] font-semibold text-slate-700 outline-none transition focus:border-[#3E63DD] disabled:cursor-not-allowed disabled:bg-slate-100 disabled:opacity-60 cursor-pointer"
                         />
                         <input
                           type="date"
                           value={selectedRangeEndValue}
                           onChange={(event) => setModalCustomEndDate(event.target.value)}
                           disabled={modalPeriod !== "custom"}
-                          className="h-8 w-full rounded-full border border-slate-200 bg-white px-4 text-[10px] font-semibold text-slate-700 outline-none transition focus:border-blue-400 disabled:cursor-not-allowed disabled:bg-slate-50/50 disabled:opacity-60 cursor-pointer"
+                          className="h-8 w-full rounded-lg border border-slate-200 bg-white px-3 text-[10px] font-semibold text-slate-700 outline-none transition focus:border-[#3E63DD] disabled:cursor-not-allowed disabled:bg-slate-100 disabled:opacity-60 cursor-pointer"
                         />
                       </div>
                     </div>
@@ -1073,6 +1145,15 @@ export default function MyOperationTeam() {
           managerName={user?.name || "Operations Manager"}
           onClose={() => setShowAdd(false)}
           onAdd={handleAdd}
+        />
+      )}
+
+      {editTarget && (
+        <EditOpsExecutiveModal
+          executive={editTarget}
+          loading={editSubmitting}
+          onClose={() => setEditTarget(null)}
+          onUpdate={handleUpdateExecutive}
         />
       )}
     </div>

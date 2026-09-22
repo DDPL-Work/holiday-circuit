@@ -120,7 +120,6 @@ export const resolveClientDetails = (data) => {
   let savedLeadName = "";
   let savedLeadPhone = "";
   let savedLeadEmail = "";
-  let savedLeadAddress = "";
 
   if (qId) {
     const rawId = String(qId);
@@ -195,23 +194,6 @@ export const resolveClientDetails = (data) => {
         }
       } catch (e) {}
     }
-
-    const addressKeys = [
-      `trip_tourists_${rawId}_address`,
-      `trip_tourists_${cleanId}_address`,
-      data?._id ? `trip_tourists_${data._id}_address` : null,
-      data?.queryId ? `trip_tourists_${data.queryId}_address` : null,
-    ].filter(Boolean);
-
-    for (const k of addressKeys) {
-      try {
-        const val = localStorage.getItem(k);
-        if (val) {
-          savedLeadAddress = val;
-          break;
-        }
-      } catch (e) {}
-    }
   }
 
   const primaryTourist = savedTourists
@@ -235,7 +217,6 @@ export const resolveClientDetails = (data) => {
   }
 
   const primaryTouristEmail = primaryTourist?.email ? primaryTourist.email.trim() : "";
-  const primaryTouristAddress = primaryTourist?.address ? primaryTourist.address.trim() : "";
 
   // Check data.travelerDetails
   const travelers = Array.isArray(data?.travelerDetails) ? data.travelerDetails : [];
@@ -249,7 +230,6 @@ export const resolveClientDetails = (data) => {
     dbTravelerPhone = `+91-${dbTravelerPhone.replace(/^\+?91-?/, "").trim()}`;
   }
   const dbTravelerEmail = primaryDbTraveler?.email || "";
-  const dbTravelerAddress = primaryDbTraveler?.address || "";
 
   // Resolved Name
   const rawName =
@@ -257,6 +237,7 @@ export const resolveClientDetails = (data) => {
     primaryTouristName ||
     data?.headerLeadTraveler ||
     data?.leadTraveler ||
+    data?.guestDetails?.name ||
     data?.clientName ||
     data?.customerName ||
     data?.guestName ||
@@ -276,6 +257,8 @@ export const resolveClientDetails = (data) => {
     primaryTouristPhone ||
     data?.currentLeadPhone ||
     data?.headerLeadPhone ||
+    data?.guestDetails?.phone ||
+    data?.guestDetails?.phones?.[0]?.number ||
     data?.clientPhone ||
     data?.leadPhone ||
     data?.guestPhone ||
@@ -290,30 +273,31 @@ export const resolveClientDetails = (data) => {
     resolvedPhone = `+91-${resolvedPhone.replace(/^\+?91-?/, "").trim()}`;
   }
 
-  // Resolved Email: Prioritize client / tourist email over agent's login email
+  // Resolved Email
   const resolvedEmail =
     savedLeadEmail ||
     primaryTouristEmail ||
     dbTravelerEmail ||
+    data?.guestDetails?.email ||
     data?.clientEmail ||
     data?.leadEmail ||
     data?.guestEmail ||
     data?.client?.email ||
     (data?.email && !data?.email.includes("agent") ? data.email : "") ||
-    data?.email ||
     "";
 
-  // Resolved Address
-  const resolvedAddress =
-    savedLeadAddress ||
-    primaryTouristAddress ||
-    dbTravelerAddress ||
+  // Resolved Address: clean duplicate country e.g. "Goa, India, India"
+  let resolvedAddress =
     data?.clientAddress ||
     data?.buyerAddress ||
     data?.address ||
     data?.location ||
-    (data?.destination ? `${data.destination}, India` : "") ||
     "";
+
+  if (!resolvedAddress && data?.destination) {
+    const dest = String(data.destination).trim();
+    resolvedAddress = dest.toLowerCase().endsWith("india") ? dest : `${dest}, India`;
+  }
 
   const resolvedCountry =
     data?.buyerCountry ||
@@ -323,16 +307,36 @@ export const resolveClientDetails = (data) => {
 
   return {
     name: cleanName || "Client",
-    phone: resolvedPhone,
-    email: resolvedEmail,
-    address: resolvedAddress,
+    phone: resolvedPhone || "Not Provided",
+    email: resolvedEmail || "Not Provided",
+    address: resolvedAddress || "Not Provided",
     country: resolvedCountry,
   };
 };
 
-const CreateProformaInvoice = ({ onClose, onSave, queryData = {} }) => {
-  const { user: authUser } = useSelector((state) => state.auth || {});
+export const getDynamicSellerDetails = (queryData = {}, authUser = null) => {
+  // 1. Check offline agent organization stored in sessionStorage or localStorage
+  let offlineAgent = null;
+  if (typeof window !== "undefined") {
+    try {
+      const raw =
+        sessionStorage.getItem("offlineAgentOrgData") ||
+        localStorage.getItem("offlineAgentOrgData");
+      if (raw) offlineAgent = JSON.parse(raw);
+    } catch (e) {}
+  }
 
+  let offlineAgentName = "";
+  if (typeof window !== "undefined") {
+    try {
+      offlineAgentName =
+        sessionStorage.getItem("offlineAgentOrgName") ||
+        localStorage.getItem("offlineAgentOrgName") ||
+        "";
+    } catch (e) {}
+  }
+
+  // 2. Check local user
   let localUser = null;
   if (typeof window !== "undefined") {
     try {
@@ -340,120 +344,216 @@ const CreateProformaInvoice = ({ onClose, onSave, queryData = {} }) => {
       if (stored) localUser = JSON.parse(stored);
     } catch (e) {}
   }
-  const effectiveUser = authUser || localUser || queryData?.user || queryData?.agent || {};
 
-  const getDynamicSellerDetails = () => {
-    const rawName =
-      queryData?.sellerName ||
-      queryData?.sellerDetails?.name ||
-      effectiveUser?.companyName ||
-      effectiveUser?.brandingName ||
-      effectiveUser?.agencyName ||
-      queryData?.agencyName ||
-      queryData?.agentName ||
-      effectiveUser?.name ||
-      "";
+  const effectiveUser = authUser || localUser || {};
+  const isInternalStaff = [
+    "operations",
+    "operation_manager",
+    "admin",
+    "finance",
+    "manager",
+  ].includes(String(effectiveUser?.role || "").toLowerCase());
 
-    const rawAddress =
-      queryData?.sellerAddress ||
-      queryData?.sellerDetails?.address ||
-      effectiveUser?.companyAddress ||
-      effectiveUser?.address ||
-      "";
+  // TripSource from queryData or offlineAgent
+  const tripSource =
+    (queryData?.tripSource && typeof queryData.tripSource === "object"
+      ? queryData.tripSource
+      : null) || offlineAgent;
 
-    const rawCityState =
-      queryData?.sellerCityState ||
-      queryData?.sellerDetails?.cityState ||
-      (effectiveUser?.city || effectiveUser?.state
-        ? `${effectiveUser.city || ""}${effectiveUser.city && effectiveUser.state ? ", " : ""}${effectiveUser.state || ""}`.trim()
-        : "") ||
-      "";
+  // Agent user from queryData
+  const agentObj =
+    (queryData?.agent && typeof queryData.agent === "object"
+      ? queryData.agent
+      : null) || {};
 
-    const rawCountryZip =
-      queryData?.sellerCountryZip ||
-      queryData?.sellerDetails?.countryZip ||
-      (effectiveUser?.country || effectiveUser?.zipCode || effectiveUser?.pincode
-        ? `${effectiveUser.country || "India"}${effectiveUser.zipCode || effectiveUser.pincode ? `, ${effectiveUser.zipCode || effectiveUser.pincode}` : ""}`.trim()
-        : "") ||
-      "";
-
-    const rawPhone =
-      queryData?.sellerPhone ||
-      queryData?.sellerDetails?.phone ||
-      effectiveUser?.phone ||
-      effectiveUser?.companyPhone ||
-      queryData?.agentPhone ||
-      "";
-
-    const rawEmail =
-      queryData?.sellerEmail ||
-      queryData?.sellerDetails?.email ||
-      effectiveUser?.email ||
-      effectiveUser?.companyEmail ||
-      queryData?.agentEmail ||
-      "";
-
-    const rawPan =
-      queryData?.sellerPan ||
-      queryData?.sellerDetails?.pan ||
-      effectiveUser?.panNumber ||
-      effectiveUser?.pan ||
-      effectiveUser?.panNo ||
-      queryData?.panNumber ||
-      "NA";
-
-    const rawGst =
-      queryData?.sellerGst ||
-      queryData?.sellerDetails?.gst ||
-      effectiveUser?.gstNumber ||
-      effectiveUser?.gst ||
-      effectiveUser?.gstNo ||
-      queryData?.gstNumber ||
-      queryData?.user?.gstNumber ||
-      "NA";
-
-    const rawMsme =
-      queryData?.sellerMsme ||
-      queryData?.sellerDetails?.msme ||
-      effectiveUser?.msmeNumber ||
-      effectiveUser?.msme ||
-      effectiveUser?.msmeNo ||
-      queryData?.msmeNumber ||
-      "NA";
-
-    const rawTan =
-      queryData?.sellerTan ||
-      queryData?.sellerDetails?.tan ||
-      effectiveUser?.tanNumber ||
-      effectiveUser?.tan ||
-      effectiveUser?.tanNo ||
-      queryData?.tanNumber ||
-      "NA";
-
-    return {
-      name: rawName || "DDLC Company",
-      address: rawAddress || "KG 3/69, Ground Floor, Vikas Puri",
-      cityState: rawCityState || "New Delhi, Delhi",
-      countryZip: rawCountryZip || "India, 110018",
-      phone: rawPhone || "9368825518",
-      email: rawEmail || "joy@gmail.com",
-      pan: rawPan,
-      gst: rawGst,
-      msme: rawMsme,
-      tan: rawTan,
-    };
+  const isInvalidSellerName = (val) => {
+    if (!val) return true;
+    const lower = String(val).trim().toLowerCase();
+    return (
+      lower === "ddlc company pvt. ltd." ||
+      lower === "ddlc company" ||
+      lower === "operation manager" ||
+      lower === "operations manager" ||
+      lower === "admin" ||
+      lower === "company not specified"
+    );
   };
 
+  // 1. RESOLVED SELLER NAME
+  const rawName =
+    (!isInvalidSellerName(queryData?.sellerName) ? queryData.sellerName : "") ||
+    (!isInvalidSellerName(queryData?.sellerDetails?.name) ? queryData.sellerDetails.name : "") ||
+    (!isInvalidSellerName(tripSource?.name) ? tripSource.name : "") ||
+    (!isInvalidSellerName(offlineAgent?.name) ? offlineAgent.name : "") ||
+    (!isInvalidSellerName(offlineAgentName) ? offlineAgentName : "") ||
+    (!isInvalidSellerName(queryData?.agencyName) ? queryData.agencyName : "") ||
+    (!isInvalidSellerName(queryData?.companyName) ? queryData.companyName : "") ||
+    (!isInvalidSellerName(queryData?.querySource) ? queryData.querySource : "") ||
+    (!isInvalidSellerName(agentObj?.companyName) ? agentObj.companyName : "") ||
+    (!isInvalidSellerName(agentObj?.agencyName) ? agentObj.agencyName : "") ||
+    (!isInvalidSellerName(agentObj?.name) ? agentObj.name : "") ||
+    (!isInvalidSellerName(queryData?.agentName) ? queryData.agentName : "") ||
+    (!isInternalStaff && !isInvalidSellerName(effectiveUser?.companyName || effectiveUser?.brandingName || effectiveUser?.agencyName || effectiveUser?.name)
+      ? (effectiveUser.companyName || effectiveUser.brandingName || effectiveUser.agencyName || effectiveUser.name)
+      : "") ||
+    "Holiday Circuit";
+
+  // 2. RESOLVED PHONE
+  const rawPhone =
+    (queryData?.sellerPhone && queryData.sellerPhone !== "9368825518" ? queryData.sellerPhone : "") ||
+    (queryData?.sellerDetails?.phone && queryData.sellerDetails.phone !== "9368825518" ? queryData.sellerDetails.phone : "") ||
+    tripSource?.contactPerson?.phone ||
+    tripSource?.phone ||
+    tripSource?.contactPerson?.phones?.[0]?.number ||
+    offlineAgent?.contactPerson?.phone ||
+    offlineAgent?.phone ||
+    offlineAgent?.contactPerson?.phones?.[0]?.number ||
+    agentObj?.phone ||
+    agentObj?.companyPhone ||
+    queryData?.agentPhone ||
+    (!isInternalStaff ? (effectiveUser?.phone || effectiveUser?.companyPhone) : "") ||
+    "";
+
+  // 3. RESOLVED EMAIL
+  const rawEmail =
+    (queryData?.sellerEmail && queryData.sellerEmail !== "joy@gmail.com" ? queryData.sellerEmail : "") ||
+    (queryData?.sellerDetails?.email && queryData.sellerDetails.email !== "joy@gmail.com" ? queryData.sellerDetails.email : "") ||
+    tripSource?.contactPerson?.email ||
+    tripSource?.email ||
+    offlineAgent?.contactPerson?.email ||
+    offlineAgent?.email ||
+    agentObj?.email ||
+    agentObj?.companyEmail ||
+    queryData?.agentEmail ||
+    (!isInternalStaff ? (effectiveUser?.email || effectiveUser?.companyEmail) : "") ||
+    "";
+
+  // 4. RESOLVED ADDRESS
+  const rawAddress =
+    (queryData?.sellerAddress && !queryData.sellerAddress.includes("Vikas Puri") ? queryData.sellerAddress : "") ||
+    (queryData?.sellerDetails?.address && !queryData.sellerDetails.address.includes("Vikas Puri") ? queryData.sellerDetails.address : "") ||
+    tripSource?.address ||
+    offlineAgent?.address ||
+    agentObj?.companyAddress ||
+    agentObj?.address ||
+    (!isInternalStaff ? (effectiveUser?.companyAddress || effectiveUser?.address) : "") ||
+    (tripSource?.city ? `${tripSource.city}${tripSource.state ? `, ${tripSource.state}` : ""}` : "") ||
+    (offlineAgent?.city ? `${offlineAgent.city}${offlineAgent.state ? `, ${offlineAgent.state}` : ""}` : "") ||
+    "KG 3/69, Ground Floor, Vikas Puri";
+
+  // 5. RESOLVED CITY / STATE
+  const rawCityState =
+    (queryData?.sellerCityState && queryData.sellerCityState !== "New Delhi, Delhi" ? queryData.sellerCityState : "") ||
+    (queryData?.sellerDetails?.cityState && queryData.sellerDetails.cityState !== "New Delhi, Delhi" ? queryData.sellerDetails.cityState : "") ||
+    (tripSource?.city || tripSource?.state
+      ? `${tripSource?.city || ""}${tripSource?.city && tripSource?.state ? ", " : ""}${tripSource?.state || ""}`.trim()
+      : "") ||
+    (offlineAgent?.city || offlineAgent?.state
+      ? `${offlineAgent?.city || ""}${offlineAgent?.city && offlineAgent?.state ? ", " : ""}${offlineAgent?.state || ""}`.trim()
+      : "") ||
+    (agentObj?.city || agentObj?.state
+      ? `${agentObj?.city || ""}${agentObj?.city && agentObj?.state ? ", " : ""}${agentObj?.state || ""}`.trim()
+      : "") ||
+    (!isInternalStaff && (effectiveUser?.city || effectiveUser?.state)
+      ? `${effectiveUser?.city || ""}${effectiveUser?.city && effectiveUser?.state ? ", " : ""}${effectiveUser?.state || ""}`.trim()
+      : "") ||
+    "New Delhi, Delhi";
+
+  // 6. RESOLVED COUNTRY / ZIP
+  const rawCountryZip =
+    (queryData?.sellerCountryZip && queryData.sellerCountryZip !== "India, 110018" ? queryData.sellerCountryZip : "") ||
+    (queryData?.sellerDetails?.countryZip && queryData.sellerDetails.countryZip !== "India, 110018" ? queryData.sellerDetails.countryZip : "") ||
+    (tripSource?.country || tripSource?.pincode
+      ? `${tripSource?.country || "India"}${tripSource?.pincode ? `, ${tripSource.pincode}` : ""}`.trim()
+      : "") ||
+    (offlineAgent?.country || offlineAgent?.pincode
+      ? `${offlineAgent?.country || "India"}${offlineAgent?.pincode ? `, ${offlineAgent.pincode}` : ""}`.trim()
+      : "") ||
+    (agentObj?.country || agentObj?.zipCode || agentObj?.pincode
+      ? `${agentObj?.country || "India"}${agentObj?.zipCode || agentObj?.pincode ? `, ${agentObj.zipCode || agentObj.pincode}` : ""}`.trim()
+      : "") ||
+    (!isInternalStaff && (effectiveUser?.country || effectiveUser?.zipCode || effectiveUser?.pincode)
+      ? `${effectiveUser?.country || "India"}${effectiveUser?.zipCode || effectiveUser?.pincode ? `, ${effectiveUser.zipCode || effectiveUser.pincode}` : ""}`.trim()
+      : "") ||
+    "India, 110018";
+
+  // 7. TAX / REGISTRATION DETAILS (PAN, GST, MSME, TAN)
+  const rawPan =
+    (queryData?.sellerPan && queryData.sellerPan !== "ABAPW1816B" ? queryData.sellerPan : "") ||
+    (queryData?.sellerDetails?.pan && queryData.sellerDetails.pan !== "ABAPW1816B" ? queryData.sellerDetails.pan : "") ||
+    tripSource?.pan ||
+    tripSource?.panNumber ||
+    offlineAgent?.pan ||
+    offlineAgent?.panNumber ||
+    agentObj?.panNumber ||
+    agentObj?.pan ||
+    (!isInternalStaff ? (effectiveUser?.panNumber || effectiveUser?.pan || effectiveUser?.panNo) : "") ||
+    "NA";
+
+  const rawGst =
+    (queryData?.sellerGst && queryData.sellerGst !== "07ABAPW1816B3ZZ" ? queryData.sellerGst : "") ||
+    (queryData?.sellerDetails?.gst && queryData.sellerDetails.gst !== "07ABAPW1816B3ZZ" ? queryData.sellerDetails.gst : "") ||
+    tripSource?.gst ||
+    tripSource?.gstNumber ||
+    offlineAgent?.gst ||
+    offlineAgent?.gstNumber ||
+    agentObj?.gstNumber ||
+    agentObj?.gst ||
+    queryData?.gstNumber ||
+    (!isInternalStaff ? (effectiveUser?.gstNumber || effectiveUser?.gst || effectiveUser?.gstNo) : "") ||
+    "NA";
+
+  const rawMsme =
+    (queryData?.sellerMsme && queryData.sellerMsme !== "UDYAM-DL-10-0079437" ? queryData.sellerMsme : "") ||
+    (queryData?.sellerDetails?.msme && queryData.sellerDetails.msme !== "UDYAM-DL-10-0079437" ? queryData.sellerDetails.msme : "") ||
+    tripSource?.msme ||
+    tripSource?.msmeNumber ||
+    offlineAgent?.msme ||
+    offlineAgent?.msmeNumber ||
+    agentObj?.msmeNumber ||
+    agentObj?.msme ||
+    (!isInternalStaff ? (effectiveUser?.msmeNumber || effectiveUser?.msme || effectiveUser?.msmeNo) : "") ||
+    "NA";
+
+  const rawTan =
+    (queryData?.sellerTan && queryData.sellerTan !== "DELV30189F" ? queryData.sellerTan : "") ||
+    (queryData?.sellerDetails?.tan && queryData.sellerDetails.tan !== "DELV30189F" ? queryData.sellerDetails.tan : "") ||
+    tripSource?.tan ||
+    tripSource?.tanNumber ||
+    offlineAgent?.tan ||
+    offlineAgent?.tanNumber ||
+    agentObj?.tanNumber ||
+    agentObj?.tan ||
+    (!isInternalStaff ? (effectiveUser?.tanNumber || effectiveUser?.tan || effectiveUser?.tanNo) : "") ||
+    "NA";
+
+  return {
+    name: rawName,
+    address: rawAddress,
+    cityState: rawCityState,
+    countryZip: rawCountryZip,
+    phone: rawPhone,
+    email: rawEmail,
+    pan: rawPan,
+    gst: rawGst,
+    msme: rawMsme,
+    tan: rawTan,
+  };
+};
+
+const CreateProformaInvoice = ({ onClose, onSave, queryData = {} }) => {
+  const { user: authUser } = useSelector((state) => state.auth || {});
   const [hideTaxBreakup, setHideTaxBreakup] = useState(false);
-  const [bankName, setBankName] = useState(queryData?.bankName || "");
-  const [branchName, setBranchName] = useState(queryData?.branchName || "");
-  const [accountHolderName, setAccountHolderName] = useState(queryData?.accountHolderName || "");
-  const [accountNumber, setAccountNumber] = useState(queryData?.accountNumber || "");
-  const [ifscCode, setIfscCode] = useState(queryData?.ifscCode || "");
+  const bankInfo = queryData?.bankDetails || queryData?.bank || {};
+  const [bankName, setBankName] = useState(queryData?.bankName || bankInfo?.bankName || "");
+  const [branchName, setBranchName] = useState(queryData?.branchName || bankInfo?.branchName || "");
+  const [accountHolderName, setAccountHolderName] = useState(queryData?.accountHolderName || bankInfo?.accountHolderName || "");
+  const [accountNumber, setAccountNumber] = useState(queryData?.accountNumber || bankInfo?.accountNumber || "");
+  const [ifscCode, setIfscCode] = useState(queryData?.ifscCode || bankInfo?.ifscCode || "");
   const [overview, setOverview] = useState("");
   const [specialNotes, setSpecialNotes] = useState("");
   const [termsConditions, setTermsConditions] = useState(
-    queryData?.termsConditions || queryData?.terms || ""
+    queryData?.termsConditions || queryData?.terms || "Invoice TnC"
   );
   const [termsList, setTermsList] = useState([]);
   const [loadingTerms, setLoadingTerms] = useState(false);
@@ -471,7 +571,11 @@ const CreateProformaInvoice = ({ onClose, onSave, queryData = {} }) => {
         try {
           res = await API.get("/agent/terms");
         } catch (e) {
-          console.warn("Could not fetch agent terms:", e);
+          try {
+            res = await API.get("/admin/terms");
+          } catch (err) {
+            console.error("Failed to fetch terms:", err);
+          }
         }
         let list = [];
         if (Array.isArray(res?.data)) {
@@ -503,20 +607,16 @@ const CreateProformaInvoice = ({ onClose, onSave, queryData = {} }) => {
     return Number(cleaned) || 0;
   };
 
-
-
   const clientInfo = resolveClientDetails(queryData);
   const queryId = queryData?.queryId || queryData?.id || queryData?._id || "4310346";
   const clientName = clientInfo.name;
-  const clientPhone = clientInfo.phone ;
+  const clientPhone = clientInfo.phone;
   const clientEmail = clientInfo.email;
-  const clientAddress = clientInfo.address || "Not Provided";
+  const clientAddress = clientInfo.address;
   const agentName = queryData?.agentName || queryData?.agencyName || queryData?.agent?.agencyName || queryData?.agent?.name || "Agency";
   const destination = queryData?.destination || "Tour";
   const numDays = queryData?.duration || (queryData?.numberOfNights ? `${queryData.numberOfNights}N/${Number(queryData.numberOfNights) + 1}D` : "4N,5D");
   const pax = queryData?.pax || queryData?.paxCount || (queryData?.numberOfAdults ? `${queryData.numberOfAdults}A` : "2A");
-
-  
 
   const tripDateDisplay = queryData?.startDate
     ? new Date(queryData.startDate).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })
@@ -583,25 +683,32 @@ const CreateProformaInvoice = ({ onClose, onSave, queryData = {} }) => {
     },
   ]);
 
-  // Seller Details (Agent Company Details from Auth/Query Data)
+  // Seller Details (Dynamic based on Agent / Offline Agent Org)
   const [isEditingSeller, setIsEditingSeller] = useState(false);
-  const [sellerDetails, setSellerDetails] = useState(getDynamicSellerDetails());
-
-  useEffect(() => {
-    if (!isEditingSeller) {
-      setSellerDetails(getDynamicSellerDetails());
-    }
-  }, [authUser, queryData]);
+  const [sellerDetails, setSellerDetails] = useState(() => getDynamicSellerDetails(queryData, authUser));
 
   // Buyer Details (Agent's Client)
   const [isEditingBuyer, setIsEditingBuyer] = useState(false);
   const [buyerDetails, setBuyerDetails] = useState({
     name: queryData?.buyerName && queryData?.buyerName !== "Carma Tours" ? queryData.buyerName : clientName,
-    address: queryData?.buyerAddress || "Not Provided",
-    country: queryData?.buyerCountry || clientInfo.country || "NA",
-    phone: queryData?.buyerPhone || "Not Provided",
-    email: queryData?.buyerEmail || "Not Provided",
+    address: queryData?.buyerAddress || clientAddress,
+    country: queryData?.buyerCountry || clientInfo.country || "India",
+    phone: queryData?.buyerPhone || clientPhone,
+    email: queryData?.buyerEmail || clientEmail,
   });
+
+  useEffect(() => {
+    setSellerDetails(getDynamicSellerDetails(queryData, authUser));
+    const client = resolveClientDetails(queryData);
+    setBuyerDetails((prev) => ({
+      ...prev,
+      name: queryData?.buyerName && queryData?.buyerName !== "Carma Tours" ? queryData.buyerName : (client.name || prev.name),
+      address: queryData?.buyerAddress || client.address || prev.address,
+      country: queryData?.buyerCountry || client.country || prev.country || "India",
+      phone: queryData?.buyerPhone || client.phone || prev.phone,
+      email: queryData?.buyerEmail || client.email || prev.email,
+    }));
+  }, [queryData, authUser]);
 
   // Close type dropdown when clicking outside
   useEffect(() => {
@@ -784,9 +891,9 @@ const CreateProformaInvoice = ({ onClose, onSave, queryData = {} }) => {
   };
 
   return (
-    <div className="w-full min-h-screen font-sans text-slate-800">
+    <div className="w-full min-h-screen bg-white font-sans text-slate-800">
       {/* Top Header Strip with Back Icon & Title */}
-      <div className="w-full  border-b border-slate-200 px-1 py-1 flex items-center gap-3">
+      <div className="w-full bg-white border-b border-slate-200 px-6 py-3.5 flex items-center gap-3">
         <button
           type="button"
           onClick={onClose}
@@ -857,25 +964,14 @@ const CreateProformaInvoice = ({ onClose, onSave, queryData = {} }) => {
                       className="w-full border border-slate-300 rounded px-2 py-1"
                     />
                   </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="block font-semibold text-slate-700 mb-0.5">City, State:</label>
-                      <input
-                        type="text"
-                        value={sellerDetails.cityState}
-                        onChange={(e) => setSellerDetails({ ...sellerDetails, cityState: e.target.value })}
-                        className="w-full border border-slate-300 rounded px-2 py-1"
-                      />
-                    </div>
-                    <div>
-                      <label className="block font-semibold text-slate-700 mb-0.5">Country, Zip:</label>
-                      <input
-                        type="text"
-                        value={sellerDetails.countryZip}
-                        onChange={(e) => setSellerDetails({ ...sellerDetails, countryZip: e.target.value })}
-                        className="w-full border border-slate-300 rounded px-2 py-1"
-                      />
-                    </div>
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-0.5">City, State:</label>
+                    <input
+                      type="text"
+                      value={sellerDetails.cityState}
+                      onChange={(e) => setSellerDetails({ ...sellerDetails, cityState: e.target.value })}
+                      className="w-full border border-slate-300 rounded px-2 py-1"
+                    />
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     <div>
@@ -899,15 +995,6 @@ const CreateProformaInvoice = ({ onClose, onSave, queryData = {} }) => {
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <label className="block font-semibold text-slate-700 mb-0.5">GST:</label>
-                      <input
-                        type="text"
-                        value={sellerDetails.gst}
-                        onChange={(e) => setSellerDetails({ ...sellerDetails, gst: e.target.value })}
-                        className="w-full border border-slate-300 rounded px-2 py-1"
-                      />
-                    </div>
-                    <div>
                       <label className="block font-semibold text-slate-700 mb-0.5">PAN:</label>
                       <input
                         type="text"
@@ -916,10 +1003,19 @@ const CreateProformaInvoice = ({ onClose, onSave, queryData = {} }) => {
                         className="w-full border border-slate-300 rounded px-2 py-1"
                       />
                     </div>
+                    <div>
+                      <label className="block font-semibold text-slate-700 mb-0.5">GST:</label>
+                      <input
+                        type="text"
+                        value={sellerDetails.gst}
+                        onChange={(e) => setSellerDetails({ ...sellerDetails, gst: e.target.value })}
+                        className="w-full border border-slate-300 rounded px-2 py-1"
+                      />
+                    </div>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <label className="block font-semibold text-slate-700 mb-0.5">MSME:</label>
+                      <label className="block font-semibold text-slate-700 mb-0.5">MSME REG NO:</label>
                       <input
                         type="text"
                         value={sellerDetails.msme}
@@ -928,7 +1024,7 @@ const CreateProformaInvoice = ({ onClose, onSave, queryData = {} }) => {
                       />
                     </div>
                     <div>
-                      <label className="block font-semibold text-slate-700 mb-0.5">TAN:</label>
+                      <label className="block font-semibold text-slate-700 mb-0.5">TAN NO:</label>
                       <input
                         type="text"
                         value={sellerDetails.tan}
@@ -1182,15 +1278,25 @@ const CreateProformaInvoice = ({ onClose, onSave, queryData = {} }) => {
                     <tr key={index} className="border-b border-slate-200/80 align-top">
                       <td className="p-3.5 font-semibold text-slate-700">{index + 1}</td>
                       
-                      {/* Particular Description */}
+                      {/* Particular Description & HSN/SAC */}
                       <td className="p-3.5 space-y-3">
                         <textarea
                           rows={4}
                           value={item.particularText}
                           onChange={(e) => handleItemChange(index, "particularText", e.target.value)}
                           placeholder="Details regarding the item"
-                          className="w-full border border-slate-300 rounded-md p-2.5 text-sm focus:outline-none focus:border-blue-600 font-normal leading-relaxed placeholder:text-slate-400"
+                          className="w-full border border-slate-300 rounded-md p-3 text-sm focus:outline-none focus:border-blue-600 font-normal leading-relaxed placeholder:text-slate-400"
                         />
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-slate-900 text-sm">HSN/SAC</span>
+                          <input
+                            type="text"
+                            placeholder="e.g. 998555"
+                            value={item.hsnSac}
+                            onChange={(e) => handleItemChange(index, "hsnSac", e.target.value)}
+                            className="border border-slate-300 rounded-md px-3 py-1.5 text-sm w-36 focus:outline-none focus:border-blue-600 placeholder:text-slate-400"
+                          />
+                        </div>
                       </td>
 
                       {/* Qty */}
@@ -1495,8 +1601,8 @@ const CreateProformaInvoice = ({ onClose, onSave, queryData = {} }) => {
               rows={4}
               value={termsConditions}
               onChange={(e) => setTermsConditions(e.target.value)}
-              placeholder="Terms and Conditions"
-              className="w-full border border-slate-300 rounded-md p-3 text-sm bg-white focus:outline-none focus:border-blue-600 font-normal leading-relaxed placeholder:text-slate-400"
+              placeholder="Terms and Conditions here..."
+              className="w-full border border-slate-300 rounded-md p-3 text-sm bg-white focus:outline-none focus:border-blue-600 font-normal leading-relaxed"
             />
           </div>
         </div>

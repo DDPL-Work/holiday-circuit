@@ -1,4 +1,4 @@
-import { useEffect, useRef, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import Header from "./header/Header";
 import { Outlet, useLocation } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
@@ -6,6 +6,8 @@ import { fetchCurrentUser } from "../redux/slices/authSlice.js";
 import GlobalDatabaseLoader from "../components/GlobalDatabaseLoader";
 import FinanceOverdueReminderWidget from "../components/FinanceOverdueReminderWidget";
 import OpsOverdueReminderWidget from "../components/OpsOverdueReminderWidget";
+import AgentOrgActiveBanner from "../components/AgentOrgActiveBanner";
+import AgentOrganizationModal from "../modal/AgentOrganizationModal";
 import {
   getRequestLoaderSnapshot,
   subscribeToRequestLoader,
@@ -16,6 +18,7 @@ const Layout = () => {
   const { user, loading } = useSelector((state) => state.auth);
   const mainRef = useRef(null);
   const location = useLocation();
+  const [switchModalOpen, setSwitchModalOpen] = useState(false);
   const isLoaderVisible = useSyncExternalStore(
     subscribeToRequestLoader,
     getRequestLoaderSnapshot,
@@ -98,6 +101,7 @@ const Layout = () => {
   return (
     <div className="flex h-screen flex-1 flex-col overflow-hidden bg-gray-50">
       <Header />
+      <AgentOrgActiveBanner onOpenSwitchModal={() => setSwitchModalOpen(true)} />
       <main
         ref={mainRef}
         className={`relative flex-1 overflow-y-auto bg-gray-50 custom-scroll ${isSuperAdminDashboardRoute
@@ -110,6 +114,11 @@ const Layout = () => {
       </main>
       {user?.role === "finance_partner" && <FinanceOverdueReminderWidget />}
       {user?.role === "operations" && <OpsOverdueReminderWidget />}
+
+      <AgentOrganizationModal
+        isOpen={switchModalOpen}
+        onClose={() => setSwitchModalOpen(false)}
+      />
     </div>
   );
 };

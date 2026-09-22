@@ -2,7 +2,7 @@ import "dotenv/config";
 import fs from "fs";
 
 const BREVO_API_URL = "https://api.brevo.com/v3/smtp/email";
-const DEFAULT_SEND_TIMEOUT_MS = 15000;
+const DEFAULT_SEND_TIMEOUT_MS = 45000;
 const TEST_SENDER_ADDRESS = "Holiday Circuit <holidaycircuitofc@gmail.com>";
 
 

@@ -235,10 +235,32 @@ export default function SharePackageModal({
   shareMode = "QUOTATION",
 }) {
   const reduxUser = useSelector((state) => state.auth?.user) || {};
+  const offlineAgent = useMemo(() => {
+    try {
+      const stored =
+        sessionStorage.getItem("offlineAgentOrgData") ||
+        localStorage.getItem("offlineAgentOrgData");
+      return stored ? JSON.parse(stored) : null;
+    } catch {
+      return null;
+    }
+  }, []);
+
   const effectiveUser = useMemo(() => ({
     ...reduxUser,
     ...currentUser,
-  }), [reduxUser, currentUser]);
+    ...(offlineAgent ? {
+      name: offlineAgent.name || offlineAgent.contactPerson || reduxUser?.name,
+      companyName: offlineAgent.name || offlineAgent.companyName,
+      brandingName: offlineAgent.name || offlineAgent.brandingName,
+      agencyName: offlineAgent.name,
+      email: offlineAgent.email || offlineAgent.contactPerson?.email || reduxUser?.email,
+      phone: offlineAgent.phone || offlineAgent.contactPerson?.phone || reduxUser?.phone,
+      address: offlineAgent.city || offlineAgent.address || offlineAgent.location || reduxUser?.address,
+      companyAddress: offlineAgent.city || offlineAgent.companyAddress || offlineAgent.location || reduxUser?.companyAddress,
+      brandingLogo: offlineAgent.logo || offlineAgent.brandingLogo || "",
+    } : {}),
+  }), [reduxUser, currentUser, offlineAgent]);
 
   const isVoucherMode = shareMode === "VOUCHER";
   const isPackageMode = shareMode === "PACKAGE";
@@ -390,6 +412,41 @@ export default function SharePackageModal({
         }
         toast.success(`Package email successfully sent to ${recipientEmail}!`);
       } else {
+        const resolvedBrandingName =
+          effectiveUser?.brandingName ||
+          effectiveUser?.companyName ||
+          effectiveUser?.agencyName ||
+          currentUser?.brandingName ||
+          currentUser?.companyName ||
+          query?.agencyName ||
+          query?.agentOrganizationName ||
+          "";
+
+        const resolvedCompanyAddress =
+          effectiveUser?.companyAddress ||
+          effectiveUser?.address ||
+          currentUser?.companyAddress ||
+          currentUser?.address ||
+          "";
+
+        const resolvedPhone =
+          effectiveUser?.phone ||
+          currentUser?.phone ||
+          "";
+
+        const resolvedEmail =
+          effectiveUser?.email ||
+          currentUser?.email ||
+          "";
+
+        const resolvedLogo =
+          effectiveUser?.brandingLogo ||
+          effectiveUser?.brandLogoUrl ||
+          brandLogoUrl ||
+          currentUser?.brandingLogo ||
+          currentUser?.brandLogoUrl ||
+          "";
+
         const quotationOptions = {
           selectedTermId: selectedTermId || undefined,
           termId: selectedTermId || undefined,
@@ -400,6 +457,12 @@ export default function SharePackageModal({
           similarHotelWord,
           showIncExc,
           hideTotalPrice,
+          isPdfMode,
+          agentBrandingName: resolvedBrandingName,
+          agentCompanyAddress: resolvedCompanyAddress,
+          agentPhone: resolvedPhone,
+          agentEmail: resolvedEmail,
+          agentLogo: resolvedLogo,
           html: emailPreviewHtml || emailContentRef.current?.innerHTML,
         };
 

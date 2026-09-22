@@ -159,116 +159,72 @@ function DetailModal({ query, onClose }) {
     fetchQuotationHistory();
   }, [query?.queryObjectId, reloadSeed]);
 
-  const shouldCenterSingleCard = !loading && !error && quotationHistory.length === 1;
-
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="finance-transparent-scrollbar fixed inset-0 z-[60] flex items-start sm:items-center justify-center p-3 sm:p-6 overflow-y-auto"
-      style={{ background: "rgba(10, 15, 35, 0.65)", backdropFilter: "blur(22px)", WebkitBackdropFilter: "blur(22px)" }}
-      onClick={(event) => event.target === event.currentTarget && onClose()}
+      className="fixed inset-0 z-[60] flex items-center justify-center p-3 sm:p-5 bg-slate-900/40 backdrop-blur-xs"
+      onClick={onClose}
     >
       <motion.div
-        initial={{ scale: 0.96, opacity: 0, y: 18 }}
+        initial={{ scale: 0.97, opacity: 0, y: 12 }}
         animate={{ scale: 1, opacity: 1, y: 0 }}
-        exit={{ scale: 0.96, opacity: 0, y: 18 }}
-        transition={{ duration: 0.2, ease: "easeOut" }}
-        className="relative w-full max-w-[1040px] my-auto max-h-[92vh] flex flex-col"
+        exit={{ scale: 0.97, opacity: 0, y: 12 }}
+        transition={{ duration: 0.18, ease: "easeOut" }}
+        className="relative w-full max-w-[1140px] bg-white rounded-xl shadow-2xl border border-slate-200 p-4 sm:p-5 flex flex-col max-h-[92vh]"
+        onClick={(event) => event.stopPropagation()}
       >
-        <div className="max-w-[1040px] w-full mx-auto mb-3 px-1 pr-10 sm:pr-12">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span
-              className="text-xs font-semibold tracking-widest uppercase px-2.5 py-1 rounded-lg"
-              style={{ background: "rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.95)", border: "1px solid rgba(255,255,255,0.2)" }}
-            >
+        {/* Modal Header */}
+        <div className="flex items-center justify-between gap-3 pb-3 mb-3 border-b border-slate-100 shrink-0">
+          <div className="flex items-center gap-2 flex-wrap min-w-0">
+            <span className="text-xs font-bold tracking-wider uppercase px-2.5 py-1 rounded-md bg-slate-100 text-slate-800 border border-slate-200">
               {query.id}
             </span>
-            <span className="hidden sm:inline" style={{ color: "rgba(255,255,255,0.35)", fontWeight: 700, fontSize: "16px" }}>.</span>
-            <span
-              className="text-xs font-medium px-2.5 py-1 rounded-lg truncate max-w-full"
-              style={{ background: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.75)", border: "1px solid rgba(255,255,255,0.12)" }}
-            >
+            <span className="hidden sm:inline text-slate-300 font-bold">·</span>
+            <span className="text-xs font-semibold px-2.5 py-1 rounded-md bg-slate-50 text-slate-700 border border-slate-200 truncate max-w-full">
               {query.client} - {query.destination}
             </span>
-            <span
-              className="text-[11px] font-medium px-2.5 py-1 rounded-lg"
-              style={{ background: "rgba(212,242,61,0.12)", color: "rgba(212,242,61,0.95)", border: "1px solid rgba(212,242,61,0.2)" }}
-            >
+            <span className="text-[11px] font-semibold px-2.5 py-1 rounded-md bg-blue-50 text-[#3E63DD] border border-blue-200">
               {loading ? "Loading attempts..." : `${quotationHistory.length} quotation attempt${quotationHistory.length === 1 ? "" : "s"}`}
             </span>
           </div>
+
+          <button
+            onClick={onClose}
+            className="w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 border border-slate-200 transition text-lg leading-none shrink-0 cursor-pointer"
+            aria-label="Close"
+          >
+            &times;
+          </button>
         </div>
 
-        <button
-          onClick={onClose}
-          className="absolute top-0 right-0 sm:right-1 w-8 h-8 rounded-lg flex items-center justify-center transition-all text-lg leading-none shrink-0 cursor-pointer z-10"
-          style={{ background: "rgba(255,255,255,0.12)", border: "1px solid rgba(255,255,255,0.2)", color: "rgba(255,255,255,0.85)" }}
-          onMouseEnter={(event) => {
-            event.currentTarget.style.background = "rgba(255,255,255,0.25)";
-            event.currentTarget.style.color = "#fff";
-          }}
-          onMouseLeave={(event) => {
-            event.currentTarget.style.background = "rgba(255,255,255,0.12)";
-            event.currentTarget.style.color = "rgba(255,255,255,0.85)";
-          }}
-        >
-          &times;
-        </button>
-
+        {/* Modal Body */}
         {loading ? (
-          <div
-            className="rounded-xl px-6 py-10 min-h-[40vh] sm:min-h-[60vh] flex flex-col items-center justify-center text-center"
-            style={{
-              background: "rgba(255,255,255,0.1)",
-              border: "1px solid rgba(255,255,255,0.18)",
-              backdropFilter: "blur(24px)",
-              WebkitBackdropFilter: "blur(24px)",
-            }}
-          >
-            <div
-              className="w-9 h-9 rounded-full border-2 border-white/20 border-t-[#d4f23d] animate-spin"
-              aria-hidden="true"
-            />
-            <p className="text-sm font-medium mt-4 text-white">Loading quotation attempts...</p>
+          <div className="rounded-lg p-8 min-h-[180px] flex flex-col items-center justify-center text-center bg-slate-50/50 border border-dashed border-slate-200">
+            <div className="w-8 h-8 rounded-full border-2 border-slate-200 border-t-[#3E63DD] animate-spin" />
+            <p className="text-xs font-semibold mt-3 text-slate-600">Loading quotation attempts...</p>
           </div>
         ) : error ? (
-          <div
-            className="rounded-xl p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"
-            style={{
-              background: "rgba(127, 29, 29, 0.2)",
-              border: "1px solid rgba(252, 165, 165, 0.24)",
-              backdropFilter: "blur(24px)",
-              WebkitBackdropFilter: "blur(24px)",
-            }}
-          >
+          <div className="rounded-lg p-4 bg-rose-50 border border-rose-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
             <div>
-              <p className="text-sm font-semibold text-white">Quotation tracker unavailable</p>
-              <p className="text-xs mt-1" style={{ color: "rgba(255,255,255,0.7)" }}>{error}</p>
+              <p className="text-xs font-bold text-rose-800">Quotation tracker unavailable</p>
+              <p className="text-xs text-rose-600 mt-0.5">{error}</p>
             </div>
             <button
               onClick={() => setReloadSeed((value) => value + 1)}
-              className="rounded-md px-4 py-2 text-xs sm:text-sm font-semibold bg-[#d4f23d] text-gray-900 hover:bg-[#c5e535] transition cursor-pointer"
+              className="rounded-md px-3 py-1.5 text-xs font-semibold bg-rose-600 text-white hover:bg-rose-700 transition cursor-pointer"
             >
               Retry
             </button>
           </div>
         ) : quotationHistory.length === 0 ? (
-          <div
-            className="rounded-xl p-6 sm:p-8 min-h-[35vh] sm:min-h-[45vh] flex flex-col items-center justify-center text-center"
-            style={{
-              background: "rgba(255,255,255,0.1)",
-              border: "1px solid rgba(255,255,255,0.18)",
-              backdropFilter: "blur(24px)",
-              WebkitBackdropFilter: "blur(24px)",
-            }}
-          >
-            <div className="w-12 h-12 rounded-lg bg-white/10 flex items-center justify-center mb-3">
-              <IconInbox size={22} color="#d4f23d" />
+          <div className="rounded-lg p-8 min-h-[200px] flex flex-col items-center justify-center text-center bg-slate-50/50 border border-dashed border-slate-200">
+            <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center mb-2.5 border border-blue-100">
+              <IconInbox size={20} color="#3E63DD" />
             </div>
-            <p className="text-base font-bold text-white">No quotation attempts yet</p>
-            <p className="text-xs sm:text-sm mt-1.5 max-w-md text-white/70">
+            <p className="text-sm font-bold text-slate-800">No quotation attempts yet</p>
+            <p className="text-xs text-slate-500 mt-1 max-w-sm">
               No quotation has been created for this query yet. You can build a new quotation directly.
             </p>
             {query?.builderState?._id && (
@@ -276,132 +232,120 @@ function DetailModal({ query, onClose }) {
                 type="button"
                 onClick={() => {
                   navigate("/ops/quotation-builder", {
-                    state: {
-                      ...query.builderState,
-                    },
+                    state: { ...query.builderState },
                   });
                   onClose();
                 }}
-                className="mt-5 px-5 py-2.5 rounded-md text-xs sm:text-sm font-semibold transition cursor-pointer shadow-lg"
-                style={{
-                  background: "rgba(212,242,61,0.95)",
-                  color: "#162033",
-                }}
+                className="mt-4 px-4 py-2 rounded-md text-xs font-semibold bg-[#3E63DD] hover:bg-[#3353c7] text-white transition cursor-pointer shadow-sm"
               >
                 Create Quotation
               </button>
             )}
           </div>
         ) : (
-          <div className="overflow-y-auto pr-1 thin-scrollbar max-h-[calc(92vh-70px)]">
+          <div className="overflow-y-auto max-h-[calc(90vh-100px)] pr-1 finance-transparent-scrollbar">
             <div
-              className={`grid grid-cols-1 md:grid-cols-2 gap-4 max-w-[1040px] mx-auto ${shouldCenterSingleCard ? "md:max-w-[520px]" : ""}`}
+              className={`grid gap-3.5 w-full ${
+                quotationHistory.length === 1
+                  ? "grid-cols-1 max-w-md mx-auto"
+                  : quotationHistory.length === 2
+                  ? "grid-cols-1 sm:grid-cols-2"
+                  : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"
+              }`}
             >
               {quotationHistory.map((quotation, index) => (
                 <motion.div
                   key={quotation.id || quotation.attemptNumber}
-                  initial={{ opacity: 0, y: 16, scale: 0.97 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: 8, scale: 0.98 }}
-                  transition={{ duration: 0.18, ease: "easeOut", delay: index * 0.04 }}
-                  className="w-full rounded-xl p-4 sm:p-5 flex flex-col justify-between"
-                  style={{
-                    background: "rgba(255,255,255,0.1)",
-                    border: "1px solid rgba(255,255,255,0.18)",
-                    backdropFilter: "blur(24px)",
-                    WebkitBackdropFilter: "blur(24px)",
-                    boxShadow: "0 8px 32px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.15)",
-                  }}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.15, delay: index * 0.03 }}
+                  className="bg-white border border-slate-200 rounded-lg p-3.5 flex flex-col justify-between hover:border-slate-300 hover:shadow-xs transition-all"
                 >
                   <div>
-                    <div className="flex items-center justify-between gap-3 mb-2">
-                      <div className="flex items-center gap-1.5">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    {/* Card Header: Attempt number & Latest badge */}
+                    <div className="flex items-center justify-between gap-2 mb-1">
+                      <div className="flex items-center gap-1.5 text-slate-400">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                           <circle cx="12" cy="12" r="10" />
                           <line x1="12" y1="8" x2="12" y2="12" />
                           <line x1="12" y1="16" x2="12.01" y2="16" />
                         </svg>
-                        <span className="text-[10px] font-semibold tracking-widest uppercase" style={{ color: "rgba(255,255,255,0.5)" }}>
+                        <span className="text-[10px] font-bold tracking-wider uppercase">
                           Quotation {quotation.attemptNumber}
                         </span>
                       </div>
                       {quotation.isLatest && (
-                        <span className="text-[10px] font-semibold uppercase px-2 py-0.5 rounded-md bg-[#d4f23d]/90 text-gray-900">
+                        <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-blue-50 text-[#3E63DD] border border-blue-200">
                           Latest
                         </span>
                       )}
                     </div>
 
-                    <div className="mb-2">
+                    {/* Quotation Number & Status */}
+                    <div>
                       <div className="flex items-center gap-2 flex-wrap">
-                        <h3 className="text-lg sm:text-xl font-semibold leading-tight text-white">
+                        <h3 className="text-base font-bold text-slate-900 leading-tight">
                           {quotation.quotationNumber || `Quotation ${quotation.attemptNumber}`}
                         </h3>
-                        <span className={`shrink-0 text-xs font-medium px-2.5 py-0.5 rounded-md ${quotationStatusStyles[quotation.status] || quotationStatusStyles.Pending}`}>
+                        <span className={`shrink-0 text-[11px] font-semibold px-2 py-0.5 rounded-md ${quotationStatusStyles[quotation.status] || quotationStatusStyles.Pending}`}>
                           {quotation.displayStatus || quotation.status || "Pending"}
                         </span>
                       </div>
-                      <p className="text-[11px] mt-1" style={{ color: "rgba(255,255,255,0.52)" }}>
+                      <p className="text-[10px] text-slate-400 mt-0.5">
                         Created {quotation.createdAtLabel || formatDateTimeLabel(quotation.createdAt) || "-"}
                       </p>
                     </div>
 
-                    <div className="mb-3">
-                      <p className="text-xl sm:text-2xl font-semibold text-white">{quotation.amount}</p>
+                    {/* Amount & Status copy */}
+                    <div className="mt-2 mb-1.5">
+                      <p className="text-lg sm:text-xl font-extrabold text-slate-900 leading-none">{quotation.amount}</p>
                       {quotation.agentRemark ? (
-                        <p className="text-xs mt-1 font-medium" style={{ color: "rgba(254, 178, 178, 0.95)" }}>
+                        <p className="text-[11px] mt-1 font-medium text-rose-600 line-clamp-1">
                           Remark: {quotation.agentRemark}
                         </p>
                       ) : (
-                        <p className="text-xs mt-1" style={{ color: "rgba(255,255,255,0.45)" }}>
+                        <p className="text-[11px] mt-1 text-slate-500 line-clamp-1">
                           {quotationStatusCopy[quotation.displayStatus || quotation.status] || quotationStatusCopy.Pending}
                         </p>
                       )}
                     </div>
 
-                    <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-4">
+                    {/* Details List */}
+                    <div className="grid grid-cols-1 gap-1 py-1.5 border-y border-slate-100 my-2">
                       {[
                         `Valid till: ${quotation.validTill || "Not shared"}`,
                         `Contents: ${quotation.serviceCount} services`,
                         `Quote type: ${quotation.quoteCategory || "Standard"}`,
                       ].map((item) => (
-                        <li key={item} className="flex items-center gap-2 text-xs tracking-wide font-medium min-w-0" style={{ color: "rgba(255,255,255,0.72)" }}>
-                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="rgba(212,242,61,0.8)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
+                        <div key={item} className="flex items-center gap-1.5 text-xs text-slate-600 font-medium min-w-0">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#3E63DD" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
                             <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
                             <polyline points="22 4 12 14.01 9 11.01" />
                           </svg>
                           <span className="truncate">{item}</span>
-                        </li>
+                        </div>
                       ))}
-                    </ul>
+                    </div>
                   </div>
 
-                  <div className="pt-2.5 border-t border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-                    <div className="text-[11px]" style={{ color: "rgba(255,255,255,0.45)" }}>
+                  {/* Card Footer */}
+                  <div className="pt-2 flex items-center justify-between gap-2">
+                    <div className="text-[10px] text-slate-400 truncate">
                       Last update {quotation.updatedAtLabel || quotation.createdAtLabel || "-"}
                     </div>
 
-                    <div className="flex items-center gap-2 shrink-0 justify-end">
+                    <div className="flex items-center gap-1.5 shrink-0 justify-end">
                       <button
                         type="button"
                         onClick={() => handleEditQuotation(quotation)}
-                        className="px-3.5 py-1.5 rounded-md text-xs font-semibold transition cursor-pointer"
-                        style={{
-                          background: "rgba(212,242,61,0.95)",
-                          color: "#162033",
-                        }}
+                        className="px-2.5 py-1 rounded-md text-xs font-semibold bg-[#3E63DD] hover:bg-[#3353c7] text-white transition cursor-pointer shadow-xs"
                       >
                         Edit
                       </button>
                       <button
                         type="button"
                         onClick={() => toast("Preview action coming soon")}
-                        className="px-3.5 py-1.5 rounded-md text-xs font-semibold transition border cursor-pointer"
-                        style={{
-                          background: "rgba(255,255,255,0.08)",
-                          color: "rgba(255,255,255,0.82)",
-                          borderColor: "rgba(255,255,255,0.14)",
-                        }}
+                        className="px-2.5 py-1 rounded-md text-xs font-semibold bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 transition cursor-pointer"
                       >
                         Preview
                       </button>

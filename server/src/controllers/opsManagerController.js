@@ -43,6 +43,23 @@ const ensureOperationManagerAccess = (req) => {
   }
 };
 
+const ensureQueryCreationAccess = (req) => {
+  if (["operation_manager", "admin"].includes(req.user?.role)) {
+    return;
+  }
+  if (req.user?.role === "operations") {
+    const permissions = Array.isArray(req.user?.permissions) ? req.user.permissions : [];
+    const hasPermission =
+      permissions.includes("Create Query") ||
+      permissions.includes("Query Create") ||
+      permissions.includes("Add Query");
+    if (hasPermission) {
+      return;
+    }
+  }
+  throw new ApiError(403, "You do not have permission to create queries");
+};
+
 const ensureQuotationTrackerAccess = (req) => {
   if (!["operation_manager", "admin"].includes(req.user?.role)) {
     throw new ApiError(403, "Only operation managers or admins can access this area");
@@ -594,7 +611,7 @@ const getManagedTeamMembers = async (req) => {
     isDeleted: { $ne: true },
     manager: { $in: identityCandidates },
   })
-    .select("name email phone employeeId profileImage accountStatus manager createdAt lastActiveAt")
+    .select("name email phone employeeId profileImage accountStatus manager permissions designation accessExpiry createdAt lastActiveAt")
     .sort({ createdAt: 1 })
     .lean();
 };
@@ -818,6 +835,10 @@ const buildTeamRows = (teamMembers = [], teamQueries = [], performanceWindow = n
           conversionContribution: round(conversionContribution, 0),
         },
         status,
+        permissions: Array.isArray(member.permissions) ? member.permissions : [],
+        designation: member.designation || "Operations Executive",
+        department: member.department || "Operations",
+        accessExpiry: member.accessExpiry || null,
         accountStatus: member.accountStatus || "Active",
         canReassign: activeQueries.length > 0,
         createdAt: member.createdAt || null,
@@ -1904,6 +1925,146 @@ export const createOperationTeamMember = async (req, res, next) => {
   }
 };
 
+export const updateOperationTeamMember = async (req, res, next) => {
+  try {
+    ensureOperationManagerAccess(req);
+
+    const { userId } = req.params;
+    const {
+      name,
+      fullName,
+      email,
+      phone,
+      employeeId,
+      designation,
+      permissions,
+      accountStatus,
+      accessExpiry,
+    } = req.body || {};
+
+    const executive = await Auth.findById(userId);
+    if (!executive || executive.role !== "operations" || executive.isDeleted) {
+      return next(new ApiError(404, "Operations executive not found"));
+    }
+
+    const manager = await Auth.findById(req.user.id).select("name email employeeId _id").lean();
+    const identityCandidates = getManagerIdentityCandidates(manager);
+    if (!identityCandidates.includes(String(executive.manager || ""))) {
+      return next(new ApiError(403, "You can only edit executives in your team"));
+    }
+
+    const trimmedName = String(fullName || name || "").trim();
+    if (trimmedName) executive.name = trimmedName;
+
+    if (email) {
+      const normalizedEmail = String(email).trim().toLowerCase();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+        return next(new ApiError(400, "Please enter a valid email address"));
+      }
+      const existingUser = await Auth.findOne({ email: normalizedEmail, _id: { $ne: userId } });
+      if (existingUser) {
+        return next(new ApiError(400, "Email already in use by another user"));
+      }
+      executive.email = normalizedEmail;
+    }
+
+    if (phone) {
+      const normalizedPhone = String(phone).trim();
+      const existingPhone = await Auth.findOne({ phone: normalizedPhone, _id: { $ne: userId } });
+      if (existingPhone) {
+        return next(new ApiError(400, "Phone number already in use by another user"));
+      }
+      executive.phone = normalizedPhone;
+    }
+
+    if (employeeId !== undefined) {
+      const normalizedEmployeeId = String(employeeId || "").trim();
+      if (normalizedEmployeeId) {
+        const existingEmp = await Auth.findOne({ employeeId: normalizedEmployeeId, _id: { $ne: userId } });
+        if (existingEmp) {
+          return next(new ApiError(400, "Employee ID already in use"));
+        }
+      }
+      executive.employeeId = normalizedEmployeeId || undefined;
+    }
+
+    if (designation !== undefined) {
+      executive.designation = String(designation || "").trim() || TEAM_DESIGNATION;
+    }
+
+    if (permissions !== undefined && Array.isArray(permissions)) {
+      executive.permissions = normalizePermissionList(permissions);
+    }
+
+    if (accountStatus) {
+      executive.accountStatus = accountStatus === "Inactive" ? "Inactive" : "Active";
+    }
+
+    if (accessExpiry !== undefined) {
+      executive.accessExpiry = accessExpiry ? new Date(accessExpiry) : null;
+    }
+
+    await executive.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Ops executive details updated successfully",
+      data: {
+        id: executive._id,
+        name: executive.name,
+        email: executive.email,
+        phone: executive.phone,
+        employeeId: executive.employeeId,
+        designation: executive.designation,
+        permissions: executive.permissions,
+        accountStatus: executive.accountStatus,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const toggleExecutiveQueryPermission = async (req, res, next) => {
+  try {
+    ensureOperationManagerAccess(req);
+
+    const { userId } = req.params;
+    const executive = await Auth.findById(userId);
+    if (!executive || executive.role !== "operations" || executive.isDeleted) {
+      return next(new ApiError(404, "Operations executive not found"));
+    }
+
+    const currentPermissions = Array.isArray(executive.permissions) ? [...executive.permissions] : [];
+    const hasCreateQuery = currentPermissions.includes("Create Query");
+
+    let updatedPermissions;
+    if (hasCreateQuery) {
+      updatedPermissions = currentPermissions.filter((p) => p !== "Create Query");
+    } else {
+      updatedPermissions = [...new Set([...currentPermissions, "Create Query"])];
+    }
+
+    executive.permissions = updatedPermissions;
+    await executive.save();
+
+    res.status(200).json({
+      success: true,
+      message: hasCreateQuery
+        ? `Create Query permission disabled for ${executive.name}`
+        : `Create Query permission enabled for ${executive.name}`,
+      data: {
+        id: executive._id,
+        name: executive.name,
+        permissions: executive.permissions,
+        hasCreateQuery: !hasCreateQuery,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const reassignOperationManagerWorkload = async (req, res, next) => {
   try {
     ensureOperationManagerAccess(req);
@@ -2091,7 +2252,7 @@ export const getOpsActivityLogs = async (req, res, next) => {
 
 export const createTripSource = async (req, res, next) => {
   try {
-    ensureOperationManagerAccess(req);
+    ensureQueryCreationAccess(req);
 
     const {
       name,
@@ -2173,7 +2334,10 @@ export const createTripSource = async (req, res, next) => {
 
 export const getTripSources = async (req, res, next) => {
   try {
-    ensureOperationManagerAccess(req);
+    const isAllowed = ["operation_manager", "operations", "admin"].includes(req.user?.role);
+    if (!isAllowed) {
+      ensureQueryCreationAccess(req);
+    }
 
     const { sourceType } = req.query || {};
     const filter = { isActive: true };
@@ -2184,9 +2348,44 @@ export const getTripSources = async (req, res, next) => {
 
     const sources = await TripSource.find(filter).sort({ createdAt: -1 }).lean();
 
+    const sourceIds = sources.map((s) => s._id);
+    const sourceNames = sources.map((s) => s.name).filter(Boolean);
+
+    const queryCounts = await TravelQuery.aggregate([
+      {
+        $match: {
+          $or: [
+            { tripSource: { $in: sourceIds } },
+            { querySource: { $in: sourceNames } },
+          ],
+        },
+      },
+      {
+        $group: {
+          _id: "$tripSource",
+          querySourceName: { $first: "$querySource" },
+          count: { $sum: 1 },
+        },
+      },
+    ]);
+
+    const countMap = new Map();
+    queryCounts.forEach((item) => {
+      if (item._id) countMap.set(String(item._id), item.count);
+      if (item.querySourceName) countMap.set(item.querySourceName.toLowerCase(), item.count);
+    });
+
+    const enrichedSources = sources.map((s) => ({
+      ...s,
+      queryCount:
+        countMap.get(String(s._id)) ||
+        countMap.get((s.name || "").toLowerCase()) ||
+        0,
+    }));
+
     res.status(200).json({
       success: true,
-      data: sources,
+      data: enrichedSources,
     });
   } catch (error) {
     next(error);
@@ -2197,7 +2396,7 @@ export const getTripSources = async (req, res, next) => {
 
 export const createOperationManagerQuery = async (req, res, next) => {
   try {
-    ensureOperationManagerAccess(req);
+    ensureQueryCreationAccess(req);
 
     const {
       tripSource,

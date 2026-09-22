@@ -11,6 +11,7 @@ import {
   TicketPercent,
   PackagePlus,
   ListTodo,
+  Building2,
 } from "lucide-react";
 import { MdOutlineDashboardCustomize, MdOutlineVerifiedUser } from "react-icons/md";
 import { GrUserManager } from "react-icons/gr";
@@ -24,8 +25,6 @@ const menuConfig = {
     { label: "Dashboard", path: "/agent/dashboard", icon: LayoutGrid },
     { label: "Queries", path: "/agent/queries", icon: FileQuestionMark },
     { label: "Booking Payments", path: "/agent/bookings", icon: FilePlus2 },
-    // { label: "Document Portal", path: "/agent/documents", icon: CircleCheckBig },
-    // { label: "Finances", path: "/agent/finance", icon: Wallet },
   ],
   admin: [
     { label: "Dashboard", path: "/admin/dashboard", icon: LayoutGrid },
@@ -42,6 +41,7 @@ const menuConfig = {
     { label: "Booking Confirmation", path: "/dmc/confirmation", icon: CircleCheckBig },
     { label: "Payment Verification", path: "/finance/paymentVerification", icon: CircleCheckBig },
     { label: "Internal Invoice", path: "/finance/internalInvoice", icon: FilePlus2 },
+    { label: "Agent Organization", path: "#agent-organization", icon: Building2, isModalAction: true },
   ],
   operations: [
     { label: "OPS Dashboard", path: "/ops/dashboard", icon: LayoutGrid },
@@ -69,6 +69,7 @@ const menuConfig = {
     { label: "My Team", path: "/operationManager/myTeam", icon: BsMicrosoftTeams },
     { label: "BP Management", path: "/operationManager/bp-management", icon: GrUserManager },
     { label: "Add New Query", path: "/operationManager/addNewQuery", icon: FilePlus2 },
+    { label: "Agent Organization", path: "#agent-organization", icon: Building2, isModalAction: true },
   ],
   finance_manager: [
     { label: "Finance Manager", path: "/financeManager/financeManagerDashboard", icon: GrUserManager },
@@ -79,7 +80,16 @@ const menuConfig = {
   ],
 };
 
-export const getMenusForRole = (role, user = null) => {
+export const getMenusForRole = (role, user = null, isOfflineAgentActive = false) => {
+  if (isOfflineAgentActive && ["operation_manager", "operations", "admin"].includes(role)) {
+    return [
+      { label: "Agent Dashboard", path: "/agent/dashboard", icon: LayoutGrid },
+      { label: "Agent Queries", path: "/agent/queries", icon: FileQuestionMark },
+      { label: "Booking Payments", path: "/agent/bookings", icon: FilePlus2 },
+      { label: "Switch Agent Org", path: "#agent-organization", icon: Building2, isModalAction: true },
+    ];
+  }
+
   const baseMenus = menuConfig[role] ? [...menuConfig[role]] : [];
 
   if (user && role !== "admin") {
@@ -95,6 +105,29 @@ export const getMenusForRole = (role, user = null) => {
         path: "/admin/discount",
         icon: TicketPercent,
       });
+    }
+
+    const hasCreateQueryPermission =
+      permissions.includes("Create Query") ||
+      permissions.includes("Query Create") ||
+      permissions.includes("Add Query");
+
+    if (role === "operations" && hasCreateQueryPermission) {
+      if (!baseMenus.some((m) => m.path === "/operationManager/addNewQuery")) {
+        baseMenus.push({
+          label: "Add New Query",
+          path: "/operationManager/addNewQuery",
+          icon: FilePlus2,
+        });
+      }
+      if (!baseMenus.some((m) => m.path === "#agent-organization")) {
+        baseMenus.push({
+          label: "Agent Organization",
+          path: "#agent-organization",
+          icon: Building2,
+          isModalAction: true,
+        });
+      }
     }
   }
 

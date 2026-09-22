@@ -17,6 +17,7 @@ import AgentTerm from "../models/agentTerms.js";
 import AdminTerm from "../models/adminTerms.js";
 import Confirmation from "../models/dmcConfirmation.js";
 import Voucher from "../models/voucher.model.js";
+import TripSource from "../models/TripSource.model.js";
 import bcrypt from "bcrypt";
 import crypto from "crypto";
 import jwt from "jsonwebtoken";
@@ -39,6 +40,60 @@ import { ensureDestinationName, ensureDestinationNames } from "../services/desti
 import { analyzeInvoiceFile } from "../services/invoiceExtractionService.js";
 
 const getAuthenticatedUserId = (req) => req.user?.id || req.user?._id || null;
+
+const getTargetAgentIdentity = async (req) => {
+  const offlineAgentId =
+    req.headers["x-offline-agent-id"] ||
+    req.query?.offlineAgentId ||
+    req.query?.agentOrgId ||
+    req.body?.offlineAgentId ||
+    req.body?.agentOrgId;
+  const isManagerOrOps = ["operation_manager", "operations", "admin"].includes(
+    req.user?.role,
+  );
+
+  if (offlineAgentId && isManagerOrOps) {
+    let tripSource = null;
+    if (mongoose.Types.ObjectId.isValid(offlineAgentId)) {
+      tripSource = await TripSource.findById(offlineAgentId).lean();
+    }
+    if (!tripSource) {
+      tripSource = await TripSource.findOne({
+        $or: [{ _id: offlineAgentId }, { name: offlineAgentId }],
+      }).lean();
+    }
+
+    const targetId = tripSource?._id || offlineAgentId;
+    const targetName = tripSource?.name || "";
+
+    const filter = {
+      $or: [
+        { tripSource: targetId },
+        { agent: targetId },
+        ...(targetName ? [{ querySource: targetName }] : []),
+      ],
+    };
+
+    return {
+      isOffline: true,
+      isManagerOrOps: true,
+      agentId: targetId,
+      agentName: targetName,
+      tripSource,
+      queryFilter: filter,
+    };
+  }
+
+  const agentId = getAuthenticatedUserId(req);
+  return {
+    isOffline: false,
+    isManagerOrOps,
+    agentId,
+    agentName: req.user?.name || req.user?.companyName || "",
+    tripSource: null,
+    queryFilter: { agent: agentId },
+  };
+};
 const buildFrontendUrl = (path = "") => {
   const baseUrl = String(
     process.env.FRONTEND_APP_URL ||
@@ -387,8 +442,63 @@ const getLiveServiceModel = (type = "") => {
   return null;
 };
 
-const getLiveServiceRateSnapshot = (service = {}, typeOverride = "", quotedService = {}) => {
+const normalizeDateOnlyKey = (value) => {
+  if (!value) return "";
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) return "";
+    return value.toISOString().slice(0, 10);
+  }
+  const text = String(value || "").trim();
+  if (!text) return "";
+  if (text.includes("T") || text.includes("Z")) {
+    const d = new Date(text);
+    if (!Number.isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+  }
+  const isoMatch = text.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+  if (isoMatch) {
+    return `${isoMatch[1]}-${isoMatch[2].padStart(2, "0")}-${isoMatch[3].padStart(2, "0")}`;
+  }
+  const dmyMatch = text.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})/);
+  if (dmyMatch) {
+    return `${dmyMatch[3]}-${dmyMatch[2].padStart(2, "0")}-${dmyMatch[1].padStart(2, "0")}`;
+  }
+  const d = new Date(text);
+  return Number.isNaN(d.getTime()) ? text.slice(0, 10) : d.toISOString().slice(0, 10);
+};
+
+const isDateWithinRange = (targetDate, fromVal, toVal) => {
+  if (!targetDate || !fromVal || !toVal) return false;
+  const target = normalizeDateOnlyKey(targetDate);
+  const from = normalizeDateOnlyKey(fromVal);
+  const to = normalizeDateOnlyKey(toVal);
+  if (!target || !from || !to) return false;
+  return target >= from && target <= to;
+};
+
+const checkBlackoutDateMatch = (blackoutDates = [], targetDate = "") => {
+  if (!targetDate || !Array.isArray(blackoutDates) || !blackoutDates.length) return null;
+  const target = normalizeDateOnlyKey(targetDate);
+  if (!target) return null;
+  return (
+    blackoutDates.find((b) => {
+      const bStart = normalizeDateOnlyKey(b.startDate || b.startDateKey || b.rawPeriod);
+      const bEnd = normalizeDateOnlyKey(b.endDate || b.endDateKey || b.startDate || b.startDateKey);
+      if (!bStart || !bEnd) return false;
+      return target >= bStart && target <= bEnd;
+    }) || null
+  );
+};
+
+const getLiveServiceRateSnapshot = (service = {}, typeOverride = "", quotedService = {}, context = {}) => {
   const type = normalizeQuotationServiceType(typeOverride || service?.type || service?.serviceCategory);
+
+  const targetDate =
+    quotedService?.serviceDate ||
+    quotedService?.startDate ||
+    quotedService?.checkIn ||
+    context?.travelStartDate ||
+    context?.quotation?.startDate ||
+    "";
 
   if (type === "hotel") {
     let resolvedPrice = Number(service?.price || service?.basePrice || 0);
@@ -398,24 +508,66 @@ const getLiveServiceRateSnapshot = (service = {}, typeOverride = "", quotedServi
 
     if (Array.isArray(service?.hotels) && service.hotels.length > 0) {
       const qHotelTitle = String(quotedService?.title || quotedService?.hotelName || quotedService?.name || "").trim().toLowerCase();
+      const qDescription = String(quotedService?.description || "").trim().toLowerCase();
       const qRoomType = String(quotedService?.roomType || quotedService?.roomCategory || "").trim().toLowerCase();
 
-      let targetHotel = service.hotels.find((h) => {
-        const hName = String(h?.hotelName || "").trim().toLowerCase();
-        return qHotelTitle && (hName.includes(qHotelTitle) || qHotelTitle.includes(hName));
-      }) || service.hotels[0];
+      let targetHotel =
+        service.hotels.find((h) => {
+          const hName = String(h?.hotelName || "").trim().toLowerCase();
+          return hName && ((qHotelTitle && (hName.includes(qHotelTitle) || qHotelTitle.includes(hName))) || (qDescription && qDescription.includes(hName)));
+        }) || service.hotels[0];
 
       if (targetHotel && Array.isArray(targetHotel?.rooms) && targetHotel.rooms.length > 0) {
-        let targetRoom = targetHotel.rooms.find((r) => {
-          const rType = String(r?.roomType || r?.roomCategory || "").trim().toLowerCase();
-          return qRoomType && (rType.includes(qRoomType) || qRoomType.includes(rType));
-        }) || targetHotel.rooms[0];
+        let targetRoom =
+          targetHotel.rooms.find((r) => {
+            const rType = String(r?.roomType || r?.roomCategory || "").trim().toLowerCase();
+            return qRoomType && (rType.includes(qRoomType) || qRoomType.includes(rType));
+          }) || targetHotel.rooms[0];
 
         if (targetRoom) {
           resolvedPrice = Number(targetRoom.price || targetRoom.basePrice || resolvedPrice);
           resolvedAweb = Number(targetRoom.awebRate || resolvedAweb);
           resolvedCweb = Number(targetRoom.cwebRate || resolvedCweb);
           resolvedCwoeb = Number(targetRoom.cwoebRate || resolvedCwoeb);
+
+          const roomSeasons =
+            Array.isArray(targetRoom.seasons) && targetRoom.seasons.length > 0
+              ? targetRoom.seasons
+              : Array.isArray(targetHotel?.seasons) && targetHotel.seasons.length > 0
+                ? targetHotel.seasons
+                : Array.isArray(service?.seasons)
+                  ? service.seasons
+                  : [];
+
+          if (roomSeasons.length > 0) {
+            const blackoutDates = Array.isArray(service?.blackoutDates) ? service.blackoutDates : [];
+            const matchedBlackout = targetDate ? checkBlackoutDateMatch(blackoutDates, targetDate) : null;
+            const matchedSeason = targetDate ? roomSeasons.find((s) => isDateWithinRange(targetDate, s.validFrom, s.validTo)) : null;
+
+            if (matchedSeason) {
+              if (matchedBlackout && Number(matchedSeason.blackoutPrice) > 0) {
+                resolvedPrice = Number(matchedSeason.blackoutPrice);
+              } else if (Number(matchedSeason.price) > 0) {
+                resolvedPrice = Number(matchedSeason.price);
+              }
+
+              if (Number(matchedSeason.awebRate) > 0) resolvedAweb = Number(matchedSeason.awebRate);
+              if (Number(matchedSeason.cwebRate) > 0) resolvedCweb = Number(matchedSeason.cwebRate);
+              if (Number(matchedSeason.cwoebRate) > 0) resolvedCwoeb = Number(matchedSeason.cwoebRate);
+            } else {
+              // If targetDate didn't match directly, but quoted price matches one of the room's season prices or blackout prices,
+              // it means the quoted price is an authentic seasonal rate from this room's catalog.
+              const quotedPrice = Number(quotedService?.price || 0);
+              const seasonPriceMatch = roomSeasons.find(
+                (s) =>
+                  (s.price && Math.abs(Number(s.price) - quotedPrice) < 0.5) ||
+                  (s.blackoutPrice && Math.abs(Number(s.blackoutPrice) - quotedPrice) < 0.5)
+              );
+              if (seasonPriceMatch) {
+                resolvedPrice = quotedPrice;
+              }
+            }
+          }
         }
       }
     }
@@ -429,10 +581,95 @@ const getLiveServiceRateSnapshot = (service = {}, typeOverride = "", quotedServi
     };
   }
 
-  if (type === "activity") {
+  if (type === "activity" || type === "sightseeing") {
+    let resolvedPrice = Number(service?.adultPrice ?? service?.price ?? 0);
+    const qTourType = String(quotedService?.tourType || quotedService?.tourTypeName || "").trim().toLowerCase();
+    const tourTypes = Array.isArray(service?.tourTypes) ? service.tourTypes : [];
+    const matchedTour = tourTypes.find((t) => {
+      const tName = String(t?.tourType || "").trim().toLowerCase();
+      return qTourType && (tName.includes(qTourType) || qTourType.includes(tName));
+    }) || tourTypes[0];
+
+    if (matchedTour) {
+      resolvedPrice = Number(matchedTour.adultPrice ?? matchedTour.price ?? resolvedPrice);
+      const seasons = Array.isArray(matchedTour.seasons) && matchedTour.seasons.length > 0 ? matchedTour.seasons : [];
+      if (seasons.length > 0) {
+        const blackoutDates = Array.isArray(service?.blackoutDates) ? service.blackoutDates : [];
+        const matchedBlackout = targetDate ? checkBlackoutDateMatch(blackoutDates, targetDate) : null;
+        const matchedSeason = targetDate ? seasons.find((s) => isDateWithinRange(targetDate, s.validFrom, s.validTo)) : null;
+        if (matchedSeason) {
+          if (matchedBlackout && Number(matchedSeason.adultBlackoutPrice || matchedSeason.blackoutPrice) > 0) {
+            resolvedPrice = Number(matchedSeason.adultBlackoutPrice || matchedSeason.blackoutPrice);
+          } else if (Number(matchedSeason.adultPrice || matchedSeason.price) > 0) {
+            resolvedPrice = Number(matchedSeason.adultPrice || matchedSeason.price);
+          }
+        } else {
+          const quotedPrice = Number(quotedService?.adultPrice ?? quotedService?.price ?? 0);
+          const seasonMatch = seasons.find(
+            (s) =>
+              Math.abs(Number(s.adultPrice || s.price || 0) - quotedPrice) < 0.5 ||
+              Math.abs(Number(s.adultBlackoutPrice || s.blackoutPrice || 0) - quotedPrice) < 0.5
+          );
+          if (seasonMatch) resolvedPrice = quotedPrice;
+        }
+      }
+    }
+
     return {
       currency: normalizeCurrencyCode(service?.currency),
-      price: Number(service?.adultPrice ?? service?.price ?? 0),
+      price: resolvedPrice,
+    };
+  }
+
+  if (type === "transfer") {
+    let resolvedPrice = Number(service?.price || 0);
+    const qVehicleType = String(quotedService?.vehicleType || "").trim().toLowerCase();
+    const qUsageOption = String(quotedService?.transportUsageOptionKey || quotedService?.usageType || "").trim().toLowerCase();
+
+    const vehicles = Array.isArray(service?.vehicles) ? service.vehicles : [];
+    const matchedVehicle = vehicles.find((v) => {
+      const vType = String(v?.vehicleType || "").trim().toLowerCase();
+      return qVehicleType && (vType.includes(qVehicleType) || qVehicleType.includes(vType));
+    }) || vehicles[0];
+
+    if (matchedVehicle) {
+      const ptp = Array.isArray(matchedVehicle?.usageTypes?.pointToPoint) ? matchedVehicle.usageTypes.pointToPoint : [];
+      const hourly = Array.isArray(matchedVehicle?.usageTypes?.hourly) ? matchedVehicle.usageTypes.hourly : [];
+      const allOptions = [...ptp, ...hourly];
+      const matchedOpt = allOptions.find((o) => {
+        const oName = String(o?.name || o?.usageType || "").trim().toLowerCase();
+        return qUsageOption && (oName.includes(qUsageOption) || qUsageOption.includes(oName));
+      }) || allOptions[0];
+
+      if (matchedOpt) {
+        resolvedPrice = Number(matchedOpt.price ?? resolvedPrice);
+        const seasons = Array.isArray(matchedOpt.seasons) && matchedOpt.seasons.length > 0 ? matchedOpt.seasons : [];
+        if (seasons.length > 0) {
+          const blackoutDates = Array.isArray(service?.blackoutDates) ? service.blackoutDates : [];
+          const matchedBlackout = targetDate ? checkBlackoutDateMatch(blackoutDates, targetDate) : null;
+          const matchedSeason = targetDate ? seasons.find((s) => isDateWithinRange(targetDate, s.validFrom, s.validTo)) : null;
+          if (matchedSeason) {
+            if (matchedBlackout && Number(matchedSeason.blackoutPrice) > 0) {
+              resolvedPrice = Number(matchedSeason.blackoutPrice);
+            } else if (Number(matchedSeason.price) > 0) {
+              resolvedPrice = Number(matchedSeason.price);
+            }
+          } else {
+            const quotedPrice = Number(quotedService?.price || 0);
+            const seasonMatch = seasons.find(
+              (s) =>
+                Math.abs(Number(s.price || 0) - quotedPrice) < 0.5 ||
+                Math.abs(Number(s.blackoutPrice || 0) - quotedPrice) < 0.5
+            );
+            if (seasonMatch) resolvedPrice = quotedPrice;
+          }
+        }
+      }
+    }
+
+    return {
+      currency: normalizeCurrencyCode(service?.currency),
+      price: resolvedPrice,
     };
   }
 
@@ -459,7 +696,7 @@ const formatRateValidationAmount = (currency, amount) =>
     maximumFractionDigits: 2,
   })}`;
 
-const buildQuotationRateMismatch = (service = {}, liveService = null) => {
+const buildQuotationRateMismatch = (service = {}, liveService = null, context = {}) => {
   const type = normalizeQuotationServiceType(service?.type);
   if (!liveService) {
     return {
@@ -471,7 +708,7 @@ const buildQuotationRateMismatch = (service = {}, liveService = null) => {
   }
 
   const quoted = getQuotedServiceRateSnapshot(service);
-  const live = getLiveServiceRateSnapshot(liveService, type, service);
+  const live = getLiveServiceRateSnapshot(liveService, type, service, context);
   const changedFields = [];
 
   if (quoted.currency !== live.currency) {
@@ -531,6 +768,20 @@ const validateQuotationSupplierRates = async (quotation = {}) => {
   const services = Array.isArray(quotation?.services) ? quotation.services : [];
   const mismatches = [];
 
+  let travelStartDate = quotation?.startDate || null;
+  if (!travelStartDate && quotation?.queryId) {
+    try {
+      const query = await TravelQuery.findById(quotation.queryId).select("startDate endDate").lean();
+      if (query?.startDate) {
+        travelStartDate = query.startDate;
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  const context = { travelStartDate, quotation };
+
   await Promise.all(services.map(async (service) => {
     // Skip manual / Business Partner services or manual rate overrides
     if (
@@ -556,7 +807,7 @@ const validateQuotationSupplierRates = async (quotation = {}) => {
     // If the service is not in live supplier catalog, it is a custom/manual/BP service - skip it
     if (!liveService) return;
 
-    const mismatch = buildQuotationRateMismatch(service, liveService);
+    const mismatch = buildQuotationRateMismatch(service, liveService, context);
     if (mismatch) mismatches.push(mismatch);
   }));
 
@@ -829,12 +1080,81 @@ const resolveAgentBranding = ({ quotation = {}, agent = {} }) => ({
   brandingName:
     quotation?.agentBrandingName ||
     agent?.brandingName ||
+    agent?.companyName ||
     "",
   brandingLogo:
     quotation?.agentLogo ||
     agent?.brandingLogo ||
+    agent?.companyLogo ||
     "",
 });
+
+const resolveQuotationAgentContext = async ({ target, agentId, quotation, query }) => {
+  let agent = null;
+  if (target?.isOffline && target?.tripSource) {
+    agent = {
+      name: target.tripSource.name || target.tripSource.contactPerson?.name || target.tripSource.contactPerson || "Agent",
+      companyName: target.tripSource.name,
+      brandingName: target.tripSource.name,
+      email: target.tripSource.contactPerson?.email || target.tripSource.email || "",
+      phone: target.tripSource.contactPerson?.phone || target.tripSource.phone || (Array.isArray(target.tripSource.contactPerson?.phones) ? target.tripSource.contactPerson.phones[0]?.number : "") || "",
+      address: target.tripSource.city || target.tripSource.location || target.tripSource.address || "",
+      companyAddress: target.tripSource.city || target.tripSource.location || target.tripSource.address || "",
+    };
+  } else if (agentId) {
+    try {
+      agent = await Auth.findById(agentId).select("name email companyName phone address companyAddress website gstNumber brandingName brandingLogo brandingFooter voucherFooterImage footerImage profileImage avatar companyLogo");
+    } catch (e) {}
+  }
+
+  if (!agent && query?.tripSource) {
+    try {
+      const tsDoc = await TripSource.findById(query.tripSource).lean();
+      if (tsDoc) {
+        agent = {
+          name: tsDoc.name || tsDoc.contactPerson?.name || tsDoc.contactPerson || "Agent",
+          companyName: tsDoc.name,
+          brandingName: tsDoc.name,
+          email: tsDoc.contactPerson?.email || tsDoc.email || "",
+          phone: tsDoc.contactPerson?.phone || tsDoc.phone || (Array.isArray(tsDoc.contactPerson?.phones) ? tsDoc.contactPerson.phones[0]?.number : "") || "",
+          address: tsDoc.city || tsDoc.location || tsDoc.address || "",
+          companyAddress: tsDoc.city || tsDoc.location || tsDoc.address || "",
+        };
+      }
+    } catch (e) {}
+  }
+
+  if (!agent && query?.querySource) {
+    try {
+      const tsDoc = await TripSource.findOne({ name: query.querySource }).lean();
+      if (tsDoc) {
+        agent = {
+          name: tsDoc.name || tsDoc.contactPerson?.name || tsDoc.contactPerson || "Agent",
+          companyName: tsDoc.name,
+          brandingName: tsDoc.name,
+          email: tsDoc.contactPerson?.email || tsDoc.email || "",
+          phone: tsDoc.contactPerson?.phone || tsDoc.phone || "",
+          address: tsDoc.city || tsDoc.location || tsDoc.address || "",
+          companyAddress: tsDoc.city || tsDoc.location || tsDoc.address || "",
+        };
+      }
+    } catch (e) {}
+  }
+
+  if (!agent && query?.agent) {
+    try {
+      agent = await Auth.findById(query.agent).select("name email companyName phone address companyAddress website gstNumber brandingName brandingLogo brandingFooter voucherFooterImage footerImage profileImage avatar companyLogo");
+    } catch (e) {}
+  }
+
+  if (!agent && quotation?.agent) {
+    try {
+      agent = await Auth.findById(quotation.agent).select("name email companyName phone address companyAddress website gstNumber brandingName brandingLogo brandingFooter voucherFooterImage footerImage profileImage avatar companyLogo");
+    } catch (e) {}
+  }
+
+  return agent;
+};
 
 const normalizeTravelerDocument = (document = {}) => ({
   url: String(document?.url || "").trim(),
@@ -1233,27 +1553,44 @@ const buildNotificationActivityItem = (notification = {}) => {
   };
 };
 
-const buildAgentFinanceOverviewPayload = async (agentId, { includeTransactions = true } = {}) => {
-  const invoices = await Invoice.find({ agent: agentId })
+const buildAgentFinanceOverviewPayload = async (agentId, { includeTransactions = true, queryFilter = null } = {}) => {
+  let invoiceQuery = { agent: agentId };
+  let queryIds = [];
+
+  if (queryFilter) {
+    const matchingQueries = await TravelQuery.find(queryFilter).select("_id");
+    queryIds = matchingQueries.map((q) => q._id);
+    invoiceQuery = { $or: [{ agent: agentId }, { query: { $in: queryIds } }] };
+  }
+
+  const invoices = await Invoice.find(invoiceQuery)
     .populate("query", "queryId destination")
     .sort({ createdAt: -1 });
 
-  const queryIds = [...new Set(
-    invoices
-      .map((invoice) =>
-        invoice?.query?._id ? String(invoice.query._id) : invoice?.query ? String(invoice.query) : "",
-      )
-      .filter(Boolean),
-  )];
+  if (!queryIds.length) {
+    queryIds = [...new Set(
+      invoices
+        .map((invoice) =>
+          invoice?.query?._id ? String(invoice.query._id) : invoice?.query ? String(invoice.query) : "",
+        )
+        .filter(Boolean),
+    )];
+  }
+
+  const quotationQuery = queryIds.length
+    ? {
+        $or: [
+          { agent: agentId },
+          { queryId: { $in: queryIds } },
+        ],
+        status: { $in: AGENT_VISIBLE_QUOTATION_STATUSES },
+      }
+    : { agent: agentId, status: { $in: AGENT_VISIBLE_QUOTATION_STATUSES } };
 
   const quotations = queryIds.length
-    ? await Quotation.find({
-        agent: agentId,
-        queryId: { $in: queryIds },
-        status: { $in: AGENT_VISIBLE_QUOTATION_STATUSES },
-      })
-      .select("queryId quotationNumber status services pricing.totalAmount pricing.currency agentMarkup clientTotalAmount agentRevisionRemark validTill createdAt updatedAt")
-      .sort({ updatedAt: -1, createdAt: -1 })
+    ? await Quotation.find(quotationQuery)
+        .select("queryId quotationNumber status services pricing.totalAmount pricing.currency agentMarkup clientTotalAmount agentRevisionRemark validTill createdAt updatedAt")
+        .sort({ updatedAt: -1, createdAt: -1 })
     : [];
 
   const latestQuotationByQuery = quotations.reduce((acc, quotation) => {
@@ -1791,19 +2128,52 @@ const buildQuotationClientEmailPayload = ({ quotation, query, agent, customTerm 
   const finalSellerBankDetails = isSendingToClient ? [] : sellerBankDetails;
   const includeSellerBankDetails = isSendingToClient ? false : true;
 
+  const resolvedBrandName =
+    options.agentBrandingName ||
+    options.brandName ||
+    options.companyName ||
+    resolvedBranding.brandingName ||
+    agent?.brandingName ||
+    agent?.companyName ||
+    "Holiday Circuit";
+
+  const resolvedCompanyAddress =
+    options.agentCompanyAddress ||
+    options.companyAddress ||
+    agent?.companyAddress ||
+    agent?.address ||
+    (resolvedBrandName !== "Holiday Circuit" ? "" : "KG 3/69, Ground Floor, Vikas Puri, New Delhi, Delhi - 110018");
+
+  const resolvedPhone =
+    options.agentPhone ||
+    options.phone ||
+    agent?.phone ||
+    "";
+
+  const resolvedEmail =
+    options.agentEmail ||
+    options.email ||
+    agent?.email ||
+    "";
+
+  const resolvedLogo =
+    options.agentLogo ||
+    options.brandLogoUrl ||
+    rawLogo;
+
   return {
     isClientQuotation: isSendingToClient,
     includeSellerBankDetails,
     sellerBankDetails: finalSellerBankDetails,
     recipientName: getQueryClientRecipientName(query),
-    agencyName: agent?.companyName || "",
-    agentLogo: getAbsoluteMediaUrl(rawLogo),
+    agencyName: agent?.companyName || resolvedBrandName,
+    agentLogo: getAbsoluteMediaUrl(resolvedLogo),
     agentFooterImage: getAbsoluteMediaUrl(rawFooter),
-    agentBrandingName: resolvedBranding.brandingName || agent?.brandingName || agent?.companyName || "Holiday Circuit",
-    agentCompanyAddress: agent?.companyAddress || agent?.address || "KG 3/69, Ground Floor, Vikas Puri, New Delhi, Delhi - 110018",
-    agentPhone: agent?.phone || "",
-    agentEmail: agent?.email || "",
-    agentGstNumber: agent?.gstNumber || "",
+    agentBrandingName: resolvedBrandName,
+    agentCompanyAddress: resolvedCompanyAddress,
+    agentPhone: resolvedPhone,
+    agentEmail: resolvedEmail,
+    agentGstNumber: agent?.gstNumber || options.gstNumber || "",
     quotationNumber: quotation?.quotationNumber || "",
     queryId: query?.queryId || "",
     destination: query?.destination || "",
@@ -2015,9 +2385,10 @@ export const registerAgent = async (req, res, next) => {
 
 export const generateClientQuotationPdf = async (req, res, next) => {
   try {
-    const agentId = getAuthenticatedUserId(req);
+    const target = await getTargetAgentIdentity(req);
+    const agentId = target.agentId;
 
-    if (!agentId) {
+    if (!agentId && !target.isOffline) {
       return next(new ApiError(401, "Unauthorized"));
     }
 
@@ -2040,7 +2411,16 @@ export const generateClientQuotationPdf = async (req, res, next) => {
 
     const [query, agent] = await Promise.all([
       TravelQuery.findById(quotation.queryId),
-      Auth.findById(agentId).select("name email companyName phone companyAddress website gstNumber brandingName brandingLogo voucherFooterImage profileImage avatar companyLogo"),
+      target.isOffline && target.tripSource
+        ? {
+            name: target.tripSource.name || target.tripSource.contactPerson || "Agent",
+            companyName: target.tripSource.name,
+            email: target.tripSource.email,
+            phone: target.tripSource.phone,
+            address: target.tripSource.city,
+            companyAddress: target.tripSource.city,
+          }
+        : Auth.findById(agentId).select("name email companyName phone companyAddress website gstNumber brandingName brandingLogo voucherFooterImage profileImage avatar companyLogo"),
     ]);
 
     if (!query) {
@@ -2070,17 +2450,19 @@ export const generateClientQuotationPdf = async (req, res, next) => {
 
 export const getClientQuotationEmailPreview = async (req, res, next) => {
   try {
-    const agentId = getAuthenticatedUserId(req);
-    if (!agentId) return next(new ApiError(401, "Unauthorized"));
+    const target = await getTargetAgentIdentity(req);
+    const agentId = target.agentId;
+    if (!agentId && !target.isOffline) return next(new ApiError(401, "Unauthorized"));
 
-    const quotation = await Quotation.findOne({ _id: req.params.id, agent: agentId });
+    const quotation = target.isManagerOrOps || target.isOffline
+      ? await Quotation.findById(req.params.id)
+      : await Quotation.findOne({ _id: req.params.id, agent: agentId });
     if (!quotation) return next(new ApiError(404, "Quotation not found"));
 
-    const [query, agent] = await Promise.all([
-      TravelQuery.findById(quotation.queryId),
-      Auth.findById(agentId).select("name email companyName phone companyAddress website gstNumber brandingName brandingLogo voucherFooterImage profileImage avatar companyLogo"),
-    ]);
+    const query = await TravelQuery.findById(quotation.queryId);
     if (!query) return next(new ApiError(404, "Travel query not found"));
+
+    const agent = await resolveQuotationAgentContext({ target, agentId, quotation, query });
 
     const selectedTermId = req.query.selectedTermId || req.query.termId;
     let customTermDoc = null;
@@ -2115,15 +2497,25 @@ export const sendAgentVoucherEmail = async (req, res, next) => {
     }
 
     const queryId = req.params.queryId || req.params.id;
-    const agentId = getAuthenticatedUserId(req);
+    const target = await getTargetAgentIdentity(req);
+    const agentId = target.agentId;
 
     // 1. FETCH DYNAMIC AGENT, QUERY & QUOTATION DATA CONCURRENTLY
     const [agent, query, quotationDoc] = await Promise.all([
-      agentId
-        ? Auth.findById(agentId).select(
-            "name email companyName phone companyAddress website brandingName brandingLogo voucherFooterImage profileImage avatar companyLogo"
-          )
-        : null,
+      target.isOffline && target.tripSource
+        ? {
+            name: target.tripSource.name || target.tripSource.contactPerson || "Agent",
+            companyName: target.tripSource.name,
+            email: target.tripSource.email,
+            phone: target.tripSource.phone,
+            address: target.tripSource.city,
+            companyAddress: target.tripSource.city,
+          }
+        : agentId
+          ? Auth.findById(agentId).select(
+              "name email companyName phone companyAddress website brandingName brandingLogo voucherFooterImage profileImage avatar companyLogo"
+            )
+          : null,
       queryId ? TravelQuery.findById(queryId) : null,
       queryId ? Quotation.findOne({ queryId }).sort({ createdAt: -1 }) : null,
     ]);
@@ -3054,7 +3446,8 @@ export const resetPasswordWithOtp = async (req, res, next) => {
 
 export const getAgentDashboard = async (req, res) => {
   try {
-    const agentId = getAuthenticatedUserId(req);
+    const target = await getTargetAgentIdentity(req);
+    const agentId = target.agentId;
 
     if (!agentId) {
       return res.status(401).json({ message: "Unauthorized" });
@@ -3078,43 +3471,43 @@ export const getAgentDashboard = async (req, res) => {
       recentNotifications,
       financeOverview,
     ] = await Promise.all([
-      TravelQuery.countDocuments({ agent: agentId }),
+      TravelQuery.countDocuments(target.queryFilter),
       TravelQuery.countDocuments({
-        agent: agentId,
+        ...target.queryFilter,
         createdAt: { $gte: currentMonth.start, $lt: currentMonth.end },
       }),
       TravelQuery.countDocuments({
-        agent: agentId,
+        ...target.queryFilter,
         createdAt: { $gte: previousMonth.start, $lt: previousMonth.end },
       }),
       TravelQuery.countDocuments({
-        agent: agentId,
+        ...target.queryFilter,
         opsStatus: { $in: ACTIVE_BOOKING_STATUSES },
       }),
       TravelQuery.countDocuments({
-        agent: agentId,
+        ...target.queryFilter,
         opsStatus: { $in: ACTIVE_BOOKING_STATUSES },
         updatedAt: { $gte: startOfToday },
       }),
       TravelQuery.countDocuments({
-        agent: agentId,
+        ...target.queryFilter,
         quotationStatus: "Sent_To_Agent",
         agentStatus: { $nin: ["Client Approved", "Confirmed", "Rejected"] },
       }),
       TravelQuery.countDocuments({
-        agent: agentId,
+        ...target.queryFilter,
         opsStatus: { $in: ACTIVE_BOOKING_STATUSES },
         "travelerDocumentVerification.status": { $in: ["Draft", "Pending", "Rejected"] },
       }),
       TravelQuery.countDocuments({
-        agent: agentId,
+        ...target.queryFilter,
         opsStatus: { $in: ["Confirmed", "Vouchered", "Payment_Completed"] },
       }),
       TravelQuery.countDocuments({
-        agent: agentId,
+        ...target.queryFilter,
         voucherStatus: { $in: ["generated", "sent"] },
       }),
-      TravelQuery.find({ agent: agentId })
+      TravelQuery.find(target.queryFilter)
         .select(
           "queryId destination agentStatus opsStatus quotationStatus voucherStatus activityLog createdAt updatedAt",
         )
@@ -3131,7 +3524,10 @@ export const getAgentDashboard = async (req, res) => {
         .sort({ createdAt: -1 })
         .limit(8)
         .lean(),
-      buildAgentFinanceOverviewPayload(agentId, { includeTransactions: false }),
+      buildAgentFinanceOverviewPayload(agentId, {
+        includeTransactions: false,
+        queryFilter: target.isOffline ? target.queryFilter : null,
+      }),
     ]);
 
     const {
@@ -3645,11 +4041,18 @@ export const createQuery = async (req, res, next) => {
 
 export const getMyQueries = async (req, res, next) => {
   try {
-    if (!req.user || !req.user.id) {
+    const target = await getTargetAgentIdentity(req);
+    const agentId = target.agentId;
+
+    if (!agentId) {
       return res.status(401).json({ message: "Unauthorized" });
     }
 
-    const queries = await TravelQuery.find({ agent: req.user.id }).sort({ createdAt: -1 }).lean();
+    const queries = await TravelQuery.find(target.queryFilter)
+      .populate("tripSource", "name shortName sourceType contactPerson city state country")
+      .populate("agent", "name fullName companyName agencyName phone email")
+      .sort({ createdAt: -1 })
+      .lean();
     if (!queries.length) {
       return res.json({ message: "All queries fetched successfully", queries: [] });
     }
@@ -3658,7 +4061,6 @@ export const getMyQueries = async (req, res, next) => {
 
     const quotations = await Quotation.find({
       queryId: { $in: queryIds },
-      status: { $ne: "Pending" },
     })
       .select("queryId services pricing totalAmount clientTotalAmount agentMarkup status isAfterConversion isAfterConversionQuote isPostConversion sourceQuotationId agentRevisionRemark createdAt updatedAt")
       .sort({ updatedAt: -1, createdAt: -1 })
@@ -3724,8 +4126,19 @@ export const getMyQueries = async (req, res, next) => {
         (queryQuotes.length > 1)
       );
 
+      const resolvedAgencyName =
+        query.agencyName ||
+        query.companyName ||
+        query.querySource ||
+        (query.tripSource && typeof query.tripSource === "object" ? query.tripSource.name : "") ||
+        target.agentName ||
+        query.agentName ||
+        "";
+
       return {
         ...query,
+        agencyName: query.agencyName || resolvedAgencyName,
+        companyName: query.companyName || resolvedAgencyName,
         quotations: queryQuotes,
         latestQuotationPrice: latestPrice,
         approvedQuotationPrice: approvedPrice,
@@ -3746,14 +4159,15 @@ export const getMyQueries = async (req, res, next) => {
 
 export const getMyActiveBookings = async (req, res) => {
   try {
-    const agentId = getAuthenticatedUserId(req);
+    const target = await getTargetAgentIdentity(req);
+    const agentId = target.agentId;
 
     if (!agentId) {
       return res.status(401).json({ message: "Unauthorized" });
     }
 
     const queries = await TravelQuery.find({
-      agent: agentId,
+      ...target.queryFilter,
       opsStatus: { $in: ["Invoice_Requested", "Confirmed", "Vouchered", "Payment_Completed"] },
     })
       .select(
@@ -3771,8 +4185,7 @@ export const getMyActiveBookings = async (req, res) => {
 
     const [invoices, quotations] = await Promise.all([
       Invoice.find({
-        agent: agentId,
-        query: { $in: queryIds },
+        $or: [{ agent: agentId }, { query: { $in: queryIds } }],
       })
         .select(
           "query invoiceNumber totalAmount currency lineItems pricingSnapshot tripSnapshot templateVariant paymentStatus remarks paymentSubmission paymentVerification paymentAuditTrail createdAt",
@@ -3780,8 +4193,7 @@ export const getMyActiveBookings = async (req, res) => {
         .sort({ createdAt: -1 })
         .lean(),
       Quotation.find({
-        agent: agentId,
-        queryId: { $in: queryIds },
+        $or: [{ agent: agentId }, { queryId: { $in: queryIds } }],
         status: { $in: AGENT_VISIBLE_QUOTATION_STATUSES },
       })
         .select("queryId quotationNumber clientTotalAmount pricing validTill status createdAt updatedAt")
@@ -3901,10 +4313,11 @@ export const getMyActiveBookings = async (req, res) => {
 
 export const uploadTravelerDocument = async (req, res, next) => {
   try {
-    const agentId = getAuthenticatedUserId(req);
+    const target = await getTargetAgentIdentity(req);
+    const agentId = target.agentId;
     const { queryId, travelerId } = req.params;
 
-    if (!agentId) {
+    if (!agentId && !target.isOffline) {
       return next(new ApiError(401, "Unauthorized"));
     }
 
@@ -3912,10 +4325,15 @@ export const uploadTravelerDocument = async (req, res, next) => {
       return next(new ApiError(400, "Traveler document is required"));
     }
 
-    const query = await TravelQuery.findOne({
-      _id: queryId,
-      agent: agentId,
-    });
+    const query = target.isOffline || target.isManagerOrOps
+      ? await TravelQuery.findOne({
+          _id: queryId,
+          ...(target.isOffline ? target.queryFilter : {}),
+        })
+      : await TravelQuery.findOne({
+          _id: queryId,
+          agent: agentId,
+        });
 
     if (!query) {
       return next(new ApiError(404, "Booking not found"));
@@ -3964,47 +4382,17 @@ export const uploadTravelerDocument = async (req, res, next) => {
 
     const currentVerification = getTravelerDocumentVerification(query);
     if (currentVerification.status !== "Draft") {
-      const remainingIssues = currentVerification.issues.filter(
-        (issue) => !matchesTravelerDocumentReviewEntry(issue, traveler, documentKey),
-      );
-      const remainingVerifiedDocuments = currentVerification.verifiedDocuments.filter(
-        (document) => !matchesTravelerDocumentReviewEntry(document, traveler, documentKey),
-      );
-      const shouldKeepVerifiedStatus =
-        currentVerification.status === "Verified" &&
-        remainingIssues.length === 0 &&
-        getVerifiedRequiredTravelerDocumentProgress(query, remainingVerifiedDocuments)
-          .allRequiredVerified;
-
-      resetTravelerDocumentVerification(
-        query,
-        shouldKeepVerifiedStatus
-          ? "Verified"
-          : currentVerification.status === "Rejected"
-            ? "Rejected"
-            : "Draft",
-        {
-          issues: remainingIssues,
-          verifiedDocuments: remainingVerifiedDocuments,
-          rejectionReason:
-            currentVerification.status === "Rejected"
-              ? currentVerification.rejectionReason
-              : "",
-          rejectionRemarks:
-            currentVerification.status === "Rejected"
-              ? currentVerification.rejectionRemarks
-              : "",
-        },
-      );
-      query.travelerDocumentAuditTrail.push({
-        action: "Traveler documents updated",
-        status: query.travelerDocumentVerification.status,
-        performedBy: agentId,
-        performedByName: req.user?.name || "Agent",
-        remarks: `${traveler.fullName || "Traveler"} ${requestedDocumentType} updated by agent.`,
-        performedAt: new Date(),
-      });
+      resetTravelerDocumentVerification(query, "Draft");
     }
+
+    query.travelerDocumentAuditTrail.push({
+      action: "Traveler document uploaded",
+      status: query.travelerDocumentVerification.status,
+      performedBy: agentId,
+      performedByName: req.user?.name || "Agent",
+      remarks: `${traveler.fullName || "Traveler"} ${documentKey === "passport" ? "Passport" : "PAN Card"} uploaded by agent.`,
+      performedAt: new Date(),
+    });
 
     await query.save();
 
@@ -4023,11 +4411,12 @@ export const uploadTravelerDocument = async (req, res, next) => {
 
 export const removeTravelerDocument = async (req, res, next) => {
   try {
-    const agentId = getAuthenticatedUserId(req);
+    const target = await getTargetAgentIdentity(req);
+    const agentId = target.agentId;
     const { queryId, travelerId } = req.params;
     const documentKey = String(req.params?.documentKey || "").trim();
 
-    if (!agentId) {
+    if (!agentId && !target.isOffline) {
       return next(new ApiError(401, "Unauthorized"));
     }
 
@@ -4035,10 +4424,15 @@ export const removeTravelerDocument = async (req, res, next) => {
       return next(new ApiError(400, "Invalid traveler document slot"));
     }
 
-    const query = await TravelQuery.findOne({
-      _id: queryId,
-      agent: agentId,
-    });
+    const query = target.isOffline || target.isManagerOrOps
+      ? await TravelQuery.findOne({
+          _id: queryId,
+          ...(target.isOffline ? target.queryFilter : {}),
+        })
+      : await TravelQuery.findOne({
+          _id: queryId,
+          agent: agentId,
+        });
 
     if (!query) {
       return next(new ApiError(404, "Booking not found"));
@@ -4122,17 +4516,23 @@ export const removeTravelerDocument = async (req, res, next) => {
 
 export const submitTravelerDocumentsForVerification = async (req, res, next) => {
   try {
-    const agentId = getAuthenticatedUserId(req);
+    const target = await getTargetAgentIdentity(req);
+    const agentId = target.agentId;
     const { queryId } = req.params;
 
-    if (!agentId) {
+    if (!agentId && !target.isOffline) {
       return next(new ApiError(401, "Unauthorized"));
     }
 
-    const query = await TravelQuery.findOne({
-      _id: queryId,
-      agent: agentId,
-    });
+    const query = target.isOffline || target.isManagerOrOps
+      ? await TravelQuery.findOne({
+          _id: queryId,
+          ...(target.isOffline ? target.queryFilter : {}),
+        })
+      : await TravelQuery.findOne({
+          _id: queryId,
+          agent: agentId,
+        });
 
     if (!query) {
       return next(new ApiError(404, "Booking not found"));
@@ -4428,9 +4828,10 @@ export const acceptQuotationByAgent = async (req, res, next) => {
   try {
     const { id } = req.params;
     const { action, markupType, markupValue } = req.body;
-    const agentId = getAuthenticatedUserId(req);
+    const target = await getTargetAgentIdentity(req);
+    const agentId = target.agentId;
 
-    if (!agentId) {
+    if (!agentId && !target.isOffline) {
       return next(new ApiError(401, "Unauthorized"));
     }
 
@@ -4439,7 +4840,7 @@ export const acceptQuotationByAgent = async (req, res, next) => {
       return next(new ApiError(404, "Quotation not found"));
     }
 
-    if (String(quotation.agent?._id || quotation.agent) !== String(agentId)) {
+    if (!target.isManagerOrOps && String(quotation.agent?._id || quotation.agent) !== String(agentId)) {
       return next(new ApiError(403, "Forbidden: You cannot modify this quotation"));
     }
 
@@ -4518,14 +4919,12 @@ export const acceptQuotationByAgent = async (req, res, next) => {
         );
       }
 
-      const [query, agent] = await Promise.all([
-        TravelQuery.findById(quotation.queryId),
-        Auth.findById(agentId).select("name email companyName phone address companyAddress website gstNumber brandingName brandingLogo brandingFooter voucherFooterImage footerImage profileImage avatar companyLogo"),
-      ]);
-
+      const query = await TravelQuery.findById(quotation.queryId);
       if (!query) {
         return next(new ApiError(404, "Travel query not found"));
       }
+
+      const agent = await resolveQuotationAgentContext({ target, agentId, quotation, query });
 
       const requestedRecipientEmail = String(req.body?.recipientEmail || "").trim().toLowerCase();
       const recipientEmail = String(
@@ -4648,9 +5047,10 @@ export const updateQuotationMarkup = async (req, res, next) => {
   try {
     const { id } = req.params;
     const { markupType, markupValue } = req.body;
-    const agentId = getAuthenticatedUserId(req);
+    const target = await getTargetAgentIdentity(req);
+    const agentId = target.agentId;
 
-    if (!agentId) {
+    if (!agentId && !target.isOffline) {
       return next(new ApiError(401, "Unauthorized"));
     }
 
@@ -4659,7 +5059,7 @@ export const updateQuotationMarkup = async (req, res, next) => {
       return next(new ApiError(404, "Quotation not found"));
     }
 
-    if (String(quotation.agent?._id || quotation.agent) !== String(agentId)) {
+    if (!target.isManagerOrOps && String(quotation.agent?._id || quotation.agent) !== String(agentId)) {
       return next(new ApiError(403, "Forbidden: You cannot modify this quotation"));
     }
 
@@ -4711,9 +5111,10 @@ export const updateQuotationVisibility = async (req, res, next) => {
   try {
     const { id } = req.params;
     const { isHidden } = req.body;
-    const agentId = getAuthenticatedUserId(req);
+    const target = await getTargetAgentIdentity(req);
+    const agentId = target.agentId;
 
-    if (!agentId) {
+    if (!agentId && !target.isOffline) {
       return next(new ApiError(401, "Unauthorized"));
     }
 
@@ -4722,7 +5123,7 @@ export const updateQuotationVisibility = async (req, res, next) => {
       return next(new ApiError(404, "Quotation not found"));
     }
 
-    if (String(quotation.agent?._id || quotation.agent) !== String(agentId)) {
+    if (!target.isManagerOrOps && String(quotation.agent?._id || quotation.agent) !== String(agentId)) {
       return next(new ApiError(403, "Forbidden: You cannot modify this quotation"));
     }
 
@@ -4783,10 +5184,13 @@ export const sendQuotationToClient = async (req, res, next) => {
 
 export const requestQuotationRevision = async (req, res) => {
   try {
-    const agentId = getAuthenticatedUserId(req);
+    const target = await getTargetAgentIdentity(req);
+    const agentId = target.agentId;
     const { reason = "" } = req.body;
 
-    const quotation = await Quotation.findOne({ _id: req.params.id, agent: agentId });
+    const quotation = target.isManagerOrOps || target.isOffline
+      ? await Quotation.findById(req.params.id)
+      : await Quotation.findOne({ _id: req.params.id, agent: agentId });
 
     if (!quotation) {
       return res.status(404).json({ message: "Quotation not found" });
@@ -4873,8 +5277,11 @@ export const requestQuotationRevision = async (req, res) => {
 
 export const confirmQuotation = async (req, res) => {
   try {
-    const agentId = getAuthenticatedUserId(req);
-    const quotation = await Quotation.findOne({ _id: req.params.id, agent: agentId });
+    const target = await getTargetAgentIdentity(req);
+    const agentId = target.agentId;
+    const quotation = target.isManagerOrOps || target.isOffline
+      ? await Quotation.findById(req.params.id)
+      : await Quotation.findOne({ _id: req.params.id, agent: agentId });
 
     if (!quotation) {
       return res.status(404).json({ message: "Quotation not found" });
@@ -4991,11 +5398,14 @@ export const confirmQuotation = async (req, res) => {
 
 export const ensureActiveBookingInvoice = async (req, res) => {
   try {
-    const agentId = getAuthenticatedUserId(req);
-    const quotation = await Quotation.findOne({
-      _id: req.params.id,
-      agent: agentId,
-    });
+    const target = await getTargetAgentIdentity(req);
+    const agentId = target.agentId;
+    const quotation = target.isManagerOrOps || target.isOffline
+      ? await Quotation.findById(req.params.id)
+      : await Quotation.findOne({
+          _id: req.params.id,
+          agent: agentId,
+        });
 
     if (!quotation) {
       return res.status(404).json({ message: "Quotation not found" });
@@ -5043,7 +5453,8 @@ export const ensureActiveBookingInvoice = async (req, res) => {
 
 export const getAgentFinanceOverview = async (req, res) => {
   try {
-    const agentId = getAuthenticatedUserId(req);
+    const target = await getTargetAgentIdentity(req);
+    const agentId = target.agentId;
 
     if (!agentId) {
       return res.status(401).json({ message: "Unauthorized" });
@@ -5051,6 +5462,7 @@ export const getAgentFinanceOverview = async (req, res) => {
 
     const financeOverview = await buildAgentFinanceOverviewPayload(agentId, {
       includeTransactions: true,
+      queryFilter: target.isOffline ? target.queryFilter : null,
     });
 
     res.json(financeOverview);
@@ -5064,15 +5476,21 @@ export const getAgentFinanceOverview = async (req, res) => {
 
 export const getMyInvoices = async (req, res) => {
   try {
-    const agentId = getAuthenticatedUserId(req);
+    const target = await getTargetAgentIdentity(req);
+    const agentId = target.agentId;
 
     if (!agentId) {
       return res.status(401).json({ message: "Unauthorized" });
     }
 
-    const invoices = await Invoice.find({
-      agent: agentId
-    })
+    let invoiceFilter = { agent: agentId };
+    if (target.isOffline) {
+      const matchingQueries = await TravelQuery.find(target.queryFilter).select("_id");
+      const queryIds = matchingQueries.map((q) => q._id);
+      invoiceFilter = { $or: [{ agent: agentId }, { query: { $in: queryIds } }] };
+    }
+
+    const invoices = await Invoice.find(invoiceFilter)
       .populate("query")
       .sort({ createdAt: -1 });
 
@@ -5088,13 +5506,16 @@ export const getMyInvoices = async (req, res) => {
 
 export const applyCouponToInvoice = async (req, res) => {
   try {
-    const agentId = getAuthenticatedUserId(req);
+    const target = await getTargetAgentIdentity(req);
+    const agentId = target.agentId;
 
-    if (!agentId) {
+    if (!agentId && !target.isOffline) {
       return res.status(401).json({ message: "Unauthorized" });
     }
 
-    const invoice = await Invoice.findOne({ _id: req.params.id, agent: agentId }).populate("query");
+    const invoice = target.isManagerOrOps || target.isOffline
+      ? await Invoice.findById(req.params.id).populate("query")
+      : await Invoice.findOne({ _id: req.params.id, agent: agentId }).populate("query");
 
     if (!invoice) {
       return res.status(404).json({ message: "Invoice not found" });
@@ -5272,9 +5693,10 @@ export const applyCouponToInvoice = async (req, res) => {
 
 export const updatePaymentStatus = async (req, res) => {
   try {
-    const agentId = getAuthenticatedUserId(req);
+    const target = await getTargetAgentIdentity(req);
+    const agentId = target.agentId;
 
-    if (!agentId) {
+    if (!agentId && !target.isOffline) {
       return res.status(401).json({ message: "Unauthorized" });
     }
 
@@ -5290,7 +5712,9 @@ export const updatePaymentStatus = async (req, res) => {
       paymentDate,
     } = req.body;
 
-    const invoice = await Invoice.findOne({ _id: req.params.id, agent: agentId });
+    const invoice = target.isManagerOrOps || target.isOffline
+      ? await Invoice.findById(req.params.id)
+      : await Invoice.findOne({ _id: req.params.id, agent: agentId });
 
     if (!invoice) {
       return res.status(404).json({ message: "Invoice not found" });
@@ -5756,11 +6180,12 @@ const resolveAgentReceiptExpectedAmount = (invoice = {}) => {
 
 export const generateAgentFinancePaymentReceipt = async (req, res) => {
   try {
-    const agentId = getAuthenticatedUserId(req);
+    const target = await getTargetAgentIdentity(req);
+    const agentId = target.agentId;
     const { id, installmentIndex } = req.params;
     const normalizedInstallmentIndex = Number(installmentIndex);
 
-    if (!agentId) {
+    if (!agentId && !target.isOffline) {
       return res.status(401).json({ message: "Unauthorized" });
     }
 
@@ -5768,9 +6193,13 @@ export const generateAgentFinancePaymentReceipt = async (req, res) => {
       return res.status(400).json({ message: "Invalid installment index" });
     }
 
-    const invoice = await Invoice.findOne({ _id: id, agent: agentId })
-      .populate("query", "queryId destination startDate endDate numberOfAdults numberOfChildren travelerDetails")
-      .populate("agent", "name companyName email");
+    const invoice = target.isManagerOrOps || target.isOffline
+      ? await Invoice.findById(id)
+          .populate("query", "queryId destination startDate endDate numberOfAdults numberOfChildren travelerDetails")
+          .populate("agent", "name companyName email")
+      : await Invoice.findOne({ _id: id, agent: agentId })
+          .populate("query", "queryId destination startDate endDate numberOfAdults numberOfChildren travelerDetails")
+          .populate("agent", "name companyName email");
 
     if (!invoice) {
       return res.status(404).json({ message: "Invoice not found" });

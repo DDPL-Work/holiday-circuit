@@ -4,7 +4,7 @@ import { ArrowLeft, Pencil, RotateCw, Copy, FileText, Trash2, Download, Loader2 
 import toast from "react-hot-toast";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
-import { resolveClientDetails } from "./CreateProformaInvoice";
+import { resolveClientDetails, getDynamicSellerDetails } from "./CreateProformaInvoice";
 
 // Utility to convert numbers to English words (e.g. 69000 -> Sixty-Nine Thousand Only)
 const numberToWords = (num) => {
@@ -339,94 +339,51 @@ const ProformaInvoiceView = ({ invoiceData = {}, onEdit, onDelete, onNew, queryD
 
   const queryId = invoiceData?.queryId || queryData?.queryId || queryData?.id || "4310346";
   
-  const sellerDetails = invoiceData?.sellerDetails || {
-    name:
-      invoiceData?.sellerName ||
-      queryData?.sellerName ||
-      queryData?.sellerDetails?.name ||
-      effectiveUser?.companyName ||
-      effectiveUser?.brandingName ||
-      effectiveUser?.agencyName ||
-      queryData?.agencyName ||
-      queryData?.agentName ||
-      effectiveUser?.name ||
-      "DDLC Company",
-    address:
-      invoiceData?.sellerAddress ||
-      queryData?.sellerAddress ||
-      queryData?.sellerDetails?.address ||
-      effectiveUser?.companyAddress ||
-      effectiveUser?.address ||
-      "KG 3/69, Ground Floor, Vikas Puri",
-    cityState:
-      invoiceData?.sellerCityState ||
-      queryData?.sellerCityState ||
-      queryData?.sellerDetails?.cityState ||
-      (effectiveUser?.city || effectiveUser?.state
-        ? `${effectiveUser.city || ""}${effectiveUser.city && effectiveUser.state ? ", " : ""}${effectiveUser.state || ""}`.trim()
-        : "") ||
-      "New Delhi, Delhi",
-    countryZip:
-      invoiceData?.sellerCountryZip ||
-      queryData?.sellerCountryZip ||
-      queryData?.sellerDetails?.countryZip ||
-      (effectiveUser?.country || effectiveUser?.zipCode || effectiveUser?.pincode
-        ? `${effectiveUser.country || "India"}${effectiveUser.zipCode || effectiveUser.pincode ? `, ${effectiveUser.zipCode || effectiveUser.pincode}` : ""}`.trim()
-        : "") ||
-      "India, 110018",
-    phone:
-      invoiceData?.sellerPhone ||
-      queryData?.sellerPhone ||
-      queryData?.sellerDetails?.phone ||
-      effectiveUser?.phone ||
-      effectiveUser?.companyPhone ||
-      queryData?.agentPhone ||
-      "9368825518",
-    email:
-      invoiceData?.sellerEmail ||
-      queryData?.sellerEmail ||
-      queryData?.sellerDetails?.email ||
-      effectiveUser?.email ||
-      effectiveUser?.companyEmail ||
-      queryData?.agentEmail ||
-      "joy@gmail.com",
-    pan:
-      invoiceData?.sellerPan ||
-      queryData?.sellerPan ||
-      queryData?.sellerDetails?.pan ||
-      effectiveUser?.panNumber ||
-      effectiveUser?.pan ||
-      effectiveUser?.panNo ||
-      queryData?.panNumber ||
-      "NA",
-    gst:
-      invoiceData?.sellerGst ||
-      queryData?.sellerGst ||
-      queryData?.sellerDetails?.gst ||
-      effectiveUser?.gstNumber ||
-      effectiveUser?.gst ||
-      effectiveUser?.gstNo ||
-      queryData?.gstNumber ||
-      queryData?.user?.gstNumber ||
-      "NA",
-    msme:
-      invoiceData?.sellerMsme ||
-      queryData?.sellerMsme ||
-      queryData?.sellerDetails?.msme ||
-      effectiveUser?.msmeNumber ||
-      effectiveUser?.msme ||
-      effectiveUser?.msmeNo ||
-      queryData?.msmeNumber ||
-      "NA",
-    tan:
-      invoiceData?.sellerTan ||
-      queryData?.sellerTan ||
-      queryData?.sellerDetails?.tan ||
-      effectiveUser?.tanNumber ||
-      effectiveUser?.tan ||
-      effectiveUser?.tanNo ||
-      queryData?.tanNumber ||
-      "NA",
+  const dynamicSeller = getDynamicSellerDetails(queryData, authUser || effectiveUser);
+  const isInvalidSellerName = (val) => {
+    if (!val) return true;
+    const lower = String(val).trim().toLowerCase();
+    return (
+      lower === "ddlc company pvt. ltd." ||
+      lower === "ddlc company" ||
+      lower === "operation manager" ||
+      lower === "operations manager" ||
+      lower === "admin" ||
+      lower === "company not specified"
+    );
+  };
+
+  const sellerDetails = {
+    name: (!isInvalidSellerName(invoiceData?.sellerDetails?.name) ? invoiceData?.sellerDetails?.name : "") ||
+          (!isInvalidSellerName(invoiceData?.sellerName) ? invoiceData?.sellerName : "") ||
+          dynamicSeller.name,
+    address: (invoiceData?.sellerDetails?.address && !invoiceData.sellerDetails.address.includes("Vikas Puri") ? invoiceData.sellerDetails.address : "") ||
+             (invoiceData?.sellerAddress && !invoiceData.sellerAddress.includes("Vikas Puri") ? invoiceData.sellerAddress : "") ||
+             dynamicSeller.address,
+    cityState: (invoiceData?.sellerDetails?.cityState && invoiceData.sellerDetails.cityState !== "New Delhi, Delhi" ? invoiceData.sellerDetails.cityState : "") ||
+               (invoiceData?.sellerCityState && invoiceData.sellerCityState !== "New Delhi, Delhi" ? invoiceData.sellerCityState : "") ||
+               dynamicSeller.cityState,
+    countryZip: (invoiceData?.sellerDetails?.countryZip && invoiceData.sellerDetails.countryZip !== "India, 110018" ? invoiceData.sellerDetails.countryZip : "") ||
+                (invoiceData?.sellerCountryZip && invoiceData.sellerCountryZip !== "India, 110018" ? invoiceData.sellerCountryZip : "") ||
+                dynamicSeller.countryZip,
+    phone: (invoiceData?.sellerDetails?.phone && invoiceData.sellerDetails.phone !== "9368825518" ? invoiceData.sellerDetails.phone : "") ||
+           (invoiceData?.sellerPhone && invoiceData.sellerPhone !== "9368825518" ? invoiceData.sellerPhone : "") ||
+           dynamicSeller.phone,
+    email: (invoiceData?.sellerDetails?.email && invoiceData.sellerDetails.email !== "joy@gmail.com" ? invoiceData.sellerDetails.email : "") ||
+           (invoiceData?.sellerEmail && invoiceData.sellerEmail !== "joy@gmail.com" ? invoiceData.sellerEmail : "") ||
+           dynamicSeller.email,
+    pan: (invoiceData?.sellerDetails?.pan && invoiceData.sellerDetails.pan !== "ABAPW1816B" ? invoiceData.sellerDetails.pan : "") ||
+         (invoiceData?.sellerPan && invoiceData.sellerPan !== "ABAPW1816B" ? invoiceData.sellerPan : "") ||
+         dynamicSeller.pan,
+    gst: (invoiceData?.sellerDetails?.gst && invoiceData.sellerDetails.gst !== "07ABAPW1816B3ZZ" ? invoiceData.sellerDetails.gst : "") ||
+         (invoiceData?.sellerGst && invoiceData.sellerGst !== "07ABAPW1816B3ZZ" ? invoiceData.sellerGst : "") ||
+         dynamicSeller.gst,
+    msme: (invoiceData?.sellerDetails?.msme && invoiceData.sellerDetails.msme !== "UDYAM-DL-10-0079437" ? invoiceData.sellerDetails.msme : "") ||
+          (invoiceData?.sellerMsme && invoiceData.sellerMsme !== "UDYAM-DL-10-0079437" ? invoiceData.sellerMsme : "") ||
+          dynamicSeller.msme,
+    tan: (invoiceData?.sellerDetails?.tan && invoiceData.sellerDetails.tan !== "DELV30189F" ? invoiceData.sellerDetails.tan : "") ||
+         (invoiceData?.sellerTan && invoiceData.sellerTan !== "DELV30189F" ? invoiceData.sellerTan : "") ||
+         dynamicSeller.tan,
   };
 
   const sellerLogo =
@@ -451,7 +408,7 @@ const ProformaInvoiceView = ({ invoiceData = {}, onEdit, onDelete, onNew, queryD
   const clientLeadAddress = invoiceData?.buyerAddress || clientInfo.address || "";
   const clientLeadCountry = invoiceData?.buyerCountry || clientInfo.country || "India";
 
-  const buyerDetails = invoiceData?.buyerDetails || {
+  const buyerDetails = invoiceData?.buyerDetails && invoiceData.buyerDetails.name && invoiceData.buyerDetails.name !== "Carma Tours" ? invoiceData.buyerDetails : {
     name: clientLeadName,
     address: clientLeadAddress,
     country: clientLeadCountry,

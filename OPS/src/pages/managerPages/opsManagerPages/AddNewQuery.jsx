@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { useSelector } from "react-redux";
 import {
   Pencil,
   Info,
@@ -485,6 +486,8 @@ const SALUTATION_OPTIONS = ["Mr.", "Mrs.", "Ms."];
 
 export default function AddNewQuery() {
   const navigate = useNavigate();
+  const { user } = useSelector((state) => state.auth);
+  const isManager = user?.role === "operation_manager";
 
   // Dynamic Query Sources from DB
   const [sources, setSources] = useState([]);
@@ -841,7 +844,7 @@ export default function AddNewQuery() {
       setIsSubmitting(true);
       const res = await API.post("/ops/manager/queries", payload);
       toast.success(res?.data?.message || "Query created successfully!");
-      navigate("/operationManager/allTeamQueries");
+      navigate(isManager ? "/operationManager/allTeamQueries" : "/ops/dashboard");
     } catch (error) {
       const msg =
         error?.response?.data?.message ||
@@ -854,7 +857,7 @@ export default function AddNewQuery() {
   };
 
   const handleCancel = () => {
-    navigate("/operationManager/operationManagerDashboard");
+    navigate(isManager ? "/operationManager/operationManagerDashboard" : "/ops/dashboard");
   };
 
   const isMultiPhoneOrExpanded =

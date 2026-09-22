@@ -70,6 +70,10 @@ const dedupeNotifications = (payloads = []) => {
   const seen = new Set();
 
   return payloads.filter((payload) => {
+    if (!payload?.user) {
+      return false;
+    }
+
     const key = [
       String(payload?.user || ""),
       String(payload?.title || ""),

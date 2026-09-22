@@ -44,6 +44,8 @@ import {
   createTripSource,
   getTripSources,
   createOperationManagerQuery,
+  updateOperationTeamMember,
+  toggleExecutiveQueryPermission,
 } from "../controllers/opsManagerController.js";
 import { sendQuotationController } from "../controllers/quotationNotificationController.js";
 import { getAllServices, createPackage, getPackages, deletePackage } from "../controllers/dmcController.js";
@@ -99,6 +101,8 @@ router.get("/manager/queries/:queryId/quotations", isAuthenticated, getOperation
 router.get("/manager/reassign-preview/:userId", isAuthenticated, getOperationManagerReassignPreview);
 router.get("/manager/reassignments/:userId", isAuthenticated, getOperationManagerReassignmentDetails);
 router.post("/manager/team", isAuthenticated, createOperationTeamMember);
+router.put("/manager/team/:userId", isAuthenticated, updateOperationTeamMember);
+router.patch("/manager/team/:userId/toggle-query-permission", isAuthenticated, toggleExecutiveQueryPermission);
 router.post("/manager/reassign", isAuthenticated, reassignOperationManagerWorkload);
 router.post("/manager/report", isAuthenticated, submitOperationManagerReport);
 router.get("/manager/activity-logs", isAuthenticated, getOpsActivityLogs);

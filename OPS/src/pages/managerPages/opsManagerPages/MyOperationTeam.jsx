@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { useSelector } from "react-redux";
-import { CalendarRange, ChevronDown, Hash, Mail, MoreHorizontal, Phone } from "lucide-react";
+import { CalendarRange, ChevronDown, FilePlus2, Hash, Mail, MoreHorizontal, Pencil, Phone } from "lucide-react";
 import API from "../../../utils/Api";
 import AddOpsExecutiveModal from "../../../modal/AddOpsExecutiveModal";
+import EditOpsExecutiveModal from "../../../modal/EditOpsExecutiveModal";
 import {
   OpsManagerReassignModal,
 } from "../../../modal/OpsManagerReassignModals";
@@ -201,6 +202,9 @@ export default function MyOperationTeam() {
 
   const [showAdd, setShowAdd] = useState(false);
   const [addSubmitting, setAddSubmitting] = useState(false);
+  const [editTarget, setEditTarget] = useState(null);
+  const [editSubmitting, setEditSubmitting] = useState(false);
+  const [togglingQueryId, setTogglingQueryId] = useState(null);
   const performanceCardTimerRef = useRef(null);
   const performanceCardOpenFrameRef = useRef(null);
   const hasLoadedOnceRef = useRef(false);
@@ -456,6 +460,33 @@ export default function MyOperationTeam() {
     }
   };
 
+  const handleToggleQueryPermission = async (member) => {
+    try {
+      setTogglingQueryId(member.id);
+      const { data } = await API.patch(`/ops/manager/team/${member.id}/toggle-query-permission`);
+      toast.success(data?.message || "Query permission updated");
+      await loadTeam({ background: true, notifyOnError: false });
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Failed to update query permission");
+    } finally {
+      setTogglingQueryId(null);
+    }
+  };
+
+  const handleUpdateExecutive = async (userId, payload) => {
+    try {
+      setEditSubmitting(true);
+      const { data } = await API.put(`/ops/manager/team/${userId}`, payload);
+      toast.success(data?.message || "Ops executive updated successfully");
+      await loadTeam({ background: true, notifyOnError: false });
+      return data;
+    } catch (err) {
+      throw err;
+    } finally {
+      setEditSubmitting(false);
+    }
+  };
+
   const addedThisWeek = summary?.addedThisWeek ?? 0;
   const atRisk = summary?.atRiskExecutives ?? 0;
   const avgPerf = summary?.avgTeamPerformance ?? 0;
@@ -689,15 +720,15 @@ export default function MyOperationTeam() {
           </div>
 
           <div className="thin-scrollbar overflow-x-auto">
-            <table className="min-w-[1140px] w-full table-fixed">
+            <table className="min-w-[1260px] w-full table-fixed">
               <colgroup>
+                <col style={{ width: "190px" }} />
                 <col style={{ width: "200px" }} />
-                <col style={{ width: "210px" }} />
-                <col style={{ width: "120px" }} />
-                <col style={{ width: "130px" }} />
-                <col style={{ width: "240px" }} />
                 <col style={{ width: "110px" }} />
-                <col style={{ width: "130px" }} />
+                <col style={{ width: "110px" }} />
+                <col style={{ width: "220px" }} />
+                <col style={{ width: "100px" }} />
+                <col style={{ width: "280px" }} />
               </colgroup>
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50/50">
@@ -806,8 +837,8 @@ export default function MyOperationTeam() {
                             className={`flex w-full min-w-0 cursor-pointer items-center gap-3 rounded-lg border px-3 py-1.5 text-left transition-all duration-200 hover:border-[#3E63DD] shadow-sm ${
                               hasScopedPerformance
                                 ? compactTrend !== null && compactTrend < 0
-                                  ? "border-red-200 bg-red-50/40 hover:bg-white hover:border-red-300"
-                                  : "border-emerald-200 bg-emerald-50/40 hover:bg-white hover:border-emerald-300"
+                                ? "border-red-200 bg-red-50/40 hover:bg-white hover:border-red-300"
+                                : "border-emerald-200 bg-emerald-50/40 hover:bg-white hover:border-emerald-300"
                                 : "border-slate-200 bg-slate-50/50 hover:bg-white hover:border-slate-300"
                             }`}
                           >
@@ -849,22 +880,64 @@ export default function MyOperationTeam() {
                         <td className={`px-4 py-2.5 align-middle text-center ${isExpanded ? "relative z-40" : ""}`}>
                           <StatusBadge status={member.status} />
                         </td>
-                        <td className="px-4 py-2.5 align-middle text-center">
-                          <button
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              setReassignTarget(member);
-                            }}
-                            disabled={!member.canReassign || team.length < 2}
-                            className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-md px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-wider transition-all duration-200 ${
-                              !member.canReassign || team.length < 2
-                                ? "bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200"
-                                : "bg-[#3E63DD] hover:bg-[#3353c7] text-white shadow-sm hover:shadow active:scale-95 cursor-pointer"
-                            }`}
-                          >
-                            <IconReassign size={11} />
-                            Re-assign
-                          </button>
+                        <td className="px-3 py-2.5 align-middle text-center">
+                          <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                            <button
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setReassignTarget(member);
+                              }}
+                              disabled={!member.canReassign || team.length < 2}
+                              title="Re-assign active queries"
+                              className={`inline-flex items-center gap-1 whitespace-nowrap rounded-md px-2.5 py-1.5 text-[10.5px] font-bold uppercase tracking-wider transition-all duration-200 ${
+                                !member.canReassign || team.length < 2
+                                  ? "bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200"
+                                  : "bg-[#3E63DD] hover:bg-[#3353c7] text-white shadow-xs hover:shadow active:scale-95 cursor-pointer"
+                              }`}
+                            >
+                              <IconReassign size={11} />
+                              Re-assign
+                            </button>
+
+                            {/* Enable / Disable Query Permission Button */}
+                            {(() => {
+                              const hasCreateQuery = Array.isArray(member.permissions) && member.permissions.includes("Create Query");
+                              const isToggling = togglingQueryId === member.id;
+                              return (
+                                <button
+                                  type="button"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    handleToggleQueryPermission(member);
+                                  }}
+                                  disabled={isToggling}
+                                  title={hasCreateQuery ? "Click to disable Create Query permission" : "Click to enable Create Query permission"}
+                                  className={`inline-flex items-center gap-1 whitespace-nowrap rounded-md px-2.5 py-1.5 text-[10.5px] font-bold transition-all duration-200 cursor-pointer border shadow-xs active:scale-95 disabled:opacity-60 ${
+                                    hasCreateQuery
+                                      ? "border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:border-emerald-400"
+                                      : "border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+                                  }`}
+                                >
+                                  <FilePlus2 className={`h-3 w-3 ${hasCreateQuery ? "text-emerald-600" : "text-slate-400"}`} />
+                                  <span>Query: {hasCreateQuery ? "ON" : "OFF"}</span>
+                                </button>
+                              );
+                            })()}
+
+                            {/* Edit Executive Details Button */}
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setEditTarget(member);
+                              }}
+                              title="Edit executive details and permissions"
+                              className="inline-flex items-center gap-1 whitespace-nowrap rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-[10.5px] font-bold text-slate-700 hover:border-[#3E63DD] hover:text-[#3E63DD] hover:bg-blue-50/40 shadow-xs transition-all duration-200 active:scale-95 cursor-pointer"
+                            >
+                              <Pencil className="h-3 w-3" />
+                              Edit
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -1072,6 +1145,15 @@ export default function MyOperationTeam() {
           managerName={user?.name || "Operations Manager"}
           onClose={() => setShowAdd(false)}
           onAdd={handleAdd}
+        />
+      )}
+
+      {editTarget && (
+        <EditOpsExecutiveModal
+          executive={editTarget}
+          loading={editSubmitting}
+          onClose={() => setEditTarget(null)}
+          onUpdate={handleUpdateExecutive}
         />
       )}
     </div>

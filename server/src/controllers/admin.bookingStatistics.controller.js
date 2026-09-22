@@ -2,6 +2,59 @@ import TravelQuery from "../models/TravelQuery.model.js";
 import Quotation from "../models/quotation.model.js";
 import InternalInvoice from "../models/internalInvoice.model.js";
 import Auth from "../models/auth.model.js";
+import TripSource from "../models/TripSource.model.js";
+import mongoose from "mongoose";
+
+// Helper to resolve clean Agent / Offline Partner / TripSource name for a query
+const resolveQueryAgentName = (q, tripSourceMap = new Map()) => {
+  // 1. Populated agent from Auth model
+  if (q?.agent && typeof q.agent === "object") {
+    const name = q.agent.companyName || q.agent.name;
+    if (name && String(name).trim() && String(name).trim().toLowerCase() !== "unassigned") {
+      return String(name).trim();
+    }
+  }
+
+  // 2. Populated tripSource from TripSource model
+  if (q?.tripSource && typeof q.tripSource === "object") {
+    const name = q.tripSource.name || q.tripSource.shortName;
+    if (name && String(name).trim()) {
+      return String(name).trim();
+    }
+  }
+
+  // 3. Look up unpopulated tripSource or agent ID in tripSourceMap
+  const tripSourceKey =
+    q?.tripSource && typeof q.tripSource !== "object" ? q.tripSource.toString() : "";
+  if (tripSourceKey && tripSourceMap.has(tripSourceKey)) {
+    const ts = tripSourceMap.get(tripSourceKey);
+    const name = ts?.name || ts?.shortName;
+    if (name && String(name).trim()) return String(name).trim();
+  }
+
+  const agentKey =
+    q?.agent && typeof q.agent !== "object" ? q.agent.toString() : "";
+  if (agentKey && tripSourceMap.has(agentKey)) {
+    const ts = tripSourceMap.get(agentKey);
+    const name = ts?.name || ts?.shortName;
+    if (name && String(name).trim()) return String(name).trim();
+  }
+
+  // 4. querySource string (direct offline agent name e.g. "HolidayHive Travels")
+  if (q?.querySource && String(q.querySource).trim()) {
+    return String(q.querySource).trim();
+  }
+
+  // 5. agencyName / agentName fallback if stored directly on query
+  if (q?.agencyName && String(q.agencyName).trim()) {
+    return String(q.agencyName).trim();
+  }
+  if (q?.agentName && String(q.agentName).trim()) {
+    return String(q.agentName).trim();
+  }
+
+  return "Unassigned";
+};
 
 // Helper to resolve clean DMC and Business Partner names for a query
 const resolveQueryDmcAndPartners = (query, quotation, invoices = [], authMap = new Map(), knownPartnerNames = new Set()) => {
@@ -88,10 +141,29 @@ export const getVoucheredQueries = async (req, res) => {
     })
       .populate("agent", "name companyName")
       .populate("assignedTo", "name")
+      .populate("tripSource", "name shortName sourceType contactPerson")
       .sort({ createdAt: -1 })
       .lean();
 
     const queryIds = queries.map((q) => q._id);
+
+    // Fetch candidate TripSource IDs for offline agents
+    const candidateTripSourceIds = queries
+      .flatMap((q) => [
+        q.tripSource && typeof q.tripSource !== "object" ? q.tripSource : null,
+        q.agent && typeof q.agent !== "object" ? q.agent : null,
+      ])
+      .filter((id) => id && mongoose.Types.ObjectId.isValid(id));
+
+    const tripSourceMap = new Map();
+    if (candidateTripSourceIds.length > 0) {
+      const tripSources = await TripSource.find({ _id: { $in: candidateTripSourceIds } })
+        .select("name shortName sourceType")
+        .lean();
+      tripSources.forEach((ts) => {
+        tripSourceMap.set(ts._id.toString(), ts);
+      });
+    }
 
     // Fetch associated quotations to extract DMC, Business Partners, and ops creator
     const quotations = await Quotation.find({ queryId: { $in: queryIds } })
@@ -138,10 +210,8 @@ export const getVoucheredQueries = async (req, res) => {
       const quot = quotationMap[q._id.toString()];
       const invList = invoiceMap[q._id.toString()] || [];
 
-      // Safely access fields
-      const agentName = q.agent
-        ? q.agent.companyName || q.agent.name || "Unassigned"
-        : "Unassigned";
+      // Safely resolve agent / offline partner name
+      const agentName = resolveQueryAgentName(q, tripSourceMap);
 
       let opsName = "Unassigned";
       if (q.assignedTo && q.assignedTo.name) {
@@ -191,10 +261,26 @@ export const getQueryDetails = async (req, res) => {
     const query = await TravelQuery.findById(id)
       .populate("agent", "name companyName")
       .populate("assignedTo", "name")
+      .populate("tripSource", "name shortName sourceType contactPerson city state country")
       .lean();
 
     if (!query) {
       return res.status(404).json({ success: false, message: "Query not found" });
+    }
+
+    let tripSourceDoc = query.tripSource;
+    if ((!tripSourceDoc || typeof tripSourceDoc !== "object" || !tripSourceDoc.name) && (query.tripSource || query.agent)) {
+      const tsId = query.tripSource || query.agent;
+      if (tsId && mongoose.Types.ObjectId.isValid(tsId)) {
+        tripSourceDoc = await TripSource.findById(tsId)
+          .select("name shortName sourceType contactPerson city state country")
+          .lean();
+      }
+    }
+
+    const singleTripMap = new Map();
+    if (tripSourceDoc && tripSourceDoc._id) {
+      singleTripMap.set(tripSourceDoc._id.toString(), tripSourceDoc);
     }
 
     const quotation = await Quotation.findOne({ queryId: query._id })
@@ -260,9 +346,10 @@ export const getQueryDetails = async (req, res) => {
 
     const dmc = resolveQueryDmcAndPartners(query, quotation, internalInvoices, authMap, knownPartnerNames);
 
-    const agentName = query.agent
-      ? query.agent.companyName || query.agent.name || "Unassigned"
-      : "Unassigned";
+    const agentName = resolveQueryAgentName(
+      { ...query, tripSource: tripSourceDoc || query.tripSource },
+      singleTripMap
+    );
 
     let opsName = "Unassigned";
     if (query.assignedTo && query.assignedTo.name) {
