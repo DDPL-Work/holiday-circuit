@@ -3280,6 +3280,69 @@ export const updateProfile = async (req, res, next) => {
   }
 };
 
+export const changePassword = async (req, res, next) => {
+  try {
+    const userId = getAuthenticatedUserId(req);
+
+    if (!userId) {
+      return next(new ApiError(401, "Unauthorized"));
+    }
+
+    const currentPassword = String(req.body?.currentPassword || "").trim();
+    const newPassword = String(req.body?.newPassword || "").trim();
+    const confirmPassword = String(req.body?.confirmPassword || "").trim();
+
+    if (!currentPassword) {
+      return next(new ApiError(400, "Current password is required"));
+    }
+
+    if (!newPassword) {
+      return next(new ApiError(400, "New password is required"));
+    }
+
+    if (newPassword.length < 8) {
+      return next(new ApiError(400, "New password must be at least 8 characters"));
+    }
+
+    if (!confirmPassword) {
+      return next(new ApiError(400, "Please confirm your new password"));
+    }
+
+    if (newPassword !== confirmPassword) {
+      return next(new ApiError(400, "New password and confirm password do not match"));
+    }
+
+    if (currentPassword === newPassword) {
+      return next(new ApiError(400, "New password cannot be the same as your current password"));
+    }
+
+    const user = await Auth.findById(userId);
+
+    if (!user) {
+      return next(new ApiError(404, "User not found"));
+    }
+
+    const { isMatch } = await verifyLegacyCompatiblePassword(
+      currentPassword,
+      user.password,
+    );
+
+    if (!isMatch) {
+      return next(new ApiError(400, "Incorrect current password"));
+    }
+
+    user.password = await bcrypt.hash(newPassword, 10);
+    await user.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Password changed successfully",
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 
 
 export const getMe = async (req, res, next) => {

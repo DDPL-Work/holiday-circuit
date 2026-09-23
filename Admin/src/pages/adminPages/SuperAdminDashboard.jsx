@@ -454,7 +454,7 @@ export default function SuperAdminDashboard() {
           setEscalationReply={setEscalationReply}
         />
 
-        <UserManagementTable
+        {/* <UserManagementTable
           userList={userList}
           activeUserCount={activeUserCount}
           inactiveUserCount={inactiveUserCount}
@@ -467,7 +467,7 @@ export default function SuperAdminDashboard() {
           handleToggleUserStatus={handleToggleUserStatus}
           setDeleteReason={setDeleteReason}
           setDeleteDialogUser={setDeleteDialogUser}
-        />
+        /> */}
 
         <MasterBookingsTable
           bookingRows={bookingRows}

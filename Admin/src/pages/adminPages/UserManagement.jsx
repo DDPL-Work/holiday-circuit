@@ -3,6 +3,10 @@ import { useSelector } from "react-redux";
 import toast from "react-hot-toast";
 import API from "../../utils/Api";
 import AddNewUserModal from "../../modal/AddNewUserModal";
+import {
+  getPermissionAppearance,
+  roleAppearance,
+} from "./superAdminDashboard/utils/dashboardHelpers";
 
 const roleBadge = {
   "Ops Team": "bg-blue-50 text-blue-600",
@@ -62,32 +66,51 @@ const formatRelativeTime = (value) => {
   return `${years} ${years === 1 ? "year" : "years"} ago`;
 };
 
-const getInitial = (name = "") =>
-  String(name || "").trim().charAt(0).toUpperCase() || "U";
+const getInitials = (name = "") => {
+  const parts = String(name || "").trim().split(/\s+/);
+  if (!parts.length || !parts[0]) return "U";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+};
 
 const getRoleLabel = (user = {}) =>
   user.roleLabel || user.role || "Super Admin";
 
-const mapApiUserToRow = (user = {}) => ({
-  id: user.id || user._id,
-  name: user.name || "",
-  email: user.email || "",
-  phone: user.phone || "",
-  role: getRoleLabel(user),
-  status: user.isDeleted ? "Deleted" : user.accountStatus || "Active",
-  isDeleted: Boolean(user.isDeleted),
-  lastLoginAt: user.lastLoginAt || null,
-  lastLogin: formatRelativeTime(user.lastLoginAt),
-  updatedAt: user.updatedAt || null,
-  createdAt: user.createdAt || null,
-  employeeId: user.employeeId || "",
-  department: user.department || "",
-  designation: user.designation || "",
-  manager: user.manager || "",
-  permissions: Array.isArray(user.permissions) ? user.permissions : [],
-  accessExpiry: user.accessExpiry || "",
-  isBusinessPartner: Boolean(user.isBusinessPartner),
-});
+const mapApiUserToRow = (user = {}) => {
+  const roleName = getRoleLabel(user);
+  const appearance = roleAppearance[roleName] || { color: "#475569", bg: "#f8fafc" };
+  const rawImage =
+    user.profileImage || user.avatar || user.avatarUrl || user.photo ||
+    user.image || user.profilePic || user.profile_picture || user.profile?.image || "";
+
+  return {
+    id: user.id || user._id,
+    name: user.name || "",
+    email: user.email || "",
+    phone: user.phone || "",
+    role: roleName,
+    roleColor: appearance.color,
+    roleBg: appearance.bg,
+    initials: getInitials(user.name),
+    profileImage: rawImage,
+    status: user.isDeleted ? "Deleted" : user.accountStatus || "Active",
+    isDeleted: Boolean(user.isDeleted),
+    deletionReason: user.deletionReason || "",
+    lastLoginAt: user.lastLoginAt || null,
+    lastLogin: formatRelativeTime(user.lastLoginAt),
+    lastActiveAt: user.lastActiveAt || null,
+    isOnline: Boolean(user.isOnline),
+    updatedAt: user.updatedAt || null,
+    createdAt: user.createdAt || null,
+    employeeId: user.employeeId || "",
+    department: user.department || "",
+    designation: user.designation || "",
+    manager: user.manager || "",
+    permissions: Array.isArray(user.permissions) ? user.permissions : [],
+    accessExpiry: user.accessExpiry || "",
+    isBusinessPartner: Boolean(user.isBusinessPartner),
+  };
+};
 
 const EditIcon = () => (
   <svg className="w-[15px] h-[15px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -110,6 +133,15 @@ const RestoreIcon = () => (
   <svg className="w-[15px] h-[15px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
     <path d="M3 7v6h6" />
     <path d="M21 17a8 8 0 1 1-2.34-5.66L21 13" />
+  </svg>
+);
+
+const RefreshIcon = ({ className }) => (
+  <svg className={`w-[15px] h-[15px] ${className || ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+    <path d="M3 3v5h5" />
+    <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" />
+    <path d="M16 21h5v-5" />
   </svg>
 );
 
@@ -277,6 +309,25 @@ export default function UserManagement() {
   }, []);
 
   useEffect(() => {
+    if (!currentUser?.id) return;
+    setUsers((prev) =>
+      prev.map((entry) => {
+        if (entry.id !== currentUser.id) return entry;
+        const syncedRow = mapApiUserToRow({
+          ...entry,
+          ...currentUser,
+          roleLabel: entry.role,
+          profileImage:
+            currentUser.profileImage || currentUser.avatar || currentUser.avatarUrl ||
+            currentUser.photo || currentUser.image || currentUser.profilePic ||
+            currentUser.profile_picture || currentUser.profile?.image || entry.profileImage || "",
+        });
+        return { ...entry, ...syncedRow };
+      }),
+    );
+  }, [currentUser]);
+
+  useEffect(() => {
     if (!confirmDialog.open && !isAddUserModalOpen) return;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -377,6 +428,29 @@ export default function UserManagement() {
     );
     toast.success(data?.message || "User updated successfully");
     return data;
+  };
+
+  const handleToggleUserStatus = async (user) => {
+    if (user?.isDeleted) {
+      toast.error("Deleted users cannot be updated.");
+      return;
+    }
+    const nextStatus = user.status === "Active" ? "Inactive" : "Active";
+    try {
+      setUserActionId(user.id);
+      const { data } = await API.patch(`/admin/managed-users/${user.id}/status`, {
+        accountStatus: nextStatus,
+      });
+      const nextUser = mapApiUserToRow(data.user);
+      setUsers((prev) =>
+        prev.map((entry) => (entry.id === user.id ? nextUser : entry)),
+      );
+      toast.success(data?.message || `User marked as ${nextStatus}`);
+    } catch (error) {
+      toast.error(error?.response?.data?.message || "Failed to update status");
+    } finally {
+      setUserActionId("");
+    }
   };
 
   const openDeleteDialog = (user) => {
@@ -563,170 +637,255 @@ export default function UserManagement() {
           ))}
         </div>
 
-        <div className="bg-white border border-gray-300 rounded-xl overflow-hidden">
-          <table className="w-full border-collapse">
-            <thead>
-              <tr className="bg-gray-50 border-b border-gray-300">
-                {["User", "Contact", "Role", "Status", "Last Login", "Actions"].map((heading) => (
-                  <th
-                    key={heading}
-                    className="px-4 py-2.5 text-left text-[11px] font-semibold text-gray-400 tracking-wide uppercase"
-                  >
-                    {heading}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-gray-400 text-sm">
-                    Loading users...
-                  </td>
-                </tr>
-              ) : filtered.length ? (
-                filtered.map((user) => {
-                  const isUserOnline = Boolean(
-                    user.isOnline ||
-                      (user.lastActiveAt && (Date.now() - new Date(user.lastActiveAt).getTime()) < 120000)
-                  );
-
-                  return (
-                    <tr
-                      key={user.id}
-                      className="border-b border-gray-200 last:border-b-0 hover:bg-gray-50 transition-colors"
+        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-xs">
+          <div className="overflow-x-auto custom-scroll pb-1">
+            <table className="w-full min-w-[1180px] border-collapse">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-200">
+                  {[
+                    { label: "User", width: "w-[250px]" },
+                    { label: "Contact", width: "w-[220px]" },
+                    { label: "Role", width: "w-[170px]" },
+                    { label: "Permissions", width: "w-[230px]" },
+                    { label: "Status", width: "w-[120px]" },
+                    { label: "Last Login", width: "w-[115px]" },
+                    { label: "Actions", width: "w-[105px]" },
+                  ].map(({ label, width }) => (
+                    <th
+                      key={label}
+                      className={`px-4 py-3.5 text-left text-xs font-semibold text-gray-500 tracking-wide uppercase whitespace-nowrap ${width}`}
                     >
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2.5">
-                          <div className="relative w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-[13px] font-bold text-gray-500 shrink-0">
-                            {getInitial(user.name)}
-                            {isUserOnline ? (
-                              <span className="absolute bottom-0 right-0 block h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-white" />
-                            ) : null}
-                          </div>
-                          <div>
-                            <p className="text-[13px] font-semibold text-gray-800">
-                              {user.name}
-                            </p>
-                            <p className="text-[11px] text-gray-400">{user.email}</p>
-                          </div>
-                        </div>
-                      </td>
-
-                      <td className="px-4 py-3">
-                        <div className="flex flex-col gap-1">
-                          <div className="flex items-center gap-1.5 text-[12px] text-gray-500">
-                            <MailIcon />
-                            {user.email}
-                          </div>
-                          <div className="flex items-center gap-1.5 text-[12px] text-gray-500">
-                            <PhoneIcon />
-                            {user.phone || "-"}
-                          </div>
-                        </div>
-                      </td>
-
-                      <td className="px-4 py-3">
-                        <span
-                          className={`inline-block px-2.5 py-1 rounded-md text-[11px] font-semibold ${
-                            roleBadge[user.role] || "bg-gray-50 text-gray-600 border border-gray-200"
-                          }`}
-                        >
-                          {user.role}
-                        </span>
-                      </td>
-
-                      <td className="px-4 py-3">
-                        <span
-                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold ${
-                            isUserOnline
-                              ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                              : user.status === "Active"
-                                ? "bg-blue-50 text-blue-600 border border-blue-200"
-                                : user.status === "Deleted"
-                                  ? "bg-red-50 text-red-500 border border-red-200"
-                                  : "bg-gray-100 text-gray-500 border border-gray-200"
-                          }`}
-                        >
-                          {isUserOnline ? (
-                            <span className="relative flex h-2 w-2">
-                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                            </span>
-                          ) : (
-                            <span
-                              className={`w-1.5 h-1.5 rounded-full ${
-                                user.status === "Active"
-                                  ? "bg-blue-500"
-                                  : user.status === "Deleted"
-                                    ? "bg-red-500"
-                                    : "bg-gray-400"
-                              }`}
-                            />
-                          )}
-                          {isUserOnline ? "Online" : user.status}
-                        </span>
-                      </td>
-
-                    <td className="px-4 py-3 text-[12px] text-gray-400">
-                      {user.lastLogin}
-                    </td>
-
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        {user.isDeleted ? (
-                          <>
-                            <button
-                              onClick={() => openRestoreDialog(user)}
-                              disabled={userActionId === user.id}
-                              className="p-1.5 rounded-md text-gray-400 hover:bg-gray-100 hover:text-green-600 transition-colors disabled:opacity-50"
-                            >
-                              <RestoreIcon />
-                            </button>
-                            <button
-                              onClick={() => openDeleteDialog(user)}
-                              disabled={userActionId === user.id}
-                              className="p-1.5 rounded-md text-red-400 hover:bg-red-50 transition-colors disabled:opacity-50"
-                            >
-                              <TrashIcon />
-                            </button>
-                          </>
-                        ) : (
-                          <>
-                            <button
-                              onClick={() => {
-                                setEditingUser(user);
-                                setModalMode(user.isBusinessPartner ? "businessPartner" : "user");
-                                setIsAddUserModalOpen(true);
-                              }}
-                              disabled={userActionId === user.id}
-                              className="p-1.5 rounded-md text-gray-400 hover:bg-gray-100 hover:text-blue-500 transition-colors disabled:opacity-50"
-                            >
-                              <EditIcon />
-                            </button>
-                            <button
-                              onClick={() => openDeleteDialog(user)}
-                              disabled={userActionId === user.id}
-                              className="p-1.5 rounded-md text-red-400 hover:bg-red-50 transition-colors disabled:opacity-50"
-                            >
-                              <TrashIcon />
-                            </button>
-                          </>
-                        )}
-                      </div>
+                      {label}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td colSpan={7} className="px-4 py-8 text-center text-gray-400 text-sm">
+                      Loading users...
                     </td>
                   </tr>
-                );
-              })
-            ) : (
-                <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-gray-400 text-sm">
-                    No users found.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+                ) : filtered.length ? (
+                  filtered.map((user) => {
+                    const isUserOnline = Boolean(
+                      user.isOnline ||
+                        (user.lastActiveAt && (Date.now() - new Date(user.lastActiveAt).getTime()) < 120000)
+                    );
+
+                    return (
+                      <tr
+                        key={user.id}
+                        className="border-b border-gray-200 last:border-b-0 hover:bg-gray-50/80 transition-colors"
+                      >
+                        <td className="px-4 py-3.5 align-middle">
+                          <div className="flex items-center gap-3">
+                            <div className="relative w-9 h-9 shrink-0">
+                              <div
+                                className="w-full h-full rounded-full flex items-center justify-center text-[13px] font-bold overflow-hidden"
+                                style={{
+                                  backgroundColor: user.roleBg || "#f3f4f6",
+                                  color: user.roleColor || "#4b5563",
+                                  border: `1px solid ${user.roleColor ? user.roleColor + "33" : "#e5e7eb"}`,
+                                }}
+                              >
+                                {user.profileImage ? (
+                                  <img
+                                    src={user.profileImage}
+                                    alt={user.name}
+                                    className="w-full h-full object-cover"
+                                  />
+                                ) : (
+                                  user.initials
+                                )}
+                              </div>
+                              {isUserOnline ? (
+                                <span className="absolute -bottom-0.5 -right-0.5 block h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-white" />
+                              ) : null}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-sm font-semibold text-gray-900 leading-tight">
+                                {user.name}
+                              </p>
+                              <p className="text-xs text-gray-500 mt-1 whitespace-nowrap">
+                                {user.employeeId || user.department || "Holiday Circuit"}
+                              </p>
+                              {user.status === "Deleted" && user.deletionReason ? (
+                                <p className="text-xs text-red-500 mt-1">
+                                  Reason: {user.deletionReason}
+                                </p>
+                              ) : null}
+                            </div>
+                          </div>
+                        </td>
+
+                        <td className="px-4 py-3.5 align-middle">
+                          <div className="flex flex-col gap-1.5">
+                            <div className="flex items-center gap-1.5 text-[13px] text-gray-700">
+                              <MailIcon />
+                              <span className="truncate max-w-[200px]" title={user.email}>
+                                {user.email}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1.5 text-[13px] text-gray-500">
+                              <PhoneIcon />
+                              <span>{user.phone || "-"}</span>
+                            </div>
+                          </div>
+                        </td>
+
+                        <td className="px-4 py-3.5 align-middle">
+                          <div>
+                            <span
+                              className={`inline-block px-2.5 py-1 rounded-md text-xs font-semibold whitespace-nowrap ${
+                                roleBadge[user.role] || "bg-gray-50 text-gray-600 border border-gray-200"
+                              }`}
+                            >
+                              {user.role}
+                            </span>
+                            <p className="mt-1 text-xs text-gray-500 font-medium whitespace-nowrap">
+                              {user.designation || user.department || "Portal access"}
+                            </p>
+                          </div>
+                        </td>
+
+                        <td className="px-4 py-3.5 align-middle">
+                          <div className="flex flex-wrap items-center gap-1.5 max-w-[230px]">
+                            {user.permissions && user.permissions.length ? (
+                              <>
+                                {user.permissions.slice(0, 3).map((permission) => {
+                                  const pa = getPermissionAppearance(permission);
+                                  return (
+                                    <span
+                                      key={permission}
+                                      className="inline-flex px-2 py-0.5 rounded-md text-[11px] font-semibold whitespace-nowrap"
+                                      style={{
+                                        background: pa.bg,
+                                        color: pa.color,
+                                        border: `1px solid ${pa.border}`,
+                                      }}
+                                    >
+                                      {permission}
+                                    </span>
+                                  );
+                                })}
+                                {user.permissions.length > 3 ? (
+                                  <span className="inline-flex px-1.5 py-0.5 rounded-md text-[11px] font-semibold text-gray-500 bg-gray-100 border border-gray-200">
+                                    +{user.permissions.length - 3} more
+                                  </span>
+                                ) : null}
+                              </>
+                            ) : (
+                              <span className="text-xs text-gray-400">No permissions assigned</span>
+                            )}
+                          </div>
+                        </td>
+
+                        <td className="px-4 py-3.5 align-middle">
+                          <span
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold whitespace-nowrap ${
+                              isUserOnline
+                                ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                : user.status === "Active"
+                                  ? "bg-blue-50 text-blue-600 border border-blue-200"
+                                  : user.status === "Deleted"
+                                    ? "bg-red-50 text-red-500 border border-red-200"
+                                    : "bg-gray-100 text-gray-500 border border-gray-200"
+                            }`}
+                          >
+                            {isUserOnline ? (
+                              <span className="relative flex h-2 w-2">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                              </span>
+                            ) : (
+                              <span
+                                className={`w-1.5 h-1.5 rounded-full ${
+                                  user.status === "Active"
+                                    ? "bg-blue-500"
+                                    : user.status === "Deleted"
+                                      ? "bg-red-500"
+                                      : "bg-gray-400"
+                                }`}
+                              />
+                            )}
+                            {isUserOnline ? "Online" : user.status}
+                          </span>
+                        </td>
+
+                        <td className="px-4 py-3.5 align-middle text-[13px] text-gray-500 whitespace-nowrap">
+                          {user.lastLogin}
+                        </td>
+
+                        <td className="px-4 py-3.5 align-middle">
+                          <div className="flex items-center gap-1.5 whitespace-nowrap">
+                            {user.isDeleted ? (
+                              <>
+                                <button
+                                  onClick={() => openRestoreDialog(user)}
+                                  disabled={userActionId === user.id}
+                                  title="Restore User"
+                                  className="p-1.5 rounded-md text-gray-400 hover:bg-gray-100 hover:text-green-600 transition-colors disabled:opacity-50 cursor-pointer"
+                                >
+                                  <RestoreIcon />
+                                </button>
+                                <button
+                                  onClick={() => openDeleteDialog(user)}
+                                  disabled={userActionId === user.id}
+                                  title="Delete Permanently"
+                                  className="p-1.5 rounded-md text-red-400 hover:bg-red-50 transition-colors disabled:opacity-50 cursor-pointer"
+                                >
+                                  <TrashIcon />
+                                </button>
+                              </>
+                            ) : (
+                              <>
+                                <button
+                                  onClick={() => {
+                                    setEditingUser(user);
+                                    setModalMode(user.isBusinessPartner ? "businessPartner" : "user");
+                                    setIsAddUserModalOpen(true);
+                                  }}
+                                  disabled={userActionId === user.id}
+                                  title="Edit"
+                                  className="p-1.5 rounded-md text-gray-400 hover:bg-gray-100 hover:text-blue-500 transition-colors disabled:opacity-50 cursor-pointer"
+                                >
+                                  <EditIcon />
+                                </button>
+                                <button
+                                  onClick={() => handleToggleUserStatus(user)}
+                                  disabled={userActionId === user.id}
+                                  title={user.status === "Active" ? "Mark Inactive" : "Mark Active"}
+                                  className="p-1.5 rounded-md text-gray-400 hover:bg-gray-100 hover:text-emerald-600 transition-colors disabled:opacity-50 cursor-pointer"
+                                >
+                                  <RefreshIcon className={userActionId === user.id ? "animate-spin" : ""} />
+                                </button>
+                                <button
+                                  onClick={() => openDeleteDialog(user)}
+                                  disabled={userActionId === user.id}
+                                  title="Delete"
+                                  className="p-1.5 rounded-md text-red-400 hover:bg-red-50 transition-colors disabled:opacity-50 cursor-pointer"
+                                >
+                                  <TrashIcon />
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                ) : (
+                  <tr>
+                    <td colSpan={7} className="px-4 py-8 text-center text-gray-400 text-sm">
+                      No users found.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
 

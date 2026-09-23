@@ -243,7 +243,7 @@ const getFormStateFromUser = (user) => ({
   department: user?.department || "",
   designation: user?.designation || "",
   permissions: Array.isArray(user?.permissions) ? user.permissions : [],
-  passwordMode: "auto",
+  passwordMode: "keep",
   manualPassword: "",
   accountStatus: user?.status || "Active",
   accessExpiry: user?.accessExpiry ? String(user.accessExpiry).slice(0, 10) : "",
@@ -452,6 +452,11 @@ export default function AddNewUserModal({
         toast.error("Manual password must be at least 8 characters.");
         return;
       }
+
+      if (isEditMode && passwordMode === "manual" && manualPassword.trim().length < 8) {
+        toast.error("New password must be at least 8 characters.");
+        return;
+      }
     }
 
     setIsSubmitting(true);
@@ -467,11 +472,11 @@ export default function AddNewUserModal({
         department: isBusinessPartnerMode ? "DMC Relations" : department,
         designation: isBusinessPartnerMode ? "Business Partner" : designation,
         permissions,
-        passwordMode: isBusinessPartnerMode ? "auto" : passwordMode,
-        manualPassword: isBusinessPartnerMode ? "" : manualPassword,
+        passwordMode: isBusinessPartnerMode ? "keep" : passwordMode,
+        manualPassword: isBusinessPartnerMode ? "" : manualPassword.trim(),
         accountStatus,
         accessExpiry,
-        sendWelcome: isBusinessPartnerMode ? false : sendWelcome,
+        sendWelcome: isBusinessPartnerMode ? false : (passwordMode !== "keep" ? sendWelcome : false),
         gstNumber,
         creditDays: Array.isArray(creditDays) ? creditDays.map(Number) : [Number(creditDays) || 7],
         isBusinessPartner: isBusinessPartnerMode,
@@ -485,8 +490,8 @@ export default function AddNewUserModal({
         : await onCreateUser?.(payload);
 
       setCreationMeta({
-        credentialsEmailSent: isEditMode ? false : response?.credentialsEmailSent ?? sendWelcome,
-        temporaryPassword: response?.temporaryPassword || "",
+        credentialsEmailSent: Boolean(response?.credentialsEmailSent),
+        temporaryPassword: response?.temporaryPassword || (!sendWelcome && isEditMode && passwordMode === "manual" ? manualPassword.trim() : ""),
         message: response?.message || (isEditMode ? "User updated successfully" : ""),
       });
       setDone(true);
@@ -545,7 +550,9 @@ export default function AddNewUserModal({
   const entityType = vendorMode ? "Vendor" : isBusinessPartnerMode ? "Business Partner" : "User";
 
   const successBadgeText = isEditMode
-    ? creationMeta.message || `${entityType} updated successfully`
+    ? (creationMeta.credentialsEmailSent
+        ? `Updated credentials sent to ${email || "user@holidaycircuit.com"}`
+        : creationMeta.message || `${entityType} updated successfully`)
     : creationMeta.credentialsEmailSent
       ? `Login credentials sent to ${email || "user@holidaycircuit.com"}`
       : creationMeta.message || `${entityType} created successfully`;
@@ -756,7 +763,9 @@ export default function AddNewUserModal({
                     padding: "14px 16px",
                   }}
                 >
-                  <p style={{ margin: "0 0 6px", fontSize: 12, color: "#64748b" }}>Temporary Password</p>
+                  <p style={{ margin: "0 0 6px", fontSize: 12, color: "#64748b" }}>
+                    {isEditMode ? "New Password" : "Temporary Password"}
+                  </p>
                   <p style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "#0f172a", letterSpacing: "0.04em" }}>
                     {creationMeta.temporaryPassword}
                   </p>
@@ -1393,64 +1402,161 @@ export default function AddNewUserModal({
                 </div>
               </div>
 
-              {!isEditMode && !isBusinessPartnerMode && (
+              {/* Password Setup / Settings */}
+              {!isBusinessPartnerMode && (
                 <>
-                  {/* Password Setup */}
-                  <div>
-                    <p style={{ margin: "0 0 4px", fontSize: 12, fontWeight: 600, color: "#0f172a" }}>Password Setup</p>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                      <div
-                        onClick={() => setPasswordMode("auto")}
-                        style={{
-                          border: passwordMode === "auto" ? "1.5px solid #0f172a" : "1px solid #cbd5e1",
-                          borderRadius: 8, padding: "5px 8px", cursor: "pointer",
-                          background: passwordMode === "auto" ? "#f8fafc" : "#fff",
-                          transition: "all 0.15s ease",
-                        }}
-                      >
-                        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
-                          <div
-                            style={{
-                              width: 12, height: 12, borderRadius: "50%",
-                              border: `1.5px solid ${passwordMode === "auto" ? "#0f172a" : "#cbd5e1"}`,
-                              display: "flex", alignItems: "center", justifyContent: "center",
-                            }}
-                          >
-                            {passwordMode === "auto" && (
-                              <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#0f172a" }} />
-                            )}
+                  {!isEditMode ? (
+                    <div>
+                      <p style={{ margin: "0 0 4px", fontSize: 12, fontWeight: 600, color: "#0f172a" }}>Password Setup</p>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                        <div
+                          onClick={() => setPasswordMode("auto")}
+                          style={{
+                            border: passwordMode === "auto" ? "1.5px solid #0f172a" : "1px solid #cbd5e1",
+                            borderRadius: 8, padding: "5px 8px", cursor: "pointer",
+                            background: passwordMode === "auto" ? "#f8fafc" : "#fff",
+                            transition: "all 0.15s ease",
+                          }}
+                        >
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+                            <div
+                              style={{
+                                width: 12, height: 12, borderRadius: "50%",
+                                border: `1.5px solid ${passwordMode === "auto" ? "#0f172a" : "#cbd5e1"}`,
+                                display: "flex", alignItems: "center", justifyContent: "center",
+                              }}
+                            >
+                              {passwordMode === "auto" && (
+                                <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#0f172a" }} />
+                              )}
+                            </div>
+                            <p style={{ margin: 0, fontSize: 11.5, fontWeight: 600, color: "#0f172a" }}>Auto-Generate</p>
                           </div>
-                          <p style={{ margin: 0, fontSize: 11.5, fontWeight: 600, color: "#0f172a" }}>Auto-Generate</p>
+                          <p style={{ margin: 0, fontSize: 10, color: "#64748b", paddingLeft: 18 }}>System creates password</p>
                         </div>
-                        <p style={{ margin: 0, fontSize: 10, color: "#64748b", paddingLeft: 18 }}>System creates password</p>
-                      </div>
-                      <div
-                        onClick={() => setPasswordMode("manual")}
-                        style={{
-                          border: passwordMode === "manual" ? "1.5px solid #0f172a" : "1px solid #cbd5e1",
-                          borderRadius: 8, padding: "5px 8px", cursor: "pointer",
-                          background: passwordMode === "manual" ? "#f8fafc" : "#fff",
-                          transition: "all 0.15s ease",
-                        }}
-                      >
-                        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
-                          <div
-                            style={{
-                              width: 12, height: 12, borderRadius: "50%",
-                              border: `1.5px solid ${passwordMode === "manual" ? "#0f172a" : "#cbd5e1"}`,
-                              display: "flex", alignItems: "center", justifyContent: "center",
-                            }}
-                          >
-                            {passwordMode === "manual" && (
-                              <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#0f172a" }} />
-                            )}
+                        <div
+                          onClick={() => setPasswordMode("manual")}
+                          style={{
+                            border: passwordMode === "manual" ? "1.5px solid #0f172a" : "1px solid #cbd5e1",
+                            borderRadius: 8, padding: "5px 8px", cursor: "pointer",
+                            background: passwordMode === "manual" ? "#f8fafc" : "#fff",
+                            transition: "all 0.15s ease",
+                          }}
+                        >
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+                            <div
+                              style={{
+                                width: 12, height: 12, borderRadius: "50%",
+                                border: `1.5px solid ${passwordMode === "manual" ? "#0f172a" : "#cbd5e1"}`,
+                                display: "flex", alignItems: "center", justifyContent: "center",
+                              }}
+                            >
+                              {passwordMode === "manual" && (
+                                <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#0f172a" }} />
+                              )}
+                            </div>
+                            <p style={{ margin: 0, fontSize: 11.5, fontWeight: 600, color: "#0f172a" }}>Set Manually</p>
                           </div>
-                          <p style={{ margin: 0, fontSize: 11.5, fontWeight: 600, color: "#0f172a" }}>Set Manually</p>
+                          <p style={{ margin: 0, fontSize: 10, color: "#64748b", paddingLeft: 18 }}>Define initial password</p>
                         </div>
-                        <p style={{ margin: 0, fontSize: 10, color: "#64748b", paddingLeft: 18 }}>Define initial password</p>
                       </div>
                     </div>
-                  </div>
+                  ) : (
+                    <div>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                        <p style={{ margin: 0, fontSize: 12, fontWeight: 600, color: "#0f172a" }}>Password Settings</p>
+                        {passwordMode !== "keep" ? (
+                          <span style={{ fontSize: 10, fontWeight: 600, color: "#2563eb", background: "#eff6ff", border: "1px solid #bfdbfe", padding: "1px 6px", borderRadius: 4 }}>
+                            Password will update
+                          </span>
+                        ) : (
+                          <span style={{ fontSize: 10, color: "#64748b" }}>Unchanged</span>
+                        )}
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6 }}>
+                        {/* Option 1: Keep Current */}
+                        <div
+                          onClick={() => { setPasswordMode("keep"); setManualPassword(""); }}
+                          style={{
+                            border: passwordMode === "keep" ? "1.5px solid #0f172a" : "1px solid #cbd5e1",
+                            borderRadius: 8, padding: "5px 7px", cursor: "pointer",
+                            background: passwordMode === "keep" ? "#f8fafc" : "#fff",
+                            transition: "all 0.15s ease",
+                          }}
+                        >
+                          <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 2 }}>
+                            <div
+                              style={{
+                                width: 12, height: 12, borderRadius: "50%",
+                                border: `1.5px solid ${passwordMode === "keep" ? "#0f172a" : "#cbd5e1"}`,
+                                display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+                              }}
+                            >
+                              {passwordMode === "keep" && (
+                                <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#0f172a" }} />
+                              )}
+                            </div>
+                            <p style={{ margin: 0, fontSize: 11, fontWeight: 600, color: "#0f172a", whiteSpace: "nowrap" }}>Keep Current</p>
+                          </div>
+                          <p style={{ margin: 0, fontSize: 9.5, color: "#64748b", paddingLeft: 17 }}>No change</p>
+                        </div>
+
+                        {/* Option 2: Set New Password */}
+                        <div
+                          onClick={() => setPasswordMode("manual")}
+                          style={{
+                            border: passwordMode === "manual" ? "1.5px solid #0f172a" : "1px solid #cbd5e1",
+                            borderRadius: 8, padding: "5px 7px", cursor: "pointer",
+                            background: passwordMode === "manual" ? "#f8fafc" : "#fff",
+                            transition: "all 0.15s ease",
+                          }}
+                        >
+                          <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 2 }}>
+                            <div
+                              style={{
+                                width: 12, height: 12, borderRadius: "50%",
+                                border: `1.5px solid ${passwordMode === "manual" ? "#0f172a" : "#cbd5e1"}`,
+                                display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+                              }}
+                            >
+                              {passwordMode === "manual" && (
+                                <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#0f172a" }} />
+                              )}
+                            </div>
+                            <p style={{ margin: 0, fontSize: 11, fontWeight: 600, color: "#0f172a", whiteSpace: "nowrap" }}>Set New</p>
+                          </div>
+                          <p style={{ margin: 0, fontSize: 9.5, color: "#64748b", paddingLeft: 17 }}>Enter password</p>
+                        </div>
+
+                        {/* Option 3: Auto-Generate */}
+                        <div
+                          onClick={() => { setPasswordMode("auto"); setManualPassword(""); }}
+                          style={{
+                            border: passwordMode === "auto" ? "1.5px solid #0f172a" : "1px solid #cbd5e1",
+                            borderRadius: 8, padding: "5px 7px", cursor: "pointer",
+                            background: passwordMode === "auto" ? "#f8fafc" : "#fff",
+                            transition: "all 0.15s ease",
+                          }}
+                        >
+                          <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 2 }}>
+                            <div
+                              style={{
+                                width: 12, height: 12, borderRadius: "50%",
+                                border: `1.5px solid ${passwordMode === "auto" ? "#0f172a" : "#cbd5e1"}`,
+                                display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+                              }}
+                            >
+                              {passwordMode === "auto" && (
+                                <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#0f172a" }} />
+                              )}
+                            </div>
+                            <p style={{ margin: 0, fontSize: 11, fontWeight: 600, color: "#0f172a", whiteSpace: "nowrap" }}>Auto-Gen</p>
+                          </div>
+                          <p style={{ margin: 0, fontSize: 9.5, color: "#64748b", paddingLeft: 17 }}>System temporary</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   <AnimatePresence initial={false}>
                     {passwordMode === "manual" ? (
@@ -1464,13 +1570,13 @@ export default function AddNewUserModal({
                       >
                         <div style={{ paddingTop: 2 }}>
                           <label style={{ fontSize: 12, fontWeight: 500, color: "#475569", display: "block", marginBottom: 4 }}>
-                            Initial Password <span style={{ color: "#ef4444" }}>*</span>
+                            {isEditMode ? "New Password" : "Initial Password"} <span style={{ color: "#ef4444" }}>*</span>
                           </label>
                           <div style={{ position: "relative" }}>
                             <input
                               type={showManualPassword ? "text" : "password"}
                               style={{ ...inputStyle, paddingRight: 36 }}
-                              placeholder="Enter password"
+                              placeholder={isEditMode ? "Enter new password (min. 8 characters)" : "Enter password"}
                               value={manualPassword}
                               onChange={(e) => setManualPassword(e.target.value)}
                             />
@@ -1548,7 +1654,7 @@ export default function AddNewUserModal({
                 </div>
               </div>
 
-              {!isEditMode && !isBusinessPartnerMode && (
+              {!isBusinessPartnerMode && (!isEditMode || passwordMode !== "keep") && (
                 <div
                   style={{
                     display: "flex", alignItems: "center", justifyContent: "space-between",
@@ -1559,8 +1665,12 @@ export default function AddNewUserModal({
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <Send size={13} color="#0284c7" />
                     <div>
-                      <p style={{ margin: 0, fontSize: 11.5, fontWeight: 600, color: "#0369a1" }}>Send Welcome Email</p>
-                      <p style={{ margin: 0, fontSize: 10, color: "#0284c7" }}>Notify user with login credentials</p>
+                      <p style={{ margin: 0, fontSize: 11.5, fontWeight: 600, color: "#0369a1" }}>
+                        {isEditMode ? "Email Updated Credentials" : "Send Welcome Email"}
+                      </p>
+                      <p style={{ margin: 0, fontSize: 10, color: "#0284c7" }}>
+                        {isEditMode ? "Notify user with new login password" : "Notify user with login credentials"}
+                      </p>
                     </div>
                   </div>
                   {/* Toggle */}

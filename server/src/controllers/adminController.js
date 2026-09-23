@@ -10,6 +10,7 @@ import Notification from "../models/notification.model.js";
 import Quotation from "../models/quotation.model.js";
 import Voucher from "../models/voucher.model.js";
 import Confirmation from "../models/dmcConfirmation.js";
+import TripSource from "../models/TripSource.model.js";
 import { sendAccountDeletionMail, sendAgentApprovalMail, sendAgentRejectionMail, sendTeamMemberCredentialsMail } from "../services/sendEmail.js";
 import { sendAgentPaymentReceiptMail, sendDmcPayoutReceiptMail, sendEmailFinalInvoice } from "../services/emailService.js";
 import { getEmailDeliveryErrorMessage } from "../services/mailer.js";
@@ -814,6 +815,9 @@ export const updateManagedUser = async (req, res, next) => {
       accountStatus = "Active",
       accessExpiry = "",
       isBusinessPartner = false,
+      passwordMode = "keep",
+      manualPassword = "",
+      sendWelcome = false,
     } = req.body || {};
 
     const trimmedName = String(fullName || name || "").trim();
@@ -888,6 +892,52 @@ export const updateManagedUser = async (req, res, next) => {
       return next(new ApiError(400, "You cannot deactivate your own account"));
     }
 
+    let credentialsEmailSent = false;
+    let temporaryPassword = "";
+
+    if (!isBusinessPartner && !existingUser.isBusinessPartner) {
+      if (passwordMode === "manual" && manualPassword && String(manualPassword).trim().length > 0) {
+        const trimmedPassword = String(manualPassword).trim();
+        if (trimmedPassword.length < 8) {
+          return next(new ApiError(400, "Password must be at least 8 characters"));
+        }
+        existingUser.password = await bcrypt.hash(trimmedPassword, 10);
+        temporaryPassword = trimmedPassword;
+
+        if (sendWelcome) {
+          try {
+            await sendTeamMemberCredentialsMail(finalEmail, {
+              name: trimmedName,
+              role: BACKEND_ROLE_TO_FRONTEND[normalizedRole] || normalizedRole,
+              loginEmail: finalEmail,
+              password: trimmedPassword,
+            });
+            credentialsEmailSent = true;
+          } catch (mailErr) {
+            console.error("Failed to send updated credentials email:", mailErr);
+          }
+        }
+      } else if (passwordMode === "auto") {
+        const generatedPassword = generateTemporaryPassword();
+        existingUser.password = await bcrypt.hash(generatedPassword, 10);
+        temporaryPassword = generatedPassword;
+
+        if (sendWelcome) {
+          try {
+            await sendTeamMemberCredentialsMail(finalEmail, {
+              name: trimmedName,
+              role: BACKEND_ROLE_TO_FRONTEND[normalizedRole] || normalizedRole,
+              loginEmail: finalEmail,
+              password: generatedPassword,
+            });
+            credentialsEmailSent = true;
+          } catch (mailErr) {
+            console.error("Failed to send updated credentials email:", mailErr);
+          }
+        }
+      }
+    }
+
     existingUser.name = trimmedName;
     existingUser.email = finalEmail;
     existingUser.phone = finalPhone || undefined;
@@ -914,8 +964,12 @@ export const updateManagedUser = async (req, res, next) => {
 
     res.status(200).json({
       success: true,
-      message: "User updated successfully",
+      message: credentialsEmailSent
+        ? "User updated successfully and updated credentials were emailed"
+        : "User updated successfully",
       user: formatManagedUser(existingUser),
+      credentialsEmailSent,
+      temporaryPassword: credentialsEmailSent ? "" : temporaryPassword,
     });
   } catch (error) {
     next(error);
@@ -1579,6 +1633,60 @@ export const resolveAdminOverrideCase = async (req, res, next) => {
   }
 };
 
+const resolveAgentDisplay = (q, tripSourceMap = new Map()) => {
+  if (!q) return { name: "Direct Client", isOffline: false };
+
+  // 1. Populated agent from Auth model
+  if (q.agent && typeof q.agent === "object") {
+    const name = q.agent.companyName || q.agent.name;
+    if (name && String(name).trim() && String(name).trim().toLowerCase() !== "unknown agent" && String(name).trim().toLowerCase() !== "unassigned") {
+      return { name: String(name).trim(), isOffline: false };
+    }
+  }
+
+  // 2. Direct TripSource populated
+  if (q.tripSource && typeof q.tripSource === "object") {
+    const name = q.tripSource.name || q.tripSource.shortName;
+    if (name && String(name).trim()) {
+      return { name: String(name).trim(), isOffline: true };
+    }
+  }
+
+  // 3. ID in tripSourceMap
+  const tsKey = String(q.tripSource?._id || q.tripSource || "").trim();
+  if (tsKey && tripSourceMap.has(tsKey)) {
+    const ts = tripSourceMap.get(tsKey);
+    const name = ts?.name || ts?.shortName;
+    if (name && String(name).trim()) {
+      return { name: String(name).trim(), isOffline: true };
+    }
+  }
+
+  const agentKey = String(q.agent?._id || q.agent || "").trim();
+  if (agentKey && tripSourceMap.has(agentKey)) {
+    const ts = tripSourceMap.get(agentKey);
+    const name = ts?.name || ts?.shortName;
+    if (name && String(name).trim()) {
+      return { name: String(name).trim(), isOffline: true };
+    }
+  }
+
+  // 4. querySource string (direct offline agent name e.g. "HolidayHive Travels")
+  if (q.querySource && String(q.querySource).trim()) {
+    return { name: String(q.querySource).trim(), isOffline: true };
+  }
+
+  // 5. agencyName / agentName fallback
+  if (q.agencyName && String(q.agencyName).trim()) {
+    return { name: String(q.agencyName).trim(), isOffline: true };
+  }
+  if (q.agentName && String(q.agentName).trim()) {
+    return { name: String(q.agentName).trim(), isOffline: true };
+  }
+
+  return { name: "Direct Client", isOffline: false };
+};
+
 export const getAdminDashboardData = async (req, res, next) => {
   try {
     if (req.user?.role !== "admin") {
@@ -1599,9 +1707,10 @@ export const getAdminDashboardData = async (req, res, next) => {
     const previousMonthEnd = new Date(currentMonthStart.getTime() - 1);
     const monthBuckets = getMonthlyBuckets(6);
 
-    const [queries, agents, managedUsers, vouchers, invoices, internalInvoices, confirmations, persistedOverrideCases] = await Promise.all([
+    const [queries, agents, managedUsers, vouchers, invoices, internalInvoices, confirmations, persistedOverrideCases, tripSources] = await Promise.all([
       TravelQuery.find()
         .populate("agent", "name companyName email")
+        .populate("tripSource", "name shortName sourceType contactPerson")
         .populate("assignedTo", "name email")
         .sort({ updatedAt: -1, createdAt: -1 })
         .lean(),
@@ -1613,12 +1722,24 @@ export const getAdminDashboardData = async (req, res, next) => {
         .lean(),
       Voucher.find()
         .populate("agent", "name companyName")
-        .populate("query", "queryId destination startDate endDate numberOfAdults numberOfChildren")
+        .populate({
+          path: "query",
+          populate: [
+            { path: "agent", select: "name companyName" },
+            { path: "tripSource", select: "name shortName" },
+          ],
+        })
         .sort({ generatedAt: -1, createdAt: -1 })
         .lean(),
       Invoice.find()
         .populate("agent", "name companyName")
-        .populate("query", "queryId destination startDate endDate opsStatus agentStatus")
+        .populate({
+          path: "query",
+          populate: [
+            { path: "agent", select: "name companyName" },
+            { path: "tripSource", select: "name shortName" },
+          ],
+        })
         .lean(),
       InternalInvoice.find().lean(),
       Confirmation.find()
@@ -1628,7 +1749,19 @@ export const getAdminDashboardData = async (req, res, next) => {
         .sort({ updatedAt: -1, createdAt: -1 })
         .limit(30)
         .lean(),
+      TripSource.find({}).lean(),
     ]);
+
+    const tripSourceMap = new Map();
+    (tripSources || []).forEach((ts) => {
+      if (ts?._id) tripSourceMap.set(String(ts._id), ts);
+    });
+
+    const queryLookupMap = new Map();
+    queries.forEach((q) => {
+      if (q?._id) queryLookupMap.set(String(q._id), q);
+      if (q?.queryId) queryLookupMap.set(String(q.queryId), q);
+    });
 
     const confirmationLookup = new Map();
     confirmations.forEach((confirmation) => {
@@ -1766,21 +1899,72 @@ export const getAdminDashboardData = async (req, res, next) => {
       return acc;
     }, {});
 
-    const topAgentRevenue = Object.values(
-      invoices.reduce((acc, invoice) => {
-        const key = String(invoice.agent?._id || invoice.agent || "unknown");
-        const label = invoice.agent?.companyName || invoice.agent?.name || "Unknown Agent";
+    const agentRevenueMap = new Map();
 
-        if (!acc[key]) {
-          acc[key] = { name: label, revenue: 0 };
+    invoices.forEach((invoice) => {
+      const linkedQuery =
+        (invoice.query && typeof invoice.query === "object" ? invoice.query : null) ||
+        queryLookupMap.get(String(invoice.query || "").trim()) ||
+        null;
+
+      let resolvedAgent = null;
+
+      // 1. Check invoice.agent in Auth
+      if (invoice.agent && typeof invoice.agent === "object") {
+        const name = invoice.agent.companyName || invoice.agent.name;
+        if (name && String(name).trim() && String(name).trim().toLowerCase() !== "unknown agent") {
+          resolvedAgent = { key: String(invoice.agent._id || invoice.agent.id), name: String(name).trim() };
         }
+      }
 
-        acc[key].revenue += Number(invoice.totalAmount || invoice.pricingSnapshot?.grandTotal || 0);
-        return acc;
-      }, {}),
-    )
+      // 2. Check invoice.agent in tripSourceMap (offline agent)
+      if (!resolvedAgent) {
+        const agentId = String(invoice.agent?._id || invoice.agent || "").trim();
+        if (agentId && tripSourceMap.has(agentId)) {
+          const ts = tripSourceMap.get(agentId);
+          resolvedAgent = { key: agentId, name: String(ts.name || ts.shortName).trim() };
+        }
+      }
+
+      // 3. Check linked query (tripSource, querySource, agent)
+      if (!resolvedAgent && linkedQuery) {
+        const queryResolved = resolveAgentDisplay(linkedQuery, tripSourceMap);
+        if (queryResolved.name && queryResolved.name !== "Direct Client" && queryResolved.name.toLowerCase() !== "unknown agent") {
+          resolvedAgent = { key: queryResolved.name, name: queryResolved.name };
+        }
+      }
+
+      // If still no real agent found (e.g. deleted/orphaned test seed invoice), skip it
+      if (!resolvedAgent) {
+        return;
+      }
+
+      const current = agentRevenueMap.get(resolvedAgent.key) || { name: resolvedAgent.name, revenue: 0 };
+      current.revenue += Number(invoice.totalAmount || invoice.pricingSnapshot?.grandTotal || 0);
+      agentRevenueMap.set(resolvedAgent.key, current);
+    });
+
+    // Also include active offline agents (TripSources) who have bookings in the system
+    (tripSources || []).forEach((ts) => {
+      const tsKey = String(ts._id);
+      const tsName = (ts.name || ts.shortName || "").trim();
+      if (tsName && !agentRevenueMap.has(tsKey) && !Array.from(agentRevenueMap.values()).some((v) => v.name === tsName)) {
+        const tsBookings = activeBookings.filter(
+          (q) =>
+            String(q.tripSource?._id || q.tripSource || "") === tsKey ||
+            String(q.agent?._id || q.agent || "") === tsKey ||
+            q.querySource === tsName
+        );
+        if (tsBookings.length > 0) {
+          const bookingRev = tsBookings.reduce((sum, q) => sum + Number(q.customerBudget || 0), 0);
+          agentRevenueMap.set(tsKey, { name: tsName, revenue: bookingRev });
+        }
+      }
+    });
+
+    const topAgentRevenue = Array.from(agentRevenueMap.values())
       .sort((left, right) => right.revenue - left.revenue)
-      .slice(0, 5);
+      .slice(0, 6);
 
     const masterBookingRows = activeBookings.map((query) => {
       const latestInvoice = invoiceByQueryId[String(query._id || "").trim()];
@@ -1794,10 +1978,12 @@ export const getAdminDashboardData = async (req, res, next) => {
         latestInvoice?.paymentStatus ||
         "Pending";
 
+      const agentInfo = resolveAgentDisplay(query, tripSourceMap);
+
       return {
         id: query.queryId || "-",
-        agent: query.agent?.companyName || query.agent?.name || "Unknown Agent",
-        amount: Number(latestInvoice?.totalAmount || latestInvoice?.pricingSnapshot?.grandTotal || 0),
+        agent: agentInfo.name,
+        amount: Number(latestInvoice?.totalAmount || latestInvoice?.pricingSnapshot?.grandTotal || query.customerBudget || 0),
         paymentStatus,
         dmc:
           confirmation?.dmcId?.companyName ||
@@ -1806,18 +1992,21 @@ export const getAdminDashboardData = async (req, res, next) => {
       };
     });
 
-    const recentQueries = pendingQueries.slice(0, 6).map((query) => ({
-      id: query._id,
-      initials: getInitials(query.agent?.companyName || query.agent?.name || "Agent"),
-      name: query.agent?.companyName || query.agent?.name || "Unknown Agent",
-      destination: `${query.destination || "-"} · ${daysBetween(query.startDate, query.endDate) - 1} nights`,
-      time: formatRelativeTime(query.createdAt || query.updatedAt),
-      status: "New",
-      statusClass: "bg-blue-100 text-blue-700",
-      bg: "bg-blue-100",
-      color: "text-blue-700",
-      queryId: query.queryId,
-    }));
+    const recentQueries = pendingQueries.slice(0, 6).map((query) => {
+      const agentInfo = resolveAgentDisplay(query, tripSourceMap);
+      return {
+        id: query._id,
+        initials: getInitials(agentInfo.name || "Agent"),
+        name: agentInfo.name,
+        destination: `${query.destination || "-"} · ${daysBetween(query.startDate, query.endDate) - 1} nights`,
+        time: formatRelativeTime(query.createdAt || query.updatedAt),
+        status: "New",
+        statusClass: "bg-blue-100 text-blue-700",
+        bg: "bg-blue-100",
+        color: "text-blue-700",
+        queryId: query.queryId,
+      };
+    });
 
     const queryDashboardPool = Array.from(
       new Map(
@@ -1834,11 +2023,12 @@ export const getAdminDashboardData = async (req, res, next) => {
       .slice(0, 12)
       .map((query) => {
         const hasPendingEscalation = isPendingAdminReply(query);
+        const agentInfo = resolveAgentDisplay(query, tripSourceMap);
 
         return {
           id: query._id,
-          initials: getInitials(query.agent?.companyName || query.agent?.name || "Agent"),
-          name: query.agent?.companyName || query.agent?.name || "Unknown Agent",
+          initials: getInitials(agentInfo.name || "Agent"),
+          name: agentInfo.name,
           destination: `${query.destination || "-"} · ${daysBetween(query.startDate, query.endDate) - 1} nights`,
           time: formatRelativeTime(
             query.adminCoordination?.lastOpsMessageAt ||
@@ -1878,8 +2068,8 @@ export const getAdminDashboardData = async (req, res, next) => {
               ? {
                 _id: query.agent._id || null,
                 id: query.agent._id || null,
-                name: query.agent.name || "",
-                companyName: query.agent.companyName || "",
+                name: agentInfo.name,
+                companyName: agentInfo.name,
                 email: query.agent.email || "",
               }
               : null,
@@ -1897,7 +2087,7 @@ export const getAdminDashboardData = async (req, res, next) => {
 
     const bookingRows = activeBookings.slice(0, 8).map((query) => ({
       id: query._id,
-      agency: query.agent?.companyName || query.agent?.name || "Unknown Agent",
+      agency: resolveAgentDisplay(query, tripSourceMap).name,
       destination: query.destination || "-",
       status: query.opsStatus,
       statusClass:
@@ -1911,20 +2101,23 @@ export const getAdminDashboardData = async (req, res, next) => {
       queryId: query.queryId,
     }));
 
-    const voucherRows = vouchers.slice(0, 8).map((voucher) => ({
-      id: voucher._id,
-      num: voucher.voucherNumber || "-",
-      agency: voucher.agent?.companyName || voucher.agent?.name || "Unknown Agent",
-      destination: voucher.destination || voucher.query?.destination || "-",
-      date: formatRelativeTime(voucher.generatedAt || voucher.createdAt),
-      status: voucher.status === "sent" ? "Sent" : voucher.status === "generated" ? "Generated" : "Ready",
-      statusClass:
-        voucher.status === "sent"
-          ? "bg-green-100 text-green-700"
-          : voucher.status === "generated"
-            ? "bg-teal-100 text-teal-700"
-            : "bg-amber-100 text-amber-700",
-    }));
+    const voucherRows = vouchers.slice(0, 8).map((voucher) => {
+      const q = voucher.query || voucher;
+      return {
+        id: voucher._id,
+        num: voucher.voucherNumber || "-",
+        agency: resolveAgentDisplay(q, tripSourceMap).name,
+        destination: voucher.destination || voucher.query?.destination || "-",
+        date: formatRelativeTime(voucher.generatedAt || voucher.createdAt),
+        status: voucher.status === "sent" ? "Sent" : voucher.status === "generated" ? "Generated" : "Ready",
+        statusClass:
+          voucher.status === "sent"
+            ? "bg-green-100 text-green-700"
+            : voucher.status === "generated"
+              ? "bg-teal-100 text-teal-700"
+              : "bg-amber-100 text-amber-700",
+      };
+    });
 
     const queryFlowRows = queries
       .slice()
@@ -1938,12 +2131,13 @@ export const getAdminDashboardData = async (req, res, next) => {
           confirmationLookup.get(String(query.queryId || "").trim()) ||
           confirmationLookup.get(String(query._id || "").trim()) ||
           null;
+        const agentInfo = resolveAgentDisplay(query, tripSourceMap);
 
         return {
           id: query._id,
           queryId: query.queryId || "-",
-          initials: getInitials(query.agent?.companyName || query.agent?.name || "Agent"),
-          agency: query.agent?.companyName || query.agent?.name || "Unknown Agent",
+          initials: getInitials(agentInfo.name || "Agent"),
+          agency: agentInfo.name,
           destination: query.destination || "-",
           time: formatRelativeTime(query.updatedAt || query.createdAt),
           travelDate: formatDashboardDate(query.startDate),

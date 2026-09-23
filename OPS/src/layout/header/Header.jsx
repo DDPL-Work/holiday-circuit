@@ -139,16 +139,16 @@ const Header = () => {
         }
       `}</style>
 
-      <header className="h-[4.5rem] border-b border-white/10 bg-[#0F172A] px-3 sm:px-5">
+      <header className="h-[4.6rem] border-b border-white/10 bg-[#0F172A] px-3 sm:px-5">
         <div className="flex h-full items-center justify-between gap-2 sm:gap-3 w-full">
           <div className="flex h-full items-center gap-2 sm:gap-3 shrink-0">
-            <div className="flex h-full cursor-pointer items-center px-2 sm:px-4">
-              <div className="relative flex h-11 w-11 sm:h-12 sm:w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white p-0.5 shadow-inner ring-1 ring-black/5">
+            <div className="flex h-full cursor-pointer items-center px-2 sm:px-5">
+              <div className="relative flex h-12 w-12 sm:h-13 sm:w-13 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-white p-0.5 shadow-inner ring-1 ring-black/5">
                 <img
                   src={headerBranding.logo || logo}
                   alt={headerBranding.name || "Logo"}
                   className={`h-full w-full object-contain ${
-                    headerBranding.logo ? "scale-[1.15]" : "scale-[1.4]"
+                    headerBranding.logo ? "scale-[1.04]" : "scale-[1.4]"
                   }`}
                 />
               </div>

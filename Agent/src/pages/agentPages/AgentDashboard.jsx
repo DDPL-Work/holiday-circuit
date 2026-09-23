@@ -247,7 +247,7 @@ const AgentDashboard = () => {
       )}
 
       {/* ── Stat cards ── */}
-      <motion.section variants={containerVariant} className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 lg:grid-cols-2">
+      <motion.section variants={containerVariant} className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 lg:grid-cols-2">
         {stats.map((card) => {
           const Icon = card.icon;
           return (
@@ -256,12 +256,12 @@ const AgentDashboard = () => {
               variants={cardVariant}
               whileHover={{ y: -1 }}
               style={{ background: card.gradient, borderBottom: card.borderBottom }}
-              className="flex flex-col justify-between rounded-xl border border-gray-100 p-2.5 sm:p-3 shadow-sm min-h-[76px]"
+              className="flex flex-col justify-between rounded-md border border-gray-100 p-3.5 sm:p-3 shadow-sm min-h-[85px]"
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <p className="text-[0.7rem] font-semibold leading-tight text-gray-600 truncate">{card.label}</p>
-                  <h2 className="mt-0.5 text-sm sm:text-base font-extrabold leading-none text-gray-900 truncate">
+                  <p className="text-[0.8rem] font-semibold leading-tight text-gray-600 truncate">{card.label}</p>
+                  <h2 className="mt-0.7 text-sm sm:text-base font-extrabold leading-none text-gray-900 truncate">
                     {loadingDashboard ? "..." : card.value}
                   </h2>
                 </div>
@@ -279,6 +279,10 @@ const AgentDashboard = () => {
         })}
       </motion.section>
 
+
+
+      
+
       {/* ── Analytics + Quick Actions grid ── */}
       <motion.section variants={containerVariant} className="grid grid-cols-1 gap-3 lg:grid-cols-3 items-stretch">
 
@@ -291,11 +295,14 @@ const AgentDashboard = () => {
           />
         </motion.article>
 
+
+
+
         {/* Right: Quick Actions + Pro Tip */}
         <div className="flex flex-col gap-3">
           <motion.article
             variants={cardVariant}
-            className="rounded-[18px] border border-gray-100 bg-white p-3.5 shadow-sm"
+            className="rounded-[10px] border border-gray-100 bg-white p-3.5 shadow-sm"
           >
             <h3 className="mb-2.5 text-[0.88rem] font-bold text-gray-900">Quick Actions</h3>
 
@@ -325,7 +332,7 @@ const AgentDashboard = () => {
 
           <motion.article
             variants={cardVariant}
-            className="rounded-[18px] border border-gray-100 bg-white p-3.5 shadow-sm"
+            className="rounded-[10px] border border-gray-100 bg-white p-3.5 shadow-sm"
           >
             <h3 className="mb-2 text-[0.88rem] font-bold text-gray-900">Pro Tip</h3>
             <div className="rounded-xl bg-slate-50 p-3">
