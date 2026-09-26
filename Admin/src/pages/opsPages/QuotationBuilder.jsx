@@ -2,10 +2,12 @@ import {
   AlertCircle,
   Bell,
   CalendarDays,
+  Check,
   CheckCircle2,
   Clock,
   Copy,
   Download,
+  Edit3,
   FileText,
   Mail,
   MessageCircle,
@@ -10068,29 +10070,7 @@ const Service = ({
                     </span>
                   )}
 
-                  {service.checked && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (isEditMode) {
-                          onOpenSelectedServices?.(service);
-                          return;
-                        }
-
-                        onStartServiceEdit?.(service);
-                      }}
-                      className="inline-flex h-[22px] cursor-pointer items-center rounded-lg border border-blue-200 bg-blue-50 px-2.5 text-[10px] font-semibold text-blue-700 transition hover:bg-blue-100 shadow-2xs"
-                    >
-                      {isEditMode ? "Review & Save" : "Click to Edit"}
-                    </button>
-                  )}
                 </div>
-
-                {isEditMode && service.checked && (
-                  <span className="rounded-full border border-sky-300 bg-sky-50 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-sky-800">
-                    Editing
-                  </span>
-                )}
                 {service.custom && (
                   <span className="rounded-full bg-amber-500 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white">
                     Custom
@@ -11198,6 +11178,37 @@ const Service = ({
               />
             </div>
           )}
+
+          {/* ── CARD FOOTER ACTIONS (Bottom Right Edit / Review Button) ── */}
+          <div className="flex items-center justify-end pt-2.5 border-t border-slate-200/80 mt-1">
+            <button
+              type="button"
+              onClick={() => {
+                if (isEditMode) {
+                  onOpenSelectedServices?.(service);
+                  return;
+                }
+                onStartServiceEdit?.(service);
+              }}
+              className={`inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg font-semibold text-xs transition-all shadow-2xs cursor-pointer ${
+                isEditMode
+                  ? "bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/20 active:scale-[0.98]"
+                  : "bg-[#3E63DD] hover:bg-[#3252c4] text-white shadow-blue-500/20 active:scale-[0.98]"
+              }`}
+            >
+              {isEditMode ? (
+                <>
+                  <Check size={14} className="stroke-[2.5]" />
+                  <span>Review & Save</span>
+                </>
+              ) : (
+                <>
+                  <Edit3 size={13} />
+                  <span>Click to Edit</span>
+                </>
+              )}
+            </button>
+          </div>
         </div>
       )}
     </motion.div>

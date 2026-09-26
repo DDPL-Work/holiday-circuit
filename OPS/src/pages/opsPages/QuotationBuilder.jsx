@@ -545,6 +545,7 @@ const DEFAULT_QUOTATION_TERMS = Object.freeze([
   "By confirming this quotation with Holiday Circuit, you acknowledge that you have read, understood, and agreed to these Terms and Conditions.",
 ]);
 
+
 const SHOW_SELECTED_HISTORY_COMPARISON = false;
 
 const normalizeWhatsAppPhoneNumber = (value = "") => {
@@ -576,6 +577,8 @@ const normalizePartnerTypeKey = (value = "") => {
   }
   return "online dmc";
 };
+
+
 
 const extractYmdDateString = (value) => {
   if (!value) return "";
@@ -5724,10 +5727,18 @@ const QuotationBuilder = () => {
           businessPartner: bpId,
           businessPartnerName: bpName,
           title:
-            service.title ||
             service.serviceName ||
+            service.title ||
             service.hotelName ||
             mapped.title ||
+            "",
+          serviceName:
+            service.serviceName ||
+            service.title ||
+            service.name ||
+            "",
+          hotelName:
+            service.hotelName ||
             "",
           type: service.type || mapped.type,
           city: service.city || order?.destination || mapped.city || "",
@@ -6956,7 +6967,9 @@ const QuotationBuilder = () => {
               "")
           : "",
       type: normalizedServiceType,
-      title: service.title,
+      title: service.serviceName || service.title || service.name || "",
+      serviceName: service.serviceName || service.title || service.name || "",
+      hotelName: service.hotelName || "",
       city: service.city || "",
       country: service.country || "",
       description: service.desc || service.description || "",
@@ -6978,7 +6991,7 @@ const QuotationBuilder = () => {
     };
 
     if (normalizedServiceType === "hotel") {
-      payloadObj.hotelName = service.hotelName || service.title || "";
+      payloadObj.hotelName = service.hotelName || "";
       payloadObj.roomCategory = service.roomCategory || "";
       payloadObj.roomType = service.roomType || "";
       payloadObj.hotelCategory = service.hotelCategory || "";
@@ -8559,9 +8572,9 @@ const QuotationBuilder = () => {
     if (selectedAction === "WhatsApp") {
       if (partnerType === "Business Partner") {
         const queryDocumentId = resolveQuotationQueryId(quotation);
+        // Send via backend for logging/history parity without awaiting to avoid blocking UI popups
         if (queryDocumentId) {
-          // Send via backend for logging/history parity without awaiting to avoid blocking UI popups
-          API.post("/ops/send", {
+      API.post("/ops/send", {
             queryId: queryDocumentId,
             channels: ["whatsapp"],
             quoteDetails,
@@ -8594,11 +8607,6 @@ const QuotationBuilder = () => {
   };
 
   const sendQuotation = async (sendVia = [], selectedAction = "") => {
-    if (!validTill) {
-      toast.error("Please select Valid Till date");
-      return;
-    }
-
     if (!selectedServices.length) {
       toast.error("No services selected");
       return;
@@ -8609,7 +8617,7 @@ const QuotationBuilder = () => {
     );
     if (hotelsWithoutNights.length) {
       toast.error(
-        `Select nights first: ${hotelsWithoutNights
+        `Please select nights first: ${hotelsWithoutNights
           .map((service) => service.title)
           .join(", ")}`,
       );
@@ -8658,6 +8666,45 @@ const QuotationBuilder = () => {
         ? "Maximum 4 Pax allowed for Private Tour."
         : "Maximum 6 Pax allowed for Premium/VIP Tour.";
       toast.error(`${firstInvalid.title}: ${maxLimitMsg}`);
+      return;
+    }
+
+    const cleanItinerary = sanitizeDayWiseItineraryItems(itineraryEntries);
+    if (
+      !cleanItinerary.length ||
+      cleanItinerary.every((e) => !e.title?.trim() && !e.description?.trim())
+    ) {
+      toast.error("Please add Day Wise Itinerary");
+      return;
+    }
+
+    const emptyItineraryDays = cleanItinerary.filter(
+      (e) => !e.title?.trim() && !e.description?.trim(),
+    );
+    if (emptyItineraryDays.length) {
+      toast.error(
+        `Please fill Day Wise Itinerary for Day ${emptyItineraryDays
+          .map((d) => d.dayNumber)
+          .join(", ")}`,
+      );
+      return;
+    }
+
+    const cleanInclusions = sanitizeDynamicListItems(inclusions);
+    if (!cleanInclusions.length) {
+      toast.error("Please add Inclusions");
+      return;
+    }
+
+    const cleanExclusions = sanitizeDynamicListItems(exclusions);
+    if (!cleanExclusions.length) {
+      toast.error("Please add Exclusions");
+      return;
+    }
+
+    const cleanTerms = sanitizeTermsItems(termsAndConditions);
+    if (!cleanTerms.length) {
+      toast.error("Please add Terms & Conditions");
       return;
     }
 
@@ -15269,14 +15316,14 @@ const QuotationBuilder = () => {
         initialData={bpEditData}
         submitBtnText={
           partnerType === "Business Partner"
-            ? (bpEditData ? "Update Quotation" : "Create Quotation")
+            ? (bpEditData ? "Update in Builder" : "Add to Quotation")
             : (bpEditData ? "Update Service" : "Save Service")
         }
         modalTitle={
           bpEditData
-            ? `Edit Quotation${bpEditData.quotationNumber ? ` (${bpEditData.quotationNumber})` : ""}`
+            ? `Edit Services${bpEditData.quotationNumber ? ` (${bpEditData.quotationNumber})` : ""}`
             : partnerType === "Business Partner"
-            ? "Create Quotation"
+            ? "Configure Quotation Services"
             : "Add Services to Quotation"
         }
         modalSubtitle={
@@ -15345,23 +15392,20 @@ const QuotationBuilder = () => {
                 icon: meta?.icon,
                 color: meta?.color,
                 title:
-                  s.title ||
                   s.serviceName ||
-                  s.hotelName ||
+                  s.title ||
                   s.name ||
+                  s.hotelName ||
                   (normalizedType === "hotel"
                     ? "Hotel"
                     : normalizedType === "transfer"
                       ? "Transfer"
                       : "Activity"),
                 serviceName:
-                  s.serviceName || s.hotelName || s.name || s.title || "",
+                  s.serviceName || s.name || s.title || "",
                 hotelName:
-                  s.hotelName ||
-                  (normalizedType === "hotel"
-                    ? s.serviceName || s.name || s.title
-                    : ""),
-                name: s.name || s.serviceName || s.hotelName || s.title || "",
+                  s.hotelName || "",
+                name: s.serviceName || s.name || s.title || s.hotelName || "",
                 checked: true,
                 custom: true,
                 isBpService: isBp,
@@ -15446,6 +15490,35 @@ const QuotationBuilder = () => {
                 setServiceCharge(opsCharges.serviceCharge || 0);
                 setHandlingFee(opsCharges.handlingFee || 0);
               }
+            }
+
+            if (Array.isArray(newPkg?.dayWiseItinerary) && newPkg.dayWiseItinerary.length > 0) {
+              setDayWiseItinerary(reconcileDayWiseItineraryItems(
+                newPkg.dayWiseItinerary,
+                getTripDuration(order?.startDate, order?.endDate).days,
+                formatDateInput(order?.startDate),
+              ));
+            }
+
+            if (newPkg?.inclusions) {
+              const incArr = Array.isArray(newPkg.inclusions)
+                ? newPkg.inclusions
+                : String(newPkg.inclusions).split("\n").map(x => x.trim()).filter(Boolean);
+              if (incArr.length > 0) setInclusions(sanitizeDynamicListItems(incArr));
+            }
+
+            if (newPkg?.exclusions) {
+              const excArr = Array.isArray(newPkg.exclusions)
+                ? newPkg.exclusions
+                : String(newPkg.exclusions).split("\n").map(x => x.trim()).filter(Boolean);
+              if (excArr.length > 0) setExclusions(sanitizeDynamicListItems(excArr));
+            }
+
+            if (newPkg?.termsAndConditions) {
+              const termsArr = Array.isArray(newPkg.termsAndConditions)
+                ? newPkg.termsAndConditions
+                : String(newPkg.termsAndConditions).split("\n").map(x => x.trim()).filter(Boolean);
+              if (termsArr.length > 0) setTermsAndConditions(sanitizeTermsItems(termsArr));
             }
           } else if (newPkg && partnerType !== "Business Partner") {
             const formattedPkg = {
@@ -15892,29 +15965,7 @@ const Service = ({
                     </span>
                   )}
 
-                  {service.checked && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (isEditMode) {
-                          onOpenSelectedServices?.(service);
-                          return;
-                        }
-
-                        onStartServiceEdit?.(service);
-                      }}
-                      className="inline-flex h-[22px] cursor-pointer items-center rounded-lg border border-blue-200 bg-blue-50 px-2.5 text-[10px] font-semibold text-blue-700 transition hover:bg-blue-100 shadow-2xs"
-                    >
-                      {isEditMode ? "Review & Save" : "Click to Edit"}
-                    </button>
-                  )}
                 </div>
-
-                {isEditMode && service.checked && (
-                  <span className="rounded-full border border-sky-300 bg-sky-50 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-sky-800">
-                    Editing
-                  </span>
-                )}
                 {service.custom && (
                   <span className="rounded-full bg-amber-500 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white">
                     Custom
@@ -15967,7 +16018,7 @@ const Service = ({
                       </div>
                     ) : (
                       <span className="text-slate-900 font-semibold">
-                        {service.hotelName}
+                        {service.hotelName || "—"}
                       </span>
                     )}
                   </span>
@@ -17520,6 +17571,37 @@ const Service = ({
               />
             </div>
           )}
+
+          {/* ── CARD FOOTER ACTIONS (Bottom Right Edit / Review Button) ── */}
+          <div className="flex items-center justify-end pt-2.5 border-t border-slate-200/80 mt-1">
+            <button
+              type="button"
+              onClick={() => {
+                if (isEditMode) {
+                  onOpenSelectedServices?.(service);
+                  return;
+                }
+                onStartServiceEdit?.(service);
+              }}
+              className={`inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg font-semibold text-xs transition-all shadow-2xs cursor-pointer ${
+                isEditMode
+                  ? "bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/20 active:scale-[0.98]"
+                  : "bg-[#3E63DD] hover:bg-[#3252c4] text-white shadow-blue-500/20 active:scale-[0.98]"
+              }`}
+            >
+              {isEditMode ? (
+                <>
+                  <Check size={14} className="stroke-[2.5]" />
+                  <span>Review & Save</span>
+                </>
+              ) : (
+                <>
+                  <Edit3 size={13} />
+                  <span>Click to Edit</span>
+                </>
+              )}
+            </button>
+          </div>
         </div>
       )}
     </motion.div>

@@ -594,6 +594,7 @@ export default function UserManagement() {
               iconColor: "text-blue-600",
               Icon: UsersIcon,
             },
+            
             {
               label: "Online Now",
               value: users.filter((u) => Boolean(u.isOnline || (u.lastActiveAt && (Date.now() - new Date(u.lastActiveAt).getTime()) < 120000))).length,
@@ -603,6 +604,7 @@ export default function UserManagement() {
               iconColor: "text-emerald-600",
               Icon: ShieldIcon,
             },
+
             {
               label: "Operations",
               value: operations,
@@ -612,6 +614,7 @@ export default function UserManagement() {
               iconColor: "text-sky-600",
               Icon: ShieldIcon,
             },
+
             {
               label: "DMC Partners",
               value: dmcPartners,
@@ -621,6 +624,7 @@ export default function UserManagement() {
               iconColor: "text-indigo-600",
               Icon: ShieldIcon,
             },
+
           ].map(({ label, value, cardBg, cardBorder, iconBg, iconColor, Icon }) => (
             <div
               key={label}

@@ -1,5 +1,6 @@
 import bcrypt from "bcrypt";
 import Auth from "../models/auth.model.js";
+import { ALLOWED_PERMISSIONS } from "../constants/permissions.js";
 import Invoice from "../models/invoice.model.js";
 import ApiError from "../utils/ApiError.js";
 import { getEmailValidationError } from "../utils/emailValidation.js";
@@ -118,7 +119,7 @@ const normalizePermissionList = (permissions = []) =>
   [...new Set(
     (Array.isArray(permissions) ? permissions : [])
       .map((permission) => String(permission || "").trim())
-      .filter(Boolean),
+      .filter((permission) => ALLOWED_PERMISSIONS.includes(permission)),
   )];
 
 const buildFinanceTeamRows = (teamMembers = [], assignedInvoices = []) =>
@@ -203,18 +204,16 @@ export const getFinanceManagerTeam = async (req, res, next) => {
 
     const teamMembers = await getManagedFinanceMembers(manager);
     const teamIds = teamMembers.map((member) => member._id);
-    const assignedInvoices = teamIds.length
-      ? await Invoice.find({
-        $or: [
-          { "paymentSubmission.submittedAt": { $exists: true, $ne: null } },
-          { "paymentVerification.reviewedBy": { $in: teamIds } },
-          { "paymentVerification.status": { $in: ["Pending", "Verified", "Rejected"] } },
-          { paymentStatus: { $in: ["Partially Paid", "Paid", "Unpaid"] } },
-        ],
-      })
-        .select("invoiceNumber paymentVerification paymentSubmission paymentStatus createdAt updatedAt")
-        .lean()
-      : [];
+    const assignedInvoices = await Invoice.find({
+      $or: [
+        { "paymentSubmission.submittedAt": { $exists: true, $ne: null } },
+        ...(teamIds.length ? [{ "paymentVerification.reviewedBy": { $in: teamIds } }] : []),
+        { "paymentVerification.status": { $in: ["Pending", "Verified", "Rejected"] } },
+        { paymentStatus: { $in: ["Partially Paid", "Paid", "Unpaid"] } },
+      ],
+    })
+      .select("invoiceNumber paymentVerification paymentSubmission paymentStatus createdAt updatedAt")
+      .lean();
 
     const teamScopedInvoices = decorateFinanceAssignment({
       rows: assignedInvoices.map((invoice) => ({

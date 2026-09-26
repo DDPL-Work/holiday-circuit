@@ -1,6 +1,7 @@
 import bcrypt from "bcrypt";
 import Auth from "../models/auth.model.js";
 import ApiError from "../utils/ApiError.js";
+import { ALLOWED_PERMISSIONS } from "../constants/permissions.js";
 import Notification from "../models/notification.model.js";
 import OpsActivityLog from "../models/opsActivityLog.model.js";
 import TravelQuery from "../models/TravelQuery.model.js";
@@ -449,7 +450,7 @@ const normalizePermissionList = (permissions = []) =>
   [...new Set(
     (Array.isArray(permissions) ? permissions : [])
       .map((permission) => String(permission || "").trim())
-      .filter(Boolean),
+      .filter((permission) => ALLOWED_PERMISSIONS.includes(permission)),
   )];
 
 const isActiveWorkloadQuery = (query = {}) =>
@@ -600,16 +601,9 @@ const getManagedTeamMembers = async (req) => {
     throw new ApiError(404, "Manager profile not found");
   }
 
-  const identityCandidates = getManagerIdentityCandidates(manager);
-
-  if (!identityCandidates.length) {
-    return [];
-  }
-
   return Auth.find({
     role: "operations",
     isDeleted: { $ne: true },
-    manager: { $in: identityCandidates },
   })
     .select("name email phone employeeId profileImage accountStatus manager permissions designation accessExpiry createdAt lastActiveAt")
     .sort({ createdAt: 1 })
@@ -625,12 +619,10 @@ const getManagedTeamQueries = async (teamIds, queryOptions = {}, managerId = nul
     queryConditions.push({ createdBy: managerId });
     queryConditions.push({ assignedTo: managerId });
   }
+  queryConditions.push({ assignedTo: null });
+  queryConditions.push({ assignedTo: { $exists: false } });
 
-  if (!queryConditions.length) {
-    return [];
-  }
-
-  let request = TravelQuery.find({ $or: queryConditions });
+  let request = TravelQuery.find(queryConditions.length ? { $or: queryConditions } : {});
 
   if (queryOptions.select) {
     request = request.select(queryOptions.select);
@@ -1945,12 +1937,6 @@ export const updateOperationTeamMember = async (req, res, next) => {
     const executive = await Auth.findById(userId);
     if (!executive || executive.role !== "operations" || executive.isDeleted) {
       return next(new ApiError(404, "Operations executive not found"));
-    }
-
-    const manager = await Auth.findById(req.user.id).select("name email employeeId _id").lean();
-    const identityCandidates = getManagerIdentityCandidates(manager);
-    if (!identityCandidates.includes(String(executive.manager || ""))) {
-      return next(new ApiError(403, "You can only edit executives in your team"));
     }
 
     const trimmedName = String(fullName || name || "").trim();

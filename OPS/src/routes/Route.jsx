@@ -93,6 +93,7 @@ export const appRouter = createBrowserRouter([
               { path: "/ops/inc-exc/:id/edit", element: lazyPage(IncExcEdit) },
               { path: "/ops/inc-exc/:id", element: lazyPage(IncExcDetails) },
               { path: "/operationManager/addNewQuery", element: lazyPage(AddNewQuery) },
+              { path: "/admin/discount", element: lazyPage(Discount) },
               { path: "/agent/dashboard", element: lazyPage(AgentDashboard) },
               { path: "/agent/queries", element: lazyPage(Queries) },
               { path: "/agent/bookings", element: lazyPage(ActiveBookings) },

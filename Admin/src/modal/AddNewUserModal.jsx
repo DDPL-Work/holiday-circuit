@@ -60,27 +60,23 @@ const ALL_PERMISSIONS = [
 
 const ROLE_DEFAULT_PERMISSIONS = {
   "Super Admin": ["View", "Edit", "Export", "Override", "Delete", "Manage Users", "Manage Discounts", "Approve Payments", "System Config"],
+
   "Ops Team": ["View", "Edit", "Export", "Manage Booking"],
   "Finance Team": ["View", "Export", "Approve Payments", "Reject Payment"],
+
   "Operation Manager": ["View", "Edit", "Export", "Manage Booking"],
+
   "Finance Manager": ["View", "Export", "Approve Payments", "Reject Payment"],
+  
   "DMC Partner": ["View", "Edit", "Export", "Submit Invoice"],
 };
 
 const DEPARTMENTS = [
-  "Operations", "Finance", "DMC Relations", "Administration", "Technology", "Sales",
-];
+  "Operations", "Finance", "DMC Relations", "Administration",];
 
-const MANAGER_APPLICABLE_ROLES = new Set([
-  "Ops Team",
-]);
+const MANAGER_APPLICABLE_ROLES = new Set(["Ops Team",]);
 
-const FALLBACK_MANAGERS = [
-  "Rajesh Kumar",
-  "Priya Sharma",
-  "Amit Singh",
-  "Sneha Patel",
-];
+const FALLBACK_MANAGERS = ["Rajesh Kumar","Priya Sharma","Amit Singh", "Sneha Patel",];
 
 const COMMON_DOMAIN_TYPOS = new Map([
   ["gamil.com", "gmail.com"],
@@ -587,8 +583,8 @@ export default function AddNewUserModal({
         style={{
           position: "relative",
           zIndex: 1,
-          width: "min(490px, calc(100vw - 32px))",
-          maxHeight: "min(510px, calc(100vh - 32px))",
+          width: "min(1000px, calc(100vw - 32px))",
+          maxHeight: "min(780px, calc(100vh - 32px))",
           borderRadius: 16,
           overflow: "hidden",
           background: "#fff",
@@ -706,9 +702,7 @@ export default function AddNewUserModal({
         <div
           className="hide-scrollbar"
           style={{
-            padding: "12px 16px 0",
-            flex: 1,
-            minHeight: 0,
+            padding: "16px 20px 8px",
             overflowY: "auto",
             overflowX: "hidden",
           }}

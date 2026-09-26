@@ -1,5 +1,6 @@
 import Auth from "../models/auth.model.js";
 import ApiError from "../utils/ApiError.js";
+import { ALLOWED_PERMISSIONS } from "../constants/permissions.js";
 import TravelQuery from "../models/TravelQuery.model.js";
 import RateContract from "../models/rateContract.model.js"
 import Invoice from "../models/invoice.model.js"
@@ -173,7 +174,7 @@ const formatAgentApproval = (agent) => ({
 const normalizePermissionList = (permissions = []) =>
   [...new Set((Array.isArray(permissions) ? permissions : [])
     .map((permission) => String(permission || "").trim())
-    .filter(Boolean))];
+    .filter((permission) => ALLOWED_PERMISSIONS.includes(permission)))];
 
 const generateTemporaryPassword = () => {
   const random = Math.random().toString(36).slice(2, 8);

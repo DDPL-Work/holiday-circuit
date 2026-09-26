@@ -72,6 +72,7 @@ const menuConfig = {
     { label: "All Team Queries", path: "/operationManager/allTeamQueries", icon: RiTeamFill },
     { label: "My Team", path: "/operationManager/myTeam", icon: BsMicrosoftTeams },
   ],
+
   finance_manager: [
     { label: "Finance Manager", path: "/financeManager/financeManagerDashboard", icon: GrUserManager },
     { label: "Advanced Analytics", path: "/financeManager/advancedAnalytics", icon: VscGraph },
@@ -84,12 +85,15 @@ const menuConfig = {
 export const getMenusForRole = (role, user = null) => {
   const baseMenus = menuConfig[role] ? [...menuConfig[role]] : [];
 
+
   if (user && role !== "admin") {
     const permissions = Array.isArray(user.permissions) ? user.permissions : [];
     const hasDiscountPermission =
       permissions.includes("Manage Discounts") ||
       permissions.includes("Discounts & Coupons") ||
       permissions.includes("Discount");
+
+
 
     if (hasDiscountPermission && !baseMenus.some((m) => m.path === "/admin/discount")) {
       baseMenus.push({
@@ -104,7 +108,10 @@ export const getMenusForRole = (role, user = null) => {
       permissions.includes("Query Create") ||
       permissions.includes("Add Query");
 
+
+
     if (role === "operations" && hasCreateQueryPermission) {
+      
       if (!baseMenus.some((m) => m.path === "/operationManager/addNewQuery")) {
         baseMenus.push({
           label: "Add New Query",

@@ -135,24 +135,22 @@ export const TransportsTab = ({
                     <Car size={14} className="text-sky-600" /> Transfer #{index + 1}
                   </span>
 
-                  {partnerType === "Business Partner" && (
-                    <div className="ml-auto flex items-center gap-1.5 shrink-0">
-                      <span className="text-[11px] font-semibold text-slate-500 whitespace-nowrap">Partner:</span>
-                      <div className="w-48">
-                        <BusinessPartnerSelect
-                          value={transfer.businessPartnerId || transfer.businessPartner || ""}
-                          onChange={(val) => {
-                            const partnerObj = businessPartners?.find((p) => (p._id || p.id) === val);
-                            updateTransfer(index, "businessPartnerId", val);
-                            updateTransfer(index, "businessPartner", val);
-                            updateTransfer(index, "businessPartnerName", partnerObj?.name || partnerObj?.companyName || "");
-                          }}
-                          businessPartners={businessPartners}
-                          placeholderName={transfer.businessPartnerName || transfer.dmcName || transfer.supplierName || ""}
-                        />
-                      </div>
+                  <div className="ml-auto flex items-center gap-1.5 shrink-0">
+                    <span className="text-[11px] font-semibold text-slate-500 whitespace-nowrap">Partner:</span>
+                    <div className="w-48">
+                      <BusinessPartnerSelect
+                        value={transfer.businessPartnerId || transfer.businessPartner || ""}
+                        onChange={(val) => {
+                          const partnerObj = businessPartners?.find((p) => (p._id || p.id) === val);
+                          updateTransfer(index, "businessPartnerId", val);
+                          updateTransfer(index, "businessPartner", val);
+                          updateTransfer(index, "businessPartnerName", partnerObj?.name || partnerObj?.companyName || "");
+                        }}
+                        businessPartners={businessPartners}
+                        placeholderName={transfer.businessPartnerName || transfer.dmcName || transfer.supplierName || ""}
+                      />
                     </div>
-                  )}
+                  </div>
 
                   {transfer.vehicleType && (
                     <span className="rounded-md border border-gray-200 bg-white px-2.5 py-0.5 text-[11px] text-slate-800 font-semibold shadow-2xs">

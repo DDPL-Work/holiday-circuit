@@ -3,7 +3,7 @@ import Counter from "../models/counter.model.js";
 import ApiError from "../utils/ApiError.js";
 import mongoose from "mongoose";
 
-const TEAM_ROLE = "finance_partner";
+const FINANCE_TEAM_ROLES = ["finance_partner", "finance_team", "finance"];
 
 const normalizeValue = (value = "") => String(value || "").trim();
 
@@ -39,11 +39,11 @@ const getStableAssigneeFromSeed = (seed = "", teamMembers = []) => {
 
 export const getActiveFinanceMembersForAssignment = async () =>
   Auth.find({
-    role: TEAM_ROLE,
+    role: { $in: FINANCE_TEAM_ROLES },
     isDeleted: { $ne: true },
     accountStatus: "Active",
   })
-    .select("name email employeeId manager profileImage accountStatus createdAt")
+    .select("name email phone employeeId manager profileImage accountStatus createdAt")
     .sort({ createdAt: 1, name: 1 })
     .lean();
 
@@ -68,26 +68,42 @@ const resolveManagerByIdentity = async (identity = "") => {
 };
 
 export const getManagedFinanceMembers = async (managerIdentity = "") => {
-  const normalizedIdentity = normalizeValue(managerIdentity);
-  if (!normalizedIdentity) return [];
-
   const manager =
     typeof managerIdentity === "object" && managerIdentity !== null
       ? managerIdentity
-      : await resolveManagerByIdentity(normalizedIdentity);
+      : managerIdentity
+        ? await resolveManagerByIdentity(normalizeValue(managerIdentity))
+        : null;
 
   const identityCandidates = manager
     ? getManagerIdentityCandidates(manager)
-    : [normalizedIdentity];
+    : managerIdentity
+      ? [normalizeValue(managerIdentity)]
+      : [];
 
-  return Auth.find({
-    role: TEAM_ROLE,
-    isDeleted: { $ne: true },
-    manager: { $in: identityCandidates },
-  })
-    .select("name email employeeId manager profileImage accountStatus createdAt")
-    .sort({ createdAt: 1, name: 1 })
-    .lean();
+  let members = [];
+  if (identityCandidates.length) {
+    members = await Auth.find({
+      role: { $in: FINANCE_TEAM_ROLES },
+      isDeleted: { $ne: true },
+      manager: { $in: identityCandidates },
+    })
+      .select("name email phone employeeId manager profileImage accountStatus createdAt")
+      .sort({ createdAt: 1, name: 1 })
+      .lean();
+  }
+
+  if (!members.length) {
+    members = await Auth.find({
+      role: { $in: FINANCE_TEAM_ROLES },
+      isDeleted: { $ne: true },
+    })
+      .select("name email phone employeeId manager profileImage accountStatus createdAt")
+      .sort({ createdAt: 1, name: 1 })
+      .lean();
+  }
+
+  return members;
 };
 
 export const getRoundRobinFinanceAssignee = async ({ keepAssigneeId = "" } = {}) => {
@@ -148,7 +164,7 @@ export const getFinanceAccessContext = async (user = {}) => {
     };
   }
 
-  if (user?.role === TEAM_ROLE) {
+  if (FINANCE_TEAM_ROLES.includes(user?.role)) {
     const financeUser = await Auth.findById(user.id).select(
       "name email employeeId manager _id role isDeleted accountStatus",
     ).lean();
@@ -158,31 +174,17 @@ export const getFinanceAccessContext = async (user = {}) => {
     }
 
     const managerIdentity = normalizeValue(financeUser.manager);
-    if (!managerIdentity) {
-      throw new ApiError(
-        403,
-        "This finance account is not mapped to any finance manager team",
-      );
-    }
-
-    const manager = await resolveManagerByIdentity(managerIdentity);
+    const manager = managerIdentity ? await resolveManagerByIdentity(managerIdentity) : null;
     const teamMembers = await getManagedFinanceMembers(manager || managerIdentity);
     const currentUserId = normalizeEntityId(financeUser._id);
     const teamMemberIds = teamMembers.map((member) => normalizeEntityId(member._id));
-
-    if (!teamMemberIds.includes(currentUserId)) {
-      throw new ApiError(
-        403,
-        "This finance account is not part of an active finance manager team",
-      );
-    }
 
     return {
       scope: "member",
       manager,
       currentMember: financeUser,
       teamMembers,
-      teamMemberIds,
+      teamMemberIds: teamMemberIds.includes(currentUserId) ? teamMemberIds : [...teamMemberIds, currentUserId],
       currentUserId,
     };
   }

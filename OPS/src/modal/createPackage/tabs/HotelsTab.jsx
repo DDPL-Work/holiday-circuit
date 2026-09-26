@@ -85,24 +85,22 @@ export const HotelsTab = ({
                     <BedDouble size={14} className="text-amber-600" /> Hotel #{index + 1}
                   </span>
 
-                  {partnerType === "Business Partner" && (
-                    <div className="ml-auto flex items-center gap-1.5 shrink-0">
-                      <span className="text-[11px] font-semibold text-slate-500 whitespace-nowrap">Partner:</span>
-                      <div className="w-48">
-                        <BusinessPartnerSelect
-                          value={hotel.businessPartnerId || hotel.businessPartner || ""}
-                          onChange={(val) => {
-                            const partnerObj = businessPartners?.find((p) => (p._id || p.id) === val);
-                            updateHotel(index, "businessPartnerId", val);
-                            updateHotel(index, "businessPartner", val);
-                            updateHotel(index, "businessPartnerName", partnerObj?.name || partnerObj?.companyName || "");
-                          }}
-                          businessPartners={businessPartners}
-                          placeholderName={hotel.businessPartnerName || hotel.dmcName || hotel.supplierName || ""}
-                        />
-                      </div>
+                  <div className="ml-auto flex items-center gap-1.5 shrink-0">
+                    <span className="text-[11px] font-semibold text-slate-500 whitespace-nowrap">Partner:</span>
+                    <div className="w-48">
+                      <BusinessPartnerSelect
+                        value={hotel.businessPartnerId || hotel.businessPartner || ""}
+                        onChange={(val) => {
+                          const partnerObj = businessPartners?.find((p) => (p._id || p.id) === val);
+                          updateHotel(index, "businessPartnerId", val);
+                          updateHotel(index, "businessPartner", val);
+                          updateHotel(index, "businessPartnerName", partnerObj?.name || partnerObj?.companyName || "");
+                        }}
+                        businessPartners={businessPartners}
+                        placeholderName={hotel.businessPartnerName || hotel.dmcName || hotel.supplierName || ""}
+                      />
                     </div>
-                  )}
+                  </div>
 
                   {hotel.hotelsList && hotel.hotelsList.length > 1 ? (
                     <div className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2 py-0.5 text-xs text-slate-700 shadow-2xs">
@@ -176,7 +174,7 @@ export const HotelsTab = ({
                     <input
                       type="text"
                       placeholder={partnerType === "Business Partner" ? "Enter Hotel Service Name manually..." : "e.g. Mussoorie Queen of Hills Luxury, Luxury Resort Stay..."}
-                      value={hotel.serviceName || hotel.name || ""}
+                      value={hotel.serviceName || ""}
                       onFocus={() => {
                         if (partnerType !== "Business Partner") setActiveHotelDropdownIdx(index);
                       }}
@@ -201,14 +199,13 @@ export const HotelsTab = ({
                     <div className="absolute left-0 right-0 top-full mt-1.5 max-h-64 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-xl z-[100] divide-y divide-gray-100 [scrollbar-width:thin]">
                       {filteredHotels.length === 0 ? (
                         <div className="p-3 text-[11px] text-gray-500 italic text-center">
-                          No service found matching "{hotel.serviceName || hotel.name || ""}". You can freely type custom service name.
+                          No service found matching "{hotel.serviceName || ""}". You can freely type custom service name.
                         </div>
                       ) : (
                         filteredHotels.map((dmcHotel, hIdx) => {
                           const serviceTitle = dmcHotel.serviceName || dmcHotel.title || dmcHotel.name || dmcHotel.hotelName;
                           const isSelected = Boolean(
-                            (hotel.serviceName && serviceTitle.toLowerCase() === hotel.serviceName.trim().toLowerCase()) ||
-                            (hotel.name && serviceTitle.toLowerCase() === hotel.name.trim().toLowerCase())
+                            hotel.serviceName && serviceTitle.toLowerCase() === hotel.serviceName.trim().toLowerCase()
                           );
                           const matchesDest = destination && (dmcHotel.city || dmcHotel.destination || "").toLowerCase().includes(destination.toLowerCase());
 
@@ -496,22 +493,17 @@ export const HotelsTab = ({
                         <p className="text-[10px] text-gray-500">Extra adult with extra bed</p>
                       </div>
                     </div>
-                    {partnerType === "Business Partner" ? (
-                      <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                        <span className="text-xs text-amber-700 font-bold">₹</span>
-                        <input
-                          type="number"
-                          value={hotel.awebRate || ""}
-                          onChange={(e) => updateHotel(index, "awebRate", Number(e.target.value))}
-                          placeholder="0"
-                          className="w-16 rounded border border-gray-200 px-1.5 py-0.5 text-xs text-amber-700 font-bold focus:outline-none focus:ring-1 focus:ring-amber-500 bg-white"
-                        />
-                      </div>
-                    ) : (
-                      <span className="text-xs font-extrabold text-amber-700">
-                        ₹{Number(hotel.awebRate || 0).toLocaleString("en-IN")}
-                      </span>
-                    )}
+                    <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                      <span className="text-xs text-amber-700 font-bold">₹</span>
+                      <input
+                        type="number"
+                        min="0"
+                        value={hotel.awebRate !== undefined && hotel.awebRate !== null ? hotel.awebRate : ""}
+                        onChange={(e) => updateHotel(index, "awebRate", e.target.value === "" ? "" : Number(e.target.value))}
+                        placeholder="0"
+                        className="w-20 rounded border border-gray-200 px-2 py-1 text-xs text-amber-700 font-bold focus:outline-none focus:ring-1 focus:ring-amber-500 bg-white"
+                      />
+                    </div>
                   </label>
 
                   <label className={`flex items-center justify-between gap-2 rounded-lg border p-3 cursor-pointer transition shadow-2xs ${hotel.childWithBed ? "border-emerald-300 bg-emerald-50/50" : "border-gray-200 bg-white hover:border-gray-300"}`}>
@@ -527,22 +519,17 @@ export const HotelsTab = ({
                         <p className="text-[10px] text-gray-500">Child with extra bed</p>
                       </div>
                     </div>
-                    {partnerType === "Business Partner" ? (
-                      <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                        <span className="text-xs text-emerald-700 font-bold">₹</span>
-                        <input
-                          type="number"
-                          value={hotel.cwebRate || ""}
-                          onChange={(e) => updateHotel(index, "cwebRate", Number(e.target.value))}
-                          placeholder="0"
-                          className="w-16 rounded border border-gray-200 px-1.5 py-0.5 text-xs text-emerald-700 font-bold focus:outline-none focus:ring-1 focus:ring-emerald-500 bg-white"
-                        />
-                      </div>
-                    ) : (
-                      <span className="text-xs font-extrabold text-emerald-700">
-                        ₹{Number(hotel.cwebRate || 0).toLocaleString("en-IN")}
-                      </span>
-                    )}
+                    <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                      <span className="text-xs text-emerald-700 font-bold">₹</span>
+                      <input
+                        type="number"
+                        min="0"
+                        value={hotel.cwebRate !== undefined && hotel.cwebRate !== null ? hotel.cwebRate : ""}
+                        onChange={(e) => updateHotel(index, "cwebRate", e.target.value === "" ? "" : Number(e.target.value))}
+                        placeholder="0"
+                        className="w-20 rounded border border-gray-200 px-2 py-1 text-xs text-emerald-700 font-bold focus:outline-none focus:ring-1 focus:ring-emerald-500 bg-white"
+                      />
+                    </div>
                   </label>
 
                   <label className={`flex items-center justify-between gap-2 rounded-lg border p-3 cursor-pointer transition shadow-2xs ${hotel.childWithoutBed ? "border-sky-300 bg-sky-50/50" : "border-gray-200 bg-white hover:border-gray-300"}`}>
@@ -558,22 +545,17 @@ export const HotelsTab = ({
                         <p className="text-[10px] text-gray-500">Child without extra bed</p>
                       </div>
                     </div>
-                    {partnerType === "Business Partner" ? (
-                      <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                        <span className="text-xs text-sky-700 font-bold">₹</span>
-                        <input
-                          type="number"
-                          value={hotel.cwoebRate || ""}
-                          onChange={(e) => updateHotel(index, "cwoebRate", Number(e.target.value))}
-                          placeholder="0"
-                          className="w-16 rounded border border-gray-200 px-1.5 py-0.5 text-xs text-sky-700 font-bold focus:outline-none focus:ring-1 focus:ring-sky-500 bg-white"
-                        />
-                      </div>
-                    ) : (
-                      <span className="text-xs font-extrabold text-sky-700">
-                        ₹{Number(hotel.cwoebRate || 0).toLocaleString("en-IN")}
-                      </span>
-                    )}
+                    <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                      <span className="text-xs text-sky-700 font-bold">₹</span>
+                      <input
+                        type="number"
+                        min="0"
+                        value={hotel.cwoebRate !== undefined && hotel.cwoebRate !== null ? hotel.cwoebRate : ""}
+                        onChange={(e) => updateHotel(index, "cwoebRate", e.target.value === "" ? "" : Number(e.target.value))}
+                        placeholder="0"
+                        className="w-20 rounded border border-gray-200 px-2 py-1 text-xs text-sky-700 font-bold focus:outline-none focus:ring-1 focus:ring-sky-500 bg-white"
+                      />
+                    </div>
                   </label>
                 </div>
               </div>
