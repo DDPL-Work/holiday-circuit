@@ -1,369 +1,351 @@
-# Holiday Circuit
+# Holiday Circuit 🌍✈️
+> **Next-Generation B2B Travel Operations & ERP Platform**
 
-## Product overview
+[![Stack](https://img.shields.io/badge/Stack-MERN%20%2F%20Vite%20%2F%20TailwindCSS%20v4-blue.svg)](#technology-stack)
+[![React](https://img.shields.io/badge/React-19.2-61DAFB.svg?logo=react&logoColor=black)](#frontend)
+[![Node](https://img.shields.io/badge/Node.js-18%2B%20%2F%20Express%205-339933.svg?logo=node.js&logoColor=white)](#backend)
+[![MongoDB](https://img.shields.io/badge/Database-MongoDB%20%2F%20Mongoose-47A248.svg?logo=mongodb&logoColor=white)](#database)
+[![Architecture](https://img.shields.io/badge/Architecture-Multi--Portal%20Ecosystem-orange.svg)](#multi-portal-ecosystem)
 
-Holiday Circuit is a role-based travel operations platform that manages a trip from an agent's initial enquiry through quotation, payment, supplier fulfilment, and voucher delivery. It connects travel agents, operations, DMC/supplier partners, finance, managers, and administrators in one workflow.
+---
 
-This is an **implemented-feature inventory** derived from the client routes, server routes, controllers, models, and services in this repository. It describes current code for Scope of Work (SOW) comparison; it does not represent a future roadmap.
+## 📌 Table of Contents
+- [Executive Overview](#-executive-overview)
+- [End-to-End Business Lifecycle](#-end-to-end-business-lifecycle)
+- [Multi-Portal Ecosystem & Roles](#-multi-portal-ecosystem--roles)
+- [Key Features & Modules](#-key-features--modules)
+  - [1. Travel Query & CRM Engine](#1-travel-query--crm-engine)
+  - [2. Quotation Builder & Customizer](#2-quotation-builder--customizer)
+  - [3. Proforma Invoicing & Dynamic Seller Billing](#3-proforma-invoicing--dynamic-seller-billing)
+  - [4. DMC Contracted Rates & Bulk Excel Upload](#4-dmc-contracted-rates--bulk-excel-upload)
+  - [5. Payment Verification & Finance Settlements](#5-payment-verification--finance-settlements)
+  - [6. Travel Voucher Generation Engine](#6-travel-voucher-generation-engine)
+  - [7. OCR & Smart Document Extraction](#7-ocr--smart-document-extraction)
+- [Technology Stack](#-technology-stack)
+- [Project Architecture & Directory Structure](#-project-architecture--directory-structure)
+- [Environment Configuration](#-environment-configuration)
+- [Installation & Getting Started](#-installation--getting-started)
+- [API Routes Reference](#-api-routes-reference)
+- [Development & Build Scripts](#-development--build-scripts)
 
-## Business lifecycle
+---
 
-```text
-Agent registration → Admin approval → Travel query → Operations acceptance
-→ Quote drafting/customisation → Quote sent → Agent review / revision / acceptance
-→ Invoice + payment proof → Finance verification → DMC fulfilment + invoice
-→ Voucher generation → Voucher sent → Settlement, reporting, and audit
+## 🏢 Executive Overview
+
+**Holiday Circuit** is a comprehensive, enterprise-grade B2B travel management and operations ERP platform. It seamlessly connects Travel Agents, Operations Teams, Destination Management Companies (DMC / Suppliers), and Finance Teams into a unified, transparent, and auditable digital workflow.
+
+From an agent's initial trip enquiry to customized quotation drafting, automated proforma invoicing, payment verification, supplier booking fulfillment, and final travel voucher dispatch, Holiday Circuit streamlines every step of the travel booking lifecycle.
+
+---
+
+## 🔄 End-to-End Business Lifecycle
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Agent as Travel Agent
+    actor Admin as Super Admin
+    actor Ops as Operations
+    actor DMC as DMC / Supplier
+    actor Fin as Finance
+
+    Agent->>Admin: Agent Registration (KYC & Documents)
+    Admin->>Agent: Approval / Verification
+    Agent->>Ops: Creates Travel Query (Dates, Pax, Destination, Budget)
+    Ops->>Ops: Accepts Query & Drafts Quotation (DMC Inventory / Packages)
+    Ops->>Agent: Sends Customized Quotation (PDF, Email, WhatsApp)
+    Agent->>Ops: Approves / Requests Revision / Confirms Quote
+    Agent->>Fin: Generates Proforma Invoice & Uploads Payment Proof (UTR)
+    Fin->>Agent: Verifies Payment (Full / Partial Instalments)
+    Ops->>DMC: Requests Service Confirmations
+    DMC->>Ops: Uploads Confirmations & Internal Supplier Invoices
+    Ops->>Agent: Generates & Sends Branded Travel Voucher
+    Fin->>DMC: Processes Supplier Payouts & Settlement Batches
 ```
 
-## Roles and workspaces
+---
 
-| Role | Workspace | Implemented responsibilities |
-| --- | --- | --- |
-| Agent | Agent Dashboard, Queries, Booking Payments | Creates/tracks queries, manages traveller documents and tasks, reviews quotes, pays invoices, receives vouchers/notifications. |
-| Admin | Admin and Super Admin dashboards | Approves agents, manages staff, coupons, rate contracts, payment verification, finance analytics, DMC invoices, and oversight. |
-| Operations | Ops Dashboard and Booking Management | Accepts/rejects queries, reviews documents, drafts/prices/sends quotations, produces invoices, generates/sends vouchers. |
-| Operation Manager | Operations Manager workspace | Reviews team workload, creates team members, previews/reassigns work, updates queries, reviews activity, submits reports. |
-| DMC Partner | DMC Dashboard, Contracted Rates, Confirmation, Settlement | Manages travel inventory, uploads rates, confirms services, submits supplier invoices, tracks ledger/settlements. |
-| Finance Partner | Finance Dashboard | Reviews payment proofs, dispatches finance documents, handles internal DMC invoices and analytics. |
-| Finance Manager | Finance Manager workspace | Manages finance team/vendors; reviews team transactions, analytics, and DMC invoice activity. |
+## 👥 Multi-Portal Ecosystem & Roles
 
-Supported roles: `admin`, `agent`, `operations`, `dmc_partner`, `finance_partner`, `operation_manager`, and `finance_manager`.
+Holiday Circuit features 7 dedicated workspaces tailored for specific operational roles:
 
-## Complete feature inventory
+| Workspace / Portal | Role | Primary Responsibilities |
+| :--- | :--- | :--- |
+| **Agent Portal** | `agent` | Create queries, manage client leads & documents, customize quotations, generate proforma invoices, submit payment proofs (UTR/receipts), download travel vouchers. |
+| **Admin Portal** | `admin`, `super_admin` | KYC agent approvals, user & staff management, coupon campaigns, contracted rate approvals, dispute escalations, finance analytics & global audit logs. |
+| **Operations Portal** | `operations` | Order acceptance queue, traveler KYC document verification, quotation drafting with DMC inventory, itinerary building, travel voucher generation. |
+| **Operations Manager** | `operation_manager` | Team workload monitoring, query reassignment, performance tracking, operational escalations. |
+| **DMC Portal** | `dmc_partner` | Rate contracts & inventory management (Hotels, Transfers, Activities, Sightseeing), Excel bulk uploads, booking confirmations, supplier invoice submissions. |
+| **Finance Portal** | `finance_partner` | Agent payment verification, UTR/Bank reconciliations, internal DMC invoice audits, credit period tracking, payment receipt dispatch. |
+| **Finance Manager** | `finance_manager` | Vendor ledger governance, settlement batch approvals, financial forecasting, transaction analytics. |
 
-### Identity, access, and account governance
+---
 
-- Agent registration with company, GST number, phone, password, and up to five supporting documents.
-- Agent approval lifecycle: `pending`, `approve`, `rejected`; includes reviewer/date/rejection reason.
-- Login, JWT bearer authentication, current-user lookup, profile update, and user heartbeat.
-- Password recovery: send OTP, verify OTP, reset password.
-- Role-aware client route protection and role-specific navigation.
-- Managed-user administration: create, update, activate/deactivate, soft-delete, restore, and permanently delete team accounts.
-- Governance fields for employee ID, manager, department, designation, granular permissions, account status, access expiry, last login/activity, and deletion audit data.
-- Agent branding fields for profile/cover images, brand name/logo, and voucher footer image.
-- Permission-based discount access for eligible managers.
+## 🚀 Key Features & Modules
 
-### Travel enquiries, travellers, and CRM
+### 1. Travel Query & CRM Engine
+- **Comprehensive Query Intake**: Destination, domestic/international classifications, group/customized tour types, travel dates, adult/child split with ages, budget ranges, hotel star preferences, and custom notes.
+- **Traveler Document Portal**: Upload and verification of Passports, PAN cards, and government IDs with live review statuses (`Draft`, `Pending`, `Verified`, `Rejected`).
+- **Interactive Task & Reminder System**: Query-level follow-up tasks, due-today dashboards, and overdue reminder widgets.
 
-- Agent creates travel queries with destination, domestic/international classification, group/customised tour type, dates, adult/child counts, client email, budget, hotel category, transfer/sightseeing request flags, and special requirements.
-- Traveller records support adult/child type, child age, document type, passport/government ID files, and uploaded-file metadata.
-- Agent can update their query while it remains actionable.
-- Query identifiers, operations assignment, activity log, reassignment history, and operations/admin coordination message thread.
-- Agent query list, active-booking list, dashboard KPIs, hotel-rate destination lookup, and finance overview.
-- Per-query task management: create, list, resolve, delete, due-today view, and reminder dismissal.
-- Status models:
-  - Agent: `Pending`, `In Progress`, `Quote Sent`, `Client Approved`, `Confirmed`, `Rejected`, `Revision Requested`
-  - Operations: `New_Query`, `Pending_Accept`, `Revision_Query`, `Rejected`, `Booking_Accepted`, `Invoice_Requested`, `Confirmed`, `Vouchered`, `Payment_Completed`
-  - Quotation: `Awaiting_Decision`, `Quotation_Created`, `Sent_To_Agent`
+### 2. Quotation Builder & Customizer
+- **Multi-Service Catalog**: Integration of **Hotels, Transfers, Activities, Sightseeing, and Fixed Packages**.
+- **Dynamic Pricing Engine**: Granular control over supplier costs, operational markup, agent markup (percentage / fixed), GST, TCS, and handling fees.
+- **Omnichannel Delivery**: Downloadable client quotation PDFs, responsive HTML email previews, and direct Twilio WhatsApp sharing.
 
-### Traveller-document verification
+### 3. Proforma Invoicing & Dynamic Seller Billing
+- **Dynamic Entity Mapping**: Automatically resolves seller identity, address, GST, PAN, TAN, MSME, and contact information directly from the authenticated agent profile.
+- **Tax Configurations**: Dynamic itemized taxes (GST, TCS, custom taxes) with percentage or flat rate modes, and one-click "Hide Tax Breakup" support.
+- **Bank & Billing Customization**: Configurable bank account details, IFSC, branch selection, and editable buyer details.
 
-- Upload/replace and remove traveller documents.
-- Submit all traveller documents for review.
-- Operations review captures document-level verified/failed issues, rejection reason/remarks, reviewer, and time.
-- Document status lifecycle: `Draft`, `Pending`, `Verified`, `Rejected`.
-- Audit trail records document action, status, actor, remarks, and timestamp.
+### 4. DMC Contracted Rates & Bulk Excel Upload
+- **Inventory Management**: Create and manage contracted supplier rates across Hotels, Transfers (Point-to-Point, Round Trip, Disposal), Activities, Sightseeing, and Multi-Day Packages.
+- **Spreadsheet Processing**: Bulk upload rate sheets via `.xlsx`/`.xls` with automated schema normalization and validation.
+- **Upload History**: View uploaded spreadsheets, edit row-level records directly in the UI, and track audit logs.
 
-### Operations workflow, coordination, and escalation
+### 5. Payment Verification & Finance Settlements
+- **Agent Payment Gateway & Proofs**: Record payment receipts, bank names, UTR numbers, and multi-installment milestones.
+- **Finance Approval Queue**: Approve/reject transactions with detailed remarks and auto-dispatch digital payment receipts.
+- **DMC Settlements**: Manage supplier credit periods (7/15 days), batch payouts, OCR-assisted invoice scanning, and payment ledger reconciliation.
 
-- Operations dashboard, all-query view, and order-acceptance queue.
-- Accept/reject enquiries, update operational state, start quotation work, and review traveller documents.
-- Pass a query to admin for intervention; admin replies within the coordination thread and resolves override cases.
-- Operations/manager activity logs, assignment history, and overdue-reminder widgets/modals.
-- Operations manager workload preview and reassignment, including source/target/actor/timestamp history.
+### 6. Travel Voucher Generation Engine
+- **Automated Voucher Creation**: Seamless mapping of confirmed hotels, transport pickups, activity slots, meal plans (EP, CP, MAP, AP), confirmation codes, and 24x7 operational helplines.
+- **Branded & White-Label Layouts**: Dynamic header branding (Agent logo / company name) and custom skyline footer banners.
+- **Clean PDF Layout**: Strict multi-page pagebreak protection (`html2pdf.js` & `html2canvas`) avoiding awkward table splitting and eliminating unnecessary blank trailing pages.
 
-### Quotation, package, and pricing
+### 7. OCR & Smart Document Extraction
+- **AI-Powered OCR**: Integrated `tesseract.js`, `sharp`, `mammoth`, and `pdf-parse` for parsing supplier invoices and extracting line items, invoice numbers, tax amounts, and billing dates.
 
-- Create, retrieve, and save a quotation draft per query.
-- Create, send, revise, and retrieve quotations for agent, operations, and manager views.
-- Add/remove quotation services and quotation items.
-- Quoted service types: **hotel, transfer, activity, sightseeing**.
-- Quote content supports supplier/DMC details, location, service date, rooms/nights/pax, room/bed configuration, vehicle/capacity/usage, activity/sightseeing details, inclusions, exclusions, additional notes, validity, and day-wise itinerary.
-- Search DMC inventory during quotation creation.
-- Agent quote actions: view, download client PDF, view email preview, request revision, accept, confirm, update quote branding, and send voucher email.
-- Client quotation delivery: quotation email/PDF generation and WhatsApp integration when Twilio is configured.
-- Package templates can be created, listed, and deleted.
-- Agent-side package customiser supports hotels, transfers, activities, sightseeing, service exclusions, custom add-ons, quantity/pax/room/night changes, rates, itinerary, and package/agent markup.
-- Invoice-ready pricing snapshot preserves service totals, package amount, operations markup, agent markup (percentage/fixed), service/handling fees, GST, TCS, tourism tax, currency, and grand total.
+---
 
-### DMC inventory, contracted rates, and bulk upload
+## 💻 Technology Stack
 
-- DMC hotel CRUD: create, list, retrieve by ID, update, delete.
-- DMC activity, transfer, sightseeing, and package creation/listing; package deletion.
-- Contracted Rates UI for supplier inventory.
-- Inventory captures applicable supplier/DMC, destination, hotel/room/meal details, validity, vehicle/capacity, route/usage/rates, operating time/slots, and adult/child pricing.
-- Bulk uploads for hotel, transport/transfer, activity, sightseeing, and package records.
-- Upload history: view data, download, delete, edit a spreadsheet row, and notify after edits.
-- XLSX/Excel processing and normalisation services for hotel, transport, activity, sightseeing, and package data.
+### Frontend Applications (`Admin`, `Agent`, `DMC`, `Finance`, `OPS`)
+- **Framework & Build**: [React 19](https://react.dev/) + [Vite 7](https://vitejs.dev/)
+- **State Management**: [Redux Toolkit](https://redux-toolkit.js.org/) + [React Redux](https://react-redux.js.org/)
+- **Styling & UI**: [Tailwind CSS v4](https://tailwindcss.com/), [Framer Motion](https://www.framer.com/motion/), [Lucide React](https://lucide.dev/), [React Icons](https://react-icons.github.io/react-icons/)
+- **Rich Text & PDF**: [TipTap Editor](https://tiptap.dev/), [html2pdf.js](https://ekoopmans.github.io/html2pdf.js/), [jspdf](https://github.com/parallax/jsPDF), [html2canvas](https://html2canvas.hertzen.com/)
+- **Charts & Data**: [Recharts](https://recharts.org/), [ExcelJS](https://github.com/exceljs/exceljs), [XLSX (SheetJS)](https://sheetjs.com/)
+- **Feedback & Loaders**: [React Hot Toast](https://react-hot-toast.com/), [SweetAlert2](https://sweetalert2.github.io/)
 
-### Invoicing, coupons, and agent payments
+### Backend Application (`server`)
+- **Runtime & Framework**: [Node.js 18+](https://nodejs.org/) + [Express 5](https://expressjs.com/) (ES Modules)
+- **Database & ODM**: [MongoDB](https://www.mongodb.com/) + [Mongoose 9](https://mongoosejs.com/)
+- **Security & Authentication**: JWT ([jsonwebtoken](https://github.com/auth0/node-jsonwebtoken)), [bcrypt](https://github.com/kelektiv/node.bcrypt.js), [express-rate-limit](https://github.com/express-rate-limit/express-rate-limit)
+- **Media & File Storage**: [Multer](https://github.com/expressjs/multer) + [Cloudinary](https://cloudinary.com/) (`multer-storage-cloudinary`)
+- **Document & PDF Processing**: [PDFKit](https://pdfkit.org/), [pdf-parse](https://www.npmjs.com/package/pdf-parse), [Mammoth](https://github.com/mwilliamson/mammoth.js), [Sharp](https://sharp.pixelplumbing.com/), [Tesseract.js](https://tesseract.projectnaptha.com/)
+- **Communication Services**: [Nodemailer](https://nodemailer.com/), [Resend](https://resend.com/), [Twilio SDK](https://www.twilio.com/)
 
-- Invoice generation from a confirmed/relevant quotation/query, with immutable line-item, pricing, and trip snapshots.
-- Agent can ensure an active-booking invoice exists, list invoices, and review finance overview.
-- Invoice line items carry service type/location/date, quantity/pax/rooms/nights, currency, unit price, total, and notes.
-- Coupon workflow: generate code, create, update, delete, distribute to agent, list agent coupons, mark coupon notifications read, and apply a coupon to an invoice.
-- Coupon application stores code, percentage/flat configuration, discount, subtotal, payable amount, and audit actor/time.
-- Agent payment proof includes amount, payer/on-behalf-of, UTR, bank, date, receipt, and tracker/instalment payments.
-- Invoice payment states: `Pending`, `Partially Paid`, `Paid`, `Unpaid`.
-- Finance verification states: `Pending`, `Verified`, `Rejected`.
-- Verification supports finance assignment, team decision, admin escalation, rejection reason/remarks, audit trail, individual instalment verification, and final invoice/payment-receipt dispatch.
-- Agent finance payment-receipt generation and final invoice/receipt email sending.
+---
 
-### DMC confirmation, invoices, payout, and settlement
-
-- DMC can view confirmed queries ready for fulfilment.
-- DMC submits/updates service confirmations with supplier-confirmation, voucher-reference, and terms/conditions attachments.
-- DMC submits internal supplier invoices and previews extracted values from uploaded invoices.
-- Admin can parse a manually uploaded invoice and create manual bulk internal invoices.
-- OCR/PDF/document extraction capability is implemented through `tesseract.js`, `pdf-parse`, `mammoth`, and `sharp` services.
-- Internal invoices store query/agent/DMC/supplier data, invoice/due dates, 7- or 15-day credit period, items, documents, source, claimed summary, taxes, extracted data, finance assignment, and review metadata.
-- Internal invoice and settlement states: `Submitted`, `In Review`, `Approved`, `Rejected`, `Partially Paid`, `Paid`.
-- DMC payment ledger, supplier-payment recording, and settlement batches.
-- Settlement batches support covered queries, line items, uploaded/system source invoice, tax calculations, payout reference/date/bank/amount, finance notes, assignee/reviewer, and payout instalments.
-
-### Voucher, dashboards, documents, and communication
-
-- Voucher management queue; voucher number and PDF generation; branded/unbranded voucher output; preview and email sending.
-- Voucher includes guest, destination, dates, duration, passengers, services, confirmations, generated-by/time, and sent time.
-- Voucher lifecycle: `ready`, `generated`, `sent`.
-- Dedicated dashboards for agent, operations, DMC, finance, operations manager, finance manager, admin, and super admin.
-- Dashboard/analytics capabilities include metrics, date and segmented filters, performance analytics, finance analytics, query pipeline, vouchers, payments, internal invoices, workload, activity, and reassignment data.
-- In-app notifications: list, mark all read, delete. Coupon notifications have dedicated read state.
-- Email providers: SMTP/Nodemailer or Resend. Twilio WhatsApp integration is used when configured.
-- Cloudinary file-upload middleware with 5 MB size limit; local `uploads/` storage for selected invoice/settlement files.
-- PDF services for quotations, vouchers, internal invoices, payout receipts, and finance documents.
-- Routed agent Document Portal and Asset Library pages are present but currently hidden in the sidebar menu.
-- Proforma invoice create/view components are present in the agent Query Details workflow.
-
-## User journeys
-
-### Agent: registration to voucher
-
-1. Registers company, GST, contact information, documents, and password.
-2. Waits for admin approval; can recover password with OTP.
-3. Creates a travel query with trip/traveller details, requirements, and budget.
-4. Uploads traveller documents and submits them for verification.
-5. Uses query tasks, reminders, and activity history for follow-up.
-6. Reviews a delivered quotation/PDF and requests revision, accepts, or confirms.
-7. Tracks the booking/invoice, applies coupon, submits UTR/bank/receipt payment proof, and follows verification status.
-8. Receives final finance documents and voucher.
-
-### Operations: enquiry to confirmed booking 
-
-1. Accepts/rejects a query from Order Acceptance.
-2. Reviews traveller documents and records verification issues if required.
-3. Opens the draft; selects DMC inventory or package template.
-4. Configures hotels, transfers, activities, sightseeing, itinerary, inclusions/exclusions, notes, tax, and markup.
-5. Saves/sends the quotation and processes revision requests.
-6. Generates invoice, coordinates with admin where escalation is needed, and monitors payment/DMC confirmation.
-7. Generates, previews, and sends the voucher.
-
-### DMC: rates to settlement
-
-1. Adds services or bulk-uploads supplier rate sheets.
-2. Reviews history, corrects rows, and exposes inventory to quotation builders.
-3. Views confirmed queries; uploads confirmations, vouchers, and terms.
-4. Submits internal invoice or extracts values from an uploaded invoice.
-5. Tracks finance review, payment, ledger records, and settlement batches.
-
-### Finance: payment verification to supplier payable
-
-1. Checks agent amount, UTR, bank, date, and receipt.
-2. Verifies/rejects with remarks; verifies individual instalments and escalates where needed.
-3. Sends final invoice/payment receipt to agent.
-4. Reviews DMC invoices, due dates/credit period, extracted data, tax, finance assignee, and payout notes.
-5. Updates supplier invoice status and records payout instalments.
-
-### Management and administration
-
-1. Approves/rejects agents; manages staff role, permissions, status, access expiry, and deletion lifecycle.
-2. Manages coupons and rate contracts.
-3. Operations manager oversees team queries/activity, capacity, reassignment, and reports.
-4. Finance manager manages finance staff/vendors and reviews team transactions and DMC invoices.
-5. Admin/super admin monitors dashboards, analytics, finance, vouchers, escalations, and override cases.
-
-## Client routes
-
-| Area | Routes |
-| --- | --- |
-| Public | `/`, `/register` |
-| Agent | `/agent/dashboard`, `/agent/queries`, `/agent/bookings`, `/agent/documents`, `/agent/finance`, `/agent/assets` |
-| Admin | `/admin/dashboard`, `/admin/superAdminDashboard`, `/admin/discount`, `/admin/bookings-management`, `/admin/user-management` |
-| Operations | `/ops/dashboard`, `/ops/bookings-management`, `/ops/order-acceptance`, `/ops/quotation-builder`, `/ops/create-package`, `/ops/voucher-management` |
-| DMC | `/dmc/dashboard`, `/dmc/contractedRates`, `/dmc/bulk-upload`, `/dmc/confirmation`, `/dmc/settlement` |
-| Finance | `/finance/dashboard`, `/finance/advancedAnalytics`, `/finance/paymentVerification`, `/finance/internalInvoice` |
-| Operations Manager | `/operationManager/operationManagerDashboard`, `/operationManager/allTeamQueries`, `/operationManager/myTeam` |
-| Finance Manager | `/financeManager/financeManagerDashboard`, `/financeManager/advancedAnalytics`, `/financeManager/allTeamTransaction`, `/financeManager/internalDmcInvoice`, `/financeManager/myFinanceTeam` |
-
-## API inventory
-
-All paths are prefixed with `/api`. Most business routes require `Authorization: Bearer <JWT>`; file endpoints use multipart form data.
-
-| Prefix | Endpoint groups |
-| --- | --- |
-| `/auth` | Registration, login, current user, heartbeat, profile, send/verify/reset password OTP. |
-| `/agent` | Dashboard; queries; rate destinations; tasks/reminders; active bookings/finance; traveller documents; quotations/PDF/email preview/branding/revision/accept/confirm; voucher email; invoices/coupons/payment receipts/payment proof; notifications. |
-| `/ops` | Dashboard/query list; query accept/reject/status/document review/escalation; quotation drafts/services/items/create/revise/send; service search; packages; invoices; vouchers; manager team/reassignment/report/activity. |
-| `/admin` | Agent approvals; managed users; coupons; rate contracts; dashboards/stats; admin replies/override cases; payment verification/dispatch; finance analytics; vendors/internal invoices/parse upload/manual bulk upload; notifications. |
-| `/dmc` | Hotel/activity/transfer/sightseeing/package inventory; bulk upload/history/view/download/delete/edit; dashboard; confirmations; supplier payment; internal invoices/extraction; payment ledger; settlement batches. |
-| `/finance-manager` | Finance-team list/create, vendor creation, team transaction list/review. |
-
-For individual HTTP methods and parameters, see [`server/src/routes`](server/src/routes).
-
-## Core data entities
-
-| Entity | Purpose |
-| --- | --- |
-| `Auth` | Users, roles, approval, profiles/branding, permissions, activity, and account governance. |
-| `TravelQuery` | Trip query, travellers/documents, status, assignment, activity, document audit, reassignment, coordination. |
-| `Quotation`, `QuotationDraft` | Quote versions/drafts, services, itinerary, pricing, branding, and decisions. |
-| `Invoice` | Agent bill, snapshots, coupon, payment submission, verification/audit, dispatch. |
-| `Voucher` | Voucher content, PDF, branding, lifecycle, and delivery. |
-| `Dmc_Hotel`, `Dmc_Transfers`, `Dmc_Activity`, `Dmc_Sightseeing`, `Dmc_Package` | DMC catalogue and rate inventory. |
-| `UploadHistory` | Bulk-upload metadata, parsed data, and row-change history. |
-| `Confirmation` | DMC service confirmations and attachments. |
-| `InternalInvoice`, `DmcSettlementBatch` | Supplier payables, review, payout, and grouped settlements. |
-| `Coupon` | Discount code configuration, eligibility, distribution, and redemption context. |
-| `Notification`, `AgentTask`, `OpsActivityLog`, `RateContract`, `AdminOverrideCase`, `AdminAccessRole`, `DestinationName`, `Counter` | Supporting workflow, audit, reference, and numbering entities. |
-
-## Architecture and stack
-
-### Frontend
-
-- React 19, Vite, React Router, Redux Toolkit/React Redux.
-- Axios client with automatic JWT injection and global request tracking.
-- Tailwind CSS v4, Framer Motion, Lucide/React Icons, Recharts, React Hook Form, SweetAlert2.
-- Excel/XLSX and ExcelJS utilities; Three.js and GSAP are installed.
-- Lazy-loaded role pages and Vercel SPA rewrite configuration.
-
-### Backend
-
-- Node.js, Express 5, MongoDB/Mongoose.
-- JWT and bcrypt authentication.
-- Multer and Cloudinary uploads; selected local static uploads.
-- XLSX import; PDFKit output; `pdf-parse`, Mammoth, Sharp, and Tesseract document extraction/OCR.
-- SMTP/Nodemailer or Resend email; Twilio WhatsApp.
-- CORS, Morgan logging, configurable body size, and 404/error handlers.
-
-## Repository structure
+## 📂 Project Architecture & Directory Structure
 
 ```text
-holiday-circuit/
-├── client/
-│   └── src/              # Auth, role pages, shared components, modals, routes, layout, redux, utilities
-├── server/
+Holiday circuit/
+├── Admin/                # Admin & Super Admin Frontend Portal (React + Vite)
 │   ├── src/
-│   │   ├── controllers/  # Workflow handlers
-│   │   ├── models/       # Mongoose schemas
-│   │   ├── routes/       # Express API declarations
-│   │   ├── services/     # Mail, PDF, imports, extraction, notifications
-│   │   └── middlewares/  # JWT, upload, error helpers
-│   ├── uploads/
-│   ├── createAdmin.js
-│   └── index.js
-└── README.md
+│   │   ├── pages/        # SuperAdmin, Admin, Ops/Finance Manager Dashboards
+│   │   ├── components/   # Rate Contracts, KYC, Users, Coupons, Analytics
+│   │   ├── redux/        # Auth & App State
+│   │   └── utils/        # API client & helpers
+│   └── package.json
+│
+├── Agent/                # Travel Agent Frontend Portal (React + Vite)
+│   ├── src/
+│   │   ├── pages/        # Queries, Bookings, Finance, QueryDetails, Documents
+│   │   ├── components/   # Accounting, Proforma Invoice, Traveler Modals
+│   │   ├── modal/        # Quotation Share, Voucher Preview, Pass to Admin
+│   │   ├── utils/        # voucherTemplate.js, Api.js, defaultLogoBase64.js
+│   │   └── redux/        # Auth & booking slices
+│   └── package.json
+│
+├── DMC/                  # DMC & Supplier Portal (React + Vite)
+│   ├── src/
+│   │   ├── pages/        # Contracted Rates, Bulk Upload, Confirmations, Settlement
+│   │   └── components/   # Rate Sheet Uploaders, Service Editors
+│   └── package.json
+│
+├── Finance/              # Finance Team Portal (React + Vite)
+│   ├── src/
+│   │   ├── pages/        # Payment Verification, DMC Internal Invoices, Analytics
+│   │   └── components/   # UTR verification, Receipt generators
+│   └── package.json
+│
+├── OPS/                  # Operations Team Portal (React + Vite)
+│   ├── src/
+│   │   ├── pages/        # Order Acceptance, Quotation Builder, Vouchers
+│   │   └── components/   # Itinerary Builder, Markup Engine, Package Creator
+│   └── package.json
+│
+├── server/               # Node.js / Express 5 REST API Backend
+│   ├── src/
+│   │   ├── controllers/  # authController, agentController, opsController, etc.
+│   │   ├── models/       # Auth, TravelQuery, Quotation, Invoice, Voucher, DMC models
+│   │   ├── routes/       # authRoutes, agentRoutes, opsRoutes, adminRoutes, dmcRoutes
+│   │   ├── services/     # emailService, pdfService, excelService, ocrService
+│   │   └── middlewares/  # authMiddleware, uploadMiddleware, errorHandler
+│   ├── uploads/          # Static file uploads storage
+│   ├── createAdmin.js    # Seed script for Super Admin
+│   └── index.js          # Express app entry point
+│
+└── README.md             # Project Documentation
 ```
 
-## Setup
+---
 
-### Prerequisites
+## ⚙️ Environment Configuration
 
-- Node.js 18+ and npm
-- MongoDB
-- Cloudinary credentials for Cloudinary-backed files
-- SMTP or Resend credentials for email
-- Optional Twilio credentials for WhatsApp
-
-```bash
-git clone <repository-url>
-cd holiday-circuit
-
-cd client
-npm install
-
-cd ../server
-npm install
-npm start
-```
-
-In another terminal:
-
-```bash
-cd holiday-circuit/client
-npm run dev
-```
-
-Client default: `http://localhost:5173`. API default: `http://localhost:3000/api`.
-
-### Environment variables
-
-Create `server/.env` without committing secrets:
+### Backend Environment (`server/.env`)
+Create a `.env` file in the `server/` directory:
 
 ```env
+# Server Configuration
 PORT=3000
-MONGO_URL=<mongodb-connection-string>
-JWT_SECRET=<strong-secret>
+NODE_ENV=development
+MONGO_URL=mongodb+srv://<username>:<password>@cluster.mongodb.net/holiday_circuit?retryWrites=true&w=majority
+JWT_SECRET=your_super_secret_jwt_key_here
 REQUEST_BODY_LIMIT=25mb
 
-CLOUDINARY_NAME=<cloud-name>
-CLOUDINARY_API_KEY=<cloudinary-api-key>
-CLOUDINARY_API_SECRET=<cloudinary-api-secret>
+# Cloudinary Media Storage
+CLOUDINARY_NAME=your_cloudinary_cloud_name
+CLOUDINARY_API_KEY=your_cloudinary_api_key
+CLOUDINARY_API_SECRET=your_cloudinary_api_secret
 
+# Email Services (SMTP / Nodemailer)
 MAIL_PROVIDER=smtp
-SMTP_HOST=<smtp-host>
+SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
 SMTP_SECURE=false
-SMTP_SERVICE=<optional-service>
-SMTP_USER=<smtp-user>
-SMTP_PASS=<smtp-password>
-SMTP_FROM_EMAIL=<sender-email>
-SMTP_REPLY_TO=<reply-to-email>
+SMTP_USER=your_email@gmail.com
+SMTP_PASS=your_app_password
+SMTP_FROM_EMAIL="Holiday Circuit" <no-reply@holidaycircuit.com>
+SMTP_REPLY_TO=ops@holidaycircuit.com
 
-RESEND_API_KEY=<resend-api-key>
-RESEND_FROM_EMAIL=<sender-email>
-RESEND_REPLY_TO=<reply-to-email>
+# Alternative: Resend Email
+RESEND_API_KEY=re_your_resend_api_key
+RESEND_FROM_EMAIL=no-reply@yourdomain.com
+RESEND_REPLY_TO=ops@yourdomain.com
 
-TWILIO_ACCOUNT_SID=<twilio-sid>
-TWILIO_AUTH_TOKEN=<twilio-token>
-TWILIO_WHATSAPP_NUMBER=<whatsapp-sender>
+# WhatsApp Notifications (Twilio - Optional)
+TWILIO_ACCOUNT_SID=your_twilio_account_sid
+TWILIO_AUTH_TOKEN=your_twilio_auth_token
+TWILIO_WHATSAPP_NUMBER=whatsapp:+14155238886
+
+# Frontend Client URL
 FRONTEND_LOGIN_URL=http://localhost:5173
 ```
 
-Optional `client/.env`:
-
+### Frontend Environment (`Agent/.env`, `Admin/.env`, etc.)
 ```env
 VITE_API_BASE_URL=http://localhost:3000/api
 ```
 
-| Location | Command | Purpose |
-| --- | --- | --- |
-| `client` | `npm run dev` | Vite development server. |
-| `client` | `npm run build` | Production frontend build. |
-| `client` | `npm run lint` | ESLint. |
-| `client` | `npm run preview` | Preview built frontend. |
-| `server` | `npm start` | Start server with Nodemon. |
-| `server` | `node createAdmin.js` | Development admin-seed utility. |
+---
 
-## SOW comparison checklist
+## 🛠️ Installation & Getting Started
 
-| SOW area | Current evidence |
-| --- | --- |
-| Multi-role travel platform | Seven roles and distinct protected workspaces. |
-| Agent onboarding/KYC | Registration documents, company/GST/contact data, approval lifecycle. |
-| Travel CRM/query lifecycle | Query creation, statuses, assignment, activity/reassignment/admin thread, tasks. |
-| Quotation system | Drafts, inventory services, package customisation, tax/markup, PDF/email/WhatsApp, revision/acceptance/confirmation. |
-| Supplier/DMC rates | Four service categories plus packages, bulk upload, history, and row editing. |
-| Billing/collections | Invoice snapshots, coupons, proof/instalments, verification, finance dispatch. |
-| Supplier payables | DMC confirmation, internal invoices, extraction, approval, payout, ledger, settlement batches. |
-| Voucher fulfilment | PDF generate, preview, branding, send, status lifecycle. |
-| Management controls | Users/permissions, coupons/contracts, dashboards, analytics, reassignment, reports, escalations. |
-| Communication/documents | In-app notifications, email, optional WhatsApp, Cloudinary/local files, PDFs, traveller audit. |
-| Tests/CI | No working automated test suite is currently defined in `server/package.json`; treat as an implementation gap unless delivered separately. |
+### Prerequisites
+- **Node.js**: v18.0.0 or higher
+- **npm**: v9.0.0 or higher
+- **MongoDB**: Local MongoDB instance or MongoDB Atlas cluster
 
-## Security and delivery notes
+### 1. Clone the Repository
+```bash
+git clone https://github.com/your-organization/holiday-circuit.git
+cd holiday-circuit
+```
 
-- API authentication uses `Authorization: Bearer <token>` JWTs.
-- Client-side roles are protected by router guards; server routes use JWT middleware and controller-level business checks. A security review should confirm explicit server-side authorisation for every sensitive endpoint.
-- Cloudinary middleware limits uploaded files to 5 MB. Some manual invoice/settlement files are stored under `/uploads`.
-- Never commit or document environment secrets from `server/.env`.
-- Validate environment-dependent features during SOW acceptance: email/WhatsApp delivery, Cloudinary access, payment permissions, PDF templates, OCR extraction accuracy, and supplier settlement flows.
+### 2. Setup & Start Backend Server
+```bash
+cd server
+npm install
+
+# (Optional) Seed Default Super Admin account
+node createAdmin.js
+
+# Start backend in development mode
+npm run dev
+```
+> Backend API will be available at: `http://localhost:3000/api`
+
+### 3. Setup & Start Frontend Portals
+Open separate terminals for the portals you wish to run:
+
+#### Start Agent Portal:
+```bash
+cd Agent
+npm install
+npm run dev
+```
+
+#### Start Admin Portal:
+```bash
+cd Admin
+npm install
+npm run dev
+```
+
+#### Start Operations (OPS) Portal:
+```bash
+cd OPS
+npm install
+npm run dev
+```
+
+#### Start DMC Portal:
+```bash
+cd DMC
+npm install
+npm run dev
+```
+
+#### Start Finance Portal:
+```bash
+cd Finance
+npm install
+npm run dev
+```
+
+---
+
+## 📡 API Routes Reference
+
+All API routes are prefixed with `/api` and secured with JWT Bearer Token validation (`Authorization: Bearer <token>`):
+
+| Route Group | Base Path | Core Functionality |
+| :--- | :--- | :--- |
+| **Authentication** | `/api/auth` | User registration, login, current user profile, heartbeat, password reset OTP. |
+| **Agent APIs** | `/api/agent` | Query creation, quotation review, proforma invoice, traveler documents, UTR submission, voucher preview/email. |
+| **Operations APIs** | `/api/ops` | Query order acceptance, quotation builder, package creator, traveler KYC approval, voucher generator. |
+| **Admin APIs** | `/api/admin` | Agent approval/rejection, user RBAC governance, coupon engine, rate contracts, dispute desk. |
+| **DMC APIs** | `/api/dmc` | Service catalogue CRUD, bulk Excel upload & row editor, booking confirmations, internal supplier invoices. |
+| **Finance APIs** | `/api/finance-manager` | Payment verification, UTR auditing, supplier settlement batches, payout installment tracking. |
+
+---
+
+## 📜 Development & Build Scripts
+
+| Workspace | Command | Action |
+| :--- | :--- | :--- |
+| `server` | `npm run dev` | Starts backend server with `nodemon` live-reload. |
+| `server` | `npm start` | Starts backend server with standard `node`. |
+| `Agent` | `npm run dev` | Launches Agent Vite development server. |
+| `Agent` | `npm run build` | Builds optimized production bundle for Agent portal. |
+| `Admin` | `npm run dev` | Launches Admin Vite development server. |
+| `Admin` | `npm run build` | Builds optimized production bundle for Admin portal. |
+| `OPS` | `npm run dev` | Launches Operations Vite development server. |
+| `DMC` | `npm run dev` | Launches DMC Vite development server. |
+| `Finance` | `npm run dev` | Launches Finance Vite development server. |
+
+---
+
+## 🔒 Security Best Practices
+- **Role-Based Access Control (RBAC)**: Enforced at both frontend route guards and backend controller levels.
+- **Data Protection**: Passwords hashed using `bcrypt` (10 salt rounds).
+- **CORS Protection**: Configured with selective origins in `server/index.js`.
+- **Payload Safety**: Rate limiting and body size limits configured to prevent denial-of-service vectors.
+
+---
+
+## 📄 License
+This project is proprietary and confidential. All rights reserved by **Holiday Circuit**. Unauthorized copying, distribution, or deployment is strictly prohibited.

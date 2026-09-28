@@ -1651,9 +1651,57 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
     headerTravelerCounts.children > 0 ? `${headerTravelerCounts.children} Child${headerTravelerCounts.children === 1 ? "" : "ren"}` : "",
     headerTravelerCounts.infants > 0 ? `${headerTravelerCounts.infants} Infant${headerTravelerCounts.infants === 1 ? "" : "s"}` : "",
   ].filter(Boolean).join(", ") || "Passengers not specified";
-  const headerCompany = String(
-    query?.agencyName || query?.companyName || currentUser?.companyName || currentUser?.name || currentUser?.fullName || "",
-  ).trim() || "Company not specified";
+  const offlineAgentOrg = (() => {
+    try {
+      const raw =
+        sessionStorage.getItem("offlineAgentOrgData") ||
+        localStorage.getItem("offlineAgentOrgData");
+      if (raw) return JSON.parse(raw);
+    } catch (e) {}
+    return null;
+  })();
+
+  const isInternalStaff = [
+    "operations",
+    "operation_manager",
+    "admin",
+    "finance",
+    "manager",
+  ].includes(String(currentUser?.role || "").toLowerCase());
+
+  const isInvalidAgencyName = (val) => {
+    if (!val) return true;
+    const lower = String(val).trim().toLowerCase();
+    return (
+      lower === "operation manager" ||
+      lower === "operations manager" ||
+      lower === "admin" ||
+      lower === "company not specified"
+    );
+  };
+
+  const candidateAgencyName =
+    (!isInvalidAgencyName(query?.agencyName) ? query?.agencyName : "") ||
+    (!isInvalidAgencyName(query?.companyName) ? query?.companyName : "") ||
+    (!isInvalidAgencyName(query?.querySource) ? query?.querySource : "") ||
+    (query?.tripSource && typeof query.tripSource === "object" && !isInvalidAgencyName(query.tripSource.name)
+      ? query.tripSource.name
+      : "") ||
+    (!isInvalidAgencyName(query?.agent?.companyName) ? query?.agent?.companyName : "") ||
+    (!isInvalidAgencyName(query?.agent?.agencyName) ? query?.agent?.agencyName : "") ||
+    (!isInvalidAgencyName(query?.agent?.name) ? query?.agent?.name : "") ||
+    (!isInvalidAgencyName(query?.agentName) ? query?.agentName : "") ||
+    (!isInvalidAgencyName(offlineAgentOrg?.name) ? offlineAgentOrg?.name : "") ||
+    (!isInvalidAgencyName(sessionStorage.getItem("offlineAgentOrgName")) ? sessionStorage.getItem("offlineAgentOrgName") : "") ||
+    (!isInvalidAgencyName(localStorage.getItem("offlineAgentOrgName")) ? localStorage.getItem("offlineAgentOrgName") : "") ||
+    (!isInternalStaff && !isInvalidAgencyName(currentUser?.companyName || currentUser?.name || currentUser?.fullName)
+      ? currentUser?.companyName || currentUser?.name || currentUser?.fullName
+      : "");
+
+  const headerCompany =
+    String(candidateAgencyName || "").trim() && !isInvalidAgencyName(candidateAgencyName)
+      ? String(candidateAgencyName).trim()
+      : "Holiday Circuit";
   const headerStatus = String(activeQuote?.status || query?.agentStatus || query?.opsStatus || "Pending").trim();
   const hasActiveQuoteMarkup = Number(activeQuote?.agentMarkup?.markupAmount || activeQuote?.agentMarkup?.value || 0) > 0 || activeQuote?.status === "Markup Applied";
   const isActiveQuoteSentToClient = activeQuote?.status === "Sent to Client" || Boolean(activeQuote?.isSentToClient || activeQuote?.sentToClientAt || activeQuote?.sharedWithClient || query?.voucherStatus === "sent");
@@ -1980,7 +2028,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
             setIsCreatingProforma(false);
             toast.success("Proforma Invoice saved successfully");
           }}
-          queryData={{ ...query, activeQuote, quotes, headerPackageAmount, headerLeadTraveler }}
+          queryData={{ ...query, agencyName: headerCompany, companyName: headerCompany, activeQuote, quotes, headerPackageAmount, headerLeadTraveler }}
         />
       </div>
     );
@@ -2438,11 +2486,15 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
               const allQuoteServices = Array.isArray(quote?.services) ? quote.services : [];
 
               const isHotelItem = (s) => {
-                const type = String(s?.type || s?.category || "").trim().toLowerCase();
-                const title = String(s?.title || s?.hotelName || s?.name || "").trim().toLowerCase();
+                const type = String(s?.type || s?.category || s?.serviceType || "").trim().toLowerCase();
+                if (type === "transfer" || type === "transport" || type === "cab" || type === "car" || type === "flight") return false;
+                if (type === "activity" || type === "sightseeing" || type === "tour") return false;
                 if (type === "hotel" || type === "accommodation" || type === "stay") return true;
                 if (s?.roomType || s?.starCategory || s?.hotelCategory || s?.starRating) return true;
-                if (title.includes("hotel") || title.includes("resort") || title.includes("villas") || title.includes("inn") || title.includes("suites") || title.includes("hyatt") || title.includes("taj") || title.includes("eden") || title.includes("kandyan") || title.includes("amari")) return true;
+                const title = String(s?.title || s?.hotelName || s?.name || "").trim().toLowerCase();
+                if (title.includes("transfer") || title.includes("airport") || title.includes("pickup") || title.includes("drop") || title.includes("cab") || title.includes("car")) return false;
+                if (title.includes("tour") || title.includes("sightseeing") || title.includes("activity") || title.includes("safari") || title.includes("cruise") || title.includes("watersport") || title.includes("water sport")) return false;
+                if (title.includes("hotel") || title.includes("resort") || title.includes("villas") || title.includes("inn") || title.includes("suites") || title.includes("ramada") || title.includes("alka") || title.includes("hyatt") || title.includes("taj") || title.includes("eden") || title.includes("kandyan") || title.includes("amari")) return true;
                 return false;
               };
 
@@ -4365,7 +4417,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                   proformaInvoiceData ? (
                     <ProformaInvoiceView
                       invoiceData={proformaInvoiceData}
-                      queryData={query}
+                      queryData={{ ...query, agencyName: headerCompany, companyName: headerCompany, activeQuote, quotes, headerPackageAmount, headerLeadTraveler }}
                       onEdit={() => setIsCreatingProforma(true)}
                       onDelete={() => {
                         setProformaInvoiceData(null);

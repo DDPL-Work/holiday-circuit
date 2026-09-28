@@ -704,7 +704,7 @@ export default function BookingDetailsModal({ refresh, booking, onClose, viewMod
                   >
                     <motion.div variants={item}>
                       <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider">Agent Name</p>
-                      <p className="font-semibold text-slate-900 mt-1">{currentBooking?.agent?.name || "-"}</p>
+                      <p className="font-semibold text-slate-900 mt-1">{currentBooking?.agent?.companyName || currentBooking?.agent?.name || currentBooking?.agentName || currentBooking?.companyName || "-"}</p>
                     </motion.div>
 
                     <motion.div variants={item}>

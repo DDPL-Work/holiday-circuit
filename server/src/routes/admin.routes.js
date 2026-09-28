@@ -7,15 +7,9 @@ import { getOperationManagerQueryQuotations } from "../controllers/opsManagerCon
 import { getVoucheredQueries, getQueryDetails } from "../controllers/admin.bookingStatistics.controller.js";
 import { createTermsAndConditions, updateTermsAndConditions, fetchTermsAndConditions, fetchByIDTermsAndConditions, deleteTermsAndConditions } from "../controllers/adminTerms.controller.js";
 import { getIncExcPresets, getIncExcPresetById, createIncExcPreset, updateIncExcPreset, deleteIncExcPreset } from "../controllers/adminIncExc.controller.js";
-import multer from "multer";
+import { upload } from "../middlewares/multer.middlewares.js";
 
 const routers = express.Router();
-const manualBulkInvoiceUpload = multer({
-  storage: multer.diskStorage({
-    destination: function (_req, _file, cb) { cb(null, "uploads/") },
-    filename: function (_req, file, cb) { cb(null, Date.now() + "-" + file.originalname) },
-  }),
-});
 
 routers.get("/pending-agents", isAuthenticated, getPendingAgents);
 routers.put("/approve-agent/:id" , isAuthenticated, approveAgent);
@@ -67,13 +61,13 @@ routers.get("/vendors", isAuthenticated, getFinanceDmcVendors);
 routers.post(
   "/internal-invoices/parse-upload",
   isAuthenticated,
-  manualBulkInvoiceUpload.single("uploadedInvoice"),
+  upload.single("uploadedInvoice"),
   previewManualInvoiceExtraction,
 );
 routers.post(
   "/internal-invoices/manual-bulk-upload",
   isAuthenticated,
-  manualBulkInvoiceUpload.single("uploadedInvoice"),
+  upload.single("uploadedInvoice"),
   uploadManualBulkInvoice,
 );
 routers.patch("/internal-invoices/:id/status", isAuthenticated, updateInternalInvoiceStatus);

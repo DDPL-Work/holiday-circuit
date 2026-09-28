@@ -12,6 +12,65 @@ const GENERAL_TERMS_AND_CONDITIONS = [];
 const DEFAULT_INCLUSIONS = [];
 const DEFAULT_EXCLUSIONS = [];
 
+const escapeHtml = (value) =>
+  String(value || "").replace(/[&<>"]/g, (character) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+  })[character]);
+
+const toSafeImageUrl = (value) => {
+  const url = String(value || "").trim();
+  return /^(https?:\/\/|\/|data:image\/)/i.test(url) ? escapeHtml(url) : "";
+};
+
+const applyOfflineQuotationBranding = (html, branding = {}) => {
+  if (!html || String(html).includes("data-offline-agent-branding")) {
+    return html;
+  }
+
+  const brandName = escapeHtml(
+    branding.brandingName || branding.companyName || branding.name || "Agent Organization",
+  );
+  const logoUrl = toSafeImageUrl(
+    branding.brandingLogo ||
+    branding.agentLogo ||
+    branding.companyLogo ||
+    branding.brandLogoUrl ||
+    branding.logo,
+  );
+  const footerUrl = toSafeImageUrl(
+    branding.footerBanner ||
+    branding.voucherFooterImage ||
+    branding.brandingFooter ||
+    branding.pdfFooterImage ||
+    branding.footerImage,
+  );
+
+  // The server template already renders the agent's name and contact details in
+  // its brand header. Add the offline logo to that same row rather than adding
+  // another header above it.
+  const logoCell = logoUrl
+    ? `<td data-offline-agent-branding="true" width="120" style="width: 120px; max-width: 150px; padding: 0 4px 0 0; vertical-align: middle; text-align: left;"><img src="${logoUrl}" alt="${brandName}" width="100" height="90" style="display: block; width: 100px; max-width: 100px; max-height: 100px; height: 100px; object-fit: contain; object-position: left; border: 0;" /></td>`
+    : "";
+  const footer = footerUrl
+    ? `<div data-offline-agent-footer="true" style="padding: 10px 10px 0; background: #ffffff;"><img src="${footerUrl}" alt="Footer Banner" style="display: block; width: 100%; max-width: 100%; height: [100px];" /></div>`
+    : "";
+
+  let sourceHtml = String(html);
+  if (logoCell) {
+    const brandHeaderRow = /(<!--\s*AGENT BRAND HEADER BANNER\s*-->[\s\S]*?<tr\b[^>]*>\s*)/i;
+    sourceHtml = sourceHtml.replace(brandHeaderRow, `$1${logoCell}`);
+  }
+
+  if (!footer) return sourceHtml;
+
+  return /<\/body>/i.test(sourceHtml)
+    ? sourceHtml.replace(/<\/body>/i, `${footer}</body>`)
+    : `${sourceHtml}${footer}`;
+};
+
 const toDisplayList = (value) => {
   const stripHtml = (text) =>
     String(text || "")
@@ -97,10 +156,84 @@ export default function SharePackageModal({
   shareMode = "QUOTATION",
 }) {
   const reduxUser = useSelector((state) => state.auth?.user) || {};
+  const readOfflineAgent = () => {
+    try {
+      const stored =
+        sessionStorage.getItem("offlineAgentOrgData") ||
+        localStorage.getItem("offlineAgentOrgData");
+      return stored ? JSON.parse(stored) : null;
+    } catch {
+      return null;
+    }
+  };
+  const [offlineAgent, setOfflineAgent] = useState(readOfflineAgent);
+
+  useEffect(() => {
+    const syncOfflineAgent = () => setOfflineAgent(readOfflineAgent());
+    window.addEventListener("offlineAgentOrgChanged", syncOfflineAgent);
+    window.addEventListener("storage", syncOfflineAgent);
+    return () => {
+      window.removeEventListener("offlineAgentOrgChanged", syncOfflineAgent);
+      window.removeEventListener("storage", syncOfflineAgent);
+    };
+  }, []);
+
   const effectiveUser = useMemo(() => ({
     ...reduxUser,
     ...currentUser,
-  }), [reduxUser, currentUser]);
+    ...(offlineAgent ? {
+      name: offlineAgent.name || offlineAgent.contactPerson || reduxUser?.name,
+      companyName: offlineAgent.name || offlineAgent.companyName,
+      brandingName: offlineAgent.name || offlineAgent.brandingName,
+      agencyName: offlineAgent.name,
+      email: offlineAgent.email || offlineAgent.contactPerson?.email || reduxUser?.email,
+      phone: offlineAgent.phone || offlineAgent.contactPerson?.phone || reduxUser?.phone,
+      address: offlineAgent.city || offlineAgent.address || offlineAgent.location || reduxUser?.address,
+      companyAddress: offlineAgent.city || offlineAgent.companyAddress || offlineAgent.location || reduxUser?.companyAddress,
+      brandingLogo: offlineAgent.logo || offlineAgent.brandingLogo || "",
+      footerBanner: offlineAgent.footerBanner || offlineAgent.footerImage || "",
+    } : {}),
+  }), [reduxUser, currentUser, offlineAgent]);
+
+  const quotationBranding = useMemo(() => ({
+    ...reduxUser,
+    ...currentUser,
+    ...offlineAgent,
+    brandingName:
+      offlineAgent?.brandingName ||
+      offlineAgent?.name ||
+      currentUser?.brandingName ||
+      currentUser?.companyName ||
+      reduxUser?.brandingName ||
+      reduxUser?.companyName ||
+      "",
+    brandingLogo:
+      offlineAgent?.brandingLogo ||
+      offlineAgent?.logo ||
+      currentUser?.brandingLogo ||
+      currentUser?.brandLogoUrl ||
+      currentUser?.companyLogo ||
+      reduxUser?.brandingLogo ||
+      reduxUser?.companyLogo ||
+      quote?.agentLogo ||
+      "",
+    footerBanner:
+      offlineAgent?.footerBanner ||
+      offlineAgent?.footerImage ||
+      offlineAgent?.voucherFooterImage ||
+      offlineAgent?.brandingFooter ||
+      currentUser?.footerBanner ||
+      currentUser?.voucherFooterImage ||
+      currentUser?.brandingFooter ||
+      currentUser?.footerImage ||
+      reduxUser?.footerBanner ||
+      reduxUser?.voucherFooterImage ||
+      reduxUser?.brandingFooter ||
+      reduxUser?.footerImage ||
+      quote?.agentFooterImage ||
+      quote?.voucherFooterImage ||
+      "",
+  }), [reduxUser, currentUser, offlineAgent, quote]);
 
   const isVoucherMode = shareMode === "VOUCHER";
   const isPackageMode = shareMode === "PACKAGE";
@@ -252,12 +385,67 @@ export default function SharePackageModal({
         }
         toast.success(`Package email successfully sent to ${recipientEmail}!`);
       } else {
+        const resolvedBrandingName =
+          effectiveUser?.brandingName ||
+          effectiveUser?.companyName ||
+          effectiveUser?.agencyName ||
+          currentUser?.brandingName ||
+          currentUser?.companyName ||
+          query?.agencyName ||
+          query?.agentOrganizationName ||
+          "";
+
+        const resolvedCompanyAddress =
+          effectiveUser?.companyAddress ||
+          effectiveUser?.address ||
+          currentUser?.companyAddress ||
+          currentUser?.address ||
+          "";
+
+        const resolvedPhone =
+          effectiveUser?.phone ||
+          currentUser?.phone ||
+          "";
+
+        const resolvedEmail =
+          effectiveUser?.email ||
+          currentUser?.email ||
+          "";
+
+        const resolvedLogo =
+          effectiveUser?.brandingLogo ||
+          effectiveUser?.brandLogoUrl ||
+          brandLogoUrl ||
+          currentUser?.brandingLogo ||
+          currentUser?.brandLogoUrl ||
+          "";
+
+        const quotationOptions = {
+          selectedTermId: selectedTermId || undefined,
+          termId: selectedTermId || undefined,
+          removeTerms,
+          showPriceBreakup,
+          removeItinerary,
+          removeTransport,
+          similarHotelWord,
+          showIncExc,
+          hideTotalPrice,
+          isPdfMode,
+          agentBrandingName: resolvedBrandingName,
+          agentCompanyAddress: resolvedCompanyAddress,
+          agentPhone: resolvedPhone,
+          agentEmail: resolvedEmail,
+          agentLogo: resolvedLogo,
+          html: emailPreviewHtml || emailContentRef.current?.innerHTML,
+        };
+
         if (quote?._id && typeof onSendEmail === "function") {
-          await onSendEmail(quote, recipientEmail);
+          await onSendEmail(quote, recipientEmail, quotationOptions);
         } else if (quote?._id) {
           await API.patch(`/agent/quotations/${quote._id}/accept`, {
             action: "SEND_TO_CLIENT",
             recipientEmail: recipientEmail,
+            ...quotationOptions,
           });
           if (typeof onMarkShared === "function") {
             await onMarkShared(quote);
@@ -402,12 +590,23 @@ export default function SharePackageModal({
     const previewDocument = iframe?.contentDocument;
     if (!iframe || !previewDocument) return;
 
-    const height = Math.max(
-      720,
-      previewDocument.documentElement.scrollHeight || 0,
-      previewDocument.body?.scrollHeight || 0,
-    );
-    iframe.style.height = `${height}px`;
+    const updateHeight = () => {
+      const height = Math.max(
+        720,
+        previewDocument.documentElement.scrollHeight || 0,
+        previewDocument.body?.scrollHeight || 0,
+      );
+      iframe.style.height = `${height}px`;
+    };
+
+    updateHeight();
+    // The footer image may finish loading after iframe's initial onLoad event.
+    // Recalculate height so it remains visible at the bottom of the preview.
+    previewDocument.querySelectorAll("img").forEach((image) => {
+      image.addEventListener("load", updateHeight, { once: true });
+      image.addEventListener("error", updateHeight, { once: true });
+    });
+    [100, 400, 1000].forEach((delay) => window.setTimeout(updateHeight, delay));
   };
 
   // Always open on the same quotation email format received from Operations.
@@ -439,7 +638,7 @@ export default function SharePackageModal({
 
         const companyNameVal = normalizeCompanyName(
           effectiveUser?.brandingName || effectiveUser?.companyName || effectiveUser?.agencyName || currentUser?.brandingName || currentUser?.companyName,
-          "DDLC Company"
+          "-"
         );
         const issuedByVal = "Holiday Circuit";
         const targetQueryId = query?._id || query?.queryId || quote?.queryId;
@@ -1284,7 +1483,9 @@ export default function SharePackageModal({
             },
           });
           if (!cancelled) {
-            setEmailPreviewHtml(data?.html || "");
+            setEmailPreviewHtml(
+              applyOfflineQuotationBranding(data?.html || "", quotationBranding),
+            );
             setEmailPreviewError("");
           }
         } catch (error) {
@@ -1491,13 +1692,14 @@ export default function SharePackageModal({
 
           const pkgEmailHtml = `
             <div style="font-family: 'Plus Jakarta Sans', Arial, sans-serif; color: #1e293b; width: 100%; padding: 0px; box-sizing: border-box; background: #ffffff;">
-              <!-- AGENT BRAND HEADER BANNER -->
+
+  <!-- AGENT BRAND HEADER BANNER -->
               <div style="background-color: #ffffff; border-bottom: 2px solid #e2e8f0; padding: 14px 20px; margin-bottom: 16px;">
                 <table style="width: 100%; border-collapse: collapse;">
                   <tr>
                     ${agencyLogoSrc ? `
-                      <td width="130" style="width: 130px; max-width: 130px; vertical-align: middle; padding-right: 14px; text-align: left;">
-                        <img src="${agencyLogoSrc}" alt="Logo" width="120" style="width: 120px; max-width: 120px; height: auto; max-height: 80px; display: block; object-fit: contain; object-position: left;" />
+                      <td width="130" style="width: 180px; max-width: 180px; vertical-align: middle; padding-right: 14px; text-align: left;">
+                        <img src="${agencyLogoSrc}" alt="Logo" width="120" style="width: 120px; max-width: 120px; height: auto; max-height: 90px; display: block; object-fit: contain; object-position: left;" />
                       </td>
                     ` : ""}
                     <td style="vertical-align: middle; text-align: left;">
@@ -2121,7 +2323,11 @@ export default function SharePackageModal({
 
       try {
         const { data } = await API.get(`/agent/quotations/${quote._id}/email-preview`);
-        if (!cancelled) setEmailPreviewHtml(data?.html || "");
+        if (!cancelled) {
+          setEmailPreviewHtml(
+            applyOfflineQuotationBranding(data?.html || "", quotationBranding),
+          );
+        }
       } catch (error) {
         if (!cancelled) {
           setEmailPreviewHtml("");
@@ -2150,6 +2356,7 @@ export default function SharePackageModal({
     availableAdminTerms,
     availableAgentTerms,
     selectedTermId,
+    quotationBranding,
   ]);
 
   // Check if terms are disabled
@@ -2234,27 +2441,33 @@ export default function SharePackageModal({
   }, [quote?.services]);
 
   const isHotelItem = (s) => {
-    const type = String(s?.type || s?.category || "").trim().toLowerCase();
-    const title = String(s?.title || s?.hotelName || s?.name || "").trim().toLowerCase();
+    const type = String(s?.type || s?.category || s?.serviceType || "").trim().toLowerCase();
+    if (type === "transfer" || type === "transport" || type === "cab" || type === "car" || type === "flight") return false;
+    if (type === "activity" || type === "sightseeing" || type === "tour") return false;
     if (type === "hotel" || type === "accommodation" || type === "stay") return true;
     if (s?.roomType || s?.starCategory || s?.hotelCategory || s?.starRating) return true;
+    const title = String(s?.title || s?.hotelName || s?.name || "").trim().toLowerCase();
+    if (title.includes("transfer") || title.includes("airport") || title.includes("pickup") || title.includes("drop") || title.includes("cab") || title.includes("car")) return false;
+    if (title.includes("tour") || title.includes("sightseeing") || title.includes("activity") || title.includes("safari") || title.includes("cruise") || title.includes("watersport") || title.includes("water sport")) return false;
     if (title.includes("hotel") || title.includes("resort") || title.includes("villas") || title.includes("inn") || title.includes("suites") || title.includes("ramada") || title.includes("alka") || title.includes("hyatt") || title.includes("taj") || title.includes("eden") || title.includes("kandyan") || title.includes("amari")) return true;
     return false;
   };
 
   const isTransferItem = (s) => {
-    const type = String(s?.type || s?.category || "").trim().toLowerCase();
-    const title = String(s?.title || s?.name || s?.particulars || "").trim().toLowerCase();
+    const type = String(s?.type || s?.category || s?.serviceType || "").trim().toLowerCase();
     if (type === "transfer" || type === "transport" || type === "cab" || type === "car" || type === "flight") return true;
-    if (title.includes("drop") || title.includes("pickup") || title.includes("transfer") || title.includes("airport") || title.includes("cab") || title.includes("car")) return true;
+    if (type === "hotel" || type === "accommodation" || type === "stay" || type === "activity" || type === "sightseeing" || type === "tour") return false;
+    const title = String(s?.title || s?.name || s?.particulars || "").trim().toLowerCase();
+    if (title.includes("drop") || title.includes("pickup") || title.includes("transfer") || title.includes("airport") || title.includes("cab") || title.includes("car") || title.includes("transport")) return true;
     return false;
   };
 
   const isActivityItem = (s) => {
-    const type = String(s?.type || s?.category || "").trim().toLowerCase();
+    const type = String(s?.type || s?.category || s?.serviceType || "").trim().toLowerCase();
+    if (type === "activity" || type === "sightseeing" || type === "tour" || type === "excursion") return true;
+    if (type === "hotel" || type === "accommodation" || type === "stay" || type === "transfer" || type === "transport" || type === "cab" || type === "car" || type === "flight") return false;
     const title = String(s?.title || s?.name || s?.particulars || "").trim().toLowerCase();
-    if (type === "activity" || type === "sightseeing") return true;
-    if (title.includes("sightseeing") || title.includes("tour") || title.includes("aarti") || title.includes("hopping") || title.includes("boating") || title.includes("safari") || title.includes("cruise") || title.includes("water sports")) return true;
+    if (title.includes("sightseeing") || title.includes("tour") || title.includes("aarti") || title.includes("hopping") || title.includes("boating") || title.includes("safari") || title.includes("cruise") || title.includes("water sports") || title.includes("watersport") || title.includes("activity")) return true;
     return false;
   };
 

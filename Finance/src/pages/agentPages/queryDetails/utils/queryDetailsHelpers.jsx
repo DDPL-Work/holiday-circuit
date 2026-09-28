@@ -498,5 +498,36 @@ export const getSavedAgentBranding = ({ quote = {}, user = null }) => {
   };
 };
 
+export const RenderTermsAndConditions = ({ terms }) => {
+  if (!terms) return null;
+  const termsList = Array.isArray(terms) ? terms : [terms];
+  const validTerms = termsList.filter(Boolean);
+  if (!validTerms.length) return null;
+
+  return (
+    <div className="space-y-3 font-sans text-xs sm:text-sm text-slate-800 leading-relaxed">
+      {validTerms.map((term, tIdx) => {
+        const strTerm = String(term).trim();
+        if (!strTerm) return null;
+        const hasHtml = /<[a-z][\s\S]*>/i.test(strTerm);
+        if (hasHtml) {
+          return (
+            <div
+              key={tIdx}
+              className="terms-html-content text-xs sm:text-sm text-slate-800 leading-relaxed space-y-2.5 [&_p]:mb-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:space-y-1 [&_ul]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:space-y-1 [&_ol]:my-2 [&_li]:mb-1 [&_strong]:font-bold [&_strong]:text-slate-900 [&_h4]:font-bold [&_h4]:text-slate-900 [&_h4]:text-sm sm:[&_h4]:text-base [&_h4]:mt-3.5 [&_h4]:mb-1.5 [&_h3]:font-bold [&_h3]:text-slate-900 [&_h3]:mt-3.5 [&_h3]:mb-1.5 [&_em]:italic [&_span]:text-inherit"
+              dangerouslySetInnerHTML={{ __html: strTerm }}
+            />
+          );
+        }
+        return (
+          <ul key={tIdx} className="list-disc pl-5 space-y-2">
+            <li>{strTerm}</li>
+          </ul>
+        );
+      })}
+    </div>
+  );
+};
+
 
 

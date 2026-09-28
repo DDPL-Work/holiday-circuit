@@ -2014,7 +2014,7 @@ export const viewUploadData = async (req, res) => {
                 const m = String(val.getMonth() + 1).padStart(2, "0");
                 const d = String(val.getDate()).padStart(2, "0");
                 val = `${y}-${m}-${d}`;
-              } else if (typeof val === "number" && (isDateCol || (val > 25569 && val < 60000))) {
+              } else if (typeof val === "number" && isDateCol) {
                 const p = XLSX.SSF.parse_date_code(val);
                 if (p && p.y && p.m && p.d) {
                   val = `${p.y}-${String(p.m).padStart(2, "0")}-${String(p.d).padStart(2, "0")}`;

@@ -22,13 +22,20 @@ export const quotationSchema = new mongoose.Schema(
   agent: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Auth",
-    required: true
+    required: false,
+    default: null
   },
 
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Auth",
     required: true
+  },
+
+  partnerType: {
+    type: String,
+    enum: ["Online DMC", "Business Partner"],
+    default: "Online DMC"
   },
 
   inclusions: [{ type: String }],
@@ -49,21 +56,38 @@ export const quotationSchema = new mongoose.Schema(
   services: [
     {
       serviceId: {
-        type: mongoose.Schema.Types.ObjectId
+        type: mongoose.Schema.Types.Mixed
       },
 
       supplierId: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: "Auth"
+        ref: "Auth",
+        default: null
       },
 
       supplierName: {
         type: String
       },
 
+      businessPartnerId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Auth",
+        default: null
+      },
+
+      businessPartnerName: {
+        type: String
+      },
+
+      isBpService: {
+        type: Boolean,
+        default: false
+      },
+
       dmcId: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: "Auth"
+        ref: "Auth",
+        default: null
       },
 
       dmcName: {
@@ -77,6 +101,8 @@ export const quotationSchema = new mongoose.Schema(
       },
 
       title: { type: String, required: true },
+      serviceName: { type: String, default: "" },
+      hotelName: { type: String, default: "" },
 
       // 🔹 LOCATION
       city: String,
@@ -331,7 +357,7 @@ export const quotationSchema = new mongoose.Schema(
 
   validTill: {
     type: Date,
-    required: true
+    default: null
   },
 
   status: {

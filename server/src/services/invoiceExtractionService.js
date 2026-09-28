@@ -96,8 +96,8 @@ const parseDateToIso = (value = "") => {
     }
   }
 
-  // 4. Named Month: 10 Jan 2025 / 10-Jan-25 / 10 January 2025 / 4th Sep 2026
-  const named = raw.match(/\b(\d{1,2})(?:st|nd|rd|th)?\s*[-/,\s]\s*([A-Za-z]{3,9})\s*[-/,\s]\s*(20\d{2}|19\d{2}|\d{2})\b/i);
+  // 4. Named Month: 06 July 2026 / 10 Jan 2025 / 10-Jan-25 / 10 January 2025 / 4th Sep 2026 / 31Jul2026
+  const named = raw.match(/\b(\d{1,2})(?:st|nd|rd|th)?\s*[-/,\s]?\s*([A-Za-z]{3,9})\s*[-/,\s]?\s*(20\d{2}|19\d{2}|\d{2})\b/i);
   if (named) {
     const [, day, monthName, yearPart] = named;
     const monthIndex = [
@@ -114,8 +114,8 @@ const parseDateToIso = (value = "") => {
     }
   }
 
-  // 5. Month First: Jan 10, 2025 / January 10 2025 / Jan 10 25
-  const namedMonthFirst = raw.match(/\b([A-Za-z]{3,9})\s*[-/,\s]\s*(\d{1,2})(?:st|nd|rd|th)?\s*[-/,\s]\s*(20\d{2}|19\d{2}|\d{2})\b/i);
+  // 5. Month First: Jan 10, 2025 / January 10 2025 / Jan 10 25 / July 06 2026
+  const namedMonthFirst = raw.match(/\b([A-Za-z]{3,9})\s*[-/,\s]?\s*(\d{1,2})(?:st|nd|rd|th)?\s*[-/,\s]?\s*(20\d{2}|19\d{2}|\d{2})\b/i);
   if (namedMonthFirst) {
     const [, monthName, day, yearPart] = namedMonthFirst;
     const monthIndex = [
@@ -140,9 +140,9 @@ const extractDateAfterLabels = (text = "", labels = []) => {
   const lines = splitInvoiceTextLines(normalized);
 
   const DATE_REGEX =
-    /(?:\b\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4}\b|\b\d{4}[-/.]\d{1,2}[-/.]\d{1,2}\b|\b\d{1,2}(?:st|nd|rd|th)?\s+[-/,\s]?[A-Za-z]{3,9}\s*[-/,\s]?\s*\d{2,4}\b|\b[A-Za-z]{3,9}\s+[-/,\s]?\d{1,2}(?:st|nd|rd|th)?\s*[-/,\s]?\s*\d{2,4}\b)/i;
+    /(?:\b\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4}\b|\b\d{4}[-/.]\d{1,2}[-/.]\d{1,2}\b|\b\d{1,2}(?:st|nd|rd|th)?\s*[-/,\s]?\s*[A-Za-z]{3,9}\s*[-/,\s]?\s*\d{2,4}\b|\b[A-Za-z]{3,9}\s*[-/,\s]?\s*\d{1,2}(?:st|nd|rd|th)?\s*[-/,\s]?\s*\d{2,4}\b)/i;
 
-  // Phase 1: Search labeled lines (same line and next line for 2-column/block layouts)
+  // Phase 1: Search labeled lines (same line, same line + next line for 2-column/block layouts)
   for (const label of labels) {
     const labelPattern = new RegExp(`(?:#\\s*)?\\b${label}\\b`, "i");
 
@@ -151,18 +151,38 @@ const extractDateAfterLabels = (text = "", labels = []) => {
       if (!labelPattern.test(line)) continue;
 
       const labelMatch = line.match(labelPattern);
-      const textAfter = line.slice(labelMatch.index + labelMatch[0].length);
+      const textAfter = line.slice(labelMatch.index + labelMatch[0].length).trim();
+      const nextLine = (lines[index + 1] || "").trim();
+      const combined = `${textAfter} ${nextLine}`.trim();
+      const combinedLine = `${line} ${nextLine}`.trim();
+
+      // 1. Same line check
       const sameLineParsed = parseDateToIso(textAfter);
       if (sameLineParsed) return sameLineParsed;
 
-      const anySameLineMatch = line.match(DATE_REGEX);
-      if (anySameLineMatch) {
-        const parsed = parseDateToIso(anySameLineMatch[0]);
+      const sameLineMatch = textAfter.match(DATE_REGEX) || line.match(DATE_REGEX);
+      if (sameLineMatch) {
+        const parsed = parseDateToIso(sameLineMatch[0]);
         if (parsed) return parsed;
       }
 
-      const nextLine = lines[index + 1] || "";
+      // 2. Combined with next line (handles e.g. "06 July \n 2026")
+      if (combined) {
+        const combinedParsed = parseDateToIso(combined);
+        if (combinedParsed) return combinedParsed;
+
+        const combinedMatch = combined.match(DATE_REGEX) || combinedLine.match(DATE_REGEX);
+        if (combinedMatch) {
+          const parsed = parseDateToIso(combinedMatch[0]);
+          if (parsed) return parsed;
+        }
+      }
+
+      // 3. Next line alone
       if (nextLine) {
+        const nextLineParsed = parseDateToIso(nextLine);
+        if (nextLineParsed) return nextLineParsed;
+
         const nextLineMatch = nextLine.match(DATE_REGEX);
         if (nextLineMatch) {
           const parsed = parseDateToIso(nextLineMatch[0]);
@@ -179,6 +199,13 @@ const extractDateAfterLabels = (text = "", labels = []) => {
     const match = line.match(DATE_REGEX);
     if (match) {
       const parsed = parseDateToIso(match[0]);
+      if (parsed) return parsed;
+    }
+    const nextLine = lines[i + 1] || "";
+    const combined = `${line} ${nextLine}`.trim();
+    const combinedMatch = combined.match(DATE_REGEX);
+    if (combinedMatch) {
+      const parsed = parseDateToIso(combinedMatch[0]);
       if (parsed) return parsed;
     }
   }
@@ -214,14 +241,16 @@ const sumAmountsAfterLabelsLegacy = (text, labels = []) => {
   return total;
 };
 
-const AMOUNT_PATTERN = /(?:INR|Rs\.?|₹|â‚¹|\$|USD|AED|EUR)?\s*([0-9][0-9,]*(?:\.\d{1,2})?)\b(?!\s*%)/gi;
+const AMOUNT_PATTERN =
+  /(?<![A-Za-z0-9])(?:INR|Rs\.?|₹|â‚¹|Ã¢â€šÂ¹|\$|USD|AED|EUR|GBP|THB|SGD|MYR|IDR|EGP|AUD)?\s*([0-9]{1,3}(?:,[0-9]{2,3})*(?:\.\d{1,2})?|[0-9]+(?:\.\d{1,2})?)(?![A-Za-z0-9%])/gi;
 
 const getAmountsFromLine = (line = "") =>
   [...String(line || "").matchAll(AMOUNT_PATTERN)]
     .map((match) => normalizeAmount(match?.[1]))
     .filter((amount) => amount > 0);
 
-const MONEY_TOKEN_PATTERN = /(?:(INR|Rs\.?|â‚¹|Ã¢â€šÂ¹|\$|USD|AED|EUR|GBP|THB|SGD|MYR|IDR|EGP|AUD)\s*)?([0-9][0-9,]*(?:\.\d{1,2})?)\b(?!\s*%)/gi;
+const MONEY_TOKEN_PATTERN =
+  /(?<![A-Za-z0-9])(?:(INR|Rs\.?|â‚¹|Ã¢â€šÂ¹|\$|USD|AED|EUR|GBP|THB|SGD|MYR|IDR|EGP|AUD)\s*)?([0-9]{1,3}(?:,[0-9]{2,3})*(?:\.\d{1,2})?|[0-9]+(?:\.\d{1,2})?)(?![A-Za-z0-9%])/gi;
 
 const getMoneyTokensFromLine = (line = "") =>
   [...String(line || "").matchAll(MONEY_TOKEN_PATTERN)]
@@ -231,7 +260,8 @@ const getMoneyTokensFromLine = (line = "") =>
     }))
     .filter((token) => token.amount > 0);
 
-const CURRENCY_AMOUNT_PATTERN = /(?:(INR|Rs\.?|Ã¢â€šÂ¹|ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¹|\$|USD|AED|EUR|GBP|THB|SGD|MYR|IDR|EGP|AUD)\s*)+([+-]?\s*[0-9][0-9,]*(?:\.\d{1,2})?)\b(?!\s*%)/gi;
+const CURRENCY_AMOUNT_PATTERN =
+  /(?<![A-Za-z0-9])(?:(INR|Rs\.?|Ã¢â€šÂ¹|ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¹|\$|USD|AED|EUR|GBP|THB|SGD|MYR|IDR|EGP|AUD)\s*)+([+-]?\s*[0-9]{1,3}(?:,[0-9]{2,3})*(?:\.\d{1,2})?|[0-9]+(?:\.\d{1,2})?)(?![A-Za-z0-9%])/gi;
 
 const splitInvoiceTextLines = (text = "") =>
   normalizeText(text).split(/\n+/).map((line) => line.trim()).filter(Boolean);
@@ -279,6 +309,44 @@ const inferLooseInvoiceAmounts = (text = "") => {
   };
 };
 
+const isDisclaimerOrNotesLine = (line = "") => {
+  const lower = String(line || "").toLowerCase();
+  return (
+    lower.includes("income tax act") ||
+    lower.includes("income tax rules") ||
+    lower.includes("jurisdiction") ||
+    lower.includes("interest @") ||
+    lower.includes("per person") ||
+    lower.includes("cash fully or partially") ||
+    lower.includes("authorised signatory") ||
+    lower.includes("computer generated") ||
+    lower.includes("no signature required") ||
+    lower.includes("bank info") ||
+    lower.includes("ifsc -") ||
+    lower.includes("ifsc code") ||
+    lower.includes("account no") ||
+    lower.includes("a/c payee") ||
+    lower.includes("terms & conditions") ||
+    lower.includes("subject to the jurisdiction") ||
+    lower.includes("gst no") ||
+    lower.includes("gst reg") ||
+    lower.includes("gstin") ||
+    lower.includes("pan no") ||
+    lower.includes("p.a.no") ||
+    lower.includes("cin -") ||
+    lower.includes("cin no") ||
+    lower.includes("state code") ||
+    lower.includes("place of supply") ||
+    lower.includes("txn no") ||
+    lower.includes("x.o no") ||
+    lower.includes("ticket no") ||
+    lower.includes("flight details") ||
+    lower.includes("passenger name") ||
+    lower.includes("booking ref no") ||
+    lower.includes("confirmation no")
+  );
+};
+
 const findMoneyAfterLabels = (text, labels = []) => {
   const lines = splitInvoiceTextLines(text);
 
@@ -287,7 +355,7 @@ const findMoneyAfterLabels = (text, labels = []) => {
 
     for (let index = 0; index < lines.length; index += 1) {
       const line = lines[index];
-      if (!labelPattern.test(line)) continue;
+      if (isDisclaimerOrNotesLine(line) || !labelPattern.test(line)) continue;
 
       const labelMatch = line.match(labelPattern);
       const textAfterLabel = labelMatch ? line.slice(labelMatch.index + labelMatch[0].length) : line;
@@ -297,6 +365,7 @@ const findMoneyAfterLabels = (text, labels = []) => {
       }
 
       const nextLine = lines[index + 1] || "";
+      if (isDisclaimerOrNotesLine(nextLine)) continue;
       const nextLineLooksLikeAmountOnly =
         /^(?:INR|Rs\.?|â‚¹|Ã¢â€šÂ¹|\$|USD|AED|EUR|GBP|THB|SGD|MYR|IDR|EGP|AUD)?\s*[0-9][0-9,]*(?:\.\d{1,2})?\s*$/i.test(nextLine);
       if (nextLineLooksLikeAmountOnly) {
@@ -479,7 +548,7 @@ const findAmountAfterLabels = (text, labels = []) => {
 
     for (let index = 0; index < lines.length; index += 1) {
       const line = lines[index];
-      if (!labelPattern.test(line)) continue;
+      if (isDisclaimerOrNotesLine(line) || !labelPattern.test(line)) continue;
 
       const labelMatch = line.match(labelPattern);
       const textAfterLabel = labelMatch ? line.slice(labelMatch.index + labelMatch[0].length) : line;
@@ -489,6 +558,7 @@ const findAmountAfterLabels = (text, labels = []) => {
       }
 
       const nextLine = lines[index + 1] || "";
+      if (isDisclaimerOrNotesLine(nextLine)) continue;
       const nextLineLooksLikeAmountOnly =
         /^(?:INR|Rs\.?|₹|â‚¹|\$|USD|AED|EUR)?\s*[0-9][0-9,]*(?:\.\d{1,2})?\s*$/i.test(nextLine);
       if (nextLineLooksLikeAmountOnly) {
@@ -509,7 +579,7 @@ const sumAmountsAfterLabels = (text, labels = []) => {
     const labelPattern = new RegExp(`\\b${label}\\b`, "i");
 
     for (const line of lines) {
-      if (!labelPattern.test(line)) continue;
+      if (isDisclaimerOrNotesLine(line) || !labelPattern.test(line)) continue;
       const labelMatch = line.match(labelPattern);
       const textAfterLabel = labelMatch ? line.slice(labelMatch.index + labelMatch[0].length) : line;
       const amounts = getAmountsFromLine(textAfterLabel);
@@ -589,16 +659,40 @@ const isValidInvoiceNumberCandidate = (candidate = "") => {
   const lower = cleaned.toLowerCase();
   if (INVALID_INVOICE_WORDS.has(lower)) return false;
   const hasDigit = /\d/.test(cleaned);
-  const hasInvoicePrefix = /^(?:inv|bill|hc|tax|cn|dn)[-_#]/i.test(cleaned);
+  const hasInvoicePrefix = /^(?:inv|bill|hc|tax|cn|dn|del|bom|blr|goa)[-_#]/i.test(cleaned);
   return hasDigit || hasInvoicePrefix;
 };
 
 const extractInvoiceNumber = (text) => {
   const lines = splitInvoiceTextLines(text);
 
+  // Phase 1: High-priority labeled patterns (e.g. Invoice No DEL2608BS0037039, Txn No. : DEL-AS-26-G04739, Bill No: 1234)
+  const HIGH_PRIORITY_PATTERNS = [
+    /(?:invoice\s*no\.?|invoice\s*number|invoice\s*#|inv\s*no\.?|inv\s*#|bill\s*no\.?|bill\s*#|voucher\s*no\.?|document\s*no\.?|txn\s*no\.?|transaction\s*no\.?)\s*[:#-]?\s*([A-Z0-9\-_/]{3,35})\b/i,
+    /\b(?:invoice|inv|bill|txn)\s*[:#-]\s*([A-Z0-9\-_/]{3,35})\b/i,
+  ];
+
+  for (const line of lines) {
+    if (line.toLowerCase().includes("income tax act") || line.toLowerCase().includes("terms & conditions")) continue;
+    for (const pattern of HIGH_PRIORITY_PATTERNS) {
+      const match = line.match(pattern);
+      if (match?.[1] && isValidInvoiceNumberCandidate(match[1])) {
+        return match[1].replace(/^[#:\s,.-]+|[#:\s,.-]+$/g, "").trim();
+      }
+    }
+  }
+
+  // Phase 2: Look for line labeled with invoice
   for (let i = 0; i < lines.length; i += 1) {
     const line = lines[i];
-    const labelMatch = line.match(/(?:#\s*)?\b(?:invoice|inv|bill)\b(?:\s*(?:number|no\.?|#))?/i);
+    if (line.toLowerCase().includes("income tax act") || line.toLowerCase().includes("terms & conditions")) continue;
+
+    // Skip generic document type titles alone on a line (e.g. "Payment Invoice", "Tax Invoice")
+    if (/^(?:payment\s*invoice|tax\s*invoice|proforma\s*invoice|commercial\s*invoice|original\s*for\s*recipient|duplicate\s*copy)$/i.test(line.trim())) {
+      continue;
+    }
+
+    const labelMatch = line.match(/(?:#\s*)?\b(?:invoice\s*no\.?|invoice\s*number|inv\s*no\.?|bill\s*no\.?|txn\s*no\.?|invoice|inv|bill)\b(?:\s*(?:number|no\.?|#))?/i);
     if (!labelMatch) continue;
 
     // Check same line
@@ -613,9 +707,10 @@ const extractInvoiceNumber = (text) => {
       }
     }
 
-    // Check next line for vertical / block layouts (e.g. INVOICE \n 1045)
+    // Check next line for vertical / block layouts (e.g. INVOICE \n 1045 or Txn No. \n DEL-AS-26-G04739)
+    // Only if next line is not an agency name / address (e.g. "RSDEL0401058 - LEELA TRAVELS")
     const nextLine = lines[i + 1] || "";
-    if (nextLine) {
+    if (nextLine && !nextLine.toLowerCase().includes("income tax act") && !nextLine.includes(" - ") && !/travel|tours|agency|pvt|ltd|hotel/i.test(nextLine)) {
       const nextTokens = nextLine.split(/\s+/);
       for (const token of nextTokens) {
         const cleaned = token.replace(/^[#:\s,.-]+|[#:\s,.-]+$/g, "");
@@ -627,7 +722,7 @@ const extractInvoiceNumber = (text) => {
   }
 
   // Fallback pattern search
-  const fallbackMatches = text.match(/\b(?:INV|BILL|HC)[-_/][A-Z0-9-_/]{1,30}\b/gi);
+  const fallbackMatches = text.match(/\b(?:INV|BILL|HC|MMT|DEL|BOM|BLR|GOA)[-_/][A-Z0-9-_/]{1,30}\b/gi);
   if (fallbackMatches && fallbackMatches.length > 0) {
     for (const match of fallbackMatches) {
       if (isValidInvoiceNumberCandidate(match)) {
@@ -639,26 +734,131 @@ const extractInvoiceNumber = (text) => {
   return "";
 };
 
-const extractSupplierName = (text) => {
+const KNOWN_PARTNER_BRANDS = [
+  { match: /\b(?:makemytrip|make\s*my\s*trip|mmt)\b/i, partnerName: "MakeMyTrip", name: "MakeMyTrip" },
+  { match: /\b(?:tbo\s*tek\s*(?:limited|ltd)|tbo\s*tek|tek\s*travels|travel\s*boutique\s*online|tbo\s*holidays|tbo)\b/i, partnerName: "TBO Tek Limited", name: "TBO Tek Limited" },
+  { match: /\b(?:trip\s*jack|tripjack|techzone\s*travels)\b/i, partnerName: "TRIP JACK", name: "TRIP JACK" },
+  { match: /\b(?:yatra\.com|yatra)\b/i, partnerName: "Yatra Online Limited", name: "Yatra Online Limited" },
+  { match: /\b(?:agoda)\b/i, partnerName: "Agoda", name: "Agoda" },
+  { match: /\b(?:booking\.com|booking\s*dot\s*com)\b/i, partnerName: "Booking.com", name: "Booking.com" },
+  { match: /\b(?:bhasin\s*travels|bhasin)\b/i, partnerName: "BHASIN TRAVELS ONLINE PRIVATE LIMITED", name: "BHASIN TRAVELS ONLINE PRIVATE LIMITED" },
+  { match: /\b(?:riya\s*travel|riva\s*travel|riya\s*connect|riya)\b/i, partnerName: "Riya Travel & Tours (India) Pvt Ltd", name: "Riya Travel & Tours (India) Pvt Ltd" },
+  { match: /\b(?:expedia)\b/i, partnerName: "Expedia", name: "Expedia" },
+  { match: /\b(?:easemytrip|ease\s*my\s*trip|easy\s*trip\s*planners)\b/i, partnerName: "EaseMyTrip", name: "EaseMyTrip" },
+  { match: /\b(?:cleartrip|clear\s*trip)\b/i, partnerName: "Cleartrip", name: "Cleartrip" },
+  { match: /\b(?:goibibo|go\s*ibibo)\b/i, partnerName: "Goibibo", name: "Goibibo" },
+  { match: /\b(?:hotelbeds)\b/i, partnerName: "Hotelbeds", name: "Hotelbeds" },
+  { match: /\b(?:akbar\s*travels|akbar)\b/i, partnerName: "Akbar Travels", name: "Akbar Travels" },
+  { match: /\b(?:fly24hrs)\b/i, partnerName: "Fly24hrs", name: "Fly24hrs" },
+];
+
+const GENERIC_IGNORE_TITLES =
+  /^(?:invoice|tax\s*invoice|payment\s*invoice|proforma\s*invoice|commercial\s*invoice|original\s*for\s*recipient|duplicate\s*copy|bill|receipt|voucher|statement|summary|original|duplicate|triplicate)$/i;
+
+const isGenericOrOnlySuffix = (name = "") => {
+  const trimmed = String(name || "").trim();
+  const withoutSuffix = trimmed
+    .replace(/\b(?:Pvt\.?\s*Ltd\.?|Private\s*Limited|Limited|Ltd\.?|LLP|Inc\.?)\b/gi, "")
+    .replace(/[^a-zA-Z0-9]/g, "")
+    .trim();
+  return withoutSuffix.length < 2 || /^(?:to|customer|buyer|client|guest|pax|owner|company|name)$/i.test(withoutSuffix);
+};
+
+const cleanBuyerFromSupplierName = (nameStr = "") => {
+  let cleaned = String(nameStr || "").trim();
+  // Strip "To" and recipient/buyer agency column if extracted together
+  cleaned = cleaned.replace(/\s+\b(?:to\b|billed\s+to|customer|buyer|client|guest|pax)\s*[:#-]?\s*.*$/i, "");
+  cleaned = cleaned.replace(/\s+(?:leela\s*travels|holiday\s*circuit|travel\s*agency).*$/i, "");
+  return cleaned.trim();
+};
+
+const extractSupplierAndPartner = (text = "") => {
+  const normalized = normalizeText(text);
+  const lines = splitInvoiceTextLines(normalized);
+  const topText = lines.slice(0, 30).join(" ");
+
+  // 1. Priority 1: Check known partner brands in top text (MakeMyTrip, TBO, Tripjack, Yatra, Agoda, etc.)
+  for (const brand of KNOWN_PARTNER_BRANDS) {
+    if (brand.match.test(topText)) {
+      return {
+        supplierName: brand.partnerName || brand.name,
+        partnerName: brand.partnerName || brand.name,
+      };
+    }
+  }
+
+  // 2. Check if an exact registered company name appears in the top header lines (top 15 lines)
+  // e.g. "TBO Tek Limited", "MAKEMYTRIP (INDIA) PRIVATE LIMITED", "XYZ Travel Services Pvt Ltd"
+  const FULL_COMPANY_REGEX = /\b([A-Za-z0-9&.'() -]{2,65}?\s*(?:Pvt\.?\s*Ltd\.?|Private\s*Limited|Limited|Ltd\.?|LLP|Inc\.?))\b/i;
+  for (let i = 0; i < Math.min(lines.length, 15); i += 1) {
+    const line = lines[i];
+    if (GENERIC_IGNORE_TITLES.test(line)) continue;
+    if (/payment\s*invoice|tax\s*invoice|proforma|gst\s*reg|pan\s*no|cin\s*no|cin\s*number|date|phone|email:|web:|regd\s*office|corp\s*off|place\s*of\s*supply/i.test(line)) continue;
+
+    const entityMatch = line.match(FULL_COMPANY_REGEX);
+    if (entityMatch?.[1]) {
+      const candidate = cleanBuyerFromSupplierName(entityMatch[1].trim());
+      if (
+        candidate.length >= 4 &&
+        candidate.length <= 75 &&
+        !isGenericOrOnlySuffix(candidate) &&
+        !GENERIC_IGNORE_TITLES.test(candidate) &&
+        !/^(?:to|customer|billed\s*to|buyer|guest|pax|leela\s*travels|holiday\s*circuit|owner's\s*name)/i.test(candidate)
+      ) {
+        return { supplierName: candidate, partnerName: candidate };
+      }
+    }
+
+    if (/(?:travels|tours|holidays|hotel|resort|dmc)\b/i.test(line)) {
+      const cleaned = cleanBuyerFromSupplierName(line);
+      if (
+        cleaned.length >= 3 &&
+        cleaned.length <= 70 &&
+        !isGenericOrOnlySuffix(cleaned) &&
+        !GENERIC_IGNORE_TITLES.test(cleaned) &&
+        !/^(?:to|customer|billed\s*to|buyer|guest|pax|leela\s*travels|holiday\s*circuit|owner's\s*name)/i.test(cleaned)
+      ) {
+        return { supplierName: cleaned, partnerName: cleaned };
+      }
+    }
+  }
+
+  // 3. Check explicit supplier / vendor labels
   const patterns = [
     /(?:supplier|vendor|billed\s+by|from)\s*(?:name)?\s*[:#-]\s*([^\n]{3,80})/i,
     /(?:dmc\s*\/\s*supplier|supplier\s*name|vendor\s*name)\s*\n\s*([^\n]{3,80})/i,
   ];
-
   for (const pattern of patterns) {
-    const match = text.match(pattern);
-    if (match?.[1]) return match[1].replace(/\s{2,}/g, " ").trim();
+    const match = normalized.match(pattern);
+    if (match?.[1]) {
+      const name = cleanBuyerFromSupplierName(match[1].replace(/\s{2,}/g, " ").trim());
+      if (
+        name.length >= 3 &&
+        !/^(?:pvt\.?\s*ltd\.?|private\s*limited|limited|ltd\.?)$/i.test(name) &&
+        !GENERIC_IGNORE_TITLES.test(name) &&
+        !/^(?:to|customer|billed\s*to|buyer|guest|pax|leela\s*travels|holiday\s*circuit|owner's\s*name)/i.test(name)
+      ) {
+        return { supplierName: name, partnerName: name };
+      }
+    }
   }
 
-  return "";
+  const defaultFirstLine =
+    lines[0] && lines[0].length > 3 && lines[0].length < 60 && !GENERIC_IGNORE_TITLES.test(lines[0])
+      ? cleanBuyerFromSupplierName(lines[0])
+      : "";
+  return { supplierName: defaultFirstLine, partnerName: defaultFirstLine };
 };
+
+const extractSupplierName = (text) => extractSupplierAndPartner(text).supplierName;
 
 const inferGrandTotal = (text) => {
   const candidates = [];
-  const totalLinePattern = /(?:grand\s*total|total\s*amount|amount\s*payable|net\s*payable|invoice\s*total|total)[^\n]{0,80}/gi;
+  const totalLinePattern = /(?:grand\s*total|total\s*due|total\s*amount|amount\s*payable|net\s*payable|invoice\s*total|\(\+\)\s*total|total)[^\n]{0,80}/gi;
 
   for (const lineMatch of text.matchAll(totalLinePattern)) {
     const line = lineMatch[0];
+    if (isDisclaimerOrNotesLine(line)) continue;
     for (const amountMatch of line.matchAll(/(?:INR|Rs\.?|₹|USD|AED|EUR)?\s*([0-9][0-9,]*(?:\.\d{1,2})?)\b(?!\s*%)/gi)) {
       const amount = normalizeAmount(amountMatch[1]);
       if (amount > 0) candidates.push(amount);
@@ -668,61 +868,193 @@ const inferGrandTotal = (text) => {
   return candidates.length ? Math.max(...candidates) : 0;
 };
 
+const extractTableSummary = (text = "") => {
+  const lines = splitInvoiceTextLines(text);
+
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i];
+    if (isDisclaimerOrNotesLine(line)) continue;
+
+    // Pattern 1: "Total 58,440.00 29,692.00 88,132.00" or "Total 58,440.00 29,692.00"
+    const m1 = line.match(
+      /^\s*(?:Total|Subtotal|Gross\s*Total|Table\s*Total|Summary\s*Total)\s+([0-9,]+(?:\.\d{1,2})?)\s+([0-9,]+(?:\.\d{1,2})?)(?:\s+([0-9,]+(?:\.\d{1,2})?))?/i,
+    );
+    if (m1) {
+      const a = normalizeAmount(m1[1]);
+      const b = normalizeAmount(m1[2]);
+      const c = m1[3] ? normalizeAmount(m1[3]) : Math.round(a + b);
+      if (a > 0 && b >= 0) {
+        return { subtotal: a, tax: b, total: c };
+      }
+    }
+
+    // Pattern 2: "58,440.00 29,692.00 88,132.00 Total" or "58,440.00 29,692.00 Total"
+    const m2 = line.match(
+      /^([0-9,]+(?:\.\d{1,2})?)\s+([0-9,]+(?:\.\d{1,2})?)(?:\s+([0-9,]+(?:\.\d{1,2})?))?\s+(?:Total|Subtotal|Sum)$/i,
+    );
+    if (m2) {
+      const a = normalizeAmount(m2[1]);
+      const b = normalizeAmount(m2[2]);
+      const c = m2[3] ? normalizeAmount(m2[3]) : Math.round(a + b);
+      if (a > 0 && b >= 0) {
+        return { subtotal: a, tax: b, total: c };
+      }
+    }
+
+    // Pattern 3: Line containing 2 or 3 amounts and "Total" or "Subtotal"
+    const amounts = getAmountsFromLine(line);
+    if (amounts.length >= 2 && /\b(?:total|subtotal)\b/i.test(line)) {
+      const a = amounts[0];
+      const b = amounts[1];
+      const c = amounts[2] || Math.round(a + b);
+      if (a > 0 && b >= 0) {
+        return { subtotal: a, tax: b, total: c };
+      }
+    }
+  }
+
+  return { subtotal: 0, tax: 0, total: 0 };
+};
+
+// Clean Rupee symbol glitches from OCR text (e.g. "Net Amount 21,29,434.32" -> "Net Amount: 1,29,434.32")
+const sanitizeOcrRupeeArtifacts = (rawText = "") => {
+  let text = String(rawText || "");
+
+  // Fix OCR misrecognizing Rupee symbol ₹ as 2 before standard amounts (e.g. 21,29,434.32 -> 1,29,434.32)
+  text = text.replace(
+    /(?:Net\s*Amount|Amount\s*Payable|Total\s*Due|Grand\s*Total|Invoice\s*Total)\s*[:\s]*2([1-9][0-9]{0,2}(?:,[0-9]{2,3})*(?:\.\d{1,2})?)/gi,
+    (match, num) => `Net Amount: ${num}`,
+  );
+
+  text = text.replace(
+    /(?:Total|Gross|Basic)\s*[:\s]*2([1-9][0-9]{0,2}(?:,[0-9]{2,3})*(?:\.\d{1,2})?)/gi,
+    (match, num) => `Total: ${num}`,
+  );
+
+  return text;
+};
+
 export const extractInvoiceFieldsFromText = (text = "") => {
-  const normalized = normalizeText(text);
+  const normalized = sanitizeOcrRupeeArtifacts(normalizeText(text));
   const subtotalLabels = [
+    "gross",
+    "gross\\s*amount",
+    "basic",
+    "basic\\s*amount",
+    "basic\\s*fare",
+    "base\\s*fare",
+    "fare",
+    "hotel\\s*charges",
+    "room\\s*charges",
+    "package\\s*amount",
     "sub\\s*total",
     "subtotal",
     "taxable\\s*value",
     "taxable\\s*amount",
-    "net\\s*amount",
     "base\\s*amount",
+    "total\\s*amount\\s*before\\s*tax",
   ];
   const taxLabels = [
+    "flight\\s*tds\\s*deducted",
+    "tds\\s*deducted",
+    "management\\s*fee\\s*gst",
     "total\\s*tax",
     "tax\\s*amount",
-    "tax",
     "gst\\s*amount",
     "vat\\s*amount",
+    "igst",
+    "cgst",
+    "sgst",
+    "gst\\s*tax",
+    "vat\\s*tax",
+    "tcs",
+    "taxes\\s*\\/\\s*yq",
+    "taxes\\s*\\/\\s*tax",
+    "tax\\s*\\(inr\\)",
+    "tax\\s*\\(₹\\)",
+    "tax\\s*:",
+    "tax\\s*=",
+    "(?<!income\\s*)(?<!service\\s*)tax(?!\\s*act)(?!\\s*law)(?!\\s*exemption)(?!\\s*invoice)(?!\\s*reg)(?!\\s*no)",
   ];
   const grandTotalLabels = [
+    "net\\s*amount",
+    "net\\s*payable",
+    "total\\s*due\\s*\\(inr\\)",
+    "total\\s*due",
+    "amount\\s*payable",
     "grand\\s*total",
+    "total\\s*amount",
+    "invoice\\s*total",
     "total\\s*value(?:\\s*\\([^)]*\\))?",
-    "credits\\s*available",
-    "credits\\s*total",
     "final\\s*amount",
     "net\\s*total",
     "(?<!line\\s+)(?<!sub\\s*)(?<!@\\s*\\d+%\\s*)total(?!\s*@)",
-    "total\\s*due",
     "payment\\s*status",
     "total\\s*amount\\s*paid",
-    "amount\\s*payable",
-    "net\\s*payable",
-    "invoice\\s*total",
-    "total\\s*amount",
     "amount\\s*paid",
     "balance\\s*due",
   ];
+
+  // 1. Detect table summary row (e.g., "58,440.00 29,692.00 Total" or "Total 58,440.00 29,692.00 88,132.00")
+  const tableSummary = extractTableSummary(normalized);
+  const tableSubtotal = tableSummary.subtotal;
+  const tableTax = tableSummary.tax;
+  const tableSum = tableSummary.total;
+
   const subtotalToken = findMoneyAfterLabels(normalized, subtotalLabels);
   const taxToken = findMoneyAfterLabels(normalized, taxLabels);
   const grandTotalToken = findMoneyAfterLabels(normalized, grandTotalLabels);
   const looseAmounts = inferLooseInvoiceAmounts(normalized);
-  const subtotal = subtotalToken.amount || findAmountAfterLabels(normalized, subtotalLabels);
-  const explicitTax = taxToken.amount || findAmountAfterLabels(normalized, taxLabels);
+
+  let subtotal = tableSubtotal || subtotalToken.amount || findAmountAfterLabels(normalized, subtotalLabels);
+  let explicitTax = (tableTax > 0 ? tableTax : null) ?? (taxToken.amount || findAmountAfterLabels(normalized, taxLabels));
   const componentTax = sumAmountsAfterLabels(normalized, [
+    "igst",
     "cgst",
     "sgst",
-    "igst",
-    "gst",
     "vat",
     "tcs",
+    "tds",
   ]);
-  const taxAmount = explicitTax || componentTax || looseAmounts.taxAmount;
+
+  // Check explicit 0 tax cases (e.g. Tax 0.00, TDS Amount 0.00)
+  if (
+    /\bTax\s+0(?:\.00)?\b/i.test(normalized) ||
+    /\bTax\s*:\s*0(?:\.00)?\b/i.test(normalized) ||
+    /\(\+\)\s*TDS\s*Amount\s*0(?:\.00)?\b/i.test(normalized) ||
+    /\bTotal\s+Tax\s*[:\s]+0(?:\.00)?\b/i.test(normalized)
+  ) {
+    explicitTax = 0;
+  }
+
+  const taxAmount = explicitTax !== undefined && explicitTax !== null ? explicitTax : (componentTax || looseAmounts.taxAmount || 0);
   let grandTotal =
-    grandTotalToken.amount || findAmountAfterLabels(normalized, grandTotalLabels) || inferGrandTotal(normalized) || looseAmounts.grandTotal;
+    grandTotalToken.amount || findAmountAfterLabels(normalized, grandTotalLabels) || inferGrandTotal(normalized) || tableSum || looseAmounts.grandTotal;
+
+  // OCR Rupee Glitch Filter: If grandTotal starts with 2 and is abnormally huge compared to subtotal/gross
+  if (grandTotal > 500000 && subtotal > 0 && grandTotal > subtotal * 1.5) {
+    const sGrand = Math.round(grandTotal).toString();
+    if (sGrand.startsWith("2")) {
+      const fixedGrand = Number(sGrand.slice(1));
+      if (fixedGrand > 0 && fixedGrand <= subtotal * 1.1) {
+        grandTotal = fixedGrand;
+      }
+    }
+  }
+
+  // If Net Amount is extracted as grandTotal, ensure subtotal matches Net Base or Gross
+  if (grandTotal > 0 && subtotal > grandTotal * 1.5) {
+    const sSub = Math.round(subtotal).toString();
+    if (sSub.startsWith("2")) {
+      const fixedSub = Number(sSub.slice(1));
+      if (fixedSub > 0 && fixedSub <= grandTotal * 1.1) {
+        subtotal = fixedSub;
+      }
+    }
+  }
 
   // Math Fallback: If OCR missed the "Total" label but scanned the correct total sum, reconstruct it.
-  if (subtotal > 0 && taxAmount > 0 && Math.round(grandTotal) !== Math.round(subtotal + taxAmount)) {
+  if (subtotal > 0 && taxAmount > 0 && Math.round(grandTotal) !== Math.round(subtotal + taxAmount) && !tableSum && !grandTotalToken.amount) {
     const expectedTotal = subtotal + taxAmount;
     const allAmounts = [...normalized.matchAll(/[0-9][0-9,]*(?:\.\d{1,2})?/g)]
       .map((m) => normalizeAmount(m[0]))
@@ -739,22 +1071,55 @@ export const extractInvoiceFieldsFromText = (text = "") => {
     { currency: looseAmounts.currency, amount: looseAmounts.grandTotal },
   ]);
 
-  const resolvedSubtotal = Math.round(subtotal || looseAmounts.subtotal || (grandTotal && taxAmount ? Math.max(0, grandTotal - taxAmount) : 0));
-  const resolvedTax = Math.round(taxAmount);
-  const resolvedGrandTotal = Math.round(grandTotal);
+  let resolvedGrandTotal = Math.round(grandTotal || 0);
+  let resolvedTax = Math.round(taxAmount || 0);
+
+  // Validate tax: if tax exceeds grand total, it's likely a note/reference number, set to 0
+  if (resolvedGrandTotal > 0 && resolvedTax >= resolvedGrandTotal) {
+    resolvedTax = 0;
+  }
+
+  let resolvedSubtotal = Math.round(subtotal || (resolvedGrandTotal > 0 ? Math.max(0, resolvedGrandTotal - resolvedTax) : 0));
+
+  // If subtotal is greater than grand total because it captured Gross (e.g. Gross 133,704 vs Net 129,434)
+  // In B2B supplier invoice context, set subtotal as Net Base = (GrandTotal - Tax) so subtotal + tax = GrandTotal
+  if (resolvedGrandTotal > 0 && resolvedSubtotal > resolvedGrandTotal) {
+    resolvedSubtotal = Math.max(0, resolvedGrandTotal - resolvedTax);
+  }
+
+  // If subtotal + 0 tax = grand total, keep subtotal matched to grand total
+  if (resolvedSubtotal > 0 && resolvedGrandTotal > 0 && resolvedTax === 0 && resolvedSubtotal !== resolvedGrandTotal && !tableSubtotal) {
+    resolvedSubtotal = resolvedGrandTotal;
+  }
+
+  const supplierInfo = extractSupplierAndPartner(normalized);
 
   return {
-    supplierName: extractSupplierName(normalized),
+    supplierName: supplierInfo.supplierName,
+    partnerName: supplierInfo.partnerName,
     invoiceNumber: extractInvoiceNumber(normalized),
     invoiceDate: extractDateAfterLabels(normalized, [
+      "invoice\\s*date",
+      "inv\\s*date",
+      "inv\\s*dt",
+      "bill\\s*date",
+      "billing\\s*date",
+      "issue\\s*date",
+      "date\\s*of\\s*issue",
+      "date\\s*of\\s*invoice",
+      "tax\\s*invoice\\s*date",
+      "document\\s*date",
+      "txn\\s*date",
+      "transaction\\s*date",
+      "receipt\\s*generated\\s*on",
+      "pdf\\s*generated\\s*on",
+      "generated\\s*on",
+      "dated",
+      "date",
       "invoice",
       "bill",
       "payment",
       "payout",
-      "receipt\\s*generated\\s*on",
-      "pdf\\s*generated\\s*on",
-      "generated\\s*on",
-      "date",
     ]),
     dueDate: extractDateAfterLabels(normalized, ["due"]),
     subtotal: resolvedSubtotal,
@@ -785,8 +1150,18 @@ const getFileKind = (file = {}) => {
   return "unknown";
 };
 
+const getFileBuffer = async (filePath) => {
+  if (Buffer.isBuffer(filePath)) return filePath;
+  if (typeof filePath === "string" && (filePath.startsWith("http://") || filePath.startsWith("https://"))) {
+    const response = await fetch(filePath);
+    const arrayBuf = await response.arrayBuffer();
+    return Buffer.from(arrayBuf);
+  }
+  return fs.promises.readFile(filePath);
+};
+
 const extractPdfText = async (filePath) => {
-  const buffer = await fs.promises.readFile(filePath);
+  const buffer = await getFileBuffer(filePath);
   const parser = new PDFParse({ data: buffer });
   try {
     const result = await parser.getText();
@@ -796,13 +1171,13 @@ const extractPdfText = async (filePath) => {
   }
 };
 
-const renderPdfFirstPages = async (filePath) => {
-  const buffer = await fs.promises.readFile(filePath);
+const renderPdfPages = async (filePath, maxPages = 15) => {
+  const buffer = await getFileBuffer(filePath);
   const parser = new PDFParse({ data: buffer });
   const tempFiles = [];
   try {
-    const result = await parser.getScreenshot({ scale: 2, partial: [1, 2] });
-    const pages = Array.isArray(result?.pages) ? result.pages.slice(0, 2) : [];
+    const result = await parser.getScreenshot({ scale: 2 });
+    const pages = Array.isArray(result?.pages) ? result.pages.slice(0, maxPages) : [];
 
     for (const [index, page] of pages.entries()) {
       if (!page?.data) continue;
@@ -817,20 +1192,41 @@ const renderPdfFirstPages = async (filePath) => {
 };
 
 const extractDocxText = async (filePath) => {
+  if (typeof filePath === "string" && (filePath.startsWith("http://") || filePath.startsWith("https://"))) {
+    const buffer = await getFileBuffer(filePath);
+    const result = await mammoth.extractRawText({ buffer });
+    return normalizeText(result?.value || "");
+  }
   const result = await mammoth.extractRawText({ path: filePath });
   return normalizeText(result?.value || "");
 };
 
 const createPreprocessedOcrImage = async (filePath) => {
+  const input = (typeof filePath === "string" && (filePath.startsWith("http://") || filePath.startsWith("https://")))
+    ? await getFileBuffer(filePath)
+    : filePath;
   const tempPath = path.join(os.tmpdir(), `invoice-ocr-prep-${Date.now()}-${Math.random().toString(36).slice(2)}.png`);
-  await sharp(filePath)
-    .resize({ width: 2400, withoutEnlargement: false })
-    .grayscale()
-    .normalize()
-    .sharpen()
-    .png()
-    .toFile(tempPath);
-  return tempPath;
+  try {
+    await sharp(input)
+      .resize({ width: 2400, withoutEnlargement: false, fit: "inside" })
+      .grayscale()
+      .normalize()
+      .clahe({ width: 50, height: 50 })
+      .sharpen({ sigma: 1.2, m1: 0.5, m2: 2.0 })
+      .linear(1.1, -8)
+      .png()
+      .toFile(tempPath);
+    return tempPath;
+  } catch {
+    await sharp(input)
+      .resize({ width: 2400, withoutEnlargement: false })
+      .grayscale()
+      .normalize()
+      .sharpen()
+      .png()
+      .toFile(tempPath);
+    return tempPath;
+  }
 };
 
 const runTesseractCli = async (filePath) => {
@@ -915,7 +1311,7 @@ const extractOcrText = async (filePath, fileKind) => {
     return { available: false, text: "", error: "OCR is only attempted for images or scanned PDFs." };
   }
 
-  const tempFiles = await renderPdfFirstPages(filePath);
+  const tempFiles = await renderPdfPages(filePath);
   if (!tempFiles.length) {
     return { available: false, text: "", error: "Unable to render this PDF for OCR." };
   }
@@ -924,10 +1320,21 @@ const extractOcrText = async (filePath, fileKind) => {
   let lastError = "";
   try {
     for (const tempFile of tempFiles) {
-      const result = await runOcr(tempFile);
-      if (!result.available) return result;
-      if (result.text) textParts.push(result.text);
-      lastError = result.error;
+      let preprocessedFile = "";
+      try {
+        preprocessedFile = await createPreprocessedOcrImage(tempFile);
+        const result = await runOcr(preprocessedFile);
+        if (result.text) textParts.push(result.text);
+        lastError = result.error;
+      } catch {
+        const result = await runOcr(tempFile);
+        if (result.text) textParts.push(result.text);
+        lastError = result.error;
+      } finally {
+        if (preprocessedFile) {
+          await fs.promises.unlink(preprocessedFile).catch(() => null);
+        }
+      }
     }
   } finally {
     await Promise.all(tempFiles.map((tempFile) => fs.promises.unlink(tempFile).catch(() => null)));
@@ -1027,10 +1434,14 @@ export const buildInvoiceExtractionVerification = ({
   if (
     extractedHasAmounts &&
     (extractedHasSubtotal || extractedHasTax) &&
-    extractedSummary.subtotal <= extractedSummary.grandTotal &&
     !amountsMatch(extractedSummary.subtotal + extractedSummary.taxAmount, extractedSummary.grandTotal)
   ) {
-    warnings.push("Extracted subtotal plus tax does not equal extracted grand total.");
+    const tableSum = Math.round(extractedSummary.subtotal + extractedSummary.taxAmount);
+    const diff = Math.round(extractedSummary.grandTotal - tableSum);
+    const diffSign = diff > 0 ? `+${formatAmount(diff)}` : `-${formatAmount(Math.abs(diff))}`;
+    warnings.push(
+      `Subtotal (${formatAmount(extractedSummary.subtotal)}) + Tax (${formatAmount(extractedSummary.taxAmount)}) = ${formatAmount(tableSum)}, differing by ${diffSign} from final Net Grand Total (${formatAmount(extractedSummary.grandTotal)}) due to invoice adjustments (handling, TDS, extra taxes, or deductions).`,
+    );
   }
 
   return {

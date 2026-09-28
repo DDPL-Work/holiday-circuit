@@ -54,6 +54,10 @@ export const createDashboardNotification = async (queryId, quoteDetails = {}) =>
     throw new Error("Travel query not found");
   }
 
+  if (!query.agent) {
+    return null;
+  }
+
   const quotationNumber = String(quoteDetails?.quotationNumber || "").trim();
 
   return Notification.create({

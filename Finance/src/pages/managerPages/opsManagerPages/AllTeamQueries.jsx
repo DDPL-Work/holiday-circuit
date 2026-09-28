@@ -266,7 +266,7 @@ function DetailModal({ query, onClose }) {
           >
             <p className="text-base font-semibold text-white">No quotation attempts yet</p>
             <p className="text-xs sm:text-sm mt-2" style={{ color: "rgba(255,255,255,0.6)" }}>
-              Is query ke liye abhi tak koi quotation create ya send nahi hua hai.
+              No quotation has been created or sent for this query yet.
             </p>
           </div>
         ) : (

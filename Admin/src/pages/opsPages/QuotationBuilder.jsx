@@ -2,10 +2,12 @@ import {
   AlertCircle,
   Bell,
   CalendarDays,
+  Check,
   CheckCircle2,
   Clock,
   Copy,
   Download,
+  Edit3,
   FileText,
   Mail,
   MessageCircle,
@@ -871,6 +873,29 @@ const buildWhatsAppTermsSection = (items = []) => {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return "";
   return parsed.toISOString().slice(0, 10);
+  };
+
+  const formatTravelDateRange = (startDate, endDate) => {
+    if (!startDate) return "—";
+    const start = new Date(startDate);
+    if (Number.isNaN(start.getTime())) return String(startDate || "—");
+
+    const formatOptions = {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    };
+
+    const startStr = start.toLocaleDateString("en-IN", formatOptions);
+
+    if (!endDate) return startStr;
+    const end = new Date(endDate);
+    if (Number.isNaN(end.getTime())) return startStr;
+
+    const endStr = end.toLocaleDateString("en-IN", formatOptions);
+    if (startStr === endStr) return startStr;
+
+    return `${startStr} - ${endStr}`;
   };
 
   const addDaysToNormalizedDate = (value, daysToAdd = 0) => {
@@ -1769,7 +1794,11 @@ const resolveTransportSmartRate = (service = {}, targetDate = "") => {
 
 const resolveActivitySmartRate = (service = {}, targetDate = "", tourTypeName = "") => {
   const tourList = Array.isArray(service.tourTypes) ? service.tourTypes : [];
-  const selectedTour = tourList.find((t) => t.tourType === (tourTypeName || service.tourType)) || tourList[0] || {};
+  const selectedTourName = String(tourTypeName || service.tourType || "").trim().toLowerCase();
+  const selectedTour =
+    tourList.find((t) => String(t.tourType || "").trim().toLowerCase() === selectedTourName) ||
+    tourList[0] ||
+    {};
   const basePrice = selectedTour.adultPrice !== undefined ? Number(selectedTour.adultPrice) : (selectedTour.price !== undefined ? Number(selectedTour.price) : Number(service.price || service.rate || 0));
   const childPrice = selectedTour.childPrice !== undefined ? Number(selectedTour.childPrice) : Number(service.childPrice || 0);
   const seasons =
@@ -1780,8 +1809,47 @@ const resolveActivitySmartRate = (service = {}, targetDate = "", tourTypeName = 
         : [];
   const blackoutDates = Array.isArray(service.blackoutDates) ? service.blackoutDates : [];
 
-  const smartAdult = resolveSmartSeasonAndBlackoutPrice(basePrice, seasons, blackoutDates, targetDate);
-  const matchedSeason = seasons.find((s) => isDateInRange(targetDate, s.validFrom, s.validTo));
+  // In the uploaded rate sheet, S1/S2 dates are entered on the first
+  // (Sharing Tour) row and left blank for Private/Ticket rows. Older saved
+  // records can therefore give Private/Ticket both a full-year date range.
+  // Use the narrowest matching S1/S2 range from this same service, while
+  // always retaining the selected tour's own prices.
+  const getSeasonRangeSpan = (season = {}) => {
+    const from = normalizeDateOnlyString(season.validFrom);
+    const to = normalizeDateOnlyString(season.validTo);
+    if (!from || !to) return Number.POSITIVE_INFINITY;
+    const fromMs = Date.parse(`${from}T00:00:00.000Z`);
+    const toMs = Date.parse(`${to}T00:00:00.000Z`);
+    return Number.isFinite(fromMs) && Number.isFinite(toMs) && toMs >= fromMs
+      ? toMs - fromMs
+      : Number.POSITIVE_INFINITY;
+  };
+
+  const canonicalSeasons = seasons.map((season) => {
+    const seasonName = String(season.seasonName || "").trim().toUpperCase();
+    const matchingSeasonRanges = tourList
+      .flatMap((tour) => (Array.isArray(tour.seasons) ? tour.seasons : []))
+      .filter((candidate) => String(candidate.seasonName || "").trim().toUpperCase() === seasonName)
+      .filter((candidate) => Number.isFinite(getSeasonRangeSpan(candidate)))
+      .sort((left, right) => getSeasonRangeSpan(left) - getSeasonRangeSpan(right));
+    const canonicalRange = matchingSeasonRanges[0];
+
+    return canonicalRange && getSeasonRangeSpan(canonicalRange) < getSeasonRangeSpan(season)
+      ? { ...season, validFrom: canonicalRange.validFrom, validTo: canonicalRange.validTo }
+      : season;
+  });
+
+  // Activity/sightseeing season data stores adult amounts in adultPrice and
+  // adultBlackoutPrice. Convert that shape for the shared seasonal resolver,
+  // while retaining backward compatibility with records that only have price.
+  const adultSeasons = canonicalSeasons.map((season) => ({
+    ...season,
+    price: Number(season.adultPrice || season.price || 0),
+    blackoutPrice: Number(season.adultBlackoutPrice || season.blackoutPrice || 0),
+  }));
+
+  const smartAdult = resolveSmartSeasonAndBlackoutPrice(basePrice, adultSeasons, blackoutDates, targetDate);
+  const matchedSeason = canonicalSeasons.find((s) => isDateInRange(targetDate, s.validFrom, s.validTo));
   const matchedBlackout = checkBlackoutMatch(blackoutDates, targetDate);
   let resolvedChildPrice = childPrice;
   if (matchedSeason) {
@@ -1794,8 +1862,9 @@ const resolveActivitySmartRate = (service = {}, targetDate = "", tourTypeName = 
 
   return {
     ...smartAdult,
-    adultPrice: smartAdult.rate,
-    childPrice: resolvedChildPrice,
+    // Quotation amounts are stored and shown as whole currency values.
+    adultPrice: Math.round(Number(smartAdult.rate || 0)),
+    childPrice: Math.round(Number(resolvedChildPrice || 0)),
   };
 };
 
@@ -3446,7 +3515,14 @@ const scoreHotelVariantMatch = (variant = {}, nextService = {}, changedField = "
 
       // markup
       const location = useLocation();
-      const order = location.state ?? null;
+      const [order, setOrder] = useState(() => location.state ?? null);
+
+      useEffect(() => {
+        if (location.state) {
+          setOrder((prev) => ({ ...(prev || {}), ...location.state }));
+        }
+      }, [location.state]);
+
       const hasOrderContext = Boolean(order?._id);
       const orderQueryId = order?.queryId || "";
       const navigate = useNavigate();
@@ -3990,6 +4066,16 @@ setDraftValidTill("");
 
           const { data } = await API.get(`/ops/queries/${order._id}/quotation-draft`, requestConfig);
           const quotation = data?.quotation;
+          if (data?.query) {
+            setOrder((prev) => ({
+              ...(prev || {}),
+              ...data.query,
+              agent:
+                data.query.agent && typeof data.query.agent === "object"
+                  ? data.query.agent
+                  : prev?.agent || data.query.agent,
+            }));
+          }
           const latestAgentPhone = String(
             data?.query?.agent?.phone || order?.agent?.phone || "",
           ).trim();
@@ -4021,9 +4107,13 @@ setDraftValidTill("");
 
       const startDate = new Date(start);
       const endDate = new Date(end);
+      if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+        return { nights: 0, days: 0, label: "" };
+      }
       const diff = endDate - startDate;
-      const days = Math.max(1, Math.ceil(diff / (1000 * 60 * 60 * 24)));
-      const nights = Math.max(0, days - 1);
+      const diffDays = Math.max(0, Math.round(diff / (1000 * 60 * 60 * 24)));
+      const nights = diffDays;
+      const days = diffDays > 0 ? diffDays + 1 : 1;
 
       return {
         nights,
@@ -4829,8 +4919,13 @@ setDraftValidTill("");
       contractedFullServiceAmount > 0 &&
       contractedFullServiceAmount !== finalRate;
       const defaultTour = Array.isArray(s.tourTypes) && s.tourTypes.length > 0 ? s.tourTypes[0] : {};
-      const resolvedAdultPrice = Number(s.adultPrice !== undefined ? s.adultPrice : (defaultTour.adultPrice !== undefined ? defaultTour.adultPrice : (defaultTour.price || s.price || finalRate)));
-      const resolvedChildPrice = Number(s.childPrice !== undefined ? s.childPrice : (defaultTour.childPrice !== undefined ? defaultTour.childPrice : 0));
+      const isSeasonPricedActivity = normalizedServiceType === "activity" || normalizedServiceType === "sightseeing";
+      const resolvedAdultPrice = isSeasonPricedActivity
+        ? Number(smart.adultPrice ?? finalRate ?? 0)
+        : Number(s.adultPrice !== undefined ? s.adultPrice : (defaultTour.adultPrice !== undefined ? defaultTour.adultPrice : (defaultTour.price || s.price || finalRate)));
+      const resolvedChildPrice = isSeasonPricedActivity
+        ? Number(smart.childPrice ?? 0)
+        : Number(s.childPrice !== undefined ? s.childPrice : (defaultTour.childPrice !== undefined ? defaultTour.childPrice : 0));
       return {
       id: s.id,
       serviceId: s.id,
@@ -6175,7 +6270,8 @@ return true;
       }
 
       const diff = tripEndDate - startDate;
-      return Math.max(1, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+      const diffDays = Math.max(0, Math.round(diff / (1000 * 60 * 60 * 24)));
+      return diffDays + 1;
       };
 
       const adultPassengers = Number(order?.numberOfAdults || 0);
@@ -6417,23 +6513,30 @@ const servicePassengerCapacity = Number(targetService?.passengerCapacity || 0);
       if ((service.type === "sightseeing" || service.type === "activity") && field === "tourType") {
         const tourList = Array.isArray(service.tourTypes) ? service.tourTypes : [];
         const matchedTour = tourList.find((t) => String(t.tourType || "").trim().toLowerCase() === String(value || "").trim().toLowerCase()) || {};
-        const nextAdultPrice = Number(matchedTour.adultPrice !== undefined ? matchedTour.adultPrice : (matchedTour.price !== undefined ? matchedTour.price : (service.price || service.rate || 0)));
-        const nextChildPrice = Number(matchedTour.childPrice !== undefined ? matchedTour.childPrice : 0);
         const nextTourType = matchedTour.tourType || value;
         const nextDesc = matchedTour.description || service.desc || service.description || "";
+        const smart = resolveActivitySmartRate(
+          { ...service, tourType: nextTourType },
+          service.serviceDate,
+          nextTourType,
+        );
 
         return {
           ...service,
           tourType: nextTourType,
-          rate: nextAdultPrice,
-          price: nextAdultPrice,
-          adultPrice: nextAdultPrice,
-          childPrice: nextChildPrice,
-          quoteBaseRate: nextAdultPrice,
+          rate: smart.adultPrice,
+          price: smart.adultPrice,
+          adultPrice: smart.adultPrice,
+          childPrice: smart.childPrice,
+          quoteBaseRate: smart.adultPrice,
+          pricingTier: smart.tier,
+          blackout: smart.isBlackout ? { isBlackout: true, label: smart.blackoutLabel } : { isBlackout: false },
           desc: nextDesc,
           description: nextDesc,
           useStoredPricing: false,
-          manualRateOverride: true,
+          // Choosing a tour type is not a manual price override. Keeping this
+          // false lets later service-date changes recalculate S1/S2 correctly.
+          manualRateOverride: false,
           originalTotal: 0,
           totalInInr: 0,
           priceInInr: 0,
@@ -7998,15 +8101,31 @@ const renderSelectedServicesModal = () => {
                 <div>
                   <p className="text-gray-500 text-xs mb-1">Agent Name</p>
                   <p className="text-slate-900 text-xs font-semibold">
-                    {order?.agent?.companyName}
+                    {order?.agent?.name ||
+                      order?.agent?.companyName ||
+                      order?.agentName ||
+                      order?.companyName ||
+                      order?.clientName ||
+                      "—"}
                   </p>
+                  {order?.agent?.companyName &&
+                    order?.agent?.name &&
+                    order?.agent?.companyName !== order?.agent?.name && (
+                      <p className="text-[11px] text-gray-500 mt-0.5">
+                        {order.agent.companyName}
+                      </p>
+                    )}
                 </div>
 
                 {/* Agent Email */}
                 <div>
                   <p className="text-gray-500 text-xs mb-1">Agent Email</p>
                   <p className="text-slate-900 text-xs font-semibold">
-                    {order?.agent?.email}
+                    {order?.agent?.email ||
+                      order?.agentEmail ||
+                      order?.email ||
+                      order?.clientEmail ||
+                      "—"}
                   </p>
                 </div>
 
@@ -8014,7 +8133,7 @@ const renderSelectedServicesModal = () => {
                 <div>
                   <p className="text-gray-500 text-xs mb-1">Destination</p>
                   <p className="text-slate-900 text-xs font-semibold">
-                    {order?.destination}
+                    {order?.destination || "—"}
                   </p>
                 </div>
 
@@ -8022,11 +8141,7 @@ const renderSelectedServicesModal = () => {
                 <div>
                   <p className="text-gray-500 text-xs mb-1">Travel Date</p>
                   <p className="text-slate-900 text-xs font-semibold">
-                    {new Date(order?.startDate).toLocaleDateString("en-IN", {
-                      day: "numeric",
-                      month: "long",
-                      year: "numeric",
-                    })}
+                    {formatTravelDateRange(order?.startDate, order?.endDate)}
                   </p>
                 </div>
 
@@ -9854,7 +9969,8 @@ const Service = ({
     const s = new Date(startDate);
     const e = new Date(endDate);
     if (isNaN(s) || isNaN(e)) return 1;
-    return Math.max(1, Math.ceil((e - s) / 86400000));
+    const diffDays = Math.max(0, Math.round((e - s) / 86400000));
+    return diffDays + 1;
   };
 
   const addDaysToServiceDate = (value, daysToAdd = 0) => {
@@ -9954,29 +10070,7 @@ const Service = ({
                     </span>
                   )}
 
-                  {service.checked && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (isEditMode) {
-                          onOpenSelectedServices?.(service);
-                          return;
-                        }
-
-                        onStartServiceEdit?.(service);
-                      }}
-                      className="inline-flex h-[22px] cursor-pointer items-center rounded-lg border border-blue-200 bg-blue-50 px-2.5 text-[10px] font-semibold text-blue-700 transition hover:bg-blue-100 shadow-2xs"
-                    >
-                      {isEditMode ? "Review & Save" : "Click to Edit"}
-                    </button>
-                  )}
                 </div>
-
-                {isEditMode && service.checked && (
-                  <span className="rounded-full border border-sky-300 bg-sky-50 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-sky-800">
-                    Editing
-                  </span>
-                )}
                 {service.custom && (
                   <span className="rounded-full bg-amber-500 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white">
                     Custom
@@ -11084,6 +11178,37 @@ const Service = ({
               />
             </div>
           )}
+
+          {/* ── CARD FOOTER ACTIONS (Bottom Right Edit / Review Button) ── */}
+          <div className="flex items-center justify-end pt-2.5 border-t border-slate-200/80 mt-1">
+            <button
+              type="button"
+              onClick={() => {
+                if (isEditMode) {
+                  onOpenSelectedServices?.(service);
+                  return;
+                }
+                onStartServiceEdit?.(service);
+              }}
+              className={`inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg font-semibold text-xs transition-all shadow-2xs cursor-pointer ${
+                isEditMode
+                  ? "bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/20 active:scale-[0.98]"
+                  : "bg-[#3E63DD] hover:bg-[#3252c4] text-white shadow-blue-500/20 active:scale-[0.98]"
+              }`}
+            >
+              {isEditMode ? (
+                <>
+                  <Check size={14} className="stroke-[2.5]" />
+                  <span>Review & Save</span>
+                </>
+              ) : (
+                <>
+                  <Edit3 size={13} />
+                  <span>Click to Edit</span>
+                </>
+              )}
+            </button>
+          </div>
         </div>
       )}
     </motion.div>

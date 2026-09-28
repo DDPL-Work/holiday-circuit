@@ -12,6 +12,7 @@ import {
   PackagePlus,
   LucideSheet,
   ShieldCheck,
+  Building2,
 } from "lucide-react";
 import { MdOutlineDashboardCustomize, MdOutlineVerifiedUser } from "react-icons/md";
 import { GrUserManager } from "react-icons/gr";
@@ -71,6 +72,7 @@ const menuConfig = {
     { label: "All Team Queries", path: "/operationManager/allTeamQueries", icon: RiTeamFill },
     { label: "My Team", path: "/operationManager/myTeam", icon: BsMicrosoftTeams },
   ],
+
   finance_manager: [
     { label: "Finance Manager", path: "/financeManager/financeManagerDashboard", icon: GrUserManager },
     { label: "Advanced Analytics", path: "/financeManager/advancedAnalytics", icon: VscGraph },
@@ -83,6 +85,7 @@ const menuConfig = {
 export const getMenusForRole = (role, user = null) => {
   const baseMenus = menuConfig[role] ? [...menuConfig[role]] : [];
 
+
   if (user && role !== "admin") {
     const permissions = Array.isArray(user.permissions) ? user.permissions : [];
     const hasDiscountPermission =
@@ -90,12 +93,40 @@ export const getMenusForRole = (role, user = null) => {
       permissions.includes("Discounts & Coupons") ||
       permissions.includes("Discount");
 
+
+
     if (hasDiscountPermission && !baseMenus.some((m) => m.path === "/admin/discount")) {
       baseMenus.push({
         label: "Discount",
         path: "/admin/discount",
         icon: TicketPercent,
       });
+    }
+
+    const hasCreateQueryPermission =
+      permissions.includes("Create Query") ||
+      permissions.includes("Query Create") ||
+      permissions.includes("Add Query");
+
+
+
+    if (role === "operations" && hasCreateQueryPermission) {
+      
+      if (!baseMenus.some((m) => m.path === "/operationManager/addNewQuery")) {
+        baseMenus.push({
+          label: "Add New Query",
+          path: "/operationManager/addNewQuery",
+          icon: FilePlus2,
+        });
+      }
+      if (!baseMenus.some((m) => m.path === "#agent-organization")) {
+        baseMenus.push({
+          label: "Agent Organization",
+          path: "#agent-organization",
+          icon: Building2,
+          isModalAction: true,
+        });
+      }
     }
   }
 

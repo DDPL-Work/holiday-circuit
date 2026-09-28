@@ -1,5 +1,6 @@
 import Auth from "../models/auth.model.js";
 import ApiError from "../utils/ApiError.js";
+import { ALLOWED_PERMISSIONS } from "../constants/permissions.js";
 import TravelQuery from "../models/TravelQuery.model.js";
 import RateContract from "../models/rateContract.model.js"
 import Invoice from "../models/invoice.model.js"
@@ -10,6 +11,7 @@ import Notification from "../models/notification.model.js";
 import Quotation from "../models/quotation.model.js";
 import Voucher from "../models/voucher.model.js";
 import Confirmation from "../models/dmcConfirmation.js";
+import TripSource from "../models/TripSource.model.js";
 import { sendAccountDeletionMail, sendAgentApprovalMail, sendAgentRejectionMail, sendTeamMemberCredentialsMail } from "../services/sendEmail.js";
 import { sendAgentPaymentReceiptMail, sendDmcPayoutReceiptMail, sendEmailFinalInvoice } from "../services/emailService.js";
 import { getEmailDeliveryErrorMessage } from "../services/mailer.js";
@@ -128,6 +130,7 @@ const formatManagedUser = (user) => {
     permissions: Array.isArray(user.permissions) ? user.permissions : [],
     accountStatus: user.accountStatus || "Active",
     isDeleted: Boolean(user.isDeleted),
+    isBusinessPartner: Boolean(user.isBusinessPartner),
     deletedAt: user.deletedAt || null,
     deletedBy: user.deletedBy || "",
     deletionReason: user.deletionReason || "",
@@ -140,6 +143,7 @@ const formatManagedUser = (user) => {
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
     creditDays: Array.isArray(user.creditDays) ? user.creditDays : (user.creditDays !== undefined ? [user.creditDays] : [7]),
+    isBusinessPartner: Boolean(user.isBusinessPartner),
   };
 };
 
@@ -170,7 +174,7 @@ const formatAgentApproval = (agent) => ({
 const normalizePermissionList = (permissions = []) =>
   [...new Set((Array.isArray(permissions) ? permissions : [])
     .map((permission) => String(permission || "").trim())
-    .filter(Boolean))];
+    .filter((permission) => ALLOWED_PERMISSIONS.includes(permission)))];
 
 const generateTemporaryPassword = () => {
   const random = Math.random().toString(36).slice(2, 8);
@@ -179,8 +183,8 @@ const generateTemporaryPassword = () => {
 };
 
 const ensureAdminAccess = (req) => {
-  if (req.user?.role !== "admin") {
-    throw new ApiError(403, "Only super admins can manage team members");
+  if (req.user?.role !== "admin" && req.user?.role !== "operation_manager") {
+    throw new ApiError(403, "Only super admins and ops managers can access this action");
   }
 };
 
@@ -305,19 +309,18 @@ const addFinanceCreditDays = (value, daysToAdd = 0) => {
 };
 
 const buildManualUploadedInvoiceDocument = (file) => {
-  if (!file?.path) return null;
-  const normalizedFilePath = String(file.path).replace(/\\/g, "/");
-  const absoluteFilePath = path.join(process.cwd(), normalizedFilePath);
-  const fileSizeKb =
-    fs.existsSync(absoluteFilePath)
-      ? Math.max(1, Math.round(fs.statSync(absoluteFilePath).size / 1024))
-      : null;
+  if (!file) return null;
+  const fileUrl = file.path || file.secure_url || file.url || "";
+  if (!fileUrl) return null;
+  const fileSizeKb = file.size
+    ? `${Math.max(1, Math.round(file.size / 1024))} kB`
+    : "150 kB";
 
   return {
-    name: file.originalname || path.basename(file.path),
-    filePath: `/${normalizedFilePath.replace(/^\/+/, "")}`,
-    size: fileSizeKb ? `${fileSizeKb} kB` : "",
-    mimeType: file.mimetype || "",
+    name: file.originalname || (fileUrl ? path.basename(fileUrl) : "Invoice.pdf"),
+    filePath: fileUrl,
+    size: fileSizeKb,
+    mimeType: file.mimetype || "application/pdf",
     kind: "invoice",
   };
 };
@@ -624,7 +627,10 @@ export const getAllUsers = async (req, res, next) => {
 
 export const getManagedUsers = async (req, res, next) => {
   try {
-    ensureAdminAccess(req);
+    const isOps = ["ops", "operations", "operation", "operation_team"].includes(req.user?.role);
+    if (!isOps) {
+      ensureAdminAccess(req);
+    }
 
     const users = await Auth.find({
       role: { $in: MANAGED_USER_ROLES },
@@ -662,6 +668,7 @@ export const createManagedUser = async (req, res, next) => {
       accountStatus = "Active",
       accessExpiry = "",
       sendWelcome = true,
+      isBusinessPartner = false,
     } = req.body || {};
 
     const trimmedName = String(fullName || name || "").trim();
@@ -677,11 +684,21 @@ export const createManagedUser = async (req, res, next) => {
     const normalizedAccountStatus = accountStatus === "Inactive" ? "Inactive" : "Active";
     const normalizedAccessExpiry = normalizeAccessExpiry(accessExpiry);
 
-    if (!trimmedName || !normalizedEmail || !normalizedPhone || !normalizedRole || !normalizedDepartment || !normalizedDesignation) {
+    let finalEmail = normalizedEmail;
+    let finalPhone = normalizedPhone;
+    
+    if (isBusinessPartner) {
+        if (!finalEmail) {
+            const sanitizedName = trimmedName.toLowerCase().replace(/[^a-z0-9]/g, "") || "bp";
+            finalEmail = `${sanitizedName}@bp.holidaycircuit.com`;
+        }
+    }
+
+    if (!trimmedName || !finalEmail || (!finalPhone && !isBusinessPartner) || !normalizedRole || !normalizedDepartment || !normalizedDesignation) {
       return next(new ApiError(400, "Name, email, phone, role, department, and designation are required"));
     }
 
-    const emailValidationError = getEmailValidationError(normalizedEmail);
+    const emailValidationError = getEmailValidationError(finalEmail);
     if (emailValidationError) {
       return next(new ApiError(400, emailValidationError));
     }
@@ -694,17 +711,23 @@ export const createManagedUser = async (req, res, next) => {
       return next(new ApiError(400, "Access expiry date is invalid"));
     }
 
-    const initialPassword =
-      normalizedPasswordMode === "manual"
-        ? String(manualPassword || "")
-        : generateTemporaryPassword();
+    let hashedPassword = undefined;
+    let initialPassword = undefined;
 
-    if (String(initialPassword).length < 8) {
-      return next(new ApiError(400, "Password must be at least 8 characters"));
+    if (!isBusinessPartner) {
+        initialPassword =
+          normalizedPasswordMode === "manual"
+            ? String(manualPassword || "")
+            : generateTemporaryPassword();
+
+        if (String(initialPassword).length < 8) {
+          return next(new ApiError(400, "Password must be at least 8 characters"));
+        }
+        hashedPassword = await bcrypt.hash(initialPassword, 10);
     }
 
-    const existingUser = await Auth.findOne({ email: normalizedEmail });
-    if (existingUser) {
+    const duplicateEmailUser = await Auth.findOne({ email: finalEmail });
+    if (duplicateEmailUser) {
       return next(new ApiError(400, "A user with this email already exists"));
     }
 
@@ -715,13 +738,11 @@ export const createManagedUser = async (req, res, next) => {
       }
     }
 
-    const hashedPassword = await bcrypt.hash(initialPassword, 10);
-
     const createdUser = await Auth.create({
       name: trimmedName,
-      email: normalizedEmail,
-      password: hashedPassword,
-      phone: normalizedPhone,
+      email: finalEmail,
+      ...(hashedPassword && { password: hashedPassword }),
+      phone: finalPhone || undefined,
       employeeId: normalizedEmployeeId || undefined,
       manager: normalizedManager,
       role: normalizedRole,
@@ -731,12 +752,13 @@ export const createManagedUser = async (req, res, next) => {
       accountStatus: normalizedAccountStatus,
       accessExpiry: normalizedAccessExpiry,
       isApproved: true,
+      isBusinessPartner,
     });
 
     let credentialsEmailSent = false;
 
-    if (sendWelcome) {
-      await sendTeamMemberCredentialsMail(normalizedEmail, {
+    if (sendWelcome && !isBusinessPartner) {
+      await sendTeamMemberCredentialsMail(finalEmail, {
         name: trimmedName,
         role: BACKEND_ROLE_TO_FRONTEND[normalizedRole] || normalizedRole,
         loginEmail: normalizedEmail,
@@ -793,11 +815,32 @@ export const updateManagedUser = async (req, res, next) => {
       permissions = [],
       accountStatus = "Active",
       accessExpiry = "",
+      isBusinessPartner = false,
+      passwordMode = "keep",
+      manualPassword = "",
+      sendWelcome = false,
     } = req.body || {};
 
     const trimmedName = String(fullName || name || "").trim();
     const normalizedEmail = String(email || "").trim().toLowerCase();
     const normalizedPhone = String(phone || "").trim();
+    
+    const existingUser = await Auth.findOne({
+      _id: id,
+      role: { $in: MANAGED_USER_ROLES },
+    });
+
+    if (!existingUser) {
+      return next(new ApiError(404, "User not found"));
+    }
+
+    let finalEmail = normalizedEmail;
+    let finalPhone = normalizedPhone;
+    
+    if (isBusinessPartner || existingUser.isBusinessPartner) {
+        if (!finalEmail) finalEmail = existingUser.email;
+        if (!finalPhone) finalPhone = existingUser.phone;
+    }
     const normalizedEmployeeId = String(employeeId || "").trim();
     const normalizedManager = String(manager || "").trim();
     const normalizedDepartment = String(department || "").trim();
@@ -807,11 +850,16 @@ export const updateManagedUser = async (req, res, next) => {
     const normalizedAccountStatus = accountStatus === "Inactive" ? "Inactive" : "Active";
     const normalizedAccessExpiry = normalizeAccessExpiry(accessExpiry);
 
-    if (!trimmedName || !normalizedEmail || !normalizedPhone || !normalizedRole || !normalizedDepartment || !normalizedDesignation) {
+    if (!trimmedName || !finalEmail || (!finalPhone && !isBusinessPartner && !existingUser.isBusinessPartner) || !normalizedRole || !normalizedDepartment || !normalizedDesignation) {
       return next(new ApiError(400, "Name, email, phone, role, department, and designation are required"));
     }
 
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+    const emailValidationError = getEmailValidationError(finalEmail);
+    if (emailValidationError) {
+      return next(new ApiError(400, emailValidationError));
+    }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(finalEmail)) {
       return next(new ApiError(400, "Please enter a valid email address"));
     }
 
@@ -819,24 +867,15 @@ export const updateManagedUser = async (req, res, next) => {
       return next(new ApiError(400, "Access expiry date is invalid"));
     }
 
-    const user = await Auth.findOne({
-      _id: id,
-      role: { $in: MANAGED_USER_ROLES },
-    });
-
-    if (!user) {
-      return next(new ApiError(404, "User not found"));
-    }
-
-    if (user.isDeleted) {
+    if (existingUser.isDeleted) {
       return next(new ApiError(400, "Deleted users cannot be edited"));
     }
 
-    const existingUser = await Auth.findOne({
-      email: normalizedEmail,
+    const duplicateEmailUser = await Auth.findOne({
+      email: finalEmail,
       _id: { $ne: id },
     });
-    if (existingUser) {
+    if (duplicateEmailUser) {
       return next(new ApiError(400, "A user with this email already exists"));
     }
 
@@ -850,25 +889,72 @@ export const updateManagedUser = async (req, res, next) => {
       }
     }
 
-    if (String(req.user?.id) === String(user._id) && normalizedAccountStatus === "Inactive") {
+    if (String(req.user?.id) === String(existingUser._id) && normalizedAccountStatus === "Inactive") {
       return next(new ApiError(400, "You cannot deactivate your own account"));
     }
 
-    user.name = trimmedName;
-    user.email = normalizedEmail;
-    user.phone = normalizedPhone;
-    user.employeeId = normalizedEmployeeId || undefined;
-    user.manager = normalizedManager;
-    user.role = normalizedRole;
-    user.department = normalizedDepartment;
-    user.designation = normalizedDesignation;
-    user.permissions = normalizedPermissions;
-    user.accountStatus = normalizedAccountStatus;
-    user.accessExpiry = normalizedAccessExpiry;
+    let credentialsEmailSent = false;
+    let temporaryPassword = "";
 
-    await user.save();
+    if (!isBusinessPartner && !existingUser.isBusinessPartner) {
+      if (passwordMode === "manual" && manualPassword && String(manualPassword).trim().length > 0) {
+        const trimmedPassword = String(manualPassword).trim();
+        if (trimmedPassword.length < 8) {
+          return next(new ApiError(400, "Password must be at least 8 characters"));
+        }
+        existingUser.password = await bcrypt.hash(trimmedPassword, 10);
+        temporaryPassword = trimmedPassword;
 
-    await notifyManagedUserAccountEvent(user, {
+        if (sendWelcome) {
+          try {
+            await sendTeamMemberCredentialsMail(finalEmail, {
+              name: trimmedName,
+              role: BACKEND_ROLE_TO_FRONTEND[normalizedRole] || normalizedRole,
+              loginEmail: finalEmail,
+              password: trimmedPassword,
+            });
+            credentialsEmailSent = true;
+          } catch (mailErr) {
+            console.error("Failed to send updated credentials email:", mailErr);
+          }
+        }
+      } else if (passwordMode === "auto") {
+        const generatedPassword = generateTemporaryPassword();
+        existingUser.password = await bcrypt.hash(generatedPassword, 10);
+        temporaryPassword = generatedPassword;
+
+        if (sendWelcome) {
+          try {
+            await sendTeamMemberCredentialsMail(finalEmail, {
+              name: trimmedName,
+              role: BACKEND_ROLE_TO_FRONTEND[normalizedRole] || normalizedRole,
+              loginEmail: finalEmail,
+              password: generatedPassword,
+            });
+            credentialsEmailSent = true;
+          } catch (mailErr) {
+            console.error("Failed to send updated credentials email:", mailErr);
+          }
+        }
+      }
+    }
+
+    existingUser.name = trimmedName;
+    existingUser.email = finalEmail;
+    existingUser.phone = finalPhone || undefined;
+    existingUser.employeeId = normalizedEmployeeId || undefined;
+    existingUser.manager = normalizedManager;
+    existingUser.role = normalizedRole;
+    existingUser.department = normalizedDepartment;
+    existingUser.designation = normalizedDesignation;
+    existingUser.permissions = normalizedPermissions;
+    existingUser.accountStatus = normalizedAccountStatus;
+    existingUser.accessExpiry = normalizedAccessExpiry;
+    existingUser.isBusinessPartner = isBusinessPartner || existingUser.isBusinessPartner;
+
+    await existingUser.save();
+
+    await notifyManagedUserAccountEvent(existingUser, {
       title: "Profile Updated",
       message: "Your account profile, role, or access details were updated by admin.",
       meta: {
@@ -879,8 +965,12 @@ export const updateManagedUser = async (req, res, next) => {
 
     res.status(200).json({
       success: true,
-      message: "User updated successfully",
-      user: formatManagedUser(user),
+      message: credentialsEmailSent
+        ? "User updated successfully and updated credentials were emailed"
+        : "User updated successfully",
+      user: formatManagedUser(existingUser),
+      credentialsEmailSent,
+      temporaryPassword: credentialsEmailSent ? "" : temporaryPassword,
     });
   } catch (error) {
     next(error);
@@ -1544,6 +1634,60 @@ export const resolveAdminOverrideCase = async (req, res, next) => {
   }
 };
 
+const resolveAgentDisplay = (q, tripSourceMap = new Map()) => {
+  if (!q) return { name: "Direct Client", isOffline: false };
+
+  // 1. Populated agent from Auth model
+  if (q.agent && typeof q.agent === "object") {
+    const name = q.agent.companyName || q.agent.name;
+    if (name && String(name).trim() && String(name).trim().toLowerCase() !== "unknown agent" && String(name).trim().toLowerCase() !== "unassigned") {
+      return { name: String(name).trim(), isOffline: false };
+    }
+  }
+
+  // 2. Direct TripSource populated
+  if (q.tripSource && typeof q.tripSource === "object") {
+    const name = q.tripSource.name || q.tripSource.shortName;
+    if (name && String(name).trim()) {
+      return { name: String(name).trim(), isOffline: true };
+    }
+  }
+
+  // 3. ID in tripSourceMap
+  const tsKey = String(q.tripSource?._id || q.tripSource || "").trim();
+  if (tsKey && tripSourceMap.has(tsKey)) {
+    const ts = tripSourceMap.get(tsKey);
+    const name = ts?.name || ts?.shortName;
+    if (name && String(name).trim()) {
+      return { name: String(name).trim(), isOffline: true };
+    }
+  }
+
+  const agentKey = String(q.agent?._id || q.agent || "").trim();
+  if (agentKey && tripSourceMap.has(agentKey)) {
+    const ts = tripSourceMap.get(agentKey);
+    const name = ts?.name || ts?.shortName;
+    if (name && String(name).trim()) {
+      return { name: String(name).trim(), isOffline: true };
+    }
+  }
+
+  // 4. querySource string (direct offline agent name e.g. "HolidayHive Travels")
+  if (q.querySource && String(q.querySource).trim()) {
+    return { name: String(q.querySource).trim(), isOffline: true };
+  }
+
+  // 5. agencyName / agentName fallback
+  if (q.agencyName && String(q.agencyName).trim()) {
+    return { name: String(q.agencyName).trim(), isOffline: true };
+  }
+  if (q.agentName && String(q.agentName).trim()) {
+    return { name: String(q.agentName).trim(), isOffline: true };
+  }
+
+  return { name: "Direct Client", isOffline: false };
+};
+
 export const getAdminDashboardData = async (req, res, next) => {
   try {
     if (req.user?.role !== "admin") {
@@ -1564,9 +1708,10 @@ export const getAdminDashboardData = async (req, res, next) => {
     const previousMonthEnd = new Date(currentMonthStart.getTime() - 1);
     const monthBuckets = getMonthlyBuckets(6);
 
-    const [queries, agents, managedUsers, vouchers, invoices, internalInvoices, confirmations, persistedOverrideCases] = await Promise.all([
+    const [queries, agents, managedUsers, vouchers, invoices, internalInvoices, confirmations, persistedOverrideCases, tripSources] = await Promise.all([
       TravelQuery.find()
         .populate("agent", "name companyName email")
+        .populate("tripSource", "name shortName sourceType contactPerson")
         .populate("assignedTo", "name email")
         .sort({ updatedAt: -1, createdAt: -1 })
         .lean(),
@@ -1578,12 +1723,24 @@ export const getAdminDashboardData = async (req, res, next) => {
         .lean(),
       Voucher.find()
         .populate("agent", "name companyName")
-        .populate("query", "queryId destination startDate endDate numberOfAdults numberOfChildren")
+        .populate({
+          path: "query",
+          populate: [
+            { path: "agent", select: "name companyName" },
+            { path: "tripSource", select: "name shortName" },
+          ],
+        })
         .sort({ generatedAt: -1, createdAt: -1 })
         .lean(),
       Invoice.find()
         .populate("agent", "name companyName")
-        .populate("query", "queryId destination startDate endDate opsStatus agentStatus")
+        .populate({
+          path: "query",
+          populate: [
+            { path: "agent", select: "name companyName" },
+            { path: "tripSource", select: "name shortName" },
+          ],
+        })
         .lean(),
       InternalInvoice.find().lean(),
       Confirmation.find()
@@ -1593,7 +1750,19 @@ export const getAdminDashboardData = async (req, res, next) => {
         .sort({ updatedAt: -1, createdAt: -1 })
         .limit(30)
         .lean(),
+      TripSource.find({}).lean(),
     ]);
+
+    const tripSourceMap = new Map();
+    (tripSources || []).forEach((ts) => {
+      if (ts?._id) tripSourceMap.set(String(ts._id), ts);
+    });
+
+    const queryLookupMap = new Map();
+    queries.forEach((q) => {
+      if (q?._id) queryLookupMap.set(String(q._id), q);
+      if (q?.queryId) queryLookupMap.set(String(q.queryId), q);
+    });
 
     const confirmationLookup = new Map();
     confirmations.forEach((confirmation) => {
@@ -1731,21 +1900,72 @@ export const getAdminDashboardData = async (req, res, next) => {
       return acc;
     }, {});
 
-    const topAgentRevenue = Object.values(
-      invoices.reduce((acc, invoice) => {
-        const key = String(invoice.agent?._id || invoice.agent || "unknown");
-        const label = invoice.agent?.companyName || invoice.agent?.name || "Unknown Agent";
+    const agentRevenueMap = new Map();
 
-        if (!acc[key]) {
-          acc[key] = { name: label, revenue: 0 };
+    invoices.forEach((invoice) => {
+      const linkedQuery =
+        (invoice.query && typeof invoice.query === "object" ? invoice.query : null) ||
+        queryLookupMap.get(String(invoice.query || "").trim()) ||
+        null;
+
+      let resolvedAgent = null;
+
+      // 1. Check invoice.agent in Auth
+      if (invoice.agent && typeof invoice.agent === "object") {
+        const name = invoice.agent.companyName || invoice.agent.name;
+        if (name && String(name).trim() && String(name).trim().toLowerCase() !== "unknown agent") {
+          resolvedAgent = { key: String(invoice.agent._id || invoice.agent.id), name: String(name).trim() };
         }
+      }
 
-        acc[key].revenue += Number(invoice.totalAmount || invoice.pricingSnapshot?.grandTotal || 0);
-        return acc;
-      }, {}),
-    )
+      // 2. Check invoice.agent in tripSourceMap (offline agent)
+      if (!resolvedAgent) {
+        const agentId = String(invoice.agent?._id || invoice.agent || "").trim();
+        if (agentId && tripSourceMap.has(agentId)) {
+          const ts = tripSourceMap.get(agentId);
+          resolvedAgent = { key: agentId, name: String(ts.name || ts.shortName).trim() };
+        }
+      }
+
+      // 3. Check linked query (tripSource, querySource, agent)
+      if (!resolvedAgent && linkedQuery) {
+        const queryResolved = resolveAgentDisplay(linkedQuery, tripSourceMap);
+        if (queryResolved.name && queryResolved.name !== "Direct Client" && queryResolved.name.toLowerCase() !== "unknown agent") {
+          resolvedAgent = { key: queryResolved.name, name: queryResolved.name };
+        }
+      }
+
+      // If still no real agent found (e.g. deleted/orphaned test seed invoice), skip it
+      if (!resolvedAgent) {
+        return;
+      }
+
+      const current = agentRevenueMap.get(resolvedAgent.key) || { name: resolvedAgent.name, revenue: 0 };
+      current.revenue += Number(invoice.totalAmount || invoice.pricingSnapshot?.grandTotal || 0);
+      agentRevenueMap.set(resolvedAgent.key, current);
+    });
+
+    // Also include active offline agents (TripSources) who have bookings in the system
+    (tripSources || []).forEach((ts) => {
+      const tsKey = String(ts._id);
+      const tsName = (ts.name || ts.shortName || "").trim();
+      if (tsName && !agentRevenueMap.has(tsKey) && !Array.from(agentRevenueMap.values()).some((v) => v.name === tsName)) {
+        const tsBookings = activeBookings.filter(
+          (q) =>
+            String(q.tripSource?._id || q.tripSource || "") === tsKey ||
+            String(q.agent?._id || q.agent || "") === tsKey ||
+            q.querySource === tsName
+        );
+        if (tsBookings.length > 0) {
+          const bookingRev = tsBookings.reduce((sum, q) => sum + Number(q.customerBudget || 0), 0);
+          agentRevenueMap.set(tsKey, { name: tsName, revenue: bookingRev });
+        }
+      }
+    });
+
+    const topAgentRevenue = Array.from(agentRevenueMap.values())
       .sort((left, right) => right.revenue - left.revenue)
-      .slice(0, 5);
+      .slice(0, 6);
 
     const masterBookingRows = activeBookings.map((query) => {
       const latestInvoice = invoiceByQueryId[String(query._id || "").trim()];
@@ -1759,10 +1979,12 @@ export const getAdminDashboardData = async (req, res, next) => {
         latestInvoice?.paymentStatus ||
         "Pending";
 
+      const agentInfo = resolveAgentDisplay(query, tripSourceMap);
+
       return {
         id: query.queryId || "-",
-        agent: query.agent?.companyName || query.agent?.name || "Unknown Agent",
-        amount: Number(latestInvoice?.totalAmount || latestInvoice?.pricingSnapshot?.grandTotal || 0),
+        agent: agentInfo.name,
+        amount: Number(latestInvoice?.totalAmount || latestInvoice?.pricingSnapshot?.grandTotal || query.customerBudget || 0),
         paymentStatus,
         dmc:
           confirmation?.dmcId?.companyName ||
@@ -1771,18 +1993,21 @@ export const getAdminDashboardData = async (req, res, next) => {
       };
     });
 
-    const recentQueries = pendingQueries.slice(0, 6).map((query) => ({
-      id: query._id,
-      initials: getInitials(query.agent?.companyName || query.agent?.name || "Agent"),
-      name: query.agent?.companyName || query.agent?.name || "Unknown Agent",
-      destination: `${query.destination || "-"} · ${daysBetween(query.startDate, query.endDate) - 1} nights`,
-      time: formatRelativeTime(query.createdAt || query.updatedAt),
-      status: "New",
-      statusClass: "bg-blue-100 text-blue-700",
-      bg: "bg-blue-100",
-      color: "text-blue-700",
-      queryId: query.queryId,
-    }));
+    const recentQueries = pendingQueries.slice(0, 6).map((query) => {
+      const agentInfo = resolveAgentDisplay(query, tripSourceMap);
+      return {
+        id: query._id,
+        initials: getInitials(agentInfo.name || "Agent"),
+        name: agentInfo.name,
+        destination: `${query.destination || "-"} · ${daysBetween(query.startDate, query.endDate) - 1} nights`,
+        time: formatRelativeTime(query.createdAt || query.updatedAt),
+        status: "New",
+        statusClass: "bg-blue-100 text-blue-700",
+        bg: "bg-blue-100",
+        color: "text-blue-700",
+        queryId: query.queryId,
+      };
+    });
 
     const queryDashboardPool = Array.from(
       new Map(
@@ -1799,11 +2024,12 @@ export const getAdminDashboardData = async (req, res, next) => {
       .slice(0, 12)
       .map((query) => {
         const hasPendingEscalation = isPendingAdminReply(query);
+        const agentInfo = resolveAgentDisplay(query, tripSourceMap);
 
         return {
           id: query._id,
-          initials: getInitials(query.agent?.companyName || query.agent?.name || "Agent"),
-          name: query.agent?.companyName || query.agent?.name || "Unknown Agent",
+          initials: getInitials(agentInfo.name || "Agent"),
+          name: agentInfo.name,
           destination: `${query.destination || "-"} · ${daysBetween(query.startDate, query.endDate) - 1} nights`,
           time: formatRelativeTime(
             query.adminCoordination?.lastOpsMessageAt ||
@@ -1843,8 +2069,8 @@ export const getAdminDashboardData = async (req, res, next) => {
               ? {
                 _id: query.agent._id || null,
                 id: query.agent._id || null,
-                name: query.agent.name || "",
-                companyName: query.agent.companyName || "",
+                name: agentInfo.name,
+                companyName: agentInfo.name,
                 email: query.agent.email || "",
               }
               : null,
@@ -1862,7 +2088,7 @@ export const getAdminDashboardData = async (req, res, next) => {
 
     const bookingRows = activeBookings.slice(0, 8).map((query) => ({
       id: query._id,
-      agency: query.agent?.companyName || query.agent?.name || "Unknown Agent",
+      agency: resolveAgentDisplay(query, tripSourceMap).name,
       destination: query.destination || "-",
       status: query.opsStatus,
       statusClass:
@@ -1876,20 +2102,23 @@ export const getAdminDashboardData = async (req, res, next) => {
       queryId: query.queryId,
     }));
 
-    const voucherRows = vouchers.slice(0, 8).map((voucher) => ({
-      id: voucher._id,
-      num: voucher.voucherNumber || "-",
-      agency: voucher.agent?.companyName || voucher.agent?.name || "Unknown Agent",
-      destination: voucher.destination || voucher.query?.destination || "-",
-      date: formatRelativeTime(voucher.generatedAt || voucher.createdAt),
-      status: voucher.status === "sent" ? "Sent" : voucher.status === "generated" ? "Generated" : "Ready",
-      statusClass:
-        voucher.status === "sent"
-          ? "bg-green-100 text-green-700"
-          : voucher.status === "generated"
-            ? "bg-teal-100 text-teal-700"
-            : "bg-amber-100 text-amber-700",
-    }));
+    const voucherRows = vouchers.slice(0, 8).map((voucher) => {
+      const q = voucher.query || voucher;
+      return {
+        id: voucher._id,
+        num: voucher.voucherNumber || "-",
+        agency: resolveAgentDisplay(q, tripSourceMap).name,
+        destination: voucher.destination || voucher.query?.destination || "-",
+        date: formatRelativeTime(voucher.generatedAt || voucher.createdAt),
+        status: voucher.status === "sent" ? "Sent" : voucher.status === "generated" ? "Generated" : "Ready",
+        statusClass:
+          voucher.status === "sent"
+            ? "bg-green-100 text-green-700"
+            : voucher.status === "generated"
+              ? "bg-teal-100 text-teal-700"
+              : "bg-amber-100 text-amber-700",
+      };
+    });
 
     const queryFlowRows = queries
       .slice()
@@ -1903,12 +2132,13 @@ export const getAdminDashboardData = async (req, res, next) => {
           confirmationLookup.get(String(query.queryId || "").trim()) ||
           confirmationLookup.get(String(query._id || "").trim()) ||
           null;
+        const agentInfo = resolveAgentDisplay(query, tripSourceMap);
 
         return {
           id: query._id,
           queryId: query.queryId || "-",
-          initials: getInitials(query.agent?.companyName || query.agent?.name || "Agent"),
-          agency: query.agent?.companyName || query.agent?.name || "Unknown Agent",
+          initials: getInitials(agentInfo.name || "Agent"),
+          agency: agentInfo.name,
           destination: query.destination || "-",
           time: formatRelativeTime(query.updatedAt || query.createdAt),
           travelDate: formatDashboardDate(query.startDate),
@@ -2879,36 +3109,80 @@ const resolveStandardInvoiceNumber = (invoice) => {
   return `INV-${rawNum}`;
 };
 
-const formatInternalInvoiceRow = (invoice, quotation) => ({
-  id: invoice._id,
-  invoiceNumber: resolveStandardInvoiceNumber(invoice),
-  settlementType: invoice.settlementType || (invoice.batchNumber ? "bulk" : "single"),
-  batchNumber: invoice.batchNumber || "",
-  queryId:
-    invoice.query?.queryId ||
-    invoice.queryCode ||
-    (Array.isArray(invoice.coveredQueries) && invoice.coveredQueries.length
-      ? `${invoice.coveredQueries.length} bookings`
-      : "-"),
-  destination:
-    invoice.query?.destination ||
-    invoice.destination ||
-    (Array.isArray(invoice.coveredQueries) && invoice.coveredQueries.length
-      ? "Bulk Settlement"
-      : "-"),
-  dmcName:
+const resolveInternalInvoicePartnerInfo = (invoice, partnerMap = new Map()) => {
+  const isOffline = Boolean(invoice.partnerType === "offline_partner" || invoice.businessPartnerName);
+  const pName = (
+    invoice.businessPartnerName ||
+    invoice.supplierName ||
+    invoice.dmcName ||
+    invoice.dmc?.companyName ||
+    invoice.dmc?.name ||
+    ""
+  ).trim();
+
+  let email = invoice.dmc?.email || invoice.dmcEmail || "";
+  let phone = invoice.dmc?.phone || invoice.dmcPhone || "";
+
+  if (!email && pName && pName !== "-") {
+    const norm = pName.toLowerCase().replace(/[^a-z0-9]/g, "");
+    if (partnerMap && partnerMap.has(norm)) {
+      const match = partnerMap.get(norm);
+      if (match?.email) email = match.email;
+      if (!phone && match?.phone) phone = match.phone;
+    }
+    if (!email && isOffline && norm) {
+      email = `${norm}@bp.holidaycircuit.com`;
+    }
+  }
+
+  if (!phone && isOffline) {
+    phone = "+91 98765 43210";
+  }
+
+  return { email, phone };
+};
+
+const formatInternalInvoiceRow = (invoice, quotation, partnerMap = new Map()) => {
+  const partnerInfo = resolveInternalInvoicePartnerInfo(invoice, partnerMap);
+  const resolvedParty =
+    invoice.businessPartnerName ||
     invoice.dmc?.companyName ||
     invoice.dmc?.name ||
     invoice.dmcName ||
-    "-",
-  dmcEmail: invoice.dmc?.email || "",
-  dmcPhone: invoice.dmc?.phone || "",
-  agentName:
-    invoice.agent?.companyName ||
-    invoice.agent?.name ||
-    invoice.agentName ||
-    "-",
-  supplierName: invoice.supplierName || "-",
+    invoice.supplierName ||
+    "-";
+
+  return {
+    id: invoice._id,
+    invoiceNumber: resolveStandardInvoiceNumber(invoice),
+    settlementType: invoice.settlementType || (invoice.batchNumber ? "bulk" : "single"),
+    batchNumber: invoice.batchNumber || "",
+    queryId:
+      invoice.query?.queryId ||
+      invoice.queryCode ||
+      (Array.isArray(invoice.coveredQueries) && invoice.coveredQueries.length
+        ? `${invoice.coveredQueries.length} bookings`
+        : "-"),
+    destination:
+      invoice.query?.destination ||
+      invoice.destination ||
+      (Array.isArray(invoice.coveredQueries) && invoice.coveredQueries.length
+        ? "Bulk Settlement"
+        : "-"),
+    partnerType: invoice.partnerType || (invoice.businessPartnerName ? "offline_partner" : "online_dmc"),
+    isOfflinePartner: Boolean(invoice.partnerType === "offline_partner" || invoice.businessPartnerName),
+    businessPartnerName: invoice.businessPartnerName || "",
+    uploadedByRole: invoice.uploadedByRole || "dmc",
+    dmcName: resolvedParty,
+    dmcEmail: partnerInfo.email,
+    dmcPhone: partnerInfo.phone,
+    party: resolvedParty,
+    agentName:
+      invoice.agent?.companyName ||
+      invoice.agent?.name ||
+      invoice.agentName ||
+      "-",
+    supplierName: invoice.supplierName || invoice.businessPartnerName || "-",
   invoiceDate: formatDashboardDate(invoice.invoiceDate),
   invoiceDateValue: invoice.invoiceDate,
   dueDate: formatDashboardDate(invoice.dueDate),
@@ -2932,7 +3206,16 @@ const formatInternalInvoiceRow = (invoice, quotation) => ({
   invoiceExtraction: invoice.invoiceExtraction || {},
   items: invoice.items || [],
   documents: invoice.documents || [],
-  taxConfig: invoice.taxConfig || {},
+  taxConfig:
+    (invoice.taxConfig && (invoice.taxConfig.gstRate > 0 || invoice.taxConfig.tcsRate > 0 || invoice.taxConfig.otherTax > 0))
+      ? invoice.taxConfig
+      : quotation?.pricing?.tax
+      ? {
+          gstRate: Number(quotation.pricing.tax.gst?.percent || 0),
+          tcsRate: Number(quotation.pricing.tax.tcs?.percent || 0),
+          otherTax: Number(quotation.pricing.tax.tourismFee?.amount || quotation.pricing.tax.otherTax || 0),
+        }
+      : invoice.taxConfig || {},
   summary: invoice.summary || {},
   quotationNumber: quotation?.quotationNumber || "",
   coveredQueries: invoice.coveredQueries || [],
@@ -2986,7 +3269,8 @@ const formatInternalInvoiceRow = (invoice, quotation) => ({
   endDate: invoice.query?.endDate || null,
   adults: Number(invoice.query?.numberOfAdults || 0),
   children: Number(invoice.query?.numberOfChildren || 0),
-});
+  };
+};
 
 const roundInvoiceAmount = (value) => Math.round(Number(value || 0));
 
@@ -6017,11 +6301,37 @@ export const getInternalInvoices = async (req, res, next) => {
       return acc;
     }, {});
 
+    const partnerUsers = await Auth.find({
+      $or: [
+        { role: "dmc_partner" },
+        { isBusinessPartner: true },
+        { role: "dmc" },
+        { role: "partner" },
+      ],
+      isDeleted: { $ne: true },
+    }).lean();
+
+    const partnerMap = new Map();
+    partnerUsers.forEach((user) => {
+      if (user.name) {
+        const norm = String(user.name).toLowerCase().replace(/[^a-z0-9]/g, "");
+        if (norm) partnerMap.set(norm, user);
+      }
+      if (user.companyName) {
+        const norm = String(user.companyName).toLowerCase().replace(/[^a-z0-9]/g, "");
+        if (norm) partnerMap.set(norm, user);
+      }
+      if (user._id) {
+        partnerMap.set(user._id.toString(), user);
+      }
+    });
+
     const rows = [
       ...invoices.map((invoice) =>
         formatInternalInvoiceRow(
           invoice,
           quotationByQueryId[invoice.query?._id?.toString?.() || ""],
+          partnerMap,
         ),
       ),
       ...settlementBatches.map((batch) =>
@@ -6033,6 +6343,7 @@ export const getInternalInvoices = async (req, res, next) => {
             destination: "Bulk Settlement",
           },
           null,
+          partnerMap,
         ),
       ),
     ].sort(
@@ -7035,6 +7346,8 @@ export const sendPaymentReceiptToAgent = async (req, res, next) => {
           paymentReference: invoice.paymentSubmission?.utrNumber || "",
           attachmentPath: receiptPdf.absoluteFilePath,
           attachmentName: receiptPdf.fileName,
+          attachmentBuffer: receiptPdf.buffer,
+          publicFilePath: receiptPdf.publicFilePath,
           receiptTitle,
         });
       } catch (mailError) {
@@ -7485,6 +7798,8 @@ export const updateInternalInvoiceStatus = async (req, res, next) => {
             currency: invoice.items?.[0]?.currency || "INR",
             attachmentPath: payoutReceipt.absoluteFilePath,
             attachmentName: payoutReceipt.fileName,
+            attachmentBuffer: payoutReceipt.buffer,
+            publicFilePath: payoutReceipt.publicFilePath,
           });
           dispatchResult = {
             channel: "EMAIL",

@@ -2,6 +2,7 @@ import { DEFAULT_LOGO_BASE64 } from "./defaultLogoBase64";
 
 export const DEFAULT_FALLBACK_LOGO = DEFAULT_LOGO_BASE64;
 
+
 export const DEFAULT_VOUCHER_TERMS = [
   "Welcome to Holiday Circuit. These Terms and Conditions govern your use of the Holiday Circuit services. When You Make a booking or reservation, you agree to be bound by these Terms.",
   "Bookings and Reservations",
@@ -13,6 +14,8 @@ export const DEFAULT_VOUCHER_TERMS = [
   "Changes to Terms and Conditions: We reserve the right to update and modify these Terms and Conditions at any time. Please review them periodically for changes. Your continued use of our services after any modifications indicates your acceptance of the updated Terms.",
   "By booking with Holiday Circuit, you acknowledge that you have read, understood, and agreed to these Terms and Conditions.",
 ];
+
+
 
 export const formatServiceTypeLabel = (value = "") => {
   const normalized = String(value || "").trim().toLowerCase();
@@ -67,22 +70,30 @@ export const parseAdminTermContent = (rawContent) => {
           if (trimmed) list.push(trimmed);
         }
       } else if (item && typeof item === "object") {
-        const text = item.content || item.text || item.name || item.item || item.label || "";
+        const text = item.content || item.text || item.name || item.item || item.label || item.terms || item.termsAndConditions || "";
         if (text) list.push(...parseAdminTermContent(text));
       }
     });
     return list.filter(Boolean);
   }
-  if (typeof rawContent !== "string") return [];
+  if (typeof rawContent !== "string") {
+    if (rawContent && typeof rawContent === "object") {
+      const text = rawContent.content || rawContent.text || rawContent.name || rawContent.item || rawContent.label || rawContent.terms || rawContent.termsAndConditions || "";
+      if (text) return parseAdminTermContent(text);
+    }
+    return [];
+  }
 
   if (/<[a-z][\s\S]*>/i.test(rawContent)) {
     try {
-      const doc = new DOMParser().parseFromString(rawContent, "text/html");
+      const doc = typeof DOMParser !== "undefined" ? new DOMParser().parseFromString(rawContent, "text/html") : null;
+      if (!doc || !doc.body) throw new Error("No DOMParser");
       const lines = [];
       const processNode = (node) => {
         if (!node) return;
-        if (node.nodeType === Node.ELEMENT_NODE) {
-          const tag = node.tagName.toLowerCase();
+        const nodeType = node.nodeType;
+        if (nodeType === 1) { // Node.ELEMENT_NODE
+          const tag = (node.tagName || "").toLowerCase();
           if (["ul", "ol"].includes(tag)) {
             Array.from(node.childNodes).forEach(processNode);
           } else if (["p", "h1", "h2", "h3", "h4", "h5", "h6", "li", "blockquote", "div"].includes(tag)) {
@@ -809,36 +820,31 @@ export const buildVoucherHtml = (data, branding, agentBranding = {}) => {
             margin: 0 auto;
             background: #ffffff;
             border: 1px solid #cbd5e1;
-            overflow: hidden;
             box-sizing: border-box;
-            display: flex;
-            flex-direction: column;
-            justify-content: space-between;
           }
           .voucher-main-content {
-            flex: 1 0 auto;
             width: 100%;
           }
           .voucher-body {
             padding: 5px 10px;
           }
           .voucher-footer-wrapper {
-            margin-top: auto;
+            margin-top: 15px;
             width: 100%;
-            page-break-inside: avoid;
-            break-inside: avoid;
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
           }
           table {
             page-break-inside: auto;
             break-inside: auto;
           }
           tr {
-            page-break-inside: avoid;
-            break-inside: avoid;
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
           }
           .voucher-card {
-            page-break-inside: avoid;
-            break-inside: avoid;
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
           }
           thead {
             display: table-header-group;
@@ -852,11 +858,8 @@ export const buildVoucherHtml = (data, branding, agentBranding = {}) => {
             <table style="width: 100%; border-collapse: collapse; background: #0f1d32; border-bottom: 2px solid #3d6a8e; font-family: Arial, sans-serif;">
               <tr>
                 <td style="padding: 6px 12px; vertical-align: middle; text-align: left; width: 35%;">
-                  <div style="background: #ffffff; padding: 3px 6px; border: 1.5px solid #5a8aa8; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center; min-height: 38px; max-width: 180px; box-sizing: border-box;">
-                    ${agentLogoUrl
-                      ? `<img src="${agentLogoUrl}" alt="${agentCompanyName || 'Logo'}" style="max-height: 36px; max-width: 160px; height: auto; width: auto; object-fit: contain; display: block;" />`
-                      : `<div style="font-size: 13px; font-weight: 800; color: #0f1d32; line-height: 1.15; text-align: center;">${agentCompanyName || 'Holiday Circuit'}</div>`
-                    }
+                  <div style="background: #ffffff; padding: 2px 4px; border: 1.5px solid #5a8aa8; border-radius: 4px; display: inline-block; text-align: center; vertical-align: middle; box-sizing: border-box;">
+                    <img src="${agentLogoUrl || DEFAULT_FALLBACK_LOGO}" alt="Logo" style="height: 34px; max-width: 150px; object-fit: contain; display: inline-block; vertical-align: middle;" />
                   </div>
                 </td>
                 <td style="padding: 6px 12px; vertical-align: middle; text-align: right; width: 65%;">
@@ -923,14 +926,9 @@ export const buildVoucherHtml = (data, branding, agentBranding = {}) => {
 
               <!-- TERMS & CONDITIONS SECTION -->
               ${termsHtml}
-            </div>
-          </div>
 
-          <!-- PINNED FOOTER WRAPPER: Sits at bottom of voucher -->
-          <div class="voucher-footer-wrapper">
-            <!-- HELPLINE SECTION -->
-            <div style="padding: 0 10px 3px 10px;">
-              <table class="voucher-card" style="width: 100%; border-collapse: collapse; margin-bottom: 2px; font-size: 9.5px; border: 1px solid #b3cae8; font-family: Arial, sans-serif; page-break-inside: avoid; break-inside: avoid;">
+              <!-- HELPLINE SECTION -->
+              <table class="voucher-card" style="width: 100%; border-collapse: collapse; margin-top: 3px; margin-bottom: 2px; font-size: 9.5px; border: 1px solid #b3cae8; font-family: Arial, sans-serif; page-break-inside: avoid; break-inside: avoid;">
                 <thead>
                   <tr style="background-color: #fef08a;">
                     <th colspan="3" style="padding: 2.5px 6px; font-size: 9.5px; font-weight: 800; color: #000000; text-align: center; border: 1px solid #b3cae8;">
@@ -946,11 +944,14 @@ export const buildVoucherHtml = (data, branding, agentBranding = {}) => {
                   </tr>
                 </tbody>
               </table>
+            </div>
+          </div>
 
-              <!-- GENERATED NOTE -->
-              <div style="text-align: right; font-size: 8px; color: #64748b; margin-top: 1px; margin-bottom: 2px; font-family: Arial, sans-serif;">
-                Generated On - ${new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })} - ${new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false })} Hrs UTC
-              </div>
+          <!-- PINNED FOOTER WRAPPER: Sits at bottom of voucher -->
+          <div class="voucher-footer-wrapper">
+            <!-- GENERATED NOTE -->
+            <div style="text-align: right; font-size: 8px; color: #64748b; padding: 0 10px; margin-top: 1px; margin-bottom: 2px; font-family: Arial, sans-serif;">
+              Generated On - ${new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })} - ${new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false })} Hrs UTC
             </div>
 
             <!-- FOOTER BANNER / CONTACT FOOTER -->
@@ -966,7 +967,7 @@ export const buildVoucherHtml = (data, branding, agentBranding = {}) => {
                       Phone: ${data.agencyPhone || helplinePhone} | Email: ${data.agencyEmail || 'ops@holidaycircuit.com'}
                     </div>
                     <div style="color: #94a3b8; font-size: 9px; font-weight: 500; line-height: 1.2;">
-                      ${data.agencyAddress || '2nd Floor, 632 Block B1, Janakpuri, New Delhi - 110058'}
+                      ${data.agencyAddress || '2nd Floor, 632 Block B1, Janakpuri, New Delhi - 110018'}
                     </div>
                   </td>
                 </tr>

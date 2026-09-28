@@ -9,10 +9,16 @@ import {
   MapPin,
   Calendar,
   Package,
+  Building2,
+  Sparkles,
+  Layers,
+  ShieldCheck,
+  Info,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import VoucherPreviewModal from "../../modal/VoucherPreviewModal";
+import OfflinePartnerConfirmationModal from "../../modal/OfflinePartnerConfirmationModal";
 import API from "../../utils/Api.js";
 import { buildVoucherHtml, exportVoucherAsPdf } from "../../utils/voucherTemplate";
 
@@ -33,6 +39,8 @@ export default function VoucherManagement() {
   const [showPreview, setShowPreview] = useState(false);
   const [selectedVoucher, setSelectedVoucher] = useState(null);
   const [modalMode, setModalMode] = useState("preview");
+  const [showOfflineModal, setShowOfflineModal] = useState(false);
+  const [selectedOfflineVoucher, setSelectedOfflineVoucher] = useState(null);
   const [vouchers, setVouchers] = useState([]);
   const [stats, setStats] = useState({ ready: 0, generated: 0, sent: 0 });
   const [search, setSearch] = useState("");
@@ -64,7 +72,8 @@ export default function VoucherManagement() {
       voucher.query?.toLowerCase().includes(term) ||
       voucher.name?.toLowerCase().includes(term) ||
       voucher.agentName?.toLowerCase().includes(term) ||
-      voucher.destination?.toLowerCase().includes(term)
+      voucher.destination?.toLowerCase().includes(term) ||
+      voucher.businessPartnerName?.toLowerCase().includes(term)
     );
   });
 
@@ -106,6 +115,11 @@ export default function VoucherManagement() {
     setShowPreview(true);
   };
 
+  const handleOpenOfflineModal = (data) => {
+    setSelectedOfflineVoucher(data);
+    setShowOfflineModal(true);
+  };
+
   const handleDownloadVoucher = async (voucher, branding = "with", terms = null) => {
     const toastId = toast.loading("Generating voucher PDF...");
     try {
@@ -122,92 +136,29 @@ export default function VoucherManagement() {
     }
   };
 
-  const handleBulkDownload = () => {
-    const downloadable = filteredVouchers.filter(
-      (v) => v.status === "generated" || v.status === "sent" || v.voucherNumber
-    );
-
-    if (downloadable.length === 0) {
-      toast.error("No generated vouchers found to download in bulk.");
-      return;
-    }
-
-    toast.success(`Downloading ${downloadable.length} voucher(s) in bulk...`);
-
-    // 1. Trigger single Master Bulk File containing all ready vouchers for 1-click viewing/printing
-    try {
-      const combinedHtml = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>Bulk Travel Vouchers (${downloadable.length} Vouchers)</title>
-  <style>
-    @media print {
-      .voucher-page { page-break-after: always; page-break-inside: avoid; }
-    }
-    .voucher-page { margin-bottom: 50px; }
-  </style>
-</head>
-<body>
-  ${downloadable.map((voucher) => {
-    const opsBranding = {
-      name: "Holiday Circuit",
-      logo: "",
-    };
-    const rawHtml = buildVoucherHtml(voucher, voucher.branding || "with", opsBranding);
-    const bodyMatch = rawHtml.match(/<body[^>]*>([\s\S]*)<\/body>/i);
-    const bodyContent = bodyMatch ? bodyMatch[1] : rawHtml;
-    return `<div class="voucher-page">${bodyContent}</div>`;
-  }).join("\n")}
-</body>
-</html>`;
-
-      const blob = new Blob([combinedHtml], { type: "text/html;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `Bulk-Vouchers-All-${downloadable.length}-Items.html`;
-      document.body.appendChild(link);
-      link.click();
-      setTimeout(() => {
-        if (document.body.contains(link)) document.body.removeChild(link);
-        URL.revokeObjectURL(url);
-      }, 5000);
-    } catch (e) {
-      console.error("Bulk master file generation error:", e);
-    }
-
-    // 2. Stagger individual file downloads
-    downloadable.forEach((voucher, index) => {
-      setTimeout(() => {
-        handleDownloadVoucher(voucher, voucher.branding || "with");
-      }, (index + 1) * 800);
-    });
-  };
-
-  const downloadableCount = vouchers.filter(
-    (v) => v.status === "generated" || v.status === "sent" || v.voucherNumber
-  ).length;
-
   return (
     <>
       <div className="bg-gray-50 min-h-screen">
-        <div className="flex justify-between items-start mb-6">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-6">
           <div>
-            <h1 className="text-xl font-semibold text-gray-900">Voucher Management</h1>
-            <p className="text-sm text-gray-500">
+            <h1 className="text-xl font-bold text-gray-900 tracking-tight">Voucher Management</h1>
+            <p className="text-xs text-gray-500 mt-0.5">
               Generate and manage travel vouchers for confirmed bookings
             </p>
           </div>
 
-          {/* <button
-            onClick={handleBulkDownload}
-            className="flex items-center gap-2 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 hover:shadow-md hover:shadow-emerald-500/10 transition-all duration-300 text-white px-4 py-2 rounded-full text-sm font-semibold cursor-pointer active:scale-95"
-          >
-            <Download size={16} />
-            Bulk Download {downloadableCount > 0 ? `(${downloadableCount})` : ""}
-          </button> */}
-          
+          {/* Finance Verification Note */}
+          <div className="flex items-start sm:items-center gap-2.5 rounded-lg border border-amber-200/90 bg-gradient-to-r from-amber-50/90 to-amber-100/50 px-3.5 py-2 text-xs text-amber-950 shadow-2xs max-w-xl">
+            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-amber-200/80 text-amber-800">
+              <ShieldCheck size={14} className="stroke-[2.5]" />
+            </div>
+            <div className="leading-snug text-[11.5px]">
+              <span className="font-extrabold text-amber-900">Finance Verification:</span>{" "}
+              <span className="text-amber-900 font-medium">
+                Bookings appear in <span className="font-bold text-amber-950">"Ready to Generate"</span> once finance verifies the agent payment (Partially Paid or Full Paid).
+              </span>
+            </div>
+          </div>
         </div>
 
         <div className="grid grid-cols-3 gap-4 mb-6">
@@ -216,13 +167,13 @@ export default function VoucherManagement() {
           <StatCard title="Sent to Agents" count={stats.sent} type="sent" />
         </div>
 
-        <div className="relative mb-6 border border-gray-200 rounded-2xl shadow-sm p-4">
-          <Search className="absolute left-8 top-7 text-gray-400" size={16} />
+        <div className="relative mb-6 border border-gray-200 rounded-lg bg-white shadow-xs p-3">
+          <Search className="absolute left-6 top-5.5 text-gray-400" size={16} />
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none"
-            placeholder="Search by Query ID, Guest Name, or Agent..."
+            className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-md text-sm focus:outline-none"
+            placeholder="Search by Query ID, Guest Name, Agent, or Partner..."
           />
         </div>
 
@@ -247,6 +198,10 @@ export default function VoucherManagement() {
                 children={voucher.children}
                 travelerSummary={voucher.travelerSummary}
                 services={voucher.services || []}
+                quotationServices={voucher.quotationServices || []}
+                existingConfirmation={voucher.existingConfirmation || null}
+                isOfflinePartner={voucher.isOfflinePartner}
+                businessPartnerName={voucher.businessPartnerName}
                 branding={voucher.branding || "with"}
                 agentName={voucher.agentName}
                 agentEmail={voucher.agentEmail}
@@ -256,6 +211,7 @@ export default function VoucherManagement() {
                 canSendVoucher={voucher.canSendVoucher}
                 onPreview={handlePreview}
                 onGenerate={handleGenerateVoucher}
+                onOpenOfflineModal={handleOpenOfflineModal}
               />
             ))}
           </div>
@@ -274,6 +230,16 @@ export default function VoucherManagement() {
           onClose={() => setShowPreview(false)}
         />
       )}
+
+      {showOfflineModal && selectedOfflineVoucher && (
+        <OfflinePartnerConfirmationModal
+          voucherData={selectedOfflineVoucher}
+          onClose={() => setShowOfflineModal(false)}
+          onSuccess={async () => {
+            await fetchVouchers();
+          }}
+        />
+      )}
     </>
   );
 }
@@ -281,15 +247,15 @@ export default function VoucherManagement() {
 function StatCard({ title, count, type }) {
   const theme = {
     ready: {
-      card: "bg-gradient-to-br from-orange-50/80 via-white to-white hover:from-orange-100/40 hover:via-orange-50/10 hover:to-white border-orange-100 border-b-orange-500 shadow-sm shadow-orange-500/5",
+      card: "bg-gradient-to-br from-orange-50/80 via-white to-white hover:from-orange-100/40 hover:via-orange-50/10 hover:to-white border-orange-100 border-b-orange-500 shadow-xs shadow-orange-500/5",
       iconWrap: "bg-orange-100 text-orange-600 border border-orange-200/50",
     },
     generated: {
-      card: "bg-gradient-to-br from-blue-50/80 via-white to-white hover:from-blue-100/40 hover:via-blue-50/10 hover:to-white border-blue-100 border-b-blue-500 shadow-sm shadow-blue-500/5",
+      card: "bg-gradient-to-br from-blue-50/80 via-white to-white hover:from-blue-100/40 hover:via-blue-50/10 hover:to-white border-blue-100 border-b-blue-500 shadow-xs shadow-blue-500/5",
       iconWrap: "bg-blue-100 text-blue-600 border border-blue-200/50",
     },
     sent: {
-      card: "bg-gradient-to-br from-green-50/80 via-white to-white hover:from-green-100/40 hover:via-green-50/10 hover:to-white border-green-100 border-b-green-500 shadow-sm shadow-green-500/5",
+      card: "bg-gradient-to-br from-green-50/80 via-white to-white hover:from-green-100/40 hover:via-green-50/10 hover:to-white border-green-100 border-b-green-500 shadow-xs shadow-green-500/5",
       iconWrap: "bg-green-100 text-green-600 border border-green-200/50",
     },
   }[type] || {
@@ -298,21 +264,17 @@ function StatCard({ title, count, type }) {
   };
 
   return (
-    <div className={`border border-b-4 rounded-xl p-4 flex justify-between items-center hover:shadow-md hover:-translate-y-0.5 active:translate-y-0 transition-all duration-300 ease-out ${theme.card}`}>
+    <div className={`border border-b-4 rounded-lg p-4 flex justify-between items-center hover:shadow-xs transition-all duration-300 ease-out ${theme.card}`}>
       <div>
         <p className="text-sm font-medium text-gray-500">{title}</p>
         <h2 className="text-2xl font-bold text-gray-800 mt-1">{count}</h2>
       </div>
-      <div className={`p-3 rounded-lg ${theme.iconWrap}`}>
+      <div className={`p-2.5 rounded-md ${theme.iconWrap}`}>
         <FileText size={18} />
       </div>
     </div>
   );
 }
-
-
-
-
 
 function VoucherCard({
   id,
@@ -329,6 +291,10 @@ function VoucherCard({
   children,
   travelerSummary,
   services,
+  quotationServices,
+  existingConfirmation,
+  isOfflinePartner,
+  businessPartnerName,
   branding,
   agentName,
   agentEmail,
@@ -338,6 +304,7 @@ function VoucherCard({
   canSendVoucher,
   onPreview,
   onGenerate,
+  onOpenOfflineModal,
 }) {
   const statusMap = {
     ready: {
@@ -374,6 +341,10 @@ function VoucherCard({
     children,
     travelerSummary,
     services,
+    quotationServices,
+    existingConfirmation,
+    isOfflinePartner,
+    businessPartnerName,
     branding,
     agentName,
     agentEmail,
@@ -385,34 +356,41 @@ function VoucherCard({
   const canSendFinalVoucher = Boolean(canSendVoucher);
 
   return (
-    <div className={`border rounded-2xl p-5 md:p-6 flex flex-col gap-4.5 transition-all duration-300 ${statusMap[status].cardBg}`}>
+    <div className={`border rounded-lg p-5 md:p-6 flex flex-col gap-4.5 transition-all duration-300 ${statusMap[status].cardBg}`}>
       <div className="flex justify-between items-center flex-wrap gap-2">
-        <div className="flex gap-3 items-center">
+        <div className="flex gap-2.5 items-center flex-wrap">
           <h3 className="font-extrabold text-slate-900 text-xl tracking-tight font-sans">{query}</h3>
-          <span className={`flex items-center gap-1.5 text-xs px-3 py-1 rounded-full ${statusMap[status].badge}`}>
+          <span className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-md ${statusMap[status].badge}`}>
             {statusMap[status].icon}
             {statusMap[status].label}
           </span>
+
+          {isOfflinePartner && (
+            <span className="flex items-center gap-1.5 text-xs font-extrabold px-2.5 py-1 rounded-md bg-amber-100 text-amber-900 border border-amber-300/90 uppercase tracking-wider shadow-2xs">
+              <Building2 size={13} className="text-amber-700" />
+              <span>Offline Partner{businessPartnerName ? `: ${businessPartnerName}` : ""}</span>
+            </span>
+          )}
         </div>
         
         {status === "sent" && (
-          <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-800 bg-emerald-100/80 border border-emerald-300/70 px-3 py-1 rounded-full shadow-2xs">
+          <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-800 bg-emerald-100/80 border border-emerald-300/70 px-2.5 py-1 rounded-md shadow-2xs">
             <CheckCircle size={13} className="text-emerald-600" />
             Synced to Agent Portal
           </div>
         )}
       </div>
 
-      <div className="flex flex-wrap items-center gap-2.5 text-xs">
-        <div className="flex items-center gap-1.5 rounded-xl bg-white/90 border border-slate-200/80 px-3.5 py-1.5 font-bold text-slate-800 shadow-2xs">
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        <div className="flex items-center gap-1.5 rounded-md bg-white/90 border border-slate-200/80 px-3 py-1.5 font-bold text-slate-800 shadow-2xs">
           <User size={13} className="text-indigo-600 shrink-0" />
           <span>{name}</span>
         </div>
-        <div className="flex items-center gap-1.5 rounded-xl bg-white/90 border border-slate-200/80 px-3.5 py-1.5 font-bold text-slate-800 shadow-2xs">
+        <div className="flex items-center gap-1.5 rounded-md bg-white/90 border border-slate-200/80 px-3 py-1.5 font-bold text-slate-800 shadow-2xs">
           <MapPin size={13} className="text-purple-600 shrink-0" />
           <span>{destination}</span>
         </div>
-        <div className="flex items-center gap-1.5 rounded-xl bg-white/90 border border-slate-200/80 px-3.5 py-1.5 font-bold text-slate-800 shadow-2xs">
+        <div className="flex items-center gap-1.5 rounded-md bg-white/90 border border-slate-200/80 px-3 py-1.5 font-bold text-slate-800 shadow-2xs">
           <Calendar size={13} className="text-orange-600 shrink-0" />
           <span>{formatDisplayDate(date)}</span>
         </div>
@@ -426,26 +404,52 @@ function VoucherCard({
         <div className="flex flex-wrap gap-2 flex-1">
           {(services || []).map((s, i) => {
             const title = typeof s === "string" ? s : s.title || s.name || "Service missing";
+            const cnf = s.confirmation;
+            const isConfirmed = cnf && cnf !== "Pending";
+
             return (
               <div
                 key={i}
-                className="inline-flex items-center gap-1.5 bg-white/95 border border-slate-200/90 text-slate-800 text-xs px-3 py-1.5 rounded-full font-semibold shadow-2xs transition hover:border-indigo-300 hover:bg-indigo-50/40"
+                className={`inline-flex items-center gap-1.5 border text-xs px-2.5 py-1.5 rounded-md font-semibold shadow-2xs transition ${
+                  isConfirmed
+                    ? "bg-emerald-50/90 border-emerald-300 text-emerald-900"
+                    : "bg-white/95 border-slate-200/90 text-slate-800 hover:border-indigo-300 hover:bg-indigo-50/40"
+                }`}
               >
-                <span className="flex h-4 w-4 items-center justify-center rounded-full bg-indigo-100 text-[10px] font-bold text-indigo-700">
+                <span className={`flex h-4 w-4 items-center justify-center rounded text-[10px] font-bold ${
+                  isConfirmed ? "bg-emerald-200 text-emerald-800" : "bg-indigo-100 text-indigo-700"
+                }`}>
                   {i + 1}
                 </span>
                 <span>{title}</span>
+                {isConfirmed && (
+                  <span className="text-[9.5px] font-mono font-bold text-emerald-700 ml-0.5">
+                    ({cnf})
+                  </span>
+                )}
               </div>
             );
           })}
         </div>
       </div>
 
-      <div className="mt-1 flex flex-wrap gap-2.5 border-t border-slate-200/70 pt-4">
+      <div className="mt-1 flex flex-wrap gap-2.5 border-t border-slate-200/70 pt-4 items-center">
+        {/* Button for Offline Partner Service Confirmation (All services in 1 modal) */}
+        {isOfflinePartner ? (
+          <button
+            onClick={() => onOpenOfflineModal(voucherPayload)}
+            className="flex items-center gap-1.5 bg-gradient-to-r from-amber-600 via-amber-700 to-amber-600 hover:from-amber-700 hover:to-amber-800 text-white px-4 py-2 rounded-md text-xs font-bold shadow-xs transition-all cursor-pointer active:scale-95"
+            title="Open all services in one modal to add/edit confirmation numbers and 24/7 support details"
+          >
+            <Building2 size={15} />
+            <span>{status === "ready" ? "Confirm Offline Services" : "Edit Service Confirmations"}</span>
+          </button>
+        ) : null}
+
         {status === "ready" && (
           <button
             onClick={() => onGenerate(id)}
-            className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 hover:from-indigo-950 hover:via-slate-900 hover:to-slate-950 text-white px-5 py-2.5 rounded-full text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer active:scale-95"
+            className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 hover:from-indigo-950 hover:via-slate-900 hover:to-slate-950 text-white px-4 py-2 rounded-md text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer active:scale-95"
           >
             <FileText size={15} />
             Generate Voucher
@@ -456,7 +460,7 @@ function VoucherCard({
           <>
             <button
               onClick={() => onPreview(voucherPayload, "preview")}
-              className="flex items-center gap-1.5 border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 px-5 py-2.5 rounded-full text-xs font-bold shadow-xs transition-all cursor-pointer active:scale-95"
+              className="flex items-center gap-1.5 border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 px-4 py-2 rounded-md text-xs font-bold shadow-xs transition-all cursor-pointer active:scale-95"
             >
               <Eye size={14} />
               Preview
@@ -466,7 +470,7 @@ function VoucherCard({
               onClick={() => onPreview(voucherPayload, "send")}
               disabled={!canSendFinalVoucher}
               title={canSendFinalVoucher ? "Send voucher to agent" : "Payment must be verified before sending the voucher"}
-              className={`flex items-center gap-1.5 px-5 py-2.5 rounded-full text-xs font-bold transition-all shadow-xs active:scale-95 ${
+              className={`flex items-center gap-1.5 px-4 py-2 rounded-md text-xs font-bold transition-all shadow-xs active:scale-95 ${
                 canSendFinalVoucher
                   ? "bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white shadow-xs cursor-pointer"
                   : "cursor-not-allowed bg-slate-100 text-slate-400 border border-slate-200"
@@ -482,7 +486,7 @@ function VoucherCard({
           <>
             <button
               onClick={() => onPreview(voucherPayload, "view")}
-              className="flex items-center gap-1.5 border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 px-5 py-2.5 rounded-full text-xs font-bold shadow-xs transition-all cursor-pointer active:scale-95"
+              className="flex items-center gap-1.5 border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 px-4 py-2 rounded-md text-xs font-bold shadow-xs transition-all cursor-pointer active:scale-95"
             >
               <Eye size={14} />
               View
@@ -493,3 +497,4 @@ function VoucherCard({
     </div>
   );
 }
+

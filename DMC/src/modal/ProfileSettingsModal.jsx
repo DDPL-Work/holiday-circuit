@@ -6,6 +6,12 @@ import {
   User2,
   Building2,
   X,
+  Lock,
+  KeyRound,
+  Eye,
+  EyeOff,
+  ShieldCheck,
+  Check,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useDispatch } from "react-redux";
@@ -35,6 +41,9 @@ export default function ProfileSettingsModal({ open, onClose, user }) {
   const dispatch = useDispatch();
   const fileInputRef = useRef(null);
   const coverInputRef = useRef(null);
+
+  const [activeTab, setActiveTab] = useState("profile"); // "profile" | "security"
+
   const [form, setForm] = useState({
     name: "",
     companyName: "",
@@ -46,6 +55,17 @@ export default function ProfileSettingsModal({ open, onClose, user }) {
     voucherFooterImage: "",
   });
   const [isSaving, setIsSaving] = useState(false);
+
+  // Change Password state
+  const [passwordForm, setPasswordForm] = useState({
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: "",
+  });
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -60,6 +80,17 @@ export default function ProfileSettingsModal({ open, onClose, user }) {
       brandingLogo: user?.brandingLogo || user?.brandLogoUrl || "",
       voucherFooterImage: user?.voucherFooterImage || user?.footerBanner || user?.pdfFooterImage || "",
     });
+
+    // Reset password form on open
+    setPasswordForm({
+      currentPassword: "",
+      newPassword: "",
+      confirmPassword: "",
+    });
+    setShowCurrentPassword(false);
+    setShowNewPassword(false);
+    setShowConfirmPassword(false);
+    setActiveTab("profile");
   }, [open, user]);
 
   const roleLabel = roleLabels[user?.role] || "Workspace User";
@@ -180,6 +211,64 @@ export default function ProfileSettingsModal({ open, onClose, user }) {
     }
   };
 
+  const handleChangePassword = async (e) => {
+    if (e) e.preventDefault();
+
+    const currentPassword = passwordForm.currentPassword.trim();
+    const newPassword = passwordForm.newPassword.trim();
+    const confirmPassword = passwordForm.confirmPassword.trim();
+
+    if (!currentPassword) {
+      toast.error("Please enter your current password");
+      return;
+    }
+    if (!newPassword) {
+      toast.error("Please enter a new password");
+      return;
+    }
+    if (newPassword.length < 8) {
+      toast.error("New password must be at least 8 characters");
+      return;
+    }
+    if (!confirmPassword) {
+      toast.error("Please confirm your new password");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      toast.error("New password and confirm password do not match");
+      return;
+    }
+    if (currentPassword === newPassword) {
+      toast.error("New password cannot be the same as your current password");
+      return;
+    }
+
+    try {
+      setIsChangingPassword(true);
+      const { data } = await API.post("/auth/change-password", {
+        currentPassword,
+        newPassword,
+        confirmPassword,
+      });
+
+      toast.success(data?.message || "Password changed successfully!");
+      setPasswordForm({
+        currentPassword: "",
+        newPassword: "",
+        confirmPassword: "",
+      });
+      setShowCurrentPassword(false);
+      setShowNewPassword(false);
+      setShowConfirmPassword(false);
+      setActiveTab("profile");
+      onClose();
+    } catch (error) {
+      toast.error(error?.response?.data?.message || "Failed to change password");
+    } finally {
+      setIsChangingPassword(false);
+    }
+  };
+
   const coverStyle = {
     background:
       "linear-gradient(135deg, #1e1b4b 0%, #31108f 40%, #4f46e5 70%, #ec4899 100%)",
@@ -233,7 +322,7 @@ export default function ProfileSettingsModal({ open, onClose, user }) {
                   <button
                     type="button"
                     onClick={onClose}
-                    disabled={isSaving}
+                    disabled={isSaving || isChangingPassword}
                     className="absolute right-3 top-3 z-20 rounded-full border border-white/40 bg-slate-900/50 p-2 text-white backdrop-blur-md transition hover:bg-slate-900/75 disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer shadow-md"
                   >
                     <X className="h-4 w-4" />
@@ -296,245 +385,423 @@ export default function ProfileSettingsModal({ open, onClose, user }) {
                 </div>
               </div>
 
-              {/* Edit Profile Section */}
-              <div className="px-5 sm:px-6 pt-3 pb-4">
-                <div className="rounded-[16px] border border-slate-200 bg-white p-3.5 sm:p-4 shadow-[0_10px_22px_rgba(15,23,42,0.04)]">
-                  {/* Header */}
-                  <div className="mb-2.5">
-                    <p className="text-sm font-semibold text-slate-950">Edit Profile</p>
-                    <p className="mt-0.5 text-[10px] text-slate-500">
-                      Update your personal details.
-                    </p>
-                  </div>
+              {/* Tab Navigation: Profile Details / Change Password */}
+              <div className="px-5 sm:px-6 pt-3">
+                <div className="flex items-center gap-2 border-b border-slate-200">
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab("profile")}
+                    className={`flex items-center gap-1.5 pb-2.5 px-3 text-xs font-semibold border-b-2 transition-all cursor-pointer ${
+                      activeTab === "profile"
+                        ? "border-indigo-600 text-indigo-600"
+                        : "border-transparent text-slate-500 hover:text-slate-800"
+                    }`}
+                  >
+                    <User2 className="h-3.5 w-3.5" />
+                    <span>Profile Details</span>
+                  </button>
 
-                  {/* Form Fields */}
-                  <div className="grid gap-2.5 md:grid-cols-2">
-                    <label className="block group">
-                      <span className="mb-1 flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-[0.14em] text-slate-650">
-                        <div className="flex h-5 w-5 shrink-0 rotate-45 items-center justify-center rounded-[5px] bg-gradient-to-br from-indigo-50 to-indigo-100/60 border border-indigo-200/80 text-indigo-600 shadow-2xs">
-                          <User2 className="h-2 w-2 -rotate-45" />
-                        </div>
-                        Full Name
-                      </span>
-                      <input
-                        value={form.name}
-                        disabled
-                        readOnly
-                        className="w-full rounded-lg border border-slate-200 bg-slate-100/80 px-2.5 py-1.5 text-xs text-slate-500 cursor-not-allowed select-none outline-none"
-                        placeholder="Enter your name"
-                      />
-                    </label>
-
-                    {(user?.role === "agent" || user?.role === "dmc_partner" || user?.role === "admin" || user?.role === "operation_manager" || user?.role === "operations") && (
-                    <label className="block group">
-                      <span className="mb-1 flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-[0.14em] text-slate-650 cursor-pointer">
-                        <div className="flex h-5 w-5 shrink-0 rotate-45 items-center justify-center rounded-[5px] bg-gradient-to-br from-sky-50 to-sky-100/60 border border-sky-200/80 text-sky-600 shadow-2xs transition-all duration-300 group-hover:rotate-[135deg] group-hover:from-sky-600 group-hover:to-sky-500 group-hover:text-white group-hover:border-transparent">
-                          <Building2 className="h-2 w-2 -rotate-45 transition-all duration-300 group-hover:-rotate-[135deg]" />
-                        </div>
-                        COMPANY / BRANDING NAME
-                      </span>
-                      <input
-                        value={form.companyName}
-                        onChange={(event) => setForm((prev) => ({ ...prev, companyName: event.target.value }))}
-                        className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs outline-none transition hover:border-slate-350 focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-500/10"
-                        placeholder="Enter company or branding name"
-                      />
-                    </label>
-                    )}
-
-                    <label className="block group">
-                      <span className="mb-1 flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-[0.14em] text-slate-650">
-                        <div className="flex h-5 w-5 shrink-0 rotate-45 items-center justify-center rounded-[5px] bg-gradient-to-br from-emerald-50 to-emerald-100/60 border border-emerald-200/80 text-emerald-600 shadow-2xs">
-                          <Mail className="h-2 w-2 -rotate-45" />
-                        </div>
-                        Email
-                      </span>
-                      <input
-                        value={form.email}
-                        disabled
-                        readOnly
-                        className="w-full rounded-lg border border-slate-200 bg-slate-100/80 px-2.5 py-1.5 text-xs text-slate-500 cursor-not-allowed select-none outline-none"
-                        placeholder="Enter email address"
-                      />
-                    </label>
-
-                    <label className="block group">
-                      <span className="mb-1 flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-[0.14em] text-slate-650">
-                        <div className="flex h-5 w-5 shrink-0 rotate-45 items-center justify-center rounded-[5px] bg-gradient-to-br from-amber-50 to-amber-100/60 border border-amber-200/80 text-amber-600 shadow-2xs">
-                          <Phone className="h-2 w-2 -rotate-45" />
-                        </div>
-                        Phone
-                      </span>
-                      <input
-                        value={form.phone}
-                        disabled
-                        readOnly
-                        className="w-full rounded-lg border border-slate-200 bg-slate-100/80 px-2.5 py-1.5 text-xs text-slate-500 cursor-not-allowed select-none outline-none"
-                        placeholder="Enter phone number"
-                      />
-                    </label>
-
-                    {/* Company / Brand Logo Upload (Left Column) & Voucher Footer Upload (Right Column) */}
-                    {user?.role === "agent" && (
-                      <>
-                        <div>
-                          <span className="mb-1 flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-[0.14em] text-slate-650">
-                            <div className="flex h-5 w-5 shrink-0 rotate-45 items-center justify-center rounded-[5px] bg-gradient-to-br from-indigo-50 to-indigo-100/60 border border-indigo-200/80 text-indigo-600 shadow-2xs">
-                              <Building2 className="h-2 w-2 -rotate-45" />
-                            </div>
-                            Company / Brand Logo
-                          </span>
-
-                          {form.brandingLogo ? (
-                            <div className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 p-1.5">
-                              <div className="flex items-center gap-2 min-w-0">
-                                <div className="h-8 w-8 shrink-0 overflow-hidden rounded-md border border-slate-200 bg-white p-0.5 flex items-center justify-center shadow-2xs">
-                                  <img
-                                    src={form.brandingLogo}
-                                    alt="Company Brand Logo"
-                                    className="h-full w-full object-contain"
-                                  />
-                                </div>
-                                <div className="min-w-0">
-                                  <p className="text-[10px] font-semibold text-slate-800 truncate">Logo Uploaded</p>
-                                  <p className="text-[8px] text-slate-500 truncate">Used on quotations & PDFs</p>
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-1 shrink-0">
-                                <label className="flex items-center gap-1 text-[9px] font-semibold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-2 py-0.5 rounded-md cursor-pointer transition">
-                                  <span>Change</span>
-                                  <input
-                                    type="file"
-                                    accept="image/*"
-                                    className="hidden"
-                                    onChange={handleBrandingLogoChange}
-                                  />
-                                </label>
-                                <button
-                                  type="button"
-                                  onClick={handleRemoveBrandingLogo}
-                                  className="p-0.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition cursor-pointer"
-                                  title="Remove Logo"
-                                >
-                                  <X className="h-3 w-3" />
-                                </button>
-                              </div>
-                            </div>
-                          ) : (
-                            <label className="flex cursor-pointer items-center justify-between rounded-lg border border-dashed border-slate-300 bg-slate-50 px-2.5 py-1.5 hover:bg-slate-100/70 hover:border-indigo-400 transition">
-                              <div className="flex items-center gap-2 min-w-0">
-                                <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-indigo-50 border border-indigo-100 text-indigo-600">
-                                  <Camera className="h-3 w-3" />
-                                </div>
-                                <div className="min-w-0">
-                                  <p className="text-[10px] font-semibold text-slate-800 truncate">Upload Brand Logo</p>
-                                  <p className="text-[8px] text-slate-500 truncate">PNG, JPG, SVG or WEBP</p>
-                                </div>
-                              </div>
-                              <span className="rounded-md bg-white border border-slate-200 px-2 py-0.5 text-[9px] font-semibold text-slate-700 shadow-2xs shrink-0">
-                                Upload
-                              </span>
-                              <input
-                                type="file"
-                                accept="image/*"
-                                className="hidden"
-                                onChange={handleBrandingLogoChange}
-                              />
-                            </label>
-                          )}
-                        </div>
-
-                        <div>
-                          <span className="mb-1 flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-[0.14em] text-slate-650">
-                            <div className="flex h-5 w-5 shrink-0 rotate-45 items-center justify-center rounded-[5px] bg-gradient-to-br from-emerald-50 to-emerald-100/60 border border-emerald-200/80 text-emerald-600 shadow-2xs">
-                              <Building2 className="h-2 w-2 -rotate-45" />
-                            </div>
-                            PDF / Voucher Footer Banner
-                          </span>
-
-                          {form.voucherFooterImage ? (
-                            <div className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 p-1.5">
-                              <div className="flex items-center gap-2 min-w-0">
-                                <div className="h-8 w-10 shrink-0 overflow-hidden rounded-md border border-slate-200 bg-white p-0.5 flex items-center justify-center shadow-2xs">
-                                  <img
-                                    src={form.voucherFooterImage}
-                                    alt="Footer Banner"
-                                    className="h-full w-full object-cover"
-                                  />
-                                </div>
-                                <div className="min-w-0">
-                                  <p className="text-[10px] font-semibold text-slate-800 truncate">Footer Uploaded</p>
-                                  <p className="text-[8px] text-slate-500 truncate">Bottom banner for PDFs & Vouchers</p>
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-1 shrink-0">
-                                <label className="flex items-center gap-1 text-[9px] font-semibold text-emerald-600 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded-md cursor-pointer transition">
-                                  <span>Change</span>
-                                  <input
-                                    type="file"
-                                    accept="image/*"
-                                    className="hidden"
-                                    onChange={handleFooterImageChange}
-                                  />
-                                </label>
-                                <button
-                                  type="button"
-                                  onClick={handleRemoveFooterImage}
-                                  className="p-0.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition cursor-pointer"
-                                  title="Remove Footer Banner"
-                                >
-                                  <X className="h-3 w-3" />
-                                </button>
-                              </div>
-                            </div>
-                          ) : (
-                            <label className="flex cursor-pointer items-center justify-between rounded-lg border border-dashed border-slate-300 bg-slate-50 px-2.5 py-1.5 hover:bg-slate-100/70 hover:border-emerald-400 transition">
-                              <div className="flex items-center gap-2 min-w-0">
-                                <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-emerald-50 border border-emerald-100 text-emerald-600">
-                                  <Camera className="h-3 w-3" />
-                                </div>
-                                <div className="min-w-0">
-                                  <p className="text-[10px] font-semibold text-slate-800 truncate">Upload Voucher Footer</p>
-                                  <p className="text-[8px] text-slate-500 truncate">PNG, JPG, SVG or WEBP</p>
-                                </div>
-                              </div>
-                              <span className="rounded-md bg-white border border-slate-200 px-2 py-0.5 text-[9px] font-semibold text-slate-700 shadow-2xs shrink-0">
-                                Upload
-                              </span>
-                              <input
-                                type="file"
-                                accept="image/*"
-                                className="hidden"
-                                onChange={handleFooterImageChange}
-                              />
-                            </label>
-                          )}
-                        </div>
-                      </>
-                    )}
-                  </div>
-
-                  {/* Action Buttons */}
-                  <div className="flex items-center gap-2.5 mt-3">
-                    <button
-                      type="button"
-                      onClick={handleSave}
-                      disabled={isSaving}
-                      className="flex-1 rounded-lg bg-[linear-gradient(135deg,#7c3aed_0%,#6366f1_35%,#0ea5e9_70%,#06b6d4_100%)] hover:bg-[linear-gradient(135deg,#6d28d9_0%,#4f46e5_35%,#0284c7_70%,#0891b2_100%)] text-xs font-bold text-white shadow-xl shadow-indigo-500/30 px-4 py-2 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-2xl active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer text-center"
-                    >
-                      {isSaving ? "Uploading & Saving..." : "Save Profile"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={onClose}
-                      disabled={isSaving}
-                      className="rounded-lg border border-slate-200 bg-slate-50/50 hover:bg-slate-100 text-xs font-bold text-slate-700 px-4 py-2 transition-all active:scale-98 disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer text-center"
-                    >
-                      Close
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab("security")}
+                    className={`flex items-center gap-1.5 pb-2.5 px-3 text-xs font-semibold border-b-2 transition-all cursor-pointer ${
+                      activeTab === "security"
+                        ? "border-indigo-600 text-indigo-600"
+                        : "border-transparent text-slate-500 hover:text-slate-800"
+                    }`}
+                  >
+                    <KeyRound className="h-3.5 w-3.5" />
+                    <span>Change Password</span>
+                  </button>
                 </div>
               </div>
+
+              {/* Content Body Based on Active Tab */}
+              {activeTab === "security" ? (
+                /* Change Password Form */
+                <div className="px-5 sm:px-6 pt-3 pb-4">
+                  <form onSubmit={handleChangePassword} className="rounded-[16px] border border-slate-200 bg-white p-3.5 sm:p-4 shadow-[0_10px_22px_rgba(15,23,42,0.04)]">
+                    <div className="mb-3.5 flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-950">Change Password</p>
+                        <p className="mt-0.5 text-[10px] text-slate-500">
+                          Enter your current password and choose a strong new password.
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1.5 rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-1 text-[10px] font-semibold text-indigo-700">
+                        <Lock className="h-3 w-3" />
+                        <span>Min 8 characters</span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-3">
+                      {/* Current Password */}
+                      <div>
+                        <label className="block mb-1">
+                          <span className="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-[0.14em] text-slate-650">
+                            <div className="flex h-5 w-5 shrink-0 rotate-45 items-center justify-center rounded-[5px] bg-gradient-to-br from-indigo-50 to-indigo-100/60 border border-indigo-200/80 text-indigo-600 shadow-2xs">
+                              <Lock className="h-2 w-2 -rotate-45" />
+                            </div>
+                            Current Password
+                          </span>
+                        </label>
+                        <div className="relative">
+                          <input
+                            type={showCurrentPassword ? "text" : "password"}
+                            value={passwordForm.currentPassword}
+                            onChange={(e) => setPasswordForm((prev) => ({ ...prev, currentPassword: e.target.value }))}
+                            className="w-full rounded-lg border border-slate-200 bg-slate-50 pr-9 pl-2.5 py-1.5 text-xs outline-none transition hover:border-slate-350 focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-500/10"
+                            placeholder="Enter your current password"
+                            autoComplete="current-password"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                          >
+                            {showCurrentPassword ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* New Password & Confirm Password in 2 columns */}
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        {/* New Password */}
+                        <div>
+                          <label className="block mb-1">
+                            <span className="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-[0.14em] text-slate-650">
+                              <div className="flex h-5 w-5 shrink-0 rotate-45 items-center justify-center rounded-[5px] bg-gradient-to-br from-violet-50 to-violet-100/60 border border-violet-200/80 text-violet-600 shadow-2xs">
+                                <KeyRound className="h-2 w-2 -rotate-45" />
+                              </div>
+                              New Password
+                            </span>
+                          </label>
+                          <div className="relative">
+                            <input
+                              type={showNewPassword ? "text" : "password"}
+                              value={passwordForm.newPassword}
+                              onChange={(e) => setPasswordForm((prev) => ({ ...prev, newPassword: e.target.value }))}
+                              className="w-full rounded-lg border border-slate-200 bg-slate-50 pr-9 pl-2.5 py-1.5 text-xs outline-none transition hover:border-slate-350 focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-500/10"
+                              placeholder="At least 8 characters"
+                              autoComplete="new-password"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setShowNewPassword(!showNewPassword)}
+                              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                            >
+                              {showNewPassword ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Confirm Password */}
+                        <div>
+                          <label className="block mb-1">
+                            <span className="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-[0.14em] text-slate-650">
+                              <div className="flex h-5 w-5 shrink-0 rotate-45 items-center justify-center rounded-[5px] bg-gradient-to-br from-emerald-50 to-emerald-100/60 border border-emerald-200/80 text-emerald-600 shadow-2xs">
+                                <ShieldCheck className="h-2 w-2 -rotate-45" />
+                              </div>
+                              Confirm New Password
+                            </span>
+                          </label>
+                          <div className="relative">
+                            <input
+                              type={showConfirmPassword ? "text" : "password"}
+                              value={passwordForm.confirmPassword}
+                              onChange={(e) => setPasswordForm((prev) => ({ ...prev, confirmPassword: e.target.value }))}
+                              className="w-full rounded-lg border border-slate-200 bg-slate-50 pr-9 pl-2.5 py-1.5 text-xs outline-none transition hover:border-slate-350 focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-500/10"
+                              placeholder="Re-enter new password"
+                              autoComplete="new-password"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                            >
+                              {showConfirmPassword ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Password Requirements / Indicators */}
+                      <div className="flex flex-wrap items-center gap-3 pt-1 text-[10px]">
+                        <div className={`flex items-center gap-1 ${passwordForm.newPassword.length >= 8 ? "text-emerald-600 font-medium" : "text-slate-400"}`}>
+                          <Check className={`h-3 w-3 ${passwordForm.newPassword.length >= 8 ? "opacity-100" : "opacity-30"}`} />
+                          <span>At least 8 characters</span>
+                        </div>
+                        <div className={`flex items-center gap-1 ${passwordForm.newPassword && passwordForm.newPassword === passwordForm.confirmPassword ? "text-emerald-600 font-medium" : "text-slate-400"}`}>
+                          <Check className={`h-3 w-3 ${passwordForm.newPassword && passwordForm.newPassword === passwordForm.confirmPassword ? "opacity-100" : "opacity-30"}`} />
+                          <span>Passwords match</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="flex items-center gap-2.5 mt-4">
+                      <button
+                        type="submit"
+                        disabled={isChangingPassword}
+                        className="flex-1 rounded-lg bg-[linear-gradient(135deg,#7c3aed_0%,#6366f1_35%,#0ea5e9_70%,#06b6d4_100%)] hover:bg-[linear-gradient(135deg,#6d28d9_0%,#4f46e5_35%,#0284c7_70%,#0891b2_100%)] text-xs font-bold text-white shadow-xl shadow-indigo-500/30 px-4 py-2 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-2xl active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer text-center"
+                      >
+                        {isChangingPassword ? "Updating Password..." : "Update Password"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPasswordForm({ currentPassword: "", newPassword: "", confirmPassword: "" });
+                          onClose();
+                        }}
+                        disabled={isChangingPassword}
+                        className="rounded-lg border border-slate-200 bg-slate-50/50 hover:bg-slate-100 text-xs font-bold text-slate-700 px-4 py-2 transition-all active:scale-98 disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer text-center"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              ) : (
+                /* Edit Profile Section */
+                <div className="px-5 sm:px-6 pt-3 pb-4">
+                  <div className="rounded-[16px] border border-slate-200 bg-white p-3.5 sm:p-4 shadow-[0_10px_22px_rgba(15,23,42,0.04)]">
+                    {/* Header */}
+                    <div className="mb-2.5">
+                      <p className="text-sm font-semibold text-slate-950">Edit Profile</p>
+                      <p className="mt-0.5 text-[10px] text-slate-500">
+                        Update your personal details.
+                      </p>
+                    </div>
+
+                    {/* Form Fields */}
+                    <div className="grid gap-2.5 md:grid-cols-2">
+                      <label className="block group">
+                        <span className="mb-1 flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-[0.14em] text-slate-650">
+                          <div className="flex h-5 w-5 shrink-0 rotate-45 items-center justify-center rounded-[5px] bg-gradient-to-br from-indigo-50 to-indigo-100/60 border border-indigo-200/80 text-indigo-600 shadow-2xs">
+                            <User2 className="h-2 w-2 -rotate-45" />
+                          </div>
+                          Full Name
+                        </span>
+                        <input
+                          value={form.name}
+                          disabled
+                          readOnly
+                          className="w-full rounded-lg border border-slate-200 bg-slate-100/80 px-2.5 py-1.5 text-xs text-slate-500 cursor-not-allowed select-none outline-none"
+                          placeholder="Enter your name"
+                        />
+                      </label>
+
+                      {(user?.role === "agent" || user?.role === "dmc_partner" || user?.role === "admin" || user?.role === "operation_manager" || user?.role === "operations") && (
+                      <label className="block group">
+                        <span className="mb-1 flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-[0.14em] text-slate-650 cursor-pointer">
+                          <div className="flex h-5 w-5 shrink-0 rotate-45 items-center justify-center rounded-[5px] bg-gradient-to-br from-sky-50 to-sky-100/60 border border-sky-200/80 text-sky-600 shadow-2xs transition-all duration-300 group-hover:rotate-[135deg] group-hover:from-sky-600 group-hover:to-sky-500 group-hover:text-white group-hover:border-transparent">
+                            <Building2 className="h-2 w-2 -rotate-45 transition-all duration-300 group-hover:-rotate-[135deg]" />
+                          </div>
+                          COMPANY / BRANDING NAME
+                        </span>
+                        <input
+                          value={form.companyName}
+                          onChange={(event) => setForm((prev) => ({ ...prev, companyName: event.target.value }))}
+                          className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs outline-none transition hover:border-slate-350 focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-500/10"
+                          placeholder="Enter company or branding name"
+                        />
+                      </label>
+                      )}
+
+                      <label className="block group">
+                        <span className="mb-1 flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-[0.14em] text-slate-650">
+                          <div className="flex h-5 w-5 shrink-0 rotate-45 items-center justify-center rounded-[5px] bg-gradient-to-br from-emerald-50 to-emerald-100/60 border border-emerald-200/80 text-emerald-600 shadow-2xs">
+                            <Mail className="h-2 w-2 -rotate-45" />
+                          </div>
+                          Email
+                        </span>
+                        <input
+                          value={form.email}
+                          disabled
+                          readOnly
+                          className="w-full rounded-lg border border-slate-200 bg-slate-100/80 px-2.5 py-1.5 text-xs text-slate-500 cursor-not-allowed select-none outline-none"
+                          placeholder="Enter email address"
+                        />
+                      </label>
+
+                      <label className="block group">
+                        <span className="mb-1 flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-[0.14em] text-slate-650">
+                          <div className="flex h-5 w-5 shrink-0 rotate-45 items-center justify-center rounded-[5px] bg-gradient-to-br from-amber-50 to-amber-100/60 border border-amber-200/80 text-amber-600 shadow-2xs">
+                            <Phone className="h-2 w-2 -rotate-45" />
+                          </div>
+                          Phone
+                        </span>
+                        <input
+                          value={form.phone}
+                          disabled
+                          readOnly
+                          className="w-full rounded-lg border border-slate-200 bg-slate-100/80 px-2.5 py-1.5 text-xs text-slate-500 cursor-not-allowed select-none outline-none"
+                          placeholder="Enter phone number"
+                        />
+                      </label>
+
+                      {/* Company / Brand Logo Upload (Left Column) & Voucher Footer Upload (Right Column) */}
+                      {user?.role === "agent" && (
+                        <>
+                          <div>
+                            <span className="mb-1 flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-[0.14em] text-slate-650">
+                              <div className="flex h-5 w-5 shrink-0 rotate-45 items-center justify-center rounded-[5px] bg-gradient-to-br from-indigo-50 to-indigo-100/60 border border-indigo-200/80 text-indigo-600 shadow-2xs">
+                                <Building2 className="h-2 w-2 -rotate-45" />
+                              </div>
+                              Company / Brand Logo
+                            </span>
+
+                            {form.brandingLogo ? (
+                              <div className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 p-1.5">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <div className="h-8 w-8 shrink-0 overflow-hidden rounded-md border border-slate-200 bg-white p-0.5 flex items-center justify-center shadow-2xs">
+                                    <img
+                                      src={form.brandingLogo}
+                                      alt="Company Brand Logo"
+                                      className="h-full w-full object-contain"
+                                    />
+                                  </div>
+                                  <div className="min-w-0">
+                                    <p className="text-[10px] font-semibold text-slate-800 truncate">Logo Uploaded</p>
+                                    <p className="text-[8px] text-slate-500 truncate">Used on quotations & PDFs</p>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-1 shrink-0">
+                                  <label className="flex items-center gap-1 text-[9px] font-semibold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-2 py-0.5 rounded-md cursor-pointer transition">
+                                    <span>Change</span>
+                                    <input
+                                      type="file"
+                                      accept="image/*"
+                                      className="hidden"
+                                      onChange={handleBrandingLogoChange}
+                                    />
+                                  </label>
+                                  <button
+                                    type="button"
+                                    onClick={handleRemoveBrandingLogo}
+                                    className="p-0.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition cursor-pointer"
+                                    title="Remove Logo"
+                                  >
+                                    <X className="h-3 w-3" />
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <label className="flex cursor-pointer items-center justify-between rounded-lg border border-dashed border-slate-300 bg-slate-50 px-2.5 py-1.5 hover:bg-slate-100/70 hover:border-indigo-400 transition">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-indigo-50 border border-indigo-100 text-indigo-600">
+                                    <Camera className="h-3 w-3" />
+                                  </div>
+                                  <div className="min-w-0">
+                                    <p className="text-[10px] font-semibold text-slate-800 truncate">Upload Brand Logo</p>
+                                    <p className="text-[8px] text-slate-500 truncate">PNG, JPG, SVG or WEBP</p>
+                                  </div>
+                                </div>
+                                <span className="rounded-md bg-white border border-slate-200 px-2 py-0.5 text-[9px] font-semibold text-slate-700 shadow-2xs shrink-0">
+                                  Upload
+                                </span>
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  className="hidden"
+                                  onChange={handleBrandingLogoChange}
+                                />
+                              </label>
+                            )}
+                          </div>
+
+                          <div>
+                            <span className="mb-1 flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-[0.14em] text-slate-650">
+                              <div className="flex h-5 w-5 shrink-0 rotate-45 items-center justify-center rounded-[5px] bg-gradient-to-br from-emerald-50 to-emerald-100/60 border border-emerald-200/80 text-emerald-600 shadow-2xs">
+                                <Building2 className="h-2 w-2 -rotate-45" />
+                              </div>
+                              PDF / Voucher Footer Banner
+                            </span>
+
+                            {form.voucherFooterImage ? (
+                              <div className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 p-1.5">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <div className="h-8 w-10 shrink-0 overflow-hidden rounded-md border border-slate-200 bg-white p-0.5 flex items-center justify-center shadow-2xs">
+                                    <img
+                                      src={form.voucherFooterImage}
+                                      alt="Footer Banner"
+                                      className="h-full w-full object-cover"
+                                    />
+                                  </div>
+                                  <div className="min-w-0">
+                                    <p className="text-[10px] font-semibold text-slate-800 truncate">Footer Uploaded</p>
+                                    <p className="text-[8px] text-slate-500 truncate">Bottom banner for PDFs & Vouchers</p>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-1 shrink-0">
+                                  <label className="flex items-center gap-1 text-[9px] font-semibold text-emerald-600 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded-md cursor-pointer transition">
+                                    <span>Change</span>
+                                    <input
+                                      type="file"
+                                      accept="image/*"
+                                      className="hidden"
+                                      onChange={handleFooterImageChange}
+                                    />
+                                  </label>
+                                  <button
+                                    type="button"
+                                    onClick={handleRemoveFooterImage}
+                                    className="p-0.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-md transition cursor-pointer"
+                                    title="Remove Footer Banner"
+                                  >
+                                    <X className="h-3 w-3" />
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <label className="flex cursor-pointer items-center justify-between rounded-lg border border-dashed border-slate-300 bg-slate-50 px-2.5 py-1.5 hover:bg-slate-100/70 hover:border-emerald-400 transition">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-emerald-50 border border-emerald-100 text-emerald-600">
+                                    <Camera className="h-3 w-3" />
+                                  </div>
+                                  <div className="min-w-0">
+                                    <p className="text-[10px] font-semibold text-slate-800 truncate">Upload Voucher Footer</p>
+                                    <p className="text-[8px] text-slate-500 truncate">PNG, JPG, SVG or WEBP</p>
+                                  </div>
+                                </div>
+                                <span className="rounded-md bg-white border border-slate-200 px-2 py-0.5 text-[9px] font-semibold text-slate-700 shadow-2xs shrink-0">
+                                  Upload
+                                </span>
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  className="hidden"
+                                  onChange={handleFooterImageChange}
+                                />
+                              </label>
+                            )}
+                          </div>
+                        </>
+                      )}
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="flex items-center gap-2.5 mt-3">
+                      <button
+                        type="button"
+                        onClick={handleSave}
+                        disabled={isSaving}
+                        className="flex-1 rounded-lg bg-[linear-gradient(135deg,#7c3aed_0%,#6366f1_35%,#0ea5e9_70%,#06b6d4_100%)] hover:bg-[linear-gradient(135deg,#6d28d9_0%,#4f46e5_35%,#0284c7_70%,#0891b2_100%)] text-xs font-bold text-white shadow-xl shadow-indigo-500/30 px-4 py-2 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-2xl active:scale-95 disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer text-center"
+                      >
+                        {isSaving ? "Uploading & Saving..." : "Save Profile"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={onClose}
+                        disabled={isSaving}
+                        className="rounded-lg border border-slate-200 bg-slate-50/50 hover:bg-slate-100 text-xs font-bold text-slate-700 px-4 py-2 transition-all active:scale-98 disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer text-center"
+                      >
+                        Close
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </motion.div>
         </motion.div>

@@ -66,6 +66,8 @@ export const notificationRouteAllowlist = {
     "/operationManager/operationManagerDashboard",
     "/operationManager/allTeamQueries",
     "/operationManager/myTeam",
+    "/operationManager/bp-management",
+    "/operationManager/addNewQuery",
     "/ops/bookings-management",
     "/ops/order-acceptance",
     "/ops/dashboard",

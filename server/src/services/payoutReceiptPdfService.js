@@ -297,14 +297,15 @@ export const generatePayoutReceiptPdf = async ({
 
   const doc = new PDFDocument({ margin: 34, size: "A4" });
   
+  let generatedBuffer = null;
   const chunks = [];
   doc.on("data", (chunk) => chunks.push(chunk));
   const pdfPromise = new Promise((resolve, reject) => {
     doc.on("end", () => {
-      const buffer = Buffer.concat(chunks);
-      pdfMemoryCache.set(publicFilePath, buffer);
+      generatedBuffer = Buffer.concat(chunks);
+      pdfMemoryCache.set(publicFilePath, generatedBuffer);
       setTimeout(() => pdfMemoryCache.delete(publicFilePath), 15 * 60 * 1000);
-      resolve();
+      resolve(generatedBuffer);
     });
     doc.on("error", reject);
   });
@@ -443,6 +444,7 @@ export const generatePayoutReceiptPdf = async ({
     fileName,
     absoluteFilePath,
     publicFilePath,
+    buffer: generatedBuffer,
   };
 };
 
@@ -476,14 +478,15 @@ export const generateAgentPaymentReceiptPdf = async ({
 
   const doc = new PDFDocument({ margin: 34, size: "A4" });
   
+  let generatedBuffer = null;
   const chunks = [];
   doc.on("data", (chunk) => chunks.push(chunk));
   const pdfPromise = new Promise((resolve, reject) => {
     doc.on("end", () => {
-      const buffer = Buffer.concat(chunks);
-      pdfMemoryCache.set(publicFilePath, buffer);
+      generatedBuffer = Buffer.concat(chunks);
+      pdfMemoryCache.set(publicFilePath, generatedBuffer);
       setTimeout(() => pdfMemoryCache.delete(publicFilePath), 15 * 60 * 1000);
-      resolve();
+      resolve(generatedBuffer);
     });
     doc.on("error", reject);
   });
@@ -619,5 +622,6 @@ export const generateAgentPaymentReceiptPdf = async ({
     fileName,
     absoluteFilePath,
     publicFilePath,
+    buffer: generatedBuffer,
   };
 };

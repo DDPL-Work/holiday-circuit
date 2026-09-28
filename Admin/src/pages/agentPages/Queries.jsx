@@ -43,6 +43,7 @@ const Queries = () => {
   const [openEditModal, setOpenEditModal] = useState(false);
   const [openQueryDetails, setOpenQueryDetails] = useState(false);
   const [selectedQuery, setSelectedQuery] = useState(null);
+  const [selectedQuoteId, setSelectedQuoteId] = useState(null);
   const [queries, setQueries] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
@@ -146,8 +147,8 @@ const Queries = () => {
 
   const queryCounts = useMemo(() => ({
     All: queries.length,
-    Pending: queries.filter((q) => q.agentStatus === "Pending" || q.agentStatus === "In Progress").length,
-    "Quote Sent": queries.filter((q) => q.agentStatus === "Quote Sent").length,
+    Pending: queries.filter((q) => q.agentStatus === "Pending" || q.agentStatus === "In Progress" || q.agentStatus === "Revision Requested").length,
+    "Quote Sent": queries.filter((q) => q.agentStatus === "Quote Sent" || q.agentStatus === "Quote Received").length,
     "Client Approved": queries.filter((q) => q.agentStatus === "Client Approved").length,
     Confirmed: queries.filter((q) => q.agentStatus === "Confirmed").length,
   }), [queries]);
@@ -217,8 +218,6 @@ const Queries = () => {
     };
   };
 
-  
-
   const formatDates = (start, end) => {
     const options = { day: "2-digit", month: "short" };
     return `${new Date(start).toLocaleDateString("en-IN", options)} - ${new Date(end).toLocaleDateString("en-IN", options)}`;
@@ -226,6 +225,36 @@ const Queries = () => {
 
   const formatPax = (adults, children) =>
     children > 0 ? `${adults} Adults, ${children} Kids` : `${adults} Adults`;
+
+  const getDisplayPrice = (query) => {
+    const quotations = Array.isArray(query?.quotations) ? query.quotations : [];
+    let latestQuotePrice = Number(query.latestQuotationPrice || 0);
+
+    if (quotations.length > 0) {
+      const sorted = [...quotations].sort(
+        (a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0)
+      );
+      const latestQ = sorted[0];
+      if (latestQ) {
+        latestQuotePrice = Number(
+          latestQ.clientTotalAmount ||
+          latestQ.pricing?.totalAmount ||
+          latestQ.totalAmount ||
+          0
+        );
+      }
+    }
+
+    const price =
+      (query.agentStatus === "Confirmed" || query.agentStatus === "Client Approved")
+        ? (query.approvedQuotationPrice || latestQuotePrice || query.quotationPrice || query.customerBudget)
+        : (latestQuotePrice || query.approvedQuotationPrice || query.quotationPrice || query.customerBudget);
+
+    if (price && Number(price) > 0) {
+      return `₹${Math.round(Number(price)).toLocaleString("en-IN")}`;
+    }
+    return "N/A";
+  };
 
   const filteredQueries = queries.filter((query) => {
     const search = searchTerm.toLowerCase();
@@ -259,9 +288,13 @@ const Queries = () => {
   if (openQueryDetails) {
     return (
       <QueryDetails
-        onClose={() => setOpenQueryDetails(false)}
+        onClose={() => {
+          setOpenQueryDetails(false);
+          setSelectedQuoteId(null);
+        }}
         onRefresh={fetchQueries}
         query={selectedQuery}
+        initialQuoteId={selectedQuoteId}
       />
     );
   }
@@ -366,8 +399,8 @@ const Queries = () => {
                   <th className="text-left px-6 py-3">Dates</th>
                   <th className="text-left px-6 py-3">Pax</th>
                   <th className="text-left px-6 py-3">Status</th>
-                  {/* FIX: whitespace-nowrap add kiya — "Quote Price" ek line mein rahega */}
-                  <th className="text-right px-6 py-3 whitespace-nowrap">Quote Price</th>
+                  {/* FIX: whitespace-nowrap add kiya — "Latest Quote Price" ek line mein rahega */}
+                  <th className="text-right px-6 py-3 whitespace-nowrap">Latest Quote Price</th>
                   <th className="px-6 py-3"></th>
                 </tr>
               </thead>
@@ -378,6 +411,11 @@ const Queries = () => {
                     <tr
                       key={query._id}
                       className="cursor-pointer transition-colors hover:bg-[#F9FAFB]"
+                      onClick={() => {
+                        setSelectedQuery(query);
+                        setSelectedQuoteId(null);
+                        setOpenQueryDetails(true);
+                      }}
                     >
                       <td className="px-5 py-4 align-middle">
                         <div className="leading-tight">
@@ -407,7 +445,7 @@ const Queries = () => {
                         </span>
                       </td>
                       <td className="px-5 py-4 align-middle text-right font-medium whitespace-nowrap">
-                        {query.customerBudget ? query.customerBudget : "N/A"}
+                        {getDisplayPrice(query)}
                       </td>
 
                       {/* FIX: View & Edit buttons — padding balanced, no overflow */}
@@ -418,6 +456,7 @@ const Queries = () => {
                             onClick={(e) => {
                               e.stopPropagation();
                               setSelectedQuery(query);
+                              setSelectedQuoteId(null);
                               setOpenQueryDetails(true);
                             }}
                           >

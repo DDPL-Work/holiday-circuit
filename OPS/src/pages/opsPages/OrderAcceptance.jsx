@@ -841,9 +841,13 @@ const handleStartQuotation = async (order) => {
 
 
   const getDuration = (start, end) => {
-    const diff = new Date(end) - new Date(start);
-    const days = diff / (1000 * 60 * 60 * 24);
-    const nights = days - 1;
+    if (!start || !end) return "-";
+    const startDate = new Date(start);
+    const endDate = new Date(end);
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) return "-";
+    const diffTime = endDate - startDate;
+    const nights = Math.max(0, Math.round(diffTime / (1000 * 60 * 60 * 24)));
+    const days = nights > 0 ? nights + 1 : 1;
     return `${nights}N / ${days}D`;
   };
 
@@ -992,7 +996,7 @@ const handleStartQuotation = async (order) => {
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <Users size={10} className="text-gray-500" />
-                    <p className="text-xs text-gray-500">{order.agent?.companyName}</p>
+                    <p className="text-xs text-gray-500">{order.agent?.companyName || order.agent?.name || order.agentName || order.companyName || "Agent"}</p>
                     <span className="flex items-center gap-1">
                       <Clock size={10} className="text-gray-500 mt-0.5" />
                       <p className="text-xs text-gray-500">
@@ -1107,6 +1111,7 @@ const handleStartQuotation = async (order) => {
                   </div>
                   <span className="font-bold text-slate-900 text-xs sm:text-sm font-sans truncate">
                     {new Date(order.startDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+                    {order.endDate && !isNaN(new Date(order.endDate).getTime()) && ` - ${new Date(order.endDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}`}
                   </span>
                 </div>
 

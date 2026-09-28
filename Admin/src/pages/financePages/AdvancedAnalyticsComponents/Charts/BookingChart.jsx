@@ -42,8 +42,19 @@ export function dayLabel(year, month, day) {
   return new Date(year, month - 1, day).toLocaleString("default", { month: "short", day: "numeric" });
 }
 
+function parseLocalDate(dateStr) {
+  if (!dateStr || dateStr === "N/A") return null;
+  if (dateStr instanceof Date) return isNaN(dateStr.getTime()) ? null : dateStr;
+  const parts = String(dateStr).split("T")[0].split("-").map(Number);
+  if (parts.length === 3 && !parts.some(isNaN)) {
+    return new Date(parts[0], parts[1] - 1, parts[2]);
+  }
+  const d = new Date(dateStr);
+  return isNaN(d.getTime()) ? null : d;
+}
+
 // Filter + group bookings for given period/selection
-export function buildChartData(bookings = [], groupKey = "agent", period = "monthly", selMonth, selQuarter, selYear, customFrom, customTo) {
+export function buildChartData(bookings = [], groupKey = "agent", period = "monthly", selMonth, selQuarter, selYear, customFrom, customTo, dateBasis = "travelDate") {
   let filtered = bookings || [];
 
   // Date bounds from selection
@@ -75,19 +86,29 @@ export function buildChartData(bookings = [], groupKey = "agent", period = "mont
       granularity = "month";
     }
   } else if (period === "custom") {
-    if (customFrom) minDate = new Date(customFrom);
+    if (customFrom) minDate = parseLocalDate(customFrom);
     if (customTo) {
-      const toD = new Date(customTo);
-      toD.setHours(23, 59, 59, 999);
-      maxDate = toD;
+      const toD = parseLocalDate(customTo);
+      if (toD) {
+        toD.setHours(23, 59, 59, 999);
+        maxDate = toD;
+      }
     }
     granularity = "month";
   }
 
+  // Helper to extract relevant date object
+  const getDateObj = (row) => {
+    const rawDate = dateBasis === "bookingDate"
+      ? (row.bookingDate && row.bookingDate !== "N/A" ? row.bookingDate : row.travelDate)
+      : (row.travelDate && row.travelDate !== "N/A" ? row.travelDate : row.bookingDate);
+    return parseLocalDate(rawDate);
+  };
+
   // Filter
   filtered = (bookings || []).filter((row) => {
-    const d = new Date(row.travelDate);
-    if (isNaN(d.getTime())) return false;
+    const d = getDateObj(row);
+    if (!d) return false;
     if (minDate && d < minDate) return false;
     if (maxDate && d > maxDate) return false;
     return true;
@@ -101,21 +122,55 @@ export function buildChartData(bookings = [], groupKey = "agent", period = "mont
       const daysInMonth = new Date(yr, mn, 0).getDate();
       dates = Array.from({ length: daysInMonth }, (_, i) => dayLabel(yr, mn, i + 1));
     }
+  } else if (granularity === "month" && period === "quarterly" && selQuarter) {
+    const [yrStr, qStr] = (selQuarter || "").split("-Q");
+    const yr = Number(yrStr);
+    const q = Number(qStr);
+    if (yr && q) {
+      const startMonth = (q - 1) * 3;
+      dates = [0, 1, 2].map((m) => monthLabel(new Date(yr, startMonth + m, 1)));
+    }
+  } else if (granularity === "month" && period === "yearly" && selYear) {
+    const yr = Number(selYear);
+    if (yr) {
+      dates = Array.from({ length: 12 }, (_, i) => monthLabel(new Date(yr, i, 1)));
+    }
   } else if (granularity === "month") {
     // Collect all month labels from filtered data
     const set = new Set();
     filtered.forEach((row) => {
-      const d = new Date(row.travelDate);
-      if (!isNaN(d.getTime())) set.add(monthLabel(d));
+      const d = getDateObj(row);
+      if (d) set.add(monthLabel(d));
     });
     dates = [...set].sort((a, b) => new Date(`01 ${a}`) - new Date(`01 ${b}`));
   }
 
-  // Build entity map
+  // 1. Gather all unique entities across ALL bookings so that every agent/DMC/OPS is represented
+  const allEntitySet = new Set();
+  (bookings || []).forEach((row) => {
+    let ents = [];
+    if      (groupKey === "agent")       ents = [row.agent || "Unassigned"];
+    else if (groupKey === "dmc")         ents = (row.dmc && row.dmc !== "N/A") ? row.dmc.split(",").map(s => s.trim()) : ["N/A"];
+    else if (groupKey === "ops")         ents = [row.ops || "Unassigned"];
+    else if (groupKey === "destination") ents = [row.destination || "Unknown"];
+
+    ents.forEach((entity) => {
+      const trimmed = (entity || "").trim();
+      if (trimmed) allEntitySet.add(trimmed);
+    });
+  });
+
+  const allEntities = Array.from(allEntitySet).sort();
+
+  // 2. Build entity map initialized with all known entities
   const entityMap = {};
+  allEntities.forEach((ent) => {
+    entityMap[ent] = {};
+  });
+
   filtered.forEach((row) => {
-    const d = new Date(row.travelDate);
-    if (isNaN(d.getTime())) return;
+    const d = getDateObj(row);
+    if (!d) return;
 
     let label;
     if (granularity === "day" && selMonth) {
@@ -132,13 +187,15 @@ export function buildChartData(bookings = [], groupKey = "agent", period = "mont
     else if (groupKey === "destination") entities = [row.destination || "Unknown"];
 
     entities.forEach((entity) => {
-      if (!entityMap[entity]) entityMap[entity] = {};
-      entityMap[entity][label] = (entityMap[entity][label] || 0) + 1;
+      const trimmed = (entity || "").trim();
+      if (!trimmed) return;
+      if (!entityMap[trimmed]) entityMap[trimmed] = {};
+      entityMap[trimmed][label] = (entityMap[trimmed][label] || 0) + 1;
     });
   });
 
   return {
-    entities: Object.keys(entityMap),
+    entities: allEntities,
     dates,
     entityMap,
     count: filtered.length,
@@ -270,6 +327,8 @@ export default function BookingChart({
   setCustomFrom: propSetCustomFrom,
   customTo: propCustomTo,
   setCustomTo: propSetCustomTo,
+  dateBasis: propDateBasis,
+  setDateBasis: propSetDateBasis,
   onExportChart,
 }) {
   const canvasRef     = useRef(null);
@@ -286,6 +345,10 @@ export default function BookingChart({
   const [localPeriod, setLocalPeriod] = useState("monthly");
   const period = propPeriod !== undefined ? propPeriod : localPeriod;
   const setPeriod = propSetPeriod || setLocalPeriod;
+
+  const [localDateBasis, setLocalDateBasis] = useState("travelDate");
+  const dateBasis = propDateBasis !== undefined ? propDateBasis : localDateBasis;
+  const setDateBasis = propSetDateBasis || setLocalDateBasis;
 
   const [monthMenuOpen,   setMonthMenuOpen]   = useState(false);
   const [quarterMenuOpen, setQuarterMenuOpen] = useState(false);
@@ -343,8 +406,8 @@ export default function BookingChart({
 
   // ── Data ────────────────────────────────────────────────────────────────────
   const chartPayload = useMemo(() =>
-    buildChartData(bookingData, chartType, period, selectedTaxMonth, selectedTaxQuarter, selectedTaxYear, customFrom, customTo),
-    [bookingData, chartType, period, selectedTaxMonth, selectedTaxQuarter, selectedTaxYear, customFrom, customTo]
+    buildChartData(bookingData, chartType, period, selectedTaxMonth, selectedTaxQuarter, selectedTaxYear, customFrom, customTo, dateBasis),
+    [bookingData, chartType, period, selectedTaxMonth, selectedTaxQuarter, selectedTaxYear, customFrom, customTo, dateBasis]
   );
 
   // ── Chart.js — exact same settings as AnimatedChart ─────────────────────────
@@ -465,9 +528,46 @@ export default function BookingChart({
       {/* ── Header ────────────────────────────────────────────────────────────── */}
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 p-6 border-b border-slate-100">
         <div>
-          <h2 className="text-base font-bold text-slate-800">Bookings by {activeLabel}</h2>
-          <p className="text-xs text-slate-400 mt-0.5">
-            Travel date distribution &middot; {count} record{count !== 1 ? "s" : ""} in selected period
+          <div className="flex items-center gap-3 flex-wrap">
+            <h2 className="text-base font-bold text-slate-800">Bookings by {activeLabel}</h2>
+            {/* Date Basis Toggle */}
+            <div className="inline-flex items-center p-0.5 bg-slate-100 rounded-full border border-slate-200/70 text-xs">
+              <button
+                type="button"
+                onClick={() => setDateBasis("bookingDate")}
+                className={`relative px-3 py-1 rounded-full font-semibold transition-all duration-200 cursor-pointer ${
+                  dateBasis === "bookingDate" ? "text-indigo-700 font-bold" : "text-slate-500 hover:text-slate-800"
+                }`}
+              >
+                {dateBasis === "bookingDate" && (
+                  <motion.span
+                    layoutId="bcDateBasis"
+                    className="absolute inset-0 bg-white rounded-full shadow-xs border border-slate-200/50 -z-0"
+                    transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                  />
+                )}
+                <span className="relative z-10">Booking Date</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setDateBasis("travelDate")}
+                className={`relative px-3 py-1 rounded-full font-semibold transition-all duration-200 cursor-pointer ${
+                  dateBasis === "travelDate" ? "text-indigo-700 font-bold" : "text-slate-500 hover:text-slate-800"
+                }`}
+              >
+                {dateBasis === "travelDate" && (
+                  <motion.span
+                    layoutId="bcDateBasis"
+                    className="absolute inset-0 bg-white rounded-full shadow-xs border border-slate-200/50 -z-0"
+                    transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                  />
+                )}
+                <span className="relative z-10">Travel Date</span>
+              </button>
+            </div>
+          </div>
+          <p className="text-xs text-slate-400 mt-1">
+            {dateBasis === "bookingDate" ? "Booking date" : "Travel date"} distribution &middot; {count} record{count !== 1 ? "s" : ""} in selected period
           </p>
         </div>
 

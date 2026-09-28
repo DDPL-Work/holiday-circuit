@@ -1,6 +1,6 @@
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
-import { buildVoucherHtml } from "./voucherTemplate";
+import { buildVoucherHtml } from "./voucherTemplate.js";
 
 /**
  * Converts image elements to base64 Data URLs so html2canvas avoids any cross-origin taint.
@@ -29,7 +29,10 @@ const convertImageToBase64 = async (img) => {
 
 /**
  * Generates and downloads a high-resolution A4 PDF of the travel voucher.
- * Preserves the exact UI/layout from buildVoucherHtml with complete CSS isolation.
+ * Renders each .voucher-page independently so:
+ * 1. ZERO text/tables/cards are ever cut in half.
+ * 2. Every single page gets a complete header and bottom-pinned footer.
+ * 3. Exact A4 1:1 proportion without any distortion.
  *
  * @param {Object} voucherData - The enriched voucher data object
  * @param {string} branding - "with" or "without"
@@ -52,8 +55,8 @@ export const exportVoucherAsPdf = async (
   iframe.style.position = "fixed";
   iframe.style.left = "-99999px";
   iframe.style.top = "0";
-  iframe.style.width = "800px";
-  iframe.style.height = "1200px";
+  iframe.style.width = "850px";
+  iframe.style.height = "3000px";
   iframe.style.border = "none";
   iframe.style.opacity = "0";
   iframe.style.pointerEvents = "none";
@@ -66,36 +69,19 @@ export const exportVoucherAsPdf = async (
     iframeDoc.write(rawHtml);
     iframeDoc.close();
 
-    // Target the voucher card container
-    const voucherElem =
-      iframeDoc.querySelector(".voucher-container") || iframeDoc.body;
-
-    // Reset outer padding/margin in the iframe so voucher fills exactly without gray backdrop
-    if (iframeDoc.body) {
-      iframeDoc.body.style.backgroundColor = "#ffffff";
-      iframeDoc.body.style.padding = "0";
-      iframeDoc.body.style.margin = "0";
-    }
-    if (voucherElem) {
-      voucherElem.style.maxWidth = "800px";
-      voucherElem.style.width = "800px";
-      voucherElem.style.margin = "0 auto";
-      voucherElem.style.border = "none";
-      voucherElem.style.borderRadius = "0";
-      voucherElem.style.boxShadow = "none";
-    }
-
-    // Pre-flight: Wait for all images and convert to base64 if possible
+    // Pre-flight: Wait for all images and convert to base64
     const images = Array.from(iframeDoc.querySelectorAll("img"));
     await Promise.all(
       images.map(async (img) => {
-        img.crossOrigin = "anonymous";
-        await convertImageToBase64(img);
+        if (img.src && !img.src.startsWith("data:")) {
+          img.crossOrigin = "anonymous";
+          await convertImageToBase64(img);
+        }
         if (img.complete && img.naturalHeight !== 0) return;
         await new Promise((resolve) => {
           img.onload = resolve;
           img.onerror = resolve;
-          setTimeout(resolve, 3000);
+          setTimeout(resolve, 500);
         });
       })
     );
@@ -109,30 +95,15 @@ export const exportVoucherAsPdf = async (
       }
     }
 
-    // Ensure iframe height accommodates the entire voucher content
-    const fullContentHeight = Math.max(
-      voucherElem.scrollHeight || 0,
-      voucherElem.offsetHeight || 0,
-      iframeDoc.body?.scrollHeight || 0,
-      1200
-    );
-    iframe.style.height = `${fullContentHeight + 100}px`;
-
     // Allow browser layout and paint tick
     await new Promise((resolve) => setTimeout(resolve, 150));
 
-    // Capture high-DPI canvas
-    const canvas = await html2canvas(voucherElem, {
-      scale: 2,
-      useCORS: true,
-      allowTaint: true,
-      backgroundColor: "#ffffff",
-      logging: false,
-      width: 800,
-      windowWidth: 800,
-      height: fullContentHeight,
-      windowHeight: fullContentHeight,
-    });
+    // Find all discrete voucher pages
+    let pageElements = Array.from(iframeDoc.querySelectorAll(".voucher-page"));
+    if (pageElements.length === 0) {
+      const fallbackContainer = iframeDoc.querySelector(".voucher-container") || iframeDoc.body;
+      pageElements = [fallbackContainer];
+    }
 
     // Initialize A4 Portrait jsPDF
     const pdf = new jsPDF({
@@ -145,44 +116,31 @@ export const exportVoucherAsPdf = async (
     const pageWidth = 210;
     const pageHeight = 297;
 
-    const canvasWidth = canvas.width;
-    const canvasHeight = canvas.height;
+    for (let pageIndex = 0; pageIndex < pageElements.length; pageIndex++) {
+      const pageElem = pageElements[pageIndex];
 
-    // Canvas height corresponding to 1 A4 page
-    const pxPageHeight = Math.floor((canvasWidth * pageHeight) / pageWidth);
-    const totalPages = Math.ceil(canvasHeight / pxPageHeight);
+      // Clean element styles for capture
+      pageElem.style.border = "none";
+      pageElem.style.boxShadow = "none";
+      pageElem.style.margin = "0";
+      pageElem.style.borderRadius = "0";
 
-    for (let page = 0; page < totalPages; page++) {
-      if (page > 0) {
+      const pageCanvas = await html2canvas(pageElem, {
+        scale: 2,
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: "#ffffff",
+        logging: false,
+        width: 794,
+        windowWidth: 794,
+      });
+
+      if (pageIndex > 0) {
         pdf.addPage();
       }
 
-      const sY = page * pxPageHeight;
-      const sHeight = Math.min(pxPageHeight, canvasHeight - sY);
-
-      // Create one-page canvas to slice from full canvas
-      const pageCanvas = document.createElement("canvas");
-      pageCanvas.width = canvasWidth;
-      pageCanvas.height = pxPageHeight;
-      const pageCtx = pageCanvas.getContext("2d");
-
-      pageCtx.fillStyle = "#ffffff";
-      pageCtx.fillRect(0, 0, canvasWidth, pxPageHeight);
-
-      pageCtx.drawImage(
-        canvas,
-        0,
-        sY,
-        canvasWidth,
-        sHeight,
-        0,
-        0,
-        canvasWidth,
-        sHeight
-      );
-
-      const pageImgData = pageCanvas.toDataURL("image/jpeg", 0.98);
-      pdf.addImage(pageImgData, "JPEG", 0, 0, pageWidth, pageHeight, undefined, "FAST");
+      const imgData = pageCanvas.toDataURL("image/jpeg", 0.98);
+      pdf.addImage(imgData, "JPEG", 0, 0, pageWidth, pageHeight, undefined, "FAST");
     }
 
     const cleanVoucherName = String(

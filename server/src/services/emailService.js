@@ -266,6 +266,9 @@ const buildAgentClientQuotationText = (quoteDetails = {}) => {
     "",
     "Additional Notes",
     buildQuoteListText(quoteDetails.additionalNotes),
+    "",
+    "Terms and Conditions",
+    buildQuoteListText(quoteDetails.customTerms || quoteDetails.termsAndConditions),
   ]
     .filter(Boolean)
     .join("\n");
@@ -326,10 +329,9 @@ export const buildAgentClientQuotationTemplate = (quoteDetails = {}) => {
     quoteDetails.agentBrandingName === "Holiday Circuit" ||
     quoteDetails.agencyName === "Holiday Circuit"
   );
-  const showBankDetails = Boolean(
-    quoteDetails.includeSellerBankDetails !== false &&
-    quoteDetails.sellerBankDetails !== false
-  );
+  const showBankDetails = isOps
+    ? Boolean(quoteDetails.includeSellerBankDetails !== false && quoteDetails.sellerBankDetails !== false)
+    : Boolean(quoteDetails.includeSellerBankDetails === true);
   const showPriceBreakup = Boolean(quoteDetails.showPriceBreakup);
   const brandName = isOps 
     ? QUOTATION_BRAND.name 
@@ -347,7 +349,7 @@ export const buildAgentClientQuotationTemplate = (quoteDetails = {}) => {
   
   const companyAddress = isOps 
     ? QUOTATION_BRAND.address 
-    : (quoteDetails.agentCompanyAddress || quoteDetails.companyAddress || "KG 3/69, Ground Floor, Vikas Puri, New Delhi, Delhi - 110018");
+    : (quoteDetails.agentCompanyAddress || quoteDetails.companyAddress || (brandName === QUOTATION_BRAND.name ? QUOTATION_BRAND.address : ""));
   const agentPhone = isOps 
     ? QUOTATION_BRAND.phone 
     : (quoteDetails.agentPhone || "");
@@ -416,30 +418,46 @@ export const buildAgentClientQuotationTemplate = (quoteDetails = {}) => {
     const dateLabel = rawDateLabel ? escapeHtml(rawDateLabel) : "";
     const quantity = escapeHtml(service.quantityLabel || service.pax || travelerSummary);
     const description = buildServiceDescriptionHtml(service.description || service.roomType || "Standard Room");
-    const combinedHText = `${service.title || ""} ${service.name || ""} ${service.hotelName || ""} ${service.description || ""} ${service.roomType || ""} ${service.hotelCategory || ""} ${service.starCategory || ""} ${service.starRating || ""}`.toLowerCase();
+    const rawStars = service.starCategory || service.hotelCategory || service.starRating || "";
     let count = 4;
-    if (combinedHText.includes("3-star") || combinedHText.includes("3 star") || combinedHText.includes("3star") || combinedHText.includes("citymax") || combinedHText.includes("budget")) {
-      count = 3;
-    } else if (combinedHText.includes("5-star") || combinedHText.includes("5 star") || combinedHText.includes("5star") || combinedHText.includes("luxury") || combinedHText.includes("atlantis")) {
-      count = 5;
-    } else {
-      const rawStars = service.hotelCategory || service.starCategory || service.starRating || "4 Star";
+    if (rawStars) {
       const starMatch = String(rawStars).match(/(\d+)/);
-      if (starMatch) count = Math.min(5, Math.max(1, Number(starMatch[1])));
+      if (starMatch) {
+        count = Math.min(5, Math.max(1, Number(starMatch[1])));
+      } else {
+        const lower = String(rawStars).toLowerCase();
+        if (lower.includes("5") || lower.includes("five") || lower.includes("luxury")) count = 5;
+        else if (lower.includes("4") || lower.includes("four") || lower.includes("deluxe") || lower.includes("premium")) count = 4;
+        else if (lower.includes("3") || lower.includes("three") || lower.includes("standard")) count = 3;
+        else if (lower.includes("2") || lower.includes("budget")) count = 2;
+      }
+    } else {
+      const combinedHText = `${service.title || ""} ${service.name || ""} ${service.hotelName || ""} ${service.description || ""} ${service.roomType || ""}`.toLowerCase();
+      if (combinedHText.includes("3-star") || combinedHText.includes("3 star") || combinedHText.includes("3star") || combinedHText.includes("citymax") || combinedHText.includes("budget")) {
+        count = 3;
+      } else if (combinedHText.includes("5-star") || combinedHText.includes("5 star") || combinedHText.includes("5star") || combinedHText.includes("luxury") || combinedHText.includes("atlantis")) {
+        count = 5;
+      } else if (combinedHText.includes("4-star") || combinedHText.includes("4 star") || combinedHText.includes("4star")) {
+        count = 4;
+      } else if (combinedHText.includes("2-star") || combinedHText.includes("2 star")) {
+        count = 2;
+      } else {
+        count = 4;
+      }
     }
     const starIcons = "⭐".repeat(count);
     const starDisplay = `${starIcons} ${count} Star`;
 
     // Resolve Meal Plan details (EP, CP, MAP, AP) with checkmark ✅ and cross ❌
     const resolveMealPlanDisplay = (srv) => {
-      const mealRaw = String(srv?.mealPlan || srv?.meals || "").trim();
+      const mealRaw = String(srv?.mealPlan || srv?.meals || srv?.meal_plan || "").trim();
       const descRaw = String(srv?.description || srv?.roomType || "").trim();
       const combined = `${mealRaw} ${descRaw}`.toUpperCase();
 
-      const hasAP = /\bAP\b|AMERICAN PLAN/i.test(combined) && !/\bMAP\b/i.test(combined);
-      const hasMAP = /\bMAP\b|MODIFIED AMERICAN|BREAKFAST AND DINNER|BREAKFAST & DINNER/i.test(combined);
-      const hasCP = (/\bCP\b|CONTINENTAL|BREAKFAST ONLY|ONLY BREAKFAST/i.test(combined)) && !hasMAP && !hasAP;
-      const hasEP = (/\bEP\b|EUROPEAN|ROOM ONLY|ONLY ROOM|NO MEALS/i.test(combined)) && !hasCP && !hasMAP && !hasAP;
+      const hasAP = (/\bAP\b|AMERICAN PLAN/i.test(mealRaw) || /\bAP\b|AMERICAN PLAN/i.test(combined)) && !/\bMAP\b/i.test(mealRaw);
+      const hasMAP = /\bMAP\b|MODIFIED AMERICAN|BREAKFAST AND DINNER|BREAKFAST & DINNER/i.test(mealRaw) || /\bMAP\b|MODIFIED AMERICAN|BREAKFAST AND DINNER|BREAKFAST & DINNER/i.test(combined);
+      const hasCP = (/\bCP\b|CONTINENTAL|BREAKFAST ONLY|ONLY BREAKFAST/i.test(mealRaw) || /\bCP\b|CONTINENTAL|BREAKFAST ONLY|ONLY BREAKFAST/i.test(combined)) && !hasMAP && !hasAP;
+      const hasEP = (/\bEP\b|EUROPEAN|ROOM ONLY|ONLY ROOM|NO MEALS/i.test(mealRaw) || /\bEP\b|EUROPEAN|ROOM ONLY|ONLY ROOM|NO MEALS/i.test(combined)) && !hasCP && !hasMAP && !hasAP;
 
       if (hasAP) return `AP Plan (✅ Breakfast • ✅ Lunch • ✅ Dinner)`;
       if (hasMAP) return `MAP Plan (✅ Breakfast • ✅ Dinner)`;
@@ -450,7 +468,7 @@ export const buildAgentClientQuotationTemplate = (quoteDetails = {}) => {
       if (/breakfast/i.test(mealRaw)) return `CP Plan (✅ Breakfast • ❌ Dinner)`;
       if (/\bCP\b/.test(descRaw)) return `CP Plan (✅ Breakfast • ❌ Dinner)`;
 
-      return mealRaw ? escapeHtml(mealRaw) : `CP Plan (✅ Breakfast • ❌ Dinner)`;
+      return mealRaw ? escapeHtml(mealRaw) : `EP Plan (❌ Breakfast • ❌ Dinner)`;
     };
 
     const mealPlanDisplay = resolveMealPlanDisplay(service);
@@ -1041,10 +1059,10 @@ export const buildAgentClientQuotationTemplate = (quoteDetails = {}) => {
                 </ol>
               ` : ""}
 
-              ${Array.isArray(quoteDetails.customTerms) && quoteDetails.customTerms.length > 0 ? `
+              ${((Array.isArray(quoteDetails.customTerms) && quoteDetails.customTerms.filter(Boolean).length > 0) || (Array.isArray(quoteDetails.termsAndConditions) && quoteDetails.termsAndConditions.filter(Boolean).length > 0)) ? `
                 <p style="font-size: 11.5px; color: #334155; margin: 0 0 10px 0;">Welcome to <strong>${escapeHtml(brandName)}</strong>. These Terms and Conditions govern your booking:</p>
                 <ol style="margin: 0; padding-left: 18px; color: #334155; font-size: 11.5px; line-height: 1.65;">
-                  ${quoteDetails.customTerms.map(item => `<li style="margin-bottom:6px;">${escapeHtml(item)}</li>`).join("")}
+                  ${((Array.isArray(quoteDetails.customTerms) && quoteDetails.customTerms.filter(Boolean).length > 0) ? quoteDetails.customTerms : quoteDetails.termsAndConditions).filter(Boolean).map(item => `<li style="margin-bottom:6px;">${escapeHtml(item)}</li>`).join("")}
                 </ol>
               ` : `
                 <p style="font-weight: bold; font-size: 13px; margin: 0 0 10px 0; color: #0f172a; border-bottom: 1px dashed #cbd5e1; padding-bottom: 6px;">${escapeHtml(brandName)} Official Terms and Conditions</p>
@@ -2354,11 +2372,21 @@ export const sendAgentClientQuotationMail = async (email, quoteDetails = {}) => 
     console.error("Failed to generate PDF for agent quotation email attachment:", pdfError);
   }
 
+  const brandSenderName = String(quoteDetails.agentBrandingName || quoteDetails.agencyName || "").trim();
+  const senderDisplayName = brandSenderName && brandSenderName.toLowerCase() !== "holiday circuit"
+    ? brandSenderName
+    : "Holiday Circuit";
+
+  const defaultFrom = MAIL_FROM_ADDRESS;
+  const rawEmailMatch = defaultFrom.match(/<([^>]+)>/);
+  const actualEmail = rawEmailMatch ? rawEmailMatch[1] : defaultFrom;
+  const customFromAddress = `"${senderDisplayName}" <${actualEmail}>`;
+
   const info = await transporter.sendMail({
-    from: MAIL_FROM_ADDRESS,
+    from: customFromAddress,
     to: email,
-    replyTo: MAIL_REPLY_TO_ADDRESS,
-    subject: `Your Quotation - ${quoteDetails.destination || quoteDetails.quotationNumber || "Holiday Circuit"}`,
+    replyTo: quoteDetails.agentEmail || MAIL_REPLY_TO_ADDRESS,
+    subject: `Your Quotation - ${quoteDetails.destination || quoteDetails.quotationNumber || senderDisplayName}`,
     html,
     text,
     attachments,
@@ -2504,20 +2532,35 @@ export const sendDmcPayoutReceiptMail = async (email, receiptDetails = {}) => {
     </div>
   `;
 
+  const pdfBuffer =
+    receiptDetails.attachmentBuffer ||
+    receiptDetails.buffer ||
+    (receiptDetails.publicFilePath
+      ? pdfMemoryCache.get(receiptDetails.publicFilePath)
+      : null);
+
+  const attachments = [];
+  if (pdfBuffer) {
+    attachments.push({
+      filename: receiptDetails.attachmentName || `DMC_Payout_Receipt_${safeInvoiceNumber}.pdf`,
+      content: pdfBuffer,
+      contentType: "application/pdf",
+    });
+  } else if (receiptDetails.attachmentPath && fs.existsSync(receiptDetails.attachmentPath)) {
+    attachments.push({
+      filename: receiptDetails.attachmentName || `DMC_Payout_Receipt_${safeInvoiceNumber}.pdf`,
+      path: receiptDetails.attachmentPath,
+      contentType: "application/pdf",
+    });
+  }
+
   const info = await transporter.sendMail({
     from: MAIL_FROM_ADDRESS,
     replyTo: MAIL_REPLY_TO_ADDRESS,
     to: email,
     subject: `Payment Receipt - ${receiptDetails.invoiceNumber || receiptDetails.queryCode || "Holiday Circuit"}`,
     html,
-    attachments: receiptDetails.attachmentPath
-      ? [
-        {
-          filename: receiptDetails.attachmentName || `DMC_Payout_Receipt_${safeInvoiceNumber}.pdf`,
-          path: receiptDetails.attachmentPath,
-        },
-      ]
-      : [],
+    attachments,
   });
 
   return {
@@ -2587,20 +2630,35 @@ export const sendAgentPaymentReceiptMail = async (email, receiptDetails = {}) =>
     </div>
   `;
 
+  const pdfBuffer =
+    receiptDetails.attachmentBuffer ||
+    receiptDetails.buffer ||
+    (receiptDetails.publicFilePath
+      ? pdfMemoryCache.get(receiptDetails.publicFilePath)
+      : null);
+
+  const attachments = [];
+  if (pdfBuffer) {
+    attachments.push({
+      filename: receiptDetails.attachmentName || "Agent_Payment_Receipt.pdf",
+      content: pdfBuffer,
+      contentType: "application/pdf",
+    });
+  } else if (receiptDetails.attachmentPath && fs.existsSync(receiptDetails.attachmentPath)) {
+    attachments.push({
+      filename: receiptDetails.attachmentName || "Agent_Payment_Receipt.pdf",
+      path: receiptDetails.attachmentPath,
+      contentType: "application/pdf",
+    });
+  }
+
   const info = await transporter.sendMail({
     from: MAIL_FROM_ADDRESS,
     replyTo: MAIL_REPLY_TO_ADDRESS,
     to: email,
     subject: `Payment Receipt - ${receiptDetails.queryCode || receiptDetails.invoiceNumber || "Holiday Circuit"}`,
     html,
-    attachments: receiptDetails.attachmentPath
-      ? [
-        {
-          filename: receiptDetails.attachmentName || "Agent_Payment_Receipt.pdf",
-          path: receiptDetails.attachmentPath,
-        },
-      ]
-      : [],
+    attachments,
   });
 
   return {

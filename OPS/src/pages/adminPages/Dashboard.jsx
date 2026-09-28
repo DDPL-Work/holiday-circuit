@@ -328,7 +328,7 @@ function QuotationTrackerModal({ query, onClose }) {
         ) : quotationHistory.length === 0 ? (
           <div className="flex min-h-[60vh] flex-col items-center justify-center rounded-2xl p-8 text-center" style={{ background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.18)", backdropFilter: "blur(24px)", WebkitBackdropFilter: "blur(24px)" }}>
             <p className="text-base font-semibold text-white">No quotation attempts yet</p>
-            <p className="mt-2 text-sm" style={{ color: "rgba(255,255,255,0.6)" }}>Is query ke liye abhi tak koi quotation create ya send nahi hua hai.</p>
+            <p className="mt-2 text-sm" style={{ color: "rgba(255,255,255,0.6)" }}>No quotation has been created or sent for this query yet.</p>
           </div>
         ) : (
           <div

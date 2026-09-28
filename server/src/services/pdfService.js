@@ -794,6 +794,36 @@ const drawServiceRow = (doc, columns, y, service = {}, index = 0) => {
     if (tourType && !rawDesc.toLowerCase().includes("tour type")) extraDetails.push(`Tour Type: ${tourType}`);
     if (slotTime && !rawDesc.toLowerCase().includes("slot")) extraDetails.push(`Slot: ${slotTime}`);
     if (formattedDur && !rawDesc.toLowerCase().includes("duration")) extraDetails.push(`Duration: ${formattedDur}`);
+  } else if (["hotel", "stay", "accommodation"].includes(type) || service?.hotelName) {
+    const hotelName = service?.hotelName || service?.hotel || "";
+    const rawStar = service?.starCategory || service?.hotelCategory || service?.starRating || "";
+    const mealPlan = service?.mealPlan || service?.meals || service?.meal_plan || "";
+    const roomCat = service?.roomCategory || service?.roomType || "";
+
+    if (hotelName && !rawDesc.toLowerCase().includes(hotelName.toLowerCase())) {
+      extraDetails.push(`Hotel: ${hotelName}`);
+    }
+    if (rawStar) {
+      const starText = String(rawStar).toLowerCase().includes("star") ? String(rawStar) : `${rawStar} Star`;
+      if (!rawDesc.toLowerCase().includes("star")) {
+        extraDetails.push(`Rating: ${starText}`);
+      }
+    }
+    if (mealPlan) {
+      const u = String(mealPlan).toUpperCase();
+      let mLabel = mealPlan;
+      if (u === "EP" || u.includes("ROOM ONLY")) mLabel = "EP (Room Only)";
+      else if (u === "CP" || u.includes("BREAKFAST")) mLabel = "CP (Breakfast Included)";
+      else if (u === "MAP" || u.includes("DINNER")) mLabel = "MAP (Breakfast & Dinner)";
+      else if (u === "AP" || u.includes("ALL MEALS")) mLabel = "AP (All Meals Included)";
+      else if (u === "AI" || u.includes("ALL INCLUSIVE")) mLabel = "AI (All Inclusive)";
+      if (!rawDesc.toLowerCase().includes("meal plan") && !rawDesc.toLowerCase().includes(mLabel.toLowerCase())) {
+        extraDetails.push(`Meal Plan: ${mLabel}`);
+      }
+    }
+    if (roomCat && !rawDesc.toLowerCase().includes(roomCat.toLowerCase())) {
+      extraDetails.push(`Room: ${roomCat}`);
+    }
   }
 
   const fullDesc = [rawDesc, ...extraDetails].filter(Boolean).join(" | ");
@@ -1220,9 +1250,11 @@ const getTermsSectionEstimatedHeight = (doc, customTerms = []) => {
 
 const drawTermsSection = (doc, y, customTerms = []) => {
   const items = parseStructuredTerms(customTerms);
+  const brandName = doc.brandName || BRAND.name;
+  const isAgentBrand = brandName && brandName.trim().toLowerCase() !== BRAND.name.toLowerCase();
   if (!items.length) {
     items.push(
-      { type: "text", level: 0, text: "Welcome to Holiday Circuit. These Terms and Conditions govern your use of Holiday Circuit services. When you make a booking, you agree to be bound by these Terms." },
+      { type: "text", level: 0, text: `Welcome to ${brandName}. These Terms and Conditions govern your use of ${brandName} services. When you make a booking, you agree to be bound by these Terms.` },
       { type: "header", level: 1, text: "1. Bookings and Reservations" },
       { type: "subitem", level: 2, text: "• Minimum 50% of the booking amount is required at the time of booking confirmation." },
       { type: "subitem", level: 2, text: "• Remaining 50% in 2 parts: 25% within 30 Days prior to departure and 25% within 20 days prior to departure." },
@@ -1233,17 +1265,20 @@ const drawTermsSection = (doc, y, customTerms = []) => {
       { type: "subitem", level: 2, text: "• Confirmation Vouchers: Provided only 7 days before the arrival date." },
       { type: "subitem", level: 2, text: "• Airport Transfers & Tour Pickups: Includes 60 minutes waiting time for Airport pick-ups. Delayed at immigration/luggage requires calling emergency number to extend. For all other pick-ups, driver will wait for 10 minutes at Hotel Lobby / Reception." },
       { type: "subitem", level: 2, text: "• Taxes: Any changes in taxes (GST/TCS/Government Tax) at confirmation will be adjusted as per prevailing law." },
-      { type: "subitem", level: 2, text: "• Changes & Cancellations are subject to fees/penalties determined by service providers and Holiday Circuit." },
+      { type: "subitem", level: 2, text: `• Changes & Cancellations are subject to fees/penalties determined by service providers and ${brandName}.` },
       { type: "header", level: 1, text: "2. Travel Documents and Requirements" },
       { type: "subitem", level: 2, text: "• Valid ID Proof: Responsibility of guest to possess valid ID/Visas. To Enter Nepal by Air: Valid Passport or Election Card is Mandatory. Aadhar Card is NOT valid for Travel." },
       { type: "subitem", level: 2, text: "• Health & Vaccinations: Guest is responsible for meeting all health and vaccination entry requirements." },
       { type: "subitem", level: 2, text: "• Travel Insurance: Strongly recommended to protect against unexpected events, trip cancellations, or emergencies." },
       { type: "header", level: 1, text: "3. Changes to Itineraries & Liability" },
-      { type: "subitem", level: 2, text: "• Changes by Holiday Circuit: Right reserved to modify itinerary/accommodations due to unforeseen circumstances with prompt notice." },
-      { type: "subitem", level: 2, text: "• Force Majeure & Liability: Holiday Circuit acts as an intermediary; not liable for third-party negligence or force majeure events." },
+      { type: "subitem", level: 2, text: `• Changes by ${brandName}: Right reserved to modify itinerary/accommodations due to unforeseen circumstances with prompt notice.` },
+      { type: "subitem", level: 2, text: `• Force Majeure & Liability: ${brandName} acts as an intermediary; not liable for third-party negligence or force majeure events.` },
       { type: "subitem", level: 2, text: "• Governing Law: Governed by the laws of New Delhi Jurisdiction." },
       { type: "header", level: 1, text: "4. Contact Information" },
-      { type: "subitem", level: 2, text: "• Holiday Circuit: 2nd Floor, 632 Block B1, Janakpuri, New Delhi - 110058 | Email: ops@holidaycircuit.com | Ph: +91 8851346665, +91 9971706003" }
+      { type: "subitem", level: 2, text: isAgentBrand && (doc.agentAddress || doc.agentEmail || doc.agentPhone)
+        ? `• ${brandName}: ${[doc.agentAddress, doc.agentEmail ? `Email: ${doc.agentEmail}` : '', doc.agentPhone ? `Ph: ${doc.agentPhone}` : ''].filter(Boolean).join(' | ')}`
+        : `• ${BRAND.name}: ${BRAND.address} | Email: ${BRAND.email} | Ph: ${BRAND.phone}`
+      }
     );
   }
 
@@ -1570,8 +1605,8 @@ export const generatePDF = async (quoteDetails = {}) => {
   const filePath = "";
   const publicFilePath = `/uploads/quotations/${fileName}`;
 
-  const brandName = quoteDetails.agentBrandingName || BRAND.name;
-  const brandSubline = quoteDetails.agentBrandingName
+  const brandName = quoteDetails.agentBrandingName || quoteDetails.agencyName || BRAND.name;
+  const brandSubline = (quoteDetails.agentBrandingName && quoteDetails.agentBrandingName !== BRAND.name)
     ? "Travel Quotation | Curated travel services for your booking review"
     : `${BRAND.subline} | Curated travel services for your booking review`;
 
@@ -1582,6 +1617,9 @@ export const generatePDF = async (quoteDetails = {}) => {
     margin: 36,
   });
   doc.brandName = brandName; // Store it for drawPageFrame!
+  doc.agentAddress = quoteDetails.agentCompanyAddress || quoteDetails.companyAddress || "";
+  doc.agentEmail = quoteDetails.agentEmail || "";
+  doc.agentPhone = quoteDetails.agentPhone || "";
 
   let loadedFonts = false;
   if (hasFonts) {
@@ -1671,17 +1709,19 @@ export const generatePDF = async (quoteDetails = {}) => {
     value: quoteDetails?.queryId || "-",
   });
 
+  const isAgentCustomBrand = brandName && brandName.trim().toLowerCase() !== BRAND.name.toLowerCase();
   drawPartyBlock(doc, {
     x: PAGE.contentX,
     y: 138,
     width: 245,
     title: "SELLER",
     primary: brandName,
-    lines: quoteDetails.agentBrandingName
+    lines: isAgentCustomBrand
       ? [
+          quoteDetails.agentCompanyAddress || quoteDetails.companyAddress || "",
           quoteDetails.agentEmail ? `Email: ${quoteDetails.agentEmail}` : "",
           quoteDetails.agentPhone ? `Phone: ${quoteDetails.agentPhone}` : "",
-          quoteDetails.agentGstNumber ? `GST: ${quoteDetails.agentGstNumber}` : ""
+          quoteDetails.agentGstNumber ? `GST: ${quoteDetails.agentGstNumber}` : "",
         ].filter(Boolean)
       : [BRAND.address, `Email: ${BRAND.email}`, `Phone: ${BRAND.phone}`],
   });
@@ -1819,7 +1859,11 @@ export const generatePDF = async (quoteDetails = {}) => {
     quoteDetails?.additionalNotes,
     "No additional notes provided.",
   );
-  if (quoteDetails?.includeSellerBankDetails !== false) {
+  const shouldShowBankDetails = Boolean(
+    quoteDetails?.includeSellerBankDetails === true ||
+    (!quoteDetails?.isClientQuotation && quoteDetails?.includeSellerBankDetails !== false && Array.isArray(quoteDetails?.sellerBankDetails) && quoteDetails.sellerBankDetails.length > 0)
+  );
+  if (shouldShowBankDetails) {
     const sellerBankDetailsHeight = getSellerBankDetailsSectionHeight(
       quoteDetails?.sellerBankDetails,
     );
@@ -1843,14 +1887,16 @@ export const generatePDF = async (quoteDetails = {}) => {
     quoteDetails?.termsAndConditions || quoteDetails?.customTerms,
   );
 
-  if (cursorY + 12 + termsSectionEstimatedHeight > CONTENT_BOTTOM_LIMIT && cursorY > 160) {
-    doc.addPage();
-    drawPageFrame(doc);
-    drawContinuationHeader(doc, quoteDetails, "Quotation Details (Continued)");
-    cursorY = 132;
-  }
+  if (!quoteDetails?.removeTerms) {
+    if (cursorY + 12 + termsSectionEstimatedHeight > CONTENT_BOTTOM_LIMIT && cursorY > 160) {
+      doc.addPage();
+      drawPageFrame(doc);
+      drawContinuationHeader(doc, quoteDetails, "Quotation Details (Continued)");
+      cursorY = 132;
+    }
 
-  cursorY = drawTermsSection(doc, cursorY + 12, quoteDetails?.termsAndConditions || quoteDetails?.customTerms);
+    cursorY = drawTermsSection(doc, cursorY + 12, quoteDetails?.termsAndConditions || quoteDetails?.customTerms);
+  }
 
   if (quoteDetails?.agentFooterImage) {
     const footerBuffer = await getLogoBuffer(quoteDetails.agentFooterImage);

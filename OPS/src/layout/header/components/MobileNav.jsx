@@ -8,6 +8,7 @@ export const MobileNav = ({
   menus = [],
   mobileNavOpen = false,
   setMobileNavOpen,
+  onOpenAgentOrgModal,
 }) => {
   const location = useLocation();
   const mobileNavRef = useRef(null);
@@ -21,7 +22,7 @@ export const MobileNav = ({
       <button
         type="button"
         onClick={() => setMobileNavOpen(!mobileNavOpen)}
-        className="flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-white transition hover:bg-white/10 lg:hidden"
+        className="flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-white transition hover:bg-white/10 lg:hidden cursor-pointer"
         aria-label="Toggle navigation"
       >
         {mobileNavOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
@@ -50,6 +51,24 @@ export const MobileNav = ({
                 {menus.map((item) => {
                   const Icon = item.icon;
                   const active = isItemActive(item, location);
+
+                  if (item.isModalAction || item.path === "#agent-organization") {
+                    return (
+                      <button
+                        key={item.label}
+                        type="button"
+                        onClick={() => {
+                          setMobileNavOpen(false);
+                          onOpenAgentOrgModal?.();
+                        }}
+                        className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold text-blue-300 hover:bg-blue-500/15 hover:text-white transition-all duration-200 w-full text-left cursor-pointer"
+                      >
+                        <Icon size={15} className="text-blue-400" />
+                        <span>{item.label}</span>
+                      </button>
+                    );
+                  }
+
                   return (
                     <NavLink
                       key={`${item.path}${item.hash || item.label}`}

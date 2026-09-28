@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { ALLOWED_PERMISSIONS } from "../constants/permissions.js";
 
 const agentSchema = new mongoose.Schema(
   {
@@ -15,7 +16,9 @@ const agentSchema = new mongoose.Schema(
 
     password: {
       type: String,
-      required: true
+      required: function() {
+        return !this.isBusinessPartner;
+      }
     },
 
     companyName: {
@@ -96,14 +99,7 @@ const agentSchema = new mongoose.Schema(
 
     role: {
       type: String,
-      enum: [
-        "admin",
-        "agent",
-        "operations",
-        "dmc_partner",
-        "finance_partner",
-        "operation_manager",
-        "finance_manager",
+      enum: [ "admin","agent", "operations", "dmc_partner", "finance_partner", "operation_manager", "finance_manager",
       ],
       required: true
     },
@@ -134,12 +130,23 @@ const agentSchema = new mongoose.Schema(
       default: "",
     },
 
-    permissions: {
-      type: [String],
-      default: [],
-    },
+    permissions: [
+      {
+        type: String,
+        trim: true,
+        enum: {
+          values: ALLOWED_PERMISSIONS,
+          message: "'{VALUE}' is not a recognized system permission",
+        },
+      },
+    ],
 
     isDeleted: {
+      type: Boolean,
+      default: false,
+    },
+
+    isBusinessPartner: {
       type: Boolean,
       default: false,
     },

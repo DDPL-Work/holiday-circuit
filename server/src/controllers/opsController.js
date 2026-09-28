@@ -23,7 +23,10 @@ import path from "path";
 import XLSX from "xlsx";
 import Voucher from "../models/voucher.model.js";
 import Auth from "../models/auth.model.js";
+import TripSource from "../models/TripSource.model.js";
 import UploadHistory from "../models/uploadHistory.model.js";
+import InternalInvoice from "../models/internalInvoice.model.js";
+import { getRoundRobinFinanceAssignee } from "../services/financeTeamScopeService.js";
 import { findBlackoutMatch, formatBlackoutLabel, normalizeDateOnly } from "../utils/blackoutDates.js";
 
 const OPS_DASHBOARD_PENDING_STATUSES = ["New_Query", "Pending_Accept", "Revision_Query"];
@@ -111,6 +114,39 @@ const buildQuotationDeliveryNote = ({
 };
 
 const getAgentNotificationUserId = (query = {}) => query?.agent?._id || query?.agent || null;
+
+const resolveQueryRecipientEmail = async (query, explicitEmail = "") => {
+  const cleanExplicit = String(explicitEmail || "").trim();
+  if (cleanExplicit) return cleanExplicit;
+
+  const agentEmail = String(query?.agent?.email || "").trim();
+  if (agentEmail) return agentEmail;
+
+  const tsContactEmail = String(
+    query?.tripSource?.contactPerson?.email ||
+    (Array.isArray(query?.tripSource?.contactPerson?.phones) && query?.tripSource?.contactPerson?.email) ||
+    ""
+  ).trim();
+  if (tsContactEmail) return tsContactEmail;
+
+  const guestEmail = String(query?.guestDetails?.email || "").trim();
+  if (guestEmail) return guestEmail;
+
+  const clientEmail = String(query?.clientEmail || "").trim();
+  if (clientEmail) return clientEmail;
+
+  if (query?.tripSource && mongoose.Types.ObjectId.isValid(query.tripSource)) {
+    try {
+      const tsDoc = await TripSource.findById(query.tripSource).lean();
+      const fallbackEmail = String(tsDoc?.contactPerson?.email || "").trim();
+      if (fallbackEmail) return fallbackEmail;
+    } catch (e) {
+      console.warn("TripSource fallback lookup failed:", e);
+    }
+  }
+
+  return "";
+};
 
 const createQuotationSentAgentNotification = async (
   req,
@@ -1091,6 +1127,8 @@ const notifyAssignedOpsMemberForBlackoutOverride = async ({ query, services = []
     query.assignedTo?.toString?.() || query.assignedTo,
   ].join(":");
 
+  if (!query?.assignedTo) return;
+
   const alreadyExists = await Notification.exists({ "meta.blackoutOverrideAlertKey": alertKey });
   if (alreadyExists) return;
 
@@ -1402,6 +1440,11 @@ const mapQuotationHistoryRow = (quotation = {}, index = 0, total = 0, latestRevi
     id: String(quotation?._id || ""),
     quotationNumber: quotation?.quotationNumber || `Quotation ${index + 1}`,
     status: quotation?.status || "Pending",
+    partnerType:
+      quotation?.partnerType ||
+      (quotation?.services?.some((s) => s?.isBpService || s?.businessPartnerId || s?.businessPartner)
+        ? "Business Partner"
+        : "Online DMC"),
     attemptNumber: total - index,
     isLatest: index === 0,
     createdAt: quotation?.createdAt || null,
@@ -1663,6 +1706,36 @@ const normalizeDayWiseItinerary = (items = []) =>
       .filter((item) => item.dayLabel || item.title || item.description || item.date)
     : [];
 
+const parseBackendTermContent = (rawContent) => {
+  if (!rawContent) return [];
+  if (Array.isArray(rawContent)) {
+    const list = [];
+    rawContent.forEach((item) => {
+      if (typeof item === "string") {
+        list.push(...parseBackendTermContent(item));
+      } else if (item && typeof item === "object") {
+        const text = item.content || item.text || item.name || item.item || item.label || "";
+        if (text) list.push(...parseBackendTermContent(text));
+      }
+    });
+    return list.filter(Boolean);
+  }
+  if (typeof rawContent !== "string") return [];
+
+  const clean = rawContent
+    .replace(/<\/(p|li|div|h[1-6]|tr)>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">");
+
+  return clean
+    .split("\n")
+    .map((line) => line.replace(/^\d+[\.\)]\s*/, "").replace(/^[•\-\*]\s*/, "").trim())
+    .filter(Boolean);
+};
+
 const buildAgentQuotationEmailPayload = ({ quotation, query }) => {
   const totalAmount = Number(quotation?.pricing?.totalAmount || 0);
   const totalServiceBase = Array.isArray(quotation?.services)
@@ -1678,6 +1751,10 @@ const buildAgentQuotationEmailPayload = ({ quotation, query }) => {
   const additionalNotes = Array.isArray(quotation?.additionalNotes)
     ? quotation.additionalNotes.map((item) => String(item || "").trim()).filter(Boolean)
     : [];
+  const termsAndConditions = Array.isArray(quotation?.termsAndConditions)
+    ? quotation.termsAndConditions.map((item) => String(item || "").trim()).filter(Boolean)
+    : [];
+  const customTerms = parseBackendTermContent(quotation?.termsAndConditions);
   const sellerBankDetails = [
     { label: "Bank Name", value: "HDFC Bank" },
     { label: "A/c Holder Name", value: "Holiday Circuit" },
@@ -1696,6 +1773,9 @@ const buildAgentQuotationEmailPayload = ({ quotation, query }) => {
     recipientName:
       query?.agent?.companyName ||
       query?.agent?.name ||
+      query?.tripSource?.name ||
+      query?.guestDetails?.name ||
+      query?.clientName ||
       "Guest",
     agencyName: "Holiday Circuit",
     quotationNumber: quotation?.quotationNumber || "",
@@ -1710,6 +1790,8 @@ const buildAgentQuotationEmailPayload = ({ quotation, query }) => {
     inclusions,
     exclusions,
     additionalNotes,
+    termsAndConditions,
+    customTerms,
     sellerBankDetails,
     dayWiseItinerary: normalizeDayWiseItinerary(quotation?.dayWiseItinerary),
     services: Array.isArray(quotation?.services)
@@ -1795,20 +1877,9 @@ const getOperationManagerTeamUserIds = async (req) => {
     return [];
   }
 
-  const manager = await Auth.findById(req.user?.id).select("name email employeeId _id");
-  if (!manager) {
-    return [];
-  }
-
-  const identityCandidates = getManagerIdentityCandidates(manager);
-  if (!identityCandidates.length) {
-    return [];
-  }
-
   const teamMembers = await Auth.find({
     role: "operations",
     isDeleted: { $ne: true },
-    manager: { $in: identityCandidates },
   }).select("_id");
 
   return teamMembers
@@ -1817,44 +1888,40 @@ const getOperationManagerTeamUserIds = async (req) => {
 };
 
 const getAssignedQueryFilter = async (req) => {
-  if (isAdminUser(req)) {
+  if (isAdminUser(req) || isOperationManagerUser(req)) {
     return {};
   }
 
-  if (isOperationManagerUser(req)) {
-    const teamUserIds = await getOperationManagerTeamUserIds(req);
-
-    if (!teamUserIds.length) {
-      return { _id: { $in: [] } };
-    }
-
-    return {
-      assignedTo: {
-        $in: teamUserIds.map((id) => new mongoose.Types.ObjectId(id)),
-      },
-    };
-  }
-
-  return { assignedTo: new mongoose.Types.ObjectId(req.user.id) };
+  const currentUserId = new mongoose.Types.ObjectId(req.user.id);
+  return {
+    $or: [
+      { assignedTo: currentUserId },
+      { createdBy: currentUserId },
+    ],
+  };
 };
 
 const canManageAssignedQuery = async (req, query) => {
-  if (isAdminUser(req)) {
+  if (isAdminUser(req) || isOperationManagerUser(req)) {
     return true;
   }
 
   const assignedUserId = getAssignedQueryUserId(query);
-  if (!assignedUserId) {
-    return false;
+  const currentUserId = String(req.user?.id || "");
+  const createdByUserId = String(query?.createdBy?._id || query?.createdBy || "");
+
+  if (assignedUserId && assignedUserId === currentUserId) {
+    return true;
   }
 
-  if (isOperationManagerUser(req)) {
-    const teamUserIds = await getOperationManagerTeamUserIds(req);
-    return teamUserIds.includes(assignedUserId);
+  if (createdByUserId && createdByUserId === currentUserId) {
+    return true;
   }
 
-  return assignedUserId === String(req.user?.id || "");
+  return false;
 };
+
+
 
 const getLatestReassignmentEntry = (query = {}) => {
   const history = Array.isArray(query?.reassignmentHistory) ? query.reassignmentHistory : [];
@@ -1906,7 +1973,11 @@ const getAuthorizedQueryForQuotation = async (quotationId, req) => {
 };
 
 const getAuthorizedQueryForQuotationDraft = async (quotationId, req) => {
-  const quotation = await QuotationDraft.findById(quotationId);
+  let quotation = await QuotationDraft.findById(quotationId);
+
+  if (!quotation) {
+    quotation = await Quotation.findById(quotationId);
+  }
 
   if (!quotation) {
     throw new ApiError(404, "Quotation draft not found");
@@ -1934,14 +2005,196 @@ export const getAllQueries = async (req, res, next) => {
     const queryFilter = await getAssignedQueryFilter(req);
 
     const queries = await TravelQuery.find(queryFilter)
-
       .populate("agent", "name email phone companyName")
       .populate("assignedTo", "name email")
-      .sort({ createdAt: -1 });
+      .populate("tripSource", "name shortName sourceType contactPerson city state country")
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const queryMongoIds = queries.map((q) => q._id);
+    const queryCodes = queries.map((q) => q.queryId).filter(Boolean);
+
+    const [quotations, internalInvoices, bpAuthUsers] = await Promise.all([
+      Quotation.find({ queryId: { $in: queryMongoIds } })
+        .select("queryId partnerType businessPartnerName services status createdAt")
+        .sort({ createdAt: -1 })
+        .lean(),
+      InternalInvoice.find({
+        $or: [{ query: { $in: queryMongoIds } }, { queryCode: { $in: queryCodes } }],
+        isDeleted: { $ne: true },
+      })
+        .select("query queryCode businessPartnerName supplierName dmcName invoiceNumber claimedSummary summary status documents uploadedInvoice partnerType")
+        .lean(),
+      Auth.find({
+        $or: [{ isBusinessPartner: true }, { role: "partner" }, { role: "business_partner" }],
+      })
+        .select("name companyName")
+        .lean(),
+    ]);
+
+    const knownBpNames = new Set(
+      (bpAuthUsers || [])
+        .flatMap((u) => [u.name, u.companyName])
+        .filter(Boolean)
+        .map((n) => n.trim().toLowerCase())
+    );
+
+    const quotationsByQueryId = new Map();
+    quotations.forEach((q) => {
+      const qKey = String(q.queryId);
+      if (!quotationsByQueryId.has(qKey)) {
+        quotationsByQueryId.set(qKey, []);
+      }
+      quotationsByQueryId.get(qKey).push(q);
+    });
+
+    const invoicesByQueryId = new Map();
+    internalInvoices.forEach((inv) => {
+      const qIdKey = inv.query ? String(inv.query) : "";
+      const qCodeKey = inv.queryCode ? String(inv.queryCode) : "";
+      if (qIdKey) {
+        if (!invoicesByQueryId.has(qIdKey)) invoicesByQueryId.set(qIdKey, []);
+        invoicesByQueryId.get(qIdKey).push(inv);
+      }
+      if (qCodeKey) {
+        if (!invoicesByQueryId.has(qCodeKey)) invoicesByQueryId.set(qCodeKey, []);
+        invoicesByQueryId.get(qCodeKey).push(inv);
+      }
+    });
+
+    const enrichedQueries = queries.map((q) => {
+      const qIdStr = String(q._id);
+      const qCodeStr = String(q.queryId || "");
+      const queryQuots = quotationsByQueryId.get(qIdStr) || [];
+      const approvedQuot =
+        queryQuots.find((qt) =>
+          ["Confirmed", "Approved", "Quote Accepted"].includes(String(qt.status || "").trim())
+        ) || queryQuots[0] || null;
+
+      const invs = [
+        ...(invoicesByQueryId.get(qIdStr) || []),
+        ...(invoicesByQueryId.get(qCodeStr) || []),
+      ].filter((v, i, a) => a.findIndex((t) => String(t._id) === String(v._id)) === i);
+
+      const quotPartnerType = String(approvedQuot?.partnerType || "").trim();
+      const isOnlineDmc =
+        quotPartnerType === "Online DMC" ||
+        (!quotPartnerType &&
+          approvedQuot &&
+          !approvedQuot.businessPartnerName &&
+          !approvedQuot.services?.some((s) => s.isBpService || s.businessPartnerId || s.businessPartner));
+
+      const isBusinessPartnerQuotation =
+        !isOnlineDmc &&
+        (quotPartnerType === "Business Partner" ||
+          Boolean(approvedQuot?.businessPartnerName) ||
+          Boolean(approvedQuot?.services?.some((s) => s.isBpService || s.businessPartnerId || s.businessPartner)) ||
+          Boolean(q.businessPartnerName) ||
+          q.partnerType === "offline_partner" ||
+          q.partnerType === "Business Partner");
+
+      const isAgentApproved =
+        ["Client Approved", "Confirmed"].includes(String(q.agentStatus || "").trim()) ||
+        ["Confirmed", "Vouchered", "Payment_Completed"].includes(String(q.opsStatus || "").trim());
+
+      const uniquePartners = new Set();
+
+      if (isBusinessPartnerQuotation) {
+        // 1. Direct query BP
+        if (q.businessPartnerName && String(q.businessPartnerName).trim()) {
+          uniquePartners.add(String(q.businessPartnerName).trim().toLowerCase());
+        }
+
+        // 2. Quotation BP
+        if (approvedQuot) {
+          if (approvedQuot.businessPartnerName && String(approvedQuot.businessPartnerName).trim()) {
+            uniquePartners.add(String(approvedQuot.businessPartnerName).trim().toLowerCase());
+          }
+
+          if (Array.isArray(approvedQuot.services)) {
+            approvedQuot.services.forEach((s) => {
+              if (s.businessPartnerName && String(s.businessPartnerName).trim()) {
+                uniquePartners.add(String(s.businessPartnerName).trim().toLowerCase());
+              } else if (s.supplierName && String(s.supplierName).trim()) {
+                uniquePartners.add(String(s.supplierName).trim().toLowerCase());
+              } else if (s.dmcName && String(s.dmcName).trim()) {
+                uniquePartners.add(String(s.dmcName).trim().toLowerCase());
+              }
+            });
+          }
+        }
+
+        // 3. Offline Internal Invoices already uploaded
+        invs.forEach((inv) => {
+          if (inv.partnerType === "offline_partner" || inv.businessPartnerName) {
+            const p = (inv.businessPartnerName || inv.dmcName || "").trim();
+            if (p) uniquePartners.add(p.replace(/\s*\(Offline Partner\)/i, "").trim().toLowerCase());
+          }
+        });
+      }
+
+      const totalRequired = isBusinessPartnerQuotation ? (uniquePartners.size > 0 ? uniquePartners.size : 1) : 0;
+      const uploadedCount = invs.length;
+      const isComplete = totalRequired > 0 && uploadedCount >= totalRequired;
+
+      // The Invoice button appears ONLY when the quotation was manually created as a Business Partner quotation and approved by agent/client
+      const showInvoiceButton = Boolean(isBusinessPartnerQuotation && isAgentApproved);
+
+      const resolvedAgentName =
+        q.agent?.companyName ||
+        q.agent?.name ||
+        q.tripSource?.name ||
+        q.querySource ||
+        q.guestDetails?.name ||
+        q.clientName ||
+        q.name ||
+        "";
+
+      const resolvedAgentEmail =
+        q.agent?.email ||
+        q.tripSource?.contactPerson?.email ||
+        q.guestDetails?.email ||
+        q.clientEmail ||
+        "";
+
+      const resolvedAgentPhone =
+        q.agent?.phone ||
+        q.tripSource?.contactPerson?.phone ||
+        (q.tripSource?.contactPerson?.phones && q.tripSource.contactPerson.phones[0]?.number) ||
+        q.guestDetails?.phone ||
+        (q.guestDetails?.phoneNumbers && q.guestDetails.phoneNumbers[0]?.number) ||
+        q.clientPhone ||
+        "";
+
+      const agentObj = q.agent || (resolvedAgentName ? {
+        _id: q.tripSource?._id || null,
+        name: resolvedAgentName,
+        companyName: q.tripSource?.name || resolvedAgentName,
+        email: resolvedAgentEmail,
+        phone: resolvedAgentPhone,
+      } : null);
+
+      return {
+        ...q,
+        agent: agentObj,
+        agentName: resolvedAgentName,
+        quotationPartnerType: isOnlineDmc ? "Online DMC" : isBusinessPartnerQuotation ? "Business Partner" : (quotPartnerType || "Online DMC"),
+        partnerInvoiceStats: {
+          totalRequired,
+          uploadedCount,
+          isComplete,
+          isPending: totalRequired > 0 && uploadedCount < totalRequired,
+          hasInvoices: uploadedCount > 0,
+          showInvoiceButton,
+          partnerType: isOnlineDmc ? "Online DMC" : isBusinessPartnerQuotation ? "Business Partner" : "Online DMC",
+          isBusinessPartner: isBusinessPartnerQuotation,
+        },
+      };
+    });
 
     res.json({
       message: "Assigned queries fetched successfully",
-      queries
+      queries: enrichedQueries,
     });
   } catch (error) {
     next(error);
@@ -2865,10 +3118,14 @@ export const createQuotation = async (req, res, next) => {
       quotationId,
       editExistingQuotation = false,
       queryId,
+      partnerType: rawPartnerType,
       validTill,
       pricing,
       sendVia = [],
       selectedAction = "",
+      agentEmail: explicitAgentEmail = "",
+      email: explicitEmail = "",
+      recipientEmail: explicitRecipientEmail = "",
       services = [],
       opsPercent = 0,
       opsAmount = 0,
@@ -2880,6 +3137,12 @@ export const createQuotation = async (req, res, next) => {
       termsAndConditions = [],
       dayWiseItinerary = [],
     } = req.body;
+
+    const partnerType =
+      rawPartnerType ||
+      (services.some((s) => s.isBpService || s.businessPartnerId || s.businessPartner)
+        ? "Business Partner"
+        : "Online DMC");
 
     const stripHtml = (text) => String(text || "").replace(/<[^>]*>?/gm, "").replace(/\s+/g, " ").trim();
     const normalizedInclusions = Array.isArray(inclusions)
@@ -2903,10 +3166,18 @@ export const createQuotation = async (req, res, next) => {
       sendViaArray.includes("dashboard") ||
       sendViaArray.includes("dashboard_notification") ||
       normalizedSelectedAction === "Dashboard Notification";
-    const shouldSendEmail = sendViaArray.includes("email");
-    const shouldSendWhatsApp = sendViaArray.includes("whatsapp");
+    const shouldSendEmail = sendViaArray.includes("email") || normalizedSelectedAction === "Email";
+    const shouldSendWhatsApp = sendViaArray.includes("whatsapp") || normalizedSelectedAction === "WhatsApp";
     const shouldMarkAsSent =
-      shouldSendDashboardNotification || shouldSendEmail || shouldSendWhatsApp;
+      shouldSendDashboardNotification ||
+      shouldSendEmail ||
+      shouldSendWhatsApp ||
+      normalizedSelectedAction === "PDF Download" ||
+      normalizedSelectedAction === "Word Format" ||
+      normalizedSelectedAction === "Copy Text" ||
+      sendViaArray.includes("pdf") ||
+      sendViaArray.includes("copy") ||
+      sendViaArray.includes("word");
 
     if (!services.length) {
       return next(new ApiError(400, "No services selected"));
@@ -2952,14 +3223,46 @@ export const createQuotation = async (req, res, next) => {
       );
     }
 
-    if (!queryId || !validTill || pricing?.baseAmount === undefined || pricing?.baseAmount === null) {
+    if (!queryId || pricing?.baseAmount === undefined || pricing?.baseAmount === null) {
       return next(new ApiError(400, "Required fields are missing"));
     }
 
-    const query = await TravelQuery.findOne({ queryId }).populate("agent");
+    const query = await TravelQuery.findOne({ queryId }).populate("agent").populate("tripSource");
 
     if (!query) {
       return next(new ApiError(404, "Query not found"));
+    }
+
+    if (!query.agent) {
+      const resolvedAgentName =
+        query.tripSource?.name ||
+        query.querySource ||
+        query.guestDetails?.name ||
+        query.clientName ||
+        query.name ||
+        "Direct Client";
+      const resolvedAgentEmail =
+        query.tripSource?.contactPerson?.email ||
+        query.guestDetails?.email ||
+        query.clientEmail ||
+        explicitAgentEmail ||
+        explicitRecipientEmail ||
+        explicitEmail ||
+        "";
+      const resolvedAgentPhone =
+        query.tripSource?.contactPerson?.phone ||
+        (query.tripSource?.contactPerson?.phones && query.tripSource.contactPerson.phones[0]?.number) ||
+        query.guestDetails?.phone ||
+        (query.guestDetails?.phoneNumbers && query.guestDetails.phoneNumbers[0]?.number) ||
+        query.clientPhone ||
+        "";
+      query.agent = {
+        _id: query.tripSource?._id || null,
+        name: resolvedAgentName,
+        companyName: query.tripSource?.name || resolvedAgentName,
+        email: resolvedAgentEmail,
+        phone: resolvedAgentPhone,
+      };
     }
 
     if (!(await canManageAssignedQuery(req, query))) {
@@ -3049,11 +3352,21 @@ export const createQuotation = async (req, res, next) => {
 
     const formattedServices = resolvedServices.map(s => {
       const type = String(s.type || s.serviceType || s.category || "").toLowerCase();
+      const rawBpId = s.businessPartnerId || s.businessPartner;
+      const validBpId = rawBpId && mongoose.Types.ObjectId.isValid(rawBpId) ? rawBpId : undefined;
+      const rawSupplierId = s.supplierId || s.supplier;
+      const validSupplierId = rawSupplierId && mongoose.Types.ObjectId.isValid(rawSupplierId) ? rawSupplierId : undefined;
+      const rawDmcId = s.dmcId || validSupplierId;
+      const validDmcId = rawDmcId && mongoose.Types.ObjectId.isValid(rawDmcId) ? rawDmcId : undefined;
+
       const basePayload = {
-        serviceId: s.serviceId,
-        supplierId: s.supplierId || undefined,
+        serviceId: s.serviceId || s.id || s._id,
+        supplierId: validSupplierId,
         supplierName: s.supplierName || "",
-        dmcId: s.dmcId || s.supplierId || undefined,
+        businessPartnerId: validBpId,
+        businessPartnerName: s.businessPartnerName || "",
+        isBpService: Boolean(s.isBpService || validBpId),
+        dmcId: validDmcId,
         dmcName: s.dmcName || "",
         type: s.type || s.serviceType || s.category || "",
         title:
@@ -3066,6 +3379,8 @@ export const createQuotation = async (req, res, next) => {
           s.transferName ||
           s.description ||
           "Service",
+        serviceName: s.serviceName || s.title || s.name || "",
+        hotelName: s.hotelName || "",
         city: s.city,
         country: s.country,
         description: s.description,
@@ -3160,6 +3475,7 @@ export const createQuotation = async (req, res, next) => {
       quotation.queryId = query._id;
       quotation.agent = query.agent;
       quotation.createdBy = req.user.id;
+      quotation.partnerType = partnerType;
       quotation.inclusions = normalizedInclusions;
       quotation.exclusions = normalizedExclusions;
       quotation.additionalNotes = normalizedAdditionalNotes;
@@ -3197,7 +3513,7 @@ export const createQuotation = async (req, res, next) => {
         },
         totalAmount: totalAmount,
       };
-      quotation.validTill = validTill;
+      quotation.validTill = validTill || null;
       const previousQuotationStatus = String(quotation.status || "").trim();
       quotation.status = shouldMarkAsSent
         ? "Quote Sent"
@@ -3215,14 +3531,19 @@ export const createQuotation = async (req, res, next) => {
       }
 
       const quoteDetails = {
-        name: query.agent?.name,
-        agentName: query.agent?.name,
+        name: query.agent?.name || query.tripSource?.name || query.guestDetails?.name || query.clientName || "Guest",
+        agentName: query.agent?.name || query.tripSource?.name || "Agent",
         destination: query.destination,
         days: query.totalDays || 5,
         price: totalAmount,
         totalAmount: totalAmount,
-        validTill: new Date(validTill).toDateString(),
-        phone: query.agent?.phone,
+        validTill: validTill ? new Date(validTill).toDateString() : "-",
+        phone:
+          query.agent?.phone ||
+          query.tripSource?.contactPerson?.phone ||
+          (query.tripSource?.contactPerson?.phones && query.tripSource.contactPerson.phones[0]?.number) ||
+          query.guestDetails?.phone ||
+          "",
         sellerBankDetails: [
           { label: "Bank Name", value: "HDFC Bank" },
           { label: "A/c Holder Name", value: "Holiday Circuit" },
@@ -3241,16 +3562,27 @@ export const createQuotation = async (req, res, next) => {
       const successfulDeliveryChannels = [];
 
       if (shouldSendEmail) {
-        try {
-          await sendAgentClientQuotationMail(
-            query.agent.email,
-            buildAgentQuotationEmailPayload({ quotation, query }),
-          );
-          successfulDeliveryChannels.push("email");
-        } catch (emailError) {
-          console.error("Quotation email send failed:", emailError);
+        const recipientEmail = await resolveQueryRecipientEmail(
+          query,
+          explicitAgentEmail || explicitRecipientEmail || explicitEmail,
+        );
+        if (recipientEmail) {
+          try {
+            await sendAgentClientQuotationMail(
+              recipientEmail,
+              buildAgentQuotationEmailPayload({ quotation, query }),
+            );
+            successfulDeliveryChannels.push("email");
+          } catch (emailError) {
+            console.error("Quotation email send failed:", emailError);
+            deliveryWarnings.push(
+              `Quotation saved, but email delivery failed. ${getEmailDeliveryErrorMessage(emailError)}`,
+            );
+          }
+        } else {
+          console.warn(`[createQuotation] Email requested but no recipient email found for query ${query?.queryId || query?._id}`);
           deliveryWarnings.push(
-            `Quotation saved, but email delivery failed. ${getEmailDeliveryErrorMessage(emailError)}`,
+            "Quotation saved, but email delivery failed because no recipient email address was found for this query.",
           );
         }
       }
@@ -3312,6 +3644,7 @@ export const createQuotation = async (req, res, next) => {
       queryId: query._id,
       agent: query.agent,
       createdBy: req.user.id,
+      partnerType,
 
       inclusions: normalizedInclusions,
       exclusions: normalizedExclusions,
@@ -3353,19 +3686,24 @@ export const createQuotation = async (req, res, next) => {
         totalAmount: totalAmount
       },
 
-      validTill,
+      validTill: validTill || null,
       status: shouldMarkAsSent ? "Quote Sent" : "Pending"
     });
 
     const quoteDetails = {
-      name: query.agent?.name,
-      agentName: query.agent?.name,
+      name: query.agent?.name || query.tripSource?.name || query.guestDetails?.name || query.clientName || "Guest",
+      agentName: query.agent?.name || query.tripSource?.name || "Agent",
       destination: query.destination,
       days: query.totalDays || 5,
       price: totalAmount,
       totalAmount: totalAmount,
-      validTill: new Date(validTill).toDateString(),
-      phone: query.agent?.phone,
+      validTill: validTill ? new Date(validTill).toDateString() : "-",
+      phone:
+        query.agent?.phone ||
+        query.tripSource?.contactPerson?.phone ||
+        (query.tripSource?.contactPerson?.phones && query.tripSource.contactPerson.phones[0]?.number) ||
+        query.guestDetails?.phone ||
+        "",
       sellerBankDetails: [
         { label: "Bank Name", value: "HDFC Bank" },
         { label: "A/c Holder Name", value: "Holiday Circuit" },
@@ -3383,16 +3721,27 @@ export const createQuotation = async (req, res, next) => {
     const successfulDeliveryChannels = [];
 
     if (shouldSendEmail) {
-      try {
-        await sendAgentClientQuotationMail(
-          query.agent.email,
-          buildAgentQuotationEmailPayload({ quotation: createdQuotation, query }),
-        );
-        successfulDeliveryChannels.push("email");
-      } catch (emailError) {
-        console.error("Quotation email send failed:", emailError);
+      const recipientEmail = await resolveQueryRecipientEmail(
+        query,
+        explicitAgentEmail || explicitRecipientEmail || explicitEmail,
+      );
+      if (recipientEmail) {
+        try {
+          await sendAgentClientQuotationMail(
+            recipientEmail,
+            buildAgentQuotationEmailPayload({ quotation: createdQuotation, query }),
+          );
+          successfulDeliveryChannels.push("email");
+        } catch (emailError) {
+          console.error("Quotation email send failed:", emailError);
+          deliveryWarnings.push(
+            `Quotation saved, but email delivery failed. ${getEmailDeliveryErrorMessage(emailError)}`,
+          );
+        }
+      } else {
+        console.warn(`[createQuotation] Email requested but no recipient email found for query ${query?.queryId || query?._id}`);
         deliveryWarnings.push(
-          `Quotation saved, but email delivery failed. ${getEmailDeliveryErrorMessage(emailError)}`,
+          "Quotation saved, but email delivery failed because no recipient email address was found for this query.",
         );
       }
     }
@@ -3760,6 +4109,27 @@ const isPaymentFullyVerifiedForVoucherDispatch = (invoice = null) =>
   String(invoice?.paymentVerification?.status || "").trim() === "Verified" &&
   String(invoice?.paymentStatus || "").trim() === "Paid";
 
+const formatSafeIsoDate = (value) => {
+  if (!value) return "";
+  try {
+    const d = new Date(value);
+    if (isNaN(d.getTime())) {
+      const str = String(value).trim();
+      const parts = str.split(/[-/]/);
+      if (parts.length === 3 && parts[0].length === 2 && parts[2].length === 4) {
+        const parsed = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
+        if (!isNaN(parsed.getTime())) {
+          return parsed.toISOString().slice(0, 10);
+        }
+      }
+      return String(value);
+    }
+    return d.toISOString().slice(0, 10);
+  } catch (err) {
+    return String(value || "");
+  }
+};
+
 export const getVoucherManagementData = async (req, res, next) => {
   try {
     const assignmentFilter = await getAssignedQueryFilter(req);
@@ -3818,11 +4188,27 @@ export const getVoucherManagementData = async (req, res, next) => {
 
     const confirmations = await Confirmation.find({
       queryId: { $in: confirmationQueryIds },
-    });
+    }).lean();
 
     const confirmationMap = new Map(
       confirmations.map((item) => [item.queryId, item.services || []])
     );
+    const fullConfirmationMap = new Map(
+      confirmations.map((item) => [item.queryId, item])
+    );
+
+    const internalInvoices = await InternalInvoice.find({
+      $or: [
+        { queryId: { $in: confirmationQueryIds } },
+        { query: { $in: readyQueries.map((q) => q._id) } },
+      ],
+    }).lean();
+
+    const internalInvoiceMap = new Map();
+    internalInvoices.forEach((inv) => {
+      if (inv.queryId) internalInvoiceMap.set(inv.queryId, inv);
+      if (inv.query) internalInvoiceMap.set(inv.query.toString(), inv);
+    });
 
     const readyItems = await Promise.all(
       readyQueries.map(async (query) => {
@@ -3831,19 +4217,65 @@ export const getVoucherManagementData = async (req, res, next) => {
 
         const startDate = query.startDate ? new Date(query.startDate) : null;
         const endDate = query.endDate ? new Date(query.endDate) : null;
-        const days =
+        const diffDays =
           startDate && endDate
-            ? Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24))
+            ? Math.max(0, Math.round((endDate - startDate) / (1000 * 60 * 60 * 24)))
             : 0;
-        const nights = days > 0 ? days - 1 : 0;
+        const nights = diffDays;
+        const days = diffDays > 0 ? diffDays + 1 : 1;
 
         const quotation = await getLatestOperationalQuotation(query._id);
+        const queryConfServices = getConfirmationServicesForQuery(confirmationMap, query);
+        const existingConf =
+          fullConfirmationMap.get(query.queryId) ||
+          fullConfirmationMap.get(query._id?.toString());
+
+        const partnerInv =
+          internalInvoiceMap.get(query.queryId) ||
+          internalInvoiceMap.get(query._id?.toString());
+        const isOfflinePartner = Boolean(
+          query.partnerType === "offline_partner" ||
+          query.businessPartnerName ||
+          partnerInv?.partnerType === "offline_partner" ||
+          partnerInv?.businessPartnerName ||
+          partnerInv?.uploadedByRole === "ops"
+        );
+        const businessPartnerName =
+          query.businessPartnerName ||
+          partnerInv?.businessPartnerName ||
+          (isOfflinePartner ? (partnerInv?.dmcName || "Offline Partner") : "");
+
+        const rawQuotationServices = quotation?.services || [];
+        const fullQuotationServices = rawQuotationServices.map((service, index) => {
+          const cnfNum = getServiceConfirmationNumber(queryConfServices, service, index);
+          const cnfStatus = getServiceConfirmationStatus(queryConfServices, service, index);
+          return {
+            serviceId: service._id || service.serviceId || `${index}`,
+            type: service.type || "hotel",
+            serviceName: service.title || service.name || service.hotelName || "",
+            serviceDate: formatSafeIsoDate(service.serviceDate || query.startDate),
+            city: service.city || query.destination || "",
+            country: service.country || "",
+            roomCategory: service.roomCategory || "",
+            roomType: service.roomType || "",
+            hotelCategory: service.hotelCategory || "",
+            rooms: service.rooms || 1,
+            bedType: service.bedType || "",
+            supplierName: service.supplierName || businessPartnerName || "",
+            status: cnfStatus || (cnfNum && cnfNum !== "Pending" ? "Confirmed" : "Confirmed"),
+            confirmationNumber: cnfNum && cnfNum !== "Pending" ? cnfNum : "",
+            voucherNumber: cnfNum && cnfNum !== "Pending" ? cnfNum : "",
+            emergency: existingConf?.emergencyContact || "",
+          };
+        });
 
         return {
           id: query._id,
           query: query.queryId,
           voucherNumber: query.voucherNumber || "",
           status: "ready",
+          isOfflinePartner,
+          businessPartnerName,
           invoicePaymentStatus:
             readyInvoiceMap.get(query._id?.toString())?.paymentStatus || "",
           paymentVerificationStatus:
@@ -3858,16 +4290,18 @@ export const getVoucherManagementData = async (req, res, next) => {
           adults: Number(query.numberOfAdults || 0),
           children: Number(query.numberOfChildren || 0),
           travelerSummary: buildTravelerSummary(query),
+          quotationServices: fullQuotationServices,
+          existingConfirmation: existingConf || null,
           services: (quotation?.services || []).map((service, index) => ({
             type: service.type,
             title: service.title,
             status: getServiceConfirmationStatus(
-              getConfirmationServicesForQuery(confirmationMap, query),
+              queryConfServices,
               service,
               index
             ) || "",
             confirmation: getServiceConfirmation(
-              getConfirmationServicesForQuery(confirmationMap, query),
+              queryConfServices,
               service,
               index
             ),
@@ -3889,12 +4323,36 @@ export const getVoucherManagementData = async (req, res, next) => {
         confirmationMap,
         voucher.query,
       );
-      const fallbackQuotation =
-        voucher.quotation ||
-        (voucher.query?._id
-          ? await getLatestOperationalQuotation(voucher.query._id)
-            .select("services termsAndConditions")
-          : null);
+      const queryObj = voucher.query || {};
+      const queryIdStr = queryObj.queryId || voucher.queryId || "";
+      const queryMongoId = queryObj._id?.toString() || voucher.query?.toString() || "";
+      const partnerInv =
+        internalInvoiceMap.get(queryIdStr) ||
+        internalInvoiceMap.get(queryMongoId);
+      const isOfflinePartner = Boolean(
+        queryObj.partnerType === "offline_partner" ||
+        queryObj.businessPartnerName ||
+        partnerInv?.partnerType === "offline_partner" ||
+        partnerInv?.businessPartnerName ||
+        partnerInv?.uploadedByRole === "ops"
+      );
+      const businessPartnerName =
+        queryObj.businessPartnerName ||
+        partnerInv?.businessPartnerName ||
+        (isOfflinePartner ? (partnerInv?.dmcName || "Offline Partner") : "");
+
+      const existingConf =
+        fullConfirmationMap.get(queryIdStr) ||
+        fullConfirmationMap.get(queryMongoId);
+
+      let fallbackQuotation = voucher.quotation;
+      if (!fallbackQuotation && voucher.query?._id) {
+        try {
+          fallbackQuotation = await getLatestOperationalQuotation(voucher.query._id);
+        } catch (e) {
+          fallbackQuotation = null;
+        }
+      }
       const quotationServices = fallbackQuotation?.services || [];
       const resolvedVoucherServices = buildResolvedVoucherServices({
         voucherServices: voucher.services || [],
@@ -3902,11 +4360,44 @@ export const getVoucherManagementData = async (req, res, next) => {
         confirmationServices,
       });
 
+      const fullQuotationServices = quotationServices.map((service, index) => {
+        const cnfNum = getServiceConfirmationNumber(
+          confirmationServices,
+          service,
+          index
+        );
+        const cnfStatus = getServiceConfirmationStatus(
+          confirmationServices,
+          service,
+          index
+        );
+        return {
+          serviceId: service._id || service.serviceId || `${index}`,
+          type: service.type || "hotel",
+          serviceName: service.title || service.name || service.hotelName || "",
+          serviceDate: formatSafeIsoDate(service.serviceDate || queryObj.startDate),
+          city: service.city || queryObj.destination || voucher.destination || "",
+          country: service.country || "",
+          roomCategory: service.roomCategory || "",
+          roomType: service.roomType || "",
+          hotelCategory: service.hotelCategory || "",
+          rooms: service.rooms || 1,
+          bedType: service.bedType || "",
+          supplierName: service.supplierName || businessPartnerName || "",
+          status: cnfStatus || (cnfNum && cnfNum !== "Pending" ? "Confirmed" : "Confirmed"),
+          confirmationNumber: cnfNum && cnfNum !== "Pending" ? cnfNum : "",
+          voucherNumber: cnfNum && cnfNum !== "Pending" ? cnfNum : "",
+          emergency: existingConf?.emergencyContact || "",
+        };
+      });
+
       return {
         id: voucher.query?._id || voucher._id,
         query: voucher.query?.queryId || "",
         voucherNumber: voucher.voucherNumber,
         status: voucher.status || "generated",
+        isOfflinePartner,
+        businessPartnerName,
         invoicePaymentStatus: latestInvoice?.paymentStatus || "",
         paymentVerificationStatus: latestInvoice?.paymentVerification?.status || "",
         canSendVoucher: isPaymentVerifiedForVoucherDispatch(latestInvoice),
@@ -3919,6 +4410,8 @@ export const getVoucherManagementData = async (req, res, next) => {
         adults: Number(voucher.query?.numberOfAdults || 0),
         children: Number(voucher.query?.numberOfChildren || 0),
         travelerSummary: buildTravelerSummary(voucher.query || {}),
+        quotationServices: fullQuotationServices,
+        existingConfirmation: existingConf || null,
         services: resolvedVoucherServices.map((service) => ({
           type: service.type || "service",
           title: service.name || "Service missing",
@@ -4005,6 +4498,11 @@ const getServiceConfirmation = (confirmationServices = [], service, serviceIndex
   }
 
   return "Pending";
+};
+
+const getServiceConfirmationNumber = (confirmationServices = [], service, serviceIndex = -1) => {
+  const cnf = getServiceConfirmation(confirmationServices, service, serviceIndex);
+  return cnf === "Pending" ? "" : cnf;
 };
 
 const getServiceConfirmationStatus = (confirmationServices = [], service, serviceIndex = -1) => {
@@ -4192,12 +4690,13 @@ export const generateVoucher = async (req, res, next) => {
     const startDate = query.startDate ? new Date(query.startDate) : null;
     const endDate = query.endDate ? new Date(query.endDate) : null;
 
-    const days =
+    const diffDays =
       startDate && endDate
-        ? Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24))
+        ? Math.max(0, Math.round((endDate - startDate) / (1000 * 60 * 60 * 24)))
         : 0;
 
-    const nights = days > 0 ? days - 1 : 0;
+    const nights = diffDays;
+    const days = diffDays > 0 ? diffDays + 1 : 1;
 
     // 1. Update TravelQuery
     query.voucherNumber = voucherNumber;
@@ -4431,7 +4930,7 @@ export const sendVoucherToAgent = async (req, res, next) => {
     await voucher.save();
 
     await createOpsSideNotification(req, {
-      user: query.agent._id,
+      user: query.agent?._id || query.agent || null,
       type: "success",
       title: "Voucher Sent",
       message: `Your voucher ${voucher.voucherNumber} for ${voucher.destination || query.destination} is ready to view.${getVoucherDispatchNote(
@@ -4466,7 +4965,7 @@ export const sendVoucherToAgent = async (req, res, next) => {
 
 export const getOrCreateQuotationDraft = async (req, res, next) => {
   try {
-    const query = await TravelQuery.findById(req.params.queryId).populate("agent");
+    const query = await TravelQuery.findById(req.params.queryId).populate("agent").populate("tripSource");
     const requestedSourceQuotationId = String(req.query?.sourceQuotationId || "").trim();
     const requestedSourceRefresh =
       String(req.query?.refreshFromSource || "").trim().toLowerCase() === "true";
@@ -4475,6 +4974,35 @@ export const getOrCreateQuotationDraft = async (req, res, next) => {
 
     if (!query) {
       return res.status(404).json({ success: false, message: "Query not found" });
+    }
+
+    if (!query.agent) {
+      const resolvedAgentName =
+        query.tripSource?.name ||
+        query.querySource ||
+        query.guestDetails?.name ||
+        query.clientName ||
+        query.name ||
+        "Direct Client";
+      const resolvedAgentEmail =
+        query.tripSource?.contactPerson?.email ||
+        query.guestDetails?.email ||
+        query.clientEmail ||
+        "";
+      const resolvedAgentPhone =
+        query.tripSource?.contactPerson?.phone ||
+        (query.tripSource?.contactPerson?.phones && query.tripSource.contactPerson.phones[0]?.number) ||
+        query.guestDetails?.phone ||
+        (query.guestDetails?.phoneNumbers && query.guestDetails.phoneNumbers[0]?.number) ||
+        query.clientPhone ||
+        "";
+      query.agent = {
+        _id: query.tripSource?._id || null,
+        name: resolvedAgentName,
+        companyName: query.tripSource?.name || resolvedAgentName,
+        email: resolvedAgentEmail,
+        phone: resolvedAgentPhone,
+      };
     }
 
     const shouldStartBlankRevisionDraft =
@@ -4745,10 +5273,9 @@ export const getOpsQueryQuotations = async (req, res, next) => {
 
     const quotations = await Quotation.find({
       queryId: query._id,
-      status: { $ne: "Pending" },
     })
       .select(
-        "quotationNumber status pricing clientTotalAmount validTill services inclusions exclusions additionalNotes termsAndConditions dayWiseItinerary agentMarkup agentRevisionRemark createdAt updatedAt createdBy",
+        "quotationNumber status partnerType pricing clientTotalAmount validTill services inclusions exclusions additionalNotes termsAndConditions dayWiseItinerary agentMarkup agentRevisionRemark createdAt updatedAt createdBy",
       )
       .populate("createdBy", "name email companyName role")
       .sort({ updatedAt: -1, createdAt: -1 })
@@ -4781,6 +5308,7 @@ export const saveQuotationDraft = async (req, res, next) => {
     const { quotationId } = req.params;
     const {
       validTill,
+      partnerType,
       pricing = {},
       services = [],
       opsPercent = 0,
@@ -4855,6 +5383,9 @@ export const saveQuotationDraft = async (req, res, next) => {
       serviceId: service.serviceId || undefined,
       supplierId: service.supplierId || undefined,
       supplierName: service.supplierName || "",
+      businessPartnerId: service.businessPartnerId || undefined,
+      businessPartnerName: service.businessPartnerName || "",
+      isBpService: Boolean(service.isBpService || service.businessPartnerId),
       dmcId: service.dmcId || service.supplierId || undefined,
       dmcName: service.dmcName || "",
       type: service.type || service.serviceType || service.category || "",
@@ -4868,6 +5399,8 @@ export const saveQuotationDraft = async (req, res, next) => {
         service.transferName ||
         service.description ||
         "Service",
+      serviceName: service.serviceName || service.title || service.name || "",
+      hotelName: service.hotelName || "",
       city: service.city || "",
       country: service.country || "",
       description: service.description || service.desc || "",
@@ -4929,6 +5462,9 @@ export const saveQuotationDraft = async (req, res, next) => {
       quotation.dayWiseItinerary = normalizeDayWiseItinerary(dayWiseItinerary);
     }
     quotation.services = formattedServices;
+    if (partnerType) {
+      quotation.partnerType = partnerType;
+    }
     quotation.validTill = validTill || quotation.validTill;
     quotation.pricing = {
       currency: "INR",
@@ -5152,6 +5688,648 @@ export const deleteQuotationService = async (req, res, next) => {
       services: quotation.services,
     });
   } catch (error) {
+    next(error);
+  }
+};
+
+export const getQueryPartnerInvoiceStatus = async (req, res, next) => {
+  try {
+    const { queryId } = req.params;
+    if (!queryId) {
+      return next(new ApiError(400, "Query ID is required"));
+    }
+
+    const queryLookup = mongoose.Types.ObjectId.isValid(queryId)
+      ? { _id: queryId }
+      : { queryId: String(queryId).trim() };
+
+    const query = await TravelQuery.findOne(queryLookup)
+      .populate("agent", "name companyName email")
+      .lean();
+
+    if (!query) {
+      return next(new ApiError(404, "Booking / Query not found"));
+    }
+
+    const allQuots = await Quotation.find({ queryId: query._id })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const quotation =
+      allQuots.find((qt) =>
+        ["Confirmed", "Approved", "Quote Accepted"].includes(String(qt.status || "").trim())
+      ) || allQuots[0] || null;
+
+    const quotPartnerType = String(quotation?.partnerType || "").trim();
+    const isOnlineDmc =
+      quotPartnerType === "Online DMC" ||
+      (!quotPartnerType &&
+        quotation &&
+        !quotation.businessPartnerName &&
+        !quotation.services?.some((s) => s.isBpService || s.businessPartnerId || s.businessPartner));
+
+    const uploadedInvoices = await InternalInvoice.find({
+      $or: [{ query: query._id }, { queryCode: query.queryId }],
+      isDeleted: { $ne: true },
+    })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    if (isOnlineDmc) {
+      return res.status(200).json({
+        success: true,
+        data: {
+          queryId: query.queryId,
+          destination: query.destination || "",
+          partnerType: "Online DMC",
+          isOnlineDmc: true,
+          totalRequired: 0,
+          uploadedCount: uploadedInvoices.length,
+          pendingCount: 0,
+          isComplete: true,
+          partners: [],
+          uploadedInvoices: uploadedInvoices.map((inv) => ({
+            id: inv._id,
+            invoiceNumber: inv.invoiceNumber,
+            businessPartnerName: inv.businessPartnerName || inv.supplierName || "",
+            invoiceDate: inv.invoiceDate,
+            amount: inv.claimedSummary?.grandTotal || inv.summary?.grandTotal || 0,
+            status: inv.status,
+            filePath: inv.uploadedInvoice?.filePath || inv.documents?.[0]?.filePath || "",
+            fileName: inv.uploadedInvoice?.name || inv.documents?.[0]?.name || "",
+          })),
+        },
+      });
+    }
+
+    const services = quotation?.services || [];
+    const partnerMap = new Map();
+
+    services.forEach((s) => {
+      const rawPartnerName = (s.businessPartnerName || s.supplierName || s.dmcName || "").trim();
+      if (rawPartnerName) {
+        const key = rawPartnerName.toLowerCase();
+        const type = s.type || s.serviceType || "Service";
+        const title = s.title || s.serviceName || s.hotelName || s.name || "Service";
+        const amount = Number(s.total || s.totalInInr || s.price || s.rate || 0);
+
+        if (!partnerMap.has(key)) {
+          partnerMap.set(key, {
+            partnerName: rawPartnerName,
+            partnerId: s.businessPartnerId || s.businessPartner || s.supplierId || s.dmcId || null,
+            serviceTypes: [type],
+            serviceTitles: [title],
+            expectedAmount: amount,
+          });
+        } else {
+          const item = partnerMap.get(key);
+          if (!item.serviceTypes.includes(type)) {
+            item.serviceTypes.push(type);
+          }
+          item.serviceTitles.push(title);
+          item.expectedAmount += amount;
+        }
+      }
+    });
+
+    const isPartnerMatch = (nameA = "", nameB = "") => {
+      const normA = String(nameA || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+      const normB = String(nameB || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+      if (!normA || !normB) return false;
+      if (normA === normB) return true;
+      if (normA.includes(normB) || normB.includes(normA)) return true;
+      if ((normA.includes("mmt") || normA.includes("makemytrip")) && (normB.includes("mmt") || normB.includes("makemytrip"))) return true;
+      if (normA.includes("tbo") && normB.includes("tbo")) return true;
+      if (normA.includes("tripjack") && normB.includes("tripjack")) return true;
+      if (normA.includes("yatra") && normB.includes("yatra")) return true;
+      if (normA.includes("agoda") && normB.includes("agoda")) return true;
+      if (normA.includes("riya") && normB.includes("riya")) return true;
+      if (normA.includes("expedia") && normB.includes("expedia")) return true;
+      if (normA.includes("easemytrip") && normB.includes("easemytrip")) return true;
+      if (normA.includes("cleartrip") && normB.includes("cleartrip")) return true;
+      return false;
+    };
+
+    const partners = [];
+
+    // Map quotation partners
+    for (const [key, pData] of partnerMap.entries()) {
+      const matchedInvoices = uploadedInvoices.filter((inv) => {
+        const invName = (inv.businessPartnerName || inv.supplierName || inv.dmcName || "").trim();
+        return isPartnerMatch(invName, pData.partnerName);
+      });
+
+      const isUploaded = matchedInvoices.length > 0;
+      partners.push({
+        partnerName: pData.partnerName,
+        partnerId: pData.partnerId,
+        serviceTypes: pData.serviceTypes,
+        serviceTitles: pData.serviceTitles,
+        expectedAmount: pData.expectedAmount,
+        isUploaded,
+        uploadedCount: matchedInvoices.length,
+        invoices: matchedInvoices.map((inv) => ({
+          id: inv._id,
+          invoiceNumber: inv.invoiceNumber,
+          invoiceDate: inv.invoiceDate,
+          amount: inv.claimedSummary?.grandTotal || inv.summary?.grandTotal || 0,
+          status: inv.status,
+          filePath: inv.uploadedInvoice?.filePath || inv.documents?.[0]?.filePath || "",
+          fileName: inv.uploadedInvoice?.name || inv.documents?.[0]?.name || "",
+        })),
+      });
+    }
+
+    // Add any uploaded invoice partner not in quotation
+    uploadedInvoices.forEach((inv) => {
+      const invPartnerName = (inv.businessPartnerName || inv.supplierName || inv.dmcName || "").trim();
+      const alreadyInList = partners.some((p) => isPartnerMatch(p.partnerName, invPartnerName));
+      if (invPartnerName && !alreadyInList) {
+        partners.push({
+          partnerName: invPartnerName,
+          partnerId: null,
+          serviceTypes: ["Offline Partner"],
+          serviceTitles: [inv.invoiceNumber || "Partner Invoice"],
+          expectedAmount: inv.claimedSummary?.grandTotal || inv.summary?.grandTotal || 0,
+          isUploaded: true,
+          uploadedCount: 1,
+          invoices: [
+            {
+              id: inv._id,
+              invoiceNumber: inv.invoiceNumber,
+              invoiceDate: inv.invoiceDate,
+              amount: inv.claimedSummary?.grandTotal || inv.summary?.grandTotal || 0,
+              status: inv.status,
+              filePath: inv.uploadedInvoice?.filePath || inv.documents?.[0]?.filePath || "",
+              fileName: inv.uploadedInvoice?.name || inv.documents?.[0]?.name || "",
+            },
+          ],
+        });
+      }
+    });
+
+    const totalRequired = partners.length;
+    const uploadedCount = partners.filter((p) => p.isUploaded).length;
+    const pendingCount = partners.filter((p) => !p.isUploaded).length;
+
+    res.status(200).json({
+      success: true,
+      data: {
+        queryId: query.queryId,
+        destination: query.destination || "",
+        totalRequired,
+        uploadedCount,
+        pendingCount,
+        isComplete: totalRequired > 0 && pendingCount === 0,
+        partners,
+        uploadedInvoices: uploadedInvoices.map((inv) => ({
+          id: inv._id,
+          invoiceNumber: inv.invoiceNumber,
+          businessPartnerName: inv.businessPartnerName || inv.supplierName || "",
+          invoiceDate: inv.invoiceDate,
+          amount: inv.claimedSummary?.grandTotal || inv.summary?.grandTotal || 0,
+          status: inv.status,
+          filePath: inv.uploadedInvoice?.filePath || inv.documents?.[0]?.filePath || "",
+          fileName: inv.uploadedInvoice?.name || inv.documents?.[0]?.name || "",
+        })),
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getQueriesForPartnerInvoiceUpload = async (req, res, next) => {
+  try {
+    const queries = await TravelQuery.find({
+      isDeleted: { $ne: true },
+      $or: [
+        { opsStatus: { $in: ["Confirmed", "Vouchered", "Invoice_Requested", "Payment_Completed"] } },
+        { agentStatus: { $in: ["Client Approved", "Confirmed"] } },
+      ],
+    })
+      .populate("agent", "name companyName email")
+      .select("queryId destination startDate endDate numberOfAdults numberOfChildren customerName opsStatus agentStatus quotationStatus createdAt")
+      .sort({ createdAt: -1 })
+      .limit(100)
+      .lean();
+
+    const queryMongoIds = queries.map((q) => q._id);
+    const quots = await Quotation.find({ queryId: { $in: queryMongoIds } })
+      .select("queryId partnerType businessPartnerName services status createdAt")
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const quotsByQueryId = new Map();
+    quots.forEach((qt) => {
+      const qKey = String(qt.queryId);
+      if (!quotsByQueryId.has(qKey)) quotsByQueryId.set(qKey, []);
+      quotsByQueryId.get(qKey).push(qt);
+    });
+
+    const eligibleQueries = queries.filter((q) => {
+      const qQuots = quotsByQueryId.get(String(q._id)) || [];
+      const approvedQuot =
+        qQuots.find((qt) =>
+          ["Confirmed", "Approved", "Quote Accepted"].includes(String(qt.status || "").trim())
+        ) || qQuots[0];
+
+      if (!approvedQuot) {
+        return Boolean(q.businessPartnerName || q.partnerType === "offline_partner" || q.partnerType === "Business Partner");
+      }
+
+      const pType = String(approvedQuot.partnerType || "").trim();
+      if (pType === "Online DMC") return false;
+      if (pType === "Business Partner") return true;
+
+      return Boolean(
+        approvedQuot.businessPartnerName ||
+        approvedQuot.services?.some((s) => s.isBpService || s.businessPartnerId || s.businessPartner) ||
+        q.businessPartnerName
+      );
+    });
+
+    const formattedQueries = eligibleQueries.map((q) => ({
+      id: q._id,
+      queryId: q.queryId,
+      destination: q.destination || "-",
+      startDate: q.startDate,
+      endDate: q.endDate,
+      pax: Number(q.numberOfAdults || 0) + Number(q.numberOfChildren || 0),
+      adults: Number(q.numberOfAdults || 0),
+      children: Number(q.numberOfChildren || 0),
+      customerName: q.customerName || "-",
+      agentName: q.agent?.companyName || q.agent?.name || "-",
+      status: q.opsStatus || q.quotationStatus || "Active",
+    }));
+
+    res.status(200).json({
+      success: true,
+      data: formattedQueries,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const uploadBusinessPartnerInvoice = async (req, res, next) => {
+  try {
+    const {
+      queryId,
+      businessPartnerName,
+      invoiceNumber,
+      invoiceDate,
+      creditPeriodDays = 7,
+      subtotal = 0,
+      taxAmount = 0,
+      grandTotal = 0,
+      remarks = "",
+      items = [],
+    } = req.body;
+
+    if (!queryId) {
+      return next(new ApiError(400, "Query / Booking Reference is required"));
+    }
+
+    if (!businessPartnerName || !String(businessPartnerName).trim()) {
+      return next(new ApiError(400, "Business Partner Name (e.g. MakeMyTrip, Agoda, Yatra) is required"));
+    }
+
+    if (!invoiceNumber || !String(invoiceNumber).trim()) {
+      return next(new ApiError(400, "Invoice number is required"));
+    }
+
+    if (!invoiceDate) {
+      return next(new ApiError(400, "Invoice date is required"));
+    }
+
+    if (Number(grandTotal || 0) <= 0) {
+      return next(new ApiError(400, "Grand total amount must be greater than zero"));
+    }
+
+    const queryLookup = mongoose.Types.ObjectId.isValid(queryId)
+      ? { _id: queryId }
+      : { queryId: String(queryId).trim() };
+
+    const query = await TravelQuery.findOne(queryLookup)
+      .populate("agent", "name companyName email")
+      .lean();
+
+    if (!query) {
+      return next(new ApiError(404, "Travel query / booking not found"));
+    }
+
+    const quotation = await Quotation.findOne({ queryId: query._id })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    let uploadedInvoiceDoc = {
+      name: `Partner_Invoice_${String(businessPartnerName).replace(/\s+/g, "_")}_${String(invoiceNumber)}.pdf`,
+      filePath: "",
+      size: "",
+      kind: "invoice",
+    };
+
+    if (req.file) {
+      const fileUrl = req.file.path || req.file.secure_url || req.file.url || "";
+      const fileSizeKb = req.file.size ? `${Math.max(1, Math.round(req.file.size / 1024))} kB` : "150 kB";
+      uploadedInvoiceDoc = {
+        name: req.file.originalname || uploadedInvoiceDoc.name,
+        filePath: fileUrl,
+        size: fileSizeKb,
+        mimeType: req.file.mimetype || "application/pdf",
+        kind: "invoice",
+      };
+    }
+
+    const assignedFinanceMember = await getRoundRobinFinanceAssignee();
+
+    let parsedItems = [];
+    if (typeof items === "string") {
+      try {
+        parsedItems = JSON.parse(items);
+      } catch (e) {
+        parsedItems = [];
+      }
+    } else if (Array.isArray(items)) {
+      parsedItems = items;
+    }
+
+    if (!parsedItems.length && quotation?.services?.length) {
+      parsedItems = quotation.services.map((s) => ({
+        type: s.serviceType || "Service",
+        service: s.serviceName || s.name || s.title || "Service",
+        currency: "INR",
+        qty: Number(s.quantity || s.qty || 1),
+        rate: Number(s.price || s.rate || s.total || 0),
+        subtotal: Number(s.total || s.price || 0),
+        tax: Number(s.tax || 0),
+      }));
+    }
+
+    if (!parsedItems.length) {
+      parsedItems = [
+        {
+          type: "Package",
+          service: `${businessPartnerName} Tour Package / Services`,
+          currency: "INR",
+          qty: 1,
+          rate: Number(subtotal || grandTotal || 0),
+          subtotal: Number(subtotal || grandTotal || 0),
+          tax: Number(taxAmount || 0),
+        },
+      ];
+    }
+
+    const parsedInvoiceDate = new Date(invoiceDate);
+    const parsedCreditDays = [7, 15].includes(Number(creditPeriodDays)) ? Number(creditPeriodDays) : 7;
+    const calculatedDueDate = new Date(parsedInvoiceDate);
+    calculatedDueDate.setDate(calculatedDueDate.getDate() + parsedCreditDays);
+
+    const partnerNameTrimmed = String(businessPartnerName).trim();
+    const invoiceNumTrimmed = String(invoiceNumber).trim();
+
+    const sanitizedPartnerHandle = partnerNameTrimmed.toLowerCase().replace(/[^a-z0-9]/g, "");
+    const partnerRegex = new RegExp(`^${partnerNameTrimmed.replace(/[-\/\\^$*+?.()|[\]{}]/g, "\\$&")}$`, "i");
+
+    const partnerAuth = await Auth.findOne({
+      $or: [
+        { name: partnerRegex },
+        { companyName: partnerRegex },
+        { email: `${sanitizedPartnerHandle}@bp.holidaycircuit.com` },
+      ],
+      isDeleted: { $ne: true },
+    }).lean();
+
+    const resolvedPartnerEmail =
+      partnerAuth?.email || (sanitizedPartnerHandle ? `${sanitizedPartnerHandle}@bp.holidaycircuit.com` : "");
+    const resolvedPartnerPhone = partnerAuth?.phone || "+91 98765 43210";
+
+    const invoicePayload = {
+      query: query._id,
+      queryCode: query.queryId,
+      agent: query.agent?._id || query.agent || null,
+      agentName: query.agent?.companyName || query.agent?.name || "",
+      dmc: partnerAuth?._id || null,
+      dmcEmail: resolvedPartnerEmail,
+      dmcPhone: resolvedPartnerPhone,
+      partnerType: "offline_partner",
+      businessPartnerName: partnerNameTrimmed,
+      dmcName: `${partnerNameTrimmed} (Offline Partner)`,
+      destination: query.destination || "",
+      supplierName: partnerNameTrimmed,
+      invoiceNumber: invoiceNumTrimmed,
+      invoiceDate: parsedInvoiceDate,
+      dueDate: calculatedDueDate,
+      creditPeriodDays: parsedCreditDays,
+      items: parsedItems,
+      documents: req.file ? [uploadedInvoiceDoc] : [],
+      invoiceSource: "uploaded_invoice",
+      uploadedInvoice: uploadedInvoiceDoc,
+      claimedSummary: {
+        subtotal: Number(subtotal || grandTotal || 0),
+        taxAmount: Number(taxAmount || 0),
+        grandTotal: Number(grandTotal || 0),
+      },
+      taxConfig: {
+        gstRate: Number(quotation?.pricing?.tax?.gst?.percent || quotation?.taxConfig?.gstRate || 0),
+        tcsRate: Number(quotation?.pricing?.tax?.tcs?.percent || quotation?.taxConfig?.tcsRate || 0),
+        otherTax: Number(quotation?.pricing?.tax?.tourismFee?.amount || quotation?.taxConfig?.otherTax || 0),
+      },
+      summary: {
+        subtotal: Number(subtotal || grandTotal || 0),
+        gstAmount: 0,
+        tcsAmount: 0,
+        otherTaxAmount: Number(taxAmount || 0),
+        totalTax: Number(taxAmount || 0),
+        grandTotal: Number(grandTotal || 0),
+      },
+      templateVariant: "uploaded_invoice",
+      status: "Submitted",
+      uploadedByRole: "ops",
+      submittedBy: req.user?._id || req.user?.id || null,
+      submittedAt: new Date(),
+      assignedTo: assignedFinanceMember?._id || null,
+      assignedToName: assignedFinanceMember?.name || "",
+      assignedToEmail: assignedFinanceMember?.email || "",
+      assignedAt: assignedFinanceMember ? new Date() : null,
+      dmcRemarks: remarks || `Offline Partner Invoice uploaded by Ops for ${partnerNameTrimmed}`,
+    };
+
+    const newInvoice = await InternalInvoice.create(invoicePayload);
+
+    if (assignedFinanceMember?._id) {
+      await Notification.create({
+        user: assignedFinanceMember._id,
+        type: "info",
+        title: "New Offline Partner Invoice Uploaded",
+        message: `Ops uploaded invoice ${invoiceNumTrimmed} for offline partner ${partnerNameTrimmed} (${query.queryId}).`,
+        link: "/finance/internalInvoice",
+        meta: {
+          internalInvoiceId: newInvoice._id,
+          invoiceNumber: invoiceNumTrimmed,
+          queryId: query.queryId,
+          partnerType: "offline_partner",
+          businessPartnerName: partnerNameTrimmed,
+          assignedTo: assignedFinanceMember._id,
+        },
+      });
+    }
+
+    res.status(201).json({
+      success: true,
+      message: `Offline business partner invoice for ${partnerNameTrimmed} uploaded successfully`,
+      data: newInvoice,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ==================== Submit Offline Partner Confirmation by Ops ====================
+export const submitOfflinePartnerConfirmation = async (req, res, next) => {
+  try {
+    const {
+      queryId,
+      services,
+      emergencyContact,
+      businessPartnerName,
+      status = "submitted",
+    } = req.body;
+
+    if (!queryId) {
+      return res.status(400).json({ success: false, message: "Query ID is required" });
+    }
+
+    const query = await TravelQuery.findOne({
+      $or: [
+        { queryId: queryId },
+        { _id: mongoose.isValidObjectId(queryId) ? queryId : null },
+      ].filter(Boolean),
+    });
+
+    if (!query) {
+      return res.status(404).json({ success: false, message: "Query not found" });
+    }
+
+    let parsedServices = [];
+    if (typeof services === "string") {
+      try {
+        parsedServices = JSON.parse(services);
+      } catch (e) {
+        parsedServices = [];
+      }
+    } else if (Array.isArray(services)) {
+      parsedServices = services;
+    }
+
+    const getUploadedFileUrl = (fileObj) => {
+      if (!fileObj) return "";
+      return fileObj.path || fileObj.secure_url || fileObj.url || "";
+    };
+
+    const documents = {};
+    if (req.files?.supplierConfirmation?.[0]) {
+      documents.supplierConfirmation = getUploadedFileUrl(req.files.supplierConfirmation[0]);
+    }
+    if (req.files?.voucherReference?.[0]) {
+      documents.voucherReference = getUploadedFileUrl(req.files.voucherReference[0]);
+    }
+    if (req.files?.termsConditions?.[0]) {
+      documents.termsConditions = getUploadedFileUrl(req.files.termsConditions[0]);
+    }
+
+    // 1. Find or create Confirmation record
+    let confirmation = await Confirmation.findOne({
+      queryId: { $in: [query.queryId, query._id.toString()] },
+    });
+
+    if (confirmation) {
+      confirmation.services = parsedServices;
+      confirmation.emergencyContact = emergencyContact || confirmation.emergencyContact || "";
+      confirmation.documents = {
+        ...(confirmation.documents?.toObject?.() || confirmation.documents || {}),
+        ...documents,
+      };
+      confirmation.status = "submitted";
+      await confirmation.save();
+    } else {
+      confirmation = await Confirmation.create({
+        dmcId: req.user.id || req.user._id,
+        queryId: query.queryId,
+        services: parsedServices,
+        emergencyContact: emergencyContact || "",
+        documents,
+        status: "submitted",
+      });
+    }
+
+    // 2. Sync Quotation services
+    const quotation = await getLatestOperationalQuotation(query._id);
+    if (quotation && Array.isArray(quotation.services)) {
+      quotation.services = quotation.services.map((s, idx) => {
+        const sObj = s.toObject ? s.toObject() : { ...s };
+        const matched = parsedServices.find(
+          (ps) =>
+            (ps.serviceId && String(ps.serviceId) === String(s._id || s.serviceId)) ||
+            (ps.serviceName && s.title && ps.serviceName.toLowerCase().trim() === s.title.toLowerCase().trim()) ||
+            (ps.title && s.title && ps.title.toLowerCase().trim() === s.title.toLowerCase().trim())
+        ) || parsedServices[idx];
+
+        if (matched && matched.confirmationNumber) {
+          sObj.confirmationNumber = matched.confirmationNumber;
+          sObj.voucherNumber = matched.voucherNumber || matched.confirmationNumber;
+          sObj.confirmation = matched.confirmationNumber;
+          sObj.status = matched.status || "Confirmed";
+          sObj.isVoucherGenerated = true;
+        }
+        return sObj;
+      });
+      await quotation.save();
+    }
+
+    // 3. Sync existing Voucher if already created
+    const voucher = await Voucher.findOne({ query: query._id });
+    if (voucher && Array.isArray(voucher.services)) {
+      voucher.services = voucher.services.map((s, idx) => {
+        const sObj = s.toObject ? s.toObject() : { ...s };
+        const matched = parsedServices.find(
+          (ps) =>
+            (ps.serviceName && s.name && ps.serviceName.toLowerCase().trim() === s.name.toLowerCase().trim()) ||
+            (ps.title && s.name && ps.title.toLowerCase().trim() === s.name.toLowerCase().trim())
+        ) || parsedServices[idx];
+
+        if (matched && matched.confirmationNumber) {
+          sObj.confirmation = matched.confirmationNumber;
+          sObj.status = matched.status || "Confirmed";
+        }
+        return sObj;
+      });
+      await voucher.save();
+    }
+
+    // 4. Update query businessPartnerName if provided
+    if (businessPartnerName && !query.businessPartnerName) {
+      query.businessPartnerName = businessPartnerName;
+    }
+    query.activityLog = query.activityLog || [];
+    query.activityLog.push({
+      action: "Offline Partner Services Confirmed",
+      performedBy: req.user.name || "Operations",
+      timestamp: new Date(),
+    });
+    await query.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Offline partner service confirmations saved & synced successfully!",
+      data: {
+        confirmation,
+        queryId: query.queryId,
+      },
+    });
+  } catch (error) {
+    console.error("Offline partner confirmation error:", error);
     next(error);
   }
 };

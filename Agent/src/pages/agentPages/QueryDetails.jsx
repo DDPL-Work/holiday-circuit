@@ -131,7 +131,7 @@ function renderItemDescription(description) {
   );
 }
 
-const QueryDetails = ({ query, onClose, onRefresh }) => {
+const QueryDetails = ({ query, onClose, onRefresh, initialQuoteId }) => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const currentUser = useSelector((state) => state.auth.user);
@@ -143,7 +143,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
   const [expandedQuoteIds, setExpandedQuoteIds] = useState({});
   const [showQuoteHistory, setShowQuoteHistory] = useState(false);
   const [quoteDropdownPos, setQuoteDropdownPos] = useState({ top: 0, left: 0 });
-  const [selectedQuoteId, setSelectedQuoteId] = useState(null);
+  const [selectedQuoteId, setSelectedQuoteId] = useState(initialQuoteId || null);
   const [markupType, setMarkupType] = useState("PERCENT");
   const [markupValue, setMarkupValue] = useState("");
   const [isMarkupModalOpen, setIsMarkupModalOpen] = useState(false);
@@ -180,6 +180,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
   const [brandLogoFile, setBrandLogoFile] = useState(null);
   const [brandLogoUrl, setBrandLogoUrl] = useState("");
   const [activeTab, setActiveTab] = useState(() => {
+    if (initialQuoteId) return "quotes";
     const tabParam = new URLSearchParams(window.location.search).get("tab");
     if (tabParam === "docs" || tabParam === "documents") return "docs";
     return "basic";
@@ -188,6 +189,13 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
   const [showPackageThreeDotsMenu, setShowPackageThreeDotsMenu] = useState(false);
   const threeDotsMenuRef = useRef(null);
   const packageThreeDotsMenuRef = useRef(null);
+
+  useEffect(() => {
+    if (initialQuoteId) {
+      setSelectedQuoteId(initialQuoteId);
+      setActiveTab("quotes");
+    }
+  }, [initialQuoteId]);
 
   const [tasks, setTasks] = useState([]);
   const [openTaskMenuId, setOpenTaskMenuId] = useState(null);
@@ -1159,9 +1167,11 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
       const vData = buildCurrentVoucherData();
       const targetQuote = activeQuote || quotes[0] || {};
       const agentBranding = getSavedAgentBranding({ quote: targetQuote, user: currentUser, query });
-      agentBranding.logo = agentBranding.logo || DEFAULT_FALLBACK_LOGO;
+
       if (agentBranding.logo) {
         agentBranding.logo = buildPublicAssetUrl(agentBranding.logo) || agentBranding.logo;
+      } else {
+        agentBranding.logo = DEFAULT_FALLBACK_LOGO;
       }
       if (vData.voucherFooterImage) {
         vData.voucherFooterImage = buildPublicAssetUrl(vData.voucherFooterImage) || vData.voucherFooterImage;
@@ -1194,7 +1204,6 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
       const vData = buildCurrentVoucherData();
       const targetQuote = activeQuote || quotes[0] || {};
       const agentBranding = getSavedAgentBranding({ quote: targetQuote, user: currentUser, query });
-      agentBranding.logo = agentBranding.logo || DEFAULT_FALLBACK_LOGO;
 
       // Helper to convert external image URL / relative path to Base64 data URI to bypass any CORS restrictions in html2canvas
       const convertUrlToBase64 = async (url, fallback = "") => {
@@ -1208,21 +1217,46 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
           normalized = `https:${normalized}`;
         }
 
+        // 1. Try axios API.get with blob response (handles baseUrl and backend upload paths)
+        try {
+          const res = await API.get(normalized, { responseType: "blob" });
+          if (res?.data && res.data.size > 0) {
+            return await new Promise((resolve) => {
+              const reader = new FileReader();
+              reader.onloadend = () => {
+                if (typeof reader.result === "string" && reader.result.startsWith("data:image")) {
+                  resolve(reader.result);
+                } else {
+                  resolve(fallback || normalized);
+                }
+              };
+              reader.onerror = () => resolve(fallback || normalized);
+              reader.readAsDataURL(res.data);
+            });
+          }
+        } catch (apiErr) {}
+
+        // 2. Try native fetch with CORS
         try {
           const res = await fetch(normalized, { mode: "cors" });
           if (res.ok) {
             const blob = await res.blob();
             return await new Promise((resolve) => {
               const reader = new FileReader();
-              reader.onloadend = () => resolve(reader.result);
+              reader.onloadend = () => {
+                if (typeof reader.result === "string" && reader.result.startsWith("data:image")) {
+                  resolve(reader.result);
+                } else {
+                  resolve(fallback || normalized);
+                }
+              };
               reader.onerror = () => resolve(fallback || normalized);
               reader.readAsDataURL(blob);
             });
           }
-        } catch (err) {
-          // fallback to canvas method
-        }
+        } catch (err) {}
 
+        // 3. Fallback to Image canvas draw
         try {
           return await new Promise((resolve) => {
             const img = new Image();
@@ -1234,7 +1268,8 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                 canvas.height = img.naturalHeight || img.height || 60;
                 const ctx = canvas.getContext("2d");
                 ctx.drawImage(img, 0, 0);
-                resolve(canvas.toDataURL("image/png"));
+                const dataUrl = canvas.toDataURL("image/png");
+                resolve(dataUrl || fallback || normalized);
               } catch (e) {
                 resolve(fallback || normalized);
               }
@@ -1284,27 +1319,14 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
             return new Promise((resolve) => {
               img.onload = resolve;
               img.onerror = resolve;
-              setTimeout(resolve, 2000);
+              setTimeout(resolve, 1500);
             });
           })
         );
       }
 
-      // Calculate exact height to pin footer to bottom of last page without overflow
-      // Printable A4 height at 800px width with 5mm margin = 1148px per page
-      const PAGE_HEIGHT_PX = 1148;
-      const initialHeight = targetElement.scrollHeight;
-      const pageCount = Math.max(1, Math.ceil(initialHeight / PAGE_HEIGHT_PX));
-      const targetHeight = (pageCount * PAGE_HEIGHT_PX) - 16;
-
-      targetElement.style.minHeight = `${targetHeight}px`;
-      targetElement.style.height = `${targetHeight}px`;
-      targetElement.style.display = "flex";
-      targetElement.style.flexDirection = "column";
-      targetElement.style.justifyContent = "space-between";
-
       // Small layout stabilization delay
-      await new Promise((resolve) => setTimeout(resolve, 200));
+      await new Promise((resolve) => setTimeout(resolve, 150));
 
       const opt = {
         margin: [5, 5, 5, 5],
@@ -1322,6 +1344,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
         jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
         pagebreak: {
           mode: ["css", "legacy"],
+          avoid: [".voucher-card", ".voucher-footer-wrapper", "tr"],
         },
       };
 
@@ -1966,9 +1989,57 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
     headerTravelerCounts.children > 0 ? `${headerTravelerCounts.children} Child${headerTravelerCounts.children === 1 ? "" : "ren"}` : "",
     headerTravelerCounts.infants > 0 ? `${headerTravelerCounts.infants} Infant${headerTravelerCounts.infants === 1 ? "" : "s"}` : "",
   ].filter(Boolean).join(", ") || "Passengers not specified";
-  const headerCompany = String(
-    query?.agencyName || query?.companyName || currentUser?.companyName || currentUser?.name || currentUser?.fullName || "",
-  ).trim() || "Company not specified";
+  const offlineAgentOrg = (() => {
+    try {
+      const raw =
+        sessionStorage.getItem("offlineAgentOrgData") ||
+        localStorage.getItem("offlineAgentOrgData");
+      if (raw) return JSON.parse(raw);
+    } catch (e) {}
+    return null;
+  })();
+
+  const isInternalStaff = [
+    "operations",
+    "operation_manager",
+    "admin",
+    "finance",
+    "manager",
+  ].includes(String(currentUser?.role || "").toLowerCase());
+
+  const isInvalidAgencyName = (val) => {
+    if (!val) return true;
+    const lower = String(val).trim().toLowerCase();
+    return (
+      lower === "operation manager" ||
+      lower === "operations manager" ||
+      lower === "admin" ||
+      lower === "company not specified"
+    );
+  };
+
+  const candidateAgencyName =
+    (!isInvalidAgencyName(query?.agencyName) ? query?.agencyName : "") ||
+    (!isInvalidAgencyName(query?.companyName) ? query?.companyName : "") ||
+    (!isInvalidAgencyName(query?.querySource) ? query?.querySource : "") ||
+    (query?.tripSource && typeof query.tripSource === "object" && !isInvalidAgencyName(query.tripSource.name)
+      ? query.tripSource.name
+      : "") ||
+    (!isInvalidAgencyName(query?.agent?.companyName) ? query?.agent?.companyName : "") ||
+    (!isInvalidAgencyName(query?.agent?.agencyName) ? query?.agent?.agencyName : "") ||
+    (!isInvalidAgencyName(query?.agent?.name) ? query?.agent?.name : "") ||
+    (!isInvalidAgencyName(query?.agentName) ? query?.agentName : "") ||
+    (!isInvalidAgencyName(offlineAgentOrg?.name) ? offlineAgentOrg?.name : "") ||
+    (!isInvalidAgencyName(sessionStorage.getItem("offlineAgentOrgName")) ? sessionStorage.getItem("offlineAgentOrgName") : "") ||
+    (!isInvalidAgencyName(localStorage.getItem("offlineAgentOrgName")) ? localStorage.getItem("offlineAgentOrgName") : "") ||
+    (!isInternalStaff && !isInvalidAgencyName(currentUser?.companyName || currentUser?.name || currentUser?.fullName)
+      ? currentUser?.companyName || currentUser?.name || currentUser?.fullName
+      : "");
+
+  const headerCompany =
+    String(candidateAgencyName || "").trim() && !isInvalidAgencyName(candidateAgencyName)
+      ? String(candidateAgencyName).trim()
+      : "Holiday Circuit";
   const headerStatus = String(activeQuote?.status || query?.agentStatus || query?.opsStatus || "Pending").trim();
   const hasActiveQuoteMarkup = activeQuote?.status !== "Quote Sent" && activeQuote?.status !== "Revision Requested" && activeQuote?.status !== "Pending" && (Number(activeQuote?.agentMarkup?.markupAmount || activeQuote?.agentMarkup?.value || 0) > 0 || activeQuote?.status === "Markup Applied");
   const isActiveQuoteSentToClient = activeQuote?.status === "Sent to Client" || Boolean(activeQuote?.isSentToClient || activeQuote?.sentToClientAt || activeQuote?.sharedWithClient || query?.voucherStatus === "sent");
@@ -2293,7 +2364,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
             setIsCreatingProforma(false);
             toast.success("Proforma Invoice saved successfully");
           }}
-          queryData={{ ...query, activeQuote, quotes, headerPackageAmount, headerLeadTraveler }}
+          queryData={{ ...query, agencyName: headerCompany, companyName: headerCompany, activeQuote, quotes, headerPackageAmount, headerLeadTraveler }}
         />
       </div>
     );
@@ -2750,11 +2821,15 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
               const allQuoteServices = Array.isArray(quote?.services) ? quote.services : [];
 
               const isHotelItem = (s) => {
-                const type = String(s?.type || s?.category || "").trim().toLowerCase();
-                const title = String(s?.title || s?.hotelName || s?.name || "").trim().toLowerCase();
+                const type = String(s?.type || s?.category || s?.serviceType || "").trim().toLowerCase();
+                if (type === "transfer" || type === "transport" || type === "cab" || type === "car" || type === "flight") return false;
+                if (type === "activity" || type === "sightseeing" || type === "tour") return false;
                 if (type === "hotel" || type === "accommodation" || type === "stay") return true;
                 if (s?.roomType || s?.starCategory || s?.hotelCategory || s?.starRating) return true;
-                if (title.includes("hotel") || title.includes("resort") || title.includes("villas") || title.includes("inn") || title.includes("suites") || title.includes("hyatt") || title.includes("taj") || title.includes("eden") || title.includes("kandyan") || title.includes("amari")) return true;
+                const title = String(s?.title || s?.hotelName || s?.name || "").trim().toLowerCase();
+                if (title.includes("transfer") || title.includes("airport") || title.includes("pickup") || title.includes("drop") || title.includes("cab") || title.includes("car")) return false;
+                if (title.includes("tour") || title.includes("sightseeing") || title.includes("activity") || title.includes("safari") || title.includes("cruise") || title.includes("watersport") || title.includes("water sport")) return false;
+                if (title.includes("hotel") || title.includes("resort") || title.includes("villas") || title.includes("inn") || title.includes("suites") || title.includes("ramada") || title.includes("alka") || title.includes("hyatt") || title.includes("taj") || title.includes("eden") || title.includes("kandyan") || title.includes("amari")) return true;
                 return false;
               };
 
@@ -4554,7 +4629,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
                   proformaInvoiceData ? (
                     <ProformaInvoiceView
                       invoiceData={proformaInvoiceData}
-                      queryData={query}
+                      queryData={{ ...query, agencyName: headerCompany, companyName: headerCompany, activeQuote, quotes, headerPackageAmount, headerLeadTraveler }}
                       onEdit={() => setIsCreatingProforma(true)}
                       onDelete={() => {
                         setProformaInvoiceData(null);
@@ -10643,7 +10718,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
     )}
   </div>
 
-      {/* ACCEPT QUOTE MODAL */}
+      {/*======================= ACCEPT QUOTE MODAL ===============================*/}
       <AnimatePresence>
         {isAcceptModalOpen && acceptQuoteId && (
           <motion.div
@@ -10710,9 +10785,7 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
       </AnimatePresence>
 
 
-
-
-      {/* CLIENT APPROVAL MODAL */}
+      {/* ================== CLIENT APPROVAL MODAL =================*/}
       <AnimatePresence>
         {isClientApprovalModalOpen && clientApprovalQuoteId && (
           <motion.div
@@ -10819,6 +10892,8 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
         )}
       </AnimatePresence>
 
+
+
       {/* VOUCHER PREVIEW / VIEW MODAL */}
       {isVoucherPreviewModalOpen && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/70 backdrop-blur-xs p-2 sm:p-4 md:p-6">
@@ -10905,6 +10980,8 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
           </motion.div>
         </div>
       )}
+
+
 
       {/* SHARE PACKAGE MODAL */}
       <SharePackageModal
@@ -11142,8 +11219,6 @@ const QueryDetails = ({ query, onClose, onRefresh }) => {
           document.body,
         );
       })()}
-
-
 
 
       <SendSuccessModal
