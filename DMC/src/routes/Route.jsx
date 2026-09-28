@@ -78,6 +78,7 @@ export const appRouter = createBrowserRouter([
           { path: "/dmc/bulk-upload", element: lazyPage(ContractedRates)},
           { path: "/dmc/confirmation", element: lazyPage(FulfillmentConfirmation)},
           { path: "/dmc/settlement", element: lazyPage(SettlementCenter)},
+          { path: "/admin/discount", element: lazyPage(Discount)},
         ],
       },
     ],

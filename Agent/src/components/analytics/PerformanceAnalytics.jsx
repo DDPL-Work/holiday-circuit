@@ -35,6 +35,8 @@ export default function PerformanceAnalytics({
   ];
 
   return (
+
+    
     <div className="flex flex-col relative z-10 overflow-visible h-full">
       {/* Query Analytics */}
       <AnalyticsCard

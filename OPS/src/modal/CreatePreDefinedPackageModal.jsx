@@ -156,13 +156,21 @@ export default function CreatePreDefinedPackageModal({
       const h = loadedServices.filter(s => s.type === "hotel").map(s => {
         const bpId = s.businessPartnerId || s.businessPartner || s.dmcId || s.supplierId || null;
         const bpName = s.businessPartnerName || s.supplierName || s.dmcName || "";
-        const hName = s.hotelName || s.title || s.name || s.serviceName || "";
+        const sName = s.serviceName || s.title || s.name || "";
+        const hName = s.hotelName || "";
+        const starCat = s.starCategory || s.hotelCategory || s.starRating || "5 Star";
+        const mealPl = s.mealPlan || s.meal_plan || s.meals || "EP";
         return {
           ...initialHotel(),
           ...s,
           hotelName: hName,
-          serviceName: s.serviceName || hName,
-          name: s.name || hName,
+          serviceName: sName,
+          name: sName,
+          starCategory: starCat,
+          hotelCategory: starCat,
+          starRating: starCat,
+          mealPlan: mealPl,
+          meals: mealPl,
           price: s.price || s.rate || 0,
           basePrice: s.basePrice || s.price || s.rate || 0,
           businessPartnerId: bpId,
@@ -337,7 +345,7 @@ export default function CreatePreDefinedPackageModal({
   }, [initialData, isOpen, defaultDestination, defaultDuration, defaultDays, orderData, isOpenedFromQuotationBuilder]);
 
   useEffect(() => {
-    if (isOpen && (partnerType === "Business Partner" || isOpenedFromQuotationBuilder)) {
+    if (isOpen) {
       API.get("/admin/managed-users")
         .then((res) => {
           const bps = res.data?.users?.filter((u) => u.isBusinessPartner) || [];
@@ -345,7 +353,7 @@ export default function CreatePreDefinedPackageModal({
         })
         .catch((err) => console.error("Error fetching business partners:", err));
     }
-  }, [isOpen, partnerType, isOpenedFromQuotationBuilder]);
+  }, [isOpen]);
 
   // Day-wise Itinerary
   const [itinerary, setItinerary] = useState([
@@ -390,7 +398,7 @@ export default function CreatePreDefinedPackageModal({
     const updated = [...hotels];
     updated[index][field] = value;
 
-    if (field === "hotelName" || field === "serviceName") {
+    if (field === "serviceName") {
       updated[index].name = value;
     }
 
@@ -1380,15 +1388,22 @@ export default function CreatePreDefinedPackageModal({
             const rooms = Math.max(1, Number(h.rooms || 1));
             const baseUnitPrice = Number(h.basePrice || (h.price ? h.price / (nights * rooms) : 0));
             const sId = h.id || h._id || `custom-hotel-${Math.random().toString(36).substring(2, 9)}`;
+            const starCat = h.starCategory || h.hotelCategory || h.starRating || "5 Star";
+            const mealPl = h.mealPlan || h.meal_plan || h.meals || "EP";
             return {
               ...h,
               id: sId,
               serviceId: sId,
               type: "hotel",
-              title: h.hotelName || h.serviceName || h.name || "Hotel",
-              hotelName: h.hotelName || h.serviceName || h.name || "Hotel",
-              serviceName: h.hotelName || h.serviceName || h.name || "Hotel",
-              name: h.hotelName || h.serviceName || h.name || "Hotel",
+              title: h.serviceName || h.name || h.hotelName || "Hotel",
+              hotelName: h.hotelName || "",
+              serviceName: h.serviceName || h.name || h.hotelName || "Hotel",
+              name: h.serviceName || h.name || h.hotelName || "Hotel",
+              starCategory: starCat,
+              hotelCategory: starCat,
+              starRating: starCat,
+              mealPlan: mealPl,
+              meals: mealPl,
               price: baseUnitPrice,
               rate: baseUnitPrice,
               quoteBaseRate: baseUnitPrice,
@@ -1582,46 +1597,9 @@ export default function CreatePreDefinedPackageModal({
           }),
         ];
 
-        const targetQuotationId = initialData?.id || initialData?._id || undefined;
-        const isEditing = Boolean(targetQuotationId);
-        const targetQueryId = queryId || initialData?.queryId || initialData?.query?.queryId;
-
-        if (isBp || isEditing) {
-          const quotationPayload = {
-            quotationId: targetQuotationId,
-            editExistingQuotation: isEditing,
-            queryId: targetQueryId,
-            partnerType: isBp ? "Business Partner" : (initialData?.partnerType || "Online DMC"),
-            sendVia: ["dashboard"],
-            selectedAction: "Dashboard Notification",
-            validTill:
-              initialData?.validTill ||
-              new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
-            baseAmount: Number(payload.basePrice || payload.price || 0),
-            inclusions: Array.isArray(payload.inclusions)
-              ? payload.inclusions
-              : String(payload.inclusions || "")
-                  .split("\n")
-                  .map((x) => x.trim())
-                  .filter(Boolean),
-            exclusions: Array.isArray(payload.exclusions)
-              ? payload.exclusions
-              : String(payload.exclusions || "")
-                  .split("\n")
-                  .map((x) => x.trim())
-                  .filter(Boolean),
-            termsAndConditions: Array.isArray(payload.termsAndConditions)
-              ? payload.termsAndConditions
-              : String(payload.termsAndConditions || "")
-                  .split("\n")
-                  .map((x) => x.trim())
-                  .filter(Boolean),
-            dayWiseItinerary: payload.dayWiseItinerary.map((it, idx) => ({
-              dayNumber: it.day || idx + 1,
-              dayLabel: it.title || `Day ${idx + 1}`,
-              title: it.title || `Day ${idx + 1}`,
-              description: it.description || "",
-            })),
+        if (isBp) {
+          const responseData = {
+            ...payload,
             services: quotationServices,
             pricing: {
               currency: "INR",
@@ -1657,12 +1635,14 @@ export default function CreatePreDefinedPackageModal({
             handlingFee: Number(initialData?.pricing?.opsCharges?.handlingFee || initialData?.handlingFee || 0),
           };
 
-          res = await API.post("/ops/quotations", quotationPayload);
           toast.success(
-            isEditing
-              ? "Quotation updated successfully!"
-              : "Quotation created successfully!"
+            isEditingHistory
+              ? "Services updated in Quotation Builder!"
+              : "Services added to Quotation Builder!"
           );
+          onSuccess?.(responseData);
+          onClose();
+          return;
         } else {
           // Direct Database persistence into respective collections for Online DMC services
           for (let i = 0; i < payload.transfers.length; i++) {

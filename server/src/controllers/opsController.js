@@ -1706,6 +1706,36 @@ const normalizeDayWiseItinerary = (items = []) =>
       .filter((item) => item.dayLabel || item.title || item.description || item.date)
     : [];
 
+const parseBackendTermContent = (rawContent) => {
+  if (!rawContent) return [];
+  if (Array.isArray(rawContent)) {
+    const list = [];
+    rawContent.forEach((item) => {
+      if (typeof item === "string") {
+        list.push(...parseBackendTermContent(item));
+      } else if (item && typeof item === "object") {
+        const text = item.content || item.text || item.name || item.item || item.label || "";
+        if (text) list.push(...parseBackendTermContent(text));
+      }
+    });
+    return list.filter(Boolean);
+  }
+  if (typeof rawContent !== "string") return [];
+
+  const clean = rawContent
+    .replace(/<\/(p|li|div|h[1-6]|tr)>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">");
+
+  return clean
+    .split("\n")
+    .map((line) => line.replace(/^\d+[\.\)]\s*/, "").replace(/^[•\-\*]\s*/, "").trim())
+    .filter(Boolean);
+};
+
 const buildAgentQuotationEmailPayload = ({ quotation, query }) => {
   const totalAmount = Number(quotation?.pricing?.totalAmount || 0);
   const totalServiceBase = Array.isArray(quotation?.services)
@@ -1721,6 +1751,10 @@ const buildAgentQuotationEmailPayload = ({ quotation, query }) => {
   const additionalNotes = Array.isArray(quotation?.additionalNotes)
     ? quotation.additionalNotes.map((item) => String(item || "").trim()).filter(Boolean)
     : [];
+  const termsAndConditions = Array.isArray(quotation?.termsAndConditions)
+    ? quotation.termsAndConditions.map((item) => String(item || "").trim()).filter(Boolean)
+    : [];
+  const customTerms = parseBackendTermContent(quotation?.termsAndConditions);
   const sellerBankDetails = [
     { label: "Bank Name", value: "HDFC Bank" },
     { label: "A/c Holder Name", value: "Holiday Circuit" },
@@ -1756,6 +1790,8 @@ const buildAgentQuotationEmailPayload = ({ quotation, query }) => {
     inclusions,
     exclusions,
     additionalNotes,
+    termsAndConditions,
+    customTerms,
     sellerBankDetails,
     dayWiseItinerary: normalizeDayWiseItinerary(quotation?.dayWiseItinerary),
     services: Array.isArray(quotation?.services)
@@ -1841,20 +1877,9 @@ const getOperationManagerTeamUserIds = async (req) => {
     return [];
   }
 
-  const manager = await Auth.findById(req.user?.id).select("name email employeeId _id");
-  if (!manager) {
-    return [];
-  }
-
-  const identityCandidates = getManagerIdentityCandidates(manager);
-  if (!identityCandidates.length) {
-    return [];
-  }
-
   const teamMembers = await Auth.find({
     role: "operations",
     isDeleted: { $ne: true },
-    manager: { $in: identityCandidates },
   }).select("_id");
 
   return teamMembers
@@ -1863,44 +1888,40 @@ const getOperationManagerTeamUserIds = async (req) => {
 };
 
 const getAssignedQueryFilter = async (req) => {
-  if (isAdminUser(req)) {
+  if (isAdminUser(req) || isOperationManagerUser(req)) {
     return {};
   }
 
-  if (isOperationManagerUser(req)) {
-    const teamUserIds = await getOperationManagerTeamUserIds(req);
-
-    if (!teamUserIds.length) {
-      return { _id: { $in: [] } };
-    }
-
-    return {
-      assignedTo: {
-        $in: teamUserIds.map((id) => new mongoose.Types.ObjectId(id)),
-      },
-    };
-  }
-
-  return { assignedTo: new mongoose.Types.ObjectId(req.user.id) };
+  const currentUserId = new mongoose.Types.ObjectId(req.user.id);
+  return {
+    $or: [
+      { assignedTo: currentUserId },
+      { createdBy: currentUserId },
+    ],
+  };
 };
 
 const canManageAssignedQuery = async (req, query) => {
-  if (isAdminUser(req)) {
+  if (isAdminUser(req) || isOperationManagerUser(req)) {
     return true;
   }
 
   const assignedUserId = getAssignedQueryUserId(query);
-  if (!assignedUserId) {
-    return false;
+  const currentUserId = String(req.user?.id || "");
+  const createdByUserId = String(query?.createdBy?._id || query?.createdBy || "");
+
+  if (assignedUserId && assignedUserId === currentUserId) {
+    return true;
   }
 
-  if (isOperationManagerUser(req)) {
-    const teamUserIds = await getOperationManagerTeamUserIds(req);
-    return teamUserIds.includes(assignedUserId);
+  if (createdByUserId && createdByUserId === currentUserId) {
+    return true;
   }
 
-  return assignedUserId === String(req.user?.id || "");
+  return false;
 };
+
+
 
 const getLatestReassignmentEntry = (query = {}) => {
   const history = Array.isArray(query?.reassignmentHistory) ? query.reassignmentHistory : [];
@@ -1952,7 +1973,11 @@ const getAuthorizedQueryForQuotation = async (quotationId, req) => {
 };
 
 const getAuthorizedQueryForQuotationDraft = async (quotationId, req) => {
-  const quotation = await QuotationDraft.findById(quotationId);
+  let quotation = await QuotationDraft.findById(quotationId);
+
+  if (!quotation) {
+    quotation = await Quotation.findById(quotationId);
+  }
 
   if (!quotation) {
     throw new ApiError(404, "Quotation draft not found");
@@ -3141,10 +3166,18 @@ export const createQuotation = async (req, res, next) => {
       sendViaArray.includes("dashboard") ||
       sendViaArray.includes("dashboard_notification") ||
       normalizedSelectedAction === "Dashboard Notification";
-    const shouldSendEmail = sendViaArray.includes("email");
-    const shouldSendWhatsApp = sendViaArray.includes("whatsapp");
+    const shouldSendEmail = sendViaArray.includes("email") || normalizedSelectedAction === "Email";
+    const shouldSendWhatsApp = sendViaArray.includes("whatsapp") || normalizedSelectedAction === "WhatsApp";
     const shouldMarkAsSent =
-      shouldSendDashboardNotification || shouldSendEmail || shouldSendWhatsApp;
+      shouldSendDashboardNotification ||
+      shouldSendEmail ||
+      shouldSendWhatsApp ||
+      normalizedSelectedAction === "PDF Download" ||
+      normalizedSelectedAction === "Word Format" ||
+      normalizedSelectedAction === "Copy Text" ||
+      sendViaArray.includes("pdf") ||
+      sendViaArray.includes("copy") ||
+      sendViaArray.includes("word");
 
     if (!services.length) {
       return next(new ApiError(400, "No services selected"));
@@ -3190,7 +3223,7 @@ export const createQuotation = async (req, res, next) => {
       );
     }
 
-    if (!queryId || !validTill || pricing?.baseAmount === undefined || pricing?.baseAmount === null) {
+    if (!queryId || pricing?.baseAmount === undefined || pricing?.baseAmount === null) {
       return next(new ApiError(400, "Required fields are missing"));
     }
 
@@ -3346,6 +3379,8 @@ export const createQuotation = async (req, res, next) => {
           s.transferName ||
           s.description ||
           "Service",
+        serviceName: s.serviceName || s.title || s.name || "",
+        hotelName: s.hotelName || "",
         city: s.city,
         country: s.country,
         description: s.description,
@@ -3478,7 +3513,7 @@ export const createQuotation = async (req, res, next) => {
         },
         totalAmount: totalAmount,
       };
-      quotation.validTill = validTill;
+      quotation.validTill = validTill || null;
       const previousQuotationStatus = String(quotation.status || "").trim();
       quotation.status = shouldMarkAsSent
         ? "Quote Sent"
@@ -3502,7 +3537,7 @@ export const createQuotation = async (req, res, next) => {
         days: query.totalDays || 5,
         price: totalAmount,
         totalAmount: totalAmount,
-        validTill: new Date(validTill).toDateString(),
+        validTill: validTill ? new Date(validTill).toDateString() : "-",
         phone:
           query.agent?.phone ||
           query.tripSource?.contactPerson?.phone ||
@@ -3651,7 +3686,7 @@ export const createQuotation = async (req, res, next) => {
         totalAmount: totalAmount
       },
 
-      validTill,
+      validTill: validTill || null,
       status: shouldMarkAsSent ? "Quote Sent" : "Pending"
     });
 
@@ -3662,7 +3697,7 @@ export const createQuotation = async (req, res, next) => {
       days: query.totalDays || 5,
       price: totalAmount,
       totalAmount: totalAmount,
-      validTill: new Date(validTill).toDateString(),
+      validTill: validTill ? new Date(validTill).toDateString() : "-",
       phone:
         query.agent?.phone ||
         query.tripSource?.contactPerson?.phone ||
@@ -5348,6 +5383,9 @@ export const saveQuotationDraft = async (req, res, next) => {
       serviceId: service.serviceId || undefined,
       supplierId: service.supplierId || undefined,
       supplierName: service.supplierName || "",
+      businessPartnerId: service.businessPartnerId || undefined,
+      businessPartnerName: service.businessPartnerName || "",
+      isBpService: Boolean(service.isBpService || service.businessPartnerId),
       dmcId: service.dmcId || service.supplierId || undefined,
       dmcName: service.dmcName || "",
       type: service.type || service.serviceType || service.category || "",
@@ -5361,6 +5399,8 @@ export const saveQuotationDraft = async (req, res, next) => {
         service.transferName ||
         service.description ||
         "Service",
+      serviceName: service.serviceName || service.title || service.name || "",
+      hotelName: service.hotelName || "",
       city: service.city || "",
       country: service.country || "",
       description: service.description || service.desc || "",

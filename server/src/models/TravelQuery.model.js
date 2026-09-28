@@ -477,7 +477,7 @@ const travelQuerySchema = new mongoose.Schema(
 
   createdByType: {
     type: String,
-    enum: ["agent", "ops_manager", "admin"],
+    enum: ["agent", "ops_manager", "operations", "admin"],
     default: "agent",
   },
 

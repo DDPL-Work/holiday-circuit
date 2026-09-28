@@ -10718,7 +10718,7 @@ const QueryDetails = ({ query, onClose, onRefresh, initialQuoteId }) => {
     )}
   </div>
 
-      {/* ACCEPT QUOTE MODAL */}
+      {/*======================= ACCEPT QUOTE MODAL ===============================*/}
       <AnimatePresence>
         {isAcceptModalOpen && acceptQuoteId && (
           <motion.div
@@ -10785,7 +10785,7 @@ const QueryDetails = ({ query, onClose, onRefresh, initialQuoteId }) => {
       </AnimatePresence>
 
 
-      {/* CLIENT APPROVAL MODAL */}
+      {/* ================== CLIENT APPROVAL MODAL =================*/}
       <AnimatePresence>
         {isClientApprovalModalOpen && clientApprovalQuoteId && (
           <motion.div
@@ -11221,15 +11221,12 @@ const QueryDetails = ({ query, onClose, onRefresh, initialQuoteId }) => {
       })()}
 
 
-
-
       <SendSuccessModal
         sendSuccessMeta={sendSuccessMeta}
         onCloseModal={() => setSendSuccessMeta(null)}
         onCloseQuery={handleClose}
         query={query}
       />
-
 
 
       <RevisionModal

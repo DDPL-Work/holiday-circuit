@@ -52,10 +52,10 @@ const applyOfflineQuotationBranding = (html, branding = {}) => {
   // its brand header. Add the offline logo to that same row rather than adding
   // another header above it.
   const logoCell = logoUrl
-    ? `<td data-offline-agent-branding="true" width="170" style="width: 170px; max-width: 150px; padding: 0 4px 0 0; vertical-align: middle; text-align: left;"><img src="${logoUrl}" alt="${brandName}" width="140" height="90" style="display: block; width: 140px; max-width: 140px; max-height: 90px; height: 90px; object-fit: contain; object-position: left; border: 0;" /></td>`
+    ? `<td data-offline-agent-branding="true" width="120" style="width: 120px; max-width: 150px; padding: 0 4px 0 0; vertical-align: middle; text-align: left;"><img src="${logoUrl}" alt="${brandName}" width="100" height="90" style="display: block; width: 100px; max-width: 100px; max-height: 100px; height: 100px; object-fit: contain; object-position: left; border: 0;" /></td>`
     : "";
   const footer = footerUrl
-    ? `<div data-offline-agent-footer="true" style="padding: 16px 20px 0; background: #ffffff;"><img src="${footerUrl}" alt="Footer Banner" style="display: block; width: 100%; max-width: 100%; height: auto;" /></div>`
+    ? `<div data-offline-agent-footer="true" style="padding: 10px 10px 0; background: #ffffff;"><img src="${footerUrl}" alt="Footer Banner" style="display: block; width: 100%; max-width: 100%; height: [100px];" /></div>`
     : "";
 
   let sourceHtml = String(html);
@@ -1692,13 +1692,14 @@ export default function SharePackageModal({
 
           const pkgEmailHtml = `
             <div style="font-family: 'Plus Jakarta Sans', Arial, sans-serif; color: #1e293b; width: 100%; padding: 0px; box-sizing: border-box; background: #ffffff;">
-              <!-- AGENT BRAND HEADER BANNER -->
+
+  <!-- AGENT BRAND HEADER BANNER -->
               <div style="background-color: #ffffff; border-bottom: 2px solid #e2e8f0; padding: 14px 20px; margin-bottom: 16px;">
                 <table style="width: 100%; border-collapse: collapse;">
                   <tr>
                     ${agencyLogoSrc ? `
                       <td width="130" style="width: 180px; max-width: 180px; vertical-align: middle; padding-right: 14px; text-align: left;">
-                        <img src="${agencyLogoSrc}" alt="Logo" width="120" style="width: 120px; max-width: 120px; height: auto; max-height: 80px; display: block; object-fit: contain; object-position: left;" />
+                        <img src="${agencyLogoSrc}" alt="Logo" width="120" style="width: 120px; max-width: 120px; height: auto; max-height: 90px; display: block; object-fit: contain; object-position: left;" />
                       </td>
                     ` : ""}
                     <td style="vertical-align: middle; text-align: left;">

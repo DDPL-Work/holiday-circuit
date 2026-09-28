@@ -720,7 +720,7 @@ export default function MyOperationTeam() {
           </div>
 
           <div className="thin-scrollbar overflow-x-auto">
-            <table className="min-w-[1260px] w-full table-fixed">
+            <table className="min-w-[1270px] w-full table-fixed">
               <colgroup>
                 <col style={{ width: "190px" }} />
                 <col style={{ width: "200px" }} />
@@ -728,7 +728,7 @@ export default function MyOperationTeam() {
                 <col style={{ width: "110px" }} />
                 <col style={{ width: "220px" }} />
                 <col style={{ width: "100px" }} />
-                <col style={{ width: "280px" }} />
+                <col style={{ width: "300px" }} />
               </colgroup>
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50/50">
@@ -919,7 +919,7 @@ export default function MyOperationTeam() {
                                   }`}
                                 >
                                   <FilePlus2 className={`h-3 w-3 ${hasCreateQuery ? "text-emerald-600" : "text-slate-400"}`} />
-                                  <span>Query: {hasCreateQuery ? "ON" : "OFF"}</span>
+                                  <span>Add Query: {hasCreateQuery ? "ON" : "OFF"}</span>
                                 </button>
                               );
                             })()}

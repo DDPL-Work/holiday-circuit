@@ -144,24 +144,22 @@ export const ActivitiesTab = ({
                       <Landmark size={14} className="text-emerald-600" /> Activity #{index + 1}
                     </span>
 
-                    {partnerType === "Business Partner" && (
-                      <div className="ml-auto flex items-center gap-1.5 shrink-0">
-                        <span className="text-[11px] font-semibold text-slate-500 whitespace-nowrap">Partner:</span>
-                        <div className="w-48">
-                          <BusinessPartnerSelect
-                            value={act.businessPartnerId || act.businessPartner || ""}
-                            onChange={(val) => {
-                              const partnerObj = businessPartners?.find((p) => (p._id || p.id) === val);
-                              updateActivity(index, "businessPartnerId", val);
-                              updateActivity(index, "businessPartner", val);
-                              updateActivity(index, "businessPartnerName", partnerObj?.name || partnerObj?.companyName || "");
-                            }}
-                            businessPartners={businessPartners}
-                            placeholderName={act.businessPartnerName || act.dmcName || act.supplierName || ""}
-                          />
-                        </div>
+                    <div className="ml-auto flex items-center gap-1.5 shrink-0">
+                      <span className="text-[11px] font-semibold text-slate-500 whitespace-nowrap">Partner:</span>
+                      <div className="w-48">
+                        <BusinessPartnerSelect
+                          value={act.businessPartnerId || act.businessPartner || ""}
+                          onChange={(val) => {
+                            const partnerObj = businessPartners?.find((p) => (p._id || p.id) === val);
+                            updateActivity(index, "businessPartnerId", val);
+                            updateActivity(index, "businessPartner", val);
+                            updateActivity(index, "businessPartnerName", partnerObj?.name || partnerObj?.companyName || "");
+                          }}
+                          businessPartners={businessPartners}
+                          placeholderName={act.businessPartnerName || act.dmcName || act.supplierName || ""}
+                        />
                       </div>
-                    )}
+                    </div>
 
                     {act.tourType && (
                       <span className="rounded-md border border-gray-200 bg-white px-2.5 py-0.5 text-[11px] text-slate-800 font-semibold shadow-2xs">
@@ -464,24 +462,22 @@ export const ActivitiesTab = ({
                       <Landmark size={14} className="text-sky-600" /> Sightseeing #{index + 1}
                     </span>
 
-                    {partnerType === "Business Partner" && (
-                      <div className="ml-auto flex items-center gap-1.5 shrink-0">
-                        <span className="text-[11px] font-semibold text-slate-500 whitespace-nowrap">Partner:</span>
-                        <div className="w-48">
-                          <BusinessPartnerSelect
-                            value={sight.businessPartnerId || sight.businessPartner || ""}
-                            onChange={(val) => {
-                              const partnerObj = businessPartners?.find((p) => (p._id || p.id) === val);
-                              updateSightseeing(index, "businessPartnerId", val);
-                              updateSightseeing(index, "businessPartner", val);
-                              updateSightseeing(index, "businessPartnerName", partnerObj?.name || partnerObj?.companyName || "");
-                            }}
-                            businessPartners={businessPartners}
-                            placeholderName={sight.businessPartnerName || sight.dmcName || sight.supplierName || ""}
-                          />
-                        </div>
+                    <div className="ml-auto flex items-center gap-1.5 shrink-0">
+                      <span className="text-[11px] font-semibold text-slate-500 whitespace-nowrap">Partner:</span>
+                      <div className="w-48">
+                        <BusinessPartnerSelect
+                          value={sight.businessPartnerId || sight.businessPartner || ""}
+                          onChange={(val) => {
+                            const partnerObj = businessPartners?.find((p) => (p._id || p.id) === val);
+                            updateSightseeing(index, "businessPartnerId", val);
+                            updateSightseeing(index, "businessPartner", val);
+                            updateSightseeing(index, "businessPartnerName", partnerObj?.name || partnerObj?.companyName || "");
+                          }}
+                          businessPartners={businessPartners}
+                          placeholderName={sight.businessPartnerName || sight.dmcName || sight.supplierName || ""}
+                        />
                       </div>
-                    )}
+                    </div>
 
                     {sight.tourType && (
                       <span className="rounded-md border border-gray-200 bg-white px-2.5 py-0.5 text-[11px] text-slate-800 font-semibold shadow-2xs">

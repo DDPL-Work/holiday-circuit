@@ -101,6 +101,8 @@ export const quotationSchema = new mongoose.Schema(
       },
 
       title: { type: String, required: true },
+      serviceName: { type: String, default: "" },
+      hotelName: { type: String, default: "" },
 
       // 🔹 LOCATION
       city: String,
@@ -355,7 +357,7 @@ export const quotationSchema = new mongoose.Schema(
 
   validTill: {
     type: Date,
-    required: true
+    default: null
   },
 
   status: {
