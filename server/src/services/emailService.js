@@ -266,6 +266,9 @@ const buildAgentClientQuotationText = (quoteDetails = {}) => {
     "",
     "Additional Notes",
     buildQuoteListText(quoteDetails.additionalNotes),
+    "",
+    "Terms and Conditions",
+    buildQuoteListText(quoteDetails.customTerms || quoteDetails.termsAndConditions),
   ]
     .filter(Boolean)
     .join("\n");
@@ -415,30 +418,46 @@ export const buildAgentClientQuotationTemplate = (quoteDetails = {}) => {
     const dateLabel = rawDateLabel ? escapeHtml(rawDateLabel) : "";
     const quantity = escapeHtml(service.quantityLabel || service.pax || travelerSummary);
     const description = buildServiceDescriptionHtml(service.description || service.roomType || "Standard Room");
-    const combinedHText = `${service.title || ""} ${service.name || ""} ${service.hotelName || ""} ${service.description || ""} ${service.roomType || ""} ${service.hotelCategory || ""} ${service.starCategory || ""} ${service.starRating || ""}`.toLowerCase();
+    const rawStars = service.starCategory || service.hotelCategory || service.starRating || "";
     let count = 4;
-    if (combinedHText.includes("3-star") || combinedHText.includes("3 star") || combinedHText.includes("3star") || combinedHText.includes("citymax") || combinedHText.includes("budget")) {
-      count = 3;
-    } else if (combinedHText.includes("5-star") || combinedHText.includes("5 star") || combinedHText.includes("5star") || combinedHText.includes("luxury") || combinedHText.includes("atlantis")) {
-      count = 5;
-    } else {
-      const rawStars = service.hotelCategory || service.starCategory || service.starRating || "4 Star";
+    if (rawStars) {
       const starMatch = String(rawStars).match(/(\d+)/);
-      if (starMatch) count = Math.min(5, Math.max(1, Number(starMatch[1])));
+      if (starMatch) {
+        count = Math.min(5, Math.max(1, Number(starMatch[1])));
+      } else {
+        const lower = String(rawStars).toLowerCase();
+        if (lower.includes("5") || lower.includes("five") || lower.includes("luxury")) count = 5;
+        else if (lower.includes("4") || lower.includes("four") || lower.includes("deluxe") || lower.includes("premium")) count = 4;
+        else if (lower.includes("3") || lower.includes("three") || lower.includes("standard")) count = 3;
+        else if (lower.includes("2") || lower.includes("budget")) count = 2;
+      }
+    } else {
+      const combinedHText = `${service.title || ""} ${service.name || ""} ${service.hotelName || ""} ${service.description || ""} ${service.roomType || ""}`.toLowerCase();
+      if (combinedHText.includes("3-star") || combinedHText.includes("3 star") || combinedHText.includes("3star") || combinedHText.includes("citymax") || combinedHText.includes("budget")) {
+        count = 3;
+      } else if (combinedHText.includes("5-star") || combinedHText.includes("5 star") || combinedHText.includes("5star") || combinedHText.includes("luxury") || combinedHText.includes("atlantis")) {
+        count = 5;
+      } else if (combinedHText.includes("4-star") || combinedHText.includes("4 star") || combinedHText.includes("4star")) {
+        count = 4;
+      } else if (combinedHText.includes("2-star") || combinedHText.includes("2 star")) {
+        count = 2;
+      } else {
+        count = 4;
+      }
     }
     const starIcons = "⭐".repeat(count);
     const starDisplay = `${starIcons} ${count} Star`;
 
     // Resolve Meal Plan details (EP, CP, MAP, AP) with checkmark ✅ and cross ❌
     const resolveMealPlanDisplay = (srv) => {
-      const mealRaw = String(srv?.mealPlan || srv?.meals || "").trim();
+      const mealRaw = String(srv?.mealPlan || srv?.meals || srv?.meal_plan || "").trim();
       const descRaw = String(srv?.description || srv?.roomType || "").trim();
       const combined = `${mealRaw} ${descRaw}`.toUpperCase();
 
-      const hasAP = /\bAP\b|AMERICAN PLAN/i.test(combined) && !/\bMAP\b/i.test(combined);
-      const hasMAP = /\bMAP\b|MODIFIED AMERICAN|BREAKFAST AND DINNER|BREAKFAST & DINNER/i.test(combined);
-      const hasCP = (/\bCP\b|CONTINENTAL|BREAKFAST ONLY|ONLY BREAKFAST/i.test(combined)) && !hasMAP && !hasAP;
-      const hasEP = (/\bEP\b|EUROPEAN|ROOM ONLY|ONLY ROOM|NO MEALS/i.test(combined)) && !hasCP && !hasMAP && !hasAP;
+      const hasAP = (/\bAP\b|AMERICAN PLAN/i.test(mealRaw) || /\bAP\b|AMERICAN PLAN/i.test(combined)) && !/\bMAP\b/i.test(mealRaw);
+      const hasMAP = /\bMAP\b|MODIFIED AMERICAN|BREAKFAST AND DINNER|BREAKFAST & DINNER/i.test(mealRaw) || /\bMAP\b|MODIFIED AMERICAN|BREAKFAST AND DINNER|BREAKFAST & DINNER/i.test(combined);
+      const hasCP = (/\bCP\b|CONTINENTAL|BREAKFAST ONLY|ONLY BREAKFAST/i.test(mealRaw) || /\bCP\b|CONTINENTAL|BREAKFAST ONLY|ONLY BREAKFAST/i.test(combined)) && !hasMAP && !hasAP;
+      const hasEP = (/\bEP\b|EUROPEAN|ROOM ONLY|ONLY ROOM|NO MEALS/i.test(mealRaw) || /\bEP\b|EUROPEAN|ROOM ONLY|ONLY ROOM|NO MEALS/i.test(combined)) && !hasCP && !hasMAP && !hasAP;
 
       if (hasAP) return `AP Plan (✅ Breakfast • ✅ Lunch • ✅ Dinner)`;
       if (hasMAP) return `MAP Plan (✅ Breakfast • ✅ Dinner)`;
@@ -449,7 +468,7 @@ export const buildAgentClientQuotationTemplate = (quoteDetails = {}) => {
       if (/breakfast/i.test(mealRaw)) return `CP Plan (✅ Breakfast • ❌ Dinner)`;
       if (/\bCP\b/.test(descRaw)) return `CP Plan (✅ Breakfast • ❌ Dinner)`;
 
-      return mealRaw ? escapeHtml(mealRaw) : `CP Plan (✅ Breakfast • ❌ Dinner)`;
+      return mealRaw ? escapeHtml(mealRaw) : `EP Plan (❌ Breakfast • ❌ Dinner)`;
     };
 
     const mealPlanDisplay = resolveMealPlanDisplay(service);
@@ -1040,10 +1059,10 @@ export const buildAgentClientQuotationTemplate = (quoteDetails = {}) => {
                 </ol>
               ` : ""}
 
-              ${Array.isArray(quoteDetails.customTerms) && quoteDetails.customTerms.length > 0 ? `
+              ${((Array.isArray(quoteDetails.customTerms) && quoteDetails.customTerms.filter(Boolean).length > 0) || (Array.isArray(quoteDetails.termsAndConditions) && quoteDetails.termsAndConditions.filter(Boolean).length > 0)) ? `
                 <p style="font-size: 11.5px; color: #334155; margin: 0 0 10px 0;">Welcome to <strong>${escapeHtml(brandName)}</strong>. These Terms and Conditions govern your booking:</p>
                 <ol style="margin: 0; padding-left: 18px; color: #334155; font-size: 11.5px; line-height: 1.65;">
-                  ${quoteDetails.customTerms.map(item => `<li style="margin-bottom:6px;">${escapeHtml(item)}</li>`).join("")}
+                  ${((Array.isArray(quoteDetails.customTerms) && quoteDetails.customTerms.filter(Boolean).length > 0) ? quoteDetails.customTerms : quoteDetails.termsAndConditions).filter(Boolean).map(item => `<li style="margin-bottom:6px;">${escapeHtml(item)}</li>`).join("")}
                 </ol>
               ` : `
                 <p style="font-weight: bold; font-size: 13px; margin: 0 0 10px 0; color: #0f172a; border-bottom: 1px dashed #cbd5e1; padding-bottom: 6px;">${escapeHtml(brandName)} Official Terms and Conditions</p>

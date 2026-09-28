@@ -158,12 +158,19 @@ export default function CreatePreDefinedPackageModal({
         const bpName = s.businessPartnerName || s.supplierName || s.dmcName || "";
         const sName = s.serviceName || s.title || s.name || "";
         const hName = s.hotelName || "";
+        const starCat = s.starCategory || s.hotelCategory || s.starRating || "5 Star";
+        const mealPl = s.mealPlan || s.meal_plan || s.meals || "EP";
         return {
           ...initialHotel(),
           ...s,
           hotelName: hName,
           serviceName: sName,
           name: sName,
+          starCategory: starCat,
+          hotelCategory: starCat,
+          starRating: starCat,
+          mealPlan: mealPl,
+          meals: mealPl,
           price: s.price || s.rate || 0,
           basePrice: s.basePrice || s.price || s.rate || 0,
           businessPartnerId: bpId,
@@ -1381,6 +1388,8 @@ export default function CreatePreDefinedPackageModal({
             const rooms = Math.max(1, Number(h.rooms || 1));
             const baseUnitPrice = Number(h.basePrice || (h.price ? h.price / (nights * rooms) : 0));
             const sId = h.id || h._id || `custom-hotel-${Math.random().toString(36).substring(2, 9)}`;
+            const starCat = h.starCategory || h.hotelCategory || h.starRating || "5 Star";
+            const mealPl = h.mealPlan || h.meal_plan || h.meals || "EP";
             return {
               ...h,
               id: sId,
@@ -1390,6 +1399,11 @@ export default function CreatePreDefinedPackageModal({
               hotelName: h.hotelName || "",
               serviceName: h.serviceName || h.name || h.hotelName || "Hotel",
               name: h.serviceName || h.name || h.hotelName || "Hotel",
+              starCategory: starCat,
+              hotelCategory: starCat,
+              starRating: starCat,
+              mealPlan: mealPl,
+              meals: mealPl,
               price: baseUnitPrice,
               rate: baseUnitPrice,
               quoteBaseRate: baseUnitPrice,

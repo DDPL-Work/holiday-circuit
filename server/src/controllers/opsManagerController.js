@@ -44,16 +44,30 @@ const ensureOperationManagerAccess = (req) => {
   }
 };
 
-const ensureQueryCreationAccess = (req) => {
+const ensureQueryCreationAccess = async (req) => {
   if (["operation_manager", "admin"].includes(req.user?.role)) {
     return;
   }
   if (req.user?.role === "operations") {
-    const permissions = Array.isArray(req.user?.permissions) ? req.user.permissions : [];
-    const hasPermission =
-      permissions.includes("Create Query") ||
-      permissions.includes("Query Create") ||
-      permissions.includes("Add Query");
+    let permissions = Array.isArray(req.user?.permissions) ? req.user.permissions : [];
+    const userId = req.user?.id || req.user?._id;
+    if (userId) {
+      const user = await Auth.findById(userId).select("permissions role accountStatus isDeleted").lean();
+      if (user && !user.isDeleted && user.accountStatus !== "Inactive") {
+        permissions = Array.isArray(user.permissions) ? user.permissions : [];
+        req.user.permissions = permissions;
+      }
+    }
+    const hasPermission = permissions.some((p) => {
+      const norm = String(p || "").trim().toLowerCase();
+      return (
+        norm === "create query" ||
+        norm === "query create" ||
+        norm === "add query" ||
+        norm === "create queries" ||
+        norm === "create_query"
+      );
+    });
     if (hasPermission) {
       return;
     }
@@ -943,6 +957,7 @@ const buildQueryRows = (queries = []) =>
     const executiveName = query?.assignedTo?.name || "Unassigned";
     const isCreatedByManager =
       query?.createdByType === "ops_manager" ||
+      query?.createdByType === "operations" ||
       Boolean(query?.tripSource) ||
       (query?.createdBy && !query?.agent);
 
@@ -2238,7 +2253,7 @@ export const getOpsActivityLogs = async (req, res, next) => {
 
 export const createTripSource = async (req, res, next) => {
   try {
-    ensureQueryCreationAccess(req);
+    await ensureQueryCreationAccess(req);
 
     const {
       name,
@@ -2322,7 +2337,7 @@ export const getTripSources = async (req, res, next) => {
   try {
     const isAllowed = ["operation_manager", "operations", "admin"].includes(req.user?.role);
     if (!isAllowed) {
-      ensureQueryCreationAccess(req);
+      await ensureQueryCreationAccess(req);
     }
 
     const { sourceType } = req.query || {};
@@ -2382,7 +2397,7 @@ export const getTripSources = async (req, res, next) => {
 
 export const createOperationManagerQuery = async (req, res, next) => {
   try {
-    ensureQueryCreationAccess(req);
+    await ensureQueryCreationAccess(req);
 
     const {
       tripSource,
@@ -2448,15 +2463,22 @@ export const createOperationManagerQuery = async (req, res, next) => {
     await queryCounter.save();
     const queryId = `HC-Q-${queryCounter.seq}`;
 
-    // 2️⃣ Allocation logic: Always Round-Robin across team members (prioritizing online members)
+    // 2️⃣ Allocation logic:
+    // If created by an operations team member, assign directly to themselves.
+    // If created by Manager/Admin, use assignedExecutiveId (manual) or Round-Robin.
     let assignedTo = null;
     let allocationType = "round_robin";
 
-    if (assignedExecutiveId) {
+    const isOpsExecutive = req.user?.role === "operations";
+
+    if (isOpsExecutive) {
+      assignedTo = req.user.id;
+      allocationType = "self";
+    } else if (assignedExecutiveId) {
       assignedTo = assignedExecutiveId;
       allocationType = "manual";
     } else {
-      // Round-Robin across active team members
+      // Round-Robin across active team members (for Manager/Admin query creation)
       const teamMembers = await getManagedTeamMembers(req);
       let candidatePool = teamMembers.filter((m) => m.accountStatus === "Active");
 
@@ -2554,7 +2576,7 @@ export const createOperationManagerQuery = async (req, res, next) => {
       assignedTo,
       allocationType,
       createdBy: req.user.id,
-      createdByType: "ops_manager",
+      createdByType: isOpsExecutive ? "operations" : "ops_manager",
       tripSource: tripSource || null,
       querySource: String(querySource || "").trim(),
       querySourceType: String(querySourceType || "b2b").toLowerCase(),
@@ -2596,8 +2618,10 @@ export const createOperationManagerQuery = async (req, res, next) => {
       quotationStatus: "Awaiting_Decision",
       activityLog: [
         {
-          action: "Query Created by Operations Manager",
-          performedBy: req.user?.name || "Operations Manager",
+          action: isOpsExecutive
+            ? "Query Created by Operations Executive"
+            : "Query Created by Operations Manager",
+          performedBy: req.user?.name || (isOpsExecutive ? "Operations Executive" : "Operations Manager"),
           timestamp: new Date(),
         },
       ],

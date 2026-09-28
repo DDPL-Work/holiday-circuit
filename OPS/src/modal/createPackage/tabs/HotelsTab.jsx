@@ -156,7 +156,7 @@ export const HotelsTab = ({
                 )}
               </div>
 
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
                 <div className={`relative dmc-autocomplete-container ${activeHotelDropdownIdx === index ? "z-40" : "z-10"}`}>
                   <label className="block text-[11px] font-semibold text-slate-600 mb-1 flex items-center justify-between">
                     <span>{partnerType === "Business Partner" ? "Service Name (Manual Entry)" : "Service Name (Select Service or Type)"}</span>
@@ -272,11 +272,32 @@ export const HotelsTab = ({
                 </div>
 
                 <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">Star Category</label>
+                  <select
+                    value={hotel.starCategory || hotel.hotelCategory || hotel.starRating || "5 Star"}
+                    onChange={(e) => {
+                      updateHotel(index, "starCategory", e.target.value);
+                      updateHotel(index, "hotelCategory", e.target.value);
+                      updateHotel(index, "starRating", e.target.value);
+                    }}
+                    className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs font-medium"
+                  >
+                    <option value="5 Star">★ 5 Star (Luxury)</option>
+                    <option value="4 Star">★ 4 Star (Premium / Deluxe)</option>
+                    <option value="3 Star">★ 3 Star (Standard)</option>
+                    <option value="2 Star">★ 2 Star (Budget)</option>
+                  </select>
+                </div>
+
+                <div>
                   <label className="block text-[11px] font-semibold text-slate-600 mb-1">Meal Plan</label>
                   <select
                     value={hotel.mealPlan || "EP"}
-                    onChange={(e) => updateHotel(index, "mealPlan", e.target.value)}
-                    className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs"
+                    onChange={(e) => {
+                      updateHotel(index, "mealPlan", e.target.value);
+                      updateHotel(index, "meals", e.target.value);
+                    }}
+                    className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs font-medium"
                   >
                     <option value="EP">EP (Room Only)</option>
                     <option value="CP">CP (Breakfast Included)</option>

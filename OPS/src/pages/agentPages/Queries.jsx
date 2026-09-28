@@ -329,7 +329,7 @@ const Queries = () => {
                   className="w-full pl-9 pr-4 py-1.5 border rounded-lg text-sm border-gray-300 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition bg-white shadow-xs"
                 />
               </div>
-              <motion.button
+              {/* <motion.button
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
                 onClick={() => setOpenModal(true)}
@@ -337,7 +337,7 @@ const Queries = () => {
               >
                 <Plus size={14} />
                 Create Query
-              </motion.button>
+              </motion.button> */}
             </div>
           </div>
 

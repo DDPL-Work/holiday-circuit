@@ -794,6 +794,36 @@ const drawServiceRow = (doc, columns, y, service = {}, index = 0) => {
     if (tourType && !rawDesc.toLowerCase().includes("tour type")) extraDetails.push(`Tour Type: ${tourType}`);
     if (slotTime && !rawDesc.toLowerCase().includes("slot")) extraDetails.push(`Slot: ${slotTime}`);
     if (formattedDur && !rawDesc.toLowerCase().includes("duration")) extraDetails.push(`Duration: ${formattedDur}`);
+  } else if (["hotel", "stay", "accommodation"].includes(type) || service?.hotelName) {
+    const hotelName = service?.hotelName || service?.hotel || "";
+    const rawStar = service?.starCategory || service?.hotelCategory || service?.starRating || "";
+    const mealPlan = service?.mealPlan || service?.meals || service?.meal_plan || "";
+    const roomCat = service?.roomCategory || service?.roomType || "";
+
+    if (hotelName && !rawDesc.toLowerCase().includes(hotelName.toLowerCase())) {
+      extraDetails.push(`Hotel: ${hotelName}`);
+    }
+    if (rawStar) {
+      const starText = String(rawStar).toLowerCase().includes("star") ? String(rawStar) : `${rawStar} Star`;
+      if (!rawDesc.toLowerCase().includes("star")) {
+        extraDetails.push(`Rating: ${starText}`);
+      }
+    }
+    if (mealPlan) {
+      const u = String(mealPlan).toUpperCase();
+      let mLabel = mealPlan;
+      if (u === "EP" || u.includes("ROOM ONLY")) mLabel = "EP (Room Only)";
+      else if (u === "CP" || u.includes("BREAKFAST")) mLabel = "CP (Breakfast Included)";
+      else if (u === "MAP" || u.includes("DINNER")) mLabel = "MAP (Breakfast & Dinner)";
+      else if (u === "AP" || u.includes("ALL MEALS")) mLabel = "AP (All Meals Included)";
+      else if (u === "AI" || u.includes("ALL INCLUSIVE")) mLabel = "AI (All Inclusive)";
+      if (!rawDesc.toLowerCase().includes("meal plan") && !rawDesc.toLowerCase().includes(mLabel.toLowerCase())) {
+        extraDetails.push(`Meal Plan: ${mLabel}`);
+      }
+    }
+    if (roomCat && !rawDesc.toLowerCase().includes(roomCat.toLowerCase())) {
+      extraDetails.push(`Room: ${roomCat}`);
+    }
   }
 
   const fullDesc = [rawDesc, ...extraDetails].filter(Boolean).join(" | ");

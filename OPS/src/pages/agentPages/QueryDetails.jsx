@@ -2607,7 +2607,7 @@ const QueryDetails = ({ query, onClose, onRefresh, initialQuoteId }) => {
                           <div className="w-full">
                             <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 mb-2">
                               <span>Package Quote Price</span>
-                              <Pencil size={13} className="text-slate-400 cursor-pointer hover:text-slate-600" />
+                              {/* <Pencil size={13} className="text-slate-400 cursor-pointer hover:text-slate-600" /> */}
                             </div>
 
                             {isClientApprovedQuote ? (

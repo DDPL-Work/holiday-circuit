@@ -4124,6 +4124,7 @@ export const getMyQueries = async (req, res, next) => {
 
     const quotations = await Quotation.find({
       queryId: { $in: queryIds },
+      status: { $in: AGENT_VISIBLE_QUOTATION_STATUSES },
     })
       .select("queryId services pricing totalAmount clientTotalAmount agentMarkup status isAfterConversion isAfterConversionQuote isPostConversion sourceQuotationId agentRevisionRemark createdAt updatedAt")
       .sort({ updatedAt: -1, createdAt: -1 })

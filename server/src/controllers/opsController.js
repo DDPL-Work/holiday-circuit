@@ -1706,6 +1706,36 @@ const normalizeDayWiseItinerary = (items = []) =>
       .filter((item) => item.dayLabel || item.title || item.description || item.date)
     : [];
 
+const parseBackendTermContent = (rawContent) => {
+  if (!rawContent) return [];
+  if (Array.isArray(rawContent)) {
+    const list = [];
+    rawContent.forEach((item) => {
+      if (typeof item === "string") {
+        list.push(...parseBackendTermContent(item));
+      } else if (item && typeof item === "object") {
+        const text = item.content || item.text || item.name || item.item || item.label || "";
+        if (text) list.push(...parseBackendTermContent(text));
+      }
+    });
+    return list.filter(Boolean);
+  }
+  if (typeof rawContent !== "string") return [];
+
+  const clean = rawContent
+    .replace(/<\/(p|li|div|h[1-6]|tr)>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">");
+
+  return clean
+    .split("\n")
+    .map((line) => line.replace(/^\d+[\.\)]\s*/, "").replace(/^[•\-\*]\s*/, "").trim())
+    .filter(Boolean);
+};
+
 const buildAgentQuotationEmailPayload = ({ quotation, query }) => {
   const totalAmount = Number(quotation?.pricing?.totalAmount || 0);
   const totalServiceBase = Array.isArray(quotation?.services)
@@ -1721,6 +1751,10 @@ const buildAgentQuotationEmailPayload = ({ quotation, query }) => {
   const additionalNotes = Array.isArray(quotation?.additionalNotes)
     ? quotation.additionalNotes.map((item) => String(item || "").trim()).filter(Boolean)
     : [];
+  const termsAndConditions = Array.isArray(quotation?.termsAndConditions)
+    ? quotation.termsAndConditions.map((item) => String(item || "").trim()).filter(Boolean)
+    : [];
+  const customTerms = parseBackendTermContent(quotation?.termsAndConditions);
   const sellerBankDetails = [
     { label: "Bank Name", value: "HDFC Bank" },
     { label: "A/c Holder Name", value: "Holiday Circuit" },
@@ -1756,6 +1790,8 @@ const buildAgentQuotationEmailPayload = ({ quotation, query }) => {
     inclusions,
     exclusions,
     additionalNotes,
+    termsAndConditions,
+    customTerms,
     sellerBankDetails,
     dayWiseItinerary: normalizeDayWiseItinerary(quotation?.dayWiseItinerary),
     services: Array.isArray(quotation?.services)
@@ -3130,10 +3166,18 @@ export const createQuotation = async (req, res, next) => {
       sendViaArray.includes("dashboard") ||
       sendViaArray.includes("dashboard_notification") ||
       normalizedSelectedAction === "Dashboard Notification";
-    const shouldSendEmail = sendViaArray.includes("email");
-    const shouldSendWhatsApp = sendViaArray.includes("whatsapp");
+    const shouldSendEmail = sendViaArray.includes("email") || normalizedSelectedAction === "Email";
+    const shouldSendWhatsApp = sendViaArray.includes("whatsapp") || normalizedSelectedAction === "WhatsApp";
     const shouldMarkAsSent =
-      shouldSendDashboardNotification || shouldSendEmail || shouldSendWhatsApp;
+      shouldSendDashboardNotification ||
+      shouldSendEmail ||
+      shouldSendWhatsApp ||
+      normalizedSelectedAction === "PDF Download" ||
+      normalizedSelectedAction === "Word Format" ||
+      normalizedSelectedAction === "Copy Text" ||
+      sendViaArray.includes("pdf") ||
+      sendViaArray.includes("copy") ||
+      sendViaArray.includes("word");
 
     if (!services.length) {
       return next(new ApiError(400, "No services selected"));

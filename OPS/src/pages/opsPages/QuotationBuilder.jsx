@@ -777,21 +777,15 @@ const buildWhatsAppHotelMeta = (service = {}, fallbackPax = 0) => {
       Number(service?.children || 0) +
       Number(service?.infants || 0) || fallbackPax;
   const parts = [];
-  const description = String(service?.description || "")
-    .replace(/\s+/g, " ")
-    .trim();
-
-  if (description) {
-    parts.push(description);
-  }
 
   const roomBits = [];
+  const roomCategory = service?.roomCategory || service?.roomType || "Standard Room";
   if (Number(service?.rooms || 0) > 0) {
     roomBits.push(
-      `${service.rooms} ${service?.roomType || " Room"}${Number(service.rooms) > 1 ? "s" : ""}`,
+      `${service.rooms} ${roomCategory}${Number(service.rooms) > 1 ? "s" : ""}`,
     );
-  } else if (service?.roomType) {
-    roomBits.push(service.roomType);
+  } else if (roomCategory) {
+    roomBits.push(roomCategory);
   }
 
   if (hotelPax > 0) {
@@ -800,6 +794,19 @@ const buildWhatsAppHotelMeta = (service = {}, fallbackPax = 0) => {
 
   if (roomBits.length) {
     parts.push(roomBits.join(" "));
+  }
+
+  const mealPlan = service?.mealPlan || service?.meals || "";
+  if (mealPlan) {
+    parts.push(`Meal Plan: ${mealPlan}`);
+  }
+
+  const description = String(service?.description || "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (description && !parts.some((p) => p.toLowerCase().includes(description.toLowerCase()))) {
+    parts.push(description);
   }
 
   return parts.join(" • ") || "Stay included";
@@ -828,23 +835,23 @@ const buildWhatsAppHotelsSection = (quotation = {}) => {
   const lines = ["🏨 *_Hotels_*", WHATSAPP_SECTION_DIVIDER];
 
   hotels.forEach((hotel) => {
-    const checkInDate = hotel?.serviceDate || quotation?.startDate || "";
+    const checkInDate = hotel?.serviceDate || hotel?.checkInDate || quotation?.startDate || "";
     const checkOutDate = addDaysForWhatsApp(
       checkInDate,
       Number(hotel?.nights || 1),
     );
     const locationLabel =
       hotel?.city || quotation?.destination || "Destination";
-    const hotelTitle = hotel?.hotelCategory
-      ? `${hotel.title} (${hotel.hotelCategory})`
-      : hotel.title || "Hotel stay";
+    const starLabel = hotel?.starCategory || hotel?.hotelCategory || hotel?.starRating || "";
+    const starStr = starLabel ? ` (${starLabel.includes("Star") ? starLabel : `${starLabel} Star`})` : "";
+    const hotelDisplayName = hotel?.hotelName || hotel?.serviceName || hotel?.title || "Hotel stay";
+    const hotelTitle = `${hotelDisplayName}${starStr}`;
 
     lines.push(
       `*${buildWhatsAppNightLabel(checkInDate, hotel?.nights, quotation?.startDate)}* _at_ *${locationLabel}*`,
     );
     lines.push(
-      `_Check-in: ${formatWhatsAppDate(checkInDate, { includeYear: false })}_ & _Check-out:
-  ${formatWhatsAppDate(checkOutDate, { includeYear: false })}_`,
+      `_Check-in: ${formatWhatsAppDate(checkInDate, { includeYear: false })}_ & _Check-out: ${formatWhatsAppDate(checkOutDate, { includeYear: false })}_`,
     );
     lines.push(`*${hotelTitle}*`);
     lines.push(buildWhatsAppHotelMeta(hotel, totalPax));
@@ -5764,7 +5771,36 @@ const QuotationBuilder = () => {
           roomCategory:
             service.roomCategory || mapped.roomCategory || "Single",
           roomType: service.roomType || mapped.roomType || "Suite",
-          hotelCategory: service.hotelCategory || mapped.hotelCategory || "",
+          hotelCategory:
+            service.hotelCategory ||
+            service.starCategory ||
+            service.starRating ||
+            mapped.hotelCategory ||
+            "",
+          starCategory:
+            service.starCategory ||
+            service.hotelCategory ||
+            service.starRating ||
+            mapped.starCategory ||
+            "",
+          starRating:
+            service.starCategory ||
+            service.hotelCategory ||
+            service.starRating ||
+            mapped.starRating ||
+            "",
+          mealPlan:
+            service.mealPlan ||
+            service.meal_plan ||
+            service.meals ||
+            mapped.mealPlan ||
+            "EP",
+          meals:
+            service.mealPlan ||
+            service.meal_plan ||
+            service.meals ||
+            mapped.meals ||
+            "EP",
           vehicleType: service.vehicleType || mapped.vehicleType || "",
           passengerCapacity: Number(
             service.passengerCapacity || mapped.passengerCapacity || 1,
@@ -6344,7 +6380,36 @@ const QuotationBuilder = () => {
       ),
       roomCategory: resolvedRoomCategory,
       roomType: resolvedRoomType,
-      hotelCategory: service.hotelCategory || "",
+      hotelCategory:
+        service.hotelCategory ||
+        service.starCategory ||
+        service.starRating ||
+        overrides.hotelCategory ||
+        "",
+      starCategory:
+        service.starCategory ||
+        service.hotelCategory ||
+        service.starRating ||
+        overrides.starCategory ||
+        "",
+      starRating:
+        service.starCategory ||
+        service.hotelCategory ||
+        service.starRating ||
+        overrides.starRating ||
+        "",
+      mealPlan:
+        service.mealPlan ||
+        service.meal_plan ||
+        service.meals ||
+        overrides.mealPlan ||
+        "EP",
+      meals:
+        service.mealPlan ||
+        service.meal_plan ||
+        service.meals ||
+        overrides.meals ||
+        "EP",
       bedType: resolvedBedType,
       adults: service.adults || 2,
       children: service.children || 0,
@@ -6994,7 +7059,31 @@ const QuotationBuilder = () => {
       payloadObj.hotelName = service.hotelName || "";
       payloadObj.roomCategory = service.roomCategory || "";
       payloadObj.roomType = service.roomType || "";
-      payloadObj.hotelCategory = service.hotelCategory || "";
+      payloadObj.hotelCategory =
+        service.hotelCategory ||
+        service.starCategory ||
+        service.starRating ||
+        "";
+      payloadObj.starCategory =
+        service.starCategory ||
+        service.hotelCategory ||
+        service.starRating ||
+        "";
+      payloadObj.starRating =
+        service.starCategory ||
+        service.hotelCategory ||
+        service.starRating ||
+        "";
+      payloadObj.mealPlan =
+        service.mealPlan ||
+        service.meal_plan ||
+        service.meals ||
+        "EP";
+      payloadObj.meals =
+        service.mealPlan ||
+        service.meal_plan ||
+        service.meals ||
+        "EP";
       payloadObj.bedType = normalizeBedTypeValue(service.bedType);
       payloadObj.rooms = Number(service.rooms || 1);
       payloadObj.nights = Number(service.nights || 0);
@@ -7367,7 +7456,14 @@ const QuotationBuilder = () => {
             tourTypes: Array.isArray(s.tourTypes) ? s.tourTypes : [],
             roomCategory: resolvedRoomCategory,
             roomType: resolvedRoomType,
-            hotelCategory: s.hotelCategory,
+            hotelCategory:
+              s.hotelCategory || s.starCategory || s.starRating || "",
+            starCategory:
+              s.starCategory || s.hotelCategory || s.starRating || "",
+            starRating:
+              s.starCategory || s.hotelCategory || s.starRating || "",
+            mealPlan: s.mealPlan || s.meal_plan || s.meals || "EP",
+            meals: s.mealPlan || s.meal_plan || s.meals || "EP",
             bedType: normalizeBedTypeValue(s.bedType) || "double-bed",
             adults: Number(order?.numberOfAdults || 2),
             children: Number(order?.numberOfChildren || 0),
@@ -7928,7 +8024,14 @@ const QuotationBuilder = () => {
           bedType: normalizeBedTypeValue(s.bedType) || "double-bed",
           roomCategory: resolvedRoomCategory,
           roomType: resolvedRoomType,
-          hotelCategory: s.hotelCategory || "",
+          hotelCategory:
+            s.hotelCategory || s.starCategory || s.starRating || "",
+          starCategory:
+            s.starCategory || s.hotelCategory || s.starRating || "",
+          starRating:
+            s.starCategory || s.hotelCategory || s.starRating || "",
+          mealPlan: s.mealPlan || s.meal_plan || s.meals || "EP",
+          meals: s.mealPlan || s.meal_plan || s.meals || "EP",
           extraAdult: Boolean(s.extraAdult),
           childWithBed: Boolean(s.childWithBed),
           childWithoutBed: Boolean(s.childWithoutBed),
@@ -8448,8 +8551,11 @@ const QuotationBuilder = () => {
             ? queryPax || Number(service?.pax || 0)
             : Number(service?.pax || 0);
 
+        const starCat = service?.starCategory || service?.hotelCategory || service?.starRating || "";
+        const mealPl = service?.mealPlan || service?.meal_plan || service?.meals || "";
+
         return {
-          title: service?.title || "Service",
+          title: service?.title || service?.serviceName || service?.hotelName || "Service",
           type: normalizedType,
           typeLabel: SERVICE_TYPE_LABELS[normalizedType] || "Travel Service",
           location: buildShareServiceLocationLabel(service),
@@ -8463,9 +8569,15 @@ const QuotationBuilder = () => {
             .trim(),
           nights: Number(service?.nights || 0),
           rooms: Number(service?.rooms || 0),
-          roomType: service?.roomType || "",
+          roomCategory: service?.roomCategory || service?.roomType || "Standard Room",
+          roomType: service?.roomType || service?.roomCategory || "Standard Room",
           bedType: service?.bedType || "",
-          hotelCategory: service?.hotelCategory || "",
+          hotelName: service?.hotelName || "",
+          hotelCategory: starCat,
+          starCategory: starCat,
+          starRating: starCat,
+          mealPlan: mealPl,
+          meals: mealPl,
           adults: Number(service?.adults || 0),
           children: Number(service?.children || 0),
           infants: Number(service?.infants || 0),
@@ -8534,58 +8646,14 @@ const QuotationBuilder = () => {
     }
 
     if (selectedAction === "Dashboard Notification") {
-      if (partnerType === "Business Partner") {
-        const queryDocumentId = resolveQuotationQueryId(quotation);
-        if (queryDocumentId) {
-          await API.post("/ops/send", {
-            queryId: queryDocumentId,
-            channels: ["dashboard_notification"],
-            quoteDetails,
-            agent: {
-              email: order?.agent?.email || "",
-              phone: order?.agent?.phone || "",
-            },
-          });
-        }
-      }
       return "Dashboard notification sent to agent";
     }
 
     if (selectedAction === "Email") {
-      if (partnerType === "Business Partner") {
-        const queryDocumentId = resolveQuotationQueryId(quotation);
-        if (queryDocumentId) {
-          await API.post("/ops/send", {
-            queryId: queryDocumentId,
-            channels: ["email"],
-            quoteDetails,
-            agent: {
-              email: order?.agent?.email || "",
-              phone: order?.agent?.phone || "",
-            },
-          });
-        }
-      }
       return `Quotation sent to ${order?.agent?.email || "agent email"}`;
     }
 
     if (selectedAction === "WhatsApp") {
-      if (partnerType === "Business Partner") {
-        const queryDocumentId = resolveQuotationQueryId(quotation);
-        // Send via backend for logging/history parity without awaiting to avoid blocking UI popups
-        if (queryDocumentId) {
-      API.post("/ops/send", {
-            queryId: queryDocumentId,
-            channels: ["whatsapp"],
-            quoteDetails,
-            agent: {
-              email: order?.agent?.email || "",
-              phone: order?.agent?.phone || "",
-            },
-          }).catch((err) => console.error("WhatsApp backend send failed", err));
-        }
-      }
-
       const normalizedPhone = normalizeWhatsAppPhoneNumber(quoteDetails?.phone);
 
       if (!normalizedPhone) {
@@ -9981,6 +10049,41 @@ const QuotationBuilder = () => {
                       iconColor="text-amber-600"
                     />
                   )}
+
+                  {service.type === "hotel" &&
+                    (service.starCategory ||
+                      service.hotelCategory ||
+                      service.starRating) && (
+                      <Chip
+                        icon={
+                          <IoStarSharp size={10} className="text-amber-500" />
+                        }
+                        value={
+                          service.starCategory ||
+                          service.hotelCategory ||
+                          service.starRating
+                        }
+                        accent="text-amber-800"
+                        iconColor="text-amber-500"
+                      />
+                    )}
+
+                  {service.type === "hotel" &&
+                    (service.mealPlan ||
+                      service.meals ||
+                      service.meal_plan) && (
+                      <Chip
+                        icon={<Utensils size={10} className="text-amber-600" />}
+                        label="Meal"
+                        value={
+                          service.mealPlan ||
+                          service.meals ||
+                          service.meal_plan
+                        }
+                        accent="text-amber-800"
+                        iconColor="text-amber-600"
+                      />
+                    )}
 
                   {selectedTransportUsageLabels.map((label) => (
                     <Chip
@@ -13819,6 +13922,49 @@ const QuotationBuilder = () => {
                                     />
                                   )}
 
+                                {service.type === "hotel" &&
+                                  (service.starCategory ||
+                                    service.hotelCategory ||
+                                    service.starRating) && (
+                                    <Chip
+                                      icon={
+                                        <IoStarSharp
+                                          size={10}
+                                          className="text-amber-500"
+                                        />
+                                      }
+                                      value={
+                                        service.starCategory ||
+                                        service.hotelCategory ||
+                                        service.starRating
+                                      }
+                                      accent="text-amber-800"
+                                      iconColor="text-amber-500"
+                                    />
+                                  )}
+
+                                {service.type === "hotel" &&
+                                  (service.mealPlan ||
+                                    service.meals ||
+                                    service.meal_plan) && (
+                                    <Chip
+                                      icon={
+                                        <Utensils
+                                          size={10}
+                                          className="text-amber-600"
+                                        />
+                                      }
+                                      label="Meal"
+                                      value={
+                                        service.mealPlan ||
+                                        service.meals ||
+                                        service.meal_plan
+                                      }
+                                      accent="text-amber-800"
+                                      iconColor="text-amber-600"
+                                    />
+                                  )}
+
                                 {selectedTransportUsageLabels.map((label) => (
                                   <Chip
                                     key={`${service.id}-usage-${label}`}
@@ -15406,6 +15552,17 @@ const QuotationBuilder = () => {
                 hotelName:
                   s.hotelName || "",
                 name: s.serviceName || s.name || s.title || s.hotelName || "",
+                starCategory: s.starCategory || s.hotelCategory || s.starRating || "",
+                hotelCategory: s.hotelCategory || s.starCategory || s.starRating || "",
+                starRating: s.starCategory || s.hotelCategory || s.starRating || "",
+                mealPlan: s.mealPlan || s.meal_plan || s.meals || "EP",
+                meals: s.mealPlan || s.meal_plan || s.meals || "EP",
+                roomCategory: s.roomCategory || s.roomType || "Standard Room",
+                roomType: s.roomType || s.roomCategory || "Standard Room",
+                bedType: s.bedType || "",
+                extraBedType: s.extraBedType || "",
+                checkInDate: s.checkInDate || s.serviceDate || null,
+                checkOutDate: s.checkOutDate || null,
                 checked: true,
                 custom: true,
                 isBpService: isBp,
@@ -15720,17 +15877,45 @@ const Service = ({
     if (!isHotelService) return rawAmenities;
 
     const activeCategory = service.roomType || service.roomCategory || "";
-    if (!activeCategory) return rawAmenities;
+    const mealVal =
+      service.mealPlan || service.meals || service.meal_plan || "";
+    let mealLabel = "";
+    if (mealVal) {
+      const u = mealVal.toUpperCase();
+      if (u === "EP" || u.includes("ROOM ONLY")) mealLabel = "EP (Room Only)";
+      else if (u === "CP" || u.includes("BREAKFAST"))
+        mealLabel = "CP (Breakfast Included)";
+      else if (u === "MAP" || u.includes("DINNER"))
+        mealLabel = "MAP (Breakfast & Dinner)";
+      else if (u === "AP" || u.includes("ALL MEALS"))
+        mealLabel = "AP (All Meals Included)";
+      else if (u === "AI" || u.includes("ALL INCLUSIVE"))
+        mealLabel = "AI (All Inclusive)";
+      else mealLabel = mealVal;
+    }
 
     const roomPattern =
       /room|suite|villa|cottage|standard|deluxe|executive|family|luxury|penthouse/i;
     const filtered = rawAmenities.filter((tag, idx) => {
       if (idx === 0 && roomPattern.test(tag)) return false;
+      if (mealLabel && tag.toLowerCase().includes("meal")) return false;
       return true;
     });
 
-    return [activeCategory, ...filtered];
-  }, [isHotelService, service.roomType, service.roomCategory, rawAmenities]);
+    const tags = [];
+    if (activeCategory) tags.push(activeCategory);
+    if (mealLabel) tags.push(`Meal Plan: ${mealLabel}`);
+
+    return [...tags, ...filtered];
+  }, [
+    isHotelService,
+    service.roomType,
+    service.roomCategory,
+    service.mealPlan,
+    service.meals,
+    service.meal_plan,
+    rawAmenities,
+  ]);
 
   const amenities = isTransportService
     ? [
@@ -16031,12 +16216,22 @@ const Service = ({
                     </span>
                   </span>
                 )}
-                {service.hotelCategory && (
+                {(service.starCategory ||
+                  service.hotelCategory ||
+                  service.starRating) && (
                   <span className="flex items-center gap-1 text-slate-500">
-                    <span className="text-slate-700 font-medium">Hotel</span>
+                    <span className="text-slate-700 font-semibold">
+                      {service.starCategory ||
+                        service.hotelCategory ||
+                        service.starRating}
+                    </span>
                     <span className="flex items-center gap-0.5 ml-0.5">
                       {Array.from({
-                        length: getHotelStars(service.hotelCategory),
+                        length: getHotelStars(
+                          service.starCategory ||
+                            service.hotelCategory ||
+                            service.starRating,
+                        ),
                       }).map((_, i) => (
                         <IoStarSharp
                           key={i}
@@ -16046,6 +16241,18 @@ const Service = ({
                     </span>
                   </span>
                 )}
+                {service.type === "hotel" &&
+                  (service.mealPlan ||
+                    service.meals ||
+                    service.meal_plan) && (
+                    <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 border border-amber-200 px-2 py-0.5 text-[10px] font-bold text-amber-800">
+                      <Utensils size={10} className="text-amber-600" />
+                      Meal Plan:{" "}
+                      {service.mealPlan ||
+                        service.meals ||
+                        service.meal_plan}
+                    </span>
+                  )}
                 {service.type === "transfer" && (
                   <>
                     {service.vehicleType && (
