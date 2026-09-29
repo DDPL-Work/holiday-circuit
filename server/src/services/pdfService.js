@@ -3,7 +3,23 @@ import fs from "fs";
 import path from "path";
 import https from "https";
 import http from "http";
+import { fileURLToPath } from "url";
 import { pdfMemoryCache } from "../utils/pdfCache.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const resolveFontPath = (fileName) => {
+  const candidates = [
+    path.join(__dirname, "..", "assets", "fonts", fileName),
+    path.join(process.cwd(), "src", "assets", "fonts", fileName),
+    path.join(process.cwd(), "server", "src", "assets", "fonts", fileName),
+  ];
+  return candidates.find((p) => fs.existsSync(p) && fs.statSync(p).size > 10000) || candidates[0];
+};
+
+const FONT_REGULAR_PATH = resolveFontPath("Roboto-Regular.ttf");
+const FONT_BOLD_PATH = resolveFontPath("Roboto-Bold.ttf");
 
 const getLogoBuffer = (inputPathOrUrl) => {
   return new Promise((resolve) => {
@@ -99,12 +115,14 @@ const COLORS = Object.freeze({
   text: "#334155",
   muted: "#64748b",
   accent: "#0f766e",
-  accentSoft: "#e6fffb",
-  accentBorder: "#7dd3c7",
-  border: "#cbd5e1",
+  accentSoft: "#f0fdfa",
+  accentBorder: "#e2e8f0",
+  border: "#e2e8f0",
+  borderLight: "#f1f5f9",
   light: "#f8fafc",
-  totalBg: "#ecfdf5",
-  totalText: "#166534",
+  totalBg: "#f0fdf4",
+  totalBorder: "#bbf7d0",
+  totalText: "#15803d",
 });
 
 const PAGE = Object.freeze({
@@ -116,7 +134,7 @@ const PAGE = Object.freeze({
   footerY: 790,
 });
 
-const CONTENT_BOTTOM_LIMIT = PAGE.footerY - 24;
+const CONTENT_BOTTOM_LIMIT = PAGE.footerY - 16;
 const SERVICE_ROW_BREAK_LIMIT = CONTENT_BOTTOM_LIMIT - 6;
 
 const DEFAULT_SELLER_BANK_DETAILS = Object.freeze([
@@ -132,10 +150,6 @@ const ensureDirectory = (dirPath) => {
     fs.mkdirSync(dirPath, { recursive: true });
   }
 };
-
-const FONTS_DIR = path.join(process.cwd(), "src", "assets", "fonts");
-const FONT_REGULAR_PATH = path.join(FONTS_DIR, "Roboto-Regular.ttf");
-const FONT_BOLD_PATH = path.join(FONTS_DIR, "Roboto-Bold.ttf");
 
 const downloadFont = (url, destPath) => {
   return new Promise((resolve, reject) => {
@@ -253,7 +267,7 @@ const sanitizeFileToken = (value = "") =>
     .replace(/^_+|_+$/g, "")
     .slice(0, 80) || "quote";
 
-const INR_SYMBOL = "\u20B9";
+const INR_SYMBOL = "₹";
 
 const formatCurrency = (value, currency = "INR") => {
   const symbol = String(currency || "INR").toUpperCase() === "INR" ? INR_SYMBOL : currency;
@@ -263,12 +277,17 @@ const formatCurrency = (value, currency = "INR") => {
 const drawRupeeSymbol = (doc, x, y, options = {}) => {
   const size = Number(options?.size || 12);
   const color = options?.color || COLORS.ink;
-  const strokeWidth = Number(options?.strokeWidth || Math.max(1, size * 0.1));
-  const stemX = x + size * 0.18;
+  const strokeWidth = Number(options?.strokeWidth || Math.max(0.85, size * 0.09));
+  const leftX = x;
+  const stemX = x + size * 0.16;
   const topY = y;
   const midY = y + size * 0.28;
-  const joinY = y + size * 0.5;
-  const tailY = y + size;
+  const joinY = y + size * 0.52;
+  const bottomY = y + size;
+  const rightTopX = x + size * 0.82;
+  const rightMidX = x + size * 0.72;
+  const rightCurveX = x + size * 0.76;
+  const rightLegX = x + size * 0.74;
 
   doc
     .save()
@@ -276,14 +295,28 @@ const drawRupeeSymbol = (doc, x, y, options = {}) => {
     .lineJoin("round")
     .lineWidth(strokeWidth)
     .strokeColor(color)
-    .moveTo(stemX, topY)
-    .lineTo(x + size * 0.84, topY)
-    .moveTo(stemX, midY)
-    .lineTo(x + size * 0.7, midY)
+    // Top horizontal bar
+    .moveTo(leftX, topY)
+    .lineTo(rightTopX, topY)
+    // Second horizontal bar
+    .moveTo(leftX, midY)
+    .lineTo(rightMidX, midY)
+    // Vertical stem
     .moveTo(stemX, topY)
     .lineTo(stemX, joinY)
-    .moveTo(stemX, joinY)
-    .lineTo(x + size * 0.72, tailY)
+    // Upper loop (R-curve)
+    .moveTo(stemX, topY)
+    .bezierCurveTo(
+      rightCurveX,
+      topY + size * 0.02,
+      rightCurveX,
+      joinY,
+      stemX,
+      joinY,
+    )
+    // Diagonal leg
+    .moveTo(stemX + size * 0.06, joinY)
+    .lineTo(rightLegX, bottomY)
     .stroke()
     .restore();
 };
@@ -397,7 +430,7 @@ const resolveBrandLogoPath = () => {
   return candidates.find((candidate) => fs.existsSync(candidate)) || "";
 };
 
-const drawRoundedBox = (doc, x, y, width, height, fillColor, strokeColor = COLORS.border, radius = 10) => {
+const drawRoundedBox = (doc, x, y, width, height, fillColor, strokeColor = COLORS.border, radius = 3) => {
   doc.save();
   doc.roundedRect(x, y, width, height, radius).fillAndStroke(fillColor, strokeColor);
   doc.restore();
@@ -409,9 +442,9 @@ const drawPageFrame = (doc) => {
 
   doc
     .save()
-    .roundedRect(PAGE.frameX, PAGE.frameY, frameWidth, frameHeight, 16)
-    .lineWidth(1.1)
-    .strokeColor(COLORS.accentBorder)
+    .roundedRect(PAGE.frameX, PAGE.frameY, frameWidth, frameHeight, 6)
+    .lineWidth(0.8)
+    .strokeColor("#cbd5e1")
     .stroke()
     .restore();
 
@@ -455,7 +488,7 @@ const drawLogoBadge = (doc, logoPath, x, y, initials = "HC") => {
   }
 
   doc.save();
-  doc.roundedRect(x, y, 48, 48, 10).fillAndStroke("#ffffff", COLORS.border);
+  doc.roundedRect(x, y, 48, 48, 4).fillAndStroke("#ffffff", COLORS.border);
   doc
     .font(doc.fontBold || "Helvetica-Bold")
     .fontSize(18)
@@ -478,8 +511,8 @@ const drawMetaCell = (doc, { x, y, width, label, value }) => {
     .text(value || "-", x, y + 10, { width, align: "center" });
 };
 
-const drawPartyBlock = (doc, { x, y, width, title, primary, lines = [], align = "left", height = 78 }) => {
-  drawRoundedBox(doc, x, y, width, height, "#ffffff");
+const drawPartyBlock = (doc, { x, y, width, title, primary, lines = [], align = "left", height = 76 }) => {
+  drawRoundedBox(doc, x, y, width, height, "#ffffff", COLORS.border, 3);
 
   doc
     .font(doc.fontBold || "Helvetica-Bold")
@@ -518,12 +551,12 @@ const drawPartyBlock = (doc, { x, y, width, title, primary, lines = [], align = 
 };
 
 const drawSectionBar = (doc, y, title) => {
-  drawRoundedBox(doc, PAGE.contentX, y, PAGE.contentWidth, 22, "#ecfeff", COLORS.accentBorder, 6);
+  drawRoundedBox(doc, PAGE.contentX, y, PAGE.contentWidth, 20, "#f0fdfa", COLORS.accentBorder, 3);
   doc
     .font(doc.fontBold || "Helvetica-Bold")
-    .fontSize(9)
+    .fontSize(8.5)
     .fillColor(COLORS.accent)
-    .text(title, PAGE.contentX, y + 7, {
+    .text(title, PAGE.contentX, y + 6, {
       width: PAGE.contentWidth,
       align: "center",
       characterSpacing: 0.8,
@@ -531,8 +564,8 @@ const drawSectionBar = (doc, y, title) => {
 };
 
 const drawSnapshotGrid = (doc, quoteDetails = {}) => {
-  const gridY = 250;
-  const gridHeight = 70;
+  const gridY = 246;
+  const gridHeight = 64;
   const columns = 4;
   const columnWidth = PAGE.contentWidth / columns;
   const rowHeight = gridHeight / 2;
@@ -547,8 +580,8 @@ const drawSnapshotGrid = (doc, quoteDetails = {}) => {
     { label: "Valid Till", value: quoteDetails?.validTill || "-" },
   ];
 
-  drawSectionBar(doc, 222, "TRIP SNAPSHOT");
-  drawRoundedBox(doc, PAGE.contentX, gridY, PAGE.contentWidth, gridHeight, "#ffffff");
+  drawSectionBar(doc, 220, "TRIP SNAPSHOT");
+  drawRoundedBox(doc, PAGE.contentX, gridY, PAGE.contentWidth, gridHeight, "#ffffff", COLORS.border, 3);
 
   for (let index = 1; index < columns; index += 1) {
     const lineX = PAGE.contentX + columnWidth * index;
@@ -556,7 +589,7 @@ const drawSnapshotGrid = (doc, quoteDetails = {}) => {
       .save()
       .moveTo(lineX, gridY)
       .lineTo(lineX, gridY + gridHeight)
-      .lineWidth(0.7)
+      .lineWidth(0.5)
       .strokeColor(COLORS.border)
       .stroke()
       .restore();
@@ -566,7 +599,7 @@ const drawSnapshotGrid = (doc, quoteDetails = {}) => {
     .save()
     .moveTo(PAGE.contentX, gridY + rowHeight)
     .lineTo(PAGE.contentX + PAGE.contentWidth, gridY + rowHeight)
-    .lineWidth(0.7)
+    .lineWidth(0.5)
     .strokeColor(COLORS.border)
     .stroke()
     .restore();
@@ -581,14 +614,14 @@ const drawSnapshotGrid = (doc, quoteDetails = {}) => {
       .font(doc.fontBold || "Helvetica-Bold")
       .fontSize(7.2)
       .fillColor(COLORS.muted)
-      .text(item.label, cellX + 10, cellY + 10, { width: columnWidth - 20 });
+      .text(item.label, cellX + 8, cellY + 7, { width: columnWidth - 16 });
 
     doc
       .font(doc.fontBold || "Helvetica-Bold")
       .fontSize(8.2)
       .fillColor(COLORS.ink)
-      .text(item.value || "-", cellX + 10, cellY + 21, {
-        width: columnWidth - 20,
+      .text(item.value || "-", cellX + 8, cellY + 18, {
+        width: columnWidth - 16,
       });
   });
 };
@@ -614,16 +647,16 @@ const getServiceBadgePalette = (typeLabel = "") => {
 
 const drawServiceTypePill = (doc, x, y, width, label) => {
   const palette = getServiceBadgePalette(label);
-  const pillWidth = Math.min(width - 12, Math.max(46, doc.widthOfString(label || "-", { font: doc.fontBold || "Helvetica-Bold", size: 7.6 }) + 18));
+  const pillWidth = Math.min(width - 12, Math.max(44, doc.widthOfString(label || "-", { font: doc.fontBold || "Helvetica-Bold", size: 7.5 }) + 16));
   const pillX = x + Math.max(6, (width - pillWidth) / 2);
 
   doc.save();
-  doc.roundedRect(pillX, y, pillWidth, 16, 8).fillAndStroke(palette.fill, palette.stroke);
+  doc.roundedRect(pillX, y, pillWidth, 16, 3).fillAndStroke(palette.fill, palette.stroke);
   doc
     .font(doc.fontBold || "Helvetica-Bold")
-    .fontSize(7.6)
+    .fontSize(7.5)
     .fillColor(palette.text)
-    .text(label || "-", pillX, y + 5, {
+    .text(label || "-", pillX, y + 4.5, {
       width: pillWidth,
       align: "center",
     });
@@ -640,16 +673,16 @@ const drawServicesTableHeader = (doc, y) => {
     { label: "QTY", x: PAGE.contentX + 435, width: 72, align: "center" },
   ];
 
-  drawRoundedBox(doc, PAGE.contentX, y, PAGE.contentWidth, 24, "#f0fdfa", COLORS.accentBorder, 4);
+  drawRoundedBox(doc, PAGE.contentX, y, PAGE.contentWidth, 22, "#f0fdfa", COLORS.border, 3);
 
   columns.forEach((column, index) => {
     if (index > 0) {
       doc
         .save()
         .moveTo(column.x, y)
-        .lineTo(column.x, y + 24)
-        .lineWidth(0.6)
-        .strokeColor(COLORS.accentBorder)
+        .lineTo(column.x, y + 22)
+        .lineWidth(0.5)
+        .strokeColor(COLORS.border)
         .stroke()
         .restore();
     }
@@ -658,8 +691,8 @@ const drawServicesTableHeader = (doc, y) => {
       .font(doc.fontBold || "Helvetica-Bold")
       .fontSize(7.5)
       .fillColor(COLORS.ink)
-      .text(column.label, column.x + 6, y + 8, {
-        width: column.width - 12,
+      .text(column.label, column.x + 4, y + 7, {
+        width: column.width - 8,
         align: column.align,
         characterSpacing: 0.4,
       });
@@ -710,39 +743,12 @@ const drawTextWithRupeeSymbol = (doc, text, x, y, options = {}) => {
   const fontSize = Number(options.fontSize || 8.3);
   const fontName = options.font || doc.fontRegular || "Helvetica";
 
-  if (!value.includes(INR_SYMBOL)) {
-    doc
-      .font(fontName)
-      .fontSize(fontSize)
-      .fillColor(color)
-      .text(value, x, y, { width });
-    return doc.y;
-  }
-
-  const [before, ...afterParts] = value.split(INR_SYMBOL);
-  const after = afterParts.join(INR_SYMBOL);
-
-  doc.font(fontName).fontSize(fontSize).fillColor(color);
-  const beforeWidth = doc.widthOfString(before);
-  const symbolX = x + beforeWidth + 1;
-  const symbolSize = Math.max(6.4, fontSize - 0.4);
-  const afterX = symbolX + symbolSize + 3;
-
-  doc.text(before, x, y, { lineBreak: false });
-  drawRupeeSymbol(doc, symbolX, y + 1.2, {
-    size: symbolSize,
-    color,
-    strokeWidth: Math.max(0.8, symbolSize * 0.12),
-  });
   doc
     .font(fontName)
     .fontSize(fontSize)
     .fillColor(color)
-    .text(after.trimStart(), afterX, y, {
-      width: Math.max(12, width - (afterX - x)),
-    });
-
-  return Math.max(doc.y, y + fontSize + 2);
+    .text(value, x, y, { width });
+  return doc.y;
 };
 
 const drawServiceDescriptionLines = (doc, lines = [], x, y, width) => {
@@ -884,7 +890,7 @@ const drawServiceRow = (doc, columns, y, service = {}, index = 0) => {
     rowHeight,
     index % 2 === 0 ? "#ffffff" : COLORS.light,
     COLORS.border,
-    4,
+    3,
   );
 
   columns.forEach((column, columnIndex) => {
@@ -894,7 +900,7 @@ const drawServiceRow = (doc, columns, y, service = {}, index = 0) => {
       .save()
       .moveTo(column.x, y)
       .lineTo(column.x, y + rowHeight)
-      .lineWidth(0.55)
+      .lineWidth(0.5)
       .strokeColor(COLORS.border)
       .stroke()
       .restore();
@@ -984,7 +990,7 @@ const drawContinuationHeader = (
     );
 };
 
-const SUMMARY_SECTION_HEIGHT = 106;
+const SUMMARY_SECTION_HEIGHT = 96;
 
 const drawSummarySection = (doc, y, quoteDetails = {}, servicesCount = 0) => {
   const leftWidth = 326;
@@ -994,59 +1000,50 @@ const drawSummarySection = (doc, y, quoteDetails = {}, servicesCount = 0) => {
   const normalizedCurrency = String(quoteDetails?.currency || "INR").trim().toUpperCase() || "INR";
   const totalAmountNumber = Math.round(Number(quoteDetails?.totalAmount || 0));
   const amountText = formatCurrency(totalAmountNumber, normalizedCurrency);
-  const amountValueText = totalAmountNumber.toLocaleString("en-IN");
   const amountWords = formatAmountInWords(quoteDetails?.totalAmount || 0);
   const isInrCurrency = normalizedCurrency === "INR";
+  const amountWordsText = isInrCurrency ? `₹ ${amountWords}` : `${normalizedCurrency}: ${amountWords}`;
 
   drawSectionBar(doc, y, "QUOTATION SUMMARY");
 
-  drawRoundedBox(doc, leftX, y + 30, leftWidth, 66, "#ffffff");
-  drawRoundedBox(doc, rightX, y + 30, rightWidth, 66, COLORS.totalBg, "#bbf7d0");
+  const boxY = y + 24;
+  const boxHeight = 62;
+
+  drawRoundedBox(doc, leftX, boxY, leftWidth, boxHeight, "#ffffff", COLORS.border, 3);
+  drawRoundedBox(doc, rightX, boxY, rightWidth, boxHeight, COLORS.totalBg, COLORS.totalBorder, 3);
 
   doc
     .font(doc.fontBold || "Helvetica-Bold")
-    .fontSize(8.2)
+    .fontSize(8)
     .fillColor(COLORS.muted)
-    .text("AMOUNT CHARGEABLE (IN WORDS)", leftX + 12, y + 40);
+    .text("AMOUNT CHARGEABLE (IN WORDS)", leftX + 10, boxY + 8);
 
   doc
     .font(doc.fontBold || "Helvetica-Bold")
-    .fontSize(10)
-    .fillColor(COLORS.ink);
-
-  if (isInrCurrency) {
-    drawRupeeSymbol(doc, leftX + 12, y + 55, {
-      size: 9,
-      color: COLORS.ink,
-      strokeWidth: 1.05,
+    .fontSize(9.5)
+    .fillColor(COLORS.ink)
+    .text(amountWordsText, leftX + 10, boxY + 22, {
+      width: leftWidth - 20,
     });
-    doc.text(amountWords, leftX + 25, y + 52, {
-      width: leftWidth - 37,
-    });
-  } else {
-    doc.text(`${normalizedCurrency}: ${amountWords}`, leftX + 12, y + 52, {
-      width: leftWidth - 24,
-    });
-  }
 
   doc
     .font(doc.fontRegular || "Helvetica")
-    .fontSize(8)
+    .fontSize(7.8)
     .fillColor(COLORS.text)
     .text(
       `Selected services: ${servicesCount} | Recipient: ${quoteDetails?.recipientName || "-"}`,
-      leftX + 12,
-      y + 76,
+      leftX + 10,
+      boxY + 44,
       {
-        width: leftWidth - 24,
+        width: leftWidth - 20,
       },
     );
 
   doc
     .font(doc.fontBold || "Helvetica-Bold")
-    .fontSize(8.2)
+    .fontSize(8)
     .fillColor(COLORS.totalText)
-    .text("FINAL AMOUNT", rightX, y + 40, {
+    .text("FINAL AMOUNT", rightX, boxY + 8, {
       width: rightWidth,
       align: "center",
       characterSpacing: 0.7,
@@ -1055,39 +1052,22 @@ const drawSummarySection = (doc, y, quoteDetails = {}, servicesCount = 0) => {
   doc
     .font(doc.fontBold || "Helvetica-Bold")
     .fontSize(18)
-    .fillColor(COLORS.totalText);
-
-  if (isInrCurrency) {
-    const amountWidth = doc.widthOfString(amountValueText);
-    const rupeeBlockWidth = amountWidth + 18;
-    const startX = rightX + Math.max(10, (rightWidth - rupeeBlockWidth) / 2);
-
-    drawRupeeSymbol(doc, startX, y + 59, {
-      size: 13,
-      color: COLORS.totalText,
-      strokeWidth: 1.45,
-    });
-    doc.text(amountValueText, startX + 16, y + 54, {
-      width: amountWidth + 2,
-      align: "left",
-    });
-  } else {
-    doc.text(amountText, rightX, y + 54, {
+    .fillColor(COLORS.totalText)
+    .text(amountText, rightX, boxY + 22, {
       width: rightWidth,
       align: "center",
     });
-  }
 
   doc
     .font(doc.fontRegular || "Helvetica")
-    .fontSize(7.8)
+    .fontSize(7.5)
     .fillColor(COLORS.text)
-    .text("Taxes and charges are already reflected in the total shared by operations.", rightX + 10, y + 76, {
-      width: rightWidth - 20,
+    .text("Taxes and charges are already reflected in the total shared by operations.", rightX + 8, boxY + 44, {
+      width: rightWidth - 16,
       align: "center",
     });
 
-  return y + 106;
+  return boxY + boxHeight + 8;
 };
 
 const parseStructuredTerms = (rawContent) => {
@@ -1297,31 +1277,32 @@ const drawTermsSection = (doc, y, customTerms = []) => {
     contentHeight += h + topPad;
   });
 
-  const boxHeight = Math.max(60, contentHeight + 14);
-  drawRoundedBox(doc, PAGE.contentX, y + 30, PAGE.contentWidth, boxHeight, "#ffffff");
+  const boxHeight = Math.max(50, contentHeight + 12);
+  const boxY = y + 24;
+  drawRoundedBox(doc, PAGE.contentX, boxY, PAGE.contentWidth, boxHeight, "#ffffff", COLORS.border, 3);
 
-  let cursorY = y + 38;
+  let cursorY = boxY + 8;
   items.forEach((item) => {
     const fontSize = item.type === "header" ? 8 : (item.type === "nested" ? 7.2 : 7.5);
     const fontName = item.type === "header" ? (doc.fontBold || "Helvetica-Bold") : (doc.fontRegular || "Helvetica");
     const color = item.type === "header" ? "#0f172a" : (item.type === "nested" ? "#334155" : COLORS.text || "#1e293b");
-    const xOffset = item.type === "nested" ? 22 : (item.type === "subitem" ? 8 : 0);
-    const itemWidth = PAGE.contentWidth - 28 - xOffset;
-    const topPad = item.type === "header" ? 5 : (item.type === "nested" ? 2 : 2.5);
+    const xOffset = item.type === "nested" ? 20 : (item.type === "subitem" ? 8 : 0);
+    const itemWidth = PAGE.contentWidth - 24 - xOffset;
+    const topPad = item.type === "header" ? 4 : (item.type === "nested" ? 1.5 : 2);
 
     cursorY += topPad;
     doc
       .font(fontName)
       .fontSize(fontSize)
       .fillColor(color)
-      .text(item.text, PAGE.contentX + 14 + xOffset, cursorY, {
+      .text(item.text, PAGE.contentX + 12 + xOffset, cursorY, {
         width: itemWidth,
       });
 
     cursorY = doc.y;
   });
 
-  return y + 30 + boxHeight + 14;
+  return boxY + boxHeight + 8;
 };
 
 const normalizeSellerBankDetails = (items = []) => {
@@ -1353,24 +1334,25 @@ const normalizeServiceTypeLabel = (value = "") => {
 
 const getSellerBankDetailsSectionHeight = (items = []) => {
   const normalizedItems = normalizeSellerBankDetails(items);
-  return 30 + Math.max(64, normalizedItems.length * 28 + 12) + 14;
+  return 24 + Math.max(56, normalizedItems.length * 26 + 10) + 8;
 };
 
 const drawSellerBankDetailsSection = (doc, y, items = []) => {
   const normalizedItems = normalizeSellerBankDetails(items);
-  const sectionHeight = Math.max(64, normalizedItems.length * 28 + 12);
+  const sectionHeight = Math.max(56, normalizedItems.length * 26 + 10);
 
   drawSectionBar(doc, y, "SELLER'S BANK DETAILS");
-  drawRoundedBox(doc, PAGE.contentX, y + 30, PAGE.contentWidth, sectionHeight, "#ffffff");
+  const boxY = y + 24;
+  drawRoundedBox(doc, PAGE.contentX, boxY, PAGE.contentWidth, sectionHeight, "#ffffff", COLORS.border, 3);
 
-  let cursorY = y + 42;
+  let cursorY = boxY + 10;
   normalizedItems.forEach((item, index) => {
     if (index > 0) {
       doc
         .save()
-        .moveTo(PAGE.contentX + 14, cursorY - 8)
-        .lineTo(PAGE.contentX + PAGE.contentWidth - 14, cursorY - 8)
-        .lineWidth(0.55)
+        .moveTo(PAGE.contentX + 12, cursorY - 6)
+        .lineTo(PAGE.contentX + PAGE.contentWidth - 12, cursorY - 6)
+        .lineWidth(0.5)
         .strokeColor(COLORS.border)
         .stroke()
         .restore();
@@ -1380,7 +1362,7 @@ const drawSellerBankDetailsSection = (doc, y, items = []) => {
       .font(doc.fontBold || "Helvetica-Bold")
       .fontSize(8.4)
       .fillColor(COLORS.muted)
-      .text(item.label, PAGE.contentX + 14, cursorY, {
+      .text(item.label, PAGE.contentX + 12, cursorY, {
         width: 140,
       });
 
@@ -1388,14 +1370,14 @@ const drawSellerBankDetailsSection = (doc, y, items = []) => {
       .font(doc.fontBold || "Helvetica-Bold")
       .fontSize(8.8)
       .fillColor(COLORS.ink)
-      .text(item.value, PAGE.contentX + 164, cursorY, {
-        width: PAGE.contentWidth - 178,
+      .text(item.value, PAGE.contentX + 160, cursorY, {
+        width: PAGE.contentWidth - 172,
       });
 
-    cursorY += 28;
+    cursorY += 26;
   });
 
-  return y + 30 + sectionHeight + 14;
+  return boxY + sectionHeight + 8;
 };
 
 const drawBulletListSection = (doc, y, title, items = [], emptyLabel = "No items provided.") => {
@@ -1406,32 +1388,34 @@ const drawBulletListSection = (doc, y, title, items = [], emptyLabel = "No items
   drawSectionBar(doc, y, title);
 
   const contentItems = normalizedItems.length ? normalizedItems : [emptyLabel];
-  let contentHeight = 18;
+  let contentHeight = 12;
   doc.font(doc.fontRegular || "Helvetica").fontSize(8.2);
 
   contentItems.forEach((item, index) => {
     contentHeight += doc.heightOfString(
       normalizedItems.length ? `${index + 1}. ${item}` : item,
-      { width: PAGE.contentWidth - 28 },
-    ) + 6;
+      { width: PAGE.contentWidth - 24 },
+    ) + 4;
   });
 
-  drawRoundedBox(doc, PAGE.contentX, y + 30, PAGE.contentWidth, Math.max(46, contentHeight), "#ffffff");
+  const boxHeight = Math.max(36, contentHeight);
+  const boxY = y + 24;
+  drawRoundedBox(doc, PAGE.contentX, boxY, PAGE.contentWidth, boxHeight, "#ffffff", COLORS.border, 3);
 
-  let cursorY = y + 40;
+  let cursorY = boxY + 8;
   contentItems.forEach((item, index) => {
     doc
       .font(doc.fontRegular || "Helvetica")
       .fontSize(8.2)
       .fillColor(normalizedItems.length ? COLORS.text : COLORS.muted)
-      .text(normalizedItems.length ? `${index + 1}. ${item}` : item, PAGE.contentX + 14, cursorY, {
-        width: PAGE.contentWidth - 28,
+      .text(normalizedItems.length ? `${index + 1}. ${item}` : item, PAGE.contentX + 12, cursorY, {
+        width: PAGE.contentWidth - 24,
       });
 
-    cursorY = doc.y + 6;
+    cursorY = doc.y + 4;
   });
 
-  return y + 30 + Math.max(46, contentHeight) + 14;
+  return boxY + boxHeight + 8;
 };
 
 const getBulletListSectionHeight = (doc, items = [], emptyLabel = "No items provided.") => {
@@ -1440,17 +1424,17 @@ const getBulletListSectionHeight = (doc, items = [], emptyLabel = "No items prov
     : [];
 
   const contentItems = normalizedItems.length ? normalizedItems : [emptyLabel];
-  let contentHeight = 18;
+  let contentHeight = 12;
   doc.font(doc.fontRegular || "Helvetica").fontSize(8.2);
 
   contentItems.forEach((item, index) => {
     contentHeight += doc.heightOfString(
       normalizedItems.length ? `${index + 1}. ${item}` : item,
-      { width: PAGE.contentWidth - 28 },
-    ) + 6;
+      { width: PAGE.contentWidth - 24 },
+    ) + 4;
   });
 
-  return 30 + Math.max(46, contentHeight) + 14;
+  return 24 + Math.max(36, contentHeight) + 8;
 };
 
 const normalizeItineraryItems = (items = []) =>
@@ -1484,16 +1468,16 @@ const drawItinerarySection = (doc, y, items = [], quoteDetails = {}) => {
   startSection();
 
   if (!normalizedItems.length) {
-    drawRoundedBox(doc, PAGE.contentX, cursorY, PAGE.contentWidth, 46, "#ffffff");
+    drawRoundedBox(doc, PAGE.contentX, cursorY, PAGE.contentWidth, 40, "#ffffff", COLORS.border, 3);
     doc
       .font(doc.fontRegular || "Helvetica")
       .fontSize(8.4)
       .fillColor(COLORS.muted)
-      .text("No day wise itinerary provided.", PAGE.contentX + 14, cursorY + 16, {
-        width: PAGE.contentWidth - 28,
+      .text("No day wise itinerary provided.", PAGE.contentX + 12, cursorY + 14, {
+        width: PAGE.contentWidth - 24,
       });
 
-    return cursorY + 60;
+    return cursorY + 48;
   }
 
   normalizedItems.forEach((item) => {
@@ -1502,13 +1486,13 @@ const drawItinerarySection = (doc, y, items = [], quoteDetails = {}) => {
 
     doc.font(doc.fontBold || "Helvetica-Bold").fontSize(9.2);
     const headingHeight = doc.heightOfString(heading, {
-      width: PAGE.contentWidth - 28,
+      width: PAGE.contentWidth - 24,
     });
     doc.font(doc.fontRegular || "Helvetica").fontSize(8.2);
     const descriptionHeight = description
-      ? doc.heightOfString(description, { width: PAGE.contentWidth - 28 })
+      ? doc.heightOfString(description, { width: PAGE.contentWidth - 24 })
       : 0;
-    const cardHeight = Math.max(48, headingHeight + descriptionHeight + 22);
+    const cardHeight = Math.max(44, headingHeight + descriptionHeight + 18);
 
     if (cursorY + cardHeight > CONTENT_BOTTOM_LIMIT) {
       doc.addPage();
@@ -1516,16 +1500,16 @@ const drawItinerarySection = (doc, y, items = [], quoteDetails = {}) => {
       drawContinuationHeader(doc, quoteDetails, "Day Wise Itinerary (Continued)");
       cursorY = 132;
       drawSectionBar(doc, cursorY, "DAY WISE ITINERARY");
-      cursorY += 30;
+      cursorY += 24;
     }
 
-    drawRoundedBox(doc, PAGE.contentX, cursorY, PAGE.contentWidth, cardHeight, "#ffffff");
+    drawRoundedBox(doc, PAGE.contentX, cursorY, PAGE.contentWidth, cardHeight, "#ffffff", COLORS.border, 3);
     doc
       .font(doc.fontBold || "Helvetica-Bold")
       .fontSize(9.2)
       .fillColor("#9a3412")
-      .text(heading, PAGE.contentX + 14, cursorY + 12, {
-        width: PAGE.contentWidth - 28,
+      .text(heading, PAGE.contentX + 12, cursorY + 10, {
+        width: PAGE.contentWidth - 24,
       });
 
     if (description) {
@@ -1533,12 +1517,12 @@ const drawItinerarySection = (doc, y, items = [], quoteDetails = {}) => {
         .font(doc.fontRegular || "Helvetica")
         .fontSize(8.2)
         .fillColor(COLORS.text)
-        .text(description, PAGE.contentX + 14, doc.y + 4, {
-          width: PAGE.contentWidth - 28,
+        .text(description, PAGE.contentX + 12, doc.y + 3, {
+          width: PAGE.contentWidth - 24,
         });
     }
 
-    cursorY += cardHeight + 8;
+    cursorY += cardHeight + 6;
   });
 
   return cursorY + 6;
@@ -1741,24 +1725,24 @@ export const generatePDF = async (quoteDetails = {}) => {
   });
 
   drawSnapshotGrid(doc, quoteDetails);
-  drawSectionBar(doc, 332, "SELECTED SERVICES");
+  drawSectionBar(doc, 322, "SELECTED SERVICES");
 
-  let servicesTableY = 360;
+  let servicesTableY = 348;
   let columns = drawServicesTableHeader(doc, servicesTableY);
-  let cursorY = servicesTableY + 30;
+  let cursorY = servicesTableY + 28;
 
   const services = Array.isArray(quoteDetails?.services) ? quoteDetails.services : [];
   if (!services.length) {
-    drawRoundedBox(doc, PAGE.contentX, cursorY, PAGE.contentWidth, 42, "#ffffff");
+    drawRoundedBox(doc, PAGE.contentX, cursorY, PAGE.contentWidth, 38, "#ffffff", COLORS.border, 3);
     doc
       .font(doc.fontRegular || "Helvetica")
-      .fontSize(9.5)
+      .fontSize(9)
       .fillColor(COLORS.muted)
-      .text("No service details are available for this quotation.", PAGE.contentX, cursorY + 15, {
+      .text("No service details are available for this quotation.", PAGE.contentX, cursorY + 13, {
         width: PAGE.contentWidth,
         align: "center",
       });
-    cursorY += 56;
+    cursorY += 46;
   } else {
     services.forEach((service, index) => {
       doc.font(doc.fontBold || "Helvetica-Bold").fontSize(10);
@@ -1784,11 +1768,11 @@ export const generatePDF = async (quoteDetails = {}) => {
       });
 
       const estimatedRowHeight = Math.max(
-        44,
-        titleHeight + notesHeight + 24,
-        locationHeight + 18,
-        quantityHeight + 18,
-        dateHeight + 18,
+        42,
+        titleHeight + notesHeight + 20,
+        locationHeight + 16,
+        quantityHeight + 16,
+        dateHeight + 16,
       );
 
       if (cursorY + estimatedRowHeight > SERVICE_ROW_BREAK_LIMIT) {
@@ -1796,13 +1780,13 @@ export const generatePDF = async (quoteDetails = {}) => {
         drawPageFrame(doc);
         drawContinuationHeader(doc, quoteDetails, "Selected Services (Continued)");
         drawSectionBar(doc, 132, "SELECTED SERVICES");
-        servicesTableY = 164;
+        servicesTableY = 158;
         columns = drawServicesTableHeader(doc, servicesTableY);
-        cursorY = servicesTableY + 30;
+        cursorY = servicesTableY + 28;
       }
 
       const rowHeight = drawServiceRow(doc, columns, cursorY, service, index);
-      cursorY += rowHeight + 6;
+      cursorY += rowHeight + 5;
     });
   }
 
@@ -1812,7 +1796,7 @@ export const generatePDF = async (quoteDetails = {}) => {
     drawContinuationHeader(doc, quoteDetails, "Quotation Details (Continued)");
     cursorY = 132;
   } else {
-    cursorY += 10;
+    cursorY += 6;
   }
 
   cursorY = drawSummarySection(doc, cursorY, quoteDetails, services.length);
