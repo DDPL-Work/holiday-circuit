@@ -1713,7 +1713,57 @@ const Service = ({
               })()}
 
               {isEditMode && (
-                <div className="grid grid-cols-1 gap-3 rounded-xl border border-gray-200 bg-white px-3 py-3 md:grid-cols-2 lg:grid-cols-5 shadow-2xs">
+                <div className="grid grid-cols-1 gap-3 rounded-xl border border-gray-200 bg-white px-3 py-3 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 shadow-2xs">
+                  <div>
+                    <label className="mb-1 block text-[9px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                      Star Category
+                    </label>
+                    <select
+                      value={
+                        service.starCategory ||
+                        service.hotelCategory ||
+                        service.starRating ||
+                        "5 Star"
+                      }
+                      onChange={(e) => {
+                        updateField(service.id, "starCategory", e.target.value);
+                        updateField(service.id, "hotelCategory", e.target.value);
+                        updateField(service.id, "starRating", e.target.value);
+                      }}
+                      className={`${selectCls} w-full font-bold text-amber-900 bg-amber-50/60 border-amber-300`}
+                    >
+                      <option value="5 Star">★ 5 Star</option>
+                      <option value="4 Star">★ 4 Star</option>
+                      <option value="3 Star">★ 3 Star</option>
+                      <option value="2 Star">★ 2 Star</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-[9px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                      Meal Plan
+                    </label>
+                    <select
+                      value={
+                        service.mealPlan ||
+                        service.meals ||
+                        service.meal_plan ||
+                        "EP"
+                      }
+                      onChange={(e) => {
+                        updateField(service.id, "mealPlan", e.target.value);
+                        updateField(service.id, "meals", e.target.value);
+                      }}
+                      className={`${selectCls} w-full font-semibold`}
+                    >
+                      <option value="EP">EP (Room Only)</option>
+                      <option value="CP">CP (Breakfast Included)</option>
+                      <option value="MAP">MAP (Breakfast & Dinner)</option>
+                      <option value="AP">AP (All Meals Included)</option>
+                      <option value="AI">AI (All Inclusive)</option>
+                    </select>
+                  </div>
+
                   <div>
                     <label className="mb-1 block text-[9px] font-semibold uppercase tracking-[0.18em] text-slate-500">
                       Room Category

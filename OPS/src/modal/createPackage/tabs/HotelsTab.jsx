@@ -123,20 +123,6 @@ export const HotelsTab = ({
                     </span>
                   ) : null}
 
-                  <div className="flex items-center gap-1 rounded-md bg-amber-50 border border-amber-200 px-2 py-0.5 shadow-2xs">
-                    <span className="text-amber-500 text-[11px] font-bold">★</span>
-                    <select
-                      value={hotel.starCategory || "5 Star"}
-                      onChange={(e) => updateHotel(index, "starCategory", e.target.value)}
-                      className="bg-transparent text-amber-700 text-[11px] font-bold focus:outline-none cursor-pointer"
-                      title="Hotel Star Rating"
-                    >
-                      <option value="3 Star">3 Star</option>
-                      <option value="4 Star">4 Star</option>
-                      <option value="5 Star">5 Star</option>
-                    </select>
-                  </div>
-
                   {hotel.supplierName && (
                     <span className="rounded-md bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-[10px] text-emerald-700 font-semibold">
                       Supplier: {hotel.supplierName}
@@ -282,10 +268,10 @@ export const HotelsTab = ({
                     }}
                     className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs font-medium"
                   >
-                    <option value="5 Star">★ 5 Star (Luxury)</option>
-                    <option value="4 Star">★ 4 Star (Premium / Deluxe)</option>
-                    <option value="3 Star">★ 3 Star (Standard)</option>
-                    <option value="2 Star">★ 2 Star (Budget)</option>
+                    <option value="5 Star">5 Star</option>
+                    <option value="4 Star">4 Star</option>
+                    <option value="3 Star">3 Star</option>
+                    <option value="2 Star">2 Star</option>
                   </select>
                 </div>
 

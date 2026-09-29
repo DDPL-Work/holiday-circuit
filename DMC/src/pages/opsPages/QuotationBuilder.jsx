@@ -5244,22 +5244,22 @@ const QuotationBuilder = () => {
             w-full flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white
             shadow-2xl ${
               selectedServicesModalScope === "single"
-                ? "max-h-[90vh] max-w-3xl"
-                : "h-[min(90vh,960px)] max-w-5xl"
+                ? "max-w-5xl"
+                : "h-[min(90vh,960px)] max-w-6xl"
             }`}
               onClick={(event) => event.stopPropagation()}
               role="dialog"
               aria-modal="true"
               aria-label="Selected services"
             >
-              <div className="flex items-start justify-between gap-4 border-b border-gray-200 bg-slate-50 px-5 py-4">
+              <div className="flex items-start justify-between gap-4 border-b border-gray-200 bg-slate-50 px-6 py-4">
                 <div>
-                  <h2 className="text-lg font-semibold text-slate-900">
+                  <h2 className="text-lg font-bold text-slate-900">
                     {selectedServicesModalScope === "single"
                       ? "Service Editor"
                       : "Selected Services"}
                   </h2>
-                  <p className="mt-1 text-sm text-slate-500">
+                  <p className="mt-0.5 text-xs text-slate-500">
                     {selectedServicesModalScope === "single"
                       ? "This focused view shows only the service you chose to edit."
                       : "All checked services are listed here for quick edit or delete."}
@@ -5275,7 +5275,7 @@ const QuotationBuilder = () => {
                   <button
                     type="button"
                     onClick={closeSelectedServicesModal}
-                    className="flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white text-slate-500 transition hover:border-gray-300 hover:bg-slate-50 hover:text-slate-800 cursor-pointer"
+                    className="flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-white text-slate-500 transition hover:border-gray-300 hover:bg-slate-100 hover:text-slate-800 cursor-pointer"
                     aria-label="Close selected services modal"
                   >
                     <X size={18} />
@@ -5284,10 +5284,10 @@ const QuotationBuilder = () => {
               </div>
 
               <div
-                className={`dark-scrollbar overflow-y-auto px-5 py-5 ${
+                className={`px-6 py-5 ${
                   selectedServicesModalScope === "single"
-                    ? "max-h-[calc(90vh-140px)]"
-                    : "flex-1"
+                    ? ""
+                    : "flex-1 overflow-y-auto dark-scrollbar"
                 }`}
               >
                 {renderSelectedServicesList(visibleSelectedServices)}

@@ -1832,26 +1832,18 @@ const CONTRACTED_RATE_FILTER_OPTIONS = [
 ];
 
 const HOTEL_ROOM_TYPE_OPTIONS = [
-  "Standard",
-  "Deluxe",
-  "Super Deluxe",
-  "Premium",
-  "Executive",
-  "Club",
-  "Suite",
+  "Standard Room",
+  "Deluxe Room",
+  "Premium Room",
   "Family Room",
-  "Villa",
-  "Cottage",
+  "Luxury Room",
+  "Suite",
 ];
 
 const HOTEL_ROOM_CATEGORY_OPTIONS = [
-  "Single",
   "Double",
-  "Twin",
   "Triple",
-  "Quad",
-  "Family",
-  "Interconnecting",
+  "Single",
 ];
 
 const HOTEL_BED_TYPE_OPTIONS = [
@@ -1863,27 +1855,9 @@ const HOTEL_BED_TYPE_OPTIONS = [
   { value: "extra-bed-rollaway-bed", label: "Extra Bed / Rollaway Bed" },
 ];
 
-const HOTEL_ROOM_TYPE_FIXED_PRICES = Object.freeze({
-  standard: 5000,
-  deluxe: 6000,
-  "super deluxe": 9000,
-  premium: 7000,
-  executive: 8000,
-  club: 8500,
-  suite: 12000,
-  "family room": 9500,
-  villa: 15000,
-  cottage: 7500,
-});
+const HOTEL_ROOM_TYPE_FIXED_PRICES = Object.freeze({});
 
-const HOTEL_BED_TYPE_FIXED_PRICES = Object.freeze({
-  "king-bed": 7000,
-  "queen-bed": 6500,
-  "twin-beds": 6200,
-  "double-bed": 6000,
-  "single-bed": 4500,
-  "extra-bed-rollaway-bed": 3000,
-});
+const HOTEL_BED_TYPE_FIXED_PRICES = Object.freeze({});
 
 const TRANSPORT_USAGE_OPTIONS = Object.freeze([
   {
@@ -2108,15 +2082,20 @@ const normalizeHotelRoomTypeLookupKey = (value = "") => {
     return "";
   }
 
+  const cleanVal = normalizedValue.replace(/\s+room$/i, "").trim();
+
   const canonicalMatch = [...HOTEL_ROOM_TYPE_OPTIONS]
     .sort((left, right) => right.length - left.length)
-    .find((option) => normalizedValue.includes(String(option).toLowerCase()));
+    .find((option) => {
+      const cleanOption = String(option).toLowerCase().replace(/\s+room$/i, "").trim();
+      return cleanOption === cleanVal || normalizedValue.includes(cleanOption) || cleanOption.includes(cleanVal);
+    });
 
   if (canonicalMatch) {
     return String(canonicalMatch).toLowerCase();
   }
 
-  return normalizedValue.replace(/\s+room$/i, "").trim();
+  return cleanVal;
 };
 
 const normalizeTransportUsageValue = (value = "") => {
@@ -9803,11 +9782,7 @@ const QuotationBuilder = () => {
 
   const renderSelectedServicesList = (servicesToRender = selectedServices) =>
     servicesToRender.length > 0 ? (
-      <div
-        className={`dark-scrollbar space-y-3 overflow-y-auto pr-1 ${
-          selectedServicesModalScope === "single" ? "mx-auto max-w-2xl" : ""
-        }`}
-      >
+      <div className="space-y-4">
         {servicesToRender.map((service) => {
           const serviceEdits = getSelectedServiceQuotationEdits(service);
           const selectedTransportUsageLabels =
@@ -9824,9 +9799,6 @@ const QuotationBuilder = () => {
                 )
               : [];
           const serviceIncludedItems = getSelectedServiceIncludedItems(service);
-          const isSingleServiceModalView =
-            selectedServicesModalScope === "single" &&
-            servicesToRender.length === 1;
 
           const Chip = ({
             icon,
@@ -9850,7 +9822,7 @@ const QuotationBuilder = () => {
                 </span>
               )}
               <span
-                className={`max-w-[120px] truncate text-[10px] font-semibold leading-none ${accent}`}
+                className={`max-w-[140px] truncate text-[10px] font-semibold leading-none ${accent}`}
               >
                 {value}
               </span>
@@ -9888,62 +9860,58 @@ const QuotationBuilder = () => {
             <div
               key={`selected-${service.id}`}
               id={getSelectedServiceSummaryDomId(service.id)}
-              className={`rounded-xl border bg-white p-3 shadow-2xs transition-all duration-200 ${
+              className={`rounded-2xl border bg-white p-4 shadow-sm transition-all duration-200 ${
                 isTargetedService
                   ? "border-sky-400 shadow-[0_0_0_2px_rgba(56,189,248,0.35)]"
                   : "border-gray-200"
-              } ${isSingleServiceModalView ? "mx-auto w-full max-w-2xl" : ""}`}
+              } w-full`}
             >
-              <div className="rounded-lg border border-gray-200 bg-slate-50 px-3 py-3">
-                <div
-                  className={`flex items-start gap-2.5 ${isSingleServiceModalView ? "flex-col" : ""}`}
-                >
-                  <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full border border-gray-200 bg-white shadow-2xs">
-                    {renderSelectedServiceSummaryIcon(service)}
-                  </div>
+              <div className="rounded-xl border border-gray-200 bg-slate-50/80 p-4">
+                {/* Header Row: Title & Badges on Left, Price on Right */}
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                    <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white shadow-2xs">
+                      {renderSelectedServiceSummaryIcon(service)}
+                    </div>
 
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="truncate text-[13px] font-semibold leading-tight text-slate-900">
-                        {service.title}
-                      </p>
-                      {isTargetedService && (
-                        <span className="rounded-full border border-sky-300 bg-sky-50 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-sky-800">
-                          Active
-                        </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="truncate text-sm font-bold text-slate-900">
+                          {service.title}
+                        </p>
+                        {isTargetedService && (
+                          <span className="rounded-full border border-sky-300 bg-sky-50 px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-sky-800">
+                            Active
+                          </span>
+                        )}
+                      </div>
+                      {(service.city || service.country) && (
+                        <p className="mt-0.5 truncate text-[11px] font-medium text-slate-500">
+                          {[service.city, service.country]
+                            .filter(Boolean)
+                            .join(", ")}
+                        </p>
                       )}
                     </div>
-                    {(service.city || service.country) && (
-                      <p className="mt-0.5 truncate text-[10px] text-slate-500">
-                        {[service.city, service.country]
-                          .filter(Boolean)
-                          .join(", ")}
-                      </p>
-                    )}
                   </div>
 
-                  <div
-                    className={`${
-                      isSingleServiceModalView
-                        ? "w-full pl-[46px] text-left"
-                        : "flex-shrink-0 pl-1 text-right"
-                    }`}
-                  >
-                    <p className="whitespace-nowrap text-[12px] font-bold leading-tight text-amber-700">
+                  <div className="flex-shrink-0 text-right">
+                    <p className="whitespace-nowrap text-base font-bold leading-tight text-amber-700">
                       {formatCurrencyValue(
                         service.originalTotal || 0,
                         service.currency,
                       )}
                     </p>
                     {service.isForeignCurrency && (
-                      <p className="mt-0.5 whitespace-nowrap text-[10px] text-sky-700">
+                      <p className="mt-0.5 whitespace-nowrap text-[11px] font-semibold text-sky-700">
                         ₹ {formatAmountValue(service.totalInInr || 0)}
                       </p>
                     )}
                   </div>
                 </div>
 
-                <div className="mt-2.5 flex flex-wrap gap-1.5">
+                {/* Chips Row */}
+                <div className="mt-3 flex flex-wrap gap-1.5">
                   <div
                     className={`inline-flex items-center rounded-lg border px-2.5 py-[5px] ${typeAccent.bg} ${typeAccent.border}`}
                   >
@@ -10370,96 +10338,106 @@ const QuotationBuilder = () => {
                   )}
                 </div>
 
-                {serviceIncludedItems.length > 0 && (
-                  <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50/70 px-3 py-2.5">
-                    <div className="mb-2 flex items-center justify-between gap-2">
-                      <p className="text-[8px] font-semibold uppercase tracking-[0.18em] text-emerald-800">
-                        Included In Service
-                      </p>
-                      <span className="rounded-full border border-emerald-300 bg-emerald-100 px-2 py-0.5 text-[7px] font-semibold text-emerald-800">
-                        {serviceIncludedItems.length} item
-                        {serviceIncludedItems.length === 1 ? "" : "s"}
-                      </span>
-                    </div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {serviceIncludedItems.map((item, itemIndex) => (
-                        <span
-                          key={`${service.id}-include-${itemIndex}`}
-                          className="inline-flex items-center rounded-md border border-emerald-300 bg-white px-2.5 py-[5px] text-[10px] font-medium leading-none text-emerald-900"
-                        >
-                          {item}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {serviceEdits.length > 0 && (
-                  <div className="mt-3 rounded-lg border border-sky-200 bg-sky-50/70 px-3 py-2.5">
-                    <div className="mb-2 flex items-center justify-between gap-2">
-                      <p className="text-[8px] font-semibold uppercase tracking-[0.18em] text-sky-800">
-                        Quotation Edits
-                      </p>
-                      <span className="rounded-full border border-sky-300 bg-sky-100 px-2 py-0.5 text-[7px] font-semibold text-sky-800">
-                        {serviceEdits.length} update
-                        {serviceEdits.length === 1 ? "" : "s"}
-                      </span>
-                    </div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {serviceEdits.map((edit) => {
-                        const toneClasses =
-                          edit.variant === "success"
-                            ? "border-emerald-300 bg-white text-emerald-800"
-                            : edit.variant === "warning"
-                              ? "border-amber-300 bg-white text-amber-900"
-                              : edit.variant === "danger"
-                                ? "border-red-300 bg-white text-red-800"
-                                : "border-sky-300 bg-white text-sky-900";
-                        const iconClasses =
-                          edit.variant === "success"
-                            ? "text-emerald-600"
-                            : edit.variant === "warning"
-                              ? "text-amber-600"
-                              : edit.variant === "danger"
-                                ? "text-red-600"
-                                : "text-sky-600";
-
-                        return (
-                          <span
-                            key={`${service.id}-${edit.key}-${edit.label}`}
-                            className={`inline-flex items-center gap-1 rounded-md border px-2.5 py-[5px] text-[10px] font-medium leading-none ${toneClasses}`}
-                          >
-                            <CheckCircle2
-                              size={11}
-                              className={`shrink-0 ${iconClasses}`}
-                            />
-                            <span className="font-semibold">{edit.label}</span>
-                            <span className="opacity-40">:</span>
-                            <span>{edit.value}</span>
+                {/* 2-Column Grid for Included Items and Quotation Edits */}
+                {(serviceIncludedItems.length > 0 || serviceEdits.length > 0) && (
+                  <div
+                    className={`mt-3 grid gap-3 ${
+                      serviceIncludedItems.length > 0 && serviceEdits.length > 0
+                        ? "grid-cols-1 md:grid-cols-2"
+                        : "grid-cols-1"
+                    }`}
+                  >
+                    {serviceIncludedItems.length > 0 && (
+                      <div className="rounded-lg border border-emerald-200 bg-emerald-50/70 px-3 py-2.5">
+                        <div className="mb-2 flex items-center justify-between gap-2">
+                          <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-emerald-800">
+                            Included In Service
+                          </p>
+                          <span className="rounded-full border border-emerald-300 bg-emerald-100 px-2 py-0.5 text-[8px] font-bold text-emerald-800">
+                            {serviceIncludedItems.length} item{serviceIncludedItems.length === 1 ? "" : "s"}
                           </span>
-                        );
-                      })}
-                    </div>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {serviceIncludedItems.map((item, itemIndex) => (
+                            <span
+                              key={`${service.id}-include-${itemIndex}`}
+                              className="inline-flex items-center rounded-md border border-emerald-300 bg-white px-2.5 py-1 text-[11px] font-medium leading-none text-emerald-900 shadow-2xs"
+                            >
+                              {item}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {serviceEdits.length > 0 && (
+                      <div className="rounded-lg border border-sky-200 bg-sky-50/70 px-3 py-2.5">
+                        <div className="mb-2 flex items-center justify-between gap-2">
+                          <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-sky-800">
+                            Quotation Edits
+                          </p>
+                          <span className="rounded-full border border-sky-300 bg-sky-100 px-2 py-0.5 text-[8px] font-bold text-sky-800">
+                            {serviceEdits.length} update{serviceEdits.length === 1 ? "" : "s"}
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {serviceEdits.map((edit) => {
+                            const toneClasses =
+                              edit.variant === "success"
+                                ? "border-emerald-300 bg-white text-emerald-800"
+                                : edit.variant === "warning"
+                                  ? "border-amber-300 bg-white text-amber-900"
+                                  : edit.variant === "danger"
+                                    ? "border-red-300 bg-white text-red-800"
+                                    : "border-sky-300 bg-white text-sky-900";
+                            const iconClasses =
+                              edit.variant === "success"
+                                ? "text-emerald-600"
+                                : edit.variant === "warning"
+                                  ? "text-amber-600"
+                                  : edit.variant === "danger"
+                                    ? "text-red-600"
+                                    : "text-sky-600";
+
+                            return (
+                              <span
+                                key={`${service.id}-${edit.key}-${edit.label}`}
+                                className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] font-medium leading-none shadow-2xs ${toneClasses}`}
+                              >
+                                <CheckCircle2
+                                  size={12}
+                                  className={`shrink-0 ${iconClasses}`}
+                                />
+                                <span className="font-semibold">{edit.label}</span>
+                                <span className="opacity-40">:</span>
+                                <span>{edit.value}</span>
+                              </span>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
 
-              <div className="mt-2.5 flex items-center justify-between gap-3 px-0.5">
-                <p className="text-[10px] font-medium text-slate-500">
+              {/* Quick Actions Footer */}
+              <div className="mt-3 flex items-center justify-between gap-3 px-1">
+                <p className="text-[11px] font-semibold text-slate-500">
                   Quick Actions
                 </p>
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-2">
                   <button
                     type="button"
                     onClick={() => handleSelectedServiceEditAction(service)}
-                    className="cursor-pointer rounded-xl border border-blue-200 bg-blue-50 px-3.5 py-1.5 text-[11px] font-semibold text-blue-700 transition hover:bg-blue-100 hover:border-blue-300 shadow-2xs"
+                    className="cursor-pointer rounded-xl border border-blue-200 bg-blue-50 px-4 py-1.5 text-xs font-semibold text-blue-700 transition hover:bg-blue-100 hover:border-blue-300 shadow-2xs"
                   >
                     {editingServiceCardId === service.id ? "Save" : "Edit"}
                   </button>
                   <button
                     type="button"
                     onClick={() => handleSelectedServiceDelete(service)}
-                    className="cursor-pointer rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-1.5 text-[11px] font-semibold text-rose-700 transition hover:bg-rose-100 hover:border-rose-300 shadow-2xs"
+                    className="cursor-pointer rounded-xl border border-rose-200 bg-rose-50 px-4 py-1.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 hover:border-rose-300 shadow-2xs"
                   >
                     Delete
                   </button>
@@ -10494,7 +10472,7 @@ const QuotationBuilder = () => {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2, ease: "easeOut" }}
-            className="fixed inset-0 z-[120] flex h-screen w-screen items-center justify-center bg-slate-900/60 px-3 py-4 backdrop-blur-sm"
+            className="fixed inset-0 z-[120] flex h-screen w-screen items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm"
             onClick={closeSelectedServicesModal}
           >
             <motion.div
@@ -10502,26 +10480,24 @@ const QuotationBuilder = () => {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 18, scale: 0.98 }}
               transition={{ duration: 0.24, ease: "easeOut" }}
-              className={`flex
-            w-full flex-col overflow-hidden rounded-xl border border-gray-200 bg-white
-            shadow-2xl ${
-              selectedServicesModalScope === "single"
-                ? "max-h-[90vh] max-w-3xl"
-                : "h-[min(90vh,960px)] max-w-5xl"
-            }`}
+              className={`flex w-full flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl ${
+                selectedServicesModalScope === "single"
+                  ? "max-w-5xl"
+                  : "h-[min(90vh,960px)] max-w-6xl"
+              }`}
               onClick={(event) => event.stopPropagation()}
               role="dialog"
               aria-modal="true"
               aria-label="Selected services"
             >
-              <div className="flex items-start justify-between gap-4 border-b border-gray-200 bg-slate-50 px-5 py-4">
+              <div className="flex items-start justify-between gap-4 border-b border-gray-200 bg-slate-50 px-6 py-4">
                 <div>
-                  <h2 className="text-lg font-semibold text-slate-900">
+                  <h2 className="text-lg font-bold text-slate-900">
                     {selectedServicesModalScope === "single"
                       ? "Service Editor"
                       : "Selected Services"}
                   </h2>
-                  <p className="mt-1 text-sm text-slate-500">
+                  <p className="mt-0.5 text-xs text-slate-500">
                     {selectedServicesModalScope === "single"
                       ? "This focused view shows only the service you chose to edit."
                       : "All checked services are listed here for quick edit or delete."}
@@ -10537,7 +10513,7 @@ const QuotationBuilder = () => {
                   <button
                     type="button"
                     onClick={closeSelectedServicesModal}
-                    className="flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white text-slate-500 transition hover:border-gray-300 hover:bg-slate-50 hover:text-slate-800 cursor-pointer"
+                    className="flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-white text-slate-500 transition hover:border-gray-300 hover:bg-slate-100 hover:text-slate-800 cursor-pointer"
                     aria-label="Close selected services modal"
                   >
                     <X size={18} />
@@ -10546,10 +10522,10 @@ const QuotationBuilder = () => {
               </div>
 
               <div
-                className={`dark-scrollbar overflow-y-auto px-5 py-5 ${
+                className={`px-6 py-5 ${
                   selectedServicesModalScope === "single"
-                    ? "max-h-[calc(90vh-140px)]"
-                    : "flex-1"
+                    ? ""
+                    : "flex-1 overflow-y-auto dark-scrollbar"
                 }`}
               >
                 {renderSelectedServicesList(visibleSelectedServices)}
@@ -15877,43 +15853,27 @@ const Service = ({
     if (!isHotelService) return rawAmenities;
 
     const activeCategory = service.roomType || service.roomCategory || "";
-    const mealVal =
-      service.mealPlan || service.meals || service.meal_plan || "";
-    let mealLabel = "";
-    if (mealVal) {
-      const u = mealVal.toUpperCase();
-      if (u === "EP" || u.includes("ROOM ONLY")) mealLabel = "EP (Room Only)";
-      else if (u === "CP" || u.includes("BREAKFAST"))
-        mealLabel = "CP (Breakfast Included)";
-      else if (u === "MAP" || u.includes("DINNER"))
-        mealLabel = "MAP (Breakfast & Dinner)";
-      else if (u === "AP" || u.includes("ALL MEALS"))
-        mealLabel = "AP (All Meals Included)";
-      else if (u === "AI" || u.includes("ALL INCLUSIVE"))
-        mealLabel = "AI (All Inclusive)";
-      else mealLabel = mealVal;
-    }
-
     const roomPattern =
       /room|suite|villa|cottage|standard|deluxe|executive|family|luxury|penthouse/i;
+    const isMealTag = (tag) => {
+      const t = String(tag || "").trim().toLowerCase();
+      return t.includes("meal") || ["ep", "cp", "map", "ap", "ai"].includes(t);
+    };
+
     const filtered = rawAmenities.filter((tag, idx) => {
       if (idx === 0 && roomPattern.test(tag)) return false;
-      if (mealLabel && tag.toLowerCase().includes("meal")) return false;
+      if (isMealTag(tag)) return false;
       return true;
     });
 
     const tags = [];
     if (activeCategory) tags.push(activeCategory);
-    if (mealLabel) tags.push(`Meal Plan: ${mealLabel}`);
 
     return [...tags, ...filtered];
   }, [
     isHotelService,
     service.roomType,
     service.roomCategory,
-    service.mealPlan,
-    service.meals,
-    service.meal_plan,
     rawAmenities,
   ]);
 
@@ -16216,41 +16176,17 @@ const Service = ({
                     </span>
                   </span>
                 )}
-                {(service.starCategory ||
-                  service.hotelCategory ||
-                  service.starRating) && (
-                  <span className="flex items-center gap-1 text-slate-500">
-                    <span className="text-slate-700 font-semibold">
+                {service.type === "hotel" &&
+                  (service.hotelCategory ||
+                    service.starCategory ||
+                    service.starRating ||
+                    service.stars) && (
+                    <span className="rounded-md bg-amber-50 border border-amber-200 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800 inline-flex items-center gap-1 shadow-2xs">
+                      <FaStar size={10} className="text-amber-500" />
                       {service.starCategory ||
                         service.hotelCategory ||
-                        service.starRating}
-                    </span>
-                    <span className="flex items-center gap-0.5 ml-0.5">
-                      {Array.from({
-                        length: getHotelStars(
-                          service.starCategory ||
-                            service.hotelCategory ||
-                            service.starRating,
-                        ),
-                      }).map((_, i) => (
-                        <IoStarSharp
-                          key={i}
-                          className="text-amber-500 text-[10px]"
-                        />
-                      ))}
-                    </span>
-                  </span>
-                )}
-                {service.type === "hotel" &&
-                  (service.mealPlan ||
-                    service.meals ||
-                    service.meal_plan) && (
-                    <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 border border-amber-200 px-2 py-0.5 text-[10px] font-bold text-amber-800">
-                      <Utensils size={10} className="text-amber-600" />
-                      Meal Plan:{" "}
-                      {service.mealPlan ||
-                        service.meals ||
-                        service.meal_plan}
+                        service.starRating ||
+                        `${service.stars} Star`}
                     </span>
                   )}
                 {service.type === "transfer" && (
@@ -16325,8 +16261,35 @@ const Service = ({
           </div>
         )}
 
-        {amenities.length > 0 && (
-          <div className="col-start-2 col-span-2 flex w-full flex-wrap justify-start gap-x-1 gap-y-1.5">
+        {(isHotelService || amenities.length > 0) && (
+          <div className="col-start-2 col-span-2 flex w-full flex-wrap justify-start gap-x-1 gap-y-1.5 items-center">
+            {isHotelService &&
+              (service.mealPlan ||
+                service.meals ||
+                service.meal_plan) && (
+                <span className="whitespace-nowrap rounded-md border border-gray-200 bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-700">
+                  Meal Plan:{" "}
+                  {(() => {
+                    const m =
+                      service.mealPlan ||
+                      service.meals ||
+                      service.meal_plan ||
+                      "";
+                    const u = m.toUpperCase();
+                    if (u === "EP" || u.includes("ROOM ONLY"))
+                      return "EP (Room Only)";
+                    if (u === "CP" || u.includes("BREAKFAST"))
+                      return "CP (Breakfast Included)";
+                    if (u === "MAP" || u.includes("DINNER"))
+                      return "MAP (Breakfast & Dinner)";
+                    if (u === "AP" || u.includes("ALL MEALS"))
+                      return "AP (All Meals Included)";
+                    if (u === "AI" || u.includes("ALL INCLUSIVE"))
+                      return "AI (All Inclusive)";
+                    return m;
+                  })()}
+                </span>
+              )}
             {amenities.map((item, i) => (
               <span
                 key={i}
@@ -17616,7 +17579,57 @@ const Service = ({
               })()}
 
               {isEditMode && (
-                <div className="grid grid-cols-1 gap-3 rounded-xl border border-gray-200 bg-white px-3 py-3 md:grid-cols-2 lg:grid-cols-5 shadow-2xs">
+                <div className="grid grid-cols-1 gap-3 rounded-xl border border-gray-200 bg-white px-3 py-3 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 shadow-2xs">
+                  <div>
+                    <label className="mb-1 block text-[9px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                      Star Category
+                    </label>
+                    <select
+                      value={
+                        service.starCategory ||
+                        service.hotelCategory ||
+                        service.starRating ||
+                        "5 Star"
+                      }
+                      onChange={(e) => {
+                        updateField(service.id, "starCategory", e.target.value);
+                        updateField(service.id, "hotelCategory", e.target.value);
+                        updateField(service.id, "starRating", e.target.value);
+                      }}
+                      className={`${selectCls} w-full font-bold text-amber-900 bg-amber-50/60 border-amber-300`}
+                    >
+                      <option value="5 Star">★ 5 Star</option>
+                      <option value="4 Star">★ 4 Star</option>
+                      <option value="3 Star">★ 3 Star</option>
+                      <option value="2 Star">★ 2 Star</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-[9px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                      Meal Plan
+                    </label>
+                    <select
+                      value={
+                        service.mealPlan ||
+                        service.meals ||
+                        service.meal_plan ||
+                        "EP"
+                      }
+                      onChange={(e) => {
+                        updateField(service.id, "mealPlan", e.target.value);
+                        updateField(service.id, "meals", e.target.value);
+                      }}
+                      className={`${selectCls} w-full font-semibold`}
+                    >
+                      <option value="EP">EP (Room Only)</option>
+                      <option value="CP">CP (Breakfast Included)</option>
+                      <option value="MAP">MAP (Breakfast & Dinner)</option>
+                      <option value="AP">AP (All Meals Included)</option>
+                      <option value="AI">AI (All Inclusive)</option>
+                    </select>
+                  </div>
+
                   <div>
                     <label className="mb-1 block text-[9px] font-semibold uppercase tracking-[0.18em] text-slate-500">
                       Room Category
