@@ -47,23 +47,23 @@ const initialHotel = () => ({
   serviceName: "",
   hotelName: "",
   name: "",
-  roomType: "Standard Room",
-  roomCategory: "Double",
+  roomType: "",
+  roomCategory: "",
   rooms: 1,
   nights: 1,
   day: "1",
-  bedType: "Queen Bed",
+  bedType: "",
   extraBedType: "None",
   maxAdults: 2,
   maxChildren: 1,
-  mealPlan: "EP",
+  mealPlan: "",
   basePrice: 0,
   price: 0,
   unit: "night",
   quantity: 1,
   supplier: "",
   supplierName: "",
-  starCategory: "5 Star",
+  starCategory: "",
   description: "",
   extraAdult: false,
   childWithBed: false,
@@ -84,7 +84,7 @@ const initialTransfer = () => ({
   luggageCapacity: 2,
   day: "1",
   days: 1,
-  usage: "one-way-airport-transfer",
+  usage: "",
   usagePrices: {
     "one-way-airport-transfer": 0,
     "inter-hotel-transfer": 0,
@@ -629,8 +629,8 @@ const initialActivity = () => ({
   children: 0,
   basePrice: 0,
   pax: 2,
-  selectedSlot: "08:00",
-  time: "08:00",
+  selectedSlot: "",
+  time: "",
   price: "",
   unit: "person",
   quantity: 1,
@@ -660,8 +660,8 @@ const initialSightseeing = () => ({
   children: 0,
   basePrice: 0,
   pax: 2,
-  selectedSlot: "08:00",
-  time: "08:00",
+  selectedSlot: "",
+  time: "",
   price: "",
   unit: "person",
   quantity: 1,
@@ -1654,7 +1654,7 @@ const handleRoomCategoryChange = (hotelIdx, roomTypeName) => {
       operatingDays: dmcAct.operatingDays || dmcAct.days || "Mon-Sun",
       openingTime: dmcAct.openingTime || "08:00",
       closingTime: dmcAct.closingTime || "18:00",
-      duration: dmcAct.duration || "120 Mins",
+      duration: formatServiceDuration(dmcAct) || dmcAct.duration || updated[index].duration || "",
       slots: dmcAct.slots || "",
       price: calculatedTotal,
       supplier: dmcAct.supplier || dmcAct.supplierId || dmcAct.dmcId || dmcAct._id || "",
@@ -1840,7 +1840,7 @@ const handleRoomCategoryChange = (hotelIdx, roomTypeName) => {
       operatingDays: dmcSight.operatingDays || dmcSight.days || "Mon-Sun",
       openingTime: dmcSight.openingTime || "08:00",
       closingTime: dmcSight.closingTime || "18:00",
-      duration: dmcSight.duration || "60 Mins",
+      duration: formatServiceDuration(dmcSight) || dmcSight.duration || updated[index].duration || "",
       slots: dmcSight.slots || "",
       price: calculatedTotal,
       supplier: dmcSight.supplier || dmcSight.supplierId || dmcSight.dmcId || dmcSight._id || "",
@@ -2402,7 +2402,7 @@ const handleRoomCategoryChange = (hotelIdx, roomTypeName) => {
 
                           {/* Autocomplete Dropdown List */}
                           {activeHotelDropdownIdx === index && (
-                            <div className="absolute left-0 right-0 top-full mt-1.5 max-h-64 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-xl z-[100] divide-y divide-gray-100 [scrollbar-width:thin]">
+                            <div className="absolute left-0 w-[420px] sm:w-[500px] md:w-[580px] lg:w-[620px] max-w-[calc(90vw-30px)] top-full mt-1.5 max-h-72 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-2xl z-[100] divide-y divide-gray-100 [scrollbar-width:thin]">
                               {filteredHotels.length === 0 ? (
                                 <div className="p-3 text-[11px] text-gray-500 italic text-center">
                                   No service found matching "{hotel.serviceName || hotel.name || ""}". You can freely type custom service name.
@@ -2468,10 +2468,11 @@ const handleRoomCategoryChange = (hotelIdx, roomTypeName) => {
                         <div>
                           <label className="block text-[11px] font-semibold text-slate-600 mb-1">Meal Plan</label>
                           <select
-                            value={hotel.mealPlan || "EP"}
+                            value={hotel.mealPlan || ""}
                             onChange={(e) => updateHotel(index, "mealPlan", e.target.value)}
                             className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs"
                           >
+                            <option value="">Select Meal Plan</option>
                             <option value="EP">EP (Room Only)</option>
                             <option value="CP">CP (Breakfast Included)</option>
                             <option value="MAP">MAP (Breakfast & Dinner)</option>
@@ -2506,49 +2507,89 @@ const handleRoomCategoryChange = (hotelIdx, roomTypeName) => {
                           <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-gray-500">
                             Room Category
                           </label>
-                          <select
-                            value={hotel.roomType || "Standard Room"}
-                            onChange={(e) => handleRoomCategoryChange(index, e.target.value)}
-                            className="w-full rounded-md border border-gray-300 bg-gray-50/50 px-2 py-1.5 text-xs text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition"
-                          >
-                            {availableRooms.length > 0 ? (
-                              availableRooms.map((r, rIdx) => (
-                                <option key={rIdx} value={r.roomType}>
-                                  {r.roomType}
+                          <div className="relative flex items-center w-full">
+                            <input
+                              type="text"
+                              value={hotel.roomType || ""}
+                              onChange={(e) => handleRoomCategoryChange(index, e.target.value)}
+                              placeholder="Select or enter Room Category"
+                              className="w-full rounded-md border border-gray-300 bg-gray-50/50 pl-2.5 pr-7 py-1.5 text-xs font-semibold text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition"
+                            />
+                            <div className="absolute right-0 top-0 bottom-0 w-7 flex items-center justify-center">
+                              <select
+                                value=""
+                                onChange={(e) => {
+                                  if (e.target.value) {
+                                    handleRoomCategoryChange(index, e.target.value);
+                                  }
+                                }}
+                                title="Choose Room Category"
+                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer text-xs font-normal bg-white"
+                              >
+                                <option value="" disabled>
+                                  Select Room Category
                                 </option>
-                              ))
-                            ) : (
-                              <>
-                                <option value="Standard Room">Standard Room</option>
-                                <option value="Deluxe Room">Deluxe Room</option>
-                                <option value="Premium Room">Premium Room</option>
-                                <option value="Family Room">Family Room</option>
-                                <option value="Luxury Room">Luxury Room</option>
-                                <option value="Suite">Suite</option>
-                              </>
-                            )}
-                          </select>
+                                {availableRooms.length > 0 ? (
+                                  availableRooms.map((r, rIdx) => (
+                                    <option key={rIdx} value={r.roomType} className="bg-white text-slate-900 font-normal">
+                                      {r.roomType}
+                                    </option>
+                                  ))
+                                ) : (
+                                  <>
+                                    <option value="Standard Room" className="bg-white text-slate-900 font-normal">Standard Room</option>
+                                    <option value="Deluxe Room" className="bg-white text-slate-900 font-normal">Deluxe Room</option>
+                                    <option value="Premium Room" className="bg-white text-slate-900 font-normal">Premium Room</option>
+                                    <option value="Family Room" className="bg-white text-slate-900 font-normal">Family Room</option>
+                                    <option value="Luxury Room" className="bg-white text-slate-900 font-normal">Luxury Room</option>
+                                    <option value="Suite" className="bg-white text-slate-900 font-normal">Suite</option>
+                                  </>
+                                )}
+                              </select>
+                              <ChevronDown size={13} className="text-slate-500 pointer-events-none" />
+                            </div>
+                          </div>
                         </div>
 
                         <div>
                           <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-gray-500">
                             Room Type (Occupancy)
                           </label>
-                          <select
-                            value={hotel.roomCategory || "Double"}
-                            onChange={(e) => handleRoomOccupancyChange(index, e.target.value)}
-                            className="w-full rounded-md border border-gray-300 bg-gray-50/50 px-2 py-1.5 text-xs text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition"
-                          >
-                            <option value="Double">Double (2 persons)</option>
-                            <option
-                              value="Triple"
-                              disabled={!isTripleAllowedCategory(hotel.roomType)}
-                              className={!isTripleAllowedCategory(hotel.roomType) ? "text-gray-400 font-normal italic" : "text-slate-800 font-bold"}
-                            >
-                              Triple (3 persons) {!isTripleAllowedCategory(hotel.roomType) ? "— (Family/Luxury/Suite only)" : ""}
-                            </option>
-                            <option value="Single">Single (1 person)</option>
-                          </select>
+                          <div className="relative flex items-center w-full">
+                            <input
+                              type="text"
+                              value={hotel.roomCategory || ""}
+                              onChange={(e) => handleRoomOccupancyChange(index, e.target.value)}
+                              placeholder="Select or enter Room Type"
+                              className="w-full rounded-md border border-gray-300 bg-gray-50/50 pl-2.5 pr-7 py-1.5 text-xs font-semibold text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition"
+                            />
+                            <div className="absolute right-0 top-0 bottom-0 w-7 flex items-center justify-center">
+                              <select
+                                value=""
+                                onChange={(e) => {
+                                  if (e.target.value) {
+                                    handleRoomOccupancyChange(index, e.target.value);
+                                  }
+                                }}
+                                title="Choose Room Type (Occupancy)"
+                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer text-xs font-normal bg-white"
+                              >
+                                <option value="" disabled>
+                                  Select Room Type
+                                </option>
+                                <option value="Double" className="bg-white text-slate-900 font-normal">Double (2 persons)</option>
+                                <option
+                                  value="Triple"
+                                  disabled={!isTripleAllowedCategory(hotel.roomType)}
+                                  className={!isTripleAllowedCategory(hotel.roomType) ? "bg-white text-gray-400 font-normal italic" : "bg-white text-slate-800 font-bold"}
+                                >
+                                  Triple (3 persons) {!isTripleAllowedCategory(hotel.roomType) ? "— (Family/Luxury/Suite only)" : ""}
+                                </option>
+                                <option value="Single" className="bg-white text-slate-900 font-normal">Single (1 person)</option>
+                              </select>
+                              <ChevronDown size={13} className="text-slate-500 pointer-events-none" />
+                            </div>
+                          </div>
                         </div>
 
                         <div>
@@ -2590,10 +2631,11 @@ const handleRoomCategoryChange = (hotelIdx, roomTypeName) => {
                             Bed Type
                           </label>
                           <select
-                            value={hotel.bedType || "Queen Bed"}
+                            value={hotel.bedType || ""}
                             onChange={(e) => updateHotel(index, "bedType", e.target.value)}
                             className="w-full rounded-md border border-gray-300 bg-gray-50/50 px-2 py-1.5 text-xs text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition"
                           >
+                            <option value="">Select Bed Type</option>
                             <option value="Queen Bed">Queen Bed</option>
                             <option value="King Bed">King Bed</option>
                             <option value="Twin Bed">Twin Bed</option>
@@ -2917,7 +2959,7 @@ const handleRoomCategoryChange = (hotelIdx, roomTypeName) => {
 
                           {/* Autocomplete Dropdown List */}
                           {activeTransferDropdownIdx === index && (
-                            <div className="absolute left-0 right-0 top-full mt-1.5 max-h-64 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-xl z-[100] divide-y divide-gray-100 [scrollbar-width:thin]">
+                            <div className="absolute left-0 w-[420px] sm:w-[500px] md:w-[580px] max-w-[calc(90vw-30px)] top-full mt-1.5 max-h-72 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-2xl z-[100] divide-y divide-gray-100 [scrollbar-width:thin]">
                               {filteredTransfers.length === 0 ? (
                                 <div className="p-3 text-[11px] text-gray-500 italic text-center">
                                   No route found matching "{transfer.name}". You can freely type custom transfer route.
@@ -3029,10 +3071,11 @@ const handleRoomCategoryChange = (hotelIdx, roomTypeName) => {
                         <div className="sm:col-span-2">
                           <label className="block text-[11px] font-semibold text-slate-600 mb-1">Usage</label>
                           <select
-                            value={transfer.usage || "one-way-airport-transfer"}
+                            value={transfer.usage || ""}
                             onChange={(e) => handleUsageChange(index, e.target.value)}
                             className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs"
                           >
+                            <option value="">Select Usage</option>
                             {TRANSPORT_USAGE_OPTIONS.map((opt) => {
                               const optPrice = transfer.usagePrices && transfer.usagePrices[opt.value] !== undefined
                                 ? Number(transfer.usagePrices[opt.value])
@@ -3376,7 +3419,7 @@ const handleRoomCategoryChange = (hotelIdx, roomTypeName) => {
 
                             {/* Dropdown */}
                             {activeActivityDropdownIdx === index && (
-                              <div className="absolute left-0 right-0 top-full mt-1.5 max-h-64 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-xl z-[100] divide-y divide-gray-100 [scrollbar-width:thin]">
+                              <div className="absolute left-0 w-[420px] sm:w-[500px] md:w-[580px] max-w-[calc(90vw-30px)] top-full mt-1.5 max-h-72 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-2xl z-[100] divide-y divide-gray-100 [scrollbar-width:thin]">
                                 {filteredActs.length === 0 ? (
                                   <div className="p-3 text-[11px] text-gray-500 italic text-center">
                                     No activity currently uploaded. You can freely type custom activity name.
@@ -3540,29 +3583,48 @@ const handleRoomCategoryChange = (hotelIdx, roomTypeName) => {
                           {/* 5. Slot / Time */}
                           <div>
                             <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">Slot / Time</label>
-                            <div className="relative">
-                              <select
-                                value={act.selectedSlot || availableSlots[0] || "08:00"}
-                                onChange={(e) => updateActivity(index, "selectedSlot", e.target.value)}
-                                className="w-full rounded-lg border border-gray-300 bg-white pl-2 pr-6 py-1.5 text-xs font-semibold text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs cursor-pointer appearance-none"
-                              >
-                                {availableSlots.map((slot, sIdx) => {
-                                  const slotCheck = checkSlotAvailability(
-                                    "activity",
-                                    index,
-                                    slot,
-                                    Number(act.day || 1),
-                                    parseDurationInMinutes(act.duration, 120),
-                                    allScheduledItems
-                                  );
-                                  return (
-                                    <option key={sIdx} value={slot}>
-                                      {slot} {slotCheck.isConflicting ? `⚠️ (Busy: ${slotCheck.conflictingWith})` : "✓ Free"}
-                                    </option>
-                                  );
-                                })}
-                              </select>
-                              <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400" />
+                            <div className="relative flex items-center">
+                              <input
+                                type="text"
+                                value={act.selectedSlot !== undefined ? act.selectedSlot : (act.time || "")}
+                                onChange={(e) => {
+                                  updateActivity(index, "selectedSlot", e.target.value);
+                                  updateActivity(index, "time", e.target.value);
+                                }}
+                                placeholder="Select Slot"
+                                className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 pr-7 text-xs font-normal text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs"
+                              />
+                              <div className="absolute right-0 top-0 bottom-0 w-7 flex items-center justify-center">
+                                <select
+                                  value=""
+                                  onChange={(e) => {
+                                    if (e.target.value) {
+                                      updateActivity(index, "selectedSlot", e.target.value);
+                                      updateActivity(index, "time", e.target.value);
+                                    }
+                                  }}
+                                  title="Choose time slot"
+                                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer text-xs font-normal bg-white"
+                                >
+                                  <option value="" disabled>Select Time</option>
+                                  {availableSlots.map((slot, sIdx) => {
+                                    const slotCheck = checkSlotAvailability(
+                                      "activity",
+                                      index,
+                                      slot,
+                                      Number(act.day || 1),
+                                      parseDurationInMinutes(act.duration, 120),
+                                      allScheduledItems
+                                    );
+                                    return (
+                                      <option key={sIdx} value={slot}>
+                                        {slot} {slotCheck.isConflicting ? `⚠️ (Busy: ${slotCheck.conflictingWith})` : "✓ Free"}
+                                      </option>
+                                    );
+                                  })}
+                                </select>
+                                <ChevronDown size={12} className="text-slate-400 pointer-events-none" />
+                              </div>
                             </div>
                           </div>
 
@@ -3763,7 +3825,7 @@ const handleRoomCategoryChange = (hotelIdx, roomTypeName) => {
 
                             {/* Dropdown */}
                             {activeSightseeingDropdownIdx === index && (
-                              <div className="absolute left-0 right-0 top-full mt-1.5 max-h-64 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-xl z-[100] divide-y divide-gray-100 [scrollbar-width:thin]">
+                              <div className="absolute left-0 w-[420px] sm:w-[500px] md:w-[580px] max-w-[calc(90vw-30px)] top-full mt-1.5 max-h-72 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-2xl z-[100] divide-y divide-gray-100 [scrollbar-width:thin]">
                                 {filteredSight.length === 0 ? (
                                   <div className="p-3 text-[11px] text-gray-500 italic text-center">
                                     No sightseeing tour found. You can freely type custom tour name.
@@ -3918,29 +3980,48 @@ const handleRoomCategoryChange = (hotelIdx, roomTypeName) => {
                           {/* 5. Slot / Time */}
                           <div>
                             <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">Slot / Time</label>
-                            <div className="relative">
-                              <select
-                                value={sight.selectedSlot || availableSlots[0] || "08:00"}
-                                onChange={(e) => updateSightseeing(index, "selectedSlot", e.target.value)}
-                                className="w-full rounded-lg border border-gray-300 bg-white pl-2 pr-6 py-1.5 text-xs font-semibold text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs cursor-pointer appearance-none"
-                              >
-                                {availableSlots.map((slot, sIdx) => {
-                                  const slotCheck = checkSlotAvailability(
-                                    "sightseeing",
-                                    index,
-                                    slot,
-                                    Number(sight.day || 1),
-                                    parseDurationInMinutes(sight.duration, 60),
-                                    allScheduledItems
-                                  );
-                                  return (
-                                    <option key={sIdx} value={slot}>
-                                      {slot} {slotCheck.isConflicting ? `⚠️ (Busy: ${slotCheck.conflictingWith})` : "✓ Free"}
-                                    </option>
-                                  );
-                                })}
-                              </select>
-                              <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400" />
+                            <div className="relative flex items-center">
+                              <input
+                                type="text"
+                                value={sight.selectedSlot !== undefined ? sight.selectedSlot : (sight.time || "")}
+                                onChange={(e) => {
+                                  updateSightseeing(index, "selectedSlot", e.target.value);
+                                  updateSightseeing(index, "time", e.target.value);
+                                }}
+                                placeholder="Select Slot"
+                                className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 pr-7 text-xs font-normal text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs"
+                              />
+                              <div className="absolute right-0 top-0 bottom-0 w-7 flex items-center justify-center">
+                                <select
+                                  value=""
+                                  onChange={(e) => {
+                                    if (e.target.value) {
+                                      updateSightseeing(index, "selectedSlot", e.target.value);
+                                      updateSightseeing(index, "time", e.target.value);
+                                    }
+                                  }}
+                                  title="Choose time slot"
+                                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer text-xs font-normal bg-white"
+                                >
+                                  <option value="" disabled>Select Time</option>
+                                  {availableSlots.map((slot, sIdx) => {
+                                    const slotCheck = checkSlotAvailability(
+                                      "sightseeing",
+                                      index,
+                                      slot,
+                                      Number(sight.day || 1),
+                                      parseDurationInMinutes(sight.duration, 60),
+                                      allScheduledItems
+                                    );
+                                    return (
+                                      <option key={sIdx} value={slot}>
+                                        {slot} {slotCheck.isConflicting ? `⚠️ (Busy: ${slotCheck.conflictingWith})` : "✓ Free"}
+                                      </option>
+                                    );
+                                  })}
+                                </select>
+                                <ChevronDown size={12} className="text-slate-400 pointer-events-none" />
+                              </div>
                             </div>
                           </div>
 

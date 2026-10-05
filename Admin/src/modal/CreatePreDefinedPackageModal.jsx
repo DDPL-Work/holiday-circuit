@@ -19,6 +19,7 @@ import {
   detectScheduleConflicts,
   getDayLoadSummary,
   checkSlotAvailability,
+  formatServiceDuration,
 } from "./createPackage/utils/packageUtils.js";
 
 import { useDmcServices } from "./createPackage/hooks/useDmcServices.js";
@@ -178,6 +179,12 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
 
     hotelItem.roomType = roomTypeName;
 
+    if (!roomTypeName) {
+      hotelItem.price = recalculateHotelPrice(hotelItem);
+      setHotels(updated);
+      return;
+    }
+
     if (!isTripleAllowedCategory(roomTypeName) && String(hotelItem.roomCategory || "").toLowerCase() === "triple") {
       hotelItem.roomCategory = "Double";
       hotelItem.maxAdults = 2;
@@ -212,6 +219,12 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
       hotelItem.roomCategory = "Triple";
     } else {
       hotelItem.roomCategory = occupancyCategory;
+    }
+
+    if (!occupancyCategory) {
+      hotelItem.price = recalculateHotelPrice(hotelItem);
+      setHotels(updated);
+      return;
     }
 
     const hotelsList = hotelItem.hotelsList || [];
@@ -399,6 +412,12 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
     const updated = [...transfers];
     const item = updated[transferIdx];
     item.usage = usageKey;
+    if (!usageKey) {
+      item.basePrice = 0;
+      item.price = 0;
+      setTransfers(updated);
+      return;
+    }
     const usagePrices = item.usagePrices || {};
     const rate = usagePrices[usageKey] !== undefined ? Number(usagePrices[usageKey]) : Number(item.basePrice || 0);
     item.basePrice = rate;
@@ -507,18 +526,23 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
     }
 
     if (field === "adults" || field === "children" || field === "adultPrice" || field === "childPrice") {
-      const aCount = Math.max(1, Number(field === "adults" ? value : (updated[index].adults !== undefined ? updated[index].adults : 1)));
-      const cCount = Math.max(0, Number(field === "children" ? value : (updated[index].children !== undefined ? updated[index].children : 0)));
-      const aRate = Number(field === "adultPrice" ? value : (updated[index].adultPrice !== undefined ? updated[index].adultPrice : 0));
-      const cRate = Number(field === "childPrice" ? value : (updated[index].childPrice !== undefined ? updated[index].childPrice : 0));
+      const aCount = field === "adults" ? (value === "" ? "" : Math.max(1, Number(value))) : (updated[index].adults !== undefined ? updated[index].adults : 1);
+      const cCount = field === "children" ? (value === "" ? "" : Math.max(0, Number(value))) : (updated[index].children !== undefined ? updated[index].children : 0);
+      const aRate = field === "adultPrice" ? (value === "" ? "" : Number(value)) : (updated[index].adultPrice !== undefined ? updated[index].adultPrice : 0);
+      const cRate = field === "childPrice" ? (value === "" ? "" : Number(value)) : (updated[index].childPrice !== undefined ? updated[index].childPrice : 0);
       
+      const numAdults = Number(aCount || 0);
+      const numChildren = Number(cCount || 0);
+      const numAdultRate = Number(aRate || 0);
+      const numChildRate = Number(cRate || 0);
+
       updated[index].adults = aCount;
       updated[index].children = cCount;
-      updated[index].pax = aCount + cCount;
+      updated[index].pax = numAdults + numChildren;
       updated[index].adultPrice = aRate;
       updated[index].childPrice = cRate;
-      updated[index].basePrice = aRate;
-      updated[index].price = (aRate * aCount) + (cRate * cCount);
+      updated[index].basePrice = numAdultRate;
+      updated[index].price = (numAdultRate * numAdults) + (numChildRate * numChildren);
     }
 
     if (field === "selectedSlot") {
@@ -527,7 +551,14 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
     }
 
     if (field === "price") {
-      updated[index].price = Number(value || 0);
+      const tot = Number(value || 0);
+      const aCount = Math.max(1, Number(updated[index].adults !== undefined ? updated[index].adults : (updated[index].pax || 1)));
+      const cCount = Math.max(0, Number(updated[index].children || 0));
+      const paxNum = aCount + cCount;
+      updated[index].price = tot;
+      const perPaxRate = paxNum > 0 ? Math.round(tot / paxNum) : tot;
+      updated[index].adultPrice = perPaxRate;
+      updated[index].basePrice = perPaxRate;
     }
 
     setActivities(updated);
@@ -629,7 +660,7 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
       operatingDays: dmcAct.operatingDays || dmcAct.days || "Mon-Sun",
       openingTime: dmcAct.openingTime || "08:00",
       closingTime: dmcAct.closingTime || "18:00",
-      duration: dmcAct.duration || "120 Mins",
+      duration: formatServiceDuration(dmcAct) || dmcAct.duration || updated[index].duration || "",
       slots: dmcAct.slots || "",
       price: calculatedTotal,
       supplier: dmcAct.supplier || dmcAct.supplierId || dmcAct.dmcId || dmcAct._id || "",
@@ -692,18 +723,23 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
     }
 
     if (field === "adults" || field === "children" || field === "adultPrice" || field === "childPrice") {
-      const aCount = Math.max(1, Number(field === "adults" ? value : (updated[index].adults !== undefined ? updated[index].adults : 1)));
-      const cCount = Math.max(0, Number(field === "children" ? value : (updated[index].children !== undefined ? updated[index].children : 0)));
-      const aRate = Number(field === "adultPrice" ? value : (updated[index].adultPrice !== undefined ? updated[index].adultPrice : 0));
-      const cRate = Number(field === "childPrice" ? value : (updated[index].childPrice !== undefined ? updated[index].childPrice : 0));
+      const aCount = field === "adults" ? (value === "" ? "" : Math.max(1, Number(value))) : (updated[index].adults !== undefined ? updated[index].adults : 1);
+      const cCount = field === "children" ? (value === "" ? "" : Math.max(0, Number(value))) : (updated[index].children !== undefined ? updated[index].children : 0);
+      const aRate = field === "adultPrice" ? (value === "" ? "" : Number(value)) : (updated[index].adultPrice !== undefined ? updated[index].adultPrice : 0);
+      const cRate = field === "childPrice" ? (value === "" ? "" : Number(value)) : (updated[index].childPrice !== undefined ? updated[index].childPrice : 0);
       
+      const numAdults = Number(aCount || 0);
+      const numChildren = Number(cCount || 0);
+      const numAdultRate = Number(aRate || 0);
+      const numChildRate = Number(cRate || 0);
+
       updated[index].adults = aCount;
       updated[index].children = cCount;
-      updated[index].pax = aCount + cCount;
+      updated[index].pax = numAdults + numChildren;
       updated[index].adultPrice = aRate;
       updated[index].childPrice = cRate;
-      updated[index].basePrice = aRate;
-      updated[index].price = (aRate * aCount) + (cRate * cCount);
+      updated[index].basePrice = numAdultRate;
+      updated[index].price = (numAdultRate * numAdults) + (numChildRate * numChildren);
     }
 
     if (field === "selectedSlot") {
@@ -712,7 +748,14 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
     }
 
     if (field === "price") {
-      updated[index].price = Number(value || 0);
+      const tot = Number(value || 0);
+      const aCount = Math.max(1, Number(updated[index].adults !== undefined ? updated[index].adults : (updated[index].pax || 1)));
+      const cCount = Math.max(0, Number(updated[index].children || 0));
+      const paxNum = aCount + cCount;
+      updated[index].price = tot;
+      const perPaxRate = paxNum > 0 ? Math.round(tot / paxNum) : tot;
+      updated[index].adultPrice = perPaxRate;
+      updated[index].basePrice = perPaxRate;
     }
 
     setSightseeing(updated);
@@ -814,7 +857,7 @@ export default function CreatePreDefinedPackageModal({ isOpen, onClose, onSucces
       operatingDays: dmcSight.operatingDays || dmcSight.days || "Mon-Sun",
       openingTime: dmcSight.openingTime || "08:00",
       closingTime: dmcSight.closingTime || "18:00",
-      duration: dmcSight.duration || "60 Mins",
+      duration: formatServiceDuration(dmcSight) || dmcSight.duration || updated[index].duration || "",
       slots: dmcSight.slots || "",
       price: calculatedTotal,
       supplier: dmcSight.supplier || dmcSight.supplierId || dmcSight.dmcId || dmcSight._id || "",

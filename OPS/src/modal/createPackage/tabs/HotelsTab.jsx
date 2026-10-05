@@ -182,7 +182,7 @@ export const HotelsTab = ({
                   </div>
 
                   {partnerType !== "Business Partner" && activeHotelDropdownIdx === index && (
-                    <div className="absolute left-0 right-0 top-full mt-1.5 max-h-64 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-xl z-[100] divide-y divide-gray-100 [scrollbar-width:thin]">
+                    <div className="absolute left-0 w-[420px] sm:w-[500px] md:w-[580px] lg:w-[620px] max-w-[calc(90vw-30px)] top-full mt-1.5 max-h-72 overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-2xl z-[100] divide-y divide-gray-100 [scrollbar-width:thin]">
                       {filteredHotels.length === 0 ? (
                         <div className="p-3 text-[11px] text-gray-500 italic text-center">
                           No service found matching "{hotel.serviceName || ""}". You can freely type custom service name.
@@ -260,7 +260,7 @@ export const HotelsTab = ({
                 <div>
                   <label className="block text-[11px] font-semibold text-slate-600 mb-1">Star Category</label>
                   <select
-                    value={hotel.starCategory || hotel.hotelCategory || hotel.starRating || "5 Star"}
+                    value={hotel.starCategory || hotel.hotelCategory || hotel.starRating || ""}
                     onChange={(e) => {
                       updateHotel(index, "starCategory", e.target.value);
                       updateHotel(index, "hotelCategory", e.target.value);
@@ -268,6 +268,7 @@ export const HotelsTab = ({
                     }}
                     className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs font-medium"
                   >
+                    <option value="">Select Star Category</option>
                     <option value="5 Star">5 Star</option>
                     <option value="4 Star">4 Star</option>
                     <option value="3 Star">3 Star</option>
@@ -278,13 +279,14 @@ export const HotelsTab = ({
                 <div>
                   <label className="block text-[11px] font-semibold text-slate-600 mb-1">Meal Plan</label>
                   <select
-                    value={hotel.mealPlan || "EP"}
+                    value={hotel.mealPlan || ""}
                     onChange={(e) => {
                       updateHotel(index, "mealPlan", e.target.value);
                       updateHotel(index, "meals", e.target.value);
                     }}
                     className="w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition shadow-2xs font-medium"
                   >
+                    <option value="">Select Meal Plan</option>
                     <option value="EP">EP (Room Only)</option>
                     <option value="CP">CP (Breakfast Included)</option>
                     <option value="MAP">MAP (Breakfast & Dinner)</option>
@@ -358,49 +360,89 @@ export const HotelsTab = ({
                   <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-gray-500">
                     Room Category
                   </label>
-                  <select
-                    value={hotel.roomType || "Standard Room"}
-                    onChange={(e) => handleRoomCategoryChange(index, e.target.value)}
-                    className="w-full rounded-md border border-gray-300 bg-gray-50/50 px-2 py-1.5 text-xs text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition"
-                  >
-                    {availableRooms.length > 0 ? (
-                      availableRooms.map((r, rIdx) => (
-                        <option key={rIdx} value={r.roomType}>
-                          {r.roomType}
+                  <div className="relative flex items-center w-full">
+                    <input
+                      type="text"
+                      value={hotel.roomType || ""}
+                      onChange={(e) => handleRoomCategoryChange(index, e.target.value)}
+                      placeholder="Select or enter Room Category"
+                      className="w-full rounded-md border border-gray-300 bg-gray-50/50 pl-2.5 pr-7 py-1.5 text-xs font-semibold text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition"
+                    />
+                    <div className="absolute right-0 top-0 bottom-0 w-7 flex items-center justify-center">
+                      <select
+                        value=""
+                        onChange={(e) => {
+                          if (e.target.value) {
+                            handleRoomCategoryChange(index, e.target.value);
+                          }
+                        }}
+                        title="Choose Room Category"
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer text-xs font-normal bg-white"
+                      >
+                        <option value="" disabled>
+                          Select Room Category
                         </option>
-                      ))
-                    ) : (
-                      <>
-                        <option value="Standard Room">Standard Room</option>
-                        <option value="Deluxe Room">Deluxe Room</option>
-                        <option value="Premium Room">Premium Room</option>
-                        <option value="Family Room">Family Room</option>
-                        <option value="Luxury Room">Luxury Room</option>
-                        <option value="Suite">Suite</option>
-                      </>
-                    )}
-                  </select>
+                        {availableRooms.length > 0 ? (
+                          availableRooms.map((r, rIdx) => (
+                            <option key={rIdx} value={r.roomType} className="bg-white text-slate-900 font-normal">
+                              {r.roomType}
+                            </option>
+                          ))
+                        ) : (
+                          <>
+                            <option value="Standard Room" className="bg-white text-slate-900 font-normal">Standard Room</option>
+                            <option value="Deluxe Room" className="bg-white text-slate-900 font-normal">Deluxe Room</option>
+                            <option value="Premium Room" className="bg-white text-slate-900 font-normal">Premium Room</option>
+                            <option value="Family Room" className="bg-white text-slate-900 font-normal">Family Room</option>
+                            <option value="Luxury Room" className="bg-white text-slate-900 font-normal">Luxury Room</option>
+                            <option value="Suite" className="bg-white text-slate-900 font-normal">Suite</option>
+                          </>
+                        )}
+                      </select>
+                      <ChevronDown size={13} className="text-slate-500 pointer-events-none" />
+                    </div>
+                  </div>
                 </div>
 
                 <div>
                   <label className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-gray-500">
                     Room Type (Occupancy)
                   </label>
-                  <select
-                    value={hotel.roomCategory || "Double"}
-                    onChange={(e) => handleRoomOccupancyChange(index, e.target.value)}
-                    className="w-full rounded-md border border-gray-300 bg-gray-50/50 px-2 py-1.5 text-xs text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition"
-                  >
-                    <option value="Double">Double (2 persons)</option>
-                    <option
-                      value="Triple"
-                      disabled={!isTripleAllowedCategory(hotel.roomType)}
-                      className={!isTripleAllowedCategory(hotel.roomType) ? "text-gray-400 font-normal italic" : "text-slate-800 font-bold"}
-                    >
-                      Triple (3 persons) {!isTripleAllowedCategory(hotel.roomType) ? "— (Family/Luxury/Suite only)" : ""}
-                    </option>
-                    <option value="Single">Single (1 person)</option>
-                  </select>
+                  <div className="relative flex items-center w-full">
+                    <input
+                      type="text"
+                      value={hotel.roomCategory || ""}
+                      onChange={(e) => handleRoomOccupancyChange(index, e.target.value)}
+                      placeholder="Select or enter Room Type"
+                      className="w-full rounded-md border border-gray-300 bg-gray-50/50 pl-2.5 pr-7 py-1.5 text-xs font-semibold text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition"
+                    />
+                    <div className="absolute right-0 top-0 bottom-0 w-7 flex items-center justify-center">
+                      <select
+                        value=""
+                        onChange={(e) => {
+                          if (e.target.value) {
+                            handleRoomOccupancyChange(index, e.target.value);
+                          }
+                        }}
+                        title="Choose Room Type (Occupancy)"
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer text-xs font-normal bg-white"
+                      >
+                        <option value="" disabled>
+                          Select Room Type
+                        </option>
+                        <option value="Double" className="bg-white text-slate-900 font-normal">Double (2 persons)</option>
+                        <option
+                          value="Triple"
+                          disabled={!isTripleAllowedCategory(hotel.roomType)}
+                          className={!isTripleAllowedCategory(hotel.roomType) ? "bg-white text-gray-400 font-normal italic" : "bg-white text-slate-800 font-bold"}
+                        >
+                          Triple (3 persons) {!isTripleAllowedCategory(hotel.roomType) ? "— (Family/Luxury/Suite only)" : ""}
+                        </option>
+                        <option value="Single" className="bg-white text-slate-900 font-normal">Single (1 person)</option>
+                      </select>
+                      <ChevronDown size={13} className="text-slate-500 pointer-events-none" />
+                    </div>
+                  </div>
                 </div>
 
                 <div>
@@ -448,10 +490,11 @@ export const HotelsTab = ({
                     Bed Type
                   </label>
                   <select
-                    value={hotel.bedType || "Queen Bed"}
+                    value={hotel.bedType || ""}
                     onChange={(e) => updateHotel(index, "bedType", e.target.value)}
                     className="w-full rounded-md border border-gray-300 bg-gray-50/50 px-2 py-1.5 text-xs text-slate-800 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none transition"
                   >
+                    <option value="">Select Bed Type</option>
                     <option value="Queen Bed">Queen Bed</option>
                     <option value="King Bed">King Bed</option>
                     <option value="Twin Bed">Twin Bed</option>
